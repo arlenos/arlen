@@ -169,6 +169,61 @@ pub fn theme_export() -> Result<String, String> {
     toml::to_string_pretty(&merged).map_err(|e| format!("serialize theme: {e}"))
 }
 
+/// The resolved non-colour metrics of the active appearance (radius, spacing,
+/// motion, typography, depth) as a flat `dotted-key -> value` map, so the
+/// Appearance dimension pages render each field's resolved value. Numbers are
+/// stringified and the frontend reads the keys it needs; the colour dimensions
+/// are in [`theme_resolved_palette`] / [`theme_resolved_terminal`].
+#[tauri::command]
+pub fn theme_resolved_metrics() -> Result<std::collections::BTreeMap<String, String>, String> {
+    let t = resolve_active_theme()?;
+    let mut m = std::collections::BTreeMap::new();
+    // Radius (authored base + intensity, matching what the override rows edit).
+    m.insert("radius.chip".into(), t.radius.chip.to_string());
+    m.insert("radius.button".into(), t.radius.button.to_string());
+    m.insert("radius.input".into(), t.radius.input.to_string());
+    m.insert("radius.card".into(), t.radius.card.to_string());
+    m.insert("radius.modal".into(), t.radius.modal.to_string());
+    m.insert("radius.full".into(), t.radius.full.to_string());
+    m.insert("radius.intensity".into(), t.radius.intensity.to_string());
+    m.insert(
+        "radius.window_corners".into(),
+        t.radius
+            .window_corners
+            .iter()
+            .map(|c| c.to_string())
+            .collect::<Vec<_>>()
+            .join(","),
+    );
+    // Spacing.
+    m.insert("spacing.xs".into(), t.spacing.xs.clone());
+    m.insert("spacing.sm".into(), t.spacing.sm.clone());
+    m.insert("spacing.md".into(), t.spacing.md.clone());
+    m.insert("spacing.lg".into(), t.spacing.lg.clone());
+    m.insert("spacing.xl".into(), t.spacing.xl.clone());
+    // Motion.
+    m.insert("motion.duration_fast".into(), t.motion.duration_fast.clone());
+    m.insert("motion.duration_normal".into(), t.motion.duration_normal.clone());
+    m.insert("motion.duration_slow".into(), t.motion.duration_slow.clone());
+    m.insert("motion.easing_default".into(), t.motion.easing_default.clone());
+    m.insert("motion.easing_spring".into(), t.motion.easing_spring.clone());
+    // Typography.
+    m.insert("typography.font_sans".into(), t.typography.font_sans.clone());
+    m.insert("typography.font_mono".into(), t.typography.font_mono.clone());
+    m.insert("typography.size_base".into(), t.typography.size_base.clone());
+    m.insert("typography.line_height".into(), t.typography.line_height.clone());
+    m.insert("typography.weight_normal".into(), t.typography.weight_normal.to_string());
+    m.insert("typography.weight_medium".into(), t.typography.weight_medium.to_string());
+    m.insert("typography.weight_bold".into(), t.typography.weight_bold.to_string());
+    // Depth.
+    m.insert("depth.shadow_sm".into(), t.depth.shadow_sm.clone());
+    m.insert("depth.shadow_md".into(), t.depth.shadow_md.clone());
+    m.insert("depth.shadow_lg".into(), t.depth.shadow_lg.clone());
+    m.insert("depth.shadow_card".into(), t.depth.shadow_card.clone());
+    m.insert("depth.blur_enabled".into(), t.depth.blur_enabled.to_string());
+    Ok(m)
+}
+
 /// The system's installed font families via `fc-list`, deduplicated and sorted,
 /// for the Appearance font pickers (replacing the fixed short list). Each
 /// `fc-list` line is one font file's family names; the primary (first
