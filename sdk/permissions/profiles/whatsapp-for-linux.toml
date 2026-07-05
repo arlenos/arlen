@@ -1,0 +1,11 @@
+# Starting permission profile for a messenger client. Needs network to message;
+# saves downloads to Downloads. No Knowledge Graph access.
+[info]
+app_id = "whatsapp-for-linux"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

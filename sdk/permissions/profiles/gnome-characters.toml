@@ -1,0 +1,7 @@
+# Starting permission profile for a self-contained app (education, network config,
+# capture, fonts, ambient or a simple game). No file access, no network and no
+# Knowledge Graph by default; data lives in its own dir and any privileged
+# capture/config elevates via polkit.
+[info]
+app_id = "gnome-characters"
+tier = "third-party"
