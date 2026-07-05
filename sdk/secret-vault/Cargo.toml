@@ -1,0 +1,18 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-secret-vault"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen shared secret vault: an at-rest AEAD record store sealed under a per-record HKDF subkey of a daemon master secret"
+authors = ["Arlen"]
+
+[dependencies]
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+zeroize = "1"
+getrandom = "0.2"
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"
