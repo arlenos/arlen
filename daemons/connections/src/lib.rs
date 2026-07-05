@@ -15,5 +15,6 @@
 pub mod broker;
 pub mod audit;
 pub mod config;
+pub mod master;
 pub mod serve;
 pub mod store;
