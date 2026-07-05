@@ -1,0 +1,11 @@
+# Starting permission profile for a chat/IM/IRC/Matrix/XMPP client. Needs network
+# to message; saves attachments to Downloads. No Knowledge Graph access.
+[info]
+app_id = "kopete"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
