@@ -32,6 +32,12 @@ pub enum ConfigFile {
     /// The `arlen-ai-daemon` watches this file: toggling `enabled`
     /// switches the AI layer on/off live (Phase 9-α S7).
     Ai,
+    /// Theme customization layer (`theme.toml`, sdk/theme's layer 3). The
+    /// resolver merges it field-by-field over the active theme, so any
+    /// `ArlenTheme` field (colours, the icon/cursor theme, radius, motion, ...)
+    /// can be overridden here. The Appearance suite's per-field overrides write
+    /// this file; the running shell re-resolves on change.
+    Customization,
 }
 
 impl ConfigFile {
@@ -45,6 +51,7 @@ impl ConfigFile {
             Self::Graph => "graph.toml",
             Self::QuickSettings => "quicksettings.toml",
             Self::Ai => "ai.toml",
+            Self::Customization => "theme.toml",
         }
     }
 
