@@ -1,0 +1,8 @@
+# Starting permission profile for LenMus (music-theory education). Works with
+# Documents (lessons, scores); no network and no Knowledge Graph.
+[info]
+app_id = "lenmus"
+tier = "third-party"
+
+[filesystem]
+documents = true
