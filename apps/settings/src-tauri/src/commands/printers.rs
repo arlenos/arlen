@@ -8,7 +8,7 @@
 //! not here. Each command talks directly to the local CUPS server; a down or
 //! unreachable server surfaces as an error string the panel shows.
 
-use arlen_print::{CupsBackend, Job, PrintBackend, Printer};
+use arlen_print::{CupsBackend, Job, JobOptions, PrintBackend, PrintSubmission, Printer};
 use serde::Serialize;
 
 /// A printer as the panel lists it. The `arlen-print` `Printer` is not
@@ -101,6 +101,25 @@ pub async fn print_queue() -> Result<Vec<JobDto>, String> {
 pub async fn print_job_cancel(printer: String, job_id: i32) -> Result<(), String> {
     CupsBackend::default()
         .cancel_job(&printer, job_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Queue a test page on `printer` to confirm it prints. A plain-text document
+/// (CUPS auto-detects `text/plain`) submitted as a normal user job, so no admin
+/// rights are needed. Returns the IPP job id the panel can report.
+#[tauri::command]
+pub async fn printers_test_page(printer: String) -> Result<i32, String> {
+    const TEST_DOC: &[u8] = b"Arlen printer test page\n\nIf you can read this, printing works.\n";
+    let submission = PrintSubmission {
+        printer: &printer,
+        document: TEST_DOC,
+        title: Some("Arlen Test Page"),
+        mime: Some("text/plain"),
+        options: JobOptions::default(),
+    };
+    CupsBackend::default()
+        .submit(&submission)
         .await
         .map_err(|e| e.to_string())
 }
