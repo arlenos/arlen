@@ -141,15 +141,12 @@
 {/snippet}
 
 <style>
-  /* Two columns: the controls scroll on the left, the preview rides alongside on
-     the right (sticky within its own column, so it stays visible while you edit
-     but never covers the controls). Stacks on narrow widths. */
+  /* Stacked: the live preview sits on top, full width, and scrolls with the page
+     (no side column, no sticky). */
   .editor {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 20rem;
+    display: flex;
+    flex-direction: column;
     gap: 1.5rem;
-    /* The preview column stretches to the controls' height so the sticky preview
-       has room to stay pinned while they scroll. */
   }
   .controls {
     display: flex;
@@ -158,8 +155,6 @@
     min-width: 0;
   }
   .preview-sticky {
-    position: sticky;
-    top: 0;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
@@ -172,16 +167,8 @@
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
     padding-left: 0.125rem;
   }
-  @media (max-width: 60rem) {
-    .editor {
-      grid-template-columns: 1fr;
-    }
-    .preview-col {
-      order: -1;
-    }
-    .preview-sticky {
-      position: static;
-    }
+  .preview-col {
+    order: -1;
   }
 
   /* The "All roles" disclosure trigger (the class rides the Collapsible root, so
