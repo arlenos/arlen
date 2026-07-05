@@ -9,6 +9,7 @@
   /// overrides need the theme.toml override backend (flagged for the coder).
   import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
@@ -61,7 +62,8 @@
   title="Geometry"
   description="The theme's shape: roundness, window corners, spacing, and the gaps between tiled windows. Change one and it overrides just that value, on top of the theme."
 >
-  <div class="editor">
+  <SectionGrid>
+    <div class="editor span-full">
     <div class="controls">
       <Group label="Roundness">
         {@render sliderRow(field("intensity"))}
@@ -134,7 +136,8 @@
         </div>
       </div>
     </aside>
-  </div>
+    </div>
+  </SectionGrid>
 </Page>
 
 <!-- One slider field with the shared override language. -->
