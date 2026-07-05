@@ -38,7 +38,7 @@ export const activeTheme = derived([themes, activeThemeId], ([$themes, $id]) =>
 // Fixture: the built-in Arlen Dark plus a few community schemes as imported
 // examples, each with its signature palette for the preview.
 const FIXTURE: ThemeInfo[] = [
-  { id: "arlen-dark", name: "Arlen Dark", isBuiltin: true, swatch: ["#0f1115", "#1a1d24", "#7c93ff", "#2a2f3a", "#e6e8ee"] },
+  { id: "arlen-dark", name: "Arlen Dark", isBuiltin: true, swatch: ["#0f1115", "#1a1d24", "#fafafa", "#2a2f3a", "#e6e8ee"] },
   { id: "nord", name: "Nord", isBuiltin: false, swatch: ["#2e3440", "#3b4252", "#88c0d0", "#434c5e", "#eceff4"] },
   { id: "gruvbox-dark", name: "Gruvbox Dark", isBuiltin: false, swatch: ["#282828", "#3c3836", "#fabd2f", "#504945", "#ebdbb2"] },
   { id: "catppuccin-mocha", name: "Catppuccin Mocha", isBuiltin: false, swatch: ["#1e1e2e", "#313244", "#cba6f7", "#45475a", "#cdd6f4"] },
