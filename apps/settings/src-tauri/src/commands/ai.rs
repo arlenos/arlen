@@ -146,6 +146,39 @@ pub async fn ai_behaviours() -> String {
     agent_call_string("list_skills", "[]").await
 }
 
+/// Enable or disable an AI behaviour by name, editing the `[agent].enabled` list
+/// in `ai.toml` (the same list the agent daemon reads to decide which behaviours
+/// run). Adds the name when enabling, removes it when disabling; a no-op if
+/// already in the desired state. An absent or unreadable config is treated as an
+/// empty list, so enabling the first behaviour creates the entry. The daemon
+/// picks up the change on its next config reload; enablement is source-gated
+/// there, so naming an unknown behaviour simply has no effect.
+#[tauri::command]
+pub async fn ai_behaviour_set_enabled(name: String, enabled: bool) -> Result<(), String> {
+    use crate::commands::config::{config_get, config_set, ConfigFile};
+    let current = config_get(ConfigFile::Ai, Some("agent.enabled".to_string()))
+        .unwrap_or(serde_json::Value::Null);
+    let mut names: Vec<String> = match current {
+        serde_json::Value::Array(items) => items
+            .into_iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        _ => Vec::new(),
+    };
+    let present = names.iter().any(|n| n == &name);
+    match (enabled, present) {
+        (true, false) => names.push(name),
+        (false, true) => names.retain(|n| n != &name),
+        _ => return Ok(()),
+    }
+    config_set(
+        ConfigFile::Ai,
+        "agent.enabled".to_string(),
+        serde_json::json!(names),
+    )
+    .await
+}
+
 /// The configured default provider/model + ranked fallback (`ai_defaults_get`),
 /// as `{ provider, model, ranking }`, for the manager's Default-Models page.
 /// Empty object if the daemon is unreachable.
