@@ -1,0 +1,9 @@
+# Starting permission profile for a music-creation app (DAW or notation). Works
+# with Music (audio) and Documents (projects); no network and no Knowledge Graph.
+[info]
+app_id = "lmms"
+tier = "third-party"
+
+[filesystem]
+music = true
+documents = true
