@@ -1,0 +1,8 @@
+# Starting permission profile for a documents/ebook/scan/profiling tool. Reads and
+# writes files under Documents; no network and no Knowledge Graph.
+[info]
+app_id = "heaptrack"
+tier = "third-party"
+
+[filesystem]
+documents = true

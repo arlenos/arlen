@@ -1,0 +1,9 @@
+# Starting permission profile for a USB/ISO imaging tool. Reads the disk image
+# from Downloads; the write to the USB device is privileged and elevates via
+# polkit. No network and no Knowledge Graph.
+[info]
+app_id = "popsicle"
+tier = "third-party"
+
+[filesystem]
+downloads = true
