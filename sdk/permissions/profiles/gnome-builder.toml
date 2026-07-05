@@ -1,0 +1,9 @@
+# Starting permission profile for a text/hex editor, document viewer or IDE. Works
+# with Documents; no network and no Knowledge Graph by default (project deps are
+# refined later).
+[info]
+app_id = "gnome-builder"
+tier = "third-party"
+
+[filesystem]
+documents = true

@@ -1,0 +1,8 @@
+# Starting permission profile for an image viewer/editor/screenshot tool. Works
+# with Pictures; no network and no Knowledge Graph.
+[info]
+app_id = "gnome-photos"
+tier = "third-party"
+
+[filesystem]
+pictures = true

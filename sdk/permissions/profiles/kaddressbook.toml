@@ -1,0 +1,6 @@
+# Starting permission profile for a self-contained PIM/utility/dev app. No file
+# access, no network and no Knowledge Graph by default; PIM data lives in Akonadi,
+# config in its own dir, and any bus access goes through the session bus.
+[info]
+app_id = "kaddressbook"
+tier = "third-party"

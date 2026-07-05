@@ -1,0 +1,9 @@
+# Starting permission profile for KDE Connect (phone integration). Needs network
+# to reach the paired device; no local file access and no Knowledge Graph by
+# default (file transfers are granted per-transfer).
+[info]
+app_id = "kdeconnect"
+tier = "third-party"
+
+[network]
+allow_all = true
