@@ -9,10 +9,12 @@
   import ChatThread from "$lib/components/chat/ChatThread.svelte";
   import Composer from "$lib/components/chat/Composer.svelte";
   import CapabilityBar from "$lib/components/chat/CapabilityBar.svelte";
+  import AgentActions from "$lib/components/chat/AgentActions.svelte";
   import ArtifactPanel from "$lib/components/ArtifactPanel.svelte";
   import { readCapability, type Capability } from "$lib/capability";
   import { messages } from "$lib/stores/conversation";
   import { openArtifact, closePane } from "$lib/stores/artifact";
+  import { startPoll } from "$lib/stores/agentActions";
 
   let capability = $state<Capability | null>(null);
   let capLoaded = $state(false);
@@ -22,6 +24,9 @@
     capLoaded = true;
   }
   onMount(loadCapability);
+  // Poll the agent's pending proposals + completed-action receipts while the chat
+  // is open, so the gate/act/undo loop is visible in the conversation.
+  onMount(() => startPoll());
 
   // The three capability states the surface designs for: usable, switched
   // off, and unreachable (the read failed, distinct from off).
@@ -52,6 +57,7 @@
       onretry={loadCapability}
     />
     <div class="foot">
+      <AgentActions />
       <Composer bind:this={composer} disabled={composerDisabled} {placeholder} />
       <!-- The steady-state posture lives in the composer foot now; this line is
            warning-only (AI off or unreachable). It shows only once there are
