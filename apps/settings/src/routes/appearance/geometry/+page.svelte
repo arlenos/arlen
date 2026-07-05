@@ -165,8 +165,8 @@
 
 <style>
   .editor {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 20rem;
+    display: flex;
+    flex-direction: column;
     gap: 1.5rem;
   }
   .controls {
@@ -176,8 +176,6 @@
     min-width: 0;
   }
   .preview-sticky {
-    position: sticky;
-    top: 0;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
@@ -190,16 +188,8 @@
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
     padding-left: 0.125rem;
   }
-  @media (max-width: 60rem) {
-    .editor {
-      grid-template-columns: 1fr;
-    }
-    .preview-col {
-      order: -1;
-    }
-    .preview-sticky {
-      position: static;
-    }
+  .preview-col {
+    order: -1;
   }
 
   /* Shape samples for window corners + tiling gaps, which the app strip can't
