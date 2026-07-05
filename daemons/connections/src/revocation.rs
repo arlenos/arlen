@@ -66,6 +66,28 @@ impl RevocationRegistry {
         revoked
     }
 
+    /// Revoke every token whose caller process is no longer alive: the on-exit
+    /// trigger. `is_alive(pid)` reports whether a caller pid is still running (the
+    /// daemon passes a real `/proc` liveness check on a poll; tests inject a
+    /// predicate). Each distinct live-tracked pid is checked once; the dead ones'
+    /// tokens are revoked. Returns the ids revoked, so the daemon can revoke them
+    /// upstream.
+    pub fn revoke_dead_callers(&mut self, is_alive: impl Fn(i32) -> bool) -> Vec<String> {
+        let pids: std::collections::HashSet<i32> = self
+            .tokens
+            .values()
+            .filter(|r| !r.revoked)
+            .map(|r| r.caller_pid)
+            .collect();
+        let mut revoked = Vec::new();
+        for pid in pids {
+            if !is_alive(pid) {
+                revoked.extend(self.revoke_for_pid(pid));
+            }
+        }
+        revoked
+    }
+
     /// Mark every token expired at `now_micros` revoked, returning their ids.
     pub fn revoke_expired(&mut self, now_micros: i64) -> Vec<String> {
         let mut expired = Vec::new();
@@ -123,6 +145,23 @@ mod tests {
         assert!(reg.is_live("c", 0)); // another pid's token untouched
         // Revoking again yields nothing (already revoked).
         assert!(reg.revoke_for_pid(100).is_empty());
+    }
+
+    #[test]
+    fn revoke_dead_callers_revokes_only_exited_processes() {
+        let mut reg = RevocationRegistry::new();
+        reg.register("a".into(), 100, 9_999); // caller 100 (will be dead)
+        reg.register("b".into(), 100, 9_999);
+        reg.register("c".into(), 200, 9_999); // caller 200 (alive)
+        // Only pid 200 is alive.
+        let mut revoked = reg.revoke_dead_callers(|pid| pid == 200);
+        revoked.sort();
+        assert_eq!(revoked, vec!["a".to_string(), "b".to_string()]);
+        assert!(!reg.is_live("a", 0));
+        assert!(!reg.is_live("b", 0));
+        assert!(reg.is_live("c", 0)); // the alive caller's token survives
+        // A second sweep with everyone alive revokes nothing new.
+        assert!(reg.revoke_dead_callers(|_| true).is_empty());
     }
 
     #[test]
