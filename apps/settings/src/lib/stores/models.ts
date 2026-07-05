@@ -283,7 +283,7 @@ export async function cancelDownload(id: string): Promise<void> {
   }
   download.set(null);
   try {
-    await invoke("ai_local_models_cancel_download", { id });
+    await invoke("ai_local_models_download_cancel", { id });
   } catch {
     // Nothing to surface.
   }
