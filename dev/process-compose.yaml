@@ -165,8 +165,10 @@ processes:
   # power.state on the event bus (the shell consumes it), and serves a query
   # socket. Resilient to a late/absent UPower (retries per poll, never crashes),
   # so it belongs in the base stack. Its siblings transfer-daemon (needs PR-R1
-  # per-uid sockets + two live profile uids) and online-accounts (no value in a
-  # bare stack with no accounts) stay systemd/per-uid-scoped, not wired here.
+  # per-uid sockets + two live profile uids), online-accounts (no value in a bare
+  # stack with no accounts), and connections (the credential authority, no value
+  # with no credentials configured) stay systemd/per-uid-scoped + D-Bus-activated,
+  # not wired here.
   power-daemon:
     command: "cargo run --manifest-path daemons/power-daemon/Cargo.toml"
     depends_on:

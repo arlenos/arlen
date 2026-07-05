@@ -1,0 +1,43 @@
+[Unit]
+Description=Arlen Connections daemon (user service)
+Documentation=https://github.com/arlenos/arlen
+# arlen-connectionsd owns org.arlen.Connections1 on the session bus and is the
+# single capability-gated credential authority: every credential handout is
+# checked against a per-app grant (the caller's Arlen identity resolved from the
+# bus-attested PID, GetConnectionUnixProcessID -> path_to_app_id) and audited into
+# the ledger. It reads the grant config under ~/.config/arlen/connections.toml (no
+# secrets there) and writes the master-key-sealed credential store under the state
+# dir; it talks only over AF_UNIX (the session bus and the audit ingest socket).
+
+[Service]
+# Type=dbus: the service is "started" once it owns its bus name, which also lets
+# the session bus D-Bus-activate it on first use (see the activation .service).
+Type=dbus
+BusName=org.arlen.Connections1
+ExecStart=/usr/lib/arlen/libexec/arlen-connectionsd
+# A failure to acquire the bus name, open the store, or serve exits non-zero;
+# restart with back-off so a persistent fault surfaces rather than crash-loops.
+Restart=on-failure
+RestartSec=2
+
+# It reads the grant config and serves over the bus, and writes the credential
+# store (the master secret + the AEAD-encrypted credential records) under the
+# state dir. Home stays read-only except that one writable hole; strict keeps
+# /usr + /etc read-only.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/state/arlen
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target
