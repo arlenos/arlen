@@ -1,0 +1,8 @@
+# Starting permission profile for a cloud-music/API-client app. Needs network to
+# reach its service; no local file access and no Knowledge Graph by default.
+[info]
+app_id = "nuvolaplayer"
+tier = "third-party"
+
+[network]
+allow_all = true

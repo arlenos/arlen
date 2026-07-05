@@ -1,0 +1,12 @@
+# Starting permission profile for a database client. Connects to database servers
+# over the network and opens local scripts/exports under Documents. No Knowledge
+# Graph access.
+[info]
+app_id = "beekeeper-studio"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true

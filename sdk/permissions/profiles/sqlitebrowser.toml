@@ -1,0 +1,8 @@
+# Starting permission profile for DB Browser for SQLite (a local database editor).
+# Opens .db files under Documents; no network and no Knowledge Graph.
+[info]
+app_id = "sqlitebrowser"
+tier = "third-party"
+
+[filesystem]
+documents = true

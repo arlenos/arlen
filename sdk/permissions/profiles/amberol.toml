@@ -1,0 +1,8 @@
+# Starting permission profile for a music player or audio editor. Works with the
+# user's local Music; no network and no Knowledge Graph.
+[info]
+app_id = "amberol"
+tier = "third-party"
+
+[filesystem]
+music = true
