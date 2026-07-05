@@ -1,0 +1,11 @@
+# Starting permission profile for a file-sync client. It synchronises the user's
+# files, so it gets Home and network; no Knowledge Graph access.
+[info]
+app_id = "owncloud"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true
