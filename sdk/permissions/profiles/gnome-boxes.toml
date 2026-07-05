@@ -1,0 +1,12 @@
+# Starting permission profile for a virtualization manager. Reads install media
+# from Downloads and needs network for VM networking; the VM images live in its
+# own data directory. No Knowledge Graph access.
+[info]
+app_id = "gnome-boxes"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

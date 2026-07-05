@@ -1,0 +1,6 @@
+# Starting permission profile for a self-contained utility (calculator or offline
+# docs). No file access, no network and no Knowledge Graph; its data lives in its
+# own app directory.
+[info]
+app_id = "gnome-calculator"
+tier = "third-party"
