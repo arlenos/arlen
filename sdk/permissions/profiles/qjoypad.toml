@@ -1,0 +1,6 @@
+# Starting permission profile for a local network-diagnostic or input-device tool.
+# No file access, no network and no Knowledge Graph; it reads interface stats or
+# configures HID/gamepad devices over the system bus, elevating via polkit.
+[info]
+app_id = "qjoypad"
+tier = "third-party"

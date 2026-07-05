@@ -1,0 +1,9 @@
+# Starting permission profile for a network/remote-desktop tool. Needs network to
+# reach the target; no local file access and no Knowledge Graph by default (a
+# remote file transfer is a separate grant).
+[info]
+app_id = "zenmap"
+tier = "third-party"
+
+[network]
+allow_all = true
