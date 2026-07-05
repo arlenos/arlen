@@ -1,0 +1,9 @@
+# Starting permission profile for a network app (map tiles, satellite data or a
+# remote print server). Needs network to fetch; no local file access and no
+# Knowledge Graph by default.
+[info]
+app_id = "marble"
+tier = "third-party"
+
+[network]
+allow_all = true
