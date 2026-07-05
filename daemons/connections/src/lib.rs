@@ -13,3 +13,4 @@
 //! AEAD vault pattern), the daemon socket, and the peer-auth layer build on top.
 
 pub mod broker;
+pub mod store;
