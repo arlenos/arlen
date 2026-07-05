@@ -15,6 +15,7 @@ serde_json = "1"
 thiserror = "1"
 toml = "0.8"
 arlen-secret-vault = { path = "../../sdk/secret-vault" }
+audit-proto = { path = "../../contracts/audit-proto" }
 
 [dev-dependencies]
 tempfile = "3"
