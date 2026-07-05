@@ -127,6 +127,48 @@ pub fn theme_resolved_terminal() -> Result<TerminalPalette, String> {
     })
 }
 
+/// Recursively merge `over` onto `base`: tables merge key-by-key, and `over`
+/// wins on any leaf. Used to overlay the customization onto a base theme so the
+/// export carries both.
+fn merge_toml(base: &mut toml::Value, over: &toml::Value) {
+    match (base, over) {
+        (toml::Value::Table(b), toml::Value::Table(o)) => {
+            for (k, ov) in o {
+                match b.get_mut(k) {
+                    Some(bv) => merge_toml(bv, ov),
+                    None => {
+                        b.insert(k.clone(), ov.clone());
+                    }
+                }
+            }
+        }
+        (b, o) => *b = o.clone(),
+    }
+}
+
+/// Export the active appearance as one self-contained theme TOML: the active
+/// theme's base overlaid with the `theme.toml` customization (the per-field
+/// overrides), so the result re-imports as a theme carrying every current edit
+/// (the "Generate Theme From Current Settings" flow). The importer resolves any
+/// `extends` and defaults unset dimensions, so the file is a valid theme; the
+/// caller's save flow renames it (the export keeps the base `[meta]`).
+#[tauri::command]
+pub fn theme_export() -> Result<String, String> {
+    let id = get_active_theme_id()?;
+    let base =
+        active_theme_content(&id).ok_or_else(|| format!("active theme '{id}' not found"))?;
+    let mut merged: toml::Value =
+        toml::from_str(&base).map_err(|e| format!("parse base theme: {e}"))?;
+    if let Ok(custom) =
+        std::fs::read_to_string(arlen_theme::ArlenTheme::user_customization_path())
+    {
+        if let Ok(over) = toml::from_str::<toml::Value>(&custom) {
+            merge_toml(&mut merged, &over);
+        }
+    }
+    toml::to_string_pretty(&merged).map_err(|e| format!("serialize theme: {e}"))
+}
+
 /// The system's installed font families via `fc-list`, deduplicated and sorted,
 /// for the Appearance font pickers (replacing the fixed short list). Each
 /// `fc-list` line is one font file's family names; the primary (first
@@ -457,5 +499,18 @@ mod tests {
         let accent = palette.iter().find(|r| r.role == "accent").unwrap();
         let bg = palette.iter().find(|r| r.role == "bg_app").unwrap();
         assert_ne!(accent.hex, bg.hex);
+    }
+
+    #[test]
+    fn merge_toml_overlays_leaves_and_keeps_base_fields() {
+        let mut base: toml::Value =
+            toml::from_str("[color]\naccent = \"#111111\"\nbg_app = \"#000000\"\n").unwrap();
+        let over: toml::Value = toml::from_str("[color]\naccent = \"#ff0000\"\n").unwrap();
+        merge_toml(&mut base, &over);
+        let color = base.get("color").unwrap();
+        // The override wins on the leaf it sets.
+        assert_eq!(color.get("accent").unwrap().as_str(), Some("#ff0000"));
+        // A base leaf the override does not touch is preserved.
+        assert_eq!(color.get("bg_app").unwrap().as_str(), Some("#000000"));
     }
 }
