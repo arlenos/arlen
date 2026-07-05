@@ -1,9 +1,14 @@
 /// The Printers panel store (printing-plan.md PRN-R4). Mirrors the print
 /// daemon's model (`daemons/print/src/model.rs`) field-for-field and talks to
-/// the intended Settings <-> print Tauri bridge (`printers_*` commands). That
-/// bridge is the coder's lane and is not wired yet, so every call falls back to
-/// a representative fixture: the panel is affordance-complete and goes live the
-/// moment the commands land, with no frontend change. Clearly a mock until then.
+/// the Settings <-> print Tauri bridge (`printers_*` commands).
+///
+/// The READ half is live-wired: `printers_list` / `printers_default` /
+/// `print_queue` (in `load`), plus `print_job_cancel` and `printers_test_page`,
+/// invoke the real commands; the `FIXTURE` below is the no-Tauri dev fallback,
+/// surfaced by the `mocked` banner when the read load fails. The MANAGE/write
+/// half - `printers_add` / `_remove` / `_set_default` / `_set_options` /
+/// `printers_discover` / `print_job_retry` - is still backend-blocked and runs
+/// optimistic-only until the coder lands it.
 
 import { writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
