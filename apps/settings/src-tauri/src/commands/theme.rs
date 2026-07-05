@@ -15,6 +15,82 @@ pub fn theme_get() -> Result<serde_json::Value, String> {
     config_get(ConfigFile::Appearance, None)
 }
 
+/// One resolved colour role for the Appearance preview and per-field override
+/// rows.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaletteRole {
+    /// The semantic role key (`bg_app`, `accent`, `fg_primary`, ...).
+    pub role: String,
+    /// The resolved colour as `#RRGGBB[AA]`.
+    pub hex: String,
+}
+
+/// The TOML content of the active theme's base: the bundled dark/light default,
+/// or a user theme read from `~/.local/share/arlen/themes/{id}.toml`. `None` if
+/// a named user theme file is missing.
+fn active_theme_content(id: &str) -> Option<String> {
+    match id {
+        "dark" => Some(arlen_theme::DARK_TOML.to_string()),
+        "light" => Some(arlen_theme::LIGHT_TOML.to_string()),
+        _ => {
+            let path = arlen_theme::ArlenTheme::user_themes_dir().join(format!("{id}.toml"));
+            std::fs::read_to_string(path).ok()
+        }
+    }
+}
+
+/// Every resolved [`ColorTokens`] role as an ordered role/hex list (backgrounds,
+/// foregrounds, accent and its states, status, borders) so the preview and
+/// override rows render real values.
+fn palette_of(theme: &arlen_theme::ArlenTheme) -> Vec<PaletteRole> {
+    use arlen_theme::gtk::rgba_to_hex;
+    let c = &theme.color;
+    let pair = |role: &str, rgba| PaletteRole {
+        role: role.to_string(),
+        hex: rgba_to_hex(rgba),
+    };
+    vec![
+        pair("bg_shell", c.bg_shell),
+        pair("bg_app", c.bg_app),
+        pair("bg_card", c.bg_card),
+        pair("bg_overlay", c.bg_overlay),
+        pair("bg_input", c.bg_input),
+        pair("fg_primary", c.fg_primary),
+        pair("fg_secondary", c.fg_secondary),
+        pair("fg_disabled", c.fg_disabled),
+        pair("fg_inverse", c.fg_inverse),
+        pair("accent", c.accent),
+        pair("accent_hover", c.accent_hover),
+        pair("accent_pressed", c.accent_pressed),
+        pair("success", c.success),
+        pair("warning", c.warning),
+        pair("error", c.error),
+        pair("info", c.info),
+        pair("border_default", c.border_default),
+        pair("border_strong", c.border_strong),
+    ]
+}
+
+/// The resolved colour palette of the active appearance: the active theme's base
+/// merged with the `theme.toml` customization layer (the per-field overrides the
+/// Appearance suite writes via `config_set(Customization, ...)`), resolved
+/// through `sdk/theme`. Returns every semantic role's hex so the preview renders
+/// the real theme instead of a fixture. NB the legacy `appearance.toml
+/// [overrides]` (accent/radius/font) are a separate, superseded path and are not
+/// folded in here; the suite writes overrides to `theme.toml`.
+#[tauri::command]
+pub fn theme_resolved_palette() -> Result<Vec<PaletteRole>, String> {
+    let id = get_active_theme_id()?;
+    let base =
+        active_theme_content(&id).ok_or_else(|| format!("active theme '{id}' not found"))?;
+    let customization =
+        std::fs::read_to_string(arlen_theme::ArlenTheme::user_customization_path()).ok();
+    let theme = arlen_theme::ArlenTheme::resolve(&base, None, customization.as_deref())
+        .map_err(|e| format!("resolve: {e}"))?;
+    Ok(palette_of(&theme))
+}
+
 /// The system's installed font families via `fc-list`, deduplicated and sorted,
 /// for the Appearance font pickers (replacing the fixed short list). Each
 /// `fc-list` line is one font file's family names; the primary (first
