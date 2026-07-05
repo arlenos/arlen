@@ -1,0 +1,9 @@
+# Starting permission profile for a terminal emulator. It runs the user's shell
+# and tools over their files, so it gets Home; no network of its own (the tools
+# it launches carry their own grants). No Knowledge Graph.
+[info]
+app_id = "sakura"
+tier = "third-party"
+
+[filesystem]
+home = true
