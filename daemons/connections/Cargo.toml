@@ -13,6 +13,7 @@ name = "connections"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
+toml = "0.8"
 arlen-secret-vault = { path = "../../sdk/secret-vault" }
 
 [dev-dependencies]
