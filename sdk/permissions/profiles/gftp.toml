@@ -1,0 +1,11 @@
+# Starting permission profile for gFTP (an FTP client). Transfers the user's files
+# over the network, so it gets Home and network. No Knowledge Graph access.
+[info]
+app_id = "gftp"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true
