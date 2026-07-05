@@ -405,6 +405,52 @@ pub enum Task {
 /// door (plan Decision 3). The curation itself - which models, the real source
 /// refs, the advanced set - is human-vetted and lives in the bundled catalog TOML;
 /// this is its schema + parser, not the curated list.
+/// How clearly a model's license permits local use and redistribution. Beyond
+/// the license identifier itself, this makes the "may Arlen re-host / bundle it"
+/// question legible (local-model-bundle-plan.md, the supply-chain trust model).
+/// The default is fail-closed: an unvetted entry is treated as not-freely-
+/// redistributable until a human curates it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LicenseClarity {
+    /// Unvetted (fail-closed default): treat as not freely redistributable.
+    #[default]
+    Unknown,
+    /// A permissive OSI license (Apache-2.0, MIT): freely usable and redistributable.
+    Open,
+    /// A community / gated license (Llama community, OpenRAIL, a research license):
+    /// usable locally but redistribution is restricted, so Arlen must not re-host it.
+    Community,
+    /// Explicitly non-redistributable.
+    Restricted,
+}
+
+/// The on-disk weight format, which makes the load-time supply-chain risk legible:
+/// GGUF and safetensors are data-only (nothing executes on load), whereas a Python
+/// pickle can run arbitrary code when deserialized (the poisoned-pickle risk). The
+/// default is fail-closed: an unvetted format is not assumed load-safe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WeightFormat {
+    /// Unvetted (fail-closed default): not assumed load-safe.
+    #[default]
+    Unknown,
+    /// GGUF: data-only, safe to load (every Arlen-curated model is GGUF).
+    Gguf,
+    /// safetensors: data-only, safe to load.
+    Safetensors,
+    /// A Python pickle (`.bin` / `.pt`): can execute code on load. Never curated.
+    Pickle,
+}
+
+impl WeightFormat {
+    /// Whether loading this format cannot execute arbitrary code (data-only). An
+    /// unvetted format fails closed to `false`.
+    pub fn is_load_safe(self) -> bool {
+        matches!(self, WeightFormat::Gguf | WeightFormat::Safetensors)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct CuratedModel {
     /// Display name (e.g. `"Llama-3.1-8B"`).
@@ -421,6 +467,18 @@ pub struct CuratedModel {
     /// the explicit Advanced door and excluded from the default curated shortlist.
     #[serde(default)]
     pub advanced: bool,
+    /// The license identifier (e.g. `apache-2.0`, `llama3.2`); empty if uncurated.
+    /// The value is human-curated, never inferred from a mirror.
+    #[serde(default)]
+    pub license: String,
+    /// How clearly the license permits redistribution (fail-closed `Unknown`
+    /// default; human-curated, since a wrong `Open` is a redistribution liability).
+    #[serde(default)]
+    pub license_clarity: LicenseClarity,
+    /// The weight format, making the load-time code-execution risk legible
+    /// (fail-closed `Unknown` default; every curated model is GGUF).
+    #[serde(default)]
+    pub weight_format: WeightFormat,
 }
 
 impl CuratedModel {
@@ -865,5 +923,20 @@ mod tests {
         let shortlist = recommend_catalog(&apu_7840u(), &catalog, false);
         assert_eq!(shortlist.len(), catalog.models.len() - 1);
         assert!(shortlist.iter().all(|r| !r.name.contains("abliterated")));
+    }
+
+    #[test]
+    fn curated_models_carry_load_safe_gguf_and_trust_defaults_fail_closed() {
+        let catalog = bundled_catalog().unwrap();
+        for m in &catalog.models {
+            assert_eq!(m.weight_format, WeightFormat::Gguf, "{} must be GGUF", m.name);
+            assert!(m.weight_format.is_load_safe(), "{} must be load-safe", m.name);
+        }
+        // Trust fields default fail-closed: an unvetted entry is not load-safe and
+        // not treated as freely redistributable.
+        assert_eq!(WeightFormat::default(), WeightFormat::Unknown);
+        assert!(!WeightFormat::Unknown.is_load_safe());
+        assert!(!WeightFormat::Pickle.is_load_safe());
+        assert_eq!(LicenseClarity::default(), LicenseClarity::Unknown);
     }
 }

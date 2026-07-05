@@ -14,46 +14,59 @@
 # Balanced default-upgrade; Qwen2.5-32B = Quality; Qwen2.5-Coder-7B = Coding;
 # Ministral-8B = the EU-sovereign featured pick; the Qwen3-8B abliterated entry
 # is the Advanced-door model.
+#
+# Trust fields (supply-chain trust model): every entry is GGUF (data-only, load-safe),
+# set here. The `license` + `license_clarity` are human-curated per model (a wrong
+# `open` on a research/community-licensed model is a redistribution liability), so
+# they are left unset (fail-closed `unknown`) until vetted; the sha256 the downloader
+# verifies is pinned against HF-canonical file metadata, never a third-party mirror.
 
 [[model]]
 name = "Llama-3.2-1B"
 params_b = 1.24
 tasks = ["general"]
 source = "bartowski/Llama-3.2-1B-Instruct-GGUF"
+weight_format = "gguf"
 
 [[model]]
 name = "Qwen2.5-3B"
 params_b = 3.09
 tasks = ["general"]
 source = "bartowski/Qwen2.5-3B-Instruct-GGUF"
+weight_format = "gguf"
 
 [[model]]
 name = "Qwen2.5-7B"
 params_b = 7.62
 tasks = ["general"]
 source = "bartowski/Qwen2.5-7B-Instruct-GGUF"
+weight_format = "gguf"
 
 [[model]]
 name = "Qwen2.5-32B"
 params_b = 32.5
 tasks = ["general", "reasoning"]
 source = "bartowski/Qwen2.5-32B-Instruct-GGUF"
+weight_format = "gguf"
 
 [[model]]
 name = "Qwen2.5-Coder-7B"
 params_b = 7.62
 tasks = ["coding"]
 source = "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF"
+weight_format = "gguf"
 
 [[model]]
 name = "Ministral-8B"
 params_b = 8.02
 tasks = ["general", "writing"]
 source = "bartowski/Ministral-8B-Instruct-2410-GGUF"
+weight_format = "gguf"
 
 [[model]]
 name = "Qwen3-8B-abliterated"
 params_b = 8.19
 tasks = ["general"]
 source = "huihui-ai/Qwen3-8B-abliterated"
+weight_format = "gguf"
 advanced = true
