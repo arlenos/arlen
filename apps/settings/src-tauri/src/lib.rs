@@ -68,6 +68,7 @@ pub fn run() {
             commands::printers::printers_default,
             commands::printers::print_queue,
             commands::printers::print_job_cancel,
+            commands::printers::printers_test_page,
             commands::privacy::access_grants,
             commands::privacy::revoke_reach,
             commands::privacy::restore_reach,
