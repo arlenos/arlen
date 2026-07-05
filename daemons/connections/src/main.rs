@@ -32,6 +32,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let audit = LedgerAuditSink::at_default_socket();
     let daemon = ConnectionsDaemon::new(store, audit);
 
+    // The name request fails closed if the well-known name is already owned, so
+    // the real daemon never serves a decoy. When CONN-R2 delivers tokens, request
+    // it non-replaceable (do-not-queue) so ownership cannot be handed to a squatter.
     let _conn = connection::Builder::session()?
         .name("org.arlen.Connections1")?
         .serve_at("/org/arlen/Connections1", daemon)?
