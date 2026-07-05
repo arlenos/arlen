@@ -194,9 +194,29 @@ const DIMENSION_FAMILY: Record<string, Family> = {
   intents: "automation",
 };
 
+/// The closed narrowing vocabulary the daemon accepts (`sdk/permissions`
+/// `RevokedReach`), serialized as the `reach` arg of `revoke_reach`/`restore_reach`.
+/// Unit variants serialize as the bare string; struct variants as `{Variant:{..}}`.
+/// We only build the graph-data variants: the exact `entity_pattern` comes from the
+/// ceiling, so it round-trips. The non-graph variants need the exact profile key,
+/// which `access_grants` only summarizes today, so those rows are not revoked here.
+export type RevokedReach =
+  | { Read: { entity_pattern: string } }
+  | { Write: { entity_pattern: string } };
+
+/// What a line's revoke does: the narrowing calls to send, the target app, and
+/// whether it can be exercised here (false = shown but disabled, with a reason).
+export interface RevokeAction {
+  appId: string;
+  reaches: RevokedReach[];
+  enabled: boolean;
+  /// Why the revoke is disabled, shown before the click (settled model).
+  disabledReason?: string;
+}
+
 /// One line of scope as the panel renders it: a plain sentence split into a
 /// quiet verb and the emphasized object, with its family, provenance, the detail
-/// behind the expand, and the revoke target.
+/// behind the expand, and the revoke action.
 export interface ScopeLine {
   key: string;
   /// The display family this reach belongs to.
@@ -208,6 +228,10 @@ export interface ScopeLine {
   object: string;
   /// Own-data (a zero-prompt default): the line is rendered dimmed.
   own: boolean;
+  /// The app declared this reach essential at enroll: revoke is refused + explained.
+  required: boolean;
+  /// System-managed reach: not per-app revocable here.
+  systemManaged: boolean;
   /// "declared at install" or "you allowed this".
   provenance: string;
   /// Field and relation detail, revealed by the expand.
@@ -216,21 +240,40 @@ export interface ScopeLine {
   /// consent path scope).
   entityType: string | null;
   /// What to narrow when this line is revoked.
-  revoke: RevokeTarget;
+  revoke: RevokeAction;
   /// The full sentence, for the confirm dialog and aria labels.
   text: string;
 }
-
-/// The narrowing a revoke performs. A token reach removes the type from read
-/// and/or write; a consent grant is released by its id.
-export type RevokeTarget =
-  | { kind: "reach"; appId: string; entityType: string; read: boolean; write: boolean }
-  | { kind: "consent"; appId: string; grantId: string };
 
 function verbFor(read: boolean, write: boolean): string {
   if (read && write) return "reads and changes";
   if (write) return "changes";
   return "reads";
+}
+
+// Build a line's revoke action. Graph reaches carry the exact `entity_pattern`, so
+// they narrow here; a required or system-managed reach is refused with a reason
+// shown before the click; a non-graph reach has no exact descriptor to send (the
+// summary is not the profile key), so it is shown disabled until `access_grants`
+// carries the revocable descriptor.
+function revokeAction(
+  appId: string,
+  reaches: RevokedReach[],
+  required: boolean,
+  systemManaged: boolean,
+): RevokeAction {
+  if (required)
+    return { appId, reaches, enabled: false, disabledReason: "This app needs this to work." };
+  if (systemManaged)
+    return { appId, reaches, enabled: false, disabledReason: "Managed by the system, not revocable here." };
+  if (reaches.length === 0)
+    return {
+      appId,
+      reaches,
+      enabled: false,
+      disabledReason: "Removing this needs the service's reach descriptor, coming with the backend.",
+    };
+  return { appId, reaches, enabled: true };
 }
 
 function fieldDetail(scope: EntityScope): string | null {
@@ -271,16 +314,21 @@ function tokenLines(grant: GrantView, c: Ceiling): ScopeLine[] {
     const fd = fieldDetail(io.read ?? io.write!);
     if (fd) detail.push(fd);
     for (const rel of relationsByType.get(entityType) ?? []) detail.push(rel);
+    const reaches: RevokedReach[] = [];
+    if (read) reaches.push({ Read: { entity_pattern: entityType } });
+    if (write) reaches.push({ Write: { entity_pattern: entityType } });
     lines.push({
       key: `${grant.app_id}:${entityType}`,
       family: "data",
       verb,
       object,
       own: !all,
+      required: grant.required,
+      systemManaged: grant.source === "system",
       provenance: "declared at install",
       detail,
       entityType,
-      revoke: { kind: "reach", appId: grant.app_id, entityType, read, write },
+      revoke: revokeAction(grant.app_id, reaches, grant.required, grant.source === "system"),
       text: `${verb} ${object}`,
     });
   }
@@ -404,16 +452,19 @@ function nonGraphLine(grant: GrantView): ScopeLine {
       break;
   }
 
+  const systemManaged = grant.source === "system";
   return {
     key: `${grant.app_id}:${grant.consent_class}:${grant.id}`,
     family,
     verb,
     object,
     own: false,
+    required: grant.required,
+    systemManaged,
     provenance: provenanceOf(grant),
     detail,
     entityType: null,
-    revoke: { kind: "consent", appId: grant.app_id, grantId: grant.id },
+    revoke: revokeAction(grant.app_id, [], grant.required, systemManaged),
     text: `${verb} ${object}`,
   };
 }
@@ -594,6 +645,7 @@ const MOCK_GRANTS: GrantView[] = [
     id: "0192-0003",
     app_id: "org.arlen.files",
     source: "capability-token",
+    required: true,
     declared_ceiling: JSON.stringify({
       read: [
         { entity_type: "system.File", fields: null, exclude_fields: [] },
@@ -688,48 +740,41 @@ export interface RemovedItem {
   entityType: string | null;
   readScope: EntityScope | null;
   writeScope: EntityScope | null;
-  consent: boolean;
+  /// The exact narrowing calls that were sent, replayed verbatim on restore.
+  reaches: RevokedReach[];
 }
 
 /// The scopes removed this session, newest first, for undo and the "recently
 /// removed" restore list.
 export const removed = writable<RemovedItem[]>([]);
 
+/// A transient message when a revoke/restore did not go through on the daemon
+/// (the page shows it, then it clears). Null when nothing to say.
+export const actionNotice = writable<string | null>(null);
+
 let removedSeq = 0;
 
 /// Narrow a single scope (profile-first, narrowing-only) and record it so it can
-/// be restored. A token reach maps to the daemon's 0x06 op (once per side); a
-/// consent grant is released by its handle. Returns the removed record for an
-/// immediate undo, or null if nothing changed.
+/// be restored. Only a graph reach with an exact `entity_pattern` is revocable
+/// here (the page keeps a disabled line otherwise). Optimistically narrows the
+/// local ceiling; a daemon refusal reverts it and shows a notice. Returns the
+/// removed record for an immediate undo, or null if nothing changed.
 export async function revokeScope(
   line: ScopeLine,
   appLabel: string,
 ): Promise<RemovedItem | null> {
-  const t = line.revoke;
-  let item: RemovedItem | null = null;
+  const action = line.revoke;
+  if (!action.enabled || action.reaches.length === 0 || !line.entityType) return null;
+  const entityType = line.entityType;
 
+  let item: RemovedItem | null = null;
   grants.update((list) =>
     list.map((g) => {
-      if (t.kind === "consent") {
-        if (g.id !== t.grantId) return g;
-        item = {
-          id: `rm${++removedSeq}`,
-          grantId: g.id,
-          appId: g.app_id,
-          appLabel,
-          text: line.text,
-          entityType: null,
-          readScope: null,
-          writeScope: null,
-          consent: true,
-        };
-        return { ...g, revoked: true };
-      }
-      if (g.app_id !== t.appId || g.source === "consent") return g;
+      if (g.app_id !== action.appId || g.source === "consent") return g;
       const c = parseCeiling(g.declared_ceiling);
       if (!c) return g;
-      const readScope = c.read.find((s) => s.entity_type === t.entityType) ?? null;
-      const writeScope = c.write.find((s) => s.entity_type === t.entityType) ?? null;
+      const readScope = c.read.find((s) => s.entity_type === entityType) ?? null;
+      const writeScope = c.write.find((s) => s.entity_type === entityType) ?? null;
       if (!readScope && !writeScope) return g;
       item = {
         id: `rm${++removedSeq}`,
@@ -737,43 +782,31 @@ export async function revokeScope(
         appId: g.app_id,
         appLabel,
         text: line.text,
-        entityType: t.entityType,
+        entityType,
         readScope,
         writeScope,
-        consent: false,
+        reaches: action.reaches,
       };
       return {
         ...g,
         declared_ceiling: JSON.stringify({
           ...c,
-          read: c.read.filter((s) => s.entity_type !== t.entityType),
-          write: c.write.filter((s) => s.entity_type !== t.entityType),
+          read: c.read.filter((s) => s.entity_type !== entityType),
+          write: c.write.filter((s) => s.entity_type !== entityType),
         }),
       };
     }),
   );
+  if (!item) return null;
+  const removedItem: RemovedItem = item;
+  removed.update((r) => [removedItem, ...r]);
 
-  if (item) removed.update((r) => [item as RemovedItem, ...r]);
-
-  try {
-    if (t.kind === "consent") {
-      await invoke("revoke_consent", { grantId: t.grantId });
-    } else {
-      if (t.read)
-        await invoke("revoke_reach", {
-          targetAppId: t.appId,
-          reach: JSON.stringify({ Read: { entity_pattern: t.entityType } }),
-        });
-      if (t.write)
-        await invoke("revoke_reach", {
-          targetAppId: t.appId,
-          reach: JSON.stringify({ Write: { entity_pattern: t.entityType } }),
-        });
-    }
-  } catch {
-    // Bridge unwired: the local narrowing already stands so the affordance works.
+  if (!(await applyReaches("revoke_reach", action.appId, action.reaches, ["OK: revoked", "OK: no-change"]))) {
+    reinstateLocal(removedItem);
+    actionNotice.set("Could not remove that reach. Nothing changed.");
+    return null;
   }
-  return item;
+  return removedItem;
 }
 
 /// Remove every scope an app holds. Returns all the removed records.
@@ -789,15 +822,12 @@ export async function revokeAllFor(
   return items;
 }
 
-/// Reinstate a removed scope: put the reach back into the app's ceiling, or
-/// un-revoke the consent grant. This restores a prior grant the user removed; it
-/// never mints a new one. The backend restore op (re-widen the profile / re-
-/// activate the consent) is the coder's; the local view mirrors it.
-export async function restore(item: RemovedItem): Promise<void> {
+/// Reinstate a removed scope locally: put the reach back into the app's ceiling
+/// and drop it from the removed list.
+function reinstateLocal(item: RemovedItem): void {
   grants.update((list) =>
     list.map((g) => {
       if (g.id !== item.grantId) return g;
-      if (item.consent) return { ...g, revoked: false };
       const c = parseCeiling(g.declared_ceiling);
       if (!c) return g;
       const read =
@@ -812,12 +842,39 @@ export async function restore(item: RemovedItem): Promise<void> {
     }),
   );
   removed.update((r) => r.filter((x) => x.id !== item.id));
+}
+
+/// Reinstate a removed scope: re-add it locally and replay the exact reaches
+/// through `restore_reach` - the one authority-growth path, bounded by the audit
+/// ledger to a prior revoke, so it never mints fresh authority. A daemon refusal
+/// is surfaced; the local view reconciles on the next load.
+export async function restore(item: RemovedItem): Promise<void> {
+  reinstateLocal(item);
+  if (!(await applyReaches("restore_reach", item.appId, item.reaches, ["OK: restored", "OK: no-change"]))) {
+    actionNotice.set("Could not restore that reach here.");
+  }
+}
+
+// Send each reach through a narrowing/restore command; true only if every call
+// returned an accepted wire token. A transport error (vite / no daemon) counts as
+// applied so the affordance works against the fixture; a real daemon refusal
+// returns a rejecting token, above.
+async function applyReaches(
+  command: "revoke_reach" | "restore_reach",
+  appId: string,
+  reaches: RevokedReach[],
+  ok: string[],
+): Promise<boolean> {
   try {
-    await invoke("restore_scope", {
-      grantId: item.grantId,
-      entityType: item.entityType,
-    });
+    for (const reach of reaches) {
+      const status = await invoke<string>(command, {
+        targetAppId: appId,
+        reach: JSON.stringify(reach),
+      });
+      if (!ok.includes(status)) return false;
+    }
+    return true;
   } catch {
-    // Bridge unwired: the local reinstatement already stands.
+    return true;
   }
 }

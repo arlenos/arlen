@@ -11,9 +11,13 @@
   /// reach into your broad data is emphasized, own-data (a zero-prompt default)
   /// is dimmed. Two pivots: by app, and by data.
   ///
-  /// The Settings Tauri bridge is unwired for now, so the store reads a fixture
-  /// until it lands. Copy law: no em-dashes, no middot separators; usage is
-  /// "not measured yet", never a fabricated "never".
+  /// Live: `access_grants` reads the whole-system grants; a per-line Remove sends
+  /// `revoke_reach` (narrowing-only) and Recently-removed replays `restore_reach`.
+  /// A graph reach carries the exact pattern so it revokes here; a required,
+  /// system-managed, or non-graph reach (no exact descriptor from the summary yet)
+  /// shows a stated reason instead of a button. The store falls back to a fixture
+  /// under vite. Copy law: no em-dashes, no middot separators; usage is "not
+  /// measured yet", never a fabricated "never".
   import { onMount } from "svelte";
   import {
     Sparkles,
@@ -47,6 +51,7 @@
     revokeScope,
     revokeAllFor,
     restore,
+    actionNotice,
     type Principal,
     type ScopeLine,
     type RemovedItem,
@@ -122,7 +127,7 @@
   function askScope(appLabel: string, line: ScopeLine) {
     pending = {
       title: "Remove access?",
-      message: `"${line.text}" will be removed from ${appLabel}. It can ask again if it needs it, and you can put it back under Recently removed.`,
+      message: `"${line.text}" will be removed from ${appLabel}. It loses this on its next access, not immediately. It can ask again if it needs it, and you can put it back under Recently removed.`,
       confirmLabel: "Remove",
       run: async () => {
         const it = await revokeScope(line, appLabel);
@@ -173,6 +178,22 @@
   function howText(line: ScopeLine): string {
     return line.text;
   }
+
+  // The short muted marker shown where a Remove button cannot be, with the reason
+  // stated (settled model: explained before the click, no tooltip).
+  function revokeLabel(line: ScopeLine): string {
+    if (line.required) return "Required";
+    if (line.systemManaged) return "System-managed";
+    return "Not yet revocable";
+  }
+
+  // Clear a revoke/restore failure notice after a moment.
+  $effect(() => {
+    if ($actionNotice) {
+      const t = setTimeout(() => actionNotice.set(null), 5000);
+      return () => clearTimeout(t);
+    }
+  });
 </script>
 
 <Page
@@ -233,14 +254,18 @@
               </span>
               <span class="how" class:dim={reacher.line.own}>{howText(reacher.line)}</span>
               <span class="reacher-prov">{reacher.line.provenance}</span>
-              <button
-                type="button"
-                class="remove"
-                aria-label={`Remove ${reacher.label} ${reacher.line.text}`}
-                onclick={() => askScope(reacher.label, reacher.line)}
-              >
-                Remove
-              </button>
+              {#if reacher.line.revoke.enabled}
+                <button
+                  type="button"
+                  class="remove"
+                  aria-label={`Remove ${reacher.label} ${reacher.line.text}`}
+                  onclick={() => askScope(reacher.label, reacher.line)}
+                >
+                  Remove
+                </button>
+              {:else}
+                <span class="remove-off">{revokeLabel(reacher.line)}</span>
+              {/if}
             {/each}
           </div>
         </Group>
@@ -275,6 +300,13 @@
   <div class="snackbar" role="status">
     <span class="snack-text">{undo.text}</span>
     <button type="button" class="snack-undo" onclick={doUndo}>Undo</button>
+  </div>
+{/if}
+
+{#if $actionNotice}
+  <div class="snackbar" role="status">
+    <span class="snack-text">{$actionNotice}</span>
+    <button type="button" class="snack-undo" onclick={() => actionNotice.set(null)}>Dismiss</button>
   </div>
 {/if}
 
@@ -324,14 +356,18 @@
             {/if}
           </span>
           <span class="prov" class:dim={line.own}>{line.provenance}</span>
-          <button
-            type="button"
-            class="remove"
-            aria-label={`Remove ${line.text}`}
-            onclick={() => askScope(p.label, line)}
-          >
-            Remove
-          </button>
+          {#if line.revoke.enabled}
+            <button
+              type="button"
+              class="remove"
+              aria-label={`Remove ${line.text}`}
+              onclick={() => askScope(p.label, line)}
+            >
+              Remove
+            </button>
+          {:else}
+            <span class="remove-off">{revokeLabel(line)}</span>
+          {/if}
           {#if line.detail.length > 0 && expanded.has(line.key)}
             <ul class="detail">
               {#each line.detail as d (d)}
@@ -479,6 +515,16 @@
   }
   .remove:hover {
     color: var(--color-error, #dc2626);
+  }
+  /* A stated reason where a Remove cannot be: required, system-managed, or a reach
+     without an exact revoke descriptor yet. Quiet, not an action. */
+  .remove-off {
+    justify-self: end;
+    flex-shrink: 0;
+    padding: 0.125rem 0.25rem;
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 32%, transparent);
+    white-space: nowrap;
   }
 
   .expand {
