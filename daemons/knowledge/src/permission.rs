@@ -452,6 +452,17 @@ impl GraphScopeExt for arlen_permissions::PermissionProfile {
     }
 }
 
+/// The mtime of an app's on-disk profile, used to invalidate a cached token when
+/// the profile changes on disk. Resolves the canonical profile path, then stats
+/// it. Replaces the fork's `PermissionProfile::profile_mtime` associated fn.
+pub fn profile_mtime(
+    app_id: &str,
+) -> Result<std::time::SystemTime, arlen_permissions::PermissionError> {
+    let path = arlen_permissions::profile_path(app_id)?;
+    let meta = std::fs::metadata(&path)?;
+    Ok(meta.modified()?)
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

@@ -6,7 +6,9 @@
 /// See `docs/architecture/CAPABILITY-TOKENS.md` Sections 7-8.
 
 use crate::identity::{app_id_from_cgroup, app_id_from_pid, process_alive, IdentityError};
-use crate::permission::{PermissionError, PermissionProfile};
+use arlen_permissions::{load_profile, load_profile_from, PermissionError, PermissionProfile};
+
+use crate::permission::{profile_mtime, GraphScopeExt};
 use crate::token::{CapabilityToken, TokenSigner};
 use crate::token_cache::TokenCache;
 
@@ -71,7 +73,7 @@ impl Authenticator {
         app_id: &str,
         pid: u32,
     ) -> Result<CapabilityToken, AuthError> {
-        let profile = PermissionProfile::load(app_id)?;
+        let profile = load_profile(app_id)?;
         self.issue_token_from_profile(app_id, pid, &profile)
     }
 
@@ -98,7 +100,7 @@ impl Authenticator {
 
         self.signer.sign(&mut token);
 
-        let mtime = PermissionProfile::profile_mtime(app_id).ok();
+        let mtime = profile_mtime(app_id).ok();
         self.cache
             .insert(app_id.to_string(), token.clone(), mtime);
 
@@ -151,9 +153,12 @@ mod tests {
 
     fn load_profile(content: &str) -> PermissionProfile {
         let mut f = tempfile::NamedTempFile::new().unwrap();
+        // The canonical profile requires an `[info]` section; the inline test
+        // bodies below only carry `[graph]`, so prepend a minimal one.
+        let content = format!("[info]\napp_id = \"com.test.app\"\n{content}");
         f.write_all(content.as_bytes()).unwrap();
         f.flush().unwrap();
-        PermissionProfile::load_from(f.path()).unwrap()
+        load_profile_from(f.path(), "com.test.app").unwrap()
     }
 
     #[test]
@@ -201,12 +206,12 @@ instance_scope = "own"
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../ai/ai-agent/dist/permissions/ai-agent.toml");
         let profile =
-            PermissionProfile::load_from(&path).expect("the shipped ai-agent profile must parse");
+            load_profile_from(&path, "ai-agent").expect("the shipped ai-agent profile must parse");
         assert!(
             profile.has_graph_access(),
             "the agent needs graph access to write the link"
         );
-        let graph = profile.graph.as_ref().expect("the profile has a [graph] section");
+        let graph = &profile.graph;
 
         // Exactly one relation scope, the FILE_PART_OF link, and no other.
         let relations = profile.to_relation_scopes();
@@ -292,7 +297,7 @@ allow = ["~/Documents"]
 
     #[test]
     fn test_missing_profile_no_access() {
-        let profile = PermissionProfile::default();
+        let profile = load_profile("");
         let mut auth = Authenticator::new();
         let result = auth.issue_token_from_profile("com.nonexistent", 1234, &profile);
         assert!(result.is_err());
