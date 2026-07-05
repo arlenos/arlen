@@ -132,6 +132,51 @@ pub struct GraphPermissions {
     /// declaration on the client side.
     #[serde(default)]
     pub annotations_read_cross_namespace: Vec<String>,
+    /// Relation-write grants: which `(from, to, type)` edges this app may create
+    /// in the Knowledge Graph. Empty for an app that writes no relations.
+    #[serde(default)]
+    pub relations: Vec<RelationPermission>,
+    /// Sensitive entity-type reads the app is granted - read paths that expose
+    /// sensitive fields, gated separately from the ordinary `read` set.
+    #[serde(default)]
+    pub read_sensitive: Vec<String>,
+    /// Whether the app reads/writes only its OWN instances (`own`) or ALL
+    /// instances of a granted type (`all`). Defaults to `own` (least privilege).
+    #[serde(default)]
+    pub instance_scope: InstanceScopeConfig,
+    /// Namespaces this app may write entity types under besides its own (the
+    /// foreign-app-bridge delegation, foreign-app-bridges.md §2). Raw prefix
+    /// strings (e.g. `["md.obsidian"]`); the write path validates each through
+    /// `NamespaceGrant::new` (reserved `system.*`/`shared.*` ungrantable, fail-
+    /// closed). Empty for an ordinary app, which writes only its own namespace.
+    #[serde(default)]
+    pub delegated_namespaces: Vec<String>,
+}
+
+/// A relation-write grant entry from a profile's `[graph]` section: which
+/// `(from, to, type)` edge the app may create.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelationPermission {
+    /// The from-node entity type.
+    pub from: String,
+    /// The to-node entity type.
+    pub to: String,
+    /// The relation type (the TOML key is `type`).
+    #[serde(rename = "type")]
+    pub relation_type: String,
+}
+
+/// The declared instance scope in a profile's `[graph]` section: `own` (only the
+/// app's own instances) or `all` (all instances of a granted type). The runtime
+/// projection to the graph layer's own scope enum is a knowledge-daemon concern.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InstanceScopeConfig {
+    /// Only the app's own instances (the default, least privilege).
+    #[default]
+    Own,
+    /// All instances of a granted type.
+    All,
 }
 
 impl GraphPermissions {
