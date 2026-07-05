@@ -1,0 +1,9 @@
+# Starting permission profile for a notes/PKM/finance/project/task tool. Works
+# with Documents (notes, ledgers, project files); no network and no Knowledge
+# Graph by default.
+[info]
+app_id = "taskcoach"
+tier = "third-party"
+
+[filesystem]
+documents = true
