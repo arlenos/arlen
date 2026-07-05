@@ -1,0 +1,11 @@
+# Starting permission profile for a sync/backup tool. It synchronises or backs up
+# the user's files, so it gets Home and network; no Knowledge Graph access.
+[info]
+app_id = "syncthing-gtk"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true

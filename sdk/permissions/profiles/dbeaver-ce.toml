@@ -1,0 +1,12 @@
+# Starting permission profile for DBeaver (a database client). Connects to
+# databases over the network; saves scripts and exports to Documents. No
+# Knowledge Graph access.
+[info]
+app_id = "dbeaver-ce"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true

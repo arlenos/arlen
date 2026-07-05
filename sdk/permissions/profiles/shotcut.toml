@@ -1,0 +1,8 @@
+# Starting permission profile for a video editor/recorder. Works with Videos; no
+# network and no Knowledge Graph.
+[info]
+app_id = "shotcut"
+tier = "third-party"
+
+[filesystem]
+videos = true

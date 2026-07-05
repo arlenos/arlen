@@ -1,0 +1,8 @@
+# Starting permission profile for an image/photo tool. Works with Pictures; no
+# network and no Knowledge Graph.
+[info]
+app_id = "darktable"
+tier = "third-party"
+
+[filesystem]
+pictures = true
