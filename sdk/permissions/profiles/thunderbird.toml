@@ -1,0 +1,11 @@
+# Starting permission profile for Thunderbird (an email client). Needs network
+# for mail; saves attachments to Downloads. No Knowledge Graph access.
+[info]
+app_id = "thunderbird"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

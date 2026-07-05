@@ -1,0 +1,8 @@
+# Starting permission profile for OBS Studio (screen recording). Saves recordings
+# to Videos; no network by default (streaming is refined later). No graph.
+[info]
+app_id = "obs-studio"
+tier = "third-party"
+
+[filesystem]
+videos = true
