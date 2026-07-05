@@ -10,6 +10,7 @@
   import { onMount } from "svelte";
   import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
@@ -53,7 +54,8 @@
   title="Motion & Depth"
   description="How things move and lift: transition speed, easing, shadows, and blur. Change one and it overrides just that value, on top of the theme."
 >
-  <div class="editor">
+  <SectionGrid>
+    <div class="editor span-full">
     <div class="controls">
       <Group label="Motion">
         <OverrideRow
@@ -183,7 +185,8 @@
         </div>
       </div>
     </aside>
-  </div>
+    </div>
+  </SectionGrid>
 </Page>
 
 <style>

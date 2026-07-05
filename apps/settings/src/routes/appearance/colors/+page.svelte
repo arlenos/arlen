@@ -12,6 +12,7 @@
   /// writes (theme.toml layer 3). Affordance-only until then.
   import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
   import {
@@ -47,7 +48,8 @@
   title="Colours"
   description="The theme's palette. Each colour shows the active theme's value; change one and it overrides just that role, on top of the theme."
 >
-  <div class="editor">
+  <SectionGrid>
+    <div class="editor span-full">
     <div class="controls">
       <Group label="Contrast">
         {#each CONTRAST_PAIRS as pair (pair.label)}
@@ -110,7 +112,8 @@
         <ThemePreview colors={$effective} />
       </div>
     </aside>
-  </div>
+    </div>
+  </SectionGrid>
 </Page>
 
 <!-- The swatch + hex editor for one role. The swatch opens the platform colour

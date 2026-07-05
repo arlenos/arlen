@@ -10,6 +10,7 @@
   /// coder gap). Fixture-backed until those land.
   import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import {
@@ -49,7 +50,8 @@
   title="Typography"
   description="The theme's fonts, size, line height, and weights. Change one and it overrides just that value, on top of the theme."
 >
-  <div class="editor">
+  <SectionGrid>
+    <div class="editor span-full">
     <div class="controls">
       <Group label="Fonts">
         <OverrideRow
@@ -180,7 +182,8 @@
         </div>
       </div>
     </aside>
-  </div>
+    </div>
+  </SectionGrid>
 </Page>
 
 <style>

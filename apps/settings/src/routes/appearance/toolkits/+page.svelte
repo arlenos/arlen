@@ -9,6 +9,7 @@
   /// override map, and the prerequisite detection need coder backend. Fixture.
   import { ChevronRight, RotateCcw } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import {
@@ -36,7 +37,8 @@
   title="Toolkits"
   description="One theme drives every toolkit. Here is how far it reaches on each, whether it is on, and where you can override it. Coverage is ragged and honest: some toolkits take the full look, some only the colours."
 >
-  <div class="tk-list">
+  <SectionGrid>
+    <div class="tk-list span-full">
     {#each TOOLKITS as tk (tk.id)}
       {@const badge = coverageBadge(tk.coverage)}
       {@const on = isEnabled($disabled, tk.id)}
@@ -96,7 +98,8 @@
         {/if}
       </div>
     {/each}
-  </div>
+    </div>
+  </SectionGrid>
 </Page>
 
 <style>
