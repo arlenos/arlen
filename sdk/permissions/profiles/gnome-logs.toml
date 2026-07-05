@@ -1,0 +1,6 @@
+# Starting permission profile for a disk/log/system utility. No file access, no
+# network and no Knowledge Graph; it reads system info over D-Bus and /proc and
+# elevates via polkit for privileged operations.
+[info]
+app_id = "gnome-logs"
+tier = "third-party"
