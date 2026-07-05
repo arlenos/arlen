@@ -1,0 +1,9 @@
+# Starting permission profile for a math/statistics/LaTeX/GPS-document tool. Works
+# with Documents (worksheets, datasets, .tex sources); no network and no Knowledge
+# Graph by default.
+[info]
+app_id = "wxmaxima"
+tier = "third-party"
+
+[filesystem]
+documents = true
