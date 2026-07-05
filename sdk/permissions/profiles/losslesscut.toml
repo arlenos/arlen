@@ -1,0 +1,8 @@
+# Starting permission profile for LosslessCut (a video cutter). Works with Videos;
+# no network and no Knowledge Graph.
+[info]
+app_id = "losslesscut"
+tier = "third-party"
+
+[filesystem]
+videos = true
