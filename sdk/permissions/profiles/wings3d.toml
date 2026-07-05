@@ -1,0 +1,9 @@
+# Starting permission profile for a finance or CAD/3D/slicer tool. Works with
+# Documents (ledgers, models, projects); no network and no Knowledge Graph by
+# default.
+[info]
+app_id = "wings3d"
+tier = "third-party"
+
+[filesystem]
+documents = true
