@@ -1,0 +1,8 @@
+# Starting permission profile for a documents/notes app. Works with Documents; no
+# network and no Knowledge Graph by default (cloud sync is refined later).
+[info]
+app_id = "zim"
+tier = "third-party"
+
+[filesystem]
+documents = true

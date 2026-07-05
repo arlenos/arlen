@@ -1,0 +1,8 @@
+# Starting permission profile for a network game or voice client. Needs network
+# for multiplayer/voice; no local file access and no Knowledge Graph by default.
+[info]
+app_id = "mumble"
+tier = "third-party"
+
+[network]
+allow_all = true
