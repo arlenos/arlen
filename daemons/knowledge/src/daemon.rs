@@ -370,7 +370,7 @@ async fn remove_app_grants(graph: &GraphHandle, app_id: &str) {
 /// whose profile is gone is an uninstall (the projection must be cleaned up), not
 /// a narrowing (the projection stays stale and re-mints).
 fn profile_exists(app_id: &str) -> bool {
-    crate::permission::PermissionProfile::profile_path(app_id)
+    arlen_permissions::profile_path(app_id)
         .map(|p| p.exists())
         .unwrap_or(false)
 }
@@ -1144,7 +1144,7 @@ fn handle_revoke(app_id: &str, body: &[u8]) -> String {
     if !crate::revoke::tier_allows_revoke(&req.target_app_id) {
         return "ERROR: SystemTier: this app is managed by the system".to_string();
     }
-    let path = match crate::permission::PermissionProfile::profile_path(&req.target_app_id) {
+    let path = match arlen_permissions::profile_path(&req.target_app_id) {
         Ok(p) => p,
         Err(e) => return format!("ERROR: {e}"),
     };
@@ -1193,7 +1193,7 @@ async fn handle_restore(app_id: &str, body: &[u8], audit: &Arc<dyn AuditSink>) -
     if !crate::revoke::tier_allows_revoke(&req.target_app_id) {
         return "ERROR: SystemTier: this app is managed by the system".to_string();
     }
-    let path = match crate::permission::PermissionProfile::profile_path(&req.target_app_id) {
+    let path = match arlen_permissions::profile_path(&req.target_app_id) {
         Ok(p) => p,
         Err(e) => return format!("ERROR: {e}"),
     };
