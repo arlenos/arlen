@@ -1,0 +1,6 @@
+# Starting permission profile for a color-picker/screen-ruler/keystroke/region
+# tool. No file access, no network and no Knowledge Graph; it reads the screen or
+# input events and holds no user data.
+[info]
+app_id = "slop"
+tier = "third-party"
