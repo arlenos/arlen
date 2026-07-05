@@ -72,23 +72,59 @@ fn palette_of(theme: &arlen_theme::ArlenTheme) -> Vec<PaletteRole> {
     ]
 }
 
-/// The resolved colour palette of the active appearance: the active theme's base
-/// merged with the `theme.toml` customization layer (the per-field overrides the
-/// Appearance suite writes via `config_set(Customization, ...)`), resolved
-/// through `sdk/theme`. Returns every semantic role's hex so the preview renders
-/// the real theme instead of a fixture. NB the legacy `appearance.toml
-/// [overrides]` (accent/radius/font) are a separate, superseded path and are not
-/// folded in here; the suite writes overrides to `theme.toml`.
-#[tauri::command]
-pub fn theme_resolved_palette() -> Result<Vec<PaletteRole>, String> {
+/// Resolve the active appearance: the active theme's base merged with the
+/// `theme.toml` customization layer (the per-field overrides the Appearance
+/// suite writes via `config_set(Customization, ...)`), resolved through
+/// `sdk/theme`. NB the legacy `appearance.toml [overrides]` (accent/radius/font)
+/// are a separate, superseded path and are not folded in here; the suite writes
+/// overrides to `theme.toml`.
+fn resolve_active_theme() -> Result<arlen_theme::ArlenTheme, String> {
     let id = get_active_theme_id()?;
     let base =
         active_theme_content(&id).ok_or_else(|| format!("active theme '{id}' not found"))?;
     let customization =
         std::fs::read_to_string(arlen_theme::ArlenTheme::user_customization_path()).ok();
-    let theme = arlen_theme::ArlenTheme::resolve(&base, None, customization.as_deref())
-        .map_err(|e| format!("resolve: {e}"))?;
-    Ok(palette_of(&theme))
+    arlen_theme::ArlenTheme::resolve(&base, None, customization.as_deref())
+        .map_err(|e| format!("resolve: {e}"))
+}
+
+/// The resolved colour palette of the active appearance: every semantic role's
+/// hex so the Appearance preview and per-field override rows render the real
+/// theme instead of a fixture.
+#[tauri::command]
+pub fn theme_resolved_palette() -> Result<Vec<PaletteRole>, String> {
+    Ok(palette_of(&resolve_active_theme()?))
+}
+
+/// The resolved terminal colours for the Appearance terminal-colour editor:
+/// foreground, background, cursor, and the 16 ANSI slots (0-7 normal, 8-15
+/// bright) of the active appearance, as hex. The editor writes slot edits back
+/// via `config_set(Customization, "terminal.ansi....", ...)`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalPalette {
+    /// Foreground colour.
+    pub fg: String,
+    /// Background colour.
+    pub bg: String,
+    /// Cursor colour.
+    pub cursor: String,
+    /// The 16 ANSI colours, hex.
+    pub ansi: Vec<String>,
+}
+
+/// Resolve the active appearance's terminal colours (see [`TerminalPalette`]).
+#[tauri::command]
+pub fn theme_resolved_terminal() -> Result<TerminalPalette, String> {
+    use arlen_theme::gtk::rgba_to_hex;
+    let theme = resolve_active_theme()?;
+    let t = &theme.terminal;
+    Ok(TerminalPalette {
+        fg: rgba_to_hex(t.fg),
+        bg: rgba_to_hex(t.bg),
+        cursor: rgba_to_hex(t.cursor),
+        ansi: t.ansi.iter().map(|c| rgba_to_hex(*c)).collect(),
+    })
 }
 
 /// The system's installed font families via `fc-list`, deduplicated and sorted,
