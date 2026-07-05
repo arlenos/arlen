@@ -1,0 +1,8 @@
+# Starting permission profile for Blender (3D creation suite). Saves projects to
+# Documents; no network, no graph.
+[info]
+app_id = "blender"
+tier = "third-party"
+
+[filesystem]
+documents = true

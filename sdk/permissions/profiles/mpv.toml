@@ -1,0 +1,9 @@
+# Starting permission profile for a media player. Plays the user's local video
+# and music; no network by default (streaming is refined later). No graph.
+[info]
+app_id = "mpv"
+tier = "third-party"
+
+[filesystem]
+videos = true
+music = true
