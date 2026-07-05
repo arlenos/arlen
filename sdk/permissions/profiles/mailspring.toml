@@ -1,0 +1,12 @@
+# Starting permission profile for a communication client (video conferencing or
+# email). Needs network; saves shared files/attachments to Downloads. No Knowledge
+# Graph access.
+[info]
+app_id = "mailspring"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

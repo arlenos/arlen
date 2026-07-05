@@ -1,0 +1,9 @@
+# Starting permission profile for Spotify (music streaming). Needs network to
+# stream; no local file access and no Knowledge Graph (downloads live in its own
+# cache dir).
+[info]
+app_id = "spotify"
+tier = "third-party"
+
+[network]
+allow_all = true

@@ -1,0 +1,11 @@
+# Starting permission profile for Drawpile (collaborative drawing). Works with
+# Pictures and needs network for collaborative sessions. No Knowledge Graph.
+[info]
+app_id = "drawpile"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+
+[network]
+allow_all = true
