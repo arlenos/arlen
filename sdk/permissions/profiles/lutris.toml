@@ -1,0 +1,12 @@
+# Starting permission profile for a game launcher / Wine frontend. Installs and
+# manages games and Wine prefixes under Home, and needs network to fetch them. No
+# Knowledge Graph access.
+[info]
+app_id = "lutris"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true
