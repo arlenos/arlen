@@ -21,6 +21,10 @@ const AI_DAEMON_NAME: &str = "org.arlen.AI1";
 const AI_OBJECT_PATH: &str = "/org/arlen/AI1";
 /// AI proxy name on the session bus.
 const AI_PROXY_NAME: &str = "org.arlen.AIProxy1";
+/// The AI agent daemon (behaviours/skills surface), distinct from the AI daemon.
+const AGENT_NAME: &str = "org.arlen.AIAgent1";
+/// The AI agent daemon's object path.
+const AGENT_OBJECT_PATH: &str = "/org/arlen/AIAgent1";
 /// Upper bound on the explanation call; the daemon reads the graph and calls
 /// the provider, so allow a generous window but never hang the page.
 const EXPLAIN_TIMEOUT: Duration = Duration::from_secs(90);
@@ -111,6 +115,35 @@ async fn ai_call_string(member: &str, fallback: &str) -> String {
 #[tauri::command]
 pub async fn ai_providers_list() -> String {
     ai_call_string("ai_providers_list", "[]").await
+}
+
+/// Call a String-returning member on the AI AGENT daemon (`org.arlen.AIAgent1`),
+/// returning `fallback` on any connection or call failure. Distinct from
+/// [`ai_call_string`] (the AI daemon `org.arlen.AI1`): the agent owns the
+/// behaviour/skill surface, so a down agent shows an empty list, not an error.
+async fn agent_call_string(member: &str, fallback: &str) -> String {
+    let Ok(connection) = zbus::Connection::session().await else {
+        return fallback.to_string();
+    };
+    let Ok(proxy) = zbus::Proxy::new(&connection, AGENT_NAME, AGENT_OBJECT_PATH, AGENT_NAME).await
+    else {
+        return fallback.to_string();
+    };
+    proxy
+        .call::<_, _, String>(member, &())
+        .await
+        .unwrap_or_else(|_| fallback.to_string())
+}
+
+/// The AI agent's loaded behaviours for the Settings AI-behaviours panel: a JSON
+/// array of `{ name, description, whenToUse, kind, enabled }` from the agent's
+/// `list_skills`, read live from the configured sources so it is the same set the
+/// daemon would act on. Identity and routing hints only, never a behaviour body
+/// or user data. Empty array if the agent is unreachable (the panel then shows
+/// no behaviours rather than erroring).
+#[tauri::command]
+pub async fn ai_behaviours() -> String {
+    agent_call_string("list_skills", "[]").await
 }
 
 /// The configured default provider/model + ranked fallback (`ai_defaults_get`),
