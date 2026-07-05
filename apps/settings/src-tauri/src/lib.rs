@@ -99,6 +99,7 @@ pub fn run() {
             commands::theme::theme_get,
             commands::theme::theme_resolved_palette,
             commands::theme::theme_resolved_terminal,
+            commands::theme::theme_resolved_metrics,
             commands::theme::theme_export,
             commands::theme::theme_list_fonts,
             commands::theme::theme_list_icon_themes,
