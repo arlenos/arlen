@@ -1,0 +1,11 @@
+# Starting permission profile for Variety (a wallpaper changer). Works with
+# Pictures and fetches wallpapers over the network. No Knowledge Graph access.
+[info]
+app_id = "variety"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+
+[network]
+allow_all = true

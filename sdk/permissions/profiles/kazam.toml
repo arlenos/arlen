@@ -1,0 +1,8 @@
+# Starting permission profile for a screen recorder, webcam or video transcoder.
+# Works with Videos; no network and no Knowledge Graph.
+[info]
+app_id = "kazam"
+tier = "third-party"
+
+[filesystem]
+videos = true

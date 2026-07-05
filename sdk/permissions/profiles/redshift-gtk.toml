@@ -1,0 +1,6 @@
+# Starting permission profile for a system control panel (audio, PipeWire,
+# Bluetooth, power or night-light). No file access, no network and no Knowledge
+# Graph; it configures system services over D-Bus/PipeWire and elevates via polkit.
+[info]
+app_id = "redshift-gtk"
+tier = "third-party"

@@ -1,0 +1,11 @@
+# Starting permission profile for a download/podcast manager. Needs network to
+# fetch; saves to Downloads. No Knowledge Graph access.
+[info]
+app_id = "gnome-podcasts"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
