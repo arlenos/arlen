@@ -1,0 +1,6 @@
+# Starting permission profile for a self-contained organizer (time tracker,
+# calendar or todo). No file access, no network and no Knowledge Graph by default;
+# its data lives in its own dir and any calendar sync goes through online-accounts.
+[info]
+app_id = "endeavour"
+tier = "third-party"

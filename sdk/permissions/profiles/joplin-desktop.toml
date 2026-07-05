@@ -1,0 +1,11 @@
+# Starting permission profile for Joplin (note-taking with sync). Works with
+# Documents and needs network to sync notes; no Knowledge Graph access.
+[info]
+app_id = "joplin-desktop"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true
