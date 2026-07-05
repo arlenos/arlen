@@ -47,7 +47,10 @@ export const COLOR_ROLES: ColorRole[] = [
 const RESOLVED_FIXTURE: Record<string, string> = {
   bg_app: "#0f1115",
   bg_card: "#1a1d24",
-  accent: "#7c93ff",
+  // The house default accent is monochrome: it follows the foreground (near-white
+  // on dark), never a shipped colour. A colour appears only when the user picks
+  // one; then accent/hover/pressed take that hue.
+  accent: "#fafafa",
   fg_primary: "#e6e8ee",
   border_default: "#2a2f3a",
   success: "#16a34a",
@@ -59,8 +62,8 @@ const RESOLVED_FIXTURE: Record<string, string> = {
   fg_secondary: "#a2a8b4",
   fg_disabled: "#6b7280",
   fg_inverse: "#0a0a12",
-  accent_hover: "#93a6ff",
-  accent_pressed: "#6377e6",
+  accent_hover: "#ededed",
+  accent_pressed: "#d6d6d6",
   info: "#2563eb",
   border_strong: "#3a404d",
 };
