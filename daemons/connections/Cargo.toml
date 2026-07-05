@@ -16,6 +16,8 @@ thiserror = "1"
 toml = "0.8"
 arlen-secret-vault = { path = "../../sdk/secret-vault" }
 audit-proto = { path = "../../contracts/audit-proto" }
+arlen-forage-signing = { path = "../../forage/signing" }
+zeroize = "1"
 
 [dev-dependencies]
 tempfile = "3"
