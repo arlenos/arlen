@@ -1,0 +1,11 @@
+# Starting permission profile for FileZilla (an FTP/SFTP client). Needs network
+# to transfer; saves to Downloads. No Knowledge Graph access.
+[info]
+app_id = "filezilla"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

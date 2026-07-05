@@ -1,0 +1,8 @@
+# Starting permission profile for Remmina (a remote-desktop client). Needs network
+# to reach remote hosts; no local file access and no Knowledge Graph by default.
+[info]
+app_id = "remmina"
+tier = "third-party"
+
+[network]
+allow_all = true
