@@ -30,6 +30,16 @@ pub struct Credential {
     pub secret: Vec<u8>,
 }
 
+impl Drop for Credential {
+    /// Zeroize the secret when the credential is dropped, so a decrypted token is
+    /// not left in freed heap after a handout (including the failed-audit path
+    /// where the handout is loaded then discarded).
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.secret.zeroize();
+    }
+}
+
 impl std::fmt::Debug for Credential {
     /// Redact the secret: Debug must never print credential bytes (they could
     /// reach a log or an assertion message).
@@ -68,18 +78,24 @@ impl CredentialStore {
         }
     }
 
-    /// Seal and persist a connection's credential.
+    /// Seal and persist a connection's credential. The serialized scratch buffer
+    /// carries the plaintext secret, so it is zeroized on drop.
     pub fn put(&self, id: &ConnectionId, credential: &Credential) -> Result<(), StoreError> {
-        let bytes = serde_json::to_vec(credential).map_err(|e| StoreError::Codec(e.to_string()))?;
+        let bytes = zeroize::Zeroizing::new(
+            serde_json::to_vec(credential).map_err(|e| StoreError::Codec(e.to_string()))?,
+        );
         self.vault.store(id.as_str(), &bytes)?;
         Ok(())
     }
 
     /// Load a connection's credential. `Ok(None)` when none is stored; a decrypt
-    /// or decode failure is an error (fail closed), never `None`.
+    /// or decode failure is an error (fail closed), never `None`. The decrypted
+    /// scratch buffer holds the plaintext secret, so it is zeroized on drop; the
+    /// returned `Credential` zeroizes its secret on drop too.
     pub fn get(&self, id: &ConnectionId) -> Result<Option<Credential>, StoreError> {
         match self.vault.load(id.as_str())? {
             Some(bytes) => {
+                let bytes = zeroize::Zeroizing::new(bytes);
                 let cred = serde_json::from_slice(&bytes)
                     .map_err(|e| StoreError::Codec(e.to_string()))?;
                 Ok(Some(cred))

@@ -24,11 +24,19 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ConnectionId(String);
 
+/// The longest accepted connection id. Mirrors the vault's own record-id cap so
+/// a valid `ConnectionId` is always a storable record id (a longer id would parse
+/// into a live grant that could never resolve a credential, a silent dead grant),
+/// and so an oversized client-supplied connection cannot reach the audit label
+/// un-bounded.
+const MAX_CONNECTION_ID_LEN: usize = 128;
+
 impl ConnectionId {
-    /// Build a connection id, rejecting an empty or out-of-charset string
-    /// (fail-closed: an invalid id is never coerced, it is refused).
+    /// Build a connection id, rejecting an empty, over-long, or out-of-charset
+    /// string (fail-closed: an invalid id is never coerced, it is refused).
     pub fn new(raw: &str) -> Option<Self> {
         if raw.is_empty()
+            || raw.len() > MAX_CONNECTION_ID_LEN
             || !raw
                 .bytes()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'-' | b'_'))
@@ -136,6 +144,15 @@ pub enum BrokerDecision {
 ///
 /// The match keys on the attested `app_id` and the validated `connection_id`, so
 /// a request cannot name another app's grant or an unparsed connection.
+///
+/// The empty-request-scope -> full-ceiling behaviour is a conscious query-surface
+/// choice (a caller asks for everything it is entitled to), acceptable for
+/// CONN-R1 which returns only the scope. The CONN-R2 downscoping MUST guard an
+/// empty resolved scope: several OAuth providers read an empty RFC 8693 scope as
+/// "all default scopes", so a name-only grant must not exchange to a maximally
+/// scoped token. When two grants share an (app, connection) the first wins (a
+/// duplicate tightening entry is silently shadowed); config authoring should keep
+/// one grant per pair.
 pub fn broker_decide(request: &CredentialRequest, grants: &[ConnectionGrant]) -> BrokerDecision {
     let Some(grant) = grants
         .iter()
@@ -203,6 +220,8 @@ mod tests {
         assert!(ConnectionId::new("Bad").is_none()); // uppercase
         assert!(ConnectionId::new("a/b").is_none()); // separator
         assert!(ConnectionId::new("a b").is_none()); // space
+        assert!(ConnectionId::new(&"a".repeat(128)).is_some()); // at the cap
+        assert!(ConnectionId::new(&"a".repeat(129)).is_none()); // over the cap
     }
 
     #[test]
