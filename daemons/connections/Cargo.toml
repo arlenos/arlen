@@ -19,3 +19,5 @@ audit-proto = { path = "../../contracts/audit-proto" }
 
 [dev-dependencies]
 tempfile = "3"
+audit-proto = { path = "../../contracts/audit-proto", features = ["test-util"] }
+tokio = { version = "1", features = ["macros", "rt"] }
