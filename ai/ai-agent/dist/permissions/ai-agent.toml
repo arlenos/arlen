@@ -16,6 +16,10 @@
 # linking). Going live is flipping `executor_live = true` once this file is in
 # place; the grant here bounds the blast radius of any graph write.
 
+[info]
+app_id = "ai-agent"
+tier = "first-party"
+
 [graph]
 # The fields the agent reads to infer a destination (tidy-downloads) and to
 # prove the dormant carve-out's predicate: a File's id and path, a Project's id
