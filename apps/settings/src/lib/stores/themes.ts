@@ -2,12 +2,10 @@
 /// active one, and switching between them. A theme is one palette applied
 /// everywhere (no light/dark mode; theme-system.md, Tim 30 June).
 ///
-/// Mock-vs-live: `get_available_themes` / `set_theme` exist in the desktop-shell
-/// but not yet in settings, and `ThemeInfo` carries no preview colours, so this
-/// reads a fixture (with known palettes for the swatch strip) until the coder
-/// bridges those. Switching the active theme persists for real through the
-/// appearance config (`theme.active`); the live re-apply rides the `set_theme`
-/// bridge when it lands.
+/// Live: the settings bridge serves the list + per-theme swatches
+/// (`get_available_themes`), the active id (`get_active_theme_id`), the switch
+/// (`set_theme`), and install / import / export. The `FIXTURE` below is the
+/// no-Tauri dev fallback so the gallery still renders under vite.
 
 import { invoke } from "@tauri-apps/api/core";
 import { writable, derived } from "svelte/store";
@@ -19,9 +17,8 @@ export interface ThemeInfo {
   name: string;
   /// A bundled theme (cannot be removed), vs a user-installed/imported one.
   isBuiltin: boolean;
-  /// A few representative colours (bg, surface, accent, secondary, fg) for the
-  /// preview strip. The backend `ThemeInfo` has none yet; the coder resolves the
-  /// palette per theme later, the fixture carries known ones.
+  /// Five representative colours (bg, surface, accent, mid-tone, fg) for the
+  /// preview strip, resolved per theme by the bridge (`swatch_of`).
   swatch: string[];
 }
 
@@ -45,12 +42,14 @@ const FIXTURE: ThemeInfo[] = [
   { id: "tokyo-night", name: "Tokyo Night", isBuiltin: false, swatch: ["#1a1b26", "#24283b", "#7aa2f7", "#414868", "#c0caf5"] },
 ];
 
-/// Load the installed themes + the active id. Prefers the real bridge; falls
-/// back to the fixture while the settings-side commands are unwired.
+/// Load the installed themes (with their swatches) + the active id from the live
+/// bridge; the fixture is the no-Tauri dev fallback.
 export async function loadThemes(): Promise<void> {
   try {
-    const list = await invoke<{ id: string; name: string; is_builtin: boolean }[]>("get_available_themes");
-    themes.set(list.map((t) => ({ id: t.id, name: t.name, isBuiltin: t.is_builtin, swatch: [] })));
+    const list = await invoke<{ id: string; name: string; is_builtin: boolean; swatch: string[] }[]>(
+      "get_available_themes",
+    );
+    themes.set(list.map((t) => ({ id: t.id, name: t.name, isBuiltin: t.is_builtin, swatch: t.swatch })));
     activeThemeId.set(await invoke<string>("get_active_theme_id"));
   } catch {
     themes.set(FIXTURE);
@@ -72,33 +71,34 @@ export async function setActiveTheme(id: string): Promise<void> {
 }
 
 /// Install a theme from a file on disk (a validated copy into the themes dir).
-/// Mock until the coder's file-picker + validate command lands.
+/// Install a theme from a file on disk (the daemon validates + copies it into the
+/// themes dir), then reload the list.
 export async function installThemeFile(): Promise<void> {
   try {
     await invoke("theme_install_file");
     await loadThemes();
   } catch {
-    // No command yet; the affordance is present for when it lands.
+    // No Tauri (dev), or the user cancelled the picker.
   }
 }
 
-/// Import a community scheme (base16 / Catppuccin) via the inbound adapters.
-/// Mock until the adapter bridge lands.
+/// Import a community scheme (base16 / Catppuccin) via the inbound adapters, then
+/// reload the list.
 export async function importScheme(kind: "base16" | "catppuccin"): Promise<void> {
   try {
     await invoke("theme_import_scheme", { kind });
     await loadThemes();
   } catch {
-    // No command yet.
+    // No Tauri (dev), or the user cancelled the picker.
   }
 }
 
 /// Export the active theme plus the user's overrides as a single shareable
-/// ArlenThemeFile. Mock until the coder's flatten-and-write command lands.
+/// ArlenThemeFile (the daemon flattens + writes it).
 export async function exportTheme(): Promise<void> {
   try {
     await invoke("theme_export");
   } catch {
-    // No command yet; the affordance is present for when it lands.
+    // No Tauri (dev), or the user cancelled the save dialog.
   }
 }
