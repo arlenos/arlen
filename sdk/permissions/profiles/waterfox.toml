@@ -1,0 +1,11 @@
+# Starting permission profile for a web browser. Broad network (the open web);
+# saves to Downloads. No Knowledge Graph access. Observe-mode refines it.
+[info]
+app_id = "waterfox"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
