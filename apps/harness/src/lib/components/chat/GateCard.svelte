@@ -97,24 +97,26 @@
       </Button>
     {:else}
       <Button variant="default" size="sm" onclick={() => onapprove?.()}>Approve</Button>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          {#snippet child({ props })}
-            <Button variant="outline" size="sm" {...props}>
-              Always allow
-              <ChevronDown size={13} strokeWidth={2} />
-            </Button>
-          {/snippet}
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content class="w-56">
-          <DropdownMenu.Item onclick={() => onalways?.("project")}>
-            Only in this project
-          </DropdownMenu.Item>
-          <DropdownMenu.Item onclick={() => onalways?.("type")}>
-            This action type generally
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
+      {#if onalways}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            {#snippet child({ props })}
+              <Button variant="outline" size="sm" {...props}>
+                Always allow
+                <ChevronDown size={13} strokeWidth={2} />
+              </Button>
+            {/snippet}
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content class="w-56">
+            <DropdownMenu.Item onclick={() => onalways?.("project")}>
+              Only in this project
+            </DropdownMenu.Item>
+            <DropdownMenu.Item onclick={() => onalways?.("type")}>
+              This action type generally
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      {/if}
       <Button variant="ghost" size="sm" onclick={() => ondeny?.()}>Deny</Button>
     {/if}
   </div>
