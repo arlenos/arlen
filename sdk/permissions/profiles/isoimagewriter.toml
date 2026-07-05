@@ -1,0 +1,9 @@
+# Starting permission profile for an ISO/USB writer. Reads the disk image from
+# Downloads; the write to the USB device is privileged and elevates via polkit.
+# No network and no Knowledge Graph.
+[info]
+app_id = "isoimagewriter"
+tier = "third-party"
+
+[filesystem]
+downloads = true

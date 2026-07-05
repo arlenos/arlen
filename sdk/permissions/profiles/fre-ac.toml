@@ -1,0 +1,8 @@
+# Starting permission profile for an audio recorder/editor/ripper. Works with the
+# user's Music; no network and no Knowledge Graph.
+[info]
+app_id = "fre-ac"
+tier = "third-party"
+
+[filesystem]
+music = true
