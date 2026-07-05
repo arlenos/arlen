@@ -1,0 +1,9 @@
+# Starting permission profile for an archive manager, disc burner or file manager.
+# Reading and writing the user's files across Home is its function; no network and
+# no Knowledge Graph.
+[info]
+app_id = "ark"
+tier = "third-party"
+
+[filesystem]
+home = true

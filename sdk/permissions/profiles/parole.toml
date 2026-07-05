@@ -1,0 +1,9 @@
+# Starting permission profile for a media player. Plays the user's local video and
+# music; no network (streaming refined later) and no Knowledge Graph.
+[info]
+app_id = "parole"
+tier = "third-party"
+
+[filesystem]
+videos = true
+music = true
