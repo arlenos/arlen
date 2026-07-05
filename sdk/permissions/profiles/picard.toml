@@ -1,0 +1,11 @@
+# Starting permission profile for MusicBrainz Picard (an audio tagger). Works with
+# Music and needs network for MusicBrainz metadata lookups. No Knowledge Graph.
+[info]
+app_id = "picard"
+tier = "third-party"
+
+[filesystem]
+music = true
+
+[network]
+allow_all = true

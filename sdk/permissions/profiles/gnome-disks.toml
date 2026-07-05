@@ -1,0 +1,6 @@
+# Starting permission profile for a system/config/utility app. No file access,
+# no network and no Knowledge Graph by default; privileged operations elevate via
+# polkit and configuration lives in dconf / the keyring / online-accounts.
+[info]
+app_id = "gnome-disks"
+tier = "third-party"

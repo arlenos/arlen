@@ -1,0 +1,8 @@
+# Starting permission profile for a science/math tool. Works with Documents; no
+# network and no Knowledge Graph by default (package fetches refined later).
+[info]
+app_id = "maxima"
+tier = "third-party"
+
+[filesystem]
+documents = true

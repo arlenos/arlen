@@ -1,0 +1,9 @@
+# Starting permission profile for a network utility (weather or online
+# dictionary). Needs network to fetch; no local file access and no Knowledge
+# Graph.
+[info]
+app_id = "goldendict-ng"
+tier = "third-party"
+
+[network]
+allow_all = true
