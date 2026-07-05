@@ -15,6 +15,34 @@ pub fn theme_get() -> Result<serde_json::Value, String> {
     config_get(ConfigFile::Appearance, None)
 }
 
+/// The system's installed font families via `fc-list`, deduplicated and sorted,
+/// for the Appearance font pickers (replacing the fixed short list). Each
+/// `fc-list` line is one font file's family names; the primary (first
+/// comma-separated) name is taken and a `BTreeSet` dedupes and sorts. Returns an
+/// empty list if fontconfig is unavailable, so the picker degrades to whatever
+/// the frontend defaults to rather than erroring.
+#[tauri::command]
+pub async fn theme_list_fonts() -> Vec<String> {
+    let Ok(output) = tokio::process::Command::new("fc-list")
+        .args([":", "family"])
+        .output()
+        .await
+    else {
+        return Vec::new();
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut families: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for line in text.lines() {
+        // Localised or aliased families are comma-separated on one line; the
+        // first entry is the primary family name the picker wants.
+        let primary = line.split(',').next().unwrap_or(line).trim();
+        if !primary.is_empty() {
+            families.insert(primary.to_string());
+        }
+    }
+    families.into_iter().collect()
+}
+
 /// Set the accent color (hex string like `#3b82f6`).
 #[tauri::command]
 pub async fn theme_set_accent(color: String) -> Result<(), String> {

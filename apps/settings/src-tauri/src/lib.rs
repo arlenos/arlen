@@ -97,6 +97,7 @@ pub fn run() {
             commands::config::config_reset,
             commands::config::config_get_default,
             commands::theme::theme_get,
+            commands::theme::theme_list_fonts,
             commands::theme::theme_set_accent,
             commands::theme::get_available_themes,
             commands::theme::set_theme,
