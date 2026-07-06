@@ -18,7 +18,6 @@
     initSessionExitListener,
   } from "$lib/stores/sessions";
   import Terminal from "$lib/components/Terminal.svelte";
-  import RemoteSessionBar from "$lib/components/RemoteSessionBar.svelte";
 
   onMount(() => {
     loadSessions();
@@ -33,9 +32,6 @@
      to the terminal. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="console" oncontextmenu={(e) => e.preventDefault()}>
-  <!-- A remote session carries its scope/audit bar above the grid; a local
-       session renders none (the bar self-guards on the active remote). -->
-  <RemoteSessionBar />
   <div class="stream">
     {#if $sessionsLoaded && $sessionsError}
       <div class="stream-empty">

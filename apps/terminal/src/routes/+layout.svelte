@@ -19,6 +19,7 @@
   import TerminalSidebar from "$lib/components/TerminalSidebar.svelte";
   import HistoryPalette from "$lib/components/HistoryPalette.svelte";
   import QuickConnectPalette from "$lib/components/QuickConnectPalette.svelte";
+  import RemoteSessionPill from "$lib/components/RemoteSessionPill.svelte";
   import { onMount } from "svelte";
   import { newSession } from "$lib/stores/sessions";
   import { historyPaletteOpen } from "$lib/stores/history";
@@ -91,6 +92,9 @@
       class="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background pl-2 pr-2"
     >
       <SidebarTrigger class="-ml-1" />
+      <!-- A remote session's identity + scope lives in the header itself, not a
+           second bar; the pill self-guards when the session is local. -->
+      <RemoteSessionPill />
       <div class="flex-1"></div>
       {#if tauriAvailable}
         <WindowButtons />
