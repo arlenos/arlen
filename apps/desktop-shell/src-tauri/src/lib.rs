@@ -22,6 +22,7 @@ mod bluetooth;
 mod bluetooth_agent;
 mod brightness;
 mod quick_actions;
+mod mpris;
 mod network;
 mod night_light;
 mod output_bars;
