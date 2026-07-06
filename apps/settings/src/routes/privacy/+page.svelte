@@ -57,8 +57,18 @@
     type RemovedItem,
     type Family,
   } from "$lib/stores/grants";
+  import {
+    capsules,
+    capsulesLoaded,
+    loadCapsules,
+    revokeCapsule,
+    type Capsule,
+  } from "$lib/stores/capsules";
 
-  onMount(loadGrants);
+  onMount(() => {
+    loadGrants();
+    loadCapsules();
+  });
 
   // App-first is the default: the surface shows each app (and the assistant, as
   // one row in the same model - the anti-Recall story). "By capability" is the
@@ -144,6 +154,21 @@
     };
   }
 
+  // Revoking a share is terminal: it stops future reads, it cannot pull back a copy
+  // the recipient already made, and there is no undo. So the confirm says exactly
+  // that, and run returns nothing (no undo snackbar).
+  function askRevokeCapsule(c: Capsule) {
+    pending = {
+      title: "Revoke this share?",
+      message: `"${c.label}" (shared with ${c.audience}) stops being readable on its next access. It cannot pull back a copy the recipient already made, and this cannot be undone.`,
+      confirmLabel: "Revoke",
+      run: async () => {
+        await revokeCapsule(c.id);
+        return [];
+      },
+    };
+  }
+
   async function onConfirm() {
     if (pending === null) return;
     const items = await pending.run();
@@ -198,7 +223,7 @@
 
 <Page
   title="App access"
-  description="Everything that can reach your data, grouped by what it touches. You remove access here; an app asks when it needs more."
+  description="Everything that can reach your data, and everything you share out. You remove access or revoke a share here; an app asks when it needs more."
 >
   <SectionGrid>
     <div class="pivot span-full">
@@ -270,6 +295,44 @@
           </div>
         </Group>
       {/each}
+    {/if}
+
+    {#if $capsulesLoaded}
+      <Group label="Shared context" class="span-full">
+        {#if $capsules.length > 0}
+          <div class="cap-list">
+            {#each $capsules as c (c.id)}
+              <span class="cap-what">
+                <span class="cap-label">{c.label}</span>
+                <span class="cap-scope">{c.scope}</span>
+              </span>
+              <span class="cap-who">{c.audience}</span>
+              <span class="cap-when">{c.expiresAt}</span>
+              {#if c.state === "active"}
+                <span class="cap-reads">{c.readsLeft} {c.readsLeft === 1 ? "read" : "reads"} left</span>
+                <button
+                  type="button"
+                  class="remove"
+                  aria-label={`Revoke the share "${c.label}"`}
+                  onclick={() => askRevokeCapsule(c)}
+                >
+                  Revoke
+                </button>
+              {:else}
+                <span class="cap-reads dim">{c.state === "expired" ? "expired" : "no reads left"}</span>
+                <span class="remove-off">closed</span>
+              {/if}
+            {/each}
+          </div>
+          <p class="note">
+            Revoking a share stops any further reads. It cannot pull back a copy
+            the recipient already made, and a share is a snapshot from when you
+            made it, not a live feed.
+          </p>
+        {:else}
+          <p class="note">You have not shared any context.</p>
+        {/if}
+      </Group>
     {/if}
 
     {#if $removed.length > 0}
@@ -678,6 +741,55 @@
   }
   .snack-undo:hover {
     text-decoration: underline;
+  }
+
+  /* Shared context (outbound): the same aligned-grid language as the reachers,
+     read as a sentence - what, with whom, until when, how many reads left. */
+  .cap-list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content max-content max-content max-content;
+    align-items: center;
+    column-gap: 1rem;
+    row-gap: 0.75rem;
+    padding: var(--space-row, 0.75rem) 1rem;
+  }
+  .cap-what {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+  .cap-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--foreground);
+  }
+  .cap-scope {
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cap-who {
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 60%, transparent);
+    white-space: nowrap;
+  }
+  .cap-when {
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    white-space: nowrap;
+  }
+  .cap-reads {
+    justify-self: end;
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .cap-reads.dim {
+    color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
 
   .note {
