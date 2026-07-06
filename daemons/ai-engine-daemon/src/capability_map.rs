@@ -189,6 +189,18 @@ impl Gate for CapabilityGate {
         if gate_class_for_tool(&req.tool_name) == GateClass::Read {
             return AuthorizeDecision::Allow;
         }
+        // D2 hard case 2: an externally-triggered egress call is the prompt-
+        // injection exfiltration vector - hard-Deny it (stronger than the confirm
+        // the `decide` model would give), so injected content cannot leak data.
+        if req.external_triggered && is_egress_tool(&req.tool_name) {
+            return AuthorizeDecision::Deny {
+                reason: format!(
+                    "{} is egress and this action was triggered by external content; \
+                     egress is denied to prevent exfiltration",
+                    req.tool_name
+                ),
+            };
+        }
         // Every other tool: the existing capability path decides (the always-confirm
         // + external-trigger overrides, then the action mode). The fine-grained
         // reversible -> autonomous `Allow` lift and the unknown -> fail-closed `Deny`
@@ -224,6 +236,15 @@ pub enum GateClass {
     Confirm,
     /// Not in the registry: fail-closed `Deny`.
     Deny,
+}
+
+/// Whether a tool reaches the network (an egress / external-send tool). An
+/// externally-triggered egress call is the classic prompt-injection EXFILTRATION
+/// vector (the reversibility model does not capture "a read that leaks"), so the
+/// gate hard-denies it - stronger than the `decide` model's confirm
+/// (`pi-gate-class-registry.md` D2, hard case 2).
+pub fn is_egress_tool(tool: &str) -> bool {
+    matches!(tool, "fetch" | "http" | "send" | "email" | "post")
 }
 
 /// Map a pi tool NAME to its gate class - the D1 static table
@@ -272,6 +293,16 @@ mod tests {
         // Unknown tool: fail-closed Deny.
         assert_eq!(gate_class_for_tool("graph.write"), GateClass::Deny); // coarse name is not in the fine-grained table
         assert_eq!(gate_class_for_tool("totally.unknown"), GateClass::Deny);
+    }
+
+    #[test]
+    fn egress_tools_are_identified_for_the_exfiltration_guard() {
+        for t in ["fetch", "http", "send", "email", "post"] {
+            assert!(is_egress_tool(t), "{t} should be egress");
+        }
+        assert!(!is_egress_tool("graph.read"));
+        assert!(!is_egress_tool("fs.move"));
+        assert!(!is_egress_tool("graph.assert_edge"));
     }
     use ai_engine_contract::CapabilityContext;
     use arlen_ai_core::capability::ActionKind;
