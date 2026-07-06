@@ -140,14 +140,13 @@ fn map_network(scopes: &[String], unmapped: &mut Vec<String>) -> NetworkPermissi
 /// without a recognised prefix, or with an empty type, grants nothing and is
 /// recorded as unmapped rather than dropped.
 fn map_graph(scopes: &[String], unmapped: &mut Vec<String>) -> GraphPermissions {
+    use arlen_forage_recipe::GraphScope;
     let mut g = GraphPermissions::default();
     for s in scopes {
-        if let Some(t) = s.strip_prefix("read:").filter(|t| !t.is_empty()) {
-            g.read.push(t.to_string());
-        } else if let Some(t) = s.strip_prefix("write:").filter(|t| !t.is_empty()) {
-            g.write.push(t.to_string());
-        } else {
-            unmapped.push(format!("graph:{s}"));
+        match arlen_forage_recipe::parse_graph_scope(s) {
+            Some(GraphScope::Read(t)) => g.read.push(t),
+            Some(GraphScope::Write(t)) => g.write.push(t),
+            None => unmapped.push(format!("graph:{s}")),
         }
     }
     g

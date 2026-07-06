@@ -281,17 +281,11 @@ pub fn synthesize_manifest(
 /// Split a recipe graph capability (`read:Type` / `write:Type`) into the
 /// matching installd permission list.
 fn map_graph_scope(scope: &str, permissions: &mut PermissionInfo) -> Result<(), ManifestError> {
-    let (prefix, ty) = scope
-        .split_once(':')
-        .ok_or_else(|| ManifestError::MalformedGraphCapability(scope.to_string()))?;
-    let ty = ty.trim();
-    if ty.is_empty() {
-        return Err(ManifestError::MalformedGraphCapability(scope.to_string()));
-    }
-    match prefix.trim() {
-        "read" => permissions.graph_read.push(ty.to_string()),
-        "write" => permissions.graph_write.push(ty.to_string()),
-        _ => return Err(ManifestError::MalformedGraphCapability(scope.to_string())),
+    use arlen_forage_recipe::GraphScope;
+    match arlen_forage_recipe::parse_graph_scope(scope) {
+        Some(GraphScope::Read(t)) => permissions.graph_read.push(t),
+        Some(GraphScope::Write(t)) => permissions.graph_write.push(t),
+        None => return Err(ManifestError::MalformedGraphCapability(scope.to_string())),
     }
     Ok(())
 }
