@@ -89,19 +89,44 @@ const MAX_FRAME: usize = 64 * 1024;
 /// their own pace).
 const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// App ids permitted to drive the control socket (fetch pending + resolve).
-/// Only the trusted shell renders the consent surface; everything else is
-/// refused. In debug builds a `dev.`-prefixed id is also admitted (the dev /
-/// test convention, mirroring the other daemons).
+/// App ids permitted to drive EVERY control op, including rendering and resolving
+/// consent prompts (`Fetch` / `Resolve`). Only the trusted shell renders the
+/// consent surface. In debug builds a `dev.`-prefixed id is also admitted (the
+/// dev / test convention, mirroring the other daemons).
 const CONTROL_ADMITTED: &[&str] = &["arlen-shell", "org.arlen.shell"];
 
+/// App ids permitted ONLY the grant-management ops (`ListGrants` / `RevokeGrant`)
+/// - the App-access panel's "what you allowed" + release-a-grant surface.
+/// `settings` is already the revoke authority (it drives the profile-scope revoke
+/// 0x06 on the `is_settings_principal` anchor), so releasing a consent grant is a
+/// strict subset of the power it already holds; it is deliberately NOT admitted to
+/// `Fetch` / `Resolve` (rendering and answering prompts stays the trusted shell's).
+const GRANT_MGMT_ADMITTED: &[&str] = &["settings"];
+
+/// The early gate: whether `app_id` may drive ANY control op at all (a cheap
+/// refusal for outsiders before the request is read). The per-op restriction for a
+/// grant-management-only caller is enforced by [`control_op_admitted`].
 fn control_caller_admitted(app_id: &str) -> bool {
+    CONTROL_ADMITTED.contains(&app_id)
+        || GRANT_MGMT_ADMITTED.contains(&app_id)
+        || (cfg!(debug_assertions) && app_id.starts_with("dev."))
+}
+
+/// Whether `app_id` may drive THIS specific control op. The shell (and a debug
+/// `dev.` id) may drive all ops; a [`GRANT_MGMT_ADMITTED`] caller (`settings`) may
+/// drive only `ListGrants` / `RevokeGrant`, never `Fetch` / `Resolve`.
+fn control_op_admitted(app_id: &str, request: &ControlRequest) -> bool {
     if CONTROL_ADMITTED.contains(&app_id) {
         return true;
     }
-    #[cfg(debug_assertions)]
-    if app_id.starts_with("dev.") {
+    if cfg!(debug_assertions) && app_id.starts_with("dev.") {
         return true;
+    }
+    if GRANT_MGMT_ADMITTED.contains(&app_id) {
+        return matches!(
+            request,
+            ControlRequest::ListGrants | ControlRequest::RevokeGrant { .. }
+        );
     }
     false
 }
@@ -282,6 +307,12 @@ async fn handle_control_conn(state: Arc<SharedState>, mut stream: UnixStream, ui
             return;
         }
     };
+    // A grant-management-only caller (settings) is refused Fetch / Resolve here;
+    // the early gate admitted it for the grant ops, this enforces the op split.
+    if !control_op_admitted(&app_id, &request) {
+        tracing::warn!(app_id = %app_id, "control: caller not admitted for this op");
+        return;
+    }
 
     let reply = match request {
         ControlRequest::Fetch => ControlReply::Pending {
@@ -419,6 +450,31 @@ async fn main() -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_may_manage_grants_but_not_answer_prompts() {
+        use arlen_consent_contract::ConsentOutcome;
+        let revoke = ControlRequest::RevokeGrant { handle: "h".into() };
+        // The trusted shell drives every control op.
+        assert!(control_op_admitted("arlen-shell", &ControlRequest::Fetch));
+        assert!(control_op_admitted("arlen-shell", &revoke));
+        // settings may list + release remembered grants (the App-access surface)...
+        assert!(control_op_admitted("settings", &ControlRequest::ListGrants));
+        assert!(control_op_admitted("settings", &revoke));
+        // ...but is refused rendering / answering consent prompts (shell-only).
+        assert!(!control_op_admitted("settings", &ControlRequest::Fetch));
+        assert!(!control_op_admitted(
+            "settings",
+            &ControlRequest::Resolve {
+                id: 1,
+                outcome: ConsentOutcome::AllowedOnce,
+            }
+        ));
+        // A random app is refused every op, and the early gate rejects it too.
+        assert!(!control_op_admitted("com.random", &ControlRequest::ListGrants));
+        assert!(control_caller_admitted("settings"));
+        assert!(!control_caller_admitted("com.random"));
+    }
 
     #[tokio::test(start_paused = true)]
     async fn a_withholding_peer_times_out_rather_than_parking() {
