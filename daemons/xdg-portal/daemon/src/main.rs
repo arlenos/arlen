@@ -22,7 +22,7 @@ use std::time::Duration;
 use anyhow::Context;
 use zbus::connection;
 
-use crate::interfaces::{file_chooser::FileChooser, open_uri::OpenUri, screenshot::Screenshot};
+use crate::interfaces::{file_chooser::FileChooser, open_uri::OpenUri, print::Print, screenshot::Screenshot};
 use crate::picker_ipc::PickerIpcHandle;
 use crate::picker_lifecycle::PickerLifecycle;
 use crate::state::DaemonState;
@@ -95,6 +95,8 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("failed to serve OpenURI at {OBJECT_PATH}"))?
         .serve_at(OBJECT_PATH, Screenshot::new(state.clone()))
         .with_context(|| format!("failed to serve Screenshot at {OBJECT_PATH}"))?
+        .serve_at(OBJECT_PATH, Print::new())
+        .with_context(|| format!("failed to serve Print at {OBJECT_PATH}"))?
         .build()
         .await
         .context("failed to build D-Bus connection")?;
