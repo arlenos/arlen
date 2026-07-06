@@ -389,6 +389,20 @@ async fn handle_graph_event(
                 // A narrowing/edit: the prior live reach no longer verifies, so
                 // mark it stale; the next connection re-mints at the new ceiling.
                 mark_app_grants_stale(graph, &app_id).await;
+                // Project the profile's DECLARED grants now, driven from the
+                // profile alone (no running pid). An installed-but-never-run app,
+                // or one that only ever touches non-graph dimensions, would else
+                // have a profile on disk but zero Grant nodes until its first
+                // graph connect (E1: install-time projection). Idempotent - the
+                // declared emit MERGEs and its revoke-preserving ON MATCH never
+                // resurrects a user-revoked grant. Best-effort.
+                if let Ok(profile) = arlen_permissions::load_profile(&app_id) {
+                    if let Err(e) =
+                        crate::lcg::emit_all_declared_grants(graph, &app_id, &profile).await
+                    {
+                        warn!(app_id = %app_id, "enroll-time declared grants emit failed: {e}");
+                    }
+                }
             } else {
                 // The profile is gone (uninstall): the grants are orphaned, remove
                 // them so the browse surface does not show a dead app as dormant.
@@ -3645,6 +3659,57 @@ mod tests {
             .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&state).unwrap();
         assert_eq!(parsed["rows"][0][0], false, "the grant is no longer live: {state}");
+    }
+
+    #[tokio::test]
+    async fn permission_changed_projects_declared_grants_for_a_never_run_app() {
+        // E1: an installed-but-never-run app has a profile on disk but has never
+        // connected to the graph, so the connect-time projection never fired. The
+        // permission-changed event (installd wrote the profile) must project its
+        // DECLARED grants from the profile alone, with no token mint / running pid.
+        let (graph, _tmp) = spawn_test_graph().await;
+        let perms = tempfile::TempDir::new().unwrap();
+        let app = "com.example.enrolled";
+        std::fs::write(
+            perms.path().join(format!("{app}.toml")),
+            "[info]\napp_id = \"com.example.enrolled\"\n[network]\nallow_all = true\n",
+        )
+        .unwrap();
+        std::env::set_var("ARLEN_PERMISSIONS_DIR", perms.path());
+
+        // No Grant nodes before the event: the app has never connected.
+        let before = graph
+            .query_rows_json(format!("MATCH (g:Grant {{app_id:'{app}'}}) RETURN g.id"))
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&before).unwrap()["rows"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+
+        let auth = Arc::new(Mutex::new(Authenticator::new()));
+        handle_graph_event(
+            &auth,
+            &graph,
+            GraphEvent::PermissionChanged { app_id: app.into() },
+        )
+        .await;
+
+        let after = graph
+            .query_rows_json(format!("MATCH (g:Grant {{app_id:'{app}'}}) RETURN g.id"))
+            .await
+            .unwrap();
+        std::env::remove_var("ARLEN_PERMISSIONS_DIR");
+        assert!(
+            !serde_json::from_str::<serde_json::Value>(&after).unwrap()["rows"]
+                .as_array()
+                .unwrap()
+                .is_empty(),
+            "the enrolled app's declared grants are projected at permission-change time: {after}"
+        );
     }
 
     #[test]
