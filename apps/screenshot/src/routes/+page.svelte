@@ -230,12 +230,6 @@
     x.fillStyle = "#1e2532";
     roundRect(x, 180, 130, 840, 46, 16);
     x.fill();
-    for (const [i, cc] of ["#f04a4a", "#f5a524", "#2fbf71"].entries()) {
-      x.fillStyle = cc;
-      x.beginPath();
-      x.arc(210 + i * 22, 153, 6, 0, Math.PI * 2);
-      x.fill();
-    }
     x.fillStyle = "#e6e8ee";
     x.font = '600 22px "Inter Variable", system-ui, sans-serif';
     x.fillText("Account", 220, 210);
@@ -307,7 +301,7 @@
 
     {#each SIZES as sz (sz.v)}
       <Button variant={size === sz.v ? "secondary" : "ghost"} size="icon-sm" title={sz.label} aria-label={sz.label} onclick={() => (size = sz.v)}>
-        <span class="size-dot" style={`width:${sz.dot}px;height:${sz.dot}px`}></span>
+        <span class="size-bar" style={`height:${sz.v}px`}></span>
       </Button>
     {/each}
 
@@ -410,9 +404,10 @@
     outline: 2px solid var(--color-accent);
     outline-offset: 1px;
   }
-  .size-dot {
+  .size-bar {
     display: block;
-    border-radius: var(--radius-full);
+    width: 14px;
+    border-radius: 1px;
     background: currentColor;
   }
 </style>
