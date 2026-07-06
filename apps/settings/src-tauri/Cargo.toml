@@ -102,6 +102,10 @@ arlen-config-broker = { path = "../../../daemons/config-broker" }
 # arlen-permissions carries the closed RevokeReach request shape.
 os-sdk = { path = "../../../sdk/os-sdk" }
 arlen-permissions = { path = "../../../sdk/permissions" }
+# `revoke_consent` releases a remembered consent grant over the consent broker's
+# control socket (settings is admitted for the grant-management ops); the client
+# transport lives in the broker's lib.
+arlen-consent-broker = { path = "../../../daemons/consent-broker" }
 
 [dev-dependencies]
 tempfile = "3"
