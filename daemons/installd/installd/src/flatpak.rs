@@ -193,6 +193,129 @@ background = false
     )
 }
 
+/// The permission `[Context]` a Flatpak app declares (its finish-args as
+/// installed), read from `flatpak info --show-permissions`. Arlen generates the
+/// FLOOR profile from this - grant exactly the dimensions Flatpak already grants
+/// the app, never more (the Flatpak manifest is the floor, app-enrollment §E5).
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct FlatpakContext {
+    /// `filesystems=` entries, e.g. `home`, `xdg-download`, `host`.
+    pub filesystems: Vec<String>,
+    /// `shared=` entries, e.g. `network`, `ipc`.
+    pub shared: Vec<String>,
+    /// `sockets=` entries, e.g. `wayland`, `pulseaudio` (no profile dimension).
+    pub sockets: Vec<String>,
+    /// `devices=` entries, e.g. `dri`, `all` (no profile dimension).
+    pub devices: Vec<String>,
+}
+
+/// Parse `flatpak info --show-permissions <app>` output - an INI-like `[Context]`
+/// section whose values are `;`-separated lists - into a [`FlatpakContext`]. Only
+/// the `[Context]` section is read; other sections are ignored.
+pub fn parse_show_permissions(output: &str) -> FlatpakContext {
+    let mut ctx = FlatpakContext::default();
+    let mut in_context = false;
+    for line in output.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_context = line.eq_ignore_ascii_case("[Context]");
+            continue;
+        }
+        if !in_context {
+            continue;
+        }
+        let Some((key, val)) = line.split_once('=') else {
+            continue;
+        };
+        let items: Vec<String> = val
+            .split(';')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+        match key.trim() {
+            "filesystems" => ctx.filesystems = items,
+            "shared" => ctx.shared = items,
+            "sockets" => ctx.sockets = items,
+            "devices" => ctx.devices = items,
+            _ => {}
+        }
+    }
+    ctx
+}
+
+/// Map a Flatpak `filesystems=` token to an Arlen filesystem dimension, or `None`
+/// if it has no matching dimension (a raw host path, a subdir the profile does
+/// not model). `host`/`host-os` grant broad access; the conservative floor maps
+/// them to the user's home only, never more than the profile can express.
+fn flatpak_fs_dimension(token: &str) -> Option<&'static str> {
+    // Flatpak filesystem tokens may carry an access suffix (`home:ro`); the
+    // dimension is keyed on the path token before it.
+    let base = token.split(':').next().unwrap_or(token).trim_end_matches('/');
+    match base {
+        "home" | "host" | "host-os" => Some("home"),
+        "xdg-documents" => Some("documents"),
+        "xdg-download" | "xdg-downloads" => Some("downloads"),
+        "xdg-pictures" => Some("pictures"),
+        "xdg-music" => Some("music"),
+        "xdg-videos" => Some("videos"),
+        _ => None,
+    }
+}
+
+/// Read an installed Flatpak app's declared permission `[Context]` via
+/// `flatpak info --show-permissions`, for generating the floor profile. Errors if
+/// the app is not installed or Flatpak is unavailable; the caller falls back to
+/// the conservative [`default_permission_profile`].
+pub fn get_flatpak_context(app_id: &str) -> Result<FlatpakContext, FlatpakError> {
+    let output = Command::new("flatpak")
+        .args(["info", "--user", "--show-permissions", app_id])
+        .output()?;
+    if !output.status.success() {
+        return Err(FlatpakError::InfoFailed(
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        ));
+    }
+    Ok(parse_show_permissions(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// Generate an Arlen permission-profile TOML FLOOR from a Flatpak `[Context]`:
+/// grant exactly what Flatpak already grants, never more. Filesystem tokens map to
+/// the matching XDG dimension (`home`/`host` conservatively to `home`);
+/// `shared=network` grants network; sockets and devices have no profile dimension
+/// (the app reaches display/audio/devices through Flatpak's own portals, not an
+/// Arlen fs/net/graph grant), so they are not granted. Graph access stays the
+/// conservative own-namespace default (Flatpak declares no graph reach). `app_id`
+/// must be validated by [`is_valid_app_id`] before this is called - it is
+/// interpolated into the TOML and the profile path.
+pub fn floor_profile_from_context(ctx: &FlatpakContext, app_id: &str) -> String {
+    let mut dims: Vec<&'static str> = ctx
+        .filesystems
+        .iter()
+        .filter_map(|f| flatpak_fs_dimension(f))
+        .collect();
+    dims.sort_unstable();
+    dims.dedup();
+    let fs_lines: String = ["home", "documents", "downloads", "pictures", "music", "videos"]
+        .iter()
+        .filter(|d| dims.contains(d))
+        .map(|d| format!("{d} = true\n"))
+        .collect();
+    let network = ctx.shared.iter().any(|s| s == "network");
+    let network_section = if network {
+        "[network]\nallow_all = true\n"
+    } else {
+        "[network]\ndomains = []\n"
+    };
+    format!(
+        "[info]\napp_id = \"{app_id}\"\ntier = \"third-party\"\n\n\
+         [graph]\nread = [\"{app_id}.*\"]\nwrite = [\"{app_id}.*\"]\n\n\
+         [filesystem]\n{fs_lines}\n\
+         {network_section}\n\
+         [capabilities]\nnotifications = true\nclipboard = false\n"
+    )
+}
+
 /// Check that flatpak CLI is available.
 fn check_flatpak_available() -> Result<(), FlatpakError> {
     match Command::new("flatpak").arg("--version").output() {
@@ -208,6 +331,54 @@ fn check_flatpak_available() -> Result<(), FlatpakError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_show_permissions_reads_the_context_section() {
+        let out = "[Application]\nname=org.x.App\n\n\
+                   [Context]\n\
+                   shared=network;ipc;\n\
+                   sockets=x11;wayland;pulseaudio;\n\
+                   devices=dri;\n\
+                   filesystems=home;xdg-download;\n";
+        let ctx = parse_show_permissions(out);
+        assert_eq!(ctx.shared, vec!["network", "ipc"]);
+        assert_eq!(ctx.filesystems, vec!["home", "xdg-download"]);
+        assert_eq!(ctx.sockets, vec!["x11", "wayland", "pulseaudio"]);
+        assert_eq!(ctx.devices, vec!["dri"]);
+    }
+
+    #[test]
+    fn floor_profile_grants_exactly_the_declared_reach_and_parses() {
+        let ctx = FlatpakContext {
+            filesystems: vec!["home".into(), "xdg-download".into(), "host".into()],
+            shared: vec!["network".into()],
+            sockets: vec!["wayland".into()],
+            devices: vec!["dri".into()],
+        };
+        let toml = floor_profile_from_context(&ctx, "org.x.App");
+        // The floor is a valid canonical profile.
+        let profile: arlen_permissions::PermissionProfile = toml::from_str(&toml).unwrap();
+        // home (home + host both map to it) and downloads granted; the others not.
+        assert!(profile.filesystem.home);
+        assert!(profile.filesystem.downloads);
+        assert!(!profile.filesystem.documents);
+        assert!(!profile.filesystem.pictures);
+        // shared=network -> network; sockets/devices grant nothing.
+        assert!(profile.network.allow_all);
+    }
+
+    #[test]
+    fn floor_profile_without_network_grants_none() {
+        let ctx = FlatpakContext {
+            filesystems: vec!["xdg-music".into()],
+            ..Default::default()
+        };
+        let profile: arlen_permissions::PermissionProfile =
+            toml::from_str(&floor_profile_from_context(&ctx, "org.y.App")).unwrap();
+        assert!(profile.filesystem.music);
+        assert!(!profile.filesystem.home);
+        assert!(!profile.network.allow_all);
+    }
 
     #[test]
     fn test_default_permission_profile() {

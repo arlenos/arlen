@@ -411,7 +411,18 @@ async fn run_install_flatpak(
     if profile_path.exists() {
         tracing::info!("flatpak {app_id} already has a permission profile; leaving it");
     } else {
-        let profile = flatpak::default_permission_profile(app_id);
+        // Generate the FLOOR from what the Flatpak already declares (E5), so the
+        // app gets exactly its manifest reach, never more; fall back to the
+        // conservative default if the declared context is unreadable.
+        let profile = match flatpak::get_flatpak_context(app_id) {
+            Ok(ctx) => flatpak::floor_profile_from_context(&ctx, app_id),
+            Err(e) => {
+                tracing::warn!(
+                    "flatpak {app_id}: declared permissions unreadable ({e}), using conservative default"
+                );
+                flatpak::default_permission_profile(app_id)
+            }
+        };
         if let Some(dir) = profile_path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
