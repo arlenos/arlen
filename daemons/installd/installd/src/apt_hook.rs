@@ -221,6 +221,34 @@ pub fn classify_package_files(dpkg_l: &str) -> PackageFiles {
     files
 }
 
+/// Rewrite a `.desktop` file's `Exec=` line(s) to launch the app confined through
+/// `arlen-run`: `Exec=<cmd>` becomes `Exec=arlen-run --app-id <app_id> -- <cmd>`.
+/// The original command (including any `.desktop` field codes like `%U`/`%f`,
+/// which the launcher substitutes before exec) is preserved verbatim after the
+/// `--` separator, so `arlen-run` passes it to the app. Every other line - the
+/// group headers, `TryExec`, `Name`, comments - is preserved byte-for-byte, and
+/// the main `Exec` plus any `[Desktop Action ...]` `Exec` lines are all rewritten.
+/// Idempotent: an `Exec` already routed through `arlen-run` is left untouched.
+///
+/// `app_id` must be a validated package/app id (no whitespace) - it is the `.deb`
+/// bare name the enrollment resolved, so it cannot break the `Exec` line.
+pub fn rewrite_desktop_exec(content: &str, app_id: &str) -> String {
+    let mut out = String::with_capacity(content.len() + 48);
+    for line in content.lines() {
+        match line.strip_prefix("Exec=") {
+            Some(value) if !value.trim().is_empty() && !value.trim_start().starts_with("arlen-run ") => {
+                out.push_str("Exec=arlen-run --app-id ");
+                out.push_str(app_id);
+                out.push_str(" -- ");
+                out.push_str(value);
+            }
+            _ => out.push_str(line),
+        }
+        out.push('\n');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,6 +348,29 @@ hello 2.10-5 amd64 none = 2.10-5 amd64 none **CONFIGURE**\n";
             f.desktop_entries,
             vec![PathBuf::from("/usr/share/applications/foo.desktop")]
         );
+    }
+
+    #[test]
+    fn rewrite_confines_every_exec_preserving_field_codes_and_other_keys() {
+        let desktop = "[Desktop Entry]\nName=Foo\nTryExec=/usr/bin/foo\n\
+                       Exec=/usr/bin/foo %U\nIcon=foo\n\n\
+                       [Desktop Action new]\nName=New Window\nExec=/usr/bin/foo --new %f\n";
+        let out = rewrite_desktop_exec(desktop, "com.foo");
+        // Both the main Exec and the action Exec are confined, field codes kept.
+        assert!(out.contains("Exec=arlen-run --app-id com.foo -- /usr/bin/foo %U\n"));
+        assert!(out.contains("Exec=arlen-run --app-id com.foo -- /usr/bin/foo --new %f\n"));
+        // TryExec (a check, not a launch), names and group headers are untouched.
+        assert!(out.contains("TryExec=/usr/bin/foo\n"));
+        assert!(out.contains("[Desktop Action new]\n"));
+        assert!(out.contains("Name=Foo\n"));
+    }
+
+    #[test]
+    fn rewrite_is_idempotent_and_skips_an_empty_exec() {
+        let already = "[Desktop Entry]\nExec=arlen-run --app-id com.foo -- /usr/bin/foo %U\n";
+        assert_eq!(rewrite_desktop_exec(already, "com.foo"), already);
+        let empty = "[Desktop Entry]\nExec=\n";
+        assert_eq!(rewrite_desktop_exec(empty, "com.foo"), empty);
     }
 
     #[test]
