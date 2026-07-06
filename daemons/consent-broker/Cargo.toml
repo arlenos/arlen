@@ -44,3 +44,5 @@ os-sdk = { path = "../../sdk/os-sdk" }
 audit-proto = { path = "../../contracts/audit-proto", features = ["test-util"] }
 # tokio test-util powers the paused-clock read-timeout test.
 tokio = { version = "1", features = ["test-util"] }
+# Temp socket paths for the control-client round-trip tests.
+tempfile = "3"
