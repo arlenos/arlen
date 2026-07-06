@@ -7,13 +7,14 @@
 //! pattern) builds on it.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use arlen_print::backend::{ColorMode, Duplex, JobOptions, PrintBackend, PrintError, PrintSubmission};
 use arlen_print::cups::CupsBackend;
 use arlen_print::service::PrintService;
 use audit_proto::sink::LedgerAuditSink;
-use zbus::zvariant::{OwnedValue, Value};
+use zbus::interface;
+use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 
 /// Read a string setting from the portal's `a{sv}` settings map. GTK print
 /// settings carry their values as strings (e.g. `n-copies = "2"`).
@@ -57,12 +58,21 @@ pub fn job_options_from_settings(settings: &HashMap<String, OwnedValue>) -> JobO
     }
 }
 
-#[allow(dead_code)] // wired by the #[interface] impl next increment
+/// The settings a `PreparePrint` staged, keyed by the token it returned; a
+/// subsequent `Print` recalls them by that token (one-shot).
+#[derive(Default)]
+struct Prepared {
+    next_token: u32,
+    by_token: HashMap<u32, HashMap<String, OwnedValue>>,
+}
+
 /// The `org.freedesktop.impl.portal.Print` backend state: the arlen-print service
-/// over the CUPS print system, recording submits to the audit ledger (the printer
-/// + destination, never the document).
+/// over the CUPS print system (recording submits to the audit ledger - the printer
+/// + destination, never the document) plus the `PreparePrint` -> `Print` token
+/// staging.
 pub struct Print {
     service: PrintService<CupsBackend>,
+    prepared: Mutex<Prepared>,
 }
 
 impl Print {
@@ -73,7 +83,22 @@ impl Print {
                 CupsBackend::default(),
                 Arc::new(LedgerAuditSink::at_default_socket()),
             ),
+            prepared: Mutex::new(Prepared::default()),
         }
+    }
+
+    /// Stage a `PreparePrint`'s settings and return the token that recalls them.
+    fn stage(&self, settings: HashMap<String, OwnedValue>) -> u32 {
+        let mut p = self.prepared.lock().unwrap();
+        p.next_token = p.next_token.wrapping_add(1).max(1);
+        let token = p.next_token;
+        p.by_token.insert(token, settings);
+        token
+    }
+
+    /// Recall (and remove) a staged settings set by its token, if present.
+    fn take(&self, token: u32) -> Option<HashMap<String, OwnedValue>> {
+        self.prepared.lock().unwrap().by_token.remove(&token)
     }
 }
 
@@ -83,7 +108,6 @@ impl Default for Print {
     }
 }
 
-#[allow(dead_code)]
 /// Submit a document to the default printer with the portal settings mapped to
 /// job options - the bridge the impl.portal.Print `Print` method calls once it has
 /// read the document fd. Fails closed if no printer is configured (never silently
@@ -108,6 +132,84 @@ async fn submit_document<B: PrintBackend>(
     };
     // `app_id` is the calling app: the audit records it as the acting principal.
     service.submit(app_id, &submission).await
+}
+
+#[interface(name = "org.freedesktop.impl.portal.Print")]
+impl Print {
+    /// Interface version.
+    #[zbus(property, name = "version")]
+    fn version(&self) -> u32 {
+        1
+    }
+
+    /// Stage the print settings and return a token the subsequent `Print` recalls.
+    /// The interactive dialog is arlen-ui's; this backend stages the request's own
+    /// settings so the print proceeds with the app's chosen options.
+    #[allow(clippy::too_many_arguments)]
+    async fn prepare_print(
+        &self,
+        _handle: ObjectPath<'_>,
+        app_id: &str,
+        _parent_window: &str,
+        _title: &str,
+        settings: HashMap<String, OwnedValue>,
+        _page_setup: HashMap<String, OwnedValue>,
+        _options: HashMap<&str, OwnedValue>,
+    ) -> (u32, HashMap<String, OwnedValue>) {
+        let token = self.stage(settings);
+        tracing::info!(app_id, token, "portal Print: prepared");
+        let mut results = HashMap::new();
+        if let Ok(v) = OwnedValue::try_from(Value::U32(token)) {
+            results.insert("token".to_string(), v);
+        }
+        (0, results)
+    }
+
+    /// Print the document on `fd` using the settings staged under `options["token"]`.
+    /// Response `0` = printed, `2` = failed.
+    #[allow(clippy::too_many_arguments)]
+    async fn print(
+        &self,
+        _handle: ObjectPath<'_>,
+        app_id: &str,
+        _parent_window: &str,
+        title: &str,
+        fd: zbus::zvariant::OwnedFd,
+        options: HashMap<&str, OwnedValue>,
+    ) -> (u32, HashMap<String, OwnedValue>) {
+        let settings = options
+            .get("token")
+            .and_then(|v| u32::try_from(v.clone()).ok())
+            .and_then(|t| self.take(t))
+            .unwrap_or_default();
+
+        // Read the document off the reactor (a large PDF must not block it).
+        let doc = match tokio::task::spawn_blocking(move || {
+            use std::io::Read;
+            let mut f = std::fs::File::from(std::os::fd::OwnedFd::from(fd));
+            let mut buf = Vec::new();
+            f.read_to_end(&mut buf).map(|_| buf)
+        })
+        .await
+        {
+            Ok(Ok(buf)) => buf,
+            _ => {
+                tracing::warn!(app_id, "portal Print: could not read the document fd");
+                return (2, HashMap::new());
+            }
+        };
+
+        match submit_document(&self.service, app_id, &doc, Some(title), &settings).await {
+            Ok(job) => {
+                tracing::info!(app_id, job, "portal Print: submitted");
+                (0, HashMap::new())
+            }
+            Err(e) => {
+                tracing::warn!(app_id, error = %e, "portal Print: submit failed");
+                (2, HashMap::new())
+            }
+        }
+    }
 }
 
 #[cfg(test)]
