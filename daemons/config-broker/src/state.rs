@@ -152,6 +152,30 @@ pub fn changed_security_keys(old: &AiMasterSwitches, new: &AiMasterSwitches) -> 
     changed
 }
 
+/// The audit event for a change to the AI master switches: kind
+/// [`AuditKind::CapabilityChange`], a content-free subject, and an outcome naming
+/// the caller and which switches changed. The audit daemon sets the ACTOR from the
+/// submitting peer (the broker), so the CALLER's app id is carried in the outcome
+/// for the accountability trail.
+pub fn switch_change_event(caller_app_id: &str, changed: &[String]) -> audit_proto::IngestRequest {
+    audit_proto::IngestRequest {
+        kind: audit_proto::AuditKind::CapabilityChange,
+        structural: audit_proto::StructuralRecord {
+            subject: "ai.master_switches".to_string(),
+            node_types: Vec::new(),
+            relations: Vec::new(),
+            result_count: None,
+            duration_ms: None,
+            outcome: format!("set by {caller_app_id}: {}", changed.join(", ")),
+            depth: None,
+            capability_change: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
 /// A failure reading or writing the canonical state.
 #[derive(Debug, Error)]
 pub enum StateError {
@@ -340,6 +364,18 @@ mod tests {
         let changed2 = changed_security_keys(&base, &new2);
         assert!(changed2.iter().any(|c| c.starts_with("provider=")));
         assert!(changed2.iter().any(|c| c.starts_with("autonomous_apps=")));
+    }
+
+    #[test]
+    fn switch_change_event_records_the_caller_and_the_change() {
+        let ev =
+            switch_change_event("com.example.settings", &["executor_live=true".to_string()]);
+        assert!(matches!(ev.kind, audit_proto::AuditKind::CapabilityChange));
+        assert_eq!(ev.structural.subject, "ai.master_switches");
+        // The caller id + the changed switch are in the outcome (the actor is the
+        // submitting broker, so the caller is carried here for the trail).
+        assert!(ev.structural.outcome.contains("com.example.settings"));
+        assert!(ev.structural.outcome.contains("executor_live=true"));
     }
 
     #[test]

@@ -14,9 +14,10 @@ use tokio::net::{UnixListener, UnixStream};
 
 use arlen_permissions::identity::app_id_from_pid;
 use arlen_permissions::peer_pidfd::PeerPidfd;
+use audit_proto::sink::AuditSink;
 
 use crate::protocol::{handle_request, read_frame_async, write_frame_async, Request};
-use crate::state::StateStore;
+use crate::state::{changed_security_keys, switch_change_event, StateStore};
 
 /// The broker socket path: the `ARLEN_CONFIG_BROKER_SOCKET` override,
 /// else `$XDG_RUNTIME_DIR/arlen/config-broker.sock`, else
@@ -95,7 +96,12 @@ pub fn bind_socket(path: &Path) -> std::io::Result<UnixListener> {
 /// the caller app id from the pinned pid, then fields requests until
 /// the peer closes or stops being alive. Drops silently on any auth
 /// failure (deny).
-pub async fn serve_connection(mut stream: UnixStream, store: Arc<StateStore>, caller_uid: u32) {
+pub async fn serve_connection(
+    mut stream: UnixStream,
+    store: Arc<StateStore>,
+    caller_uid: u32,
+    sink: Arc<dyn AuditSink>,
+) {
     let peer = match PeerPidfd::from_socket(&stream, caller_uid) {
         Ok(p) => p,
         Err(e) => {
@@ -123,7 +129,35 @@ pub async fn serve_connection(mut stream: UnixStream, store: Arc<StateStore>, ca
             // A closed connection or framing error ends the session.
             Err(_) => return,
         };
+        // Audit-on-change: snapshot the pre-state for a Set so a flip of a
+        // security-relevant switch is recorded even though the change itself is
+        // gated by `is_admitted_writer`. The audit is accountability, not the
+        // primary defence, so it is fail-open-after: a change still applies (and is
+        // written) even if the ledger is down - a down audit daemon must never block
+        // a caller turning `executor_live` back off.
+        let pre = match &request {
+            Request::Set(_) => store.load().ok(),
+            _ => None,
+        };
+        let new_switches = match &request {
+            Request::Set(s) => Some(s.clone()),
+            _ => None,
+        };
         let response = handle_request(&store, &app_id, request);
+        if let (Some(old), Some(new)) = (pre, new_switches) {
+            if matches!(response, crate::protocol::Response::Committed) {
+                let changed = changed_security_keys(&old, &new.sanitised());
+                if !changed.is_empty() {
+                    if let Err(e) = sink.submit(switch_change_event(&app_id, &changed)).await {
+                        tracing::warn!(
+                            app_id = %app_id,
+                            error = %e,
+                            "config-broker: failed to audit an AI master-switch change"
+                        );
+                    }
+                }
+            }
+        }
         if write_frame_async(&mut stream, &response).await.is_err() {
             return;
         }
@@ -131,15 +165,20 @@ pub async fn serve_connection(mut stream: UnixStream, store: Arc<StateStore>, ca
 }
 
 /// Bind + serve the broker socket until the accept loop errors.
-pub async fn run(store: Arc<StateStore>, socket: &Path) -> std::io::Result<()> {
+pub async fn run(
+    store: Arc<StateStore>,
+    socket: &Path,
+    sink: Arc<dyn AuditSink>,
+) -> std::io::Result<()> {
     let listener = bind_socket(socket)?;
     let uid = owner_uid();
     tracing::info!(socket = %socket.display(), owner_uid = uid, "config-broker listening");
     loop {
         let (stream, _) = listener.accept().await?;
         let store = Arc::clone(&store);
+        let sink = Arc::clone(&sink);
         tokio::spawn(async move {
-            serve_connection(stream, store, uid).await;
+            serve_connection(stream, store, uid, sink).await;
         });
     }
 }
@@ -150,6 +189,13 @@ mod tests {
     use crate::protocol::{Request, Response};
     use crate::state::AiMasterSwitches;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A throwaway audit sink for the auth/framing tests (they never commit a
+    /// change, so nothing is recorded; the change-audit path is covered by the
+    /// `switch_change_event` + `changed_security_keys` unit tests in `state`).
+    fn mock_sink() -> Arc<audit_proto::sink::MockAuditSink> {
+        Arc::new(audit_proto::sink::MockAuditSink::accepting())
+    }
 
     /// Drive a real socket end-to-end: bind, connect, `Get`, and
     /// confirm the framed `State` reply. Exercises the genuine
@@ -176,7 +222,7 @@ mod tests {
         let srv_store = Arc::clone(&store);
         let server = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.unwrap();
-            serve_connection(stream, srv_store, uid).await;
+            serve_connection(stream, srv_store, uid, mock_sink()).await;
         });
 
         let mut client = UnixStream::connect(&sock).await.unwrap();
@@ -217,7 +263,7 @@ mod tests {
         let srv_store = Arc::clone(&store);
         let server = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.unwrap();
-            serve_connection(stream, srv_store, uid).await;
+            serve_connection(stream, srv_store, uid, mock_sink()).await;
         });
 
         let mut client = UnixStream::connect(&sock).await.unwrap();
@@ -268,7 +314,7 @@ mod tests {
         let srv_store = Arc::clone(&store);
         let server = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.unwrap();
-            serve_connection(stream, srv_store, wrong_uid).await;
+            serve_connection(stream, srv_store, wrong_uid, mock_sink()).await;
         });
 
         let mut client = UnixStream::connect(&sock).await.unwrap();

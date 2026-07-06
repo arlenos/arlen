@@ -123,7 +123,8 @@ mod tests {
                 match listener.accept().await {
                     Ok((stream, _)) => {
                         let s = Arc::clone(&srv_store);
-                        tokio::spawn(async move { serve_connection(stream, s, uid).await });
+                        let sink = std::sync::Arc::new(audit_proto::sink::MockAuditSink::accepting());
+                        tokio::spawn(async move { serve_connection(stream, s, uid, sink).await });
                     }
                     Err(_) => return,
                 }
