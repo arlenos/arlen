@@ -151,6 +151,13 @@ pub struct GraphPermissions {
     /// closed). Empty for an ordinary app, which writes only its own namespace.
     #[serde(default)]
     pub delegated_namespaces: Vec<String>,
+    /// Entity-type read/write patterns the app declares ESSENTIAL: revoking one
+    /// would break the app, so an install-time or App-access tighten refuses to
+    /// strip it (app-enrollment §E2, the anti-brick marker). Each entry matches a
+    /// `read`/`write` pattern verbatim (e.g. `"system.File.path"`). Empty for the
+    /// conservative default profile, where every reach is freely revocable.
+    #[serde(default)]
+    pub required: Vec<String>,
 }
 
 /// A relation-write grant entry from a profile's `[graph]` section: which
