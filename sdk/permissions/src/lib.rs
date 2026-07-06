@@ -9,6 +9,7 @@
 
 pub mod connection_auth;
 pub mod identity;
+pub mod lint;
 pub mod identity_registry;
 pub mod peer_pidfd;
 pub mod profile_watcher;
@@ -902,6 +903,14 @@ mod tests {
             assert!(
                 profile.graph.read.is_empty() && profile.graph.write.is_empty(),
                 "{}: a starting profile must not grant Knowledge Graph access",
+                path.display()
+            );
+            // The curated corpus is the review baseline, so every profile must
+            // itself clear the submission hard-deny lint (§E8).
+            let deny = crate::lint::hard_deny_reasons(&profile);
+            assert!(
+                deny.is_empty(),
+                "{}: a curated profile must clear the hard-deny lint, got {deny:?}",
                 path.display()
             );
             count += 1;
