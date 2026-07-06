@@ -18,9 +18,11 @@
   import { tauriAvailable } from "$lib/tauri";
   import TerminalSidebar from "$lib/components/TerminalSidebar.svelte";
   import HistoryPalette from "$lib/components/HistoryPalette.svelte";
+  import QuickConnectPalette from "$lib/components/QuickConnectPalette.svelte";
   import { onMount } from "svelte";
   import { newSession } from "$lib/stores/sessions";
   import { historyPaletteOpen } from "$lib/stores/history";
+  import { openQuickConnect } from "$lib/stores/remoteConnections";
   import { initTopbar } from "$lib/topbar";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
 
@@ -36,6 +38,12 @@
   // session, Ctrl+R the history palette. They work from anywhere,
   // including the composer.
   function onWindowKeydown(e: KeyboardEvent) {
+    // Ctrl+Shift+R opens the quick-connect palette (a remote session).
+    if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "r") {
+      e.preventDefault();
+      openQuickConnect();
+      return;
+    }
     if (!e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
     const key = e.key.toLowerCase();
     if (key === "t") {
@@ -96,3 +104,4 @@
 </SidebarProvider>
 
 <HistoryPalette />
+<QuickConnectPalette />
