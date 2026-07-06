@@ -18,9 +18,8 @@ export interface SavedHost {
   user: string;
   host: string;
   port: number;
-  /// The KG project this host belongs to (grouping + tint), or null.
+  /// The KG project this host belongs to (grouping), or null.
   project: string | null;
-  projectTint: string | null;
   lastUsed: string | null;
 }
 
@@ -44,7 +43,6 @@ export interface RemoteChrome {
   user: string;
   host: string;
   project: string | null;
-  projectTint: string | null;
   /// The enforced reach, e.g. ["shell", "SFTP"].
   reach: string[];
   /// A jump host, if the connection goes via one.
@@ -55,12 +53,12 @@ export interface RemoteChrome {
   bootstrap: Bootstrap;
 }
 
-// Fixture hosts (grouped by KG project; the tint is the project node's colour).
+// Fixture hosts (grouped by KG project; identity is the label, monochrome).
 const FIXTURE_SAVED: SavedHost[] = [
-  { id: "h1", label: "prod-db", user: "deploy", host: "prod-db.atlas.internal", port: 22, project: "Atlas", projectTint: "#5b8def", lastUsed: "2 hours ago" },
-  { id: "h2", label: "staging", user: "deploy", host: "staging.atlas.internal", port: 22, project: "Atlas", projectTint: "#5b8def", lastUsed: "yesterday" },
-  { id: "h3", label: "build-01", user: "ci", host: "build-01.nebula.internal", port: 22, project: "Nebula", projectTint: "#3fbfa8", lastUsed: "3 days ago" },
-  { id: "h4", label: "vps", user: "tim", host: "203.0.113.9", port: 22, project: null, projectTint: null, lastUsed: "last week" },
+  { id: "h1", label: "prod-db", user: "deploy", host: "prod-db.atlas.internal", port: 22, project: "Atlas", lastUsed: "2 hours ago" },
+  { id: "h2", label: "staging", user: "deploy", host: "staging.atlas.internal", port: 22, project: "Atlas", lastUsed: "yesterday" },
+  { id: "h3", label: "build-01", user: "ci", host: "build-01.nebula.internal", port: 22, project: "Nebula", lastUsed: "3 days ago" },
+  { id: "h4", label: "vps", user: "tim", host: "203.0.113.9", port: 22, project: null, lastUsed: "last week" },
 ];
 const FIXTURE_RECENT: RecentHost[] = [
   { id: "r1", user: "root", host: "10.0.0.5", port: 22, lastUsed: "1 hour ago" },
@@ -96,7 +94,6 @@ export function connectSaved(h: SavedHost): void {
     user: h.user,
     host: h.host,
     project: h.project,
-    projectTint: h.projectTint,
     reach: ["shell", "SFTP"],
     via: h.project === "Atlas" ? "bastion" : null,
     recorded: true,
@@ -118,7 +115,6 @@ export function connectAdHoc(target: string): void {
     user: user || "you",
     host,
     project: null,
-    projectTint: null,
     reach: ["shell"],
     via: null,
     recorded: true,
@@ -139,6 +135,6 @@ export function promoteToSaved(r: RecentHost): void {
   recentHosts.update((list) => list.filter((x) => x.id !== r.id));
   savedHosts.update((list) => [
     ...list,
-    { id: `s-${r.id}`, label: r.host, user: r.user, host: r.host, port: r.port, project: null, projectTint: null, lastUsed: r.lastUsed },
+    { id: `s-${r.id}`, label: r.host, user: r.user, host: r.host, port: r.port, project: null, lastUsed: r.lastUsed },
   ]);
 }
