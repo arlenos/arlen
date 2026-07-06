@@ -170,6 +170,57 @@ pub fn match_enrollments(
     Ok(matched)
 }
 
+/// The installable artifacts of a `.deb`, classified from `dpkg -L <pkg>` output:
+/// the executables (which the enrollment confines) and the `.desktop` entries
+/// (whose `Exec=` the enrollment rewrites to launch through `arlen-run`).
+/// Best-effort: `dpkg -L` lists only packaged files, so it misses files created
+/// by maintainer scripts or `update-alternatives`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PackageFiles {
+    /// Executables shipped directly in a system bin directory.
+    pub binaries: Vec<PathBuf>,
+    /// `.desktop` application entries.
+    pub desktop_entries: Vec<PathBuf>,
+}
+
+/// The system bin directories a `.deb`'s executables land in (trailing slash so a
+/// bare directory line does not match).
+const BIN_DIRS: &[&str] = &[
+    "/usr/bin/",
+    "/usr/sbin/",
+    "/bin/",
+    "/sbin/",
+    "/usr/games/",
+];
+
+/// Classify the files a package ships, from `dpkg -L <pkg>` output (one absolute
+/// path per line, files and directories intermixed). A binary is a file directly
+/// in a system bin directory; a `.desktop` entry is under the applications dir.
+pub fn classify_package_files(dpkg_l: &str) -> PackageFiles {
+    let mut files = PackageFiles::default();
+    for raw in dpkg_l.lines() {
+        let path = raw.trim();
+        if path.is_empty() || path == "/." {
+            continue;
+        }
+        if path.starts_with("/usr/share/applications/") && path.ends_with(".desktop") {
+            files.desktop_entries.push(PathBuf::from(path));
+            continue;
+        }
+        if let Some(dir) = BIN_DIRS.iter().find(|d| path.starts_with(**d)) {
+            let rest = &path[dir.len()..];
+            // Only an executable file DIRECTLY in the bin dir (a non-empty
+            // remainder with no further `/`), not a nested path or the dir itself.
+            if !rest.is_empty() && !rest.contains('/') {
+                files.binaries.push(PathBuf::from(path));
+            }
+        }
+    }
+    files.binaries.sort();
+    files.desktop_entries.sort();
+    files
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,6 +288,38 @@ hello 2.10-5 amd64 none = 2.10-5 amd64 none **CONFIGURE**\n";
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].0, "hello");
         assert_eq!(matched[0].1, dir.join("hello.toml"));
+    }
+
+    #[test]
+    fn classify_finds_the_binary_from_real_dpkg_l() {
+        // A trimmed slice of the real `dpkg -L hello` output (debian:trixie): the
+        // binary is the only file directly in a bin dir.
+        let dpkg_l = "/.\n/usr\n/usr/bin\n/usr/bin/hello\n/usr/share\n\
+                      /usr/share/doc/hello/copyright\n/usr/share/info/hello.info.gz\n";
+        let f = classify_package_files(dpkg_l);
+        assert_eq!(f.binaries, vec![PathBuf::from("/usr/bin/hello")]);
+        assert!(f.desktop_entries.is_empty());
+    }
+
+    #[test]
+    fn classify_separates_binaries_and_desktop_ignoring_dirs_and_nested_paths() {
+        let dpkg_l = "/usr/bin\n/usr/bin/foo\n/usr/sbin/food\n/usr/lib/foo/helper\n\
+                      /usr/bin/nested/deep\n/usr/share/applications\n\
+                      /usr/share/applications/foo.desktop\n/usr/share/doc/foo/README\n";
+        let f = classify_package_files(dpkg_l);
+        // Only top-level bin files; the libexec helper + nested bin path are not
+        // binaries, and the bare dir lines are ignored.
+        assert_eq!(
+            f.binaries,
+            vec![
+                PathBuf::from("/usr/bin/foo"),
+                PathBuf::from("/usr/sbin/food")
+            ]
+        );
+        assert_eq!(
+            f.desktop_entries,
+            vec![PathBuf::from("/usr/share/applications/foo.desktop")]
+        );
     }
 
     #[test]
