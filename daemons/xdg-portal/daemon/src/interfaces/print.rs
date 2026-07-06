@@ -7,8 +7,12 @@
 //! pattern) builds on it.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use arlen_print::backend::{ColorMode, Duplex, JobOptions};
+use arlen_print::backend::{ColorMode, Duplex, JobOptions, PrintBackend, PrintError, PrintSubmission};
+use arlen_print::cups::CupsBackend;
+use arlen_print::service::PrintService;
+use audit_proto::sink::LedgerAuditSink;
 use zbus::zvariant::{OwnedValue, Value};
 
 /// Read a string setting from the portal's `a{sv}` settings map. GTK print
@@ -51,6 +55,59 @@ pub fn job_options_from_settings(settings: &HashMap<String, OwnedValue>) -> JobO
         color,
         media,
     }
+}
+
+#[allow(dead_code)] // wired by the #[interface] impl next increment
+/// The `org.freedesktop.impl.portal.Print` backend state: the arlen-print service
+/// over the CUPS print system, recording submits to the audit ledger (the printer
+/// + destination, never the document).
+pub struct Print {
+    service: PrintService<CupsBackend>,
+}
+
+impl Print {
+    /// Construct the backend over CUPS + the default audit ledger socket.
+    pub fn new() -> Self {
+        Self {
+            service: PrintService::new(
+                CupsBackend::default(),
+                Arc::new(LedgerAuditSink::at_default_socket()),
+            ),
+        }
+    }
+}
+
+impl Default for Print {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[allow(dead_code)]
+/// Submit a document to the default printer with the portal settings mapped to
+/// job options - the bridge the impl.portal.Print `Print` method calls once it has
+/// read the document fd. Fails closed if no printer is configured (never silently
+/// drops the job). Generic over the backend so it is testable with a mock.
+async fn submit_document<B: PrintBackend>(
+    service: &PrintService<B>,
+    app_id: &str,
+    document: &[u8],
+    title: Option<&str>,
+    settings: &HashMap<String, OwnedValue>,
+) -> Result<i32, PrintError> {
+    let printer = service
+        .default_printer()
+        .await?
+        .ok_or_else(|| PrintError::Invalid("no default printer configured".to_string()))?;
+    let submission = PrintSubmission {
+        printer: &printer.name,
+        document,
+        title,
+        mime: None,
+        options: job_options_from_settings(settings),
+    };
+    // `app_id` is the calling app: the audit records it as the acting principal.
+    service.submit(app_id, &submission).await
 }
 
 #[cfg(test)]
