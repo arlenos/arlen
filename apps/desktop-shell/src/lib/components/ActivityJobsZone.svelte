@@ -187,7 +187,7 @@
     height: 1.5rem;
     border: none;
     background: transparent;
-    border-radius: var(--radius-button);
+    border-radius: var(--radius-input);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     cursor: pointer;
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
