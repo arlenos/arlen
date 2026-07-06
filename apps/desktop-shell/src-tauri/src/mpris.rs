@@ -198,6 +198,211 @@ pub fn parse_track(meta: &HashMap<String, OwnedValue>) -> TrackMeta {
     }
 }
 
+// ── D-Bus session-bus client ──
+
+use std::sync::Mutex;
+
+use tauri::{AppHandle, Emitter};
+use zbus::Connection;
+
+const MPRIS_PREFIX: &str = "org.mpris.MediaPlayer2.";
+const MPRIS_PATH: &str = "/org/mpris/MediaPlayer2";
+const PLAYER_IFACE: &str = "org.mpris.MediaPlayer2.Player";
+const ROOT_IFACE: &str = "org.mpris.MediaPlayer2";
+
+/// The user's pinned active player (manual override of auto-follow), or `None`
+/// for auto. Set by `mpris_pin`; read when composing the now-playing state.
+static PINNED: Mutex<Option<String>> = Mutex::new(None);
+
+/// Remote (`https://`) album art is default-off (the ambient-leak rule): only a
+/// `file://` art URL is passed through; a remote one falls back to the app icon.
+fn art_for(art_url: Option<String>) -> Option<String> {
+    art_url.filter(|u| u.starts_with("file://"))
+}
+
+/// List the MPRIS player bus names currently on the session bus.
+async fn list_players(conn: &Connection) -> Result<Vec<String>, String> {
+    let proxy = zbus::fdo::DBusProxy::new(conn)
+        .await
+        .map_err(|e| format!("DBus proxy: {e}"))?;
+    let names = proxy
+        .list_names()
+        .await
+        .map_err(|e| format!("ListNames: {e}"))?;
+    Ok(names
+        .into_iter()
+        .map(|n| n.as_str().to_string())
+        .filter(|n| n.starts_with(MPRIS_PREFIX))
+        .collect())
+}
+
+/// One player's read state: the switcher entry plus the active-view details.
+struct PlayerRead {
+    player: MprisPlayer,
+    track: TrackMeta,
+    position: f64,
+    can_seek: bool,
+    can_prev: bool,
+    can_next: bool,
+    can_pause: bool,
+    can_control: bool,
+}
+
+/// Read a single player's state. Missing properties degrade to defaults rather
+/// than dropping the player.
+async fn read_player(conn: &Connection, bus: &str) -> Option<PlayerRead> {
+    let player = zbus::Proxy::new(conn, bus.to_owned(), MPRIS_PATH, PLAYER_IFACE)
+        .await
+        .ok()?;
+    let root = zbus::Proxy::new(conn, bus.to_owned(), MPRIS_PATH, ROOT_IFACE)
+        .await
+        .ok()?;
+
+    let status = PlaybackStatus::parse(
+        &player
+            .get_property::<String>("PlaybackStatus")
+            .await
+            .unwrap_or_default(),
+    );
+    let meta = player
+        .get_property::<HashMap<String, OwnedValue>>("Metadata")
+        .await
+        .unwrap_or_default();
+    let track = parse_track(&meta);
+    let position = micros_to_seconds(player.get_property::<i64>("Position").await.unwrap_or(0));
+    let app = root
+        .get_property::<String>("Identity")
+        .await
+        .unwrap_or_else(|_| bus.trim_start_matches(MPRIS_PREFIX).to_string());
+
+    Some(PlayerRead {
+        player: MprisPlayer {
+            id: bus.to_string(),
+            app,
+            icon: None,
+            status,
+        },
+        track,
+        position,
+        can_seek: player.get_property::<bool>("CanSeek").await.unwrap_or(false),
+        can_prev: player
+            .get_property::<bool>("CanGoPrevious")
+            .await
+            .unwrap_or(false),
+        can_next: player
+            .get_property::<bool>("CanGoNext")
+            .await
+            .unwrap_or(false),
+        can_pause: player.get_property::<bool>("CanPause").await.unwrap_or(false),
+        can_control: player
+            .get_property::<bool>("CanControl")
+            .await
+            .unwrap_or(false),
+    })
+}
+
+/// Compose the now-playing state from every registered player, or `None` when no
+/// player is present (the applet hides).
+async fn build_now_playing(conn: &Connection) -> Option<NowPlaying> {
+    let buses = list_players(conn).await.ok()?;
+    let mut reads = Vec::new();
+    for bus in buses {
+        if let Some(r) = read_player(conn, &bus).await {
+            reads.push(r);
+        }
+    }
+    if reads.is_empty() {
+        return None;
+    }
+    let players: Vec<MprisPlayer> = reads.iter().map(|r| r.player.clone()).collect();
+    let pinned = PINNED.lock().ok().and_then(|p| p.clone());
+    let active_id = rank_active(&players, pinned.as_deref())?;
+    let active = reads.iter().find(|r| r.player.id == active_id)?;
+
+    Some(NowPlaying {
+        title: active.track.title.clone(),
+        artist: active.track.artist.clone(),
+        album: active.track.album.clone(),
+        art_url: art_for(active.track.art_url.clone()),
+        status: active.player.status,
+        position: active.position,
+        length: active.track.length,
+        can_seek: active.can_seek,
+        can_prev: active.can_prev,
+        can_next: active.can_next,
+        can_pause: active.can_pause,
+        can_control: active.can_control,
+        players,
+        active_id,
+    })
+}
+
+/// Call a no-argument transport method on a player.
+async fn transport(bus: &str, method: &str) -> Result<(), String> {
+    let conn = Connection::session()
+        .await
+        .map_err(|e| format!("session bus: {e}"))?;
+    let player = zbus::Proxy::new(&conn, bus.to_owned(), MPRIS_PATH, PLAYER_IFACE)
+        .await
+        .map_err(|e| format!("player proxy: {e}"))?;
+    player
+        .call_method(method, &())
+        .await
+        .map_err(|e| format!("{method}: {e}"))?;
+    Ok(())
+}
+
+/// Fetch the current now-playing state (the pull path the applet reads on mount).
+#[tauri::command]
+pub async fn mpris_now_playing() -> Result<Option<NowPlaying>, String> {
+    let conn = Connection::session()
+        .await
+        .map_err(|e| format!("session bus: {e}"))?;
+    Ok(build_now_playing(&conn).await)
+}
+
+/// Toggle play/pause on a player.
+#[tauri::command]
+pub async fn mpris_play_pause(id: String) -> Result<(), String> {
+    transport(&id, "PlayPause").await
+}
+
+/// Skip to the next track.
+#[tauri::command]
+pub async fn mpris_next(id: String) -> Result<(), String> {
+    transport(&id, "Next").await
+}
+
+/// Skip to the previous track.
+#[tauri::command]
+pub async fn mpris_previous(id: String) -> Result<(), String> {
+    transport(&id, "Previous").await
+}
+
+/// Pin (or, with `None`, un-pin) a player as the active one.
+#[tauri::command]
+pub fn mpris_pin(id: Option<String>) {
+    if let Ok(mut p) = PINNED.lock() {
+        *p = id;
+    }
+}
+
+/// Poll the session bus and emit `mpris://now-playing` so the applet tracks the
+/// live state. MPRIS emits `PropertiesChanged`, but a short poll is simpler and
+/// robust across players that under-report; the emit carries the full payload.
+pub fn start_monitor(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let Ok(conn) = Connection::session().await else {
+            return;
+        };
+        loop {
+            let state = build_now_playing(&conn).await;
+            let _ = app.emit("mpris://now-playing", state);
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,5 +512,16 @@ mod tests {
         assert_eq!(t.artist, "");
         assert_eq!(t.art_url, None);
         assert_eq!(t.length, 0.0);
+    }
+
+    #[test]
+    fn remote_art_is_dropped_local_art_is_kept() {
+        // The ambient-leak rule: only file:// art is passed through.
+        assert_eq!(
+            art_for(Some("file:///home/u/art.png".into())).as_deref(),
+            Some("file:///home/u/art.png")
+        );
+        assert_eq!(art_for(Some("https://cdn/art.png".into())), None);
+        assert_eq!(art_for(None), None);
     }
 }

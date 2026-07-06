@@ -273,6 +273,7 @@ pub fn run() {
             }
             sni::start(app.handle().clone(), sni_items);
             bluetooth::start_monitor(app.handle().clone());
+            mpris::start_monitor(app.handle().clone());
             // Register the BlueZ Agent1 implementation so first-time
             // pairing works for devices that need PIN/passkey/
             // confirmation interaction. See
@@ -390,6 +391,11 @@ pub fn run() {
             network::get_vpn_connections,
             network::connect_vpn,
             network::disconnect_vpn,
+            mpris::mpris_now_playing,
+            mpris::mpris_play_pause,
+            mpris::mpris_next,
+            mpris::mpris_previous,
+            mpris::mpris_pin,
             bluetooth::get_bluetooth_state,
             bluetooth::set_bluetooth_powered,
             bluetooth::connect_bluetooth_device,
