@@ -833,7 +833,27 @@ fn merge_files(under: ArlenThemeFile, over: ArlenThemeFile) -> ArlenThemeFile {
         terminal: merge_terminal(under.terminal, over.terminal),
         icons: merge_icons(under.icons, over.icons),
         wallpaper: over.wallpaper.or(under.wallpaper),
-        sounds: over.sounds.or(under.sounds),
+        sounds: merge_sounds(under.sounds, over.sounds),
+    }
+}
+
+/// Merge the `[sounds]` section per-FIELD (honouring `merge_files`'s field-level
+/// contract): an overlay that sets only `notification` keeps the base theme's
+/// `error` / `warning` / `action`, rather than a whole-section replace that would
+/// drop the others. Each field is a distinct event-to-sound mapping, so a partial
+/// override must not silently reset the rest.
+fn merge_sounds(
+    under: Option<SoundsSection>,
+    over: Option<SoundsSection>,
+) -> Option<SoundsSection> {
+    match (under, over) {
+        (None, x) | (x, None) => x,
+        (Some(u), Some(o)) => Some(SoundsSection {
+            notification: o.notification.or(u.notification),
+            error: o.error.or(u.error),
+            warning: o.warning.or(u.warning),
+            action: o.action.or(u.action),
+        }),
     }
 }
 
@@ -1088,6 +1108,29 @@ size  = 24
         assert_eq!(t.sounds.error, "dialog-error");
         assert_eq!(t.sounds.warning, "dialog-warning");
         assert_eq!(t.sounds.action, "complete");
+    }
+
+    #[test]
+    fn merge_sounds_keeps_base_fields_a_partial_overlay_omits() {
+        let base = SoundsSection {
+            notification: Some("base-notif".into()),
+            error: Some("base-error".into()),
+            warning: Some("base-warn".into()),
+            action: Some("base-action".into()),
+        };
+        let overlay = SoundsSection {
+            notification: Some("over-notif".into()),
+            error: None,
+            warning: None,
+            action: None,
+        };
+        let merged = merge_sounds(Some(base), Some(overlay)).expect("some");
+        // The overlay wins where it sets a value; the base is kept where it does not
+        // (field-level, not a whole-section replace).
+        assert_eq!(merged.notification.as_deref(), Some("over-notif"));
+        assert_eq!(merged.error.as_deref(), Some("base-error"));
+        assert_eq!(merged.warning.as_deref(), Some("base-warn"));
+        assert_eq!(merged.action.as_deref(), Some("base-action"));
     }
 
     #[test]
