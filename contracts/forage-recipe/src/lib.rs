@@ -321,6 +321,34 @@ pub struct Capabilities {
     pub extra: BTreeMap<String, toml::Value>,
 }
 
+/// A parsed graph capability scope from a recipe: `read:Type` or `write:Type`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GraphScope {
+    /// A read grant on the given entity type.
+    Read(String),
+    /// A write grant on the given entity type.
+    Write(String),
+}
+
+/// Parse a recipe graph capability string (`read:Type` / `write:Type`), the
+/// single source of truth both the capability-to-profile mapper
+/// (`forage/capabilities`) and the `.lunpkg` manifest writer (`forage/package`)
+/// use, so the two cannot drift. Whitespace around the prefix and type is
+/// trimmed; a missing colon, empty type or unknown prefix yields `None` (each
+/// caller decides whether that is a soft skip or a hard error).
+pub fn parse_graph_scope(scope: &str) -> Option<GraphScope> {
+    let (prefix, ty) = scope.split_once(':')?;
+    let ty = ty.trim();
+    if ty.is_empty() {
+        return None;
+    }
+    match prefix.trim() {
+        "read" => Some(GraphScope::Read(ty.to_string())),
+        "write" => Some(GraphScope::Write(ty.to_string())),
+        _ => None,
+    }
+}
+
 /// What the package registers with the system (`[provides]`).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -1168,5 +1196,27 @@ commit = "{COMMIT}"
         assert!(is_semver_like("1.2"));
         assert!(!is_semver_like("1.2.3.4"));
         assert!(!is_semver_like("1.2.x"));
+    }
+
+    #[test]
+    fn parse_graph_scope_reads_writes_and_rejects() {
+        assert_eq!(
+            parse_graph_scope("read:File"),
+            Some(GraphScope::Read("File".into()))
+        );
+        assert_eq!(
+            parse_graph_scope("write:Tag"),
+            Some(GraphScope::Write("Tag".into()))
+        );
+        // Whitespace around the prefix and type is trimmed (the two former
+        // parsers disagreed here; the shared one is the single truth).
+        assert_eq!(
+            parse_graph_scope("  read : System.File  "),
+            Some(GraphScope::Read("System.File".into()))
+        );
+        // A missing colon, empty type or unknown prefix is not a scope.
+        assert_eq!(parse_graph_scope("readFile"), None);
+        assert_eq!(parse_graph_scope("read:"), None);
+        assert_eq!(parse_graph_scope("delete:File"), None);
     }
 }
