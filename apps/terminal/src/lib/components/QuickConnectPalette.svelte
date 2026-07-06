@@ -36,7 +36,6 @@
   interface Group {
     key: string;
     label: string;
-    tint: string | null;
     hosts: SavedHost[];
   }
   const savedGroups = $derived.by<Group[]>(() => {
@@ -45,7 +44,7 @@
       const key = h.project ?? "__other";
       let g = by.get(key);
       if (!g) {
-        g = { key, label: h.project ? `Project ${h.project}` : "Other hosts", tint: h.projectTint, hosts: [] };
+        g = { key, label: h.project ? `Project ${h.project}` : "Other hosts", hosts: [] };
         by.set(key, g);
       }
       g.hosts.push(h);
@@ -91,13 +90,10 @@
           {/if}
 
           {#each savedGroups as g (g.key)}
-            <div class="qc-group">
-              {#if g.tint}<span class="qc-tint" style={`background:${g.tint}`}></span>{/if}
-              {g.label}
-            </div>
+            <div class="qc-group">{g.label}</div>
             {#each g.hosts as h (h.id)}
               <CommandItem value={`saved-${h.id}`} onSelect={() => connectSaved(h)}>
-                <span class="qc-badge" style={h.projectTint ? `background:${h.projectTint}` : ""}></span>
+                <span class="qc-badge"></span>
                 <span class="qc-name">{h.label}</span>
                 <span class="qc-addr">{h.user}@{h.host}</span>
                 {#if h.lastUsed}<span class="qc-meta">{h.lastUsed}</span>{/if}
@@ -170,11 +166,6 @@
     letter-spacing: 0.03em;
     text-transform: uppercase;
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
-  }
-  .qc-tint {
-    width: 8px;
-    height: 8px;
-    border-radius: var(--radius-chip);
   }
   .qc-badge {
     width: 8px;

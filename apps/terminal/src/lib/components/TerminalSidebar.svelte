@@ -85,12 +85,12 @@
             <SidebarMenuButton isActive tooltip={`${$activeRemote.user}@${$activeRemote.host}`}>
               <span
                 class="ts-remote-badge hidden group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:block"
-                style={`background:${$activeRemote.projectTint ?? "var(--color-fg-secondary)"}`}
+                style="background:var(--color-fg-secondary)"
               ></span>
               <span class="ts-text group-data-[collapsible=icon]:hidden">{$activeRemote.label}</span>
               <span
                 class="ts-remote-badge ml-auto group-data-[collapsible=icon]:hidden"
-                style={`background:${$activeRemote.projectTint ?? "var(--color-fg-secondary)"}`}
+                style="background:var(--color-fg-secondary)"
               ></span>
             </SidebarMenuButton>
           </SidebarMenuItem>
