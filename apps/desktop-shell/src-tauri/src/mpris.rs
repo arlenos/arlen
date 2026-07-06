@@ -210,6 +210,10 @@ const MPRIS_PATH: &str = "/org/mpris/MediaPlayer2";
 const PLAYER_IFACE: &str = "org.mpris.MediaPlayer2.Player";
 const ROOT_IFACE: &str = "org.mpris.MediaPlayer2";
 
+/// Per-player property-read timeout: a hung MPRIS player is skipped rather than
+/// stalling the poll for every other player.
+const PLAYER_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// The user's pinned active player (manual override of auto-follow), or `None`
 /// for auto. Set by `mpris_pin`; read when composing the now-playing state.
 static PINNED: Mutex<Option<String>> = Mutex::new(None);
@@ -314,8 +318,13 @@ async fn build_now_playing(conn: &Connection) -> Option<NowPlaying> {
     let buses = list_players(conn).await.ok()?;
     let mut reads = Vec::new();
     for bus in buses {
-        if let Some(r) = read_player(conn, &bus).await {
-            reads.push(r);
+        // Bound each player read: a buggy MPRIS app that hangs on a property read
+        // must not stall the poll for every other player (which would freeze the
+        // whole now-playing monitor). A timed-out player is simply skipped.
+        match tokio::time::timeout(PLAYER_READ_TIMEOUT, read_player(conn, &bus)).await {
+            Ok(Some(r)) => reads.push(r),
+            Ok(None) => {}
+            Err(_) => log::debug!("mpris: player {bus} read timed out; skipping"),
         }
     }
     if reads.is_empty() {
