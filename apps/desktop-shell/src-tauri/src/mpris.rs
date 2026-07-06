@@ -14,7 +14,10 @@
 // increment); until that lands its items read as unused in the bin tree.
 #![allow(dead_code)]
 
+use std::collections::HashMap;
+
 use serde::Serialize;
+use zbus::zvariant::{OwnedValue, Value};
 
 /// Playback status, mirroring the three MPRIS `PlaybackStatus` values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -121,6 +124,80 @@ pub fn rank_active(players: &[MprisPlayer], pinned: Option<&str>) -> Option<Stri
         .map(|p| p.id.clone())
 }
 
+/// The track fields parsed from an MPRIS `Metadata` (`a{sv}`) map.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrackMeta {
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    /// `mpris:artUrl` (the client applies the `file://`-direct / remote-off rule).
+    pub art_url: Option<String>,
+    /// `mpris:length` converted from microseconds to seconds.
+    pub length: f64,
+}
+
+/// Extract a string metadata field (`xesam:title`, `xesam:album`, `mpris:artUrl`).
+/// Mirrors the `bluetooth.rs` `OwnedValue` -> `Value` match pattern.
+fn meta_str(meta: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
+    match Value::try_from(meta.get(key)?.clone()).ok()? {
+        Value::Str(s) => Some(s.to_string()),
+        _ => None,
+    }
+}
+
+/// Extract the `xesam:artist` list (`as`), joined with `", "`. Tolerates a lone
+/// string (some players send `xesam:artist` as a single string).
+fn meta_artist(meta: &HashMap<String, OwnedValue>) -> String {
+    let Some(v) = meta
+        .get("xesam:artist")
+        .and_then(|v| Value::try_from(v.clone()).ok())
+    else {
+        return String::new();
+    };
+    match v {
+        Value::Array(arr) => arr
+            .iter()
+            .filter_map(|e| match e {
+                Value::Str(s) => Some(s.to_string()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join(", "),
+        Value::Str(s) => s.to_string(),
+        _ => String::new(),
+    }
+}
+
+/// Extract `mpris:length` (microseconds, signed or unsigned) as seconds.
+fn meta_length_seconds(meta: &HashMap<String, OwnedValue>) -> f64 {
+    let Some(v) = meta
+        .get("mpris:length")
+        .and_then(|v| Value::try_from(v.clone()).ok())
+    else {
+        return 0.0;
+    };
+    match v {
+        Value::I64(n) => micros_to_seconds(n),
+        Value::U64(n) => micros_to_seconds(n as i64),
+        Value::I32(n) => micros_to_seconds(n as i64),
+        Value::U32(n) => micros_to_seconds(n as i64),
+        _ => 0.0,
+    }
+}
+
+/// Parse an MPRIS `Metadata` (`a{sv}`) map into the track fields the applet
+/// renders. Missing fields degrade gracefully (empty title/artist/album, no art,
+/// zero length) rather than failing the whole player.
+pub fn parse_track(meta: &HashMap<String, OwnedValue>) -> TrackMeta {
+    TrackMeta {
+        title: meta_str(meta, "xesam:title").unwrap_or_default(),
+        artist: meta_artist(meta),
+        album: meta_str(meta, "xesam:album").unwrap_or_default(),
+        art_url: meta_str(meta, "mpris:artUrl"),
+        length: meta_length_seconds(meta),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,5 +274,38 @@ mod tests {
     #[test]
     fn no_players_hides_the_applet() {
         assert_eq!(rank_active(&[], None), None);
+    }
+
+    fn owned(v: Value<'static>) -> OwnedValue {
+        OwnedValue::try_from(v).unwrap()
+    }
+
+    #[test]
+    fn parse_track_extracts_the_metadata_fields() {
+        let mut meta: HashMap<String, OwnedValue> = HashMap::new();
+        meta.insert("xesam:title".into(), owned(Value::from("Song")));
+        meta.insert(
+            "xesam:artist".into(),
+            owned(Value::from(vec!["A".to_string(), "B".to_string()])),
+        );
+        meta.insert("xesam:album".into(), owned(Value::from("Album")));
+        meta.insert("mpris:artUrl".into(), owned(Value::from("file:///art.png")));
+        meta.insert("mpris:length".into(), owned(Value::from(90_000_000i64)));
+        let t = parse_track(&meta);
+        assert_eq!(t.title, "Song");
+        assert_eq!(t.artist, "A, B"); // the `as` list joined
+        assert_eq!(t.album, "Album");
+        assert_eq!(t.art_url.as_deref(), Some("file:///art.png"));
+        assert_eq!(t.length, 90.0); // 90s from 90_000_000 us
+    }
+
+    #[test]
+    fn parse_track_degrades_gracefully_on_missing_fields() {
+        let meta: HashMap<String, OwnedValue> = HashMap::new();
+        let t = parse_track(&meta);
+        assert_eq!(t.title, "");
+        assert_eq!(t.artist, "");
+        assert_eq!(t.art_url, None);
+        assert_eq!(t.length, 0.0);
     }
 }
