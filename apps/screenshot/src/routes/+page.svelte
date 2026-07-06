@@ -25,7 +25,12 @@
     Download,
   } from "lucide-svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import FloatingThumbnail from "$lib/components/FloatingThumbnail.svelte";
   import { drawShape, rectOf, type Shape, type ShapeKind, type ToolKind, type Point } from "$lib/annotate";
+
+  // The capture handoff: a fresh capture floats as a thumbnail (ignore -> auto-save,
+  // click -> annotate); the annotate surface stays mounted so its canvas is ready.
+  let phase = $state<"thumbnail" | "annotate" | "dismissed">("thumbnail");
 
   const TOOLS: { kind: ToolKind; label: string; icon: typeof Crop; key: string }[] = [
     { kind: "select", label: "Select", icon: MousePointer2, key: "V" },
@@ -58,7 +63,7 @@
 
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D | null = null;
-  let base: HTMLCanvasElement; // the untouched captured image, for redraw + blur
+  let base = $state<HTMLCanvasElement>(); // the untouched captured image, for redraw + blur + the thumbnail
   let draft: Shape | null = null;
   let drawing = false;
 
@@ -79,7 +84,7 @@
   });
 
   function redraw() {
-    if (!ctx) return;
+    if (!ctx || !base) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(base, 0, 0);
     for (const s of shapes) drawShape(ctx, s, base);
@@ -166,9 +171,10 @@
     textEdit = null;
   }
 
-  async function copy() {
-    commitText();
-    canvas.toBlob(async (blob) => {
+  // Copy / save operate on a given canvas - the annotate canvas for the surface,
+  // the untouched base for the thumbnail's quick actions.
+  async function copyCanvas(c: HTMLCanvasElement) {
+    c.toBlob(async (blob) => {
       if (!blob) return;
       try {
         // Live: the coder's clipboard command over the captured PNG. Fallback: the
@@ -179,11 +185,10 @@
       }
     }, "image/png");
   }
-  async function save() {
-    commitText();
+  function saveCanvas(c: HTMLCanvasElement) {
     // Live: invoke("save_to_file", ...) over the coder's write_png bridge. Under
     // vite, download the composed PNG so the flow is verifiable.
-    canvas.toBlob((blob) => {
+    c.toBlob((blob) => {
       if (!blob) return;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -192,6 +197,19 @@
       a.click();
       URL.revokeObjectURL(url);
     }, "image/png");
+  }
+  async function copy() {
+    commitText();
+    await copyCanvas(canvas);
+  }
+  async function save() {
+    commitText();
+    saveCanvas(canvas);
+  }
+  // Ignoring the thumbnail auto-saves (the fast path); the dismiss button does too.
+  function autoSaveAndDismiss() {
+    if (base) saveCanvas(base);
+    phase = "dismissed";
   }
   function fileName(): string {
     const d = new Date();
@@ -259,7 +277,9 @@
 
 <svelte:window on:keydown={onKey} />
 
-<div class="tool">
+<!-- The annotate surface stays mounted (its canvas is set up on load); the phase
+     only shows it once the user opens the capture from the floating thumbnail. -->
+<div class="tool" class:hidden={phase !== "annotate"}>
   <div class="stage">
     <div class="canvas-wrap">
       <canvas
@@ -317,7 +337,31 @@
   </div>
 </div>
 
+{#if phase === "thumbnail" && base}
+  <FloatingThumbnail
+    image={base}
+    onAnnotate={() => (phase = "annotate")}
+    onCopy={() => base && copyCanvas(base)}
+    onSave={() => base && saveCanvas(base)}
+    onDismiss={autoSaveAndDismiss}
+  />
+{:else if phase === "dismissed"}
+  <div class="dismissed">Saved to Pictures.</div>
+{/if}
+
 <style>
+  .tool.hidden {
+    display: none;
+  }
+  .dismissed {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
   .tool {
     display: flex;
     flex-direction: column;
