@@ -86,6 +86,121 @@ fn path_hard_deny_reason(path: &Path, app_id: &str) -> Option<String> {
     None
 }
 
+/// A submission's declared category (the fixed taxonomy from
+/// `app-enrollment-plan.md` §"submission-diff reference"). Each category has a
+/// baseline scope-set - the reach a conservative app of that category needs - and
+/// a submission is auto-merged only if its scope-set is a subset of the baseline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Category {
+    /// No filesystem beyond own config, no network (calculators, system-info).
+    InfoOnly,
+    /// The user's Documents (editors, office, PKM).
+    Documents,
+    /// Read the user's media - Music, Pictures, Videos (players, viewers).
+    MediaRead,
+    /// The user's Pictures and Videos (paint apps, media editors).
+    Creative,
+    /// Downloads plus network (torrent/download managers).
+    DownloadsNet,
+    /// Broad home plus network (IDEs, launchers, sync).
+    HomeNet,
+    /// Own config plus network plus notifications (chat/IM).
+    CommsNet,
+    /// A project directory plus network (dev tools).
+    DevWorkspace,
+}
+
+impl Category {
+    /// Parse the declared category token (as a submission would carry it).
+    pub fn parse(s: &str) -> Option<Category> {
+        Some(match s.trim() {
+            "info-only" => Category::InfoOnly,
+            "documents" => Category::Documents,
+            "media-read" => Category::MediaRead,
+            "creative" => Category::Creative,
+            "downloads+net" => Category::DownloadsNet,
+            "home+net" => Category::HomeNet,
+            "comms+net" => Category::CommsNet,
+            "dev-workspace" => Category::DevWorkspace,
+            _ => return None,
+        })
+    }
+
+    /// The scope tokens this category's baseline auto-permits.
+    fn baseline(self) -> &'static [&'static str] {
+        match self {
+            Category::InfoOnly => &[],
+            Category::Documents => &["documents"],
+            Category::MediaRead => &["music", "pictures", "videos"],
+            Category::Creative => &["pictures", "videos"],
+            Category::DownloadsNet => &["downloads", "network"],
+            Category::HomeNet => &["home", "network"],
+            Category::CommsNet => &["network", "notifications"],
+            Category::DevWorkspace => &["home", "network"],
+        }
+    }
+}
+
+/// The scope tokens a profile grants, the axis the category diff compares. A
+/// custom filesystem path is always a token of its own (it is never in a
+/// category baseline, so it is always a delta the human reviews - a dangerous one
+/// is auto-rejected by [`hard_deny_reasons`] first).
+fn profile_scope_set(profile: &PermissionProfile) -> Vec<String> {
+    let mut set = Vec::new();
+    let fs = &profile.filesystem;
+    for (on, tok) in [
+        (fs.home, "home"),
+        (fs.documents, "documents"),
+        (fs.downloads, "downloads"),
+        (fs.pictures, "pictures"),
+        (fs.music, "music"),
+        (fs.videos, "videos"),
+    ] {
+        if on {
+            set.push(tok.to_string());
+        }
+    }
+    if profile.network.allow_all || !profile.network.allowed_domains.is_empty() {
+        set.push("network".to_string());
+    }
+    if profile.notifications.enabled {
+        set.push("notifications".to_string());
+    }
+    for path in &fs.custom {
+        set.push(format!("custom:{}", path.display()));
+    }
+    set
+}
+
+/// The result of the subset-vs-category-baseline diff (the AWS IAM
+/// `CheckNoNewAccess`/Zelkova subset-check analogue).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CategoryDiff {
+    /// The submission's scope-set is a subset of its category baseline (a
+    /// tightening or equal): auto-merge, no human review.
+    AutoMerge,
+    /// The submission grants MORE than its category baseline: flag the listed
+    /// delta scopes for the one semantic human question.
+    FlagDelta(Vec<String>),
+}
+
+/// Diff a submitted profile's scope-set against its declared `category`'s
+/// baseline. A SOUND subset check: auto-merge ONLY when every granted scope is in
+/// the baseline, so a widening can never be auto-approved. `hard_deny_reasons`
+/// must be run first (a hard-deny hit auto-rejects regardless of category).
+pub fn category_diff(profile: &PermissionProfile, category: Category) -> CategoryDiff {
+    let baseline = category.baseline();
+    let delta: Vec<String> = profile_scope_set(profile)
+        .into_iter()
+        .filter(|scope| !baseline.contains(&scope.as_str()))
+        .collect();
+    if delta.is_empty() {
+        CategoryDiff::AutoMerge
+    } else {
+        CategoryDiff::FlagDelta(delta)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,5 +245,47 @@ mod tests {
         assert!(!passes_hard_deny(&p));
         let p = parse("[info]\napp_id = \"com.x\"\n[input]\nregister_global_bindings = true\n");
         assert!(!passes_hard_deny(&p));
+    }
+
+    #[test]
+    fn category_parse_round_trips() {
+        assert_eq!(Category::parse("documents"), Some(Category::Documents));
+        assert_eq!(Category::parse("downloads+net"), Some(Category::DownloadsNet));
+        assert_eq!(Category::parse("nonsense"), None);
+    }
+
+    #[test]
+    fn a_profile_within_its_category_baseline_auto_merges() {
+        // A documents editor granting only Documents is a subset of the baseline.
+        let p = parse("[info]\napp_id = \"com.x\"\n[filesystem]\ndocuments = true\n");
+        assert_eq!(category_diff(&p, Category::Documents), CategoryDiff::AutoMerge);
+        // A media reader granting music+pictures+videos matches media-read exactly.
+        let p = parse(
+            "[info]\napp_id = \"com.x\"\n[filesystem]\nmusic = true\npictures = true\nvideos = true\n",
+        );
+        assert_eq!(category_diff(&p, Category::MediaRead), CategoryDiff::AutoMerge);
+        // Downloads+net matches the downloads+net baseline.
+        let p = parse(
+            "[info]\napp_id = \"com.x\"\n[filesystem]\ndownloads = true\n[network]\nallow_all = true\n",
+        );
+        assert_eq!(category_diff(&p, Category::DownloadsNet), CategoryDiff::AutoMerge);
+    }
+
+    #[test]
+    fn a_profile_beyond_its_category_baseline_flags_the_delta() {
+        // A documents editor that ALSO asks for network is a widening -> flag network.
+        let p = parse(
+            "[info]\napp_id = \"com.x\"\n[filesystem]\ndocuments = true\n[network]\nallow_all = true\n",
+        );
+        assert_eq!(
+            category_diff(&p, Category::Documents),
+            CategoryDiff::FlagDelta(vec!["network".to_string()])
+        );
+        // A custom path is always a delta (never in a dim baseline).
+        let p = parse("[info]\napp_id = \"com.x\"\n[filesystem]\ncustom = [\"~/Sync\"]\n");
+        assert_eq!(
+            category_diff(&p, Category::HomeNet),
+            CategoryDiff::FlagDelta(vec!["custom:~/Sync".to_string()])
+        );
     }
 }
