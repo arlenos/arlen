@@ -32,6 +32,11 @@ export type SeverityTier = "silent" | "standard" | "high_stakes";
 /// The user's decision (contracts/consent-contract ConsentOutcome).
 export type ConsentOutcome = "allowed_once" | "allowed_remembered" | "denied";
 
+/// Whether the action can be undone (from InverseClass). This gates autonomy:
+/// reversible actions carry into autonomous agent use, only the genuinely
+/// irreversible confirm per instance.
+export type Reversibility = "reversible" | "reversible_with_cost" | "irreversible";
+
 /// The pending request the dialog renders (daemons/consent-broker PendingView).
 export interface PendingView {
   id: number;
@@ -43,16 +48,20 @@ export interface PendingView {
   summary: string;
   /// The concrete target (a path, a host, a recipient), if any.
   scope: string | null;
+  /// Whether it can be undone - the gate on "remember" + autonomy. (Contract seam:
+  /// the broker holds this via InverseClass; PendingView must surface it.)
+  reversibility: Reversibility;
 }
 
 // One representative request per tier/class so the design language + the
 // high-stakes treatments render under vite.
 const MOCK_PENDING: PendingView[] = [
-  { id: 1, requester: "org.arlen.files", class: "portal", tier: "standard", summary: "open one file you pick", scope: "a single file you choose" },
-  { id: 2, requester: "com.example.notes", class: "capability_grant", tier: "standard", summary: "read your notes and their tags", scope: "your notes" },
-  { id: 3, requester: "org.arlen.files", class: "destructive", tier: "high_stakes", summary: "permanently delete 3 files", scope: "~/Documents/old" },
-  { id: 4, requester: "com.example.mail", class: "external_send", tier: "high_stakes", summary: "send an email on your behalf", scope: "alex@example.com" },
-  { id: 5, requester: "org.arlen.installd", class: "elevated_privilege", tier: "high_stakes", summary: "install system software with admin rights", scope: "3 packages" },
+  { id: 1, requester: "org.arlen.files", class: "portal", tier: "standard", summary: "open one file you pick", scope: "a single file you choose", reversibility: "reversible" },
+  { id: 2, requester: "com.example.notes", class: "capability_grant", tier: "standard", summary: "read your notes and their tags", scope: "your notes", reversibility: "reversible" },
+  { id: 3, requester: "org.arlen.files", class: "destructive", tier: "standard", summary: "move 8 files to the Trash", scope: "~/Downloads", reversibility: "reversible" },
+  { id: 4, requester: "org.arlen.files", class: "destructive", tier: "high_stakes", summary: "permanently delete 3 files", scope: "~/Documents/old", reversibility: "irreversible" },
+  { id: 5, requester: "com.example.mail", class: "external_send", tier: "high_stakes", summary: "send an email on your behalf", scope: "alex@example.com", reversibility: "irreversible" },
+  { id: 6, requester: "org.arlen.installd", class: "elevated_privilege", tier: "high_stakes", summary: "install system software with admin rights", scope: "3 packages", reversibility: "reversible_with_cost" },
 ];
 
 /// The request on screen now, or null when nothing is pending.
