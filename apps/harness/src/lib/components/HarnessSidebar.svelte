@@ -29,6 +29,7 @@
     PinOff,
     Plus,
     Search,
+    Share2,
     Trash2,
   } from "@lucide/svelte";
   import {
@@ -40,6 +41,7 @@
     renameSession,
     togglePinSession,
   } from "$lib/stores/conversation";
+  import { openMint } from "$lib/stores/mint";
   import { sessionMatches } from "$lib/search";
   import { groupSessions } from "$lib/session-groups";
   import { conversationToMarkdown } from "$lib/export";
@@ -110,6 +112,12 @@
           <SidebarMenuButton id="harness-new-chat" title="New chat (Ctrl+N)" onclick={startNew}>
             <Plus strokeWidth={2} />
             <span>New chat</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton id="harness-share-context" title="Share a slice of your context" onclick={openMint}>
+            <Share2 strokeWidth={2} />
+            <span>Share context</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
