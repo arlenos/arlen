@@ -9,6 +9,7 @@
 
 pub mod connection_auth;
 pub mod identity;
+pub mod learning;
 pub mod lint;
 pub mod identity_registry;
 pub mod peer_pidfd;
