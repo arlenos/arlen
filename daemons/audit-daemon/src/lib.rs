@@ -33,6 +33,7 @@ pub mod ingest;
 pub mod key;
 pub mod ledger;
 pub mod read;
+pub mod tpm_anchor;
 
 pub use error::{AuditError, Result};
 
