@@ -274,12 +274,19 @@ async fn read_player(conn: &Connection, bus: &str) -> Option<PlayerRead> {
         .get_property::<String>("Identity")
         .await
         .unwrap_or_else(|_| bus.trim_start_matches(MPRIS_PREFIX).to_string());
+    // The `DesktopEntry` (a `.desktop` basename) resolves to the app icon via the
+    // shell's cached resolver; absent it, the frontend falls back to a note glyph.
+    let icon = root
+        .get_property::<String>("DesktopEntry")
+        .await
+        .ok()
+        .and_then(crate::shell_overlay_client::resolve_app_icon);
 
     Some(PlayerRead {
         player: MprisPlayer {
             id: bus.to_string(),
             app,
-            icon: None,
+            icon,
             status,
         },
         track,
