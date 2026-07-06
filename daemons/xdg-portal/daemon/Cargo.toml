@@ -26,8 +26,9 @@ libc = "0.2"
 arlen-screen-capture = { path = "../../../sdk/screen-capture" }
 # The org.freedesktop.impl.portal.Print backend (PRN-R2) bridges to the built
 # arlen-print service (CUPS); this brings in JobOptions/Duplex/ColorMode + the
-# submit surface.
-arlen-print = { path = "../../print" }
+# submit surface. audit-proto supplies the ledger sink the print submit records to.
+arlen-print = { path = "../../print", features = ["cups"] }
+audit-proto = { path = "../../../contracts/audit-proto" }
 
 [dev-dependencies]
 tempfile = "3"
