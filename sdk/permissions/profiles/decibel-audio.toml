@@ -1,0 +1,8 @@
+# Starting permission profile for a music player. Reads the user's Music; no
+# network and no Knowledge Graph.
+[info]
+app_id = "decibel-audio"
+tier = "third-party"
+
+[filesystem]
+music = true
