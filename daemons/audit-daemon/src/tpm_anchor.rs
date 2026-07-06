@@ -1,16 +1,34 @@
-//! The TPM anchor for the audit ledger (`physical-boot-security-plan.md` §b): the
-//! chain head is anchored to a TPM NV MONOTONIC counter so that truncating or
-//! rolling back the log and rewriting the software `head.checkpoint` (both of them
-//! same-uid-rewritable, the documented residual) leaves a DETECTABLE gap against
-//! the hardware counter, which a same-uid attacker cannot decrement. The CMU
-//! tamper-proof-logging pattern: advance and record the counter when sealing a
-//! fresh checkpoint (at shutdown / each checkpoint write), read and compare it at
-//! restart.
+//! TPM-anchor scaffolding for the audit ledger (`physical-boot-security-plan.md`
+//! §b). **INCOMPLETE - inert scaffolding only; this counter check does NOT close
+//! the same-uid truncate-and-rewrite residual on its own (adversarial review,
+//! 7 July).** The idea is to anchor the chain head to a TPM NV monotonic counter
+//! so a rollback of the log + the same-uid-rewritable `head.checkpoint` is
+//! detectable at restart.
 //!
-//! The TPM operation sits behind the [`TpmAnchor`] seam so the daemon logic is
-//! headless-testable with [`MockTpmAnchor`]; the real `tss-esapi` NV-counter impl
-//! and the on-metal verify are the follow-up. This module is the buildable-now
-//! software structure the plan calls "the one physical-boot piece that goes early".
+//! Why the bare-counter compare here is insufficient: the checkpoint file is
+//! same-uid-writable and the hardware counter is same-uid-READABLE, so an attacker
+//! erasing the tail (a) reads the current hardware value `H`, (b) truncates the
+//! log to a genuine earlier head, (c) writes a forged checkpoint recording `H` for
+//! that head. At restart the chain still verifies and `recorded == hardware`, so
+//! [`assess_with_anchor`] reports `Consistent` - a MISS. A monotonic counter only
+//! catches a *decrement* (a lazy attacker who left an old, lower counter, which
+//! the plain checkpoint already alarms on via the head hash); the attacker COPIES
+//! the current value instead. The counter is not bound to the log content.
+//!
+//! The sound mechanism binds the head to the hardware: a **TPM-signed attestation
+//! over `(head_index, head_hash)`** (a `TPM2_Quote` / NV-signed tuple), which a
+//! same-uid attacker cannot forge for a truncated head because the signing key is
+//! TPM-held. That is a redesign of this seam (from a bare counter to an
+//! `attest(head)`/`verify` pair) and is the real follow-up; the counter type here
+//! is retained only as inert scaffolding (the daemon default is no anchor) until
+//! that redesign lands. Do NOT wire a real anchor against this check and trust it.
+//!
+//! Also open (adversarial review): a benign crash between the append-time counter
+//! increment and the checkpoint write false-flags `Tampered` (breaks crash-ahead
+//! recovery); first-enabling a real anchor on an existing ledger false-flags a
+//! rollback (`stored == 0` via serde-default vs a non-zero fresh NV counter); and
+//! a TPM read error fails open (a same-uid attacker who induces read errors strips
+//! the check). All three must be resolved in the redesign.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -54,13 +72,14 @@ pub fn assess_anchor(recorded: u64, hardware: u64) -> AnchorVerdict {
     }
 }
 
-/// Layer the TPM-anchor verdict onto the checkpoint's own startup check: an
-/// otherwise-[`StartupCheck::Consistent`] checkpoint is still
-/// [`StartupCheck::Tampered`] when the hardware counter shows its recorded value
-/// was rolled back or forged (the software checkpoint alone cannot catch a
-/// same-uid truncate-and-rewrite of the log + checkpoint; the monotonic counter
-/// can). [`StartupCheck::Genesis`] and an already-`Tampered` check pass through
-/// unchanged - the anchor only ever tightens, never relaxes, the verdict.
+/// Layer the counter verdict onto the checkpoint's startup check: a `Consistent`
+/// check becomes `Tampered` when the recorded counter is BELOW the hardware
+/// counter (`RolledBack`) or above it (`Forged`). **This catches only a lazy
+/// rollback that left an old, lower counter; it MISSES a same-uid attacker who
+/// copies the current hardware value into a forged checkpoint - see the module
+/// doc.** It also currently false-flags a benign crash-ahead and a first-anchor-
+/// enable (module doc). `Genesis` and an already-`Tampered` check pass through.
+/// Retained as inert scaffolding pending the signed-attestation redesign.
 pub fn assess_with_anchor(
     check: StartupCheck,
     recorded_counter: u64,
