@@ -14,6 +14,7 @@
     type FileEntry,
   } from "@arlen/ui-kit/components/browser";
   import { openPath } from "$lib/adapter";
+  import ProvenanceHalo from "$lib/components/ProvenanceHalo.svelte";
   import { AS_OF_OPTIONS, choiceToMicros } from "$lib/asof";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Input } from "@arlen/ui-kit/components/ui/input";
@@ -270,17 +271,16 @@
       {/if}
     </div>
 
-    {#if $info.woher.length > 0}
-      <section class="sec">
-        <span class="sec-title">Where from</span>
-        {#each $info.woher as line (line.label + line.detail)}
-          <div class="prov">
-            <span class="prov-label">{line.label}</span>
-            <span class="prov-value">{line.detail}</span>
-          </div>
-        {/each}
-      </section>
-    {/if}
+    <section class="sec">
+      <span class="sec-title">Where from</span>
+      {#each $info.woher as line (line.label + line.detail)}
+        <div class="prov">
+          <span class="prov-label">{line.label}</span>
+          <span class="prov-value">{line.detail}</span>
+        </div>
+      {/each}
+      <ProvenanceHalo fileRef={path} />
+    </section>
 
     {#if $info.verwandt.length > 0}
       {@const rels = asOfMicros === null ? $info.verwandt : $asOfVerwandt}
