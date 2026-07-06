@@ -43,8 +43,14 @@ async fn main() {
 
     let socket = server::socket_path();
 
+    // The audit ledger sink: a change to a security-relevant AI master switch is
+    // recorded to the HMAC ledger (fail-open, so a down ledger never blocks a
+    // change). Connects lazily per submit.
+    let sink: Arc<dyn audit_proto::sink::AuditSink> =
+        Arc::new(audit_proto::sink::LedgerAuditSink::at_default_socket());
+
     tokio::select! {
-        r = server::run(Arc::clone(&store), &socket) => {
+        r = server::run(Arc::clone(&store), &socket, Arc::clone(&sink)) => {
             if let Err(e) = r {
                 tracing::error!("serve loop ended: {e}");
             }
