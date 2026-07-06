@@ -19,6 +19,7 @@
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import HarnessSidebar from "$lib/components/HarnessSidebar.svelte";
   import TransparencyDrawer from "$lib/components/chat/TransparencyDrawer.svelte";
+  import MintFlow from "$lib/components/mint/MintFlow.svelte";
   import { activeTitle, initSessions, newSession } from "$lib/stores/conversation";
 
   let { children } = $props();
@@ -101,3 +102,4 @@
 <!-- The transparency drawer overlays the whole shell, summoned from the
      composer foot; mounted once here so it works from any surface. -->
 <TransparencyDrawer />
+<MintFlow />
