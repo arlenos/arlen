@@ -401,7 +401,7 @@
   .swatch {
     width: 1.125rem;
     height: 1.125rem;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-button);
     border: 1px solid color-mix(in srgb, var(--color-fg-primary) 25%, transparent);
     cursor: pointer;
     padding: 0;
