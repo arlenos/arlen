@@ -175,6 +175,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(GraphWriteExecutor::new(Arc::new(DeniedWriter)));
     let executor = ProxyExecutor::new()
         .register("graph.read", read_executor)
+        // D2 (pi-gate-class-registry.md): the fine-grained reversible graph-write
+        // tools route to the same write executor as the coarse graph.write, so each
+        // NAME carries one fixed gate class (ReversibleAction) - the coarse
+        // graph.write's mixed reversibility can never be classified soundly. The
+        // executor stays DeniedWriter-gated until the live-write cutover; this wires
+        // the tool vocabulary + routing the gate's Allow path depends on. The coarse
+        // graph.write stays registered through the transition.
+        .register("graph.assert_edge", write_executor.clone())
+        .register("graph.retract_edge", write_executor.clone())
         .register("graph.write", write_executor);
     // A gate Confirm is resolved daemon-side by driving the consent-broker over
     // its intake socket (the trusted-path dialog). An unreachable broker fails

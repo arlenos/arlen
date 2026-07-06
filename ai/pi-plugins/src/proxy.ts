@@ -94,6 +94,22 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
       "Propose a knowledge-graph write. The daemon validates, gates, audits, and " +
       "(when permitted) applies it, registering an undo; pi never writes directly.",
   },
+  {
+    name: "graph.assert_edge",
+    label: "Knowledge graph: add a relationship",
+    description:
+      "Add a relationship (edge) between two knowledge-graph nodes. Reversible: " +
+      "the daemon registers an undo that retracts it. The daemon gates and audits " +
+      "the write; pi never touches the graph directly.",
+  },
+  {
+    name: "graph.retract_edge",
+    label: "Knowledge graph: remove a relationship",
+    description:
+      "Retract a relationship (edge) the assistant previously added. Reversible: " +
+      "the daemon can re-assert it. The daemon gates and audits the write; pi never " +
+      "touches the graph directly.",
+  },
 ];
 
 /** Build the proxy-tools extension factory (`(pi) => void`), registering each
