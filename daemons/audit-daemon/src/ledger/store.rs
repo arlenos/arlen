@@ -42,6 +42,12 @@ pub struct Ledger {
     /// startup detect truncation the hash chain cannot (see
     /// [`crate::checkpoint`]).
     checkpoint_path: PathBuf,
+    /// Optional TPM NV monotonic-counter anchor. When present, each seal advances
+    /// the counter and records its value in the checkpoint so a same-uid rollback
+    /// of the log + checkpoint is detectable at restart (`crate::tpm_anchor`).
+    /// `None` (the default) is the pre-anchor behaviour: the counter stays 0 and
+    /// the anchor check is inert.
+    anchor: Option<std::sync::Arc<dyn crate::tpm_anchor::TpmAnchor>>,
 }
 
 impl Ledger {
@@ -77,7 +83,17 @@ impl Ledger {
             next_index,
             prev_hash,
             checkpoint_path: checkpoint::checkpoint_path(db_path),
+            anchor: None,
         })
+    }
+
+    /// Attach a TPM anchor so each seal advances and records the hardware counter.
+    /// Without this the ledger runs unanchored (the current behaviour); the real
+    /// `tss-esapi` anchor is installed here at daemon start once it is verified on
+    /// metal.
+    pub fn with_anchor(mut self, anchor: std::sync::Arc<dyn crate::tpm_anchor::TpmAnchor>) -> Self {
+        self.anchor = Some(anchor);
+        self
     }
 
     /// The index the next [`append`](Self::append) will assign.
@@ -252,11 +268,30 @@ impl Ledger {
         // could erase silently. The row stays committed (harmless: its
         // caller failed closed and abandoned the action), and the next
         // successful append rewrites the checkpoint to the live head.
+        // Advance the TPM anchor (if attached) and record its counter in the
+        // checkpoint, so a same-uid rollback of the log + checkpoint is detectable
+        // at restart. A counter-advance failure fails the append closed, exactly
+        // like a checkpoint-write failure: an entry must not be acknowledged with
+        // a stale or missing anchor value.
+        let counter = match &self.anchor {
+            Some(a) => match a.increment_counter() {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!(
+                        "audit TPM anchor advance failed (entry {index} committed \
+                         but unanchored); failing the append closed: {e}"
+                    );
+                    return Err(AuditError::Storage(format!(
+                        "TPM anchor counter advance failed: {e}"
+                    )));
+                }
+            },
+            None => 0,
+        };
         let cp = Checkpoint {
             index,
             entry_hash_hex: hex(&entry_hash),
-            // No TPM anchor wired at this seal site yet (follow-up threads it in).
-            counter: 0,
+            counter,
         };
         if let Err(e) = checkpoint::write(&self.checkpoint_path, &cp) {
             tracing::error!(
@@ -621,6 +656,29 @@ mod tests {
             assert_eq!(idx, i);
         }
         assert_eq!(ledger.verify().await.unwrap(), 5);
+    }
+
+    #[tokio::test]
+    async fn append_advances_and_records_the_tpm_counter() {
+        let dir = tempfile::tempdir().unwrap();
+        let anchor = std::sync::Arc::new(crate::tpm_anchor::MockTpmAnchor::new(0));
+        let mut ledger = open_temp(dir.path(), key()).await.with_anchor(anchor);
+        ledger
+            .append(AuditKind::Query, "ai-daemon", &structural("ok"), None, None, None)
+            .await
+            .expect("append");
+        let cp = checkpoint::read(ledger.checkpoint_path())
+            .unwrap()
+            .unwrap();
+        assert_eq!(cp.counter, 1, "the first seal advances the counter 0 -> 1");
+        ledger
+            .append(AuditKind::ToolCall, "ai-daemon", &structural("ok"), None, None, None)
+            .await
+            .expect("append");
+        let cp2 = checkpoint::read(ledger.checkpoint_path())
+            .unwrap()
+            .unwrap();
+        assert_eq!(cp2.counter, 2, "the second seal advances 1 -> 2");
     }
 
     #[tokio::test]
