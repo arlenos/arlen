@@ -395,6 +395,7 @@ pub fn run() {
             mpris::mpris_play_pause,
             mpris::mpris_next,
             mpris::mpris_previous,
+            mpris::mpris_set_position,
             mpris::mpris_pin,
             bluetooth::get_bluetooth_state,
             bluetooth::set_bluetooth_powered,

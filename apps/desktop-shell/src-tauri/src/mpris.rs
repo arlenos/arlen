@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 
 use serde::Serialize;
-use zbus::zvariant::{OwnedValue, Value};
+use zbus::zvariant::{ObjectPath, OwnedObjectPath, OwnedValue, Value};
 
 /// Playback status, mirroring the three MPRIS `PlaybackStatus` values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -379,6 +379,43 @@ pub async fn mpris_previous(id: String) -> Result<(), String> {
     transport(&id, "Previous").await
 }
 
+/// Extract the current track's id (`mpris:trackid`, an object path) from a
+/// Metadata map - required by MPRIS `SetPosition`. Tolerates a player that (out
+/// of spec) sends the trackid as a string.
+fn meta_trackid(meta: &HashMap<String, OwnedValue>) -> Option<OwnedObjectPath> {
+    match Value::try_from(meta.get("mpris:trackid")?.clone()).ok()? {
+        Value::ObjectPath(p) => Some(p.into()),
+        Value::Str(s) => ObjectPath::try_from(s.as_str())
+            .ok()
+            .map(|p| p.into_owned().into()),
+        _ => None,
+    }
+}
+
+/// Seek the active player to `seconds`. MPRIS `SetPosition` is absolute and keyed
+/// on the current track's id, read from the player's Metadata; a player that
+/// reports no trackid (or `can_seek=false`) cannot be sought.
+#[tauri::command]
+pub async fn mpris_set_position(id: String, seconds: f64) -> Result<(), String> {
+    let conn = Connection::session()
+        .await
+        .map_err(|e| format!("session bus: {e}"))?;
+    let player = zbus::Proxy::new(&conn, id, MPRIS_PATH, PLAYER_IFACE)
+        .await
+        .map_err(|e| format!("player proxy: {e}"))?;
+    let meta = player
+        .get_property::<HashMap<String, OwnedValue>>("Metadata")
+        .await
+        .map_err(|e| format!("Metadata: {e}"))?;
+    let trackid = meta_trackid(&meta).ok_or_else(|| "no mpris:trackid; cannot seek".to_string())?;
+    let micros = (seconds.max(0.0) * 1_000_000.0) as i64;
+    player
+        .call_method("SetPosition", &(trackid, micros))
+        .await
+        .map_err(|e| format!("SetPosition: {e}"))?;
+    Ok(())
+}
+
 /// Pin (or, with `None`, un-pin) a player as the active one.
 #[tauri::command]
 pub fn mpris_pin(id: Option<String>) {
@@ -512,6 +549,20 @@ mod tests {
         assert_eq!(t.artist, "");
         assert_eq!(t.art_url, None);
         assert_eq!(t.length, 0.0);
+    }
+
+    #[test]
+    fn meta_trackid_reads_the_object_path() {
+        let mut meta: HashMap<String, OwnedValue> = HashMap::new();
+        meta.insert(
+            "mpris:trackid".into(),
+            owned(Value::ObjectPath(
+                ObjectPath::try_from("/org/mpris/track/1").unwrap(),
+            )),
+        );
+        assert_eq!(meta_trackid(&meta).unwrap().as_str(), "/org/mpris/track/1");
+        // A player that sends no trackid cannot be sought.
+        assert!(meta_trackid(&HashMap::new()).is_none());
     }
 
     #[test]
