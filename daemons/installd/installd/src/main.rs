@@ -9,6 +9,7 @@
 
 mod apt_hook;
 mod audit;
+mod consent;
 mod dbus;
 mod event_emit;
 mod flatpak;
