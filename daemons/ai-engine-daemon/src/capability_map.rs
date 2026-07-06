@@ -183,6 +183,18 @@ pub struct CapabilityGate;
 #[async_trait]
 impl Gate for CapabilityGate {
     async fn authorize(&self, req: &Authorize, grant: &SessionGrant) -> AuthorizeDecision {
+        // D3: a read Allows, bounded by the grant's read SCOPE (applied when the
+        // read executes, via `grant_to_scope` incl. the GAP-21 active-project
+        // anchor). The anti-Recall guarantee is the scope, not a per-read confirm.
+        if gate_class_for_tool(&req.tool_name) == GateClass::Read {
+            return AuthorizeDecision::Allow;
+        }
+        // Every other tool: the existing capability path decides (the always-confirm
+        // + external-trigger overrides, then the action mode). The fine-grained
+        // reversible -> autonomous `Allow` lift and the unknown -> fail-closed `Deny`
+        // land WITH the D2 typed proxy tools (`graph.assert_edge` etc.); until those
+        // replace today's coarse names (`graph.write`), a hard Deny-for-unknown here
+        // would wrongly refuse the live coarse tools, so the coarse path stands.
         let kind = action_kind_for_tool(&req.tool_name);
         let capability = grant_to_capability(grant);
         let decision = capability.decide(ENGINE_APP_ID, kind, req.external_triggered);
