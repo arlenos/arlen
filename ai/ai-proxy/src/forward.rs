@@ -59,6 +59,38 @@ pub trait Forwarder: Send + Sync {
     async fn get(&self, endpoint_url: &str) -> Result<ForwardResult, ForwardError>;
 }
 
+/// Drop every resolved address that falls in a blocked range (loopback,
+/// link-local metadata, RFC1918, ...) - the SSRF filter core, kept pure so the
+/// guard is unit-tested without a live DNS lookup.
+fn retain_safe(addrs: impl Iterator<Item = std::net::SocketAddr>) -> Vec<std::net::SocketAddr> {
+    addrs
+        .filter(|sa| !arlen_net_guard::is_blocked_destination(sa.ip()))
+        .collect()
+}
+
+/// A reqwest DNS resolver that refuses any host resolving - or DNS-rebinding -
+/// into a blocked range, so the forwarder can never dial an SSRF target even when
+/// the ai-proxy runs unconfined in the host netns (review EG-1). Reqwest applies
+/// the request URL's port to the addresses this returns, so the port-0 lookup here
+/// is only used for its IP set.
+struct GuardedResolver;
+
+impl reqwest::dns::Resolve for GuardedResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        Box::pin(async move {
+            let host = name.as_str().to_owned();
+            let resolved = tokio::net::lookup_host((host.as_str(), 0)).await?;
+            let safe = retain_safe(resolved);
+            if safe.is_empty() {
+                return Err(Box::<dyn std::error::Error + Send + Sync>::from(
+                    "all resolved addresses are in a blocked range (SSRF guard)",
+                ));
+            }
+            Ok(Box::new(safe.into_iter()) as Box<dyn Iterator<Item = std::net::SocketAddr> + Send>)
+        })
+    }
+}
+
 /// reqwest-backed forwarder. Built once at daemon startup so
 /// connections can be pooled across calls.
 pub struct ReqwestForwarder {
@@ -83,23 +115,18 @@ impl ReqwestForwarder {
     /// Build with an explicit response cap. Tests use a small cap to
     /// exercise the oversized-response path cheaply.
     ///
-    /// SSRF posture (review EG-1): the dial is defended at the host-STRING
-    /// layer (the service's allowlist check on the catalogued URL) and by the
-    /// redirect-disable above, but this `reqwest` client applies NO
-    /// `is_blocked_destination` IP-range floor and no resolve-and-pin on its own
-    /// dial, unlike net-guard's CONNECT proxy. When the ai-proxy itself runs
-    /// confined, its egress is CONNECT-tunnelled through net-guard (reqwest
-    /// honours `https_proxy`) and the IP floor applies underneath; running
-    /// unconfined in the host netns, the dial is direct and a user-configured
-    /// provider host that resolves (or DNS-rebinds) into a blocked range
-    /// (loopback, link-local metadata, RFC1918) would be dialled. Closing this
-    /// independently of the launch env (a custom `is_blocked_destination`
-    /// resolver/connector, or routing the dial through net-guard) is the
-    /// deferred hardening; the allowlist's trusted-host set bounds it today.
+    /// SSRF posture (review EG-1, now closed): the dial is defended at the
+    /// host-STRING layer (the service's allowlist check on the catalogued URL), by
+    /// the redirect-disable above, AND now by an `is_blocked_destination` IP floor
+    /// on this client's own resolver ([`GuardedResolver`]) - so a user-configured
+    /// provider host that resolves or DNS-rebinds into a blocked range (loopback,
+    /// link-local metadata, RFC1918) is refused at resolution and never dialled,
+    /// independently of the launch env (confined or unconfined in the host netns).
     pub fn with_max_response(max_response_bytes: usize) -> Result<Self, ForwardError> {
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(120))
             .redirect(reqwest::redirect::Policy::none())
+            .dns_resolver(std::sync::Arc::new(GuardedResolver))
             .build()
             .map_err(|err| ForwardError::Transport(err.to_string()))?;
         Ok(Self {
@@ -239,6 +266,23 @@ mod tests {
     use super::*;
     use wiremock::matchers::method;
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn retain_safe_drops_blocked_ranges_keeps_public() {
+        let addrs: Vec<std::net::SocketAddr> = [
+            "127.0.0.1:443",         // loopback
+            "169.254.169.254:80",    // link-local cloud metadata
+            "192.168.1.5:443",       // RFC1918 private
+            "10.0.0.1:443",          // RFC1918 private
+            "1.1.1.1:443",           // public
+        ]
+        .iter()
+        .map(|s| s.parse().unwrap())
+        .collect();
+        let safe = retain_safe(addrs.into_iter());
+        // Only the public address survives the SSRF filter.
+        assert_eq!(safe, vec!["1.1.1.1:443".parse().unwrap()]);
+    }
 
     #[tokio::test]
     async fn oversized_response_is_rejected() {
