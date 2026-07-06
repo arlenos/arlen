@@ -16,6 +16,11 @@ use audit_proto::sink::LedgerAuditSink;
 use zbus::interface;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 
+/// The maximum document the Print backend reads from a caller's fd (512 MiB). A
+/// larger document is refused rather than read unbounded into memory, so a
+/// misbehaving app (or a `/dev/zero` fd) cannot OOM the portal daemon.
+const MAX_DOCUMENT_BYTES: u64 = 512 * 1024 * 1024;
+
 /// Read a string setting from the portal's `a{sv}` settings map. GTK print
 /// settings carry their values as strings (e.g. `n-copies = "2"`).
 fn setting_str(settings: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
@@ -183,16 +188,25 @@ impl Print {
             .and_then(|t| self.take(t))
             .unwrap_or_default();
 
-        // Read the document off the reactor (a large PDF must not block it).
+        // Read the document off the reactor (a large PDF must not block it),
+        // BOUNDED: a caller-supplied fd (a huge file, or `/dev/zero`) must not be
+        // read unbounded into memory and OOM the portal daemon.
         let doc = match tokio::task::spawn_blocking(move || {
             use std::io::Read;
-            let mut f = std::fs::File::from(std::os::fd::OwnedFd::from(fd));
+            let f = std::fs::File::from(std::os::fd::OwnedFd::from(fd));
             let mut buf = Vec::new();
-            f.read_to_end(&mut buf).map(|_| buf)
+            // Read one byte past the cap so an over-size document is detected.
+            f.take(MAX_DOCUMENT_BYTES.saturating_add(1))
+                .read_to_end(&mut buf)
+                .map(|_| buf)
         })
         .await
         {
-            Ok(Ok(buf)) => buf,
+            Ok(Ok(buf)) if buf.len() as u64 <= MAX_DOCUMENT_BYTES => buf,
+            Ok(Ok(_)) => {
+                tracing::warn!(app_id, "portal Print: document exceeds the size cap; refused");
+                return (2, HashMap::new());
+            }
             _ => {
                 tracing::warn!(app_id, "portal Print: could not read the document fd");
                 return (2, HashMap::new());
