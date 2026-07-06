@@ -24,6 +24,7 @@
     Copy,
     Download,
   } from "lucide-svelte";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import { drawShape, rectOf, type Shape, type ShapeKind, type ToolKind, type Point } from "$lib/annotate";
 
   const TOOLS: { kind: ToolKind; label: string; icon: typeof Crop; key: string }[] = [
@@ -38,11 +39,19 @@
     { kind: "blur", label: "Blur / redact", icon: SquareDashedBottom, key: "B" },
     { kind: "number", label: "Step", icon: ListOrdered, key: "N" },
   ];
-  const COLORS = ["#f04a4a", "#f5a524", "#2fbf71", "#3b82f6", "#a855f7", "#ffffff", "#111111"];
+  // The annotation palette is the house semantic set (there is no house blue);
+  // resolved from the tokens on mount so the canvas gets concrete hex.
+  const SWATCH_TOKENS = ["--color-error", "--color-warning", "--color-success", "--color-fg-primary", "--color-fg-inverse"];
+  let swatches = $state<{ token: string; hex: string }[]>([]);
+  const SIZES = [
+    { v: 2, label: "Thin", dot: 4 },
+    { v: 4, label: "Medium", dot: 7 },
+    { v: 6, label: "Thick", dot: 10 },
+  ];
 
   let tool = $state<ToolKind>("arrow");
-  let color = $state("#f04a4a");
-  let size = $state(3);
+  let color = $state("#ef4444");
+  let size = $state(4);
   let shapes = $state<Shape[]>([]);
   let redoStack = $state<Shape[]>([]);
   let stepN = $state(1);
@@ -59,6 +68,9 @@
   let seq = 0;
 
   onMount(() => {
+    const cs = getComputedStyle(document.documentElement);
+    swatches = SWATCH_TOKENS.map((t) => ({ token: t, hex: (cs.getPropertyValue(t).trim() || "#ffffff") }));
+    color = swatches[0]?.hex ?? color;
     base = buildFixture();
     ctx = canvas.getContext("2d");
     canvas.width = base.width;
@@ -279,39 +291,35 @@
   </div>
 
   <div class="palette">
-    <div class="group tools">
-      {#each TOOLS as t (t.kind)}
-        <button class="tbtn" class:active={tool === t.kind} title={`${t.label} (${t.key})`} aria-label={t.label} aria-pressed={tool === t.kind} onclick={() => (tool = t.kind)}>
-          <t.icon size={17} strokeWidth={1.75} />
-        </button>
+    {#each TOOLS as t (t.kind)}
+      <Button variant={tool === t.kind ? "secondary" : "ghost"} size="icon-sm" title={`${t.label} (${t.key})`} aria-label={t.label} onclick={() => (tool = t.kind)}>
+        <t.icon size={16} strokeWidth={1.75} />
+      </Button>
+    {/each}
+
+    <span class="sep" aria-hidden="true"></span>
+
+    <div class="swatches">
+      {#each swatches as s (s.token)}
+        <button class="swatch" class:active={color === s.hex} style={`background:${s.hex}`} aria-label={`Colour ${s.token.replace("--color-", "")}`} onclick={() => (color = s.hex)}></button>
       {/each}
     </div>
 
-    <div class="sep"></div>
+    {#each SIZES as sz (sz.v)}
+      <Button variant={size === sz.v ? "secondary" : "ghost"} size="icon-sm" title={sz.label} aria-label={sz.label} onclick={() => (size = sz.v)}>
+        <span class="size-dot" style={`width:${sz.dot}px;height:${sz.dot}px`}></span>
+      </Button>
+    {/each}
 
-    <div class="group colors">
-      {#each COLORS as c (c)}
-        <button class="swatch" class:active={color === c} style={`background:${c}`} aria-label={`Colour ${c}`} onclick={() => (color = c)}></button>
-      {/each}
-    </div>
+    <span class="sep" aria-hidden="true"></span>
 
-    <div class="group size">
-      <input type="range" min="1" max="8" bind:value={size} aria-label="Size" />
-    </div>
+    <Button variant="ghost" size="icon-sm" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={shapes.length === 0} onclick={undo}><Undo2 size={16} strokeWidth={1.75} /></Button>
+    <Button variant="ghost" size="icon-sm" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled={redoStack.length === 0} onclick={redo}><Redo2 size={16} strokeWidth={1.75} /></Button>
 
-    <div class="sep"></div>
+    <span class="sep" aria-hidden="true"></span>
 
-    <div class="group">
-      <button class="tbtn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={shapes.length === 0} onclick={undo}><Undo2 size={17} strokeWidth={1.75} /></button>
-      <button class="tbtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled={redoStack.length === 0} onclick={redo}><Redo2 size={17} strokeWidth={1.75} /></button>
-    </div>
-
-    <div class="sep"></div>
-
-    <div class="group targets">
-      <button class="tbtn text" title="Copy (Enter)" onclick={copy}><Copy size={16} strokeWidth={1.75} /> Copy</button>
-      <button class="tbtn text primary" title="Save" onclick={save}><Download size={16} strokeWidth={1.75} /> Save</button>
-    </div>
+    <Button variant="outline" size="sm" title="Copy (Enter)" onclick={copy}><Copy size={15} strokeWidth={1.75} /> Copy</Button>
+    <Button variant="default" size="sm" title="Save" onclick={save}><Download size={15} strokeWidth={1.75} /> Save</Button>
   </div>
 </div>
 
@@ -365,83 +373,46 @@
     padding: 0;
   }
 
-  /* The floating tool palette (Satty style): one flat bar, not editor chrome. */
+  /* The floating tool palette: one flat bar on the house surface tokens. */
   .palette {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.25rem;
     align-self: center;
     margin-bottom: 1rem;
     padding: 0.375rem 0.5rem;
-    border-radius: var(--radius-modal, 16px);
-    background: color-mix(in srgb, var(--foreground, #fff) 6%, #14161c);
-    border: 1px solid color-mix(in srgb, var(--foreground, #fff) 10%, transparent);
+    border-radius: var(--radius-card);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
-  }
-  .group {
-    display: flex;
-    align-items: center;
-    gap: 0.125rem;
   }
   .sep {
     width: 1px;
-    align-self: stretch;
-    margin: 0.25rem 0.25rem;
-    background: color-mix(in srgb, var(--foreground, #fff) 12%, transparent);
+    height: 1.5rem;
+    margin: 0 0.25rem;
+    background: var(--color-border);
   }
-  .tbtn {
-    display: inline-flex;
+  .swatches {
+    display: flex;
     align-items: center;
-    gap: 0.375rem;
-    height: 2rem;
-    padding: 0 0.5rem;
-    border: none;
-    border-radius: var(--radius-button, 6px);
-    background: transparent;
-    color: color-mix(in srgb, var(--foreground, #fff) 78%, transparent);
-    cursor: pointer;
-    font-size: 0.8125rem;
-    font-weight: 500;
-  }
-  .tbtn:hover {
-    background: color-mix(in srgb, var(--foreground, #fff) 10%, transparent);
-    color: var(--foreground, #fff);
-  }
-  .tbtn.active {
-    background: color-mix(in srgb, var(--color-accent, #3b82f6) 22%, transparent);
-    color: var(--foreground, #fff);
-  }
-  .tbtn:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-  .tbtn.text {
-    padding: 0 0.75rem;
-  }
-  .tbtn.primary {
-    background: var(--color-accent, #3b82f6);
-    color: var(--color-accent-foreground, #0a0a0a);
-  }
-  .tbtn.primary:hover {
-    background: color-mix(in srgb, var(--color-accent, #3b82f6) 88%, #fff);
-  }
-  .colors {
     gap: 0.25rem;
     padding: 0 0.125rem;
   }
   .swatch {
     width: 1.125rem;
     height: 1.125rem;
-    border-radius: var(--radius-full, 9999px);
-    border: 1px solid color-mix(in srgb, var(--foreground, #fff) 25%, transparent);
+    border-radius: var(--radius-full);
+    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 25%, transparent);
     cursor: pointer;
     padding: 0;
   }
   .swatch.active {
-    outline: 2px solid var(--color-accent, #3b82f6);
+    outline: 2px solid var(--color-accent);
     outline-offset: 1px;
   }
-  .size input {
-    width: 5rem;
+  .size-dot {
+    display: block;
+    border-radius: var(--radius-full);
+    background: currentColor;
   }
 </style>
