@@ -12,6 +12,10 @@ path = "src/main.rs"
 [dependencies]
 arlen-modules = { path = "../../../sdk/modules" }
 arlen-permissions = { path = "../../../sdk/permissions" }
+# Capability-diff consent gate on upgrade (E6): reuse the recipe capability
+# vocabulary + the built diff rather than re-implementing it.
+arlen-forage-recipe = { path = "../../../contracts/forage-recipe" }
+arlen-forage-capabilities = { path = "../../../forage/capabilities" }
 # Content-free audit of install/uninstall (GAP-2): each completed job submits a
 # structural record (the action, the source and the outcome, never a filesystem
 # path) to arlen-auditd, so software-changing actions land in the ledger.
