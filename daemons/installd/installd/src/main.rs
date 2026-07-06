@@ -9,6 +9,7 @@
 
 mod audit;
 mod dbus;
+mod event_emit;
 mod flatpak;
 mod install;
 mod jobs;

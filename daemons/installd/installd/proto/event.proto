@@ -1,0 +1,483 @@
+syntax = "proto3";
+
+package arlen.eventbus;
+
+// Common envelope for all events on the bus.
+// The type-specific payload is encoded as a protobuf message
+// inside the payload field.
+message Event {
+  string id         = 1;  // UUID v7 (time-sortable, see RFC 9562)
+  string type       = 2;  // "file.opened", "window.focused", "app.action", etc.
+  int64  timestamp  = 3;  // microseconds since Unix epoch
+  string source     = 4;  // "ebpf", "wayland", "app:<app-id>", "journald"
+  uint32 pid        = 5;  // originating process ID
+  string session_id = 6;  // user session reference
+  bytes  payload    = 7;  // type-specific protobuf message, encoded
+  uint32 uid        = 8;  // originating user ID (0 = system event, delivered to all)
+  string project_id = 9;  // optional: project UUID for audit-log scoping
+}
+
+// ── File & Process Events ───────────────────────────────────────────────
+
+// Emitted when a file is opened by any process.
+// Event type: "file.opened"
+message FileOpenedPayload {
+  string path      = 1;  // absolute path
+  string app_id    = 2;  // application identifier
+  uint32 flags     = 3;  // openat() flags (O_RDONLY, O_WRONLY, etc.)
+  uint64 cgroup_id = 4;  // cgroup v2 id of the opening task; join key to Command. 0 = no attribution
+}
+
+// Emitted when a process writes to a file (kernel-layer sys_enter_write).
+// Event type: "file.written". Mirrors the kernel-layer canonical definition.
+message FileWrittenPayload {
+  string path   = 1;  // absolute path
+  string app_id = 2;  // application identifier
+  uint64 bytes  = 3;  // number of bytes written
+}
+
+// Emitted when keyboard focus changes between Wayland surfaces.
+// Event type: "window.focused"
+message WindowFocusedPayload {
+  string app_id      = 1;
+  string window_title = 2;
+  string prev_app_id  = 3;  // previously focused app, empty if none
+}
+
+// Emitted when a window transitions to minimized state. The shell
+// derives its own minimized-windows UI from cosmic-toplevel-info
+// state (the authoritative source for live UI); this event exists so
+// the Knowledge Graph can record the transition for future analytics
+// (time-in-minimized, app-specific minimize patterns, etc.).
+// Event type: "window.minimized"
+message WindowMinimizedPayload {
+  string window_id    = 1;  // stable toplevel identifier
+  string app_id       = 2;
+  string window_title = 3;
+  string workspace_id = 4;  // ext workspace handle id, may be empty
+}
+
+// Emitted when a minimized window is restored (unminimized).
+// Event type: "window.unminimized"
+message WindowUnminimizedPayload {
+  string window_id = 1;
+  string app_id    = 2;
+}
+
+// Emitted when a clipboard operation occurs.
+// Content is never included.
+// Event type: "clipboard.copy" | "clipboard.paste"
+message ClipboardOperationPayload {
+  string source_app_id = 1;
+  string dest_app_id   = 2;  // empty for copy, set for paste
+  string mime_type     = 3;
+  string operation     = 4;  // "copy" or "paste"
+}
+
+// Generic payload for first-party app events.
+// Apps emit structured semantic actions without requiring
+// a dedicated payload type per application.
+// Event type: "app.action"
+message AppActionPayload {
+  string category = 1;  // e.g. "document", "search", "navigation"
+  string action   = 2;  // e.g. "saved", "performed", "opened"
+  string subject  = 3;  // e.g. file path, query string, URL
+  map<string, string> metadata = 4;
+}
+
+// Emitted when a process starts or exits.
+// Event type: "process.started" | "process.exited"
+message ProcessLifecyclePayload {
+  string event_type = 1;  // "started" or "exited"
+  uint32 pid        = 2;
+  uint32 ppid       = 3;  // parent PID
+  string comm       = 4;  // process name (comm field)
+  int32  exit_code  = 5;  // only set for "exited"
+}
+
+// Emitted when a network connection is established.
+// Event type: "network.connect" | "network.accept"
+message NetworkConnectionPayload {
+  string app_id      = 1;
+  string remote_addr = 2;  // IP:port
+  string protocol    = 3;  // "tcp" or "udp"
+  string direction   = 4;  // "outbound" or "inbound"
+}
+
+// ── Project Lifecycle Events ────────────────────────────────────────────
+// Emitted by the Knowledge Daemon when projects are detected, updated,
+// or archived. Consumers use these to update UI state and caches.
+
+// Emitted when a new project is detected or explicitly created.
+// Event type: "project.created"
+message ProjectCreatedPayload {
+  string project_id = 1;   // UUID
+  string name       = 2;
+  string root_path  = 3;
+  bool   inferred   = 4;   // true if auto-detected, false if .project file
+  uint32 confidence = 5;   // 0-100 detection confidence
+}
+
+// Emitted when project metadata changes (name, appearance, status).
+// Event type: "project.updated"
+message ProjectUpdatedPayload {
+  string project_id   = 1;
+  string name         = 2;
+  string description  = 3;  // empty if unchanged
+  string accent_color = 4;  // empty if unchanged
+  string icon         = 5;  // empty if unchanged
+  string status       = 6;  // "active" | "archived", empty if unchanged
+}
+
+// Emitted when a project is archived (directory removed or .project deleted
+// without fallback signals).
+// Event type: "project.archived"
+message ProjectArchivedPayload {
+  string project_id = 1;
+  string name       = 2;
+  string root_path  = 3;
+}
+
+// ── Focus Mode Events ───────────────────────────────────────────────────
+// Emitted by the Desktop Shell when the user enters or leaves Focus Mode.
+
+// Emitted when Focus Mode is activated for a project.
+// Event type: "focus.activated"
+message FocusActivatedPayload {
+  string project_id   = 1;
+  string project_name = 2;
+  string root_path    = 3;
+  string accent_color = 4;  // project accent color, empty if default
+  repeated string suppress_notifications_from = 5;  // app IDs to suppress
+}
+
+// Emitted when Focus Mode is deactivated.
+// Event type: "focus.deactivated"
+message FocusDeactivatedPayload {
+  string project_id      = 1;
+  uint64 duration_seconds = 2;  // how long focus was active
+}
+
+// ── Shell SDK Events (first-party app surface) ──────────────────────────
+// Emitted by first-party apps via os-sdk's `shell.*` namespace. The
+// Knowledge Daemon promotes them into UserAction nodes; metadata stays
+// in the SQLite event log so the graph stays lightweight.
+
+// Emitted when an app calls `shell.presence.set`. Describes the user's
+// current ephemeral activity. Auto-clear is enforced client-side: the
+// SDK wires a window-blur listener that emits PresenceClearPayload
+// when the app loses focus.
+// Event type: "app.presence.set"
+message PresenceSetPayload {
+  string app_id    = 1;  // emitting app
+  string activity  = 2;  // "editing" | "reading" | "reviewing" | "building" | custom
+  string subject   = 3;  // free-form, typically a file path or document name
+  string project   = 4;  // optional; inherits Focus Mode if empty
+  string auto_clear = 5; // "" | "on-blur" | "on-idle"
+  map<string, string> metadata = 6;  // free-form structured context
+}
+
+// Emitted when an app calls `shell.presence.clear`, or by the SDK
+// auto-clear path when the registered window-blur listener fires.
+// Event type: "app.presence.clear"
+message PresenceClearPayload {
+  string app_id = 1;
+}
+
+// Emitted when an app calls `shell.timeline.record`. Persistent
+// (point-in-time or duration) record of a completed semantic event.
+// Distinct from Presence (which is ephemeral state).
+// Event type: "app.timeline.record"
+message TimelineRecordPayload {
+  string app_id     = 1;
+  string label      = 2;  // user-facing summary, e.g. "Exported PDF"
+  string subject    = 3;  // typically a file path or project name
+  string type       = 4;  // app-defined category, e.g. "export", "build", "deploy"
+  int64  started_at = 5;  // microseconds since Unix epoch (0 for point-in-time)
+  int64  ended_at   = 6;  // microseconds since Unix epoch (0 for point-in-time)
+  map<string, string> metadata = 7;
+}
+
+// Emitted when an app calls `shell.annotations.set`. Foundation §395.
+// Apps attach structured metadata to existing graph nodes within
+// their own namespace. The Knowledge Daemon promotes this into an
+// Annotation graph node keyed by (target_type, target_id, namespace);
+// re-setting on the same triple replaces the previous value. The
+// `data_json` field is opaque app-defined JSON kept lightweight on
+// the graph node (apps that need structured queries should also write
+// to the SQLite event log via separate event types).
+// Event type: "app.annotation.set"
+message AnnotationSetPayload {
+  string app_id      = 1;  // emitting app — must match `namespace` for writes
+  string namespace   = 2;  // typically reverse-domain matching app_id
+  string target_type = 3;  // "File" | "App" | "Project" | "Session" — graph node label
+  string target_id   = 4;  // identifier appropriate for the target_type
+  string data_json   = 5;  // app-defined JSON payload, opaque to the daemon
+}
+
+// Emitted when an app calls `shell.annotations.clear`. Removes the
+// annotation matching the (target_type, target_id, namespace) triple
+// from the graph. Idempotent — clearing a missing annotation is a
+// no-op.
+// Event type: "app.annotation.cleared"
+message AnnotationClearPayload {
+  string app_id      = 1;
+  string namespace   = 2;
+  string target_type = 3;
+  string target_id   = 4;
+}
+
+// ── shell.toolbar surface ──────────────────────────────────────
+// Foundation §6.4 Listings 22-24. Apps push three mutually-
+// exclusive elements into the top bar's `slot-toolbar`: Quick
+// Actions, Breadcrumb, or Progress. The shell renders only the
+// focused window's slot content; on focus loss the rendered
+// slot clears (state remains in shell-side per-(app, window)
+// store until the window emits `cleared`, the window closes,
+// or the app process exits).
+//
+// All payloads carry a `window_id` so the shell can key state
+// per-window (multi-window apps need distinct toolbars per
+// window) and route action dispatch back to the originating
+// webview specifically. Empty `window_id` is the legacy
+// fallback (single-window emulation, broadcast on dispatch).
+
+// Single Quick Action button. Max 3 per emit (SDK-enforced).
+// Event type embeds these inside ToolbarQuickActionsPayload.
+message ToolbarQuickAction {
+  string icon    = 1;  // ui-kit / Lucide icon id
+  string action  = 2;  // opaque action identifier dispatched to app
+  string tooltip = 3;
+  bool   toggle  = 4;
+  bool   active  = 5;
+}
+
+// Event type: "app.toolbar.quick_actions"
+message ToolbarQuickActionsPayload {
+  string app_id    = 1;
+  repeated ToolbarQuickAction actions = 2;  // up to 3
+  string window_id = 3;  // Tauri webview label, "" = legacy single-window
+}
+
+message ToolbarBreadcrumbItem {
+  string label  = 1;
+  string action = 2;
+}
+
+// Event type: "app.toolbar.breadcrumb"
+message ToolbarBreadcrumbPayload {
+  string app_id    = 1;
+  repeated ToolbarBreadcrumbItem items = 2;
+  string window_id = 3;
+}
+
+// Event type: "app.toolbar.progress"
+message ToolbarProgressPayload {
+  string app_id    = 1;
+  // Clamped to [0.0, 1.0] SDK-side before emit. Non-finite
+  // inputs (NaN, +/-Infinity) are rejected at the SDK layer.
+  float  value     = 2;
+  string label     = 3;
+  string window_id = 4;
+}
+
+// Event type: "app.toolbar.progress_cleared"
+message ToolbarProgressClearedPayload {
+  string app_id    = 1;
+  string window_id = 2;
+}
+
+// Event type: "app.toolbar.cleared"
+// Drops every toolbar variant for the (app, window) pair.
+// Distinct from `progress_cleared` which only drops Progress.
+message ToolbarClearedPayload {
+  string app_id    = 1;
+  string window_id = 2;
+}
+
+// Event type: "app.toolbar.action_invoked"
+// Emitted by the desktop-shell when the user clicks a Quick
+// Action or Breadcrumb segment. The source app's
+// tauri-plugin-shell consumes this, filters by matching its
+// own ARLEN_APP_ID, and re-emits as a per-webview Tauri
+// event scoped to `window_id` so multi-window apps route the
+// click to the originating webview only.
+message ToolbarActionInvokedPayload {
+  string app_id    = 1;  // target app id (filter side)
+  string action    = 2;  // opaque action string defined by the app
+  string window_id = 3;  // target webview label
+}
+
+// ── shell.shortcuts surface ────────────────────────────────────
+// Foundation §6.4 Listing 13. Apps register a list of
+// discoverable quick-actions that surface in Waypointer when
+// focused. Per-app (not per-window) — see shortcuts-api.md FA1.
+
+message Shortcut {
+  string label   = 1;
+  string icon    = 2;  // ui-kit / Lucide icon id
+  string action  = 3;  // opaque dispatch identifier
+  // Tag filter for Focus-Mode-aware rendering. Phase 1 ignores
+  // this field; Phase 6 brings tag-aware filtering once the
+  // project tag system lands. Stays in the wire as forward-
+  // compat.
+  repeated string context = 4;
+  // Optional confirmation text. When non-empty the shell shows
+  // a yes/no dialog with this text before dispatching the
+  // click.
+  string confirm = 5;
+}
+
+// Event type: "app.shortcut.register"
+// Full-replace registration: drops the app's previous list
+// and replaces with `shortcuts`. Empty `shortcuts` acts as
+// `clear`.
+message ShortcutRegisterPayload {
+  string app_id = 1;
+  repeated Shortcut shortcuts = 2;
+}
+
+// Event type: "app.shortcut.state_changed"
+// Diff-update for one shortcut's per-instance state without
+// re-emitting the full list. `enabled` and `badge` are
+// optional — unset fields stay at their previous values.
+message ShortcutStateChangedPayload {
+  string app_id      = 1;
+  string action      = 2;  // identifies which shortcut to update
+  optional bool   enabled = 3;
+  optional string badge   = 4;  // small text overlay, "" clears
+}
+
+// Event type: "app.shortcut.cleared"
+// Drops every shortcut for the app. Equivalent to
+// `register([])` but distinct event type for audit clarity.
+message ShortcutClearedPayload {
+  string app_id = 1;
+}
+
+// Event type: "app.shortcut.action_invoked"
+// Emitted by the desktop-shell when the user picks a
+// shortcut in Waypointer. Same payload shape as
+// ToolbarActionInvokedPayload — apps' frontend onAction
+// handler receives both surfaces uniformly. `window_id` is
+// the focused window at click-time so multi-window apps
+// route correctly.
+message ShortcutActionInvokedPayload {
+  string app_id    = 1;
+  string action    = 2;
+  string window_id = 3;
+}
+
+// ── shell.badges surface ───────────────────────────────────────
+// Foundation §6.4 Listing 14. Per-app status indicator
+// rendered as a small overlay on the GlobalMenuBar app name
+// when focused. See badges-api.md.
+
+enum BadgeStatus {
+  BADGE_STATUS_UNSPECIFIED = 0;
+  BADGE_STATUS_SUCCESS     = 1;
+  BADGE_STATUS_WARNING     = 2;
+  BADGE_STATUS_ERROR       = 3;
+  BADGE_STATUS_PROGRESS    = 4;
+}
+
+// Event type: "app.badge.set"
+// Mutually exclusive: setting a new badge replaces any
+// previous one for the app. Only error / warning are
+// promoted to the Knowledge Graph — count-only / dot are
+// not (foundation Listing 14).
+message BadgeSetPayload {
+  string app_id = 1;
+  // Variant selector: 0=count, 1=dot, 2=status, 3=count+status.
+  // Encoded as an enum so the wire is self-documenting.
+  BadgeVariant variant = 2;
+  uint32 count = 3;          // valid for variant=count|count_with_status
+  BadgeStatus status = 4;    // valid for variant=status|count_with_status
+  // Status=progress carries a fill value in [0.0, 1.0].
+  // Non-finite rejected SDK-side.
+  optional float progress_value = 5;
+}
+
+enum BadgeVariant {
+  BADGE_VARIANT_UNSPECIFIED       = 0;
+  BADGE_VARIANT_COUNT             = 1;
+  BADGE_VARIANT_DOT               = 2;
+  BADGE_VARIANT_STATUS            = 3;
+  BADGE_VARIANT_COUNT_WITH_STATUS = 4;
+}
+
+// Event type: "app.badge.cleared"
+message BadgeClearedPayload {
+  string app_id = 1;
+}
+
+// ── shell.ambient surface ──────────────────────────────────────
+// Foundation §6.4 Listing 17. Subtle visual effect on the
+// desktop while the app is focused. See ambient-api.md.
+
+enum AmbientEffect {
+  AMBIENT_EFFECT_UNSPECIFIED = 0;
+  AMBIENT_EFFECT_PULSE       = 1;
+  AMBIENT_EFFECT_TINT        = 2;
+}
+
+enum AmbientColor {
+  AMBIENT_COLOR_UNSPECIFIED = 0;
+  AMBIENT_COLOR_ACCENT      = 1;
+  AMBIENT_COLOR_WARNING     = 2;
+  AMBIENT_COLOR_ERROR       = 3;
+  AMBIENT_COLOR_SUCCESS     = 4;
+}
+
+enum AmbientSpeed {
+  AMBIENT_SPEED_UNSPECIFIED = 0;
+  AMBIENT_SPEED_SLOW        = 1;
+  AMBIENT_SPEED_MEDIUM      = 2;
+  AMBIENT_SPEED_FAST        = 3;
+}
+
+// Event type: "app.ambient.set"
+message AmbientSetPayload {
+  string app_id = 1;
+  AmbientEffect effect = 2;
+  AmbientColor  color  = 3;
+  // SDK-clamped to [0.0, 0.5] before emit; non-finite rejected.
+  float intensity = 4;
+  AmbientSpeed speed = 5;
+  // Free-form, for debug / future audit. Not rendered.
+  string reason = 6;
+  // Optional shell-side autoClear timer in milliseconds. 0
+  // means no auto-clear (app must explicitly call clear).
+  uint32 auto_clear_ms = 7;
+}
+
+// Event type: "app.ambient.cleared"
+message AmbientClearedPayload {
+  string app_id = 1;
+}
+
+// One code symbol definition extracted from a file (code-graph-layer.md CG-R1).
+message CodeSymbolPayload {
+  string id              = 1;  // stable: "<source_file>#<kind>:<name>@<line>"
+  string name            = 2;  // the declared name
+  string source_location = 3;  // 1-based line (or "line:col")
+  string kind            = 4;  // function|method|struct|enum|trait|module|type_alias|const|static|macro
+}
+
+// The complete per-file code index, emitted on a file (re)parse. Event type
+// "code.indexed". The knowledge daemon replaces the file's prior CodeSymbols
+// with this set (per-file isolation) and fuses each to the source File via a
+// DEFINES edge. Cross-file call/import resolution is CG-R2.
+message CodeFileIndexPayload {
+  string source_file = 1;  // the File node id (absolute path)
+  string language    = 2;  // "rust"
+  repeated CodeSymbolPayload symbols = 3;
+}
+
+// A coarse system-service transition (journald Tier-2). Mirrors the canonical
+// contracts/event def; content-free by construction (no SSID/secret).
+message ServiceEventPayload {
+  string service = 1;  // normalized origin: "network" | "bluetooth" | "session"
+  string kind    = 2;  // "device-up"|"device-down"|"connected"|"disconnected"|"session-opened"|"session-closed"
+  string detail  = 3;  // a coarse non-sensitive id (interface name, session id); never an SSID or secret
+}

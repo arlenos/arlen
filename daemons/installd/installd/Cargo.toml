@@ -31,6 +31,12 @@ dirs = "6"
 libc = "0.2"
 ed25519-dalek = { version = "2", features = ["std"] }
 sha2 = "0.10"
+# Emit `permission.changed` on the Event Bus at enroll time (E1), so the
+# knowledge daemon projects an app's declared grants without a running pid.
+prost = "0.13"
+
+[build-dependencies]
+prost-build = "0.13"
 
 [dev-dependencies]
 tempfile = "3"
