@@ -79,8 +79,7 @@ fn graph_from(caps: &ModuleCapabilities) -> GraphPermissions {
         Some(g) => GraphPermissions {
             read: g.read.clone(),
             write: g.write.clone(),
-            app_isolated: false,
-            annotations_read_cross_namespace: Vec::new(),
+            ..Default::default()
         },
         None => GraphPermissions::default(),
     }
