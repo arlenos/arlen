@@ -12,6 +12,7 @@
   /// subscriptions alive across opens, so opening the panel doesn't
   /// re-fetch history.
   import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
+  import ActivityJobsZone from "$lib/components/ActivityJobsZone.svelte";
   import NotificationPanel from "$lib/components/NotificationPanel.svelte";
 </script>
 
@@ -23,5 +24,6 @@
   keepMounted
   bodyPadding="12px"
 >
+  <ActivityJobsZone />
   <NotificationPanel />
 </ShellPopover>
