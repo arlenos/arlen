@@ -17,7 +17,7 @@
     SidebarMenuItem,
     SidebarRail,
   } from "@arlen/ui-kit/components/ui/sidebar";
-  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
+  import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
   import { Plus } from "lucide-svelte";
   import type { Session } from "$lib/contract";
   import { displayPath } from "$lib/paths";
@@ -29,6 +29,7 @@
     selectSession,
   } from "$lib/stores/sessions";
   import { openHistoryPalette } from "$lib/stores/history";
+  import { activeRemote, openQuickConnect } from "$lib/stores/remoteConnections";
 
   function sessionFailed(s: Session): boolean {
     return s.status === "running" && s.last_exit !== null && s.last_exit !== 0;
@@ -54,30 +55,46 @@
     >
       Terminal
     </span>
-    <Tooltip.Root>
-      <Tooltip.Trigger>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger>
         {#snippet child({ props })}
-          <button
-            {...props}
-            id="terminal-new-session"
-            class="ts-new-btn"
-            aria-label="New session"
-            onclick={() => newSession()}
-          >
+          <button {...props} id="terminal-new-session" class="ts-new-btn" aria-label="New session or connect">
             <Plus size={14} strokeWidth={2} />
           </button>
         {/snippet}
-      </Tooltip.Trigger>
-      <Tooltip.TooltipContent side="bottom">
-        New session (Ctrl+T)
-      </Tooltip.TooltipContent>
-    </Tooltip.Root>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content align="end" class="w-52">
+        <DropdownMenu.Item onclick={() => newSession()}>
+          New session
+          <DropdownMenu.Shortcut>Ctrl+T</DropdownMenu.Shortcut>
+        </DropdownMenu.Item>
+        <DropdownMenu.Item onclick={() => openQuickConnect()}>
+          SSH quick-connect
+          <DropdownMenu.Shortcut>Ctrl+Shift+R</DropdownMenu.Shortcut>
+        </DropdownMenu.Item>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
   </SidebarHeader>
 
   <SidebarContent>
     <SidebarGroup>
       <SidebarGroupLabel>Sessions</SidebarGroupLabel>
       <SidebarMenu>
+        {#if $activeRemote}
+          <SidebarMenuItem>
+            <SidebarMenuButton isActive tooltip={`${$activeRemote.user}@${$activeRemote.host}`}>
+              <span
+                class="ts-remote-badge hidden group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:block"
+                style={`background:${$activeRemote.projectTint ?? "var(--color-fg-secondary)"}`}
+              ></span>
+              <span class="ts-text group-data-[collapsible=icon]:hidden">{$activeRemote.label}</span>
+              <span
+                class="ts-remote-badge ml-auto group-data-[collapsible=icon]:hidden"
+                style={`background:${$activeRemote.projectTint ?? "var(--color-fg-secondary)"}`}
+              ></span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        {/if}
         {#if $sessionsLoaded && $sessions.length === 0}
           <div class="ts-empty group-data-[collapsible=icon]:hidden">
             No open sessions. Start one with the plus button or Ctrl+T.
@@ -180,6 +197,15 @@
   }
   .ts-dot-failed {
     background: var(--color-error);
+  }
+
+  /* A remote session's rail mark: the project tint (from the KG project node),
+     a rounded square like the status dot but carrying identity, not state. */
+  .ts-remote-badge {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-chip);
+    flex-shrink: 0;
   }
 
   .ts-footer-row {
