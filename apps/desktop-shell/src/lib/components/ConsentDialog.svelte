@@ -10,7 +10,7 @@
   import { onMount } from "svelte";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { AlertTriangle, Send, Trash2, ShieldAlert } from "lucide-svelte";
+  import { AlertTriangle, Send, Trash2 } from "lucide-svelte";
   import { current, resolve, pollConsent, type PendingView } from "$lib/stores/consent";
 
   onMount(() => {
@@ -68,7 +68,6 @@
   {@const standingElsewhere = p.class === "external_send" || p.class === "elevated_privilege"}
   {@const irreversibleOther = p.reversibility === "irreversible" && !holdDestructive && !standingElsewhere}
   {@const reversibleDestructive = p.class === "destructive" && p.reversibility !== "irreversible"}
-  {@const gated = holdDestructive || standingElsewhere || irreversibleOther}
   <Dialog.Root
     open={true}
     onOpenChange={(open) => {
@@ -81,9 +80,6 @@
           <span class="cd-avatar">{friendly(p.requester).charAt(0)}</span>
           <span class="cd-req-name">{friendly(p.requester)}</span>
           <span class="cd-req-id">{p.requester}</span>
-          {#if gated}
-            <span class="cd-tier"><ShieldAlert size={12} strokeWidth={2} /> Needs your confirmation</span>
-          {/if}
         </div>
 
         <h2 class="cd-title">Allow {friendly(p.requester)} to {p.summary}?</h2>
@@ -184,19 +180,6 @@
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 0.6875rem;
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
-  }
-  .cd-tier {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    margin-left: auto;
-    padding: 0.1rem 0.4rem;
-    border-radius: var(--radius-chip);
-    background: color-mix(in srgb, var(--color-warning) 15%, transparent);
-    color: var(--color-warning);
-    font-size: 0.6875rem;
-    font-weight: 500;
-    white-space: nowrap;
   }
   .cd-title {
     margin: 0;
