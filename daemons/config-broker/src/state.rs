@@ -123,6 +123,35 @@ impl AiMasterSwitches {
     }
 }
 
+/// The security-relevant switch keys that differ between `old` and `new`, each as
+/// a short `key=new_value` summary for the audit trail (empty = no change). Every
+/// field of [`AiMasterSwitches`] is security-relevant - the master switch, the read
+/// scope, the executor "human gate", the baseline action mode, the provider
+/// endpoint, and the per-app autonomy grants - so a change to any one is recorded
+/// so a silent flip of the AI's authority posture becomes visible in the ledger.
+pub fn changed_security_keys(old: &AiMasterSwitches, new: &AiMasterSwitches) -> Vec<String> {
+    let mut changed = Vec::new();
+    if old.enabled != new.enabled {
+        changed.push(format!("enabled={}", new.enabled));
+    }
+    if old.access_level != new.access_level {
+        changed.push(format!("access_level={}", new.access_level));
+    }
+    if old.executor_live != new.executor_live {
+        changed.push(format!("executor_live={}", new.executor_live));
+    }
+    if old.action_mode != new.action_mode {
+        changed.push(format!("action_mode={}", new.action_mode.as_str()));
+    }
+    if old.provider != new.provider {
+        changed.push(format!("provider={}", new.provider));
+    }
+    if old.autonomous_apps != new.autonomous_apps {
+        changed.push(format!("autonomous_apps={}", new.autonomous_apps.len()));
+    }
+    changed
+}
+
 /// A failure reading or writing the canonical state.
 #[derive(Debug, Error)]
 pub enum StateError {
@@ -288,6 +317,29 @@ mod tests {
 
     fn store_in(dir: &Path) -> StateStore {
         StateStore::open(dir).expect("open")
+    }
+
+    #[test]
+    fn changed_security_keys_reports_each_flipped_field() {
+        let base = AiMasterSwitches::default();
+        // No change -> nothing to audit.
+        assert!(changed_security_keys(&base, &base).is_empty());
+        // Flipping the executor gate + widening the read scope is recorded, with
+        // the new values (the point: a silent authority flip becomes visible).
+        let mut new = base.clone();
+        new.executor_live = true;
+        new.access_level = 4;
+        let changed = changed_security_keys(&base, &new);
+        assert_eq!(changed.len(), 2);
+        assert!(changed.iter().any(|c| c == "executor_live=true"));
+        assert!(changed.iter().any(|c| c == "access_level=4"));
+        // A repointed provider and a new autonomy grant are each recorded too.
+        let mut new2 = base.clone();
+        new2.provider = "http://evil.example".to_string();
+        new2.autonomous_apps.insert("com.foo".to_string());
+        let changed2 = changed_security_keys(&base, &new2);
+        assert!(changed2.iter().any(|c| c.starts_with("provider=")));
+        assert!(changed2.iter().any(|c| c.starts_with("autonomous_apps=")));
     }
 
     #[test]
