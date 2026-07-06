@@ -419,6 +419,12 @@ async fn run_install_flatpak(
         tracing::info!("wrote Arlen permission profile for flatpak {app_id}");
     }
 
+    // Announce the profile so the knowledge daemon projects the app's declared
+    // grants into the LCG now, without waiting for the app to first run (E1: an
+    // installed-but-never-run app otherwise has a profile on disk but zero Grant
+    // nodes). Idempotent + best-effort.
+    crate::event_emit::emit_permission_changed(app_id, true);
+
     Ok(())
 }
 

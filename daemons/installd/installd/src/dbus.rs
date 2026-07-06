@@ -157,6 +157,11 @@ impl InstallDaemon {
         match crate::permission_helper::write_system_profile(uid, &app_id, &profile).await {
             Ok(()) => {
                 tracing::info!("enrolled system-tier profile for {app_id} (uid {uid})");
+                // The system-tier profile lives under /var/lib, which the
+                // desktop-shell profile watcher does not see, so installd is the
+                // only trigger for the knowledge daemon to project this app's
+                // declared grants into the LCG (E1). Best-effort.
+                crate::event_emit::emit_permission_changed(&app_id, true);
                 (true, String::new())
             }
             Err(e) => {
