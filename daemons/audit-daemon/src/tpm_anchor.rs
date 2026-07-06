@@ -14,6 +14,8 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::checkpoint::StartupCheck;
+
 /// A monotonic hardware counter (a TPM NV counter). It only ever advances; a
 /// same-uid attacker cannot roll it back, which is the whole point of anchoring
 /// the ledger head to it.
@@ -49,6 +51,38 @@ pub fn assess_anchor(recorded: u64, hardware: u64) -> AnchorVerdict {
         std::cmp::Ordering::Equal => AnchorVerdict::Consistent,
         std::cmp::Ordering::Less => AnchorVerdict::RolledBack { recorded, hardware },
         std::cmp::Ordering::Greater => AnchorVerdict::Forged { recorded, hardware },
+    }
+}
+
+/// Layer the TPM-anchor verdict onto the checkpoint's own startup check: an
+/// otherwise-[`StartupCheck::Consistent`] checkpoint is still
+/// [`StartupCheck::Tampered`] when the hardware counter shows its recorded value
+/// was rolled back or forged (the software checkpoint alone cannot catch a
+/// same-uid truncate-and-rewrite of the log + checkpoint; the monotonic counter
+/// can). [`StartupCheck::Genesis`] and an already-`Tampered` check pass through
+/// unchanged - the anchor only ever tightens, never relaxes, the verdict.
+pub fn assess_with_anchor(
+    check: StartupCheck,
+    recorded_counter: u64,
+    hardware_counter: u64,
+) -> StartupCheck {
+    match check {
+        StartupCheck::Consistent => match assess_anchor(recorded_counter, hardware_counter) {
+            AnchorVerdict::Consistent => StartupCheck::Consistent,
+            AnchorVerdict::RolledBack { recorded, hardware } => StartupCheck::Tampered {
+                detail: format!(
+                    "ledger head rolled back: checkpoint counter {recorded} is behind \
+                     the TPM counter {hardware}"
+                ),
+            },
+            AnchorVerdict::Forged { recorded, hardware } => StartupCheck::Tampered {
+                detail: format!(
+                    "ledger head counter forged: checkpoint counter {recorded} exceeds \
+                     the TPM counter {hardware}"
+                ),
+            },
+        },
+        other => other,
     }
 }
 
@@ -112,6 +146,40 @@ mod tests {
                 hardware: 4
             }
         );
+    }
+
+    #[test]
+    fn assess_with_anchor_passes_a_matched_consistent_check() {
+        assert_eq!(
+            assess_with_anchor(StartupCheck::Consistent, 5, 5),
+            StartupCheck::Consistent
+        );
+    }
+
+    #[test]
+    fn assess_with_anchor_escalates_a_consistent_check_on_rollback_or_forgery() {
+        // Software says Consistent, but the hardware counter is ahead -> rollback.
+        assert!(matches!(
+            assess_with_anchor(StartupCheck::Consistent, 3, 5),
+            StartupCheck::Tampered { .. }
+        ));
+        // Recorded counter exceeds the monotonic hardware -> forgery.
+        assert!(matches!(
+            assess_with_anchor(StartupCheck::Consistent, 9, 4),
+            StartupCheck::Tampered { .. }
+        ));
+    }
+
+    #[test]
+    fn assess_with_anchor_passes_genesis_and_tampered_through() {
+        assert_eq!(
+            assess_with_anchor(StartupCheck::Genesis, 0, 7),
+            StartupCheck::Genesis
+        );
+        let t = StartupCheck::Tampered {
+            detail: "already tampered".into(),
+        };
+        assert_eq!(assess_with_anchor(t.clone(), 5, 5), t);
     }
 
     #[test]

@@ -116,7 +116,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // accept new entries.
                 if let Some((index, entry_hash_hex)) = head {
                     if let Err(e) =
-                        checkpoint::write(&cp_path, &Checkpoint { index, entry_hash_hex })
+                        checkpoint::write(
+                            &cp_path,
+                            // counter 0: no TPM anchor is wired at this seal site
+                            // yet (the anchor threads its counter in a follow-up).
+                            &Checkpoint {
+                                index,
+                                entry_hash_hex,
+                                counter: 0,
+                            },
+                        )
                     {
                         tracing::error!(
                             "head checkpoint could not be refreshed at startup ({e}); \

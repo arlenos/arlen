@@ -44,6 +44,13 @@ pub struct Checkpoint {
     /// the checkpointed entry is still present and unchanged, not
     /// just that the count is right.
     pub entry_hash_hex: String,
+    /// The TPM NV monotonic counter value at the time this checkpoint was
+    /// sealed (`tpm_anchor`). `0` means no anchor was active (the default and
+    /// the pre-anchor on-disk form; `#[serde(default)]` reads old checkpoints as
+    /// `0`). At restart the live counter is compared against this so a same-uid
+    /// truncate-and-rewrite of the log + checkpoint leaves a detectable gap.
+    #[serde(default)]
+    pub counter: u64,
 }
 
 /// The startup integrity decision for the checkpoint witness.
@@ -202,6 +209,7 @@ mod tests {
         Checkpoint {
             index,
             entry_hash_hex: hash.to_string(),
+            counter: 0,
         }
     }
 

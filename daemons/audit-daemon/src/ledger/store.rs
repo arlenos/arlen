@@ -255,6 +255,8 @@ impl Ledger {
         let cp = Checkpoint {
             index,
             entry_hash_hex: hex(&entry_hash),
+            // No TPM anchor wired at this seal site yet (follow-up threads it in).
+            counter: 0,
         };
         if let Err(e) = checkpoint::write(&self.checkpoint_path, &cp) {
             tracing::error!(
