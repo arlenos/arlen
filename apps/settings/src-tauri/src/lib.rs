@@ -72,6 +72,7 @@ pub fn run() {
             commands::privacy::access_grants,
             commands::privacy::revoke_reach,
             commands::privacy::restore_reach,
+            commands::privacy::revoke_consent,
             commands::ai::ai_status,
             commands::ai::ai_explain,
             commands::ai::ai_providers_list,

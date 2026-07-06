@@ -86,6 +86,25 @@ pub async fn restore_reach(target_app_id: String, reach: String) -> Result<Strin
     Ok(outcome.wire_token().to_string())
 }
 
+/// Release a remembered CONSENT grant by its revocation handle (the "Access to
+/// ~/Documents" consent lines in the App-access panel), distinct from the
+/// profile-scope [`revoke_reach`]: that narrows a declared capability, this
+/// releases a consent record. Routed through the consent broker's control socket,
+/// which admits `settings` for the grant-management ops (list + revoke) but not
+/// for answering prompts. Returns `"revoked"`, or `"no-change"` for an unknown or
+/// already-revoked handle. The client transport is synchronous, so it runs on the
+/// blocking pool.
+#[tauri::command]
+pub async fn revoke_consent(grant_id: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        arlen_consent_broker::ControlClient::at_default_path().revoke_grant(&grant_id)
+    })
+    .await
+    .map_err(|e| format!("join: {e}"))?
+    .map(|ok| if ok { "revoked" } else { "no-change" }.to_string())
+    .map_err(|e| format!("revoke_consent: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
