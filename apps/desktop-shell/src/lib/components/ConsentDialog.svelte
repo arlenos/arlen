@@ -11,7 +11,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { AlertTriangle, Send, Trash2, ShieldAlert } from "lucide-svelte";
-  import { current, resolve, pollConsent, type PendingView, type ConsentClass } from "$lib/stores/consent";
+  import { current, resolve, pollConsent, type PendingView } from "$lib/stores/consent";
 
   onMount(() => {
     void pollConsent();
@@ -56,16 +56,19 @@
     holdTimer = null;
   }
 
-  function actionVerb(cls: ConsentClass): string {
-    if (cls === "destructive") return "Delete";
-    if (cls === "external_send") return "Send";
-    return "Allow";
-  }
 </script>
 
 {#if $current}
   {@const p = $current}
-  {@const high = p.tier === "high_stakes"}
+  <!-- The gate is reversibility, not impact (system-dialog-plan.md): reversible
+       actions get the generous remember (it carries autonomous authority);
+       only the genuinely irreversible confirm per instance. Destructive is NOT
+       automatically irreversible - move-to-Trash is reversible. -->
+  {@const holdDestructive = p.class === "destructive" && p.reversibility === "irreversible"}
+  {@const standingElsewhere = p.class === "external_send" || p.class === "elevated_privilege"}
+  {@const irreversibleOther = p.reversibility === "irreversible" && !holdDestructive && !standingElsewhere}
+  {@const reversibleDestructive = p.class === "destructive" && p.reversibility !== "irreversible"}
+  {@const gated = holdDestructive || standingElsewhere || irreversibleOther}
   <Dialog.Root
     open={true}
     onOpenChange={(open) => {
@@ -78,7 +81,7 @@
           <span class="cd-avatar">{friendly(p.requester).charAt(0)}</span>
           <span class="cd-req-name">{friendly(p.requester)}</span>
           <span class="cd-req-id">{p.requester}</span>
-          {#if high}
+          {#if gated}
             <span class="cd-tier"><ShieldAlert size={12} strokeWidth={2} /> Needs your confirmation</span>
           {/if}
         </div>
@@ -92,20 +95,25 @@
           </p>
         {/if}
 
-        {#if p.class === "destructive"}
+        {#if holdDestructive || irreversibleOther}
           <div class="cd-warn danger">
             <AlertTriangle size={14} strokeWidth={2} />
             This cannot be undone.
           </div>
-        {:else if high}
+        {:else if standingElsewhere}
           <div class="cd-warn">
             <AlertTriangle size={14} strokeWidth={2} />
-            This grants elevated access. Only continue if you started this.
+            This acts outside Arlen. Only continue if you started it.
           </div>
+          <p class="cd-note">
+            To let {friendly(p.requester)} do this on its own, allow it in App access.
+          </p>
+        {:else if reversibleDestructive}
+          <p class="cd-note">You can undo this from the Trash.</p>
         {/if}
 
         <div class="cd-foot">
-          {#if p.class === "destructive"}
+          {#if holdDestructive}
             <Button variant="outline" onclick={() => deny(p)}>Cancel</Button>
             <span class="cd-spacer"></span>
             <button
@@ -119,14 +127,18 @@
               <span class="cd-hold-fill" aria-hidden="true"></span>
               <span class="cd-hold-label"><Trash2 size={14} strokeWidth={2} /> Hold to delete</span>
             </button>
-          {:else if p.class === "external_send"}
+          {:else if standingElsewhere}
             <Button variant="outline" onclick={() => deny(p)}>Deny</Button>
             <span class="cd-spacer"></span>
-            <Button onclick={() => allowOnce(p)}><Send size={14} strokeWidth={2} /> Send once</Button>
-          {:else if high}
+            {#if p.class === "external_send"}
+              <Button onclick={() => allowOnce(p)}><Send size={14} strokeWidth={2} /> Send once</Button>
+            {:else}
+              <Button onclick={() => allowOnce(p)}>Allow once</Button>
+            {/if}
+          {:else if irreversibleOther}
             <Button variant="outline" onclick={() => deny(p)}>Deny</Button>
             <span class="cd-spacer"></span>
-            <Button onclick={() => allowOnce(p)}>{actionVerb(p.class)} once</Button>
+            <Button onclick={() => allowOnce(p)}>Allow once</Button>
           {:else}
             <Button variant="outline" onclick={() => deny(p)}>Deny</Button>
             <span class="cd-spacer"></span>
@@ -219,6 +231,14 @@
   .cd-warn.danger {
     background: color-mix(in srgb, var(--color-error) 12%, transparent);
     color: var(--color-error);
+  }
+  /* A quiet reassurance / pointer (reversible undo, or where standing access
+     lives) - not a wall, just a line. */
+  .cd-note {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
 
   .cd-foot {
