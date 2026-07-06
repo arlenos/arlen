@@ -20,7 +20,7 @@ use ai_engine_contract::{Authorize, AuthorizeDecision, ReadTier};
 use arlen_ai_core::capability::{ActionDecision, ActionKind, ActionPermissions, Capability};
 use arlen_ai_core::graph_query::{AccessTier, QueryScope};
 use arlen_ai_core::graph_schema::GraphSchema;
-use arlen_ai_core::mcp::{AlwaysConfirm, AlwaysConfirmReason};
+use arlen_ai_core::mcp::{name_segments, AlwaysConfirm, AlwaysConfirmReason};
 use arlen_consent_contract::ConsentClass;
 use async_trait::async_trait;
 
@@ -244,7 +244,36 @@ pub enum GateClass {
 /// gate hard-denies it - stronger than the `decide` model's confirm
 /// (`pi-gate-class-registry.md` D2, hard case 2).
 pub fn is_egress_tool(tool: &str) -> bool {
-    matches!(tool, "fetch" | "http" | "send" | "email" | "post")
+    // External-send tools: reuse the segment-based `AlwaysConfirm` classifier so the
+    // egress surface matches the one the rest of the gate already recognises
+    // (`send`/`email`/`mail`/`message`/`post`/`publish` as name segments), catching
+    // `slack.send`, `webhook.publish`, `mailer` etc., not just the bare names.
+    if matches!(
+        AlwaysConfirm::classify(tool),
+        Some(AlwaysConfirmReason::ExternalMessage)
+    ) {
+        return true;
+    }
+    // Network-reach tools the classifier treats as ordinary, but which still leak
+    // data when triggered by external content (a GET that exfiltrates). Segment-based
+    // so `http.get`, `net_fetch`, `curl` all match. Over-matching only ever hard-denies
+    // an externally-triggered call, which is the fail-safe direction.
+    name_segments(tool).iter().any(|s| {
+        matches!(
+            s.as_str(),
+            "fetch"
+                | "http"
+                | "https"
+                | "curl"
+                | "wget"
+                | "upload"
+                | "webhook"
+                | "request"
+                | "download"
+                | "dns"
+                | "socket"
+        )
+    })
 }
 
 /// Map a pi tool NAME to its gate class - the D1 static table
@@ -297,9 +326,26 @@ mod tests {
 
     #[test]
     fn egress_tools_are_identified_for_the_exfiltration_guard() {
+        // Bare names.
         for t in ["fetch", "http", "send", "email", "post"] {
             assert!(is_egress_tool(t), "{t} should be egress");
         }
+        // The segment-based surface the old exact-match list missed (the review
+        // finding): external-send and network-reach under a namespace / camelCase.
+        for t in [
+            "slack.send",
+            "webhook.publish",
+            "http.get",
+            "net_fetch",
+            "curl",
+            "httpRequest",
+            "cloud.upload",
+        ] {
+            assert!(is_egress_tool(t), "{t} should be egress");
+        }
+        // Residual (classifier-level, not this guard's): a sub-word segment like
+        // `mailer` != the `mail` segment, so it is not recognised - closing that
+        // needs unifying the three egress lists at the classifier, a wider change.
         assert!(!is_egress_tool("graph.read"));
         assert!(!is_egress_tool("fs.move"));
         assert!(!is_egress_tool("graph.assert_edge"));

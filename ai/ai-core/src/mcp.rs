@@ -694,7 +694,7 @@ impl AlwaysConfirm {
 /// `_` `-` `.` `/` ` ` separators and on camelCase boundaries. So
 /// `deleteFile` and `filesystem.remove_file` both yield the word
 /// `delete` / `remove` the classifier matches on.
-fn name_segments(name: &str) -> Vec<String> {
+pub fn name_segments(name: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
     let mut prev_was_lower_or_digit = false;
