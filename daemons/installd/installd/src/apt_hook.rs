@@ -25,6 +25,7 @@
 //! path (the unpack/install), or `**CONFIGURE**` / `**REMOVE**` / `**PURGE**`.
 
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 /// What apt is doing to the package in this change line.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,6 +147,29 @@ pub fn packages_to_enroll(changes: &[PackageChange]) -> Vec<String> {
     names
 }
 
+/// For each package a Pre-Install-Pkgs stream would enroll, the curated starting
+/// profile that covers it (if one exists under `curated_dir`). This is the MATCH
+/// half of the `.deb` enroll: parse the stream, take the install-action packages,
+/// and pair each with `curated_dir/<name>.toml` (the `.deb` bare name is exactly
+/// the curated-profile key). A package with no curated profile is omitted (it is
+/// left to the learning-mode fallback, §E9). The WRITE target (system vs user
+/// profile, per-uid) is a deploy decision the caller makes; this function does no
+/// I/O beyond checking each candidate profile exists.
+pub fn match_enrollments(
+    stream: &str,
+    curated_dir: &Path,
+) -> Result<Vec<(String, PathBuf)>, AptHookError> {
+    let changes = parse_pre_install_pkgs(stream)?;
+    let mut matched = Vec::new();
+    for name in packages_to_enroll(&changes) {
+        let profile = curated_dir.join(format!("{name}.toml"));
+        if profile.is_file() {
+            matched.push((name, profile));
+        }
+    }
+    Ok(matched)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,6 +220,23 @@ hello 2.10-5 amd64 none = 2.10-5 amd64 none **CONFIGURE**\n";
         assert_eq!(changes[0].name, "hello");
         assert_eq!(changes[1].action, Action::Remove);
         assert_eq!(packages_to_enroll(&changes), vec!["hello".to_string()]);
+    }
+
+    #[test]
+    fn match_enrollments_pairs_a_package_with_its_curated_profile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        // A curated profile exists for `hello`, but not for `unknownpkg`.
+        std::fs::write(dir.join("hello.toml"), "[info]\napp_id = \"hello\"\n").unwrap();
+        let stream = "VERSION 3\nAPT::Architecture=amd64\n\n\
+            hello 2.10-5 amd64 none < 2.10-5 amd64 none /var/cache/apt/archives/hello.deb\n\
+            unknownpkg - none none < 1.0 amd64 none /var/cache/apt/archives/unknownpkg.deb\n";
+        let matched = match_enrollments(stream, dir).unwrap();
+        // Only the package WITH a curated profile is matched; the unknown one is
+        // left to the learning-mode fallback.
+        assert_eq!(matched.len(), 1);
+        assert_eq!(matched[0].0, "hello");
+        assert_eq!(matched[0].1, dir.join("hello.toml"));
     }
 
     #[test]
