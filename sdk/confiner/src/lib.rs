@@ -246,6 +246,48 @@ pub fn build_profile(
 
 const BUILD_ROOT: &str = "/";
 
+/// The fixed in-sandbox path the single untrusted file is bound to in an
+/// [`ephemeral_profile`]. The app opens exactly this handle.
+pub const EPHEMERAL_FILE: &str = "/tmp/ephemeral/input";
+
+/// The no-trace ephemeral confinement (app-enrollment §E10): open one untrusted
+/// file with no standing grant and no persistence, the default handler for
+/// untrusted content. The `base_platform` is the read-only runtime root; the
+/// single `untrusted_file` enters as a read-only bind at [`EPHEMERAL_FILE`] (the
+/// XDG-Documents-portal-handle equivalent), NOT a directory grant. There is **no
+/// home bind, no Knowledge Graph socket, and no audit socket** (none is bound, so
+/// the graph is not mounted and nothing is logged), and `/home`, `/tmp` and
+/// `/run` are fresh tmpfs, auto-cleaned when the last process exits. Network is
+/// off unless a manifest passes a policy in `network`. Landlock and seccomp are
+/// still applied by the launcher over this profile.
+pub fn ephemeral_profile(
+    base_platform: &Path,
+    untrusted_file: &Path,
+    network: NetworkPolicy,
+) -> Result<Confinement, ConfinerError> {
+    let base = checked_abs(base_platform)?;
+    let file = checked_abs(untrusted_file)?;
+    let mut env = BTreeMap::new();
+    env.insert("PATH".into(), "/usr/bin:/bin".into());
+    env.insert("HOME".into(), "/home/ephemeral".into());
+    Ok(Confinement {
+        network,
+        binds: vec![
+            // The read-only runtime root (libs, the viewer binary); nothing of
+            // the host home is bound.
+            Bind::ReadOnly(base, "/".into()),
+        ],
+        // Fresh, empty, auto-cleaned: no host home, no persisted state, no sockets.
+        tmpfs: vec!["/home".into(), "/tmp".into(), "/run".into()],
+        // The one untrusted file, read-only at the fixed handle path, re-applied
+        // AFTER the `/tmp` tmpfs mask so it survives it (bwrap applies argv in
+        // order; a post-mask bind wins over the earlier tmpfs).
+        post_mask_binds: vec![Bind::ReadOnly(file, EPHEMERAL_FILE.into())],
+        env,
+        chdir: None,
+    })
+}
+
 /// An app-runtime confinement that is **not yet runnable**: it has the shared
 /// base plus the app's security-axis binds (`/usr` read-only, the app's own
 /// state dirs writable) and the network policy, but not the universal plumbing
@@ -393,6 +435,42 @@ mod tests {
         assert_eq!(tmpfs, vec!["/sys", "/tmp"]);
         // PATH is set by the profile.
         assert!(args.windows(2).any(|w| w[0] == "PATH" && w[1] == "/usr/bin:/bin"));
+    }
+
+    #[test]
+    fn ephemeral_profile_binds_only_the_file_no_home_no_sockets() {
+        let conf = ephemeral_profile(
+            Path::new("/usr/lib/arlen/runtime"),
+            Path::new("/home/u/Downloads/untrusted.pdf"),
+            NetworkPolicy::None,
+        )
+        .unwrap();
+        let args = conf.bwrap_args();
+        // Network is off by default.
+        assert!(args.contains(&"--unshare-net".to_string()));
+        // The one untrusted file is bound read-only at the fixed handle path.
+        assert!(args.windows(3).any(|w| w[0] == "--ro-bind"
+            && w[1] == "/home/u/Downloads/untrusted.pdf"
+            && w[2] == EPHEMERAL_FILE));
+        // No home bind: nothing binds the host home; `/home` is a fresh tmpfs.
+        assert!(!args.windows(2).any(|w| w[1] == "/home/u"));
+        assert!(after(&args, "--tmpfs").contains(&"/home"));
+        // The Knowledge Graph and audit sockets are NOT mounted in.
+        assert!(!args
+            .iter()
+            .any(|a| a.contains("/run/arlen") || a.contains("knowledge.sock") || a.contains("audit")));
+    }
+
+    #[test]
+    fn ephemeral_profile_honours_a_declared_network_policy() {
+        let conf = ephemeral_profile(
+            Path::new("/usr/lib/arlen/runtime"),
+            Path::new("/home/u/x.html"),
+            NetworkPolicy::Unrestricted,
+        )
+        .unwrap();
+        // With a manifest-declared network policy, the net namespace stays up.
+        assert!(!conf.bwrap_args().contains(&"--unshare-net".to_string()));
     }
 
     #[test]
