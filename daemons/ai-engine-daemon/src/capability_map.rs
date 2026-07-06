@@ -190,9 +190,77 @@ impl Gate for CapabilityGate {
     }
 }
 
+/// The gate class of a pi tool, resolved from its NAME alone (`pi-gate-class-
+/// registry.md` D1: no arg-inspection in the security path - the class is a fixed
+/// property of the tool, so an attacker cannot shape `tool_input` to change the
+/// decision). Possession of a table entry is the trust proof; an unknown tool is
+/// fail-closed [`GateClass::Deny`].
+///
+/// The daemon-side executor still re-validates every effect; this table is the
+/// FRONT gate that decides Allow / Confirm / Deny per tool name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GateClass {
+    /// A read tool: `Allow`, bounded by the grant's read scope (D3 - the anti-Recall
+    /// guarantee is the read_tier + project-anchor scope, not a confirm).
+    Read,
+    /// A reversible action (a compensation exists): `Allow` autonomous within the
+    /// granted tier. Undo + audit + revoke is the net (reversibility gates autonomy,
+    /// not impact - a reversible-destructive `fs.trash` is still autonomous).
+    ReversibleAction,
+    /// An irreversible, opaque-exec, external-send/reach, or elevated action:
+    /// `Confirm` per instance. External-triggered content confirms regardless.
+    Confirm,
+    /// Not in the registry: fail-closed `Deny`.
+    Deny,
+}
+
+/// Map a pi tool NAME to its gate class - the D1 static table
+/// (`pi-gate-class-registry.md`). The fine-grained graph/fs tool names (D2) each
+/// resolve to one fixed class so no `tool_input` parsing is needed in the gate.
+pub fn gate_class_for_tool(tool: &str) -> GateClass {
+    match tool {
+        // Reads: Allow, scope-bounded (D3).
+        "graph.read" => GateClass::Read,
+        // Reversible graph + fs actions: Allow autonomous.
+        "graph.assert_edge" | "graph.retract_edge" | "fs.move" | "fs.trash" => {
+            GateClass::ReversibleAction
+        }
+        // Irreversible graph + fs actions: Confirm.
+        "graph.set_field" | "graph.retract_node" | "fs.delete" => GateClass::Confirm,
+        // Package / external-send / egress-reach / opaque-exec / elevated: Confirm
+        // (standing autonomy for these comes only via the heavy consent surface).
+        "install" | "uninstall" | "send" | "email" | "post" | "fetch" | "http"
+        | "run_command" | "exec" | "eval" | "sudo" | "pkexec" => GateClass::Confirm,
+        // Anything not in the registry: fail-closed Deny (possession of an entry is
+        // the trust proof).
+        _ => GateClass::Deny,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gate_class_table_classifies_by_name() {
+        // Reads short-circuit to a scope-bounded Allow.
+        assert_eq!(gate_class_for_tool("graph.read"), GateClass::Read);
+        // Reversible actions (graph + fs) are autonomous.
+        assert_eq!(gate_class_for_tool("graph.assert_edge"), GateClass::ReversibleAction);
+        assert_eq!(gate_class_for_tool("graph.retract_edge"), GateClass::ReversibleAction);
+        assert_eq!(gate_class_for_tool("fs.move"), GateClass::ReversibleAction);
+        assert_eq!(gate_class_for_tool("fs.trash"), GateClass::ReversibleAction);
+        // Irreversible / exec / egress / elevated confirm.
+        assert_eq!(gate_class_for_tool("graph.set_field"), GateClass::Confirm);
+        assert_eq!(gate_class_for_tool("graph.retract_node"), GateClass::Confirm);
+        assert_eq!(gate_class_for_tool("fs.delete"), GateClass::Confirm);
+        assert_eq!(gate_class_for_tool("run_command"), GateClass::Confirm);
+        assert_eq!(gate_class_for_tool("fetch"), GateClass::Confirm);
+        assert_eq!(gate_class_for_tool("sudo"), GateClass::Confirm);
+        // Unknown tool: fail-closed Deny.
+        assert_eq!(gate_class_for_tool("graph.write"), GateClass::Deny); // coarse name is not in the fine-grained table
+        assert_eq!(gate_class_for_tool("totally.unknown"), GateClass::Deny);
+    }
     use ai_engine_contract::CapabilityContext;
     use arlen_ai_core::capability::ActionKind;
 
