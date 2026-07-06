@@ -24,6 +24,7 @@ use arlen_auditd::checkpoint::{self, Checkpoint, StartupCheck};
 use arlen_auditd::ingest::{ingest_socket_path, IngestServer};
 use arlen_auditd::ledger::{Ledger, LedgerReader};
 use arlen_auditd::read::{read_socket_path, ReadServer};
+use arlen_auditd::tpm_anchor::{self, TpmAnchor};
 use arlen_auditd::{audit_data_dir, key, AuditError};
 use os_sdk::{EventEmitter, UnixEventEmitter};
 use tokio::sync::Mutex;
@@ -53,6 +54,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = key::load_or_create(&key::key_path()?, has_entries)?;
 
     let ledger = Ledger::open(&ledger_path, key).await?;
+    // The TPM anchor stays `None` until the real `tss-esapi` NV-counter impl is
+    // verified on metal; `None` preserves the pre-anchor behaviour (the checkpoint
+    // counter is 0 and the anchor check is inert). When a real anchor is installed
+    // here it is shared between the ledger (which advances it at each append seal)
+    // and this startup path (which reads it to detect a rollback + records it in
+    // the reseed).
+    let anchor: Option<Arc<dyn TpmAnchor>> = None;
+    let ledger = match &anchor {
+        Some(a) => ledger.with_anchor(a.clone()),
+        None => ledger,
+    };
 
     // The Event Bus producer client. Created before verification so a
     // tamper alert can be emitted the moment it is detected. Resolves
@@ -103,7 +115,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(Some(cp)) => ledger.entry_hash_hex_at(cp.index).await?,
             _ => None,
         };
-        match checkpoint::assess_startup(stored, head.is_none(), entry_hash_at_cp) {
+        // The checkpoint's recorded TPM counter (captured before `assess_startup`
+        // consumes `stored`) and the live hardware counter, read once and reused
+        // for both the anchor check and the reseed below.
+        let stored_counter = match &stored {
+            Ok(Some(cp)) => Some(cp.counter),
+            _ => None,
+        };
+        let hardware_counter = anchor.as_ref().and_then(|a| a.read_counter().ok());
+        let check = checkpoint::assess_startup(stored, head.is_none(), entry_hash_at_cp);
+        // An otherwise-`Consistent` check is escalated to `Tampered` when the
+        // hardware counter shows the recorded value was rolled back or forged. A
+        // read failure (or no anchor) leaves the software verdict unchanged.
+        let check = match (stored_counter, hardware_counter) {
+            (Some(recorded), Some(hardware)) => {
+                tpm_anchor::assess_with_anchor(check, recorded, hardware)
+            }
+            _ => check,
+        };
+        match check {
             StartupCheck::Consistent => {
                 // Reseed to the live head: refreshes the witness and
                 // advances past a clean crash-ahead entry. This write
@@ -115,18 +145,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // cannot keep its witness current, so it must not
                 // accept new entries.
                 if let Some((index, entry_hash_hex)) = head {
-                    if let Err(e) =
-                        checkpoint::write(
-                            &cp_path,
-                            // counter 0: no TPM anchor is wired at this seal site
-                            // yet (the anchor threads its counter in a follow-up).
-                            &Checkpoint {
-                                index,
-                                entry_hash_hex,
-                                counter: 0,
-                            },
-                        )
-                    {
+                    // Record the current hardware counter (a read, not an
+                    // increment: the reseed re-witnesses the same head, it is not a
+                    // new append). A read failure preserves the stored counter
+                    // rather than resetting it to 0, which would falsely read as a
+                    // rollback next restart.
+                    let counter = hardware_counter.or(stored_counter).unwrap_or(0);
+                    if let Err(e) = checkpoint::write(
+                        &cp_path,
+                        &Checkpoint {
+                            index,
+                            entry_hash_hex,
+                            counter,
+                        },
+                    ) {
                         tracing::error!(
                             "head checkpoint could not be refreshed at startup ({e}); \
                              the witness is unwritable, freezing ingest"
