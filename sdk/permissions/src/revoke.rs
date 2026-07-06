@@ -157,6 +157,9 @@ pub enum RevokeOutcome {
     NotNarrowing,
     /// No profile file exists for the target app; nothing to narrow.
     NotFound,
+    /// The reach is marked ESSENTIAL by the app (`[graph] required`), so revoking
+    /// it would brick the app; refused, nothing written (app-enrollment §E2).
+    Required,
 }
 
 impl RevokeOutcome {
@@ -168,6 +171,7 @@ impl RevokeOutcome {
             RevokeOutcome::NoChange => "OK: no-change",
             RevokeOutcome::NotNarrowing => "OK: not-narrowing",
             RevokeOutcome::NotFound => "OK: not-found",
+            RevokeOutcome::Required => "OK: required",
         }
     }
 
@@ -179,6 +183,7 @@ impl RevokeOutcome {
             "OK: no-change" => Some(RevokeOutcome::NoChange),
             "OK: not-narrowing" => Some(RevokeOutcome::NotNarrowing),
             "OK: not-found" => Some(RevokeOutcome::NotFound),
+            "OK: required" => Some(RevokeOutcome::Required),
             _ => None,
         }
     }

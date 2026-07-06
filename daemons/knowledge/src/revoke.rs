@@ -943,6 +943,24 @@ pub fn tier_allows_revoke(app_id: &str) -> bool {
 ///
 /// This is the user-config-writing core; the caller (the socket command) applies
 /// the tier refusal ([`tier_allows_revoke`]) and resolves `path` from the app id.
+/// Whether `reach` targets an entity pattern the app marked essential (`[graph]
+/// required`). Read and write reaches carry the pattern; relation and
+/// instance-scope reaches are not pattern-keyed, so the required list never
+/// blocks them (marking a relation or instance grant essential is a follow-up).
+fn reach_is_required(reach: &RevokedReach, required: &[String]) -> bool {
+    match reach {
+        RevokedReach::Read { entity_pattern } | RevokedReach::Write { entity_pattern } => {
+            required.iter().any(|r| r == entity_pattern)
+        }
+        // `[graph] required` marks graph read/write patterns essential (v1). The
+        // non-graph reaches (network, clipboard, notifications, ...) and the
+        // relation/instance-scope graph reaches are not pattern-keyed against it,
+        // so the required list never blocks them; a per-dimension essential
+        // marker is a follow-up.
+        _ => false,
+    }
+}
+
 pub fn revoke_at(path: &Path, reach: &RevokedReach) -> std::io::Result<RevokeOutcome> {
     if !path.exists() {
         return Ok(RevokeOutcome::NotFound);
@@ -950,6 +968,14 @@ pub fn revoke_at(path: &Path, reach: &RevokedReach) -> std::io::Result<RevokeOut
     let old_text = std::fs::read_to_string(path)?;
     let old_profile: PermissionProfile = toml::from_str(&old_text)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    // Anti-brick gate (§E2): the app declares some reach ESSENTIAL via
+    // `[graph] required`. Refuse to strip one - a one-click tighten that removed
+    // it would break the app - before touching the document. Empty for the
+    // conservative default profile, so this is inert for ordinary apps.
+    if reach_is_required(reach, &old_profile.graph.required) {
+        return Ok(RevokeOutcome::Required);
+    }
     let old_summary = summarize(&old_profile);
 
     let mut doc: toml_edit::DocumentMut = old_text
@@ -1373,6 +1399,36 @@ instance_scope = "all"
         let read_line = after.lines().find(|l| l.trim_start().starts_with("read =")).unwrap();
         assert!(!read_line.contains("system.Project"), "read narrowed on disk");
         assert!(after.contains("# my app profile"), "comments preserved");
+    }
+
+    #[test]
+    fn revoke_at_refuses_an_essential_reach() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("com.test.toml");
+        std::fs::write(
+            &path,
+            "[info]\napp_id = \"com.test\"\n\
+             [graph]\nread = [\"system.File\", \"system.Project\"]\n\
+             required = [\"system.File\"]\n",
+        )
+        .unwrap();
+
+        // Revoking the essential reach is refused (anti-brick); nothing written.
+        let outcome =
+            revoke_at(&path, &RevokedReach::Read { entity_pattern: "system.File".into() }).unwrap();
+        assert_eq!(outcome, RevokeOutcome::Required);
+        assert!(
+            std::fs::read_to_string(&path).unwrap().contains("system.File"),
+            "the essential reach stays on disk"
+        );
+
+        // A non-essential reach still revokes normally.
+        let outcome = revoke_at(
+            &path,
+            &RevokedReach::Read { entity_pattern: "system.Project".into() },
+        )
+        .unwrap();
+        assert_eq!(outcome, RevokeOutcome::Revoked);
     }
 
     #[test]

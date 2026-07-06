@@ -1167,6 +1167,7 @@ fn handle_revoke(app_id: &str, body: &[u8]) -> String {
         Ok(crate::revoke::RevokeOutcome::NoChange) => "OK: no-change".to_string(),
         Ok(crate::revoke::RevokeOutcome::NotNarrowing) => "OK: not-narrowing".to_string(),
         Ok(crate::revoke::RevokeOutcome::NotFound) => "OK: not-found".to_string(),
+        Ok(crate::revoke::RevokeOutcome::Required) => "OK: required".to_string(),
         Err(e) => format!("ERROR: {e}"),
     }
 }
