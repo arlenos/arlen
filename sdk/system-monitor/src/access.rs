@@ -10,7 +10,7 @@
 //! surfaced as "not measured yet" until it lands.
 
 use audit_proto::{ActivityPage, ReadClient};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// One app's audited access, aggregated from the activity ledger.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,6 +64,27 @@ pub fn aggregate_access(page: &ActivityPage) -> Vec<AppAccess> {
         row.last_micros = row.last_micros.max(e.timestamp_micros);
     }
     by_app.into_values().collect()
+}
+
+/// The first-time accesses in `current` against a `seen` baseline: every
+/// `(app_id, kind)` pair present now but not in the baseline. This is the
+/// plan's "an app reached the camera / network for the first time" alert. Pure;
+/// the caller owns the persisted baseline and folds the returned pairs into it
+/// after surfacing them. Works over the audit-activity kinds we have today
+/// (graph-access, tool-call, network-call, ...); the capture kinds (camera, mic)
+/// join it when the capture infrastructure lands. Pairs are returned sorted for a
+/// stable surface.
+pub fn novel_access(
+    current: &[AppAccess],
+    seen: &BTreeSet<(String, String)>,
+) -> Vec<(String, String)> {
+    let mut novel: Vec<(String, String)> = current
+        .iter()
+        .flat_map(|app| app.by_kind.keys().map(move |kind| (app.app_id.clone(), kind.clone())))
+        .filter(|pair| !seen.contains(pair))
+        .collect();
+    novel.sort();
+    novel
 }
 
 /// Read the recent activity and aggregate it into a per-app access report. The
@@ -150,5 +171,34 @@ mod tests {
     #[test]
     fn an_empty_page_yields_no_rows() {
         assert!(aggregate_access(&page(Vec::new())).is_empty());
+    }
+
+    #[test]
+    fn novel_access_flags_only_unseen_app_kind_pairs() {
+        let rows = aggregate_access(&page(vec![
+            entry("files", "graph-access", "ok", 1),
+            entry("files", "query", "ok", 2),
+            entry("mail", "network-call", "ok", 3),
+        ]));
+        let mut seen = BTreeSet::new();
+        seen.insert(("files".to_string(), "graph-access".to_string()));
+        let novel = novel_access(&rows, &seen);
+        // files/graph-access is baseline; the other two are first-time, sorted.
+        assert_eq!(
+            novel,
+            vec![
+                ("files".to_string(), "query".to_string()),
+                ("mail".to_string(), "network-call".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_empty_baseline_makes_every_access_novel() {
+        let rows = aggregate_access(&page(vec![entry("app.x", "tool-call", "ok", 1)]));
+        assert_eq!(
+            novel_access(&rows, &BTreeSet::new()),
+            vec![("app.x".to_string(), "tool-call".to_string())]
+        );
     }
 }
