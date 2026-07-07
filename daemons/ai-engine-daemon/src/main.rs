@@ -254,22 +254,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // later consumer) to reverse. In-memory + bounded (a persisted/signed undo
     // log is a separate increment).
     let compensation = Arc::new(Mutex::new(CompensationStore::new(256)));
-    let reporter = ScreeningReporter::new(
-        Arc::new(LedgerAuditSink::at_default_socket()) as Arc<dyn AuditSink>,
-        Screener::off(),
-    )
-    .with_compensation(compensation);
+    let audit: Arc<dyn AuditSink> = Arc::new(LedgerAuditSink::at_default_socket());
+    let reporter = ScreeningReporter::new(audit.clone(), Screener::off());
     // The executor seam is a router so the daemon hosts several proxy tools
     // (graph.read + graph.write now; OS/MCP tools as they land), each enforcing
     // its own scope. graph.read runs over the LIVE CypherPipeline when AI is
     // enabled + a provider is configured (else the fail-closed DeniedRunner);
-    // graph.write over DeniedWriter (the live write + its Report-side
-    // compensation land at the executor-live cutover). An unregistered tool is
-    // UnknownTool.
+    // graph.write over the LIVE UnixRelationWriter when executor_live (else
+    // DeniedWriter). The write executor AUDITS before it applies and registers the
+    // op-id-keyed compensation at apply time, from the daemon's own op id - so a
+    // committed write is audited + undoable regardless of the engine's Report. An
+    // unregistered tool is UnknownTool.
     let read_executor: Arc<dyn Executor> =
         Arc::new(GraphReadExecutor::new(build_read_runner().await));
-    let write_executor: Arc<dyn Executor> =
-        Arc::new(GraphWriteExecutor::new(build_write_runner()));
+    let write_executor: Arc<dyn Executor> = Arc::new(
+        GraphWriteExecutor::new(build_write_runner())
+            .with_audit(audit.clone())
+            .with_compensation(compensation),
+    );
     let executor = ProxyExecutor::new()
         .register("graph.read", read_executor)
         // D2 (pi-gate-class-registry.md): the fine-grained reversible graph-write
