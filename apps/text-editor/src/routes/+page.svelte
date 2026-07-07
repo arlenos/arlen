@@ -8,9 +8,22 @@
   import LensPanel from "$lib/components/editor/LensPanel.svelte";
   import AiEditReview from "$lib/components/editor/AiEditReview.svelte";
   import { loadLens } from "$lib/stores/lens";
-  import { proposal, proposeEdit } from "$lib/stores/aiEdit";
+  import { proposal, proposeEdit, dismiss } from "$lib/stores/aiEdit";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
-  import { Sun, PanelRight, Sparkles } from "lucide-svelte";
+  import { Sun, PanelRight } from "lucide-svelte";
+
+  // The AI edit is invoked by keyboard (Cmd/Ctrl+K), never a bolted-on titlebar
+  // button. Its discoverable home is a future command palette; a text-selection
+  // "edit this" action is the contextual one. Escape dismisses an open proposal.
+  function onKeydown(e: KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      if (!$proposal) void proposeEdit("Tighten the intro and add a reference");
+    } else if (e.key === "Escape" && $proposal) {
+      e.preventDefault();
+      dismiss();
+    }
+  }
 
   // The transaction-time presets (mirrors apps/files/src/lib/asof.ts).
   const AS_OF_OPTIONS = [
@@ -50,13 +63,12 @@ Turn this on and every paragraph but the one you are in fades away, so the writi
   onMount(() => loadLens("the-kg-lens.md"));
 </script>
 
+<svelte:window onkeydown={onKeydown} />
+
 <div class="app">
   <header class="titlebar">
     <span class="file">the-kg-lens.md</span>
     <span class="spacer"></span>
-    <button type="button" class="tb-btn" onclick={() => proposeEdit("Tighten the intro and add a reference")}>
-      <Sparkles size={14} strokeWidth={2} /> Ask the assistant
-    </button>
     <button type="button" class="tb-btn" class:on={focusMode} onclick={() => (focusMode = !focusMode)}>
       <Sun size={14} strokeWidth={2} /> Focus
     </button>
