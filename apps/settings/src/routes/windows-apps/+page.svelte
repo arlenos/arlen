@@ -68,7 +68,7 @@
           {#snippet control()}
             <Button variant="ghost" size="sm" onclick={() => toggle(b.id)}>
               Advanced
-              <ChevronDown size={13} strokeWidth={2} class={expanded.has(b.id) ? "wa-rot" : ""} />
+              <ChevronDown size={13} strokeWidth={2} class={`wa-chev ${expanded.has(b.id) ? "wa-rot" : ""}`} />
             </Button>
           {/snippet}
           {#snippet below()}
@@ -142,6 +142,12 @@
     padding: var(--space-row, 0.75rem) 1rem;
     font-size: 0.8125rem;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  :global(.wa-chev) {
+    transition: transform var(--duration-micro, 120ms) var(--ease-out, ease);
+  }
+  :global(.wa-rot) {
+    transform: rotate(180deg);
   }
   .wa-avatar {
     display: inline-flex;
