@@ -32,9 +32,9 @@ export type ContractError =
 
 /** The daemon's verdict on an `Authorize` (internally tagged on `decision`). */
 export type AuthorizeDecision =
-  | { decision: "allow" }
+  | { decision: "allow"; proof?: string }
   | { decision: "deny"; reason: string }
-  | { decision: "modify"; args: unknown }
+  | { decision: "modify"; args: unknown; proof?: string }
   | { decision: "confirm"; prompt: string };
 
 /** The outcome of an `Execute` (internally tagged on `outcome`). */
@@ -50,7 +50,7 @@ export interface ReportAck {
 /** The verb being asked of the daemon (internally tagged on `call`). */
 export type Call =
   | { call: "authorize"; tool_name: string; tool_input: unknown; external_triggered: boolean }
-  | { call: "execute"; tool_name: string; tool_input: unknown }
+  | { call: "execute"; tool_name: string; tool_input: unknown; proof?: string }
   | { call: "report"; tool_name: string; tool_call_id: string; result: unknown; is_error: boolean }
   | { call: "end_session" };
 
@@ -121,8 +121,8 @@ export const calls = {
   authorize(toolName: string, toolInput: unknown, externalTriggered: boolean): Call {
     return { call: "authorize", tool_name: toolName, tool_input: toolInput, external_triggered: externalTriggered };
   },
-  execute(toolName: string, toolInput: unknown): Call {
-    return { call: "execute", tool_name: toolName, tool_input: toolInput };
+  execute(toolName: string, toolInput: unknown, proof?: string): Call {
+    return { call: "execute", tool_name: toolName, tool_input: toolInput, proof };
   },
   report(toolName: string, toolCallId: string, result: unknown, isError: boolean): Call {
     return { call: "report", tool_name: toolName, tool_call_id: toolCallId, result, is_error: isError };

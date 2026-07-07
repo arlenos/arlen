@@ -27,6 +27,7 @@ test("an Ok execute outcome surfaces the daemon result and forwards the args", a
   let seen: Call | undefined;
   const tools = collect(async () => ({
     call: async (c: Call): Promise<Reply> => {
+      if (c.call === "authorize") return { reply: "authorize", decision: "allow", proof: "test-proof" };
       seen = c;
       return { reply: "execute", outcome: "ok", result: { rows: 1 } };
     },
@@ -38,17 +39,16 @@ test("an Ok execute outcome surfaces the daemon result and forwards the args", a
     call: "execute",
     tool_name: "graph.read",
     tool_input: { q: "MATCH (n) RETURN n" },
+    proof: "test-proof",
   });
 });
 
 test("an error outcome surfaces a tool error (fail-closed, never silent success)", async () => {
   const tools = collect(async () => ({
-    call: async (): Promise<Reply> => ({
-      reply: "execute",
-      outcome: "error",
-      code: "permission_denied",
-      message: "denied",
-    }),
+    call: async (c: Call): Promise<Reply> =>
+      c.call === "authorize"
+        ? { reply: "authorize", decision: "allow", proof: "p" }
+        : { reply: "execute", outcome: "error", code: "permission_denied", message: "denied" },
   }));
   const r = await tools.get("graph.write")!.execute("id-1", {});
   assert.equal(r.isError, true);
@@ -61,12 +61,31 @@ test("an unexpected daemon reply is a tool error", async () => {
   assert.equal(r.isError, true);
 });
 
+test("a denied authorize blocks the execute (the proxy cannot bypass the gate)", async () => {
+  let executed = false;
+  const tools = collect(async () => ({
+    call: async (c: Call): Promise<Reply> => {
+      if (c.call === "authorize") return { reply: "authorize", decision: "deny", reason: "no" };
+      executed = true;
+      return { reply: "execute", outcome: "ok", result: {} };
+    },
+  }));
+  const r = await tools.get("graph.write")!.execute("id-1", {});
+  assert.equal(r.isError, true);
+  assert.equal(executed, false, "a denied tool never reaches Execute");
+});
+
 test("a daemon-unreachable connect failure is a tool error and retries on the next call", async () => {
   let attempts = 0;
   const connect = async (): Promise<CallClient> => {
     attempts++;
     if (attempts === 1) throw new Error("no socket");
-    return { call: async (): Promise<Reply> => ({ reply: "execute", outcome: "ok", result: {} }) };
+    return {
+      call: async (c: Call): Promise<Reply> =>
+        c.call === "authorize"
+          ? { reply: "authorize", decision: "allow", proof: "p" }
+          : { reply: "execute", outcome: "ok", result: {} },
+    };
   };
   const tool = collect(connect).get("graph.read")!;
   const first = await tool.execute("id-1", {});

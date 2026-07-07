@@ -135,7 +135,20 @@ export function makeProxyTools(opts: ProxyOptions = {}): (pi: ProxyExtensionAPI)
           try {
             if (!clientPromise) clientPromise = connect();
             const client = await clientPromise;
-            reply = await client.call(calls.execute(spec.name, params));
+            // HIGH-1: the daemon's Execute requires a single-use proof that a
+            // matching Authorize minted. Authorize this tool first; a Deny/Confirm
+            // means the daemon will not run it (the proxy tool cannot bypass the
+            // gate), and an Allow/Modify carries the proof to present at Execute.
+            // (When the proxy is wired into the live extension, the gate shim will
+            // pass its already-minted proof instead, to avoid a second confirm.)
+            const auth = await client.call(calls.authorize(spec.name, params, false));
+            if (auth.reply !== "authorize") {
+              return fail(`arlen: unexpected daemon reply '${auth.reply}' authorizing ${spec.name}`);
+            }
+            if (auth.decision !== "allow" && auth.decision !== "modify") {
+              return fail(`arlen: ${spec.name} was not authorized (${auth.decision})`);
+            }
+            reply = await client.call(calls.execute(spec.name, params, auth.proof));
           } catch (err) {
             clientPromise = undefined;
             return fail(`arlen: ${spec.name} is unavailable (${String(err)})`);
