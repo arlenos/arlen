@@ -62,11 +62,22 @@ impl Default for RawProvider {
 }
 
 #[derive(Deserialize, Default)]
+struct RawAgent {
+    /// The executor-live master switch: when false (default) the agent's graph
+    /// writes stay fail-closed (proposals only); when true, an authorized write
+    /// actually applies. The gate lift AND the live write executor both read it.
+    #[serde(default)]
+    executor_live: bool,
+}
+
+#[derive(Deserialize, Default)]
 struct RawConfig {
     #[serde(default)]
     ai: RawAi,
     #[serde(default)]
     provider: RawProvider,
+    #[serde(default)]
+    agent: RawAgent,
 }
 
 /// The resolved provider settings the live read pipeline builds its
@@ -119,6 +130,23 @@ pub fn provider_settings() -> ProviderSettings {
         .unwrap_or_else(|_| provider_settings_from_text(""))
 }
 
+/// Whether `[agent] executor_live` is true in the given `ai.toml` text. A
+/// malformed document is treated as false (fail-closed): a broken config never
+/// lifts the agent's writes out of proposal-only.
+pub fn executor_live_from_text(text: &str) -> bool {
+    toml::from_str::<RawConfig>(text)
+        .map(|c| c.agent.executor_live)
+        .unwrap_or(false)
+}
+
+/// Whether the executor is live per the on-disk `ai.toml` (missing/unreadable =
+/// false, fail-closed).
+pub fn executor_live() -> bool {
+    std::fs::read_to_string(ai_config_path())
+        .map(|t| executor_live_from_text(&t))
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,6 +179,18 @@ mod tests {
         assert_eq!(s.context_window, 4096);
         // Unset audit_token falls to the default.
         assert_eq!(s.audit_token, "ai-engine");
+    }
+
+    #[test]
+    fn executor_live_only_when_set_true_fail_closed() {
+        assert!(executor_live_from_text("[agent]\nexecutor_live = true\n"));
+        assert!(!executor_live_from_text("[agent]\nexecutor_live = false\n"));
+        // Absent section / flag -> false.
+        assert!(!executor_live_from_text("[ai]\nenabled = true\n"));
+        assert!(!executor_live_from_text(""));
+        // Malformed -> false (fail-closed, never lifts writes).
+        assert!(!executor_live_from_text("not = valid ["));
+        assert!(!executor_live_from_text("[agent]\nexecutor_live = \"yes\"\n"));
     }
 
     #[test]
