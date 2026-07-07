@@ -10,6 +10,7 @@ path = "src/lib.rs"
 
 [dependencies]
 audit-proto = { path = "../../contracts/audit-proto" }
+tokio = { version = "1", features = ["net"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }
