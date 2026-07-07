@@ -2,12 +2,17 @@
 //! stdio = the shell-facing drive channel; the daemon proxies shell <-> pi").
 //!
 //! A bidirectional JSONL relay between the harness shell and the confined pi
-//! sidecar's RPC stdio: commands (`{"type":"prompt",...}`, steer, interrupt)
-//! flow shell -> pi's stdin, and pi's agent events flow pi's stdout -> shell.
-//! It is a FAITHFUL pass-through - records are forwarded byte-for-byte, never
-//! reshaped (reshaping the stream would be a prompt-injection surface; the
-//! security boundary is the separate contract socket where pi calls Authorize /
-//! Report, not this drive channel).
+//! sidecar's RPC stdio: conversational commands (`{"type":"prompt",...}`, steer,
+//! follow_up, abort, get_last_assistant_text) flow shell -> pi's stdin, and pi's
+//! agent events flow pi's stdout -> shell. The pi -> shell direction is a faithful
+//! byte-for-byte pass-through (pi's events are trusted output; reshaping them would
+//! be a prompt-injection surface). The shell -> pi direction is ALLOWLISTED to the
+//! conversational verbs: pi's operator RPC surface also carries `bash` (a raw local
+//! shell exec that never fires a gated `tool_call`), `switch_session`,
+//! `get_messages`, `export_html`, ... and forwarding those verbatim would let a
+//! drive-socket peer run un-gated code or read another session, so the relay drops
+//! every non-conversational command (fail-closed). The gate for what an admitted
+//! prompt can then DO is still the separate contract socket (Authorize / Report).
 //!
 //! Framing is pi's strict JSONL: LF (`\n`) is the only record delimiter
 //! (`rpc.md`). Each record is read up to and including its newline and written
@@ -43,13 +48,52 @@ where
     pump_capped(from, to, MAX_RECORD).await
 }
 
+/// The pi RPC commands the drive channel permits (shell -> pi). pi's operator RPC
+/// surface ALSO includes `bash` (a raw local shell exec that never fires a
+/// `tool_call`), `switch_session` / `export_html` / `get_messages` / `fork` /
+/// `set_model` / `get_state` / ... - none of which are gated `tool_call`s, so
+/// forwarding them verbatim would let any drive-socket peer run un-gated,
+/// un-audited code, load an arbitrary session file, or read another principal's
+/// conversation. The relay therefore ALLOWLISTS the conversational verbs the
+/// harness legitimately sends and DROPS every other command (fail-closed): the
+/// un-gated operator surface is unreachable over the drive channel.
+const ALLOWED_DRIVE_COMMANDS: &[&str] =
+    &["prompt", "steer", "follow_up", "abort", "get_last_assistant_text"];
+
+/// Whether a shell -> pi JSONL record is an allowed drive command. A record that
+/// is not valid JSON, carries no string `type`, or whose `type` is not on the
+/// allowlist is REJECTED, so a malformed or operator command never reaches pi.
+fn is_allowed_drive_command(record: &[u8]) -> bool {
+    serde_json::from_slice::<serde_json::Value>(record)
+        .ok()
+        .as_ref()
+        .and_then(|v| v.get("type"))
+        .and_then(|t| t.as_str())
+        .is_some_and(|t| ALLOWED_DRIVE_COMMANDS.contains(&t))
+}
+
 /// [`pump`] with an explicit per-record byte cap (so the bound is unit-testable
 /// without allocating megabytes). A record that reaches `max` bytes without a
 /// terminating `\n` is rejected as a protocol error rather than buffered further.
-async fn pump_capped<R, W>(from: R, mut to: W, max: usize) -> io::Result<()>
+async fn pump_capped<R, W>(from: R, to: W, max: usize) -> io::Result<()>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
+{
+    // The bare pump forwards every record (used pi -> shell, where pi's events
+    // are trusted output, not commands).
+    pump_filtered(from, to, max, |_| true).await
+}
+
+/// [`pump_capped`] that forwards a record only when `allow(record)` holds; a
+/// rejected record is DROPPED and the relay keeps running (fail-closed). Used
+/// shell -> pi with [`is_allowed_drive_command`] so only conversational verbs
+/// reach pi.
+async fn pump_filtered<R, W, F>(from: R, mut to: W, max: usize, allow: F) -> io::Result<()>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+    F: Fn(&[u8]) -> bool,
 {
     let mut from = BufReader::new(from);
     let mut record = Vec::new();
@@ -71,8 +115,12 @@ where
                 "rpc record exceeds the maximum length",
             ));
         }
-        to.write_all(&record).await?;
-        to.flush().await?;
+        if allow(&record) {
+            to.write_all(&record).await?;
+            to.flush().await?;
+        }
+        // else: drop the disallowed command silently (fail-closed); the relay
+        // stays up, the peer's rejected command is simply a no-op.
     }
 }
 
@@ -111,8 +159,10 @@ where
     PR: AsyncRead + Unpin,
     PW: AsyncWrite + Unpin,
 {
-    let commands = pump(shell_read, pi_stdin); // shell -> pi
-    let events = pump(pi_stdout, shell_write); // pi -> shell
+    // shell -> pi: ALLOWLISTED to conversational verbs (drops pi's un-gated
+    // operator commands like `bash`/`switch_session`/`get_messages`).
+    let commands = pump_filtered(shell_read, pi_stdin, MAX_RECORD, is_allowed_drive_command);
+    let events = pump(pi_stdout, shell_write); // pi -> shell (trusted output, verbatim)
     tokio::select! {
         r = commands => r,
         r = events => r,
@@ -158,6 +208,37 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn allows_only_conversational_verbs() {
+        use super::is_allowed_drive_command;
+        // Conversational verbs the harness sends are allowed.
+        assert!(is_allowed_drive_command(br#"{"type":"prompt","message":"hi"}"#));
+        assert!(is_allowed_drive_command(br#"{"type":"get_last_assistant_text","id":"x"}"#));
+        assert!(is_allowed_drive_command(br#"{"type":"abort"}"#));
+        // pi's un-gated operator surface is rejected.
+        assert!(!is_allowed_drive_command(br#"{"type":"bash","command":"rm -rf ~"}"#));
+        assert!(!is_allowed_drive_command(br#"{"type":"switch_session","sessionPath":"/etc/x"}"#));
+        assert!(!is_allowed_drive_command(br#"{"type":"get_messages"}"#));
+        assert!(!is_allowed_drive_command(br#"{"type":"export_html","outputPath":"/x"}"#));
+        assert!(!is_allowed_drive_command(br#"{"type":"get_state"}"#));
+        // Malformed / typeless records fail closed.
+        assert!(!is_allowed_drive_command(b"not json"));
+        assert!(!is_allowed_drive_command(br#"{"no":"type"}"#));
+        assert!(!is_allowed_drive_command(br#"{"type":123}"#));
+    }
+
+    #[tokio::test]
+    async fn the_command_pump_drops_disallowed_records_and_forwards_allowed_ones() {
+        use super::{is_allowed_drive_command, pump_filtered, MAX_RECORD};
+        // A bash command then a prompt: only the prompt reaches pi.
+        let input = b"{\"type\":\"bash\",\"command\":\"id\"}\n{\"type\":\"prompt\",\"message\":\"hi\"}\n";
+        let mut out = Vec::new();
+        pump_filtered(&input[..], &mut out, MAX_RECORD, is_allowed_drive_command).await.unwrap();
+        let forwarded = String::from_utf8(out).unwrap();
+        assert!(!forwarded.contains("bash"), "the bash command must be dropped");
+        assert!(forwarded.contains("prompt"), "the prompt must be forwarded");
+    }
+
     use super::*;
 
     /// Read one LF-terminated record (as a String) from `r`. Reads byte-by-byte
@@ -225,10 +306,10 @@ mod tests {
 
         let relay = tokio::spawn(relay(shell_read, shell_write, pi_stdin, pi_stdout));
 
-        shell_in.write_all(b"{\"id\":\"1\"}\n").await.unwrap();
-        shell_in.write_all(b"{\"id\":\"2\"}\n").await.unwrap();
-        assert_eq!(read_record(&mut pi_in).await, "{\"id\":\"1\"}\n");
-        assert_eq!(read_record(&mut pi_in).await, "{\"id\":\"2\"}\n");
+        shell_in.write_all(b"{\"type\":\"abort\",\"id\":\"1\"}\n").await.unwrap();
+        shell_in.write_all(b"{\"type\":\"abort\",\"id\":\"2\"}\n").await.unwrap();
+        assert_eq!(read_record(&mut pi_in).await, "{\"type\":\"abort\",\"id\":\"1\"}\n");
+        assert_eq!(read_record(&mut pi_in).await, "{\"type\":\"abort\",\"id\":\"2\"}\n");
 
         drop(shell_in);
         relay.await.unwrap().unwrap();
@@ -304,14 +385,14 @@ mod tests {
 
         // First shell session.
         let mut c1 = UnixStream::connect(&path).await.unwrap();
-        c1.write_all(b"{\"id\":\"1\"}\n").await.unwrap();
-        assert_eq!(read_record(&mut pi_in).await, "{\"id\":\"1\"}\n");
+        c1.write_all(b"{\"type\":\"abort\",\"id\":\"1\"}\n").await.unwrap();
+        assert_eq!(read_record(&mut pi_in).await, "{\"type\":\"abort\",\"id\":\"1\"}\n");
         drop(c1); // disconnect -> serve_drive re-accepts, pi stdin NOT closed
 
         // A second shell reconnects to the SAME pi instance and drives it.
         let mut c2 = UnixStream::connect(&path).await.unwrap();
-        c2.write_all(b"{\"id\":\"2\"}\n").await.unwrap();
-        assert_eq!(read_record(&mut pi_in).await, "{\"id\":\"2\"}\n");
+        c2.write_all(b"{\"type\":\"abort\",\"id\":\"2\"}\n").await.unwrap();
+        assert_eq!(read_record(&mut pi_in).await, "{\"type\":\"abort\",\"id\":\"2\"}\n");
 
         server.abort();
         let _ = std::fs::remove_file(&path);
