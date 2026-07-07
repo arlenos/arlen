@@ -116,6 +116,10 @@ fn default_engine_session() -> SessionInit {
         capability_context: CapabilityContext { generic_tools: vec![], proxy_tools: vec![] },
         project_anchor: None,
         read_tier: ReadTier::Minimal,
+        // HIGH-2: the supervisor sets this from the session's origin (external event
+        // vs direct user request) when it derives it; that derivation lands with pi
+        // vendoring. Until then the default is false (the per-call flag still applies).
+        externally_triggered: false,
     }
 }
 

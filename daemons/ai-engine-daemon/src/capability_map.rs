@@ -183,6 +183,14 @@ pub struct CapabilityGate;
 #[async_trait]
 impl Gate for CapabilityGate {
     async fn authorize(&self, req: &Authorize, grant: &SessionGrant) -> AuthorizeDecision {
+        // HIGH-2: the external-trigger bit is the OR of the SESSION origin (set by
+        // the supervisor when the whole run was started by external content, stored
+        // on the grant) and the per-call flag. Escalate-only: a session the daemon
+        // knows is externally-originated escalates EVERY action regardless of what
+        // the (engine-supplied, untrusted) per-call flag claims; the per-call flag
+        // can only add, never clear, the session bit. Until a producer sets the
+        // grant bit it is false, so `false || req.external_triggered` is unchanged.
+        let external_triggered = grant.externally_triggered || req.external_triggered;
         // D3: a read Allows, bounded by the grant's read SCOPE (applied when the
         // read executes, via `grant_to_scope` incl. the GAP-21 active-project
         // anchor). The anti-Recall guarantee is the scope, not a per-read confirm.
@@ -192,7 +200,7 @@ impl Gate for CapabilityGate {
         // D2 hard case 2: an externally-triggered egress call is the prompt-
         // injection exfiltration vector - hard-Deny it (stronger than the confirm
         // the `decide` model would give), so injected content cannot leak data.
-        if req.external_triggered && is_egress_tool(&req.tool_name) {
+        if external_triggered && is_egress_tool(&req.tool_name) {
             return AuthorizeDecision::Deny {
                 reason: format!(
                     "{} is egress and this action was triggered by external content; \
@@ -209,7 +217,7 @@ impl Gate for CapabilityGate {
         // would wrongly refuse the live coarse tools, so the coarse path stands.
         let kind = action_kind_for_tool(&req.tool_name);
         let capability = grant_to_capability(grant);
-        let decision = capability.decide(ENGINE_APP_ID, kind, req.external_triggered);
+        let decision = capability.decide(ENGINE_APP_ID, kind, external_triggered);
         decision_to_authorize(decision, &req.tool_name)
     }
 }
@@ -358,6 +366,7 @@ mod tests {
             capability_context: CapabilityContext { generic_tools: vec![], proxy_tools: vec![] },
             project_anchor: None,
             read_tier,
+            externally_triggered: false,
             pid: 1,
         }
     }
@@ -457,6 +466,7 @@ mod tests {
             capability_context: CapabilityContext { generic_tools: vec![], proxy_tools: vec![] },
             project_anchor: anchor.map(str::to_string),
             read_tier,
+            externally_triggered: false,
             pid: 1,
         }
     }
@@ -589,5 +599,25 @@ mod tests {
                 .await;
             assert!(!matches!(d, AuthorizeDecision::Allow { .. }), "{tool} must not be Allowed");
         }
+    }
+
+    #[tokio::test]
+    async fn an_externally_triggered_session_escalates_even_when_the_per_call_flag_is_false() {
+        // HIGH-2: the daemon knows from the session origin that the run was started
+        // by external content. The gate escalates every action via the session bit
+        // even though the (untrusted, engine-supplied) per-call flag claims false.
+        let ext = SessionGrant {
+            capability_context: CapabilityContext { generic_tools: vec![], proxy_tools: vec![] },
+            project_anchor: None,
+            read_tier: ReadTier::Standard,
+            externally_triggered: true,
+            pid: 1,
+        };
+        // An ordinary tool confirms (the external-content override, via the session).
+        let ordinary = CapabilityGate.authorize(&authorize("note.append", false), &ext).await;
+        assert!(matches!(ordinary, AuthorizeDecision::Confirm { .. }), "external session escalates an ordinary tool");
+        // An egress tool is hard-denied (exfiltration), regardless of the per-call flag.
+        let egress = CapabilityGate.authorize(&authorize("send_email", false), &ext).await;
+        assert!(matches!(egress, AuthorizeDecision::Deny { .. }), "external session denies egress");
     }
 }

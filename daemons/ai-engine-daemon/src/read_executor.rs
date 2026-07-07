@@ -138,6 +138,7 @@ mod tests {
             capability_context: CapabilityContext { generic_tools: vec![], proxy_tools: vec![] },
             project_anchor: anchor.map(str::to_string),
             read_tier,
+            externally_triggered: false,
             pid: 1,
         }
     }
