@@ -45,6 +45,9 @@ pub mod orchestrator;
 /// a `kind: agent` behaviour (the PiRun route).
 pub mod pi_run;
 
+/// An internal pi rpc driver: submit a prompt to a spawned pi + return its answer.
+pub mod pi_driver;
+
 /// The production autonomous-curator route handler (§E): composes the
 /// deterministic-curation + ephemeral-pi-run route bodies behind the orchestrator.
 pub mod curator;
