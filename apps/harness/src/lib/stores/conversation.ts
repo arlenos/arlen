@@ -1,6 +1,6 @@
 /// Conversation state for the query surface (ai-app.md §2.1).
 ///
-/// Each turn is independent against the `ai_query` path (submit → poll →
+/// Each turn is independent against the pi engine (`pi_prompt` over the drive
 /// answer); the daemon carries no conversation memory yet, so prior turns are
 /// not threaded into the prompt and the UI says so. One turn is in flight at a
 /// time (`busy`).
@@ -343,6 +343,21 @@ function updateSession(id: string, fn: (msgs: Message[]) => Message[]): void {
 }
 
 /// Submit a prompt and resolve when the turn settles. Pushes the user message
+/// Run one conversation turn against the pi engine over its drive socket
+/// (`pi_prompt`), returning the reply shape the store applies. The assistant
+/// answer is returned directly; the tool-call + transparency trace arrives on the
+/// `pi://event` stream (a listener renders it, the next increment), so those are
+/// empty here for now.
+async function piTurn(prompt: string): Promise<{
+  answer: string;
+  toolCalls: ToolCall[];
+  traceUnavailable: boolean;
+  artifacts?: Artifact[];
+}> {
+  const answer = await invoke<string>("pi_prompt", { prompt });
+  return { answer, toolCalls: [], traceUnavailable: false, artifacts: [] };
+}
+
 /// and a pending assistant placeholder synchronously into the active session,
 /// then fills the placeholder with the answer or replaces it with an error. The
 /// turn targets the session it was asked in even if the user switches mid-flight.
@@ -365,12 +380,7 @@ export async function send(prompt: string, mentions: MentionContent[] = []): Pro
   busy.set(true);
 
   try {
-    const reply = await invoke<{
-      answer: string;
-      toolCalls: ToolCall[];
-      traceUnavailable: boolean;
-      artifacts?: Artifact[];
-    }>("ai_query", { prompt: buildPrompt(text, mentions) });
+    const reply = await piTurn(buildPrompt(text, mentions));
     updateSession(id, (m) =>
       m.map((msg) =>
         msg.id === pendingId
@@ -426,12 +436,7 @@ export async function regenerate(): Promise<void> {
   try {
     // The plan only regenerates attachment-free turns, so the prompt is the
     // user's text verbatim (no referenced-files block to rebuild).
-    const reply = await invoke<{
-      answer: string;
-      toolCalls: ToolCall[];
-      traceUnavailable: boolean;
-      artifacts?: Artifact[];
-    }>("ai_query", { prompt: plan.prompt });
+    const reply = await piTurn(plan.prompt);
     // Success: atomically swap to the kept prefix plus the fresh answer,
     // dropping the old response and the placeholder in one update.
     updateSession(id, () => [
@@ -491,11 +496,7 @@ export async function editAndResend(messageId: number, newText: string): Promise
   try {
     // The plan only edits attachment-free turns, so the prompt is the new text
     // verbatim (no referenced-files block to rebuild).
-    const reply = await invoke<{
-      answer: string;
-      toolCalls: ToolCall[];
-      traceUnavailable: boolean;
-    }>("ai_query", { prompt: plan.prompt });
+    const reply = await piTurn(plan.prompt);
     // Success: atomically swap to the kept prefix, the edited question, and the
     // fresh answer, dropping the old turns from the edit point onward.
     updateSession(id, () => [
