@@ -28,6 +28,10 @@ use arlen_ai_engine_daemon::graph_adapter::OsSdkGraphQuerier;
 use arlen_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
 use arlen_ai_engine_daemon::engine_config;
 use arlen_ai_engine_daemon::reporter::ScreeningReporter;
+use arlen_ai_engine_daemon::curation::GraphProjectReader;
+use arlen_ai_engine_daemon::curator::CuratorHandler;
+use arlen_ai_engine_daemon::orchestrator;
+use arlen_ai_engine_daemon::pi_run::SessionBinder;
 use arlen_ai_engine_daemon::sidecar::{PiSidecar, SidecarPaths};
 use arlen_ai_engine_daemon::supervisor::supervise;
 use arlen_ai_engine_daemon::write_executor::{
@@ -284,6 +288,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_audit(audit.clone())
             .with_compensation(compensation),
     );
+    // The autonomous curator's deterministic auto-tag write applies through the
+    // SAME gated write executor (executor-live gated, audited, undo-registered);
+    // clone the handle before the ProxyExecutor consumes it below.
+    let curator_writer = write_executor.clone();
     // GATE-CLASSIFIER PRE-CONDITION (review MEDIUM): only tools registered here are
     // executable, and the gate's `action_kind_for_tool` classifies by NAME segment.
     // The irreversible graph mutators `graph.set_field` / `graph.retract_node`
@@ -325,6 +333,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if engine_config::ai_enabled() {
         match SidecarPaths::resolve(|k| std::env::var(k).ok(), path.to_string_lossy().into_owned()) {
             Ok(paths) => {
+                // A second confined pi engine for the curator's ephemeral runs
+                // (distinct from the persistent shell-driven supervisor below).
+                let curator_paths = paths.clone();
                 let sidecar = PiSidecar::new(paths);
                 let disp = Arc::clone(&dispatcher);
                 // The drive socket lets the harness shell drive this pi session;
@@ -345,6 +356,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 });
                 info!("AI enabled: supervising the pi sidecar");
+
+                // The autonomous curator (§E): subscribe the event bus and dispatch
+                // the enabled behaviours - deterministic curation daemon-direct, an
+                // agent behaviour to a bounded ephemeral pi run. Runs beside the
+                // persistent (shell-driven) supervisor above. An event never reaches
+                // an action without the gate: a deterministic write is executor-live
+                // gated + audited, and an agent run is gated + scoped + audited per
+                // call, its origin marked external so mutating actions confirm.
+                let behaviours = Arc::new(orchestrator::load_behaviours().loaded);
+                let sub_types = orchestrator::subscription_types(&behaviours);
+                if sub_types.is_empty() {
+                    info!("no enabled event-triggered behaviours; the curator does not subscribe");
+                } else {
+                    let consumer_socket = std::env::var("ARLEN_CONSUMER_SOCKET")
+                        .unwrap_or_else(|_| orchestrator::DEFAULT_CONSUMER_SOCKET.to_string());
+                    match orchestrator::EventBusSource::subscribe(consumer_socket, sub_types).await {
+                        Ok(source) => {
+                            let handler = CuratorHandler::new(
+                                GraphProjectReader::new(resolve_knowledge_socket()),
+                                curator_writer,
+                                behaviours.clone(),
+                                Arc::new(PiSidecar::new(curator_paths)),
+                                Arc::clone(&dispatcher) as Arc<dyn SessionBinder>,
+                            );
+                            tokio::spawn(async move {
+                                let mut coalescer = orchestrator::Coalescer::new(
+                                    orchestrator::DEFAULT_COALESCE_WINDOW,
+                                );
+                                orchestrator::run_orchestrator(
+                                    source,
+                                    &behaviours,
+                                    &mut coalescer,
+                                    &handler,
+                                    std::time::SystemTime::now,
+                                )
+                                .await;
+                                info!("curator orchestrator loop ended");
+                            });
+                            info!("autonomous curator orchestrator running");
+                        }
+                        Err(e) => warn!(
+                            error = %e,
+                            "curator could not subscribe to the event bus; autonomous curation disabled this run"
+                        ),
+                    }
+                }
             }
             Err(e) => warn!(error = %e, "AI enabled but the pi sidecar paths do not resolve; not spawning pi"),
         }
