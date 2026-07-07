@@ -12,11 +12,12 @@
 //! assertion proves the REAL gate ran (Capability::decide was reached) AND that
 //! SO_PEERCRED bound the spawned child's pid to the minted session.
 //!
-//! `#[ignore]`d: it needs node22 and the built pi-plugins dist
-//! (`npm --prefix ai/pi-plugins run build`), so normal CI skips it. Run with
-//! `cargo test -p arlen-ai-engine-daemon --test e2e_gate -- --ignored` on a host
-//! with node; point `ARLEN_E2E_NODE` at the node binary if it is not on PATH or
-//! at `~/.local/share/arlen-node22/bin/node`.
+//! These need node and the built pi-plugins dist (`npm --prefix ai/pi-plugins run
+//! build`). Rather than `#[ignore]`, they SKIP gracefully (via [`driver_available`])
+//! when the gitignored dist is absent - so normal CI (which does not build the
+//! plugins in the daemon test job) is a no-op, and a dev host / the `just pi-e2e`
+//! recipe runs them for real. Point `ARLEN_E2E_NODE` at the node binary if it is
+//! not `~/.local/share/arlen-node22/bin/node` or on PATH.
 
 use ai_engine_contract::{
     CapabilityContext, ContractError, Execute, ExecuteOutcome, ReadTier, Report, ReportAck,
@@ -96,6 +97,16 @@ fn node_binary() -> String {
         }
     }
     "node".to_string()
+}
+
+/// Whether the pi-plugins driver bundle is built (`npm --prefix ai/pi-plugins run
+/// build`). It is gitignored build output, so it is absent in CI (the daemon test
+/// job does not build the plugins) - these host-gated e2e tests skip gracefully
+/// then, and run for real on a dev host / the `just pi-e2e` recipe where it exists.
+fn driver_available() -> bool {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../ai/pi-plugins/dist/e2e.js")
+        .exists()
 }
 
 /// Spawn the Node e2e driver with `driver_args` against a real dispatcher over
@@ -185,8 +196,11 @@ async fn run_driver<E: Executor, R: Reporter>(
 }
 
 #[tokio::test]
-#[ignore = "needs node22 + the built pi-plugins dist (npm --prefix ai/pi-plugins run build)"]
 async fn the_real_gate_plugin_is_denied_a_suggest_mode_tool_call_end_to_end() {
+    if !driver_available() {
+        eprintln!("SKIP: pi-plugins dist not built (npm --prefix ai/pi-plugins run build)");
+        return;
+    }
     // The gate proof reaches neither the executor nor the reporter (Authorize only).
     let v = run_driver(UnusedExecutor, UnusedReporter, &["gate", "note.append"]).await;
     assert_eq!(
@@ -202,8 +216,11 @@ async fn the_real_gate_plugin_is_denied_a_suggest_mode_tool_call_end_to_end() {
 }
 
 #[tokio::test]
-#[ignore = "needs node22 + the built pi-plugins dist (npm --prefix ai/pi-plugins run build)"]
 async fn the_real_audit_shim_reports_a_tool_result_and_clean_content_passes_end_to_end() {
+    if !driver_available() {
+        eprintln!("SKIP: pi-plugins dist not built (npm --prefix ai/pi-plugins run build)");
+        return;
+    }
     // A Clean screen verdict from the real reporter lets the content through:
     // audit.ts returns an empty patch. Passthrough is the strong proof that the
     // REAL reporter was reached - a no-session Report fails closed to Block ->
@@ -222,8 +239,11 @@ async fn the_real_audit_shim_reports_a_tool_result_and_clean_content_passes_end_
 }
 
 #[tokio::test]
-#[ignore = "needs node22 + the built pi-plugins dist (npm --prefix ai/pi-plugins run build)"]
 async fn the_real_proxy_tool_forwards_execute_and_fails_closed_end_to_end() {
+    if !driver_available() {
+        eprintln!("SKIP: pi-plugins dist not built (npm --prefix ai/pi-plugins run build)");
+        return;
+    }
     // The KG read proxy tool's execute() forwards to the daemon's Execute verb. The
     // daemon routes graph.read through the REAL ProxyExecutor -> GraphReadExecutor
     // -> the fail-closed DeniedRunner (the live read provider lands at the Phase-2
