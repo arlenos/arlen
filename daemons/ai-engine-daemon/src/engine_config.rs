@@ -25,12 +25,64 @@ pub fn ai_config_path() -> PathBuf {
 struct RawAi {
     #[serde(default)]
     enabled: bool,
+    /// The provider backend NAME (e.g. `ollama`), keyed `ai.provider` like the
+    /// other AI components; the model/window/token live in `[provider]`.
+    #[serde(default)]
+    provider: String,
+}
+
+fn default_model() -> String {
+    "llama3:8b".to_string()
+}
+fn default_context_window() -> u32 {
+    8192
+}
+fn default_audit_token() -> String {
+    "ai-engine".to_string()
+}
+
+#[derive(Deserialize)]
+struct RawProvider {
+    #[serde(default = "default_model")]
+    model: String,
+    #[serde(default = "default_context_window")]
+    context_window: u32,
+    #[serde(default = "default_audit_token")]
+    audit_token: String,
+}
+
+impl Default for RawProvider {
+    fn default() -> Self {
+        Self {
+            model: default_model(),
+            context_window: default_context_window(),
+            audit_token: default_audit_token(),
+        }
+    }
 }
 
 #[derive(Deserialize, Default)]
 struct RawConfig {
     #[serde(default)]
     ai: RawAi,
+    #[serde(default)]
+    provider: RawProvider,
+}
+
+/// The resolved provider settings the live read pipeline builds its
+/// `ProxiedProvider` from: the backend name (`ai.provider`) plus the
+/// `[provider]` model / context window / audit token (with safe defaults). Maps
+/// directly onto `arlen_ai_providers::proxied::ProxiedConfig`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderSettings {
+    /// The backend name (`ai.provider`); empty means no provider configured.
+    pub name: String,
+    /// The model id.
+    pub model: String,
+    /// The context window (tokens).
+    pub context_window: u32,
+    /// The audit token the proxy records the call under.
+    pub audit_token: String,
 }
 
 /// Whether `[ai] enabled` is true in the given `ai.toml` text. A malformed
@@ -44,6 +96,27 @@ pub fn ai_enabled_from_text(text: &str) -> bool {
 /// disabled (fail-closed).
 pub fn ai_enabled() -> bool {
     std::fs::read_to_string(ai_config_path()).map(|t| ai_enabled_from_text(&t)).unwrap_or(false)
+}
+
+/// Resolve the [`ProviderSettings`] from the given `ai.toml` text. A malformed
+/// document yields the safe defaults with an empty name (no provider), so the
+/// caller builds no live provider rather than a wrong one (fail-closed).
+pub fn provider_settings_from_text(text: &str) -> ProviderSettings {
+    let cfg = toml::from_str::<RawConfig>(text).unwrap_or_default();
+    ProviderSettings {
+        name: cfg.ai.provider,
+        model: cfg.provider.model,
+        context_window: cfg.provider.context_window,
+        audit_token: cfg.provider.audit_token,
+    }
+}
+
+/// Resolve the [`ProviderSettings`] from the on-disk `ai.toml` (safe defaults +
+/// empty name if missing/unreadable).
+pub fn provider_settings() -> ProviderSettings {
+    std::fs::read_to_string(ai_config_path())
+        .map(|t| provider_settings_from_text(&t))
+        .unwrap_or_else(|_| provider_settings_from_text(""))
 }
 
 #[cfg(test)]
@@ -66,5 +139,31 @@ mod tests {
         assert!(!ai_enabled_from_text("this is = not valid toml ["));
         // A wrong type for enabled fails the parse -> fail-closed disabled.
         assert!(!ai_enabled_from_text("[ai]\nenabled = \"yes\"\n"));
+    }
+
+    #[test]
+    fn provider_settings_reads_name_and_section_with_defaults() {
+        let s = provider_settings_from_text(
+            "[ai]\nenabled = true\nprovider = \"ollama\"\n\n[provider]\nmodel = \"qwen2:7b\"\ncontext_window = 4096\n",
+        );
+        assert_eq!(s.name, "ollama");
+        assert_eq!(s.model, "qwen2:7b");
+        assert_eq!(s.context_window, 4096);
+        // Unset audit_token falls to the default.
+        assert_eq!(s.audit_token, "ai-engine");
+    }
+
+    #[test]
+    fn provider_settings_defaults_when_absent_or_malformed() {
+        // No [provider] section, no ai.provider: empty name (no provider), safe
+        // model/window/token defaults.
+        let s = provider_settings_from_text("[ai]\nenabled = false\n");
+        assert_eq!(s.name, "");
+        assert_eq!(s.model, "llama3:8b");
+        assert_eq!(s.context_window, 8192);
+        // Malformed -> defaults with empty name (fail-closed, no live provider).
+        let m = provider_settings_from_text("not = valid [");
+        assert_eq!(m.name, "");
+        assert_eq!(m.model, "llama3:8b");
     }
 }
