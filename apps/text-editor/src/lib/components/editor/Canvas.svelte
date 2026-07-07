@@ -1,14 +1,46 @@
 <script lang="ts">
   /// The text canvas, in the iA-Writer stance: markdown syntax stays VISIBLE but is
-  /// styled - you always see the real bytes you own (sovereignty-aligned), never a
-  /// WYSIWYG that hides them. Focus mode fades every paragraph but the active one.
-  /// This is the surface; the incremental tree-sitter/LSP editing engine is the
-  /// coder's, so the fixture doc renders read-mostly here.
+  /// styled - you always see the real bytes you own, never a WYSIWYG that hides them.
+  /// Prose is line-number-free (iA); fenced code blocks get a line-number gutter +
+  /// tonal syntax highlighting (monochrome, no rainbow). Focus mode fades every prose
+  /// paragraph but the active one. This is the surface; the incremental tree-sitter/
+  /// LSP engine that highlights + numbers real files is the coder's, so the fixture
+  /// renders read-mostly here.
   let { doc, focusMode = false }: { doc: string; focusMode?: boolean } = $props();
 
   let activeIdx = $state(1);
 
-  const blocks = $derived(doc.trim().split(/\n\n+/));
+  type Segment =
+    | { kind: "prose"; blocks: string[] }
+    | { kind: "code"; lang: string; lines: string[] };
+
+  // Split the doc into ordered prose / fenced-code segments.
+  const segments = $derived.by<Segment[]>(() => {
+    const out: Segment[] = [];
+    const fence = /```(\w*)\n([\s\S]*?)```/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = fence.exec(doc)) !== null) {
+      const before = doc.slice(last, m.index).trim();
+      if (before) out.push({ kind: "prose", blocks: before.split(/\n\n+/) });
+      out.push({ kind: "code", lang: m[1] || "text", lines: m[2].replace(/\n$/, "").split("\n") });
+      last = fence.lastIndex;
+    }
+    const rest = doc.slice(last).trim();
+    if (rest) out.push({ kind: "prose", blocks: rest.split(/\n\n+/) });
+    return out;
+  });
+
+  // A running index over PROSE blocks only, so focus mode tracks the active paragraph.
+  const proseIndex = $derived.by(() => {
+    const map: number[][] = [];
+    let bi = 0;
+    for (const seg of segments) {
+      if (seg.kind === "prose") map.push(seg.blocks.map(() => bi++));
+      else map.push([]);
+    }
+    return map;
+  });
 
   function esc(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -38,27 +70,58 @@
     const level = headingLevel(block);
     if (level > 0) {
       const marks = "#".repeat(level);
-      const rest = block.slice(level + 1);
-      return `<span class="md-mark">${marks} </span>${inline(rest)}`;
+      return `<span class="md-mark">${marks} </span>${inline(block.slice(level + 1))}`;
     }
     return inline(block.replace(/\n/g, " "));
+  }
+
+  // A light, single-pass tonal highlighter (the surface; real tokenisation is
+  // tree-sitter, a coder seam). Monochrome tones, never a rainbow.
+  const KW = /^(const|let|var|function|return|if|else|for|while|async|await|import|from|export|default|type|interface|enum|new|class|extends|fn|pub|use|struct|impl|match|Some|None|true|false|null|void|string|number|boolean)$/;
+  function highlight(line: string): string {
+    const e = esc(line);
+    const re = /(\/\/[^\n]*)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\b\d[\w.]*\b)|([A-Za-z_$][\w$]*)/g;
+    return e.replace(re, (mm, comment, str, num, word) => {
+      if (comment) return `<span class="tok-comment">${comment}</span>`;
+      if (str) return `<span class="tok-str">${str}</span>`;
+      if (num) return `<span class="tok-num">${num}</span>`;
+      if (word) return KW.test(word) ? `<span class="tok-kw">${word}</span>` : word;
+      return mm;
+    });
   }
 </script>
 
 <div class="canvas" class:focus={focusMode}>
-  {#each blocks as block, i (i)}
-    {@const level = headingLevel(block)}
-    <p
-      class="blk"
-      class:active={i === activeIdx}
-      class:h1={level === 1}
-      class:h2={level === 2}
-      class:h3={level >= 3}
-      role="presentation"
-      onclick={() => (activeIdx = i)}
-    >
-      {@html renderBlock(block)}
-    </p>
+  {#each segments as seg, si (si)}
+    {#if seg.kind === "prose"}
+      {#each seg.blocks as block, bi (bi)}
+        {@const idx = proseIndex[si][bi]}
+        {@const level = headingLevel(block)}
+        <p
+          class="blk"
+          class:active={idx === activeIdx}
+          class:h1={level === 1}
+          class:h2={level === 2}
+          class:h3={level >= 3}
+          role="presentation"
+          onclick={() => (activeIdx = idx)}
+        >
+          {@html renderBlock(block)}
+        </p>
+      {/each}
+    {:else}
+      <div class="code-block">
+        <span class="code-lang">{seg.lang}</span>
+        <div class="code-body">
+          <div class="gutter" aria-hidden="true">
+            {#each seg.lines as _, i (i)}
+              <span class="ln">{i + 1}</span>
+            {/each}
+          </div>
+          <pre class="code"><code>{#each seg.lines as line, i (i)}<span class="code-line">{@html highlight(line) || "&nbsp;"}</span>{#if i < seg.lines.length - 1}{"\n"}{/if}{/each}</code></pre>
+        </div>
+      </div>
+    {/if}
   {/each}
 </div>
 
@@ -94,8 +157,6 @@
     font-weight: 600;
     color: var(--color-fg-primary);
   }
-
-  /* Focus mode: only the active paragraph stays lit. */
   .canvas.focus .blk {
     opacity: 0.28;
   }
@@ -103,7 +164,6 @@
     opacity: 1;
   }
 
-  /* iA stance: the markers stay visible, just quietened; the content is styled. */
   :global(.md-mark) {
     color: color-mix(in srgb, var(--color-fg-primary) 28%, transparent);
   }
@@ -124,5 +184,60 @@
   }
   :global(.md-url) {
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+  }
+
+  /* Fenced code: a line-number gutter + tonal (monochrome) highlighting. */
+  .code-block {
+    position: relative;
+    margin: 0 0 1.5rem;
+    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
+    border-radius: var(--radius-card, 12px);
+    background: color-mix(in srgb, var(--color-fg-primary) 4%, transparent);
+    overflow: hidden;
+  }
+  .code-lang {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.75rem;
+    font-size: 0.6875rem;
+    letter-spacing: 0.03em;
+    color: color-mix(in srgb, var(--color-fg-primary) 35%, transparent);
+  }
+  .code-body {
+    display: flex;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+  }
+  .gutter {
+    display: flex;
+    flex-direction: column;
+    padding: 0.85rem 0.5rem 0.85rem 0.75rem;
+    text-align: right;
+    user-select: none;
+    border-right: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+  }
+  .ln {
+    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--color-fg-primary) 28%, transparent);
+  }
+  .code {
+    margin: 0;
+    padding: 0.85rem 1rem;
+    overflow-x: auto;
+    color: color-mix(in srgb, var(--color-fg-primary) 82%, transparent);
+  }
+  :global(.tok-kw) {
+    color: var(--color-fg-primary);
+    font-weight: 600;
+  }
+  :global(.tok-str) {
+    color: color-mix(in srgb, var(--color-fg-primary) 62%, transparent);
+  }
+  :global(.tok-comment) {
+    color: color-mix(in srgb, var(--color-fg-primary) 38%, transparent);
+    font-style: italic;
+  }
+  :global(.tok-num) {
+    color: color-mix(in srgb, var(--color-fg-primary) 78%, transparent);
   }
 </style>
