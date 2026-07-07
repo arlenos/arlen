@@ -12,8 +12,73 @@
 //! G1). It stays a pure, clock-injected, bounded structure so the whole dispatch
 //! decision is testable without the event bus or a pi process.
 
+use arlen_ai_skills::behaviour::BehaviourKind;
+use arlen_ai_skills::loader::LoadedBehaviour;
+use arlen_ai_skills::router::matching_behaviours;
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, SystemTime};
+
+/// How a matched behaviour is executed (the §E split).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Route {
+    /// Safe reversible DETERMINISTIC curation (a `kind: workflow` behaviour):
+    /// runs daemon-direct, silent-immediate, ZERO tokens, NO pi. A workflow
+    /// handler is deterministic and makes no model call.
+    DeterministicCuration,
+    /// A genuine LLM behaviour (`kind: agent`): a BOUNDED EPHEMERAL pi run with a
+    /// least-authority tool set, every call gated and every write daemon-executed.
+    PiRun,
+}
+
+/// One dispatched behaviour and how it runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Dispatch {
+    /// The behaviour name (its coalescing + audit key).
+    pub behaviour: String,
+    /// Deterministic-curation vs an ephemeral pi run.
+    pub route: Route,
+}
+
+/// The deterministic dispatch decision for one event: which enabled behaviours
+/// matched and survived coalescing, each routed to daemon-direct curation or a
+/// pi run, plus the ones that matched but were coalesced (a burst duplicate).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DispatchPlan {
+    /// Behaviours to run now, with their route.
+    pub dispatched: Vec<Dispatch>,
+    /// Behaviours that matched but were coalesced away (for logging/metrics).
+    pub coalesced: Vec<String>,
+}
+
+/// The deterministic dispatch decision (§E): match the event against the enabled
+/// behaviours (the shared router), coalesce a fire-storm per behaviour, and route
+/// each survivor by kind. Pure and clock-injected - NO event bus, NO pi spawn -
+/// so the whole act-or-not decision is unit-testable. The caller drives the
+/// routes: `DeterministicCuration` runs daemon-direct, `PiRun` spawns a bounded
+/// ephemeral pi run.
+pub fn decide(
+    event_type: &str,
+    fields: &BTreeMap<String, String>,
+    external_content: bool,
+    behaviours: &[LoadedBehaviour],
+    coalescer: &mut Coalescer,
+    now: SystemTime,
+) -> DispatchPlan {
+    let mut plan = DispatchPlan::default();
+    for lb in matching_behaviours(event_type, fields, behaviours) {
+        let name = lb.behaviour.manifest.name.clone();
+        if coalescer.admit(&name, event_type, fields, external_content, now) {
+            let route = match lb.behaviour.manifest.kind {
+                BehaviourKind::Workflow => Route::DeterministicCuration,
+                BehaviourKind::Agent => Route::PiRun,
+            };
+            plan.dispatched.push(Dispatch { behaviour: name, route });
+        } else {
+            plan.coalesced.push(name);
+        }
+    }
+    plan
+}
 
 /// Default per-behaviour coalescing window. A burst of identical events for one
 /// behaviour within this window fires it once. Short by design: long enough to
@@ -203,5 +268,79 @@ mod tests {
         // The map never exceeds the cap (pruned/cleared), so a hostile producer
         // cannot grow it without bound.
         assert!(c.tracked() <= MAX_COALESCE_ENTRIES);
+    }
+
+    use arlen_ai_skills::loader::{DisableReason, LoadedBehaviour, Provenance, Status};
+
+    fn behaviour(name: &str, kind: &str, extra: &str, event: &str, status: Status) -> LoadedBehaviour {
+        let src = format!(
+            "---\nname: {name}\ndescription: d\nkind: {kind}\n{extra}trigger:\n  type: event\n  event: {event}\n---\nDo the thing.\n"
+        );
+        LoadedBehaviour {
+            behaviour: arlen_ai_skills::behaviour::parse(&src).expect("valid SKILL.md"),
+            provenance: Provenance::BuiltIn,
+            dir: std::path::PathBuf::from("/test").join(name),
+            status,
+        }
+    }
+
+    fn workflow(name: &str, event: &str) -> LoadedBehaviour {
+        behaviour(name, "workflow", "handler: h\n", event, Status::Enabled)
+    }
+
+    fn agent(name: &str, event: &str) -> LoadedBehaviour {
+        // A complete valid agent frontmatter (an agent behaviour requires reads,
+        // mode, budget, a terminal condition and a body), mirroring meeting-prep.
+        let src = format!(
+            "---\nname: {name}\ndescription: d\nkind: agent\nreads: project\nmode: suggest\n\
+             trigger:\n  type: event\n  event: {event}\nbudget:\n  max_steps: 10\n  \
+             max_tokens: 12000\n  max_wall_ms: 15000\nterminal:\n  done: silent\n---\nDo the thing.\n"
+        );
+        LoadedBehaviour {
+            behaviour: arlen_ai_skills::behaviour::parse(&src).expect("valid agent SKILL.md"),
+            provenance: Provenance::BuiltIn,
+            dir: std::path::PathBuf::from("/test").join(name),
+            status: Status::Enabled,
+        }
+    }
+
+    #[test]
+    fn decide_routes_workflow_direct_and_agent_to_pi() {
+        let behaviours = vec![workflow("auto-tag", "file.opened"), agent("meeting-prep", "file.opened")];
+        let mut c = Coalescer::new(Duration::from_secs(1));
+        let plan = decide("file.opened", &fields(&[("path", "/a.rs")]), false, &behaviours, &mut c, SystemTime::UNIX_EPOCH);
+        assert_eq!(plan.dispatched.len(), 2);
+        let route = |n: &str| plan.dispatched.iter().find(|d| d.behaviour == n).map(|d| d.route);
+        assert_eq!(route("auto-tag"), Some(Route::DeterministicCuration));
+        assert_eq!(route("meeting-prep"), Some(Route::PiRun));
+        assert!(plan.coalesced.is_empty());
+    }
+
+    #[test]
+    fn decide_skips_non_matching_and_disabled_behaviours() {
+        let behaviours = vec![
+            workflow("auto-tag", "file.opened"),
+            workflow("other", "window.focused"), // wrong event type
+            behaviour("off", "workflow", "handler: h\n", "file.opened", Status::Disabled(DisableReason::NotEnabledInSettings)),
+        ];
+        let mut c = Coalescer::new(Duration::from_secs(1));
+        let plan = decide("file.opened", &fields(&[("path", "/a.rs")]), false, &behaviours, &mut c, SystemTime::UNIX_EPOCH);
+        // Only the enabled, matching workflow dispatches.
+        assert_eq!(plan.dispatched.len(), 1);
+        assert_eq!(plan.dispatched[0].behaviour, "auto-tag");
+    }
+
+    #[test]
+    fn decide_coalesces_a_burst_per_behaviour() {
+        let behaviours = vec![workflow("auto-tag", "file.opened")];
+        let mut c = Coalescer::new(Duration::from_secs(1));
+        let f = fields(&[("path", "/a.rs")]);
+        let t = SystemTime::UNIX_EPOCH;
+        let first = decide("file.opened", &f, false, &behaviours, &mut c, t);
+        assert_eq!(first.dispatched.len(), 1);
+        // The same event again within the window is coalesced, not re-dispatched.
+        let second = decide("file.opened", &f, false, &behaviours, &mut c, t + Duration::from_millis(200));
+        assert!(second.dispatched.is_empty());
+        assert_eq!(second.coalesced, vec!["auto-tag".to_string()]);
     }
 }
