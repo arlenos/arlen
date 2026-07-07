@@ -85,7 +85,8 @@ export async function load(): Promise<void> {
   }
 }
 
-/// Install a new Windows app. Live: a file-pick -> `install_exe` sets up a bottle.
+/// Install a new Windows app. Live: a file-pick (a .exe or .msi installer) ->
+/// the install command sets up a bottle.
 export async function installExe(): Promise<void> {
   try {
     await invoke("install_exe");
