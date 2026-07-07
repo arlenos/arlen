@@ -284,15 +284,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_audit(audit.clone())
             .with_compensation(compensation),
     );
+    // GATE-CLASSIFIER PRE-CONDITION (review MEDIUM): only tools registered here are
+    // executable, and the gate's `action_kind_for_tool` classifies by NAME segment.
+    // The irreversible graph mutators `graph.set_field` / `graph.retract_node`
+    // segment to no always-confirm keyword, so under executor_live they would
+    // resolve to Allow (Ordinary) even though the D1 `gate_class_for_tool` table
+    // marks them Confirm. They are NOT registered here, so they cannot execute - but
+    // BEFORE any executor for them is wired, route the gate decision through
+    // `gate_class_for_tool` (or an effect-based irreversibility check), else an
+    // irreversible action would auto-apply autonomously. Only reversible edge
+    // writes are wired below.
     let executor = ProxyExecutor::new()
         .register("graph.read", read_executor)
         // D2 (pi-gate-class-registry.md): the fine-grained reversible graph-write
         // tools route to the same write executor as the coarse graph.write, so each
         // NAME carries one fixed gate class (ReversibleAction) - the coarse
-        // graph.write's mixed reversibility can never be classified soundly. The
-        // executor stays DeniedWriter-gated until the live-write cutover; this wires
-        // the tool vocabulary + routing the gate's Allow path depends on. The coarse
-        // graph.write stays registered through the transition.
+        // graph.write's mixed reversibility can never be classified soundly. Under
+        // executor_live the write applies (gated per-call); the coarse graph.write
+        // stays registered through the transition. Write scope is any-relation-any-
+        // nodes bounded only by the Knowledge Daemon's own tier auth (review MEDIUM:
+        // a per-session write scope is the follow-up; acceptable for the reversible
+        // tier since every write is op-id-keyed and undoable).
         .register("graph.assert_edge", write_executor.clone())
         .register("graph.retract_edge", write_executor.clone())
         .register("graph.write", write_executor);
