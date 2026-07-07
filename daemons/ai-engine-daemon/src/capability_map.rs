@@ -8,27 +8,29 @@
 //! lives in the daemon, never the contract crate, so the contract stays
 //! engine-neutral.
 //!
-//! The action side resolves to [`ActionPermissions::suggest_only`]: a session
-//! carries no per-application autonomy grant, Suggest is the safe baseline, and
-//! the executor-live flip that would lift it stays human-gated. So an ordinary
-//! action resolves to a proposal and a high-impact or externally-triggered one
-//! to a confirmation, never to silent autonomous execution.
+//! The action side is `suggest_only` by default (every action a proposal). The
+//! `[agent] executor_live` switch lifts it: with executor-live on, the engine app
+//! is granted per-application Autonomy, so an authorized ordinary/reversible
+//! action resolves to Allow - but the non-configurable overrides still hold, so a
+//! high-impact or externally-triggered action is a confirmation even then, never
+//! silent autonomous execution.
 
 use crate::dispatch::Gate;
 use crate::session::SessionGrant;
 use ai_engine_contract::{Authorize, AuthorizeDecision, ReadTier};
-use arlen_ai_core::capability::{ActionDecision, ActionKind, ActionPermissions, Capability};
+use arlen_ai_core::capability::{
+    ActionDecision, ActionKind, ActionPermissions, BaselineMode, Capability,
+};
 use arlen_ai_core::graph_query::{AccessTier, QueryScope};
 use arlen_ai_core::graph_schema::GraphSchema;
 use arlen_ai_core::mcp::{name_segments, AlwaysConfirm, AlwaysConfirmReason};
 use arlen_consent_contract::ConsentClass;
 use async_trait::async_trait;
 
-/// The app identity actions are attributed to under an engine session. The
-/// action side is the `suggest_only` baseline (a session is granted no
-/// per-application autonomy), so the per-app mode is Suggest regardless of this
-/// id; it marks the seam where a real per-application grant would flow once the
-/// human-gated executor-live lift exists.
+/// The app identity actions are attributed to under an engine session. Under the
+/// `executor_live` lift this id is placed in the capability's `autonomous_apps`,
+/// so the engine's authorized ordinary/reversible actions resolve to Autonomous
+/// (Allow); without the lift it is the Suggest baseline.
 const ENGINE_APP_ID: &str = "ai-engine";
 
 /// Map the contract's coarse [`ReadTier`] to the graph layer's [`AccessTier`].
@@ -51,15 +53,21 @@ pub fn read_tier_to_access_tier(tier: ReadTier) -> AccessTier {
 /// Resolve a session's grant into the [`Capability`] the gate decides against.
 ///
 /// The read tier comes from the grant (mapped through
-/// [`read_tier_to_access_tier`]); the action side is the conservative
-/// [`ActionPermissions::suggest_only`] baseline (a session is never granted
-/// per-application autonomy here, and the executor-live lift is human-gated), so
-/// every action is at most a proposal until that flip.
-pub fn grant_to_capability(grant: &SessionGrant) -> Capability {
-    Capability::new(
-        read_tier_to_access_tier(grant.read_tier),
-        ActionPermissions::suggest_only(),
-    )
+/// [`read_tier_to_access_tier`]). The action side depends on `executor_live`:
+/// when false (default) it is the conservative [`ActionPermissions::suggest_only`]
+/// baseline, so every action is at most a proposal. When true (the executor-live
+/// flip), the engine app [`ENGINE_APP_ID`] is granted per-application Autonomy, so
+/// an authorized ordinary/reversible action resolves to Allow - but the
+/// non-configurable overrides still hold: a HIGH-IMPACT action (permanent delete,
+/// external send, package/system change, elevated privilege) and any EXTERNALLY-
+/// TRIGGERED action still require confirmation even under executor-live.
+pub fn grant_to_capability(grant: &SessionGrant, executor_live: bool) -> Capability {
+    let actions = if executor_live {
+        ActionPermissions::new(BaselineMode::Suggest, [ENGINE_APP_ID])
+    } else {
+        ActionPermissions::suggest_only()
+    };
+    Capability::new(read_tier_to_access_tier(grant.read_tier), actions)
 }
 
 /// Resolve a session's grant into the [`QueryScope`] a graph read is bounded
@@ -178,7 +186,35 @@ pub(crate) fn consent_class_for_tool(tool: &str) -> ConsentClass {
 /// return [`AuthorizeDecision::Allow`] (that needs Autonomous mode, which only
 /// the human-gated executor-live lift grants): every call is a proposal (`Deny`)
 /// or a confirmation (`Confirm`), never silent autonomous execution.
-pub struct CapabilityGate;
+pub struct CapabilityGate {
+    /// The executor-live source, read per Authorize so a config change takes
+    /// effect without a restart. The production gate reads `[agent] executor_live`
+    /// from `ai.toml`; tests inject a fixed value.
+    executor_live: fn() -> bool,
+}
+
+impl Default for CapabilityGate {
+    fn default() -> Self {
+        Self {
+            executor_live: crate::engine_config::executor_live,
+        }
+    }
+}
+
+impl CapabilityGate {
+    /// The production gate: reads `[agent] executor_live` from `ai.toml` per call.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A gate with a FIXED executor-live source rather than the on-disk config.
+    /// Used by tests and the e2e harness so gate behaviour is deterministic and
+    /// does not depend on the developer's `ai.toml`; production always uses
+    /// [`Self::new`], which reads `[agent] executor_live` per call.
+    pub fn with_executor_live(executor_live: fn() -> bool) -> Self {
+        Self { executor_live }
+    }
+}
 
 #[async_trait]
 impl Gate for CapabilityGate {
@@ -216,7 +252,7 @@ impl Gate for CapabilityGate {
         // replace today's coarse names (`graph.write`), a hard Deny-for-unknown here
         // would wrongly refuse the live coarse tools, so the coarse path stands.
         let kind = action_kind_for_tool(&req.tool_name);
-        let capability = grant_to_capability(grant);
+        let capability = grant_to_capability(grant, (self.executor_live)());
         let decision = capability.decide(ENGINE_APP_ID, kind, external_triggered);
         decision_to_authorize(decision, &req.tool_name)
     }
@@ -383,7 +419,7 @@ mod tests {
 
     #[test]
     fn a_grant_resolves_its_read_tier_and_a_suggest_only_action_baseline() {
-        let cap = grant_to_capability(&grant(ReadTier::Standard));
+        let cap = grant_to_capability(&grant(ReadTier::Standard), false);
         assert_eq!(cap.read_tier, AccessTier::ProjectScoped);
 
         // Suggest-only baseline: an ordinary action is a proposal, never an
@@ -406,7 +442,7 @@ mod tests {
 
     #[test]
     fn the_no_read_tier_resolves_to_no_graph_access() {
-        let cap = grant_to_capability(&grant(ReadTier::None));
+        let cap = grant_to_capability(&grant(ReadTier::None), false);
         assert_eq!(cap.read_tier, AccessTier::Minimal);
     }
 
@@ -521,8 +557,29 @@ mod tests {
     /// resolves to a Capability, an ordinary action under the suggest baseline
     /// decides to Propose, and that maps to a Deny the engine cannot execute.
     #[test]
+    fn executor_live_lifts_ordinary_to_proceed_but_overrides_still_confirm() {
+        // The executor-live lift grants the engine app per-app Autonomy: an
+        // ordinary reversible action Proceeds (-> Allow).
+        let cap = grant_to_capability(&grant(ReadTier::Standard), true);
+        assert_eq!(cap.decide(ENGINE_APP_ID, ActionKind::Ordinary, false), ActionDecision::Proceed);
+        // The non-configurable overrides still hold under the lift: a high-impact
+        // action and any externally-triggered action confirm, never auto-run.
+        assert_eq!(
+            cap.decide(ENGINE_APP_ID, ActionKind::PermanentDelete, false),
+            ActionDecision::RequireConfirmation
+        );
+        assert_eq!(
+            cap.decide(ENGINE_APP_ID, ActionKind::Ordinary, true),
+            ActionDecision::RequireConfirmation
+        );
+        // Default (executor_live=false): even an ordinary action is a proposal.
+        let suggest = grant_to_capability(&grant(ReadTier::Standard), false);
+        assert_eq!(suggest.decide(ENGINE_APP_ID, ActionKind::Ordinary, false), ActionDecision::Propose);
+    }
+
+    #[test]
     fn the_suggest_pipeline_denies_an_ordinary_action_end_to_end() {
-        let cap = grant_to_capability(&grant(ReadTier::Standard));
+        let cap = grant_to_capability(&grant(ReadTier::Standard), false);
         let decision = cap.decide("any.app", ActionKind::Ordinary, false);
         assert_eq!(decision, ActionDecision::Propose);
         assert!(matches!(
@@ -562,7 +619,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_gate_confirms_a_high_impact_tool() {
-        let d = CapabilityGate
+        let d = CapabilityGate::with_executor_live(|| false)
             .authorize(&authorize("delete_file", false), &grant(ReadTier::Standard))
             .await;
         assert!(matches!(d, AuthorizeDecision::Confirm { .. }));
@@ -572,7 +629,7 @@ mod tests {
     async fn the_gate_denies_an_ordinary_tool_as_a_proposal_under_suggest() {
         // Suggest baseline: an ordinary action is a proposal, refused to the
         // engine so it never auto-executes.
-        let d = CapabilityGate
+        let d = CapabilityGate::with_executor_live(|| false)
             .authorize(&authorize("note.append", false), &grant(ReadTier::Standard))
             .await;
         assert!(matches!(d, AuthorizeDecision::Deny { .. }));
@@ -582,7 +639,7 @@ mod tests {
     async fn the_gate_confirms_an_externally_triggered_ordinary_tool() {
         // The external-content override: even an ordinary tool confirms when the
         // run was triggered by external content.
-        let d = CapabilityGate
+        let d = CapabilityGate::with_executor_live(|| false)
             .authorize(&authorize("note.append", true), &grant(ReadTier::Standard))
             .await;
         assert!(matches!(d, AuthorizeDecision::Confirm { .. }));
@@ -594,7 +651,7 @@ mod tests {
         // suggest_only baseline (Allow needs Autonomous mode, which only the
         // human-gated executor-live lift grants).
         for tool in ["note.append", "delete_file", "send_email", "run_shell"] {
-            let d = CapabilityGate
+            let d = CapabilityGate::with_executor_live(|| false)
                 .authorize(&authorize(tool, false), &grant(ReadTier::Standard))
                 .await;
             assert!(!matches!(d, AuthorizeDecision::Allow { .. }), "{tool} must not be Allowed");
@@ -614,10 +671,10 @@ mod tests {
             pid: 1,
         };
         // An ordinary tool confirms (the external-content override, via the session).
-        let ordinary = CapabilityGate.authorize(&authorize("note.append", false), &ext).await;
+        let ordinary = CapabilityGate::with_executor_live(|| false).authorize(&authorize("note.append", false), &ext).await;
         assert!(matches!(ordinary, AuthorizeDecision::Confirm { .. }), "external session escalates an ordinary tool");
         // An egress tool is hard-denied (exfiltration), regardless of the per-call flag.
-        let egress = CapabilityGate.authorize(&authorize("send_email", false), &ext).await;
+        let egress = CapabilityGate::with_executor_live(|| false).authorize(&authorize("send_email", false), &ext).await;
         assert!(matches!(egress, AuthorizeDecision::Deny { .. }), "external session denies egress");
     }
 }
