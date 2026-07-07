@@ -15,6 +15,7 @@
 use crate::dispatch::Executor;
 use crate::session::SessionGrant;
 use ai_engine_contract::{CapabilityContext, Execute, ExecuteOutcome, ReadTier};
+use os_sdk::graph::UnixGraphClient;
 use std::future::Future;
 
 /// Reads the project rows (`project_id`, `root_path`) the auto-tag decision needs.
@@ -22,6 +23,39 @@ use std::future::Future;
 pub trait ProjectReader {
     /// Every project's id and root path.
     fn projects(&self) -> impl Future<Output = Result<Vec<(String, String)>, String>> + Send;
+}
+
+/// The production [`ProjectReader`]: reads the projects from the Knowledge Daemon
+/// over the os-sdk graph client. This read is the daemon's OWN (the curation runs
+/// daemon-side, not on behalf of an engine), so it is a plain typed-row query.
+pub struct GraphProjectReader {
+    client: UnixGraphClient,
+}
+
+impl GraphProjectReader {
+    /// Point the reader at the Knowledge Daemon socket.
+    pub fn new(socket_path: impl Into<String>) -> Self {
+        Self { client: UnixGraphClient::new(socket_path) }
+    }
+}
+
+impl ProjectReader for GraphProjectReader {
+    async fn projects(&self) -> Result<Vec<(String, String)>, String> {
+        let rows = self
+            .client
+            .query_rows("MATCH (p:Project) RETURN p.id AS id, p.root_path AS root_path")
+            .await
+            .map_err(|e| e.to_string())?;
+        // Skip any row missing a string id/root_path rather than guessing.
+        Ok(rows
+            .iter()
+            .filter_map(|row| {
+                let id = row.get("id")?.as_str()?.to_string();
+                let root = row.get("root_path")?.as_str()?.to_string();
+                Some((id, root))
+            })
+            .collect())
+    }
 }
 
 /// The outcome of an auto-tag curation pass (for logging; the write itself is
