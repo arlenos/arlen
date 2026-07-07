@@ -23,7 +23,7 @@ env_logger = "0.11"
 # session bus. Tauri ships its own async runtime, so zbus rides on the
 # tokio feature and commands are `async fn`.
 zbus = { version = "5", default-features = false, features = ["tokio"] }
-tokio = { version = "1", features = ["time", "rt"] }
+tokio = { version = "1", features = ["time", "rt", "net", "io-util"] }
 # Audit ledger read API for the agent activity timeline. The wire types
 # + ReadClient are shared with Settings (S-U4); the per-app command is a
 # thin wrapper. (Dedup of the wrapper into a shared crate: follow-up.)
