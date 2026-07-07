@@ -28,6 +28,7 @@
   import ToolbarSlot from "$lib/components/ToolbarSlot.svelte";
   import CaffeineBadge from "$lib/components/topbar/badges/CaffeineBadge.svelte";
   import RecordingBadge from "$lib/components/topbar/badges/RecordingBadge.svelte";
+  import CaptureBadge from "$lib/components/topbar/badges/CaptureBadge.svelte";
   import NightLightBadge from "$lib/components/topbar/badges/NightLightBadge.svelte";
   import AirplaneBadge from "$lib/components/topbar/badges/AirplaneBadge.svelte";
   import { isFocused, focusState, deactivateFocus } from "$lib/stores/projects.js";
@@ -279,6 +280,7 @@
       <div class="slot-status-badges flex items-center gap-0.5">
         <CaffeineBadge />
         <RecordingBadge />
+        <CaptureBadge />
         <NightLightBadge />
         <AirplaneBadge />
       </div>
