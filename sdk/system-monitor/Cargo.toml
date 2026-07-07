@@ -1,0 +1,15 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-system-monitor"
+version = "0.1.0"
+edition = "2021"
+description = "The system monitor's sovereign-overlay backend: the audit-ledger integrity verdict, the daemon-health verdict, and per-app access aggregation over Arlen's own event bus and audit ledger (not an ambient /proc grab). The no-GPL-question half of the monitor."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+audit-proto = { path = "../../contracts/audit-proto" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
