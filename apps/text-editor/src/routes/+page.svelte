@@ -8,7 +8,7 @@
   import LensPanel from "$lib/components/editor/LensPanel.svelte";
   import { loadLens } from "$lib/stores/lens";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
-  import { Sun } from "lucide-svelte";
+  import { Sun, PanelRight } from "lucide-svelte";
 
   // The transaction-time presets (mirrors apps/files/src/lib/asof.ts).
   const AS_OF_OPTIONS = [
@@ -19,6 +19,7 @@
   ];
 
   let focusMode = $state(false);
+  let lensOpen = $state(true);
   let asOf = $state("now");
 
   const DOC = `# The KG-lens
@@ -28,6 +29,17 @@ This file is a **first-class citizen** of the knowledge graph. Beside the text, 
 ## Why not gedit
 
 A plain editor is a solved category. The reason to build our own is the lens and the [gated AI-edit](lens-design.md): the assistant is a bounded, auditable, reversible principal that can edit this file.
+
+## The gate, in code
+
+Before the assistant writes, its edit is authorized:
+
+\`\`\`ts
+type AuthorizeDecision =
+  | { decision: "allow" }                     // reversible, autonomous
+  | { decision: "confirm"; prompt: string }   // irreversible, ask first
+  | { decision: "deny"; reason: string };
+\`\`\`
 
 ## Focus mode
 
@@ -50,13 +62,25 @@ Turn this on and every paragraph but the one you are in fades away, so the writi
       ariaLabel="Show the file as of"
       onchange={(v) => (asOf = v)}
     />
+    <button
+      type="button"
+      class="tb-btn icon"
+      class:on={lensOpen}
+      aria-label="Toggle the lens"
+      title="Toggle the lens"
+      onclick={() => (lensOpen = !lensOpen)}
+    >
+      <PanelRight size={15} strokeWidth={2} />
+    </button>
   </header>
 
   <div class="body">
     <main class="editor">
       <Canvas doc={DOC} {focusMode} />
     </main>
-    <LensPanel />
+    {#if lensOpen}
+      <LensPanel />
+    {/if}
   </div>
 </div>
 
@@ -104,6 +128,9 @@ Turn this on and every paragraph but the one you are in fades away, so the writi
     border-color: color-mix(in srgb, var(--color-fg-primary) 30%, transparent);
     color: var(--color-fg-primary);
     background: color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
+  }
+  .tb-btn.icon {
+    padding: 0.3rem;
   }
   .body {
     flex: 1;
