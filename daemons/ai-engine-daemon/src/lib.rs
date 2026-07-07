@@ -45,6 +45,10 @@ pub mod orchestrator;
 /// a `kind: agent` behaviour (the PiRun route).
 pub mod pi_run;
 
+/// The production autonomous-curator route handler (§E): composes the
+/// deterministic-curation + ephemeral-pi-run route bodies behind the orchestrator.
+pub mod curator;
+
 /// The Phase-1 reporter seam: audit + S17/S18 screening of tool results.
 pub mod reporter;
 

@@ -18,7 +18,7 @@ const DEFAULT_EPHEMERAL_WALL_MS: u64 = 30_000;
 /// the spawned pid, then end it when the run is over. The production impl is the
 /// [`Dispatcher`](crate::dispatch::Dispatcher); tests inject a recorder. (The
 /// token is minted directly via [`SessionToken::mint`], as the supervisor does.)
-pub trait SessionBinder: Sync {
+pub trait SessionBinder: Send + Sync {
     /// Bind the session token to the kernel-attested spawned pid.
     fn bind_session(&self, token: SessionToken, init: &SessionInit, pid: u32);
     /// End the session (its run is over; a fresh run mints a new one).
@@ -66,7 +66,7 @@ fn ephemeral_wall(behaviour: &Behaviour) -> Duration {
 /// restart, no shell drive (`drive: None`). Every model-proposed action inside the
 /// run is still gated + scoped + audited by the SAME contract path; this only
 /// bounds the run.
-pub async fn run_ephemeral_pi<S: SpawnEngine, B: SessionBinder>(
+pub async fn run_ephemeral_pi<S: SpawnEngine, B: SessionBinder + ?Sized>(
     behaviour: &Behaviour,
     project_anchor: Option<String>,
     engine: &S,
