@@ -12,11 +12,107 @@
 //! G1). It stays a pure, clock-injected, bounded structure so the whole dispatch
 //! decision is testable without the event bus or a pi process.
 
-use arlen_ai_skills::behaviour::BehaviourKind;
+use arlen_ai_skills::behaviour::{BehaviourKind, TriggerKind};
 use arlen_ai_skills::loader::LoadedBehaviour;
 use arlen_ai_skills::router::matching_behaviours;
-use std::collections::{BTreeMap, HashMap};
+use os_sdk::proto::{Event, FileOpenedPayload, WindowFocusedPayload};
+use os_sdk::{EventConsumer, SubscribeError, UnixEventConsumer};
+use prost::Message as _;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::{Duration, SystemTime};
+
+/// The Event Bus consumer socket the orchestrator subscribes on. The daemon
+/// resolves the real path from `ARLEN_CONSUMER_SOCKET` (this is the fallback).
+pub const DEFAULT_CONSUMER_SOCKET: &str = "/run/arlen/event-bus-consumer.sock";
+
+/// A decoded trigger event the orchestrator dispatches on: the event type, the
+/// payload fields the router filters read, and the external-content origin flag.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TriggerEvent {
+    /// The bus event type, e.g. `file.opened`.
+    pub event_type: String,
+    /// The router-readable payload fields (path, app_id, ...).
+    pub fields: BTreeMap<String, String>,
+    /// Whether the event carries external (spoofable/attacker-influenced)
+    /// content; escalates every triggered action to a confirmation.
+    pub external_content: bool,
+}
+
+/// The Event Bus type filters to subscribe to: the event pattern of every
+/// ENABLED, event-triggered behaviour. Schedule and manual triggers are not bus
+/// subscriptions, so they contribute nothing here.
+pub fn subscription_types(behaviours: &[LoadedBehaviour]) -> Vec<String> {
+    let mut types: BTreeSet<String> = BTreeSet::new();
+    for lb in behaviours {
+        if lb.status.is_enabled() && lb.behaviour.manifest.trigger.kind == TriggerKind::Event {
+            if let Some(event) = &lb.behaviour.manifest.trigger.event {
+                types.insert(event.clone());
+            }
+        }
+    }
+    types.into_iter().collect()
+}
+
+/// Decode a bus `Event` envelope into a [`TriggerEvent`]: the type, the payload
+/// fields the router/filters read, and the external-content flag. A payload that
+/// fails to decode yields an event with no fields (rather than dropping it);
+/// filters then fail closed on the missing fields.
+pub fn decode_event(ev: Event) -> TriggerEvent {
+    let mut fields = BTreeMap::new();
+    match ev.r#type.as_str() {
+        "file.opened" => {
+            if let Ok(p) = FileOpenedPayload::decode(ev.payload.as_slice()) {
+                fields.insert("path".to_string(), p.path);
+                fields.insert("app_id".to_string(), p.app_id);
+            }
+        }
+        "window.focused" => {
+            if let Ok(p) = WindowFocusedPayload::decode(ev.payload.as_slice()) {
+                fields.insert("app_id".to_string(), p.app_id);
+                fields.insert("window_title".to_string(), p.window_title);
+            }
+        }
+        // Other event types carry no router-readable fields yet; their payload
+        // decoders are added as behaviours need them.
+        _ => {}
+    }
+    TriggerEvent {
+        // Fail-safe. `Event.source` is producer-supplied and spoofable (the bus
+        // authenticates uid via SO_PEERCRED but not the origin), so it is NOT
+        // trusted for the external-content gate: until the bus stamps an
+        // authenticated origin class + S18-A tagging lands, every bus event is
+        // treated as external, so any action it triggers requires confirmation.
+        external_content: true,
+        event_type: ev.r#type,
+        fields,
+    }
+}
+
+/// The orchestrator's trigger spine: an Event Bus subscription that yields
+/// decoded [`TriggerEvent`]s. Wraps the os-sdk consumer (subscribe, framing,
+/// auto-reconnect); the decode is pure and unit-tested, the subscription itself
+/// is thin I/O exercised against a live bus.
+pub struct EventBusSource {
+    rx: tokio::sync::mpsc::Receiver<Event>,
+}
+
+impl EventBusSource {
+    /// Subscribe to the given event-type filters on the consumer socket. Fails if
+    /// the bus is unreachable after the SDK's eager-retry budget.
+    pub async fn subscribe(
+        socket_path: impl Into<String>,
+        types: Vec<String>,
+    ) -> Result<Self, SubscribeError> {
+        let consumer = UnixEventConsumer::new(socket_path);
+        let rx = consumer.subscribe(types).await?;
+        Ok(Self { rx })
+    }
+
+    /// The next decoded trigger event, or `None` when the bus connection closes.
+    pub async fn recv(&mut self) -> Option<TriggerEvent> {
+        self.rx.recv().await.map(decode_event)
+    }
+}
 
 /// How a matched behaviour is executed (the §E split).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -342,5 +438,51 @@ mod tests {
         let second = decide("file.opened", &f, false, &behaviours, &mut c, t + Duration::from_millis(200));
         assert!(second.dispatched.is_empty());
         assert_eq!(second.coalesced, vec!["auto-tag".to_string()]);
+    }
+
+    #[test]
+    fn decode_event_reads_file_opened_fields_and_flags_external() {
+        let payload = FileOpenedPayload {
+            path: "~/Repositories/foo.rs".to_string(),
+            app_id: "org.arlen.editor".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        let ev = Event {
+            id: "e1".to_string(),
+            r#type: "file.opened".to_string(),
+            source: "ebpf".to_string(),
+            payload,
+            ..Default::default()
+        };
+        let t = decode_event(ev);
+        assert_eq!(t.event_type, "file.opened");
+        assert_eq!(t.fields.get("path").unwrap(), "~/Repositories/foo.rs");
+        assert_eq!(t.fields.get("app_id").unwrap(), "org.arlen.editor");
+        // Fail-safe: every bus event is external until an authenticated origin lands.
+        assert!(t.external_content);
+    }
+
+    #[test]
+    fn decode_event_unknown_type_has_no_fields() {
+        let ev = Event { id: "e2".to_string(), r#type: "process.started".to_string(), source: "x".to_string(), ..Default::default() };
+        let t = decode_event(ev);
+        assert_eq!(t.event_type, "process.started");
+        assert!(t.fields.is_empty());
+        assert!(t.external_content);
+    }
+
+    #[test]
+    fn subscription_types_are_the_enabled_event_triggers() {
+        let behaviours = vec![
+            workflow("auto-tag", "file.opened"),
+            agent("meeting-prep", "calendar.event.upcoming"),
+            behaviour("off", "workflow", "handler: h\n", "window.focused", Status::Disabled(DisableReason::NotEnabledInSettings)),
+        ];
+        let mut types = subscription_types(&behaviours);
+        types.sort();
+        // Only the enabled event-triggered behaviours contribute; the disabled one
+        // does not subscribe.
+        assert_eq!(types, vec!["calendar.event.upcoming".to_string(), "file.opened".to_string()]);
     }
 }

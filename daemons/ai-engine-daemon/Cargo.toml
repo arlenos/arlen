@@ -26,6 +26,8 @@ arlen-ai-core = { path = "../../ai/ai-core" }
 # The shared behaviour/router/loader vocabulary the curator orchestrator (§E)
 # re-homes onto: the deterministic trigger match + the Workflow/Agent split.
 arlen-ai-skills = { path = "../../ai/ai-skills" }
+# Decoding the event-bus protobuf payloads the curator orchestrator triggers on.
+prost = "0.13"
 # CSPRNG for the unguessable session token + execution-proof handle.
 getrandom = "0.2"
 # Args-hash for the Authorize->Execute one-time proof (binds the exact tool_input).
