@@ -143,7 +143,7 @@ mod tests {
     }
 
     fn read(query: serde_json::Value) -> Execute {
-        Execute { tool_name: GRAPH_READ_TOOL.to_string(), tool_input: query }
+        Execute { tool_name: GRAPH_READ_TOOL.to_string(), tool_input: query, proof: None }
     }
 
     #[tokio::test]
@@ -207,7 +207,7 @@ mod tests {
         let exec = GraphReadExecutor::new(runner.clone());
         let outcome = exec
             .execute(
-                &Execute { tool_name: "graph.write".into(), tool_input: serde_json::json!({}) },
+                &Execute { tool_name: "graph.write".into(), tool_input: serde_json::json!({}), proof: None },
                 &grant(ReadTier::Full, None),
             )
             .await;

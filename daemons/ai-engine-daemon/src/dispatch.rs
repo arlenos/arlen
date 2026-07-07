@@ -52,7 +52,15 @@ pub struct Dispatcher<G, E, R> {
     reporter: R,
     consent: Arc<dyn ConsentDriver>,
     sessions: std::sync::Mutex<SessionStore>,
+    /// Live one-time execution proofs (HIGH-1): Authorize mints, Execute consumes.
+    proofs: std::sync::Mutex<crate::execution_proof::ProofStore>,
+    /// Monotonic epoch for proof TTLs (elapsed-since-start, immune to clock jumps).
+    proof_epoch: std::time::Instant,
 }
+
+/// How long an execution proof is valid after Authorize (the engine executes
+/// immediately, so a minute is generous; a stale proof forces a re-Authorize).
+const PROOF_TTL_MS: u64 = 60_000;
 
 impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
     /// Build a dispatcher over the three seams with an empty session store. The
@@ -65,7 +73,34 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
             reporter,
             consent: Arc::new(DeniedConsent),
             sessions: std::sync::Mutex::new(SessionStore::new()),
+            proofs: std::sync::Mutex::new(crate::execution_proof::ProofStore::new()),
+            proof_epoch: std::time::Instant::now(),
         }
+    }
+
+    /// Monotonic milliseconds since the dispatcher started (proof TTL clock).
+    fn now_ms(&self) -> u64 {
+        self.proof_epoch.elapsed().as_millis() as u64
+    }
+
+    /// Mint a one-time execution proof for an admitted call, bound to the tool,
+    /// the exact args, and the session. Returns `None` if the CSPRNG is
+    /// unavailable (fail-closed: no proof means Execute is refused). Also sweeps
+    /// expired proofs so the store stays bounded.
+    fn mint_proof(&self, tool_name: &str, tool_input: &serde_json::Value, session: &str) -> Option<String> {
+        let handle = crate::execution_proof::new_handle().ok()?;
+        let args_hash = crate::execution_proof::hash_args(tool_input);
+        let now = self.now_ms();
+        let mut store = self.proofs.lock().unwrap();
+        store.sweep(now);
+        store.mint(
+            handle.clone(),
+            tool_name.to_string(),
+            args_hash,
+            session.to_string(),
+            now + PROOF_TTL_MS,
+        );
+        Some(handle)
     }
 
     /// Wire the trusted-path consent surface used to resolve a gate `Confirm`
@@ -127,18 +162,37 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
                 }
             }
         };
-        match self.gate.authorize(req, &grant).await {
+        // Resolve the gate decision (driving the consent broker for a Confirm).
+        let decision = match self.gate.authorize(req, &grant).await {
             AuthorizeDecision::Confirm { prompt } => {
                 match self
                     .consent
                     .confirm(&req.tool_name, &prompt, req.external_triggered)
                     .await
                 {
-                    ConfirmAnswer::Approved => AuthorizeDecision::Allow,
-                    ConfirmAnswer::Denied => AuthorizeDecision::Deny {
-                        reason: format!("{} was not confirmed", req.tool_name),
-                    },
+                    // A resolved confirm becomes an Allow, so the proof below is
+                    // minted ONLY after the user approved (HIGH-1: a Confirm tool
+                    // cannot execute without a resolved confirm).
+                    ConfirmAnswer::Approved => AuthorizeDecision::Allow { proof: None },
+                    ConfirmAnswer::Denied => {
+                        return AuthorizeDecision::Deny {
+                            reason: format!("{} was not confirmed", req.tool_name),
+                        }
+                    }
                 }
+            }
+            other => other,
+        };
+        // Mint the one-time execution proof for any admitted outcome, bound to this
+        // session (HIGH-1). Deny / Confirm carry no proof, so they can never reach
+        // Execute; Modify binds the daemon-substituted args that will actually run.
+        match decision {
+            AuthorizeDecision::Allow { .. } => AuthorizeDecision::Allow {
+                proof: self.mint_proof(&req.tool_name, &req.tool_input, token.as_str()),
+            },
+            AuthorizeDecision::Modify { args, .. } => {
+                let proof = self.mint_proof(&req.tool_name, &args, token.as_str());
+                AuthorizeDecision::Modify { args, proof }
             }
             other => other,
         }
@@ -147,13 +201,45 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
     /// Execute a privileged tool. No valid session fails closed as a permission
     /// error; the executor is never reached.
     pub async fn execute(&self, token: &SessionToken, pid: u32, req: &Execute) -> ExecuteOutcome {
-        match self.resolve(token, pid) {
-            Some(grant) => self.executor.execute(req, &grant).await,
-            None => ExecuteOutcome::Error {
+        let grant = match self.resolve(token, pid) {
+            Some(grant) => grant,
+            None => {
+                return ExecuteOutcome::Error {
+                    code: ContractError::PermissionDenied,
+                    message: "no valid session for this caller".to_string(),
+                }
+            }
+        };
+        // HIGH-1 gate enforcement: Execute REQUIRES a valid, unconsumed, matching
+        // one-time proof that Authorize minted. No proof (or a mismatched / reused /
+        // expired one) means the gate never admitted THIS exact call, so refuse
+        // before the executor - the gate's reversibility / confirm / deny logic
+        // cannot be skipped by calling Execute directly.
+        let proof = match &req.proof {
+            Some(p) => p,
+            None => {
+                return ExecuteOutcome::Error {
+                    code: ContractError::PermissionDenied,
+                    message: "execute requires an authorization proof".to_string(),
+                }
+            }
+        };
+        let args_hash = crate::execution_proof::hash_args(&req.tool_input);
+        let now = self.now_ms();
+        let consumed = self.proofs.lock().unwrap().consume(
+            proof,
+            &req.tool_name,
+            &args_hash,
+            token.as_str(),
+            now,
+        );
+        if consumed.is_err() {
+            return ExecuteOutcome::Error {
                 code: ContractError::PermissionDenied,
-                message: "no valid session for this caller".to_string(),
-            },
+                message: "authorization proof invalid, expired, or already used".to_string(),
+            };
         }
+        self.executor.execute(req, &grant).await
     }
 
     /// Report a tool result. No valid session fails closed by BLOCKING the
@@ -247,7 +333,7 @@ mod tests {
         let e = Arc::new(AtomicUsize::new(0));
         let r = Arc::new(AtomicUsize::new(0));
         let d = Dispatcher::new(
-            SpyGate { calls: g.clone(), decision: AuthorizeDecision::Allow },
+            SpyGate { calls: g.clone(), decision: AuthorizeDecision::Allow { proof: None } },
             SpyExecutor { calls: e.clone() },
             SpyReporter { calls: r.clone() },
         );
@@ -264,15 +350,32 @@ mod tests {
             tool_input: serde_json::json!({}),
             external_triggered: false,
         }).await;
-        assert_eq!(dec, AuthorizeDecision::Allow);
+        // An admitted authorize mints a one-time proof (HIGH-1).
+        let proof = match dec {
+            AuthorizeDecision::Allow { proof } => proof,
+            other => panic!("expected Allow, got {other:?}"),
+        };
+        assert!(proof.is_some(), "an admitted authorize mints an execution proof");
         assert_eq!(g.load(Ordering::SeqCst), 1);
 
+        // Execute presents the proof for the SAME tool + args; the executor runs.
         let out = d.execute(&token, 100, &Execute {
-            tool_name: "graph.read".into(),
+            tool_name: "bash".into(),
             tool_input: serde_json::json!({}),
+            proof: proof.clone(),
         }).await;
         assert!(matches!(out, ExecuteOutcome::Ok { .. }));
         assert_eq!(e.load(Ordering::SeqCst), 1);
+
+        // The proof is single-use: a replay is refused and the executor is NOT
+        // called again (HIGH-1 enforcement).
+        let replay = d.execute(&token, 100, &Execute {
+            tool_name: "bash".into(),
+            tool_input: serde_json::json!({}),
+            proof,
+        }).await;
+        assert!(matches!(replay, ExecuteOutcome::Error { code: ContractError::PermissionDenied, .. }));
+        assert_eq!(e.load(Ordering::SeqCst), 1, "a consumed proof does not reach the executor");
 
         let ack = d.report(&token, 100, &Report {
             tool_name: "graph.read".into(),
@@ -377,7 +480,7 @@ mod tests {
                 external_triggered: true,
             })
             .await;
-        assert_eq!(dec, AuthorizeDecision::Allow, "approved consent resolves Confirm to Allow");
+        assert!(matches!(dec, AuthorizeDecision::Allow { proof: Some(_) }), "approved consent resolves Confirm to an Allow with a proof");
         // The consent surface saw the confirmation details; the engine never did.
         let s = seen.lock().unwrap().clone().unwrap();
         assert_eq!(s, ("graph.write".to_string(), "delete everything?".to_string(), true));
@@ -423,7 +526,7 @@ mod tests {
         Authorize { tool_name: "bash".into(), tool_input: serde_json::json!({}), external_triggered: false }
     }
     fn exec() -> Execute {
-        Execute { tool_name: "graph.read".into(), tool_input: serde_json::json!({}) }
+        Execute { tool_name: "graph.read".into(), tool_input: serde_json::json!({}), proof: None }
     }
     fn report() -> Report {
         Report { tool_name: "graph.read".into(), tool_call_id: "c".into(), result: serde_json::json!({}), is_error: false }

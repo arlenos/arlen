@@ -86,12 +86,24 @@ pub struct Authorize {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "decision", rename_all = "snake_case")]
 pub enum AuthorizeDecision {
-    /// Run the tool as proposed.
-    Allow,
+    /// Run the tool as proposed. `proof` is the one-time execution proof the engine
+    /// must present at [`Execute`] (HIGH-1 gate enforcement); the daemon mints it
+    /// only for an admitted call, so an `Execute` without a matching proof is
+    /// refused. The gate itself returns `None`; the dispatcher fills it after the
+    /// decision (and, for a confirm, after the consent broker resolves).
+    Allow {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        proof: Option<String>,
+    },
     /// Refuse the tool; `reason` is shown to the model, never to a user as-is.
     Deny { reason: String },
-    /// Run the tool, but with these daemon-substituted arguments instead.
-    Modify { args: serde_json::Value },
+    /// Run the tool, but with these daemon-substituted arguments instead. `proof`
+    /// binds those substituted args (see [`Allow`]).
+    Modify {
+        args: serde_json::Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        proof: Option<String>,
+    },
     /// Hold for an explicit user confirmation (see [`Confirm`]); `prompt` is the
     /// question the trusted-path consent surface asks.
     Confirm { prompt: String },
@@ -107,6 +119,12 @@ pub struct Execute {
     pub tool_name: String,
     /// The (already-authorized) arguments.
     pub tool_input: serde_json::Value,
+    /// The one-time execution proof the matching [`Authorize`] minted (HIGH-1).
+    /// The daemon validates and consumes it before running the tool; a missing,
+    /// mismatched, reused, or expired proof is refused. Optional on the wire so the
+    /// field is additive, but the daemon requires it (fail-closed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof: Option<String>,
 }
 
 /// The outcome of an [`Execute`].
@@ -292,9 +310,9 @@ mod tests {
     #[test]
     fn authorize_decision_tags_are_stable() {
         let cases: Vec<(AuthorizeDecision, &str)> = vec![
-            (AuthorizeDecision::Allow, "allow"),
+            (AuthorizeDecision::Allow { proof: None }, "allow"),
             (AuthorizeDecision::Deny { reason: "no".into() }, "deny"),
-            (AuthorizeDecision::Modify { args: json!({"k": "v"}) }, "modify"),
+            (AuthorizeDecision::Modify { args: json!({"k": "v"}), proof: None }, "modify"),
             (AuthorizeDecision::Confirm { prompt: "ok?".into() }, "confirm"),
         ];
         for (d, tag) in cases {
@@ -382,7 +400,7 @@ mod tests {
 
         // The reply envelope nests the verb's tagged verdict under the `reply` tag.
         assert_eq!(
-            serde_json::to_value(Reply::Authorize(AuthorizeDecision::Allow)).unwrap(),
+            serde_json::to_value(Reply::Authorize(AuthorizeDecision::Allow { proof: None })).unwrap(),
             json!({"reply": "authorize", "decision": "allow"}),
         );
         assert_eq!(
@@ -450,7 +468,7 @@ mod tests {
     fn call_and_reply_tags_are_stable() {
         let calls: Vec<(Call, &str)> = vec![
             (Call::Authorize(Authorize { tool_name: "t".into(), tool_input: json!(null), external_triggered: false }), "authorize"),
-            (Call::Execute(Execute { tool_name: "t".into(), tool_input: json!(null) }), "execute"),
+            (Call::Execute(Execute { tool_name: "t".into(), tool_input: json!(null), proof: None }), "execute"),
             (Call::Report(Report { tool_name: "t".into(), tool_call_id: "c".into(), result: json!(null), is_error: false }), "report"),
             (Call::EndSession, "end_session"),
         ];
@@ -459,7 +477,7 @@ mod tests {
             assert!(s.contains(&format!("\"call\":\"{tag}\"")), "{tag}: call tag changed, got {s}");
         }
         let replies: Vec<(Reply, &str)> = vec![
-            (Reply::Authorize(AuthorizeDecision::Allow), "authorize"),
+            (Reply::Authorize(AuthorizeDecision::Allow { proof: None }), "authorize"),
             (Reply::Execute(ExecuteOutcome::Ok { result: json!(null) }), "execute"),
             (Reply::Report(ReportAck { screen: ScreenVerdict::Clean }), "report"),
             (Reply::Ack, "ack"),

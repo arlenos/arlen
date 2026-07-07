@@ -201,7 +201,7 @@ mod tests {
     }
 
     fn write(input: serde_json::Value) -> Execute {
-        Execute { tool_name: GRAPH_WRITE_TOOL.to_string(), tool_input: input }
+        Execute { tool_name: GRAPH_WRITE_TOOL.to_string(), tool_input: input, proof: None }
     }
 
     fn valid_input() -> serde_json::Value {
@@ -265,7 +265,7 @@ mod tests {
         let exec = GraphWriteExecutor::new(Arc::new(MockWriter {
             result: Ok(RelationWriteOutcome::Created),
         }));
-        let req = Execute { tool_name: "graph.read".into(), tool_input: valid_input() };
+        let req = Execute { tool_name: "graph.read".into(), tool_input: valid_input(), proof: None };
         assert!(matches!(
             exec.execute(&req, &grant()).await,
             ExecuteOutcome::Error { code: ContractError::UnknownTool, .. },
