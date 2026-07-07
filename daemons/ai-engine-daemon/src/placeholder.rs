@@ -77,7 +77,7 @@ mod tests {
         assert!(matches!(g, AuthorizeDecision::Deny { .. }));
 
         let e = UnavailableExecutor
-            .execute(&Execute { tool_name: "graph.read".into(), tool_input: serde_json::json!({}) }, &grant())
+            .execute(&Execute { tool_name: "graph.read".into(), tool_input: serde_json::json!({}), proof: None }, &grant())
             .await;
         assert!(matches!(e, ExecuteOutcome::Error { code: ContractError::Unavailable, .. }));
 

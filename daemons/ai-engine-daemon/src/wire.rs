@@ -102,7 +102,7 @@ mod tests {
     #[async_trait]
     impl Gate for AllowGate {
         async fn authorize(&self, _: &Authorize, _: &SessionGrant) -> AuthorizeDecision {
-            AuthorizeDecision::Allow
+            AuthorizeDecision::Allow { proof: None }
         }
     }
     struct OkExec;
@@ -184,7 +184,7 @@ mod tests {
 
         let reply_frame = read_frame(&mut client).await.unwrap().unwrap();
         let reply: Reply = serde_json::from_str(&reply_frame).unwrap();
-        assert_eq!(reply, Reply::Authorize(AuthorizeDecision::Allow));
+        assert!(matches!(reply, Reply::Authorize(AuthorizeDecision::Allow { proof: Some(_) })), "the wire reply carries a minted proof");
 
         drop(client); // EOF -> the server loop returns
         server_task.await.unwrap();

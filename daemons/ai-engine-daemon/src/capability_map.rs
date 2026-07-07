@@ -109,7 +109,7 @@ pub fn grant_to_query_scope(grant: &SessionGrant, schema: &GraphSchema) -> Query
 /// re-validation concern at Execute time, not an action-mode outcome.
 pub fn decision_to_authorize(decision: ActionDecision, tool_name: &str) -> AuthorizeDecision {
     match decision {
-        ActionDecision::Proceed => AuthorizeDecision::Allow,
+        ActionDecision::Proceed => AuthorizeDecision::Allow { proof: None },
         ActionDecision::RequireConfirmation => AuthorizeDecision::Confirm {
             prompt: format!("Confirm {tool_name}? This action needs your explicit approval."),
         },
@@ -187,7 +187,7 @@ impl Gate for CapabilityGate {
         // read executes, via `grant_to_scope` incl. the GAP-21 active-project
         // anchor). The anti-Recall guarantee is the scope, not a per-read confirm.
         if gate_class_for_tool(&req.tool_name) == GateClass::Read {
-            return AuthorizeDecision::Allow;
+            return AuthorizeDecision::Allow { proof: None };
         }
         // D2 hard case 2: an externally-triggered egress call is the prompt-
         // injection exfiltration vector - hard-Deny it (stronger than the confirm
@@ -405,7 +405,7 @@ mod tests {
     fn proceed_lets_the_engine_run_the_tool() {
         assert_eq!(
             decision_to_authorize(ActionDecision::Proceed, "graph.write"),
-            AuthorizeDecision::Allow,
+            AuthorizeDecision::Allow { proof: None },
         );
     }
 
@@ -587,7 +587,7 @@ mod tests {
             let d = CapabilityGate
                 .authorize(&authorize(tool, false), &grant(ReadTier::Standard))
                 .await;
-            assert!(!matches!(d, AuthorizeDecision::Allow), "{tool} must not be Allowed");
+            assert!(!matches!(d, AuthorizeDecision::Allow { .. }), "{tool} must not be Allowed");
         }
     }
 }

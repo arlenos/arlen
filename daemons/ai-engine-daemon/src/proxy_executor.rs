@@ -65,7 +65,7 @@ mod tests {
     }
 
     fn exec(tool: &str) -> Execute {
-        Execute { tool_name: tool.into(), tool_input: serde_json::json!({}) }
+        Execute { tool_name: tool.into(), tool_input: serde_json::json!({}), proof: None }
     }
 
     /// A sub-executor that records it ran and returns a marker, so a test can see
