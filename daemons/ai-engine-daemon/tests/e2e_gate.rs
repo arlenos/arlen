@@ -133,7 +133,9 @@ async fn run_driver<E: Executor, R: Reporter>(
         driver.display(),
     );
 
-    let dispatcher = Dispatcher::new(CapabilityGate, executor, reporter);
+    // A deterministic suggest-mode gate (executor_live off) so the "suggest denies"
+    // proof does not depend on the developer's ai.toml.
+    let dispatcher = Dispatcher::new(CapabilityGate::with_executor_live(|| false), executor, reporter);
 
     let listener = UnixListener::bind(&socket).unwrap();
     std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600)).unwrap();
