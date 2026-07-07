@@ -29,6 +29,7 @@
 use std::io;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
+use arlen_permissions::connection_auth::ConnectionAuth;
 
 /// The largest single JSONL record the relay will buffer, in either direction.
 /// Generous enough for a `prompt` carrying an inline base64 image, but bounded so
@@ -184,6 +185,12 @@ where
 /// logged and the next connection awaited. This loops until `accept` fails (a
 /// broken listener) or the caller cancels it (the supervisor cancels it when pi
 /// exits).
+/// The uid the daemon runs as; a drive peer must match it (cross-uid rejected).
+fn current_uid() -> u32 {
+    // SAFETY: getuid is always safe; it reads the real uid and never fails.
+    unsafe { libc::getuid() }
+}
+
 pub async fn serve_drive<PW, PR>(
     listener: &UnixListener,
     mut pi_stdin: PW,
@@ -195,6 +202,17 @@ where
 {
     loop {
         let (stream, _addr) = listener.accept().await?;
+        // Peer-attest the shell before relaying, bringing the drive socket to the
+        // SAME posture as the contract socket (SO_PEERCRED, cross-uid rejected, the
+        // pid attested) rather than resting on the 0600 bind alone. A connection
+        // whose credentials cannot be read, or that is cross-uid, is DROPPED and we
+        // re-accept. The residual same-uid boundary (any same-uid process may still
+        // connect) is the Arlen-wide one closed by F3/AppArmor, identical to the
+        // contract socket; the drive channel is no longer the weaker sibling.
+        if let Err(e) = ConnectionAuth::extract_from(&stream, current_uid()) {
+            tracing::warn!(error = %e, "rejecting an unauthenticated drive connection");
+            continue;
+        }
         let (read_half, write_half) = stream.into_split();
         if let Err(e) =
             relay_borrowed(read_half, write_half, &mut pi_stdin, &mut pi_stdout).await
