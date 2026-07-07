@@ -123,9 +123,17 @@ fn default_engine_session() -> SessionInit {
         capability_context: CapabilityContext { generic_tools: vec![], proxy_tools: vec![] },
         project_anchor: None,
         read_tier: ReadTier::Minimal,
-        // HIGH-2: the supervisor sets this from the session's origin (external event
-        // vs direct user request) when it derives it; that derivation lands with pi
-        // vendoring. Until then the default is false (the per-call flag still applies).
+        // The trustworthy session-origin bit. It is false here because the daemon
+        // spawns ONE inert supervisor session with no external trigger, so false is
+        // correct today. HARD PRE-FLIP GATE (review HIGH-1): before ANY external-
+        // trigger source (an event-bus-triggered agent run) drives a session under
+        // executor_live, the supervisor MUST derive this bit from the run origin.
+        // The gate ORs it with the engine's untrusted per-call flag escalate-only,
+        // so a run the daemon KNOWS is externally-originated escalates every action
+        // to a confirmation - but only if this bit is set. Leaving it hardwired
+        // false while wiring an external trigger would reduce external-content
+        // containment to "the engine self-reports honestly", which a prompt-injected
+        // engine will not. So: derive-before-external-trigger, not optional.
         externally_triggered: false,
     }
 }
