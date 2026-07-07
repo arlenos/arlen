@@ -28,6 +28,12 @@ use crate::service::CallerIdentity;
 pub const CANONICAL_AI_DAEMON_BIN: &str = "/usr/lib/arlen/libexec/arlen-ai-daemon";
 /// Canonical production path for the autonomous-agent daemon.
 pub const CANONICAL_AI_AGENT_BIN: &str = "/usr/lib/arlen/libexec/arlen-ai-agent";
+/// Canonical production path for the pi-backed AI engine daemon, which forwards
+/// the read pipeline's LLM calls in the same AI-layer role as `arlen-ai-daemon`
+/// (it replaces it side by side), so it resolves to the same `org.arlen.AI1`
+/// identity.
+pub const CANONICAL_AI_ENGINE_DAEMON_BIN: &str =
+    "/usr/lib/arlen/libexec/arlen-ai-engine-daemon";
 
 /// Env var that lets developers extend the executable allowlist for
 /// dev installs (colon-separated paths). Production deploys leave it
@@ -65,6 +71,10 @@ impl PeerAuthMap {
         by_exe.insert(
             PathBuf::from(CANONICAL_AI_AGENT_BIN),
             "org.arlen.AIAgent1".to_string(),
+        );
+        by_exe.insert(
+            PathBuf::from(CANONICAL_AI_ENGINE_DAEMON_BIN),
+            "org.arlen.AI1".to_string(),
         );
         #[cfg(debug_assertions)]
         if let Ok(extras) = std::env::var(EXTRA_BINS_ENV) {
@@ -224,6 +234,11 @@ mod tests {
         assert_eq!(
             m.lookup(Path::new(CANONICAL_AI_AGENT_BIN)),
             Some("org.arlen.AIAgent1")
+        );
+        // The pi-backed engine daemon forwards in the AI-layer role: same identity.
+        assert_eq!(
+            m.lookup(Path::new(CANONICAL_AI_ENGINE_DAEMON_BIN)),
+            Some("org.arlen.AI1")
         );
     }
 
