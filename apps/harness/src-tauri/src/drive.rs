@@ -32,36 +32,77 @@ fn prompt_command(message: &str) -> serde_json::Value {
     serde_json::json!({ "type": "prompt", "message": message })
 }
 
+/// pi's `get_last_assistant_text` command, tagged with a fixed correlation id so
+/// its response is matched unambiguously.
+fn get_last_text_command() -> serde_json::Value {
+    serde_json::json!({ "type": "get_last_assistant_text", "id": GET_TEXT_ID })
+}
+
+/// Correlation id for the `get_last_assistant_text` response.
+const GET_TEXT_ID: &str = "arlen-get-last-text";
+
 /// The pi session-event type that ends a turn (the agent finished its response).
 const TURN_END_EVENT: &str = "agent_end";
 
-/// Submit a user turn to the pi engine and stream its session events to the
-/// frontend as `pi://event` Tauri events, returning when the turn ends. Each event
-/// is pi's raw session-event JSON, which the A7 components interpret (`text` deltas,
-/// tool calls, ...). The loop ends on pi's `agent_end` event (turn complete) or on
-/// socket EOF. A malformed line is skipped defensively rather than aborting the turn.
+/// Whether `event` is the response to our `get_last_assistant_text` request (pi
+/// correlates responses by `id`).
+fn is_get_text_response(event: &serde_json::Value) -> bool {
+    event.get("type").and_then(|t| t.as_str()) == Some("response")
+        && event.get("command").and_then(|c| c.as_str()) == Some("get_last_assistant_text")
+        && event.get("id").and_then(|i| i.as_str()) == Some(GET_TEXT_ID)
+}
+
+/// The assistant text carried by a `get_last_assistant_text` response
+/// (`data.text`); a null or absent text is the empty string.
+fn assistant_text_of(event: &serde_json::Value) -> String {
+    event
+        .get("data")
+        .and_then(|d| d.get("text"))
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+/// Write one JSON command as a line to the drive socket.
+async fn write_command(
+    write: &mut (impl AsyncWriteExt + Unpin),
+    command: &serde_json::Value,
+) -> Result<(), String> {
+    let mut line = serde_json::to_vec(command).map_err(|e| e.to_string())?;
+    line.push(b'\n');
+    write.write_all(&line).await.map_err(|e| format!("engine write failed: {e}"))?;
+    write.flush().await.map_err(|e| e.to_string())
+}
+
+/// Submit a user turn to the pi engine, stream its session events to the frontend
+/// as `pi://event` Tauri events, and return the assistant's answer. The turn runs
+/// in two phases on one connection: (1) submit the `prompt` and forward every
+/// session event (the A7 components render tool calls / transparency) until pi's
+/// `agent_end`; (2) fetch `get_last_assistant_text` and return it as the answer
+/// (matching the old poll path's answer-returning shape, so the store swap is
+/// trivial). A malformed line is skipped rather than aborting the turn.
 #[tauri::command]
-pub async fn pi_prompt(app: AppHandle, prompt: String) -> Result<(), String> {
+pub async fn pi_prompt(app: AppHandle, prompt: String) -> Result<String, String> {
     let stream = UnixStream::connect(drive_socket_path())
         .await
         .map_err(|e| format!("could not reach the AI engine: {e}"))?;
     let (read, mut write) = stream.into_split();
-
-    let mut line = serde_json::to_vec(&prompt_command(&prompt)).map_err(|e| e.to_string())?;
-    line.push(b'\n');
-    write.write_all(&line).await.map_err(|e| format!("engine write failed: {e}"))?;
-    write.flush().await.map_err(|e| e.to_string())?;
-
     let mut lines = BufReader::new(read).lines();
-    while let Some(text) =
-        lines.next_line().await.map_err(|e| format!("engine read failed: {e}"))?
-    {
+
+    // Phase 1: submit + stream events until the turn ends.
+    write_command(&mut write, &prompt_command(&prompt)).await?;
+    loop {
+        let Some(text) =
+            lines.next_line().await.map_err(|e| format!("engine read failed: {e}"))?
+        else {
+            return Err("the AI engine closed before the turn finished".to_string());
+        };
         let trimmed = text.trim();
         if trimmed.is_empty() {
             continue;
         }
         let Ok(event) = serde_json::from_str::<serde_json::Value>(trimmed) else {
-            continue; // skip a malformed line, never abort the turn on it
+            continue;
         };
         let is_end = event.get("type").and_then(|t| t.as_str()) == Some(TURN_END_EVENT);
         let _ = app.emit("pi://event", &event);
@@ -69,7 +110,27 @@ pub async fn pi_prompt(app: AppHandle, prompt: String) -> Result<(), String> {
             break;
         }
     }
-    Ok(())
+
+    // Phase 2: fetch the final assistant text (forwarding any interleaved events).
+    write_command(&mut write, &get_last_text_command()).await?;
+    loop {
+        let Some(text) =
+            lines.next_line().await.map_err(|e| format!("engine read failed: {e}"))?
+        else {
+            return Ok(String::new()); // engine went away; empty answer, not an error
+        };
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+            continue;
+        };
+        if is_get_text_response(&event) {
+            return Ok(assistant_text_of(&event));
+        }
+        let _ = app.emit("pi://event", &event);
+    }
 }
 
 #[cfg(test)]
@@ -101,5 +162,43 @@ mod tests {
             resolve_drive_path(Some("")),
             std::path::PathBuf::from("/run/arlen/ai-engine-drive.sock")
         );
+    }
+
+    #[test]
+    fn get_text_command_is_id_tagged() {
+        let c = get_last_text_command();
+        assert_eq!(c["type"], "get_last_assistant_text");
+        assert_eq!(c["id"], GET_TEXT_ID);
+    }
+
+    #[test]
+    fn recognises_the_correlated_get_text_response() {
+        let ok = serde_json::json!({
+            "type": "response", "command": "get_last_assistant_text",
+            "id": GET_TEXT_ID, "data": { "text": "the answer" }
+        });
+        assert!(is_get_text_response(&ok));
+        assert_eq!(assistant_text_of(&ok), "the answer");
+    }
+
+    #[test]
+    fn rejects_a_response_with_the_wrong_id_or_command() {
+        let wrong_id = serde_json::json!({
+            "type": "response", "command": "get_last_assistant_text", "id": "other"
+        });
+        assert!(!is_get_text_response(&wrong_id));
+        let wrong_cmd = serde_json::json!({
+            "type": "response", "command": "get_state", "id": GET_TEXT_ID
+        });
+        assert!(!is_get_text_response(&wrong_cmd));
+        // An event that is not a response at all.
+        assert!(!is_get_text_response(&serde_json::json!({ "type": "agent_end" })));
+    }
+
+    #[test]
+    fn a_null_or_absent_text_is_the_empty_string() {
+        let null_text = serde_json::json!({ "data": { "text": null } });
+        assert_eq!(assistant_text_of(&null_text), "");
+        assert_eq!(assistant_text_of(&serde_json::json!({})), "");
     }
 }
