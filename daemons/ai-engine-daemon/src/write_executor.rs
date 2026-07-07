@@ -17,12 +17,15 @@
 //! wires the fail-closed [`DeniedWriter`]; [`UnixRelationWriter`] is the real
 //! writer the executor-live cutover swaps in.
 
+use crate::compensation::{CompensationStore, RetractReceipt};
 use crate::dispatch::Executor;
 use crate::session::SessionGrant;
 use ai_engine_contract::{ContractError, Execute, ExecuteOutcome};
+use arlen_ai_core::audit::behaviour_action_event;
 use async_trait::async_trait;
+use audit_proto::sink::AuditSink;
 use os_sdk::graph::{RelationWriteOutcome, UnixGraphClient};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// The proxy-tool name for an atomic graph relation write.
 const GRAPH_WRITE_TOOL: &str = "graph.write";
@@ -112,16 +115,47 @@ fn mint_op_id() -> Result<String, String> {
 }
 
 /// Runs the `graph.write` proxy tool: a single atomic, op-id-keyed relation
-/// create through a [`RelationWriter`].
+/// create through a [`RelationWriter`], AUDITED before it applies and its
+/// compensating retract registered at apply time.
+///
+/// The daemon does not defer the audit or the undo receipt to the engine's
+/// optional `Report` verb: a non-cooperative engine that skips Report would
+/// otherwise leave a committed write unaudited and un-undoable. So this executor
+/// audits before the write (fail-closed: no ledger entry, no write) and registers
+/// the op-id-keyed compensation from its OWN minted op id and validated args the
+/// moment a write is created.
 pub struct GraphWriteExecutor {
     writer: Arc<dyn RelationWriter>,
+    /// The audit sink for the S13 audit-before-act entry; when absent (tests that
+    /// only exercise the write mechanics) the write proceeds unaudited. The daemon
+    /// always wires it.
+    audit: Option<Arc<dyn AuditSink>>,
+    /// The compensation store the op-id-keyed retract is registered into at apply
+    /// time, so a created write is undoable regardless of the engine.
+    compensation: Option<Arc<Mutex<CompensationStore>>>,
 }
 
 impl GraphWriteExecutor {
     /// Build the executor over a [`RelationWriter`] (the fail-closed
-    /// [`DeniedWriter`] in Phase 1, [`UnixRelationWriter`] at the cutover).
+    /// [`DeniedWriter`] in Phase 1, [`UnixRelationWriter`] at the cutover), with no
+    /// audit sink or compensation store yet.
     pub fn new(writer: Arc<dyn RelationWriter>) -> Self {
-        Self { writer }
+        Self { writer, audit: None, compensation: None }
+    }
+
+    /// Attach the audit sink so a write is recorded content-free BEFORE it applies
+    /// (S13 audit-before-act); a ledger that cannot record the intent refuses the
+    /// write.
+    pub fn with_audit(mut self, audit: Arc<dyn AuditSink>) -> Self {
+        self.audit = Some(audit);
+        self
+    }
+
+    /// Attach the compensation store so a created write's op-id-keyed retract is
+    /// registered at apply time, from the daemon's own op id (not an engine report).
+    pub fn with_compensation(mut self, store: Arc<Mutex<CompensationStore>>) -> Self {
+        self.compensation = Some(store);
+        self
     }
 }
 
@@ -160,6 +194,20 @@ impl Executor for GraphWriteExecutor {
                 }
             }
         };
+        // S13 audit-before-act: record the write intent content-free BEFORE it
+        // applies, correlated by the daemon's own op id. Fail closed - a ledger
+        // that cannot record the intent refuses the write, so an autonomous write
+        // is never invisible to the audit trail (the review's HIGH-2: the daemon
+        // must not defer this to the engine's optional Report).
+        if let Some(audit) = &self.audit {
+            let event = behaviour_action_event(GRAPH_WRITE_TOOL, "graph-write", &op_id);
+            if audit.submit(event).await.is_err() {
+                return ExecuteOutcome::Error {
+                    code: ContractError::ExecutionFailed,
+                    message: "audit ledger unavailable; graph.write refused".to_string(),
+                };
+            }
+        }
         match self
             .writer
             .create_relation(&from_type, &from_id, &to_type, &to_id, &relation_type, &op_id)
@@ -167,8 +215,32 @@ impl Executor for GraphWriteExecutor {
         {
             Ok(outcome) => {
                 let created = matches!(outcome, RelationWriteOutcome::Created);
-                // The result carries the op id + the written relation so the
-                // Report verb can register the compensating retract for it.
+                // Register the op-id-keyed compensation AUTHORITATIVELY at apply
+                // time, from the daemon's own minted op id + the args it validated
+                // - never from an engine-supplied Report (which could omit it,
+                // leaving the write un-undoable, or forge a wrong receipt). Only a
+                // genuine create needs an undo; an already-existing edge created
+                // nothing.
+                if created {
+                    if let Some(store) = &self.compensation {
+                        if let Ok(mut s) = store.lock() {
+                            s.register(
+                                op_id.clone(),
+                                RetractReceipt::for_write(
+                                    &op_id,
+                                    &from_type,
+                                    &from_id,
+                                    &to_type,
+                                    &to_id,
+                                    &relation_type,
+                                ),
+                            );
+                        }
+                    }
+                }
+                // The result still carries the op id + relation for the Report path
+                // (content screening); the audit + compensation no longer depend on
+                // it.
                 ExecuteOutcome::Ok {
                     result: serde_json::json!({
                         "op_id": op_id,
@@ -246,6 +318,65 @@ mod tests {
             }
             other => panic!("expected Ok, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn a_created_write_audits_before_it_applies_and_registers_its_compensation() {
+        // The daemon audits the write BEFORE it applies and registers the op-id-
+        // keyed retract at apply time, from its OWN op id - not the engine's Report.
+        use audit_proto::sink::MockAuditSink;
+        let audit = Arc::new(MockAuditSink::accepting());
+        let store = Arc::new(Mutex::new(CompensationStore::new(8)));
+        let exec = GraphWriteExecutor::new(Arc::new(MockWriter {
+            result: Ok(RelationWriteOutcome::Created),
+        }))
+        .with_audit(audit.clone())
+        .with_compensation(store.clone());
+        let op = match exec.execute(&write(valid_input()), &grant()).await {
+            ExecuteOutcome::Ok { result } => result["op_id"].as_str().unwrap().to_string(),
+            other => panic!("expected Ok, got {other:?}"),
+        };
+        // One audit entry recorded, and the compensation is keyed by the daemon's
+        // op id and targets exactly the written edge.
+        assert_eq!(audit.recorded().await.len(), 1);
+        let s = store.lock().unwrap();
+        let receipt = s.get(&op).expect("compensation registered under the op id");
+        assert_eq!(receipt.op_id, op);
+        assert_eq!(receipt.from_id, "/a.rs");
+        assert_eq!(receipt.relation_type, "FILE_PART_OF");
+    }
+
+    #[tokio::test]
+    async fn an_audit_down_refuses_the_write_fail_closed() {
+        // S13: if the ledger cannot record the intent, the write is refused and
+        // nothing applies - so an autonomous write is never invisible to the audit.
+        use audit_proto::sink::MockAuditSink;
+        let store = Arc::new(Mutex::new(CompensationStore::new(8)));
+        let exec = GraphWriteExecutor::new(Arc::new(MockWriter {
+            result: Ok(RelationWriteOutcome::Created),
+        }))
+        .with_audit(Arc::new(MockAuditSink::failing()))
+        .with_compensation(store.clone());
+        match exec.execute(&write(valid_input()), &grant()).await {
+            ExecuteOutcome::Error { code, .. } => assert_eq!(code, ContractError::ExecutionFailed),
+            other => panic!("expected fail-closed Error, got {other:?}"),
+        }
+        // The write never ran, so no compensation was registered.
+        assert!(store.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_already_existing_write_registers_no_compensation() {
+        // Only a genuine create needs an undo; an already-present edge created
+        // nothing, so there is nothing to retract.
+        let store = Arc::new(Mutex::new(CompensationStore::new(8)));
+        let exec = GraphWriteExecutor::new(Arc::new(MockWriter {
+            result: Ok(RelationWriteOutcome::AlreadyExists),
+        }))
+        .with_compensation(store.clone());
+        let out = exec.execute(&write(valid_input()), &grant()).await;
+        assert!(matches!(out, ExecuteOutcome::Ok { .. }));
+        assert!(store.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

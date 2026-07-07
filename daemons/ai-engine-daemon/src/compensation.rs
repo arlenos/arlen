@@ -30,6 +30,30 @@ pub struct RetractReceipt {
 }
 
 impl RetractReceipt {
+    /// Build a receipt directly from the daemon's own write parameters + minted
+    /// op id, at the moment the executor applies the write. This is the
+    /// AUTHORITATIVE path: the receipt targets exactly the edge the daemon just
+    /// created, from fields the daemon validated itself, never an engine-supplied
+    /// report. The op-id-keyed retract undoes exactly this write.
+    #[allow(clippy::too_many_arguments)]
+    pub fn for_write(
+        op_id: impl Into<String>,
+        from_type: impl Into<String>,
+        from_id: impl Into<String>,
+        to_type: impl Into<String>,
+        to_id: impl Into<String>,
+        relation_type: impl Into<String>,
+    ) -> RetractReceipt {
+        RetractReceipt {
+            op_id: op_id.into(),
+            from_type: from_type.into(),
+            from_id: from_id.into(),
+            to_type: to_type.into(),
+            to_id: to_id.into(),
+            relation_type: relation_type.into(),
+        }
+    }
+
     /// Build a receipt from a reported tool result, if it is a successful
     /// `graph.write` carrying the daemon's write-result shape. Any other tool, an
     /// error result, or a result missing a field yields `None` (nothing to undo).

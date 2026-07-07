@@ -18,7 +18,6 @@
 //! with the write executor: a read or an ordinary result has nothing to undo,
 //! and the write proxy tools are not wired yet, so this seam records + screens.
 
-use crate::compensation::{CompensationStore, RetractReceipt};
 use crate::dispatch::Reporter;
 use crate::session::SessionGrant;
 use ai_engine_contract::{Report, ReportAck, ScreenVerdict};
@@ -26,7 +25,7 @@ use arlen_ai_core::audit::behaviour_action_event;
 use arlen_ai_core::screen::{Screener, Verdict};
 use async_trait::async_trait;
 use audit_proto::sink::AuditSink;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 /// Map the shared screening [`Verdict`] onto the contract [`ScreenVerdict`] the
 /// engine receives. `Allow` lets the content re-enter context (`Clean`), `Warn`
@@ -39,28 +38,24 @@ fn verdict_to_screen(v: Verdict) -> ScreenVerdict {
     }
 }
 
-/// The reporter seam: audits a tool result content-free, registers compensation
-/// for a committed write, then screens its content. Holds the audit sink (the
-/// `arlen-auditd` ledger in the daemon binary, a mock in tests), the shared
-/// [`Screener`], and an optional [`CompensationStore`] (the undo receipts).
+/// The reporter seam: audits a tool result content-free, then screens its
+/// content. Holds the audit sink (the `arlen-auditd` ledger in the daemon binary,
+/// a mock in tests) and the shared [`Screener`].
+///
+/// The write's undo receipt is NOT registered here: the write executor registers
+/// the op-id-keyed compensation authoritatively at apply time (from the daemon's
+/// own op id), so a non-cooperative engine that skips Report cannot leave a
+/// committed write un-undoable. This seam only records + screens the reported
+/// result content.
 pub struct ScreeningReporter {
     audit: Arc<dyn AuditSink>,
     screener: Screener,
-    compensation: Option<Arc<Mutex<CompensationStore>>>,
 }
 
 impl ScreeningReporter {
-    /// Build the reporter over an audit sink and a screener, with no compensation
-    /// store (a reported write records no undo receipt).
+    /// Build the reporter over an audit sink and a screener.
     pub fn new(audit: Arc<dyn AuditSink>, screener: Screener) -> Self {
-        Self { audit, screener, compensation: None }
-    }
-
-    /// Attach a compensation store so a successful `graph.write` report records an
-    /// op-id-keyed retract receipt (the undo for exactly that write).
-    pub fn with_compensation(mut self, store: Arc<Mutex<CompensationStore>>) -> Self {
-        self.compensation = Some(store);
-        self
+        Self { audit, screener }
     }
 }
 
@@ -78,18 +73,10 @@ impl Reporter for ScreeningReporter {
             return ReportAck { screen: ScreenVerdict::Block };
         }
 
-        // Register the compensation for a committed write (the write already
-        // happened in Execute; its undo must be recorded regardless of the screen
-        // verdict, since a Block keeps the content out of the engine but does not
-        // un-write the edge). Built from the daemon's own write-result shape, so
-        // the inverse targets exactly the edge the daemon created.
-        if let Some(store) = &self.compensation {
-            if let Some(receipt) = RetractReceipt::from_report(&req.tool_name, req.is_error, &req.result) {
-                if let Ok(mut s) = store.lock() {
-                    s.register(req.tool_call_id.clone(), receipt);
-                }
-            }
-        }
+        // The write's op-id-keyed compensation is registered by the write executor
+        // at apply time (from the daemon's own op id), NOT here from the engine's
+        // reported result - so a skipped or forged Report cannot leave a committed
+        // write un-undoable or overwrite the authoritative receipt.
 
         // Screen the result content (S17/S18) before it re-enters the engine's
         // context. A string result is screened verbatim; any other shape is
@@ -188,40 +175,5 @@ mod tests {
         let ack = reporter.report(&report(serde_json::json!("boom"), true), &grant()).await;
         assert_eq!(ack.screen, ScreenVerdict::Clean);
         assert_eq!(audit.recorded().await.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn a_reported_write_registers_its_compensation() {
-        // A successful graph.write report records an op-id-keyed retract receipt
-        // (the undo for that write), keyed by the report's tool_call_id.
-        let audit = Arc::new(MockAuditSink::accepting());
-        let store = Arc::new(Mutex::new(CompensationStore::new(8)));
-        let reporter =
-            ScreeningReporter::new(audit, Screener::off()).with_compensation(store.clone());
-        let write = Report {
-            tool_name: "graph.write".into(),
-            tool_call_id: "call-9".into(),
-            result: serde_json::json!({
-                "op_id": "op-9", "created": true,
-                "from_type": "File", "from_id": "/a.rs",
-                "to_type": "Project", "to_id": "p1", "relation_type": "FILE_PART_OF",
-            }),
-            is_error: false,
-        };
-        let ack = reporter.report(&write, &grant()).await;
-        assert_eq!(ack.screen, ScreenVerdict::Clean);
-        let s = store.lock().unwrap();
-        assert_eq!(s.get("call-9").map(|r| r.op_id.as_str()), Some("op-9"));
-    }
-
-    #[tokio::test]
-    async fn a_reported_read_registers_no_compensation() {
-        // Only writes have an undo: a read report records nothing.
-        let audit = Arc::new(MockAuditSink::accepting());
-        let store = Arc::new(Mutex::new(CompensationStore::new(8)));
-        let reporter =
-            ScreeningReporter::new(audit, Screener::off()).with_compensation(store.clone());
-        reporter.report(&report(serde_json::json!("3 files"), false), &grant()).await;
-        assert!(store.lock().unwrap().is_empty());
     }
 }
