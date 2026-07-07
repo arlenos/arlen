@@ -31,8 +31,6 @@ export interface PendingWindowsFile {
   recipe?: string;
   /// The scopes the freshly minted permission profile grants (the sovereign preview).
   access: string[];
-  /// If a Wine/Proton version must be fetched the first time, its name.
-  needsRuntime?: string;
 }
 
 // One representative installer + one portable so both action layouts + tiers render.
@@ -45,7 +43,6 @@ const MOCK: PendingWindowsFile[] = [
     tier: "verified",
     recipe: "Paint.NET recipe",
     access: ["Its own files"],
-    needsRuntime: "Proton 9.0",
   },
   {
     id: 2,
