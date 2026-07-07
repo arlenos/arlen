@@ -108,6 +108,30 @@ processes:
     availability:
       restart: "on_failure"
 
+  # The pi-backed AI engine daemon. It ALWAYS binds its contract socket (the gate
+  # serves fail-closed) and spawns the confined pi sidecar ONLY when `[ai] enabled`
+  # in ai.toml (default off), so it boots INERT here until AI is turned on. The
+  # ARLEN_PI_* paths are the dev vendoring locations (node>=22 + the pi clone +
+  # the built pi-plugins extension); an unresolvable path just leaves pi unspawned
+  # (the socket still serves), so a wrong path is fail-safe, never a boot failure.
+  ai-engine-daemon:
+    command: "cargo run --manifest-path daemons/ai-engine-daemon/Cargo.toml"
+    depends_on:
+      runtime-dir: { condition: process_completed_successfully }
+      knowledge: { condition: process_healthy }
+    environment:
+      - "ARLEN_PI_NODE_RUNTIME=${HOME}/.local/share/arlen-node22"
+      - "ARLEN_PI_INSTALL=${HOME}/Repositories/pi"
+      - "ARLEN_PI_EXTENSION=${HOME}/Repositories/arlen/ai/pi-plugins/dist/extension.js"
+    readiness_probe:
+      exec:
+        command: "test -S ${ARLEN_RUNTIME_DIR}/ai-engine.sock"
+      initial_delay_seconds: 3
+      period_seconds: 2
+      failure_threshold: 60
+    availability:
+      restart: "on_failure"
+
   notification-daemon:
     command: "cargo run --manifest-path daemons/notification-daemon/Cargo.toml"
     availability:
