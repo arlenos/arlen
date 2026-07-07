@@ -12,6 +12,9 @@
 /// The daemon-health verdict: a liveness probe over the core Arlen daemons.
 pub mod health;
 
+/// Per-app access aggregation over the audit ledger's activity (the sovereign lens).
+pub mod access;
+
 use audit_proto::{ReadClient, ReadClientError, ReadPage};
 
 /// The audit ledger's integrity state - the monitor's "nothing was altered"
