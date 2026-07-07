@@ -108,9 +108,9 @@
     </Group>
 
     <Group label="Add an app" class="span-full">
-      <Row label="Install a Windows app" description="Pick a .exe installer and the compatibility layer sets it up.">
+      <Row label="Install a Windows app" description="Pick a Windows installer, like a .exe or .msi, and the compatibility layer sets it up.">
         {#snippet control()}
-          <Button variant="default" size="sm" onclick={installExe}>Choose a .exe</Button>
+          <Button variant="default" size="sm" onclick={installExe}>Choose an installer</Button>
         {/snippet}
       </Row>
     </Group>
