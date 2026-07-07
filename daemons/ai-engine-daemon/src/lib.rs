@@ -11,6 +11,9 @@ pub mod session;
 
 pub mod dispatch;
 
+/// The Authorize->Execute one-time proof (HIGH-1 gate enforcement).
+pub mod execution_proof;
+
 pub mod wire;
 
 pub mod placeholder;
