@@ -38,6 +38,7 @@
     LayoutPanelTop,
     PanelTop,
     Printer,
+    Wine,
   } from "lucide-svelte";
 
   let query = $state("");
@@ -117,6 +118,7 @@
     LayoutPanelTop,
     PanelTop,
     Printer,
+    Wine,
   };
 
   // Group panels by section, matching the Pre-Phase-6 plan
@@ -125,7 +127,7 @@
   const SECTIONS = [
     {
       label: "System",
-      panelIds: ["display", "workspaces", "topbar", "notifications", "printers", "about"] as const,
+      panelIds: ["display", "workspaces", "topbar", "notifications", "printers", "windows-apps", "about"] as const,
     },
     {
       label: "Personal",
