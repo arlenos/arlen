@@ -231,6 +231,24 @@ integration-smoke:
     cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml" \
         --test integration_backend_smoke -- --ignored
 
+# Run the pi-gated tests against a vendored pi engine (v0.79.10, cloned at
+# ARLEN_PI_INSTALL) and a node>=22 runtime (ARLEN_PI_NODE_RUNTIME): rebuilds the
+# Arlen pi-plugins extension, then the confined-sidecar spawn test (pi actually
+# starts node under bwrap) and the gate/audit/proxy end-to-end suite. Override the
+# ARLEN_PI_* paths to relocate the install. Needs a userns-capable host + bwrap.
+pi-e2e:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export ARLEN_PI_NODE_RUNTIME="${ARLEN_PI_NODE_RUNTIME:-$HOME/.local/share/arlen-node22}"
+    export ARLEN_PI_INSTALL="${ARLEN_PI_INSTALL:-$HOME/Repositories/pi}"
+    export ARLEN_PI_EXTENSION="${ARLEN_PI_EXTENSION:-{{ROOT}}/ai/pi-plugins/dist/extension.js}"
+    export PATH="$ARLEN_PI_NODE_RUNTIME/bin:$PATH"
+    npm --prefix "{{ROOT}}/ai/pi-plugins" run build
+    cargo test --manifest-path "{{ROOT}}/daemons/ai-engine-daemon/Cargo.toml" \
+        --lib the_confined_node_starts -- --ignored
+    cargo test --manifest-path "{{ROOT}}/daemons/ai-engine-daemon/Cargo.toml" \
+        --test e2e_gate -- --ignored
+
 # Dogfood Phase-1 data-path check (first-dogfoodable-session-plan.md): with the
 # `just dev` backend ALREADY up, emit a file.opened on the LIVE bus, confirm it
 # lands in the live event store, and probe the knowledge graph for the promoted
