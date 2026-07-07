@@ -13,6 +13,8 @@
 /// changed shape.
 import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { applyToolEvent, toolCallsOf, type TracedCall } from "$lib/pi-trace";
 import { planRegenerate } from "$lib/regenerate";
 import { planEdit } from "$lib/edit";
 import { planDelete } from "$lib/delete";
@@ -347,15 +349,23 @@ function updateSession(id: string, fn: (msgs: Message[]) => Message[]): void {
 /// (`pi_prompt`), returning the reply shape the store applies. The assistant
 /// answer is returned directly; the tool-call + transparency trace arrives on the
 /// `pi://event` stream (a listener renders it, the next increment), so those are
-/// empty here for now.
+/// collected from the `pi://event` stream during the turn.
 async function piTurn(prompt: string): Promise<{
   answer: string;
   toolCalls: ToolCall[];
   traceUnavailable: boolean;
   artifacts?: Artifact[];
 }> {
-  const answer = await invoke<string>("pi_prompt", { prompt });
-  return { answer, toolCalls: [], traceUnavailable: false, artifacts: [] };
+  let trace: TracedCall[] = [];
+  const unlisten = await listen<unknown>("pi://event", (e) => {
+    trace = applyToolEvent(trace, e.payload);
+  });
+  try {
+    const answer = await invoke<string>("pi_prompt", { prompt });
+    return { answer, toolCalls: toolCallsOf(trace), traceUnavailable: false, artifacts: [] };
+  } finally {
+    unlisten();
+  }
 }
 
 /// and a pending assistant placeholder synchronously into the active session,
