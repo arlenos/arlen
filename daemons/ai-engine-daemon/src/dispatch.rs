@@ -169,12 +169,19 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
                 }
             }
         };
+        // The TRUSTED external-origin bit for the consent surface: the OR of the
+        // session's supervisor-derived origin and the engine's untrusted per-call
+        // flag (escalate-only). The consent broker must see the resolved value, not
+        // the engine's self-report - else a prompt-injected engine claiming
+        // external=false could corrupt the trusted-path provenance ("you are asked
+        // because external content triggered this") or down-classify the dialog.
+        let externally_triggered = grant.externally_triggered || req.external_triggered;
         // Resolve the gate decision (driving the consent broker for a Confirm).
         let decision = match self.gate.authorize(req, &grant).await {
             AuthorizeDecision::Confirm { prompt } => {
                 match self
                     .consent
-                    .confirm(&req.tool_name, &prompt, req.external_triggered)
+                    .confirm(&req.tool_name, &prompt, externally_triggered)
                     .await
                 {
                     // A resolved confirm becomes an Allow, so the proof below is
