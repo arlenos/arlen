@@ -21,6 +21,10 @@ use arlen_ai_engine_daemon::dispatch::Dispatcher;
 use arlen_ai_engine_daemon::dispatch::Executor;
 use arlen_ai_engine_daemon::proxy_executor::ProxyExecutor;
 use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
+use arlen_ai_core::pipeline::{CypherPipeline, GraphQuerier, QueryRunner};
+use arlen_ai_core::provider::AIProvider;
+use arlen_ai_engine_daemon::graph_adapter::OsSdkGraphQuerier;
+use arlen_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
 use arlen_ai_engine_daemon::engine_config;
 use arlen_ai_engine_daemon::reporter::ScreeningReporter;
 use arlen_ai_engine_daemon::sidecar::{PiSidecar, SidecarPaths};
@@ -123,6 +127,74 @@ fn default_engine_session() -> SessionInit {
     }
 }
 
+/// The Knowledge Daemon socket the read pipeline queries: the `ARLEN_DAEMON_SOCKET`
+/// override, else the XDG runtime path if it exists, else the system path (mirrors
+/// the ai-daemon resolver so both read the same socket).
+fn resolve_knowledge_socket() -> String {
+    if let Ok(explicit) = std::env::var("ARLEN_DAEMON_SOCKET") {
+        if !explicit.is_empty() {
+            return explicit;
+        }
+    }
+    if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
+        if !xdg.is_empty() {
+            let runtime = format!("{xdg}/arlen/knowledge.sock");
+            if std::path::Path::new(&runtime).exists() {
+                return runtime;
+            }
+        }
+    }
+    "/run/arlen/knowledge.sock".to_string()
+}
+
+/// Build the `graph.read` runner. Live ONLY when AI is enabled AND a provider is
+/// configured AND the session bus + proxy client come up; any of those missing
+/// falls back to the fail-closed [`DeniedRunner`] (the read then reports
+/// provider-unavailable rather than reading). The live runner is the ai-core
+/// [`CypherPipeline`]: it turns the caller's NL query into validated Cypher via
+/// the `ProxiedProvider` (forwarded through ai-proxy, which peer-auths this
+/// daemon's binary as `org.arlen.AI1`) and runs it against the Knowledge Daemon,
+/// so the read is bounded by the scope the gate already resolved. Only reachable
+/// when pi is running (AI enabled) and a `graph.read` Execute presents a valid
+/// HIGH-1 proof, so wiring it live carries no autonomy of its own.
+async fn build_read_runner() -> Arc<dyn QueryRunner> {
+    if !engine_config::ai_enabled() {
+        return Arc::new(DeniedRunner);
+    }
+    let settings = engine_config::provider_settings();
+    if settings.name.is_empty() {
+        tracing::warn!("no ai.provider configured; graph.read stays fail-closed");
+        return Arc::new(DeniedRunner);
+    }
+    let connection = match zbus::Connection::session().await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "no session bus; graph.read stays fail-closed");
+            return Arc::new(DeniedRunner);
+        }
+    };
+    let provider: Arc<dyn AIProvider> = match ProxiedProvider::with_connection(
+        ProxiedConfig {
+            name: settings.name,
+            model: settings.model,
+            audit_token: settings.audit_token,
+            context_window: settings.context_window,
+        },
+        &connection,
+    )
+    .await
+    {
+        Ok(p) => Arc::new(p),
+        Err(e) => {
+            tracing::warn!(error = %e, "read provider build failed; graph.read stays fail-closed");
+            return Arc::new(DeniedRunner);
+        }
+    };
+    let graph: Arc<dyn GraphQuerier> = Arc::new(OsSdkGraphQuerier::new(resolve_knowledge_socket()));
+    tracing::info!("graph.read wired to the live CypherPipeline over the proxied provider");
+    Arc::new(CypherPipeline::new(provider, graph))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -168,13 +240,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .with_compensation(compensation);
     // The executor seam is a router so the daemon hosts several proxy tools
     // (graph.read + graph.write now; OS/MCP tools as they land), each enforcing
-    // its own scope. Both are wired over fail-closed backends: graph.read over
-    // DeniedRunner (the live read provider is the Phase-2 cutover) and
+    // its own scope. graph.read runs over the LIVE CypherPipeline when AI is
+    // enabled + a provider is configured (else the fail-closed DeniedRunner);
     // graph.write over DeniedWriter (the live write + its Report-side
-    // compensation land at the human-gated executor-live cutover). An
-    // unregistered tool is UnknownTool.
+    // compensation land at the executor-live cutover). An unregistered tool is
+    // UnknownTool.
     let read_executor: Arc<dyn Executor> =
-        Arc::new(GraphReadExecutor::new(Arc::new(DeniedRunner)));
+        Arc::new(GraphReadExecutor::new(build_read_runner().await));
     let write_executor: Arc<dyn Executor> =
         Arc::new(GraphWriteExecutor::new(Arc::new(DeniedWriter)));
     let executor = ProxyExecutor::new()
