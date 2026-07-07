@@ -350,7 +350,14 @@ impl PiSidecar {
         cmd.args(&argv)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit());
+            .stderr(Stdio::inherit())
+            // Kill the confined pi tree if this `run_once` future is dropped
+            // (e.g. an ephemeral autonomous run hitting its wall-clock timeout, or
+            // the supervising task being aborted). Without this the dropped Child
+            // is reaped but never killed, so a timed-out run would leak the whole
+            // bwrap+node+pi tree (CPU/RAM/model-token drain). bwrap's
+            // `--die-with-parent` only fires on DAEMON death, not future-drop.
+            .kill_on_drop(true);
         let spawn_result = cmd.spawn();
         // Close the parent's copy of the write end unconditionally, so the read
         // end sees EOF once bwrap closes its copy (and so a spawn failure does

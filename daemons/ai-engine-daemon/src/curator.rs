@@ -11,6 +11,16 @@ use crate::pi_run::{run_ephemeral_pi, SessionBinder};
 use crate::sidecar::PiSidecar;
 use arlen_ai_skills::loader::LoadedBehaviour;
 use std::sync::Arc;
+use tokio::sync::Semaphore;
+
+/// Hard cap on CONCURRENT ephemeral pi runs. The coalescer collapses identical
+/// events, but a storm of DISTINCT events (many unique paths / invite ids) each
+/// gets a distinct digest and is admitted, so coalescing alone does not bound the
+/// spawn rate. This bounds the in-flight confined pi processes: a run that would
+/// exceed the cap is DROPPED (logged), never queued unbounded - so a trigger storm
+/// cannot fork-bomb the machine with heavy LLM sessions. Small by design (an
+/// autonomous curator should not be running many LLM sessions at once).
+const MAX_CONCURRENT_PI_RUNS: usize = 3;
 
 /// Routes a dispatched behaviour to its §E route body over the daemon's real
 /// curation + pi-run dependencies.
@@ -26,6 +36,8 @@ pub struct CuratorHandler {
     sidecar: Arc<PiSidecar>,
     /// The session lifecycle for an ephemeral run (the dispatcher).
     binder: Arc<dyn SessionBinder>,
+    /// Bounds concurrent ephemeral pi runs (the storm fork-bomb backstop).
+    pi_run_slots: Arc<Semaphore>,
 }
 
 impl CuratorHandler {
@@ -37,7 +49,14 @@ impl CuratorHandler {
         sidecar: Arc<PiSidecar>,
         binder: Arc<dyn SessionBinder>,
     ) -> Self {
-        Self { reader, writer, behaviours, sidecar, binder }
+        Self {
+            reader,
+            writer,
+            behaviours,
+            sidecar,
+            binder,
+            pi_run_slots: Arc::new(Semaphore::new(MAX_CONCURRENT_PI_RUNS)),
+        }
     }
 }
 
@@ -63,6 +82,17 @@ impl RouteHandler for CuratorHandler {
                     tracing::warn!(behaviour = %dispatch.behaviour, "pi-run dispatched for an unknown behaviour; skipped");
                     return;
                 };
+                // Bound concurrent pi runs: acquire a slot or DROP this run (never
+                // an unbounded queue), so a distinct-event storm cannot fork-bomb
+                // the machine with confined LLM sessions. The permit is held by the
+                // spawned task for the run's lifetime and released on completion.
+                let Ok(permit) = self.pi_run_slots.clone().try_acquire_owned() else {
+                    tracing::warn!(
+                        behaviour = %dispatch.behaviour,
+                        "at the concurrent pi-run cap; dropping this autonomous run"
+                    );
+                    return;
+                };
                 let behaviour = lb.behaviour.clone();
                 let sidecar = self.sidecar.clone();
                 let binder = self.binder.clone();
@@ -72,6 +102,7 @@ impl RouteHandler for CuratorHandler {
                 // a project-scoped read closed via GAP-21 until a Focus-Mode anchor
                 // source is wired.
                 tokio::spawn(async move {
+                    let _permit = permit; // released when the run ends
                     let outcome =
                         run_ephemeral_pi(&behaviour, None, sidecar.as_ref(), binder.as_ref()).await;
                     tracing::info!(behaviour = %behaviour.manifest.name, ?outcome, "ephemeral pi run");
