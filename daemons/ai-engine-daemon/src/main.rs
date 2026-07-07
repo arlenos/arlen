@@ -7,11 +7,12 @@
 //! touches them. The gate/executor/reporter seams are wired to the real Rust:
 //! the gate is `CapabilityGate` (`Capability::decide`), the reporter is
 //! `ScreeningReporter` (content-free audit + S17/S18 screening), and the
-//! executor is a `ProxyExecutor` routing graph.read/graph.write. The live tool
-//! runners stay fail-closed (`DeniedRunner`/`DeniedWriter`) pending the gated
-//! cutovers (the Phase-2 read pipeline; the human-gated executor-live write),
-//! and the screener is `Off` until a classifier model is provisioned - the
-//! gate's confirm-on-external-trigger is the containment meanwhile.
+//! executor is a `ProxyExecutor` routing graph.read/graph.write. graph.read runs
+//! over the live `CypherPipeline` when AI is enabled and a provider is configured
+//! (else the fail-closed `DeniedRunner`); graph.write over the live
+//! `UnixRelationWriter` when `[agent] executor_live` is on (else `DeniedWriter`).
+//! The screener is `Off` until a classifier model is provisioned - the gate's
+//! confirm-on-external-trigger is the containment meanwhile.
 
 use arlen_ai_core::screen::Screener;
 use arlen_ai_engine_daemon::capability_map::CapabilityGate;
@@ -29,7 +30,9 @@ use arlen_ai_engine_daemon::engine_config;
 use arlen_ai_engine_daemon::reporter::ScreeningReporter;
 use arlen_ai_engine_daemon::sidecar::{PiSidecar, SidecarPaths};
 use arlen_ai_engine_daemon::supervisor::supervise;
-use arlen_ai_engine_daemon::write_executor::{DeniedWriter, GraphWriteExecutor};
+use arlen_ai_engine_daemon::write_executor::{
+    DeniedWriter, GraphWriteExecutor, RelationWriter, UnixRelationWriter,
+};
 use arlen_ai_engine_daemon::wire::serve_connection;
 use ai_engine_contract::{CapabilityContext, ReadTier, SessionInit};
 use arlen_permissions::connection_auth::ConnectionAuth;
@@ -195,6 +198,24 @@ async fn build_read_runner() -> Arc<dyn QueryRunner> {
     Arc::new(CypherPipeline::new(provider, graph))
 }
 
+/// Build the `graph.write` runner. Live ONLY when AI is enabled AND
+/// `[agent] executor_live` is on; otherwise the fail-closed [`DeniedWriter`]
+/// (a write then reports the not-permitted error and applies nothing). The live
+/// writer performs a single atomic, op-id-keyed relation create through the
+/// Knowledge Daemon; the reporter's compensation store then registers the op-id
+/// retract that undoes exactly this write when the Report verb arrives. A write
+/// only reaches here after the gate ALLOWED it (which under executor-live means an
+/// authorized reversible action - a high-impact or externally-triggered one still
+/// confirms) and it presented a valid HIGH-1 execution proof.
+fn build_write_runner() -> Arc<dyn RelationWriter> {
+    if engine_config::ai_enabled() && engine_config::executor_live() {
+        tracing::info!("graph.write wired to the live UnixRelationWriter (executor_live)");
+        Arc::new(UnixRelationWriter::new(resolve_knowledge_socket()))
+    } else {
+        Arc::new(DeniedWriter)
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -248,7 +269,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let read_executor: Arc<dyn Executor> =
         Arc::new(GraphReadExecutor::new(build_read_runner().await));
     let write_executor: Arc<dyn Executor> =
-        Arc::new(GraphWriteExecutor::new(Arc::new(DeniedWriter)));
+        Arc::new(GraphWriteExecutor::new(build_write_runner()));
     let executor = ProxyExecutor::new()
         .register("graph.read", read_executor)
         // D2 (pi-gate-class-registry.md): the fine-grained reversible graph-write
