@@ -4,11 +4,17 @@
 //! down - distinct from the persistent interactive supervisor. This module builds
 //! the per-trigger session; the spawn + teardown is a later increment.
 
+use crate::pi_driver::drive_for_answer;
 use crate::session::SessionToken;
 use crate::supervisor::{EngineExit, SpawnEngine};
 use ai_engine_contract::{CapabilityContext, ReadTier, SessionInit};
 use arlen_ai_skills::behaviour::{Behaviour, ReadScope};
+use std::path::PathBuf;
 use std::time::Duration;
+use tokio::net::{UnixListener, UnixStream};
+
+/// The initial turn that kicks an ephemeral explain run.
+const EXPLAIN_PROMPT: &str = "Explain what the computer is doing right now.";
 
 /// Wall-clock bound for an ephemeral run when the behaviour declares no budget
 /// (an agent behaviour always declares one, so this is a defensive default).
@@ -93,6 +99,77 @@ pub async fn run_ephemeral_pi<S: SpawnEngine, B: SessionBinder + ?Sized>(
     // not outlive the run).
     binder.end_session(&token);
     outcome
+}
+
+/// Resolve a private drive-socket path for one ephemeral run, under the Arlen
+/// runtime dir with a random suffix so concurrent runs never collide.
+fn ephemeral_drive_socket() -> Result<PathBuf, String> {
+    let base = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/arlen".to_string());
+    let mut bytes = [0u8; 8];
+    getrandom::getrandom(&mut bytes).map_err(|e| e.to_string())?;
+    let nonce: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    Ok(PathBuf::from(base).join("arlen").join(format!("explain-{nonce}.sock")))
+}
+
+/// Removes the private drive socket file on drop.
+struct SocketGuard(PathBuf);
+impl Drop for SocketGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// Run `behaviour` (the explain skill) on a fresh ephemeral confined pi and RETURN
+/// its assistant answer. Unlike [`run_ephemeral_pi`] (fire-and-forget curation),
+/// this is REQUEST-RESPONSE: it drives pi over a PRIVATE drive socket, submits an
+/// initial turn, and captures pi's reply via [`drive_for_answer`]. The session is
+/// bound for the run (so pi's gated reads authorise) and ended after; the run is
+/// dropped once the answer is in hand, so `kill_on_drop` reaps the confined pi.
+/// Bounded by the behaviour's wall-clock. (System Explanation Mode, §D.)
+pub async fn run_ephemeral_explain<S, B>(
+    behaviour: &Behaviour,
+    project_anchor: Option<String>,
+    engine: &S,
+    binder: &B,
+) -> Result<String, String>
+where
+    S: SpawnEngine,
+    B: SessionBinder + ?Sized,
+{
+    let init = build_ephemeral_session_init(behaviour, project_anchor);
+    let token = SessionToken::mint().map_err(|_| "could not mint a session".to_string())?;
+
+    let socket_path = ephemeral_drive_socket()?;
+    let listener = UnixListener::bind(&socket_path)
+        .map_err(|e| format!("could not bind the explain drive socket: {e}"))?;
+    let _socket_guard = SocketGuard(socket_path.clone());
+
+    let on_spawned = |pid: u32| binder.bind_session(token.clone(), &init, pid);
+    let on_spawned: &(dyn Fn(u32) + Send + Sync) = &on_spawned;
+
+    let run = engine.run_once(token.as_str(), &init.system_prompt, on_spawned, Some(&listener));
+    let drive = async {
+        // The listener is already bound, so this connect queues even before
+        // `serve_drive` accepts it; serve_drive then relays it to pi's stdio.
+        let stream = UnixStream::connect(&socket_path)
+            .await
+            .map_err(|e| format!("could not reach the explain engine: {e}"))?;
+        let (read, write) = stream.into_split();
+        drive_for_answer(read, write, EXPLAIN_PROMPT).await
+    };
+
+    // The answer arriving ends the run (dropping `run` kills the confined pi via
+    // kill_on_drop); a wall-clock bound and an early engine exit both fail closed.
+    let answer = tokio::select! {
+        result = tokio::time::timeout(ephemeral_wall(behaviour), drive) => match result {
+            Ok(driven) => driven,
+            Err(_) => Err("the explanation timed out".to_string()),
+        },
+        _ = run => Err("the explain engine exited before answering".to_string()),
+    };
+
+    binder.end_session(&token);
+    answer
 }
 
 /// Map a behaviour's declared [`ReadScope`] to the contract [`ReadTier`] the
