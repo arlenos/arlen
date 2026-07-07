@@ -41,12 +41,56 @@ pub enum ProofError {
 
 /// The canonical hash of a tool call's arguments. Binds a proof to the exact
 /// `tool_input` so a proof minted for benign args cannot execute different ones.
-/// `serde_json`'s default `Map` is a `BTreeMap` (sorted keys), so the serialization
-/// is deterministic and Authorize / Execute hash the same value identically.
+/// Uses [`canonical_encode`] (object keys sorted, strings/keys length-prefixed) so
+/// Authorize and Execute hash identical args identically REGARDLESS of the
+/// `serde_json` map backend (default `BTreeMap` or a `preserve_order` `IndexMap`)
+/// or the engine's key ordering - not relying on `serde_json`'s serialization order.
 pub fn hash_args(tool_input: &serde_json::Value) -> [u8; 32] {
-    let bytes = serde_json::to_vec(tool_input).unwrap_or_default();
-    Sha256::digest(bytes).into()
+    let mut bytes = Vec::new();
+    canonical_encode(tool_input, &mut bytes);
+    Sha256::digest(&bytes).into()
 }
+
+/// Append an order-independent, unambiguous byte encoding of `value` to `out`.
+/// Object keys are sorted; strings and keys are length-prefixed so distinct values
+/// (e.g. `{"ab":1}` vs `{"a":"b1"}`) can never collide by concatenation.
+fn canonical_encode(value: &serde_json::Value, out: &mut Vec<u8>) {
+    use serde_json::Value;
+    match value {
+        Value::Null => out.extend_from_slice(b"n"),
+        Value::Bool(b) => out.extend_from_slice(if *b { b"t" } else { b"f" }),
+        Value::Number(n) => {
+            let s = n.to_string();
+            out.extend_from_slice(format!("d{}:", s.len()).as_bytes());
+            out.extend_from_slice(s.as_bytes());
+        }
+        Value::String(s) => {
+            out.extend_from_slice(format!("s{}:", s.len()).as_bytes());
+            out.extend_from_slice(s.as_bytes());
+        }
+        Value::Array(a) => {
+            out.extend_from_slice(format!("a{}:", a.len()).as_bytes());
+            for v in a {
+                canonical_encode(v, out);
+            }
+        }
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            out.extend_from_slice(format!("o{}:", keys.len()).as_bytes());
+            for k in keys {
+                out.extend_from_slice(format!("k{}:", k.len()).as_bytes());
+                out.extend_from_slice(k.as_bytes());
+                canonical_encode(&map[k], out);
+            }
+        }
+    }
+}
+
+/// A hard cap on live proofs: a flood backstop so a misbehaving-but-authenticated
+/// engine spamming admitted Authorize without ever executing cannot grow the store
+/// unbounded within the TTL window. Generous vs any real per-session authorize rate.
+pub const MAX_PROOFS: usize = 4096;
 
 /// Mint an unguessable 256-bit proof handle (hex). Mirrors the session-token
 /// CSPRNG; fails closed if the OS RNG is unavailable (no proof -> no execute).
@@ -216,6 +260,19 @@ mod tests {
         s.mint("B".into(), "t".into(), [0; 32], "s".into(), 100);
         s.sweep(50);
         assert_eq!(s.len(), 1, "only the still-live proof survives");
+    }
+
+    #[test]
+    fn hash_args_is_key_order_independent_and_unambiguous() {
+        // Two objects with the same entries in different key order hash equally,
+        // so a re-serialized-but-equal args set is not falsely refused.
+        let a = json!({"x": 1, "y": 2});
+        let b = json!({"y": 2, "x": 1});
+        assert_eq!(hash_args(&a), hash_args(&b));
+        // Concatenation-ambiguous shapes stay distinct (length-prefixing).
+        assert_ne!(hash_args(&json!({"ab": 1})), hash_args(&json!({"a": "b1"})));
+        assert_ne!(hash_args(&json!("12")), hash_args(&json!(12)));
+        assert_ne!(hash_args(&json!([1, 2])), hash_args(&json!([12])));
     }
 
     #[test]

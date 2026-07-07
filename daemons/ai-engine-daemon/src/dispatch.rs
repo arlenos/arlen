@@ -93,6 +93,13 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
         let now = self.now_ms();
         let mut store = self.proofs.lock().unwrap();
         store.sweep(now);
+        // Flood backstop: if the store is at capacity after sweeping expired proofs,
+        // refuse to mint (this call gets no proof and its Execute fails closed)
+        // rather than grow unbounded. Only reachable by an authenticated engine
+        // spamming admitted Authorize without executing.
+        if store.len() >= crate::execution_proof::MAX_PROOFS {
+            return None;
+        }
         store.mint(
             handle.clone(),
             tool_name.to_string(),
