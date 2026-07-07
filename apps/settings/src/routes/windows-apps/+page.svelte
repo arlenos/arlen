@@ -50,13 +50,13 @@
 >
   <SectionGrid>
     {#if $winApps.mocked}
-      <p class="note">
+      <p class="note span-full">
         Showing example apps. Your installed Windows apps appear here once the
         compatibility runtime is set up.
       </p>
     {/if}
 
-    <Group label="Installed apps">
+    <Group label="Installed apps" class="span-full">
       {#if $winApps.bottles.length === 0}
         <p class="empty">No Windows apps installed yet. Add one below.</p>
       {/if}
@@ -107,7 +107,7 @@
       {/each}
     </Group>
 
-    <Group label="Add an app">
+    <Group label="Add an app" class="span-full">
       <Row label="Install a Windows app" description="Pick a .exe installer and the compatibility layer sets it up.">
         {#snippet control()}
           <Button variant="default" size="sm" onclick={installExe}>Choose a .exe</Button>
