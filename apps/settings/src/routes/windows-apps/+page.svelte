@@ -6,7 +6,7 @@
   /// depth lives behind each app's Advanced expand (the sovereign angle leads) and a
   /// global Defaults section - shallow-by-default, deep-on-demand.
   import { onMount } from "svelte";
-  import { ChevronDown, Trash2, FolderOpen, Eraser } from "lucide-svelte";
+  import { ChevronDown, ChevronRight, Trash2, FolderOpen, Eraser } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
@@ -18,6 +18,11 @@
   import { ChipList } from "@arlen/ui-kit/components/ui/chip-list";
   import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
   import { Input } from "@arlen/ui-kit/components/ui/input";
+  import {
+    Collapsible,
+    CollapsibleTrigger,
+    CollapsibleContent,
+  } from "@arlen/ui-kit/components/ui/collapsible";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { navigateTo } from "$lib/stores/navigation";
   import {
@@ -107,139 +112,170 @@
           {#snippet below()}
             {#if expanded.has(b.id)}
               <div class="wa-adv">
-                <!-- Access: the sovereign angle leads. -->
-                <div class="wa-sec">Access</div>
-                <p class="wa-access">{accessLine(b)}</p>
-                <div class="wa-row">
-                  <span class="wa-label">Follow the Arlen theme</span>
-                  <Switch
-                    value={b.followsTheme}
-                    ariaLabel="Follow the Arlen theme"
-                    onchange={(v) => patchBottle(b.id, { followsTheme: v })}
-                  />
-                </div>
-                <div class="wa-row">
-                  <span class="wa-label">Manage what this app can reach</span>
-                  <Button variant="outline" size="sm" onclick={() => navigateTo("privacy", `app-${b.appId}`)}>
-                    Manage access
-                  </Button>
-                </div>
+                <!-- Access: the sovereign angle leads, so it opens by default. -->
+                <Collapsible class="wa-col" open={true}>
+                  <CollapsibleTrigger class="wa-sec-trigger">
+                    <ChevronRight size={14} strokeWidth={2} />
+                    Access
+                  </CollapsibleTrigger>
+                  <CollapsibleContent class="wa-sec-content">
+                    <p class="wa-access">{accessLine(b)}</p>
+                    <div class="wa-row">
+                      <span class="wa-label">Follow the Arlen theme</span>
+                      <Switch
+                        value={b.followsTheme}
+                        ariaLabel="Follow the Arlen theme"
+                        onchange={(v) => patchBottle(b.id, { followsTheme: v })}
+                      />
+                    </div>
+                    <div class="wa-row">
+                      <span class="wa-label">Manage what this app can reach</span>
+                      <Button variant="outline" size="sm" onclick={() => navigateTo("privacy", `app-${b.appId}`)}>
+                        Manage access
+                      </Button>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
 
-                <!-- Compatibility. -->
-                <div class="wa-sec">Compatibility</div>
-                <div class="wa-row">
-                  <span class="wa-label">Compatibility version</span>
-                  <PopoverSelect
-                    value={b.wineVersion}
-                    options={versionOptions}
-                    width="180px"
-                    ariaLabel="Compatibility version"
-                    onchange={(v) => patchBottle(b.id, { wineVersion: v })}
-                  />
-                </div>
-                <div class="wa-row">
-                  <span class="wa-label">Windows version</span>
-                  <SegmentedControl
-                    value={b.windowsVersion}
-                    options={winVersionOptions}
-                    ariaLabel="Windows version"
-                    onchange={(v) => patchBottle(b.id, { windowsVersion: v as Bottle["windowsVersion"] })}
-                  />
-                </div>
-                <div class="wa-row">
-                  <span class="wa-label">Direct3D to Vulkan (DXVK)</span>
-                  <Switch
-                    value={b.dxvk}
-                    ariaLabel="Direct3D to Vulkan"
-                    onchange={(v) => patchBottle(b.id, { dxvk: v })}
-                  />
-                </div>
-                <div class="wa-row">
-                  <span class="wa-label">Display scaling</span>
-                  <NumberInput
-                    value={b.scaling}
-                    min={100}
-                    max={300}
-                    step={25}
-                    unit="%"
-                    width="130px"
-                    ariaLabel="Display scaling"
-                    onchange={(v) => patchBottle(b.id, { scaling: v })}
-                  />
-                </div>
-                <div class="wa-row">
-                  <span class="wa-label">Window mode</span>
-                  <SegmentedControl
-                    value={b.windowMode}
-                    options={windowModeOptions}
-                    ariaLabel="Window mode"
-                    onchange={(v) => patchBottle(b.id, { windowMode: v as Bottle["windowMode"] })}
-                  />
-                </div>
+                <Collapsible class="wa-col">
+                  <CollapsibleTrigger class="wa-sec-trigger">
+                    <ChevronRight size={14} strokeWidth={2} />
+                    Compatibility
+                  </CollapsibleTrigger>
+                  <CollapsibleContent class="wa-sec-content">
+                    <div class="wa-row">
+                      <span class="wa-label">Compatibility version</span>
+                      <PopoverSelect
+                        value={b.wineVersion}
+                        options={versionOptions}
+                        width="180px"
+                        ariaLabel="Compatibility version"
+                        onchange={(v) => patchBottle(b.id, { wineVersion: v })}
+                      />
+                    </div>
+                    <div class="wa-row">
+                      <span class="wa-label">Windows version</span>
+                      <SegmentedControl
+                        value={b.windowsVersion}
+                        options={winVersionOptions}
+                        ariaLabel="Windows version"
+                        onchange={(v) => patchBottle(b.id, { windowsVersion: v as Bottle["windowsVersion"] })}
+                      />
+                    </div>
+                    <div class="wa-row">
+                      <span class="wa-label">Direct3D to Vulkan (DXVK)</span>
+                      <Switch
+                        value={b.dxvk}
+                        ariaLabel="Direct3D to Vulkan"
+                        onchange={(v) => patchBottle(b.id, { dxvk: v })}
+                      />
+                    </div>
+                    <div class="wa-row">
+                      <span class="wa-label">Display scaling</span>
+                      <NumberInput
+                        value={b.scaling}
+                        min={100}
+                        max={300}
+                        step={25}
+                        unit="%"
+                        width="130px"
+                        ariaLabel="Display scaling"
+                        onchange={(v) => patchBottle(b.id, { scaling: v })}
+                      />
+                    </div>
+                    <div class="wa-row">
+                      <span class="wa-label">Window mode</span>
+                      <SegmentedControl
+                        value={b.windowMode}
+                        options={windowModeOptions}
+                        ariaLabel="Window mode"
+                        onchange={(v) => patchBottle(b.id, { windowMode: v as Bottle["windowMode"] })}
+                      />
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
 
-                <!-- Launch. -->
-                <div class="wa-sec">Launch</div>
-                <div class="wa-row">
-                  <span class="wa-label">Arguments</span>
-                  <span class="wa-input">
-                    <Input
-                      value={b.launchArgs}
-                      placeholder="e.g. --safe-mode"
-                      oninput={(e) => patchBottle(b.id, { launchArgs: e.currentTarget.value })}
-                    />
-                  </span>
-                </div>
-                <div class="wa-row">
-                  <span class="wa-label">Working directory</span>
-                  <span class="wa-input">
-                    <Input
-                      value={b.workingDir}
-                      placeholder="Default"
-                      oninput={(e) => patchBottle(b.id, { workingDir: e.currentTarget.value })}
-                    />
-                  </span>
-                </div>
-                <div class="wa-field">
-                  <span class="wa-label">Environment variables</span>
-                  <ChipList
-                    items={b.envVars}
-                    placeholder="KEY=value"
-                    onchange={(items) => patchBottle(b.id, { envVars: items })}
-                  />
-                </div>
+                <Collapsible class="wa-col">
+                  <CollapsibleTrigger class="wa-sec-trigger">
+                    <ChevronRight size={14} strokeWidth={2} />
+                    Launch
+                  </CollapsibleTrigger>
+                  <CollapsibleContent class="wa-sec-content">
+                    <div class="wa-row">
+                      <span class="wa-label">Arguments</span>
+                      <span class="wa-input">
+                        <Input
+                          value={b.launchArgs}
+                          placeholder="e.g. --safe-mode"
+                          oninput={(e) => patchBottle(b.id, { launchArgs: e.currentTarget.value })}
+                        />
+                      </span>
+                    </div>
+                    <div class="wa-row">
+                      <span class="wa-label">Working directory</span>
+                      <span class="wa-input">
+                        <Input
+                          value={b.workingDir}
+                          placeholder="Default"
+                          oninput={(e) => patchBottle(b.id, { workingDir: e.currentTarget.value })}
+                        />
+                      </span>
+                    </div>
+                    <div class="wa-field">
+                      <span class="wa-label">Environment variables</span>
+                      <ChipList
+                        items={b.envVars}
+                        placeholder="KEY=value"
+                        onchange={(items) => patchBottle(b.id, { envVars: items })}
+                      />
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
 
-                <!-- Tweaks: editable now. -->
-                <div class="wa-sec">Tweaks</div>
-                <div class="wa-field">
-                  <span class="wa-label">DLL overrides</span>
-                  <ChipList
-                    items={b.dllOverrides}
-                    placeholder="Add a DLL override"
-                    onchange={(items) => patchBottle(b.id, { dllOverrides: items })}
-                  />
-                </div>
-                <div class="wa-field">
-                  <span class="wa-label">Winetricks</span>
-                  <ChipList
-                    items={b.winetricks}
-                    placeholder="Add a winetricks verb"
-                    onchange={(items) => patchBottle(b.id, { winetricks: items })}
-                  />
-                </div>
+                <Collapsible class="wa-col">
+                  <CollapsibleTrigger class="wa-sec-trigger">
+                    <ChevronRight size={14} strokeWidth={2} />
+                    Tweaks
+                  </CollapsibleTrigger>
+                  <CollapsibleContent class="wa-sec-content">
+                    <div class="wa-field">
+                      <span class="wa-label">DLL overrides</span>
+                      <ChipList
+                        items={b.dllOverrides}
+                        placeholder="Add a DLL override"
+                        onchange={(items) => patchBottle(b.id, { dllOverrides: items })}
+                      />
+                    </div>
+                    <div class="wa-field">
+                      <span class="wa-label">Winetricks</span>
+                      <ChipList
+                        items={b.winetricks}
+                        placeholder="Add a winetricks verb"
+                        onchange={(items) => patchBottle(b.id, { winetricks: items })}
+                      />
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
 
-                <!-- Files. -->
-                <div class="wa-sec">Files</div>
-                <div class="wa-row">
-                  <span class="wa-label">Storage used, {b.diskUsage}</span>
-                  <span class="wa-btns">
-                    <Button variant="outline" size="sm" onclick={() => browseFiles(b.id)}>
-                      <FolderOpen size={14} strokeWidth={2} /> Browse files
-                    </Button>
-                    <Button variant="ghost" size="sm" onclick={() => clearCaches(b.id)}>
-                      <Eraser size={14} strokeWidth={2} /> Clear caches
-                    </Button>
-                  </span>
-                </div>
+                <Collapsible class="wa-col">
+                  <CollapsibleTrigger class="wa-sec-trigger">
+                    <ChevronRight size={14} strokeWidth={2} />
+                    Files
+                  </CollapsibleTrigger>
+                  <CollapsibleContent class="wa-sec-content">
+                    <div class="wa-row">
+                      <span class="wa-label">Storage used, {b.diskUsage}</span>
+                      <span class="wa-btns">
+                        <Button variant="outline" size="sm" onclick={() => browseFiles(b.id)}>
+                          <FolderOpen size={14} strokeWidth={2} /> Browse files
+                        </Button>
+                        <Button variant="ghost" size="sm" onclick={() => clearCaches(b.id)}>
+                          <Eraser size={14} strokeWidth={2} /> Clear caches
+                        </Button>
+                      </span>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
 
                 <div class="wa-adv-foot">
                   <button type="button" class="wa-delete" onclick={() => (confirmDelete = b)}>
@@ -347,20 +383,45 @@
   .wa-adv {
     display: flex;
     flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.35rem 0 0.25rem;
+  }
+  /* Each Advanced sub-section is a collapsible; a hairline separates them. */
+  :global(.wa-col) {
+    border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+  }
+  :global(.wa-col:first-child) {
+    border-top: none;
+  }
+  :global(.wa-sec-trigger) {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: 100%;
+    padding: 0.5rem 0.25rem;
+    border: none;
+    background: transparent;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: color-mix(in srgb, var(--foreground) 70%, transparent);
+    text-align: left;
+    cursor: pointer;
+  }
+  :global(.wa-sec-trigger:hover) {
+    color: var(--foreground);
+  }
+  :global(.wa-sec-trigger svg) {
+    flex-shrink: 0;
+    transition: transform var(--duration-micro, 100ms) var(--ease-out, ease);
+  }
+  :global(.wa-sec-trigger[data-state="open"] svg) {
+    transform: rotate(90deg);
+  }
+  :global(.wa-sec-content) {
+    display: flex;
+    flex-direction: column;
     gap: 0.55rem;
-    padding: 0.5rem 0 0.25rem;
-  }
-  /* A quiet sub-section header inside the Advanced expand. */
-  .wa-sec {
-    margin-top: 0.4rem;
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
-  }
-  .wa-sec:first-child {
-    margin-top: 0;
+    padding: 0.15rem 0.25rem 0.7rem 1.15rem;
   }
   .wa-access {
     margin: 0;
