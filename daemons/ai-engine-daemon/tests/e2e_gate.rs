@@ -149,6 +149,7 @@ async fn run_driver<E: Executor, R: Reporter>(
         capability_context: CapabilityContext { generic_tools: vec![], proxy_tools: vec![] },
         project_anchor: None,
         read_tier: ReadTier::Minimal,
+        externally_triggered: false,
     };
     let pid = child.id();
     let token = dispatcher.init_session(&init, pid).unwrap();
