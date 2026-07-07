@@ -9,6 +9,9 @@
 //! reads Arlen's own capability-scoped contracts - nothing here is an ambient
 //! `/proc` grab.
 
+/// The daemon-health verdict: a liveness probe over the core Arlen daemons.
+pub mod health;
+
 use audit_proto::{ReadClient, ReadClientError, ReadPage};
 
 /// The audit ledger's integrity state - the monitor's "nothing was altered"
