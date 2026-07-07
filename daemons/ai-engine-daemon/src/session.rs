@@ -49,6 +49,11 @@ pub struct SessionGrant {
     pub project_anchor: Option<String>,
     /// How much of the graph the session may read.
     pub read_tier: ReadTier,
+    /// Whether the whole run was started by external content (HIGH-2, from the
+    /// supervisor-set [`SessionInit::externally_triggered`]). The gate ORs it with
+    /// each call's own flag (escalate-only), so an externally-originated session
+    /// escalates every action regardless of the engine's per-call claim.
+    pub externally_triggered: bool,
     /// The SO_PEERCRED-attested pid of the engine process bound at creation.
     /// A verb whose calling pid differs is rejected even with a valid token.
     pub pid: u32,
@@ -95,6 +100,7 @@ impl SessionStore {
                 capability_context: init.capability_context.clone(),
                 project_anchor: init.project_anchor.clone(),
                 read_tier: init.read_tier,
+                externally_triggered: init.externally_triggered,
                 pid,
             },
         );
@@ -172,6 +178,7 @@ mod tests {
             },
             project_anchor: Some("proj-1".into()),
             read_tier: ReadTier::Standard,
+            externally_triggered: false,
         }
     }
 

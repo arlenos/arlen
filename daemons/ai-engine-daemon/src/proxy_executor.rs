@@ -60,6 +60,7 @@ mod tests {
             capability_context: CapabilityContext { generic_tools: vec![], proxy_tools: vec![] },
             project_anchor: None,
             read_tier: ReadTier::None,
+            externally_triggered: false,
             pid: 1,
         }
     }

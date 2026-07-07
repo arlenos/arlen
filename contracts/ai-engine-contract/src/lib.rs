@@ -64,6 +64,13 @@ pub struct SessionInit {
     pub project_anchor: Option<String>,
     /// How much of the graph this session may read.
     pub read_tier: ReadTier,
+    /// Whether the whole run was started by external content (HIGH-2). Set by the
+    /// SUPERVISOR from the session's origin, never by the engine; the daemon ORs it
+    /// with each call's own `external_triggered` (escalate-only) so an externally-
+    /// originated session escalates every action to a confirmation. Additive on the
+    /// wire (defaults false) so an older engine's SessionInit still deserializes.
+    #[serde(default)]
+    pub externally_triggered: bool,
 }
 
 /// Engine to daemon: a tool the model wants to call, for authorization. Maps to
@@ -301,6 +308,7 @@ mod tests {
             },
             project_anchor: Some("proj-1".into()),
             read_tier: ReadTier::Standard,
+            externally_triggered: true,
         };
         assert_eq!(round_trip(&s), s);
     }
