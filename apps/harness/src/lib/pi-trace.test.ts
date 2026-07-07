@@ -1,0 +1,70 @@
+import { describe, it, expect } from "vitest";
+import { applyToolEvent, toolCallsOf, type TracedCall } from "./pi-trace";
+
+describe("applyToolEvent", () => {
+  it("appends a running call for a tool_call event, splitting the namespaced name", () => {
+    const trace = applyToolEvent([], {
+      type: "tool_call",
+      toolName: "graph.query",
+      toolCallId: "c1",
+      input: { cypher: "MATCH (n) RETURN n" },
+    });
+    expect(trace).toHaveLength(1);
+    expect(trace[0].id).toBe("c1");
+    expect(trace[0].call.server).toBe("graph");
+    expect(trace[0].call.tool).toBe("query");
+    expect(trace[0].call.arguments).toBe('{"cypher":"MATCH (n) RETURN n"}');
+    expect(trace[0].call.result).toBe("");
+    expect(trace[0].call.status).toBe("running");
+  });
+
+  it("completes the matching call on tool_execution_end", () => {
+    let trace = applyToolEvent([], { type: "tool_call", toolName: "fs.read", toolCallId: "c2" });
+    trace = applyToolEvent(trace, {
+      type: "tool_execution_end",
+      toolCallId: "c2",
+      result: "file contents",
+      isError: false,
+    });
+    expect(trace[0].call.result).toBe("file contents");
+    expect(trace[0].call.status).toBe("done");
+  });
+
+  it("marks a failed execution", () => {
+    let trace = applyToolEvent([], { type: "tool_call", toolName: "os.run", toolCallId: "c3" });
+    trace = applyToolEvent(trace, {
+      type: "tool_execution_end",
+      toolCallId: "c3",
+      result: "denied",
+      isError: true,
+    });
+    expect(trace[0].call.status).toBe("failed");
+  });
+
+  it("completes only the call whose id matches", () => {
+    let trace: TracedCall[] = [];
+    trace = applyToolEvent(trace, { type: "tool_call", toolName: "a.x", toolCallId: "c1" });
+    trace = applyToolEvent(trace, { type: "tool_call", toolName: "b.y", toolCallId: "c2" });
+    trace = applyToolEvent(trace, { type: "tool_execution_end", toolCallId: "c2", result: "ok" });
+    expect(trace[0].call.status).toBe("running");
+    expect(trace[1].call.status).toBe("done");
+  });
+
+  it("splits a name with no dot into an empty server", () => {
+    const trace = applyToolEvent([], { type: "tool_call", toolName: "search", toolCallId: "c4" });
+    expect(trace[0].call.server).toBe("");
+    expect(trace[0].call.tool).toBe("search");
+  });
+
+  it("passes unrelated events through unchanged", () => {
+    const start: TracedCall[] = [{ id: "c1", call: { server: "g", tool: "q", arguments: "{}", result: "", status: "running" } }];
+    expect(applyToolEvent(start, { type: "agent_end" })).toBe(start);
+    expect(applyToolEvent(start, null)).toBe(start);
+    expect(applyToolEvent(start, "not an object")).toBe(start);
+  });
+
+  it("toolCallsOf drops the tracking id", () => {
+    const trace: TracedCall[] = [{ id: "c1", call: { server: "g", tool: "q", arguments: "{}", result: "r", status: "done" } }];
+    expect(toolCallsOf(trace)).toEqual([{ server: "g", tool: "q", arguments: "{}", result: "r", status: "done" }]);
+  });
+});
