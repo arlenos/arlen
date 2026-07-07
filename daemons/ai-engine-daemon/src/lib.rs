@@ -33,6 +33,10 @@ pub mod rpc_proxy;
 
 pub mod read_executor;
 
+/// Deterministic curation (§E): the zero-token, no-pi graph curation the daemon
+/// runs directly for a workflow behaviour (auto-tag-by-project).
+pub mod curation;
+
 /// The autonomous-curator orchestrator (§E), re-homed from the native ai-agent:
 /// event-bus trigger spine, fire-storm coalescing, dispatch, ephemeral pi runs.
 pub mod orchestrator;
