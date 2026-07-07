@@ -44,8 +44,9 @@ where
 pub enum EphemeralOutcome {
     /// The run finished (the engine exited) within its wall-clock budget.
     Ran(EngineExit),
-    /// The run exceeded its wall-clock budget and was aborted (the confined pi is
-    /// torn down; bwrap `--die-with-parent` + the session end reclaim it).
+    /// The run exceeded its wall-clock budget and was aborted: the `run_once`
+    /// future is dropped, which (via the sidecar's `kill_on_drop`) KILLS the
+    /// confined pi tree, and `end_session` revokes its authority.
     TimedOut,
     /// The session token could not be minted (CSPRNG failure); the run is skipped.
     SessionMintFailed,
