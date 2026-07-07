@@ -19,6 +19,7 @@ use os_sdk::proto::{Event, FileOpenedPayload, WindowFocusedPayload};
 use os_sdk::{EventConsumer, SubscribeError, UnixEventConsumer};
 use prost::Message as _;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::future::Future;
 use std::time::{Duration, SystemTime};
 
 /// The Event Bus consumer socket the orchestrator subscribes on. The daemon
@@ -88,6 +89,13 @@ pub fn decode_event(ev: Event) -> TriggerEvent {
     }
 }
 
+/// A source of trigger events the orchestrator loops over. The production impl is
+/// [`EventBusSource`]; tests inject a mock feeding synthetic [`TriggerEvent`]s.
+pub trait TriggerSource {
+    /// The next trigger event, or `None` when the source is closed / exhausted.
+    fn recv(&mut self) -> impl Future<Output = Option<TriggerEvent>> + Send;
+}
+
 /// The orchestrator's trigger spine: an Event Bus subscription that yields
 /// decoded [`TriggerEvent`]s. Wraps the os-sdk consumer (subscribe, framing,
 /// auto-reconnect); the decode is pure and unit-tested, the subscription itself
@@ -107,10 +115,55 @@ impl EventBusSource {
         let rx = consumer.subscribe(types).await?;
         Ok(Self { rx })
     }
+}
 
-    /// The next decoded trigger event, or `None` when the bus connection closes.
-    pub async fn recv(&mut self) -> Option<TriggerEvent> {
+impl TriggerSource for EventBusSource {
+    async fn recv(&mut self) -> Option<TriggerEvent> {
         self.rx.recv().await.map(decode_event)
+    }
+}
+
+/// Executes a dispatched behaviour's route (the §E split). The production impl
+/// runs `DeterministicCuration` daemon-direct and spawns a bounded ephemeral pi
+/// run for `PiRun`; tests inject a recorder.
+///
+/// The handler MUST return promptly: a long-running route (a pi run) is spawned
+/// or bounded INSIDE the handler, never awaited to completion here, so one
+/// behaviour's work never stalls the loop's decision for the next event. Errors
+/// are contained by the handler - one failed dispatch never stops the loop.
+pub trait RouteHandler {
+    /// Run the dispatched behaviour's route for `event`.
+    fn handle(&self, event: &TriggerEvent, dispatch: &Dispatch)
+        -> impl Future<Output = ()> + Send;
+}
+
+/// The orchestrator loop (§E): pull trigger events, decide + coalesce, and drive
+/// each dispatched behaviour's route through `handler`. Runs until the source
+/// closes. The clock is injected so coalescing is testable; production passes
+/// `SystemTime::now`.
+pub async fn run_orchestrator<S, H, C>(
+    mut source: S,
+    behaviours: &[LoadedBehaviour],
+    coalescer: &mut Coalescer,
+    handler: &H,
+    clock: C,
+) where
+    S: TriggerSource,
+    H: RouteHandler,
+    C: Fn() -> SystemTime,
+{
+    while let Some(event) = source.recv().await {
+        let plan = decide(
+            &event.event_type,
+            &event.fields,
+            event.external_content,
+            behaviours,
+            coalescer,
+            clock(),
+        );
+        for dispatch in &plan.dispatched {
+            handler.handle(&event, dispatch).await;
+        }
     }
 }
 
@@ -511,5 +564,52 @@ mod tests {
         assert_eq!(m.len(), 2);
         assert_eq!(m.get("auto-tag"), Some(&Provenance::BuiltIn));
         assert!(enabled_provenance_map(vec![]).is_empty());
+    }
+
+    fn trigger(event_type: &str, fs: &[(&str, &str)]) -> TriggerEvent {
+        TriggerEvent { event_type: event_type.to_string(), fields: fields(fs), external_content: true }
+    }
+
+    struct MockSource {
+        events: std::collections::VecDeque<TriggerEvent>,
+    }
+    impl TriggerSource for MockSource {
+        async fn recv(&mut self) -> Option<TriggerEvent> {
+            self.events.pop_front()
+        }
+    }
+
+    struct Recorder {
+        seen: std::sync::Mutex<Vec<(String, Route)>>,
+    }
+    impl RouteHandler for Recorder {
+        async fn handle(&self, _event: &TriggerEvent, dispatch: &Dispatch) {
+            self.seen.lock().unwrap().push((dispatch.behaviour.clone(), dispatch.route));
+        }
+    }
+
+    #[tokio::test]
+    async fn the_loop_decides_coalesces_and_routes_each_event() {
+        let behaviours =
+            vec![workflow("auto-tag", "file.opened"), agent("meeting-prep", "calendar.event.upcoming")];
+        let mut coalescer = Coalescer::new(Duration::from_secs(1));
+        let recorder = Recorder { seen: std::sync::Mutex::new(vec![]) };
+        let source = MockSource {
+            events: [
+                trigger("file.opened", &[("path", "/a.rs")]),
+                trigger("calendar.event.upcoming", &[]),
+                trigger("window.focused", &[("app_id", "x")]), // matches nothing enabled
+                trigger("file.opened", &[("path", "/a.rs")]),   // duplicate -> coalesced
+            ]
+            .into_iter()
+            .collect(),
+        };
+        // Constant clock: distinct events each admit; the duplicate file.opened is
+        // coalesced (same key, within the window).
+        run_orchestrator(source, &behaviours, &mut coalescer, &recorder, || SystemTime::UNIX_EPOCH).await;
+        let seen = recorder.seen.lock().unwrap();
+        assert_eq!(seen.len(), 2, "the two distinct matches route; the duplicate coalesces, window.focused matches nothing");
+        assert!(seen.contains(&("auto-tag".to_string(), Route::DeterministicCuration)));
+        assert!(seen.contains(&("meeting-prep".to_string(), Route::PiRun)));
     }
 }
