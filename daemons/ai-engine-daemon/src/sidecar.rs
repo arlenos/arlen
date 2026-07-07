@@ -256,18 +256,32 @@ impl Drop for TokenFileGuard {
     }
 }
 
+/// A random hex nonce for a per-run token filename.
+fn token_nonce() -> std::io::Result<String> {
+    let mut bytes = [0u8; 8];
+    getrandom::getrandom(&mut bytes)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
 /// Write the per-run session token to a fresh `0600` file in the (0700) state
 /// dir and return a guard that removes it on drop. The directory + file modes
-/// keep the secret owner-only; `create_new` would race a stale file, so an
-/// existing one is truncated by `OpenOptions::write+truncate` after the mode is
-/// fixed.
+/// keep the secret owner-only.
+///
+/// The filename carries a per-run RANDOM NONCE: concurrent pi runs - the curator's
+/// ephemeral runs AND the persistent supervisor - all share this one state dir, so
+/// a fixed filename would let one run's write/delete corrupt another's
+/// authentication and let a stray ephemeral run yank the live interactive
+/// session's token. A unique name means each run owns its own file, so
+/// `create_new` is safe (there is no stale file to race) and the guard removes
+/// exactly this run's file.
 fn write_token_file(state_dir: &str, token: &str) -> std::io::Result<(PathBuf, TokenFileGuard)> {
     std::fs::DirBuilder::new().recursive(true).mode(0o700).create(state_dir)?;
-    let path = Path::new(state_dir).join(SESSION_TOKEN_FILENAME);
+    let nonce = token_nonce()?;
+    let path = Path::new(state_dir).join(format!("{SESSION_TOKEN_FILENAME}-{nonce}"));
     let mut f = std::fs::OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .mode(0o600)
         .open(&path)?;
     use std::io::Write;
