@@ -5,6 +5,7 @@
   /// once in the shell layout beside the other request dialogs. Fixture-backed.
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
   import { current, sources, share, cancel } from "$lib/stores/sourcePicker";
 
   let selected = $state<{ kind: "monitor" | "window" | "region"; id: string } | null>(null);
@@ -67,12 +68,14 @@
         </div>
 
         <div class="sp-toggles">
-          <button type="button" class="sp-toggle" aria-pressed={showCursor} onclick={() => (showCursor = !showCursor)}>
-            <span class="sp-check" class:on={showCursor}></span> Show my cursor
-          </button>
-          <button type="button" class="sp-toggle" aria-pressed={remember} onclick={() => (remember = !remember)}>
-            <span class="sp-check" class:on={remember}></span> Remember for {req.requesterLabel}
-          </button>
+          <div class="sp-toggle">
+            <Checkbox id="sp-cursor" bind:checked={showCursor} ariaLabel="Show my cursor" />
+            <label for="sp-cursor">Show my cursor</label>
+          </div>
+          <div class="sp-toggle">
+            <Checkbox id="sp-remember" bind:checked={remember} ariaLabel={`Remember for ${req.requesterLabel}`} />
+            <label for="sp-remember">Remember for {req.requesterLabel}</label>
+          </div>
         </div>
 
         <footer class="sp-foot">
@@ -247,22 +250,11 @@
     gap: 0.5rem;
     align-self: flex-start;
     padding: 0.25rem 0;
-    border: none;
-    background: transparent;
+  }
+  .sp-toggle label {
     font-size: 0.8125rem;
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
     cursor: pointer;
-  }
-  .sp-check {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    border-radius: var(--radius-chip);
-    border: 1.5px solid color-mix(in srgb, var(--foreground) 30%, transparent);
-  }
-  .sp-check.on {
-    border-color: var(--foreground);
-    box-shadow: inset 0 0 0 3px var(--foreground);
   }
 
   .sp-foot {

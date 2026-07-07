@@ -7,6 +7,7 @@
   /// act, never an agent path.
   import Dialog from "@arlen/ui-kit/components/ui/dialog/dialog.svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
   import ChoiceList from "@arlen/ui-kit/components/ui/choice-list/choice-list.svelte";
   import PopoverSelect from "@arlen/ui-kit/components/ui/popover-select/popover-select.svelte";
   import { ShieldCheck } from "lucide-svelte";
@@ -134,28 +135,23 @@
         </p>
         <div class="rel-list">
           <div class="rel">
-            <span class="rel-check on" aria-hidden="true"></span>
+            <Checkbox checked disabled ariaLabel={scopeLabel} />
             <span class="rel-what">{scopeLabel}</span>
             <span class="rel-reach">{$preview.baseCount} items</span>
           </div>
           {#each $preview.relations as r (r.type)}
             {@const on = !$mintForm.dropped.includes(r.type)}
-            <button type="button" class="rel" class:off={!on} aria-pressed={on} onclick={() => toggleRelation(r.type)}>
-              <span class="rel-check" class:on aria-hidden="true"></span>
+            <label class="rel" class:off={!on}>
+              <Checkbox checked={on} onchange={() => toggleRelation(r.type)} ariaLabel={`Include ${r.label}`} />
               <span class="rel-what">{r.label}</span>
               <span class="rel-reach">{r.reach.toLocaleString()} {r.reach === 1 ? "item" : "items"}</span>
-            </button>
+            </label>
           {/each}
         </div>
-        <button
-          type="button"
-          class="sensitive"
-          aria-pressed={$mintForm.includeSensitive}
-          onclick={() => setForm({ includeSensitive: !$mintForm.includeSensitive })}
-        >
-          <span class="rel-check" class:on={$mintForm.includeSensitive} aria-hidden="true"></span>
+        <label class="sensitive">
+          <Checkbox checked={$mintForm.includeSensitive} onchange={(v) => setForm({ includeSensitive: v })} ariaLabel="Include personal fields" />
           <span>Include personal fields, like email and phone. Off by default.</span>
-        </button>
+        </label>
         <p class="mint-summary">
           This share includes <strong>{totalItems.toLocaleString()} items</strong>
           across {includedRelations.length}
@@ -273,7 +269,10 @@
     text-align: left;
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
-  button.rel:hover {
+  label.rel {
+    cursor: pointer;
+  }
+  label.rel:hover {
     background: color-mix(in srgb, var(--foreground) 6%, transparent);
   }
   .rel.off .rel-what,
@@ -293,28 +292,12 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
-  /* A monochrome checkbox: hollow, fills when on; corners on --radius-chip so it
-     follows the Roundness slider like the ChoiceList radio. */
-  .rel-check {
-    flex-shrink: 0;
-    width: 16px;
-    height: 16px;
-    border-radius: var(--radius-chip);
-    border: 1.5px solid color-mix(in srgb, var(--foreground) 30%, transparent);
-  }
-  .rel-check.on {
-    border-color: var(--foreground);
-    box-shadow: inset 0 0 0 3px var(--foreground);
-  }
-
   .sensitive {
     display: flex;
     align-items: center;
     gap: 0.625rem;
     padding: 0.25rem 0.125rem;
-    border: none;
-    background: transparent;
-    text-align: left;
+    cursor: pointer;
     font-size: 0.75rem;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
     cursor: pointer;
