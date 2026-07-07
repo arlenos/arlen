@@ -42,6 +42,7 @@
   import AuthorizationDialog from "$lib/components/AuthorizationDialog.svelte";
   import ConsentDialog from "$lib/components/ConsentDialog.svelte";
   import SourcePicker from "$lib/components/SourcePicker.svelte";
+  import MenuPalette from "$lib/components/MenuPalette.svelte";
   import AmbientOverlay from "$lib/components/AmbientOverlay.svelte";
   import { Toaster } from "svelte-sonner";
   import { toastConfig, initToastConfig } from "$lib/stores/toastConfig.js";
@@ -171,6 +172,7 @@
 <AuthorizationDialog />
 <ConsentDialog />
 <SourcePicker />
+<MenuPalette />
 <!-- Per-side offsets: the vertical offset tracks the open panel
      (panel-avoidance math above); the right edge is the shell's own
      8px. Setting both here keeps the geometry where the element is
