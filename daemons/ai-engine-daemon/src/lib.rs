@@ -33,6 +33,10 @@ pub mod rpc_proxy;
 
 pub mod read_executor;
 
+/// The autonomous-curator orchestrator (§E), re-homed from the native ai-agent:
+/// event-bus trigger spine, fire-storm coalescing, dispatch, ephemeral pi runs.
+pub mod orchestrator;
+
 /// The Phase-1 reporter seam: audit + S17/S18 screening of tool results.
 pub mod reporter;
 
