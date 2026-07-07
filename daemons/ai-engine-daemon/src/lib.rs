@@ -41,6 +41,10 @@ pub mod curation;
 /// event-bus trigger spine, fire-storm coalescing, dispatch, ephemeral pi runs.
 pub mod orchestrator;
 
+/// The ephemeral pi run (§D/§E): the per-trigger bounded confined pi session for
+/// a `kind: agent` behaviour (the PiRun route).
+pub mod pi_run;
+
 /// The Phase-1 reporter seam: audit + S17/S18 screening of tool results.
 pub mod reporter;
 
