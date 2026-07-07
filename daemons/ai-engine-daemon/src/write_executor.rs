@@ -133,14 +133,34 @@ pub struct GraphWriteExecutor {
     /// The compensation store the op-id-keyed retract is registered into at apply
     /// time, so a created write is undoable regardless of the engine.
     compensation: Option<Arc<Mutex<CompensationStore>>>,
+    /// The executor-live gate, re-read PER CALL (fail-closed). A write applies only
+    /// when it returns true, so a runtime `[agent] executor_live` change - either
+    /// direction - takes effect on the next write with no restart, and a mid-flight
+    /// disable is honoured at Execute even for an already-authorized proof. The gate
+    /// reads the same switch at Authorize; this is the Execute-side companion.
+    executor_live: fn() -> bool,
 }
 
 impl GraphWriteExecutor {
     /// Build the executor over a [`RelationWriter`] (the fail-closed
-    /// [`DeniedWriter`] in Phase 1, [`UnixRelationWriter`] at the cutover), with no
-    /// audit sink or compensation store yet.
+    /// [`DeniedWriter`] when AI is off, [`UnixRelationWriter`] when on), gated by
+    /// the on-disk `[agent] executor_live` per call, with no audit sink or
+    /// compensation store yet.
     pub fn new(writer: Arc<dyn RelationWriter>) -> Self {
-        Self { writer, audit: None, compensation: None }
+        Self {
+            writer,
+            audit: None,
+            compensation: None,
+            executor_live: crate::engine_config::executor_live,
+        }
+    }
+
+    /// Override the executor-live gate with a fixed source (tests, so a write does
+    /// not depend on the developer's `ai.toml`). Production uses [`Self::new`],
+    /// which reads `[agent] executor_live` per call.
+    pub fn with_executor_live_gate(mut self, executor_live: fn() -> bool) -> Self {
+        self.executor_live = executor_live;
+        self
     }
 
     /// Attach the audit sink so a write is recorded content-free BEFORE it applies
@@ -166,6 +186,17 @@ impl Executor for GraphWriteExecutor {
             return ExecuteOutcome::Error {
                 code: ContractError::UnknownTool,
                 message: format!("{} is not a graph-write tool this daemon runs", req.tool_name),
+            };
+        }
+        // Executor-live gate, re-read PER CALL (fail-closed). Even a valid,
+        // already-authorized HIGH-1 proof cannot apply a write once executor_live
+        // is off: a mid-flight disable is honoured here at Execute, closing the
+        // window between Authorize (which minted the proof while it was on) and
+        // this Execute. Nothing is audited or written when it is off.
+        if !(self.executor_live)() {
+            return ExecuteOutcome::Error {
+                code: ContractError::ExecutionFailed,
+                message: "graph.write is not permitted: the executor is not live".to_string(),
             };
         }
         // The five relation fields are all required; a missing one is a malformed
@@ -304,9 +335,15 @@ mod tests {
         }
     }
 
+    /// A write executor over `writer` with the executor-live gate forced ON, so a
+    /// test's write does not depend on the developer's ai.toml.
+    fn live_exec(writer: Arc<dyn RelationWriter>) -> GraphWriteExecutor {
+        GraphWriteExecutor::new(writer).with_executor_live_gate(|| true)
+    }
+
     #[tokio::test]
     async fn a_valid_write_runs_and_returns_an_op_id() {
-        let exec = GraphWriteExecutor::new(Arc::new(MockWriter {
+        let exec = live_exec(Arc::new(MockWriter {
             result: Ok(RelationWriteOutcome::Created),
         }));
         match exec.execute(&write(valid_input()), &grant()).await {
@@ -327,7 +364,7 @@ mod tests {
         use audit_proto::sink::MockAuditSink;
         let audit = Arc::new(MockAuditSink::accepting());
         let store = Arc::new(Mutex::new(CompensationStore::new(8)));
-        let exec = GraphWriteExecutor::new(Arc::new(MockWriter {
+        let exec = live_exec(Arc::new(MockWriter {
             result: Ok(RelationWriteOutcome::Created),
         }))
         .with_audit(audit.clone())
@@ -352,7 +389,7 @@ mod tests {
         // nothing applies - so an autonomous write is never invisible to the audit.
         use audit_proto::sink::MockAuditSink;
         let store = Arc::new(Mutex::new(CompensationStore::new(8)));
-        let exec = GraphWriteExecutor::new(Arc::new(MockWriter {
+        let exec = live_exec(Arc::new(MockWriter {
             result: Ok(RelationWriteOutcome::Created),
         }))
         .with_audit(Arc::new(MockAuditSink::failing()))
@@ -370,7 +407,7 @@ mod tests {
         // Only a genuine create needs an undo; an already-present edge created
         // nothing, so there is nothing to retract.
         let store = Arc::new(Mutex::new(CompensationStore::new(8)));
-        let exec = GraphWriteExecutor::new(Arc::new(MockWriter {
+        let exec = live_exec(Arc::new(MockWriter {
             result: Ok(RelationWriteOutcome::AlreadyExists),
         }))
         .with_compensation(store.clone());
@@ -381,7 +418,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_missing_field_is_invalid_arguments() {
-        let exec = GraphWriteExecutor::new(Arc::new(MockWriter {
+        let exec = live_exec(Arc::new(MockWriter {
             result: Ok(RelationWriteOutcome::Created),
         }));
         let mut input = valid_input();
@@ -394,7 +431,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_non_write_tool_is_unknown() {
-        let exec = GraphWriteExecutor::new(Arc::new(MockWriter {
+        let exec = live_exec(Arc::new(MockWriter {
             result: Ok(RelationWriteOutcome::Created),
         }));
         let req = Execute { tool_name: "graph.read".into(), tool_input: valid_input(), proof: None };
@@ -408,10 +445,32 @@ mod tests {
     async fn the_denied_writer_refuses_a_valid_write() {
         // Phase-1 fail-closed: a fully-formed write is refused (the live write +
         // compensation land at the executor-live cutover).
-        let exec = GraphWriteExecutor::new(Arc::new(DeniedWriter));
+        let exec = live_exec(Arc::new(DeniedWriter));
         assert!(matches!(
             exec.execute(&write(valid_input()), &grant()).await,
             ExecuteOutcome::Error { code: ContractError::ExecutionFailed, .. },
         ));
+    }
+
+    #[tokio::test]
+    async fn a_write_is_refused_when_executor_live_is_off() {
+        // The per-call executor-live gate: with executor_live off, even a valid
+        // write is refused fail-closed - nothing is audited or written.
+        use audit_proto::sink::MockAuditSink;
+        let audit = Arc::new(MockAuditSink::accepting());
+        let store = Arc::new(Mutex::new(CompensationStore::new(8)));
+        let exec = GraphWriteExecutor::new(Arc::new(MockWriter {
+            result: Ok(RelationWriteOutcome::Created),
+        }))
+        .with_executor_live_gate(|| false)
+        .with_audit(audit.clone())
+        .with_compensation(store.clone());
+        assert!(matches!(
+            exec.execute(&write(valid_input()), &grant()).await,
+            ExecuteOutcome::Error { code: ContractError::ExecutionFailed, .. },
+        ));
+        // The gate short-circuits before the audit + the write.
+        assert_eq!(audit.recorded().await.len(), 0);
+        assert!(store.lock().unwrap().is_empty());
     }
 }

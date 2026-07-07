@@ -216,8 +216,12 @@ async fn build_read_runner() -> Arc<dyn QueryRunner> {
 /// authorized reversible action - a high-impact or externally-triggered one still
 /// confirms) and it presented a valid HIGH-1 execution proof.
 fn build_write_runner() -> Arc<dyn RelationWriter> {
-    if engine_config::ai_enabled() && engine_config::executor_live() {
-        tracing::info!("graph.write wired to the live UnixRelationWriter (executor_live)");
+    // The runner is chosen only by whether AI is on at all; executor_live is gated
+    // PER CALL by the executor (below), not baked into the runner at startup. That
+    // avoids the startup/per-call skew: a runtime executor_live change (either
+    // direction) takes effect on the next write with no restart, and a mid-flight
+    // disable is honoured at Execute even for an already-minted proof.
+    if engine_config::ai_enabled() {
         Arc::new(UnixRelationWriter::new(resolve_knowledge_socket()))
     } else {
         Arc::new(DeniedWriter)
