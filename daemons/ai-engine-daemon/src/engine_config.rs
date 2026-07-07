@@ -68,6 +68,12 @@ struct RawAgent {
     /// actually applies. The gate lift AND the live write executor both read it.
     #[serde(default)]
     executor_live: bool,
+    /// The names of the behaviours the user has enabled in Settings (`[agent]
+    /// enabled = ["auto-tag-by-project", ...]`). A behaviour not on this list is
+    /// loaded but disabled (listed, never dispatched); the curator orchestrator
+    /// only subscribes + dispatches the enabled set.
+    #[serde(default)]
+    enabled: Vec<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -147,6 +153,23 @@ pub fn executor_live() -> bool {
         .unwrap_or(false)
 }
 
+/// The names of the behaviours enabled in the given `ai.toml` text (`[agent]
+/// enabled = [...]`). A malformed document yields an empty list (fail-closed):
+/// nothing is dispatched rather than guessing.
+pub fn enabled_behaviour_names_from_text(text: &str) -> Vec<String> {
+    toml::from_str::<RawConfig>(text)
+        .map(|c| c.agent.enabled)
+        .unwrap_or_default()
+}
+
+/// The enabled behaviour names from the on-disk `ai.toml` (missing/unreadable =
+/// empty, fail-closed).
+pub fn enabled_behaviour_names() -> Vec<String> {
+    std::fs::read_to_string(ai_config_path())
+        .map(|t| enabled_behaviour_names_from_text(&t))
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,6 +214,19 @@ mod tests {
         // Malformed -> false (fail-closed, never lifts writes).
         assert!(!executor_live_from_text("not = valid ["));
         assert!(!executor_live_from_text("[agent]\nexecutor_live = \"yes\"\n"));
+    }
+
+    #[test]
+    fn enabled_behaviour_names_parse_fail_closed() {
+        assert_eq!(
+            enabled_behaviour_names_from_text("[agent]\nenabled = [\"auto-tag-by-project\", \"meeting-prep\"]\n"),
+            vec!["auto-tag-by-project".to_string(), "meeting-prep".to_string()]
+        );
+        // Absent section / flag -> empty.
+        assert!(enabled_behaviour_names_from_text("[ai]\nenabled = true\n").is_empty());
+        assert!(enabled_behaviour_names_from_text("").is_empty());
+        // Malformed -> empty (fail-closed, nothing dispatched).
+        assert!(enabled_behaviour_names_from_text("not = valid [").is_empty());
     }
 
     #[test]

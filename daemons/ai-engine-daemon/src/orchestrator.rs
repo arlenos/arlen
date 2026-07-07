@@ -13,7 +13,7 @@
 //! decision is testable without the event bus or a pi process.
 
 use arlen_ai_skills::behaviour::{BehaviourKind, TriggerKind};
-use arlen_ai_skills::loader::LoadedBehaviour;
+use arlen_ai_skills::loader::{behaviour_sources, load, LoadOutcome, LoadedBehaviour, Provenance};
 use arlen_ai_skills::router::matching_behaviours;
 use os_sdk::proto::{Event, FileOpenedPayload, WindowFocusedPayload};
 use os_sdk::{EventConsumer, SubscribeError, UnixEventConsumer};
@@ -112,6 +112,25 @@ impl EventBusSource {
     pub async fn recv(&mut self) -> Option<TriggerEvent> {
         self.rx.recv().await.map(decode_event)
     }
+}
+
+/// Map the enabled behaviour NAMES (from the daemon's `[agent] enabled` config)
+/// to the name->[`Provenance`] form the loader takes. Only built-in behaviours
+/// exist for now, so an enabled name is approved for the built-in provenance
+/// (matching the native agent's config resolution: a third-party name reusing a
+/// built-in's is disabled fail-closed by the loader).
+pub fn enabled_provenance_map(names: Vec<String>) -> BTreeMap<String, Provenance> {
+    names.into_iter().map(|n| (n, Provenance::BuiltIn)).collect()
+}
+
+/// Load every discoverable behaviour and stamp its enablement from the daemon's
+/// `[agent] enabled` list, exactly as the native agent did. The result feeds
+/// [`subscription_types`] (which bus types to subscribe) and [`decide`] (which
+/// behaviours a matched event dispatches). A behaviour not on the enabled list is
+/// loaded but disabled - listed for Settings, never dispatched.
+pub fn load_behaviours() -> LoadOutcome {
+    let enabled = enabled_provenance_map(crate::engine_config::enabled_behaviour_names());
+    load(&behaviour_sources(), &enabled)
 }
 
 /// How a matched behaviour is executed (the §E split).
@@ -484,5 +503,13 @@ mod tests {
         // Only the enabled event-triggered behaviours contribute; the disabled one
         // does not subscribe.
         assert_eq!(types, vec!["calendar.event.upcoming".to_string(), "file.opened".to_string()]);
+    }
+
+    #[test]
+    fn enabled_provenance_map_stamps_builtin() {
+        let m = enabled_provenance_map(vec!["auto-tag".to_string(), "meeting-prep".to_string()]);
+        assert_eq!(m.len(), 2);
+        assert_eq!(m.get("auto-tag"), Some(&Provenance::BuiltIn));
+        assert!(enabled_provenance_map(vec![]).is_empty());
     }
 }
