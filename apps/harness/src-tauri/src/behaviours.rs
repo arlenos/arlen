@@ -1,14 +1,14 @@
 //! Behaviour status for the agent observability view (harness A6).
 //!
 //! Loads the same behaviour set the agent daemon would act on, through the
-//! shared `arlen_ai_agent::loader::load_configured`, and reports each
+//! shared `arlen_ai_skills::loader::load_configured`, and reports each
 //! behaviour's enablement and trust. Read-only: this never enables, disables,
 //! or runs anything; it shows what the daemon resolved from the trusted
 //! config and the behaviour directories.
 
-use arlen_ai_agent::behaviour::BehaviourKind;
-use arlen_ai_agent::discovery::load_configured;
-use arlen_ai_agent::loader::{DisableReason, Provenance, Status};
+use arlen_ai_skills::behaviour::BehaviourKind;
+use arlen_ai_skills::discovery::load_configured;
+use arlen_ai_skills::loader::{DisableReason, Provenance, Status};
 use serde::Serialize;
 
 /// One behaviour's status as the observability view renders it.

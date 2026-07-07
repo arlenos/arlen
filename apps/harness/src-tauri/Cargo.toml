@@ -36,7 +36,7 @@ dirs = "5"
 # Behaviour discovery + enablement for the agent observability view (A6).
 # Reuses the daemon's own loader so the harness shows exactly the set the
 # agent would act on, no duplicated wiring.
-arlen-ai-agent = { path = "../../../ai/ai-agent" }
+arlen-ai-skills = { path = "../../../ai/ai-skills" }
 # The shared typed artifact envelope: a turn's reply carries `Artifact[]` to the
 # chat (the harness redesign's rich-object path). One definition, shared with the
 # terminal + the `arlen-artifact` helper; the frontend renders `Message.artifacts`.

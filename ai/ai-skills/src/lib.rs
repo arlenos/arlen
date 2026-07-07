@@ -16,3 +16,6 @@ pub mod behaviour;
 pub mod loader;
 pub mod router;
 pub mod skills;
+
+/// The configured-load entry point (read ai.toml, load its enabled behaviours).
+pub mod discovery;
