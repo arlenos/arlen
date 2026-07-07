@@ -4,8 +4,95 @@
 //! down - distinct from the persistent interactive supervisor. This module builds
 //! the per-trigger session; the spawn + teardown is a later increment.
 
+use crate::session::SessionToken;
+use crate::supervisor::{EngineExit, SpawnEngine};
 use ai_engine_contract::{CapabilityContext, ReadTier, SessionInit};
 use arlen_ai_skills::behaviour::{Behaviour, ReadScope};
+use std::time::Duration;
+
+/// Wall-clock bound for an ephemeral run when the behaviour declares no budget
+/// (an agent behaviour always declares one, so this is a defensive default).
+const DEFAULT_EPHEMERAL_WALL_MS: u64 = 30_000;
+
+/// The session lifecycle an ephemeral pi run drives: bind the minted session to
+/// the spawned pid, then end it when the run is over. The production impl is the
+/// [`Dispatcher`](crate::dispatch::Dispatcher); tests inject a recorder. (The
+/// token is minted directly via [`SessionToken::mint`], as the supervisor does.)
+pub trait SessionBinder: Sync {
+    /// Bind the session token to the kernel-attested spawned pid.
+    fn bind_session(&self, token: SessionToken, init: &SessionInit, pid: u32);
+    /// End the session (its run is over; a fresh run mints a new one).
+    fn end_session(&self, token: &SessionToken);
+}
+
+impl<G, E, R> SessionBinder for crate::dispatch::Dispatcher<G, E, R>
+where
+    G: crate::dispatch::Gate,
+    E: crate::dispatch::Executor,
+    R: crate::dispatch::Reporter,
+{
+    fn bind_session(&self, token: SessionToken, init: &SessionInit, pid: u32) {
+        crate::dispatch::Dispatcher::bind_session(self, token, init, pid)
+    }
+    fn end_session(&self, token: &SessionToken) {
+        crate::dispatch::Dispatcher::end_session(self, token)
+    }
+}
+
+/// The outcome of an ephemeral pi run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EphemeralOutcome {
+    /// The run finished (the engine exited) within its wall-clock budget.
+    Ran(EngineExit),
+    /// The run exceeded its wall-clock budget and was aborted (the confined pi is
+    /// torn down; bwrap `--die-with-parent` + the session end reclaim it).
+    TimedOut,
+    /// The session token could not be minted (CSPRNG failure); the run is skipped.
+    SessionMintFailed,
+}
+
+/// The wall-clock bound for a behaviour's ephemeral run (its budget's
+/// `max_wall_ms`, or a defensive default).
+fn ephemeral_wall(behaviour: &Behaviour) -> Duration {
+    Duration::from_millis(
+        behaviour.manifest.budget.as_ref().map(|b| b.max_wall_ms).unwrap_or(DEFAULT_EPHEMERAL_WALL_MS),
+    )
+}
+
+/// Run ONE bounded, headless, confined pi process for a `kind: agent` trigger
+/// (§D): mint a session, spawn pi with the per-trigger [`SessionInit`], bind the
+/// session to the spawned pid, and drive it under a wall-clock timeout - then end
+/// the session. Distinct from the persistent `supervise` loop: a single run, no
+/// restart, no shell drive (`drive: None`). Every model-proposed action inside the
+/// run is still gated + scoped + audited by the SAME contract path; this only
+/// bounds the run.
+pub async fn run_ephemeral_pi<S: SpawnEngine, B: SessionBinder>(
+    behaviour: &Behaviour,
+    project_anchor: Option<String>,
+    engine: &S,
+    binder: &B,
+) -> EphemeralOutcome {
+    let init = build_ephemeral_session_init(behaviour, project_anchor);
+    let token = match SessionToken::mint() {
+        Ok(t) => t,
+        Err(_) => return EphemeralOutcome::SessionMintFailed,
+    };
+    let on_spawned = |pid: u32| binder.bind_session(token.clone(), &init, pid);
+    let on_spawned: &(dyn Fn(u32) + Send + Sync) = &on_spawned;
+    let outcome = match tokio::time::timeout(
+        ephemeral_wall(behaviour),
+        engine.run_once(token.as_str(), &init.system_prompt, on_spawned, None),
+    )
+    .await
+    {
+        Ok(exit) => EphemeralOutcome::Ran(exit),
+        Err(_) => EphemeralOutcome::TimedOut,
+    };
+    // End the session whether the run finished or timed out (its authority must
+    // not outlive the run).
+    binder.end_session(&token);
+    outcome
+}
 
 /// Map a behaviour's declared [`ReadScope`] to the contract [`ReadTier`] the
 /// session reads under. Both are five-level and ordinally aligned, so this is the
@@ -69,14 +156,77 @@ mod tests {
     use super::*;
 
     fn agent_behaviour(name: &str) -> Behaviour {
+        agent_behaviour_with_wall(name, 15000)
+    }
+
+    fn agent_behaviour_with_wall(name: &str, wall_ms: u64) -> Behaviour {
         // A complete agent SKILL.md declaring one privileged + one generic tool.
         let src = format!(
             "---\nname: {name}\ndescription: d\nkind: agent\nreads: project\nmode: suggest\n\
              trigger:\n  type: event\n  event: calendar.event.upcoming\ntools:\n  graph.query: []\n  \
-             web.search: []\nbudget:\n  max_steps: 10\n  max_tokens: 12000\n  max_wall_ms: 15000\n\
+             web.search: []\nbudget:\n  max_steps: 10\n  max_tokens: 12000\n  max_wall_ms: {wall_ms}\n\
              terminal:\n  done: silent\n---\nGather related notes.\n"
         );
         arlen_ai_skills::behaviour::parse(&src).expect("valid agent SKILL.md")
+    }
+
+    struct ScriptedEngine {
+        exit: EngineExit,
+        sleep_ms: u64,
+    }
+    #[async_trait::async_trait]
+    impl SpawnEngine for ScriptedEngine {
+        async fn run_once(
+            &self,
+            _token: &str,
+            _system_prompt: &str,
+            on_spawned: &(dyn Fn(u32) + Send + Sync),
+            _drive: Option<&tokio::net::UnixListener>,
+        ) -> EngineExit {
+            on_spawned(4242); // the daemon binds the session to this attested pid
+            if self.sleep_ms > 0 {
+                tokio::time::sleep(Duration::from_millis(self.sleep_ms)).await;
+            }
+            self.exit
+        }
+    }
+
+    #[derive(Default)]
+    struct MockBinder {
+        bound_pid: std::sync::Mutex<Option<u32>>,
+        ended: std::sync::Mutex<bool>,
+    }
+    impl SessionBinder for MockBinder {
+        fn bind_session(&self, _token: SessionToken, _init: &SessionInit, pid: u32) {
+            *self.bound_pid.lock().unwrap() = Some(pid);
+        }
+        fn end_session(&self, _token: &SessionToken) {
+            *self.ended.lock().unwrap() = true;
+        }
+    }
+
+    #[tokio::test]
+    async fn ephemeral_run_binds_the_spawned_pid_and_returns_the_exit() {
+        let b = agent_behaviour("meeting-prep");
+        let engine = ScriptedEngine { exit: EngineExit::Clean, sleep_ms: 0 };
+        let binder = MockBinder::default();
+        let out = run_ephemeral_pi(&b, Some("p".to_string()), &engine, &binder).await;
+        assert_eq!(out, EphemeralOutcome::Ran(EngineExit::Clean));
+        // The session was bound to the spawned pid, then ended after the run.
+        assert_eq!(*binder.bound_pid.lock().unwrap(), Some(4242));
+        assert!(*binder.ended.lock().unwrap());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn ephemeral_run_times_out_and_still_ends_the_session() {
+        // A tiny wall budget with an engine that sleeps far past it.
+        let b = agent_behaviour_with_wall("slow", 100);
+        let engine = ScriptedEngine { exit: EngineExit::Clean, sleep_ms: 60_000 };
+        let binder = MockBinder::default();
+        let out = run_ephemeral_pi(&b, None, &engine, &binder).await;
+        assert_eq!(out, EphemeralOutcome::TimedOut);
+        // The session is ended even on timeout (its authority must not outlive it).
+        assert!(*binder.ended.lock().unwrap());
     }
 
     #[test]
