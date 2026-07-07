@@ -19,6 +19,7 @@
 // daemon re-validates every privileged argument server-side (footgun 1b).
 
 import { calls, ContractClient, type Reply } from "./contract.js";
+import { takeProof } from "./proof-store.js";
 
 /** A content block in a tool result (only `text` is produced here). */
 export interface ContentBlock {
@@ -135,20 +136,23 @@ export function makeProxyTools(opts: ProxyOptions = {}): (pi: ProxyExtensionAPI)
           try {
             if (!clientPromise) clientPromise = connect();
             const client = await clientPromise;
-            // HIGH-1: the daemon's Execute requires a single-use proof that a
-            // matching Authorize minted. Authorize this tool first; a Deny/Confirm
-            // means the daemon will not run it (the proxy tool cannot bypass the
-            // gate), and an Allow/Modify carries the proof to present at Execute.
-            // (When the proxy is wired into the live extension, the gate shim will
-            // pass its already-minted proof instead, to avoid a second confirm.)
-            const auth = await client.call(calls.authorize(spec.name, params, false));
-            if (auth.reply !== "authorize") {
-              return fail(`arlen: unexpected daemon reply '${auth.reply}' authorizing ${spec.name}`);
+            // HIGH-1: the daemon's Execute requires a single-use proof a matching
+            // Authorize minted. Prefer the proof the gate shim already minted for
+            // this call (the live path),
+            // avoiding a second Authorize (and a double Confirm). Fall back to
+            // self-authorizing when no gate ran for this call (e.g. a direct test).
+            let proof = takeProof(spec.name, params);
+            if (proof === undefined) {
+              const auth = await client.call(calls.authorize(spec.name, params, false));
+              if (auth.reply !== "authorize") {
+                return fail(`arlen: unexpected daemon reply '${auth.reply}' authorizing ${spec.name}`);
+              }
+              if (auth.decision !== "allow" && auth.decision !== "modify") {
+                return fail(`arlen: ${spec.name} was not authorized (${auth.decision})`);
+              }
+              proof = auth.proof;
             }
-            if (auth.decision !== "allow" && auth.decision !== "modify") {
-              return fail(`arlen: ${spec.name} was not authorized (${auth.decision})`);
-            }
-            reply = await client.call(calls.execute(spec.name, params, auth.proof));
+            reply = await client.call(calls.execute(spec.name, params, proof));
           } catch (err) {
             clientPromise = undefined;
             return fail(`arlen: ${spec.name} is unavailable (${String(err)})`);

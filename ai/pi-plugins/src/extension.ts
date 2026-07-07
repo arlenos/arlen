@@ -21,14 +21,18 @@
 
 import { makeAudit, type AuditExtensionAPI } from "./audit.js";
 import { makeGate, type GateExtensionAPI } from "./gate.js";
+import { makeProxyTools, type ProxyExtensionAPI } from "./proxy.js";
 
 /** The pi `ExtensionAPI` surface the Arlen extension uses (both shims' hooks). */
-export type ArlenExtensionAPI = GateExtensionAPI & AuditExtensionAPI;
+export type ArlenExtensionAPI = GateExtensionAPI & AuditExtensionAPI & ProxyExtensionAPI;
 
 /** Install the Arlen security shims (the daemon-backed gate + audit) on `pi`. */
 export function installArlenShims(pi: ArlenExtensionAPI): void {
   makeGate()(pi);
   makeAudit()(pi);
+  // The privileged proxy tools (graph.read/write, ...) the model may call; each
+  // forwards to the daemon's Execute, presenting the proof the gate shim minted.
+  makeProxyTools()(pi);
 }
 
 /** The extension factory pi loads (its default export). */

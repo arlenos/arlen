@@ -14,6 +14,7 @@
 // passes its real (structurally compatible) API at load time.
 
 import { calls, ContractClient, type Reply } from "./contract.js";
+import { stashProof } from "./proof-store.js";
 
 /** The subset of pi's `ToolCallEvent` the gate reads. `input` is mutated in
  *  place to apply a Modify decision (pi's documented argument-patch path). */
@@ -77,6 +78,9 @@ export function makeGate(opts: GateOptions = {}): (pi: GateExtensionAPI) => void
       }
       switch (reply.decision) {
         case "allow":
+          // Hand the minted proof to the proxy tool that will run (HIGH-1), so it
+          // presents it at Execute instead of authorizing a second time.
+          stashProof(event.toolName, event.input, reply.proof);
           return {};
         case "deny":
           return { block: true, reason: reply.reason };
@@ -87,6 +91,8 @@ export function makeGate(opts: GateOptions = {}): (pi: GateExtensionAPI) => void
             for (const k of Object.keys(event.input)) delete event.input[k];
             Object.assign(event.input, reply.args as Record<string, unknown>);
           }
+          // The proof binds the SUBSTITUTED args (now in event.input).
+          stashProof(event.toolName, event.input, reply.proof);
           return {};
         }
         case "confirm":
