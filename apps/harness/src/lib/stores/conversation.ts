@@ -187,6 +187,55 @@ export function sanitizeSession(raw: unknown): Session | null {
   return session;
 }
 
+/// A small demo transcript for development only (see `initSessions`): enough to
+/// render the Conversation surface without a backend - two sessions so the rail's
+/// time-grouping shows, a mention chip, and a tool-call card.
+function demoSessions(): Session[] {
+  const now = Date.now();
+  return [
+    {
+      id: "demo-week",
+      title: "What changed in my week plan",
+      createdAt: now - 40 * 60 * 1000,
+      messages: [
+        {
+          id: 0,
+          role: "user",
+          text: "Summarize what changed in week-plan.md since Monday",
+          mentions: ["week-plan.md"],
+        },
+        {
+          id: 1,
+          role: "assistant",
+          text: "Two things moved. The compositor titlebar bug is marked cleared, and the appearance surface slipped to after the transparency work. Everything else on the plan is unchanged.",
+          toolCalls: [
+            {
+              server: "knowledge",
+              tool: "read",
+              arguments: '{ "path": "week-plan.md", "since": "Monday" }',
+              result: "3 revisions across 2 sections",
+              status: "done",
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: "demo-standup",
+      title: "Standup bullets",
+      createdAt: now - 26 * 60 * 60 * 1000,
+      messages: [
+        { id: 2, role: "user", text: "Draft three short bullets for standup" },
+        {
+          id: 3,
+          role: "assistant",
+          text: "Cleared the titlebar bug on the fractional-scale display. Landed the task manager keyboard drive. Next up is wiring the activity record into the sidebar.",
+        },
+      ],
+    },
+  ];
+}
+
 /// Load persisted sessions on startup and keep the store mirrored to disk.
 /// Sessions are in-memory until this runs; call it once when the app mounts.
 /// Loading and saving both fail soft, so a persistence problem never breaks the
@@ -221,6 +270,17 @@ export async function initSessions(): Promise<void> {
     }
   } catch {
     // No persisted history; start fresh.
+  }
+
+  // No history and running under vite (no backend): seed a demo transcript so the
+  // Conversation surface renders for development. Never in a built app
+  // (import.meta.env.DEV is false), so metal is untouched. The save mirror below
+  // no-ops without a backend, so the demo stays ephemeral.
+  if (get(sessions).length === 0 && import.meta.env.DEV) {
+    const demo = demoSessions();
+    sessions.set(demo);
+    activeSessionId.set(demo[0].id);
+    nextMsgId = Math.max(-1, ...demo.flatMap((s) => s.messages.map((m) => m.id))) + 1;
   }
 
   // Mirror changes to disk, debounced. Drop in-flight (pending) turns and empty
