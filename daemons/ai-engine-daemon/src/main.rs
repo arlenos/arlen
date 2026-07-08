@@ -436,6 +436,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 Arc::new(PiSidecar::new(curator_paths)),
                                 Arc::clone(&dispatcher) as Arc<dyn SessionBinder>,
                             );
+                            // The curator loop publishes its live status here; the
+                            // AIAgent1 `status` method reads the same handle once
+                            // that interface is served (the name-transfer step).
+                            let status = arlen_ai_engine_daemon::agent_iface::new_status_handle();
                             tokio::spawn(async move {
                                 let mut coalescer = orchestrator::Coalescer::new(
                                     orchestrator::DEFAULT_COALESCE_WINDOW,
@@ -446,6 +450,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     &mut coalescer,
                                     &handler,
                                     std::time::SystemTime::now,
+                                    &status,
                                 )
                                 .await;
                                 info!("curator orchestrator loop ended");

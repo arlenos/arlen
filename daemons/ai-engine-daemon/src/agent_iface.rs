@@ -18,7 +18,74 @@ use arlen_ai_core::audit::behaviour_action_event;
 use audit_proto::sink::AuditSink;
 use os_sdk::graph::RelationRetractOutcome;
 use serde::Serialize;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
+
+/// The curator's live loop status, reported by `status`. `Subscribing` before the
+/// event-bus subscription is established (up but no trigger can arrive yet - the
+/// honest state during an outage, so a poller does not read a stalled daemon as a
+/// healthy `idle`), `Idle` once waiting for the next trigger, `Busy` while a
+/// dispatched event is being handled. A finer thinking/acting split needs engine-
+/// internal hooks and is a follow-up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoopStatus {
+    /// Up, but the event-bus subscription is not yet established.
+    Subscribing,
+    /// Subscribed and waiting for the next trigger.
+    Idle,
+    /// Handling a dispatched event.
+    Busy,
+}
+
+impl LoopStatus {
+    /// The wire string the `status` method returns.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LoopStatus::Subscribing => "subscribing",
+            LoopStatus::Idle => "idle",
+            LoopStatus::Busy => "busy",
+        }
+    }
+
+    /// Decode the atomic byte, any unexpected value fails toward `Subscribing`
+    /// (not-yet-ready) rather than a healthy-looking `idle`.
+    fn from_u8(v: u8) -> Self {
+        match v {
+            1 => LoopStatus::Idle,
+            2 => LoopStatus::Busy,
+            _ => LoopStatus::Subscribing,
+        }
+    }
+
+    /// The atomic encoding.
+    fn to_u8(self) -> u8 {
+        match self {
+            LoopStatus::Subscribing => 0,
+            LoopStatus::Idle => 1,
+            LoopStatus::Busy => 2,
+        }
+    }
+}
+
+/// A shared live-status cell, written by the curator loop and read by the `status`
+/// method. A single atomic byte: point updates with no cross-field invariant, and
+/// the reader only needs the latest value.
+pub type StatusHandle = Arc<AtomicU8>;
+
+/// A status handle initialised to `Subscribing` (up, not yet subscribed).
+pub fn new_status_handle() -> StatusHandle {
+    Arc::new(AtomicU8::new(LoopStatus::Subscribing.to_u8()))
+}
+
+/// Publish the current loop status.
+pub fn set_status(handle: &StatusHandle, status: LoopStatus) {
+    handle.store(status.to_u8(), Ordering::Relaxed);
+}
+
+/// Read the current loop status.
+pub fn load_status(handle: &StatusHandle) -> LoopStatus {
+    LoopStatus::from_u8(handle.load(Ordering::Relaxed))
+}
 
 /// The object path the interface is served at (unchanged from the ai-agent, so
 /// existing callers reach the re-homed surface without a path change).
@@ -121,20 +188,22 @@ async fn run_compensate(
 /// (for `completed_actions` + `compensate`), the graph writer the undo retracts
 /// through, and the audit sink the undo records to before acting.
 pub struct AgentAdminInterface {
+    status: StatusHandle,
     compensation: Arc<Mutex<CompensationStore>>,
     writer: Arc<dyn RelationWriter>,
     audit: Arc<dyn AuditSink>,
 }
 
 impl AgentAdminInterface {
-    /// Build the interface over the daemon's shared compensation store, graph
-    /// writer and audit sink.
+    /// Build the interface over the daemon's shared loop-status cell, compensation
+    /// store, graph writer and audit sink.
     pub fn new(
+        status: StatusHandle,
         compensation: Arc<Mutex<CompensationStore>>,
         writer: Arc<dyn RelationWriter>,
         audit: Arc<dyn AuditSink>,
     ) -> Self {
-        Self { compensation, writer, audit }
+        Self { status, compensation, writer, audit }
     }
 }
 
@@ -146,6 +215,15 @@ impl AgentAdminInterface {
     /// decision correlation id that `compensate(id)` undoes by. Read-only,
     /// content-bounded, and bounded to the store's horizon (an aged-out action can
     /// neither be listed nor undone). Empty when nothing has executed.
+    /// The curator's live loop status: `subscribing` (up, not yet subscribed to
+    /// the event bus), `idle` (waiting for the next trigger) or `busy` (handling a
+    /// dispatched event). Honest during an event-bus outage (stays `subscribing`
+    /// rather than reading as a healthy `idle`).
+    #[zbus(name = "status")]
+    async fn status(&self) -> String {
+        load_status(&self.status).as_str().to_string()
+    }
+
     #[zbus(name = "completed_actions")]
     async fn completed_actions(&self) -> String {
         self.compensation
@@ -204,6 +282,17 @@ mod tests {
     #[test]
     fn an_empty_store_renders_an_empty_array() {
         assert_eq!(completed_actions_json(&CompensationStore::new(8)), "[]");
+    }
+
+    #[test]
+    fn a_status_handle_defaults_to_subscribing_and_round_trips() {
+        let h = new_status_handle();
+        assert_eq!(load_status(&h), LoopStatus::Subscribing);
+        set_status(&h, LoopStatus::Busy);
+        assert_eq!(load_status(&h), LoopStatus::Busy);
+        assert_eq!(LoopStatus::Busy.as_str(), "busy");
+        assert_eq!(LoopStatus::Idle.as_str(), "idle");
+        assert_eq!(LoopStatus::Subscribing.as_str(), "subscribing");
     }
 
     use audit_proto::sink::MockAuditSink;
