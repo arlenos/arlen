@@ -9,10 +9,14 @@
   import RowMenu from "$lib/components/tm/RowMenu.svelte";
   import { processes, load, stop, pause, resume, limit, unlimit, type Process } from "$lib/stores/processes";
   import { startPerf, stopPerf } from "$lib/stores/perf";
+  import { t } from "$lib/i18n/messages";
   import { Rows3, Layers, Search } from "lucide-svelte";
 
-  const TABS = ["Processes", "Performance"] as const;
-  let tab = $state<(typeof TABS)[number]>("Processes");
+  const TABS = [
+    { key: "Processes", id: "tm.tab.processes" },
+    { key: "Performance", id: "tm.tab.performance" },
+  ] as const;
+  let tab = $state<(typeof TABS)[number]["key"]>("Processes");
   let filter = $state("");
   let flatten = $state(false);
   let selected = $state<Process | null>(null);
@@ -30,12 +34,14 @@
 
 <div class="app">
   <header class="titlebar">
-    <span class="app-title">Task manager</span>
+    <span class="app-title">{$t("tm.title")}</span>
   </header>
 
   <nav class="tabs" aria-label="Views">
-    {#each TABS as t (t)}
-      <button type="button" class="tab" class:active={tab === t} onclick={() => (tab = t)}>{t}</button>
+    {#each TABS as tb (tb.key)}
+      <button type="button" class="tab" class:active={tab === tb.key} onclick={() => (tab = tb.key)}>
+        {$t(tb.id)}
+      </button>
     {/each}
   </nav>
 
@@ -43,17 +49,22 @@
     <div class="toolbar">
       <span class="filter">
         <Search size={14} strokeWidth={2} class="filter-icon" />
-        <input class="filter-input" placeholder="Filter" bind:value={filter} aria-label="Filter processes" />
+        <input
+          class="filter-input"
+          placeholder={$t("tm.filter.placeholder")}
+          bind:value={filter}
+          aria-label={$t("tm.filter.aria")}
+        />
       </span>
       <span class="spacer"></span>
       <button
         type="button"
         class="toggle"
         class:on={flatten}
-        title={flatten ? "Group by app" : "Show every process"}
+        title={$t(flatten ? "tm.toggle.toGrouped" : "tm.toggle.toAll")}
         onclick={() => (flatten = !flatten)}
       >
-        {#if flatten}<Rows3 size={14} strokeWidth={2} /> All processes{:else}<Layers size={14} strokeWidth={2} /> Grouped{/if}
+        {#if flatten}<Rows3 size={14} strokeWidth={2} /> {$t("tm.toggle.all")}{:else}<Layers size={14} strokeWidth={2} /> {$t("tm.toggle.grouped")}{/if}
       </button>
     </div>
 

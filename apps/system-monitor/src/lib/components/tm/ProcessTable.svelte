@@ -5,6 +5,7 @@
   import { ChevronRight, Cog, Cpu, Camera, Mic, Brain } from "lucide-svelte";
   import type { Process, ProcGroup, ProcStatus, SortKey } from "$lib/stores/processes";
   import { sensorsFor } from "$lib/stores/detail";
+  import { t } from "$lib/i18n/messages";
 
   let {
     list,
@@ -43,15 +44,15 @@
     expanded = next;
   }
 
-  const GROUPS: { key: ProcGroup; label: string }[] = [
-    { key: "app", label: "Apps" },
-    { key: "background", label: "Background" },
-    { key: "system", label: "System" },
+  const GROUPS: { key: ProcGroup; id: string }[] = [
+    { key: "app", id: "tm.group.app" },
+    { key: "background", id: "tm.group.background" },
+    { key: "system", id: "tm.group.system" },
   ];
-  const STATUS_LABEL: Record<ProcStatus, string> = {
-    running: "Running",
-    "not-responding": "Not responding",
-    suspended: "Suspended",
+  const STATUS_ID: Record<ProcStatus, string> = {
+    running: "tm.status.running",
+    "not-responding": "tm.status.notResponding",
+    suspended: "tm.status.suspended",
   };
 
   function matches(p: Process): boolean {
@@ -68,7 +69,7 @@
   }
 
   type DisplayItem =
-    | { kind: "group"; label: string }
+    | { kind: "group"; id: string }
     | { kind: "proc"; proc: Process; depth: number; expandable: boolean; open: boolean };
 
   const items = $derived.by<DisplayItem[]>(() => {
@@ -76,7 +77,7 @@
     for (const g of GROUPS) {
       const rows = list.filter((p) => p.group === g.key && matches(p)).sort(cmp);
       if (rows.length === 0) continue;
-      out.push({ kind: "group", label: g.label });
+      out.push({ kind: "group", id: g.id });
       for (const p of rows) {
         const kids = p.children ?? [];
         if (flatten && kids.length) {
@@ -196,38 +197,38 @@
   }
 </script>
 
-<div class="pt" role="grid" aria-label="Processes" bind:this={rootEl}>
+<div class="pt" role="grid" aria-label={$t("tm.grid.label", { count: procIds.length })} bind:this={rootEl}>
   <div class="head" role="row">
     <button class="h name" class:sorted={sortKey === "name"} role="columnheader" aria-sort={ariaSort("name")} onclick={() => sortBy("name")}>
-      Name
+      {$t("tm.col.name")}
       {#if sortKey === "name"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}
     </button>
     <button class="h" class:sorted={sortKey === "status"} role="columnheader" aria-sort={ariaSort("status")} onclick={() => sortBy("status")}>
-      Status
+      {$t("tm.col.status")}
     </button>
-    <span class="h access" role="columnheader">Access</span>
+    <span class="h access" role="columnheader">{$t("tm.col.access")}</span>
     <button class="h num" class:sorted={sortKey === "cpu"} role="columnheader" aria-sort={ariaSort("cpu")} onclick={() => sortBy("cpu")}>
-      <span class="h-label">CPU {#if sortKey === "cpu"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
+      <span class="h-label">{$t("tm.col.cpu")} {#if sortKey === "cpu"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{totals.cpu.toFixed(0)}%</span>
     </button>
     <button class="h num" class:sorted={sortKey === "memMB"} role="columnheader" aria-sort={ariaSort("memMB")} onclick={() => sortBy("memMB")}>
-      <span class="h-label">Memory {#if sortKey === "memMB"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
+      <span class="h-label">{$t("tm.col.memory")} {#if sortKey === "memMB"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{mem(totals.memMB)}</span>
     </button>
     <button class="h num" class:sorted={sortKey === "diskKBs"} role="columnheader" aria-sort={ariaSort("diskKBs")} onclick={() => sortBy("diskKBs")}>
-      <span class="h-label">Disk {#if sortKey === "diskKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
+      <span class="h-label">{$t("tm.col.disk")} {#if sortKey === "diskKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{rate(totals.diskKBs) || "0"}</span>
     </button>
     <button class="h num" class:sorted={sortKey === "netKBs"} role="columnheader" aria-sort={ariaSort("netKBs")} onclick={() => sortBy("netKBs")}>
-      <span class="h-label">Network {#if sortKey === "netKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
+      <span class="h-label">{$t("tm.col.network")} {#if sortKey === "netKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{rate(totals.netKBs) || "0"}</span>
     </button>
   </div>
 
   <div class="body">
-    {#each items as it, i (it.kind === "group" ? `g-${it.label}` : `p-${it.proc.id}-${it.depth}`)}
+    {#each items as it, i (it.kind === "group" ? `g-${it.id}` : `p-${it.proc.id}-${it.depth}`)}
       {#if it.kind === "group"}
-        <div class="grouprow" role="presentation"><span>{it.label}</span></div>
+        <div class="grouprow" role="presentation"><span>{$t(it.id)}</span></div>
       {:else}
         {@const p = it.proc}
         {@const sensors = sensorsFor(p.name)}
@@ -254,7 +255,7 @@
               <button
                 class="twist"
                 class:open={it.open}
-                aria-label="Expand"
+                aria-label={$t("tm.row.expand")}
                 onclick={(e) => {
                   e.stopPropagation();
                   toggle(p.id);
@@ -277,8 +278,8 @@
             <span class="pname">{p.name}</span>
           </div>
           <div class="cell status" role="gridcell" data-status={p.paused ? "suspended" : p.status}>
-            <span>{p.paused ? "Suspended" : STATUS_LABEL[p.status]}</span>
-            {#if p.limited && !p.paused}<span class="limtag">Limited</span>{/if}
+            <span>{$t(p.paused ? "tm.status.suspended" : STATUS_ID[p.status])}</span>
+            {#if p.limited && !p.paused}<span class="limtag">{$t("tm.tag.limited")}</span>{/if}
           </div>
           <div class="cell access" role="gridcell">
             {#if sensors.camera}<Camera size={13} strokeWidth={2} />{/if}
