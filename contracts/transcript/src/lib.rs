@@ -27,12 +27,13 @@ pub struct TranscriptSegment {
     /// The recognized text for this span.
     pub text: String,
     /// The diarization speaker label (e.g. `"speaker_0"`), or `None` when diarization
-    /// did not run or could not attribute the span.
-    #[serde(default)]
+    /// did not run or could not attribute the span. Omitted from the wire when absent, so
+    /// the field reads as an optional (`speaker?`) to a TypeScript consumer, not `null`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speaker: Option<String>,
     /// The ASR's confidence in this span, `0.0..=1.0`, or `None` when the backend does
-    /// not report one.
-    #[serde(default)]
+    /// not report one. Omitted from the wire when absent (an optional to a TS consumer).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f32>,
 }
 
@@ -40,8 +41,9 @@ pub struct TranscriptSegment {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Transcript {
     /// The detected language as a BCP-47-ish tag (e.g. `"de"`, `"en"`), or `None` when
-    /// the backend did not report one.
-    #[serde(default)]
+    /// the backend did not report one. Omitted from the wire when absent (an optional to
+    /// a TS consumer, not `null`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
     /// The segments in recording order.
     pub segments: Vec<TranscriptSegment>,
@@ -320,5 +322,27 @@ mod tests {
         // 65s -> 1:05 with the speaker prefix; a blank segment is skipped; past an hour
         // the timestamp gains an hours field and an unlabelled segment has no prefix.
         assert_eq!(t.to_readable(), "[1:05] speaker_0: hallo\n[1:01:01] spaet");
+    }
+
+    #[test]
+    fn absent_optionals_are_omitted_from_the_wire() {
+        // a no-diarization segment serializes without speaker/confidence/language, so a
+        // TypeScript consumer sees an optional (absent), never a `null`.
+        let t = Transcript { language: None, segments: vec![seg(0, 500, "hi", None)] };
+        let json = serde_json::to_string(&t).unwrap();
+        assert!(!json.contains("speaker"), "speaker should be omitted: {json}");
+        assert!(!json.contains("confidence"), "confidence should be omitted: {json}");
+        assert!(!json.contains("language"), "language should be omitted: {json}");
+        // a present optional still serializes
+        let with = Transcript {
+            language: Some("en".into()),
+            segments: vec![TranscriptSegment {
+                speaker: Some("s0".into()),
+                ..seg(0, 500, "hi", None)
+            }],
+        };
+        let json = serde_json::to_string(&with).unwrap();
+        assert!(json.contains("\"language\":\"en\""));
+        assert!(json.contains("\"speaker\":\"s0\""));
     }
 }

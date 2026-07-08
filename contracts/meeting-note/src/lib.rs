@@ -20,8 +20,9 @@ use serde::{Deserialize, Serialize};
 pub struct ActionItem {
     /// The task text.
     pub text: String,
-    /// The person the item was assigned to, when the extractor attributed one.
-    #[serde(default)]
+    /// The person the item was assigned to, when the extractor attributed one. Omitted from
+    /// the wire when absent, so it reads as an optional (`owner?`) to a TS consumer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
 }
 
