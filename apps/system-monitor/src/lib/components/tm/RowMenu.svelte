@@ -2,7 +2,7 @@
   /// The row right-click menu (the home for Stop now that the per-row button is
   /// gone): a small popup at the cursor with the process actions. A backdrop or
   /// Escape dismisses it.
-  import { onMount } from "svelte";
+  import { trapFocus } from "@arlen/ui-kit/keyboard/trap_focus";
   import type { Process } from "$lib/stores/processes";
 
   let {
@@ -37,10 +37,6 @@
 
   let menuEl = $state<HTMLElement | null>(null);
 
-  onMount(() => {
-    menuEl?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
-  });
-
   function menuItems(): HTMLElement[] {
     return menuEl ? [...menuEl.querySelectorAll<HTMLElement>('[role="menuitem"]')] : [];
   }
@@ -64,11 +60,6 @@
       case "End":
         e.preventDefault();
         list[list.length - 1].focus();
-        break;
-      case "Tab":
-        // Trap focus inside the menu.
-        e.preventDefault();
-        list[(cur + (e.shiftKey ? -1 : 1) + list.length) % list.length].focus();
         break;
       case "Escape":
         e.preventDefault();
@@ -101,6 +92,7 @@
     tabindex="-1"
     bind:this={menuEl}
     onkeydown={menuKeydown}
+    use:trapFocus={{ returnFocus: false }}
   >
     <div class="menu-head">{process.name}</div>
     <button type="button" class="mi" role="menuitem" onclick={() => { onDetails(process); onClose(); }}>

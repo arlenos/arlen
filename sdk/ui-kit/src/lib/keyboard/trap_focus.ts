@@ -32,7 +32,10 @@ function defaults(o: TrapFocusOptions | undefined): Required<TrapFocusOptions> {
 }
 
 /// A Svelte action: `use:trapFocus` on a modal container.
-export const trapFocus: Action<HTMLElement, TrapFocusOptions | undefined> = (node, options) => {
+export const trapFocus: Action<HTMLElement, TrapFocusOptions | undefined> = (
+  node: HTMLElement,
+  options?: TrapFocusOptions,
+) => {
   let opts = defaults(options);
   const previouslyFocused = document.activeElement as HTMLElement | null;
 
