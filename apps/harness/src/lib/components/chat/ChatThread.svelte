@@ -4,12 +4,13 @@
   /// control after scrolling up. Hosts the empty state when there is
   /// nothing to show.
   import { tick } from "svelte";
-  import { ChevronDown } from "@lucide/svelte";
+  import { ChevronDown, ChevronUp, X } from "@lucide/svelte";
   import ChatMessage from "./ChatMessage.svelte";
   import EmptyState from "./EmptyState.svelte";
   import FileRefMenu from "./FileRefMenu.svelte";
   import { messages } from "$lib/stores/conversation";
-  import { jumpToMessage } from "$lib/stores/chatNav";
+  import { jumpToMessage, findOpen } from "$lib/stores/chatNav";
+  import { matchingMessages } from "$lib/search";
 
   let {
     emptyVariant,
@@ -39,14 +40,66 @@
     scrollEl?.scrollTo({ top: scrollEl.scrollHeight, behavior: smooth ? "smooth" : "auto" });
   }
 
+  function scrollToId(id: number): void {
+    scrollEl?.querySelector(`[data-mid="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   // Jump to a bookmarked turn on request (the bookmarks affordance lives in the
   // composer foot; this owns the scroll region). One-shot: consume and reset.
   $effect(() => {
     const id = $jumpToMessage;
     if (id === null) return;
-    scrollEl?.querySelector(`[data-mid="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    scrollToId(id);
     jumpToMessage.set(null);
   });
+
+  // Find in chat: the bar filters the current conversation and steps through the
+  // matching turns, scrolling + highlighting the current one. Reuses the tested
+  // matchingMessages + the data-mid anchors.
+  let query = $state("");
+  let matchIndex = $state(0);
+  let findInput = $state<HTMLInputElement | null>(null);
+  const matches = $derived(matchingMessages($messages, query));
+  const currentId = $derived(matches[matchIndex]?.id ?? null);
+
+  // A new query starts at the first hit.
+  $effect(() => {
+    void query;
+    matchIndex = 0;
+  });
+  // Scroll to the current match whenever it changes while finding.
+  $effect(() => {
+    if ($findOpen && currentId !== null) scrollToId(currentId);
+  });
+  // Focus the input when the bar opens (from Ctrl+F or the foot icon).
+  $effect(() => {
+    if ($findOpen) requestAnimationFrame(() => findInput?.focus());
+  });
+
+  function stepMatch(delta: number): void {
+    if (matches.length === 0) return;
+    matchIndex = (matchIndex + delta + matches.length) % matches.length;
+  }
+  function closeFind(): void {
+    findOpen.set(false);
+    query = "";
+    matchIndex = 0;
+  }
+  function onFindKeydown(e: KeyboardEvent): void {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      stepMatch(e.shiftKey ? -1 : 1);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeFind();
+    }
+  }
+  function onWindowKeydown(e: KeyboardEvent): void {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      findOpen.set(true);
+    }
+  }
 
   // Follow the conversation: when a message is added or filled in while the
   // reader is at the bottom, keep them there. Scrolled-up readers are never
@@ -63,7 +116,34 @@
   });
 </script>
 
+<svelte:window onkeydown={onWindowKeydown} />
+
 <div class="thread-wrap">
+  {#if $findOpen}
+    <div class="find" role="search">
+      <input
+        bind:this={findInput}
+        bind:value={query}
+        class="find-input"
+        placeholder="Find in chat"
+        aria-label="Find in chat"
+        onkeydown={onFindKeydown}
+      />
+      <span class="find-count">
+        {matches.length ? `${matchIndex + 1} of ${matches.length}` : query ? "No matches" : ""}
+      </span>
+      <button class="find-btn" type="button" aria-label="Previous match" disabled={matches.length === 0} onclick={() => stepMatch(-1)}>
+        <ChevronUp size={15} strokeWidth={2} />
+      </button>
+      <button class="find-btn" type="button" aria-label="Next match" disabled={matches.length === 0} onclick={() => stepMatch(1)}>
+        <ChevronDown size={15} strokeWidth={2} />
+      </button>
+      <button class="find-btn" type="button" aria-label="Close find" onclick={closeFind}>
+        <X size={15} strokeWidth={2} />
+      </button>
+    </div>
+  {/if}
+
   <div class="thread-scroll" bind:this={scrollEl} onscroll={onScroll}>
     {#if $messages.length === 0}
       {#if showEmpty}
@@ -78,7 +158,7 @@
         aria-label="Conversation"
       >
         {#each $messages as message (message.id)}
-          <ChatMessage {message} {aiReady} />
+          <ChatMessage {message} {aiReady} highlighted={message.id === currentId} />
         {/each}
       </div>
     {/if}
@@ -142,5 +222,59 @@
   .jump:hover {
     background: color-mix(in srgb, var(--foreground) 8%, var(--color-bg-card));
     color: var(--foreground);
+  }
+  /* The find bar: on-demand, top-right of the reading column (not a persistent
+     control). Appears only while finding. */
+  .find {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.25rem 0.25rem 0.6rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-input, 8px);
+    background: var(--color-bg-card);
+    box-shadow: var(--shadow-lg, 0 8px 30px #00000066);
+  }
+  .find-input {
+    width: 12rem;
+    border: none;
+    background: transparent;
+    color: var(--foreground);
+    font-size: 0.8125rem;
+    outline: none;
+  }
+  .find-input::placeholder {
+    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+  }
+  .find-count {
+    min-width: 4rem;
+    text-align: right;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  }
+  .find-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: var(--radius-button, 6px);
+    background: transparent;
+    color: color-mix(in srgb, var(--foreground) 60%, transparent);
+    cursor: pointer;
+  }
+  .find-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    color: var(--foreground);
+  }
+  .find-btn:disabled {
+    opacity: 0.4;
   }
 </style>
