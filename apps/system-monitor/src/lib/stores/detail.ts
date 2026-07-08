@@ -8,7 +8,6 @@
 /// data (rides sdk/system-monitor + the LCG Grant nodes + the audit ledger) + the
 /// revoke are coder seams; under vite this derives a plausible fixture.
 
-import { invoke } from "@tauri-apps/api/core";
 import type { Process } from "./processes";
 
 /// One held KG capability scope, revocable right here.
@@ -117,14 +116,4 @@ export function detailFor(p: Process): ProcDetail {
     connections: p.netKBs > 0 ? ["tcp 140.82.121.4:443 ESTABLISHED", "udp 224.0.0.251:5353 mdns"] : [],
     access: ACCESS[p.name] ?? DEFAULT_ACCESS,
   };
-}
-
-/// Revoke a held scope from a process (the monitor notices; the App-access page
-/// holds the standing revoke). Live: `revoke_scope`.
-export async function revokeScope(id: number, label: string): Promise<void> {
-  try {
-    await invoke("revoke_scope", { id, label });
-  } catch {
-    // optimistic under vite
-  }
 }
