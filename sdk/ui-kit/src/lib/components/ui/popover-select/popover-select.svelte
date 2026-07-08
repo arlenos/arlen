@@ -269,7 +269,7 @@
     font-weight: 500;
     color: var(--foreground);
     line-height: 1;
-    text-align: left;
+    text-align: start;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

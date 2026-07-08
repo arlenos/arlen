@@ -103,8 +103,8 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    margin-left: auto;
-    padding-right: 6px;
+    margin-inline-start: auto;
+    padding-inline-end: 6px;
     z-index: 1;
   }
 

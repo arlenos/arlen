@@ -125,7 +125,7 @@
     border: none;
     background: transparent;
     border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
-    text-align: left;
+    text-align: start;
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .choice:hover {

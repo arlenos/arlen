@@ -186,7 +186,7 @@
     border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
     border-radius: var(--radius-card);
     color: var(--foreground);
-    text-align: left;
+    text-align: start;
     overflow: hidden;
     transition: background-color var(--duration-micro, 100ms) ease, border-color var(--duration-micro, 100ms) ease;
   }

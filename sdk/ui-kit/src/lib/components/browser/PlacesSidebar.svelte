@@ -50,11 +50,11 @@
                 {place.label}
               </span>
               {#if place.offline}
-                <span class="ps-dot ml-auto group-data-[collapsible=icon]:hidden"></span>
+                <span class="ps-dot ms-auto group-data-[collapsible=icon]:hidden"></span>
               {/if}
               {#if place.removable}
                 <span
-                  class="ps-remove ml-auto group-data-[collapsible=icon]:hidden"
+                  class="ps-remove ms-auto group-data-[collapsible=icon]:hidden"
                   role="button"
                   tabindex="-1"
                   aria-label={`Unpin ${place.label}`}

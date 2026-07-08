@@ -205,7 +205,7 @@
     font-size: 0.75rem;
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    text-align: left;
+    text-align: start;
   }
   .fl-col:hover {
     color: var(--foreground);
@@ -223,7 +223,7 @@
   /* The first column's text aligns with the row names (icon width +
      gap): 8px padding + 16px icon + 8px gap. */
   .fl-col:first-child {
-    padding-left: 24px;
+    padding-inline-start: 24px;
   }
 
   .fl-body {
