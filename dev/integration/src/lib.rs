@@ -37,6 +37,23 @@ pub struct EphemeralStack {
     runtime: TempDir,
     /// Spawned daemons, killed on drop (reverse spawn order).
     children: Vec<Child>,
+    /// When true (the default), `base_env` grants the resolved test caller the
+    /// FirstParty (system-anchored) tier (`ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY`).
+    ///
+    /// This is on by default because a NON-root knowledge daemon (the harness runs
+    /// every daemon as the developer uid) cannot read a same-uid peer's `/proc`:
+    /// both the exe-based identity resolution AND the ThirdParty read-scope token
+    /// mint (`issue_token_for_pid`, which re-reads `/proc/<pid>` for the PID-reuse
+    /// guard) fail with EACCES. A system-anchored caller bypasses that per-request
+    /// token mint, so it is the only tier a non-root daemon can serve a read to.
+    /// The scoped-ThirdParty read path is covered by the daemon's own unit tests;
+    /// the assembled-stack IT exercises the read as system-anchored. The deployed
+    /// daemon runs as root and can do the ThirdParty mint directly.
+    ///
+    /// A scenario whose assertion needs an UNprivileged caller (the write-tier and
+    /// authority-read refusals) calls [`as_unprivileged`](Self::as_unprivileged)
+    /// before spawning knowledge to drop back to ThirdParty.
+    first_party: bool,
 }
 
 impl EphemeralStack {
@@ -65,7 +82,21 @@ impl EphemeralStack {
         Ok(Self {
             runtime,
             children: Vec::new(),
+            first_party: true,
         })
+    }
+
+    /// Drop the test caller to the unprivileged ThirdParty tier (no
+    /// `ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY`) for every daemon spawned after this
+    /// call. The caller is still resolved (via `ARLEN_KNOWLEDGE_DEV_SELF_ID`) so
+    /// its identity is known; it just is not system-anchored. Needed by the
+    /// scenarios whose assertion is a refusal of an unprivileged caller (the
+    /// write-tier gate and the authority-label read gate). Call before spawning
+    /// knowledge. See [`first_party`](Self::first_party) for why FirstParty is the
+    /// default in a non-root harness.
+    pub fn as_unprivileged(&mut self) -> &mut Self {
+        self.first_party = false;
+        self
     }
 
     /// The private runtime root (every socket lives directly under it).
@@ -177,10 +208,24 @@ impl EphemeralStack {
         // (the rel-type token cannot be scoped per-label), so a seeded read
         // scenario sets the debug-only exact extra-first-party env to the test's
         // own dev id - the analog of the daemon's `dev.arlen-*` FirstParty admit.
+        //
+        // And the knowledge caller identity itself: this daemon runs non-root in
+        // the harness, so it cannot read a same-uid peer's `/proc/<pid>/exe` and
+        // would resolve THIS test connection to the `unknown` sentinel - which the
+        // read-scope label gate denies regardless of the seeded profile or the
+        // FirstParty tier above (both keyed on the resolved id). Declare the test's
+        // own id so the debug-only daemon fallback resolves us to it; the deployed
+        // root daemon reads the exe directly and never consults this.
         if let Some(id) = own_app_id() {
             env.insert("ARLEN_AUDIT_EXTRA_ADMIT".to_string(), id.clone());
             env.insert("ARLEN_REVOKE_EXTRA_ADMIT".to_string(), id.clone());
-            env.insert("ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY".to_string(), id);
+            env.insert("ARLEN_KNOWLEDGE_DEV_SELF_ID".to_string(), id.clone());
+            // FirstParty tier is opt-in (see `first_party`): granting it globally
+            // would make the deny scenarios' caller system-anchored and defeat
+            // their refusal assertions.
+            if self.first_party {
+                env.insert("ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY".to_string(), id);
+            }
         }
         env
     }

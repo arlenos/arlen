@@ -208,6 +208,9 @@ async fn a_file_opened_event_lands_in_sqlite() {
 #[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host"]
 async fn the_read_socket_denies_an_unprivileged_authority_query() {
     let mut stack = EphemeralStack::new().expect("private runtime root");
+    // The assertion is a refusal of an UNprivileged caller; drop the harness's
+    // default FirstParty grant so the caller is a resolved ThirdParty.
+    stack.as_unprivileged();
     stack
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
@@ -258,6 +261,9 @@ async fn the_read_socket_denies_an_unprivileged_authority_query() {
 #[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host"]
 async fn the_write_socket_refuses_an_unprivileged_relation_write() {
     let mut stack = EphemeralStack::new().expect("private runtime root");
+    // The assertion is a refusal of an UNprivileged caller; drop the harness's
+    // default FirstParty grant so the caller is a resolved ThirdParty.
+    stack.as_unprivileged();
     stack
         .spawn("daemons/event-bus", "event-bus", &[])
         .expect("spawn event-bus");
