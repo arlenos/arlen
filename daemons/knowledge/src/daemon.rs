@@ -1904,6 +1904,35 @@ fn row_count(rs: &crate::graph::RowSet) -> i64 {
         .unwrap_or(0)
 }
 
+/// The app id for a SAME-uid peer whose `/proc/<pid>/exe` could not be read for
+/// identity resolution.
+///
+/// The deployed knowledge daemon runs as root (for the eBPF sensor) and reads
+/// any peer's exe, so it always resolves a real id. A NON-root daemon (the
+/// integration harness and `just dev`, which run every daemon as the developer
+/// uid) cannot read a same-uid peer's `/proc/<pid>/exe` (`__ptrace_may_access`
+/// denies the cross-process read), so the peer resolves to the `unknown`
+/// sentinel and the read-scope label gate then denies every seeded read.
+///
+/// In a debug build ONLY, honor a caller id declared by the launcher
+/// (`ARLEN_KNOWLEDGE_DEV_SELF_ID`, set by the integration harness to the test's
+/// own resolved app id) so its seeded read profile applies. A release daemon
+/// never consults this env (it resolves via `/proc` as root); it is a
+/// debug-only test/dev accommodation, the same shape as the audit daemon's
+/// `ARLEN_AUDIT_EXTRA_ADMIT`. Same-uid only: a cross-uid peer keeps the strict
+/// resolve-or-reject path above, so this cannot widen cross-user access.
+fn same_uid_unresolved_id() -> String {
+    #[cfg(debug_assertions)]
+    {
+        if let Ok(id) = std::env::var("ARLEN_KNOWLEDGE_DEV_SELF_ID") {
+            if !id.is_empty() {
+                return id;
+            }
+        }
+    }
+    "unknown".to_string()
+}
+
 /// Whether a CROSS-uid peer (uid `peer_uid`, resolved to `tier`) may be served.
 /// It must be a first-party/system client (a canonical /usr binary another user
 /// cannot plant), AND - when `owner_uid` is configured (ARLEN_OWNER_UID, the
@@ -2004,7 +2033,7 @@ async fn handle_client(
                                 );
                                 "unknown".to_string()
                             }
-                            (false, _) => "unknown".to_string(),
+                            (false, _) => same_uid_unresolved_id(),
                         }
                     }
                 };
