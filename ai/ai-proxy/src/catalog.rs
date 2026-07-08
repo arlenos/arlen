@@ -116,6 +116,35 @@ pub enum CatalogError {
     /// The catalog file was not valid TOML for the catalog shape.
     #[error("parsing the provider catalog: {0}")]
     Parse(#[from] toml::de::Error),
+    /// A keyed provider (one whose `auth_scheme` sends an API key) is configured with a
+    /// plaintext, non-loopback endpoint, which would leak the key on the wire. The SSRF
+    /// floor guards the destination IP but not the scheme, so this is checked here.
+    #[error("provider '{provider}' sends a key but its endpoint is not https or loopback")]
+    InsecureEndpoint {
+        /// The offending provider name.
+        provider: String,
+    },
+}
+
+/// Whether a catalog entry may be reached without leaking its credential: a provider that
+/// sends no key is unrestricted (the SSRF floor still applies), and a keyed provider must
+/// use `https` or a loopback host so the key never crosses the network in the clear.
+fn endpoint_is_secure_enough(entry: &CatalogEntry) -> bool {
+    if entry.auth_scheme == AuthScheme::None {
+        return true;
+    }
+    match url::Url::parse(&entry.endpoint_url) {
+        Ok(u) => u.scheme() == "https" || u.host_str().is_some_and(is_loopback_host),
+        Err(_) => false,
+    }
+}
+
+/// Whether a host names the local machine (so plaintext to it stays on the box).
+fn is_loopback_host(host: &str) -> bool {
+    host == "localhost"
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 /// Trusted provider catalog.
@@ -146,6 +175,11 @@ impl ProviderCatalog {
         let mut entries = Self::default_arlen().entries;
         for (name, entry) in config.providers {
             entries.insert(name, entry);
+        }
+        for (name, entry) in &entries {
+            if !endpoint_is_secure_enough(entry) {
+                return Err(CatalogError::InsecureEndpoint { provider: name.clone() });
+            }
         }
         Ok(Self::new(entries))
     }
@@ -321,6 +355,41 @@ mod tests {
         let path = tmp_catalog("bad", "this = = not valid toml");
         assert!(ProviderCatalog::load_or_default(&path).is_err());
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn load_rejects_a_keyed_provider_on_a_plaintext_endpoint() {
+        // a cloud provider that sends a Bearer key over plaintext http would leak the key
+        let path = tmp_catalog(
+            "insecure",
+            "[providers.cloud]\n\
+             endpoint_url = \"http://api.example.com/v1/chat/completions\"\n\
+             backend = \"openai\"\n\
+             auth_scheme = \"bearer\"\n",
+        );
+        let err = ProviderCatalog::load_or_default(&path).unwrap_err();
+        assert!(matches!(err, CatalogError::InsecureEndpoint { .. }));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn load_accepts_a_keyed_provider_over_https_or_loopback() {
+        for (name, url) in [
+            ("https", "https://api.example.com/v1/chat/completions"),
+            ("loopback", "http://127.0.0.1:8080/v1/chat/completions"),
+        ] {
+            let path = tmp_catalog(
+                name,
+                &format!(
+                    "[providers.keyed]\n\
+                     endpoint_url = \"{url}\"\n\
+                     backend = \"openai\"\n\
+                     auth_scheme = \"bearer\"\n"
+                ),
+            );
+            assert!(ProviderCatalog::load_or_default(&path).is_ok(), "{name} should load");
+            std::fs::remove_file(&path).ok();
+        }
     }
 
     #[test]
