@@ -60,7 +60,13 @@
         <EmptyState variant={emptyVariant} {onstarter} {onretry} />
       {/if}
     {:else}
-      <div class="thread">
+      <div
+        class="thread"
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+        aria-label="Conversation"
+      >
         {#each $messages as message (message.id)}
           <ChatMessage {message} {aiReady} />
         {/each}
