@@ -20,6 +20,7 @@
   import { LiveRegion } from "@arlen/ui-kit/components/a11y";
   import HarnessSidebar from "$lib/components/HarnessSidebar.svelte";
   import TransparencyDrawer from "$lib/components/chat/TransparencyDrawer.svelte";
+  import BookmarksDrawer from "$lib/components/chat/BookmarksDrawer.svelte";
   import MintFlow from "$lib/components/mint/MintFlow.svelte";
   import { activeTitle, initSessions, newSession } from "$lib/stores/conversation";
 
@@ -119,5 +120,6 @@
 <!-- The transparency drawer overlays the whole shell, summoned from the
      composer foot; mounted once here so it works from any surface. -->
 <TransparencyDrawer />
+<BookmarksDrawer />
 <MintFlow />
 <LiveRegion message={announcement} />
