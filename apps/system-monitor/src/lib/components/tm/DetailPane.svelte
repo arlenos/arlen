@@ -3,7 +3,7 @@
   /// plus the Arlen-native ACCESS tab: what the process holds + the KG capability
   /// scopes it holds, revocable right here. The sovereign angle as per-process
   /// detail, not a landing.
-  import { detailFor, revokeScope, type ProcDetail } from "$lib/stores/detail";
+  import { detailFor, type ProcDetail } from "$lib/stores/detail";
   import type { Process } from "$lib/stores/processes";
   import { ScopeChip } from "@arlen/ui-kit/components/ui/scope-chip";
   import { X, Camera, Mic, Cog, Cpu } from "lucide-svelte";
@@ -16,22 +16,14 @@
 
   const detail = $derived<ProcDetail>(detailFor(process));
   let confirmQuit = $state(false);
-  let revoked = $state<Set<string>>(new Set());
-  const visibleScopes = $derived(detail.access.scopes.filter((s) => !revoked.has(s.label)));
   const TABS = ["Access", "Statistics", "Memory", "Open files"] as const;
   let tab = $state<(typeof TABS)[number]>("Access");
 
-  // Reset the revoke set + the quit confirm when the selected process changes.
+  // Reset the quit confirm when the selected process changes.
   $effect(() => {
     process;
     confirmQuit = false;
-    revoked = new Set();
   });
-
-  function revoke(label: string) {
-    revoked = new Set(revoked).add(label);
-    void revokeScope(process.id, label);
-  }
   function forceQuit() {
     if (!confirmQuit) {
       confirmQuit = true;
@@ -96,12 +88,12 @@
 
       <p class="acc-reach">{detail.access.reach}</p>
 
-      {#if visibleScopes.length > 0}
+      {#if detail.access.scopes.length > 0}
         <div class="acc-scopes">
           <h3 class="acc-h">Knowledge access</h3>
           <div class="acc-chips">
-            {#each visibleScopes as s (s.label)}
-              <ScopeChip label={s.label} onRevoke={() => revoke(s.label)} />
+            {#each detail.access.scopes as s (s.label)}
+              <ScopeChip label={s.label} />
             {/each}
           </div>
         </div>
