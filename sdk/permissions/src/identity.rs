@@ -189,7 +189,17 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         | "/usr/lib/arlen/apps/ai-daemon/bin/arlen-ai" => {
             return Ok("ai-daemon".to_string());
         }
-        "/usr/lib/arlen/libexec/arlen-ai-agent" => {
+        // The pi-based engine daemon is the drop-in replacement for the retired
+        // ai-agent (pi-agent-adoption.md step 9): it fills the same autonomous-
+        // curator ROLE, so it resolves to the same principal `ai-agent`, reusing
+        // the go-live permission profile and the audit ADMITTED entry that role is
+        // keyed under. This matches the planner's reuse-the-existing-name ruling
+        // (it reverted a redundant `AIEngine1` D-Bus name so the engine owns the
+        // existing `AI1`/`AIAgent1`); an app id is a role, not a binary name. In a
+        // dev build the debug rule resolves the cargo-run binary to
+        // `dev.arlen-ai-engine-daemon` before this canonical path is reached.
+        "/usr/lib/arlen/libexec/arlen-ai-agent"
+        | "/usr/lib/arlen/libexec/arlen-ai-engine-daemon" => {
             return Ok("ai-agent".to_string());
         }
         // The AI egress proxy, pinned canonically so its per-forward audit submits
@@ -623,6 +633,13 @@ mod tests {
         // inert.
         let path = PathBuf::from("/usr/lib/arlen/libexec/arlen-ai-agent");
         assert_eq!(path_to_app_id(&path).unwrap(), "ai-agent");
+
+        // The pi-based engine daemon is the drop-in replacement for the retired
+        // ai-agent and fills the same curator role, so its canonical binary
+        // resolves to the same `ai-agent` principal (reusing the go-live profile
+        // and the audit ADMITTED entry).
+        let engine = PathBuf::from("/usr/lib/arlen/libexec/arlen-ai-engine-daemon");
+        assert_eq!(path_to_app_id(&engine).unwrap(), "ai-agent");
 
         // A same-basename binary in a writable location is still rejected.
         for spoofed in ["/tmp/arlen-ai-agent", "/home/attacker/arlen-ai-agent"] {
