@@ -61,7 +61,7 @@ impl Service {
 /// One per-app capability grant: which app may use which of this account's
 /// services, and the least-privilege OAuth scope the grant maps to. The presence
 /// of a grant IS the capability - absence means no access (fail-closed).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Grant {
     /// The Arlen app id the grant is for (matched against the caller's
@@ -84,7 +84,7 @@ pub struct Grant {
 /// mount time from the vault. Field use is per [`backend`](FilesBackend::backend):
 /// `sftp`/`ftp` use `host`/`port`/`user` (sftp also `key_file`), `webdav` uses
 /// `url`/`user`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FilesBackend {
     /// Which mount backend (`sftp` / `ftp` / `webdav`).
@@ -110,7 +110,7 @@ pub struct FilesBackend {
 }
 
 /// One account's intent. No secrets (see the module doc).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AccountConfig {
     /// Stable account id (also the config file stem).
