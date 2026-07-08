@@ -14,3 +14,12 @@ export const bookmarksOpen = writable(false);
 export function openBookmarks(): void {
   bookmarksOpen.set(true);
 }
+
+/// Whether the find-in-chat bar is open. Summoned from the composer foot or Ctrl+F,
+/// the bar itself lives in ChatThread (which owns the scroll region).
+export const findOpen = writable(false);
+
+/// Open the find-in-chat bar.
+export function openFind(): void {
+  findOpen.set(true);
+}

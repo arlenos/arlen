@@ -10,13 +10,13 @@
   import { tick } from "svelte";
   import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { ArrowUp, Bookmark, File as FileIcon, Folder, Paperclip, ShieldCheck } from "@lucide/svelte";
+  import { ArrowUp, Bookmark, File as FileIcon, Folder, Paperclip, Search, ShieldCheck } from "@lucide/svelte";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { openTransparency } from "$lib/stores/transparency";
   import { pinnedMessages } from "$lib/bookmark";
-  import { openBookmarks } from "$lib/stores/chatNav";
+  import { openBookmarks, openFind } from "$lib/stores/chatNav";
   import ContextChips from "./ContextChips.svelte";
   import ModelPickerBar from "./ModelPickerBar.svelte";
   import AutonomyDial from "./AutonomyDial.svelte";
@@ -297,6 +297,9 @@
             <Bookmark size={14} strokeWidth={2} />
           </IconAction>
         {/if}
+        <IconAction label="Find in chat" size="control" onclick={() => openFind()}>
+          <Search size={14} strokeWidth={2} />
+        </IconAction>
       </div>
       <div class="foot-right">
         {#if !disabled}

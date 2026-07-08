@@ -42,10 +42,13 @@
   let {
     message,
     aiReady,
+    highlighted = false,
   }: {
     message: Message;
     /// AI confirmed usable; actions that re-ask the assistant require it.
     aiReady: boolean;
+    /// The current find-in-chat match, so the turn reads highlighted.
+    highlighted?: boolean;
   } = $props();
 
   const isLast = $derived($messages[$messages.length - 1]?.id === message.id);
@@ -101,7 +104,7 @@
   }
 </script>
 
-<div class="turn" data-role={message.role} data-mid={message.id}>
+<div class="turn" class:highlighted data-role={message.role} data-mid={message.id}>
   <p class="role">{message.role === "user" ? "You" : "Assistant"}</p>
 
   {#if message.pending}
@@ -234,6 +237,16 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    border-radius: var(--radius-card, 12px);
+    transition:
+      background-color var(--duration-fast) var(--ease-out),
+      box-shadow var(--duration-fast) var(--ease-out);
+  }
+  /* The current find-in-chat match: a quiet monochrome wash + ring, never a
+     browser-find yellow. */
+  .turn.highlighted {
+    background: color-mix(in srgb, var(--foreground) 5%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 18%, transparent);
   }
   /* Quiet sentence-case role line on the shared text edge. Deliberately not
      an uppercase eyebrow. */
