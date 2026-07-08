@@ -18,6 +18,8 @@
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { ProviderLogo } from "@arlen/ui-kit/components/ui/provider-logo";
+  import { Plus } from "lucide-svelte";
+  import AddProviderDialog from "$lib/components/AddProviderDialog.svelte";
 
   /// One provider as the catalogue + the broker report it. `configured` means
   /// credentials exist (or none are needed, for a local provider); an enabled
@@ -92,6 +94,11 @@
     | { state: "network" };
   const tests = writable<Record<string, TestVerdict>>({});
 
+  // The escape hatch: add a provider the catalogue does not carry. The dialog owns
+  // the form + the broker-gated save; reload the catalogue on close so a new one
+  // shows once that backend lands.
+  let showAdd = $state(false);
+
   async function testProvider(id: string) {
     tests.update((m) => ({ ...m, [id]: { state: "testing" } }));
     let verdict: TestVerdict = { state: "network" };
@@ -140,8 +147,22 @@
         <p class="empty">No providers are set up yet.</p>
       {/if}
     </Group>
+    <div class="add-row span-full">
+      <Button variant="secondary" size="sm" onclick={() => (showAdd = true)}>
+        <Plus size={15} strokeWidth={2} />
+        Add provider
+      </Button>
+    </div>
   </SectionGrid>
 </Page>
+
+<AddProviderDialog
+  open={showAdd}
+  onClose={() => {
+    showAdd = false;
+    loadProviders();
+  }}
+/>
 
 {#snippet row(p: Provider)}
   {@const verdict = $tests[p.id]}
@@ -177,6 +198,11 @@
     padding: var(--space-row, 0.75rem) 1rem;
     font-size: 0.8125rem;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  /* The add escape hatch sits just under the catalogue, reading as secondary. */
+  .add-row {
+    display: flex;
+    padding-top: 0.5rem;
   }
   /* The test verdict sits with the Test button in the control cluster. */
   .verdict {
