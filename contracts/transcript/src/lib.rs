@@ -134,6 +134,47 @@ impl Transcript {
             segments: merged,
         }
     }
+
+    /// A human-readable rendering, one line per non-empty segment as
+    /// `[m:ss] speaker: text` (the speaker prefix is dropped when the segment has no
+    /// diarization label). This is the form the meeting note embeds and the
+    /// click-to-transcript view shows; it is derived text, not a wire format. Merge
+    /// first with [`Transcript::merge_adjacent_same_speaker`] for one line per utterance.
+    pub fn to_readable(&self) -> String {
+        let mut out = String::new();
+        for seg in &self.segments {
+            let text = seg.text.trim();
+            if text.is_empty() {
+                continue;
+            }
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out.push('[');
+            out.push_str(&format_timestamp(seg.start_ms));
+            out.push_str("] ");
+            if let Some(speaker) = &seg.speaker {
+                out.push_str(speaker);
+                out.push_str(": ");
+            }
+            out.push_str(text);
+        }
+        out
+    }
+}
+
+/// Format a millisecond offset as `m:ss`, or `h:mm:ss` once it passes an hour, for the
+/// readable transcript rendering.
+fn format_timestamp(ms: u64) -> String {
+    let total_secs = ms / 1000;
+    let hours = total_secs / 3600;
+    let minutes = (total_secs % 3600) / 60;
+    let seconds = total_secs % 60;
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes}:{seconds:02}")
+    }
 }
 
 /// The minimum of two optional confidences, treating an absent value as "no floor" so a
@@ -264,5 +305,20 @@ mod tests {
         let json = serde_json::to_string(&t).unwrap();
         let back: Transcript = serde_json::from_str(&json).unwrap();
         assert_eq!(t, back);
+    }
+
+    #[test]
+    fn readable_labels_speakers_and_formats_timestamps() {
+        let t = Transcript {
+            language: None,
+            segments: vec![
+                seg(65_000, 66_000, "hallo", Some("speaker_0")),
+                seg(65_500, 66_000, "   ", None),
+                seg(3_661_000, 3_662_000, "spaet", None),
+            ],
+        };
+        // 65s -> 1:05 with the speaker prefix; a blank segment is skipped; past an hour
+        // the timestamp gains an hours field and an unlabelled segment has no prefix.
+        assert_eq!(t.to_readable(), "[1:05] speaker_0: hallo\n[1:01:01] spaet");
     }
 }
