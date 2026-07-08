@@ -10,6 +10,7 @@
   import {
     Sidebar,
     SidebarContent,
+    SidebarFooter,
     SidebarGroup,
     SidebarGroupLabel,
     SidebarMenu,
@@ -22,6 +23,7 @@
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
   import {
+    Activity,
     Copy,
     MoreHorizontal,
     Pencil,
@@ -157,6 +159,24 @@
       </SidebarGroup>
     {/each}
   </SidebarContent>
+
+  <!-- One quiet, always-visible way into the agent's activity record. Secondary
+       to Chat (a footer row, never a peer mode), but discoverable. -->
+  <SidebarFooter>
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          id="harness-activity"
+          title="The agent's activity record"
+          isActive={!onChat}
+          onclick={() => goto("/agent")}
+        >
+          <Activity strokeWidth={2} />
+          <span>Activity</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  </SidebarFooter>
 
   <SidebarRail />
 </Sidebar>
