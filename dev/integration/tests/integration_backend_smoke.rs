@@ -1504,20 +1504,20 @@ async fn the_live_executor_undo_retracts_the_edge() {
     }
     let mut stack = EphemeralStack::new().expect("private runtime root");
 
-    let agent_exe = arlen_integration::binary_path("ai", "arlen-ai-agent");
-    let agent_app_id = arlen_permissions::identity::path_to_app_id(&agent_exe)
-        .expect("resolve the agent's app id");
+    // A non-root harness daemon cannot read a same-uid peer's /proc/exe, so BOTH
+    // the test caller AND the spawned agent resolve to the launcher-declared
+    // caller id (ARLEN_KNOWLEDGE_DEV_SELF_ID = this process's own id): the daemon
+    // cannot distinguish the two same-uid processes. Seed the executor scope (the
+    // File/Project read fields + the FILE_PART_OF relation + the first-party tier)
+    // under THAT shared id so the agent's proven write is authorized; the executor
+    // profile is a superset of the read profile, so it also covers the test's own
+    // File->Project poll. The deployed daemon runs as root, reads the agent's exe,
+    // and uses the agent's own `dev.arlen-ai-agent` executor profile, so this is a
+    // harness-only accommodation.
+    let caller_id = arlen_integration::own_app_id().expect("resolve own app id");
     stack
-        .seed_executor_profile_for(&agent_app_id, "first-party")
-        .expect("seed the agent's executor profile");
-    stack
-        .seed_read_profile(&[
-            "system.File.id",
-            "system.File.path",
-            "system.Project.id",
-            "system.Project.root_path",
-        ])
-        .expect("seed the test caller's read profile");
+        .seed_executor_profile_for(&caller_id, "first-party")
+        .expect("seed the executor profile under the harness-resolved caller id");
 
     // Enable ONLY the manual workflow; executor_live makes its proven proposal
     // execute immediately (silent-immediate curation).
