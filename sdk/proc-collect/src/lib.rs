@@ -40,6 +40,9 @@ pub struct ProcessRow {
 pub struct Collector {
     sys: System,
     networks: Networks,
+    /// Previous cumulative `(disk_read, disk_written)` bytes, so disk throughput is
+    /// a delta (diskstats is cumulative). `None` until the first [`totals`](Self::totals).
+    prev_disk: Option<(u64, u64)>,
 }
 
 impl Default for Collector {
@@ -53,7 +56,11 @@ impl Collector {
     /// for every process (a rate needs two samples); refresh again after an
     /// interval for real figures.
     pub fn new() -> Self {
-        Self { sys: System::new(), networks: Networks::new_with_refreshed_list() }
+        Self {
+            sys: System::new(),
+            networks: Networks::new_with_refreshed_list(),
+            prev_disk: None,
+        }
     }
 
     /// Number of logical CPUs, for turning the per-core [`ProcessRow::cpu_percent`]
@@ -96,6 +103,14 @@ impl Collector {
             net_received_bytes = net_received_bytes.saturating_add(data.received());
             net_transmitted_bytes = net_transmitted_bytes.saturating_add(data.transmitted());
         }
+        // Disk throughput: diskstats is cumulative, so report the delta since the
+        // previous call (0 on the first).
+        let disk_now = crate::disk::read_disk_cumulative();
+        let (disk_read_bytes, disk_written_bytes) = match self.prev_disk {
+            Some((pr, pw)) => (disk_now.0.saturating_sub(pr), disk_now.1.saturating_sub(pw)),
+            None => (0, 0),
+        };
+        self.prev_disk = Some(disk_now);
         SystemTotals {
             cpu_percent: self.sys.global_cpu_usage(),
             memory_total_bytes: self.sys.total_memory(),
@@ -105,6 +120,8 @@ impl Collector {
             swap_used_bytes: self.sys.used_swap(),
             net_received_bytes,
             net_transmitted_bytes,
+            disk_read_bytes,
+            disk_written_bytes,
         }
     }
 }
@@ -112,8 +129,8 @@ impl Collector {
 /// System-wide resource totals for the Performance tab. Memory is used-vs-AVAILABLE
 /// (`MemAvailable`), not used-vs-free: available counts reclaimable cache, so it is
 /// the honest "how much can I still allocate" figure (system-monitor-plan.md §b).
-/// Disk and per-interface network totals are a later layer (net via sysinfo's
-/// interface deltas, disk I/O throughput hand-rolled - neither is in this snapshot).
+/// CPU, memory, swap, network and disk are all covered; per-interface and per-disk
+/// breakdowns, PSI, and the GPU are later layers.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SystemTotals {
     /// Overall CPU usage, 0-100 (whole machine); a rate, so 0 on the first read.
@@ -134,6 +151,11 @@ pub struct SystemTotals {
     pub net_received_bytes: u64,
     /// Bytes transmitted across all interfaces since the previous call.
     pub net_transmitted_bytes: u64,
+    /// Bytes read from whole-disk devices since the previous [`Collector::totals`]
+    /// call (0 on the first) - divide by the inter-call interval for a rate.
+    pub disk_read_bytes: u64,
+    /// Bytes written to whole-disk devices since the previous call.
+    pub disk_written_bytes: u64,
 }
 
 /// An app-grouped row: one named app aggregating its processes' resources (the
@@ -266,3 +288,6 @@ pub mod stop;
 
 /// Per-process detail (honest PSS memory, open-file count) read on demand.
 pub mod detail;
+
+/// Disk I/O throughput over /proc/diskstats (whole-disk delta).
+pub mod disk;
