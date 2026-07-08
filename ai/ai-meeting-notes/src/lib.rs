@@ -130,18 +130,17 @@ fn build_note(
     })
 }
 
-/// Extract the note JSON from a reply, tolerating prose wrapped around it: try the whole
-/// reply, then the first balanced-looking `{...}` span.
+/// Extract the note JSON from a reply, tolerating prose around it. A local model often adds
+/// an aside despite the instructions, so we find the first object and let serde read exactly
+/// one value from there, ignoring any trailing text. serde's streaming reader is string-aware,
+/// so a brace inside a string value (or in trailing prose) does not end the object early or
+/// extend it, which a naive first-`{`-to-last-`}` span would get wrong.
 fn parse_note_json(reply: &str) -> Option<NoteDraft> {
-    if let Ok(draft) = serde_json::from_str::<NoteDraft>(reply.trim()) {
-        return Some(draft);
-    }
     let start = reply.find('{')?;
-    let end = reply.rfind('}')?;
-    if end < start {
-        return None;
-    }
-    serde_json::from_str::<NoteDraft>(&reply[start..=end]).ok()
+    serde_json::Deserializer::from_str(&reply[start..])
+        .into_iter::<NoteDraft>()
+        .next()?
+        .ok()
 }
 
 #[cfg(test)]
@@ -220,6 +219,19 @@ mod tests {
         .unwrap();
         assert_eq!(note.summary, "done");
         assert!(note.action_items.is_empty());
+    }
+
+    #[test]
+    fn build_note_ignores_trailing_prose_that_contains_a_brace() {
+        // a non-compliant model adds an aside with its own brace; a first-{-to-last-} span
+        // would over-extend and fail, so the streaming parse must stop at the first value.
+        let note = build_note(
+            r#"{"summary": "shipped", "action_items": []} (kept it brief {as asked})"#,
+            ctx(),
+            transcript(),
+        )
+        .unwrap();
+        assert_eq!(note.summary, "shipped");
     }
 
     #[test]
