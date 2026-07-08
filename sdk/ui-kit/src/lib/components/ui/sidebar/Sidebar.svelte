@@ -38,8 +38,8 @@
   <div
     data-slot="sidebar-container"
     class={cn(
-      "fixed inset-y-0 left-0 z-10 flex h-svh w-(--sidebar-width) transition-[left,width] duration-200 ease-linear",
-      "group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]",
+      "fixed inset-y-0 start-0 z-10 flex h-svh w-(--sidebar-width) transition-[inset-inline-start,width] duration-200 ease-linear",
+      "group-data-[collapsible=offcanvas]:start-[calc(var(--sidebar-width)*-1)]",
       "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
       "border-e border-sidebar-border",
       className
