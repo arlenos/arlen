@@ -2,7 +2,7 @@
   /// The process table: the task-manager landing. A dense, sortable, heat-coloured
   /// list grouped into Apps / Background / System, a Stop on every row. The Arlen
   /// daemons + the AI agent sit in Background as ordinary rows. No verdict page.
-  import { ChevronRight, Square } from "lucide-svelte";
+  import { ChevronRight, Square, Cog, Cpu } from "lucide-svelte";
   import type { Process, ProcGroup, ProcStatus, SortKey } from "$lib/stores/processes";
 
   let {
@@ -154,6 +154,15 @@
             {:else}
               <span class="twist-spacer"></span>
             {/if}
+            {#if it.depth > 0}
+              <span class="picon dot" aria-hidden="true"></span>
+            {:else if p.group === "app"}
+              <span class="picon avatar" aria-hidden="true">{p.name.charAt(0)}</span>
+            {:else if p.group === "background"}
+              <span class="picon glyph" aria-hidden="true"><Cog size={13} strokeWidth={2} /></span>
+            {:else}
+              <span class="picon glyph" aria-hidden="true"><Cpu size={13} strokeWidth={2} /></span>
+            {/if}
             <span class="pname">{p.name}</span>
           </div>
           <div class="cell status" role="cell" data-status={p.status}>{STATUS_LABEL[p.status]}</div>
@@ -281,6 +290,31 @@
   .twist-spacer {
     width: 13px;
     flex-shrink: 0;
+  }
+  .picon {
+    flex-shrink: 0;
+    width: 1.2rem;
+    height: 1.2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .picon.avatar {
+    border-radius: var(--radius-chip, 4px);
+    background: color-mix(in srgb, var(--color-fg-primary) 12%, transparent);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--color-fg-primary);
+  }
+  .picon.glyph {
+    color: color-mix(in srgb, var(--color-fg-primary) 38%, transparent);
+  }
+  .picon.dot::before {
+    content: "";
+    width: 0.3rem;
+    height: 0.3rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-fg-primary) 28%, transparent);
   }
   .pname {
     overflow: hidden;
