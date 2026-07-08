@@ -14,6 +14,35 @@
 
 use std::collections::HashMap;
 
+/// The default spending window (24h) when `[limits]` is configured without an explicit one.
+pub const DEFAULT_WINDOW_SECS: u64 = 86_400;
+
+fn default_window_secs() -> u64 {
+    DEFAULT_WINDOW_SECS
+}
+
+/// Per-provider token spending limits from `ai-routing.toml`'s `[limits]` section: the window
+/// usage resets over, and the per-provider token cap that (once reached) makes a combo fall
+/// past the provider. A cost cap in currency is deliberately absent - it needs per-provider
+/// pricing (the models.dev seed), a separate item.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct UsageLimits {
+    /// The rolling window in seconds after which every provider's usage resets. Defaults to
+    /// [`DEFAULT_WINDOW_SECS`] when omitted.
+    #[serde(default = "default_window_secs")]
+    pub window_secs: u64,
+    /// Per-provider token cap for the window (provider id -> max total tokens). A provider
+    /// absent here is uncapped.
+    #[serde(default)]
+    pub caps: HashMap<String, u64>,
+}
+
+impl Default for UsageLimits {
+    fn default() -> Self {
+        Self { window_secs: DEFAULT_WINDOW_SECS, caps: HashMap::new() }
+    }
+}
+
 /// One provider's token usage within the current window.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

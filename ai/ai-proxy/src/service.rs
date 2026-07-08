@@ -233,8 +233,21 @@ pub struct ProxyService {
     caller_allowlist: CallerAllowlist,
     forwarder: Arc<dyn Forwarder>,
     audit_sink: Arc<dyn AuditSink>,
+    /// Per-provider token usage over the configured window, for spending caps + the
+    /// transparency surface. Behind a mutex; the accrue is a brief sync lock, never held
+    /// across an await.
+    usage: Arc<std::sync::Mutex<crate::usage::UsageLedger>>,
     inflight: Arc<std::sync::atomic::AtomicUsize>,
     max_inflight: usize,
+}
+
+/// Current wall-clock time as epoch seconds, for the usage ledger's window. A clock error
+/// (system time before the epoch) floors to 0 rather than panicking.
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 impl ProxyService {
@@ -266,12 +279,17 @@ impl ProxyService {
         audit_sink: Arc<dyn AuditSink>,
         max_inflight: usize,
     ) -> Self {
+        let usage = Arc::new(std::sync::Mutex::new(crate::usage::UsageLedger::new(
+            catalog.limits().window_secs,
+            now_secs(),
+        )));
         Self {
             allowlist,
             catalog,
             caller_allowlist,
             forwarder,
             audit_sink,
+            usage,
             inflight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             max_inflight,
         }
@@ -288,6 +306,12 @@ impl ProxyService {
     /// Backs the daemon's `ai_providers_list`.
     pub fn provider_views(&self) -> Vec<crate::catalog::ProviderView> {
         self.catalog.views()
+    }
+
+    /// The current-window token usage for a provider, for the AI-transparency surface. Reads
+    /// zero once the window has elapsed (and if the ledger mutex is poisoned, a safe default).
+    pub fn provider_usage(&self, provider: &str) -> crate::usage::ProviderUsage {
+        self.usage.lock().map(|led| led.usage_of(provider, now_secs())).unwrap_or_default()
     }
 
     /// Forward through a named fallback chain, or a single provider. When `req.provider_name`
@@ -513,6 +537,14 @@ impl ProxyService {
                 } else {
                     result.body
                 };
+                // Meter the tokens this provider spent (for spending caps + the transparency
+                // surface). Only a body carrying a usage object accrues; anything else is a
+                // no-op. A poisoned ledger mutex is skipped rather than panicking the forward.
+                if let Some((prompt, completion)) = crate::usage::tokens_from_response_body(&body) {
+                    if let Ok(mut ledger) = self.usage.lock() {
+                        ledger.accrue(&req.provider_name, prompt, completion, now_secs());
+                    }
+                }
                 Ok(ForwardOutcome {
                     upstream_status: result.status,
                     body,
@@ -774,6 +806,34 @@ mod tests {
         assert_eq!(records[0].structural.outcome, "forwarding");
         assert_eq!(records[0].structural.subject, "127.0.0.1");
         assert_eq!(records[1].structural.outcome, "forwarded-200");
+    }
+
+    #[tokio::test]
+    async fn forward_meters_provider_token_usage() {
+        // A 200 whose body carries a usage object accrues that provider's tokens.
+        let forwarder = Arc::new(StubForwarder::new(vec![Ok(ForwardResult {
+            status: 200,
+            body: r#"{"choices":[],"usage":{"prompt_tokens":30,"completion_tokens":12,"total_tokens":42}}"#
+                .to_string(),
+        })]));
+        let svc = service_with(forwarder, Arc::new(CollectingAuditSink::new()));
+        svc.forward(
+            &ai_daemon_caller(),
+            ForwardRequest {
+                provider_name: "ollama-default".to_string(),
+                body_json: "{}".to_string(),
+                audit_token: "tok".to_string(),
+            },
+        )
+        .await
+        .expect("ok");
+        let u = svc.provider_usage("ollama-default");
+        assert_eq!(u.prompt_tokens, 30);
+        assert_eq!(u.completion_tokens, 12);
+        assert_eq!(u.total_tokens, 42);
+        assert_eq!(u.requests, 1);
+        // an unused provider meters nothing
+        assert_eq!(svc.provider_usage("nonexistent").total_tokens, 0);
     }
 
     fn combo_catalog(name: &str) -> ProviderCatalog {

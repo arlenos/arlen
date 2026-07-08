@@ -16,6 +16,8 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
+use crate::usage::UsageLimits;
+
 /// The wire protocol the proxy shapes a request/response for. The OpenAI
 /// chat-completions shape is the common case (~12 of 15 providers are pure
 /// base-URL + Bearer swaps); Anthropic and Gemini have native shapes the proxy
@@ -140,6 +142,9 @@ struct CatalogConfig {
     /// Named fallback chains: combo name -> the provider ids to try, in order.
     #[serde(default)]
     combos: HashMap<String, Vec<String>>,
+    /// Per-provider token spending limits + the reset window.
+    #[serde(default)]
+    limits: Option<UsageLimits>,
 }
 
 /// Why the provider catalog could not be loaded from disk.
@@ -177,6 +182,13 @@ pub enum CatalogError {
         /// Why it is invalid.
         reason: &'static str,
     },
+    /// A spending cap names a provider absent from the catalog, so the cap would never fire.
+    /// Caught at load.
+    #[error("spending cap references unknown provider '{provider}'")]
+    UnknownCapProvider {
+        /// The unknown provider id the cap referenced.
+        provider: String,
+    },
 }
 
 /// Whether a catalog entry may be reached without leaking its credential: a provider that
@@ -206,12 +218,14 @@ pub struct ProviderCatalog {
     entries: HashMap<String, CatalogEntry>,
     /// Named fallback chains (combo name -> ordered provider ids). Empty unless configured.
     combos: HashMap<String, Vec<String>>,
+    /// Per-provider token spending limits + the reset window. Default = no caps.
+    limits: UsageLimits,
 }
 
 impl ProviderCatalog {
-    /// Build a catalog from an explicit map (no combos).
+    /// Build a catalog from an explicit map (no combos, no limits).
     pub fn new(entries: HashMap<String, CatalogEntry>) -> Self {
-        Self { entries, combos: HashMap::new() }
+        Self { entries, combos: HashMap::new(), limits: UsageLimits::default() }
     }
 
     /// Load the catalog from `ai-routing.toml` layered on the built-in defaults: an absent
@@ -261,7 +275,15 @@ impl ProviderCatalog {
                 }
             }
         }
-        Ok(Self { entries, combos: config.combos })
+        // Resolve + validate spending limits: every capped provider must be known, so a cap
+        // on a typo'd provider fails at load rather than silently never firing.
+        let limits = config.limits.unwrap_or_default();
+        for provider in limits.caps.keys() {
+            if !entries.contains_key(provider) {
+                return Err(CatalogError::UnknownCapProvider { provider: provider.clone() });
+            }
+        }
+        Ok(Self { entries, combos: config.combos, limits })
     }
 
     /// The default Arlen catalog.
@@ -311,6 +333,16 @@ impl ProviderCatalog {
     /// `ProxyService::forward_combo`.
     pub fn combo(&self, name: &str) -> Option<&[String]> {
         self.combos.get(name).map(Vec::as_slice)
+    }
+
+    /// The configured spending limits (reset window + per-provider token caps).
+    pub fn limits(&self) -> &UsageLimits {
+        &self.limits
+    }
+
+    /// The token cap for a provider this window, if one is configured (else uncapped).
+    pub fn cap_for(&self, provider: &str) -> Option<u64> {
+        self.limits.caps.get(provider).copied()
     }
 
     /// Iterator over the registered provider names. Used by
