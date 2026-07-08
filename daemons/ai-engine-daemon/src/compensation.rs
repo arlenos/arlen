@@ -57,6 +57,16 @@ impl RetractReceipt {
     /// Build a receipt from a reported tool result, if it is a successful
     /// `graph.write` carrying the daemon's write-result shape. Any other tool, an
     /// error result, or a result missing a field yields `None` (nothing to undo).
+    ///
+    /// TEST-ONLY (`#[cfg(test)]`): this constructs a receipt from ENGINE-supplied
+    /// result JSON (an arbitrary op_id / from / to), so it is NOT authoritative.
+    /// The production write path registers only [`RetractReceipt::for_write`],
+    /// built from the daemon's own minted op_id, so `compensate` retracts only a
+    /// daemon-authored edge. Registering a `from_report` receipt into the live
+    /// compensation store would let a non-cooperative engine plant a forged
+    /// receipt and redirect a retract; keeping this test-gated makes that
+    /// regression a deliberate, visible change rather than a silent one.
+    #[cfg(test)]
     pub fn from_report(
         tool_name: &str,
         is_error: bool,
