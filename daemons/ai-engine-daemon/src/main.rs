@@ -173,7 +173,7 @@ fn resolve_knowledge_socket() -> String {
 /// so the read is bounded by the scope the gate already resolved. Only reachable
 /// when pi is running (AI enabled) and a `graph.read` Execute presents a valid
 /// HIGH-1 proof, so wiring it live carries no autonomy of its own.
-async fn build_read_runner() -> Arc<dyn QueryRunner> {
+async fn build_read_runner(connection: Option<&zbus::Connection>) -> Arc<dyn QueryRunner> {
     if !engine_config::ai_enabled() {
         return Arc::new(DeniedRunner);
     }
@@ -182,12 +182,12 @@ async fn build_read_runner() -> Arc<dyn QueryRunner> {
         tracing::warn!("no ai.provider configured; graph.read stays fail-closed");
         return Arc::new(DeniedRunner);
     }
-    let connection = match zbus::Connection::session().await {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::warn!(error = %e, "no session bus; graph.read stays fail-closed");
-            return Arc::new(DeniedRunner);
-        }
+    // The ProxiedProvider must forward on the connection that OWNS `org.arlen.AI1`:
+    // the ai-proxy authorizes an LLM forward by the owned name (planner ruling, pi
+    // as the drop-in ai-daemon). Without that connection, graph.read fails closed.
+    let Some(connection) = connection else {
+        tracing::warn!("no org.arlen.AI1 connection; graph.read stays fail-closed");
+        return Arc::new(DeniedRunner);
     };
     let provider: Arc<dyn AIProvider> = match ProxiedProvider::with_connection(
         ProxiedConfig {
@@ -196,7 +196,7 @@ async fn build_read_runner() -> Arc<dyn QueryRunner> {
             audit_token: settings.audit_token,
             context_window: settings.context_window,
         },
-        &connection,
+        connection,
     )
     .await
     {
@@ -209,6 +209,19 @@ async fn build_read_runner() -> Arc<dyn QueryRunner> {
     let graph: Arc<dyn GraphQuerier> = Arc::new(OsSdkGraphQuerier::new(resolve_knowledge_socket()));
     tracing::info!("graph.read wired to the live CypherPipeline over the proxied provider");
     Arc::new(CypherPipeline::new(provider, graph))
+}
+
+/// Build the session-bus connection that OWNS `org.arlen.AI1` - pi is the drop-in
+/// replacement for the retired ai-daemon (planner ruling, 8 July). No interface is
+/// attached here; `explain_system` is served on this same connection once the
+/// sidecar is up, and it is the connection the `ProxiedProvider` forwards on (the
+/// ai-proxy authorizes an LLM forward by the owned name). A name conflict (the old
+/// ai-daemon still owning it) surfaces as an error and fails the AI paths closed.
+async fn build_ai1_connection() -> zbus::Result<zbus::Connection> {
+    zbus::connection::Builder::session()?
+        .name(explain_iface::EXPLAIN_BUS_NAME)?
+        .build()
+        .await
 }
 
 /// Build the `graph.write` runner. Live ONLY when AI is enabled AND
@@ -282,8 +295,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // op-id-keyed compensation at apply time, from the daemon's own op id - so a
     // committed write is audited + undoable regardless of the engine's Report. An
     // unregistered tool is UnknownTool.
+    // The single `org.arlen.AI1`-owning connection (pi as the drop-in ai-daemon
+    // replacement): it both authorizes the ProxiedProvider's LLM forwards and
+    // serves explain_system (below). Built once, only when AI is enabled; a name
+    // conflict or missing bus leaves it None and the AI paths fail closed. Held in
+    // scope so it outlives the accept loop.
+    let ai_connection: Option<zbus::Connection> = if engine_config::ai_enabled() {
+        match build_ai1_connection().await {
+            Ok(c) => Some(c),
+            Err(e) => {
+                warn!(error = %e, "could not own org.arlen.AI1; graph.read + explain fail-closed");
+                None
+            }
+        }
+    } else {
+        None
+    };
     let read_executor: Arc<dyn Executor> =
-        Arc::new(GraphReadExecutor::new(build_read_runner().await));
+        Arc::new(GraphReadExecutor::new(build_read_runner(ai_connection.as_ref()).await));
     let write_executor: Arc<dyn Executor> = Arc::new(
         GraphWriteExecutor::new(build_write_runner())
             .with_audit(audit.clone())
@@ -344,15 +373,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Arc::new(PiSidecar::new(paths.clone())),
                             Arc::clone(&dispatcher) as Arc<dyn SessionBinder>,
                         );
-                        match explain_iface::serve(iface).await {
-                            Ok(conn) => {
-                                info!("serving org.arlen.AI1.explain_system");
-                                tokio::spawn(async move {
-                                    let _explain_conn = conn;
-                                    std::future::pending::<()>().await;
-                                });
-                            }
-                            Err(e) => warn!(error = %e, "could not serve the explain interface"),
+                        match &ai_connection {
+                            Some(conn) => match conn
+                                .object_server()
+                                .at(explain_iface::EXPLAIN_OBJECT_PATH, iface)
+                                .await
+                            {
+                                Ok(true) => info!("serving org.arlen.AI1.explain_system"),
+                                Ok(false) => warn!("explain object path already served"),
+                                Err(e) => warn!(error = %e, "could not serve the explain interface"),
+                            },
+                            None => warn!("no org.arlen.AI1 connection; explain unavailable"),
                         }
                     }
                     None => warn!("explain skill not found; System Explanation Mode unavailable"),
