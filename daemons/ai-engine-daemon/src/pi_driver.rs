@@ -102,6 +102,35 @@ where
     }
 }
 
+/// Submit `prompt` to a connected pi and drain its session events until the turn
+/// ends (`agent_end`), WITHOUT fetching a reply. For a FIRE-AND-FORGET behaviour
+/// run (the autonomous curator): pi is turn-based, so the kick is what makes it
+/// actually run the behaviour; draining avoids stdout backpressure. The
+/// behaviour's real effects flow through the gate/contract socket, not a text
+/// answer, so nothing is returned. A stream that ends before `agent_end` (the run
+/// wound down) is not an error.
+pub async fn drive_kick<R, W>(read: R, mut write: W, prompt: &str) -> Result<(), String>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    write_command(&mut write, &prompt_command(prompt)).await?;
+    let mut lines = BufReader::new(read).lines();
+    while let Some(text) = lines.next_line().await.map_err(|e| format!("engine read failed: {e}"))? {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+            continue;
+        };
+        if event.get("type").and_then(|t| t.as_str()) == Some(TURN_END_EVENT) {
+            return Ok(());
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,5 +174,25 @@ mod tests {
     async fn an_engine_that_closes_early_errors() {
         let r = drive_for_answer(&b"{\"type\":\"message_start\"}\n"[..], &mut Vec::new(), "x").await;
         assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn kick_submits_the_prompt_and_returns_on_agent_end() {
+        // A scripted pi: emits an event then agent_end after the kick; no reply
+        // is fetched (fire-and-forget).
+        let pi_out = "{\"type\":\"message_start\"}\n{\"type\":\"agent_end\"}\n";
+        let mut written = Vec::new();
+        drive_kick(pi_out.as_bytes(), &mut written, "Run your behaviour now.").await.unwrap();
+        let sent = String::from_utf8(written).unwrap();
+        assert!(sent.contains("\"type\":\"prompt\""));
+        assert!(sent.contains("Run your behaviour now."));
+        // No get_last_assistant_text is sent (unlike drive_for_answer).
+        assert!(!sent.contains("get_last_assistant_text"));
+    }
+
+    #[tokio::test]
+    async fn kick_tolerates_a_stream_that_ends_before_agent_end() {
+        // The run wound down without an explicit agent_end: not an error.
+        drive_kick(&b"{\"type\":\"message_start\"}\n"[..], &mut Vec::new(), "x").await.unwrap();
     }
 }

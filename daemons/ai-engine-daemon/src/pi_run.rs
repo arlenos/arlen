@@ -50,6 +50,10 @@ where
 pub enum EphemeralOutcome {
     /// The run finished (the engine exited) within its wall-clock budget.
     Ran(EngineExit),
+    /// The behaviour's turn ran to completion (pi emitted `agent_end` after the
+    /// kick); the confined pi was then torn down. The normal success outcome for a
+    /// kicked ephemeral run, since a turn-based pi does not exit on its own.
+    Completed,
     /// The run exceeded its wall-clock budget and was aborted: the `run_once`
     /// future is dropped, which (via the sidecar's `kill_on_drop`) KILLS the
     /// confined pi tree, and `end_session` revokes its authority.
