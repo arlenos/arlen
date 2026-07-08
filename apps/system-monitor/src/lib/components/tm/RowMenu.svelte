@@ -2,6 +2,7 @@
   /// The row right-click menu (the home for Stop now that the per-row button is
   /// gone): a small popup at the cursor with the process actions. A backdrop or
   /// Escape dismisses it.
+  import { onMount } from "svelte";
   import type { Process } from "$lib/stores/processes";
 
   let {
@@ -33,6 +34,48 @@
   // Keep the menu on screen.
   const left = $derived(Math.min(x, (typeof window !== "undefined" ? window.innerWidth : 1280) - 190));
   const top = $derived(Math.min(y, (typeof window !== "undefined" ? window.innerHeight : 800) - 140));
+
+  let menuEl = $state<HTMLElement | null>(null);
+
+  onMount(() => {
+    menuEl?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  });
+
+  function menuItems(): HTMLElement[] {
+    return menuEl ? [...menuEl.querySelectorAll<HTMLElement>('[role="menuitem"]')] : [];
+  }
+  function menuKeydown(e: KeyboardEvent) {
+    const list = menuItems();
+    if (list.length === 0) return;
+    const cur = list.indexOf(document.activeElement as HTMLElement);
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        list[(cur + 1 + list.length) % list.length].focus();
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        list[(cur - 1 + list.length) % list.length].focus();
+        break;
+      case "Home":
+        e.preventDefault();
+        list[0].focus();
+        break;
+      case "End":
+        e.preventDefault();
+        list[list.length - 1].focus();
+        break;
+      case "Tab":
+        // Trap focus inside the menu.
+        e.preventDefault();
+        list[(cur + (e.shiftKey ? -1 : 1) + list.length) % list.length].focus();
+        break;
+      case "Escape":
+        e.preventDefault();
+        onClose();
+        break;
+    }
+  }
 </script>
 
 <svelte:window
@@ -50,7 +93,15 @@
     onClose();
   }}
 >
-  <div class="menu" style="left: {left}px; top: {top}px" role="menu" aria-label={process.name}>
+  <div
+    class="menu"
+    style="left: {left}px; top: {top}px"
+    role="menu"
+    aria-label={process.name}
+    tabindex="-1"
+    bind:this={menuEl}
+    onkeydown={menuKeydown}
+  >
     <div class="menu-head">{process.name}</div>
     <button type="button" class="mi" role="menuitem" onclick={() => { onDetails(process); onClose(); }}>
       Show details
