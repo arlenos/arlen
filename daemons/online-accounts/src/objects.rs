@@ -30,18 +30,38 @@ pub const ACCOUNT_IFACE: &str = "org.arlen.Accounts1.Account";
 /// name -> property name -> value.
 pub type ManagedObjects = HashMap<OwnedObjectPath, HashMap<String, HashMap<String, OwnedValue>>>;
 
-/// The object path of the per-account entry for `id`. `None` for an id that would
-/// make a malformed or traversing path (ids are config-file stems; keep the path
-/// well-formed and traversal-free, mirroring the daemon's fail-closed discipline).
+/// Encode an account id into a valid D-Bus path element. A path element is only
+/// `[A-Za-z0-9_]`, so `-` and `.` (common in account ids like `google-work` or
+/// `com.acme.mail`) and any other byte are escaped as `_HH` (the byte in hex),
+/// with `_` itself escaped, so the mapping is reversible and collision-free. This
+/// keeps every account in the management tree (dropping a dashed/dotted id would
+/// hide it from Settings) while neutralising any `/` or `..` (they become `_2f` /
+/// `_2e`), so no path can traverse.
+fn encode_path_element(id: &str) -> String {
+    let mut out = String::with_capacity(id.len());
+    for b in id.bytes() {
+        if b.is_ascii_alphanumeric() {
+            out.push(b as char);
+        } else {
+            out.push('_');
+            out.push_str(&format!("{b:02x}"));
+        }
+    }
+    out
+}
+
+/// The object path of the per-account entry for `id`. The id is encoded into a
+/// valid, traversal-free path element (see [`encode_path_element`]); `None` only
+/// for an empty id (an empty path element is invalid).
 fn account_object_path(id: &str) -> Option<OwnedObjectPath> {
-    if id.is_empty()
-        || !id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
-    {
+    if id.is_empty() {
         return None;
     }
-    OwnedObjectPath::try_from(format!("/org/arlen/Accounts1/Accounts/{id}")).ok()
+    OwnedObjectPath::try_from(format!(
+        "/org/arlen/Accounts1/Accounts/{}",
+        encode_path_element(id)
+    ))
+    .ok()
 }
 
 /// The non-secret metadata property map for one account. Never a token or secret:
@@ -139,11 +159,24 @@ mod tests {
     }
 
     #[test]
-    fn a_traversing_account_id_is_dropped_from_the_tree() {
-        let configs = vec![account("../../etc/x"), account("ok")];
+    fn a_dashed_or_dotted_id_stays_in_the_tree() {
+        // The correctness fix: a common `google-work` / `com.acme.mail` id must not
+        // be dropped (D-Bus path elements forbid `-` and `.`); it is encoded.
+        let configs = vec![account("google-work"), account("com.acme.mail")];
         let tree = managed_objects_gated("settings", &configs);
-        assert_eq!(tree.len(), 1);
-        assert!(tree.contains_key(&account_object_path("ok").unwrap()));
+        assert_eq!(tree.len(), 2);
+        assert!(tree.contains_key(&account_object_path("google-work").unwrap()));
+        assert!(tree.contains_key(&account_object_path("com.acme.mail").unwrap()));
+    }
+
+    #[test]
+    fn a_traversing_id_is_encoded_not_a_traversal() {
+        // `/` and `.` are escaped, so the path stays under the manager and has no `..`.
+        let path = account_object_path("../../etc/x").unwrap();
+        assert!(path.as_str().starts_with("/org/arlen/Accounts1/Accounts/"));
+        // The literal `..` and the embedded `/` are escaped away in the element.
+        assert!(!path.as_str().contains(".."));
+        assert!(!path.as_str()["/org/arlen/Accounts1/Accounts/".len()..].contains('/'));
     }
 
     #[test]
