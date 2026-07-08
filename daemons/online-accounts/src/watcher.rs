@@ -85,3 +85,42 @@ pub async fn run_account_watcher(
         last = new;
     }
 }
+
+/// Prune disconnected callers from the presence registry: on `NameOwnerChanged`
+/// with no new owner, forget the vanished unique bus name so the registry does not
+/// grow without bound over a long session. Hygiene only - a stale entry never
+/// mis-delivers (the bus never reuses a unique name), it would just waste a
+/// dead-name emit. Returns if the subscription cannot be established.
+pub async fn run_peer_cleanup(conn: Connection, peers: Arc<Mutex<PeerRegistry>>) {
+    use futures_util::StreamExt;
+    use zbus::fdo::DBusProxy;
+
+    let proxy = match DBusProxy::new(&conn).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(error = %e, "peer cleanup unavailable");
+            return;
+        }
+    };
+    let mut stream = match proxy.receive_name_owner_changed().await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(error = %e, "cannot watch NameOwnerChanged");
+            return;
+        }
+    };
+    while let Some(signal) = stream.next().await {
+        let Ok(args) = signal.args() else {
+            continue;
+        };
+        // No new owner => the name vanished. Prune only unique names (":1.NN").
+        if args.new_owner().is_none() {
+            let name = args.name().to_string();
+            if name.starts_with(':') {
+                if let Ok(mut peers) = peers.lock() {
+                    peers.forget(&name);
+                }
+            }
+        }
+    }
+}
