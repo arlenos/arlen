@@ -221,12 +221,20 @@ impl AccountsObjectManager {
     /// Return the managed per-account objects, but only for the Settings management
     /// app; a non-management or unresolvable caller gets an empty tree, never a
     /// leak. The per-account property maps are the non-secret metadata, inline.
+    ///
+    /// Uses the PID-reuse-GUARDED caller resolver, not the unguarded one the
+    /// grant-filtered `list_accounts` may use: on a `settings` verdict this returns
+    /// the FULL account inventory (unfiltered by grant), so the payoff of winning a
+    /// sub-millisecond PID-recycling race would be the whole inventory, strictly
+    /// larger than the single-caller metadata `list_accounts` exposes. The guarded
+    /// resolver closes that race, the consistent choice for the highest-value
+    /// disclosure surface.
     async fn get_managed_objects(
         &self,
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<crate::objects::ManagedObjects> {
-        let caller = resolve_caller_app_id(&header, connection)
+        let caller = resolve_caller_app_id_guarded(&header, connection)
             .await
             .unwrap_or_default();
         let (configs, _errs) = crate::config::load_accounts(&self.accounts_dir);
