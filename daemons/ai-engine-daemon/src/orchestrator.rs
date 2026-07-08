@@ -147,12 +147,21 @@ pub async fn run_orchestrator<S, H, C>(
     coalescer: &mut Coalescer,
     handler: &H,
     clock: C,
+    status: &crate::agent_iface::StatusHandle,
 ) where
     S: TriggerSource,
     H: RouteHandler,
     C: Fn() -> SystemTime,
 {
-    while let Some(event) = source.recv().await {
+    use crate::agent_iface::{set_status, LoopStatus};
+    loop {
+        // Idle while awaiting the next trigger; Busy while a dispatched event is
+        // handled - the honest live status the `status` D-Bus method reports.
+        set_status(status, LoopStatus::Idle);
+        let Some(event) = source.recv().await else {
+            break;
+        };
+        set_status(status, LoopStatus::Busy);
         let plan = decide(
             &event.event_type,
             &event.fields,
@@ -606,7 +615,21 @@ mod tests {
         };
         // Constant clock: distinct events each admit; the duplicate file.opened is
         // coalesced (same key, within the window).
-        run_orchestrator(source, &behaviours, &mut coalescer, &recorder, || SystemTime::UNIX_EPOCH).await;
+        let status = crate::agent_iface::new_status_handle();
+        run_orchestrator(
+            source,
+            &behaviours,
+            &mut coalescer,
+            &recorder,
+            || SystemTime::UNIX_EPOCH,
+            &status,
+        )
+        .await;
+        // After the source drains, the loop's last act is to set Idle.
+        assert_eq!(
+            crate::agent_iface::load_status(&status),
+            crate::agent_iface::LoopStatus::Idle
+        );
         let seen = recorder.seen.lock().unwrap();
         assert_eq!(seen.len(), 2, "the two distinct matches route; the duplicate coalesces, window.focused matches nothing");
         assert!(seen.contains(&("auto-tag".to_string(), Route::DeterministicCuration)));
