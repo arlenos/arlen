@@ -74,6 +74,14 @@ impl Collector {
     pub fn snapshot(&mut self) -> Vec<ProcessRow> {
         self.sys.refresh_cpu_all();
         self.sys.refresh_processes(ProcessesToUpdate::All, true);
+        self.read_processes()
+    }
+
+    /// Read the current process rows WITHOUT refreshing (the caller refreshed).
+    /// Used by [`collect`](Self::collect) so one refresh cycle backs both the
+    /// process list and the totals - a second CPU refresh would measure the CPU
+    /// rate over a near-zero interval and read as garbage.
+    fn read_processes(&self) -> Vec<ProcessRow> {
         self.sys
             .processes()
             .values()
@@ -96,6 +104,13 @@ impl Collector {
     pub fn totals(&mut self) -> SystemTotals {
         self.sys.refresh_cpu_all();
         self.sys.refresh_memory();
+        self.read_totals()
+    }
+
+    /// Read the totals, refreshing only the network + disk counters (each a delta);
+    /// CPU% and memory are read from the caller's prior refresh, so
+    /// [`collect`](Self::collect) can refresh CPU once per pass.
+    fn read_totals(&mut self) -> SystemTotals {
         self.networks.refresh(true);
         let mut net_received_bytes = 0u64;
         let mut net_transmitted_bytes = 0u64;
@@ -124,6 +139,33 @@ impl Collector {
             disk_written_bytes,
         }
     }
+
+    /// Take one full collection pass: a SINGLE refresh cycle backs both the process
+    /// list and the totals, so the CPU%, network and disk rates are measured over
+    /// the poll interval rather than a near-zero intra-call gap (which is what
+    /// calling `snapshot()` then `totals()` separately would do). The natural front
+    /// door for a polling consumer; rates are meaningful from the second call on.
+    pub fn collect(&mut self) -> Snapshot {
+        self.sys.refresh_cpu_all();
+        self.sys.refresh_processes(ProcessesToUpdate::All, true);
+        self.sys.refresh_memory();
+        let processes = self.read_processes();
+        let totals = self.read_totals();
+        let app_groups = group_by_app(&processes);
+        Snapshot { processes, app_groups, totals }
+    }
+}
+
+/// A full collection pass: the raw process list, its app-grouping, and the system
+/// totals - the cohesive read a polling consumer (the app's Tauri backend) takes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Snapshot {
+    /// The raw per-process rows (the flat / expert view).
+    pub processes: Vec<ProcessRow>,
+    /// The app-grouped rows (the default landing view).
+    pub app_groups: Vec<AppGroup>,
+    /// The system-wide Performance totals.
+    pub totals: SystemTotals,
 }
 
 /// System-wide resource totals for the Performance tab. Memory is used-vs-AVAILABLE
@@ -269,6 +311,19 @@ mod tests {
         let mut c = Collector::new();
         c.snapshot();
         assert!(!c.snapshot().is_empty());
+    }
+
+    #[test]
+    fn collect_bundles_processes_groups_and_totals() {
+        let mut c = Collector::new();
+        c.collect(); // prime the rates
+        let snap = c.collect();
+        assert!(!snap.processes.is_empty());
+        assert!(!snap.app_groups.is_empty());
+        // The grouping is derived from the same processes it returns.
+        let group_pids: usize = snap.app_groups.iter().map(|g| g.pids.len()).sum();
+        assert_eq!(group_pids, snap.processes.len());
+        assert!(snap.totals.memory_total_bytes > 0);
     }
 
     #[test]
