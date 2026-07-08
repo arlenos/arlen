@@ -37,6 +37,31 @@ pub struct Authenticator {
     cache: TokenCache,
 }
 
+/// A debug-only caller-id fallback for a same-uid peer whose `/proc/<pid>/exe`
+/// (and cgroup) could not resolve an app id.
+///
+/// A NON-root knowledge daemon (the integration harness and `just dev`, which
+/// run every daemon as the developer uid) cannot read a same-uid peer's
+/// `/proc/<pid>/exe`, so `app_id_from_pid` fails and per-request token issuance
+/// (readable-label scoping for the read ops, the connect-time grant emission)
+/// would fail closed even though the connection resolver already knows the
+/// caller via the same launcher-declared id. This mirrors the resolver's
+/// `same_uid_unresolved_id` (`daemon.rs`): honor `ARLEN_KNOWLEDGE_DEV_SELF_ID`
+/// so token issuance for the resolved caller succeeds. Release builds always
+/// return `None` (the deployed daemon runs as root and reads the exe directly),
+/// so this is a debug-only test/dev accommodation with no production effect.
+fn dev_self_caller_id() -> Option<String> {
+    #[cfg(debug_assertions)]
+    {
+        if let Ok(id) = std::env::var("ARLEN_KNOWLEDGE_DEV_SELF_ID") {
+            if !id.is_empty() {
+                return Some(id);
+            }
+        }
+    }
+    None
+}
+
 impl Authenticator {
     /// Create a new authenticator with a fresh HMAC key.
     pub fn new() -> Self {
@@ -61,7 +86,18 @@ impl Authenticator {
         // but its WRITE token issuance failed here, so executor_live never wrote.
         let app_id = match app_id_from_pid(pid) {
             Ok(id) => id,
-            Err(e) => app_id_from_cgroup(pid).ok_or(e)?,
+            // A launcher-declared same-uid caller (debug harness / `just dev`) is
+            // tried BEFORE the cgroup so token issuance keys on the SAME id the
+            // connection resolver assigned (`same_uid_unresolved_id`, which uses
+            // the declared id directly for a same-uid peer); otherwise a
+            // connect-time Grant node would be keyed on a divergent cgroup id and
+            // the caller's own `access_grants` read would not find it. Release
+            // builds return `None` here, so the cgroup stays the fallback for the
+            // canonical cross-uid AI daemons.
+            Err(e) => match dev_self_caller_id() {
+                Some(id) => id,
+                None => app_id_from_cgroup(pid).ok_or(e)?,
+            },
         };
         self.issue_token_for_app(&app_id, pid)
     }
