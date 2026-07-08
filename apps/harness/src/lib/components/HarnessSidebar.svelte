@@ -44,9 +44,9 @@
     deleteSession,
     renameSession,
     togglePinSession,
-    importConversation,
   } from "$lib/stores/conversation";
   import { openMint } from "$lib/stores/mint";
+  import { openImportChat } from "$lib/stores/importChat";
   import { sessionMatches } from "$lib/search";
   import { groupSessions } from "$lib/session-groups";
   import { conversationToMarkdown, conversationToJson } from "$lib/export";
@@ -109,30 +109,6 @@
     downloadText(`${slug || "conversation"}.json`, conversationToJson(session), "application/json");
   }
 
-  // Import a conversation from a JSON export file. The store validates + adds it
-  // (a fresh id, so it never clobbers an existing chat) and makes it active; a bad
-  // file surfaces a brief inline notice rather than failing silently.
-  let importInput = $state<HTMLInputElement | null>(null);
-  let importError = $state("");
-
-  function openImport(): void {
-    importError = "";
-    importInput?.click();
-  }
-  async function onImportFile(e: Event): Promise<void> {
-    const input = e.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = "";
-    if (!file) return;
-    const id = importConversation(await file.text());
-    if (id === null) {
-      importError = "That file is not a chat export.";
-      return;
-    }
-    importError = "";
-    if (!onChat) goto("/");
-  }
-
   // Sessions in rail order (pinned first), narrowed by the search. The query
   // matches titles and message content, case-insensitive; empty matches all.
   const filtered = $derived($orderedSessions.filter((s) => sessionMatches(s, query)));
@@ -153,31 +129,7 @@
             <span>New chat</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton id="harness-share-context" title="Share a slice of your context" onclick={openMint}>
-            <Share2 strokeWidth={2} />
-            <span>Share context</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton id="harness-import-chat" title="Import a chat from a JSON file" onclick={openImport}>
-            <Upload strokeWidth={2} />
-            <span>Import chat</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
       </SidebarMenu>
-      <input
-        bind:this={importInput}
-        type="file"
-        accept="application/json,.json"
-        class="sr-only"
-        aria-hidden="true"
-        tabindex="-1"
-        onchange={onImportFile}
-      />
-      {#if importError}
-        <p class="px-2 py-1 text-xs text-destructive" role="alert">{importError}</p>
-      {/if}
       {#if $orderedSessions.length > 0}
         <div class="relative mb-1 mt-1">
           <Search
@@ -215,10 +167,23 @@
     {/each}
   </SidebarContent>
 
-  <!-- One quiet, always-visible way into the agent's activity record. Secondary
-       to Chat (a footer row, never a peer mode), but discoverable. -->
+  <!-- The secondary, always-visible actions live at the foot, apart from the chat
+       history: share a slice of context, import a chat, and the agent's activity
+       record. Secondary to Chat, but discoverable. -->
   <SidebarFooter>
     <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton id="harness-share-context" title="Share a slice of your context" onclick={openMint}>
+          <Share2 strokeWidth={2} />
+          <span>Share context</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      <SidebarMenuItem>
+        <SidebarMenuButton id="harness-import-chat" title="Import a chat from a JSON file" onclick={openImportChat}>
+          <Upload strokeWidth={2} />
+          <span>Import chat</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
       <SidebarMenuItem>
         <SidebarMenuButton
           id="harness-activity"
