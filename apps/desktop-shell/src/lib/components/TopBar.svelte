@@ -29,6 +29,7 @@
   import CaffeineBadge from "$lib/components/topbar/badges/CaffeineBadge.svelte";
   import RecordingBadge from "$lib/components/topbar/badges/RecordingBadge.svelte";
   import CaptureBadge from "$lib/components/topbar/badges/CaptureBadge.svelte";
+  import DictationBadge from "$lib/components/topbar/badges/DictationBadge.svelte";
   import NightLightBadge from "$lib/components/topbar/badges/NightLightBadge.svelte";
   import AirplaneBadge from "$lib/components/topbar/badges/AirplaneBadge.svelte";
   import { isFocused, focusState, deactivateFocus } from "$lib/stores/projects.js";
@@ -281,6 +282,7 @@
         <CaffeineBadge />
         <RecordingBadge />
         <CaptureBadge />
+        <DictationBadge />
         <NightLightBadge />
         <AirplaneBadge />
       </div>
