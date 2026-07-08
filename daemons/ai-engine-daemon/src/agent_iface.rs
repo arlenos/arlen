@@ -241,7 +241,15 @@ async fn run_compensate(
         )
         .await
     {
-        Ok(outcome) => compensate_outcome_wire(outcome).to_string(),
+        Ok(outcome) => {
+            // The edge is now gone (retracted, or already absent on a retry), so
+            // drop the receipt: completed_actions must not keep offering an undo
+            // for an action that has already been undone.
+            if let Ok(mut store) = compensation.lock() {
+                store.remove(correlation_id);
+            }
+            compensate_outcome_wire(outcome).to_string()
+        }
         Err(e) => format!("error: {e}"),
     }
 }
@@ -477,13 +485,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_live_undo_retracts_its_own_edge() {
+    async fn a_live_undo_retracts_its_own_edge_and_drops_the_receipt() {
         let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
-        let out =
-            run_compensate(true, "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::accepting())
-                .await;
+        let store = store_with("corr-1", "op-1");
+        let out = run_compensate(true, "corr-1", &store, &writer, &MockAuditSink::accepting()).await;
         assert_eq!(out, "retracted");
         assert!(writer.retract_called.load(Ordering::Relaxed));
+        // The undone receipt is dropped so completed_actions won't re-offer it.
+        assert!(store.lock().unwrap().get("corr-1").is_none());
     }
 
     #[tokio::test]

@@ -126,6 +126,15 @@ impl CompensationStore {
         self.map.get(key)
     }
 
+    /// Drop the receipt under `key` (a no-op if absent). Called after a successful
+    /// undo so `completed_actions` stops listing an action that has already been
+    /// retracted - an undone edge is no longer an undoable one.
+    pub fn remove(&mut self, key: &str) {
+        if self.map.remove(key).is_some() {
+            self.order.retain(|k| k != key);
+        }
+    }
+
     /// The retained receipts paired with their correlation-id key, OLDEST FIRST
     /// (eviction order). Backs the AIAgent1 `completed_actions` transparency read:
     /// the recently-executed, still-undoable writes, each carrying the key the
