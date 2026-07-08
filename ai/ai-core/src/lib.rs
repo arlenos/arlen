@@ -11,6 +11,7 @@
 
 pub mod audit;
 pub mod capability;
+pub mod compress;
 pub mod cypher;
 pub mod graph_query;
 // The graph schema lives in its own light, zero-dep crate so the knowledge
