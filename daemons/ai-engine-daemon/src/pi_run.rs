@@ -4,7 +4,7 @@
 //! down - distinct from the persistent interactive supervisor. This module builds
 //! the per-trigger session; the spawn + teardown is a later increment.
 
-use crate::pi_driver::drive_for_answer;
+use crate::pi_driver::{drive_for_answer, drive_kick};
 use crate::session::SessionToken;
 use crate::supervisor::{EngineExit, SpawnEngine};
 use ai_engine_contract::{CapabilityContext, ReadTier, SessionInit};
@@ -15,6 +15,12 @@ use tokio::net::{UnixListener, UnixStream};
 
 /// The initial turn that kicks an ephemeral explain run.
 const EXPLAIN_PROMPT: &str = "Explain what the computer is doing right now.";
+
+/// The minimal turn that kicks a fire-and-forget behaviour run. It carries NO
+/// trigger data (the event fields are external content, a prompt-injection
+/// surface); pi reads the triggering event from the Knowledge Graph via its
+/// gated, screened tools instead.
+const KICK_PROMPT: &str = "Run your behaviour now.";
 
 /// Wall-clock bound for an ephemeral run when the behaviour declares no budget
 /// (an agent behaviour always declares one, so this is a defensive default).
@@ -90,15 +96,61 @@ pub async fn run_ephemeral_pi<S: SpawnEngine, B: SessionBinder + ?Sized>(
     };
     let on_spawned = |pid: u32| binder.bind_session(token.clone(), &init, pid);
     let on_spawned: &(dyn Fn(u32) + Send + Sync) = &on_spawned;
-    let outcome = match tokio::time::timeout(
-        ephemeral_wall(behaviour),
-        engine.run_once(token.as_str(), &init.system_prompt, on_spawned, None),
-    )
-    .await
-    {
-        Ok(exit) => EphemeralOutcome::Ran(exit),
-        Err(_) => EphemeralOutcome::TimedOut,
+    let wall = ephemeral_wall(behaviour);
+
+    // pi is turn-based: with only a system prompt it idles and the behaviour never
+    // runs. So bind a private drive socket and KICK it into acting. If the drive
+    // socket cannot be set up, fall back to an un-driven run (degraded: pi will
+    // idle, but the caller is never failed and the session is still cleaned up).
+    let outcome = match ephemeral_drive_socket().and_then(|path| {
+        UnixListener::bind(&path)
+            .map(|listener| (path, listener))
+            .map_err(|e| format!("could not bind the ephemeral drive socket: {e}"))
+    }) {
+        Ok((socket_path, listener)) => {
+            let _socket_guard = SocketGuard(socket_path.clone());
+            let run =
+                engine.run_once(token.as_str(), &init.system_prompt, on_spawned, Some(&listener));
+            let kick = async {
+                // The listener is bound, so this connect queues even before
+                // serve_drive accepts it; serve_drive relays it to pi's stdio.
+                let stream = UnixStream::connect(&socket_path)
+                    .await
+                    .map_err(|e| format!("could not reach the ephemeral engine: {e}"))?;
+                let (read, write) = stream.into_split();
+                drive_kick(read, write, KICK_PROMPT).await
+            };
+            // The turn ending (agent_end) drops the run, which kills the confined
+            // pi via kill_on_drop; the wall-clock and an early engine exit both
+            // fail closed.
+            let driven = async {
+                tokio::select! {
+                    exit = run => EphemeralOutcome::Ran(exit),
+                    kicked = kick => match kicked {
+                        Ok(()) => EphemeralOutcome::Completed,
+                        Err(_) => EphemeralOutcome::Ran(EngineExit::Crashed),
+                    },
+                }
+            };
+            match tokio::time::timeout(wall, driven).await {
+                Ok(o) => o,
+                Err(_) => EphemeralOutcome::TimedOut,
+            }
+        }
+        Err(e) => {
+            tracing::warn!("ephemeral run falling back to an un-driven engine (no kick): {e}");
+            match tokio::time::timeout(
+                wall,
+                engine.run_once(token.as_str(), &init.system_prompt, on_spawned, None),
+            )
+            .await
+            {
+                Ok(exit) => EphemeralOutcome::Ran(exit),
+                Err(_) => EphemeralOutcome::TimedOut,
+            }
+        }
     };
+
     // End the session whether the run finished or timed out (its authority must
     // not outlive the run).
     binder.end_session(&token);
@@ -109,10 +161,12 @@ pub async fn run_ephemeral_pi<S: SpawnEngine, B: SessionBinder + ?Sized>(
 /// runtime dir with a random suffix so concurrent runs never collide.
 fn ephemeral_drive_socket() -> Result<PathBuf, String> {
     let base = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/arlen".to_string());
+    let dir = PathBuf::from(base).join("arlen");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("could not create the runtime dir: {e}"))?;
     let mut bytes = [0u8; 8];
     getrandom::getrandom(&mut bytes).map_err(|e| e.to_string())?;
     let nonce: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    Ok(PathBuf::from(base).join("arlen").join(format!("explain-{nonce}.sock")))
+    Ok(dir.join(format!("ephemeral-{nonce}.sock")))
 }
 
 /// Removes the private drive socket file on drop.
