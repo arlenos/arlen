@@ -6,3 +6,4 @@ description = "Process and resource collection for the task manager: the easy ~7
 
 [dependencies]
 sysinfo = "0.33"
+libc = "0.2"
