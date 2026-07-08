@@ -137,7 +137,10 @@ impl QuotaConfig {
     fn is_dev_first_party_id_impl(app_id: &str) -> bool {
         if matches!(
             app_id,
-            "dev.arlen-ai-agent" | "dev.arlen-ai-daemon" | "dev.arlen-code-indexer"
+            "dev.arlen-ai-agent"
+                | "dev.arlen-ai-engine-daemon"
+                | "dev.arlen-ai-daemon"
+                | "dev.arlen-code-indexer"
         ) {
             return true;
         }
@@ -250,6 +253,11 @@ mod tests {
         // stack run against a dev graph. An unlisted `dev.*` id stays ThirdParty.
         let c = QuotaConfig::arlen_default();
         assert_eq!(c.tier_for_app("dev.arlen-ai-agent"), AppTier::FirstParty);
+        // The pi engine daemon (drop-in for ai-agent) tiers FirstParty in dev too.
+        assert_eq!(
+            c.tier_for_app("dev.arlen-ai-engine-daemon"),
+            AppTier::FirstParty
+        );
         assert_eq!(c.tier_for_app("dev.arlen-ai-daemon"), AppTier::FirstParty);
         assert_eq!(c.tier_for_app("dev.arlen-code-indexer"), AppTier::FirstParty);
         assert_eq!(c.tier_for_app("dev.arlen-knowledge"), AppTier::ThirdParty);
