@@ -74,6 +74,46 @@ impl Collector {
             })
             .collect()
     }
+
+    /// Read the system-wide totals for the Performance tab (system-monitor-plan.md
+    /// §b). Memory is reported honestly as used-vs-AVAILABLE (`MemAvailable`, what
+    /// a new allocation can actually get), never used-vs-free - the design's "the
+    /// honest number". The overall CPU% is a rate, so it is meaningful from the
+    /// second call on (this holds the same `System` as [`snapshot`](Self::snapshot)).
+    pub fn totals(&mut self) -> SystemTotals {
+        self.sys.refresh_cpu_all();
+        self.sys.refresh_memory();
+        SystemTotals {
+            cpu_percent: self.sys.global_cpu_usage(),
+            memory_total_bytes: self.sys.total_memory(),
+            memory_available_bytes: self.sys.available_memory(),
+            memory_used_bytes: self.sys.used_memory(),
+            swap_total_bytes: self.sys.total_swap(),
+            swap_used_bytes: self.sys.used_swap(),
+        }
+    }
+}
+
+/// System-wide resource totals for the Performance tab. Memory is used-vs-AVAILABLE
+/// (`MemAvailable`), not used-vs-free: available counts reclaimable cache, so it is
+/// the honest "how much can I still allocate" figure (system-monitor-plan.md §b).
+/// Disk and per-interface network totals are a later layer (net via sysinfo's
+/// interface deltas, disk I/O throughput hand-rolled - neither is in this snapshot).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SystemTotals {
+    /// Overall CPU usage, 0-100 (whole machine); a rate, so 0 on the first read.
+    pub cpu_percent: f32,
+    /// Total physical RAM, bytes.
+    pub memory_total_bytes: u64,
+    /// Available RAM (`MemAvailable`: free plus reclaimable), bytes - the honest
+    /// "how much can still be allocated" figure.
+    pub memory_available_bytes: u64,
+    /// Used RAM, bytes.
+    pub memory_used_bytes: u64,
+    /// Total swap, bytes.
+    pub swap_total_bytes: u64,
+    /// Used swap, bytes.
+    pub swap_used_bytes: u64,
 }
 
 /// An app-grouped row: one named app aggregating its processes' resources (the
@@ -180,6 +220,17 @@ mod tests {
         let mut c = Collector::new();
         c.snapshot();
         assert!(!c.snapshot().is_empty());
+    }
+
+    #[test]
+    fn totals_report_sane_memory() {
+        let mut c = Collector::new();
+        let t = c.totals();
+        assert!(t.memory_total_bytes > 0, "a machine has some RAM");
+        assert!(t.memory_available_bytes <= t.memory_total_bytes, "available never exceeds total");
+        assert!(t.memory_used_bytes <= t.memory_total_bytes, "used never exceeds total");
+        assert!(t.swap_used_bytes <= t.swap_total_bytes, "used swap never exceeds total swap");
+        assert!((0.0..=100.0).contains(&t.cpu_percent), "overall CPU% is a whole-machine 0-100");
     }
 }
 
