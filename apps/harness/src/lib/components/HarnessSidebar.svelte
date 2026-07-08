@@ -25,6 +25,7 @@
   import {
     Activity,
     Copy,
+    Download,
     MoreHorizontal,
     Pencil,
     Pin,
@@ -33,6 +34,7 @@
     Search,
     Share2,
     Trash2,
+    Upload,
   } from "@lucide/svelte";
   import {
     orderedSessions,
@@ -42,11 +44,13 @@
     deleteSession,
     renameSession,
     togglePinSession,
+    importConversation,
   } from "$lib/stores/conversation";
   import { openMint } from "$lib/stores/mint";
   import { sessionMatches } from "$lib/search";
   import { groupSessions } from "$lib/session-groups";
-  import { conversationToMarkdown } from "$lib/export";
+  import { conversationToMarkdown, conversationToJson } from "$lib/export";
+  import { downloadText } from "$lib/download";
 
   const path = $derived($page.url.pathname);
   // The only non-chat surface reachable with the sidebar mounted is the
@@ -96,6 +100,39 @@
     }
   }
 
+  // Export one conversation as a portable JSON envelope (re-importable). The
+  // filename is the title, slugged; falls back to a generic name.
+  function exportSession(id: string): void {
+    const session = $orderedSessions.find((s) => s.id === id);
+    if (!session) return;
+    const slug = (session.title || "conversation").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "");
+    downloadText(`${slug || "conversation"}.json`, conversationToJson(session), "application/json");
+  }
+
+  // Import a conversation from a JSON export file. The store validates + adds it
+  // (a fresh id, so it never clobbers an existing chat) and makes it active; a bad
+  // file surfaces a brief inline notice rather than failing silently.
+  let importInput = $state<HTMLInputElement | null>(null);
+  let importError = $state("");
+
+  function openImport(): void {
+    importError = "";
+    importInput?.click();
+  }
+  async function onImportFile(e: Event): Promise<void> {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    const id = importConversation(await file.text());
+    if (id === null) {
+      importError = "That file is not a chat export.";
+      return;
+    }
+    importError = "";
+    if (!onChat) goto("/");
+  }
+
   // Sessions in rail order (pinned first), narrowed by the search. The query
   // matches titles and message content, case-insensitive; empty matches all.
   const filtered = $derived($orderedSessions.filter((s) => sessionMatches(s, query)));
@@ -122,7 +159,25 @@
             <span>Share context</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton id="harness-import-chat" title="Import a chat from a JSON file" onclick={openImport}>
+            <Upload strokeWidth={2} />
+            <span>Import chat</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
       </SidebarMenu>
+      <input
+        bind:this={importInput}
+        type="file"
+        accept="application/json,.json"
+        class="sr-only"
+        aria-hidden="true"
+        tabindex="-1"
+        onchange={onImportFile}
+      />
+      {#if importError}
+        <p class="px-2 py-1 text-xs text-destructive" role="alert">{importError}</p>
+      {/if}
       {#if $orderedSessions.length > 0}
         <div class="relative mb-1 mt-1">
           <Search
@@ -237,6 +292,10 @@
           <DropdownMenu.Item onclick={() => copySession(s.id)}>
             <Copy />
             Copy chat
+          </DropdownMenu.Item>
+          <DropdownMenu.Item onclick={() => exportSession(s.id)}>
+            <Download />
+            Export chat
           </DropdownMenu.Item>
           <DropdownMenu.Separator />
           <DropdownMenu.Item variant="destructive" onclick={() => (confirmDeleteId = s.id)}>
