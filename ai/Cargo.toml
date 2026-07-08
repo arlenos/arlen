@@ -5,7 +5,6 @@ members = [
     "ai-classifier",
     "ai-explanation",
     "ai-proxy",
-    "ai-daemon",
     "ai-agent",
     "ai-sandbox",
     "ai-undo-core",
