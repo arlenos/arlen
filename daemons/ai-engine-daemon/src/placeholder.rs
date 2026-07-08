@@ -1,13 +1,14 @@
-//! Phase-0 placeholder seam implementations.
+//! Fail-closed seam mocks for the dispatcher tests (this module is `#[cfg(test)]`).
 //!
-//! The daemon is runnable now (binds the contract socket, authenticates the
-//! engine, routes verbs) but the gate/executor/reporter are not yet wired to
-//! the real Rust. These placeholders are fail-closed safe defaults so a session
-//! cannot DO anything before Phase 1 re-points the seams: the gate denies every
-//! call, the executor runs nothing, and the reporter blocks every result from
-//! re-entering the engine's context. Phase 1 replaces them with
-//! `Capability::decide`, the trusted privileged-tool runner, and the
-//! audit/compensation/screening path.
+//! Production wires the real seams in `main.rs`: the gate is `CapabilityGate`
+//! (`Capability::decide`), the executor is a `ProxyExecutor` routing
+//! graph.read/graph.write, and the reporter is `ScreeningReporter` (content-free
+//! audit + S17/S18 screening). These three - a gate that denies every call, an
+//! executor that runs nothing, a reporter that blocks every result from
+//! re-entering the engine's context - are the safe-default impls the
+//! supervisor/dispatcher tests build a `Dispatcher` from without standing up the
+//! real gate. They were the Phase-0 seams before the real Rust was wired; they
+//! are kept only as test doubles now.
 
 use crate::dispatch::{Executor, Gate, Reporter};
 use crate::session::SessionGrant;
