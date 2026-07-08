@@ -9,12 +9,16 @@
     list,
     filter = "",
     flatten = false,
+    selectedId,
     onStop,
+    onSelect,
   }: {
     list: Process[];
     filter?: string;
     flatten?: boolean;
+    selectedId?: number;
     onStop: (id: number) => void;
+    onSelect?: (p: Process) => void;
   } = $props();
 
   let sortKey = $state<SortKey>("cpu");
@@ -145,10 +149,28 @@
         <div class="grouprow" role="row"><span>{it.label}</span></div>
       {:else}
         {@const p = it.proc}
-        <div class="row" class:child={it.depth > 0} role="row">
+        <div
+          class="row"
+          class:child={it.depth > 0}
+          class:selected={p.id === selectedId}
+          role="row"
+          tabindex="0"
+          onclick={() => onSelect?.(p)}
+          onkeydown={(e) => {
+            if (e.key === "Enter") onSelect?.(p);
+          }}
+        >
           <div class="cell name" role="cell">
             {#if it.expandable}
-              <button class="twist" class:open={it.open} aria-label="Expand" onclick={() => toggle(p.id)}>
+              <button
+                class="twist"
+                class:open={it.open}
+                aria-label="Expand"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  toggle(p.id);
+                }}
+              >
                 <ChevronRight size={13} strokeWidth={2} />
               </button>
             {:else}
@@ -171,7 +193,15 @@
           <div class="cell num muted" role="cell">{rate(p.diskKBs)}</div>
           <div class="cell num muted" role="cell">{rate(p.netKBs)}</div>
           <div class="cell stop" role="cell">
-            <button class="stop-btn" aria-label={`Stop ${p.name}`} title="Stop" onclick={() => onStop(p.id)}>
+            <button
+              class="stop-btn"
+              aria-label={`Stop ${p.name}`}
+              title="Stop"
+              onclick={(e) => {
+                e.stopPropagation();
+                onStop(p.id);
+              }}
+            >
               <Square size={12} strokeWidth={2.5} />
             </button>
           </div>
@@ -255,8 +285,15 @@
   .row {
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
   }
+  .row {
+    cursor: pointer;
+    outline: none;
+  }
   .row:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 4%, transparent);
+  }
+  .row.selected {
+    background: color-mix(in srgb, var(--color-fg-primary) 9%, transparent);
   }
   .cell {
     padding: 0.4rem 0.6rem;
