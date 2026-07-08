@@ -239,6 +239,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      # The apps depend on the sdk/tauri-plugin-* packages via `file:` links. Each
+      # plugin builds its TypeScript dist/ from a `prepare: tsc` script on install,
+      # but as a file: dependency npm does not install the plugin's own build deps
+      # (@tauri-apps/api, typescript), so an app's `npm ci` fails while building the
+      # plugin (TS2307: cannot find '@tauri-apps/api/core'). Build each shared
+      # plugin first - installing its own deps + producing dist/ - so it is already
+      # resolved by the time an app links it.
+      - name: build shared tauri plugins
+        run: |
+          for p in sdk/tauri-plugin-*; do
+            if [ -f "$p/package.json" ]; then
+              echo "== build $p =="
+              (cd "$p" && npm install)
+            fi
+          done
       # The apps use npm (package-lock.json). Skip where there is none.
       - name: check
         working-directory: ${{ matrix.app }}
