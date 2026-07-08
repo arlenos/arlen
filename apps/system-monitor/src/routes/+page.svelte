@@ -6,6 +6,7 @@
   import ProcessTable from "$lib/components/tm/ProcessTable.svelte";
   import PerformanceTab from "$lib/components/tm/PerformanceTab.svelte";
   import DetailPane from "$lib/components/tm/DetailPane.svelte";
+  import RowMenu from "$lib/components/tm/RowMenu.svelte";
   import { processes, load, stop, type Process } from "$lib/stores/processes";
   import { startPerf, stopPerf } from "$lib/stores/perf";
   import { Rows3, Layers, Search } from "lucide-svelte";
@@ -15,6 +16,7 @@
   let filter = $state("");
   let flatten = $state(false);
   let selected = $state<Process | null>(null);
+  let menu = $state<{ proc: Process; x: number; y: number } | null>(null);
 
   onMount(load);
 
@@ -62,8 +64,8 @@
           {filter}
           {flatten}
           selectedId={selected?.id}
-          onStop={stop}
           onSelect={(p) => (selected = p)}
+          onContextMenu={(p, x, y) => (menu = { proc: p, x, y })}
         />
       </div>
       {#if selected}
@@ -83,6 +85,23 @@
     </div>
   {/if}
 </div>
+
+{#if menu}
+  <RowMenu
+    process={menu.proc}
+    x={menu.x}
+    y={menu.y}
+    onStop={stop}
+    onForceQuit={(id) => {
+      stop(id);
+      if (selected?.id === id) selected = null;
+    }}
+    onDetails={(p) => (selected = p)}
+    onClose={() => (menu = null)}
+  />
+{/if}
+
+<svelte:body oncontextmenu={(e) => e.preventDefault()} />
 
 <style>
   .app {

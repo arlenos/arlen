@@ -2,23 +2,24 @@
   /// The process table: the task-manager landing. A dense, sortable, heat-coloured
   /// list grouped into Apps / Background / System, a Stop on every row. The Arlen
   /// daemons + the AI agent sit in Background as ordinary rows. No verdict page.
-  import { ChevronRight, Square, Cog, Cpu } from "lucide-svelte";
+  import { ChevronRight, Cog, Cpu, Camera, Mic } from "lucide-svelte";
   import type { Process, ProcGroup, ProcStatus, SortKey } from "$lib/stores/processes";
+  import { sensorsFor } from "$lib/stores/detail";
 
   let {
     list,
     filter = "",
     flatten = false,
     selectedId,
-    onStop,
     onSelect,
+    onContextMenu,
   }: {
     list: Process[];
     filter?: string;
     flatten?: boolean;
     selectedId?: number;
-    onStop: (id: number) => void;
     onSelect?: (p: Process) => void;
+    onContextMenu?: (p: Process, x: number, y: number) => void;
   } = $props();
 
   let sortKey = $state<SortKey>("cpu");
@@ -124,6 +125,7 @@
     <button class="h" class:sorted={sortKey === "status"} role="columnheader" aria-sort={ariaSort("status")} onclick={() => sortBy("status")}>
       Status
     </button>
+    <span class="h access" role="columnheader">Access</span>
     <button class="h num" class:sorted={sortKey === "cpu"} role="columnheader" aria-sort={ariaSort("cpu")} onclick={() => sortBy("cpu")}>
       <span class="h-label">CPU {#if sortKey === "cpu"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{totals.cpu.toFixed(0)}%</span>
@@ -140,7 +142,6 @@
       <span class="h-label">Network {#if sortKey === "netKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{rate(totals.netKBs) || "0"}</span>
     </button>
-    <span class="h stop" aria-hidden="true"></span>
   </div>
 
   <div class="body">
@@ -149,6 +150,7 @@
         <div class="grouprow" role="row"><span>{it.label}</span></div>
       {:else}
         {@const p = it.proc}
+        {@const sensors = sensorsFor(p.name)}
         <div
           class="row"
           class:child={it.depth > 0}
@@ -156,6 +158,10 @@
           role="row"
           tabindex="0"
           onclick={() => onSelect?.(p)}
+          oncontextmenu={(e) => {
+            e.preventDefault();
+            onContextMenu?.(p, e.clientX, e.clientY);
+          }}
           onkeydown={(e) => {
             if (e.key === "Enter") onSelect?.(p);
           }}
@@ -188,23 +194,14 @@
             <span class="pname">{p.name}</span>
           </div>
           <div class="cell status" role="cell" data-status={p.status}>{STATUS_LABEL[p.status]}</div>
+          <div class="cell access" role="cell">
+            {#if sensors.camera}<Camera size={13} strokeWidth={2} class="sensor" />{/if}
+            {#if sensors.mic}<Mic size={13} strokeWidth={2} class="sensor" />{/if}
+          </div>
           <div class="cell num" role="cell" style="--heat: {heat(p.cpu, 25)}">{p.cpu.toFixed(1)}%</div>
           <div class="cell num" role="cell" style="--heat: {heat(p.memMB, 2200)}">{mem(p.memMB)}</div>
           <div class="cell num muted" role="cell">{rate(p.diskKBs)}</div>
           <div class="cell num muted" role="cell">{rate(p.netKBs)}</div>
-          <div class="cell stop" role="cell">
-            <button
-              class="stop-btn"
-              aria-label={`Stop ${p.name}`}
-              title="Stop"
-              onclick={(e) => {
-                e.stopPropagation();
-                onStop(p.id);
-              }}
-            >
-              <Square size={12} strokeWidth={2.5} />
-            </button>
-          </div>
         </div>
       {/if}
     {/each}
@@ -219,7 +216,7 @@
   .row,
   .grouprow {
     display: grid;
-    grid-template-columns: minmax(12rem, 1fr) 8.5rem 5rem 6rem 6rem 6.5rem 2rem;
+    grid-template-columns: minmax(12rem, 1fr) 8.5rem 4rem 5rem 6rem 6rem 6.5rem;
     align-items: center;
   }
   .head {
@@ -378,25 +375,14 @@
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     background: transparent;
   }
-  .cell.stop {
-    padding: 0;
-    display: flex;
+  .h.access {
     justify-content: center;
   }
-  .stop-btn {
-    display: inline-flex;
-    padding: 0.25rem;
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-chip, 4px);
-    color: color-mix(in srgb, var(--color-fg-primary) 30%, transparent);
-    cursor: pointer;
-  }
-  .row:hover .stop-btn {
-    color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
-  }
-  .stop-btn:hover {
-    background: color-mix(in srgb, var(--color-error, #c96a6a) 16%, transparent);
-    color: var(--color-error, #c96a6a);
+  .cell.access {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    color: var(--color-warning, #d0a54a);
   }
 </style>

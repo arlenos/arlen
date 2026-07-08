@@ -89,6 +89,12 @@ const DEFAULT_ACCESS: ProcAccess = {
   scopes: [],
 };
 
+/// The camera/mic sensors a process holds, for the process-list Access column.
+export function sensorsFor(name: string): { camera: boolean; mic: boolean } {
+  const a = ACCESS[name];
+  return { camera: a?.camera ?? false, mic: a?.mic ?? false };
+}
+
 /// Derive the detail for a process (a fixture; the real data is the sidecar seam).
 export function detailFor(p: Process): ProcDetail {
   const lower = p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
