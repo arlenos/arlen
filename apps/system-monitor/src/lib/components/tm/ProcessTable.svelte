@@ -111,6 +111,15 @@
   function heat(v: number, scale: number): number {
     return Math.max(0, Math.min(1, v / scale));
   }
+  // A limited process's CPU is capped; a paused one reads 0 (frozen). No heat on
+  // either - it's throttled, not hot.
+  const LIMIT_CAP = 10;
+  function dispCpu(p: Process): number {
+    return p.paused ? 0 : p.limited ? Math.min(p.cpu, LIMIT_CAP) : p.cpu;
+  }
+  function dispHeat(p: Process): number {
+    return p.paused || p.limited ? 0 : heat(p.cpu, 25);
+  }
   function ariaSort(key: SortKey): "ascending" | "descending" | "none" {
     return sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : "none";
   }
@@ -193,12 +202,15 @@
             {/if}
             <span class="pname">{p.name}</span>
           </div>
-          <div class="cell status" role="cell" data-status={p.status}>{STATUS_LABEL[p.status]}</div>
+          <div class="cell status" role="cell" data-status={p.paused ? "suspended" : p.status}>
+            <span>{p.paused ? "Suspended" : STATUS_LABEL[p.status]}</span>
+            {#if p.limited && !p.paused}<span class="limtag">Limited</span>{/if}
+          </div>
           <div class="cell access" role="cell">
             {#if sensors.camera}<Camera size={13} strokeWidth={2} class="sensor" />{/if}
             {#if sensors.mic}<Mic size={13} strokeWidth={2} class="sensor" />{/if}
           </div>
-          <div class="cell num" role="cell" style="--heat: {heat(p.cpu, 25)}">{p.cpu.toFixed(1)}%</div>
+          <div class="cell num" role="cell" style="--heat: {dispHeat(p)}">{dispCpu(p).toFixed(1)}%</div>
           <div class="cell num" role="cell" style="--heat: {heat(p.memMB, 2200)}">{mem(p.memMB)}</div>
           <div class="cell num muted" role="cell">{rate(p.diskKBs)}</div>
           <div class="cell num muted" role="cell">{rate(p.netKBs)}</div>
@@ -355,8 +367,18 @@
     text-overflow: ellipsis;
   }
   .cell.status {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
     font-size: 0.75rem;
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+  }
+  .limtag {
+    padding: 0.02rem 0.3rem;
+    border-radius: var(--radius-chip, 4px);
+    background: color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
+    font-size: 0.625rem;
+    color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
   }
   .cell.status[data-status="not-responding"] {
     color: var(--color-warning, #d0a54a);
