@@ -119,6 +119,41 @@ impl PeerRegistry {
     }
 }
 
+/// The unicast emit tuples for a batch of account changes: `(recipient_bus_name,
+/// account_id, change_kind)`. For each change, only the connections of the apps
+/// GRANTED that account are targets, resolved from the snapshot the account lives
+/// in - the NEW one for `Added`/`Modified`, the OLD one for a `Removed` account
+/// (whose grants are gone from the new snapshot). Never any other app: this is the
+/// no-leak property (an app is not woken by an account it was not granted) carried
+/// end-to-end. The change_kind is a stable lowercase label.
+pub fn emit_targets<'a>(
+    changes: &'a [AccountChange],
+    old: &[AccountConfig],
+    new: &[AccountConfig],
+    peers: &PeerRegistry,
+) -> Vec<(String, &'a str, &'static str)> {
+    let mut out = Vec::new();
+    for c in changes {
+        let source = match c.kind {
+            AccountChangeKind::Removed => old,
+            _ => new,
+        };
+        let Some(account) = source.iter().find(|a| a.id == c.account_id) else {
+            continue;
+        };
+        let granted: Vec<String> = account.grants.iter().map(|g| g.app_id.clone()).collect();
+        let kind = match c.kind {
+            AccountChangeKind::Added => "added",
+            AccountChangeKind::Removed => "removed",
+            AccountChangeKind::Modified => "modified",
+        };
+        for recipient in peers.recipients(&granted) {
+            out.push((recipient, c.account_id.as_str(), kind));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,5 +233,47 @@ mod tests {
     fn identical_snapshots_have_no_changes() {
         let s = vec![acct("a", "x")];
         assert!(diff_accounts(&s, &s).is_empty());
+    }
+
+    use crate::config::Grant;
+
+    fn granted_acct(id: &str, app: &str) -> AccountConfig {
+        let mut a = acct(id, "user@x");
+        a.grants = vec![Grant {
+            app_id: app.to_string(),
+            services: vec![Service::Files],
+            scope: None,
+        }];
+        a
+    }
+
+    #[test]
+    fn emit_targets_reaches_only_the_granted_apps_connection() {
+        let mut peers = PeerRegistry::new();
+        peers.record(":1.10", "com.example.mail"); // granted
+        peers.record(":1.11", "com.example.snoop"); // NOT granted
+        let old = vec![granted_acct("work", "com.example.mail")];
+        let mut edited = granted_acct("work", "com.example.mail");
+        edited.identity = "changed@x".to_string();
+        let new = vec![edited];
+        let changes = diff_accounts(&old, &new);
+        // Only the granted mail app's connection is targeted; snoop is never woken.
+        assert_eq!(
+            emit_targets(&changes, &old, &new, &peers),
+            vec![(":1.10".to_string(), "work", "modified")]
+        );
+    }
+
+    #[test]
+    fn a_removed_account_notifies_its_old_grantee_from_the_old_snapshot() {
+        let mut peers = PeerRegistry::new();
+        peers.record(":1.20", "com.example.mail");
+        let old = vec![granted_acct("gone", "com.example.mail")];
+        let new: Vec<AccountConfig> = vec![];
+        let changes = diff_accounts(&old, &new);
+        assert_eq!(
+            emit_targets(&changes, &old, &new, &peers),
+            vec![(":1.20".to_string(), "gone", "removed")]
+        );
     }
 }
