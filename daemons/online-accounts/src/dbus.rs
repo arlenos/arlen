@@ -23,7 +23,9 @@
 //! `pid_start_time` recheck closes only PID *recycling* during resolution, not
 //! same-PID `exec`. The eventual close is the same inode-attestation F3 work.
 
+use crate::presence::PeerRegistry;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use audit_proto::{AuditSink, LedgerAuditSink};
 use zbus::interface;
@@ -43,17 +45,33 @@ pub struct AccountsDaemon {
     /// Content-free audit of the credential handout (GAP-2). One fresh one-shot
     /// connection per submit, against the canonical ingest socket.
     audit: LedgerAuditSink,
+    /// Live caller presence (bus name -> app id), recorded on each admitted call,
+    /// so an account-change signal is unicast only to granted apps' connections.
+    peers: Arc<Mutex<PeerRegistry>>,
 }
 
 impl AccountsDaemon {
     /// A daemon over the account-config directory and the token vault. The vault
     /// holds the AEAD-encrypted tokens; `GetAccessToken` reads it only after the
     /// gate admits the caller.
-    pub fn new(accounts_dir: PathBuf, vault: Vault) -> Self {
+    pub fn new(accounts_dir: PathBuf, vault: Vault, peers: Arc<Mutex<PeerRegistry>>) -> Self {
         Self {
             accounts_dir,
             vault,
             audit: LedgerAuditSink::at_default_socket(),
+            peers,
+        }
+    }
+
+    /// Record the calling connection's bus name against its resolved app id, so a
+    /// later account change can be unicast to it if the app is granted. A poisoned
+    /// lock is swallowed - a missed presence record only means a signal may not
+    /// reach one live connection, never a leak.
+    fn record_peer(&self, header: &zbus::message::Header<'_>, app_id: &str) {
+        if let Some(sender) = header.sender() {
+            if let Ok(mut peers) = self.peers.lock() {
+                peers.record(sender.to_string(), app_id);
+            }
         }
     }
 
@@ -84,6 +102,7 @@ impl AccountsDaemon {
         let Ok(caller) = resolve_caller_app_id(&header, connection).await else {
             return Vec::new();
         };
+        self.record_peer(&header, &caller);
         let accounts = self.current_accounts();
         AccessGate::new(&accounts)
             .granted_accounts(&caller)
@@ -135,6 +154,7 @@ impl AccountsDaemon {
         let Ok(caller) = resolve_caller_app_id_guarded(&header, connection).await else {
             return Err(zbus::fdo::Error::AccessDenied("unresolved caller".into()));
         };
+        self.record_peer(&header, &caller);
         let Some(service) = Service::parse(&service) else {
             return Err(zbus::fdo::Error::AccessDenied("unknown service".into()));
         };
