@@ -869,6 +869,8 @@ mod tests {
                 models_endpoint: None,
                 display_name: None,
                 logo_id: None,
+                auth_method: crate::catalog::AuthMethod::ApiKey,
+                unofficial: false,
                 builtin: false,
             },
         );

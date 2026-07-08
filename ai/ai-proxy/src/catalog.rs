@@ -54,6 +54,26 @@ pub enum AuthScheme {
     XGoogApiKey,
 }
 
+/// The access class of a provider: how a caller obtains the credential and what it costs.
+/// Orthogonal both to [`AuthScheme`] (the header the token rides in) and to the sovereignty
+/// tier - a free or subscription provider can still be a closed-jurisdiction one that trains
+/// on you, and the info line governs that independently (`ai-providers-plan.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AuthMethod {
+    /// A paid or freemium per-token API key (the common case; the existing preset list).
+    /// The default.
+    #[default]
+    ApiKey,
+    /// An existing OAuth subscription reused with no per-token cost (e.g. Claude Code,
+    /// Codex, GitHub Copilot, Cursor). Rides the Connections OAuth broker rather than a
+    /// stored key. Lets a user start with what they already pay for.
+    SubscriptionLogin,
+    /// Free or no-auth access (e.g. Kiro, OpenCode, Vertex free credits). Zero API-key
+    /// friction; a convenience, not a sovereignty win.
+    Free,
+}
+
 /// Catalogued provider entry. The proxy treats every field as proxy-owned
 /// configuration, never caller input (the POST-gadget defense above). The cloud
 /// fields carry the multi-provider build; all the new ones are `#[serde(default)]`
@@ -74,6 +94,18 @@ pub struct CatalogEntry {
     /// Defaults to `none` (a local provider needs no key).
     #[serde(default)]
     pub auth_scheme: AuthScheme,
+    /// The access class: how the credential is obtained and what it costs (a per-token API
+    /// key, an existing OAuth subscription, or free/no-auth). A first-class catalog
+    /// dimension, orthogonal to `auth_scheme` and the sovereignty tier. Defaults to
+    /// `api-key`.
+    #[serde(default)]
+    pub auth_method: AuthMethod,
+    /// Whether this provider's access path is unofficial: reverse-engineered, ToS-violating,
+    /// account-suspension-risky (e.g. the subscription-login paths for Claude Code / Codex /
+    /// Cursor / Copilot). The UI must surface a clear warning and never offer it silently;
+    /// the official free/subscription paths (Kiro, OpenCode, Vertex) are not flagged.
+    #[serde(default)]
+    pub unofficial: bool,
     /// URL template for a backend that needs path/query templating (Azure's
     /// `api-version` + deployment). `None` = use `endpoint_url` verbatim.
     #[serde(default)]
@@ -212,6 +244,9 @@ impl ProviderCatalog {
                 models_endpoint: Some("http://127.0.0.1:11434/v1/models".to_string()),
                 display_name: Some("Ollama (local)".to_string()),
                 logo_id: None,
+                // Ollama is a local, free, no-auth provider.
+                auth_method: AuthMethod::Free,
+                unofficial: false,
                 builtin: true,
             },
         );
@@ -243,6 +278,8 @@ impl ProviderCatalog {
                 kind: entry.kind(),
                 configured: entry.is_configured(),
                 builtin: entry.builtin,
+                auth_method: entry.auth_method,
+                unofficial: entry.unofficial,
             })
             .collect();
         views.sort_by(|a, b| a.id.cmp(&b.id));
@@ -296,6 +333,12 @@ pub struct ProviderView {
     pub configured: bool,
     /// A built-in Arlen preset vs a user-added custom provider.
     pub builtin: bool,
+    /// The access class (api-key / subscription-login / free), for the UI's auth/cost chip.
+    /// Serializes as `authMethod`.
+    pub auth_method: AuthMethod,
+    /// Whether this provider's access path is unofficial (reverse-engineered,
+    /// suspension-risk); the UI shows a clear warning and never offers it silently.
+    pub unofficial: bool,
 }
 
 #[cfg(test)]
@@ -314,6 +357,34 @@ mod tests {
         let path = std::env::temp_dir().join("arlen-catalog-test-absent-does-not-exist.toml");
         let cat = ProviderCatalog::load_or_default(&path).unwrap();
         assert!(cat.get("ollama-default").is_some());
+    }
+
+    #[test]
+    fn load_carries_the_auth_method_and_unofficial_flag() {
+        let path = tmp_catalog(
+            "authmethod",
+            "[providers.claude-code]\n\
+             endpoint_url = \"https://api.anthropic.com/v1/messages\"\n\
+             backend = \"anthropic\"\n\
+             auth_scheme = \"x-api-key\"\n\
+             auth_method = \"subscription-login\"\n\
+             unofficial = true\n\
+             [providers.plain]\n\
+             endpoint_url = \"https://api.example.com/v1/chat/completions\"\n\
+             backend = \"openai\"\n\
+             auth_scheme = \"bearer\"\n",
+        );
+        let cat = ProviderCatalog::load_or_default(&path).unwrap();
+        let cc = cat.get("claude-code").unwrap();
+        assert_eq!(cc.auth_method, AuthMethod::SubscriptionLogin);
+        assert!(cc.unofficial, "the reverse-engineered subscription path must be flagged");
+        // an entry that omits them defaults to a paid, official API key
+        let plain = cat.get("plain").unwrap();
+        assert_eq!(plain.auth_method, AuthMethod::ApiKey);
+        assert!(!plain.unofficial);
+        // the built-in local Ollama is free
+        assert_eq!(cat.get("ollama-default").unwrap().auth_method, AuthMethod::Free);
+        std::fs::remove_file(&path).ok();
     }
 
     #[test]
@@ -472,6 +543,8 @@ mod tests {
                 models_endpoint: None,
                 display_name: Some("Anthropic".to_string()),
                 logo_id: None,
+                auth_method: AuthMethod::ApiKey,
+                unofficial: false,
                 builtin: true,
             },
         );
@@ -495,6 +568,8 @@ mod tests {
             models_endpoint: None,
             display_name: None,
             logo_id: None,
+            auth_method: AuthMethod::ApiKey,
+            unofficial: false,
             builtin: true,
         };
         assert!(configured.is_configured());
@@ -512,14 +587,22 @@ mod tests {
             kind: ProviderKind::Cloud,
             configured: false,
             builtin: true,
+            auth_method: AuthMethod::ApiKey,
+            unofficial: false,
         };
         let v = serde_json::to_value(&view).expect("serializes");
         let obj = v.as_object().expect("a JSON object");
         let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
         keys.sort_unstable();
-        assert_eq!(keys, vec!["builtin", "configured", "id", "kind", "name"]);
+        assert_eq!(
+            keys,
+            vec!["authMethod", "builtin", "configured", "id", "kind", "name", "unofficial"]
+        );
         assert_eq!(obj["kind"], serde_json::json!("cloud"));
         assert_eq!(obj["configured"], serde_json::json!(false));
+        // the auth class serializes as a camelCase key with a kebab-case value
+        assert_eq!(obj["authMethod"], serde_json::json!("api-key"));
+        assert_eq!(obj["unofficial"], serde_json::json!(false));
         // A local provider's kind tag is the lowercase counterpart.
         let local = serde_json::to_value(ProviderView {
             id: "ollama-default".to_string(),
@@ -527,8 +610,11 @@ mod tests {
             kind: ProviderKind::Local,
             configured: true,
             builtin: true,
+            auth_method: AuthMethod::Free,
+            unofficial: false,
         })
         .expect("serializes");
         assert_eq!(local["kind"], serde_json::json!("local"));
+        assert_eq!(local["authMethod"], serde_json::json!("free"));
     }
 }
