@@ -116,6 +116,18 @@ impl CompensationStore {
         self.map.get(key)
     }
 
+    /// The retained receipts paired with their correlation-id key, OLDEST FIRST
+    /// (eviction order). Backs the AIAgent1 `completed_actions` transparency read:
+    /// the recently-executed, still-undoable writes, each carrying the key the
+    /// `compensate(id)` undo targets. Bounded like the store, so an aged-out action
+    /// is neither listed nor undoable (the same horizon as `compensate`).
+    pub fn entries(&self) -> Vec<(&str, &RetractReceipt)> {
+        self.order
+            .iter()
+            .filter_map(|k| self.map.get(k).map(|r| (k.as_str(), r)))
+            .collect()
+    }
+
     /// How many receipts are retained.
     pub fn len(&self) -> usize {
         self.map.len()
@@ -177,6 +189,16 @@ mod tests {
         assert!(store.get("c1").is_none(), "the oldest was evicted");
         assert!(store.get("c2").is_some());
         assert!(store.get("c3").is_some());
+    }
+
+    #[test]
+    fn entries_lists_receipts_oldest_first_with_keys() {
+        let mut store = CompensationStore::new(8);
+        store.register("c1", RetractReceipt::from_report("graph.write", false, &write_result("op1")).unwrap());
+        store.register("c2", RetractReceipt::from_report("graph.write", false, &write_result("op2")).unwrap());
+        let listed: Vec<(&str, &str)> =
+            store.entries().iter().map(|(k, r)| (*k, r.op_id.as_str())).collect();
+        assert_eq!(listed, vec![("c1", "op1"), ("c2", "op2")]);
     }
 
     #[test]
