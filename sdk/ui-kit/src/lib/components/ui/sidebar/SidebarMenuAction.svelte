@@ -3,7 +3,7 @@
   /// absolutely positioned at the row's right edge. With `showOnHover` it
   /// stays invisible until the row is hovered or focused, so dense lists
   /// stay calm. Pair with a right padding on the `SidebarMenuButton`
-  /// (e.g. `pr-7`) so long labels truncate under it.
+  /// (e.g. `pe-7`) so long labels truncate under it.
   import type { Snippet } from "svelte";
   import type { HTMLButtonAttributes } from "svelte/elements";
   import { cn } from "$lib/utils";

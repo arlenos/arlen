@@ -70,7 +70,7 @@
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
     white-space: nowrap;
-    text-align: right;
+    text-align: end;
   }
 
   .unit {

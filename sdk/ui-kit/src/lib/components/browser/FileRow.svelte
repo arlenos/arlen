@@ -288,7 +288,7 @@
     font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    text-align: right;
+    text-align: end;
   }
   .fr-location {
     font-size: 0.75rem;

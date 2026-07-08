@@ -36,7 +36,7 @@
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    padding-left: 0.25rem;
+    padding-inline-start: 0.25rem;
   }
 
   .group-card {

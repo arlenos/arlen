@@ -188,7 +188,7 @@
 
   .btn + .field,
   .field + .btn {
-    border-left: 1px solid var(--control-border);
+    border-inline-start: 1px solid var(--control-border);
   }
 
   .field {

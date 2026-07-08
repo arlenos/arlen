@@ -100,7 +100,7 @@
     transition: background-color 100ms ease, color 100ms ease;
   }
   .status-badge.has-label {
-    padding-right: 8px;
+    padding-inline-end: 8px;
   }
   button.status-badge:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);

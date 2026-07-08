@@ -48,7 +48,7 @@
     color: color-mix(in srgb, var(--foreground) 80%, transparent);
   }
   .scope-chip.has-x {
-    padding-right: 0.1875rem;
+    padding-inline-end: 0.1875rem;
   }
   .sc-label {
     white-space: nowrap;

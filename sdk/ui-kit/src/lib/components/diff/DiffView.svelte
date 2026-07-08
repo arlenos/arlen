@@ -97,7 +97,7 @@
     background: transparent;
     color: var(--foreground);
     font-size: 0.75rem;
-    text-align: left;
+    text-align: start;
   }
   .file-head:hover {
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
@@ -169,12 +169,12 @@
   .row .gutter {
     flex-shrink: 0;
     width: 1.1rem;
-    padding-left: 0.3rem;
+    padding-inline-start: 0.3rem;
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
     user-select: none;
   }
   .row .code {
-    padding-right: 0.6rem;
+    padding-inline-end: 0.6rem;
     white-space: pre;
   }
   .row.add {

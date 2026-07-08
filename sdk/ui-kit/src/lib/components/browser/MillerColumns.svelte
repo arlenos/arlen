@@ -192,7 +192,7 @@
     flex-shrink: 0;
     overflow-y: auto;
     padding: 4px;
-    border-right: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+    border-inline-end: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
   }
   .mc-current {
     width: 16rem;
@@ -208,7 +208,7 @@
     border: none;
     border-radius: var(--radius-input);
     background: transparent;
-    text-align: left;
+    text-align: start;
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .mc-row:hover {
