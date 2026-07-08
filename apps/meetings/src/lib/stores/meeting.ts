@@ -23,6 +23,18 @@ export interface Meeting {
 
 export const meeting = writable<Meeting | null>(null);
 
+/// One row in the recent-meetings home. Not in the note contract - a summary the
+/// `meetings_list` seam derives from the KG meeting nodes (flagged for the coder).
+export interface MeetingSummary {
+  id: string;
+  title: string;
+  date_ms: number;
+  participants: string[];
+  preview: string;
+}
+
+export const meetings = writable<MeetingSummary[]>([]);
+
 /// The app lifecycle: nothing yet, a meeting recording, or the produced note.
 export type Phase = "idle" | "capturing" | "note";
 export const phase = writable<Phase>("idle");
@@ -68,6 +80,57 @@ export async function loadMeeting(): Promise<void> {
   } catch {
     meeting.set(FIXTURE);
   }
+}
+
+const MEETINGS_FIXTURE: MeetingSummary[] = [
+  {
+    id: "m-editor",
+    title: "Editor and meeting-notes direction",
+    date_ms: 1_751_450_400_000,
+    participants: ["You", "Tim"],
+    preview: "Why the KG-lens justifies a first-party editor; capture stays on-device.",
+  },
+  {
+    id: "m-standup",
+    title: "Weekly standup",
+    date_ms: 1_751_277_600_000,
+    participants: ["You", "Tim", "Coder"],
+    preview: "Titlebar bug cleared, task-manager keyboard drive landed, i18n next.",
+  },
+  {
+    id: "m-sovereignty",
+    title: "Sovereignty review",
+    date_ms: 1_750_845_600_000,
+    participants: ["You", "Tim"],
+    preview: "Same-uid ambient authority is the core thesis, not a residual to accept.",
+  },
+];
+
+/// Load the recent meetings for the home (the `meetings_list` seam over the KG meeting
+/// nodes; fixture under vite).
+export async function loadMeetings(): Promise<void> {
+  try {
+    meetings.set(await invoke<MeetingSummary[]>("meetings_list"));
+  } catch {
+    meetings.set(MEETINGS_FIXTURE);
+  }
+}
+
+/// Open a past meeting's note (the `meeting_note {id}` seam; the fixture note under
+/// vite), landing on the note phase.
+export async function openMeeting(id: string): Promise<void> {
+  try {
+    const note = await invoke<MeetingNote>("meeting_note", { id });
+    meeting.set({ humanNotes: "", note, mocked: false });
+  } catch {
+    meeting.set({ humanNotes: FIXTURE.humanNotes, note: FIXTURE.note, mocked: true });
+  }
+  phase.set("note");
+}
+
+/// A short, locale-aware meeting date for the list (ties into the i18n locale later).
+export function fmtDate(ms: number): string {
+  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(new Date(ms));
 }
 
 /// Fold adjacent same-speaker segments into utterances (mirrors the contract's
