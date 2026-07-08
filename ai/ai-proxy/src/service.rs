@@ -292,14 +292,16 @@ impl ProxyService {
 
     /// Forward through a named fallback chain, or a single provider. When `req.provider_name`
     /// names a combo, its providers are tried in order: the first that returns a usable
-    /// response serves, and the walk falls to the next only on a clearly provider-unavailable
-    /// outcome (an unreachable transport error, or an upstream 429/502/503/504). Any
-    /// definitive response (a 2xx, or a 4xx the provider answered) and any proxy-side refusal
-    /// (caller-not-allowed, at-capacity, audit-unavailable, unsupported wire format) returns
-    /// immediately, since falling would not help. Every fall-worthy case is pre-completion,
-    /// so a fall repeats no upstream side effect. A non-combo name forwards to that single
-    /// provider unchanged. Each attempt is audited by `forward`, so the ledger records the
-    /// whole walk.
+    /// response serves, and the walk falls to the next only on a provider-availability signal -
+    /// an unreachable transport failure, an upstream 429 or 503, or a member whose wire format
+    /// this proxy cannot shape (a pre-egress refusal). A definitive response (a 2xx, or a 4xx
+    /// the provider answered, including auth failures), a gateway-ambiguous 500/502/504, and any
+    /// proxy-side refusal (caller-not-allowed, at-capacity, audit-unavailable, transcode-failed)
+    /// return immediately, since falling either would not help or could double-bill. The 429/503
+    /// and wire-format falls are pre-completion; the transport fall covers the down-provider case
+    /// with one accepted residual - a rare post-send read timeout could bill a completing upstream
+    /// the walk then retries. A non-combo name forwards to that single provider unchanged. Each
+    /// attempt is audited by `forward`, so the ledger records the whole walk.
     pub async fn forward_combo(
         &self,
         caller: &CallerIdentity,
@@ -307,8 +309,23 @@ impl ProxyService {
     ) -> Result<ForwardOutcome, ProxyError> {
         fn should_fall(outcome: &Result<ForwardOutcome, ProxyError>) -> bool {
             match outcome {
-                Ok(o) => matches!(o.upstream_status, 429 | 502 | 503 | 504),
+                // Unambiguously pre-completion upstream refusals: rate-limited (429) or
+                // service-unavailable (503) means the request was rejected before any output
+                // was generated, so a fall repeats no billable work. 500/502/504 are
+                // gateway-ambiguous (the backend may have generated), so they do NOT fall.
+                Ok(o) => matches!(o.upstream_status, 429 | 503),
+                // Refused before any egress because this proxy cannot shape the member's wire
+                // format; a later member may serve and nothing was sent, so it is safe to fall.
+                Err(ProxyError::WireFormatUnsupported { .. }) => true,
+                // An unreachable provider (connection refused / DNS / TLS / timeout). Falling
+                // covers the down-provider case the combo exists for. Accepted residual: a
+                // post-send read timeout is indistinguishable here from a pre-send failure, so
+                // a rare timed-out-but-completing upstream could be billed and then retried - an
+                // availability-over-cost tradeoff, not a pre-completion guarantee.
                 Err(ProxyError::Upstream(ForwardError::Transport(_))) => true,
+                // Any other definitive outcome returns immediately: a 2xx, a 4xx the provider
+                // answered (incl. 401/403 auth and 400), a gateway-ambiguous 5xx, or a proxy-side
+                // refusal (caller-not-allowed, at-capacity, audit-unavailable, transcode-failed).
                 Err(_) => false,
             }
         }
@@ -829,6 +846,83 @@ mod tests {
         let out = svc.forward_combo(&ai_daemon_caller(), chain_req()).await.expect("first serves");
         assert_eq!(out.body, "first");
         assert_eq!(forwarder.calls.lock().await.len(), 1, "second provider never tried");
+    }
+
+    #[tokio::test]
+    async fn forward_combo_falls_over_a_transport_error() {
+        // p1 is unreachable (a transport error); the walk falls to p2, which serves.
+        let forwarder = Arc::new(StubForwarder::new(vec![
+            Err(ForwardError::Transport("connection refused".to_string())),
+            Ok(ForwardResult { status: 200, body: "served".to_string() }),
+        ]));
+        let svc = combo_service(combo_catalog("combo-transport"), forwarder.clone());
+        let out = svc
+            .forward_combo(&ai_daemon_caller(), chain_req())
+            .await
+            .expect("p2 serves after p1 is unreachable");
+        assert_eq!(out.upstream_status, 200);
+        assert_eq!(forwarder.calls.lock().await.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn forward_combo_surfaces_the_last_attempt_when_the_whole_chain_is_unavailable() {
+        // Both members return 503; the walk exhausts the chain and surfaces the last outcome
+        // (exercising the post-loop `last` path).
+        let forwarder = Arc::new(StubForwarder::new(vec![
+            Ok(ForwardResult { status: 503, body: "down".to_string() }),
+            Ok(ForwardResult { status: 503, body: "also down".to_string() }),
+        ]));
+        let svc = combo_service(combo_catalog("combo-exhaust"), forwarder.clone());
+        let out = svc.forward_combo(&ai_daemon_caller(), chain_req()).await.expect("last surfaced");
+        assert_eq!(out.upstream_status, 503);
+        assert_eq!(out.body, "also down");
+        assert_eq!(forwarder.calls.lock().await.len(), 2, "both tried");
+    }
+
+    #[tokio::test]
+    async fn forward_combo_does_not_fall_on_an_auth_failure() {
+        // A 401 is a definitive provider answer, not an availability signal: return it and do
+        // not fall, so a systemic auth misconfiguration is not masked by the next member.
+        let forwarder = Arc::new(StubForwarder::new(vec![
+            Ok(ForwardResult { status: 401, body: "unauthorized".to_string() }),
+            Ok(ForwardResult { status: 200, body: "should-not-reach".to_string() }),
+        ]));
+        let svc = combo_service(combo_catalog("combo-auth"), forwarder.clone());
+        let out = svc.forward_combo(&ai_daemon_caller(), chain_req()).await.expect("401 returned");
+        assert_eq!(out.upstream_status, 401);
+        assert_eq!(forwarder.calls.lock().await.len(), 1, "did not fall past the auth failure");
+    }
+
+    #[tokio::test]
+    async fn forward_combo_falls_over_an_unshapeable_wire_format() {
+        // p1's wire format the proxy cannot shape (Gemini) is a pre-egress refusal, so the walk
+        // falls to the OpenAI member, which serves. The forwarder is only reached for p2.
+        let path = std::env::temp_dir().join("arlen-proxy-combo-wire.toml");
+        std::fs::write(
+            &path,
+            "[providers.gem]\n\
+             endpoint_url = \"http://127.0.0.1:11434/v1/chat/completions\"\n\
+             backend = \"gemini\"\n\
+             wire_format = \"gemini\"\n\
+             [providers.oai]\n\
+             endpoint_url = \"http://127.0.0.1:11434/v1/chat/completions\"\n\
+             backend = \"ollama\"\n\
+             [combos]\n\
+             chain = [\"gem\", \"oai\"]\n",
+        )
+        .unwrap();
+        let catalog = ProviderCatalog::load_or_default(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        let forwarder =
+            Arc::new(StubForwarder::new(vec![Ok(ForwardResult { status: 200, body: "oai".into() })]));
+        let svc = combo_service(catalog, forwarder.clone());
+        let out = svc
+            .forward_combo(&ai_daemon_caller(), chain_req())
+            .await
+            .expect("the OpenAI member serves after the unshapeable Gemini member");
+        assert_eq!(out.upstream_status, 200);
+        assert_eq!(out.body, "oai");
+        assert_eq!(forwarder.calls.lock().await.len(), 1, "only the OpenAI member reached egress");
     }
 
     #[tokio::test]
