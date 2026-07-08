@@ -24,7 +24,7 @@ use ai_engine_contract::{ContractError, Execute, ExecuteOutcome};
 use arlen_ai_core::audit::behaviour_action_event;
 use async_trait::async_trait;
 use audit_proto::sink::AuditSink;
-use os_sdk::graph::{RelationWriteOutcome, UnixGraphClient};
+use os_sdk::graph::{RelationRetractOutcome, RelationWriteOutcome, UnixGraphClient};
 use std::sync::{Arc, Mutex};
 
 /// The proxy-tool name for an atomic graph relation write.
@@ -47,6 +47,20 @@ pub trait RelationWriter: Send + Sync {
         relation_type: &str,
         op_id: &str,
     ) -> Result<RelationWriteOutcome, String>;
+
+    /// Retract the op-id-stamped relation a `create_relation` made (the undo of a
+    /// graph write). Op-id-keyed, so it removes exactly this write's own edge and
+    /// nothing else; a retract of an edge that is already gone succeeds as
+    /// [`RelationRetractOutcome::Absent`]. Returns the outcome or an error string.
+    async fn retract_relation(
+        &self,
+        from_type: &str,
+        from_id: &str,
+        to_type: &str,
+        to_id: &str,
+        relation_type: &str,
+        op_id: &str,
+    ) -> Result<RelationRetractOutcome, String>;
 }
 
 /// A fail-closed writer for Phase 1: every write is refused. The real write +
@@ -69,6 +83,18 @@ impl RelationWriter for DeniedWriter {
         Err("the engine daemon's graph write is wired at the executor-live cutover \
              (with its Report-side compensation)"
             .to_string())
+    }
+
+    async fn retract_relation(
+        &self,
+        _from_type: &str,
+        _from_id: &str,
+        _to_type: &str,
+        _to_id: &str,
+        _relation_type: &str,
+        _op_id: &str,
+    ) -> Result<RelationRetractOutcome, String> {
+        Err("the engine daemon's graph retract is wired at the executor-live cutover".to_string())
     }
 }
 
@@ -99,6 +125,21 @@ impl RelationWriter for UnixRelationWriter {
     ) -> Result<RelationWriteOutcome, String> {
         self.client
             .create_relation(from_type, from_id, to_type, to_id, relation_type, op_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    async fn retract_relation(
+        &self,
+        from_type: &str,
+        from_id: &str,
+        to_type: &str,
+        to_id: &str,
+        relation_type: &str,
+        op_id: &str,
+    ) -> Result<RelationRetractOutcome, String> {
+        self.client
+            .retract_relation(from_type, from_id, to_type, to_id, relation_type, op_id)
             .await
             .map_err(|e| e.to_string())
     }
@@ -332,6 +373,18 @@ mod tests {
             _op: &str,
         ) -> Result<RelationWriteOutcome, String> {
             self.result.clone()
+        }
+
+        async fn retract_relation(
+            &self,
+            _ft: &str,
+            _fi: &str,
+            _tt: &str,
+            _ti: &str,
+            _rt: &str,
+            _op: &str,
+        ) -> Result<RelationRetractOutcome, String> {
+            Ok(RelationRetractOutcome::Retracted)
         }
     }
 
