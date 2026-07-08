@@ -17,6 +17,7 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
+  import { LiveRegion } from "@arlen/ui-kit/components/a11y";
   import HarnessSidebar from "$lib/components/HarnessSidebar.svelte";
   import TransparencyDrawer from "$lib/components/chat/TransparencyDrawer.svelte";
   import MintFlow from "$lib/components/mint/MintFlow.svelte";
@@ -37,6 +38,21 @@
   const viewTitle = $derived(
     $page.url.pathname.startsWith("/agent") ? "Activity" : $activeTitle || "Chat",
   );
+
+  // On a surface switch, move focus to the new view and announce it, so keyboard +
+  // screen-reader users are not stranded at the old view. Skip the first run so we
+  // never steal focus on open.
+  let announcement = $state("");
+  let navigated = false;
+  $effect(() => {
+    void $page.url.pathname;
+    if (!navigated) {
+      navigated = true;
+      return;
+    }
+    announcement = viewTitle;
+    document.getElementById("harness-view")?.focus();
+  });
 
   // Window drag via explicit pointerdown + startDragging(), because the
   // `data-tauri-drag-region` attribute is unreliable on Wayland in
@@ -92,8 +108,9 @@
       <WindowButtons />
     </header>
 
-    <!-- SidebarInset is the page's <main>; this is just its scroll region. -->
-    <div class="min-h-0 flex-1 overflow-y-auto">
+    <!-- SidebarInset is the page's <main>; this is just its scroll region. The
+         tabindex lets a surface switch move focus here (announced via LiveRegion). -->
+    <div id="harness-view" tabindex="-1" class="min-h-0 flex-1 overflow-y-auto outline-none">
       {@render children?.()}
     </div>
   </SidebarInset>
@@ -103,3 +120,4 @@
      composer foot; mounted once here so it works from any surface. -->
 <TransparencyDrawer />
 <MintFlow />
+<LiveRegion message={announcement} />
