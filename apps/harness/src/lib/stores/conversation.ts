@@ -207,6 +207,7 @@ function demoSessions(): Session[] {
         {
           id: 1,
           role: "assistant",
+          pinned: true,
           text: "Two things moved. The compositor titlebar bug is marked cleared, and the appearance surface slipped to after the transparency work. Everything else on the plan is unchanged.",
           toolCalls: [
             {

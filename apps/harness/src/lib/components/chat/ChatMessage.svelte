@@ -101,7 +101,7 @@
   }
 </script>
 
-<div class="turn" data-role={message.role}>
+<div class="turn" data-role={message.role} data-mid={message.id}>
   <p class="role">{message.role === "user" ? "You" : "Assistant"}</p>
 
   {#if message.pending}
