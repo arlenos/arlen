@@ -351,7 +351,13 @@ impl EphemeralStack {
             .map(|f| format!("    \"{f}\","))
             .collect::<Vec<_>>()
             .join("\n");
-        let toml = format!("[graph]\nread = [\n{reads}\n]\n");
+        // A complete profile: `[info]` is required by the SDK `load_profile`
+        // (which the daemon's token mint `issue_token_for_app` uses for the read
+        // ops' readable-label scoping + the connect-time grant emission). A
+        // `[graph]`-only fragment loads for the system-anchored read path but the
+        // token mint rejects it, so a scoped ThirdParty caller's own grant /
+        // provenance would never materialise. Mirrors a real shipped profile.
+        let toml = format!("[info]\napp_id = \"{app_id}\"\n\n[graph]\nread = [\n{reads}\n]\n");
         std::fs::write(self.permissions_dir().join(format!("{app_id}.toml")), toml)
     }
 
