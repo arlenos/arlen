@@ -11,7 +11,7 @@
 //! measure over.
 
 use std::collections::BTreeMap;
-use sysinfo::{ProcessesToUpdate, System};
+use sysinfo::{Networks, ProcessesToUpdate, System};
 
 /// One process for the task-manager list (the easy-70% fields).
 #[derive(Debug, Clone, PartialEq)]
@@ -31,10 +31,11 @@ pub struct ProcessRow {
     pub cpu_percent: f32,
 }
 
-/// Collects the process list over `sysinfo`, holding the `System` so CPU% is a
-/// correct rate on the second and later snapshots.
+/// Collects the process list over `sysinfo`, holding the `System` (and `Networks`)
+/// so CPU% and network throughput are correct rates on the second and later reads.
 pub struct Collector {
     sys: System,
+    networks: Networks,
 }
 
 impl Default for Collector {
@@ -48,7 +49,7 @@ impl Collector {
     /// for every process (a rate needs two samples); refresh again after an
     /// interval for real figures.
     pub fn new() -> Self {
-        Self { sys: System::new() }
+        Self { sys: System::new(), networks: Networks::new_with_refreshed_list() }
     }
 
     /// Number of logical CPUs, for turning the per-core [`ProcessRow::cpu_percent`]
@@ -83,6 +84,13 @@ impl Collector {
     pub fn totals(&mut self) -> SystemTotals {
         self.sys.refresh_cpu_all();
         self.sys.refresh_memory();
+        self.networks.refresh(true);
+        let mut net_received_bytes = 0u64;
+        let mut net_transmitted_bytes = 0u64;
+        for (_name, data) in &self.networks {
+            net_received_bytes = net_received_bytes.saturating_add(data.received());
+            net_transmitted_bytes = net_transmitted_bytes.saturating_add(data.transmitted());
+        }
         SystemTotals {
             cpu_percent: self.sys.global_cpu_usage(),
             memory_total_bytes: self.sys.total_memory(),
@@ -90,6 +98,8 @@ impl Collector {
             memory_used_bytes: self.sys.used_memory(),
             swap_total_bytes: self.sys.total_swap(),
             swap_used_bytes: self.sys.used_swap(),
+            net_received_bytes,
+            net_transmitted_bytes,
         }
     }
 }
@@ -114,6 +124,11 @@ pub struct SystemTotals {
     pub swap_total_bytes: u64,
     /// Used swap, bytes.
     pub swap_used_bytes: u64,
+    /// Bytes received across all interfaces since the previous [`Collector::totals`]
+    /// call (0 on the first call) - divide by the inter-call interval for a rate.
+    pub net_received_bytes: u64,
+    /// Bytes transmitted across all interfaces since the previous call.
+    pub net_transmitted_bytes: u64,
 }
 
 /// An app-grouped row: one named app aggregating its processes' resources (the
