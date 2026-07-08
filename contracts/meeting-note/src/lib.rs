@@ -1,0 +1,226 @@
+//! The meeting note document: the structured artifact the meeting-notes engine
+//! produces from a transcript (plus any human notes), rendered to the markdown the
+//! text-editor opens as a KG citizen.
+//!
+//! The embedded transcript, and the summary and action items derived from it, all trace
+//! back to UNTRUSTED spoken or injected content. The markdown rendering therefore
+//! neutralizes structural markdown at the start of every untrusted-derived line, so a
+//! transcript line like `- [ ] wire the money` or `## Decisions` cannot forge a checklist
+//! item or a heading in the rendered note (the injection-isolation edge, applied at the
+//! document boundary). Screening the content before a model summarizes it is the engine's
+//! separate, upstream responsibility.
+
+use arlen_transcript::Transcript;
+use serde::{Deserialize, Serialize};
+
+/// One extracted action item: the task text and, when the extractor attributed it, an
+/// owner. Kept deliberately small; richer fields (due date, linked entity) land with the
+/// extractor that can populate them without guessing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActionItem {
+    /// The task text.
+    pub text: String,
+    /// The person the item was assigned to, when the extractor attributed one.
+    #[serde(default)]
+    pub owner: Option<String>,
+}
+
+/// A meeting note: the human-facing title, the participants, the summary, the extracted
+/// action items and the transcript it was built from. The engine produces this; the
+/// text-editor renders [`MeetingNote::to_markdown`] as an editable document and the
+/// Knowledge app links it to the meeting's people and project.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MeetingNote {
+    /// The note title (e.g. the meeting name).
+    pub title: String,
+    /// The participant display names, in the order to list them.
+    #[serde(default)]
+    pub participants: Vec<String>,
+    /// The prose summary.
+    pub summary: String,
+    /// The extracted action items.
+    #[serde(default)]
+    pub action_items: Vec<ActionItem>,
+    /// The transcript the note was built from.
+    pub transcript: Transcript,
+}
+
+impl MeetingNote {
+    /// Render the note as a markdown document. Untrusted-derived text (the summary, the
+    /// action items and the transcript) has structural markdown neutralized at each line
+    /// start so embedded content cannot forge headings, list items or quotes.
+    pub fn to_markdown(&self) -> String {
+        let mut md = format!("# {}\n", escape_md_block(&self.title));
+        if !self.participants.is_empty() {
+            let names: Vec<String> = self.participants.iter().map(|p| escape_md_inline(p)).collect();
+            md.push_str(&format!("\nParticipants: {}\n", names.join(", ")));
+        }
+
+        md.push_str("\n## Summary\n\n");
+        md.push_str(&escape_md_block(&self.summary));
+        md.push('\n');
+
+        md.push_str("\n## Action items\n\n");
+        if self.action_items.is_empty() {
+            md.push_str("_None captured._\n");
+        } else {
+            for item in &self.action_items {
+                md.push_str("- [ ] ");
+                md.push_str(&escape_md_inline(&item.text));
+                if let Some(owner) = &item.owner {
+                    md.push_str(&format!(" (@{})", escape_md_inline(owner)));
+                }
+                md.push('\n');
+            }
+        }
+
+        md.push_str("\n## Transcript\n\n");
+        md.push_str(&escape_md_block(&self.transcript.to_readable()));
+        md.push('\n');
+        md
+    }
+}
+
+/// Neutralize structural markdown at the start of every line of an untrusted block: a
+/// leading heading (`#`), quote (`>`) or list (`-`, `+`, `*`, `1.`) marker is backslash
+/// escaped so the line renders as literal text. Line breaks are preserved. Inline emphasis
+/// (`*word*`, `[text](url)`) is left as-is: it cannot forge document structure, only
+/// cosmetic styling, and over-escaping it would mangle legitimate prose.
+fn escape_md_block(s: &str) -> String {
+    s.lines().map(escape_md_line).collect::<Vec<_>>().join("\n")
+}
+
+/// Neutralize an untrusted value used inside a single line (a name, an action item): drop
+/// any line breaks so it cannot open a new structural line, then escape a leading marker.
+fn escape_md_inline(s: &str) -> String {
+    let one_line: String = s
+        .chars()
+        .map(|c| if c == '\n' || c == '\r' { ' ' } else { c })
+        .collect();
+    escape_md_line(one_line.trim())
+}
+
+/// Escape a leading structural markdown marker on one line, preserving indentation.
+fn escape_md_line(line: &str) -> String {
+    let trimmed = line.trim_start();
+    let indent = &line[..line.len() - trimmed.len()];
+    if starts_structural(trimmed) {
+        format!("{indent}\\{trimmed}")
+    } else {
+        line.to_string()
+    }
+}
+
+/// Whether a line (already left-trimmed) opens a markdown block structure.
+fn starts_structural(t: &str) -> bool {
+    t.starts_with('#')
+        || t.starts_with('>')
+        || t.starts_with("```")
+        || t.starts_with("~~~")
+        || is_bullet(t)
+        || is_ordered(t)
+}
+
+/// A `-`, `+` or `*` bullet (the marker alone, or followed by a space).
+fn is_bullet(t: &str) -> bool {
+    matches!(t, "-" | "+" | "*")
+        || t.starts_with("- ")
+        || t.starts_with("+ ")
+        || t.starts_with("* ")
+}
+
+/// An ordered-list start: one or more digits then `.` or `)`.
+fn is_ordered(t: &str) -> bool {
+    let digits: String = t.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return false;
+    }
+    let rest = &t[digits.len()..];
+    rest.starts_with('.') || rest.starts_with(')')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arlen_transcript::TranscriptSegment;
+
+    fn note(summary: &str, items: Vec<ActionItem>, segs: Vec<TranscriptSegment>) -> MeetingNote {
+        MeetingNote {
+            title: "Sprint sync".into(),
+            participants: vec!["Ada".into(), "Grace".into()],
+            summary: summary.into(),
+            action_items: items,
+            transcript: Transcript { language: None, segments: segs },
+        }
+    }
+
+    fn seg(text: &str) -> TranscriptSegment {
+        TranscriptSegment {
+            start_ms: 0,
+            end_ms: 1000,
+            text: text.into(),
+            speaker: None,
+            confidence: None,
+        }
+    }
+
+    #[test]
+    fn renders_the_expected_sections() {
+        let n = note(
+            "We shipped the parser.",
+            vec![ActionItem { text: "Write the changelog".into(), owner: Some("Ada".into()) }],
+            vec![seg("all done")],
+        );
+        let md = n.to_markdown();
+        assert!(md.starts_with("# Sprint sync\n"));
+        assert!(md.contains("Participants: Ada, Grace"));
+        assert!(md.contains("## Summary\n\nWe shipped the parser."));
+        assert!(md.contains("- [ ] Write the changelog (@Ada)"));
+        assert!(md.contains("## Transcript\n\n[0:00] all done"));
+    }
+
+    #[test]
+    fn empty_action_items_render_a_placeholder() {
+        let md = note("nothing to do", vec![], vec![seg("ok")]).to_markdown();
+        assert!(md.contains("## Action items\n\n_None captured._"));
+    }
+
+    #[test]
+    fn an_injected_transcript_line_cannot_forge_structure() {
+        // A speaker dictating markdown-looking text must not become a heading or a checklist
+        // item in the rendered note.
+        let n = note(
+            "## Injected summary heading\n- [ ] steal the funds",
+            vec![],
+            vec![seg("please add - [ ] transfer everything")],
+        );
+        let md = n.to_markdown();
+        // the summary's injected heading and list marker are escaped
+        assert!(md.contains("\\## Injected summary heading"));
+        assert!(md.contains("\\- [ ] steal the funds"));
+        // the transcript line keeps its timestamp prefix, so its content stays mid-line;
+        // no bare "- [ ]" appears at a line start anywhere in the transcript section
+        let transcript_part = md.split("## Transcript").nth(1).unwrap();
+        assert!(!transcript_part.lines().any(|l| l.trim_start().starts_with("- [ ]")));
+    }
+
+    #[test]
+    fn an_injected_owner_cannot_break_the_line() {
+        let n = note(
+            "s",
+            vec![ActionItem { text: "do it\n## Fake".into(), owner: Some("x\n- y".into()) }],
+            vec![seg("t")],
+        );
+        let md = n.to_markdown();
+        // the newline in the item text and owner is collapsed, so no new structural line
+        assert!(md.contains("- [ ] do it ## Fake (@x - y)"));
+    }
+
+    #[test]
+    fn round_trips_through_json() {
+        let n = note("s", vec![ActionItem { text: "t".into(), owner: None }], vec![seg("x")]);
+        let json = serde_json::to_string(&n).unwrap();
+        let back: MeetingNote = serde_json::from_str(&json).unwrap();
+        assert_eq!(n, back);
+    }
+}
