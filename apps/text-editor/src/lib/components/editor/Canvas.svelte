@@ -99,7 +99,11 @@
       if (comment) return `<span class="tok-comment">${comment}</span>`;
       if (str) return `<span class="tok-str">${str}</span>`;
       if (num) return `<span class="tok-num">${num}</span>`;
-      if (word) return KW.test(word) ? `<span class="tok-kw">${word}</span>` : word;
+      if (word) {
+        if (KW.test(word)) return `<span class="tok-kw">${word}</span>`;
+        if (/^[A-Z]/.test(word)) return `<span class="tok-type">${word}</span>`;
+        return word;
+      }
       return mm;
     });
   }
@@ -253,19 +257,27 @@
     overflow-x: auto;
     color: color-mix(in srgb, var(--color-fg-primary) 82%, transparent);
   }
+  /* A restrained, low-saturation syntax palette (dark-tuned): colour here is
+     semantic (keyword / string / number / type), the one place it earns its keep;
+     kept desaturated + harmonious so it reads calm, not a bright default rainbow.
+     Set as --syntax-* on the code containers so a theme can override; a light-theme
+     variant is a follow-up. */
   :global(.tok-kw) {
-    color: var(--color-fg-primary);
+    color: var(--syntax-kw, #8f97c7);
     font-weight: 600;
   }
-  :global(.tok-str) {
-    color: color-mix(in srgb, var(--color-fg-primary) 62%, transparent);
+  :global(.tok-type) {
+    color: var(--syntax-type, #7db8ac);
   }
-  :global(.tok-comment) {
-    color: color-mix(in srgb, var(--color-fg-primary) 38%, transparent);
-    font-style: italic;
+  :global(.tok-str) {
+    color: var(--syntax-str, #9ab87e);
   }
   :global(.tok-num) {
-    color: color-mix(in srgb, var(--color-fg-primary) 78%, transparent);
+    color: var(--syntax-num, #c9a877);
+  }
+  :global(.tok-comment) {
+    color: var(--syntax-comment, color-mix(in srgb, var(--color-fg-primary) 38%, transparent));
+    font-style: italic;
   }
 
   /* Code/text file: the whole document as one highlighted view with an optional
