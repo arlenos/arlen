@@ -48,7 +48,7 @@ pub mod pi_run;
 /// An internal pi rpc driver: submit a prompt to a spawned pi + return its answer.
 pub mod pi_driver;
 
-/// The System Explanation Mode D-Bus surface (org.arlen.AIEngine1).
+/// The System Explanation Mode D-Bus surface (org.arlen.AI1).
 pub mod explain_iface;
 
 /// The production autonomous-curator route handler (§E): composes the

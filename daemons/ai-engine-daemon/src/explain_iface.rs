@@ -1,4 +1,4 @@
-//! The System Explanation Mode D-Bus surface. `org.arlen.AIEngine1.explain_system`
+//! The System Explanation Mode D-Bus surface. `org.arlen.AI1.explain_system`
 //! runs the built-in `explain` skill on a fresh ephemeral confined pi and returns
 //! its plain-language answer, re-homing Foundation §5.8 onto pi (pi-agent-adoption
 //! decoupling b) so the old ai-daemon's explain path can be retired. Read-only,
@@ -11,10 +11,13 @@ use arlen_ai_skills::loader::{behaviour_sources, load, Provenance};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-/// The bus name the explain surface owns.
-pub const EXPLAIN_BUS_NAME: &str = "org.arlen.AIEngine1";
+/// The bus name the engine owns as the drop-in replacement for the retired
+/// ai-daemon (planner ruling, 8 July): pi takes over `org.arlen.AI1` rather than
+/// minting a second redundant name, which also makes this the connection the
+/// ai-proxy authorizes `ProxiedProvider` forwards on.
+pub const EXPLAIN_BUS_NAME: &str = "org.arlen.AI1";
 /// The object path the explain interface is served at.
-pub const EXPLAIN_OBJECT_PATH: &str = "/org/arlen/AIEngine1";
+pub const EXPLAIN_OBJECT_PATH: &str = "/org/arlen/AI1";
 
 /// Force-load the built-in `explain` behaviour regardless of the user's `[agent]
 /// enabled` list. System Explanation Mode is always available and manually
@@ -61,7 +64,7 @@ impl ExplainInterface {
     }
 }
 
-#[zbus::interface(name = "org.arlen.AIEngine1")]
+#[zbus::interface(name = "org.arlen.AI1")]
 impl ExplainInterface {
     /// Answer "What is my computer doing right now?" (Foundation §5.8) by running
     /// the explain skill on a fresh ephemeral confined pi and returning its
