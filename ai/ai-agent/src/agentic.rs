@@ -239,6 +239,10 @@ pub fn observation_preview(
     rows: &[std::collections::HashMap<String, serde_json::Value>],
     cap: usize,
 ) -> String {
+    // Build somewhat past the cap so the compression below has repeated rows to collapse and
+    // more unique rows can still fit within the final cap; bounded so a huge result cannot
+    // balloon the build.
+    let build_cap = cap.saturating_mul(4);
     let mut out = String::new();
     for row in rows {
         if !out.is_empty() {
@@ -258,10 +262,14 @@ pub fn observation_preview(
             })
             .collect();
         out.push_str(&rendered.join(", "));
-        if out.len() > cap {
-            break; // stop building; the truncation below bounds it
+        if out.len() > build_cap {
+            break; // stop building; compression + the truncation below bound it
         }
     }
+    // Losslessly collapse repeated rows (RTK context compression) so a repetitive result keeps
+    // more unique content within the cap. Non-repetitive output is unchanged (revert-if-grows),
+    // so this never inflates the preview.
+    let mut out = arlen_ai_core::compress::compress(&out);
     if out.len() > cap {
         let mut end = cap;
         while end > 0 && !out.is_char_boundary(end) {
@@ -371,6 +379,27 @@ mod tests {
     #[test]
     fn observation_preview_of_no_rows_is_empty() {
         assert_eq!(observation_preview(&[], OBSERVATION_PREVIEW_CAP), "");
+    }
+
+    #[test]
+    fn observation_preview_collapses_repeated_rows() {
+        // 30 identical rows then a unique one: the preview collapses the repetition (RTK)
+        // so the repeated content, its count, and the unique trailing row all survive.
+        let mut rows: Vec<std::collections::HashMap<String, serde_json::Value>> = Vec::new();
+        for _ in 0..30 {
+            rows.push(std::collections::HashMap::from([(
+                "status".to_string(),
+                serde_json::json!("retrying"),
+            )]));
+        }
+        rows.push(std::collections::HashMap::from([(
+            "status".to_string(),
+            serde_json::json!("recovered"),
+        )]));
+        let preview = observation_preview(&rows, OBSERVATION_PREVIEW_CAP);
+        assert!(preview.contains("status=retrying"), "repeated content preserved: {preview}");
+        assert!(preview.contains("[repeated 30 times]"), "repetition collapsed: {preview}");
+        assert!(preview.contains("status=recovered"), "unique trailing row survives: {preview}");
     }
 
     #[test]
