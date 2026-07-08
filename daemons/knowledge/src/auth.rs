@@ -204,7 +204,7 @@ instance_scope = "own"
     #[test]
     fn shipped_ai_agent_profile_grants_exactly_the_file_part_of_link() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../ai/ai-agent/dist/permissions/ai-agent.toml");
+            .join("../ai-engine-daemon/dist/permissions/ai-agent.toml");
         let profile =
             load_profile_from(&path, "ai-agent").expect("the shipped ai-agent profile must parse");
         assert!(

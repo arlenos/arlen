@@ -290,7 +290,7 @@ provision-agent-profile:
     set -euo pipefail
     dest="${XDG_CONFIG_HOME:-$HOME/.config}/permissions"
     mkdir -p "$dest"
-    install -m644 "{{ROOT}}/ai/ai-agent/dist/permissions/ai-agent.toml" "$dest/ai-agent.toml"
+    install -m644 "{{ROOT}}/daemons/ai-engine-daemon/dist/permissions/ai-agent.toml" "$dest/ai-agent.toml"
     echo "installed agent permission profile -> $dest/ai-agent.toml"
     echo "NB executor_live stays OFF; flipping it in ai.toml is a separate manual step."
 
