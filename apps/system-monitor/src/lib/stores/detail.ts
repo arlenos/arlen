@@ -94,6 +94,48 @@ export function sensorsFor(name: string): { camera: boolean; mic: boolean } {
   return { camera: a?.camera ?? false, mic: a?.mic ?? false };
 }
 
+/// One capability family in the cross-process Access rollup.
+export interface AccessFamily {
+  key: "camera" | "microphone" | "network" | "knowledge";
+  label: string;
+  holders: { proc: Process; detail: string }[];
+}
+
+function rateLabel(kbs: number): string {
+  return kbs >= 1024 ? `${(kbs / 1024).toFixed(1)} MB/s` : `${Math.round(kbs)} KB/s`;
+}
+
+/// Roll up who currently holds each sensitive capability, for the Access tab. The
+/// same data as the per-process Access detail, grouped by capability instead.
+export function rollup(list: Process[]): AccessFamily[] {
+  return [
+    {
+      key: "camera",
+      label: "Camera",
+      holders: list.filter((p) => ACCESS[p.name]?.camera).map((p) => ({ proc: p, detail: "" })),
+    },
+    {
+      key: "microphone",
+      label: "Microphone",
+      holders: list.filter((p) => ACCESS[p.name]?.mic).map((p) => ({ proc: p, detail: "" })),
+    },
+    {
+      key: "network",
+      label: "Network",
+      holders: list
+        .filter((p) => p.netKBs > 0)
+        .map((p) => ({ proc: p, detail: rateLabel(p.netKBs) })),
+    },
+    {
+      key: "knowledge",
+      label: "Knowledge",
+      holders: list
+        .filter((p) => (ACCESS[p.name]?.scopes.length ?? 0) > 0)
+        .map((p) => ({ proc: p, detail: (ACCESS[p.name]?.scopes ?? []).map((s) => s.label).join(", ") })),
+    },
+  ];
+}
+
 /// Derive the detail for a process (a fixture; the real data is the sidecar seam).
 export function detailFor(p: Process): ProcDetail {
   const lower = p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
