@@ -1324,6 +1324,151 @@ async fn the_executor_does_not_silently_write_from_an_event_trigger() {
     }
 }
 
+/// The ENGINE equivalent of the flip-safety assert (pi-agent-adoption step 9): the
+/// pi-based `ai-engine-daemon` is the drop-in autonomous curator, so its live
+/// executor must carry the SAME guarantee as the retired ai-agent - an externally
+/// triggered event never autonomously writes an `op_id`-stamped edge (external
+/// content forces confirmation). Spawns the engine with `executor_live = true` and
+/// a dummy `ARLEN_PI_*` env: `SidecarPaths::resolve` only checks the vars are set,
+/// so the orchestrator runs (the pi spawn itself fails non-fatally, and the
+/// deterministic `auto-tag-by-project` workflow drives the write with no pi). The
+/// engine inherits the `ai-agent` principal + tiers FirstParty by its dev id in
+/// debug, and reads the same `ARLEN_AGENT_BEHAVIOURS` + `ARLEN_AI_CONFIG` overrides.
+/// `#[ignore]`d (needs the built daemons via `just integration-nightly`); it runs
+/// without `/dev/fuse` since the harness disables the timeline mount.
+#[tokio::test]
+#[ignore]
+async fn the_engine_executor_does_not_silently_write_from_an_event_trigger() {
+    if !(arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
+        && arlen_integration::binary_built(
+            "daemons/ai-engine-daemon",
+            "arlen-ai-engine-daemon",
+        ))
+    {
+        eprintln!("SKIP the_engine_executor_does_not_silently_write: audit-daemon/ai-engine-daemon not built (run `just integration-nightly`)");
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+
+    // The engine's go-live grant, keyed under its dev app id (it inherits the
+    // ai-agent curator role + tiers FirstParty in debug).
+    let engine_exe =
+        arlen_integration::binary_path("daemons/ai-engine-daemon", "arlen-ai-engine-daemon");
+    let engine_app_id = arlen_permissions::identity::path_to_app_id(&engine_exe)
+        .expect("resolve the engine's app id");
+    stack
+        .seed_executor_profile_for(&engine_app_id, "first-party")
+        .expect("seed the engine's executor profile");
+
+    stack
+        .seed_read_profile(&[
+            "system.File.id",
+            "system.File.path",
+            "system.Project.id",
+            "system.Project.root_path",
+        ])
+        .expect("seed the test caller's read profile");
+
+    let project_dir = stack.runtime_dir().join("proj");
+    std::fs::create_dir_all(project_dir.join(".git")).expect("create .git fixture");
+    stack
+        .seed_project_watch_dir(&project_dir)
+        .expect("point the watcher at the fixture");
+    stack
+        .seed_ai_config(
+            "[ai]\nenabled = true\naccess_level = 2\naction_mode = \"supervised\"\n\n\
+             [agent]\nenabled = [\"auto-tag-by-project\"]\nexecutor_live = true\n",
+        )
+        .expect("seed ai.toml");
+
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .expect("audit ingest socket");
+
+    // The engine uses the same ARLEN_AGENT_BEHAVIOURS override; the dummy pi paths
+    // satisfy SidecarPaths::resolve (env-set only) so the orchestrator runs.
+    let behaviours = arlen_integration::repo_path("ai/ai-agent/behaviours");
+    let behaviours = behaviours.to_string_lossy().into_owned();
+    let dummy_pi = stack
+        .runtime_dir()
+        .join("no-pi")
+        .to_string_lossy()
+        .into_owned();
+    stack
+        .spawn(
+            "daemons/ai-engine-daemon",
+            "arlen-ai-engine-daemon",
+            &[
+                ("ARLEN_AGENT_BEHAVIOURS", behaviours.as_str()),
+                ("ARLEN_PI_NODE_RUNTIME", dummy_pi.as_str()),
+                ("ARLEN_PI_INSTALL", dummy_pi.as_str()),
+                ("ARLEN_PI_EXTENSION", dummy_pi.as_str()),
+                ("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent-arlen-it"),
+            ],
+        )
+        .expect("spawn ai-engine-daemon");
+
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let file_path = format!("{}/main.rs", project_dir.to_string_lossy());
+    let promoted = format!("MATCH (f:File {{id: '{file_path}'}})-->(p:Project) RETURN p.id");
+    let executor_edge = format!(
+        "MATCH (f:File {{id: '{file_path}'}})-[r]->(p:Project) WHERE r.op_id IS NOT NULL RETURN p.id"
+    );
+    let deadline = Instant::now() + Duration::from_secs(50);
+    loop {
+        let payload = proto::FileOpenedPayload {
+            path: file_path.clone(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
+            .await
+            .expect("emit file.opened");
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        if let Ok(rows) = client.query_rows(&promoted).await {
+            if !rows.is_empty() {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                let executor_rows = client
+                    .query_rows(&executor_edge)
+                    .await
+                    .expect("read the executor edge");
+                assert!(
+                    executor_rows.is_empty(),
+                    "the engine's live executor must NOT autonomously write from an event trigger \
+                     (external content forces confirmation); found {} op_id-stamped edge(s)",
+                    executor_rows.len()
+                );
+                return;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the knowledge promotion pipeline never created the FILE_PART_OF edge within 50s"
+        );
+    }
+}
+
 /// Executor go-live REHEARSAL, the write+undo assert (executor-live-golive-plan.md
 /// P6): with `executor_live = true` in the EPHEMERAL ai.toml, the manual
 /// `tag-untagged-files` workflow finds the seeded untagged file, the live executor

@@ -1,4 +1,0 @@
-[  291812ms] TypeError: Cannot read properties of undefined (reading 'metadata')
-    at getCurrentWindow (http://localhost:1423/node_modules/.vite/deps/@tauri-apps_api_window.js?v=57ae2321:381:48)
-    at HTMLElement.startDrag (http://localhost:1423/src/routes/+layout.svelte?t=1782671447247:69:34)
-    at HTMLDivElement.handle_event_propagation (http://localhost:1423/node_modules/.vite/deps/chunk-HDLNNW3B.js?v=57ae2321:140:22)
