@@ -198,6 +198,42 @@ impl AccountsDaemon {
     }
 }
 
+/// The management ObjectManager surface (online-accounts-plan.md §3.1), a separate
+/// object served at the same `/org/arlen/Accounts1` path (zbus needs one type per
+/// interface). The full account tree is exposed ONLY to the Settings management
+/// app; every other same-uid caller gets an empty tree (the in-code gate, since a
+/// session-bus policy cannot distinguish same-uid callers). Apps enumerate via the
+/// caller-filtered `ListAccounts`, not this surface.
+pub struct AccountsObjectManager {
+    accounts_dir: PathBuf,
+}
+
+impl AccountsObjectManager {
+    /// Build the manager over the account config dir (reloaded per call, so it
+    /// tracks account add/remove without a restart, like the daemon's methods).
+    pub fn new(accounts_dir: PathBuf) -> Self {
+        Self { accounts_dir }
+    }
+}
+
+#[zbus::interface(name = "org.freedesktop.DBus.ObjectManager")]
+impl AccountsObjectManager {
+    /// Return the managed per-account objects, but only for the Settings management
+    /// app; a non-management or unresolvable caller gets an empty tree, never a
+    /// leak. The per-account property maps are the non-secret metadata, inline.
+    async fn get_managed_objects(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<crate::objects::ManagedObjects> {
+        let caller = resolve_caller_app_id(&header, connection)
+            .await
+            .unwrap_or_default();
+        let (configs, _errs) = crate::config::load_accounts(&self.accounts_dir);
+        Ok(crate::objects::managed_objects_gated(&caller, &configs))
+    }
+}
+
 /// Resolve the calling app's Arlen identity from the D-Bus connection.
 ///
 /// The session bus daemon attests the sender's PID (`GetConnectionUnixProcessID`,
