@@ -137,6 +137,9 @@ pub struct CatalogEntry {
 struct CatalogConfig {
     #[serde(default)]
     providers: HashMap<String, CatalogEntry>,
+    /// Named fallback chains: combo name -> the provider ids to try, in order.
+    #[serde(default)]
+    combos: HashMap<String, Vec<String>>,
 }
 
 /// Why the provider catalog could not be loaded from disk.
@@ -154,6 +157,15 @@ pub enum CatalogError {
     #[error("provider '{provider}' sends a key but its endpoint is not https or loopback")]
     InsecureEndpoint {
         /// The offending provider name.
+        provider: String,
+    },
+    /// A combo names a provider absent from the catalog, so the fallback chain would
+    /// dead-end at walk time. Caught at load rather than mid-request.
+    #[error("combo '{combo}' references unknown provider '{provider}'")]
+    UnknownComboProvider {
+        /// The combo whose chain is broken.
+        combo: String,
+        /// The unknown provider id it referenced.
         provider: String,
     },
 }
@@ -183,12 +195,14 @@ fn is_loopback_host(host: &str) -> bool {
 #[derive(Debug, Clone, Default)]
 pub struct ProviderCatalog {
     entries: HashMap<String, CatalogEntry>,
+    /// Named fallback chains (combo name -> ordered provider ids). Empty unless configured.
+    combos: HashMap<String, Vec<String>>,
 }
 
 impl ProviderCatalog {
-    /// Build a catalog from an explicit map.
+    /// Build a catalog from an explicit map (no combos).
     pub fn new(entries: HashMap<String, CatalogEntry>) -> Self {
-        Self { entries }
+        Self { entries, combos: HashMap::new() }
     }
 
     /// Load the catalog from `ai-routing.toml` layered on the built-in defaults: an absent
@@ -213,7 +227,19 @@ impl ProviderCatalog {
                 return Err(CatalogError::InsecureEndpoint { provider: name.clone() });
             }
         }
-        Ok(Self::new(entries))
+        // Validate every combo references known providers, so a broken fallback chain fails
+        // at load rather than dead-ending a request mid-walk.
+        for (combo, order) in &config.combos {
+            for provider in order {
+                if !entries.contains_key(provider) {
+                    return Err(CatalogError::UnknownComboProvider {
+                        combo: combo.clone(),
+                        provider: provider.clone(),
+                    });
+                }
+            }
+        }
+        Ok(Self { entries, combos: config.combos })
     }
 
     /// The default Arlen catalog.
@@ -256,6 +282,22 @@ impl ProviderCatalog {
     /// Look up a provider by name.
     pub fn get(&self, provider_name: &str) -> Option<&CatalogEntry> {
         self.entries.get(provider_name)
+    }
+
+    /// The ordered provider ids of a named fallback chain, if the combo exists.
+    pub fn combo(&self, name: &str) -> Option<&[String]> {
+        self.combos.get(name).map(Vec::as_slice)
+    }
+
+    /// The next provider to try in a combo: the first id, in order, not already in `failed`
+    /// (a provider that hit its quota, was unreachable, or hit its spending cap). `None` when
+    /// the combo is unknown or every provider in it is exhausted.
+    pub fn next_in_combo(
+        &self,
+        name: &str,
+        failed: &std::collections::HashSet<&str>,
+    ) -> Option<&str> {
+        self.combos.get(name)?.iter().map(String::as_str).find(|p| !failed.contains(p))
     }
 
     /// Iterator over the registered provider names. Used by
@@ -384,6 +426,48 @@ mod tests {
         assert!(!plain.unofficial);
         // the built-in local Ollama is free
         assert_eq!(cat.get("ollama-default").unwrap().auth_method, AuthMethod::Free);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn load_parses_and_walks_a_provider_combo() {
+        let path = tmp_catalog(
+            "combo",
+            "[providers.p1]\n\
+             endpoint_url = \"https://a.example/v1/chat/completions\"\n\
+             backend = \"openai\"\n\
+             auth_scheme = \"bearer\"\n\
+             [providers.p2]\n\
+             endpoint_url = \"https://b.example/v1/chat/completions\"\n\
+             backend = \"openai\"\n\
+             auth_scheme = \"bearer\"\n\
+             [combos]\n\
+             sovereign = [\"ollama-default\", \"p1\", \"p2\"]\n",
+        );
+        let cat = ProviderCatalog::load_or_default(&path).unwrap();
+        assert_eq!(
+            cat.combo("sovereign").unwrap(),
+            &["ollama-default".to_string(), "p1".to_string(), "p2".to_string()]
+        );
+        use std::collections::HashSet;
+        // the walk prefers the first provider, then falls to the next unexhausted one
+        let none: HashSet<&str> = HashSet::new();
+        assert_eq!(cat.next_in_combo("sovereign", &none), Some("ollama-default"));
+        let mut failed: HashSet<&str> = HashSet::new();
+        failed.insert("ollama-default");
+        failed.insert("p1");
+        assert_eq!(cat.next_in_combo("sovereign", &failed), Some("p2"));
+        failed.insert("p2");
+        assert_eq!(cat.next_in_combo("sovereign", &failed), None, "chain exhausted");
+        assert_eq!(cat.next_in_combo("nonexistent", &none), None);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn load_rejects_a_combo_referencing_an_unknown_provider() {
+        let path = tmp_catalog("combobad", "[combos]\nx = [\"ollama-default\", \"ghost\"]\n");
+        let err = ProviderCatalog::load_or_default(&path).unwrap_err();
+        assert!(matches!(err, CatalogError::UnknownComboProvider { .. }), "got {err:?}");
         std::fs::remove_file(&path).ok();
     }
 
