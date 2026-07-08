@@ -26,6 +26,11 @@ use zbus::{Connection, Proxy};
 const AI_BUS_NAME: &str = "org.arlen.AI1";
 const AI_OBJECT_PATH: &str = "/org/arlen/AI1";
 
+/// System Explanation Mode is served by the ai-engine-daemon (pi), not the old
+/// ai-daemon: `explain_system` runs the explain skill on a fresh ephemeral pi.
+const ENGINE_BUS_NAME: &str = "org.arlen.AIEngine1";
+const ENGINE_OBJECT_PATH: &str = "/org/arlen/AIEngine1";
+
 /// How long a whole turn (submit + every poll + the waits between) may
 /// take before it is abandoned and the query cancelled.
 const QUERY_TIMEOUT: Duration = Duration::from_secs(90);
@@ -241,9 +246,9 @@ pub async fn ai_explain() -> Result<String, String> {
     let connection = Connection::session()
         .await
         .map_err(|e| format!("session bus: {e}"))?;
-    let proxy = Proxy::new(&connection, AI_BUS_NAME, AI_OBJECT_PATH, AI_BUS_NAME)
+    let proxy = Proxy::new(&connection, ENGINE_BUS_NAME, ENGINE_OBJECT_PATH, ENGINE_BUS_NAME)
         .await
-        .map_err(|e| format!("ai daemon unavailable: {e}"))?;
+        .map_err(|e| format!("ai engine unavailable: {e}"))?;
     let deadline = Instant::now() + QUERY_TIMEOUT;
     match timeout_at(deadline, proxy.call::<_, _, String>("explain_system", &())).await {
         Ok(r) => r.map_err(map_call_error),
