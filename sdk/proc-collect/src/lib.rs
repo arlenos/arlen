@@ -10,6 +10,7 @@
 //! snapshots and the first snapshot reports 0% until there is an interval to
 //! measure over.
 
+use std::collections::BTreeMap;
 use sysinfo::{ProcessesToUpdate, System};
 
 /// One process for the task-manager list (the easy-70% fields).
@@ -75,9 +76,87 @@ impl Collector {
     }
 }
 
+/// An app-grouped row: one named app aggregating its processes' resources (the
+/// design's "Chrome is one row, not 15 nameless PIDs"). The default landing shows
+/// these; a toggle flattens back to the raw [`ProcessRow`] list (the expert view).
+#[derive(Debug, Clone, PartialEq)]
+pub struct AppGroup {
+    /// The app name that grouped these processes.
+    pub name: String,
+    /// The member pids, ascending.
+    pub pids: Vec<u32>,
+    /// Summed CPU% across the members (still per-core; the surface normalizes by
+    /// [`Collector::cpu_count`]).
+    pub total_cpu_percent: f32,
+    /// Summed resident memory across the members, in bytes.
+    pub total_memory_bytes: u64,
+}
+
+/// Group processes into named app rows by name and aggregate their CPU and memory,
+/// sorted by CPU descending (the default landing order), name-ascending on ties.
+/// Grouping by name covers the common case (one app spawns many like-named
+/// helpers); grouping by executable path or process ancestry is a later refinement.
+pub fn group_by_app(rows: &[ProcessRow]) -> Vec<AppGroup> {
+    let mut by_name: BTreeMap<&str, AppGroup> = BTreeMap::new();
+    for row in rows {
+        let group = by_name.entry(row.name.as_str()).or_insert_with(|| AppGroup {
+            name: row.name.clone(),
+            pids: Vec::new(),
+            total_cpu_percent: 0.0,
+            total_memory_bytes: 0,
+        });
+        group.pids.push(row.pid);
+        group.total_cpu_percent += row.cpu_percent;
+        group.total_memory_bytes += row.memory_bytes;
+    }
+    let mut out: Vec<AppGroup> = by_name.into_values().collect();
+    for group in &mut out {
+        group.pids.sort_unstable();
+    }
+    out.sort_by(|a, b| {
+        b.total_cpu_percent
+            .partial_cmp(&a.total_cpu_percent)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn row(pid: u32, name: &str, cpu: f32, mem: u64) -> ProcessRow {
+        ProcessRow { pid, ppid: None, name: name.to_string(), memory_bytes: mem, cpu_percent: cpu }
+    }
+
+    #[test]
+    fn groups_like_named_processes_into_one_app_row() {
+        let rows = vec![
+            row(10, "chrome", 5.0, 100),
+            row(11, "chrome", 3.0, 200),
+            row(12, "chrome", 2.0, 300),
+            row(20, "kitty", 1.0, 50),
+        ];
+        let groups = group_by_app(&rows);
+        assert_eq!(groups.len(), 2);
+        let chrome = groups.iter().find(|g| g.name == "chrome").unwrap();
+        assert_eq!(chrome.pids, vec![10, 11, 12]);
+        assert_eq!(chrome.total_cpu_percent, 10.0);
+        assert_eq!(chrome.total_memory_bytes, 600);
+    }
+
+    #[test]
+    fn groups_are_sorted_by_cpu_descending() {
+        let rows = vec![row(1, "a", 1.0, 0), row(2, "b", 9.0, 0), row(3, "c", 5.0, 0)];
+        let names: Vec<String> = group_by_app(&rows).into_iter().map(|g| g.name).collect();
+        assert_eq!(names, vec!["b", "c", "a"]);
+    }
+
+    #[test]
+    fn empty_input_groups_to_nothing() {
+        assert!(group_by_app(&[]).is_empty());
+    }
 
     #[test]
     fn snapshot_includes_this_process() {
