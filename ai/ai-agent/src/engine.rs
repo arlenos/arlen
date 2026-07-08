@@ -33,7 +33,7 @@ use crate::agentic::{
 use arlen_ai_classifier::{screen, ClassifierPolicy, InjectionClassifier, Verdict};
 use crate::behaviour::{Behaviour, BehaviourKind, ReadScope};
 use crate::compaction::{self, CompactionPolicy, TranscriptEntry};
-use crate::gate::{ActionContext, DecisionBasis, DecisionReason, Gate, GateError, ProposedAction};
+use crate::gate::{ActionContext, DecisionReason, Gate, GateError, ProposedAction};
 use crate::executor::DryRunReport;
 use crate::loader::LoadedBehaviour;
 use crate::registry::plan_for;
