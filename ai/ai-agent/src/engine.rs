@@ -2840,7 +2840,7 @@ tools:
                 reason: DecisionReason {
                     high_impact: None,
                     external_trigger: true,
-                    basis: DecisionBasis::Mode,
+                    basis: crate::gate::DecisionBasis::Mode,
                 },
                 audit_index: 0,
                 plan: plan_for("graph.write"),
