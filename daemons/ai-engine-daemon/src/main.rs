@@ -31,6 +31,7 @@ use arlen_ai_engine_daemon::reporter::ScreeningReporter;
 use arlen_ai_engine_daemon::curation::GraphProjectReader;
 use arlen_ai_engine_daemon::curator::CuratorHandler;
 use arlen_ai_engine_daemon::orchestrator;
+use arlen_ai_engine_daemon::explain_iface;
 use arlen_ai_engine_daemon::pi_run::SessionBinder;
 use arlen_ai_engine_daemon::sidecar::{PiSidecar, SidecarPaths};
 use arlen_ai_engine_daemon::supervisor::supervise;
@@ -333,6 +334,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if engine_config::ai_enabled() {
         match SidecarPaths::resolve(|k| std::env::var(k).ok(), path.to_string_lossy().into_owned()) {
             Ok(paths) => {
+                // System Explanation Mode: serve org.arlen.AIEngine1.explain_system
+                // via a fresh ephemeral pi. Held by its own task so the served
+                // connection outlives this block (which ends before the accept loop).
+                match explain_iface::load_explain_behaviour() {
+                    Some(behaviour) => {
+                        let iface = explain_iface::ExplainInterface::new(
+                            Arc::new(behaviour),
+                            Arc::new(PiSidecar::new(paths.clone())),
+                            Arc::clone(&dispatcher) as Arc<dyn SessionBinder>,
+                        );
+                        match explain_iface::serve(iface).await {
+                            Ok(conn) => {
+                                info!("serving org.arlen.AIEngine1.explain_system");
+                                tokio::spawn(async move {
+                                    let _explain_conn = conn;
+                                    std::future::pending::<()>().await;
+                                });
+                            }
+                            Err(e) => warn!(error = %e, "could not serve the explain interface"),
+                        }
+                    }
+                    None => warn!("explain skill not found; System Explanation Mode unavailable"),
+                }
+
                 // A second confined pi engine for the curator's ephemeral runs
                 // (distinct from the persistent shell-driven supervisor below).
                 let curator_paths = paths.clone();
