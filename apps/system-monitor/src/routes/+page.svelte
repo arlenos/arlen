@@ -4,7 +4,9 @@
   /// group/flatten toggle.
   import { onMount } from "svelte";
   import ProcessTable from "$lib/components/tm/ProcessTable.svelte";
+  import PerformanceTab from "$lib/components/tm/PerformanceTab.svelte";
   import { processes, load, stop } from "$lib/stores/processes";
+  import { startPerf, stopPerf } from "$lib/stores/perf";
   import { Rows3, Layers, Search } from "lucide-svelte";
 
   const TABS = ["Processes", "Performance"] as const;
@@ -13,6 +15,13 @@
   let flatten = $state(false);
 
   onMount(load);
+
+  // Run the ~1 Hz Performance ticks only while that tab is visible.
+  $effect(() => {
+    if (tab === "Performance") startPerf();
+    else stopPerf();
+    return stopPerf;
+  });
 </script>
 
 <div class="app">
@@ -48,7 +57,9 @@
       <ProcessTable list={$processes} {filter} {flatten} onStop={stop} />
     </div>
   {:else}
-    <p class="placeholder">This view is coming.</p>
+    <div class="perf-wrap">
+      <PerformanceTab />
+    </div>
   {/if}
 </div>
 
@@ -159,10 +170,8 @@
     overflow-y: auto;
     padding: 0 0.4rem;
   }
-  .placeholder {
-    margin: 3rem 0 0;
-    padding: 0 1.25rem;
-    font-size: 0.9375rem;
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
+  .perf-wrap {
+    flex: 1;
+    min-height: 0;
   }
 </style>
