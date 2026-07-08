@@ -74,8 +74,13 @@ impl MeetingNote {
             }
         }
 
+        // Render the transcript as one line per utterance (adjacent same-speaker segments
+        // folded together) so the document reads naturally; the untouched `transcript` field
+        // keeps the raw segments for the interactive click-to-transcript surface.
         md.push_str("\n## Transcript\n\n");
-        md.push_str(&escape_md_block(&self.transcript.to_readable()));
+        md.push_str(&escape_md_block(
+            &self.transcript.merge_adjacent_same_speaker().to_readable(),
+        ));
         md.push('\n');
         md
     }
@@ -191,6 +196,29 @@ mod tests {
         assert!(md.contains("## Summary\n\nWe shipped the parser."));
         assert!(md.contains("- [ ] Write the changelog (@Ada)"));
         assert!(md.contains("## Transcript\n\n[0:00] all done"));
+    }
+
+    #[test]
+    fn the_transcript_renders_as_merged_utterances() {
+        let segs = vec![
+            TranscriptSegment {
+                start_ms: 0,
+                end_ms: 500,
+                text: "hello".into(),
+                speaker: Some("Ada".into()),
+                confidence: None,
+            },
+            TranscriptSegment {
+                start_ms: 500,
+                end_ms: 1000,
+                text: "there".into(),
+                speaker: Some("Ada".into()),
+                confidence: None,
+            },
+        ];
+        let md = note("s", vec![], segs).to_markdown();
+        // the two adjacent same-speaker segments fold into one utterance line
+        assert!(md.contains("[0:00] Ada: hello there"));
     }
 
     #[test]
