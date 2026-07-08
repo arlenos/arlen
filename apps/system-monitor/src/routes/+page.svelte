@@ -5,14 +5,13 @@
   import { onMount } from "svelte";
   import ProcessTable from "$lib/components/tm/ProcessTable.svelte";
   import PerformanceTab from "$lib/components/tm/PerformanceTab.svelte";
-  import AccessTab from "$lib/components/tm/AccessTab.svelte";
   import DetailPane from "$lib/components/tm/DetailPane.svelte";
   import RowMenu from "$lib/components/tm/RowMenu.svelte";
   import { processes, load, stop, pause, resume, limit, unlimit, type Process } from "$lib/stores/processes";
   import { startPerf, stopPerf } from "$lib/stores/perf";
   import { Rows3, Layers, Search } from "lucide-svelte";
 
-  const TABS = ["Processes", "Performance", "Access"] as const;
+  const TABS = ["Processes", "Performance"] as const;
   let tab = $state<(typeof TABS)[number]>("Processes");
   let filter = $state("");
   let flatten = $state(false);
@@ -80,19 +79,9 @@
         />
       {/if}
     </div>
-  {:else if tab === "Performance"}
+  {:else}
     <div class="perf-wrap">
       <PerformanceTab />
-    </div>
-  {:else}
-    <div class="perf-wrap access-scroll">
-      <AccessTab
-        list={$processes}
-        onJump={(p) => {
-          tab = "Processes";
-          selected = p;
-        }}
-      />
     </div>
   {/if}
 </div>
@@ -234,8 +223,5 @@
   .perf-wrap {
     flex: 1;
     min-height: 0;
-  }
-  .access-scroll {
-    overflow-y: auto;
   }
 </style>
