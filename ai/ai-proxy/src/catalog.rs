@@ -306,20 +306,11 @@ impl ProviderCatalog {
         self.entries.get(provider_name)
     }
 
-    /// The ordered provider ids of a named fallback chain, if the combo exists.
+    /// The ordered provider ids of a named fallback chain, if the combo exists. The walk over
+    /// these (falling to the next on a provider-availability signal) lives in
+    /// `ProxyService::forward_combo`.
     pub fn combo(&self, name: &str) -> Option<&[String]> {
         self.combos.get(name).map(Vec::as_slice)
-    }
-
-    /// The next provider to try in a combo: the first id, in order, not already in `failed`
-    /// (a provider that hit its quota, was unreachable, or hit its spending cap). `None` when
-    /// the combo is unknown or every provider in it is exhausted.
-    pub fn next_in_combo(
-        &self,
-        name: &str,
-        failed: &std::collections::HashSet<&str>,
-    ) -> Option<&str> {
-        self.combos.get(name)?.iter().map(String::as_str).find(|p| !failed.contains(p))
     }
 
     /// Iterator over the registered provider names. Used by
@@ -452,7 +443,7 @@ mod tests {
     }
 
     #[test]
-    fn load_parses_and_walks_a_provider_combo() {
+    fn load_parses_a_provider_combo() {
         let path = tmp_catalog(
             "combo",
             "[providers.p1]\n\
@@ -471,17 +462,7 @@ mod tests {
             cat.combo("sovereign").unwrap(),
             &["ollama-default".to_string(), "p1".to_string(), "p2".to_string()]
         );
-        use std::collections::HashSet;
-        // the walk prefers the first provider, then falls to the next unexhausted one
-        let none: HashSet<&str> = HashSet::new();
-        assert_eq!(cat.next_in_combo("sovereign", &none), Some("ollama-default"));
-        let mut failed: HashSet<&str> = HashSet::new();
-        failed.insert("ollama-default");
-        failed.insert("p1");
-        assert_eq!(cat.next_in_combo("sovereign", &failed), Some("p2"));
-        failed.insert("p2");
-        assert_eq!(cat.next_in_combo("sovereign", &failed), None, "chain exhausted");
-        assert_eq!(cat.next_in_combo("nonexistent", &none), None);
+        assert!(cat.combo("nonexistent").is_none());
         std::fs::remove_file(&path).ok();
     }
 
