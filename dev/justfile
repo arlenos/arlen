@@ -176,7 +176,7 @@ lint-licenses:
     roots=$(grep -rl '^\[workspace\]' --include=Cargo.toml . | grep -v '/target/' | xargs -n1 dirname | sort -u)
     for ws in $roots; do
         echo "== cargo-deny licenses: $ws =="
-        cargo deny --manifest-path "$ws/Cargo.toml" --config "{{ROOT}}/deny.toml" check licenses
+        cargo deny --manifest-path "$ws/Cargo.toml" check --config "{{ROOT}}/deny.toml" licenses
     done
     # REUSE.toml licenses the whole tree by the per-component map (precedence
     # "closest" lets a file's own SPDX header win), so the repo is REUSE-compliant
