@@ -12,6 +12,11 @@
 //! the name exclusively (`DoNotQueue`) until it is deleted.
 
 use crate::compensation::CompensationStore;
+use crate::engine_config;
+use crate::write_executor::RelationWriter;
+use arlen_ai_core::audit::behaviour_action_event;
+use audit_proto::sink::AuditSink;
+use os_sdk::graph::RelationRetractOutcome;
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
 
@@ -56,16 +61,80 @@ fn completed_actions_json(store: &CompensationStore) -> String {
     serde_json::to_string(&actions).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// The undo verdict, kept as a small helper so `compensate`'s flow is unit-tested
+/// without a live bus. The wire is the string; this names the branches.
+fn compensate_outcome_wire(outcome: RelationRetractOutcome) -> &'static str {
+    match outcome {
+        RelationRetractOutcome::Retracted => "retracted",
+        RelationRetractOutcome::Absent => "nothing-to-undo",
+    }
+}
+
+/// Run one `compensate`: undo the executed write recorded under `correlation_id`.
+/// Fail-closed at every step, in order: refuse unless the executor is live; refuse
+/// an unknown receipt; AUDIT BEFORE the retract (S13) and refuse if the audit
+/// ledger will not record it (never an unaudited destructive act); then retract
+/// exactly this write's own op-id-stamped edge. The receipt is cloned out and the
+/// lock dropped before the awaits.
+async fn run_compensate(
+    executor_live: bool,
+    correlation_id: &str,
+    compensation: &Mutex<CompensationStore>,
+    writer: &dyn RelationWriter,
+    audit: &dyn AuditSink,
+) -> String {
+    if !executor_live {
+        return "not-enabled".to_string();
+    }
+    let receipt = {
+        let store = match compensation.lock() {
+            Ok(s) => s,
+            Err(_) => return "error: compensation store unavailable".to_string(),
+        };
+        match store.get(correlation_id) {
+            Some(r) => r.clone(),
+            None => return "no-such-receipt".to_string(),
+        }
+    };
+    // Audit-before-act, fail-closed: an undo that cannot be recorded does not run.
+    let event = behaviour_action_event("compensate", "retract-relation", correlation_id);
+    if audit.submit(event).await.is_err() {
+        return "error: audit unavailable".to_string();
+    }
+    match writer
+        .retract_relation(
+            &receipt.from_type,
+            &receipt.from_id,
+            &receipt.to_type,
+            &receipt.to_id,
+            &receipt.relation_type,
+            &receipt.op_id,
+        )
+        .await
+    {
+        Ok(outcome) => compensate_outcome_wire(outcome).to_string(),
+        Err(e) => format!("error: {e}"),
+    }
+}
+
 /// The `org.arlen.AIAgent1` interface object. Holds the shared compensation store
-/// so `completed_actions` (and, later, `compensate`) see the live executed writes.
+/// (for `completed_actions` + `compensate`), the graph writer the undo retracts
+/// through, and the audit sink the undo records to before acting.
 pub struct AgentAdminInterface {
     compensation: Arc<Mutex<CompensationStore>>,
+    writer: Arc<dyn RelationWriter>,
+    audit: Arc<dyn AuditSink>,
 }
 
 impl AgentAdminInterface {
-    /// Build the interface over the daemon's shared compensation store.
-    pub fn new(compensation: Arc<Mutex<CompensationStore>>) -> Self {
-        Self { compensation }
+    /// Build the interface over the daemon's shared compensation store, graph
+    /// writer and audit sink.
+    pub fn new(
+        compensation: Arc<Mutex<CompensationStore>>,
+        writer: Arc<dyn RelationWriter>,
+        audit: Arc<dyn AuditSink>,
+    ) -> Self {
+        Self { compensation, writer, audit }
     }
 }
 
@@ -83,6 +152,25 @@ impl AgentAdminInterface {
             .lock()
             .map(|store| completed_actions_json(&store))
             .unwrap_or_else(|_| "[]".to_string())
+    }
+
+    /// Undo a completed action: retract the graph write recorded under
+    /// `correlation_id`. Reversible curation is autonomous, so this is the user's
+    /// after-the-fact undo. Re-reads `executor_live` live (a runtime flip to
+    /// suggest-mode refuses the undo fail-safe); fail-closed on an unknown receipt,
+    /// an unrecordable audit, or a retract error. Returns `retracted`,
+    /// `nothing-to-undo` (the edge was already gone), `no-such-receipt`,
+    /// `not-enabled` (suggest-mode) or `error: <reason>`.
+    #[zbus(name = "compensate")]
+    async fn compensate(&self, correlation_id: String) -> String {
+        run_compensate(
+            engine_config::executor_live(),
+            &correlation_id,
+            &self.compensation,
+            &*self.writer,
+            &*self.audit,
+        )
+        .await
     }
 }
 
@@ -116,5 +204,113 @@ mod tests {
     #[test]
     fn an_empty_store_renders_an_empty_array() {
         assert_eq!(completed_actions_json(&CompensationStore::new(8)), "[]");
+    }
+
+    use audit_proto::sink::MockAuditSink;
+    use os_sdk::graph::RelationWriteOutcome;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// A writer that records whether its retract was called and returns a canned
+    /// retract outcome, so a test can assert the fail-closed audit gate really
+    /// prevents the retract.
+    struct RetractMock {
+        outcome: Result<RelationRetractOutcome, String>,
+        retract_called: AtomicBool,
+    }
+
+    impl RetractMock {
+        fn new(outcome: Result<RelationRetractOutcome, String>) -> Self {
+            Self { outcome, retract_called: AtomicBool::new(false) }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl RelationWriter for RetractMock {
+        async fn create_relation(
+            &self,
+            _ft: &str,
+            _fi: &str,
+            _tt: &str,
+            _ti: &str,
+            _rt: &str,
+            _op: &str,
+        ) -> Result<RelationWriteOutcome, String> {
+            Err("create not used in the compensate tests".to_string())
+        }
+        async fn retract_relation(
+            &self,
+            _ft: &str,
+            _fi: &str,
+            _tt: &str,
+            _ti: &str,
+            _rt: &str,
+            _op: &str,
+        ) -> Result<RelationRetractOutcome, String> {
+            self.retract_called.store(true, Ordering::Relaxed);
+            self.outcome.clone()
+        }
+    }
+
+    fn store_with(id: &str, op: &str) -> Mutex<CompensationStore> {
+        let mut s = CompensationStore::new(8);
+        s.register(id, receipt(op));
+        Mutex::new(s)
+    }
+
+    #[tokio::test]
+    async fn suggest_mode_refuses_the_undo_without_touching_the_store_or_writer() {
+        let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
+        let out =
+            run_compensate(false, "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::accepting())
+                .await;
+        assert_eq!(out, "not-enabled");
+        assert!(!writer.retract_called.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn an_unknown_receipt_is_refused() {
+        let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
+        let out = run_compensate(
+            true,
+            "missing",
+            &Mutex::new(CompensationStore::new(8)),
+            &writer,
+            &MockAuditSink::accepting(),
+        )
+        .await;
+        assert_eq!(out, "no-such-receipt");
+        assert!(!writer.retract_called.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn an_unrecordable_audit_refuses_the_undo_and_never_retracts() {
+        let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
+        let out =
+            run_compensate(true, "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::failing())
+                .await;
+        assert_eq!(out, "error: audit unavailable");
+        assert!(
+            !writer.retract_called.load(Ordering::Relaxed),
+            "audit-before-act must gate the destructive retract"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_live_undo_retracts_its_own_edge() {
+        let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
+        let out =
+            run_compensate(true, "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::accepting())
+                .await;
+        assert_eq!(out, "retracted");
+        assert!(writer.retract_called.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn an_already_gone_edge_reports_nothing_to_undo() {
+        let writer = RetractMock::new(Ok(RelationRetractOutcome::Absent));
+        let out =
+            run_compensate(true, "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::accepting())
+                .await;
+        assert_eq!(out, "nothing-to-undo");
     }
 }
