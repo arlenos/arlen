@@ -1,0 +1,8 @@
+[package]
+name = "arlen-proc-collect"
+version = "0.1.0"
+edition = "2021"
+description = "Process and resource collection for the task manager: the easy ~70% (process list, CPU%, memory) via sysinfo, WRITE-CLEAN. The advanced 30% (per-pid procfs, GPU, PSI, cgroup) and the privileged helper are later layers (system-monitor-plan.md)."
+
+[dependencies]
+sysinfo = "0.33"

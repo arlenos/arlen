@@ -10,6 +10,7 @@ members = [
     "modules",
     "net-guard",
     "system-monitor",
+    "proc-collect",
     "permissions",
     "screen-capture",
     "secret-vault",
