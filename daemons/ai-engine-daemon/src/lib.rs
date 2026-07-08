@@ -51,6 +51,10 @@ pub mod pi_driver;
 /// The System Explanation Mode D-Bus surface (org.arlen.AI1).
 pub mod explain_iface;
 
+/// The org.arlen.AIAgent1 pull-transparency + undo surface (re-homed from the
+/// retired ai-agent; pi-agent-adoption step 9).
+pub mod agent_iface;
+
 /// The production autonomous-curator route handler (§E): composes the
 /// deterministic-curation + ephemeral-pi-run route bodies behind the orchestrator.
 pub mod curator;
