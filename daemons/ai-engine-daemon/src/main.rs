@@ -285,6 +285,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // log is a separate increment).
     let compensation = Arc::new(Mutex::new(CompensationStore::new(256)));
     let audit: Arc<dyn AuditSink> = Arc::new(LedgerAuditSink::at_default_socket());
+    // The curator loop publishes its live status here; the AIAgent1 `status` method
+    // reads the same handle (the orchestrator writes idle/busy, the interface reads).
+    // Hoisted so both the served surface and the orchestrator loop share one handle.
+    let status = arlen_ai_engine_daemon::agent_iface::new_status_handle();
     let reporter = ScreeningReporter::new(audit.clone(), Screener::off());
     // The executor seam is a router so the daemon hosts several proxy tools
     // (graph.read + graph.write now; OS/MCP tools as they land), each enforcing
@@ -311,6 +315,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    // Serve the AIAgent1 pull-transparency + undo surface (status / completed_actions
+    // / working_set / compensate) on the same connection that owns org.arlen.AI1. The
+    // name request is GRACEFUL: while ai-agent still owns org.arlen.AIAgent1 (the
+    // transition before it is deleted) the request fails, the surface stays dormant,
+    // and AI1 + explain are unaffected; once ai-agent is removed the engine acquires
+    // the name on the next start. compensate is gated to the harness/Settings caller.
+    if let Some(conn) = &ai_connection {
+        let surface = arlen_ai_engine_daemon::agent_iface::AgentAdminInterface::new(
+            status.clone(),
+            compensation.clone(),
+            build_write_runner(),
+            audit.clone(),
+        );
+        match conn
+            .object_server()
+            .at(arlen_ai_engine_daemon::agent_iface::AGENT_OBJECT_PATH, surface)
+            .await
+        {
+            Ok(_) => match conn
+                .request_name_with_flags(
+                    arlen_ai_engine_daemon::agent_iface::AGENT_BUS_NAME,
+                    zbus::fdo::RequestNameFlags::DoNotQueue.into(),
+                )
+                .await
+            {
+                Ok(_) => info!("serving org.arlen.AIAgent1 (pull-transparency + undo)"),
+                Err(e) => warn!(error = %e, "org.arlen.AIAgent1 owned elsewhere (ai-agent transition); the engine surface activates once ai-agent is removed"),
+            },
+            Err(e) => warn!(error = %e, "could not serve the AIAgent1 surface"),
+        }
+    }
     let read_executor: Arc<dyn Executor> =
         Arc::new(GraphReadExecutor::new(build_read_runner(ai_connection.as_ref()).await));
     let write_executor: Arc<dyn Executor> = Arc::new(
@@ -436,10 +471,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 Arc::new(PiSidecar::new(curator_paths)),
                                 Arc::clone(&dispatcher) as Arc<dyn SessionBinder>,
                             );
-                            // The curator loop publishes its live status here; the
-                            // AIAgent1 `status` method reads the same handle once
-                            // that interface is served (the name-transfer step).
-                            let status = arlen_ai_engine_daemon::agent_iface::new_status_handle();
+                            // The curator loop publishes its live status into the
+                            // shared handle the AIAgent1 `status` method reads.
                             tokio::spawn(async move {
                                 let mut coalescer = orchestrator::Coalescer::new(
                                     orchestrator::DEFAULT_COALESCE_WINDOW,
