@@ -22,6 +22,7 @@
   import TransparencyDrawer from "$lib/components/chat/TransparencyDrawer.svelte";
   import BookmarksDrawer from "$lib/components/chat/BookmarksDrawer.svelte";
   import MintFlow from "$lib/components/mint/MintFlow.svelte";
+  import ImportDialog from "$lib/components/chat/ImportDialog.svelte";
   import { activeTitle, initSessions, newSession } from "$lib/stores/conversation";
 
   let { children } = $props();
@@ -122,4 +123,5 @@
 <TransparencyDrawer />
 <BookmarksDrawer />
 <MintFlow />
+<ImportDialog />
 <LiveRegion message={announcement} />
