@@ -6,9 +6,23 @@
   /// paragraph but the active one. This is the surface; the incremental tree-sitter/
   /// LSP engine that highlights + numbers real files is the coder's, so the fixture
   /// renders read-mostly here.
-  let { doc, focusMode = false }: { doc: string; focusMode?: boolean } = $props();
+  let {
+    doc,
+    focusMode = false,
+    fileType = "markdown",
+    lineNumbers = true,
+  }: {
+    doc: string;
+    focusMode?: boolean;
+    fileType?: "markdown" | "code";
+    lineNumbers?: boolean;
+  } = $props();
 
   let activeIdx = $state(1);
+
+  // A code/text file is one whole highlighted document (no markdown parsing, no
+  // focus fade); its line numbers are the whole-file gutter.
+  const codeLines = $derived(doc.replace(/\n$/, "").split("\n"));
 
   type Segment =
     | { kind: "prose"; blocks: string[] }
@@ -91,6 +105,18 @@
   }
 </script>
 
+{#if fileType === "code"}
+  <div class="codefile" class:numbers={lineNumbers}>
+    {#if lineNumbers}
+      <div class="cf-gutter" aria-hidden="true">
+        {#each codeLines as _, i (i)}
+          <span class="cf-ln">{i + 1}</span>
+        {/each}
+      </div>
+    {/if}
+    <pre class="cf-code"><code>{#each codeLines as line, i (i)}<span class="cf-line">{@html highlight(line) || "&nbsp;"}</span>{#if i < codeLines.length - 1}{"\n"}{/if}{/each}</code></pre>
+  </div>
+{:else}
 <div class="canvas" class:focus={focusMode}>
   {#each segments as seg, si (si)}
     {#if seg.kind === "prose"}
@@ -124,6 +150,7 @@
     {/if}
   {/each}
 </div>
+{/if}
 
 <style>
   .canvas {
@@ -239,5 +266,33 @@
   }
   :global(.tok-num) {
     color: color-mix(in srgb, var(--color-fg-primary) 78%, transparent);
+  }
+
+  /* Code/text file: the whole document as one highlighted view with an optional
+     whole-file line-number gutter. */
+  .codefile {
+    display: flex;
+    font-family: var(--font-mono, ui-monospace, "SF Mono", monospace);
+    font-size: 0.875rem;
+    line-height: 1.65;
+  }
+  .cf-gutter {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    padding: 0 0.9rem 0 0.25rem;
+    text-align: right;
+    user-select: none;
+  }
+  .cf-ln {
+    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--color-fg-primary) 26%, transparent);
+  }
+  .cf-code {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    color: color-mix(in srgb, var(--color-fg-primary) 82%, transparent);
   }
 </style>

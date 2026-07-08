@@ -3,14 +3,13 @@
   /// The lens is a co-star (it is the reason the editor exists), not a hidden
   /// sidebar. The slim titlebar carries the file name, a focus-mode toggle, and the
   /// as-of scrubber (time-travel over the file + its context).
-  import { onMount } from "svelte";
   import Canvas from "$lib/components/editor/Canvas.svelte";
   import LensPanel from "$lib/components/editor/LensPanel.svelte";
   import AiEditReview from "$lib/components/editor/AiEditReview.svelte";
   import { loadLens } from "$lib/stores/lens";
   import { proposal, proposeEdit, dismiss } from "$lib/stores/aiEdit";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
-  import { Sun, PanelRight } from "lucide-svelte";
+  import { Sun, PanelRight, Hash } from "lucide-svelte";
 
   // The AI edit is invoked by keyboard (Cmd/Ctrl+K), never a bolted-on titlebar
   // button. Its discoverable home is a future command palette; a text-selection
@@ -36,8 +35,10 @@
   let focusMode = $state(false);
   let lensOpen = $state(true);
   let asOf = $state("now");
+  let fileIdx = $state(0);
+  let lineNumbers = $state(true);
 
-  const DOC = `# The KG-lens
+  const MD_DOC = `# The KG-lens
 
 This file is a **first-class citizen** of the knowledge graph. Beside the text, Arlen surfaces where it came from, the notes that mention it, and the project it belongs to.
 
@@ -60,18 +61,64 @@ type AuthorizeDecision =
 
 Turn this on and every paragraph but the one you are in fades away, so the writing is all that is left. The markdown you see is the real \`bytes\` on disk, never hidden.`;
 
-  onMount(() => loadLens("the-kg-lens.md"));
+  const CODE_DOC = `// The Arlen gate: every AI tool call is authorized before it runs.
+import { invoke } from "@arlen/os-sdk";
+
+export type AuthorizeDecision =
+  | { decision: "allow"; proof?: string }
+  | { decision: "confirm"; prompt: string }
+  | { decision: "deny"; reason: string };
+
+// Reversible edits run autonomously; irreversible ones are held for the user.
+export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
+  const verdict = await invoke("Authorize", { call });
+  if (verdict.decision === "deny") {
+    return { decision: "deny", reason: verdict.reason };
+  }
+  return verdict;
+}`;
+
+  const FILES = [
+    { name: "the-kg-lens.md", type: "markdown" as const, content: MD_DOC },
+    { name: "gate.ts", type: "code" as const, content: CODE_DOC },
+  ];
+  const file = $derived(FILES[fileIdx]);
+  const fileOptions = FILES.map((f, i) => ({ value: String(i), label: f.name }));
+
+  // The lens tracks whichever file is open.
+  $effect(() => {
+    loadLens(file.name);
+  });
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 
 <div class="app">
   <header class="titlebar">
-    <span class="file">the-kg-lens.md</span>
+    <PopoverSelect
+      value={String(fileIdx)}
+      options={fileOptions}
+      width="170px"
+      ariaLabel="Open file"
+      onchange={(v) => (fileIdx = Number(v))}
+    />
     <span class="spacer"></span>
-    <button type="button" class="tb-btn" class:on={focusMode} onclick={() => (focusMode = !focusMode)}>
-      <Sun size={14} strokeWidth={2} /> Focus
-    </button>
+    {#if file.type === "code"}
+      <button
+        type="button"
+        class="tb-btn icon"
+        class:on={lineNumbers}
+        aria-label="Toggle line numbers"
+        title="Line numbers"
+        onclick={() => (lineNumbers = !lineNumbers)}
+      >
+        <Hash size={15} strokeWidth={2} />
+      </button>
+    {:else}
+      <button type="button" class="tb-btn" class:on={focusMode} onclick={() => (focusMode = !focusMode)}>
+        <Sun size={14} strokeWidth={2} /> Focus
+      </button>
+    {/if}
     <PopoverSelect
       value={asOf}
       options={AS_OF_OPTIONS}
@@ -93,7 +140,7 @@ Turn this on and every paragraph but the one you are in fades away, so the writi
 
   <div class="body">
     <main class="editor">
-      <Canvas doc={DOC} {focusMode} />
+      <Canvas doc={file.content} fileType={file.type} {focusMode} {lineNumbers} />
     </main>
     {#if $proposal}
       <AiEditReview />
@@ -119,11 +166,6 @@ Turn this on and every paragraph but the one you are in fades away, so the writi
     padding: 0 1rem;
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     flex-shrink: 0;
-  }
-  .file {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
   }
   .spacer {
     flex: 1;
