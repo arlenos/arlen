@@ -35,9 +35,82 @@ pub fn open_fd_count(pid: u32) -> Option<usize> {
     Some(fs::read_dir(format!("/proc/{pid}/fd")).ok()?.flatten().count())
 }
 
+/// Per-process detail fields from `/proc/[pid]/status` that sysinfo does not
+/// expose: the thread count and the context-switch counters (a busy or thrashing
+/// process shows high nonvoluntary switches). The per-process Statistics detail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ProcessDetail {
+    /// Number of threads in the process.
+    pub threads: u32,
+    /// Context switches the process yielded voluntarily (e.g. blocking on I/O).
+    pub voluntary_ctxt_switches: u64,
+    /// Context switches forced on it (preempted); high values indicate CPU pressure.
+    pub nonvoluntary_ctxt_switches: u64,
+}
+
+/// Parse the [`ProcessDetail`] fields from `/proc/[pid]/status` content. Each is a
+/// `Key:\tvalue` line; a missing field defaults to 0. `strip_prefix` matches the
+/// exact key, so `voluntary_ctxt_switches:` never matches the `nonvoluntary_` line.
+pub fn parse_status(status: &str) -> ProcessDetail {
+    let field = |key: &str| -> Option<u64> {
+        status
+            .lines()
+            .find_map(|line| line.strip_prefix(key))
+            .and_then(|rest| rest.split_whitespace().next())
+            .and_then(|v| v.parse().ok())
+    };
+    ProcessDetail {
+        threads: field("Threads:").unwrap_or(0) as u32,
+        voluntary_ctxt_switches: field("voluntary_ctxt_switches:").unwrap_or(0),
+        nonvoluntary_ctxt_switches: field("nonvoluntary_ctxt_switches:").unwrap_or(0),
+    }
+}
+
+/// Read a process's [`ProcessDetail`] from `/proc/[pid]/status`. `None` if the
+/// process is gone or its status is unreadable.
+pub fn read_process_detail(pid: u32) -> Option<ProcessDetail> {
+    let content = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+    Some(parse_status(&content))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const STATUS: &str = "\
+Name:\tbash
+State:\tS (sleeping)
+Threads:\t4
+voluntary_ctxt_switches:\t120
+nonvoluntary_ctxt_switches:\t7
+";
+
+    #[test]
+    fn parses_threads_and_context_switches() {
+        let d = parse_status(STATUS);
+        assert_eq!(d.threads, 4);
+        assert_eq!(d.voluntary_ctxt_switches, 120);
+        assert_eq!(d.nonvoluntary_ctxt_switches, 7);
+    }
+
+    #[test]
+    fn nonvoluntary_line_does_not_match_the_voluntary_key() {
+        // Only the nonvoluntary line present: the voluntary field must stay 0.
+        let d = parse_status("nonvoluntary_ctxt_switches:\t9\n");
+        assert_eq!(d.voluntary_ctxt_switches, 0);
+        assert_eq!(d.nonvoluntary_ctxt_switches, 9);
+    }
+
+    #[test]
+    fn missing_fields_default_to_zero() {
+        assert_eq!(parse_status("Name:\tx\n"), ProcessDetail::default());
+    }
+
+    #[test]
+    fn reads_own_detail_from_real_proc() {
+        let d = read_process_detail(std::process::id()).expect("own /proc/self/status is readable");
+        assert!(d.threads >= 1);
+    }
 
     const SMAPS_ROLLUP: &str = "\
 55e0d0a00000-7fff00000000 ---p 00000000 00:00 0                          [rollup]
