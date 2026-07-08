@@ -44,13 +44,13 @@ const ACCESS: Record<string, ProcAccess> = {
   Meet: {
     camera: true,
     mic: true,
-    reach: "It can use the network, the microphone, and the camera.",
+    reach: "It can use the network, the microphone and the camera.",
     scopes: [],
   },
   "ai-agent": {
     camera: false,
     mic: false,
-    reach: "It reads from the knowledge graph within its granted scope, and writes nothing without your say.",
+    reach: "It reads from the knowledge graph within its granted scope and writes nothing without your say.",
     scopes: [
       { label: "read your notes", reach: "notes and their tags" },
       { label: "read recent files", reach: "files you opened this week" },

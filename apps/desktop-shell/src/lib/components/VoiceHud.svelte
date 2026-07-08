@@ -35,7 +35,7 @@
 
       <div class="vh-foot">
         <span class="vh-dot" class:on={v.phase === "listening"}></span>
-        On this device, and in your audit log.
+        On this device and in your audit log.
       </div>
     </div>
   </div>
