@@ -47,7 +47,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/org/arlen/Accounts1",
             AccountsObjectManager::new(dir.clone()),
         )?
-        .serve_at("/org/arlen/Accounts1", AccountsDaemon::new(dir, vault))?
+        .serve_at(
+            "/org/arlen/Accounts1",
+            AccountsDaemon::new(
+                dir,
+                vault,
+                std::sync::Arc::new(std::sync::Mutex::new(
+                    online_accounts::presence::PeerRegistry::new(),
+                )),
+            ),
+        )?
         .build()
         .await?;
     tracing::info!("org.arlen.Accounts1 serving; the per-app gate mediates every method");
