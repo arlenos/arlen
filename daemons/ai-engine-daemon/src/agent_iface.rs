@@ -15,11 +15,73 @@ use crate::compensation::CompensationStore;
 use crate::engine_config;
 use crate::write_executor::RelationWriter;
 use arlen_ai_core::audit::behaviour_action_event;
+use arlen_ai_skills::behaviour::{BehaviourKind, ReadScope};
+use arlen_ai_skills::loader::LoadOutcome;
 use audit_proto::sink::AuditSink;
 use os_sdk::graph::RelationRetractOutcome;
 use serde::Serialize;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
+
+/// One enabled behaviour in the working-set shape: its name, kind and the KG read
+/// scope it declares. Shape only, never any read CONTENT (the anti-Recall view is
+/// "what the AI may read", not what it read).
+#[derive(Debug, Serialize)]
+struct BehaviourShape {
+    /// The behaviour (skill) name.
+    name: String,
+    /// `workflow` (deterministic) or `agent` (bounded LLM loop).
+    kind: &'static str,
+    /// The declared minimum read scope (`minimal`/`session`/`project`/`time`/`full`).
+    read_scope: &'static str,
+}
+
+/// The working-set introspection shape: the live loop status plus the enabled
+/// behaviours and their declared read scopes.
+#[derive(Debug, Serialize)]
+struct WorkingSetShape {
+    /// The live loop status (`subscribing`/`idle`/`busy`).
+    status: String,
+    /// The enabled behaviours' shape.
+    behaviours: Vec<BehaviourShape>,
+}
+
+fn kind_str(k: BehaviourKind) -> &'static str {
+    match k {
+        BehaviourKind::Workflow => "workflow",
+        BehaviourKind::Agent => "agent",
+    }
+}
+
+fn read_scope_str(r: ReadScope) -> &'static str {
+    match r {
+        ReadScope::Minimal => "minimal",
+        ReadScope::Session => "session",
+        ReadScope::Project => "project",
+        ReadScope::Time => "time",
+        ReadScope::Full => "full",
+    }
+}
+
+/// Render the working-set JSON from the live status and a behaviour-load outcome,
+/// keeping only the ENABLED behaviours. Pure and testable.
+fn working_set_json(status: &str, outcome: &LoadOutcome) -> String {
+    let behaviours: Vec<BehaviourShape> = outcome
+        .loaded
+        .iter()
+        .filter(|lb| lb.status.is_enabled())
+        .map(|lb| {
+            let m = &lb.behaviour.manifest;
+            BehaviourShape {
+                name: m.name.clone(),
+                kind: kind_str(m.kind),
+                read_scope: read_scope_str(m.reads),
+            }
+        })
+        .collect();
+    let shape = WorkingSetShape { status: status.to_string(), behaviours };
+    serde_json::to_string(&shape).unwrap_or_else(|_| "{}".to_string())
+}
 
 /// The curator's live loop status, reported by `status`. `Subscribing` before the
 /// event-bus subscription is established (up but no trigger can arrive yet - the
@@ -224,6 +286,18 @@ impl AgentAdminInterface {
         load_status(&self.status).as_str().to_string()
     }
 
+    /// The agent's working set: the live status plus the enabled behaviours and
+    /// their declared KG read scopes, as a JSON object the harness renders as the
+    /// anti-Recall transparency view ("what the AI may read"). Shape only, never
+    /// read content. Read live from the configured behaviour sources on each call.
+    #[zbus(name = "working_set")]
+    async fn working_set(&self) -> String {
+        working_set_json(
+            load_status(&self.status).as_str(),
+            &crate::orchestrator::load_behaviours(),
+        )
+    }
+
     #[zbus(name = "completed_actions")]
     async fn completed_actions(&self) -> String {
         self.compensation
@@ -282,6 +356,24 @@ mod tests {
     #[test]
     fn an_empty_store_renders_an_empty_array() {
         assert_eq!(completed_actions_json(&CompensationStore::new(8)), "[]");
+    }
+
+    #[test]
+    fn working_set_reflects_status_with_no_behaviours() {
+        let outcome = LoadOutcome { loaded: vec![], errors: vec![] };
+        let json = working_set_json("idle", &outcome);
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["status"], "idle");
+        assert_eq!(v["behaviours"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn kind_and_scope_map_to_the_manifest_vocabulary() {
+        assert_eq!(kind_str(BehaviourKind::Agent), "agent");
+        assert_eq!(kind_str(BehaviourKind::Workflow), "workflow");
+        assert_eq!(read_scope_str(ReadScope::Project), "project");
+        assert_eq!(read_scope_str(ReadScope::Full), "full");
+        assert_eq!(read_scope_str(ReadScope::Minimal), "minimal");
     }
 
     #[test]
