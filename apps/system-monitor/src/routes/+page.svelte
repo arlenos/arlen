@@ -7,7 +7,7 @@
   import PerformanceTab from "$lib/components/tm/PerformanceTab.svelte";
   import DetailPane from "$lib/components/tm/DetailPane.svelte";
   import RowMenu from "$lib/components/tm/RowMenu.svelte";
-  import { processes, load, stop, type Process } from "$lib/stores/processes";
+  import { processes, load, stop, pause, resume, limit, unlimit, type Process } from "$lib/stores/processes";
   import { startPerf, stopPerf } from "$lib/stores/perf";
   import { Rows3, Layers, Search } from "lucide-svelte";
 
@@ -97,6 +97,10 @@
       if (selected?.id === id) selected = null;
     }}
     onDetails={(p) => (selected = p)}
+    onPause={pause}
+    onResume={resume}
+    onLimit={limit}
+    onUnlimit={unlimit}
     onClose={() => (menu = null)}
   />
 {/if}

@@ -11,6 +11,10 @@
     onStop,
     onForceQuit,
     onDetails,
+    onPause,
+    onResume,
+    onLimit,
+    onUnlimit,
     onClose,
   }: {
     process: Process;
@@ -19,6 +23,10 @@
     onStop: (id: number) => void;
     onForceQuit: (id: number) => void;
     onDetails: (p: Process) => void;
+    onPause: (id: number) => void;
+    onResume: (id: number) => void;
+    onLimit: (id: number) => void;
+    onUnlimit: (id: number) => void;
     onClose: () => void;
   } = $props();
 
@@ -47,6 +55,25 @@
     <button type="button" class="mi" role="menuitem" onclick={() => { onDetails(process); onClose(); }}>
       Show details
     </button>
+    {#if process.paused}
+      <button type="button" class="mi" role="menuitem" onclick={() => { onResume(process.id); onClose(); }}>
+        Resume
+      </button>
+    {:else}
+      <button type="button" class="mi" role="menuitem" onclick={() => { onPause(process.id); onClose(); }}>
+        Pause
+      </button>
+    {/if}
+    {#if process.limited}
+      <button type="button" class="mi" role="menuitem" onclick={() => { onUnlimit(process.id); onClose(); }}>
+        Remove limit
+      </button>
+    {:else}
+      <button type="button" class="mi" role="menuitem" onclick={() => { onLimit(process.id); onClose(); }}>
+        Limit
+      </button>
+    {/if}
+    <div class="mi-sep" role="separator"></div>
     <button type="button" class="mi" role="menuitem" onclick={() => { onStop(process.id); onClose(); }}>
       Stop
     </button>
@@ -92,6 +119,11 @@
     cursor: pointer;
   }
   .mi:hover {
+    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+  }
+  .mi-sep {
+    height: 1px;
+    margin: 0.25rem 0.4rem;
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
   }
   .mi.danger {

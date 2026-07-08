@@ -28,6 +28,10 @@ export interface Process {
   memMB: number;
   diskKBs: number;
   netKBs: number;
+  /// Frozen (cgroup.freeze) - the non-destructive pause.
+  paused?: boolean;
+  /// Soft-throttled (cgroup memory.high + cpu.max) - the non-destructive leash.
+  limited?: boolean;
   children?: Process[];
 }
 
@@ -88,5 +92,46 @@ export async function stop(id: number): Promise<void> {
     await invoke("stop_process", { id });
   } catch {
     // optimistic under vite
+  }
+}
+
+function setFlag(id: number, patch: Partial<Process>): void {
+  processes.update((list) => list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+}
+
+/// Freeze a process (cgroup.freeze) - the non-destructive pause. Live: `freeze_process`.
+export async function pause(id: number): Promise<void> {
+  setFlag(id, { paused: true });
+  try {
+    await invoke("freeze_process", { id, paused: true });
+  } catch {
+    // optimistic
+  }
+}
+/// Unfreeze it. Live: `freeze_process`.
+export async function resume(id: number): Promise<void> {
+  setFlag(id, { paused: false });
+  try {
+    await invoke("freeze_process", { id, paused: false });
+  } catch {
+    // optimistic
+  }
+}
+/// Soft-throttle a process (cgroup memory.high + cpu.max). Live: `limit_process`.
+export async function limit(id: number): Promise<void> {
+  setFlag(id, { limited: true });
+  try {
+    await invoke("limit_process", { id, limited: true });
+  } catch {
+    // optimistic
+  }
+}
+/// Remove the throttle. Live: `limit_process`.
+export async function unlimit(id: number): Promise<void> {
+  setFlag(id, { limited: false });
+  try {
+    await invoke("limit_process", { id, limited: false });
+  } catch {
+    // optimistic
   }
 }
