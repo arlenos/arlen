@@ -11,6 +11,7 @@
     CommandEmpty,
     CommandShortcut,
   } from "@arlen/ui-kit/components/ui/command";
+  import { trapFocus } from "@arlen/ui-kit/keyboard";
   import { Check } from "lucide-svelte";
   import {
     menuPaletteOpen,
@@ -43,7 +44,14 @@
       if (e.target === e.currentTarget) closeMenuPalette();
     }}
   >
-    <div class="mp-card" role="dialog" aria-modal="true" aria-label="App menu" tabindex="-1">
+    <div
+      class="mp-card"
+      role="dialog"
+      aria-modal="true"
+      aria-label="App menu"
+      tabindex="-1"
+      use:trapFocus
+    >
       <Command>
         <CommandInput placeholder="Search this app's menu" autofocus bind:value={query} />
         <CommandList class="mp-list">
