@@ -182,3 +182,6 @@ mod tests {
         assert!(!c.snapshot().is_empty());
     }
 }
+
+/// Graceful process stop: the SIGTERM->SIGKILL ladder ("End task").
+pub mod stop;
