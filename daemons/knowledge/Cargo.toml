@@ -29,7 +29,12 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v5", "v7", "serde"] }
-lbug = "0.15.2"
+# LadybugDB (github.com/LadybugDB/ladybug), the maintained MIT successor to the
+# archived upstream KuzuDB - NOT the dead "Vela" fork. Pinned exactly: the Kuzu
+# lineage has not stabilized its on-disk format across versions, so a bump is a
+# deliberate, tested step (verify the write -> upgrade -> reopen path first), never
+# an incidental `cargo update`.
+lbug = "=0.15.2"
 hmac = "0.12"
 sha2 = "0.10"
 getrandom = "0.2"
