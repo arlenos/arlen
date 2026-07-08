@@ -33,16 +33,6 @@ pub fn load_explain_behaviour() -> Option<Behaviour> {
         .map(|lb| lb.behaviour)
 }
 
-/// Own `EXPLAIN_BUS_NAME` and serve `iface` at `EXPLAIN_OBJECT_PATH` on the session
-/// bus. The returned connection must be kept alive for the surface to stay served.
-pub async fn serve(iface: ExplainInterface) -> zbus::Result<zbus::Connection> {
-    zbus::connection::Builder::session()?
-        .name(EXPLAIN_BUS_NAME)?
-        .serve_at(EXPLAIN_OBJECT_PATH, iface)?
-        .build()
-        .await
-}
-
 /// Serves `explain_system` by driving a fresh ephemeral pi over the explain skill.
 /// Holds the skill, the pi sidecar (the engine) and the session binder (the
 /// dispatcher), all shared with the rest of the daemon.
