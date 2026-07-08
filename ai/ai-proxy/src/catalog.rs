@@ -98,6 +98,26 @@ pub struct CatalogEntry {
     pub builtin: bool,
 }
 
+/// The `ai-routing.toml` shape: a table of named providers, each a full catalog entry
+/// (`[providers.<name>]`). The file is the proxy's own trusted configuration, never caller
+/// input, so an entry here is as authoritative as a built-in default.
+#[derive(Debug, Default, Deserialize)]
+struct CatalogConfig {
+    #[serde(default)]
+    providers: HashMap<String, CatalogEntry>,
+}
+
+/// Why the provider catalog could not be loaded from disk.
+#[derive(Debug, thiserror::Error)]
+pub enum CatalogError {
+    /// The catalog file could not be read.
+    #[error("reading the provider catalog: {0}")]
+    Read(#[from] std::io::Error),
+    /// The catalog file was not valid TOML for the catalog shape.
+    #[error("parsing the provider catalog: {0}")]
+    Parse(#[from] toml::de::Error),
+}
+
 /// Trusted provider catalog.
 #[derive(Debug, Clone, Default)]
 pub struct ProviderCatalog {
@@ -108,6 +128,26 @@ impl ProviderCatalog {
     /// Build a catalog from an explicit map.
     pub fn new(entries: HashMap<String, CatalogEntry>) -> Self {
         Self { entries }
+    }
+
+    /// Load the catalog from `ai-routing.toml` layered on the built-in defaults: an absent
+    /// file yields the defaults alone, and each user entry adds a provider or overrides a
+    /// built-in of the same name (the user-extensible path the plan asks for). A present but
+    /// malformed file is an error rather than a silent fall-back, so a misconfiguration
+    /// surfaces instead of quietly discarding the user's providers. The endpoints stay
+    /// proxy-owned: callers still select a provider by name, and the dial is SSRF-pinned
+    /// regardless of where the entry came from.
+    pub fn load_or_default(path: &std::path::Path) -> Result<Self, CatalogError> {
+        if !path.exists() {
+            return Ok(Self::default_arlen());
+        }
+        let text = std::fs::read_to_string(path)?;
+        let config: CatalogConfig = toml::from_str(&text)?;
+        let mut entries = Self::default_arlen().entries;
+        for (name, entry) in config.providers {
+            entries.insert(name, entry);
+        }
+        Ok(Self::new(entries))
     }
 
     /// The default Arlen catalog.
@@ -227,6 +267,61 @@ pub struct ProviderView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tmp_catalog(name: &str, content: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir()
+            .join(format!("arlen-catalog-test-{}-{name}.toml", std::process::id()));
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    #[test]
+    fn load_absent_file_yields_the_defaults() {
+        let path = std::env::temp_dir().join("arlen-catalog-test-absent-does-not-exist.toml");
+        let cat = ProviderCatalog::load_or_default(&path).unwrap();
+        assert!(cat.get("ollama-default").is_some());
+    }
+
+    #[test]
+    fn load_adds_a_user_provider_over_the_defaults() {
+        let path = tmp_catalog(
+            "add",
+            "[providers.my-llama]\n\
+             endpoint_url = \"http://127.0.0.1:8080/v1/chat/completions\"\n\
+             backend = \"llama\"\n\
+             wire_format = \"openai\"\n",
+        );
+        let cat = ProviderCatalog::load_or_default(&path).unwrap();
+        assert!(cat.get("ollama-default").is_some(), "built-in is kept");
+        assert_eq!(
+            cat.get("my-llama").unwrap().endpoint_url,
+            "http://127.0.0.1:8080/v1/chat/completions"
+        );
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn load_lets_a_user_override_a_builtin_by_name() {
+        let path = tmp_catalog(
+            "override",
+            "[providers.ollama-default]\n\
+             endpoint_url = \"http://127.0.0.1:9999/v1/chat/completions\"\n\
+             backend = \"ollama\"\n",
+        );
+        let cat = ProviderCatalog::load_or_default(&path).unwrap();
+        assert_eq!(
+            cat.get("ollama-default").unwrap().endpoint_url,
+            "http://127.0.0.1:9999/v1/chat/completions"
+        );
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn load_malformed_config_is_an_error_not_a_silent_default() {
+        let path = tmp_catalog("bad", "this = = not valid toml");
+        assert!(ProviderCatalog::load_or_default(&path).is_err());
+        std::fs::remove_file(&path).ok();
+    }
 
     #[test]
     fn default_catalog_ships_only_the_local_provider() {
