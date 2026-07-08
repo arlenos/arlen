@@ -84,6 +84,13 @@ pub enum ProxyError {
         /// Provider name from the request.
         provider: String,
     },
+    /// Every provider in the requested combo has reached its spending cap this window, so
+    /// there is nothing left to try without exceeding a configured limit.
+    #[error("every provider in combo '{combo}' has reached its spending cap")]
+    SpendingCapReached {
+        /// The combo whose members are all capped.
+        combo: String,
+    },
 }
 
 impl ProxyError {
@@ -103,6 +110,7 @@ impl ProxyError {
             ProxyError::WireFormatUnsupported { .. } => "wire-format-unsupported",
             ProxyError::TranscodeFailed { .. } => "transcode-failed",
             ProxyError::NoModelsEndpoint { .. } => "no-models-endpoint",
+            ProxyError::SpendingCapReached { .. } => "spending-cap-reached",
         }
     }
 }
@@ -357,8 +365,24 @@ impl ProxyService {
             Some(order) => order.to_vec(),
             None => return self.forward(caller, req).await,
         };
+        let now = now_secs();
         let mut last: Option<Result<ForwardOutcome, ProxyError>> = None;
+        let mut skipped_capped = false;
         for provider in order {
+            // Skip a provider that has reached its spending cap this window: do not dial it
+            // (stopping the spend is the point of the cap), and try the next member. A poisoned
+            // ledger fails open (dial) rather than denying service on an unreachable error.
+            if let Some(cap) = self.catalog.cap_for(&provider) {
+                let capped = self
+                    .usage
+                    .lock()
+                    .map(|led| led.reached_cap(&provider, cap, now))
+                    .unwrap_or(false);
+                if capped {
+                    skipped_capped = true;
+                    continue;
+                }
+            }
             let member_req = ForwardRequest { provider_name: provider, ..req.clone() };
             let outcome = self.forward(caller, member_req).await;
             if should_fall(&outcome) {
@@ -367,11 +391,16 @@ impl ProxyService {
             }
             return outcome;
         }
-        // Every provider in the chain was unavailable; surface the last attempt. The combo is
-        // validated non-empty at load, so `last` is always populated when the loop completes.
-        last.unwrap_or_else(|| {
-            Err(ProxyError::UnknownProvider { provider: req.provider_name.clone() })
-        })
+        // Chain exhausted. Surface the last dialed attempt if there was one; else, if every
+        // member was skipped for its cap, report that rather than a misleading unknown-provider.
+        // The combo is validated non-empty at load, so one of these always applies.
+        if let Some(outcome) = last {
+            return outcome;
+        }
+        if skipped_capped {
+            return Err(ProxyError::SpendingCapReached { combo: req.provider_name.clone() });
+        }
+        Err(ProxyError::UnknownProvider { provider: req.provider_name.clone() })
     }
 
     /// Run a single forward call to one catalogued provider. The audit sink is invoked
@@ -983,6 +1012,52 @@ mod tests {
         assert_eq!(out.upstream_status, 200);
         assert_eq!(out.body, "oai");
         assert_eq!(forwarder.calls.lock().await.len(), 1, "only the OpenAI member reached egress");
+    }
+
+    fn capped_catalog(name: &str, limits_toml: &str) -> ProviderCatalog {
+        let path = std::env::temp_dir().join(format!("arlen-proxy-{name}.toml"));
+        std::fs::write(
+            &path,
+            format!(
+                "[providers.p1]\n\
+                 endpoint_url = \"http://127.0.0.1:11434/v1/chat/completions\"\n\
+                 backend = \"ollama\"\n\
+                 [providers.p2]\n\
+                 endpoint_url = \"http://127.0.0.1:11434/v1/chat/completions\"\n\
+                 backend = \"ollama\"\n\
+                 [combos]\n\
+                 chain = [\"p1\", \"p2\"]\n\
+                 {limits_toml}"
+            ),
+        )
+        .unwrap();
+        let catalog = ProviderCatalog::load_or_default(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        catalog
+    }
+
+    #[tokio::test]
+    async fn forward_combo_skips_a_capped_provider() {
+        // p1's cap is 0 (no headroom this window), so the walk skips it WITHOUT dialing and
+        // p2 serves - the spending cap triggering the fallback.
+        let cat = capped_catalog("combo-capped", "[limits.caps]\np1 = 0\n");
+        let forwarder =
+            Arc::new(StubForwarder::new(vec![Ok(ForwardResult { status: 200, body: "p2".into() })]));
+        let svc = combo_service(cat, forwarder.clone());
+        let out = svc.forward_combo(&ai_daemon_caller(), chain_req()).await.expect("p2 serves");
+        assert_eq!(out.body, "p2");
+        assert_eq!(forwarder.calls.lock().await.len(), 1, "p1 skipped (not dialed), only p2 reached");
+    }
+
+    #[tokio::test]
+    async fn forward_combo_reports_when_every_member_is_capped() {
+        // both members capped at 0 -> nothing is dialed and the cap condition is reported.
+        let cat = capped_catalog("combo-allcapped", "[limits.caps]\np1 = 0\np2 = 0\n");
+        let forwarder = Arc::new(StubForwarder::new(vec![]));
+        let svc = combo_service(cat, forwarder.clone());
+        let err = svc.forward_combo(&ai_daemon_caller(), chain_req()).await.unwrap_err();
+        assert!(matches!(err, ProxyError::SpendingCapReached { .. }), "got {err:?}");
+        assert_eq!(forwarder.calls.lock().await.len(), 0, "nothing dialed when all are capped");
     }
 
     #[tokio::test]
