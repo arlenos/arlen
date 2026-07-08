@@ -16,6 +16,7 @@ pub mod execution_proof;
 
 pub mod wire;
 
+#[cfg(test)]
 pub mod placeholder;
 
 pub mod supervisor;
