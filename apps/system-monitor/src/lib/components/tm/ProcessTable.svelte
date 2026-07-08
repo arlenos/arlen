@@ -26,6 +26,10 @@
   let sortDir = $state<"asc" | "desc">("desc");
   let expanded = $state<Set<number>>(new Set());
 
+  // Keyboard drive (the btop users): one roving tabstop, arrow-key navigation.
+  let rootEl = $state<HTMLElement | null>(null);
+  let activeId = $state<number | null>(null);
+
   function sortBy(key: SortKey) {
     if (sortKey === key) sortDir = sortDir === "desc" ? "asc" : "desc";
     else {
@@ -87,6 +91,73 @@
     return out;
   });
 
+  // The focusable rows, in display order - group rows are skipped by the keyboard.
+  const procIds = $derived(
+    items.filter((it): it is Extract<DisplayItem, { kind: "proc" }> => it.kind === "proc").map((it) => it.proc.id),
+  );
+  // The single tabstop: the active row, or the first row if none is set yet.
+  const activeRowId = $derived(activeId != null && procIds.includes(activeId) ? activeId : procIds[0]);
+
+  function focusRow(id: number) {
+    activeId = id;
+    requestAnimationFrame(() => {
+      (rootEl?.querySelector(`[data-pid="${id}"]`) as HTMLElement | null)?.focus();
+    });
+  }
+  function openMenuAt(el: HTMLElement, p: Process) {
+    const r = el.getBoundingClientRect();
+    onContextMenu?.(p, r.left + 8, r.bottom);
+  }
+  function rowKeydown(e: KeyboardEvent, p: Process, expandable: boolean, open: boolean) {
+    const ids = procIds;
+    const idx = ids.indexOf(p.id);
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        if (idx < ids.length - 1) focusRow(ids[idx + 1]);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        if (idx > 0) focusRow(ids[idx - 1]);
+        break;
+      case "Home":
+        e.preventDefault();
+        if (ids.length) focusRow(ids[0]);
+        break;
+      case "End":
+        e.preventDefault();
+        if (ids.length) focusRow(ids[ids.length - 1]);
+        break;
+      case "ArrowRight":
+        if (expandable && !open) {
+          e.preventDefault();
+          toggle(p.id);
+        }
+        break;
+      case "ArrowLeft":
+        if (expandable && open) {
+          e.preventDefault();
+          toggle(p.id);
+        }
+        break;
+      case "Enter":
+      case " ":
+        e.preventDefault();
+        onSelect?.(p);
+        break;
+      case "ContextMenu":
+        e.preventDefault();
+        openMenuAt(e.currentTarget as HTMLElement, p);
+        break;
+      case "F10":
+        if (e.shiftKey) {
+          e.preventDefault();
+          openMenuAt(e.currentTarget as HTMLElement, p);
+        }
+        break;
+    }
+  }
+
   // Column totals for the header (the Windows aggregate-in-header). Sum the top-level
   // rows (app aggregates + background + system), not the expanded children.
   const totals = $derived.by(() => {
@@ -125,7 +196,7 @@
   }
 </script>
 
-<div class="pt" role="table" aria-label="Processes">
+<div class="pt" role="grid" aria-label="Processes" bind:this={rootEl}>
   <div class="head" role="row">
     <button class="h name" class:sorted={sortKey === "name"} role="columnheader" aria-sort={ariaSort("name")} onclick={() => sortBy("name")}>
       Name
@@ -156,7 +227,7 @@
   <div class="body">
     {#each items as it, i (it.kind === "group" ? `g-${it.label}` : `p-${it.proc.id}-${it.depth}`)}
       {#if it.kind === "group"}
-        <div class="grouprow" role="row"><span>{it.label}</span></div>
+        <div class="grouprow" role="presentation"><span>{it.label}</span></div>
       {:else}
         {@const p = it.proc}
         {@const sensors = sensorsFor(p.name)}
@@ -165,17 +236,20 @@
           class:child={it.depth > 0}
           class:selected={p.id === selectedId}
           role="row"
-          tabindex="0"
-          onclick={() => onSelect?.(p)}
+          data-pid={p.id}
+          tabindex={p.id === activeRowId ? 0 : -1}
+          onclick={() => {
+            activeId = p.id;
+            onSelect?.(p);
+          }}
           oncontextmenu={(e) => {
             e.preventDefault();
+            activeId = p.id;
             onContextMenu?.(p, e.clientX, e.clientY);
           }}
-          onkeydown={(e) => {
-            if (e.key === "Enter") onSelect?.(p);
-          }}
+          onkeydown={(e) => rowKeydown(e, p, it.expandable, it.open)}
         >
-          <div class="cell name" role="cell">
+          <div class="cell name" role="gridcell">
             {#if it.expandable}
               <button
                 class="twist"
@@ -202,19 +276,19 @@
             {/if}
             <span class="pname">{p.name}</span>
           </div>
-          <div class="cell status" role="cell" data-status={p.paused ? "suspended" : p.status}>
+          <div class="cell status" role="gridcell" data-status={p.paused ? "suspended" : p.status}>
             <span>{p.paused ? "Suspended" : STATUS_LABEL[p.status]}</span>
             {#if p.limited && !p.paused}<span class="limtag">Limited</span>{/if}
           </div>
-          <div class="cell access" role="cell">
+          <div class="cell access" role="gridcell">
             {#if sensors.camera}<Camera size={13} strokeWidth={2} />{/if}
             {#if sensors.mic}<Mic size={13} strokeWidth={2} />{/if}
             {#if sensors.knowledge}<span class="kg-glyph"><Brain size={13} strokeWidth={2} /></span>{/if}
           </div>
-          <div class="cell num" role="cell" style="--heat: {dispHeat(p)}">{dispCpu(p).toFixed(1)}%</div>
-          <div class="cell num" role="cell" style="--heat: {heat(p.memMB, 2200)}">{mem(p.memMB)}</div>
-          <div class="cell num muted" role="cell">{rate(p.diskKBs)}</div>
-          <div class="cell num muted" role="cell">{rate(p.netKBs)}</div>
+          <div class="cell num" role="gridcell" style="--heat: {dispHeat(p)}">{dispCpu(p).toFixed(1)}%</div>
+          <div class="cell num" role="gridcell" style="--heat: {heat(p.memMB, 2200)}">{mem(p.memMB)}</div>
+          <div class="cell num muted" role="gridcell">{rate(p.diskKBs)}</div>
+          <div class="cell num muted" role="gridcell">{rate(p.netKBs)}</div>
         </div>
       {/if}
     {/each}
@@ -301,6 +375,11 @@
   }
   .row:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 4%, transparent);
+  }
+  /* Keyboard focus must be obvious - an inset ring in the fg tone (not browser blue). */
+  .row:focus-visible {
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
+    background: color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
   }
   .row.selected {
     background: color-mix(in srgb, var(--color-fg-primary) 9%, transparent);

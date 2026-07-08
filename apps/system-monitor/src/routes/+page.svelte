@@ -101,7 +101,14 @@
     onResume={resume}
     onLimit={limit}
     onUnlimit={unlimit}
-    onClose={() => (menu = null)}
+    onClose={() => {
+      const pid = menu?.proc.id;
+      menu = null;
+      if (pid != null)
+        requestAnimationFrame(() =>
+          (document.querySelector(`.row[data-pid="${pid}"]`) as HTMLElement | null)?.focus(),
+        );
+    }}
   />
 {/if}
 
