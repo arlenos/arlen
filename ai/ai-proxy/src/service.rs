@@ -290,7 +290,50 @@ impl ProxyService {
         self.catalog.views()
     }
 
-    /// Run a single forward call. The audit sink is invoked
+    /// Forward through a named fallback chain, or a single provider. When `req.provider_name`
+    /// names a combo, its providers are tried in order: the first that returns a usable
+    /// response serves, and the walk falls to the next only on a clearly provider-unavailable
+    /// outcome (an unreachable transport error, or an upstream 429/502/503/504). Any
+    /// definitive response (a 2xx, or a 4xx the provider answered) and any proxy-side refusal
+    /// (caller-not-allowed, at-capacity, audit-unavailable, unsupported wire format) returns
+    /// immediately, since falling would not help. Every fall-worthy case is pre-completion,
+    /// so a fall repeats no upstream side effect. A non-combo name forwards to that single
+    /// provider unchanged. Each attempt is audited by `forward`, so the ledger records the
+    /// whole walk.
+    pub async fn forward_combo(
+        &self,
+        caller: &CallerIdentity,
+        req: ForwardRequest,
+    ) -> Result<ForwardOutcome, ProxyError> {
+        fn should_fall(outcome: &Result<ForwardOutcome, ProxyError>) -> bool {
+            match outcome {
+                Ok(o) => matches!(o.upstream_status, 429 | 502 | 503 | 504),
+                Err(ProxyError::Upstream(ForwardError::Transport(_))) => true,
+                Err(_) => false,
+            }
+        }
+        let order: Vec<String> = match self.catalog.combo(&req.provider_name) {
+            Some(order) => order.to_vec(),
+            None => return self.forward(caller, req).await,
+        };
+        let mut last: Option<Result<ForwardOutcome, ProxyError>> = None;
+        for provider in order {
+            let member_req = ForwardRequest { provider_name: provider, ..req.clone() };
+            let outcome = self.forward(caller, member_req).await;
+            if should_fall(&outcome) {
+                last = Some(outcome);
+                continue;
+            }
+            return outcome;
+        }
+        // Every provider in the chain was unavailable; surface the last attempt. The combo is
+        // validated non-empty at load, so `last` is always populated when the loop completes.
+        last.unwrap_or_else(|| {
+            Err(ProxyError::UnknownProvider { provider: req.provider_name.clone() })
+        })
+    }
+
+    /// Run a single forward call to one catalogued provider. The audit sink is invoked
     /// regardless of outcome.
     pub async fn forward(
         &self,
@@ -714,6 +757,78 @@ mod tests {
         assert_eq!(records[0].structural.outcome, "forwarding");
         assert_eq!(records[0].structural.subject, "127.0.0.1");
         assert_eq!(records[1].structural.outcome, "forwarded-200");
+    }
+
+    fn combo_catalog(name: &str) -> ProviderCatalog {
+        // p1 and p2 share the loopback ollama URL (which passes the allowlist and needs no
+        // key); the StubForwarder ignores the URL and returns its scripted results in order.
+        let path = std::env::temp_dir().join(format!("arlen-proxy-{name}.toml"));
+        std::fs::write(
+            &path,
+            "[providers.p1]\n\
+             endpoint_url = \"http://127.0.0.1:11434/v1/chat/completions\"\n\
+             backend = \"ollama\"\n\
+             [providers.p2]\n\
+             endpoint_url = \"http://127.0.0.1:11434/v1/chat/completions\"\n\
+             backend = \"ollama\"\n\
+             [combos]\n\
+             chain = [\"p1\", \"p2\"]\n",
+        )
+        .unwrap();
+        let catalog = ProviderCatalog::load_or_default(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        catalog
+    }
+
+    fn combo_service(
+        catalog: ProviderCatalog,
+        forwarder: Arc<StubForwarder>,
+    ) -> ProxyService {
+        ProxyService::new(
+            Allowlist::default_arlen(),
+            catalog,
+            CallerAllowlist::default_arlen(),
+            forwarder as Arc<dyn Forwarder>,
+            Arc::new(CollectingAuditSink::new()) as Arc<dyn AuditSink>,
+        )
+    }
+
+    fn chain_req() -> ForwardRequest {
+        ForwardRequest {
+            provider_name: "chain".to_string(),
+            body_json: "{}".to_string(),
+            audit_token: "tok".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn forward_combo_falls_over_an_unavailable_provider_to_the_next() {
+        // p1 returns 503 (unavailable), so the combo walk falls to p2, which serves 200.
+        let forwarder = Arc::new(StubForwarder::new(vec![
+            Ok(ForwardResult { status: 503, body: "unavailable".to_string() }),
+            Ok(ForwardResult { status: 200, body: "served".to_string() }),
+        ]));
+        let svc = combo_service(combo_catalog("combo-fall"), forwarder.clone());
+        let out = svc
+            .forward_combo(&ai_daemon_caller(), chain_req())
+            .await
+            .expect("p2 serves after p1 is unavailable");
+        assert_eq!(out.upstream_status, 200);
+        assert_eq!(out.body, "served");
+        assert_eq!(forwarder.calls.lock().await.len(), 2, "tried p1 then p2");
+    }
+
+    #[tokio::test]
+    async fn forward_combo_returns_a_definitive_response_without_falling() {
+        // A 200 from the first provider serves immediately; the second is never tried.
+        let forwarder = Arc::new(StubForwarder::new(vec![
+            Ok(ForwardResult { status: 200, body: "first".to_string() }),
+            Ok(ForwardResult { status: 200, body: "second".to_string() }),
+        ]));
+        let svc = combo_service(combo_catalog("combo-first"), forwarder.clone());
+        let out = svc.forward_combo(&ai_daemon_caller(), chain_req()).await.expect("first serves");
+        assert_eq!(out.body, "first");
+        assert_eq!(forwarder.calls.lock().await.len(), 1, "second provider never tried");
     }
 
     #[tokio::test]
