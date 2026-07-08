@@ -22,6 +22,10 @@ pub struct ProcessRow {
     pub ppid: Option<u32>,
     /// Executable / process name.
     pub name: String,
+    /// Run state in plain words (sysinfo's status: "Runnable", "Sleeping",
+    /// "Zombie", "Stopped", ...) - the design's Status column. The surface maps
+    /// these to its friendly labels (Running / Not responding / Suspended).
+    pub state: String,
     /// Resident memory in bytes (sysinfo reports bytes).
     pub memory_bytes: u64,
     /// CPU usage as sysinfo reports it: summed across cores, so a process
@@ -70,6 +74,7 @@ impl Collector {
                 pid: p.pid().as_u32(),
                 ppid: p.parent().map(|pp| pp.as_u32()),
                 name: p.name().to_string_lossy().into_owned(),
+                state: p.status().to_string(),
                 memory_bytes: p.memory(),
                 cpu_percent: p.cpu_usage(),
             })
@@ -182,7 +187,14 @@ mod tests {
     use super::*;
 
     fn row(pid: u32, name: &str, cpu: f32, mem: u64) -> ProcessRow {
-        ProcessRow { pid, ppid: None, name: name.to_string(), memory_bytes: mem, cpu_percent: cpu }
+        ProcessRow {
+            pid,
+            ppid: None,
+            name: name.to_string(),
+            state: "Sleeping".to_string(),
+            memory_bytes: mem,
+            cpu_percent: cpu,
+        }
     }
 
     #[test]
