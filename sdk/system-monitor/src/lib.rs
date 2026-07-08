@@ -12,6 +12,9 @@
 /// The daemon-health verdict: a liveness probe over the core Arlen daemons.
 pub mod health;
 
+/// Process reading over `/proc` (the task-manager landing's data core).
+pub mod process;
+
 /// Per-app access aggregation over the audit ledger's activity (the sovereign lens).
 pub mod access;
 
