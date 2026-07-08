@@ -264,6 +264,41 @@ mod tests {
         assert_eq!(note.transcript.full_text(), "we shipped the parser");
     }
 
+    struct PanicProvider;
+
+    #[async_trait::async_trait]
+    impl AIProvider for PanicProvider {
+        async fn complete(
+            &self,
+            _req: CompletionRequest,
+        ) -> Result<CompletionResponse, ProviderError> {
+            panic!("the model must never be called when the transcript is screened");
+        }
+        async fn available(&self) -> bool {
+            true
+        }
+        fn name(&self) -> &str {
+            "panic"
+        }
+    }
+
+    #[tokio::test]
+    async fn a_screened_transcript_never_reaches_the_model() {
+        use arlen_ai_core::screen::ScreeningMode;
+        // the injection-isolation edge: a blocking screen stops the untrusted transcript
+        // before it is ever sent to the model (PanicProvider fails the test if it is called).
+        let err = summarize(
+            transcript(),
+            None,
+            ctx(),
+            &Screener::new(ScreeningMode::FailClosed),
+            &PanicProvider,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, EngineError::Screened));
+    }
+
     #[test]
     fn the_prompt_tags_the_transcript_as_external_content() {
         let prompt = build_prompt("secret transcript", Some("my notes"));
