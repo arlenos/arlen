@@ -322,6 +322,27 @@ impl ProxyService {
         self.usage.lock().map(|led| led.usage_of(provider, now_secs())).unwrap_or_default()
     }
 
+    /// A snapshot of every catalogued provider's current-window usage + configured cap, plus
+    /// the shared window countdown, for the AI-transparency surface. Read-only, sorted by id.
+    pub fn usage_report(&self) -> crate::usage::UsageReport {
+        let now = now_secs();
+        let names: Vec<String> = self.catalog.names().map(String::from).collect();
+        let led = match self.usage.lock() {
+            Ok(l) => l,
+            Err(_) => return crate::usage::UsageReport::default(),
+        };
+        let mut providers: Vec<crate::usage::ProviderUsageView> = names
+            .into_iter()
+            .map(|id| {
+                let usage = led.usage_of(&id, now);
+                let cap = self.catalog.cap_for(&id);
+                crate::usage::ProviderUsageView { id, usage, cap }
+            })
+            .collect();
+        providers.sort_by(|a, b| a.id.cmp(&b.id));
+        crate::usage::UsageReport { window_resets_in_secs: led.resets_in(now), providers }
+    }
+
     /// Forward through a named fallback chain, or a single provider. When `req.provider_name`
     /// names a combo, its providers are tried in order: the first that returns a usable
     /// response serves, and the walk falls to the next only on a provider-availability signal -
@@ -863,6 +884,32 @@ mod tests {
         assert_eq!(u.requests, 1);
         // an unused provider meters nothing
         assert_eq!(svc.provider_usage("nonexistent").total_tokens, 0);
+    }
+
+    #[tokio::test]
+    async fn usage_report_snapshots_per_provider_usage_and_caps() {
+        let forwarder = Arc::new(StubForwarder::new(vec![Ok(ForwardResult {
+            status: 200,
+            body: r#"{"usage":{"prompt_tokens":8,"completion_tokens":4,"total_tokens":12}}"#
+                .to_string(),
+        })]));
+        let svc = service_with(forwarder, Arc::new(CollectingAuditSink::new()));
+        svc.forward(
+            &ai_daemon_caller(),
+            ForwardRequest {
+                provider_name: "ollama-default".to_string(),
+                body_json: "{}".to_string(),
+                audit_token: "tok".to_string(),
+            },
+        )
+        .await
+        .expect("ok");
+        let report = svc.usage_report();
+        let ollama =
+            report.providers.iter().find(|p| p.id == "ollama-default").expect("in the report");
+        assert_eq!(ollama.usage.total_tokens, 12);
+        assert_eq!(ollama.cap, None, "the default catalog configures no cap");
+        assert!(report.window_resets_in_secs > 0, "the window is counting down");
     }
 
     fn combo_catalog(name: &str) -> ProviderCatalog {

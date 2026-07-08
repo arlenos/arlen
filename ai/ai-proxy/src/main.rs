@@ -130,6 +130,14 @@ impl ProxyInterface {
             .unwrap_or_else(|_| "[]".to_string())
     }
 
+    /// Per-provider current-window token usage + caps + the window countdown, as JSON, for
+    /// the AI-transparency surface (the providers page links to it). Read-only display data,
+    /// no endpoint or credential; a serialization failure yields an empty report, fail-safe.
+    #[zbus(name = "list_provider_usage")]
+    async fn list_provider_usage(&self) -> String {
+        serde_json::to_string(&self.service.usage_report()).unwrap_or_else(|_| "{}".to_string())
+    }
+
     /// Test a catalogued provider's connectivity (the manager's "test"
     /// button + the capability-grant `validate_provider`). GETs the
     /// provider's catalogued model-list endpoint and returns the verdict
