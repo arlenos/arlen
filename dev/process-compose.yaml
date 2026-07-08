@@ -234,25 +234,12 @@ processes:
     availability:
       restart: "on_failure"
 
-  ai-daemon:
-    command: "cargo run --manifest-path ai/ai-daemon/Cargo.toml"
-    depends_on:
-      knowledge: { condition: process_healthy }
-      audit-daemon: { condition: process_started }
-      # The config-broker owns the AI master switches; wait for its socket so the
-      # startup read is broker-authoritative rather than racing the broker and
-      # falling back to ai.toml (the Transport fallback is safe but diverges from
-      # the deployed image, where the broker is a boot-time system service).
-      config-broker: { condition: process_healthy }
-    availability:
-      restart: "on_failure"
-
   ai-agent:
     command: "cargo run --manifest-path ai/ai-agent/Cargo.toml"
     depends_on:
       knowledge: { condition: process_healthy }
       audit-daemon: { condition: process_started }
-      # Wait for the config-broker socket (see ai-daemon) so the agent's startup
+      # Wait for the config-broker socket so the agent's startup
       # switch read is broker-authoritative, not an ai.toml fallback.
       config-broker: { condition: process_healthy }
     availability:
