@@ -57,6 +57,29 @@ pub struct ProviderUsage {
     pub requests: u64,
 }
 
+/// A snapshot of every provider's current-window token usage, for the AI-transparency
+/// surface (the providers page links to it). Read-only display data - no endpoint, no key.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageReport {
+    /// Seconds until the spending window resets (one window, shared across providers).
+    pub window_resets_in_secs: u64,
+    /// Per-provider usage, sorted by id.
+    pub providers: Vec<ProviderUsageView>,
+}
+
+/// One provider's current-window usage plus its configured cap, for the transparency surface.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderUsageView {
+    /// The provider id.
+    pub id: String,
+    /// The tokens spent this window.
+    pub usage: ProviderUsage,
+    /// The per-window token cap, if one is configured (else uncapped).
+    pub cap: Option<u64>,
+}
+
 /// Live per-provider token accounting over a rolling window. Not thread-safe on its own; the
 /// service wraps it in a mutex. Times are epoch seconds passed in by the caller, so the core
 /// stays deterministic and unit-testable (no ambient clock).
@@ -187,5 +210,29 @@ mod tests {
         assert_eq!(tokens_from_response_body(r#"{"choices":[]}"#), None);
         assert_eq!(tokens_from_response_body("not json"), None);
         assert_eq!(tokens_from_response_body(r#"{"usage":{"prompt_tokens":1}}"#), None);
+    }
+
+    #[test]
+    fn usage_report_serializes_camelcase_for_the_transparency_surface() {
+        let report = UsageReport {
+            window_resets_in_secs: 3000,
+            providers: vec![ProviderUsageView {
+                id: "openai".into(),
+                usage: ProviderUsage {
+                    prompt_tokens: 10,
+                    completion_tokens: 5,
+                    total_tokens: 15,
+                    requests: 1,
+                },
+                cap: Some(1000),
+            }],
+        };
+        let v = serde_json::to_value(&report).unwrap();
+        assert_eq!(v["windowResetsInSecs"], serde_json::json!(3000));
+        let p = &v["providers"][0];
+        assert_eq!(p["id"], serde_json::json!("openai"));
+        assert_eq!(p["cap"], serde_json::json!(1000));
+        assert_eq!(p["usage"]["promptTokens"], serde_json::json!(10));
+        assert_eq!(p["usage"]["totalTokens"], serde_json::json!(15));
     }
 }
