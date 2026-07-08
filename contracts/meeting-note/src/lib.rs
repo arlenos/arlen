@@ -119,6 +119,20 @@ fn starts_structural(t: &str) -> bool {
         || t.starts_with("~~~")
         || is_bullet(t)
         || is_ordered(t)
+        || is_ruler_line(t)
+}
+
+/// A setext underline (`===`, `---`) or thematic break (`---`, `***`, `___`): a line that,
+/// once whitespace is removed, is a single ruler character repeated. Alone such a line
+/// forges a horizontal rule, and directly under a text line it promotes that text to a
+/// heading, so an injected ruler must be neutralized like any other structural marker.
+fn is_ruler_line(t: &str) -> bool {
+    let compact: String = t.chars().filter(|c| !c.is_whitespace()).collect();
+    let mut chars = compact.chars();
+    match chars.next() {
+        Some(first) if matches!(first, '=' | '-' | '*' | '_') => chars.all(|c| c == first),
+        _ => false,
+    }
 }
 
 /// A `-`, `+` or `*` bullet (the marker alone, or followed by a space).
@@ -214,6 +228,17 @@ mod tests {
         let md = n.to_markdown();
         // the newline in the item text and owner is collapsed, so no new structural line
         assert!(md.contains("- [ ] do it ## Fake (@x - y)"));
+    }
+
+    #[test]
+    fn an_injected_ruler_line_cannot_forge_a_heading_or_rule() {
+        // "===" directly under a text line would promote it to a heading; "---"/"***"/"___"
+        // forge horizontal rules. Each is escaped so it renders literally.
+        let md = note("above\n===\n- - -\n***\n___", vec![], vec![seg("t")]).to_markdown();
+        assert!(md.contains("\\==="));
+        assert!(md.contains("\\- - -"));
+        assert!(md.contains("\\***"));
+        assert!(md.contains("\\___"));
     }
 
     #[test]
