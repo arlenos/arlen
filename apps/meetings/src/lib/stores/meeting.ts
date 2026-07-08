@@ -6,9 +6,9 @@
 /// Mock-vs-live: fixture-backed. The ASR/diarization capture stream, the `summarize`
 /// engine call, the KG-file store, and the text-editor handoff are coder seams; under
 /// vite the store serves a fixture so the surface renders.
-import { writable } from "svelte/store";
+import { writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import type { MeetingNote, TranscriptSegment } from "$lib/contract";
+import type { MeetingNote, Transcript, TranscriptSegment } from "$lib/contract";
 
 /// A captured meeting: your notes (the anchor) + the produced note.
 export interface Meeting {
@@ -22,6 +22,16 @@ export interface Meeting {
 }
 
 export const meeting = writable<Meeting | null>(null);
+
+/// The app lifecycle: nothing yet, a meeting recording, or the produced note.
+export type Phase = "idle" | "capturing" | "note";
+export const phase = writable<Phase>("idle");
+
+/// Live capture state (the capturing phase): the transcript as it streams in, the
+/// notes you type as the anchor, and the elapsed recording time in ms.
+export const liveTranscript = writable<Transcript>({ language: "en", segments: [] });
+export const liveNotes = writable("");
+export const elapsed = writable(0);
 
 const FIXTURE: Meeting = {
   mocked: true,
@@ -95,4 +105,57 @@ export function speakerName(label: string | undefined): string {
 /// Open the produced note in the text editor (the KG-citizen handoff seam).
 export function openInEditor(): void {
   invoke("open_file", { file: "meeting-note.md" }).catch(() => {});
+}
+
+let ticker: ReturnType<typeof setInterval> | null = null;
+let streamer: ReturnType<typeof setInterval> | null = null;
+
+function clearTimers(): void {
+  if (ticker) clearInterval(ticker);
+  if (streamer) clearInterval(streamer);
+  ticker = null;
+  streamer = null;
+}
+
+/// Begin capturing. Live: the ASR feed fills `liveTranscript`; under vite a dev stream
+/// reveals the fixture segments one at a time so the surface shows the streaming
+/// experience. The recording is on-device and audited (the sovereign frame).
+export function startCapture(): void {
+  clearTimers();
+  liveTranscript.set({ language: "en", segments: [] });
+  liveNotes.set("");
+  elapsed.set(0);
+  phase.set("capturing");
+  invoke("meeting_start_capture").catch(() => {});
+  ticker = setInterval(() => elapsed.update((e) => e + 1000), 1000);
+  const seg = [...FIXTURE.note.transcript.segments];
+  let i = 0;
+  streamer = setInterval(() => {
+    if (i >= seg.length) {
+      if (streamer) clearInterval(streamer);
+      streamer = null;
+      return;
+    }
+    const next = seg[i++];
+    liveTranscript.update((t) => ({ ...t, segments: [...t.segments, next] }));
+  }, 1400);
+}
+
+/// Stop capturing and produce the note. Live: the summarize seam turns the transcript +
+/// your notes into a MeetingNote; under vite it resolves to the fixture note. The notes
+/// you typed are carried into the note view (the app holds them; the note never does).
+export async function stopCapture(): Promise<void> {
+  clearTimers();
+  invoke("meeting_stop_capture").catch(() => {});
+  const notes = get(liveNotes);
+  try {
+    const note = await invoke<MeetingNote>("meeting_summarize", {
+      transcript: get(liveTranscript),
+      humanNotes: notes,
+    });
+    meeting.set({ humanNotes: notes, note, mocked: false });
+  } catch {
+    meeting.set({ humanNotes: notes.trim() || FIXTURE.humanNotes, note: FIXTURE.note, mocked: true });
+  }
+  phase.set("note");
 }

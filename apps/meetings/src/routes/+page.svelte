@@ -4,24 +4,37 @@
   /// against the transcript on the right. On-device capture is the edge over cloud
   /// bots. Fixture-backed; the ASR capture, the summarize engine, the KG-file store and
   /// the editor handoff are coder seams.
-  import { onMount } from "svelte";
-  import { meeting, loadMeeting, openInEditor } from "$lib/stores/meeting";
+  import { meeting, phase, startCapture, openInEditor } from "$lib/stores/meeting";
   import TranscriptPanel from "$lib/components/TranscriptPanel.svelte";
-  import { ShieldCheck, SquareArrowOutUpRight, CalendarPlus, Square } from "lucide-svelte";
+  import CaptureView from "$lib/components/CaptureView.svelte";
+  import { ShieldCheck, SquareArrowOutUpRight, CalendarPlus, Square, Mic } from "lucide-svelte";
 
   let notes = $state("");
   let activeStart = $state<number | null>(null);
 
-  onMount(loadMeeting);
-  // Keep the editable anchor in sync when the meeting loads.
+  // Keep the editable anchor in sync when the produced note arrives.
   $effect(() => {
     if ($meeting) notes = $meeting.humanNotes;
   });
 </script>
 
-<div class="app">
-  {#if $meeting}
-    {@const n = $meeting.note}
+{#if $phase === "idle"}
+  <div class="idle">
+    <div class="idle-inner">
+      <span class="idle-icon"><Mic size={22} strokeWidth={1.75} /></span>
+      <h1 class="idle-title">Meetings</h1>
+      <p class="idle-lead">
+        Capture a meeting on this device. Your own notes stay the anchor; the AI fills in the rest from the
+        recording, and nothing leaves your machine.
+      </p>
+      <button type="button" class="start" onclick={startCapture}>Start a meeting</button>
+    </div>
+  </div>
+{:else if $phase === "capturing"}
+  <CaptureView />
+{:else if $meeting}
+  {@const n = $meeting.note}
+  <div class="app">
     <header class="head">
       <div class="head-main">
         <h1 class="title">{n.title}</h1>
@@ -73,10 +86,55 @@
 
       <TranscriptPanel transcript={n.transcript} {activeStart} onseek={(s) => (activeStart = s)} />
     </div>
-  {/if}
-</div>
+  </div>
+{/if}
 
 <style>
+  .idle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    background: var(--color-bg-app, #0f0f0f);
+    color: var(--color-fg-primary, #fafafa);
+    padding: 1.5rem;
+  }
+  .idle-inner {
+    max-width: 26rem;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .idle-icon {
+    display: inline-flex;
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+  }
+  .idle-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+  .idle-lead {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+  }
+  .start {
+    margin-top: 0.5rem;
+    padding: 0.5rem 1.1rem;
+    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 16%, transparent);
+    border-radius: var(--radius-input, 8px);
+    background: color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
+    font-size: 0.875rem;
+    color: var(--color-fg-primary);
+    cursor: pointer;
+  }
+  .start:hover {
+    background: color-mix(in srgb, var(--color-fg-primary) 12%, transparent);
+  }
   .app {
     display: flex;
     flex-direction: column;
