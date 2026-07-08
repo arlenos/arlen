@@ -101,7 +101,7 @@ impl ProxyInterface {
             body_json: body_json.to_string(),
             audit_token: audit_token.to_string(),
         };
-        match self.service.forward(&caller, req).await {
+        match self.service.forward_combo(&caller, req).await {
             Ok(outcome) => Ok(serde_json::json!({
                 "upstream_status": outcome.upstream_status,
                 "body": outcome.body,

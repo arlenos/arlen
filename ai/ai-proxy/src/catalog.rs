@@ -168,6 +168,15 @@ pub enum CatalogError {
         /// The unknown provider id it referenced.
         provider: String,
     },
+    /// A combo is empty or its name shadows a provider name, either of which makes the
+    /// fallback chain ambiguous or dead. Caught at load.
+    #[error("combo '{combo}' is invalid: {reason}")]
+    InvalidCombo {
+        /// The offending combo name.
+        combo: String,
+        /// Why it is invalid.
+        reason: &'static str,
+    },
 }
 
 /// Whether a catalog entry may be reached without leaking its credential: a provider that
@@ -227,9 +236,22 @@ impl ProviderCatalog {
                 return Err(CatalogError::InsecureEndpoint { provider: name.clone() });
             }
         }
-        // Validate every combo references known providers, so a broken fallback chain fails
-        // at load rather than dead-ending a request mid-walk.
+        // Validate every combo up front, so a broken fallback chain fails at load rather
+        // than dead-ending a request mid-walk: non-empty, not shadowing a provider name,
+        // and every member a known provider.
         for (combo, order) in &config.combos {
+            if order.is_empty() {
+                return Err(CatalogError::InvalidCombo {
+                    combo: combo.clone(),
+                    reason: "a combo must list at least one provider",
+                });
+            }
+            if entries.contains_key(combo) {
+                return Err(CatalogError::InvalidCombo {
+                    combo: combo.clone(),
+                    reason: "a combo name must not shadow a provider name",
+                });
+            }
             for provider in order {
                 if !entries.contains_key(provider) {
                     return Err(CatalogError::UnknownComboProvider {
@@ -469,6 +491,30 @@ mod tests {
         let err = ProviderCatalog::load_or_default(&path).unwrap_err();
         assert!(matches!(err, CatalogError::UnknownComboProvider { .. }), "got {err:?}");
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn load_rejects_an_empty_or_shadowing_combo() {
+        let empty = tmp_catalog("comboempty", "[combos]\nx = []\n");
+        assert!(
+            matches!(
+                ProviderCatalog::load_or_default(&empty).unwrap_err(),
+                CatalogError::InvalidCombo { .. }
+            ),
+            "empty combo must be rejected"
+        );
+        std::fs::remove_file(&empty).ok();
+        // a combo whose name equals a provider's would shadow it
+        let shadow =
+            tmp_catalog("comboshadow", "[combos]\n\"ollama-default\" = [\"ollama-default\"]\n");
+        assert!(
+            matches!(
+                ProviderCatalog::load_or_default(&shadow).unwrap_err(),
+                CatalogError::InvalidCombo { .. }
+            ),
+            "a combo shadowing a provider name must be rejected"
+        );
+        std::fs::remove_file(&shadow).ok();
     }
 
     #[test]
