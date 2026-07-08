@@ -33,6 +33,7 @@ pub mod gate;
 pub mod master;
 pub mod mount;
 pub mod objects;
+pub mod presence;
 pub mod rc;
 pub mod ssh_config;
 pub mod vault;
