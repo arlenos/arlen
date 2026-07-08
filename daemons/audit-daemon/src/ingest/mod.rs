@@ -242,6 +242,11 @@ const DEV_ADMITTED: &[&str] = &[
     "dev.arlen-ai-daemon",
     "dev.arlen-ai-proxy",
     "dev.arlen-ai-agent",
+    // The pi-based engine daemon is the drop-in for ai-agent (it inherits the
+    // "ai-agent" principal in production); its cargo-run dev id must submit the
+    // same gate-decision audits. Kept alongside dev.arlen-ai-agent through the
+    // transition; the latter goes when the ai-agent crate is deleted.
+    "dev.arlen-ai-engine-daemon",
     "dev.arlen-graph-daemon",
     "dev.arlen-consent-broker",
 ];
@@ -301,6 +306,11 @@ mod tests {
         );
         assert_eq!(
             caller_is_admitted("dev.arlen-ai-agent"),
+            cfg!(debug_assertions)
+        );
+        // The pi engine daemon (drop-in for ai-agent) submits the same audits.
+        assert_eq!(
+            caller_is_admitted("dev.arlen-ai-engine-daemon"),
             cfg!(debug_assertions)
         );
         // The graph daemon's cargo-run bin is `arlen-graph-daemon`.
