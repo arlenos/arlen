@@ -3,6 +3,7 @@
   /// gone): a small popup at the cursor with the process actions. A backdrop or
   /// Escape dismisses it.
   import { trapFocus } from "@arlen/ui-kit/keyboard/trap_focus";
+  import { t } from "$lib/i18n/messages";
   import type { Process } from "$lib/stores/processes";
 
   let {
@@ -96,32 +97,32 @@
   >
     <div class="menu-head">{process.name}</div>
     <button type="button" class="mi" role="menuitem" onclick={() => { onDetails(process); onClose(); }}>
-      Show details
+      {$t("tm.menu.details")}
     </button>
     {#if process.paused}
       <button type="button" class="mi" role="menuitem" onclick={() => { onResume(process.id); onClose(); }}>
-        Resume
+        {$t("tm.menu.resume")}
       </button>
     {:else}
       <button type="button" class="mi" role="menuitem" onclick={() => { onPause(process.id); onClose(); }}>
-        Pause
+        {$t("tm.menu.pause")}
       </button>
     {/if}
     {#if process.limited}
       <button type="button" class="mi" role="menuitem" onclick={() => { onUnlimit(process.id); onClose(); }}>
-        Remove limit
+        {$t("tm.menu.unlimit")}
       </button>
     {:else}
       <button type="button" class="mi" role="menuitem" onclick={() => { onLimit(process.id); onClose(); }}>
-        Limit
+        {$t("tm.menu.limit")}
       </button>
     {/if}
     <div class="mi-sep" role="separator"></div>
     <button type="button" class="mi" role="menuitem" onclick={() => { onStop(process.id); onClose(); }}>
-      Stop
+      {$t("tm.menu.stop")}
     </button>
     <button type="button" class="mi danger" role="menuitem" onclick={() => { onForceQuit(process.id); onClose(); }}>
-      Force quit
+      {$t("tm.menu.forceQuit")}
     </button>
   </div>
 </div>
