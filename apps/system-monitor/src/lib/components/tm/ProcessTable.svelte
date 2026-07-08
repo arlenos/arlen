@@ -327,7 +327,7 @@
     text-transform: uppercase;
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
     cursor: pointer;
-    text-align: left;
+    text-align: start;
   }
   .h:hover {
     color: color-mix(in srgb, var(--color-fg-primary) 75%, transparent);
@@ -468,7 +468,7 @@
     color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
   }
   .cell.num {
-    text-align: right;
+    text-align: end;
     font-variant-numeric: tabular-nums;
     color: var(--color-fg-primary);
     /* Monochrome heat: the busier the cell, the brighter its wash. */

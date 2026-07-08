@@ -159,7 +159,7 @@
     background: transparent;
     font-size: 0.8125rem;
     color: var(--color-fg-primary);
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   .mi:hover {

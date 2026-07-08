@@ -130,7 +130,7 @@
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    border-left: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+    border-inline-start: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     overflow: hidden;
   }
   .dp-head {
@@ -220,8 +220,7 @@
   .dp-tab.active::after {
     content: "";
     position: absolute;
-    left: 0.55rem;
-    right: 0.55rem;
+    inset-inline: 0.55rem;
     bottom: -1px;
     height: 2px;
     background: var(--color-fg-primary);

@@ -265,11 +265,11 @@ textarea,
 @keyframes setting-pulse {
   0%, 70% {
     background-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
-    border-left: 3px solid var(--color-accent);
+    border-inline-start: 3px solid var(--color-accent);
   }
   100% {
     background-color: transparent;
-    border-left: 3px solid transparent;
+    border-inline-start: 3px solid transparent;
   }
 }
 

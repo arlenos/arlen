@@ -53,7 +53,7 @@
     width: 15rem;
     flex-shrink: 0;
     padding: 0.5rem;
-    border-right: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+    border-inline-end: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     overflow-y: auto;
   }
   .dev {
@@ -66,7 +66,7 @@
     border-radius: var(--radius-input, 8px);
     background: transparent;
     cursor: pointer;
-    text-align: left;
+    text-align: start;
   }
   .dev:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 4%, transparent);

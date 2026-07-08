@@ -9,7 +9,7 @@
   import RowMenu from "$lib/components/tm/RowMenu.svelte";
   import { processes, load, stop, pause, resume, limit, unlimit, type Process } from "$lib/stores/processes";
   import { startPerf, stopPerf } from "$lib/stores/perf";
-  import { t } from "$lib/i18n/messages";
+  import { t, dir } from "$lib/i18n/messages";
   import { Rows3, Layers, Search } from "lucide-svelte";
 
   const TABS = [
@@ -32,7 +32,7 @@
   });
 </script>
 
-<div class="app">
+<div class="app" dir={$dir}>
   <header class="titlebar">
     <span class="app-title">{$t("tm.title")}</span>
   </header>
@@ -170,8 +170,7 @@
   .tab.active::after {
     content: "";
     position: absolute;
-    left: 0.75rem;
-    right: 0.75rem;
+    inset-inline: 0.75rem;
     bottom: -1px;
     height: 2px;
     background: var(--color-fg-primary);
