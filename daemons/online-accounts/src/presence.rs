@@ -12,7 +12,60 @@
 //! no-leak core: it returns only the bus names whose app-id is in the account's
 //! grant set, never any other connection.
 
+use crate::config::AccountConfig;
 use std::collections::HashMap;
+
+/// What changed about an account between two config snapshots, for a directed
+/// `AccountsChanged` signal.
+#[derive(Debug, PartialEq, Eq)]
+pub enum AccountChangeKind {
+    /// The account is new in this snapshot.
+    Added,
+    /// The account is gone from this snapshot.
+    Removed,
+    /// The account exists in both snapshots but its config differs.
+    Modified,
+}
+
+/// One account's change, keyed by account id.
+#[derive(Debug, PartialEq, Eq)]
+pub struct AccountChange {
+    /// The account id that changed.
+    pub account_id: String,
+    /// How it changed.
+    pub kind: AccountChangeKind,
+}
+
+/// Diff two account-config snapshots into the per-account changes to signal:
+/// `Added` (new only), `Removed` (old only), `Modified` (in both but differing).
+/// The account count is small, so a simple O(n^2) match by id is fine; the result
+/// is sorted by account id for determinism. An unchanged account yields nothing.
+pub fn diff_accounts(old: &[AccountConfig], new: &[AccountConfig]) -> Vec<AccountChange> {
+    let mut changes = Vec::new();
+    for n in new {
+        match old.iter().find(|o| o.id == n.id) {
+            None => changes.push(AccountChange {
+                account_id: n.id.clone(),
+                kind: AccountChangeKind::Added,
+            }),
+            Some(o) if o != n => changes.push(AccountChange {
+                account_id: n.id.clone(),
+                kind: AccountChangeKind::Modified,
+            }),
+            Some(_) => {}
+        }
+    }
+    for o in old {
+        if !new.iter().any(|n| n.id == o.id) {
+            changes.push(AccountChange {
+                account_id: o.id.clone(),
+                kind: AccountChangeKind::Removed,
+            });
+        }
+    }
+    changes.sort_by(|a, b| a.account_id.cmp(&b.account_id));
+    changes
+}
 
 /// Tracks unique-bus-name -> resolved-app-id for the currently-connected callers,
 /// so an account-change signal reaches only granted apps' connections.
@@ -111,5 +164,39 @@ mod tests {
         r.forget(":1.40");
         assert!(r.is_empty());
         assert!(r.recipients(&granted(&["com.example.mail"])).is_empty());
+    }
+
+    use crate::config::{AccountConfig, Service};
+
+    fn acct(id: &str, identity: &str) -> AccountConfig {
+        AccountConfig {
+            id: id.to_string(),
+            provider: "nextcloud".to_string(),
+            identity: identity.to_string(),
+            presentation: None,
+            services: vec![Service::Files],
+            grants: vec![],
+            files: None,
+        }
+    }
+
+    #[test]
+    fn diff_detects_added_removed_and_modified() {
+        let old = vec![acct("keep", "a"), acct("gone", "b"), acct("edit", "c")];
+        let new = vec![acct("keep", "a"), acct("edit", "c2"), acct("fresh", "d")];
+        assert_eq!(
+            diff_accounts(&old, &new),
+            vec![
+                AccountChange { account_id: "edit".into(), kind: AccountChangeKind::Modified },
+                AccountChange { account_id: "fresh".into(), kind: AccountChangeKind::Added },
+                AccountChange { account_id: "gone".into(), kind: AccountChangeKind::Removed },
+            ]
+        );
+    }
+
+    #[test]
+    fn identical_snapshots_have_no_changes() {
+        let s = vec![acct("a", "x")];
+        assert!(diff_accounts(&s, &s).is_empty());
     }
 }
