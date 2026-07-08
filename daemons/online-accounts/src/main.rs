@@ -41,7 +41,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let vault = Vault::new(*master.bytes(), &vdir);
     tracing::info!(dir = %vdir.display(), "token vault opened");
 
-    let _conn = connection::Builder::session()?
+    // Shared caller presence, populated by the served methods and read by the
+    // change watcher to unicast AccountsChanged to granted apps only.
+    let peers = std::sync::Arc::new(std::sync::Mutex::new(
+        online_accounts::presence::PeerRegistry::new(),
+    ));
+    let watch_dir = dir.clone();
+    let conn = connection::Builder::session()?
         .name("org.arlen.Accounts1")?
         .serve_at(
             "/org/arlen/Accounts1",
@@ -49,16 +55,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?
         .serve_at(
             "/org/arlen/Accounts1",
-            AccountsDaemon::new(
-                dir,
-                vault,
-                std::sync::Arc::new(std::sync::Mutex::new(
-                    online_accounts::presence::PeerRegistry::new(),
-                )),
-            ),
+            AccountsDaemon::new(dir, vault, std::sync::Arc::clone(&peers)),
         )?
         .build()
         .await?;
+    tokio::spawn(online_accounts::watcher::run_account_watcher(
+        conn.clone(),
+        watch_dir,
+        peers,
+    ));
     tracing::info!("org.arlen.Accounts1 serving; the per-app gate mediates every method");
 
     // Serve until terminated.
