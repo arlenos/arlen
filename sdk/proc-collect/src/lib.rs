@@ -251,3 +251,6 @@ mod tests {
 
 /// Graceful process stop: the SIGTERM->SIGKILL ladder ("End task").
 pub mod stop;
+
+/// Per-process detail (honest PSS memory, open-file count) read on demand.
+pub mod detail;
