@@ -102,11 +102,7 @@ pub async fn run_ephemeral_pi<S: SpawnEngine, B: SessionBinder + ?Sized>(
     // runs. So bind a private drive socket and KICK it into acting. If the drive
     // socket cannot be set up, fall back to an un-driven run (degraded: pi will
     // idle, but the caller is never failed and the session is still cleaned up).
-    let outcome = match ephemeral_drive_socket().and_then(|path| {
-        UnixListener::bind(&path)
-            .map(|listener| (path, listener))
-            .map_err(|e| format!("could not bind the ephemeral drive socket: {e}"))
-    }) {
+    let outcome = match bind_ephemeral_drive_socket() {
         Ok((socket_path, listener)) => {
             let _socket_guard = SocketGuard(socket_path.clone());
             let run =
@@ -160,13 +156,32 @@ pub async fn run_ephemeral_pi<S: SpawnEngine, B: SessionBinder + ?Sized>(
 /// Resolve a private drive-socket path for one ephemeral run, under the Arlen
 /// runtime dir with a random suffix so concurrent runs never collide.
 fn ephemeral_drive_socket() -> Result<PathBuf, String> {
+    use std::os::unix::fs::PermissionsExt;
     let base = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/arlen".to_string());
     let dir = PathBuf::from(base).join("arlen");
     std::fs::create_dir_all(&dir).map_err(|e| format!("could not create the runtime dir: {e}"))?;
+    // Tighten the runtime dir to 0700 before binding, so the socket is not
+    // cross-uid reachable during its bind-then-chmod window (matches the
+    // persistent drive socket; best-effort, as the daemon's own bind already
+    // tightens this shared dir).
+    let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
     let mut bytes = [0u8; 8];
     getrandom::getrandom(&mut bytes).map_err(|e| e.to_string())?;
     let nonce: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
     Ok(dir.join(format!("ephemeral-{nonce}.sock")))
+}
+
+/// Bind a private per-run drive socket, owner-only (0600), matching the persistent
+/// drive socket's defense-in-depth. The real boundary is the 0700 parent dir plus
+/// `serve_drive`'s SO_PEERCRED check on every accept; the 0600 mode aligns the two
+/// ephemeral callers (curator kick + explain) with the persistent path.
+fn bind_ephemeral_drive_socket() -> Result<(PathBuf, UnixListener), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let path = ephemeral_drive_socket()?;
+    let listener = UnixListener::bind(&path)
+        .map_err(|e| format!("could not bind the ephemeral drive socket: {e}"))?;
+    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    Ok((path, listener))
 }
 
 /// Removes the private drive socket file on drop.
@@ -197,9 +212,7 @@ where
     let init = build_ephemeral_session_init(behaviour, project_anchor);
     let token = SessionToken::mint().map_err(|_| "could not mint a session".to_string())?;
 
-    let socket_path = ephemeral_drive_socket()?;
-    let listener = UnixListener::bind(&socket_path)
-        .map_err(|e| format!("could not bind the explain drive socket: {e}"))?;
+    let (socket_path, listener) = bind_ephemeral_drive_socket()?;
     let _socket_guard = SocketGuard(socket_path.clone());
 
     let on_spawned = |pid: u32| binder.bind_session(token.clone(), &init, pid);
