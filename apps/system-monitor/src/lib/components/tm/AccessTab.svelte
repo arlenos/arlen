@@ -28,11 +28,11 @@
   {#each families as f (f.key)}
     {@const FamIcon = ICON[f.key]}
     <section class="fam">
-      <h2 class="fam-head" data-lit={SENSOR.has(f.key) && f.holders.length > 0}>
-        <FamIcon size={16} strokeWidth={2} />
+      <div class="fam-head" data-lit={SENSOR.has(f.key) && f.holders.length > 0}>
+        <FamIcon size={12} strokeWidth={2} />
         <span class="fam-label">{f.label}</span>
         {#if f.holders.length}<span class="fam-count">{f.holders.length}</span>{/if}
-      </h2>
+      </div>
 
       {#if f.holders.length === 0}
         <p class="fam-empty">{emptyLine(f.key)}</p>
@@ -58,48 +58,45 @@
 </div>
 
 <style>
+  /* Match the process-table register: dense, small uppercase group headers, tight
+     tabular rows - not an airy feature section. */
   .at {
-    max-width: 42rem;
-    padding: 1.5rem 1.75rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1.75rem;
+    font-size: 0.8125rem;
+    padding: 0.4rem 0.4rem 2rem;
   }
   .fam-head {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin: 0 0 0.7rem;
-    font-size: 0.9375rem;
+    gap: 0.35rem;
+    padding: 0.7rem 0.6rem 0.3rem;
+    font-size: 0.625rem;
     font-weight: 600;
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
   }
   .fam-head[data-lit="true"] {
-    color: var(--color-warning, #d0a54a);
-  }
-  .fam-label {
-    color: var(--color-fg-primary);
-  }
-  .fam-head[data-lit="true"] .fam-label {
     color: var(--color-warning, #d0a54a);
   }
   .fam-count {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 1.1rem;
-    height: 1.1rem;
-    padding: 0 0.3rem;
+    min-width: 1rem;
+    height: 1rem;
+    padding: 0 0.25rem;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--color-fg-primary) 12%, transparent);
-    font-size: 0.6875rem;
+    background: color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0;
     font-variant-numeric: tabular-nums;
-    color: color-mix(in srgb, var(--color-fg-primary) 65%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .fam-empty {
     margin: 0;
-    font-size: 0.875rem;
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
+    padding: 0.35rem 0.6rem;
+    color: color-mix(in srgb, var(--color-fg-primary) 42%, transparent);
   }
   .holders {
     display: flex;
@@ -108,17 +105,16 @@
   .holder {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.5rem;
     width: 100%;
-    padding: 0.5rem 0.6rem;
+    padding: 0.4rem 0.6rem;
     border: none;
-    border-radius: var(--radius-input, 8px);
     background: transparent;
     text-align: left;
     cursor: pointer;
   }
   .holder:hover {
-    background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
+    background: color-mix(in srgb, var(--color-fg-primary) 4%, transparent);
   }
   .h-icon {
     display: inline-flex;
@@ -139,7 +135,6 @@
     color: color-mix(in srgb, var(--color-fg-primary) 38%, transparent);
   }
   .h-name {
-    font-size: 0.875rem;
     color: var(--color-fg-primary);
     flex-shrink: 0;
   }
@@ -147,10 +142,11 @@
     flex: 1;
     min-width: 0;
     font-size: 0.75rem;
-    color: color-mix(in srgb, var(--color-fg-primary) 48%, transparent);
+    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: right;
+    font-variant-numeric: tabular-nums;
   }
 </style>
