@@ -62,8 +62,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(online_accounts::watcher::run_account_watcher(
         conn.clone(),
         watch_dir,
-        peers,
+        std::sync::Arc::clone(&peers),
     ));
+    tokio::spawn(online_accounts::watcher::run_peer_cleanup(conn.clone(), peers));
     tracing::info!("org.arlen.Accounts1 serving; the per-app gate mediates every method");
 
     // Serve until terminated.
