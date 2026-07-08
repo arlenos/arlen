@@ -5,7 +5,8 @@
   import { onMount } from "svelte";
   import ProcessTable from "$lib/components/tm/ProcessTable.svelte";
   import PerformanceTab from "$lib/components/tm/PerformanceTab.svelte";
-  import { processes, load, stop } from "$lib/stores/processes";
+  import DetailPane from "$lib/components/tm/DetailPane.svelte";
+  import { processes, load, stop, type Process } from "$lib/stores/processes";
   import { startPerf, stopPerf } from "$lib/stores/perf";
   import { Rows3, Layers, Search } from "lucide-svelte";
 
@@ -13,6 +14,7 @@
   let tab = $state<(typeof TABS)[number]>("Processes");
   let filter = $state("");
   let flatten = $state(false);
+  let selected = $state<Process | null>(null);
 
   onMount(load);
 
@@ -53,8 +55,27 @@
       </button>
     </div>
 
-    <div class="table-wrap">
-      <ProcessTable list={$processes} {filter} {flatten} onStop={stop} />
+    <div class="proc-body">
+      <div class="table-wrap">
+        <ProcessTable
+          list={$processes}
+          {filter}
+          {flatten}
+          selectedId={selected?.id}
+          onStop={stop}
+          onSelect={(p) => (selected = p)}
+        />
+      </div>
+      {#if selected}
+        <DetailPane
+          process={selected}
+          onClose={() => (selected = null)}
+          onForceQuit={(id) => {
+            stop(id);
+            selected = null;
+          }}
+        />
+      {/if}
     </div>
   {:else}
     <div class="perf-wrap">
@@ -165,8 +186,14 @@
   .toggle:hover {
     color: var(--color-fg-primary);
   }
+  .proc-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
   .table-wrap {
     flex: 1;
+    min-width: 0;
     overflow-y: auto;
     padding: 0 0.4rem;
   }
