@@ -17,6 +17,18 @@ use arlen_ai_proxy::service::{
 };
 use zbus::Connection;
 
+/// The `ai-routing.toml` path under the user config dir (`$XDG_CONFIG_HOME/arlen` or
+/// `~/.config/arlen`). Absent, the proxy runs on its built-in catalog.
+fn catalog_config_path() -> std::path::PathBuf {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config"))
+        })
+        .unwrap_or_else(|| std::path::PathBuf::from(".config"));
+    base.join("arlen").join("ai-routing.toml")
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -28,9 +40,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let forwarder = Arc::new(ReqwestForwarder::new()?);
     let audit_sink: Arc<dyn AuditSink> = Arc::new(LedgerAuditSink::at_default_socket());
+    let catalog_path = catalog_config_path();
+    tracing::info!(path = %catalog_path.display(), "loading the provider catalog");
     let service = Arc::new(ProxyService::new(
         Allowlist::default_arlen(),
-        ProviderCatalog::default_arlen(),
+        ProviderCatalog::load_or_default(&catalog_path)?,
         CallerAllowlist::default_arlen(),
         forwarder,
         audit_sink,
