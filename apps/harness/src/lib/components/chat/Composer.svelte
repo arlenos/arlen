@@ -10,11 +10,14 @@
   import { tick } from "svelte";
   import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { ArrowUp, File as FileIcon, Folder, Paperclip, ShieldCheck } from "@lucide/svelte";
+  import { ArrowUp, Bookmark, File as FileIcon, Folder, Paperclip, ShieldCheck } from "@lucide/svelte";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { trapFocus } from "@arlen/ui-kit/keyboard/trap_focus";
   import { openTransparency } from "$lib/stores/transparency";
+  import { pinnedMessages } from "$lib/bookmark";
+  import { jumpToMessage } from "$lib/stores/chatNav";
   import ContextChips from "./ContextChips.svelte";
   import ModelPickerBar from "./ModelPickerBar.svelte";
   import AutonomyDial from "./AutonomyDial.svelte";
@@ -46,6 +49,20 @@
 
   let draft = $state("");
   let textareaRef = $state<HTMLTextAreaElement | null>(null);
+
+  // The bookmarked turns of this conversation. The affordance sits in the foot beside
+  // the transparency action and jumps the transcript to a saved turn (ChatThread owns
+  // the scroll, reached via the jump store).
+  const pinned = $derived(pinnedMessages($messages));
+  let bookmarksOpen = $state(false);
+  function jumpTo(id: number) {
+    jumpToMessage.set(id);
+    bookmarksOpen = false;
+  }
+  function bmSnippet(text: string): string {
+    const t = text.trim().replace(/\s+/g, " ");
+    return t.length > 64 ? `${t.slice(0, 64)}…` : t;
+  }
 
   // Per-chat drafts: restore on switch, persist as the user types. The
   // sent-draft cleanup happens in the store (`send` clears it), so switching
@@ -286,6 +303,41 @@
         <IconAction label="Transparency: what the assistant can reach, read, and did" size="control" onclick={() => openTransparency()}>
           <ShieldCheck size={14} strokeWidth={2} />
         </IconAction>
+        {#if pinned.length > 0}
+          <div class="bm-anchor">
+            <IconAction
+              label="Bookmarked messages"
+              size="control"
+              active={bookmarksOpen}
+              onclick={() => (bookmarksOpen = !bookmarksOpen)}
+            >
+              <Bookmark size={14} strokeWidth={2} />
+            </IconAction>
+            {#if bookmarksOpen}
+              <div class="bm-backdrop" role="presentation" onclick={() => (bookmarksOpen = false)}></div>
+              <div
+                class="bm-panel"
+                role="menu"
+                aria-label="Bookmarks"
+                tabindex="-1"
+                use:trapFocus
+                onkeydown={(e) => {
+                  if (e.key === "Escape") bookmarksOpen = false;
+                }}
+              >
+                <p class="bm-title">Bookmarks</p>
+                <div class="bm-list">
+                  {#each pinned as m (m.id)}
+                    <button type="button" role="menuitem" class="bm-item" onclick={() => jumpTo(m.id)}>
+                      <span class="bm-role">{m.role === "user" ? "You" : "Assistant"}</span>
+                      <span class="bm-text">{bmSnippet(m.text)}</span>
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          </div>
+        {/if}
       </div>
       <div class="foot-right">
         {#if !disabled}
@@ -349,6 +401,70 @@
     align-items: center;
     gap: 0.25rem;
     min-width: 0;
+  }
+  /* Bookmarks: the panel anchors directly above the bookmark action and opens
+     upward; a card holding the saved turns, each jumping the transcript. */
+  .bm-anchor {
+    position: relative;
+    display: inline-flex;
+  }
+  .bm-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+  }
+  .bm-panel {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    z-index: 50;
+    width: 20rem;
+    max-width: 80vw;
+    padding: 0.4rem;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card, 12px);
+    box-shadow: var(--shadow-lg, 0 8px 30px #00000066);
+  }
+  .bm-title {
+    margin: 0.15rem 0.4rem 0.35rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
+  }
+  .bm-list {
+    display: flex;
+    flex-direction: column;
+    max-height: 18rem;
+    overflow-y: auto;
+  }
+  .bm-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    width: 100%;
+    padding: 0.4rem 0.45rem;
+    border: none;
+    border-radius: var(--radius-input, 8px);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+  }
+  .bm-item:hover {
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  }
+  .bm-role {
+    font-size: 0.6875rem;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  }
+  .bm-text {
+    font-size: 0.8125rem;
+    color: var(--foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .foot-right {
     display: flex;
