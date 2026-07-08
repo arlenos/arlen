@@ -349,7 +349,15 @@ mod tests {
         // The cap equals the largest legitimate image frame (header + max RGBA).
         assert_eq!(MAX_OUTPUT_BYTES, 12 + MAX_PIXELS * 4);
         // A real audio probe frame is far under the cap (so one cap covers both).
-        let audio = AudioInfo { codec: "vorbis".into(), sample_rate: 48_000, channels: 2, duration_ms: Some(1) };
+        let audio = AudioInfo {
+            codec: "vorbis".into(),
+            sample_rate: 48_000,
+            channels: 2,
+            duration_ms: Some(1),
+            title: None,
+            artist: None,
+            peaks: Vec::new(),
+        };
         assert!((audio.encode().len() as u64) < MAX_OUTPUT_BYTES);
     }
 
