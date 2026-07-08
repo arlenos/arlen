@@ -2,7 +2,7 @@
   /// The process table: the task-manager landing. A dense, sortable, heat-coloured
   /// list grouped into Apps / Background / System, a Stop on every row. The Arlen
   /// daemons + the AI agent sit in Background as ordinary rows. No verdict page.
-  import { ChevronRight, Cog, Cpu, Camera, Mic } from "lucide-svelte";
+  import { ChevronRight, Cog, Cpu, Camera, Mic, Brain } from "lucide-svelte";
   import type { Process, ProcGroup, ProcStatus, SortKey } from "$lib/stores/processes";
   import { sensorsFor } from "$lib/stores/detail";
 
@@ -207,8 +207,9 @@
             {#if p.limited && !p.paused}<span class="limtag">Limited</span>{/if}
           </div>
           <div class="cell access" role="cell">
-            {#if sensors.camera}<Camera size={13} strokeWidth={2} class="sensor" />{/if}
-            {#if sensors.mic}<Mic size={13} strokeWidth={2} class="sensor" />{/if}
+            {#if sensors.camera}<Camera size={13} strokeWidth={2} />{/if}
+            {#if sensors.mic}<Mic size={13} strokeWidth={2} />{/if}
+            {#if sensors.knowledge}<span class="kg-glyph"><Brain size={13} strokeWidth={2} /></span>{/if}
           </div>
           <div class="cell num" role="cell" style="--heat: {dispHeat(p)}">{dispCpu(p).toFixed(1)}%</div>
           <div class="cell num" role="cell" style="--heat: {heat(p.memMB, 2200)}">{mem(p.memMB)}</div>
@@ -406,5 +407,11 @@
     justify-content: center;
     gap: 0.25rem;
     color: var(--color-warning, #d0a54a);
+  }
+  /* Knowledge access is visible but not a physical-surveillance alarm - a neutral
+     tone, distinct from the amber camera/mic. */
+  .kg-glyph {
+    display: inline-flex;
+    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
 </style>

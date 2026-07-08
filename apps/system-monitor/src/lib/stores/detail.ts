@@ -88,52 +88,15 @@ const DEFAULT_ACCESS: ProcAccess = {
   scopes: [],
 };
 
-/// The camera/mic sensors a process holds, for the process-list Access column.
-export function sensorsFor(name: string): { camera: boolean; mic: boolean } {
+/// The sensitive access a process holds, for the process-list Access column:
+/// the physical sensors (camera/mic) + whether it holds knowledge-graph access.
+export function sensorsFor(name: string): { camera: boolean; mic: boolean; knowledge: boolean } {
   const a = ACCESS[name];
-  return { camera: a?.camera ?? false, mic: a?.mic ?? false };
-}
-
-/// One capability family in the cross-process Access rollup.
-export interface AccessFamily {
-  key: "camera" | "microphone" | "network" | "knowledge";
-  label: string;
-  holders: { proc: Process; detail: string }[];
-}
-
-function rateLabel(kbs: number): string {
-  return kbs >= 1024 ? `${(kbs / 1024).toFixed(1)} MB/s` : `${Math.round(kbs)} KB/s`;
-}
-
-/// Roll up who currently holds each sensitive capability, for the Access tab. The
-/// same data as the per-process Access detail, grouped by capability instead.
-export function rollup(list: Process[]): AccessFamily[] {
-  return [
-    {
-      key: "camera",
-      label: "Camera",
-      holders: list.filter((p) => ACCESS[p.name]?.camera).map((p) => ({ proc: p, detail: "" })),
-    },
-    {
-      key: "microphone",
-      label: "Microphone",
-      holders: list.filter((p) => ACCESS[p.name]?.mic).map((p) => ({ proc: p, detail: "" })),
-    },
-    {
-      key: "network",
-      label: "Network",
-      holders: list
-        .filter((p) => p.netKBs > 0)
-        .map((p) => ({ proc: p, detail: rateLabel(p.netKBs) })),
-    },
-    {
-      key: "knowledge",
-      label: "Knowledge",
-      holders: list
-        .filter((p) => (ACCESS[p.name]?.scopes.length ?? 0) > 0)
-        .map((p) => ({ proc: p, detail: (ACCESS[p.name]?.scopes ?? []).map((s) => s.label).join(", ") })),
-    },
-  ];
+  return {
+    camera: a?.camera ?? false,
+    mic: a?.mic ?? false,
+    knowledge: (a?.scopes.length ?? 0) > 0,
+  };
 }
 
 /// Derive the detail for a process (a fixture; the real data is the sidecar seam).
