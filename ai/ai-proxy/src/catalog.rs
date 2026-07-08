@@ -317,6 +317,15 @@ mod tests {
     }
 
     #[test]
+    fn load_empty_file_yields_the_defaults() {
+        // a user who creates the config but adds nothing gets the built-ins, not an error
+        let path = tmp_catalog("empty", "");
+        let cat = ProviderCatalog::load_or_default(&path).unwrap();
+        assert!(cat.get("ollama-default").is_some());
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
     fn load_adds_a_user_provider_over_the_defaults() {
         let path = tmp_catalog(
             "add",
