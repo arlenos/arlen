@@ -39,7 +39,7 @@ export function dismiss(): void {
 
 // Dev-only: walk the phases so the surface renders each state (the screenshot loop).
 const DEMO = "What's on my calendar tomorrow?";
-const REPLY = "Three things: the 9:30 standup, lunch with Alex at noon, and the review at 4.";
+const REPLY = "Three things: the 9:30 standup, lunch with Alex at noon and the review at 4.";
 let timers: ReturnType<typeof setTimeout>[] = [];
 
 /// Dev-only: drive listening -> streamed transcript -> thinking -> reply.
