@@ -190,6 +190,42 @@ fn completed_actions_json(store: &CompensationStore) -> String {
     serde_json::to_string(&actions).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// The app-ids allowed to invoke the destructive `compensate` verb: the harness
+/// (the undo UI) and Settings. Every other caller is refused - `compensate`
+/// retracts a graph write, so it is not an app-facing method. The ids resolve
+/// through the F3 `path_to_app_id` chain (a root-owned `/usr/lib/arlen/apps/<id>`
+/// path), the same identity model the knowledge daemon and installd key on; the
+/// exact harness id is verified against its install at the name-transfer wiring.
+const COMPENSATE_ADMITTED: &[&str] = &["harness", "settings"];
+
+/// Whether `app_id` may invoke `compensate`.
+fn compensate_caller_admitted(app_id: &str) -> bool {
+    COMPENSATE_ADMITTED.contains(&app_id)
+}
+
+/// Resolve the calling app's Arlen identity from the D-Bus connection: the session
+/// bus attests the sender PID (`GetConnectionUnixProcessID`, not a client value),
+/// and `app_id_from_pid` resolves `/proc/<pid>/exe` through the F3 chain. Any
+/// failure is an `Err`, treated as not-admitted (fail-closed). Documented residual
+/// (the same one the whole F3 model carries): a sub-millisecond PID-reuse window
+/// and a same-uid `exec` - closed only by the inode-attested identity registry.
+async fn resolve_dbus_caller(
+    header: &zbus::message::Header<'_>,
+    connection: &zbus::Connection,
+) -> Result<String, String> {
+    let sender = header
+        .sender()
+        .ok_or_else(|| "no sender in message".to_string())?;
+    let proxy = zbus::fdo::DBusProxy::new(connection)
+        .await
+        .map_err(|e| format!("DBusProxy: {e}"))?;
+    let pid = proxy
+        .get_connection_unix_process_id(sender.clone().into())
+        .await
+        .map_err(|e| format!("get caller pid: {e}"))?;
+    arlen_permissions::identity::app_id_from_pid(pid).map_err(|e| format!("resolve app id: {e}"))
+}
+
 /// The undo verdict, kept as a small helper so `compensate`'s flow is unit-tested
 /// without a live bus. The wire is the string; this names the branches.
 fn compensate_outcome_wire(outcome: RelationRetractOutcome) -> &'static str {
@@ -207,6 +243,7 @@ fn compensate_outcome_wire(outcome: RelationRetractOutcome) -> &'static str {
 /// lock dropped before the awaits.
 async fn run_compensate(
     executor_live: bool,
+    caller: &str,
     correlation_id: &str,
     compensation: &Mutex<CompensationStore>,
     writer: &dyn RelationWriter,
@@ -226,7 +263,9 @@ async fn run_compensate(
         }
     };
     // Audit-before-act, fail-closed: an undo that cannot be recorded does not run.
-    let event = behaviour_action_event("compensate", "retract-relation", correlation_id);
+    // The caller app-id (content-free) is recorded so the ledger shows WHO undid.
+    let event =
+        behaviour_action_event("compensate", format!("retract-relation:by={caller}"), correlation_id);
     if audit.submit(event).await.is_err() {
         return "error: audit unavailable".to_string();
     }
@@ -322,9 +361,22 @@ impl AgentAdminInterface {
     /// `nothing-to-undo` (the edge was already gone), `no-such-receipt`,
     /// `not-enabled` (suggest-mode) or `error: <reason>`.
     #[zbus(name = "compensate")]
-    async fn compensate(&self, correlation_id: String) -> String {
+    async fn compensate(
+        &self,
+        correlation_id: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> String {
+        // Caller-auth: only the harness / Settings may invoke this destructive
+        // verb (it retracts a graph write). Any other or unresolvable caller is
+        // refused before any store read, audit or write - fail-closed.
+        let caller = match resolve_dbus_caller(&header, connection).await {
+            Ok(c) if compensate_caller_admitted(&c) => c,
+            _ => return "not-permitted".to_string(),
+        };
         run_compensate(
             engine_config::executor_live(),
+            &caller,
             &correlation_id,
             &self.compensation,
             &*self.writer,
@@ -446,11 +498,20 @@ mod tests {
         Mutex::new(s)
     }
 
+    #[test]
+    fn only_the_harness_and_settings_may_compensate() {
+        assert!(compensate_caller_admitted("harness"));
+        assert!(compensate_caller_admitted("settings"));
+        assert!(!compensate_caller_admitted("com.example.app"));
+        assert!(!compensate_caller_admitted("ai-agent"));
+        assert!(!compensate_caller_admitted(""));
+    }
+
     #[tokio::test]
     async fn suggest_mode_refuses_the_undo_without_touching_the_store_or_writer() {
         let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
         let out =
-            run_compensate(false, "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::accepting())
+            run_compensate(false, "settings", "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::accepting())
                 .await;
         assert_eq!(out, "not-enabled");
         assert!(!writer.retract_called.load(Ordering::Relaxed));
@@ -461,6 +522,7 @@ mod tests {
         let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
         let out = run_compensate(
             true,
+            "settings",
             "missing",
             &Mutex::new(CompensationStore::new(8)),
             &writer,
@@ -475,7 +537,7 @@ mod tests {
     async fn an_unrecordable_audit_refuses_the_undo_and_never_retracts() {
         let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
         let out =
-            run_compensate(true, "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::failing())
+            run_compensate(true, "settings", "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::failing())
                 .await;
         assert_eq!(out, "error: audit unavailable");
         assert!(
@@ -488,7 +550,7 @@ mod tests {
     async fn a_live_undo_retracts_its_own_edge_and_drops_the_receipt() {
         let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
         let store = store_with("corr-1", "op-1");
-        let out = run_compensate(true, "corr-1", &store, &writer, &MockAuditSink::accepting()).await;
+        let out = run_compensate(true, "settings", "corr-1", &store, &writer, &MockAuditSink::accepting()).await;
         assert_eq!(out, "retracted");
         assert!(writer.retract_called.load(Ordering::Relaxed));
         // The undone receipt is dropped so completed_actions won't re-offer it.
@@ -499,7 +561,7 @@ mod tests {
     async fn an_already_gone_edge_reports_nothing_to_undo() {
         let writer = RetractMock::new(Ok(RelationRetractOutcome::Absent));
         let out =
-            run_compensate(true, "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::accepting())
+            run_compensate(true, "settings", "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::accepting())
                 .await;
         assert_eq!(out, "nothing-to-undo");
     }
