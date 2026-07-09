@@ -1,0 +1,9 @@
+# Starting permission profile for an archive manager. Compresses and extracts
+# archives across Home; no network and no Knowledge Graph by default. Observe-mode
+# refines it.
+[info]
+app_id = "p7zip-desktop"
+tier = "third-party"
+
+[filesystem]
+home = true

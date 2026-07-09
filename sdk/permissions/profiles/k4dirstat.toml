@@ -1,0 +1,9 @@
+# Starting permission profile for a disk-usage analyzer. Reads file sizes across
+# Home to report usage; no network and no Knowledge Graph by default. Observe-mode
+# refines it.
+[info]
+app_id = "k4dirstat"
+tier = "third-party"
+
+[filesystem]
+home = true
