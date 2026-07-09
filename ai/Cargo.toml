@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "ai-core",
-    "ai-providers",
     "ai-classifier",
     "ai-explanation",
     "ai-proxy",
