@@ -1,22 +1,26 @@
 #!/bin/sh
-# Phase 5 of the Debian-native build (CHROOT): the AI layer - the agent
-# (arlen-ai-agent) + the daemon (arlen-ai-daemon), so the in-VM dogfood can drive
-# the real KG-AI loop (file.opened -> KG -> the agent's capability-scoped read ->
-# answer, then the gate/approve/undo flow). Built like the other daemons; the AI
-# inference engine (llama-server) + the baked model arrive in a later phase.
+# Phase 5 of the Debian-native build (CHROOT): the AI layer - the pi-backed
+# engine daemon (arlen-ai-engine-daemon) + the egress proxy (arlen-ai-proxy), so
+# the in-VM dogfood can drive the real KG-AI loop (file.opened -> KG -> the
+# curator's capability-scoped read -> answer, then the gate/approve/undo flow).
+# The engine daemon is the pi-agent-adoption drop-in for the retired native
+# ai-agent/ai-daemon (it owns org.arlen.AI1 + org.arlen.AIAgent1); the proxy is
+# the egress authoriser that holds the provider->endpoint catalog + forwards to
+# the inference engine (llama-server, a later phase).
 #
-# Unlike the knowledge daemon this needs NO C++/Kuzu and NO ONNX: the ai workspace
-# is pure Rust and the S17 injection classifier rides an off-by-default `onnx`
-# feature, so the default build pulls neither ort nor a C++ toolchain. CPU-only,
-# software-GL-irrelevant. The ai workspace is its OWN cargo workspace
-# (ai/Cargo.toml), so it gets its own target dir in the persistent cache.
+# Unlike the knowledge daemon this needs NO C++/Kuzu and NO ONNX: the engine
+# daemon builds on arlen-ai-core with the S17 injection classifier behind an
+# off-by-default `onnx` feature, so the default build pulls neither ort nor a C++
+# toolchain. CPU-only, software-GL-irrelevant. The engine daemon is its OWN cargo
+# workspace (daemons/ai-engine-daemon/Cargo.toml); the proxy lives in the ai/
+# workspace (ai/Cargo.toml). They build independently (they talk over D-Bus, no
+# build dep), so each gets its own target dir in the persistent cache.
 set -eu
 
 cache="${BUILDDIR:-/var/tmp/arlen-build}"
 export RUSTUP_HOME="$cache/rustup"
 export CARGO_HOME="$cache/cargo-home"
-export CARGO_TARGET_DIR="$cache/target-ai"   # the ai/ workspace, separate from the daemons
-mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME"
 
 # rustup stable was bootstrapped by phase 2 into the shared cache; bootstrap here
 # too in case the phases run independently (idempotent, skip if present).
@@ -28,28 +32,46 @@ fi
 export PATH="$CARGO_HOME/bin:$PATH"
 
 cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
-echo ">> cargo build the AI layer (agent + daemon + proxy) - Debian-native ($(cargo --version))"
-# The completion path is ai-daemon -> ai-proxy (the egress authoriser that holds
-# the provider->endpoint catalog + forwards to llama-server) -> the engine, so the
-# proxy is baked too. Build only these bins (and their deps); the default feature
-# set leaves the onnx classifier out, so this stays pure-Rust.
-cargo build --release --manifest-path ai/Cargo.toml \
-    -p arlen-ai-agent -p arlen-ai-daemon -p arlen-ai-proxy
+echo ">> cargo build the AI layer (engine daemon + proxy) - Debian-native ($(cargo --version))"
+
+# The proxy (ai/ workspace, its own target dir). The default feature set leaves
+# the onnx classifier out, so this stays pure-Rust.
+CARGO_TARGET_DIR="$cache/target-ai" \
+    cargo build --release --manifest-path ai/Cargo.toml -p arlen-ai-proxy
+
+# The pi-backed engine daemon (its own workspace + its own target dir).
+CARGO_TARGET_DIR="$cache/target-ai-engine" \
+    cargo build --release --manifest-path daemons/ai-engine-daemon/Cargo.toml
 
 # Install under /usr/lib/arlen/libexec, NOT /usr/bin: this is the canonical path
 # the security model resolves identity against - ai-proxy's CallerAllowlist
-# exact-matches /usr/lib/arlen/libexec/arlen-ai-{daemon,agent}, and path_to_app_id
-# maps the same paths to the admitted app ids (auditd's ADMITTED). A /usr/bin
-# install makes ai-agent unresolvable and ai-daemon fail the proxy's exact match.
-for bin in arlen-ai-agent arlen-ai-daemon arlen-ai-proxy; do
-    install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$DESTDIR/usr/lib/arlen/libexec/$bin"
-    echo ">> staged $bin into the image (libexec, the canonical identity path)"
-done
+# exact-matches the libexec paths, and path_to_app_id maps them to the admitted
+# app ids (auditd's ADMITTED). Notably arlen-ai-engine-daemon resolves to app id
+# `ai-agent` (identity.rs: the drop-in curator role reuses the same principal), so
+# its ai-agent.toml graph profile keys correctly. A /usr/bin install would make it
+# unresolvable and fail the proxy's exact match.
+install -Dm755 "$cache/target-ai/release/arlen-ai-proxy" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-ai-proxy"
+echo ">> staged arlen-ai-proxy into the image (libexec, the canonical identity path)"
+install -Dm755 "$cache/target-ai-engine/release/arlen-ai-engine-daemon" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-ai-engine-daemon"
+echo ">> staged arlen-ai-engine-daemon into the image (libexec, the canonical identity path)"
 
-# The agent discovers behaviours from /usr/share/arlen/agent/behaviours (its
-# BuiltIn default source, ai-skills/loader.rs); bake the shipped SKILL.md set there
-# so auto-tag-by-project (+ the others) are loadable without ARLEN_AGENT_BEHAVIOURS.
+# The curator discovers behaviours from /usr/share/arlen/agent/behaviours (the
+# BuiltIn source, ai-skills/loader.rs); bake the shipped SKILL.md set there so
+# auto-tag-by-project (+ the others) are loadable without ARLEN_AGENT_BEHAVIOURS.
 behdest="$DESTDIR/usr/share/arlen/agent/behaviours"
 mkdir -p "$behdest"
 cp -r "$SRCDIR/arlen/ai/ai-agent/behaviours/." "$behdest/"
 echo ">> baked the agent behaviours into the image"
+
+# REMAINING pi cutover (needs image-build verification, not done here):
+#   1. Vendor the pi runtime into the image so the engine daemon can spawn its
+#      sidecar - node >=22, the pi engine install, and the built pi-plugins
+#      extension, to the paths arlen-ai-engine-daemon.service points at
+#      (/usr/lib/arlen/{node-runtime,pi,pi-plugins/dist/extension.js}). Until
+#      that lands the daemon boots INERT (the contract socket serves fail-closed,
+#      pi just stays unspawned - fail-safe, not a boot failure).
+#   2. When the native ai-agent crate is deleted (pi-agent-adoption step 9), move
+#      ai/ai-agent/behaviours out of the delete target (its loader test pins it)
+#      and repoint the `cp` above.
