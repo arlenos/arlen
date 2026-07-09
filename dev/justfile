@@ -311,9 +311,12 @@ terminal-smoke:
         "{{ROOT}}/apps/terminal/src-tauri/target/debug/arlen-terminal" "" "" 12
 
 # IT-1 nightly (integration-testing-plan.md §4 / coder-night-backlog-2 §4.3):
-# build EVERY daemon the suite spawns (event-bus, knowledge, audit-daemon and
-# the ai-agent in the ai/ workspace), run the WHOLE #[ignore]d backend suite
-# single-threaded, and capture a timestamped report under the state dir. Exits
+# build EVERY daemon the suite spawns (event-bus, knowledge, audit-daemon, the
+# ai/ workspace for arlen-ai-proxy), run the WHOLE #[ignore]d backend suite
+# single-threaded, and capture a timestamped report under the state dir. NB the
+# four native-agent scenarios (workflow-audit, executor-write, undo, canary) now
+# SKIP: they spawned the retired arlen-ai-agent binary and await a pi-engine-
+# daemon rewrite. Exits
 # with the run's status so a wrapping systemd user timer or cron reads pass/fail
 # and a morning digest can parse the report. Each scenario owns a hermetic
 # `EphemeralStack`, so teardown is automatic (no shared state to clean). Needs a
