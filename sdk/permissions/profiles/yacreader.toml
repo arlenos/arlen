@@ -1,0 +1,12 @@
+# Starting permission profile for a comic-book reader and library. Reads
+# archives under Documents, Downloads and Pictures; no network by default (its
+# optional library server needs an explicit grant) and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "yacreader"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true
+pictures = true

@@ -1,0 +1,11 @@
+# Starting permission profile for DJ software. Reads and records music under
+# Music and imports from Downloads; no network by default (streaming sources and
+# broadcasting need an explicit grant) and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "mixxx"
+tier = "third-party"
+
+[filesystem]
+music = true
+downloads = true
