@@ -15,8 +15,8 @@ use crate::{ArlenTheme, Rgba};
 
 /// Six-digit lowercase hex without alpha (terminal palettes are opaque),
 /// optionally `#`-prefixed (Foot's INI takes bare `RRGGBB`; the others take
-/// `#RRGGBB`).
-fn hex6(c: Rgba, hash: bool) -> String {
+/// `#RRGGBB`). Shared with the CLI-tool emitters in [`crate::cli`].
+pub(crate) fn hex6(c: Rgba, hash: bool) -> String {
     let to_u8 = |f: f32| (f.clamp(0.0, 1.0) * 255.0).round() as u8;
     let body = format!("{:02x}{:02x}{:02x}", to_u8(c[0]), to_u8(c[1]), to_u8(c[2]));
     if hash {
