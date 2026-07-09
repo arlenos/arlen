@@ -1,0 +1,8 @@
+# Starting permission profile for a PDF comparison tool. Opens documents under
+# Documents; no network and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "diffpdf"
+tier = "third-party"
+
+[filesystem]
+documents = true
