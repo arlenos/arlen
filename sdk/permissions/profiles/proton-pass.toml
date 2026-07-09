@@ -1,0 +1,10 @@
+# Starting permission profile for a cloud password manager. Needs network to sync
+# its vault (any host); the vault lives in its own config dir, so no
+# document-folder access and no Knowledge Graph by default. Observe-mode refines
+# it.
+[info]
+app_id = "proton-pass"
+tier = "third-party"
+
+[network]
+allow_all = true

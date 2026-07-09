@@ -1,0 +1,10 @@
+# Starting permission profile for a streaming-music client. Needs network to
+# stream from its service (any host); local files are a grant, so no
+# document-folder access and no Knowledge Graph by default. Observe-mode refines
+# it.
+[info]
+app_id = "sublime-music"
+tier = "third-party"
+
+[network]
+allow_all = true

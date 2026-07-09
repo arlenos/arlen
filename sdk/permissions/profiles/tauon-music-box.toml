@@ -1,0 +1,9 @@
+# Starting permission profile for a music player. Plays and organises music under
+# Music; no network by default (streaming backends need an explicit grant) and no
+# Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "tauon-music-box"
+tier = "third-party"
+
+[filesystem]
+music = true

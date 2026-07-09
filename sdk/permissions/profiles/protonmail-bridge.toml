@@ -1,0 +1,10 @@
+# Starting permission profile for a mail bridge. Needs network to reach the mail
+# service (any host) and runs a local IMAP/SMTP endpoint for mail clients; its
+# cache lives in its own config dir, so no document-folder access and no Knowledge
+# Graph by default. Observe-mode refines it.
+[info]
+app_id = "protonmail-bridge"
+tier = "third-party"
+
+[network]
+allow_all = true
