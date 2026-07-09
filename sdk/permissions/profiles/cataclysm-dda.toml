@@ -1,0 +1,6 @@
+# Starting permission profile for a single-player game. Saves live in its own
+# config dir, so no document-folder access, no network and no Knowledge Graph by
+# default (multiplayer/updates need an explicit grant). Observe-mode refines it.
+[info]
+app_id = "cataclysm-dda"
+tier = "third-party"
