@@ -201,6 +201,12 @@ mod tests {
             "kitty/arlen-colors.conf",
             "foot/arlen-colors.ini",
             "arlen/colors.Xresources",
+            // The notification sound map and the CLI-tool colour files.
+            "arlen/sounds.toml",
+            "arlen/fzf-colors.sh",
+            "arlen/git-colors.gitconfig",
+            "arlen/delta.gitconfig",
+            "arlen/base16-arlen.yaml",
         ] {
             assert!(c.join(rel).is_file(), "missing {rel}");
         }
