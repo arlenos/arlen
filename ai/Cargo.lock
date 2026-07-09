@@ -60,37 +60,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
-name = "arlen-ai-agent"
-version = "0.1.0"
-dependencies = [
- "arlen-ai-classifier",
- "arlen-ai-core",
- "arlen-ai-sandbox",
- "arlen-ai-skills",
- "arlen-ai-undo-core",
- "arlen-ai-undo-proto",
- "arlen-config-broker",
- "arlen-file-change",
- "async-trait",
- "audit-proto",
- "futures",
- "os-sdk",
- "prost",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "toml 0.8.23",
- "toml_edit 0.22.27",
- "tracing",
- "tracing-subscriber",
- "zbus",
-]
-
-[[package]]
 name = "arlen-ai-classifier"
 version = "0.1.0"
 dependencies = [
@@ -259,30 +228,6 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "arlen-config-broker"
-version = "0.1.0"
-dependencies = [
- "arlen-permissions",
- "audit-proto",
- "libc",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "toml 0.8.23",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "arlen-file-change"
-version = "0.1.0"
-dependencies = [
- "serde",
- "ts-rs",
 ]
 
 [[package]]

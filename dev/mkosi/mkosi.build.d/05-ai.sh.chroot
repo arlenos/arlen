@@ -62,16 +62,12 @@ echo ">> staged arlen-ai-engine-daemon into the image (libexec, the canonical id
 # auto-tag-by-project (+ the others) are loadable without ARLEN_AGENT_BEHAVIOURS.
 behdest="$DESTDIR/usr/share/arlen/agent/behaviours"
 mkdir -p "$behdest"
-cp -r "$SRCDIR/arlen/ai/ai-agent/behaviours/." "$behdest/"
+cp -r "$SRCDIR/arlen/ai/ai-skills/behaviours/." "$behdest/"
 echo ">> baked the agent behaviours into the image"
 
-# REMAINING pi cutover (needs image-build verification, not done here):
-#   1. Vendor the pi runtime into the image so the engine daemon can spawn its
-#      sidecar - node >=22, the pi engine install, and the built pi-plugins
-#      extension, to the paths arlen-ai-engine-daemon.service points at
-#      (/usr/lib/arlen/{node-runtime,pi,pi-plugins/dist/extension.js}). Until
-#      that lands the daemon boots INERT (the contract socket serves fail-closed,
-#      pi just stays unspawned - fail-safe, not a boot failure).
-#   2. When the native ai-agent crate is deleted (pi-agent-adoption step 9), move
-#      ai/ai-agent/behaviours out of the delete target (its loader test pins it)
-#      and repoint the `cp` above.
+# The pi runtime the engine daemon spawns as its sidecar (node >=22 + the pinned
+# pi engine + the built pi-plugins extension) is vendored by phase 05b-pi into
+# /usr/lib/arlen/{node-runtime,pi,pi-plugins}. Until an image is actually built
+# and booted, that phase + this one are UNVERIFIED; if pi is absent the daemon
+# boots INERT (the contract socket serves fail-closed, pi stays unspawned -
+# fail-safe, not a boot failure).

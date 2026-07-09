@@ -551,10 +551,12 @@ const CREATABLE_NODES: &[&str] = &["system.Summary"];
 /// operand (or an embedded read-query id) that does is provably injected. The
 /// `CreateNode` op is the only node-create path that takes a caller-supplied id
 /// (promotion ids are derived paths, entity ids are server-minted UUIDv7), so the
-/// reservation lives at its persistence primitive. This token MUST match the
-/// agent's `arlen_ai_agent::canary::RESERVED_CANARY_PREFIX`; the two crates share
-/// no dependency, so the one-token duplication is deliberate and noted on both
-/// sides.
+/// reservation lives at its persistence primitive. With the native agent retired
+/// (pi is the loop now), this ingestion boundary is the sole canary authority: the
+/// reservation here refuses the write AND fires the content-free trip audit (see
+/// `canary_trip_event`) the anomaly detector surfaces. A future pi-side operand
+/// tripwire must reuse this exact token string; there is no shared dependency, so
+/// any such duplication is deliberate.
 const RESERVED_CANARY_TOKEN: &str = "__canary:";
 
 /// An LLM-free retrieval request, sent with a leading `0x03` byte. The body is
@@ -2065,8 +2067,8 @@ async fn handle_client(
                 // cross-uid peer from PLANTING a privileged binary - but NOT from
                 // RUNNING code under that identity. The canonical binaries are
                 // world-executable and not setuid, so any local uid can
-                // `LD_PRELOAD=evil.so /usr/lib/arlen/libexec/arlen-ai-agent` (or
-                // ptrace it) and present `ai-agent` as its /proc/self/exe. With no
+                // `LD_PRELOAD=evil.so /usr/lib/arlen/libexec/arlen-ai-engine-daemon`
+                // (or ptrace it) and present `ai-agent` as its /proc/self/exe. With no
                 // owner configured this gate therefore grants ANY local uid a full
                 // read of the system graph (a FirstParty read is `system_anchored`,
                 // bypassing the label gate + sensitive-column scrub) - acceptable

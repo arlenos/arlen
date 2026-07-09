@@ -3,7 +3,7 @@ license = "AGPL-3.0-only"
 name = "arlen-ai-undo-core"
 version = "0.1.0"
 edition = "2021"
-description = "Shared undo-log vocabulary for the Arlen AI agent's reversible-receipts effect model: the non-graph inverse-receipt types, the event-sourced lifecycle state machine, and the HMAC-chained on-disk log. Depended on by both arlen-ai-agent (the submitter) and arlen-ai-undo-signer (the separate-uid sealer)."
+description = "Shared undo-log vocabulary for the Arlen AI reversible-receipts effect model: the non-graph inverse-receipt types, the event-sourced lifecycle state machine, and the HMAC-chained on-disk log. The sealer arlen-ai-undo-signer consumes it; the submitter side (native arlen-ai-agent, now retired) awaits a pi-side re-home."
 
 [lib]
 path = "src/lib.rs"
