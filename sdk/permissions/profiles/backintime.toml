@@ -1,0 +1,12 @@
+# Starting permission profile for a user-file backup tool. It backs up the user's
+# files (and can target a remote), so it gets Home and network; no Knowledge
+# Graph. Observe-mode refines it.
+[info]
+app_id = "backintime"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true

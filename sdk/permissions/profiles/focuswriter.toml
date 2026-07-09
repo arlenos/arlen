@@ -1,0 +1,9 @@
+# Starting permission profile for a distraction-free text editor. Reads and
+# writes text under Documents; no network and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "focuswriter"
+tier = "third-party"
+
+[filesystem]
+documents = true
