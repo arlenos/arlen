@@ -1,0 +1,12 @@
+# Starting permission profile for a peer-to-peer file-sharing client. Needs
+# network for the P2P network and writes shared/downloaded files under Downloads;
+# no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "gtk-gnutella"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

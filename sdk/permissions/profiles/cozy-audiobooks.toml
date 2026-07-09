@@ -1,0 +1,10 @@
+# Starting permission profile for an audiobook player. Reads audiobooks under
+# Music and imports from Downloads; no network and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "cozy-audiobooks"
+tier = "third-party"
+
+[filesystem]
+music = true
+downloads = true

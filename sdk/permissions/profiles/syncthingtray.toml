@@ -1,0 +1,10 @@
+# Starting permission profile for a Syncthing tray/monitor GUI. Needs network to
+# reach the Syncthing daemon's API; the sync folders are managed by the daemon,
+# so no document-folder access by default. No Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "syncthingtray"
+tier = "third-party"
+
+[network]
+allow_all = true

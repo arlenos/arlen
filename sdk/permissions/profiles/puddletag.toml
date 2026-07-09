@@ -1,0 +1,9 @@
+# Starting permission profile for an audio tag editor. Reads and writes music
+# metadata under Music; no network and no Knowledge Graph. Observe-mode refines
+# it.
+[info]
+app_id = "puddletag"
+tier = "third-party"
+
+[filesystem]
+music = true
