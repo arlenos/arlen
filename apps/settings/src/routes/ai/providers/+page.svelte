@@ -17,6 +17,8 @@
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Badge } from "@arlen/ui-kit/components/ui/badge";
+  import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { ProviderLogo } from "@arlen/ui-kit/components/ui/provider-logo";
   import { Plus } from "lucide-svelte";
   import AddProviderDialog from "$lib/components/AddProviderDialog.svelte";
@@ -34,6 +36,12 @@
     enabled: boolean;
     configured: boolean;
     status: "ok" | "error" | "untested";
+    /// How you connect: a per-token key, your existing subscription, or a free
+    /// tier with no login. From the catalogue (`authMethod`); shapes the chip.
+    authMethod?: "api-key" | "subscription-login" | "free";
+    /// A reverse-engineered access path (no official API). Carries a warning:
+    /// it may break or risk account suspension.
+    unofficial?: boolean;
   }
 
   // The catalogue is loaded from the daemon. The Svelte-5 IPC caveat applies
@@ -51,16 +59,41 @@
     }
   }
 
+  // A dev sample so the surface renders under vite (no daemon). Covers every
+  // auth-method plus an unofficial reverse-engineered path. The live catalogue
+  // replaces it the moment `ai_providers_list` answers.
+  const DEV_FIXTURE: Provider[] = [
+    { id: "ollama", name: "Ollama", kind: "local", enabled: true, configured: true, status: "ok" },
+    { id: "mistral", name: "Mistral", kind: "cloud", region: "EU", enabled: true, configured: true, status: "ok", authMethod: "api-key" },
+    { id: "claude", name: "Claude", kind: "cloud", enabled: true, configured: true, status: "ok", authMethod: "subscription-login" },
+    { id: "groq", name: "Groq", kind: "cloud", enabled: false, configured: false, status: "untested", authMethod: "free" },
+    { id: "copilot", name: "GitHub Copilot", kind: "cloud", enabled: false, configured: false, status: "untested", authMethod: "subscription-login", unofficial: true },
+  ];
+
   async function loadProviders() {
     try {
       providers.set(parse<Provider[]>(await invoke<string>("ai_providers_list"), []));
     } catch {
-      providers.set([]);
+      providers.set(import.meta.env.DEV ? DEV_FIXTURE : []);
     } finally {
       loaded = true;
     }
   }
   onMount(loadProviders);
+
+  /// The plain-language label for how you connect to a provider.
+  function authLabel(m: Provider["authMethod"]): string {
+    switch (m) {
+      case "subscription-login":
+        return "Your subscription";
+      case "free":
+        return "Free";
+      case "api-key":
+        return "API key";
+      default:
+        return "";
+    }
+  }
 
   /// Enable or disable a provider. Optimistic, reverted if the daemon does not
   /// return `ok` (the bridge returns a status string).
@@ -170,6 +203,27 @@
     {#snippet leading()}
       <ProviderLogo id={p.id} name={p.name} size={24} />
     {/snippet}
+    {#snippet preview()}
+      {#if (p.kind === "cloud" && p.authMethod) || p.unofficial}
+        <span class="chips">
+          {#if p.kind === "cloud" && p.authMethod}
+            <Badge variant="outline">{authLabel(p.authMethod)}</Badge>
+          {/if}
+          {#if p.unofficial}
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <span {...props} class="chip-trigger"><Badge variant="warn">Unofficial</Badge></span>
+                {/snippet}
+              </Tooltip.Trigger>
+              <Tooltip.TooltipContent side="top">
+                Reverse-engineered access. It may stop working or put your account at risk.
+              </Tooltip.TooltipContent>
+            </Tooltip.Root>
+          {/if}
+        </span>
+      {/if}
+    {/snippet}
     {#snippet control()}
       <span class="pctl">
         {#if verdict && verdict.state !== "testing"}
@@ -224,6 +278,17 @@
   }
   .dot.err {
     background: var(--color-error);
+  }
+  /* The attribute chips (how you connect, plus any unofficial warning) sit in
+     the row's preview slot, between the name and the control cluster. */
+  .chips {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+  .chip-trigger {
+    display: inline-flex;
+    cursor: default;
   }
   .pctl {
     display: inline-flex;
