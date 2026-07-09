@@ -1,0 +1,9 @@
+# Starting permission profile for a notes/diagram productivity app. Reads and
+# writes its files under Documents; no network by default (cloud sync needs an
+# explicit grant) and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "boostnote"
+tier = "third-party"
+
+[filesystem]
+documents = true
