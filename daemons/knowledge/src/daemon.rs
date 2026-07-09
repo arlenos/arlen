@@ -1372,6 +1372,23 @@ async fn handle_write_request(
             if id.is_empty() {
                 return "ERROR: create node requires an id".to_string();
             }
+            // Structural-canary tripwire (canary-honeytools.md §3). An id bearing
+            // the reserved token can only reach this caller-supplied-id path if
+            // external content injected it, so it is proof of a hijacked proposal.
+            // `persist_create_node` refuses it below regardless (the containment);
+            // emit the content-free trip audit here so the anomaly detector can
+            // surface the hijack attempt. Best-effort: the write is already refused,
+            // so a down ledger must not change the outcome, only lose the signal.
+            if id.contains(RESERVED_CANARY_TOKEN) {
+                if let Some(sink) = audit {
+                    if let Err(e) = sink
+                        .submit(crate::audit::canary_trip_event(&token.app_id))
+                        .await
+                    {
+                        warn!("canary trip audit failed (write still refused): {e}");
+                    }
+                }
+            }
             let label = node_type.strip_prefix("system.").unwrap_or(&node_type);
             persist_create_node(graph, label, &id).await
         }
