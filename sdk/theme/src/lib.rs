@@ -48,6 +48,7 @@
 pub mod apply;
 pub mod base16;
 pub mod catppuccin;
+pub mod cli;
 pub mod color;
 pub mod css;
 mod file;

@@ -117,6 +117,14 @@ pub fn write_foreign_toolkit_configs(theme: &ArlenTheme, config_dir: &Path) -> A
         &mut report,
     );
 
+    // CLI tools: an Arlen-owned colour file the user's own config sources. fzf
+    // reads its palette from `FZF_DEFAULT_OPTS`, so the finder matches the theme.
+    write_owned(
+        &config.join("arlen/fzf-colors.sh"),
+        &crate::cli::generate_fzf_colors(theme),
+        &mut report,
+    );
+
     report
 }
 
