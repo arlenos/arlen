@@ -1,18 +1,39 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { makeProxyTools, type CallClient, type ProxyExtensionAPI, type ToolDefinition } from "./proxy.js";
+import {
+  makeProxyTools,
+  searchTools,
+  TOOL_DISCLOSURE_THRESHOLD,
+  type CallClient,
+  type ProxyExtensionAPI,
+  type ProxyToolSpec,
+  type ToolDefinition,
+} from "./proxy.js";
 import type { Call, Reply } from "./contract.js";
 
-/** Register the proxy tools against a mock contract client and return them by name. */
-function collect(connect: () => Promise<CallClient>): Map<string, ToolDefinition> {
+/** Register the proxy tools against a mock contract client and return them by name.
+ *  Optional `specs` override the default set (to cross the disclosure threshold). */
+function collect(
+  connect: () => Promise<CallClient>,
+  specs?: ProxyToolSpec[],
+): Map<string, ToolDefinition> {
   const tools = new Map<string, ToolDefinition>();
   const pi: ProxyExtensionAPI = {
     registerTool(def) {
       tools.set(def.name, def);
     },
   };
-  makeProxyTools({ connect })(pi);
+  makeProxyTools({ connect, tools: specs })(pi);
   return tools;
+}
+
+/** `n` synthetic proxy tools, enough to cross the disclosure threshold. */
+function manySpecs(n: number): ProxyToolSpec[] {
+  return Array.from({ length: n }, (_v, i) => ({
+    name: `tool.${i}`,
+    label: `Tool ${i}`,
+    description: i === 0 ? "read the knowledge graph" : `synthetic tool ${i}`,
+  }));
 }
 
 test("registers the default privileged tools (graph read + write)", () => {
@@ -73,6 +94,71 @@ test("a denied authorize blocks the execute (the proxy cannot bypass the gate)",
   const r = await tools.get("graph.write")!.execute("id-1", {});
   assert.equal(r.isError, true);
   assert.equal(executed, false, "a denied tool never reaches Execute");
+});
+
+test("searchTools matches by keyword over name/label/description; empty query returns all", () => {
+  const specs = manySpecs(3);
+  assert.deepEqual(
+    searchTools(specs, "knowledge").map((s) => s.name),
+    ["tool.0"],
+    "matches the description of tool.0",
+  );
+  assert.equal(searchTools(specs, "Tool 2").length, 1, "matches the label");
+  assert.equal(searchTools(specs, "").length, 3, "an empty query returns all");
+  assert.equal(searchTools(specs, "nonesuch").length, 0);
+});
+
+test("a small catalogue dumps each tool directly (no meta-tools)", () => {
+  const tools = collect(async () => ({ call: async (): Promise<Reply> => ({ reply: "ack" }) }));
+  assert.ok(tools.has("graph.read"));
+  assert.equal(tools.has("search_tools"), false);
+  assert.equal(tools.has("call_tool"), false);
+});
+
+test("a large catalogue switches to retrieval-first (search_tools + call_tool only)", () => {
+  const specs = manySpecs(TOOL_DISCLOSURE_THRESHOLD + 1);
+  const tools = collect(async () => ({ call: async (): Promise<Reply> => ({ reply: "ack" }) }), specs);
+  assert.ok(tools.has("search_tools"), "search_tools is registered above the threshold");
+  assert.ok(tools.has("call_tool"), "call_tool is registered above the threshold");
+  assert.equal(tools.has("tool.0"), false, "the individual tools are NOT dumped");
+  assert.equal(tools.size, 2, "only the two meta-tools are registered");
+});
+
+test("search_tools returns the matching tool names + descriptions", async () => {
+  const specs = manySpecs(TOOL_DISCLOSURE_THRESHOLD + 1);
+  const tools = collect(async () => ({ call: async (): Promise<Reply> => ({ reply: "ack" }) }), specs);
+  const r = await tools.get("search_tools")!.execute("id", { query: "knowledge" });
+  const found = JSON.parse(r.content[0]?.text ?? "[]");
+  assert.deepEqual(found, [{ name: "tool.0", description: "read the knowledge graph" }]);
+});
+
+test("call_tool forwards to the daemon by the inner name (same gate path as a direct tool)", async () => {
+  let seen: Call | undefined;
+  const specs = manySpecs(TOOL_DISCLOSURE_THRESHOLD + 1);
+  const tools = collect(async () => ({
+    call: async (c: Call): Promise<Reply> => {
+      if (c.call === "authorize") return { reply: "authorize", decision: "allow", proof: "p" };
+      seen = c;
+      return { reply: "execute", outcome: "ok", result: { ok: true } };
+    },
+  }), specs);
+  const r = await tools.get("call_tool")!.execute("id", { name: "tool.5", arguments: { a: 1 } });
+  assert.equal(r.isError, undefined);
+  assert.deepEqual(seen, { call: "execute", tool_name: "tool.5", tool_input: { a: 1 }, proof: "p" });
+});
+
+test("call_tool rejects a name that is not a known tool (never a generic verb-invoker)", async () => {
+  let called = false;
+  const specs = manySpecs(TOOL_DISCLOSURE_THRESHOLD + 1);
+  const tools = collect(async () => ({
+    call: async (): Promise<Reply> => {
+      called = true;
+      return { reply: "ack" };
+    },
+  }), specs);
+  const r = await tools.get("call_tool")!.execute("id", { name: "rm.rf", arguments: {} });
+  assert.equal(r.isError, true);
+  assert.equal(called, false, "an unknown tool name never reaches the daemon");
 });
 
 test("a daemon-unreachable connect failure is a tool error and retries on the next call", async () => {
