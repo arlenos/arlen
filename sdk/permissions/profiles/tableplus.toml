@@ -1,0 +1,12 @@
+# Starting permission profile for a database client. Opens local database files
+# under Documents and needs network to reach remote database servers (any host);
+# no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "tableplus"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true

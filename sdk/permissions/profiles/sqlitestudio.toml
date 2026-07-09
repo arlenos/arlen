@@ -1,0 +1,9 @@
+# Starting permission profile for a SQLite database manager. Opens local database
+# files under Documents; no network and no Knowledge Graph. Observe-mode refines
+# it.
+[info]
+app_id = "sqlitestudio"
+tier = "third-party"
+
+[filesystem]
+documents = true

@@ -1,0 +1,9 @@
+# Starting permission profile for a scientific Python IDE. Works with code and
+# data files under Documents; no network by default (package installs need an
+# explicit grant) and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "spyder"
+tier = "third-party"
+
+[filesystem]
+documents = true

@@ -1,0 +1,9 @@
+# Starting permission profile for a QEMU virtual-machine manager. Works with VM
+# disk images under Documents; no network of its own and no Knowledge Graph by
+# default. Observe-mode refines it.
+[info]
+app_id = "aqemu"
+tier = "third-party"
+
+[filesystem]
+documents = true
