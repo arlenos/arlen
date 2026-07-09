@@ -1136,7 +1136,7 @@ async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
     // The agent: behaviours from the in-tree fixture dir (debug override), and no
     // session bus (an unreachable address forces the D-1 workflow-only path rather
     // than connecting to the dev's real session bus).
-    let behaviours = arlen_integration::repo_path("ai/ai-agent/behaviours");
+    let behaviours = arlen_integration::repo_path("ai/ai-skills/behaviours");
     let behaviours = behaviours.to_string_lossy().into_owned();
     stack
         .spawn(
@@ -1263,7 +1263,7 @@ async fn the_executor_does_not_silently_write_from_an_event_trigger() {
         .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
         .expect("audit ingest socket");
 
-    let behaviours = arlen_integration::repo_path("ai/ai-agent/behaviours");
+    let behaviours = arlen_integration::repo_path("ai/ai-skills/behaviours");
     let behaviours = behaviours.to_string_lossy().into_owned();
     stack
         .spawn(
@@ -1411,7 +1411,7 @@ async fn the_engine_executor_does_not_silently_write_from_an_event_trigger() {
 
     // The engine uses the same ARLEN_AGENT_BEHAVIOURS override; the dummy pi paths
     // satisfy SidecarPaths::resolve (env-set only) so the orchestrator runs.
-    let behaviours = arlen_integration::repo_path("ai/ai-agent/behaviours");
+    let behaviours = arlen_integration::repo_path("ai/ai-skills/behaviours");
     let behaviours = behaviours.to_string_lossy().into_owned();
     let dummy_pi = stack
         .runtime_dir()
@@ -1586,7 +1586,7 @@ async fn the_live_executor_undo_retracts_the_edge() {
         .wait_socket("dbus-session.sock", Duration::from_secs(10))
         .expect("session bus socket");
 
-    let behaviours = arlen_integration::repo_path("ai/ai-agent/behaviours");
+    let behaviours = arlen_integration::repo_path("ai/ai-skills/behaviours");
     let behaviours = behaviours.to_string_lossy().into_owned();
     // Capture the agent's log (outside the temp root, survives teardown) so a
     // `completed_actions` timeout below can dump WHY no receipt surfaced - the
@@ -1860,7 +1860,7 @@ async fn a_canary_operand_trips_the_gate_and_audits_a_policy_violation() {
         .wait_socket("arlen/audit-read.sock", Duration::from_secs(20))
         .expect("audit read socket");
 
-    let behaviours = arlen_integration::repo_path("ai/ai-agent/behaviours");
+    let behaviours = arlen_integration::repo_path("ai/ai-skills/behaviours");
     let behaviours = behaviours.to_string_lossy().into_owned();
     stack
         .spawn(
