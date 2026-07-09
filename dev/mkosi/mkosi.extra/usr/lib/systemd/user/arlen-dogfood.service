@@ -5,8 +5,8 @@ Documentation=https://github.com/arlenos/arlen
 # result off the serial journal: inject a file.opened, wait a promotion pass, then
 # ask the AI daemon a question. Order it after the AI session daemons it drives
 # (best-effort); llama-server load latency is absorbed by the tool's own retry.
-After=arlen-ai-daemon.service arlen-ai-agent.service arlen-ai-proxy.service
-Wants=arlen-ai-daemon.service arlen-ai-agent.service arlen-ai-proxy.service
+After=arlen-ai-engine-daemon.service arlen-ai-proxy.service
+Wants=arlen-ai-engine-daemon.service arlen-ai-proxy.service
 
 [Service]
 Type=oneshot
