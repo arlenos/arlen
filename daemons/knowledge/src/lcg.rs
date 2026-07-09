@@ -104,10 +104,11 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
 
     // The EntityType markers and GRANTS edges for each reachable type.
     for entity_type in reachable_types(token) {
-        let t_esc = escape_cypher(&entity_type);
-        let label_esc = escape_cypher(type_label(&entity_type));
-        stmts.push(format!(
-            "MERGE (t:EntityType {{id: '{t_esc}'}}) SET t.label = '{label_esc}'"
+        stmts.push(crate::cypher::merge_node_set(
+            "t",
+            "EntityType",
+            &entity_type,
+            &[("label", crate::cypher::SetValue::Text(type_label(&entity_type)))],
         ));
         stmts.push(format!(
             "{} MERGE (g)-[:GRANTS]->(t)",

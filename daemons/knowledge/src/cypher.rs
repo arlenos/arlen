@@ -53,6 +53,48 @@ pub fn match_two_nodes(
     )
 }
 
+/// A property value in a `SET` clause. The daemon supplies the type (never the
+/// caller), so text is escaped-and-quoted (the injection boundary) while
+/// numerics and bools are bare, exactly as the hand-rolled `format!` sites do.
+pub enum SetValue<'a> {
+    /// A `STRING` column: escaped and single-quoted.
+    Text(&'a str),
+    /// An `INT64` column (also timestamps): the decimal digits, unquoted.
+    /// A production caller lands as the File/Session numeric-SET sites migrate;
+    /// exercised by the builder tests meanwhile.
+    #[allow(dead_code)]
+    Int(i64),
+    /// A `BOOL` column: `true` / `false`, unquoted. Lands with the Grant/Project
+    /// lifecycle-flag SET sites; exercised by the builder tests meanwhile.
+    #[allow(dead_code)]
+    Bool(bool),
+}
+
+impl SetValue<'_> {
+    /// Render the value as it appears on the right of a `SET var.field = _`.
+    fn render(&self) -> String {
+        match self {
+            SetValue::Text(s) => format!("'{}'", escape_cypher(s)),
+            SetValue::Int(n) => n.to_string(),
+            SetValue::Bool(b) => b.to_string(),
+        }
+    }
+}
+
+/// `MERGE (<var>:<Label> {id: '<esc>'}) SET <var>.<f0> = <v0>, ...` - the
+/// node-by-id upsert that also assigns properties. The id and every `Text`
+/// value are escaped in one place; `field`/`label`/`var` are trusted schema
+/// identifiers, interpolated verbatim. Byte-for-byte identical to the
+/// hand-rolled form (single space before `SET`, `, ` between assignments).
+pub fn merge_node_set(var: &str, label: &str, id: &str, sets: &[(&str, SetValue)]) -> String {
+    let assigns = sets
+        .iter()
+        .map(|(field, value)| format!("{var}.{field} = {}", value.render()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{} SET {assigns}", merge_node(var, label, id))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -61,6 +103,29 @@ mod tests {
     fn node_builders_match_the_hand_rolled_form() {
         assert_eq!(merge_node("a", "App", "org.arlen.files"), "MERGE (a:App {id: 'org.arlen.files'})");
         assert_eq!(match_node("g", "Grant", "grant-1"), "MATCH (g:Grant {id: 'grant-1'})");
+    }
+
+    #[test]
+    fn merge_node_set_matches_the_hand_rolled_form() {
+        // One text assignment: escaped id, escaped quoted value.
+        assert_eq!(
+            merge_node_set("t", "EntityType", "system.File", &[("label", SetValue::Text("File"))]),
+            "MERGE (t:EntityType {id: 'system.File'}) SET t.label = 'File'",
+        );
+        // Mixed types: text escaped+quoted, int/bool bare, joined with ", ".
+        assert_eq!(
+            merge_node_set(
+                "f",
+                "File",
+                "/x/o'brien",
+                &[
+                    ("path", SetValue::Text("/x/o'brien")),
+                    ("last_accessed", SetValue::Int(42)),
+                    ("pinned", SetValue::Bool(true)),
+                ],
+            ),
+            "MERGE (f:File {id: '/x/o\\'brien'}) SET f.path = '/x/o\\'brien', f.last_accessed = 42, f.pinned = true",
+        );
     }
 
     #[test]
