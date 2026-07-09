@@ -1,0 +1,9 @@
+# Starting permission profile for a document/markup editor. Reads and writes
+# files under Documents; no network and no Knowledge Graph. Observe-mode refines
+# it.
+[info]
+app_id = "texworks"
+tier = "third-party"
+
+[filesystem]
+documents = true
