@@ -1,0 +1,9 @@
+# Starting permission profile for a screen recorder. Writes recordings under
+# Videos; screen capture is a runtime portal grant. No network and no Knowledge
+# Graph by default. Observe-mode refines it.
+[info]
+app_id = "green-recorder"
+tier = "third-party"
+
+[filesystem]
+videos = true

@@ -1,0 +1,12 @@
+# Starting permission profile for a media-server client. Needs network to stream
+# from its server (any host) and reads local media under Videos; no other file
+# access and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "jellyfin-mediaplayer"
+tier = "third-party"
+
+[filesystem]
+videos = true
+
+[network]
+allow_all = true
