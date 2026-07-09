@@ -1,0 +1,9 @@
+# Starting permission profile for a code editor / IDE. Works with project files
+# under Documents; no network by default (package fetches and plugin marketplaces
+# need an explicit grant) and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "komodo-edit"
+tier = "third-party"
+
+[filesystem]
+documents = true
