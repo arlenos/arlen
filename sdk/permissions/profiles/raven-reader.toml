@@ -1,0 +1,9 @@
+# Starting permission profile for a network content client (feeds/social). Needs
+# network to reach its service (any host); no local file access and no Knowledge
+# Graph by default. Observe-mode refines it.
+[info]
+app_id = "raven-reader"
+tier = "third-party"
+
+[network]
+allow_all = true
