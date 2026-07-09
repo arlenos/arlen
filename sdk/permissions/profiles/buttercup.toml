@@ -1,0 +1,9 @@
+# Starting permission profile for a password manager. Opens its database file
+# under Documents; no network by default (browser integration and cloud sync need
+# an explicit grant) and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "buttercup"
+tier = "third-party"
+
+[filesystem]
+documents = true
