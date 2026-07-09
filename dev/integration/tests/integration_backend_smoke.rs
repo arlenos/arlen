@@ -1062,14 +1062,14 @@ async fn an_audit_entry_lands_in_the_chain_and_reads_back() {
 /// suggest mode never writes the edge, so every emit re-proposes). Same `#[ignore]`
 /// rationale (debug build for the dev. ingest admission).
 #[tokio::test]
-#[ignore = "needs event-bus + knowledge + audit-daemon + ai-agent binaries built (debug)"]
+#[ignore = "needs event-bus + knowledge + audit-daemon + the retired native ai-agent (OBSOLETE, pending a pi-engine-daemon rewrite), (debug)"]
 async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
     use audit_proto::ReadClient;
 
     if !(arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
         && arlen_integration::binary_built("ai", "arlen-ai-agent"))
     {
-        eprintln!("SKIP the_agent_audits_a_workflow_proposal_in_suggest_mode: audit-daemon/ai-agent not built (run `just integration-nightly`)");
+        eprintln!("SKIP the_agent_audits_a_workflow_proposal_in_suggest_mode: OBSOLETE: tested the retired native ai-agent; pending a pi-engine-daemon rewrite (IT-2)");
         return;
     }
     let mut stack = EphemeralStack::new().expect("private runtime root");
@@ -1195,12 +1195,12 @@ async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
 /// the shipped `FILE_PART_OF`/`instance_scope=all` grant); production `executor_live`
 /// is untouched. `#[ignore]d` + FUSE-host-gated.
 #[tokio::test]
-#[ignore = "needs event-bus + knowledge + audit-daemon + ai-agent binaries built (debug, FUSE host)"]
+#[ignore = "needs event-bus + knowledge + audit-daemon + the retired native ai-agent (OBSOLETE, pending a pi-engine-daemon rewrite), (debug, FUSE host)"]
 async fn the_executor_does_not_silently_write_from_an_event_trigger() {
     if !(arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
         && arlen_integration::binary_built("ai", "arlen-ai-agent"))
     {
-        eprintln!("SKIP the_live_executor_writes_a_file_part_of_edge: audit-daemon/ai-agent not built (run `just integration-nightly`)");
+        eprintln!("SKIP the_live_executor_writes_a_file_part_of_edge: OBSOLETE: tested the retired native ai-agent; pending a pi-engine-daemon rewrite (IT-2)");
         return;
     }
     let mut stack = EphemeralStack::new().expect("private runtime root");
@@ -1493,7 +1493,7 @@ async fn the_engine_executor_does_not_silently_write_from_an_event_trigger() {
 /// knowledge socket. `#[ignore]d` + FUSE-host-gated; also needs `dbus-daemon` on
 /// PATH (skips otherwise).
 #[tokio::test]
-#[ignore = "needs event-bus + knowledge + arlen-kg-seed + audit-daemon + ai-agent binaries built (debug, FUSE host) + dbus-daemon"]
+#[ignore = "needs event-bus + knowledge + arlen-kg-seed + audit-daemon + the retired native ai-agent (OBSOLETE, pending a pi-engine-daemon rewrite), (debug, FUSE host) + dbus-daemon"]
 async fn the_live_executor_undo_retracts_the_edge() {
     if !(arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
         && arlen_integration::binary_built("ai", "arlen-ai-agent")
@@ -1801,14 +1801,14 @@ async fn a_window_focused_event_promotes_to_a_readable_app_node() {
 /// PolicyViolation kind appears, proving the tripwire fires end-to-end and is
 /// classified for a ledger reader. Same `#[ignore]` rationale.
 #[tokio::test]
-#[ignore = "needs event-bus + knowledge + audit-daemon + ai-agent binaries built (debug)"]
+#[ignore = "needs event-bus + knowledge + audit-daemon + the retired native ai-agent (OBSOLETE, pending a pi-engine-daemon rewrite), (debug)"]
 async fn a_canary_operand_trips_the_gate_and_audits_a_policy_violation() {
     use audit_proto::ReadClient;
 
     if !(arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
         && arlen_integration::binary_built("ai", "arlen-ai-agent"))
     {
-        eprintln!("SKIP a_canary_operand_trips_the_gate_and_audits_a_policy_violation: audit-daemon/ai-agent not built (run `just integration-nightly`)");
+        eprintln!("SKIP a_canary_operand_trips_the_gate_and_audits_a_policy_violation: OBSOLETE: tested the retired native ai-agent; pending a pi-engine-daemon rewrite (IT-2)");
         return;
     }
     let mut stack = EphemeralStack::new().expect("private runtime root");
