@@ -1,0 +1,12 @@
+# Starting permission profile for a web browser. Needs network (any host) and
+# saves files to Downloads; no other file access and no Knowledge Graph by
+# default. Observe-mode refines it.
+[info]
+app_id = "badwolf"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
