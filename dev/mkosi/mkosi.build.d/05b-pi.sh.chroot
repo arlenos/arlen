@@ -1,0 +1,73 @@
+#!/bin/sh
+# Phase 5b of the Debian-native build (CHROOT): vendor the pi runtime so the AI
+# engine daemon can spawn its sidecar. Three artifacts, installed to the paths
+# arlen-ai-engine-daemon.service points at:
+#   - node >=22            -> /usr/lib/arlen/node-runtime   (bin/node)
+#   - the pi engine        -> /usr/lib/arlen/pi             (packages/coding-agent/dist/cli.js)
+#   - the pi-plugins ext   -> /usr/lib/arlen/pi-plugins/dist/extension.js
+#
+# SUPPLY CHAIN (pi-agent-adoption.md): the shipped OS forbids an unpinned network
+# fetch. node is pinned to an exact version and checksum-verified against the
+# official SHASUMS for that version. pi is PINNED at v0.79.10 and mounted as a
+# sibling BuildSource (../../../pi:pi, mirroring the compositor) so its
+# shrinkwrap-locked, host-prepared node_modules + built dist are reused directly
+# rather than re-resolved in the chroot (the build overlay's per-file fchown
+# EINVAL makes a fresh npm ci over pi's monorepo tree pathologically slow - the
+# same reason phase 4 reuses the shell's host node_modules). The STRICT
+# offline-reproducible form the shipped product wants (pi as a Debian package,
+# ideally an esbuild/Node-SEA single executable) is the follow-on; this dogfood
+# image reuses the pinned host tree.
+#
+# NB (needs image-boot verification): this phase has never been run in a real
+# mkosi build. Verify node extracts + checksums, pi copies with a working
+# cli.js, and pi-plugins compiles, on a real image build.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+
+# --- 1. node >=22 (pinned + checksum-verified) -------------------------------
+NODE_VER=22.23.0
+NODE_PKG="node-v${NODE_VER}-linux-x64"
+if [ ! -x "$cache/$NODE_PKG/bin/node" ]; then
+    echo ">> fetching node v$NODE_VER (pinned) + verifying its checksum"
+    cd "$cache"
+    curl --proto '=https' --tlsv1.2 -fsSLO "https://nodejs.org/dist/v${NODE_VER}/${NODE_PKG}.tar.xz"
+    curl --proto '=https' --tlsv1.2 -fsSLO "https://nodejs.org/dist/v${NODE_VER}/SHASUMS256.txt"
+    # Verify ONLY our tarball's line from the official SHASUMS for this version.
+    grep " ${NODE_PKG}.tar.xz\$" SHASUMS256.txt | sha256sum -c -
+    tar -xJf "${NODE_PKG}.tar.xz"
+fi
+node_dest="$DESTDIR/usr/lib/arlen/node-runtime"
+mkdir -p "$(dirname "$node_dest")"
+rm -rf "$node_dest"
+cp -a "$cache/$NODE_PKG" "$node_dest"
+export PATH="$node_dest/bin:$PATH"
+echo ">> staged node v$NODE_VER into the image ($($node_dest/bin/node --version))"
+
+# --- 2. the pi engine (pinned v0.79.10, host-prepared via BuildSource) --------
+# Mounted at $SRCDIR/pi via BuildSources=../../../pi:pi. Its node_modules + built
+# dist come from the host (shrinkwrap-locked at the pinned tag). Copy the tree
+# minus VCS/scratch; the sidecar reads packages/coding-agent/dist/cli.js under it.
+pi_src="$SRCDIR/pi"
+if [ ! -f "$pi_src/packages/coding-agent/dist/cli.js" ]; then
+    echo "!! pi is not built at $pi_src (expected packages/coding-agent/dist/cli.js)" >&2
+    echo "!! clone earendil-works/pi @ v0.79.10, npm ci --ignore-scripts, npm run build" >&2
+    exit 1
+fi
+pi_dest="$DESTDIR/usr/lib/arlen/pi"
+mkdir -p "$pi_dest"
+# Exclude the git dir + any host-local caches; keep node_modules + dist (runtime).
+( cd "$pi_src" && tar --exclude=.git --exclude=.husky -cf - . ) | ( cd "$pi_dest" && tar -xf - )
+echo ">> staged the pinned pi engine into the image"
+
+# --- 3. the pi-plugins extension (in-repo, self-contained tsc build) ----------
+cd "$SRCDIR/arlen/ai/pi-plugins"
+if [ ! -x ./node_modules/.bin/tsc ] || [ package-lock.json -nt node_modules ]; then
+    echo ">> npm ci (pi-plugins: typescript + @types/node)"
+    npm ci --no-audit --no-fund --loglevel=error
+fi
+npm run build
+plug_dest="$DESTDIR/usr/lib/arlen/pi-plugins/dist"
+mkdir -p "$plug_dest"
+cp -a dist/. "$plug_dest/"
+echo ">> built + staged the pi-plugins extension into the image"
