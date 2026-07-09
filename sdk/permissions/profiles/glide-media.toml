@@ -1,0 +1,8 @@
+# Starting permission profile for a video player. Plays media under Videos; no
+# network and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "glide-media"
+tier = "third-party"
+
+[filesystem]
+videos = true

@@ -1,0 +1,12 @@
+# Starting permission profile for a video downloader. Needs network to fetch
+# videos and saves them under Videos; no other file access and no Knowledge Graph
+# by default. Observe-mode refines it.
+[info]
+app_id = "video-downloader"
+tier = "third-party"
+
+[filesystem]
+videos = true
+
+[network]
+allow_all = true
