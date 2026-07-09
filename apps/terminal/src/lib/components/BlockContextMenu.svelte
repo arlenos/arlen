@@ -32,48 +32,49 @@
   };
 
   let { actions = {}, children }: Props = $props();
+  import { t } from "$lib/i18n/messages";
 </script>
 
 <ContextMenu.Root>
   <ContextMenu.Trigger class="term-grid-trigger">{@render children()}</ContextMenu.Trigger>
   <ContextMenu.Content class="w-60">
     <ContextMenu.Item onclick={actions.runAgain} disabled={!actions.runAgain}>
-      Run again
+      {$t("term.menu.runAgain")}
     </ContextMenu.Item>
 
     <ContextMenu.Separator />
     <ContextMenu.Sub>
-      <ContextMenu.SubTrigger>Copy</ContextMenu.SubTrigger>
+      <ContextMenu.SubTrigger>{$t("term.menu.copy")}</ContextMenu.SubTrigger>
       <ContextMenu.SubContent class="w-48">
         <ContextMenu.Item onclick={actions.copyCommand} disabled={!actions.copyCommand}>
-          Command
+          {$t("term.menu.command")}
         </ContextMenu.Item>
         <ContextMenu.Item onclick={actions.copyOutput} disabled={!actions.copyOutput}>
-          Output
+          {$t("term.menu.output")}
         </ContextMenu.Item>
         <ContextMenu.Item onclick={actions.copyBoth} disabled={!actions.copyBoth}>
-          Command + output
+          {$t("term.menu.commandOutput")}
         </ContextMenu.Item>
         <ContextMenu.Item onclick={actions.copyMarkdown} disabled={!actions.copyMarkdown}>
-          As Markdown
+          {$t("term.menu.asMarkdown")}
         </ContextMenu.Item>
       </ContextMenu.SubContent>
     </ContextMenu.Sub>
 
     <ContextMenu.Separator />
     <ContextMenu.Item onclick={actions.editRerun} disabled={!actions.editRerun}>
-      Edit &amp; re-run
+      {$t("term.menu.editRerun")}
     </ContextMenu.Item>
     <ContextMenu.Item onclick={actions.selectBlock} disabled={!actions.selectBlock}>
-      Select block
+      {$t("term.menu.selectBlock")}
     </ContextMenu.Item>
     <ContextMenu.Item onclick={actions.saveOutput} disabled={!actions.saveOutput}>
-      Save output to file&hellip;
+      {$t("term.menu.saveOutput")}
     </ContextMenu.Item>
 
     <ContextMenu.Separator />
     <ContextMenu.Item onclick={actions.ask} disabled={!actions.ask}>
-      Ask the agent about this block&hellip;
+      {$t("term.menu.ask")}
     </ContextMenu.Item>
   </ContextMenu.Content>
 </ContextMenu.Root>

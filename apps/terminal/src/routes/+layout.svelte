@@ -26,6 +26,7 @@
   import { openQuickConnect } from "$lib/stores/remoteConnections";
   import { initTopbar } from "$lib/topbar";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
+  import { dir } from "$lib/i18n/messages";
 
   let { children } = $props();
 
@@ -79,6 +80,9 @@
 
 <svelte:window onkeydown={onWindowKeydown} />
 
+<!-- A display:contents wrapper carries the reading direction to the whole shell
+     (sidebar, header, stream, palettes) without adding a layout box. -->
+<div dir={$dir} style="display: contents">
 <!-- Sidebar collapsed by default (terminal.md / Tim): the stream + composer get
      the room; the session rail opens on demand via the trigger. -->
 <SidebarProvider defaultOpen={false}>
@@ -109,3 +113,4 @@
 
 <HistoryPalette />
 <QuickConnectPalette />
+</div>

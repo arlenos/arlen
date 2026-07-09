@@ -6,13 +6,14 @@
   /// terminal carries (corrected 11 June: contextual, never an
   /// always-on ornament). Origin is backend-stamped — this component
   /// only renders what the contract says, it never infers.
+  import { t } from "$lib/i18n/messages";
   import type { Origin } from "$lib/contract";
 
   let { origin }: { origin: Origin } = $props();
 </script>
 
 {#if origin === "agent"}
-  <span class="om om-agent" role="img" aria-label="Drafted by the assistant">✦</span>
+  <span class="om om-agent" role="img" aria-label={$t("term.artifact.drafted")}>✦</span>
 {/if}
 
 <style>

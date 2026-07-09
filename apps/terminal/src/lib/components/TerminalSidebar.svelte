@@ -19,6 +19,7 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
   import { Plus } from "lucide-svelte";
+  import { t } from "$lib/i18n/messages";
   import type { Session } from "$lib/contract";
   import { displayPath } from "$lib/paths";
   import {
@@ -58,18 +59,18 @@
     <DropdownMenu.Root>
       <DropdownMenu.Trigger>
         {#snippet child({ props })}
-          <button {...props} id="terminal-new-session" class="ts-new-btn" aria-label="New session or connect">
+          <button {...props} id="terminal-new-session" class="ts-new-btn" aria-label={$t("term.sidebar.newAria")}>
             <Plus size={14} strokeWidth={2} />
           </button>
         {/snippet}
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end" class="w-52">
         <DropdownMenu.Item onclick={() => newSession()}>
-          New session
+          {$t("term.sidebar.newSession")}
           <DropdownMenu.Shortcut>Ctrl+T</DropdownMenu.Shortcut>
         </DropdownMenu.Item>
         <DropdownMenu.Item onclick={() => openQuickConnect()}>
-          SSH quick-connect
+          {$t("term.sidebar.sshQuickConnect")}
           <DropdownMenu.Shortcut>Ctrl+Shift+R</DropdownMenu.Shortcut>
         </DropdownMenu.Item>
       </DropdownMenu.Content>
@@ -78,7 +79,7 @@
 
   <SidebarContent>
     <SidebarGroup>
-      <SidebarGroupLabel>Sessions</SidebarGroupLabel>
+      <SidebarGroupLabel>{$t("term.sidebar.sessions")}</SidebarGroupLabel>
       <SidebarMenu>
         {#if $activeRemote}
           <SidebarMenuItem>
@@ -135,7 +136,7 @@
       class="ts-footer-row"
       onclick={() => openHistoryPalette()}
     >
-      <span>History</span>
+      <span>{$t("term.sidebar.history")}</span>
       <span class="ts-footer-hint">Ctrl+R</span>
     </button>
   </SidebarFooter>

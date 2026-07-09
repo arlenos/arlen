@@ -9,6 +9,7 @@
   import { tick } from "svelte";
   import { writable } from "svelte/store";
   import { terminalInput, type GitInfo, type Session } from "$lib/contract";
+  import { t } from "$lib/i18n/messages";
   import { composerPrefill } from "$lib/stores/composer";
   import PromptLine from "./PromptLine.svelte";
 
@@ -112,7 +113,7 @@
         spellcheck="false"
         {placeholder}
         disabled={!usable || $busy}
-        aria-label="Command input"
+        aria-label={$t("term.commandInput")}
         onkeydown={onKeydown}
         oninput={onInput}
       />
