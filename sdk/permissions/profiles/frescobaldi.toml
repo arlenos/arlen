@@ -1,0 +1,9 @@
+# Starting permission profile for a music-notation editor. Reads and writes score
+# files under Documents; no network and no Knowledge Graph. Observe-mode refines
+# it.
+[info]
+app_id = "frescobaldi"
+tier = "third-party"
+
+[filesystem]
+documents = true
