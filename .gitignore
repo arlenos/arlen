@@ -20,5 +20,9 @@ CLAUDE.md
 # Screenshots may contain private content; never committed
 dev/screenshot/out/
 
+# Stray verification screenshots dropped at the repo root (terminal/UI compares).
+# Root-anchored so the tracked app icons under apps/*/icons/ are unaffected.
+/*.png
+
 # Playwright MCP session artifacts (console logs, snapshots) from local UI checks
 .playwright-mcp/
