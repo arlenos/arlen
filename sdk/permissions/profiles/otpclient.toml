@@ -1,0 +1,6 @@
+# Starting permission profile for a two-factor (OTP) authenticator. Keeps its
+# encrypted secret database in its own config dir, so no document-folder access,
+# no network and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "otpclient"
+tier = "third-party"

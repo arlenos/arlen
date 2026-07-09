@@ -1,0 +1,9 @@
+# Starting permission profile for a VPN client. Needs network to reach the VPN
+# service (any host); the tunnel is configured through a privileged helper. No
+# local file access and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "mullvad-vpn"
+tier = "third-party"
+
+[network]
+allow_all = true

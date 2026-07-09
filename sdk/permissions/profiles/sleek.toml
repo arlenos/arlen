@@ -1,0 +1,9 @@
+# Starting permission profile for a todo.txt task manager. Reads and writes its
+# task file under Documents; no network and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "sleek"
+tier = "third-party"
+
+[filesystem]
+documents = true
