@@ -220,7 +220,7 @@ pub async fn emit_declared_grant(
     let now = time::now().0;
 
     let stmts = vec![
-        format!("MERGE (a:App {{id: '{app_esc}'}})"),
+        crate::cypher::merge_node("a", "App", app_id),
         // ON CREATE seeds the full grant (token fields null/0, born live); ON MATCH
         // refreshes ONLY the scope, never the lifecycle - so a re-emit after the
         // user revoked leaves the revoke intact (a declared grant is re-granted only

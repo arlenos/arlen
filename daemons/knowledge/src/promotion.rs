@@ -364,7 +364,7 @@ async fn promote_file_opened(
     if !session_id.is_empty() {
         let session_esc = escape_cypher(session_id);
         graph
-            .write(format!("MERGE (s:Session {{id: '{session_esc}'}})"))
+            .write(crate::cypher::merge_node("s", "Session", session_id))
             .await?;
         graph
             .write(format!(
@@ -638,7 +638,7 @@ async fn promote_network_connection(
     let dir_esc = escape_cypher(&p.direction);
 
     graph
-        .write(format!("MERGE (a:App {{id: '{app_esc}'}})"))
+        .write(crate::cypher::merge_node("a", "App", &p.app_id))
         .await?;
     graph
         .write(format!(
@@ -801,7 +801,7 @@ async fn promote_code_indexed(graph: &GraphHandle, payload: &[u8]) -> Result<()>
     ));
     // The fusion anchor: the File node the symbols hang off (the activity graph
     // already carries its provenance/project/timeline).
-    stmts.push(format!("MERGE (f:File {{id: '{file_esc}'}})"));
+    stmts.push(crate::cypher::merge_node("f", "File", &p.source_file));
     // Defence in depth at the write boundary: a duplicate id in the payload would
     // make two `CREATE`s collide on the primary key, failing the whole transaction
     // and stalling ALL promotion. The daemon already dedups, but a crafted bus
@@ -1164,7 +1164,7 @@ async fn promote_action_invoked(
     if !session_id.is_empty() {
         let session_esc = escape_cypher(session_id);
         graph
-            .write(format!("MERGE (s:Session {{id: '{session_esc}'}})"))
+            .write(crate::cypher::merge_node("s", "Session", session_id))
             .await?;
         graph
             .write(format!(
