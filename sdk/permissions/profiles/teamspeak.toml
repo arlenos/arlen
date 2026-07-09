@@ -1,0 +1,9 @@
+# Starting permission profile for a voice-chat client. Needs network to reach
+# voice servers (any host); microphone access is a runtime device grant. No local
+# file access and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "teamspeak"
+tier = "third-party"
+
+[network]
+allow_all = true
