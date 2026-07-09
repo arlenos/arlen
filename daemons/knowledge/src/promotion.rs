@@ -347,8 +347,8 @@ async fn promote_file_opened(
 
     graph
         .write(format!(
-            "MATCH (f:File {{id: '{path_esc}'}}), (a:App {{id: '{app_id_esc}'}})
-             MERGE (f)-[:ACCESSED_BY]->(a)"
+            "{} MERGE (f)-[:ACCESSED_BY]->(a)",
+            crate::cypher::match_two_nodes("f", "File", &path, "a", "App", &app_id)
         ))
         .await?;
 
@@ -368,8 +368,8 @@ async fn promote_file_opened(
             .await?;
         graph
             .write(format!(
-                "MATCH (f:File {{id: '{path_esc}'}}), (s:Session {{id: '{session_esc}'}})
-                 MERGE (f)-[:ACCESSED_IN]->(s)"
+                "{} MERGE (f)-[:ACCESSED_IN]->(s)",
+                crate::cypher::match_two_nodes("f", "File", &path, "s", "Session", session_id)
             ))
             .await?;
 
@@ -474,13 +474,10 @@ async fn link_co_accessed(
         // Canonical direction: the lexicographically smaller id is FROM, so the
         // pair maps to one edge no matter the access order.
         let (from, to) = if path < peer { (path, peer) } else { (peer, path) };
-        let from_esc = escape_cypher(from);
-        let to_esc = escape_cypher(to);
         graph
             .write(format!(
-                "MATCH (a:File {{id: '{from_esc}'}}), (b:File {{id: '{to_esc}'}})
-                 MERGE (a)-[c:CO_ACCESSED]->(b)
-                 SET c.last_seen = {timestamp}"
+                "{} MERGE (a)-[c:CO_ACCESSED]->(b) SET c.last_seen = {timestamp}",
+                crate::cypher::match_two_nodes("a", "File", from, "b", "File", to)
             ))
             .await?;
     }
@@ -533,8 +530,8 @@ async fn promote_file_written(
         .await?;
     graph
         .write(format!(
-            "MATCH (f:File {{id: '{path_esc}'}}), (a:App {{id: '{app_id_esc}'}})
-             MERGE (f)-[:MODIFIED_BY]->(a)"
+            "{} MERGE (f)-[:MODIFIED_BY]->(a)",
+            crate::cypher::match_two_nodes("f", "File", &path, "a", "App", &app_id)
         ))
         .await?;
 
@@ -631,7 +628,6 @@ async fn promote_network_connection(
         return Ok(());
     }
 
-    let app_esc = escape_cypher(&p.app_id);
     let addr_esc = escape_cypher(&p.remote_addr);
     let proto_esc = escape_cypher(&p.protocol);
     let dir_esc = escape_cypher(&p.direction);
@@ -646,9 +642,8 @@ async fn promote_network_connection(
         .await?;
     graph
         .write(format!(
-            "MATCH (a:App {{id: '{app_esc}'}}), (e:NetworkEndpoint {{id: '{addr_esc}'}})
-             MERGE (a)-[c:CONNECTED_TO]->(e)
-             SET c.direction = '{dir_esc}', c.last_seen = {timestamp}"
+            "{} MERGE (a)-[c:CONNECTED_TO]->(e) SET c.direction = '{dir_esc}', c.last_seen = {timestamp}",
+            crate::cypher::match_two_nodes("a", "App", &p.app_id, "e", "NetworkEndpoint", &p.remote_addr)
         ))
         .await?;
 
@@ -705,8 +700,8 @@ async fn promote_window_focused(
     // Create the ACTIVE_IN edge: the focused app is active in this session.
     graph
         .write(format!(
-            "MATCH (a:App {{id: '{app_id_esc}'}}), (s:Session {{id: '{session_id_esc}'}})
-             MERGE (a)-[:ACTIVE_IN]->(s)"
+            "{} MERGE (a)-[:ACTIVE_IN]->(s)",
+            crate::cypher::match_two_nodes("a", "App", &app_id, "s", "Session", session_id)
         ))
         .await?;
 
@@ -1161,14 +1156,13 @@ async fn promote_action_invoked(
     // incognito session is excluded upstream before promotion, like every other
     // event, so no new hard-exclude surface.
     if !session_id.is_empty() {
-        let session_esc = escape_cypher(session_id);
         graph
             .write(crate::cypher::merge_node("s", "Session", session_id))
             .await?;
         graph
             .write(format!(
-                "MATCH (u:UserAction {{id: '{id_esc}'}}), (s:Session {{id: '{session_esc}'}})
-                 MERGE (u)-[:PERFORMED_IN]->(s)"
+                "{} MERGE (u)-[:PERFORMED_IN]->(s)",
+                crate::cypher::match_two_nodes("u", "UserAction", event_id, "s", "Session", session_id)
             ))
             .await?;
     }
