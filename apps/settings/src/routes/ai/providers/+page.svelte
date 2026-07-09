@@ -42,6 +42,15 @@
     /// A reverse-engineered access path (no official API). Carries a warning:
     /// it may break or risk account suspension.
     unofficial?: boolean;
+    /// Where the servers sit, for the sovereignty info line. Hand-curated (not
+    /// from models.dev), governs the jurisdiction chip + its law tooltip.
+    jurisdiction?: "eu" | "us" | "cn";
+    /// Training posture: "no" (clean), "no-paid" (paid API only, the free tier
+    /// trains, shown with a `*`), or "yes".
+    trainsOnYou?: "no" | "no-paid" | "yes";
+    /// Whether the served model has open weights, the escape hatch: you can run
+    /// it yourself, so a cloud host is an interchangeable vendor not lock-in.
+    openWeight?: boolean;
   }
 
   // The catalogue is loaded from the daemon. The Svelte-5 IPC caveat applies
@@ -64,10 +73,10 @@
   // replaces it the moment `ai_providers_list` answers.
   const DEV_FIXTURE: Provider[] = [
     { id: "ollama", name: "Ollama", kind: "local", enabled: true, configured: true, status: "ok" },
-    { id: "mistral", name: "Mistral", kind: "cloud", region: "EU", enabled: true, configured: true, status: "ok", authMethod: "api-key" },
-    { id: "claude", name: "Claude", kind: "cloud", enabled: true, configured: true, status: "ok", authMethod: "subscription-login" },
-    { id: "groq", name: "Groq", kind: "cloud", enabled: false, configured: false, status: "untested", authMethod: "free" },
-    { id: "copilot", name: "GitHub Copilot", kind: "cloud", enabled: false, configured: false, status: "untested", authMethod: "subscription-login", unofficial: true },
+    { id: "mistral", name: "Mistral", kind: "cloud", region: "EU", enabled: true, configured: true, status: "ok", authMethod: "api-key", jurisdiction: "eu", trainsOnYou: "no-paid", openWeight: true },
+    { id: "claude", name: "Claude", kind: "cloud", enabled: true, configured: true, status: "ok", authMethod: "subscription-login", jurisdiction: "us", trainsOnYou: "no-paid", openWeight: false },
+    { id: "groq", name: "Groq", kind: "cloud", enabled: false, configured: false, status: "untested", authMethod: "free", jurisdiction: "us", trainsOnYou: "no", openWeight: true },
+    { id: "copilot", name: "GitHub Copilot", kind: "cloud", enabled: false, configured: false, status: "untested", authMethod: "subscription-login", unofficial: true, jurisdiction: "us", trainsOnYou: "no-paid", openWeight: false },
   ];
 
   async function loadProviders() {
@@ -93,6 +102,30 @@
       default:
         return "";
     }
+  }
+
+  /// The sovereignty info line: factual chips, offer-never-shame. Each chip
+  /// carries a tooltip so the facts stay honest (the training `*`, the law
+  /// behind a jurisdiction). Local needs none, it is the strongest case.
+  type SovChip = { label: string; tip: string };
+  function sovereignChips(p: Provider): SovChip[] {
+    if (p.kind === "local") return [];
+    const chips: SovChip[] = [];
+    if (p.jurisdiction === "eu")
+      chips.push({ label: "EU", tip: "Servers under EU law: GDPR and data residency." });
+    else if (p.jurisdiction === "us")
+      chips.push({ label: "US", tip: "Servers under US jurisdiction. The CLOUD Act can compel access." });
+    else if (p.jurisdiction === "cn")
+      chips.push({ label: "China", tip: "Servers under Chinese jurisdiction. The Intelligence Law can compel access." });
+    if (p.trainsOnYou === "no")
+      chips.push({ label: "Won't train on you", tip: "This provider does not train on your data." });
+    else if (p.trainsOnYou === "no-paid")
+      chips.push({ label: "Won't train on you*", tip: "On the paid API only. The free tier trains on your data." });
+    else if (p.trainsOnYou === "yes")
+      chips.push({ label: "Trains on you", tip: "Your conversations may be used to train their models." });
+    if (p.openWeight)
+      chips.push({ label: "Open weights", tip: "You can run this model yourself, so you are not locked in." });
+    return chips;
   }
 
   /// Enable or disable a provider. Optimistic, reverted if the daemon does not
@@ -243,6 +276,27 @@
         <Switch value={p.enabled} ariaLabel={`Enable ${p.name}`} onchange={(v) => setEnabled(p.id, v)} />
       </span>
     {/snippet}
+    {#snippet below()}
+      {#if p.kind === "local"}
+        <p class="sov-local">Runs on your machine, nothing leaves</p>
+      {:else}
+        {@const chips = sovereignChips(p)}
+        {#if chips.length}
+          <span class="sov">
+            {#each chips as c (c.label)}
+              <Tooltip.Root>
+                <Tooltip.Trigger>
+                  {#snippet child({ props })}
+                    <span {...props} class="chip-trigger"><Badge variant="outline">{c.label}</Badge></span>
+                  {/snippet}
+                </Tooltip.Trigger>
+                <Tooltip.TooltipContent side="top">{c.tip}</Tooltip.TooltipContent>
+              </Tooltip.Root>
+            {/each}
+          </span>
+        {/if}
+      {/if}
+    {/snippet}
   </Row>
 {/snippet}
 
@@ -289,6 +343,20 @@
   .chip-trigger {
     display: inline-flex;
     cursor: default;
+  }
+  /* The sovereignty info line sits under the row, aligned with the label (past
+     the 24px logo + its gap). Facts, offer-never-shame: quiet neutral chips. */
+  .sov {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    padding-inline-start: 2.375rem;
+  }
+  .sov-local {
+    margin: 0;
+    padding-inline-start: 2.375rem;
+    font-size: 0.6875rem;
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .pctl {
     display: inline-flex;
