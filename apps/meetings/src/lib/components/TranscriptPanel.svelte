@@ -3,7 +3,8 @@
   /// segments are folded into utterances (per the contract). Clicking one highlights
   /// it - the coarse click-to-transcript. Per-claim span provenance (jump from a
   /// specific summary sentence to its exact span) is a coder seam.
-  import { mergeAdjacent, fmtTime, speakerName } from "$lib/stores/meeting";
+  import { mergeAdjacent, fmtTime, speakerNum } from "$lib/stores/meeting";
+  import { t } from "$lib/i18n/messages";
   import type { Transcript } from "$lib/contract";
 
   let {
@@ -20,9 +21,10 @@
 </script>
 
 <aside class="tp">
-  <div class="tp-head">Transcript</div>
+  <div class="tp-head">{$t("mt.transcript")}</div>
   <div class="tp-body">
     {#each utterances as u (u.start_ms)}
+      {@const num = speakerNum(u.speaker)}
       <button
         type="button"
         class="utt"
@@ -31,7 +33,7 @@
       >
         <span class="utt-meta">
           <span class="utt-time">{fmtTime(u.start_ms)}</span>
-          <span class="utt-speaker">{speakerName(u.speaker)}</span>
+          <span class="utt-speaker">{num === null ? $t("mt.speaker.generic") : $t("mt.speaker", { n: num })}</span>
         </span>
         <span class="utt-text">{u.text}</span>
       </button>

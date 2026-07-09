@@ -3,20 +3,21 @@
   /// note (a KG node); Start begins an on-device capture. The whole lifecycle -
   /// home -> capture -> note, home -> open a past meeting - lives off this landing.
   import { meetings, startCapture, openMeeting, fmtDate } from "$lib/stores/meeting";
+  import { t, dir } from "$lib/i18n/messages";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Mic } from "lucide-svelte";
 </script>
 
-<div class="home">
+<div class="home" dir={$dir}>
   <header class="home-head">
-    <h1 class="home-title">Meetings</h1>
+    <h1 class="home-title">{$t("mt.title")}</h1>
     <Button variant="secondary" size="sm" onclick={() => startCapture()}>
-      <Mic size={14} strokeWidth={2} /> Start a meeting
+      <Mic size={14} strokeWidth={2} /> {$t("mt.start")}
     </Button>
   </header>
 
   {#if $meetings.length === 0}
-    <p class="empty">No meetings yet. Start one to capture it on this device.</p>
+    <p class="empty">{$t("mt.empty")}</p>
   {:else}
     <ul class="list">
       {#each $meetings as m (m.id)}
@@ -34,7 +35,7 @@
     </ul>
   {/if}
 
-  <p class="foot">Captured and kept on this device.</p>
+  <p class="foot">{$t("mt.foot")}</p>
 </div>
 
 <style>

@@ -3,6 +3,7 @@
   /// anchor) while the transcript streams in; Stop produces the note. The recording is
   /// legible + audited - the anti-cloud-bot edge made visible.
   import { liveTranscript, liveNotes, elapsed, stopCapture, fmtTime } from "$lib/stores/meeting";
+  import { t, dir } from "$lib/i18n/messages";
   import TranscriptPanel from "./TranscriptPanel.svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
@@ -14,29 +15,29 @@
   });
 </script>
 
-<div class="cap">
+<div class="cap" dir={$dir}>
   <header class="cap-head">
     <div class="rec">
       <span class="dot" aria-hidden="true"></span>
-      <span class="rec-label">Recording</span>
+      <span class="rec-label">{$t("mt.recording")}</span>
       <span class="elapsed">{fmtTime($elapsed)}</span>
     </div>
-    <span class="sovereign"><ShieldCheck size={13} strokeWidth={2} /> On this device, in your audit log</span>
+    <span class="sovereign"><ShieldCheck size={13} strokeWidth={2} /> {$t("mt.capture.sovereign")}</span>
     <Button variant="outline" size="sm" onclick={() => stopCapture()}>
-      <Square size={13} strokeWidth={2} /> Stop
+      <Square size={13} strokeWidth={2} /> {$t("mt.stop")}
     </Button>
   </header>
 
   <div class="cap-body">
     <div class="notes-pane">
-      <p class="pane-label">Your notes</p>
+      <p class="pane-label">{$t("mt.yourNotes")}</p>
       <Textarea
         bind:ref={notesEl}
         bind:value={$liveNotes}
         rows={6}
         maxRows={20}
-        placeholder="Jot what matters. The AI fills the rest in from the recording."
-        aria-label="Your notes"
+        placeholder={$t("mt.notes.placeholder")}
+        aria-label={$t("mt.yourNotes")}
         spellcheck="false"
       />
     </div>

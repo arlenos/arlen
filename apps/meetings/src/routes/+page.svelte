@@ -6,6 +6,7 @@
   /// the editor handoff are coder seams.
   import { onMount } from "svelte";
   import { meeting, phase, openInEditor, loadMeetings } from "$lib/stores/meeting";
+  import { t, dir } from "$lib/i18n/messages";
   import TranscriptPanel from "$lib/components/TranscriptPanel.svelte";
   import CaptureView from "$lib/components/CaptureView.svelte";
   import MeetingList from "$lib/components/MeetingList.svelte";
@@ -31,7 +32,7 @@
   <CaptureView />
 {:else if $meeting}
   {@const n = $meeting.note}
-  <div class="app">
+  <div class="app" dir={$dir}>
     <header class="head">
       <div class="head-main">
         <h1 class="title">{n.title}</h1>
@@ -40,9 +41,9 @@
         </div>
       </div>
       <div class="head-side">
-        <span class="sovereign"><ShieldCheck size={13} strokeWidth={2} /> Captured on this device, in your audit log</span>
+        <span class="sovereign"><ShieldCheck size={13} strokeWidth={2} /> {$t("mt.note.sovereign")}</span>
         <Button variant="outline" size="sm" onclick={openInEditor}>
-          <SquareArrowOutUpRight size={13} strokeWidth={2} /> Open in editor
+          <SquareArrowOutUpRight size={13} strokeWidth={2} /> {$t("mt.open")}
         </Button>
       </div>
     </header>
@@ -50,20 +51,20 @@
     <div class="body">
       <div class="note">
         <section class="sec">
-          <p class="sec-label">Your notes</p>
-          <Textarea bind:value={notes} rows={3} maxRows={12} aria-label="Your notes" spellcheck="false" />
+          <p class="sec-label">{$t("mt.yourNotes")}</p>
+          <Textarea bind:value={notes} rows={3} maxRows={12} aria-label={$t("mt.yourNotes")} spellcheck="false" />
         </section>
 
         <section class="sec">
-          <p class="sec-label">Summary <span class="from">from the recording</span></p>
+          <p class="sec-label">{$t("mt.summary")} <span class="from">{$t("mt.summary.from")}</span></p>
           <p class="summary">{n.summary}</p>
-          <p class="grounded">Every line is drawn from the transcript. Read it on the right to check.</p>
+          <p class="grounded">{$t("mt.grounded")}</p>
         </section>
 
         <section class="sec">
-          <p class="sec-label">Action items</p>
+          <p class="sec-label">{$t("mt.actionItems")}</p>
           {#if n.action_items.length === 0}
-            <p class="empty">None captured.</p>
+            <p class="empty">{$t("mt.actionItems.none")}</p>
           {:else}
             <ul class="items">
               {#each n.action_items as item, i (i)}
@@ -71,8 +72,8 @@
                   <span class="box" aria-hidden="true"><Square size={14} strokeWidth={2} /></span>
                   <span class="item-text">{item.text}</span>
                   {#if item.owner}<Badge variant="secondary">@{item.owner}</Badge>{/if}
-                  <Button variant="ghost" size="sm" class="ms-auto" title="Add to your calendar (asks first)">
-                    <CalendarPlus size={13} strokeWidth={2} /> Add
+                  <Button variant="ghost" size="sm" class="ms-auto" title={$t("mt.add.title")}>
+                    <CalendarPlus size={13} strokeWidth={2} /> {$t("mt.add")}
                   </Button>
                 </li>
               {/each}

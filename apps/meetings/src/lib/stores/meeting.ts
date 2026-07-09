@@ -158,11 +158,12 @@ export function fmtTime(ms: number): string {
   return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
 }
 
-/// A readable speaker name from a diarization label ("speaker_0" -> "Speaker 1").
-export function speakerName(label: string | undefined): string {
-  if (!label) return "Speaker";
+/// The 1-based speaker number from a diarization label ("speaker_0" -> 1), or null
+/// when there is none. The display name is formatted in the view via the catalog.
+export function speakerNum(label: string | undefined): number | null {
+  if (!label) return null;
   const m = label.match(/(\d+)$/);
-  return m ? `Speaker ${Number(m[1]) + 1}` : label;
+  return m ? Number(m[1]) + 1 : null;
 }
 
 /// Open the produced note in the text editor (the KG-citizen handoff seam).
