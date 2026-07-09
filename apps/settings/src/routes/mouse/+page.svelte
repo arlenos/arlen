@@ -29,7 +29,7 @@
   description="Pointer acceleration and scroll direction for external mice."
 >
   <SectionGrid>
-    <Group label="Behavior">
+    <Group label="Behavior" class="span-full">
       <Row
         label="Acceleration"
         description="Negative values slow the pointer; positive speed it up."
