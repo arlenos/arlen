@@ -1,0 +1,10 @@
+# Starting permission profile for a PDF toolbox (merge/split). Works with PDFs
+# under Documents and Downloads; no network and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "pdfchain"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true

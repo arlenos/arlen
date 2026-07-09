@@ -1,0 +1,9 @@
+# Starting permission profile for an e-book reader. Reads books under Documents
+# and Downloads; no network and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "lector"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true
