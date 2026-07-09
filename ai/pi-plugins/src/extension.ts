@@ -10,14 +10,13 @@
 // - the AUDIT shim (`tool_result` -> Report + screen): every tool result is
 //   audited and screened before it re-enters the model's context.
 //
-// The Arlen-specific proxy tools (graph.read/graph.write as model-callable tools
-// that forward to the daemon's Execute verb) exist as a MECHANISM in `proxy.ts`
-// (`makeProxyTools`, with the Execute round-trip e2e-proven), but are NOT wired in
-// here yet: live registration needs a real-pi check that `registerTool` accepts
-// the permissive parameter schema (vs requiring pi's TypeBox surface), AND the
-// daemon's Execute runners are fail-closed until the cutover, so the model gains
-// nothing from them until the live runners land. The gate + audit shims are the
-// value now; the proxy live-wiring pairs with that cutover.
+// - the PROXY tools (graph.read/graph.write as model-callable tools that forward
+//   to the daemon's Execute verb): defined in `proxy.ts` (`makeProxyTools`, Execute
+//   round-trip e2e-proven) and now registered here. Each forwards to the daemon's
+//   Execute presenting the proof the gate shim minted; the daemon runs the READ
+//   over the live `CypherPipeline` (when AI is enabled and a provider is configured,
+//   else fail-closed) and the WRITE over `UnixRelationWriter` (when `executor_live`
+//   is on, else fail-closed), so the tool is only as capable as the live runners.
 
 import { makeAudit, type AuditExtensionAPI } from "./audit.js";
 import { makeGate, type GateExtensionAPI } from "./gate.js";
