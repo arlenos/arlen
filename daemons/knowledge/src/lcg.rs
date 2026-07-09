@@ -76,7 +76,7 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
     let mut stmts: Vec<String> = Vec::new();
 
     // The App principal (plain MERGE: do not clobber a name set by promotion).
-    stmts.push(format!("MERGE (a:App {{id: '{app_esc}'}})"));
+    stmts.push(crate::cypher::merge_node("a", "App", &token.app_id));
 
     // The Grant node, born live. MERGE on the token id so a re-emit updates in
     // place rather than duplicating. The lifecycle flags and the use counters are
@@ -156,7 +156,7 @@ pub async fn persist_consent_grant(
 
     let stmts = vec![
         // The App principal (do not clobber a name set by promotion).
-        format!("MERGE (a:App {{id: '{app_esc}'}})"),
+        crate::cypher::merge_node("a", "App", recipient),
         // The consent Grant node, born live. ON CREATE seeds every field (token
         // fields null/0); ON MATCH refreshes the consent data AND re-activates
         // (a re-consent overrides a prior revoke, the user's explicit intent).
