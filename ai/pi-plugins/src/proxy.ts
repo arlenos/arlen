@@ -77,6 +77,15 @@ export interface ProxyOptions {
  *  pass any object, since the daemon re-validates the privileged args itself. */
 const PERMISSIVE_PARAMETERS = { type: "object", additionalProperties: true } as const;
 
+/** Progressive tool-disclosure threshold (ai-tool-routing.md). At or below this
+ *  many proxy tools the catalogue is cheap, so register each tool directly (the
+ *  full spec is dumped into pi's prompt). ABOVE it, switch to retrieval-first:
+ *  register a single `search_tools` meta-tool + a generic `call_tool` instead, so
+ *  the prompt's tool catalogue stays bounded as MCP servers/bridges/company
+ *  sources grow the set. A count threshold, not a token count: deterministic, and
+ *  the proxy descriptions here are uniformly short. */
+export const TOOL_DISCLOSURE_THRESHOLD = 12;
+
 /** The default privileged tools: the KG read/write proxies (OS mutation proxies
  *  land as their daemon-side executors do). */
 export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
@@ -113,8 +122,25 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
   },
 ];
 
-/** Build the proxy-tools extension factory (`(pi) => void`), registering each
- *  privileged tool as a daemon-forwarding pi custom tool. */
+/** Search `specs` for `query`: a case-insensitive substring match over each
+ *  tool's name, label and description. An empty query returns all tools. Pure so
+ *  the retrieval-first meta-tool is unit-tested without a daemon. */
+export function searchTools(specs: ProxyToolSpec[], query: string): ProxyToolSpec[] {
+  const q = query.trim().toLowerCase();
+  if (q === "") return specs.slice();
+  return specs.filter((s) =>
+    `${s.name} ${s.label} ${s.description}`.toLowerCase().includes(q),
+  );
+}
+
+/** Build the proxy-tools extension factory (`(pi) => void`). At or below
+ *  [`TOOL_DISCLOSURE_THRESHOLD`] tools it registers each privileged tool directly
+ *  (the cheap dump-everything path). Above it, it registers a `search_tools`
+ *  meta-tool + a generic `call_tool` instead (retrieval-first), so pi's prompt
+ *  tool catalogue stays bounded. Both paths forward to the SAME daemon Execute by
+ *  the tool's own name, so the daemon gate/audit/re-validation is identical - the
+ *  indirection is prompt-economy only, never a trust change (the daemon, not pi,
+ *  is the authority; `call_tool` only ever forwards a name from `specs`). */
 export function makeProxyTools(opts: ProxyOptions = {}): (pi: ProxyExtensionAPI) => void {
   const connect = opts.connect ?? (() => ContractClient.connect());
   const specs = opts.tools ?? DEFAULT_PROXY_TOOLS;
@@ -124,53 +150,117 @@ export function makeProxyTools(opts: ProxyOptions = {}): (pi: ProxyExtensionAPI)
 
   const fail = (text: string): ProxyToolResult => ({ content: [{ type: "text", text }], isError: true });
 
-  return (pi: ProxyExtensionAPI) => {
-    for (const spec of specs) {
-      pi.registerTool({
-        name: spec.name,
-        label: spec.label,
-        description: spec.description,
-        parameters: PERMISSIVE_PARAMETERS,
-        async execute(_toolCallId, params): Promise<ProxyToolResult> {
-          let reply: Reply;
-          try {
-            if (!clientPromise) clientPromise = connect();
-            const client = await clientPromise;
-            // HIGH-1: the daemon's Execute requires a single-use proof a matching
-            // Authorize minted. Prefer the proof the gate shim already minted for
-            // this call (the live path),
-            // avoiding a second Authorize (and a double Confirm). Fall back to
-            // self-authorizing when no gate ran for this call (e.g. a direct test).
-            let proof = takeProof(spec.name, params);
-            if (proof === undefined) {
-              const auth = await client.call(calls.authorize(spec.name, params, false));
-              if (auth.reply !== "authorize") {
-                return fail(`arlen: unexpected daemon reply '${auth.reply}' authorizing ${spec.name}`);
-              }
-              if (auth.decision !== "allow" && auth.decision !== "modify") {
-                return fail(`arlen: ${spec.name} was not authorized (${auth.decision})`);
-              }
-              proof = auth.proof;
-            }
-            reply = await client.call(calls.execute(spec.name, params, proof));
-          } catch (err) {
-            clientPromise = undefined;
-            return fail(`arlen: ${spec.name} is unavailable (${String(err)})`);
-          }
-
-          if (reply.reply !== "execute") {
-            return fail(`arlen: unexpected daemon reply '${reply.reply}' for ${spec.name}`);
-          }
-          if (reply.outcome === "error") {
-            // The daemon refused or could not run it (today: the fail-closed
-            // runner). Surface it as a tool error, never a silent success.
-            return fail(`arlen: ${spec.name} refused (${reply.code}): ${reply.message}`);
-          }
-          // The daemon ran the action in trusted Rust; surface its result.
-          return { content: [{ type: "text", text: JSON.stringify(reply.result) }] };
-        },
-      });
+  // Forward one named privileged call to the daemon: mint/reuse a proof, run
+  // Execute, surface the result or a tool error. Shared by the direct tools and
+  // the retrieval-first `call_tool`, so the daemon path is byte-identical.
+  const forward = async (name: string, params: Record<string, unknown>): Promise<ProxyToolResult> => {
+    let reply: Reply;
+    try {
+      if (!clientPromise) clientPromise = connect();
+      const client = await clientPromise;
+      // HIGH-1: the daemon's Execute requires a single-use proof a matching
+      // Authorize minted. Prefer the proof the gate shim already minted for this
+      // call (the live path), avoiding a second Authorize (and a double Confirm).
+      // Fall back to self-authorizing when no gate ran for this call (a direct test).
+      let proof = takeProof(name, params);
+      if (proof === undefined) {
+        const auth = await client.call(calls.authorize(name, params, false));
+        if (auth.reply !== "authorize") {
+          return fail(`arlen: unexpected daemon reply '${auth.reply}' authorizing ${name}`);
+        }
+        if (auth.decision !== "allow" && auth.decision !== "modify") {
+          return fail(`arlen: ${name} was not authorized (${auth.decision})`);
+        }
+        proof = auth.proof;
+      }
+      reply = await client.call(calls.execute(name, params, proof));
+    } catch (err) {
+      clientPromise = undefined;
+      return fail(`arlen: ${name} is unavailable (${String(err)})`);
     }
+
+    if (reply.reply !== "execute") {
+      return fail(`arlen: unexpected daemon reply '${reply.reply}' for ${name}`);
+    }
+    if (reply.outcome === "error") {
+      // The daemon refused or could not run it (today: the fail-closed runner).
+      // Surface it as a tool error, never a silent success.
+      return fail(`arlen: ${name} refused (${reply.code}): ${reply.message}`);
+    }
+    // The daemon ran the action in trusted Rust; surface its result.
+    return { content: [{ type: "text", text: JSON.stringify(reply.result) }] };
+  };
+
+  return (pi: ProxyExtensionAPI) => {
+    if (specs.length <= TOOL_DISCLOSURE_THRESHOLD) {
+      for (const spec of specs) {
+        pi.registerTool({
+          name: spec.name,
+          label: spec.label,
+          description: spec.description,
+          parameters: PERMISSIVE_PARAMETERS,
+          execute: (_toolCallId, params) => forward(spec.name, params),
+        });
+      }
+      return;
+    }
+
+    // Retrieval-first: only the two meta-tools are dumped; the model searches for
+    // a tool then invokes it, so the initial catalogue cost is a constant.
+    const byName = new Map(specs.map((s) => [s.name, s]));
+    pi.registerTool({
+      name: "search_tools",
+      label: "Search available tools",
+      description:
+        "Search the available privileged tools by keyword and return the matching " +
+        "tools (name + description). Use this to discover a tool, then invoke it " +
+        "with `call_tool`.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string" } },
+        required: ["query"],
+        additionalProperties: false,
+      },
+      async execute(_toolCallId, params): Promise<ProxyToolResult> {
+        const query = typeof params.query === "string" ? params.query : "";
+        const found = searchTools(specs, query).map((s) => ({
+          name: s.name,
+          description: s.description,
+        }));
+        return { content: [{ type: "text", text: JSON.stringify(found) }] };
+      },
+    });
+    pi.registerTool({
+      name: "call_tool",
+      label: "Invoke a tool",
+      description:
+        "Invoke a privileged tool discovered via `search_tools`. `name` is the " +
+        "tool's name; `arguments` is its parameter object. The daemon gates, " +
+        "validates and audits the call exactly as a direct tool call.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          arguments: { type: "object", additionalProperties: true },
+        },
+        required: ["name"],
+        additionalProperties: false,
+      },
+      async execute(_toolCallId, params): Promise<ProxyToolResult> {
+        const name = typeof params.name === "string" ? params.name : "";
+        // Only forward a name that is a known proxy tool: the daemon dispatches by
+        // name and would refuse an unknown one anyway, but reject it here too so
+        // `call_tool` can never be a generic verb-invoker (defense in depth).
+        if (!byName.has(name)) {
+          return fail(`arlen: call_tool: '${name}' is not an available tool (use search_tools)`);
+        }
+        const args =
+          params.arguments && typeof params.arguments === "object"
+            ? (params.arguments as Record<string, unknown>)
+            : {};
+        return forward(name, args);
+      },
+    });
   };
 }
 
