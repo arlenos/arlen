@@ -8,6 +8,7 @@
   /// disappoints (never throws on payload, never renders markup
   /// from it).
   import { GridRegion } from "@arlen/ui-kit/components/console";
+  import { t } from "$lib/i18n/messages";
   import type { Block, GridCell } from "$lib/contract";
   import OutputFrame from "./OutputFrame.svelte";
   import TableLens from "./TableLens.svelte";
@@ -106,7 +107,7 @@
   {:else if !running}
     <GridRegion
       rows={gridRows}
-      placeholder={`terminal output, ${gridRows} ${gridRows === 1 ? "line" : "lines"}`}
+      placeholder={$t("term.output.rows", { rows: gridRows })}
     />
   {/if}
 {:else if block.body_kind === "table" && tableBody}
@@ -139,7 +140,7 @@
 {:else}
   <!-- A GUI kind whose payload did not match its shape: fall back
        to the reserved grid so the raw text remains reachable. -->
-  <GridRegion rows={gridRows} placeholder="terminal output" />
+  <GridRegion rows={gridRows} placeholder={$t("term.output.placeholder")} />
 {/if}
 
 <style>

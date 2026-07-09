@@ -11,6 +11,7 @@
     CommandItem,
   } from "@arlen/ui-kit/components/ui/command";
   import { Star } from "lucide-svelte";
+  import { t } from "$lib/i18n/messages";
   import {
     savedHosts,
     recentHosts,
@@ -44,7 +45,7 @@
       const key = h.project ?? "__other";
       let g = by.get(key);
       if (!g) {
-        g = { key, label: h.project ? `Project ${h.project}` : "Other hosts", hosts: [] };
+        g = { key, label: h.project ? $t("term.qc.project", { name: h.project }) : $t("term.qc.otherHosts"), hosts: [] };
         by.set(key, g);
       }
       g.hosts.push(h);
@@ -81,12 +82,12 @@
       if (e.target === e.currentTarget) closeQuickConnect();
     }}
   >
-    <div class="qc-card" role="dialog" aria-modal="true" aria-label="Quick connect" tabindex="-1">
+    <div class="qc-card" role="dialog" aria-modal="true" aria-label={$t("term.qc.aria")} tabindex="-1">
       <Command shouldFilter={false}>
-        <CommandInput placeholder="Connect to a host, or type user@host" autofocus bind:value={$query} />
+        <CommandInput placeholder={$t("term.qc.placeholder")} autofocus bind:value={$query} />
         <CommandList class="qc-list">
           {#if savedGroups.length === 0 && recentMatched.length === 0 && !freeText}
-            <div class="qc-empty">No matching hosts. Type user@host to connect once.</div>
+            <div class="qc-empty">{$t("term.qc.empty")}</div>
           {/if}
 
           {#each savedGroups as g (g.key)}
@@ -102,13 +103,13 @@
           {/each}
 
           {#if recentMatched.length > 0}
-            <div class="qc-group">Recent</div>
+            <div class="qc-group">{$t("term.qc.recent")}</div>
             {#each recentMatched as r (r.id)}
               <CommandItem value={`recent-${r.id}`} onSelect={() => connectAdHoc(`${r.user}@${r.host}`)}>
                 <span class="qc-badge qc-badge-dim"></span>
                 <span class="qc-addr qc-name">{r.user}@{r.host}</span>
                 <span class="qc-meta">{r.lastUsed}</span>
-                <button class="qc-promote" title="Save this host" aria-label={`Save ${r.host}`} onclick={(e) => promote(e, r)}>
+                <button class="qc-promote" title={$t("term.qc.saveHost")} aria-label={$t("term.qc.saveAria", { host: r.host })} onclick={(e) => promote(e, r)}>
                   <Star size={13} strokeWidth={2} />
                 </button>
               </CommandItem>
@@ -116,16 +117,16 @@
           {/if}
 
           {#if freeText}
-            <div class="qc-group">Connect once</div>
+            <div class="qc-group">{$t("term.qc.connectOnce")}</div>
             <CommandItem value="freetext" onSelect={() => connectAdHoc(freeText)}>
               <span class="qc-badge qc-badge-dim"></span>
-              <span class="qc-name">Connect to <span class="qc-addr">{freeText}</span></span>
+              <span class="qc-name">{$t("term.qc.connectTo")} <span class="qc-addr">{freeText}</span></span>
             </CommandItem>
           {/if}
         </CommandList>
         <div class="qc-foot">
-          <span>Enter connects</span>
-          <span>Esc closes</span>
+          <span>{$t("term.qc.enterConnects")}</span>
+          <span>{$t("term.escCloses")}</span>
         </div>
       </Command>
     </div>

@@ -13,6 +13,7 @@
     CommandItem,
   } from "@arlen/ui-kit/components/ui/command";
   import { Toggle } from "@arlen/ui-kit/components/ui/toggle";
+  import { t } from "$lib/i18n/messages";
   import { terminalProjects, type Block, type Project } from "$lib/contract";
   import { shortPath } from "$lib/paths";
   import { prefillComposer } from "$lib/stores/composer";
@@ -87,12 +88,12 @@
       class="hp-card"
       role="dialog"
       aria-modal="true"
-      aria-label="Command history"
+      aria-label={$t("term.hist.aria")}
       tabindex="-1"
     >
       <Command shouldFilter={false}>
         <CommandInput
-          placeholder="Search history"
+          placeholder={$t("term.hist.search")}
           autofocus
           bind:value={$historyQuery}
           oninput={() => queueHistorySearch()}
@@ -102,31 +103,31 @@
             id="terminal-history-failures"
             bind:pressed={$historyOnlyFailures}
             class="hp-chip"
-            aria-label="Only failed commands"
+            aria-label={$t("term.hist.onlyFailed")}
             onPressedChange={() => queueHistorySearch()}
           >
-            Failures
+            {$t("term.hist.failures")}
           </Toggle>
           <Toggle
             id="terminal-history-agent"
             bind:pressed={$historyAgentOnly}
             class="hp-chip"
-            aria-label="Only commands the agent ran"
+            aria-label={$t("term.hist.onlyAgent")}
             onPressedChange={() => queueHistorySearch()}
           >
-            Agent
+            {$t("term.hist.agent")}
           </Toggle>
           {#if $projects.length > 0}
             <!-- Attribute filters left, project scopes right of the
                  word: "Failures Agent in Arlen" reads as a sentence. -->
-            <span class="hp-in" aria-hidden="true">in</span>
+            <span class="hp-in" aria-hidden="true">{$t("term.hist.in")}</span>
           {/if}
           {#each $projects as p (p.id)}
             <Toggle
               id={`terminal-history-project-${p.id}`}
               pressed={$historyProjectId === p.id}
               class="hp-chip"
-              aria-label={`Only commands in ${p.name}`}
+              aria-label={$t("term.hist.onlyInProject", { name: p.name })}
               onPressedChange={() => toggleProject(p.id)}
             >
               {p.name}
@@ -137,8 +138,8 @@
           {#if $historyLoaded && $historyResults.length === 0}
             <div class="hp-empty">
               {historyFiltered
-                ? "No matching commands."
-                : "Commands you run land here."}
+                ? $t("term.hist.empty.filtered")
+                : $t("term.hist.empty.default")}
             </div>
           {/if}
           {#each $historyResults as b (b.id)}
@@ -154,8 +155,8 @@
           {/each}
         </CommandList>
         <div class="hp-foot">
-          <span>Enter puts the command into the composer</span>
-          <span>Esc closes</span>
+          <span>{$t("term.hist.enterHint")}</span>
+          <span>{$t("term.escCloses")}</span>
         </div>
       </Command>
     </div>

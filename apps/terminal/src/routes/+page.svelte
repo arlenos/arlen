@@ -18,6 +18,7 @@
     initSessionExitListener,
   } from "$lib/stores/sessions";
   import Terminal from "$lib/components/Terminal.svelte";
+  import { t, dir } from "$lib/i18n/messages";
 
   onMount(() => {
     loadSessions();
@@ -31,22 +32,22 @@
      just suppresses the browser context menu so right-click word-select belongs
      to the terminal. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="console" oncontextmenu={(e) => e.preventDefault()}>
+<div class="console" dir={$dir} oncontextmenu={(e) => e.preventDefault()}>
   <div class="stream">
     {#if $sessionsLoaded && $sessionsError}
       <div class="stream-empty">
-        <span class="stream-empty-title">Can't reach the shell backend</span>
-        <span class="stream-empty-hint">The terminal engine did not answer.</span>
+        <span class="stream-empty-title">{$t("term.err.unreachable")}</span>
+        <span class="stream-empty-hint">{$t("term.err.unreachableHint")}</span>
         <button class="stream-empty-btn" onclick={() => loadSessions()}>
-          Try again
+          {$t("term.err.tryAgain")}
         </button>
       </div>
     {:else if $sessionsLoaded && $sessions.length === 0}
       <div class="stream-empty">
-        <span class="stream-empty-title">Couldn't start a session</span>
-        <span class="stream-empty-hint">The shell did not come up.</span>
+        <span class="stream-empty-title">{$t("term.err.noSession")}</span>
+        <span class="stream-empty-hint">{$t("term.err.noSessionHint")}</span>
         <button class="stream-empty-btn" onclick={() => newSession()}>
-          New session
+          {$t("term.sidebar.newSession")}
         </button>
       </div>
     {:else if $activeSessionId}
