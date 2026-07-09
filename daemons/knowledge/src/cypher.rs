@@ -60,9 +60,6 @@ pub enum SetValue<'a> {
     /// A `STRING` column: escaped and single-quoted.
     Text(&'a str),
     /// An `INT64` column (also timestamps): the decimal digits, unquoted.
-    /// A production caller lands as the File/Session numeric-SET sites migrate;
-    /// exercised by the builder tests meanwhile.
-    #[allow(dead_code)]
     Int(i64),
     /// A `BOOL` column: `true` / `false`, unquoted. Lands with the Grant/Project
     /// lifecycle-flag SET sites; exercised by the builder tests meanwhile.

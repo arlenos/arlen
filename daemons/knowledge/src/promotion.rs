@@ -672,7 +672,6 @@ async fn promote_window_focused(
     };
 
     let app_id_esc = escape_cypher(&app_id);
-    let session_id_esc = escape_cypher(session_id);
     let event_id_esc = escape_cypher(event_id);
     let title_esc = escape_cypher(&win_payload.window_title);
 
@@ -683,9 +682,11 @@ async fn promote_window_focused(
         .await?;
 
     graph
-        .write(format!(
-            "MERGE (s:Session {{id: '{session_id_esc}'}})
-             SET s.started_at = {timestamp}"
+        .write(crate::cypher::merge_node_set(
+            "s",
+            "Session",
+            session_id,
+            &[("started_at", crate::cypher::SetValue::Int(*timestamp))],
         ))
         .await?;
 
