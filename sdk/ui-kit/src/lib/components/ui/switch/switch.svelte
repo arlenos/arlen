@@ -105,7 +105,7 @@
   .thumb {
     position: absolute;
     top: 1px;
-    left: 1px;
+    inset-inline-start: 1px;
     /* Concentric to the track: track radius minus the inset (1px border
        + 1px gap), clamped at 0. So the thumb's corners are tighter than
        the track's and the surround stays an even width. */
@@ -142,6 +142,14 @@
   }
   .sw.sm.on .thumb {
     transform: translateX(10px);
+  }
+  /* RTL: the off-state thumb sits at the reading-start (right) via the logical
+     inset above, so the on-slide runs toward the reading-end (left). */
+  :global([dir="rtl"]) .sw.default.on .thumb {
+    transform: translateX(-14px);
+  }
+  :global([dir="rtl"]) .sw.sm.on .thumb {
+    transform: translateX(-10px);
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -141,7 +141,7 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    left: 0;
+    inset-inline-start: 0;
     width: var(--percent);
     background: color-mix(in srgb, var(--color-accent, var(--primary)) 40%, transparent);
     transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
