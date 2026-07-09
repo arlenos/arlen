@@ -1,0 +1,9 @@
+# Starting permission profile for a file manager. It browses and manages the
+# user's files, so it works across Home; no network and no Knowledge Graph by
+# default. Observe-mode refines it.
+[info]
+app_id = "spacefm"
+tier = "third-party"
+
+[filesystem]
+home = true

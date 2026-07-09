@@ -1,0 +1,9 @@
+# Starting permission profile for a terminal emulator. It runs shell commands, so
+# it works across Home; no network of its own and no Knowledge Graph by default.
+# Observe-mode refines it.
+[info]
+app_id = "lxterminal"
+tier = "third-party"
+
+[filesystem]
+home = true
