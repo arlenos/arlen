@@ -4,6 +4,7 @@
 pub mod auth;
 pub mod backup;
 pub mod code_analysis;
+pub mod cypher;
 pub mod db;
 pub mod derivation;
 pub mod fts;

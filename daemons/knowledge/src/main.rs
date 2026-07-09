@@ -13,6 +13,7 @@ mod auth;
 mod backup;
 mod capsule;
 mod code_analysis;
+mod cypher;
 mod daemon;
 mod db;
 mod events;
