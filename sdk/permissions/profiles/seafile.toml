@@ -1,0 +1,10 @@
+# Starting permission profile for a file-sync client. Needs network to reach its
+# sync server (user-configured, any host); the local sync library is a custom
+# path the user grants explicitly, so no document-folder access by default. No
+# Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "seafile"
+tier = "third-party"
+
+[network]
+allow_all = true

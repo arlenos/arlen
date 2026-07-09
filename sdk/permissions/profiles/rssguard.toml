@@ -1,0 +1,9 @@
+# Starting permission profile for an RSS/news reader. Needs network to fetch
+# feeds (any domain); no local file access and no Knowledge Graph by default.
+# Observe-mode refines it.
+[info]
+app_id = "rssguard"
+tier = "third-party"
+
+[network]
+allow_all = true
