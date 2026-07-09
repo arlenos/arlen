@@ -1,0 +1,9 @@
+# Starting permission profile for a 3D modeling/design app. Works with model and
+# scene files under Documents; no network and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "makehuman"
+tier = "third-party"
+
+[filesystem]
+documents = true

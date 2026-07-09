@@ -1,0 +1,8 @@
+# Starting permission profile for an image editor. Reads and writes images under
+# Pictures; no network and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "photivo"
+tier = "third-party"
+
+[filesystem]
+pictures = true
