@@ -1,0 +1,11 @@
+# Starting permission profile for a comic-book (CBZ/CBR) archive viewer. Reads
+# archives under Documents, Downloads and Pictures; no network and no Knowledge
+# Graph. Observe-mode refines it.
+[info]
+app_id = "mcomix"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true
+pictures = true
