@@ -98,8 +98,8 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
 
     // USED_BY: Grant -> App.
     stmts.push(format!(
-        "MATCH (g:Grant {{id: '{id_esc}'}}), (a:App {{id: '{app_esc}'}}) \
-         MERGE (g)-[:USED_BY]->(a)"
+        "{} MERGE (g)-[:USED_BY]->(a)",
+        crate::cypher::match_two_nodes("g", "Grant", &id, "a", "App", &token.app_id)
     ));
 
     // The EntityType markers and GRANTS edges for each reachable type.
@@ -110,8 +110,8 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
             "MERGE (t:EntityType {{id: '{t_esc}'}}) SET t.label = '{label_esc}'"
         ));
         stmts.push(format!(
-            "MATCH (g:Grant {{id: '{id_esc}'}}), (t:EntityType {{id: '{t_esc}'}}) \
-             MERGE (g)-[:GRANTS]->(t)"
+            "{} MERGE (g)-[:GRANTS]->(t)",
+            crate::cypher::match_two_nodes("g", "Grant", &id, "t", "EntityType", &entity_type)
         ));
     }
 
@@ -172,8 +172,8 @@ pub async fn persist_consent_grant(
         ),
         // USED_BY: Grant -> App.
         format!(
-            "MATCH (g:Grant {{id: '{id_esc}'}}), (a:App {{id: '{app_esc}'}}) \
-             MERGE (g)-[:USED_BY]->(a)"
+            "{} MERGE (g)-[:USED_BY]->(a)",
+            crate::cypher::match_two_nodes("g", "Grant", revocation_handle, "a", "App", recipient)
         ),
     ];
     graph.transaction(stmts).await
@@ -235,8 +235,8 @@ pub async fn emit_declared_grant(
              ON MATCH SET g.consent_scope = '{scope_esc}'"
         ),
         format!(
-            "MATCH (g:Grant {{id: '{id_esc}'}}), (a:App {{id: '{app_esc}'}}) \
-             MERGE (g)-[:USED_BY]->(a)"
+            "{} MERGE (g)-[:USED_BY]->(a)",
+            crate::cypher::match_two_nodes("g", "Grant", grant_id, "a", "App", app_id)
         ),
     ];
     graph.transaction(stmts).await
