@@ -158,6 +158,39 @@ pub fn entity_upsert_event(app_id: &str, qualified_type: &str, outcome: &str) ->
     }
 }
 
+/// Build the content-free audit record for a structural-canary trip
+/// (canary-honeytools.md §3): an attempt to create a node whose id bears the
+/// reserved canary namespace. No honest producer mints a canary id (promotion ids
+/// are derived paths, entity ids are server-minted), so such an id can only reach
+/// the caller-supplied-id write path if external content injected it, which is the
+/// genuine agent-hijack condition. The record names only the acting app
+/// (attribution) and the fixed `canary.trip` subject; the injected id itself is
+/// deliberately omitted so the ledger never carries attacker-supplied content. The
+/// write is refused by the ingestion reservation regardless; this is the SIGNAL
+/// the anomaly detector surfaces, not the containment.
+pub fn canary_trip_event(actor_app_id: &str) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::PolicyViolation,
+        structural: StructuralRecord {
+            subject: "canary.trip".to_string(),
+            node_types: vec![actor_app_id.to_string()],
+            relations: Vec::new(),
+            result_count: None,
+            duration_ms: None,
+            // The anomaly detector keys its alert cooldown on this outcome as the
+            // content-free CAUSE class (detect.rs: e.g. `canary-tripped:structural`,
+            // `honeytool-tripped`), so it must be a distinct cause label, not a bare
+            // `refused` that would share a bucket with every other PolicyViolation.
+            outcome: "canary-tripped:ingestion".to_string(),
+            depth: None,
+            capability_change: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
 /// Build the content-free audit record for persisting one consent grant into the
 /// KG (system-dialog-plan.md Option A). The acting broker, the grant recipient
 /// and the consent class are coarse identifiers; the concrete scope is omitted.
@@ -229,6 +262,21 @@ mod tests {
         // No instance key, no field bodies, no forensic content.
         assert!(e.forensic.is_none());
         assert!(matches!(e.kind, AuditKind::AppAction));
+    }
+
+    #[test]
+    fn canary_trip_event_is_content_free_and_a_policy_violation() {
+        let e = canary_trip_event("dev.arlen-ai-engine-daemon");
+        assert!(matches!(e.kind, AuditKind::PolicyViolation));
+        assert_eq!(e.structural.subject, "canary.trip");
+        // Only the acting app (attribution); the injected id is never recorded.
+        assert_eq!(
+            e.structural.node_types,
+            vec!["dev.arlen-ai-engine-daemon".to_string()]
+        );
+        // The outcome is the anomaly detector's content-free cause class.
+        assert_eq!(e.structural.outcome, "canary-tripped:ingestion");
+        assert!(e.forensic.is_none());
     }
 
     #[test]
