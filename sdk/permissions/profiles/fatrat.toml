@@ -1,0 +1,12 @@
+# Starting permission profile for a download manager. Needs network to fetch and
+# writes files to Downloads; no other file access and no Knowledge Graph by
+# default. Observe-mode refines it.
+[info]
+app_id = "fatrat"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

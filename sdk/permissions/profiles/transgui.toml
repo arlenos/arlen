@@ -1,0 +1,10 @@
+# Starting permission profile for a remote torrent-client controller. Needs
+# network to reach the torrent daemon's remote API; the daemon manages the files,
+# so no local file access and no Knowledge Graph by default. Observe-mode refines
+# it.
+[info]
+app_id = "transgui"
+tier = "third-party"
+
+[network]
+allow_all = true
