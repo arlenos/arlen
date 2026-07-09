@@ -1,0 +1,9 @@
+# Starting permission profile for a tethered-camera capture app. Saves captured
+# photos under Pictures; camera access is a runtime device grant, not a
+# filesystem one. No network and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "entangle"
+tier = "third-party"
+
+[filesystem]
+pictures = true

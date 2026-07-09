@@ -1,0 +1,10 @@
+# Starting permission profile for a batch image converter. Reads and writes
+# images under Pictures and Downloads; no network and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "converseen"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+downloads = true
