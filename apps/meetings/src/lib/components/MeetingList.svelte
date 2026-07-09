@@ -3,15 +3,16 @@
   /// note (a KG node); Start begins an on-device capture. The whole lifecycle -
   /// home -> capture -> note, home -> open a past meeting - lives off this landing.
   import { meetings, startCapture, openMeeting, fmtDate } from "$lib/stores/meeting";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Mic } from "lucide-svelte";
 </script>
 
 <div class="home">
   <header class="home-head">
     <h1 class="home-title">Meetings</h1>
-    <button type="button" class="start" onclick={() => startCapture()}>
+    <Button variant="secondary" size="sm" onclick={() => startCapture()}>
       <Mic size={14} strokeWidth={2} /> Start a meeting
-    </button>
+    </Button>
   </header>
 
   {#if $meetings.length === 0}
@@ -56,21 +57,6 @@
     margin: 0;
     font-size: 1.25rem;
     font-weight: 600;
-  }
-  .start {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.45rem 0.9rem;
-    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 16%, transparent);
-    border-radius: var(--radius-input, 8px);
-    background: color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
-    font-size: 0.875rem;
-    color: var(--color-fg-primary);
-    cursor: pointer;
-  }
-  .start:hover {
-    background: color-mix(in srgb, var(--color-fg-primary) 12%, transparent);
   }
   .empty {
     max-width: 44rem;

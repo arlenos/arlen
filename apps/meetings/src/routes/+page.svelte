@@ -9,6 +9,9 @@
   import TranscriptPanel from "$lib/components/TranscriptPanel.svelte";
   import CaptureView from "$lib/components/CaptureView.svelte";
   import MeetingList from "$lib/components/MeetingList.svelte";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
+  import { Badge } from "@arlen/ui-kit/components/ui/badge";
   import { ShieldCheck, SquareArrowOutUpRight, CalendarPlus, Square } from "lucide-svelte";
 
   let notes = $state("");
@@ -33,14 +36,14 @@
       <div class="head-main">
         <h1 class="title">{n.title}</h1>
         <div class="parts">
-          {#each n.participants as p (p)}<span class="chip">{p}</span>{/each}
+          {#each n.participants as p (p)}<Badge variant="secondary">{p}</Badge>{/each}
         </div>
       </div>
       <div class="head-side">
         <span class="sovereign"><ShieldCheck size={13} strokeWidth={2} /> Captured on this device, in your audit log</span>
-        <button type="button" class="open" onclick={openInEditor}>
+        <Button variant="outline" size="sm" onclick={openInEditor}>
           <SquareArrowOutUpRight size={13} strokeWidth={2} /> Open in editor
-        </button>
+        </Button>
       </div>
     </header>
 
@@ -48,7 +51,7 @@
       <div class="note">
         <section class="sec">
           <p class="sec-label">Your notes</p>
-          <textarea class="yours" bind:value={notes} aria-label="Your notes" spellcheck="false"></textarea>
+          <Textarea bind:value={notes} rows={3} maxRows={12} aria-label="Your notes" spellcheck="false" />
         </section>
 
         <section class="sec">
@@ -67,10 +70,10 @@
                 <li class="item">
                   <span class="box" aria-hidden="true"><Square size={14} strokeWidth={2} /></span>
                   <span class="item-text">{item.text}</span>
-                  {#if item.owner}<span class="owner">@{item.owner}</span>{/if}
-                  <button type="button" class="act" title="Add to your calendar (asks first)">
+                  {#if item.owner}<Badge variant="secondary">@{item.owner}</Badge>{/if}
+                  <Button variant="ghost" size="sm" class="ms-auto" title="Add to your calendar (asks first)">
                     <CalendarPlus size={13} strokeWidth={2} /> Add
-                  </button>
+                  </Button>
                 </li>
               {/each}
             </ul>
@@ -110,13 +113,6 @@
     flex-wrap: wrap;
     gap: 0.3rem;
   }
-  .chip {
-    padding: 0.1rem 0.45rem;
-    border-radius: var(--radius-chip, 4px);
-    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
-    font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
-  }
   .head-side {
     display: flex;
     flex-direction: column;
@@ -130,22 +126,6 @@
     gap: 0.35rem;
     font-size: 0.6875rem;
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
-  }
-  .open {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.35rem 0.7rem;
-    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 14%, transparent);
-    border-radius: var(--radius-input, 8px);
-    background: transparent;
-    font-size: 0.8125rem;
-    color: color-mix(in srgb, var(--color-fg-primary) 75%, transparent);
-    cursor: pointer;
-  }
-  .open:hover {
-    color: var(--color-fg-primary);
-    background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
   }
   .body {
     flex: 1;
@@ -176,19 +156,6 @@
     letter-spacing: 0;
     text-transform: none;
     color: color-mix(in srgb, var(--color-fg-primary) 35%, transparent);
-  }
-  /* Your notes: full-strength, they are the anchor + editable. */
-  .yours {
-    width: 100%;
-    min-height: 5rem;
-    border: none;
-    background: transparent;
-    resize: vertical;
-    font: inherit;
-    font-size: 0.9375rem;
-    line-height: 1.6;
-    color: var(--color-fg-primary);
-    outline: none;
   }
   /* The AI summary: greyed, clearly not yours - the verifiable-merge signal. */
   .summary {
@@ -228,29 +195,5 @@
   }
   .item-text {
     color: var(--color-fg-primary);
-  }
-  .owner {
-    padding: 0.05rem 0.35rem;
-    border-radius: var(--radius-chip, 4px);
-    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
-    font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
-  }
-  .act {
-    margin-inline-start: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.2rem 0.5rem;
-    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 12%, transparent);
-    border-radius: var(--radius-chip, 4px);
-    background: transparent;
-    font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
-    cursor: pointer;
-  }
-  .act:hover {
-    color: var(--color-fg-primary);
-    background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
   }
 </style>
