@@ -1,0 +1,6 @@
+# Starting permission profile for an offline reference or educational app. Reads
+# its bundled data from its own dir; no document-folder access, no network and no
+# Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "artha"
+tier = "third-party"
