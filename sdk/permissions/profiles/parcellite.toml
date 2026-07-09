@@ -1,0 +1,12 @@
+# Starting permission profile for a clipboard manager. Reads and restores
+# clipboard contents and keeps a history; sensitive entries are excluded from
+# history at write time, so it does not request read_sensitive. No file access,
+# no network and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "parcellite"
+tier = "third-party"
+
+[clipboard]
+read = true
+write = true
+history = true
