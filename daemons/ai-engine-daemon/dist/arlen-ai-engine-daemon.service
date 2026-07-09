@@ -1,0 +1,68 @@
+[Unit]
+Description=Arlen AI engine daemon (pi-backed agent loop + gate/audit/compensation, user service)
+Documentation=https://github.com/arlenos/arlen
+# The pi-agent-adoption drop-in for the retired native ai-agent (pi-agent-
+# adoption.md step 9). It owns org.arlen.AI1 (the ai-daemon replacement) +
+# org.arlen.AIAgent1 (the pull-transparency + undo surface), spawns the confined
+# pi sidecar (node >=22 + the pi engine, bwrap-jailed) only when [ai] enabled,
+# and gates/audits/compensates every proposed action fail-closed. Order it after
+# the proxy + auditd + config-broker it depends on (best-effort Wants).
+After=arlen-ai-proxy.service arlen-auditd.service arlen-config-broker.service
+Wants=arlen-ai-proxy.service arlen-auditd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/arlen/libexec/arlen-ai-engine-daemon
+Restart=on-failure
+RestartSec=2
+
+# System-daemon sockets (knowledge + event-bus, bound under /run/arlen). The
+# engine reads ARLEN_DAEMON_SOCKET (knowledge) with an XDG-runtime fallback, so
+# point it at the system path; the audit ingest socket is per-user (its default).
+Environment=ARLEN_DAEMON_SOCKET=/run/arlen/knowledge.sock
+Environment=ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
+Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
+# The config broker is a root SYSTEM service binding at /run/arlen (not this
+# --user service's $XDG_RUNTIME_DIR). Point the engine at the system path so its
+# executor_live / read-tier / autonomy come from the broker; absent the broker it
+# falls back to ai.toml.
+Environment=ARLEN_CONFIG_BROKER_SOCKET=/run/arlen/config-broker.sock
+
+# The pi sidecar layout baked into the image (decided deploy topology): the node
+# >=22 runtime, the pi engine install, and the built Arlen pi-plugins extension
+# entry. The sidecar reads all three; an unresolvable path leaves pi unspawned
+# (the contract socket still serves fail-closed), so a wrong path is fail-safe,
+# never a boot failure. The image build (dev/mkosi 05-ai.sh.chroot) must vendor
+# node + pi + the built extension to these paths; that packaging step is the
+# remaining half of the cutover.
+Environment=ARLEN_PI_NODE_RUNTIME=/usr/lib/arlen/node-runtime
+Environment=ARLEN_PI_INSTALL=/usr/lib/arlen/pi
+Environment=ARLEN_PI_EXTENSION=/usr/lib/arlen/pi-plugins/dist/extension.js
+
+# Reads ai.toml + the baked behaviours (read-only); writes the durable
+# compensation/undo store under ~/.local/state/arlen and binds its contract +
+# drive sockets under /run/user/%U/arlen. Unix sockets + the session bus only
+# (model traffic transits the proxy; the sidecar itself is --unshare-net).
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/state/arlen
+ReadWritePaths=/run/user/%U/arlen
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+LockPersonality=yes
+# NB (needs image-boot verification): unlike the retired ai-agent unit, this
+# daemon SPAWNS a bwrap sidecar, which creates user + mount + pid + ipc + uts +
+# net + cgroup namespaces (bwrap --unshare-*). A blanket RestrictNamespaces=yes
+# (the agent unit's setting) would deny those and the sidecar could not start, so
+# the namespace set bwrap needs is explicitly allowed here instead. ProtectControl
+# Groups is likewise left off so the sidecar's cgroup namespace is not blocked.
+# The confinement of the untrusted pi/node is bwrap's job; this unit's hardening
+# is defense-in-depth on the trusted daemon and must not neuter the jail. Verify
+# on a real image boot that the sidecar spawns under these settings.
+RestrictNamespaces=user mnt pid ipc uts net cgroup
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
