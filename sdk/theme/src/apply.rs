@@ -134,6 +134,11 @@ pub fn write_foreign_toolkit_configs(theme: &ArlenTheme, config_dir: &Path) -> A
         &crate::cli::generate_delta_config(theme),
         &mut report,
     );
+    write_owned(
+        &config.join("arlen/base16-arlen.yaml"),
+        &crate::cli::generate_nvim_base16(theme),
+        &mut report,
+    );
 
     report
 }
