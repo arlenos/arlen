@@ -1,0 +1,10 @@
+# Starting permission profile for a PDF reader for research papers. Opens
+# documents under Documents and Downloads; no network and no Knowledge Graph
+# (its own reading database lives in its config dir). Observe-mode refines it.
+[info]
+app_id = "sioyek"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true

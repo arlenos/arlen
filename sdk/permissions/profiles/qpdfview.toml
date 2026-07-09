@@ -1,0 +1,10 @@
+# Starting permission profile for a PDF/document viewer. Opens documents under
+# Documents and Downloads (where PDFs land); no network and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "qpdfview"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true

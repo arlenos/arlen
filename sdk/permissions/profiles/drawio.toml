@@ -1,0 +1,10 @@
+# Starting permission profile for the draw.io desktop diagram editor. Edits
+# diagram files under Documents; no network by default (the offline desktop app
+# needs none; its online integrations need an explicit grant) and no Knowledge
+# Graph. Observe-mode refines it.
+[info]
+app_id = "drawio"
+tier = "third-party"
+
+[filesystem]
+documents = true
