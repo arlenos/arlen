@@ -1,0 +1,6 @@
+# Starting permission profile for a pomodoro timer. No file access, no network and
+# no Knowledge Graph by default; notifications are a runtime grant. Observe-mode
+# refines it.
+[info]
+app_id = "gnome-solanum"
+tier = "third-party"
