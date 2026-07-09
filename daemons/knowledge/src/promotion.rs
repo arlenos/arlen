@@ -600,11 +600,10 @@ async fn link_derived_from(
         if !crate::derivation::is_name_derivation(src_id, written_path) {
             continue;
         }
-        let src_esc = escape_cypher(src_id);
         graph
             .write(format!(
-                "MATCH (w:File {{id: '{written_esc}'}}), (s:File {{id: '{src_esc}'}}) \
-                 MERGE (w)-[:DERIVED_FROM {{confidence: 'strong'}}]->(s)"
+                "{} MERGE (w)-[:DERIVED_FROM {{confidence: 'strong'}}]->(s)",
+                crate::cypher::match_two_nodes("w", "File", written_path, "s", "File", src_id)
             ))
             .await?;
     }
@@ -821,8 +820,8 @@ async fn promote_code_indexed(graph: &GraphHandle, payload: &[u8]) -> Result<()>
              language: '{lang_esc}', kind: '{kind_esc}'}})"
         ));
         stmts.push(format!(
-            "MATCH (f:File {{id: '{file_esc}'}}), (s:CodeSymbol {{id: '{id_esc}'}}) \
-             CREATE (f)-[:DEFINES {{confidence: 'extracted'}}]->(s)"
+            "{} CREATE (f)-[:DEFINES {{confidence: 'extracted'}}]->(s)",
+            crate::cypher::match_two_nodes("f", "File", &p.source_file, "s", "CodeSymbol", &sym.id)
         ));
     }
 
