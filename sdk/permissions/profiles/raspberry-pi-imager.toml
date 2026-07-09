@@ -1,0 +1,12 @@
+# Starting permission profile for an OS image writer. Needs network to download OS
+# images and reads local images from Downloads; writing to the device is a
+# privileged operation. No Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "raspberry-pi-imager"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

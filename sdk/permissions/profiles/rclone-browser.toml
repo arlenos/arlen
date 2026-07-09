@@ -1,0 +1,12 @@
+# Starting permission profile for a cloud-storage GUI. Needs network for its cloud
+# backends (any host) and works with local files under Documents; no Knowledge
+# Graph by default. Observe-mode refines it.
+[info]
+app_id = "rclone-browser"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true
