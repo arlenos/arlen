@@ -1,0 +1,9 @@
+# Starting permission profile for a data-mining workbench. Loads datasets under
+# Documents; no network and no Knowledge Graph by default. Observe-mode refines
+# it.
+[info]
+app_id = "orange3"
+tier = "third-party"
+
+[filesystem]
+documents = true
