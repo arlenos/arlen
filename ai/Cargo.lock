@@ -65,7 +65,6 @@ version = "0.1.0"
 dependencies = [
  "arlen-ai-classifier",
  "arlen-ai-core",
- "arlen-ai-providers",
  "arlen-ai-sandbox",
  "arlen-ai-skills",
  "arlen-ai-undo-core",
@@ -119,6 +118,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "uuid",
+ "zbus",
 ]
 
 [[package]]
@@ -161,22 +161,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml 0.8.23",
-]
-
-[[package]]
-name = "arlen-ai-providers"
-version = "0.1.0"
-dependencies = [
- "arlen-ai-core",
- "async-trait",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "wiremock",
- "zbus",
 ]
 
 [[package]]
