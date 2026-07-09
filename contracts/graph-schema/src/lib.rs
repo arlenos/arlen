@@ -207,6 +207,34 @@ const NODES: &[NodeSchema] = &[
             ("kind", FieldType::Text),
         ],
     },
+    // Reserved git node types (foundation §04 pre-provision): a future
+    // git-ingestion tier writes rows without a schema migration. No producer
+    // yet; mirrors the `Commit`/`Branch` tables in `knowledge/src/graph.rs`.
+    NodeSchema {
+        label: "Commit",
+        fields: &[
+            ("id", FieldType::Text),
+            ("message", FieldType::Text),
+            ("author", FieldType::Text),
+            ("author_email", FieldType::Text),
+            ("committed_at", FieldType::Int),
+        ],
+    },
+    NodeSchema {
+        label: "Branch",
+        fields: &[
+            ("id", FieldType::Text),
+            ("name", FieldType::Text),
+            ("head", FieldType::Text),
+        ],
+    },
+    // A remote endpoint an app connected to (KG-richness Thrust 1, the
+    // OS-observed app<->network edge family). Mirrors the `NetworkEndpoint`
+    // table in `knowledge/src/graph.rs`.
+    NodeSchema {
+        label: "NetworkEndpoint",
+        fields: &[("id", FieldType::Text), ("protocol", FieldType::Text)],
+    },
 ];
 
 /// Relationship tables. Mirrors `knowledge/src/graph.rs`.
@@ -308,6 +336,23 @@ mod tests {
     }
 
     #[test]
+    fn reserved_and_network_nodes_mirror_the_ddl() {
+        // The foundation §04 pre-provision: Commit/Branch are reserved so a
+        // future git tier needs no migration, and NetworkEndpoint backs the
+        // observed app<->network edges. All three exist in the DDL
+        // (knowledge/src/graph.rs) and must be in this mirror so the query DSL
+        // recognises the labels rather than rejecting them as unknown.
+        let s = GraphSchema::knowledge_graph();
+        assert!(s.node("Commit").is_some());
+        assert_eq!(s.field_type("Commit", "author_email"), Some(FieldType::Text));
+        assert_eq!(s.field_type("Commit", "committed_at"), Some(FieldType::Int));
+        assert!(s.node("Branch").is_some());
+        assert_eq!(s.field_type("Branch", "head"), Some(FieldType::Text));
+        assert!(s.node("NetworkEndpoint").is_some());
+        assert_eq!(s.field_type("NetworkEndpoint", "protocol"), Some(FieldType::Text));
+    }
+
+    #[test]
     fn field_type_resolves_correctly() {
         let s = GraphSchema::knowledge_graph();
         assert_eq!(s.field_type("File", "path"), Some(FieldType::Text));
@@ -343,8 +388,9 @@ mod tests {
     #[test]
     fn schema_has_expected_table_counts() {
         let s = GraphSchema::knowledge_graph();
-        // 10 activity-graph nodes + CodeSymbol (code-graph, CG-R5).
-        assert_eq!(s.node_labels().count(), 11);
+        // 10 activity-graph nodes + CodeSymbol (code-graph, CG-R5) + the reserved
+        // Commit/Branch (foundation §04 pre-provision) + NetworkEndpoint.
+        assert_eq!(s.node_labels().count(), 14);
         // 7 activity-graph edges + DEFINES/CALLS/IMPORTS/REFERENCES (code-graph).
         assert_eq!(s.edge_labels().count(), 11);
     }
