@@ -1,0 +1,10 @@
+# Starting permission profile for a game launcher. Needs network to fetch games
+# and their assets; the install location is a custom path the user grants
+# explicitly, so no document-folder access by default. No Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "heroic-games-launcher"
+tier = "third-party"
+
+[network]
+allow_all = true
