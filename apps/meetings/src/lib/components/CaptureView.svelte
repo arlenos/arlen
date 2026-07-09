@@ -7,7 +7,7 @@
   import TranscriptPanel from "./TranscriptPanel.svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
-  import { ShieldCheck, Square } from "lucide-svelte";
+  import { Square } from "lucide-svelte";
 
   let notesEl = $state<HTMLTextAreaElement | null>(null);
   $effect(() => {
@@ -22,8 +22,7 @@
       <span class="rec-label">{$t("mt.recording")}</span>
       <span class="elapsed">{fmtTime($elapsed)}</span>
     </div>
-    <span class="sovereign"><ShieldCheck size={13} strokeWidth={2} /> {$t("mt.capture.sovereign")}</span>
-    <Button variant="outline" size="sm" onclick={() => stopCapture()}>
+    <Button variant="outline" size="sm" class="ms-auto" onclick={() => stopCapture()}>
       <Square size={13} strokeWidth={2} /> {$t("mt.stop")}
     </Button>
   </header>
@@ -90,14 +89,6 @@
     font-size: 0.8125rem;
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
-  }
-  .sovereign {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    margin-inline-start: auto;
-    font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
   .cap-body {
     flex: 1;

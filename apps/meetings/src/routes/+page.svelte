@@ -13,7 +13,7 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
-  import { ShieldCheck, SquareArrowOutUpRight, CalendarPlus, Square } from "lucide-svelte";
+  import { SquareArrowOutUpRight, CalendarPlus, Square } from "lucide-svelte";
 
   let notes = $state("");
   let activeStart = $state<number | null>(null);
@@ -41,7 +41,6 @@
         </div>
       </div>
       <div class="head-side">
-        <span class="sovereign"><ShieldCheck size={13} strokeWidth={2} /> {$t("mt.note.sovereign")}</span>
         <Button variant="outline" size="sm" onclick={openInEditor}>
           <SquareArrowOutUpRight size={13} strokeWidth={2} /> {$t("mt.open")}
         </Button>
@@ -120,13 +119,6 @@
     align-items: flex-end;
     gap: 0.5rem;
     flex-shrink: 0;
-  }
-  .sovereign {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.6875rem;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
   .body {
     flex: 1;

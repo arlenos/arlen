@@ -82,8 +82,7 @@
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
   }
   .utt.active {
-    background: color-mix(in srgb, var(--color-fg-primary) 9%, transparent);
-    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    background: color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
   }
   .utt-meta {
     display: flex;
