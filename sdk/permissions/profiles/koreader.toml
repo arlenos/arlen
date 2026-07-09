@@ -1,0 +1,11 @@
+# Starting permission profile for an e-book reader (EPUB/PDF/CBZ). Reads books
+# under Documents and Downloads; no network by default (OPDS catalogues and
+# cloud sync need an explicit grant) and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "koreader"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true

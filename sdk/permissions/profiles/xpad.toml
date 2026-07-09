@@ -1,0 +1,6 @@
+# Starting permission profile for a sticky-notes app. Keeps its notes in its own
+# config dir, so it needs no access to the user's document folders, no network
+# and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "xpad"
+tier = "third-party"
