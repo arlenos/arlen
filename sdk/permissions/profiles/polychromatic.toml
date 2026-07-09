@@ -1,0 +1,7 @@
+# Starting permission profile for a system/hardware utility. No document-folder
+# access, no network and no Knowledge Graph by default; it reads system state or
+# configures devices via a system daemon (elevating through polkit where needed).
+# Observe-mode refines it.
+[info]
+app_id = "polychromatic"
+tier = "third-party"
