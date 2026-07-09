@@ -4,6 +4,8 @@
   /// legible + audited - the anti-cloud-bot edge made visible.
   import { liveTranscript, liveNotes, elapsed, stopCapture, fmtTime } from "$lib/stores/meeting";
   import TranscriptPanel from "./TranscriptPanel.svelte";
+  import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Textarea } from "@arlen/ui-kit/components/ui/textarea";
   import { ShieldCheck, Square } from "lucide-svelte";
 
   let notesEl = $state<HTMLTextAreaElement | null>(null);
@@ -20,22 +22,23 @@
       <span class="elapsed">{fmtTime($elapsed)}</span>
     </div>
     <span class="sovereign"><ShieldCheck size={13} strokeWidth={2} /> On this device, in your audit log</span>
-    <button type="button" class="stop" onclick={() => stopCapture()}>
+    <Button variant="outline" size="sm" onclick={() => stopCapture()}>
       <Square size={13} strokeWidth={2} /> Stop
-    </button>
+    </Button>
   </header>
 
   <div class="cap-body">
     <div class="notes-pane">
       <p class="pane-label">Your notes</p>
-      <textarea
-        bind:this={notesEl}
+      <Textarea
+        bind:ref={notesEl}
         bind:value={$liveNotes}
-        class="notes"
+        rows={6}
+        maxRows={20}
         placeholder="Jot what matters. The AI fills the rest in from the recording."
         aria-label="Your notes"
         spellcheck="false"
-      ></textarea>
+      />
     </div>
     <TranscriptPanel transcript={$liveTranscript} />
   </div>
@@ -95,21 +98,6 @@
     font-size: 0.6875rem;
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
-  .stop {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.35rem 0.8rem;
-    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 14%, transparent);
-    border-radius: var(--radius-input, 8px);
-    background: transparent;
-    font-size: 0.8125rem;
-    color: var(--color-fg-primary);
-    cursor: pointer;
-  }
-  .stop:hover {
-    background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
-  }
   .cap-body {
     flex: 1;
     min-height: 0;
@@ -130,21 +118,5 @@
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
-  }
-  .notes {
-    flex: 1;
-    min-height: 0;
-    width: 100%;
-    border: none;
-    background: transparent;
-    resize: none;
-    font: inherit;
-    font-size: 0.9375rem;
-    line-height: 1.6;
-    color: var(--color-fg-primary);
-    outline: none;
-  }
-  .notes::placeholder {
-    color: color-mix(in srgb, var(--color-fg-primary) 35%, transparent);
   }
 </style>
