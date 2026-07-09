@@ -20,7 +20,7 @@
 //! trust boundary, not to flex every backend's native API.
 
 use async_trait::async_trait;
-use arlen_ai_core::provider::{
+use crate::provider::{
     AIProvider, CompletionRequest, CompletionResponse, ProviderAudit, ProviderError,
 };
 use serde::{Deserialize, Serialize};

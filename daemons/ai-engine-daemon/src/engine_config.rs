@@ -89,7 +89,7 @@ struct RawConfig {
 /// The resolved provider settings the live read pipeline builds its
 /// `ProxiedProvider` from: the backend name (`ai.provider`) plus the
 /// `[provider]` model / context window / audit token (with safe defaults). Maps
-/// directly onto `arlen_ai_providers::proxied::ProxiedConfig`.
+/// directly onto `arlen_ai_core::proxied::ProxiedConfig`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderSettings {
     /// The backend name (`ai.provider`); empty means no provider configured.

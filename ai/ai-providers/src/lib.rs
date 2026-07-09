@@ -11,4 +11,3 @@
 
 pub mod llama_server;
 pub mod ollama;
-pub mod proxied;

@@ -22,6 +22,7 @@ pub use arlen_graph_schema as graph_schema;
 pub mod mcp;
 pub mod pipeline;
 pub mod provider;
+pub mod proxied;
 pub mod routing;
 pub mod screen;
 pub mod tagging;
