@@ -8,6 +8,7 @@
   import AiEditReview from "$lib/components/editor/AiEditReview.svelte";
   import { loadLens } from "$lib/stores/lens";
   import { proposal, proposeEdit, dismiss } from "$lib/stores/aiEdit";
+  import { t, dir } from "$lib/i18n/messages";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Sun, PanelRight, Hash } from "lucide-svelte";
 
@@ -24,13 +25,14 @@
     }
   }
 
-  // The transaction-time presets (mirrors apps/files/src/lib/asof.ts).
-  const AS_OF_OPTIONS = [
-    { value: "now", label: "Now" },
-    { value: "1d", label: "1 day ago" },
-    { value: "1w", label: "1 week ago" },
-    { value: "1m", label: "1 month ago" },
-  ];
+  // The transaction-time presets (mirrors apps/files/src/lib/asof.ts). Derived so the
+  // labels re-resolve when the locale switches.
+  const AS_OF_OPTIONS = $derived([
+    { value: "now", label: $t("te.asOf.now") },
+    { value: "1d", label: $t("te.asOf.1d") },
+    { value: "1w", label: $t("te.asOf.1w") },
+    { value: "1m", label: $t("te.asOf.1m") },
+  ]);
 
   let focusMode = $state(false);
   let lensOpen = $state(true);
@@ -93,13 +95,13 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="app">
+<div class="app" dir={$dir}>
   <header class="titlebar">
     <PopoverSelect
       value={String(fileIdx)}
       options={fileOptions}
       width="170px"
-      ariaLabel="Open file"
+      ariaLabel={$t("te.openFile")}
       onchange={(v) => (fileIdx = Number(v))}
     />
     <span class="spacer"></span>
@@ -108,30 +110,30 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
         type="button"
         class="tb-btn icon"
         class:on={lineNumbers}
-        aria-label="Toggle line numbers"
-        title="Line numbers"
+        aria-label={$t("te.lineNumbers.toggle")}
+        title={$t("te.lineNumbers")}
         onclick={() => (lineNumbers = !lineNumbers)}
       >
         <Hash size={15} strokeWidth={2} />
       </button>
     {:else}
       <button type="button" class="tb-btn" class:on={focusMode} onclick={() => (focusMode = !focusMode)}>
-        <Sun size={14} strokeWidth={2} /> Focus
+        <Sun size={14} strokeWidth={2} /> {$t("te.focus")}
       </button>
     {/if}
     <PopoverSelect
       value={asOf}
       options={AS_OF_OPTIONS}
       width="130px"
-      ariaLabel="Show the file as of"
+      ariaLabel={$t("te.asOf.aria")}
       onchange={(v) => (asOf = v)}
     />
     <button
       type="button"
       class="tb-btn icon"
       class:on={lensOpen}
-      aria-label="Toggle the lens"
-      title="Toggle the lens"
+      aria-label={$t("te.lens.toggle")}
+      title={$t("te.lens.toggle")}
       onclick={() => (lensOpen = !lensOpen)}
     >
       <PanelRight size={15} strokeWidth={2} />

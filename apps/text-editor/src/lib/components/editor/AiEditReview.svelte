@@ -11,14 +11,15 @@
     dismiss,
     type EditHunk,
   } from "$lib/stores/aiEdit";
+  import { t } from "$lib/i18n/messages";
   import { ScopeChip } from "@arlen/ui-kit/components/ui/scope-chip";
   import { Check, Undo2, AlertTriangle, X } from "lucide-svelte";
 
   function badge(h: EditHunk): { text: string; tone: "applied" | "held" | "muted" } {
-    if (h.status === "undone") return { text: "Undone", tone: "muted" };
-    if (h.status === "rejected") return { text: "Rejected", tone: "muted" };
-    if (h.status === "pending") return { text: "Needs your confirmation", tone: "held" };
-    return { text: h.gate === "auto" ? "Applied on its own" : "Applied", tone: "applied" };
+    if (h.status === "undone") return { text: $t("te.review.undone"), tone: "muted" };
+    if (h.status === "rejected") return { text: $t("te.review.rejected"), tone: "muted" };
+    if (h.status === "pending") return { text: $t("te.review.held"), tone: "held" };
+    return { text: h.gate === "auto" ? $t("te.review.appliedAuto") : $t("te.review.applied"), tone: "applied" };
   }
 </script>
 
@@ -30,12 +31,12 @@
         <span class="who-name">{p.principal}</span>
         <ScopeChip label={p.scope} />
       </div>
-      <button type="button" class="close" aria-label="Dismiss" onclick={dismiss}>
+      <button type="button" class="close" aria-label={$t("te.review.dismiss")} onclick={dismiss}>
         <X size={15} strokeWidth={2} />
       </button>
     </header>
 
-    <p class="prompt">You asked: {p.prompt}</p>
+    <p class="prompt">{$t("te.review.youAsked", { prompt: p.prompt })}</p>
 
     <div class="hunks">
       {#each p.hunks as h, i (i)}
@@ -63,11 +64,11 @@
             <span class="rationale">{h.rationale}</span>
             <span class="actions">
               {#if h.status === "pending"}
-                <button type="button" class="act reject" onclick={() => rejectHunk(i)}>Reject</button>
-                <button type="button" class="act accept" onclick={() => acceptHunk(i)}>Accept</button>
+                <button type="button" class="act reject" onclick={() => rejectHunk(i)}>{$t("te.review.reject")}</button>
+                <button type="button" class="act accept" onclick={() => acceptHunk(i)}>{$t("te.review.accept")}</button>
               {:else if h.status === "applied"}
                 <button type="button" class="act" onclick={() => undoHunk(i)}>
-                  <Undo2 size={13} strokeWidth={2} /> Undo
+                  <Undo2 size={13} strokeWidth={2} /> {$t("te.review.undo")}
                 </button>
               {/if}
             </span>
@@ -76,7 +77,7 @@
       {/each}
     </div>
 
-    <p class="foot">Every change is logged, and you can undo any of it. Turn the assistant off in Settings.</p>
+    <p class="foot">{$t("te.review.foot")}</p>
   </aside>
 {/if}
 
@@ -85,7 +86,7 @@
     width: 24rem;
     flex-shrink: 0;
     padding: 1.25rem 1.15rem;
-    border-left: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+    border-inline-start: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     overflow-y: auto;
     background: color-mix(in srgb, var(--color-fg-primary) 2%, transparent);
   }

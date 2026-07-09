@@ -4,6 +4,7 @@
   /// (coarse lineage, honest fidelity), Related (inline contextual backlinks you act
   /// on), and Project membership. Read-only context; nothing hand-authored.
   import { lens, openRelated, type ProvenanceStep } from "$lib/stores/lens";
+  import { t } from "$lib/i18n/messages";
   import { FileText } from "lucide-svelte";
 
   // Honest actor phrasing already lives in the data ("a process" at pid fidelity);
@@ -15,7 +16,7 @@
 
 <aside class="lens">
   <section class="sec">
-    <h2 class="sec-title">Where it came from</h2>
+    <h2 class="sec-title">{$t("te.lens.provenance")}</h2>
     <div class="prov">
       {#each $lens.provenance as step (step.relation + step.actor)}
         <div class="prov-step">
@@ -30,7 +31,7 @@
   </section>
 
   <section class="sec">
-    <h2 class="sec-title">Related</h2>
+    <h2 class="sec-title">{$t("te.lens.related")}</h2>
     {#if $lens.related.length > 0}
       <div class="rel">
         {#each $lens.related as link (link.ref)}
@@ -41,14 +42,14 @@
         {/each}
       </div>
     {:else}
-      <p class="empty">Nothing references this file yet.</p>
+      <p class="empty">{$t("te.lens.related.empty")}</p>
     {/if}
   </section>
 
   {#if $lens.project}
     <section class="sec">
-      <h2 class="sec-title">Project</h2>
-      <p class="proj-name">Part of {$lens.project.name}</p>
+      <h2 class="sec-title">{$t("te.lens.project")}</h2>
+      <p class="proj-name">{$t("te.lens.project.partOf", { name: $lens.project.name })}</p>
       <div class="proj-members">
         {#each $lens.project.members as m (m)}
           <button type="button" class="proj-chip" onclick={() => openRelated(m)}>{m}</button>
@@ -63,7 +64,7 @@
     width: 19rem;
     flex-shrink: 0;
     padding: 1.5rem 1.25rem;
-    border-left: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+    border-inline-start: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     overflow-y: auto;
   }
   .sec {
@@ -125,7 +126,7 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-primary) 9%, transparent);
     border-radius: var(--radius-input, 8px);
     background: transparent;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   .rel-item:hover {
