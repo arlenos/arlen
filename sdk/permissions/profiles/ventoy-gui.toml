@@ -1,0 +1,9 @@
+# Starting permission profile for a USB image writer. Reads disk images from
+# Downloads; writing to the USB device is a privileged operation. No network and
+# no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "ventoy-gui"
+tier = "third-party"
+
+[filesystem]
+downloads = true

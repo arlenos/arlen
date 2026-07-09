@@ -1,0 +1,9 @@
+# Starting permission profile for a disk/folder encryption tool. Reads and writes
+# its encrypted containers under Documents; mounting is a privileged operation via
+# a helper. No network and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "veracrypt"
+tier = "third-party"
+
+[filesystem]
+documents = true
