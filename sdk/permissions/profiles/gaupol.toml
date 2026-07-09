@@ -1,0 +1,10 @@
+# Starting permission profile for a subtitle editor. Edits subtitle files
+# alongside videos under Videos and Documents; no network and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "gaupol"
+tier = "third-party"
+
+[filesystem]
+videos = true
+documents = true

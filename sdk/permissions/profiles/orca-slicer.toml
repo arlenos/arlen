@@ -1,0 +1,9 @@
+# Starting permission profile for a 3D-printing slicer. Works with model files
+# under Documents; no network by default (printer/cloud connections need an
+# explicit grant) and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "orca-slicer"
+tier = "third-party"
+
+[filesystem]
+documents = true
