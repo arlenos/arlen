@@ -124,6 +124,11 @@ pub fn write_foreign_toolkit_configs(theme: &ArlenTheme, config_dir: &Path) -> A
         &crate::cli::generate_fzf_colors(theme),
         &mut report,
     );
+    write_owned(
+        &config.join("arlen/git-colors.gitconfig"),
+        &crate::cli::generate_git_colors(theme),
+        &mut report,
+    );
 
     report
 }
