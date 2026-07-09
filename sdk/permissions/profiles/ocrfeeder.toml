@@ -1,0 +1,10 @@
+# Starting permission profile for an OCR tool. Reads input images and writes
+# recognised text under Documents; no network and no Knowledge Graph by default.
+# Observe-mode refines it.
+[info]
+app_id = "ocrfeeder"
+tier = "third-party"
+
+[filesystem]
+documents = true
+pictures = true

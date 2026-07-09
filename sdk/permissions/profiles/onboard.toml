@@ -1,0 +1,7 @@
+# Starting permission profile for an accessibility input aid (on-screen keyboard,
+# predictive entry or auto-click). It sends input to the focused app via a runtime
+# device grant; no file access, no network and no Knowledge Graph by default.
+# Observe-mode refines it.
+[info]
+app_id = "onboard"
+tier = "third-party"

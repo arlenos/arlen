@@ -1,0 +1,10 @@
+# Starting permission profile for a GNOME extension browser/installer. Needs
+# network to browse and download extensions from extensions.gnome.org; no
+# document-folder access and no Knowledge Graph by default. Observe-mode refines
+# it.
+[info]
+app_id = "extension-manager"
+tier = "third-party"
+
+[network]
+allow_all = true

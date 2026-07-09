@@ -1,0 +1,10 @@
+# Starting permission profile for a scanning app. Saves scans under Documents and
+# Pictures; the scanner is a runtime device grant. No network and no Knowledge
+# Graph by default. Observe-mode refines it.
+[info]
+app_id = "xsane"
+tier = "third-party"
+
+[filesystem]
+documents = true
+pictures = true

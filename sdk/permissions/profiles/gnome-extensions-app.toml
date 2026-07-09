@@ -1,0 +1,6 @@
+# Starting permission profile for the GNOME extensions manager. Enables and
+# disables installed shell extensions; no document-folder access, no network and
+# no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "gnome-extensions-app"
+tier = "third-party"
