@@ -1,0 +1,10 @@
+# Starting permission profile for a hex editor. Opens and edits files under
+# Documents and Downloads; no network and no Knowledge Graph. Editing files
+# elsewhere in home needs an explicit grant. Observe-mode refines it.
+[info]
+app_id = "bless"
+tier = "third-party"
+
+[filesystem]
+documents = true
+downloads = true
