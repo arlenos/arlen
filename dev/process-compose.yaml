@@ -14,9 +14,9 @@ environment:
   - "ARLEN_PRODUCER_SOCKET=${XDG_RUNTIME_DIR}/arlen/event-bus-producer.sock"
   - "ARLEN_CONSUMER_SOCKET=${XDG_RUNTIME_DIR}/arlen/event-bus-consumer.sock"
   - "ARLEN_DAEMON_SOCKET=${XDG_RUNTIME_DIR}/arlen/knowledge.sock"
-  # The knowledge daemon BINDS at ARLEN_DAEMON_SOCKET; the ai-agent CONNECTS via
-  # ARLEN_KNOWLEDGE_SOCKET (no ARLEN_DAEMON_SOCKET fallback, unlike knowledge-mcp),
-  # so set both to the same path or the agent dials the /run/arlen default and
+  # The knowledge daemon BINDS at ARLEN_DAEMON_SOCKET; the ai-engine-daemon CONNECTS
+  # via ARLEN_KNOWLEDGE_SOCKET (no ARLEN_DAEMON_SOCKET fallback, unlike knowledge-mcp),
+  # so set both to the same path or the engine dials the /run/arlen default and
   # cannot reach knowledge in the dev stack.
   - "ARLEN_KNOWLEDGE_SOCKET=${XDG_RUNTIME_DIR}/arlen/knowledge.sock"
   # lbug (Kuzu) vendors thrift C++ that misses <cstdint> on newer GCC.
@@ -231,17 +231,6 @@ processes:
       initial_delay_seconds: 2
       period_seconds: 2
       failure_threshold: 30
-    availability:
-      restart: "on_failure"
-
-  ai-agent:
-    command: "cargo run --manifest-path ai/ai-agent/Cargo.toml"
-    depends_on:
-      knowledge: { condition: process_healthy }
-      audit-daemon: { condition: process_started }
-      # Wait for the config-broker socket so the agent's startup
-      # switch read is broker-authoritative, not an ai.toml fallback.
-      config-broker: { condition: process_healthy }
     availability:
       restart: "on_failure"
 
