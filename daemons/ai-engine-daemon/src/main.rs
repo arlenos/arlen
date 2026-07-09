@@ -25,7 +25,7 @@ use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
 use arlen_ai_core::pipeline::{CypherPipeline, GraphQuerier, QueryRunner};
 use arlen_ai_core::provider::AIProvider;
 use arlen_ai_engine_daemon::graph_adapter::OsSdkGraphQuerier;
-use arlen_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
+use arlen_ai_core::proxied::{ProxiedConfig, ProxiedProvider};
 use arlen_ai_engine_daemon::engine_config;
 use arlen_ai_engine_daemon::reporter::ScreeningReporter;
 use arlen_ai_engine_daemon::curation::GraphProjectReader;

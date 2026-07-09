@@ -48,7 +48,7 @@ use arlen_ai_classifier::{ClassifierPolicy, InjectionClassifier};
 use arlen_ai_core::audit::{config_change_event, AuditSink, LedgerAuditSink};
 use arlen_ai_core::capability::{AccessTier, Capability};
 use arlen_ai_core::provider::AIProvider;
-use arlen_ai_providers::proxied::{ProxiedConfig, ProxiedProvider};
+use arlen_ai_core::proxied::{ProxiedConfig, ProxiedProvider};
 use os_sdk::config::{Config, ConfigWatcher};
 use zbus::Connection;
 

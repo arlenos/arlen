@@ -10,6 +10,7 @@ path = "src/lib.rs"
 
 [dependencies]
 async-trait = "0.1"
+zbus = { version = "5", default-features = false, features = ["tokio"] }
 arlen-ai-classifier = { path = "../ai-classifier" }
 arlen-graph-schema = { path = "../../contracts/graph-schema" }
 audit-proto = { path = "../../contracts/audit-proto" }
