@@ -1,0 +1,9 @@
+# Starting permission profile for a video conversion/authoring tool. Reads and
+# writes video under Videos; no network and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "bombono-dvd"
+tier = "third-party"
+
+[filesystem]
+videos = true
