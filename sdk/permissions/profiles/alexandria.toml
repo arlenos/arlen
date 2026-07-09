@@ -1,0 +1,9 @@
+# Starting permission profile for a collection manager (movies/books/games).
+# Stores its catalogue under Documents; no network by default (online metadata
+# lookups need an explicit grant) and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "alexandria"
+tier = "third-party"
+
+[filesystem]
+documents = true

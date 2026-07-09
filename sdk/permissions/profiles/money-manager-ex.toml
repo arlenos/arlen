@@ -1,0 +1,9 @@
+# Starting permission profile for a personal-finance app. Stores its ledger under
+# Documents; no network by default (online quotes need an explicit grant) and no
+# Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "money-manager-ex"
+tier = "third-party"
+
+[filesystem]
+documents = true
