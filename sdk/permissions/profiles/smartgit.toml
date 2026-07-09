@@ -1,0 +1,9 @@
+# Starting permission profile for a git GUI client. Works with repositories under
+# Documents; no network by default (remote push/pull and account sign-in need an
+# explicit grant) and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "smartgit"
+tier = "third-party"
+
+[filesystem]
+documents = true
