@@ -12,6 +12,7 @@
   import { placeGroups } from "$lib/stores/places";
   import { locationLabel } from "$lib/locations";
   import { AS_OF_OPTIONS, viewAsOfChoice } from "$lib/asof";
+  import { t } from "$lib/i18n/messages";
 
   let {
     controller,
@@ -44,7 +45,7 @@
 
 <div class="hn-buttons">
   <IconAction
-    label="Back"
+    label={$t("f.nav.back")}
     size="control"
     disabled={!$canBack}
     onclick={() => controller.back()}
@@ -52,7 +53,7 @@
     <ArrowLeft size={15} strokeWidth={1.75} />
   </IconAction>
   <IconAction
-    label="Forward"
+    label={$t("f.nav.forward")}
     size="control"
     disabled={!$canForward}
     onclick={() => controller.forward()}
@@ -78,7 +79,7 @@
     <PopoverSelect
       value={$viewAsOfChoice}
       options={AS_OF_OPTIONS}
-      ariaLabel="View this project as of a past time"
+      ariaLabel={$t("f.nav.asOfAria")}
       width="9.5rem"
       onchange={onAsOf}
     />
@@ -94,10 +95,10 @@
   .hn-crumb {
     flex: 1;
     min-width: 0;
-    margin-left: 4px;
+    margin-inline-start: 4px;
   }
   .hn-asof {
     flex-shrink: 0;
-    margin-left: 4px;
+    margin-inline-start: 4px;
   }
 </style>

@@ -27,6 +27,7 @@
     facetOpen,
     type SmartFolder,
   } from "$lib/stores/facets";
+  import { t } from "$lib/i18n/messages";
 
   const SearchIcon = placeIcon("search");
 
@@ -80,7 +81,7 @@
     <span
       class="px-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden"
     >
-      Files
+      {$t("f.sidebar.files")}
     </span>
   </SidebarHeader>
 
@@ -96,7 +97,7 @@
     />
     {#if $savedFolders.length > 0}
       <SidebarGroup class="group-data-[collapsible=icon]:hidden">
-        <SidebarGroupLabel>Smart Folders</SidebarGroupLabel>
+        <SidebarGroupLabel>{$t("f.sidebar.smartFolders")}</SidebarGroupLabel>
         <SidebarMenu>
           {#each $savedFolders as f (f.id)}
             <SidebarMenuItem>
@@ -111,7 +112,7 @@
     {/if}
     {#if $savedSearches.length > 0}
       <SidebarGroup class="group-data-[collapsible=icon]:hidden">
-        <SidebarGroupLabel>Searches</SidebarGroupLabel>
+        <SidebarGroupLabel>{$t("f.sidebar.searches")}</SidebarGroupLabel>
         <SidebarMenu>
           {#each $savedSearches as s (s.id)}
             <SidebarMenuItem>
@@ -134,22 +135,22 @@
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
-            tooltip="Recent"
+            tooltip={$t("f.sidebar.recent")}
             isActive={activePath === "recent"}
             onclick={() => goLocation("recent")}
           >
             <Clock />
-            <span class="fs-label">Recent</span>
+            <span class="fs-label">{$t("f.sidebar.recent")}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
-            tooltip="Trash"
+            tooltip={$t("f.sidebar.trash")}
             isActive={activePath === "trash"}
             onclick={() => goLocation("trash")}
           >
             <Trash2 />
-            <span class="fs-label">Trash</span>
+            <span class="fs-label">{$t("f.sidebar.trash")}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

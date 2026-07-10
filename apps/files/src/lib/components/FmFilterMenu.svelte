@@ -15,6 +15,7 @@
     type TimeFacet,
     type TypeFacet,
   } from "$lib/stores/search";
+  import { t } from "$lib/i18n/messages";
 
   let {
     path,
@@ -26,28 +27,28 @@
     onsave?: (query: string) => void;
   } = $props();
 
-  const TYPE_OPTIONS: { value: TypeFacet; label: string }[] = [
-    { value: "any", label: "Any type" },
-    { value: "folder", label: "Folders" },
-    { value: "document", label: "Documents" },
-    { value: "image", label: "Images" },
-    { value: "audio", label: "Audio" },
-    { value: "video", label: "Video" },
-    { value: "archive", label: "Archives" },
-    { value: "code", label: "Code" },
+  const TYPE_OPTIONS: { value: TypeFacet; key: string }[] = [
+    { value: "any", key: "f.type.any" },
+    { value: "folder", key: "f.type.folders" },
+    { value: "document", key: "f.type.documents" },
+    { value: "image", key: "f.type.images" },
+    { value: "audio", key: "f.type.audio" },
+    { value: "video", key: "f.type.video" },
+    { value: "archive", key: "f.type.archives" },
+    { value: "code", key: "f.type.code" },
   ];
-  const TIME_OPTIONS: { value: TimeFacet; label: string }[] = [
-    { value: "any", label: "Any time" },
-    { value: "day", label: "Today" },
-    { value: "week", label: "Last 7 days" },
-    { value: "month", label: "Last 30 days" },
+  const TIME_OPTIONS: { value: TimeFacet; key: string }[] = [
+    { value: "any", key: "f.time.any" },
+    { value: "day", key: "f.time.today" },
+    { value: "week", key: "f.time.7days" },
+    { value: "month", key: "f.time.30days" },
   ];
 
   const typeLabel = $derived(
-    TYPE_OPTIONS.find((o) => o.value === $searchType)?.label ?? "Any type",
+    $t(TYPE_OPTIONS.find((o) => o.value === $searchType)?.key ?? "f.type.any"),
   );
   const timeLabel = $derived(
-    TIME_OPTIONS.find((o) => o.value === $searchTime)?.label ?? "Any time",
+    $t(TIME_OPTIONS.find((o) => o.value === $searchTime)?.key ?? "f.time.any"),
   );
   // Any facet narrowed from its default lights the trigger dot.
   const active = $derived(
@@ -58,8 +59,8 @@
 <DropdownMenu.Root>
   <DropdownMenu.Trigger>
     {#snippet child({ props })}
-      <button class="filter-trigger" aria-label="Filter results" {...props}>
-        <span>Filter</span>
+      <button class="filter-trigger" aria-label={$t("f.filter.aria")} {...props}>
+        <span>{$t("f.action.filter")}</span>
         {#if active}
           <span class="dot" aria-hidden="true"></span>
         {/if}
@@ -70,7 +71,7 @@
   <DropdownMenu.Content align="end" sideOffset={4} class="fm-menu fm-menu-checks">
     <DropdownMenu.Sub>
       <DropdownMenu.SubTrigger>
-        Type
+        {$t("f.filter.type")}
         {#if $searchType !== "any"}
           <span class="hint">{typeLabel}</span>
         {/if}
@@ -85,7 +86,7 @@
         >
           {#each TYPE_OPTIONS as opt (opt.value)}
             <DropdownMenu.RadioItem value={opt.value}>
-              {opt.label}
+              {$t(opt.key)}
             </DropdownMenu.RadioItem>
           {/each}
         </DropdownMenu.RadioGroup>
@@ -94,7 +95,7 @@
 
     <DropdownMenu.Sub>
       <DropdownMenu.SubTrigger>
-        Time
+        {$t("f.filter.time")}
         {#if $searchTime !== "any"}
           <span class="hint">{timeLabel}</span>
         {/if}
@@ -109,7 +110,7 @@
         >
           {#each TIME_OPTIONS as opt (opt.value)}
             <DropdownMenu.RadioItem value={opt.value}>
-              {opt.label}
+              {$t(opt.key)}
             </DropdownMenu.RadioItem>
           {/each}
         </DropdownMenu.RadioGroup>
@@ -126,7 +127,7 @@
         void runSearch(path);
       }}
     >
-      Search inside file contents
+      {$t("f.filter.searchContents")}
     </DropdownMenu.CheckboxItem>
 
     <DropdownMenu.Separator />
@@ -135,7 +136,7 @@
       disabled={$searchQuery.trim().length === 0}
       onSelect={() => onsave?.($searchQuery.trim())}
     >
-      Save this search
+      {$t("f.filter.saveSearch")}
     </DropdownMenu.Item>
   </DropdownMenu.Content>
 </DropdownMenu.Root>
@@ -172,8 +173,8 @@
     opacity: 0.55;
   }
   .hint {
-    margin-left: auto;
-    padding-left: 1rem;
+    margin-inline-start: auto;
+    padding-inline-start: 1rem;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
@@ -182,6 +183,6 @@
      label lines up under one edge (the macOS / GNOME convention). */
   :global(.fm-menu-checks [data-slot="dropdown-menu-item"]),
   :global(.fm-menu-checks [data-slot="dropdown-menu-sub-trigger"]) {
-    padding-left: 2rem;
+    padding-inline-start: 2rem;
   }
 </style>

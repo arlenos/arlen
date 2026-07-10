@@ -37,6 +37,7 @@
   import FmFacetBar from "$lib/components/FmFacetBar.svelte";
   import FmAskBanner from "$lib/components/FmAskBanner.svelte";
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
+  import { t, dir } from "$lib/i18n/messages";
   import { savedSearches } from "$lib/stores/places";
   import { searchOpen, searchResults } from "$lib/stores/search";
   import {
@@ -61,7 +62,7 @@
   // Each pane's columns + empty message follow its own location (a virtual
   // location swaps Size for the item's home folder), live as the pane navigates.
   let aColumns = $state(DEFAULT_COLUMNS);
-  let aEmpty = $state("This folder is empty");
+  let aEmpty = $state($t("f.empty.folder"));
   $effect(() => {
     const c = $activeController;
     if (!c) return;
@@ -71,7 +72,7 @@
     });
   });
   let bColumns = $state(DEFAULT_COLUMNS);
-  let bEmpty = $state("This folder is empty");
+  let bEmpty = $state($t("f.empty.folder"));
   $effect(() => {
     const c = $paneB;
     if (!c) return;
@@ -250,10 +251,10 @@
   };
 
   async function newFolder() {
-    const ok = await runOp("new_folder", ["New folder"], currentPath());
+    const ok = await runOp("new_folder", [$t("f.newFolder.default")], currentPath());
     if (ok) {
       await tick();
-      renamingName = "New folder";
+      renamingName = $t("f.newFolder.default");
     }
   }
 
@@ -262,7 +263,7 @@
   /// confines it). The link is named "Link to <name>"; refresh so it shows.
   async function createLink() {
     if (selected.length !== 1) return;
-    const name = `Link to ${selected[0].name}`;
+    const name = $t("f.link.to", { name: selected[0].name });
     const target = joinPath(currentPath(), selected[0].name);
     try {
       await invoke("files_symlink", { parent: currentPath(), name, target });
@@ -317,11 +318,11 @@
   /// Create a new file in the current folder from `t` by copying the template
   /// (the existing copy op, so no separate command), then start an inline
   /// rename on the new file - the same flow as New folder.
-  async function newFromTemplate(t: Template) {
-    const ok = await runOp("copy", [t.path], currentPath());
+  async function newFromTemplate(tpl: Template) {
+    const ok = await runOp("copy", [tpl.path], currentPath());
     if (ok) {
       await tick();
-      renamingName = t.label;
+      renamingName = tpl.label;
     }
   }
 
@@ -477,8 +478,8 @@
 
   const deleteMessage = $derived(
     selected.length === 1
-      ? `Delete ${selected[0]?.name} forever? This cannot be undone.`
-      : `Delete ${selected.length} items forever? This cannot be undone.`,
+      ? $t("f.delete.oneForever", { name: selected[0]?.name ?? "" })
+      : $t("f.delete.manyForever", { count: selected.length }),
   );
 
   onMount(async () => {
@@ -501,7 +502,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="fm" onkeydown={onOpsKeydown}>
+<div class="fm" dir={$dir} onkeydown={onOpsKeydown}>
   {#if $activeController && $focusedController}
     <FmSearchBar path={currentPath()} onsave={saveSearch} onask={askArlen} />
     {#if $facetOpen}
@@ -587,21 +588,21 @@
         {#if isVirtual}
           {#if selected.length > 0}
             {#if isTrash}
-              <ContextMenu.Item onclick={restoreSelection}>Restore</ContextMenu.Item>
+              <ContextMenu.Item onclick={restoreSelection}>{$t("f.menu.restore")}</ContextMenu.Item>
               <ContextMenu.Item variant="destructive" onclick={() => (confirmDelete = true)}>
-                Delete permanently
+                {$t("f.menu.deletePermanently")}
               </ContextMenu.Item>
             {:else}
-              <ContextMenu.Item onclick={openVirtualSelection}>Open</ContextMenu.Item>
+              <ContextMenu.Item onclick={openVirtualSelection}>{$t("f.menu.open")}</ContextMenu.Item>
             {/if}
             {#if selected.length === 1}
-              <ContextMenu.Item onclick={goToFolder}>Go to folder</ContextMenu.Item>
+              <ContextMenu.Item onclick={goToFolder}>{$t("f.menu.goToFolder")}</ContextMenu.Item>
             {/if}
           {/if}
           {#if isTrash}
             {#if selected.length > 0}<ContextMenu.Separator />{/if}
             <ContextMenu.Item variant="destructive" onclick={() => (confirmEmpty = true)}>
-              Empty Trash
+              {$t("f.menu.emptyTrash")}
             </ContextMenu.Item>
           {/if}
         {:else}
@@ -616,25 +617,25 @@
               else void openPath(p);
             }}
           >
-            Open
+            {$t("f.menu.open")}
           </ContextMenu.Item>
           {#if selected.length === 1 && selected[0]?.kind === "directory"}
             <ContextMenu.Item onclick={() => newTab(joinPath(currentPath(), selected[0].name))}>
-              Open in new tab
+              {$t("f.menu.openNewTab")}
             </ContextMenu.Item>
             <ContextMenu.Item
               onclick={() => addBookmark(joinPath(currentPath(), selected[0].name))}
             >
-              Pin to sidebar
+              {$t("f.menu.pinSidebar")}
             </ContextMenu.Item>
           {/if}
           <ContextMenu.Separator />
           <ContextMenu.Item onclick={() => copySelection("copy")}>
-            Copy
+            {$t("f.menu.copy")}
             <ContextMenu.Shortcut>Ctrl+C</ContextMenu.Shortcut>
           </ContextMenu.Item>
           <ContextMenu.Item onclick={() => copySelection("move")}>
-            Cut
+            {$t("f.menu.cut")}
             <ContextMenu.Shortcut>Ctrl+X</ContextMenu.Shortcut>
           </ContextMenu.Item>
         {/if}
@@ -642,21 +643,21 @@
           disabled={$clipboard === null}
           onclick={() => paste(currentPath())}
         >
-          Paste
+          {$t("f.menu.paste")}
           <ContextMenu.Shortcut>Ctrl+V</ContextMenu.Shortcut>
         </ContextMenu.Item>
         {#if selected.length > 0}
           <ContextMenu.Separator />
           <ContextMenu.Item onclick={() => runOp("duplicate", selectedPaths())}>
-            Duplicate
+            {$t("f.menu.duplicate")}
           </ContextMenu.Item>
           {#if selected.length === 1}
             <ContextMenu.Item onclick={() => (renamingName = selected[0]?.name ?? null)}>
-              Rename
+              {$t("f.menu.rename")}
               <ContextMenu.Shortcut>F2</ContextMenu.Shortcut>
             </ContextMenu.Item>
             <ContextMenu.Item onclick={() => void createLink()}>
-              Create Link
+              {$t("f.menu.createLink")}
             </ContextMenu.Item>
             {#if selected[0].kind !== "directory"}
               <ContextMenu.Sub
@@ -664,12 +665,12 @@
                   if (open) void loadOpenWith();
                 }}
               >
-                <ContextMenu.SubTrigger>Open With</ContextMenu.SubTrigger>
+                <ContextMenu.SubTrigger>{$t("f.menu.openWith")}</ContextMenu.SubTrigger>
                 <ContextMenu.SubContent class="w-52">
                   {#if openWithApps === null}
-                    <ContextMenu.Item disabled>Loading…</ContextMenu.Item>
+                    <ContextMenu.Item disabled>{$t("f.openWith.loading")}</ContextMenu.Item>
                   {:else if openWithApps.length === 0}
-                    <ContextMenu.Item disabled>No apps found</ContextMenu.Item>
+                    <ContextMenu.Item disabled>{$t("f.openWith.none")}</ContextMenu.Item>
                   {:else}
                     {#each openWithApps as app (app.exec)}
                       <ContextMenu.Item onclick={() => void openWith(app.exec)}>
@@ -683,20 +684,20 @@
           {/if}
           {#if selected.length > 1}
             <ContextMenu.Item onclick={() => (batchRenaming = true)}>
-              Rename&hellip;
+              {$t("f.menu.renameEllipsis")}
             </ContextMenu.Item>
           {/if}
         {/if}
         {#if selected.length === 0}
           <ContextMenu.Separator />
-          <ContextMenu.Item onclick={newFolder}>New folder</ContextMenu.Item>
+          <ContextMenu.Item onclick={newFolder}>{$t("f.menu.newFolder")}</ContextMenu.Item>
           {#if $templates.length > 0}
             <ContextMenu.Sub>
-              <ContextMenu.SubTrigger>New from template</ContextMenu.SubTrigger>
+              <ContextMenu.SubTrigger>{$t("f.menu.newFromTemplate")}</ContextMenu.SubTrigger>
               <ContextMenu.SubContent class="w-52">
-                {#each $templates as t (t.path)}
-                  <ContextMenu.Item onclick={() => void newFromTemplate(t)}>
-                    {t.label}
+                {#each $templates as tpl (tpl.path)}
+                  <ContextMenu.Item onclick={() => void newFromTemplate(tpl)}>
+                    {tpl.label}
                   </ContextMenu.Item>
                 {/each}
               </ContextMenu.SubContent>
@@ -706,15 +707,15 @@
         {#if selected.length > 0}
           <ContextMenu.Separator />
           {#if selected.length === 1 && isArchiveName(selected[0]?.name ?? "")}
-            <ContextMenu.Item onclick={extractSelection}>Extract here</ContextMenu.Item>
+            <ContextMenu.Item onclick={extractSelection}>{$t("f.menu.extractHere")}</ContextMenu.Item>
           {/if}
-          <ContextMenu.Item onclick={compressSelection}>Compress to archive</ContextMenu.Item>
+          <ContextMenu.Item onclick={compressSelection}>{$t("f.menu.compress")}</ContextMenu.Item>
           <ContextMenu.Item onclick={trashSelection}>
-            Move to trash
+            {$t("f.menu.moveToTrash")}
             <ContextMenu.Shortcut>Del</ContextMenu.Shortcut>
           </ContextMenu.Item>
           <ContextMenu.Item variant="destructive" onclick={() => (confirmDelete = true)}>
-            Delete forever
+            {$t("f.menu.deleteForever")}
           </ContextMenu.Item>
         {/if}
         {/if}
@@ -735,9 +736,9 @@
 
 <ConfirmDialog
   open={confirmDelete}
-  title="Delete forever"
+  title={$t("f.menu.deleteForever")}
   message={deleteMessage}
-  confirmLabel="Delete forever"
+  confirmLabel={$t("f.menu.deleteForever")}
   variant="destructive"
   onConfirm={async () => {
     if (isTrash) await deleteSelectionPermanently();
@@ -749,9 +750,9 @@
 
 <ConfirmDialog
   open={confirmEmpty}
-  title="Empty Trash"
-  message="Permanently delete everything in the trash? This cannot be undone."
-  confirmLabel="Empty Trash"
+  title={$t("f.menu.emptyTrash")}
+  message={$t("f.emptyTrash.body")}
+  confirmLabel={$t("f.menu.emptyTrash")}
   variant="destructive"
   onConfirm={doEmptyTrash}
   onCancel={() => (confirmEmpty = false)}
@@ -770,9 +771,9 @@
 <AboutDialog
   open={aboutOpen}
   onClose={() => (aboutOpen = false)}
-  appName="Files"
+  appName={$t("f.about.name")}
   version="0.1.0"
-  description="Browse, organise and search your files."
+  description={$t("f.about.desc")}
 />
 
 <style>

@@ -10,6 +10,7 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import FmFilterMenu from "$lib/components/FmFilterMenu.svelte";
+  import { t } from "$lib/i18n/messages";
   import {
     closeSearch,
     queueSearch,
@@ -64,11 +65,11 @@
     {#if $aiEnabled}
       <SegmentedControl
         options={[
-          { value: "search", label: "Search", icon: Search },
-          { value: "ask", label: "Ask Arlen", icon: Sparkles },
+          { value: "search", label: $t("f.search.search"), icon: Search },
+          { value: "ask", label: $t("f.search.askArlen"), icon: Sparkles },
         ]}
         bind:value={$askMode}
-        ariaLabel="Search mode"
+        ariaLabel={$t("f.search.mode")}
       />
     {/if}
 
@@ -78,8 +79,8 @@
         bind:ref={inputRef}
         bind:value={askValue}
         class="h-7 text-xs"
-        placeholder="Ask Arlen to find something in this folder"
-        aria-label="Ask Arlen"
+        placeholder={$t("f.search.askPlaceholder")}
+        aria-label={$t("f.search.askArlen")}
         disabled={$askLoading}
         onkeydown={(e) => {
           if (e.key === "Enter") {
@@ -97,8 +98,8 @@
         bind:ref={inputRef}
         bind:value={$searchQuery}
         class="h-7 text-xs"
-        placeholder="Search this folder and everything inside it"
-        aria-label="Search"
+        placeholder={$t("f.search.searchPlaceholder")}
+        aria-label={$t("f.search.search")}
         oninput={() => queueSearch(path)}
         onkeydown={(e) => {
           if (e.key === "Escape") {
@@ -110,7 +111,7 @@
       <FmFilterMenu {path} {onsave} />
     {/if}
 
-    <button class="sb-close" aria-label="Close search" onclick={() => close()}>
+    <button class="sb-close" aria-label={$t("f.search.close")} onclick={() => close()}>
       <X size={14} strokeWidth={2} />
     </button>
   </div>

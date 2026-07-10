@@ -6,6 +6,7 @@
   import { X } from "lucide-svelte";
   import { get } from "svelte/store";
   import { activeTabId, closeTab, selectTab, tabs, type Tab } from "$lib/stores/tabs";
+  import { t } from "$lib/i18n/messages";
 
   const tabLabel = (tab: Tab): string => {
     const p = get(tab.controller.path);
@@ -42,7 +43,7 @@
         </button>
         <button
           class="ts-close"
-          aria-label="Close tab"
+          aria-label={$t("f.tab.close")}
           onclick={() => closeTab(tab.id)}
         >
           <X size={12} strokeWidth={2} />

@@ -9,6 +9,7 @@
     formatModified,
     joinPath,
   } from "@arlen/ui-kit/components/browser";
+  import { t } from "$lib/i18n/messages";
   import {
     closeSearch,
     searchAscending,
@@ -30,10 +31,10 @@
     onjump?: (dirPath: string) => void;
   } = $props();
 
-  const COLUMNS: { key: SearchSortKey; label: string }[] = [
-    { key: "name", label: "Name" },
-    { key: "folder", label: "Folder" },
-    { key: "modified", label: "Modified" },
+  const COLUMNS: { key: SearchSortKey; labelKey: string }[] = [
+    { key: "name", labelKey: "f.results.name" },
+    { key: "folder", labelKey: "f.results.folder" },
+    { key: "modified", labelKey: "f.results.modified" },
   ];
 
   const sorted = $derived(
@@ -55,7 +56,7 @@
   }
 </script>
 
-<div class="search-results" role="list" aria-label="Search results">
+<div class="search-results" role="list" aria-label={$t("f.results.aria")}>
   {#if sorted && sorted.length > 0}
     <div class="sr-header" role="row">
       {#each COLUMNS as col (col.key)}
@@ -69,7 +70,7 @@
               : "descending"
             : undefined}
         >
-          {col.label}
+          {$t(col.labelKey)}
           {#if $searchSortKey === col.key}
             {#if $searchAscending}
               <ChevronUp size={12} strokeWidth={2} />
@@ -83,8 +84,8 @@
   {/if}
   {#if sorted && sorted.length === 0}
     <div class="sr-empty">
-      <span class="sr-empty-title">Nothing matches</span>
-      <span class="sr-empty-hint">Try fewer letters or different filters.</span>
+      <span class="sr-empty-title">{$t("f.results.emptyTitle")}</span>
+      <span class="sr-empty-hint">{$t("f.results.emptyHint")}</span>
     </div>
   {/if}
   {#each sorted ?? [] as hit (hit.rel_path)}
@@ -99,7 +100,7 @@
     </button>
   {/each}
   {#if $searchTruncated}
-    <div class="sr-more">Showing the first matches only. Narrow the search.</div>
+    <div class="sr-more">{$t("f.results.truncated")}</div>
   {/if}
 </div>
 
@@ -135,7 +136,7 @@
     font-size: 0.75rem;
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    text-align: left;
+    text-align: start;
   }
   .sr-col:hover {
     color: var(--foreground);
@@ -155,7 +156,7 @@
     border: none;
     border-radius: var(--radius-input);
     background: transparent;
-    text-align: left;
+    text-align: start;
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
   .sr-row:hover {

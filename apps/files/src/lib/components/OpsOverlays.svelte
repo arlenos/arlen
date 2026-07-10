@@ -7,6 +7,7 @@
   import { Dialog } from "@arlen/ui-kit/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { conflict, opBusy, opError } from "$lib/stores/ops";
+  import { t } from "$lib/i18n/messages";
 </script>
 
 {#if $opBusy}
@@ -19,19 +20,19 @@
 {/if}
 
 {#if $conflict}
-  <Dialog open onClose={() => conflict.set(null)} ariaLabel="Name conflict" size="md">
+  <Dialog open onClose={() => conflict.set(null)} ariaLabel={$t("f.ops.conflictAria")} size="md">
     <div class="op-conflict-body">
-      <span class="op-title">{$conflict.name} already exists here</span>
-      <span class="op-hint">What should happen with it?</span>
+      <span class="op-title">{$t("f.ops.conflict", { name: $conflict.name })}</span>
+      <span class="op-hint">{$t("f.ops.conflictPrompt")}</span>
       <div class="op-actions">
-        <Button variant="ghost" onclick={() => conflict.set(null)}>Cancel</Button>
+        <Button variant="ghost" onclick={() => conflict.set(null)}>{$t("f.ops.cancel")}</Button>
         <span class="op-actions-spacer"></span>
-        <Button variant="outline" onclick={() => $conflict?.retry("skip")}>Skip</Button>
+        <Button variant="outline" onclick={() => $conflict?.retry("skip")}>{$t("f.ops.skip")}</Button>
         <Button variant="outline" onclick={() => $conflict?.retry("rename")}>
-          Keep both
+          {$t("f.ops.keepBoth")}
         </Button>
         <Button variant="destructive" onclick={() => $conflict?.retry("replace")}>
-          Replace
+          {$t("f.ops.replace")}
         </Button>
       </div>
     </div>
@@ -41,7 +42,7 @@
 {#if $opError}
   <div class="op-errorline" role="alert">
     <span>{$opError}</span>
-    <button class="op-dismiss" onclick={() => opError.set(null)}>Dismiss</button>
+    <button class="op-dismiss" onclick={() => opError.set(null)}>{$t("f.dismiss")}</button>
   </div>
 {/if}
 

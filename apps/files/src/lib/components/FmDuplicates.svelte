@@ -7,6 +7,7 @@
   import { Loader2, Lock, Trash2 } from "lucide-svelte";
   import { entryIcon, formatSize, formatModified } from "@arlen/ui-kit/components/browser";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
+  import { t } from "$lib/i18n/messages";
   import {
     duplicateGroups,
     duplicatesScanning,
@@ -46,38 +47,37 @@
   {#if $duplicatesScanning}
     <div class="dup-state">
       <Loader2 class="spin" size={20} strokeWidth={2} />
-      <span class="dup-state-title">Scanning {shortScope}</span>
-      <span class="dup-state-hint">Hashing the files to find exact duplicates.</span>
+      <span class="dup-state-title">{$t("f.dup.scanning", { scope: shortScope })}</span>
+      <span class="dup-state-hint">{$t("f.dup.scanningHint")}</span>
     </div>
   {:else if groups === null}
     <div class="dup-state">
-      <span class="dup-state-title">Find duplicates</span>
-      <span class="dup-state-hint">Scan {shortScope} for byte-identical copies.</span>
+      <span class="dup-state-title">{$t("f.action.findDuplicates")}</span>
+      <span class="dup-state-hint">{$t("f.dup.findHint", { scope: shortScope })}</span>
     </div>
   {:else if groups.length === 0}
     <div class="dup-state">
-      <span class="dup-state-title">No duplicates in {shortScope}</span>
-      <span class="dup-state-hint">Every file here is one of a kind.</span>
+      <span class="dup-state-title">{$t("f.dup.none", { scope: shortScope })}</span>
+      <span class="dup-state-hint">{$t("f.dup.noneHint")}</span>
     </div>
   {:else}
     <div class="dup-head">
       <div class="dup-head-text">
-        <span class="dup-title">Duplicates in {shortScope}</span>
+        <span class="dup-title">{$t("f.dup.title", { scope: shortScope })}</span>
         <span class="dup-sub">
-          {groups.length}
-          {groups.length === 1 ? "group" : "groups"}
-          {#if $reclaimable > 0}· {formatSize($reclaimable)} reclaimable{/if}
+          {$t("f.dup.groups", { count: groups.length })}
+          {#if $reclaimable > 0}, {$t("f.dup.reclaimable", { size: formatSize($reclaimable) })}{/if}
         </span>
       </div>
       <div class="dup-actions">
-        <button class="dup-btn" onclick={() => keepNewest()}>Keep newest</button>
+        <button class="dup-btn" onclick={() => keepNewest()}>{$t("f.dup.keepNewest")}</button>
         <button
           class="dup-btn primary"
           disabled={$markedPaths.length === 0}
           onclick={() => (confirming = true)}
         >
           <Trash2 size={13} strokeWidth={2} />
-          Trash {$markedPaths.length}
+          {$t("f.dup.trashCount", { count: $markedPaths.length })}
         </button>
       </div>
     </div>
@@ -87,9 +87,9 @@
         {@const kept = keptCount(group, $trashMarks)}
         <div class="group">
           <div class="group-head">
-            {group.files.length} copies
+            {$t("f.dup.copies", { count: group.files.length })}
             {#if groupReclaimable(group, $trashMarks) > 0}
-              · {formatSize(groupReclaimable(group, $trashMarks))} reclaimable
+              , {$t("f.dup.reclaimable", { size: formatSize(groupReclaimable(group, $trashMarks)) })}
             {/if}
           </div>
           {#each group.files as file (file.path)}
@@ -98,9 +98,9 @@
             {@const locked = !marked && kept <= 1}
             <div class="row" class:marked>
               {#if locked}
-                <span class="mark keep locked" title="One copy is always kept">
+                <span class="mark keep locked" title={$t("f.dup.oneKept")}>
                   <Lock size={11} strokeWidth={2} />
-                  Keep
+                  {$t("f.dup.keep")}
                 </span>
               {:else}
                 <button
@@ -108,7 +108,7 @@
                   onclick={() => toggleTrash(group, file.path)}
                 >
                   <span class="box" aria-hidden="true"></span>
-                  {marked ? "Trash" : "Keep"}
+                  {marked ? $t("f.dup.trash") : $t("f.dup.keep")}
                 </button>
               {/if}
               <span class="name-cell">
@@ -128,9 +128,9 @@
 
 <ConfirmDialog
   open={confirming}
-  title="Move duplicates to trash"
-  message={`Move ${$markedPaths.length} ${$markedPaths.length === 1 ? "copy" : "copies"} to the trash, freeing ${formatSize($reclaimable)}? One copy of each is kept. You can restore from the trash until it is emptied.`}
-  confirmLabel="Move to trash"
+  title={$t("f.dup.dialogTitle")}
+  message={$t("f.dup.dialogBody", { count: $markedPaths.length, size: formatSize($reclaimable) })}
+  confirmLabel={$t("f.menu.moveToTrash")}
   onConfirm={() => {
     confirming = false;
     ontrash?.($markedPaths);

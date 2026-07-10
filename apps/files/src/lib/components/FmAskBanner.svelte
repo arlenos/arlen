@@ -6,6 +6,7 @@
   /// a black box. Dismiss reverts the draft. Pull, never push.
   import { Sparkles } from "lucide-svelte";
   import { askDraft } from "$lib/stores/ask";
+  import { t } from "$lib/i18n/messages";
 
   let {
     scope,
@@ -24,16 +25,15 @@
   <div class="ask-banner">
     <div class="ask-line">
       <Sparkles size={13} strokeWidth={2} class="ask-spark" />
-      <span class="ask-label">Drafted from</span>
+      <span class="ask-label">{$t("f.ask.draftedFrom")}</span>
       <span class="ask-query">{$askDraft.query}</span>
       <span class="ask-spacer"></span>
-      <button class="ask-dismiss" onclick={() => ondismiss?.()}>Dismiss</button>
+      <button class="ask-dismiss" onclick={() => ondismiss?.()}>{$t("f.dismiss")}</button>
     </div>
     <div class="ask-reads">
-      Read {$askDraft.reads.files.toLocaleString()}
-      {$askDraft.reads.files === 1 ? "file" : "files"} in {shortScope}
+      {$t("f.ask.readsFiles", { count: $askDraft.reads.files, scope: shortScope })}
       {#if $askDraft.reads.tags > 0}
-        · {$askDraft.reads.tags} {$askDraft.reads.tags === 1 ? "tag" : "tags"} from your graph
+        , {$t("f.ask.readsTags", { count: $askDraft.reads.tags })}
       {/if}
     </div>
   </div>

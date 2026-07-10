@@ -15,6 +15,7 @@
     type CaseTransform,
     type RenameRule,
   } from "$lib/bulk-rename";
+  import { t } from "$lib/i18n/messages";
 
   type Props = {
     /// Whether the dialog is open.
@@ -57,60 +58,60 @@
   );
 </script>
 
-<Dialog {open} {onClose} ariaLabel="Rename multiple files" size="lg">
+<Dialog {open} {onClose} ariaLabel={$t("f.rename.aria")} size="lg">
   <div class="br">
-    <h2 class="br-title">Rename {names.length} files</h2>
+    <h2 class="br-title">{$t("f.rename.title", { count: names.length })}</h2>
 
     <div class="br-rule">
       <div class="br-field br-grow">
-        <span class="br-label">Find</span>
-        <Input bind:value={find} placeholder="text to replace" />
+        <span class="br-label">{$t("f.rename.find")}</span>
+        <Input bind:value={find} placeholder={$t("f.rename.findPlaceholder")} />
       </div>
       <div class="br-field br-grow">
-        <span class="br-label">Replace with</span>
-        <Input bind:value={replace} placeholder="replacement" />
+        <span class="br-label">{$t("f.rename.replaceWith")}</span>
+        <Input bind:value={replace} placeholder={$t("f.rename.replacePlaceholder")} />
       </div>
       <label class="br-toggle">
         <Switch bind:value={ignoreCase} />
-        <span>Ignore case</span>
+        <span>{$t("f.rename.ignoreCase")}</span>
       </label>
     </div>
 
     <div class="br-rule">
       <div class="br-field">
-        <span class="br-label">Case</span>
+        <span class="br-label">{$t("f.rename.case")}</span>
         <SegmentedControl
           bind:value={caseMode}
           options={[
-            { value: "none", label: "None" },
-            { value: "lower", label: "lower" },
-            { value: "upper", label: "UPPER" },
-            { value: "title", label: "Title" },
+            { value: "none", label: $t("f.rename.caseNone") },
+            { value: "lower", label: $t("f.rename.caseLower") },
+            { value: "upper", label: $t("f.rename.caseUpper") },
+            { value: "title", label: $t("f.rename.caseTitle") },
           ]}
         />
       </div>
       <label class="br-toggle br-toggle-end">
         <Switch bind:value={numberingOn} />
-        <span>Add numbering</span>
+        <span>{$t("f.rename.addNumbering")}</span>
       </label>
     </div>
 
     {#if numberingOn}
       <div class="br-rule">
         <div class="br-field br-grow">
-          <span class="br-label">Pattern</span>
+          <span class="br-label">{$t("f.rename.pattern")}</span>
           <Input bind:value={pattern} placeholder={"{name}-{n}"} />
         </div>
         <div class="br-field br-narrow">
-          <span class="br-label">Start</span>
+          <span class="br-label">{$t("f.rename.start")}</span>
           <NumberInput value={start} min={0} onchange={(v) => (start = v)} />
         </div>
         <div class="br-field br-narrow">
-          <span class="br-label">Step</span>
+          <span class="br-label">{$t("f.rename.step")}</span>
           <NumberInput value={step} min={1} onchange={(v) => (step = v)} />
         </div>
         <div class="br-field br-narrow">
-          <span class="br-label">Digits</span>
+          <span class="br-label">{$t("f.rename.digits")}</span>
           <NumberInput value={pad} min={1} max={6} onchange={(v) => (pad = v)} />
         </div>
       </div>
@@ -130,9 +131,9 @@
               {row.new}
             </span>
             {#if row.conflict === "duplicate"}
-              <span class="br-badge">duplicate</span>
+              <span class="br-badge">{$t("f.rename.badgeDuplicate")}</span>
             {:else if row.conflict === "invalid"}
-              <span class="br-badge">invalid</span>
+              <span class="br-badge">{$t("f.rename.badgeInvalid")}</span>
             {/if}
           </li>
         {/each}
@@ -141,12 +142,12 @@
 
     <div class="br-foot">
       <span class="br-summary">
-        {changing} will change{skipped > 0 ? `, ${skipped} skipped` : ""}
+        {skipped > 0 ? $t("f.rename.willChangeSkipped", { changing, skipped }) : $t("f.rename.willChange", { changing })}
       </span>
       <span class="br-spacer"></span>
-      <Button variant="ghost" onclick={onClose}>Cancel</Button>
+      <Button variant="ghost" onclick={onClose}>{$t("f.ops.cancel")}</Button>
       <Button variant="default" onclick={() => onApply(rule)}>
-        Rename {changing} files
+        {$t("f.rename.confirm", { changing })}
       </Button>
     </div>
   </div>
@@ -197,7 +198,7 @@
     white-space: nowrap;
   }
   .br-toggle-end {
-    margin-left: auto;
+    margin-inline-start: auto;
   }
 
   .br-preview {

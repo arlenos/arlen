@@ -20,6 +20,7 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { t } from "$lib/i18n/messages";
 
   let {
     path,
@@ -126,11 +127,11 @@
   // The mode's permission bits, decoded into a Read & write / Read only / No
   // access choice per role. Changes apply immediately (no octal, no Save): we
   // reassemble the mode, write it, and re-read so the panel shows what landed.
-  const PERM_OPTIONS = [
-    { value: "rw", label: "Read & write" },
-    { value: "r", label: "Read only" },
-    { value: "none", label: "No access" },
-  ];
+  const PERM_OPTIONS = $derived([
+    { value: "rw", label: $t("f.perm.readWrite") },
+    { value: "r", label: $t("f.perm.readOnly") },
+    { value: "none", label: $t("f.perm.noAccess") },
+  ]);
   const permMode = $derived(($info?.conventional.mode ?? 0) & 0o777);
   const roleAccess = (bits: number): string =>
     bits & 4 ? (bits & 2 ? "rw" : "r") : "none";
@@ -229,9 +230,9 @@
   );
 </script>
 
-<aside class="panel" aria-label="Info">
+<aside class="panel" aria-label={$t("f.info.aria")}>
   <header class="ident" class:has-preview={thumb}>
-    <button class="close" aria-label="Close info" onclick={() => onclose?.()}>
+    <button class="close" aria-label={$t("f.info.close")} onclick={() => onclose?.()}>
       <X size={14} strokeWidth={2} />
     </button>
     {#if thumb}
@@ -260,19 +261,19 @@
   {#if $info}
     <div class="facts">
       <div class="kv">
-        <span class="kv-label">Modified</span>
+        <span class="kv-label">{$t("f.info.modified")}</span>
         <span class="kv-value">{formatModified($info.conventional.modified_unix)}</span>
       </div>
       {#if created}
         <div class="kv">
-          <span class="kv-label">Created</span>
+          <span class="kv-label">{$t("f.info.created")}</span>
           <span class="kv-value">{created}</span>
         </div>
       {/if}
     </div>
 
     <section class="sec">
-      <span class="sec-title">Where from</span>
+      <span class="sec-title">{$t("f.info.whereFrom")}</span>
       {#each $info.woher as line (line.label + line.detail)}
         <div class="prov">
           <span class="prov-label">{line.label}</span>
@@ -286,20 +287,20 @@
       {@const rels = asOfMicros === null ? $info.verwandt : $asOfVerwandt}
       <section class="sec">
         <div class="sec-head">
-          <span class="sec-title">Related</span>
+          <span class="sec-title">{$t("f.info.related")}</span>
           <div class="asof">
-            <span class="asof-key">As of</span>
+            <span class="asof-key">{$t("f.info.asOf")}</span>
             <PopoverSelect
               value={asOfChoice}
               options={AS_OF_OPTIONS}
               width="8rem"
-              ariaLabel="View related projects as of a past time"
+              ariaLabel={$t("f.info.asOfAria")}
               onchange={setAsOf}
             />
           </div>
         </div>
         {#if asOfMicros !== null}
-          <span class="note">Past view, as of {asOfLabel.toLowerCase()}</span>
+          <span class="note">{$t("f.info.pastView", { label: asOfLabel.toLowerCase() })}</span>
         {/if}
         {#each rels as line (line.label + line.target_id)}
           <button
@@ -313,35 +314,35 @@
           </button>
         {/each}
         {#if asOfMicros !== null && rels.length === 0}
-          <span class="empty">No related projects at that time.</span>
+          <span class="empty">{$t("f.info.noRelated")}</span>
         {/if}
       </section>
     {/if}
 
     {#if $info.conventional.kind !== "symlink"}
       <section class="sec">
-        <span class="sec-title">Permissions</span>
+        <span class="sec-title">{$t("f.info.permissions")}</span>
         <div class="perm">
-          <span class="perm-label">You</span>
+          <span class="perm-label">{$t("f.info.you")}</span>
           <div class="perm-ctl">
             <PopoverSelect
               value={ownerAccess}
               options={PERM_OPTIONS}
               width="100%"
-              ariaLabel="Your access"
+              ariaLabel={$t("f.info.yourAccess")}
               disabled={permSaving}
               onchange={(v) => setRole("owner", v)}
             />
           </div>
         </div>
         <div class="perm">
-          <span class="perm-label">Others</span>
+          <span class="perm-label">{$t("f.info.others")}</span>
           <div class="perm-ctl">
             <PopoverSelect
               value={othersAccess}
               options={PERM_OPTIONS}
               width="100%"
-              ariaLabel="Everyone else's access"
+              ariaLabel={$t("f.info.othersAccess")}
               disabled={permSaving}
               onchange={(v) => setRole("others", v)}
             />
@@ -350,17 +351,17 @@
 
         <button class="disc" onclick={() => (advancedOpen = !advancedOpen)}>
           <ChevronDown class="disc-chev" size={13} strokeWidth={2} data-open={advancedOpen} />
-          Advanced
+          {$t("f.info.advanced")}
         </button>
         {#if advancedOpen}
           <div class="perm">
-            <span class="perm-label">Group</span>
+            <span class="perm-label">{$t("f.info.group")}</span>
             <div class="perm-ctl">
               <PopoverSelect
                 value={groupAccess}
                 options={PERM_OPTIONS}
                 width="100%"
-                ariaLabel="Group access"
+                ariaLabel={$t("f.info.groupAccess")}
                 disabled={permSaving}
                 onchange={(v) => setRole("group", v)}
               />
@@ -368,18 +369,18 @@
           </div>
           {#if $info.conventional.kind === "file"}
             <div class="perm perm-toggle">
-              <span class="perm-label-wide">Allow running as a program</span>
+              <span class="perm-label-wide">{$t("f.info.allowRun")}</span>
               <Switch
                 value={runnable}
                 disabled={permSaving}
-                ariaLabel="Allow running as a program"
+                ariaLabel={$t("f.info.allowRun")}
                 onchange={setRunnable}
               />
             </div>
           {/if}
         {/if}
         {#if permError}
-          <span class="err">Couldn't change permissions.</span>
+          <span class="err">{$t("f.info.permError")}</span>
         {/if}
       </section>
     {/if}
@@ -388,19 +389,19 @@
       <section class="sec">
         <button class="disc disc-title" onclick={() => (photoOpen = !photoOpen)}>
           <ChevronDown class="disc-chev" size={13} strokeWidth={2} data-open={photoOpen} />
-          Photo details
+          {$t("f.info.photoDetails")}
         </button>
         {#if photoOpen}
           <label class="field">
-            <span class="field-label">Description</span>
+            <span class="field-label">{$t("f.info.description")}</span>
             <Input bind:value={exifDraft.description} aria-invalid={exifError} />
           </label>
           <label class="field">
-            <span class="field-label">Artist</span>
+            <span class="field-label">{$t("f.info.artist")}</span>
             <Input bind:value={exifDraft.artist} aria-invalid={exifError} />
           </label>
           <label class="field">
-            <span class="field-label">Copyright</span>
+            <span class="field-label">{$t("f.info.copyright")}</span>
             <Input bind:value={exifDraft.copyright} aria-invalid={exifError} />
           </label>
           <Button
@@ -410,7 +411,7 @@
             disabled={exifSaving}
             onclick={() => void saveExif()}
           >
-            Save
+            {$t("f.save")}
           </Button>
         {/if}
       </section>
@@ -418,9 +419,9 @@
 
     {#if $info.zugriff.readable_by.length > 0}
       <section class="sec">
-        <span class="sec-title">Access</span>
+        <span class="sec-title">{$t("f.info.access")}</span>
         <div class="kv">
-          <span class="kv-label">Readable by</span>
+          <span class="kv-label">{$t("f.info.readableBy")}</span>
           <span class="kv-value">{$info.zugriff.readable_by.join(", ")}</span>
         </div>
         <Button
@@ -429,7 +430,7 @@
           class="field-save"
           onclick={() => void openPath($info.zugriff.manage_link)}
         >
-          Manage access in Settings
+          {$t("f.info.manageAccess")}
         </Button>
       </section>
     {/if}
@@ -470,10 +471,10 @@
     align-items: flex-start;
     gap: 0.625rem;
     /* Clear the absolute close in the icon-row layout. */
-    padding-right: 1.75rem;
+    padding-inline-end: 1.75rem;
   }
   .ident.has-preview .ident-row {
-    padding-right: 0;
+    padding-inline-end: 0;
   }
   .ident-icon {
     flex-shrink: 0;
@@ -503,7 +504,7 @@
   .close {
     position: absolute;
     top: 0;
-    right: 0;
+    inset-inline-end: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -627,7 +628,7 @@
     background: transparent;
     border-radius: var(--radius-chip);
     font-size: 0.75rem;
-    text-align: left;
+    text-align: start;
     transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
   }
   .rel:hover {
