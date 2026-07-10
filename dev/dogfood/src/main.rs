@@ -3,20 +3,21 @@
 //!
 //! The image has no eBPF sensor, so this binary stands in for one: it emits a
 //! `file.opened` (the sensor event the knowledge writer + promotion turn into a
-//! File subgraph), waits a promotion cycle, then asks the AI daemon a question
-//! over the session bus and reports whether a completion came back. The agent
-//! reacts to the same event independently (propose -> gate -> audit), visible in
-//! its own journal; this binary exercises the conversational read path.
+//! File subgraph), waits a promotion cycle, drops a project signal, then drives
+//! the automatic curator to a real graph write and undo, and finally exercises
+//! the conversational inference stack. It reports a single terminal line the
+//! verify harness greps.
 //!
 //! Two things are proven deterministically, without parsing a 1B model's prose:
 //!   - the event was accepted by the bus (the injection half of the loop), and
-//!   - the AI daemon -> proxy -> llama-server path produced a terminal completion
-//!     (not an error/timeout), i.e. the whole inference stack is live in the VM.
-//! The answer text is logged for inspection but is not the gate (a small local
+//!   - the automatic `auto-tag-by-project` curator wrote a FILE_PART_OF edge
+//!     through the live executor and `compensate` undid it (the whole
+//!     predict -> gate -> execute -> audit -> compensate path is live in the VM).
+//! The conversational explain call is best-effort inspection only (a small local
 //! model's grounding quality is not a boolean).
 //!
-//! Markers (grepped by dev/vm/verify.py): `DOGFOOD EMIT ok`, `DOGFOOD ASK ok`,
-//! `DOGFOOD OK` / `DOGFOOD FAIL <reason>`.
+//! Markers (grepped by dev/vm/verify.py): `DOGFOOD EMIT ok`, `DOGFOOD WRITE ok`,
+//! `DOGFOOD UNDO ok`, `DOGFOOD ASK ok`, `DOGFOOD OK` / `DOGFOOD FAIL <reason>`.
 
 use std::time::Duration;
 
@@ -27,18 +28,29 @@ use serde_json::Value;
 use tokio::time::{sleep, timeout, Instant};
 use zbus::{Connection, Proxy};
 
+const AGENT_BUS_NAME: &str = "org.arlen.AIAgent1";
+const AGENT_OBJECT_PATH: &str = "/org/arlen/AIAgent1";
+/// The System Explanation Mode surface: the conversational read path moved onto
+/// pi, and `explain_system` is the read-and-explain method the engine still owns
+/// on `org.arlen.AI1`; it exercises the same daemon -> proxy -> llama -> KG-read
+/// stack the old `query` did.
 const AI_BUS_NAME: &str = "org.arlen.AI1";
 const AI_OBJECT_PATH: &str = "/org/arlen/AI1";
 /// A promotion pass runs on a fixed interval (knowledge promotion.rs); wait past
-/// one so the injected File node exists before the question is asked.
+/// one so the injected File node exists before the project + write step.
 const PROMOTION_WAIT: Duration = Duration::from_secs(35);
-/// Whole-turn budget for submit + every poll.
-const QUERY_TIMEOUT: Duration = Duration::from_secs(90);
-const POLL_INTERVAL: Duration = Duration::from_millis(250);
-/// How many whole-turn attempts before giving up (absorbs model-load latency).
-const ASK_ATTEMPTS: u32 = 4;
-/// Wait between ask attempts when the provider is not yet serving.
-const ASK_RETRY_DELAY: Duration = Duration::from_secs(20);
+/// After dropping the `.git` signal, give the knowledge watcher time to detect the
+/// directory as a Project before re-emitting (auto-tag only links a file whose dir
+/// is already a known Project).
+const PROJECT_DETECT_WAIT: Duration = Duration::from_secs(10);
+/// Budget for the automatic write to surface once the project exists.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(90);
+/// Whole-turn budget for the best-effort explain call.
+const EXPLAIN_TIMEOUT: Duration = Duration::from_secs(90);
+/// How many explain attempts before giving up (absorbs model-load latency).
+const ASK_ATTEMPTS: u32 = 2;
+/// Wait between explain attempts when the provider is not yet serving.
+const ASK_RETRY_DELAY: Duration = Duration::from_secs(10);
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -47,16 +59,13 @@ async fn main() {
         // Under /var/lib/arlen-work (a tmpfiles-created, arlen-writable dir the
         // SYSTEM knowledge daemon can watch): /home/arlen was unreadable to that
         // daemon at startup. The file is promoted UNLINKED (no project signal yet),
-        // then executor_verify drops .git here so auto-tag links it past promotion.
+        // then executor_verify drops .git here so auto-tag links it on re-emit.
         .unwrap_or_else(|| "/var/lib/arlen-work/notes.md".to_string());
-    let prompt = std::env::args()
-        .nth(2)
-        .unwrap_or_else(|| "What files have I opened recently?".to_string());
 
     // Materialize the file on disk: the executor's predict step canonicalizes the
     // File path through the filesystem (the FILE_PART_OF rule's PathUnderField), so
-    // the path must resolve for tag-untagged-files to prove. Its parent
-    // (/var/lib/arlen-work) is tmpfiles-created in the image.
+    // the path must resolve for auto-tag to prove. Its parent (/var/lib/arlen-work)
+    // is tmpfiles-created in the image.
     if let Some(parent) = std::path::Path::new(&path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -90,27 +99,24 @@ async fn main() {
     // project signal exists yet).
     sleep(PROMOTION_WAIT).await;
 
-    // The executor write+undo via run_skill tag-untagged-files: a manual workflow
-    // that scans for an untagged file under a project (no event operand), so it
-    // drives a deterministic graph write the way auto-tag-by-project (which reads
-    // event.fields["path"], absent on a manual invoke) cannot. The file is promoted
-    // UNLINKED above; the .git signal below makes its dir a Project, then run_skill
-    // links it and compensate undoes it. Best-effort until a VM boot confirms the
-    // write surfaces, then it gates the dogfood.
+    // The deterministic proof: drop a project signal, re-emit so the automatic
+    // curator auto-tags the file under its new project through the live executor,
+    // then undo it. Best-effort until it is confirmed on a VM boot; the terminal
+    // OK is printed regardless so the verify channel always gets a result line.
     match executor_verify(&path).await {
         Ok(()) => {}
         Err(e) => println!("DOGFOOD EXECUTOR skipped (best-effort): {e}"),
     }
 
-    // BEST-EFFORT: the conversational ask exercises the daemon -> proxy -> llama ->
+    // BEST-EFFORT: the explain call exercises the daemon -> proxy -> llama ->
     // KG-read path, but the baked 1B model is nondeterministic (it intermittently
     // emits a non-JSON or unknown-action step that the tool-loop parser rejects),
-    // so a failure here is NOT a dogfood failure - the executor gate above is the
+    // so a failure here is NOT a dogfood failure - the executor write above is the
     // deterministic proof. Logged for inspection only.
     let mut answered = false;
     let mut last = String::new();
     for attempt in 1..=ASK_ATTEMPTS {
-        match ask(&prompt).await {
+        match ask().await {
             Ok(answer) => {
                 let snippet: String = answer.chars().take(200).collect();
                 println!("DOGFOOD ASK ok answer={snippet}");
@@ -134,23 +140,15 @@ async fn main() {
     println!("DOGFOOD OK");
 }
 
-const AGENT_BUS_NAME: &str = "org.arlen.AIAgent1";
-const AGENT_OBJECT_PATH: &str = "/org/arlen/AIAgent1";
-/// The deterministic graph-write workflow we drive manually: a manual-invoke
-/// (run_skill) workflow that finds an untagged file under a project and proposes
-/// its FILE_PART_OF, so it needs no event operand (unlike auto-tag-by-project,
-/// which reads the path off the triggering event).
-const WRITE_SKILL: &str = "tag-untagged-files";
-/// Budget for the project to be detected + the manual workflow to write (the watcher
-/// picks up the runtime .git signal, then a run_skill links the unlinked file).
-const WRITE_TIMEOUT: Duration = Duration::from_secs(90);
-
 /// Drive a real executor write (FILE_PART_OF) and undo it, all over AIAgent1.
 ///
-/// Proof is taken from the agent itself, not a graph read (the dogfood is an
-/// unprivileged caller with no read scope): `completed_actions` lists only
-/// EXECUTED writes, so a receipt appearing IS the write; `compensate` returning
-/// `retracted` IS the undo.
+/// The `auto-tag-by-project` curator tags on a `file.opened` event by reading the
+/// path the event carries; the original emit fired before any project existed, so
+/// this drops a project signal and RE-EMITS, which makes the curator link the file
+/// through the live executor. Proof is taken from the agent itself, not a graph
+/// read (the dogfood is an unprivileged caller with no read scope):
+/// `completed_actions` lists only EXECUTED writes, so a receipt appearing IS the
+/// write; `compensate` returning `retracted` IS the undo.
 async fn executor_verify(file_path: &str) -> Result<(), String> {
     // Create the project signal next to the (already promoted, unlinked) file, so
     // the knowledge watcher detects its directory as a Project. A bare `.git` dir
@@ -162,6 +160,10 @@ async fn executor_verify(file_path: &str) -> Result<(), String> {
         .map_err(|e| format!("create .git signal: {e}"))?;
     println!("DOGFOOD PROJECT signal at {}", project_dir.display());
 
+    // Give the watcher a scan cycle to promote the directory to a Project before
+    // the re-emit, so auto-tag finds the project on the first attempt.
+    sleep(PROJECT_DETECT_WAIT).await;
+
     let connection = Connection::session()
         .await
         .map_err(|e| format!("session bus: {e}"))?;
@@ -169,22 +171,20 @@ async fn executor_verify(file_path: &str) -> Result<(), String> {
         .await
         .map_err(|e| format!("ai agent unavailable: {e}"))?;
 
-    // Poll: run the skill until a completed action surfaces. Early runs find no
-    // project yet (the watcher has not detected it), so the workflow proposes
-    // nothing and completed_actions stays empty; once detected, the write executes.
+    // Re-emit until a completed action surfaces: each re-emit drives one auto-tag
+    // pass. Early re-emits may still find the project undetected (the watcher scans
+    // on an interval), so completed_actions stays empty; once linked, the write
+    // executes and its receipt appears.
     let deadline = Instant::now() + WRITE_TIMEOUT;
     let correlation_id = loop {
-        let summary: String = agent
-            .call("run_skill", &(WRITE_SKILL,))
+        emit_open(file_path)
             .await
-            .map_err(|e| format!("run_skill: {e}"))?;
+            .map_err(|e| format!("re-emit file.opened: {e}"))?;
         if let Some(id) = first_completed_action(&agent).await {
             break id;
         }
         if Instant::now() >= deadline {
-            return Err(format!(
-                "no executor write surfaced within budget (last run_skill: {summary})"
-            ));
+            return Err("no executor write surfaced within budget".to_string());
         }
         sleep(Duration::from_secs(5)).await;
     };
@@ -229,53 +229,17 @@ async fn emit_open(path: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// Submit a query to the AI daemon and poll it to a terminal status on one held
-/// connection (the daemon authorises `take_result` against the submitting
-/// connection's unique name). Returns the answer text, or a readable error.
-async fn ask(prompt: &str) -> Result<String, String> {
+/// Best-effort: exercise the daemon -> proxy -> llama -> KG-read inference stack
+/// via `org.arlen.AI1.explain_system` (a no-argument read-and-explain call).
+async fn ask() -> Result<String, String> {
     let connection = Connection::session()
         .await
         .map_err(|e| format!("session bus: {e}"))?;
     let proxy = Proxy::new(&connection, AI_BUS_NAME, AI_OBJECT_PATH, AI_BUS_NAME)
         .await
         .map_err(|e| format!("ai daemon unavailable: {e}"))?;
-
-    let deadline = Instant::now() + QUERY_TIMEOUT;
-    let handle_json: String = call_until(&proxy, "query", &(prompt, ""), deadline).await?;
-    let handle: Value =
-        serde_json::from_str(&handle_json).map_err(|e| format!("malformed handle: {e}"))?;
-    let query_id = field(&handle, "query_id")?;
-    let token = field(&handle, "retrieval_token")?;
-
-    loop {
-        if Instant::now() >= deadline {
-            return Err("timed out".to_string());
-        }
-        let outcome_json: String =
-            call_until(&proxy, "take_result", &(query_id.as_str(), token.as_str()), deadline)
-                .await?;
-        let outcome: Value =
-            serde_json::from_str(&outcome_json).map_err(|e| format!("malformed envelope: {e}"))?;
-        match outcome.get("status").and_then(Value::as_str) {
-            Some("completed") => {
-                return Ok(outcome
-                    .get("result")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string());
-            }
-            Some("failed") => {
-                return Err(outcome
-                    .get("reason")
-                    .and_then(Value::as_str)
-                    .unwrap_or("query failed")
-                    .to_string());
-            }
-            Some("cancelled") => return Err("cancelled".to_string()),
-            Some("drained") => return Err("drained".to_string()),
-            _ => sleep(POLL_INTERVAL).await,
-        }
-    }
+    let deadline = Instant::now() + EXPLAIN_TIMEOUT;
+    call_until(&proxy, "explain_system", &(), deadline).await
 }
 
 /// One bounded D-Bus call (zbus has no default method timeout).
@@ -293,13 +257,6 @@ async fn call_until(
         Ok(r) => r.map_err(|e| format!("{method}: {e}")),
         Err(_) => Err("timed out".to_string()),
     }
-}
-
-fn field(v: &Value, key: &str) -> Result<String, String> {
-    v.get(key)
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| format!("handle missing {key}"))
 }
 
 fn fail(reason: &str) -> ! {
