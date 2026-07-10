@@ -1,0 +1,9 @@
+# Starting permission profile for a 3D-model viewer. Opens model files (STL, OBJ,
+# 3D scenes) under Documents; no network and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "view3dscene"
+tier = "third-party"
+
+[filesystem]
+documents = true
