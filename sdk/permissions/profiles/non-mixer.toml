@@ -1,0 +1,5 @@
+# Starting permission profile for Non Mixer (an audio mixer). Routes audio only;
+# no file access, no network and no Knowledge Graph by default.
+[info]
+app_id = "non-mixer"
+tier = "third-party"

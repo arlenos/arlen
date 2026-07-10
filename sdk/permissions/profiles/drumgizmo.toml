@@ -1,0 +1,6 @@
+# Starting permission profile for DrumGizmo (a drum sampler). Its drumkit/sample
+# paths are granted explicitly; no file access, no network and no Knowledge Graph
+# by default.
+[info]
+app_id = "drumgizmo"
+tier = "third-party"

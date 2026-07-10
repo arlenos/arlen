@@ -1,0 +1,8 @@
+# Starting permission profile for Patroneo (a pattern-based song sequencer). Opens
+# and saves songs under Documents; no network and no Knowledge Graph.
+[info]
+app_id = "patroneo"
+tier = "third-party"
+
+[filesystem]
+documents = true
