@@ -540,6 +540,41 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create Branch table: {e}"))?;
 
+    // A recorded meeting and its produced note (the meetings app, agent-work-
+    // surfaces). The note is on-device by design (the Otter/Granola trap we
+    // avoid): the summary is AI-derived and grounded, `participants` a
+    // denormalized comma-joined list for the recent-meetings home, `started_at`
+    // the recording start. Action items hang off it as structured `ActionItem`
+    // nodes via HAS_ACTION_ITEM so they can be answered and later linked. Fields
+    // evolve additively via `ALTER TABLE ... ADD IF NOT EXISTS`; the imminent
+    // producer is the meetings app's note-filing seam.
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS Meeting(
+            id           STRING,
+            title        STRING,
+            summary      STRING,
+            participants STRING,
+            started_at   INT64,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create Meeting table: {e}"))?;
+
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS ActionItem(
+            id    STRING,
+            text  STRING,
+            owner STRING,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create ActionItem table: {e}"))?;
+
+    conn.query(
+        "CREATE REL TABLE IF NOT EXISTS HAS_ACTION_ITEM(FROM Meeting TO ActionItem)",
+    )
+    .map_err(|e| anyhow!("create HAS_ACTION_ITEM rel: {e}"))?;
+
     // A network endpoint an app connected to (KG-richness Thrust 1, the OS-
     // observed app<->network edge family). Keyed by the remote IP:port, so the
     // graph answers "what did this app talk to". Only the remote address is
