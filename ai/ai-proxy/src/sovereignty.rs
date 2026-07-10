@@ -152,6 +152,79 @@ impl SovereigntyInfo {
     }
 }
 
+/// The hand-curated sovereignty facts for a known provider id, or `None` for one
+/// not yet curated (which keeps the conservative `Unknown` stub). This is the
+/// layer models.dev cannot supply: jurisdiction / trains-on-you / residency are
+/// governance facts, not plumbing, and they go stale fast (an acquisition, a
+/// tier-terms flip), so this table is re-verified on a cadence and stays
+/// deliberately small - only facts stated plainly, murky ones left `Unknown`.
+///
+/// The load-bearing honesty: the mainstream closed providers (OpenAI / Anthropic
+/// / Google / Mistral) do NOT train on the paid API but DO train the free tier by
+/// default, encoded as [`TrainsOnYou::PaidApiOnly`] (`no*`). Providers whose
+/// training/retention terms need a pull before printing as fact (DeepSeek, Qwen,
+/// Together, xAI, Perplexity, Cohere) keep `trains_on_you = Unknown`.
+pub fn curated_for(provider_id: &str) -> Option<SovereigntyInfo> {
+    // A closed US major: US jurisdiction, no-train on the paid API only.
+    let us_closed_paid = |open_weight| SovereigntyInfo {
+        jurisdiction: Jurisdiction::Us,
+        trains_on_you: TrainsOnYou::PaidApiOnly,
+        open_weight,
+        ..Default::default()
+    };
+    let info = match provider_id {
+        "openai" | "azure" => us_closed_paid(false),
+        "anthropic" => us_closed_paid(false),
+        "google" | "google-vertex" | "google-vertex-anthropic" => us_closed_paid(false),
+        // Mistral (FR): EU by policy default (DPA permits egress), no-train paid
+        // only, open-weight models.
+        "mistral" => SovereigntyInfo {
+            jurisdiction: Jurisdiction::Eu,
+            residency: Residency::EuPolicyDefault,
+            trains_on_you: TrainsOnYou::PaidApiOnly,
+            open_weight: true,
+            ..Default::default()
+        },
+        // IONOS (DE): hard EU-confined, open-weight (Teuken/OpenGPT-X), no training.
+        "ionos" => SovereigntyInfo {
+            jurisdiction: Jurisdiction::Eu,
+            residency: Residency::EuConfined,
+            trains_on_you: TrainsOnYou::No,
+            open_weight: true,
+            ..Default::default()
+        },
+        // Aleph Alpha (DE): Cohere(CA)-acquired, now self-host-only (PhariaAI) - no
+        // longer a clean hosted "German sovereign", so the self-host flag is the fact.
+        "alephalpha" | "aleph-alpha" => SovereigntyInfo {
+            jurisdiction: Jurisdiction::Eu,
+            self_host_required: true,
+            open_weight: true,
+            ..Default::default()
+        },
+        // OpenRouter: an aggregator - the real jurisdiction is inherited from the
+        // downstream provider each request is relayed to.
+        "openrouter" => SovereigntyInfo {
+            jurisdiction: Jurisdiction::Unknown,
+            aggregator_hop: true,
+            ..Default::default()
+        },
+        // Chinese open-weight labs: CN jurisdiction, open-weight models, but the
+        // paid-API training terms are murky until pulled -> trains_on_you Unknown.
+        "deepseek" => SovereigntyInfo {
+            jurisdiction: Jurisdiction::Cn,
+            open_weight: true,
+            ..Default::default()
+        },
+        "alibaba" | "alibaba-cn" => SovereigntyInfo {
+            jurisdiction: Jurisdiction::Cn,
+            open_weight: true,
+            ..Default::default()
+        },
+        _ => return None,
+    };
+    Some(info)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,6 +303,34 @@ mod tests {
             info.info_line(),
             "[jurisdiction: local] · [trains on you: no] · [open-weight: yes]"
         );
+    }
+
+    #[test]
+    fn curated_encodes_the_stated_facts_and_leaves_murky_ones_unknown() {
+        // Mistral: EU policy default (EU*), no-train paid-only, open-weight.
+        let m = curated_for("mistral").expect("curated");
+        assert_eq!(m.jurisdiction, Jurisdiction::Eu);
+        assert_eq!(m.residency, Residency::EuPolicyDefault);
+        assert_eq!(m.trains_on_you, TrainsOnYou::PaidApiOnly);
+        assert!(m.open_weight);
+        assert_eq!(
+            m.info_line(),
+            "[jurisdiction: EU*] · [trains on you: no*] · [open-weight: yes]"
+        );
+        // Anthropic: US, no-train paid-only, closed-weight.
+        let a = curated_for("anthropic").expect("curated");
+        assert_eq!(a.jurisdiction, Jurisdiction::Us);
+        assert_eq!(a.trains_on_you, TrainsOnYou::PaidApiOnly);
+        assert!(!a.open_weight);
+        // DeepSeek: CN + open-weight, but the training terms are murky -> Unknown.
+        let d = curated_for("deepseek").expect("curated");
+        assert_eq!(d.jurisdiction, Jurisdiction::Cn);
+        assert_eq!(d.trains_on_you, TrainsOnYou::Unknown);
+        assert!(d.open_weight);
+        // OpenRouter: an aggregator, jurisdiction inherited downstream.
+        assert!(curated_for("openrouter").expect("curated").aggregator_hop);
+        // An un-curated provider stays an Unknown stub.
+        assert!(curated_for("some-unknown-provider").is_none());
     }
 
     #[test]
