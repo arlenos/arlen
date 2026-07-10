@@ -1,0 +1,9 @@
+# Starting permission profile for Komikku (a manga reader). Fetches chapters from
+# online sources over the network into its own library; no broad file access and
+# no Knowledge Graph.
+[info]
+app_id = "komikku"
+tier = "third-party"
+
+[network]
+allow_all = true

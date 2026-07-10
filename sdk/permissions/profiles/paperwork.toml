@@ -1,0 +1,9 @@
+# Starting permission profile for Paperwork (a document-management and OCR app).
+# Stores and indexes scanned documents under Documents; no network and no
+# Knowledge Graph.
+[info]
+app_id = "paperwork"
+tier = "third-party"
+
+[filesystem]
+documents = true

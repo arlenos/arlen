@@ -1,0 +1,9 @@
+# Starting permission profile for Rnote (a handwriting and vector note app). Saves
+# and exports notes under Documents; no network and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "rnote"
+tier = "third-party"
+
+[filesystem]
+documents = true
