@@ -119,9 +119,9 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
     // Supersede the app's prior non-revoked nodes (this fresher mint replaces
     // them); a revoked node stays terminal, and this token's own node is excluded.
     stmts.push(format!(
-        "MATCH (g:Grant {{app_id: '{app_esc}'}}) \
-         WHERE g.id <> '{id_esc}' AND NOT g.revoked \
-         SET g.superseded = true, g.live = false"
+        "{} WHERE g.id <> '{id_esc}' AND NOT g.revoked \
+         SET g.superseded = true, g.live = false",
+        crate::cypher::match_node_by_field("g", "Grant", "app_id", &token.app_id)
     ));
 
     graph.transaction(stmts).await
