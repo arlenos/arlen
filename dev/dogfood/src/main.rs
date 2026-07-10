@@ -43,10 +43,14 @@ const PROMOTION_WAIT: Duration = Duration::from_secs(35);
 /// directory as a Project before re-emitting (auto-tag only links a file whose dir
 /// is already a known Project).
 const PROJECT_DETECT_WAIT: Duration = Duration::from_secs(10);
-/// Budget for the automatic write to surface once the project exists.
-const WRITE_TIMEOUT: Duration = Duration::from_secs(90);
+/// Budget for a curation write to surface. The current engine confirm-gates every
+/// event-triggered auto-tag (external_content=true -> RequireConfirmation), so no
+/// autonomous write surfaces here today and this loop fails fast; once a manual
+/// skill-run or consent-approve write path lands, a real write surfaces well within
+/// this budget, so it stays a genuine (not merely tolerant) check.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Whole-turn budget for the best-effort explain call.
-const EXPLAIN_TIMEOUT: Duration = Duration::from_secs(90);
+const EXPLAIN_TIMEOUT: Duration = Duration::from_secs(30);
 /// How many explain attempts before giving up (absorbs model-load latency).
 const ASK_ATTEMPTS: u32 = 2;
 /// Wait between explain attempts when the provider is not yet serving.
