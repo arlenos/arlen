@@ -1,0 +1,6 @@
+# Starting permission profile for a system/config/utility app. No file access,
+# no network and no Knowledge Graph by default; it picks emoji and copies them to
+# the clipboard, with its settings in its own config dir.
+[info]
+app_id = "com.tomjwatson.Emote"
+tier = "third-party"

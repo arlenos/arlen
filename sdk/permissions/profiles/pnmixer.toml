@@ -1,0 +1,6 @@
+# Starting permission profile for a system/config/utility app. No file access,
+# no network and no Knowledge Graph by default; it controls the audio volume and
+# keeps its settings in its own config dir.
+[info]
+app_id = "pnmixer"
+tier = "third-party"
