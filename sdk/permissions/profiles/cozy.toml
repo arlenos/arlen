@@ -1,0 +1,8 @@
+# Starting permission profile for Cozy (an audiobook player). Reads its audiobook
+# library from Music; no network and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "cozy"
+tier = "third-party"
+
+[filesystem]
+music = true

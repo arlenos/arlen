@@ -1,0 +1,11 @@
+# Starting permission profile for Syncthing (a continuous file-sync service).
+# Syncs folders under home across devices over the network; no Knowledge Graph.
+[info]
+app_id = "syncthing"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true
