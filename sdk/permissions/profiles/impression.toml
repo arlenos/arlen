@@ -1,0 +1,9 @@
+# Starting permission profile for Impression (a USB image writer). Reads a disk
+# image from Downloads to flash; no network and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "impression"
+tier = "third-party"
+
+[filesystem]
+downloads = true

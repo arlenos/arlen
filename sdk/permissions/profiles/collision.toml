@@ -1,0 +1,9 @@
+# Starting permission profile for Collision (a checksum/hash verifier). Reads a
+# file from Downloads to hash it; no network and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "collision"
+tier = "third-party"
+
+[filesystem]
+downloads = true

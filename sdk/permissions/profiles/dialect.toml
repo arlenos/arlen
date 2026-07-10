@@ -1,0 +1,9 @@
+# Starting permission profile for Dialect (a translation app). Uses online
+# translation services over the network; no local file access and no Knowledge
+# Graph.
+[info]
+app_id = "dialect"
+tier = "third-party"
+
+[network]
+allow_all = true

@@ -1,0 +1,8 @@
+# Starting permission profile for Halftone (an image dithering app). Reads and
+# writes images under Pictures; no network and no Knowledge Graph.
+[info]
+app_id = "halftone"
+tier = "third-party"
+
+[filesystem]
+pictures = true

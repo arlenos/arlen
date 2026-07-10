@@ -1,0 +1,8 @@
+# Starting permission profile for Gaphor (a UML/SysML modeling tool). Opens and
+# saves model files under Documents; no network and no Knowledge Graph.
+[info]
+app_id = "gaphor"
+tier = "third-party"
+
+[filesystem]
+documents = true
