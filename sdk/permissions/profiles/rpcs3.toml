@@ -1,0 +1,6 @@
+# Starting permission profile for a self-contained emulator. No file access, no
+# network and no Knowledge Graph by default; its data lives in its own app dir
+# (ROM/BIOS paths are granted explicitly).
+[info]
+app_id = "rpcs3"
+tier = "third-party"

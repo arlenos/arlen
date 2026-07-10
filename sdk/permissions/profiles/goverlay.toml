@@ -1,0 +1,6 @@
+# Starting permission profile for GOverlay (a MangoHud/vkBasalt overlay config
+# tool). Edits overlay configs in its own config dir; no file access, no network
+# and no Knowledge Graph by default.
+[info]
+app_id = "goverlay"
+tier = "third-party"
