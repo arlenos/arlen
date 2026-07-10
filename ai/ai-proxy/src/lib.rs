@@ -22,5 +22,6 @@ pub mod catalog;
 pub mod forward;
 pub mod peer_auth;
 pub mod service;
+pub mod sovereignty;
 pub mod transcode;
 pub mod usage;
