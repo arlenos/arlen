@@ -337,10 +337,10 @@ async fn listen_events(auth: Arc<Mutex<Authenticator>>, graph: GraphHandle) -> R
 /// like the restart sweep: a failed update only degrades the browse projection
 /// (the read command re-checks liveness with `process_alive`).
 async fn mark_app_grants_stale(graph: &GraphHandle, app_id: &str) {
-    let app_esc = escape_cypher(app_id);
     if let Err(e) = graph
         .write(format!(
-            "MATCH (g:Grant {{app_id: '{app_esc}'}}) WHERE g.live SET g.live = false"
+            "{} WHERE g.live SET g.live = false",
+            crate::cypher::match_node_by_field("g", "Grant", "app_id", app_id)
         ))
         .await
     {
@@ -355,10 +355,10 @@ async fn mark_app_grants_stale(graph: &GraphHandle, app_id: &str) {
 /// `GRANTS`/`USED_BY` edges rather than leaving them as misleading "dormant"
 /// rows. Best-effort like the stale-mark.
 async fn remove_app_grants(graph: &GraphHandle, app_id: &str) {
-    let app_esc = escape_cypher(app_id);
     if let Err(e) = graph
         .write(format!(
-            "MATCH (g:Grant {{app_id: '{app_esc}'}}) DETACH DELETE g"
+            "{} DETACH DELETE g",
+            crate::cypher::match_node_by_field("g", "Grant", "app_id", app_id)
         ))
         .await
     {
