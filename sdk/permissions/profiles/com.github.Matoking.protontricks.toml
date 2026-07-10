@@ -1,0 +1,9 @@
+# Starting permission profile for a system/config/utility app that works with the
+# user's files. It tweaks game (Wine/Proton) prefixes under Home, so it gets Home;
+# no network and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "com.github.Matoking.protontricks"
+tier = "third-party"
+
+[filesystem]
+home = true
