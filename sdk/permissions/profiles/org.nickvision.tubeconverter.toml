@@ -1,11 +1,9 @@
-# Starting permission profile for Parabolic (a media downloader).
-# Downloads media over the network by function and saves to Downloads. No graph.
+# Starting permission profile for a yt-dlp front end. It downloads media over the
+# network by function; it gets network and needs no user files (the download folder
+# is granted explicitly). No Knowledge Graph access.
 [info]
 app_id = "org.nickvision.tubeconverter"
 tier = "third-party"
-
-[filesystem]
-downloads = true
 
 [network]
 allow_all = true

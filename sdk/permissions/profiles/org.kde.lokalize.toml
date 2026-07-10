@@ -1,0 +1,10 @@
+# Starting permission profile for a translation/localization editor. Reads and
+# writes translation files (PO, XLIFF, TMX) under Documents; no network by default
+# (online translation memory needs an explicit grant) and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "org.kde.lokalize"
+tier = "third-party"
+
+[filesystem]
+documents = true

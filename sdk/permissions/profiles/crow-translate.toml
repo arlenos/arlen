@@ -1,0 +1,9 @@
+# Starting permission profile for a network client (translator or web app). Queries
+# online translation services, so it gets network; no local file access and no
+# Knowledge Graph by default.
+[info]
+app_id = "crow-translate"
+tier = "third-party"
+
+[network]
+allow_all = true
