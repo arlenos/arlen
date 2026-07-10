@@ -3,5 +3,5 @@
 # its data lives in its own app dir (extra scenery or online play is granted
 # explicitly).
 [info]
-app_id = "org.gnome.Klotski"
+app_id = "org.flightgear.FlightGear"
 tier = "third-party"

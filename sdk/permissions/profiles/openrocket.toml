@@ -1,0 +1,9 @@
+# Starting permission profile for a documents-oriented tool (design or simulation).
+# Reads and writes its design files under Documents; no network and no Knowledge
+# Graph by default. Observe-mode refines it.
+[info]
+app_id = "openrocket"
+tier = "third-party"
+
+[filesystem]
+documents = true
