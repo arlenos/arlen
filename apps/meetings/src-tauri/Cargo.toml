@@ -27,8 +27,14 @@ os-sdk = { path = "../../../sdk/os-sdk" }
 # persisted as the app-owned document a note is loaded from.
 arlen-meeting-note = { path = "../../../contracts/meeting-note" }
 # The transcript contract: the captured transcript carried in the note document
-# and (later) handed to the summary engine.
+# and handed to the summary engine.
 arlen-transcript = { path = "../../../contracts/transcript" }
+# The summary engine + the provider/screener it runs over: a captured transcript
+# in, a grounded, screened MeetingNote out.
+arlen-ai-meeting-notes = { path = "../../../ai/ai-meeting-notes" }
+arlen-ai-core = { path = "../../../ai/ai-core" }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+uuid = { version = "1", features = ["v7"] }
 
 # This app is its own standalone crate (not a member of a parent workspace).
 [workspace]

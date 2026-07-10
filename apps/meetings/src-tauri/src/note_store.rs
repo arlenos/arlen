@@ -62,10 +62,8 @@ fn note_path(id: &str) -> PathBuf {
 /// needed. Atomic (write a sibling temp file then rename), so a concurrent load
 /// never sees a half-written document. Idempotent: a re-save overwrites in place.
 ///
-/// The write side is the mechanism the summarize-and-file flow calls once a
-/// provider is wired (that command is a stub today), so it has no production caller
-/// yet; the load side is live via `meeting_note`.
-#[allow(dead_code)]
+/// The write side is called by the summarize-and-file flow (`summarize.rs`); the
+/// load side is called by `meeting_note`.
 pub fn save(id: &str, meeting: &StoredMeeting) -> Result<(), String> {
     if !is_safe_id(id) {
         return Err(format!("unsafe meeting id: {id}"));
