@@ -1,0 +1,8 @@
+# Starting permission profile for a screenshot tool, image viewer or paint app.
+# Works with Pictures; no network and no Knowledge Graph.
+[info]
+app_id = "imv"
+tier = "third-party"
+
+[filesystem]
+pictures = true
