@@ -1,0 +1,9 @@
+# Starting permission profile for a chemistry structure editor. Reads and writes
+# molecule and structure files under Documents; no network and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "gchempaint"
+tier = "third-party"
+
+[filesystem]
+documents = true

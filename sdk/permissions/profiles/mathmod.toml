@@ -1,0 +1,9 @@
+# Starting permission profile for a documents-oriented tool (maths plotting or
+# modelling). Reads and writes its model files under Documents; no network and no
+# Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "mathmod"
+tier = "third-party"
+
+[filesystem]
+documents = true
