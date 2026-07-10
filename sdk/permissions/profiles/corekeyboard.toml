@@ -1,0 +1,5 @@
+# Starting permission profile for CoreKeyboard (an on-screen keyboard). Provides
+# input only; no file access, no network and no Knowledge Graph.
+[info]
+app_id = "corekeyboard"
+tier = "third-party"

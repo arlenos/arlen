@@ -1,0 +1,8 @@
+# Starting permission profile for mailnag (a messaging/mail app). Talks to online
+# services over the network; no local file access and no Knowledge Graph by default.
+[info]
+app_id = "mailnag"
+tier = "third-party"
+
+[network]
+allow_all = true
