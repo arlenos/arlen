@@ -1,0 +1,9 @@
+# Starting permission profile for a code editor/IDE. Edits projects under
+# Documents; no network and no Knowledge Graph by default (projects elsewhere,
+# plugins, SDKs or board uploads need an explicit grant). Observe-mode refines it.
+[info]
+app_id = "arduino-ide"
+tier = "third-party"
+
+[filesystem]
+documents = true
