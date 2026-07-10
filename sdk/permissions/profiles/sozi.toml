@@ -1,0 +1,9 @@
+# Starting permission profile for a documents-oriented tool (presentations,
+# diagrams or drawings). Works with Documents; no network and no Knowledge Graph
+# by default. Observe-mode refines it.
+[info]
+app_id = "sozi"
+tier = "third-party"
+
+[filesystem]
+documents = true
