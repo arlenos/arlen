@@ -1,0 +1,7 @@
+# Starting permission profile for the Fldigi ham-radio digital-modes app. Keeps
+# its logs and macros in its own config dir, so it needs no document folders and
+# no Knowledge Graph. Online lookups (QRZ, LoTW, eQSL) need an explicit network
+# grant. Observe-mode refines it.
+[info]
+app_id = "fldigi"
+tier = "third-party"

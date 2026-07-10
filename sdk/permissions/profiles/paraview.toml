@@ -1,0 +1,9 @@
+# Starting permission profile for ParaView (scientific data visualisation). Opens
+# data sets under Documents; no network by default (remote-server rendering needs
+# an explicit grant) and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "paraview"
+tier = "third-party"
+
+[filesystem]
+documents = true

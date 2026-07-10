@@ -1,0 +1,8 @@
+# Starting permission profile for Veusz (scientific plotting). Edits plot and data
+# files under Documents; no network and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "veusz"
+tier = "third-party"
+
+[filesystem]
+documents = true

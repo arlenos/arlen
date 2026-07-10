@@ -1,0 +1,10 @@
+# Starting permission profile for Siril (astrophotography image processing). Reads
+# and writes image sets under Pictures and Documents; no network by default and no
+# Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "siril"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+documents = true

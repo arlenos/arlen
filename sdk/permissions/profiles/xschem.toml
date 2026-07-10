@@ -1,0 +1,9 @@
+# Starting permission profile for Xschem (schematic capture for circuit design).
+# Edits schematic files under Documents; no network and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "xschem"
+tier = "third-party"
+
+[filesystem]
+documents = true

@@ -1,0 +1,9 @@
+# Starting permission profile for Avogadro 2 (molecular editor and visualiser).
+# Edits molecule files under Documents; no network and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "avogadro2"
+tier = "third-party"
+
+[filesystem]
+documents = true
