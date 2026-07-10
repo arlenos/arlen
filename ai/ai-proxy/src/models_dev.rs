@@ -108,6 +108,22 @@ pub fn seed_from_models_dev(doc: &Value) -> Vec<(String, CatalogEntry)> {
         .unwrap_or_default()
 }
 
+/// Layer the hand-curated sovereignty facts (`sovereignty::curated_for`) over a
+/// machine-derived seed. The curated jurisdiction / trains-on-you / residency /
+/// honesty flags are authoritative and win; the seed's `open_weight` is kept
+/// (it is derived from the provider's actual model set, the one sovereignty fact
+/// models.dev supplies reliably). An un-curated provider keeps its seed stub.
+pub fn apply_curated_overlay(entries: &mut [(String, CatalogEntry)]) {
+    for (id, entry) in entries.iter_mut() {
+        if let Some(curated) = crate::sovereignty::curated_for(id) {
+            entry.sovereignty = SovereigntyInfo {
+                open_weight: entry.sovereignty.open_weight,
+                ..curated
+            };
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,6 +205,36 @@ mod tests {
         assert_eq!(seeded.len(), 1);
         assert_eq!(seeded[0].0, "mistral");
         assert_eq!(seeded[0].1.display_name.as_deref(), Some("Mistral"));
+    }
+
+    #[test]
+    fn curated_overlay_wins_governance_but_keeps_the_seed_open_weight() {
+        use crate::sovereignty::{Jurisdiction, Residency, TrainsOnYou};
+        // Seed mistral (machine-derived: open-weight true) + an un-curated provider.
+        let doc = json!({
+            "mistral": {
+                "name": "Mistral", "npm": "@ai-sdk/mistral", "env": ["K"],
+                "api": "https://api.mistral.ai/v1",
+                "models": { "m": { "open_weights": true } }
+            },
+            "obscure": {
+                "name": "Obscure", "npm": "@ai-sdk/x", "env": ["K"],
+                "api": "https://obscure.example/v1",
+                "models": { "m": { "open_weights": false } }
+            }
+        });
+        let mut seeded = seed_from_models_dev(&doc);
+        apply_curated_overlay(&mut seeded);
+        let mistral = &seeded.iter().find(|(id, _)| id == "mistral").unwrap().1;
+        // Curated governance facts win.
+        assert_eq!(mistral.sovereignty.jurisdiction, Jurisdiction::Eu);
+        assert_eq!(mistral.sovereignty.residency, Residency::EuPolicyDefault);
+        assert_eq!(mistral.sovereignty.trains_on_you, TrainsOnYou::PaidApiOnly);
+        // The seed's machine-derived open-weight is kept.
+        assert!(mistral.sovereignty.open_weight);
+        // The un-curated provider keeps its Unknown stub.
+        let obscure = &seeded.iter().find(|(id, _)| id == "obscure").unwrap().1;
+        assert_eq!(obscure.sovereignty.jurisdiction, Jurisdiction::Unknown);
     }
 
     #[test]
