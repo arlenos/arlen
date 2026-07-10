@@ -1,0 +1,10 @@
+# Starting permission profile for a reference/bibliography manager. Reads and
+# writes its library and BibTeX files under Documents; no network by default
+# (fetching metadata from online databases needs an explicit grant) and no
+# Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "jabref"
+tier = "third-party"
+
+[filesystem]
+documents = true
