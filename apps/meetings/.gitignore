@@ -9,7 +9,6 @@ node_modules/
 
 # Rust
 src-tauri/target/
-src-tauri/Cargo.lock
 
 # Editors
 .vscode/

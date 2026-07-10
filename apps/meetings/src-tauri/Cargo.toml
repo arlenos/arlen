@@ -1,0 +1,28 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-meetings"
+version = "0.1.0"
+description = "Arlen OS meetings app - local capture with the verifiable AI note"
+authors = ["Arlen"]
+edition = "2021"
+
+[lib]
+name = "arlen_meetings_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-arlen-shell = { path = "../../../sdk/tauri-plugin-shell" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"
+# The graph client: the meetings home lists KG Meeting nodes and a single note
+# reads its list metadata, via the daemon's 0x0C read op + the 0x02 file write.
+os-sdk = { path = "../../../sdk/os-sdk" }
+
+# This app is its own standalone crate (not a member of a parent workspace).
+[workspace]
