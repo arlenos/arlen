@@ -1,0 +1,5 @@
+# Starting permission profile for nwg-launchers (an application launcher). Lists and starts
+# installed apps; no file access, no network and no Knowledge Graph by default.
+[info]
+app_id = "nwg-launchers"
+tier = "third-party"

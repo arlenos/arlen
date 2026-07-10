@@ -1,0 +1,8 @@
+# Starting permission profile for swaybg-picker (a wallpaper picker). Reads images
+# from Pictures to set as wallpaper; no network and no Knowledge Graph.
+[info]
+app_id = "swaybg-picker"
+tier = "third-party"
+
+[filesystem]
+pictures = true

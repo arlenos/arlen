@@ -1,0 +1,5 @@
+# Starting permission profile for wofi (an application launcher). Lists and starts
+# installed apps; no file access, no network and no Knowledge Graph by default.
+[info]
+app_id = "wofi"
+tier = "third-party"
