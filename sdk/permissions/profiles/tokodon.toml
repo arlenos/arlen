@@ -1,0 +1,8 @@
+# Starting permission profile for Tokodon (a Mastodon client). Talks to Mastodon
+# servers over the network; no local file access and no Knowledge Graph by default.
+[info]
+app_id = "tokodon"
+tier = "third-party"
+
+[network]
+allow_all = true

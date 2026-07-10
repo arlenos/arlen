@@ -1,0 +1,8 @@
+# Starting permission profile for Raider (a file shredder). Securely deletes files
+# under home; no network and no Knowledge Graph.
+[info]
+app_id = "raider"
+tier = "third-party"
+
+[filesystem]
+home = true

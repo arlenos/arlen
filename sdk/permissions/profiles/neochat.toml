@@ -1,0 +1,9 @@
+# Starting permission profile for NeoChat (a Matrix chat client). Talks to Matrix
+# homeservers over the network; no local file access and no Knowledge Graph by
+# default.
+[info]
+app_id = "neochat"
+tier = "third-party"
+
+[network]
+allow_all = true

@@ -1,0 +1,8 @@
+# Starting permission profile for GNOME Feeds (an RSS/Atom reader). Fetches feeds
+# over the network; no local file access and no Knowledge Graph.
+[info]
+app_id = "gnome-feeds"
+tier = "third-party"
+
+[network]
+allow_all = true
