@@ -1,0 +1,12 @@
+# Starting permission profile for a game-development launcher. Manages projects
+# under Documents and needs network to download editors and modules; no Knowledge
+# Graph. Observe-mode refines it.
+[info]
+app_id = "unityhub"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true
