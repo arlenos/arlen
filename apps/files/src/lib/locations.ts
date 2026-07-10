@@ -6,7 +6,6 @@
 import {
   type PlaceGroup,
   type ColumnSpec,
-  DEFAULT_COLUMNS,
 } from "@arlen/ui-kit/components/browser";
 
 /// Translate a location key into its display label. `groups` lets a
@@ -41,21 +40,23 @@ export function locationLabel(path: string, groups: PlaceGroup[] = []): string {
 /// The column set a location shows. A virtual location swaps Size for the item's
 /// home folder (its members are scattered) and relabels the time column; a real
 /// folder keeps the default Name | Size | Modified.
+/// The labels are i18n KEYS (not display text); the caller resolves them through the
+/// catalog so the column headers follow the locale.
 export function columnsFor(path: string): ColumnSpec {
   if (path === "trash") {
-    return { middle: "location", middleLabel: "Original location", timeLabel: "Deleted" };
+    return { middle: "location", middleLabel: "f.col.originalLocation", timeLabel: "f.col.deleted" };
   }
   if (path === "recent") {
-    return { middle: "location", middleLabel: "Location", timeLabel: "Last accessed" };
+    return { middle: "location", middleLabel: "f.col.location", timeLabel: "f.col.lastAccessed" };
   }
   if (
     path.startsWith("project:") ||
     path.startsWith("search:") ||
     path.startsWith("facet:")
   ) {
-    return { middle: "location", middleLabel: "Location", timeLabel: "Modified" };
+    return { middle: "location", middleLabel: "f.col.location", timeLabel: "f.col.modified" };
   }
-  return DEFAULT_COLUMNS;
+  return { middle: "size", middleLabel: "f.col.size", timeLabel: "f.col.modified" };
 }
 
 /// The i18n key for the message a location shows when it has no items. A virtual

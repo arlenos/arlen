@@ -52,7 +52,6 @@
   import { duplicatesOpen } from "$lib/stores/duplicates";
   import { askDraft, runAsk, applyDraft, clearAsk, loadAiEnabled } from "$lib/stores/ask";
   import { columnsFor, emptyLabelFor } from "$lib/locations";
-  import { DEFAULT_COLUMNS } from "@arlen/ui-kit/components/browser";
 
   let renamingName = $state<string | null>(null);
   let batchRenaming = $state(false);
@@ -61,7 +60,9 @@
 
   // Each pane's columns + empty message follow its own location (a virtual
   // location swaps Size for the item's home folder), live as the pane navigates.
-  let aColumns = $state(DEFAULT_COLUMNS);
+  // The specs hold i18n KEYS (update on navigation); the resolved specs below
+  // turn the keys into text via `$t`, so the headers follow both path and locale.
+  let aColumns = $state(columnsFor("/"));
   let aEmpty = $state("f.empty.folder");
   $effect(() => {
     const c = $activeController;
@@ -71,7 +72,7 @@
       aEmpty = emptyLabelFor(p);
     });
   });
-  let bColumns = $state(DEFAULT_COLUMNS);
+  let bColumns = $state(columnsFor("/"));
   let bEmpty = $state("f.empty.folder");
   $effect(() => {
     const c = $paneB;
@@ -81,6 +82,8 @@
       bEmpty = emptyLabelFor(p);
     });
   });
+  const aCols = $derived({ ...aColumns, middleLabel: $t(aColumns.middleLabel), timeLabel: $t(aColumns.timeLabel) });
+  const bCols = $derived({ ...bColumns, middleLabel: $t(bColumns.middleLabel), timeLabel: $t(bColumns.timeLabel) });
 
   // The focused pane's location, live, gates the virtual-location actions.
   let focusedPath = $state("/");
@@ -537,7 +540,8 @@
           >
             <FileBrowser
               controller={$activeController}
-              columns={aColumns}
+              columns={aCols}
+              nameLabel={$t("f.col.name")}
               emptyLabel={$t(aEmpty)}
               errorTitle={$t("f.fb.errorTitle")}
               hintPermission={$t("f.fb.hintPermission")}
@@ -565,7 +569,8 @@
             >
               <FileBrowser
                 controller={$paneB}
-                columns={bColumns}
+                columns={bCols}
+                nameLabel={$t("f.col.name")}
                 emptyLabel={$t(bEmpty)}
                 errorTitle={$t("f.fb.errorTitle")}
                 hintPermission={$t("f.fb.hintPermission")}

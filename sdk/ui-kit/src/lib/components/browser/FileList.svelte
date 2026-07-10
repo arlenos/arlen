@@ -19,6 +19,7 @@
     idBase,
     now,
     columns = DEFAULT_COLUMNS,
+    nameLabel = "Name",
     icon,
     thumbnails,
     thumbKey,
@@ -39,6 +40,9 @@
     now?: number;
     /// Which columns to render (a virtual location swaps Size for Location).
     columns?: ColumnSpec;
+    /// The name column header text (host-owned, English default; the kit stays
+    /// i18n-neutral like the ColumnSpec labels).
+    nameLabel?: string;
     icon?: Snippet<[FileEntry]>;
     /// Resolved thumbnail URLs from the controller (a small row preview).
     thumbnails?: ReadonlyMap<string, string | null>;
@@ -63,7 +67,7 @@
   const cols = $derived<
     { key: SortKey | null; label: string; align: "left" | "right"; sortable: boolean }[]
   >([
-    { key: "name", label: "Name", align: "left", sortable: true },
+    { key: "name", label: nameLabel, align: "left", sortable: true },
     columns.middle === "location"
       ? { key: null, label: columns.middleLabel, align: "left", sortable: false }
       : { key: "size", label: columns.middleLabel, align: "right", sortable: true },

@@ -35,6 +35,7 @@
     filter,
     now,
     columns = DEFAULT_COLUMNS,
+    nameLabel = "Name",
     emptyLabel = "This folder is empty",
     errorTitle = "Can't open this folder",
     hintPermission = "You don't have permission to see what's inside.",
@@ -64,6 +65,9 @@
     /// Which columns the list view shows (a virtual location swaps Size for
     /// Location and relabels the time column).
     columns?: ColumnSpec;
+    /// The name column header text, forwarded to the list (host-owned, English
+    /// default; the kit stays i18n-neutral).
+    nameLabel?: string;
     /// The message shown when this location is empty (a virtual location speaks
     /// for itself: "Trash is empty", "No recent files").
     emptyLabel?: string;
@@ -504,6 +508,7 @@
       {idBase}
       {now}
       {columns}
+      {nameLabel}
       {icon}
       {renamingName}
       thumbnails={controller.hasThumbnails ? $thumbnails : undefined}
