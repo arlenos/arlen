@@ -1,0 +1,8 @@
+# Starting permission profile for a PDF viewer/editor. Opens and saves documents
+# under Documents; no network and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "deepin-reader"
+tier = "third-party"
+
+[filesystem]
+documents = true

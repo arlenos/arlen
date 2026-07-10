@@ -1,0 +1,8 @@
+# Starting permission profile for a music player or recorder. Works with the
+# user's Music; no network and no Knowledge Graph by default.
+[info]
+app_id = "io.elementary.music"
+tier = "third-party"
+
+[filesystem]
+music = true
