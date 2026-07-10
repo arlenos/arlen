@@ -1,0 +1,8 @@
+# Starting permission profile for an audio editor or analyser. Works with local
+# audio under Music; no network and no Knowledge Graph.
+[info]
+app_id = "sonic-visualiser"
+tier = "third-party"
+
+[filesystem]
+music = true
