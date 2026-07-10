@@ -382,6 +382,7 @@ impl ProviderCatalog {
                 builtin: entry.builtin,
                 auth_method: entry.auth_method,
                 unofficial: entry.unofficial,
+                sovereignty_line: entry.sovereignty.info_line(),
             })
             .collect();
         views.sort_by(|a, b| a.id.cmp(&b.id));
@@ -441,6 +442,11 @@ pub struct ProviderView {
     /// Whether this provider's access path is unofficial (reverse-engineered,
     /// suspension-risk); the UI shows a clear warning and never offers it silently.
     pub unofficial: bool,
+    /// The hand-curated sovereignty info line for the picker (jurisdiction /
+    /// trains-on-you / open-weight + honesty flags), e.g.
+    /// `[jurisdiction: EU*] · [trains on you: no*] · [open-weight: yes]`. Facts to
+    /// surface, never a verdict. Serializes as `sovereigntyLine`.
+    pub sovereignty_line: String,
 }
 
 #[cfg(test)]
@@ -749,6 +755,7 @@ mod tests {
             builtin: true,
             auth_method: AuthMethod::ApiKey,
             unofficial: false,
+            sovereignty_line: String::new(),
         };
         let v = serde_json::to_value(&view).expect("serializes");
         let obj = v.as_object().expect("a JSON object");
@@ -756,7 +763,16 @@ mod tests {
         keys.sort_unstable();
         assert_eq!(
             keys,
-            vec!["authMethod", "builtin", "configured", "id", "kind", "name", "unofficial"]
+            vec![
+                "authMethod",
+                "builtin",
+                "configured",
+                "id",
+                "kind",
+                "name",
+                "sovereigntyLine",
+                "unofficial"
+            ]
         );
         assert_eq!(obj["kind"], serde_json::json!("cloud"));
         assert_eq!(obj["configured"], serde_json::json!(false));
@@ -772,6 +788,7 @@ mod tests {
             builtin: true,
             auth_method: AuthMethod::Free,
             unofficial: false,
+            sovereignty_line: String::new(),
         })
         .expect("serializes");
         assert_eq!(local["kind"], serde_json::json!("local"));
