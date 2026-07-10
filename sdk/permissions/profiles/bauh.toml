@@ -1,0 +1,10 @@
+# Starting permission profile for an app store or package manager. Needs network
+# to browse and fetch software; the install itself goes through the system
+# installer (polkit), so it needs no user file access and no Knowledge Graph by
+# default.
+[info]
+app_id = "bauh"
+tier = "third-party"
+
+[network]
+allow_all = true

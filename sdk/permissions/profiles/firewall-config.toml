@@ -1,0 +1,6 @@
+# Starting permission profile for a system/config/utility app. No file access,
+# no network and no Knowledge Graph by default; it configures the system firewall
+# through a privileged helper (polkit).
+[info]
+app_id = "firewall-config"
+tier = "third-party"
