@@ -1,0 +1,12 @@
+# Starting permission profile for a game launcher that runs under Wine. It manages
+# its Wine prefix under Home and downloads the game over the network, so it gets
+# Home and network; no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "grapejuice"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true
