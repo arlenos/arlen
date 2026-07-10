@@ -1,0 +1,12 @@
+# Starting permission profile for an image-board downloader. Fetches images over
+# the network and saves them to Downloads; no Knowledge Graph access. Observe-mode
+# refines it.
+[info]
+app_id = "imgbrd-grabber"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
