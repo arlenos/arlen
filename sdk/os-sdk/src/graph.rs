@@ -961,7 +961,7 @@ pub struct MeetingActionItemInput {
 
 /// One row of the recent-meetings home, returned by
 /// [`meetings_list`](UnixGraphClient::meetings_list).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MeetingSummary {
     /// The meeting id.
     pub id: String,
@@ -979,7 +979,7 @@ pub struct MeetingSummary {
 /// A single meeting note's list metadata + action items, returned by
 /// [`meeting_get`](UnixGraphClient::meeting_get). The full note document (with its
 /// transcript) is held app-side, not in the graph.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MeetingDetail {
     /// The summary-row fields.
     pub summary: MeetingSummary,
