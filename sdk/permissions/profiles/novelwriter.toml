@@ -1,0 +1,9 @@
+# Starting permission profile for a writing tool (manuscripts, scripts or notes).
+# Reads and writes its project files under Documents; no network and no Knowledge
+# Graph by default. Observe-mode refines it.
+[info]
+app_id = "novelwriter"
+tier = "third-party"
+
+[filesystem]
+documents = true
