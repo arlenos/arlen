@@ -104,7 +104,7 @@ impl PeerPidfd {
     /// Brokers call this before honoring each request; on `false`
     /// the connection must be dropped.
     pub fn is_alive(&self) -> bool {
-        pidfd_pid(self.pidfd.as_raw_fd()).map_or(false, |p| p == self.pid)
+        pidfd_pid(self.pidfd.as_raw_fd()) == Some(self.pid)
     }
 }
 
