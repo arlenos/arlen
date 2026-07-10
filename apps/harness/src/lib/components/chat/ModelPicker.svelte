@@ -23,6 +23,7 @@
   /// provider when more than one is present and flat when only one is. Each
   /// group carries its egress posture once. Picking swaps the model live for
   /// the turns that follow. Built on the kit Command + Popover canon.
+  import { t } from "$lib/i18n/messages";
   import { Check, ChevronDown, Cloud, House } from "@lucide/svelte";
   import * as Popover from "@arlen/ui-kit/components/ui/popover";
   import { ProviderLogo } from "@arlen/ui-kit/components/ui/provider-logo";
@@ -107,7 +108,7 @@
             <Cloud size={11} strokeWidth={2} class="mp-kind" />
           {/if}
         {:else}
-          <span class="mp-active mp-empty">Choose a model</span>
+          <span class="mp-active mp-empty">{$t("h.model.choose")}</span>
         {/if}
         <ChevronDown size={12} strokeWidth={2} class="mp-chev" />
       </button>
@@ -115,9 +116,9 @@
   </Popover.Trigger>
   <Popover.Content side="top" align="start" sideOffset={6} class="mp-pop">
     <Command>
-      <CommandInput placeholder="Search models" />
+      <CommandInput placeholder={$t("h.model.search")} />
       <CommandList>
-        <CommandEmpty>No models match.</CommandEmpty>
+        <CommandEmpty>{$t("h.model.empty")}</CommandEmpty>
         {#each providers as group (group.provider)}
           <CommandGroup>
             {#if multi}

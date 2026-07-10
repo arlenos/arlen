@@ -3,6 +3,7 @@
   /// conversation exported as JSON. A clickable drop zone picks or accepts a file; the
   /// store validates + adds it as a new conversation. A bad file shows the error inside
   /// the dialog, so nothing leaks into the sidebar. Mounted once in the layout.
+  import { t } from "$lib/i18n/messages";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
   import Dialog from "@arlen/ui-kit/components/ui/dialog/dialog.svelte";
@@ -23,7 +24,7 @@
     if (!file) return;
     const id = importConversation(await file.text());
     if (id === null) {
-      error = "That file is not a chat export.";
+      error = $t("h.import.notExport");
       return;
     }
     closeImportChat();
@@ -42,7 +43,7 @@
   }
 </script>
 
-<Dialog open={$importOpen} onClose={closeImportChat} size="sm" ariaLabel="Import chat">
+<Dialog open={$importOpen} onClose={closeImportChat} size="sm" ariaLabel={$t("h.import.title")}>
   <div class="imp">
     <header class="imp-head">
       <h2 class="imp-title">Import chat</h2>
@@ -64,7 +65,7 @@
       ondrop={onDrop}
     >
       <Upload size={20} strokeWidth={1.75} />
-      <span class="drop-label">Drop a chat file here, or choose one</span>
+      <span class="drop-label">{$t("h.import.drop")}</span>
       <span class="drop-hint">A .json file exported from a chat</span>
     </button>
 

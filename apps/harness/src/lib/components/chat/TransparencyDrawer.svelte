@@ -8,6 +8,7 @@
   /// compact slice here with "see everything" linking to the full /agent list.
   /// Loads its feeds when it opens; each read settles independently so one
   /// outage never blanks the rest.
+  import { t } from "$lib/i18n/messages";
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { goto } from "$app/navigation";
@@ -123,32 +124,32 @@
 
 {#if $transparencyOpen}
   <div class="scrim" onclick={close} role="presentation"></div>
-  <aside class="drawer" aria-label="Transparency">
+  <aside class="drawer" aria-label={$t("h.transparency.aria")}>
     <header class="head">
-      <span class="head-title">Transparency</span>
-      <button class="x" aria-label="Close" onclick={close}>
+      <span class="head-title">{$t("h.transparency.title")}</span>
+      <button class="x" aria-label={$t("h.transparency.close")} onclick={close}>
         <X size={15} strokeWidth={2} />
       </button>
     </header>
 
     <div class="body">
       <section class="sec">
-        <div class="sec-head">What it can reach</div>
+        <div class="sec-head">{$t("h.transparency.reach")}</div>
         <AccessSection {grants} {capability} loaded={capLoaded && grantsLoaded} />
       </section>
 
       <section class="sec">
-        <div class="sec-head">What it has read</div>
+        <div class="sec-head">{$t("h.transparency.read")}</div>
         <ReadsSection {reads} entries={readEntries} loaded={readsLoaded} {capability} />
       </section>
 
       <section class="sec">
-        <div class="sec-head">What it is holding now</div>
+        <div class="sec-head">{$t("h.transparency.holding")}</div>
         <MemorySection {workingSet} {capability} loaded={memoryLoaded} />
       </section>
 
       <section class="sec">
-        <div class="sec-head">What it did</div>
+        <div class="sec-head">{$t("h.transparency.did")}</div>
         <ActivitySection
           {activity}
           entries={agentEntries}
@@ -159,7 +160,7 @@
       </section>
 
       <section class="sec">
-        <div class="sec-head">What it costs</div>
+        <div class="sec-head">{$t("h.transparency.costs")}</div>
         <CostSection {capability} {usage} loaded={capLoaded && usageLoaded} />
       </section>
     </div>

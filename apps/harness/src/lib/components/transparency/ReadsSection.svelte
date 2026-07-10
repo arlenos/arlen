@@ -6,6 +6,7 @@
   /// not actions, so there is no undo. Honest states throughout: never a
   /// false "nothing read" - an unreadable feed says so. Rendering only; the
   /// page owns the read.
+  import { t } from "$lib/i18n/messages";
   import TimelineRow from "$lib/components/agent/TimelineRow.svelte";
   import { categorize, entrySentence } from "$lib/display";
   import { relativeTime } from "$lib/time";
@@ -33,17 +34,17 @@
 </script>
 
 {#if off}
-  <SectionState tag="AI is off" tone="off" message="The AI is off, so it is reading nothing." />
+  <SectionState tag="AI is off" tone="off" message={$t("h.reads.off")} />
 {:else if !loaded}
-  <SectionState message="Loading recent reads." />
+  <SectionState message={$t("h.reads.loading")} />
 {:else if reads === null || !reads.available}
   <SectionState
-    tag="Can't read this"
+    tag={$t("h.reads.cantTitle")}
     tone="info"
-    message="Arlen can't read the record of what the assistant has opened right now."
+    message={$t("h.reads.cantRead")}
   />
 {:else if entries.length === 0}
-  <SectionState message="It has not read any of your files yet." />
+  <SectionState message={$t("h.reads.none")} />
 {:else}
   <ul class="list">
     {#each entries as entry (entry.entryRef)}

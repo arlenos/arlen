@@ -5,6 +5,7 @@
   /// grouped by principal with their reachable entity types. Read-only:
   /// revoking lives in Settings, never here. Rendering only; the page
   /// owns the reads.
+  import { t } from "$lib/i18n/messages";
   import { statusSentence, statusTooltip } from "$lib/display";
   import type { Capability } from "$lib/capability";
   import { principalLabel, reachLabel, type GrantView } from "$lib/transparency";
@@ -45,11 +46,11 @@
   {/if}
 
   {#if !loaded}
-    <SectionState message="Checking what the assistant can reach." />
+    <SectionState message={$t("h.access.checking")} />
   {:else if grants === null}
-    <SectionState message="Can't read the access list right now." />
+    <SectionState message={$t("h.access.cantRead")} />
   {:else if principals.length === 0}
-    <SectionState message="No access is granted to the assistant or the background agent right now." />
+    <SectionState message={$t("h.access.none")} />
   {:else}
     {#if off}
       <p class="inactive">While the AI is off, none of this access is active.</p>

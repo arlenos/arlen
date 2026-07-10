@@ -2,6 +2,7 @@
   /// System Explanation Mode (Foundation §5.8): an on-demand plain-language
   /// summary of what the computer is doing now. Rendering only; the page
   /// owns the explain call.
+  import { t } from "$lib/i18n/messages";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { renderMarkdown } from "$lib/markdown";
   import { externalLinks } from "$lib/externalLinks";
@@ -24,15 +25,15 @@
 
 <div class="explain">
   {#if aiOff}
-    <p class="hint">The AI is off, so it cannot explain anything.</p>
+    <p class="hint">{$t("h.explain.off")}</p>
   {:else}
-    <p class="hint">Ask for a plain summary of what this computer is doing right now.</p>
+    <p class="hint">{$t("h.explain.prompt")}</p>
   {/if}
   <Button variant="default" size="sm" disabled={busy || aiOff} onclick={onexplain}>
-    {busy ? "Working" : "Explain"}
+    {busy ? $t("h.explain.working") : $t("h.explain.button")}
   </Button>
   {#if error}
-    <p class="error">Could not build an explanation. Try again.</p>
+    <p class="error">{$t("h.explain.failed")}</p>
   {:else if explanation}
     <!-- Model prose (markdown); rendered the same sanitized way as chat
          answers. -->

@@ -6,6 +6,7 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import type { Capability } from "$lib/capability";
   import { statusSentence, statusTooltip } from "$lib/display";
+  import { t } from "$lib/i18n/messages";
 
   let {
     capability,
@@ -28,8 +29,8 @@
         {statusSentence(capability)}
       </p>
     {:else}
-      <p class="line">Can't reach the assistant right now.</p>
-      <Button variant="outline" size="sm" onclick={onretry}>Try again</Button>
+      <p class="line">{$t("h.capability.unreachable")}</p>
+      <Button variant="outline" size="sm" onclick={onretry}>{$t("h.tryAgain")}</Button>
     {/if}
   </div>
 {/if}

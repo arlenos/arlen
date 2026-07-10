@@ -11,6 +11,7 @@
   /// Approve button IS the act (no separate "are you sure?"). After approval the
   /// same card stays as a `done` receipt: the diff collapses and the actions
   /// become a per-change Undo (the executor compensate).
+  import { t } from "$lib/i18n/messages";
   import { TriangleAlert, ChevronDown, CircleCheck, Undo2, Sparkles } from "@lucide/svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
@@ -55,7 +56,7 @@
   const totals = $derived(diffTotals(files));
 </script>
 
-<div class="gate" class:done role="group" aria-label="Action needs confirmation">
+<div class="gate" class:done role="group" aria-label={$t("h.gate.aria")}>
   <div class="gate-head">
     {#if done}
       <CircleCheck size={15} strokeWidth={2} />
@@ -96,7 +97,7 @@
         Undo
       </Button>
     {:else}
-      <Button variant="default" size="sm" onclick={() => onapprove?.()}>Approve</Button>
+      <Button variant="default" size="sm" onclick={() => onapprove?.()}>{$t("h.gate.approve")}</Button>
       {#if onalways}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger>
@@ -117,7 +118,7 @@
           </DropdownMenu.Content>
         </DropdownMenu.Root>
       {/if}
-      <Button variant="ghost" size="sm" onclick={() => ondeny?.()}>Deny</Button>
+      <Button variant="ghost" size="sm" onclick={() => ondeny?.()}>{$t("h.gate.deny")}</Button>
     {/if}
   </div>
 </div>

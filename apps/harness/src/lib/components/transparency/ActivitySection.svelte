@@ -4,6 +4,7 @@
   /// Activity surface (/agent); this links there rather than duplicating
   /// it. Reuses the built TimelineRow so the rows read exactly like the
   /// full timeline. Rendering only; the page owns the reads and the undo.
+  import { t } from "$lib/i18n/messages";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { ArrowRight } from "@lucide/svelte";
   import TimelineRow from "$lib/components/agent/TimelineRow.svelte";
@@ -35,11 +36,11 @@
 </script>
 
 {#if !loaded}
-  <SectionState message="Loading recent activity." />
+  <SectionState message={$t("h.activity.loading")} />
 {:else if activity === null || !activity.available}
-  <SectionState message="Can't read recent activity right now." />
+  <SectionState message={$t("h.activity.cantRead")} />
 {:else if entries.length === 0}
-  <SectionState message="It has not done anything for you yet." />
+  <SectionState message={$t("h.activity.none")} />
 {:else}
   <ul class="list">
     {#each entries as entry (entry.entryRef)}

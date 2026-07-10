@@ -3,6 +3,7 @@
   /// messages while the reader is at the bottom, and offers a jump-back
   /// control after scrolling up. Hosts the empty state when there is
   /// nothing to show.
+  import { t } from "$lib/i18n/messages";
   import { tick } from "svelte";
   import { ChevronDown, ChevronUp, X } from "@lucide/svelte";
   import ChatMessage from "./ChatMessage.svelte";
@@ -125,20 +126,20 @@
         bind:this={findInput}
         bind:value={query}
         class="find-input"
-        placeholder="Find in chat"
-        aria-label="Find in chat"
+        placeholder={$t("h.thread.find")}
+        aria-label={$t("h.thread.find")}
         onkeydown={onFindKeydown}
       />
       <span class="find-count">
         {matches.length ? `${matchIndex + 1} of ${matches.length}` : query ? "No matches" : ""}
       </span>
-      <button class="find-btn" type="button" aria-label="Previous match" disabled={matches.length === 0} onclick={() => stepMatch(-1)}>
+      <button class="find-btn" type="button" aria-label={$t("h.thread.prevMatch")} disabled={matches.length === 0} onclick={() => stepMatch(-1)}>
         <ChevronUp size={15} strokeWidth={2} />
       </button>
-      <button class="find-btn" type="button" aria-label="Next match" disabled={matches.length === 0} onclick={() => stepMatch(1)}>
+      <button class="find-btn" type="button" aria-label={$t("h.thread.nextMatch")} disabled={matches.length === 0} onclick={() => stepMatch(1)}>
         <ChevronDown size={15} strokeWidth={2} />
       </button>
-      <button class="find-btn" type="button" aria-label="Close find" onclick={closeFind}>
+      <button class="find-btn" type="button" aria-label={$t("h.thread.closeFind")} onclick={closeFind}>
         <X size={15} strokeWidth={2} />
       </button>
     </div>
@@ -155,7 +156,7 @@
         role="log"
         aria-live="polite"
         aria-relevant="additions"
-        aria-label="Conversation"
+        aria-label={$t("h.thread.conversation")}
       >
         {#each $messages as message (message.id)}
           <ChatMessage {message} {aiReady} highlighted={message.id === currentId} />
@@ -165,7 +166,7 @@
   </div>
 
   {#if !atBottom && $messages.length > 0}
-    <button type="button" class="jump" aria-label="Jump to latest" onclick={() => scrollToBottom()}>
+    <button type="button" class="jump" aria-label={$t("h.thread.jumpLatest")} onclick={() => scrollToBottom()}>
       <ChevronDown size={16} strokeWidth={2} />
     </button>
   {/if}

@@ -6,6 +6,7 @@
   /// A contextual right pane (the artifact panel) mounts beside the column
   /// once its data path exists.
   import { onMount } from "svelte";
+  import { t } from "$lib/i18n/messages";
   import ChatThread from "$lib/components/chat/ChatThread.svelte";
   import Composer from "$lib/components/chat/Composer.svelte";
   import CapabilityBar from "$lib/components/chat/CapabilityBar.svelte";
@@ -40,8 +41,8 @@
     aiOff
       ? "AI is off"
       : unreachable
-        ? "Not available right now"
-        : "Ask about your files, projects, or activity",
+        ? $t("h.composer.placeholder.off")
+        : $t("h.composer.placeholder.ready"),
   );
 
   let composer = $state<Composer | null>(null);

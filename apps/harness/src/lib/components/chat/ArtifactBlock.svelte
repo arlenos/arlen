@@ -4,6 +4,7 @@
   /// desktop convention), not visible buttons: Copy works now; Save to file and
   /// Pin are coder Tauri/KG seams and render disabled (greyed) until wired, the
   /// desktop convention for an unavailable action rather than a fake one.
+  import { t } from "$lib/i18n/messages";
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu";
   import ArtifactView from "$lib/components/artifact/ArtifactView.svelte";
   import { kindLabel, type Artifact } from "$lib/components/artifact/types";
@@ -33,9 +34,9 @@
     </figure>
   </ContextMenu.Trigger>
   <ContextMenu.Content class="w-52">
-    <ContextMenu.Item onclick={copy}>Copy</ContextMenu.Item>
-    <ContextMenu.Item onclick={onsave} disabled={!onsave}>Save to file&hellip;</ContextMenu.Item>
-    <ContextMenu.Item onclick={onpin} disabled={!onpin}>Pin</ContextMenu.Item>
+    <ContextMenu.Item onclick={copy}>{$t("h.artifact.copy")}</ContextMenu.Item>
+    <ContextMenu.Item onclick={onsave} disabled={!onsave}>{$t("h.artifact.save")}</ContextMenu.Item>
+    <ContextMenu.Item onclick={onpin} disabled={!onpin}>{$t("h.artifact.pin")}</ContextMenu.Item>
   </ContextMenu.Content>
 </ContextMenu.Root>
 

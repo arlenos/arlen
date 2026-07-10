@@ -4,6 +4,7 @@
   /// chevron). The surface line is one human sentence; everything raw
   /// (tool name, component, duration, reference) lives behind the chevron,
   /// honest and unabridged. Two-layer transparency.
+  import { t } from "$lib/i18n/messages";
   import { ChevronDown, Undo2 } from "@lucide/svelte";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import type { Tone } from "$lib/ledger";
@@ -74,7 +75,7 @@
     {/if}
     {#if open && details.length > 0}
       <div class="raw">
-        <p class="raw-title">Technical record</p>
+        <p class="raw-title">{$t("h.timeline.technical")}</p>
         <dl class="raw-grid">
           {#each details as d (d.key)}
             <dt>{d.key}</dt>
@@ -84,7 +85,7 @@
       </div>
     {/if}
     {#if undoState === "failed"}
-      <p class="undo-note">Could not undo this change.</p>
+      <p class="undo-note">{$t("h.timeline.undoFailed")}</p>
     {/if}
   </div>
   <div class="end">
@@ -96,14 +97,14 @@
         onclick={doUndo}
       >
         <Undo2 size={13} strokeWidth={2} />
-        {undoState === "working" ? "Undoing" : "Undo"}
+        {undoState === "working" ? $t("h.timeline.undoing") : $t("h.timeline.undo")}
       </button>
     {/if}
     {#if time !== undefined}
       <time class="time">{time}</time>
     {/if}
     {#if details.length > 0}
-      <IconAction label={open ? "Hide details" : "Show details"} onclick={() => (open = !open)}>
+      <IconAction label={open ? $t("h.timeline.hide") : $t("h.timeline.show")} onclick={() => (open = !open)}>
         <span class="chevron" class:open><ChevronDown size={14} strokeWidth={2} /></span>
       </IconAction>
     {/if}

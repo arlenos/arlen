@@ -8,6 +8,7 @@
   /// The master itself is not flipped here - enabling the agent to act on your
   /// real data is a deliberate Settings action, not a casual chat toggle.
   /// Svelte-5 IPC caveat: the loaded state lives in a writable store.
+  import { t } from "$lib/i18n/messages";
   import { onMount } from "svelte";
   import { writable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
@@ -59,25 +60,25 @@
   <DropdownMenu.Root>
     <DropdownMenu.Trigger>
       {#snippet child({ props })}
-        <button type="button" class="dial" aria-label="How the assistant acts" {...props}>
+        <button type="button" class="dial" aria-label={$t("h.autonomy.aria")} {...props}>
           <span class="glyph" aria-hidden="true">{acting ? "◐" : "○"}</span>
-          <span class="label">{acting ? "Acts with a preview" : "Suggests only"}</span>
+          <span class="label">{acting ? $t("h.autonomy.acts") : $t("h.autonomy.suggests")}</span>
           <ChevronDown size={12} strokeWidth={2} class="dial-chev" />
         </button>
       {/snippet}
     </DropdownMenu.Trigger>
     <DropdownMenu.Content side="top" align="end" class="dial-menu">
-      <DropdownMenu.Label>How the assistant acts</DropdownMenu.Label>
+      <DropdownMenu.Label>{$t("h.autonomy.label")}</DropdownMenu.Label>
       <DropdownMenu.RadioGroup value={dialValue} onValueChange={setMode}>
         <DropdownMenu.RadioItem value="suggest">
-          Suggests only, I run each action
+          {$t("h.autonomy.suggestFull")}
         </DropdownMenu.RadioItem>
         <DropdownMenu.RadioItem value="supervised">
-          Acts, after a preview I can cancel
+          {$t("h.autonomy.actsFull")}
         </DropdownMenu.RadioItem>
       </DropdownMenu.RadioGroup>
       {#if $state.action_mode === "supervised" && !$state.executor_live}
-        <p class="note">It only suggests until you let it act, in Settings.</p>
+        <p class="note">{$t("h.autonomy.hint")}</p>
       {/if}
       <DropdownMenu.Separator />
       <DropdownMenu.Item onclick={() => openTransparency()}>

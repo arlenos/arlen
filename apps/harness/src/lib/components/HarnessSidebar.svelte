@@ -5,6 +5,7 @@
   /// it narrows, and per-row pin / rename / copy / delete behind a quiet
   /// hover menu. The agent's review feed is reachable through one quiet
   /// Activity entry; it is a secondary view, never a peer mode.
+  import { t } from "$lib/i18n/messages";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
   import {
@@ -124,9 +125,9 @@
     <SidebarGroup>
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton id="harness-new-chat" title="New chat (Ctrl+N)" onclick={startNew}>
+          <SidebarMenuButton id="harness-new-chat" title={$t("h.sidebar.newChatTitle")} onclick={startNew}>
             <Plus strokeWidth={2} />
-            <span>New chat</span>
+            <span>{$t("h.sidebar.newChat")}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
@@ -141,17 +142,17 @@
             id="harness-session-search"
             class="pl-7"
             bind:value={query}
-            placeholder="Search chats"
-            aria-label="Search chats"
+            placeholder={$t("h.sidebar.search")}
+            aria-label={$t("h.sidebar.search")}
           />
         </div>
       {/if}
       {#if $orderedSessions.length === 0}
         <p class="px-2 py-2 text-xs leading-relaxed text-sidebar-foreground/55">
-          Your chats will show up here.
+          {$t("h.sidebar.emptyChats")}
         </p>
       {:else if filtered.length === 0}
-        <p class="px-2 py-2 text-xs text-sidebar-foreground/55">No chats match.</p>
+        <p class="px-2 py-2 text-xs text-sidebar-foreground/55">{$t("h.sidebar.noMatch")}</p>
       {/if}
     </SidebarGroup>
 
@@ -173,26 +174,26 @@
   <SidebarFooter>
     <SidebarMenu>
       <SidebarMenuItem>
-        <SidebarMenuButton id="harness-share-context" title="Share a slice of your context" onclick={openMint}>
+        <SidebarMenuButton id="harness-share-context" title={$t("h.sidebar.shareContextTitle")} onclick={openMint}>
           <Share2 strokeWidth={2} />
-          <span>Share context</span>
+          <span>{$t("h.sidebar.shareContext")}</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
       <SidebarMenuItem>
-        <SidebarMenuButton id="harness-import-chat" title="Import a chat from a JSON file" onclick={openImportChat}>
+        <SidebarMenuButton id="harness-import-chat" title={$t("h.sidebar.importChatTitle")} onclick={openImportChat}>
           <Upload strokeWidth={2} />
-          <span>Import chat</span>
+          <span>{$t("h.sidebar.importChat")}</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
       <SidebarMenuItem>
         <SidebarMenuButton
           id="harness-activity"
-          title="The agent's activity record"
+          title={$t("h.sidebar.activityTitle")}
           isActive={!onChat}
           onclick={() => goto("/agent")}
         >
           <Activity strokeWidth={2} />
-          <span>Activity</span>
+          <span>{$t("h.sidebar.activity")}</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>
@@ -208,7 +209,7 @@
     {#if editingId === s.id}
       <Input
         bind:value={draft}
-        aria-label="Chat name"
+        aria-label={$t("h.sidebar.chatName")}
         onblur={commitRename}
         onkeydown={(e: KeyboardEvent) => {
           if (e.key === "Enter") commitRename();
@@ -229,13 +230,13 @@
       >
         <span class="truncate">{s.title}</span>
         {#if s.pinned}
-          <Pin strokeWidth={1.75} class="ml-auto opacity-50" aria-label="Pinned" />
+          <Pin strokeWidth={1.75} class="ml-auto opacity-50" aria-label={$t("h.sidebar.pinned")} />
         {/if}
       </SidebarMenuButton>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger>
           {#snippet child({ props })}
-            <SidebarMenuAction showOnHover aria-label="Chat actions" {...props}>
+            <SidebarMenuAction showOnHover aria-label={$t("h.sidebar.chatActions")} {...props}>
               <MoreHorizontal strokeWidth={2} />
             </SidebarMenuAction>
           {/snippet}
@@ -244,28 +245,28 @@
           <DropdownMenu.Item onclick={() => togglePinSession(s.id)}>
             {#if s.pinned}
               <PinOff />
-              Unpin
+              {$t("h.sidebar.unpin")}
             {:else}
               <Pin />
-              Pin
+              {$t("h.sidebar.pin")}
             {/if}
           </DropdownMenu.Item>
           <DropdownMenu.Item onclick={() => beginRename(s.id, s.title)}>
             <Pencil />
-            Rename
+            {$t("h.sidebar.rename")}
           </DropdownMenu.Item>
           <DropdownMenu.Item onclick={() => copySession(s.id)}>
             <Copy />
-            Copy chat
+            {$t("h.sidebar.copyChat")}
           </DropdownMenu.Item>
           <DropdownMenu.Item onclick={() => exportSession(s.id)}>
             <Download />
-            Export chat
+            {$t("h.sidebar.exportChat")}
           </DropdownMenu.Item>
           <DropdownMenu.Separator />
           <DropdownMenu.Item variant="destructive" onclick={() => (confirmDeleteId = s.id)}>
             <Trash2 />
-            Delete
+            {$t("h.sidebar.delete")}
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Root>
@@ -275,9 +276,9 @@
 
 <ConfirmDialog
   open={confirmDeleteId !== null}
-  title="Delete this chat?"
+  title={$t("h.sidebar.deleteTitle")}
   message="This removes the chat and its messages. You cannot undo this."
-  confirmLabel="Delete"
+  confirmLabel={$t("h.sidebar.delete")}
   variant="destructive"
   onConfirm={() => {
     if (confirmDeleteId !== null) deleteSession(confirmDeleteId);
