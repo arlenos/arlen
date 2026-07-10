@@ -1,0 +1,8 @@
+# Starting permission profile for Papers (the GNOME document/PDF viewer). Opens
+# documents from Documents; no network and no Knowledge Graph access.
+[info]
+app_id = "papers"
+tier = "third-party"
+
+[filesystem]
+documents = true
