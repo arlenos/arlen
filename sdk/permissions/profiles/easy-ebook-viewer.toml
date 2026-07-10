@@ -1,0 +1,8 @@
+# Starting permission profile for an e-book reader. Reads books under Documents;
+# no network and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "easy-ebook-viewer"
+tier = "third-party"
+
+[filesystem]
+documents = true
