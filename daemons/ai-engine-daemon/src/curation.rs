@@ -112,10 +112,18 @@ pub async fn run_auto_tag<R: ProjectReader>(
         AutoTag::Tag { file, project } => {
             let execute = Execute {
                 tool_name: "graph.write".to_string(),
+                // Qualified scope names ("system.File"/"system.Project"): the
+                // knowledge daemon's relation-scope check (`can_create_relation`)
+                // exact-matches these against the caller's granted relation scope,
+                // which the ai-agent permission profile declares as
+                // `{ from = "system.File", to = "system.Project", type = "FILE_PART_OF" }`.
+                // Sending the unqualified table names refused the write as an
+                // ungranted relation (the daemon maps the "system." scope prefix to
+                // the graph table on persist, as the green write+undo IT proves).
                 tool_input: serde_json::json!({
-                    "from_type": "File",
+                    "from_type": "system.File",
                     "from_id": file,
-                    "to_type": "Project",
+                    "to_type": "system.Project",
                     "to_id": project,
                     "relation_type": "FILE_PART_OF",
                 }),
@@ -260,9 +268,11 @@ mod tests {
         // the project.
         let input = writer.seen.lock().unwrap().clone().unwrap();
         assert_eq!(input["relation_type"], "FILE_PART_OF");
-        assert_eq!(input["from_type"], "File");
+        // Qualified scope names the knowledge daemon's relation-scope check matches
+        // against the ai-agent profile grant (`system.File`/`system.Project`).
+        assert_eq!(input["from_type"], "system.File");
         assert_eq!(input["from_id"], "/home/a/foo/x.rs");
-        assert_eq!(input["to_type"], "Project");
+        assert_eq!(input["to_type"], "system.Project");
         assert_eq!(input["to_id"], "inner");
     }
 
