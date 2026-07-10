@@ -1,0 +1,9 @@
+# Starting permission profile for a network client (remote desktop or VNC viewer).
+# Connects to a remote display over the network by function, so it gets network;
+# no local file access and no Knowledge Graph by default.
+[info]
+app_id = "gvncviewer"
+tier = "third-party"
+
+[network]
+allow_all = true

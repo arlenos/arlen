@@ -1,0 +1,7 @@
+# Starting permission profile for an oscilloscope/instrument utility. Talks to
+# measurement hardware and keeps its settings in its own config dir, so it needs
+# no document folders, no network and no Knowledge Graph by default (exporting a
+# capture is granted explicitly). Observe-mode refines it.
+[info]
+app_id = "openhantek"
+tier = "third-party"

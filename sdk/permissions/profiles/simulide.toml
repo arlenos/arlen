@@ -1,0 +1,8 @@
+# Starting permission profile for a 3D-printing slicer or EDA/CAD tool. Works with
+# Documents (circuits, projects); no network and no Knowledge Graph by default.
+[info]
+app_id = "simulide"
+tier = "third-party"
+
+[filesystem]
+documents = true
