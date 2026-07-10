@@ -1,0 +1,9 @@
+# Starting permission profile for a wallpaper setter. Browses images under Pictures
+# to set the desktop background; no network and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "azote"
+tier = "third-party"
+
+[filesystem]
+pictures = true
