@@ -1,0 +1,7 @@
+# Starting permission profile for an SDR receiver. Talks to SDR hardware and keeps
+# its settings in its own config dir, so it needs no document folders, no network
+# and no Knowledge Graph by default (recording to a folder needs an explicit
+# grant). Observe-mode refines it.
+[info]
+app_id = "sdrangel"
+tier = "third-party"
