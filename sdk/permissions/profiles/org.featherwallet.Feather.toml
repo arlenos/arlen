@@ -1,0 +1,9 @@
+# Starting permission profile for a network client (crypto wallet, remote desktop,
+# scanner or web app). Needs network; no local file access and no Knowledge Graph
+# by default (a wallet's data lives in its own dir).
+[info]
+app_id = "org.featherwallet.Feather"
+tier = "third-party"
+
+[network]
+allow_all = true
