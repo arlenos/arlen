@@ -1,0 +1,9 @@
+# Starting permission profile for an app store. Needs network to browse and fetch
+# applications; the install itself goes through the system installer, so it needs
+# no user file access and no Knowledge Graph by default.
+[info]
+app_id = "com.system76.CosmicStore"
+tier = "third-party"
+
+[network]
+allow_all = true

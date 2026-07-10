@@ -1,0 +1,8 @@
+# Starting permission profile for a camera app. Saves captured photos to Pictures;
+# no network and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "megapixels"
+tier = "third-party"
+
+[filesystem]
+pictures = true
