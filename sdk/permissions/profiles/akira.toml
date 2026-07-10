@@ -1,0 +1,8 @@
+# Starting permission profile for a UI/UX design app. Edits design files under
+# Documents; no network and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "akira"
+tier = "third-party"
+
+[filesystem]
+documents = true
