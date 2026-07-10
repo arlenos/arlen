@@ -1,0 +1,6 @@
+# Starting permission profile for a system/config/utility app. No file access,
+# no network and no Knowledge Graph by default; it speaks text through the audio
+# system (saving audio to a file is granted explicitly).
+[info]
+app_id = "gespeaker"
+tier = "third-party"
