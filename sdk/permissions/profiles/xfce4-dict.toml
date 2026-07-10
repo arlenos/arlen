@@ -1,0 +1,9 @@
+# Starting permission profile for a network client (dictionary or web app). Looks
+# up words on online dictionary servers, so it gets network; no local file access
+# and no Knowledge Graph by default.
+[info]
+app_id = "xfce4-dict"
+tier = "third-party"
+
+[network]
+allow_all = true
