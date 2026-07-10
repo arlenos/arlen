@@ -1,0 +1,6 @@
+# Starting permission profile for a system/config/utility app. No file access,
+# no network and no Knowledge Graph by default; it runs keyboard/automation
+# scripts stored in its own config dir (broader access is granted explicitly).
+[info]
+app_id = "autokey-gtk"
+tier = "third-party"
