@@ -1,0 +1,8 @@
+# Starting permission profile for Eqonomize (personal accounting). Keeps its books
+# under Documents; no network and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "eqonomize"
+tier = "third-party"
+
+[filesystem]
+documents = true

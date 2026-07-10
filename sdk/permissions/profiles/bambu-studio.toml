@@ -1,0 +1,12 @@
+# Starting permission profile for Bambu Studio (3D-printer slicer for Bambu Lab
+# printers). Slices model files under Documents, and its cloud/LAN printer control
+# needs network; no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "bambu-studio"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true

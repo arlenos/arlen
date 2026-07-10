@@ -1,0 +1,10 @@
+# Starting permission profile for XBoard (chess board GUI for engines). Opens and
+# saves games (PGN) under Documents; no network by default (playing on an internet
+# chess server needs an explicit grant) and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "xboard"
+tier = "third-party"
+
+[filesystem]
+documents = true

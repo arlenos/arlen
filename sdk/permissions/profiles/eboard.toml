@@ -1,0 +1,12 @@
+# Starting permission profile for eboard (internet chess-server client). Connecting
+# to a chess server is core to it, so network is granted; it also opens local games
+# (PGN) under Documents. No Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "eboard"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true

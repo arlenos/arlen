@@ -1,0 +1,9 @@
+# Starting permission profile for Scid (chess database and analysis). Reads and
+# writes game databases (PGN) under Documents; no network by default and no
+# Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "scid"
+tier = "third-party"
+
+[filesystem]
+documents = true
