@@ -1,0 +1,9 @@
+# Starting permission profile for a network client (remote desktop or screen
+# sharing). Shares the desktop over the network by function, so it gets network;
+# no local file access and no Knowledge Graph by default.
+[info]
+app_id = "org.kde.krfb"
+tier = "third-party"
+
+[network]
+allow_all = true
