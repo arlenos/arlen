@@ -1,0 +1,9 @@
+# Starting permission profile for a mind-map/outline/planning tool. Reads and
+# writes its documents under Documents; no network by default (cloud sync needs an
+# explicit grant) and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "taskjuggler"
+tier = "third-party"
+
+[filesystem]
+documents = true
