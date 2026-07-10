@@ -7,6 +7,7 @@
   /// the polling, the filter state, and the undo call; rendering lives in
   /// `$lib/components/agent`.
   import { onMount } from "svelte";
+  import { t } from "$lib/i18n/messages";
   import { invoke } from "@tauri-apps/api/core";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
@@ -51,7 +52,7 @@
   let outcome = $state("all");
   let timeWindow = $state("all");
 
-  // How much of the record is loaded; "Show older entries" widens the
+  // How much of the record is loaded; $t("h.agent.showOlder") widens the
   // window through the same read command.
   const PAGE = 100;
   let loadLimit = $state(PAGE);
@@ -194,11 +195,11 @@
 </script>
 
 <Page
-  title="Activity"
-  description="Everything the assistant did for you on this device, newest first."
+  title={$t("h.agent.title")}
+  description={$t("h.agent.sub")}
 >
   <SectionGrid>
-    <Group label="Warnings" class="span-full">
+    <Group label={$t("h.agent.warnings")} class="span-full">
       <WarningsPanel {notices} unreadable={noticesUnreadable} />
     </Group>
 
@@ -218,7 +219,7 @@
       />
     </Group>
 
-    <Group label="What's happening now" class="span-full">
+    <Group label={$t("h.agent.nowTab")} class="span-full">
       <ExplainPanel
         {explanation}
         error={explainError}

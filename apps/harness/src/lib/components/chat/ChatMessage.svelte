@@ -38,6 +38,7 @@
   } from "$lib/stores/conversation";
   import { planRegenerate } from "$lib/regenerate";
   import { messages } from "$lib/stores/conversation";
+  import { t } from "$lib/i18n/messages";
 
   let {
     message,
@@ -105,11 +106,11 @@
 </script>
 
 <div class="turn" class:highlighted data-role={message.role} data-mid={message.id}>
-  <p class="role">{message.role === "user" ? "You" : "Assistant"}</p>
+  <p class="role">{message.role === "user" ? $t("h.msg.you") : $t("h.msg.assistant")}</p>
 
   {#if message.pending}
     <div class="block tinted">
-      <span class="dots" aria-label="Thinking">
+      <span class="dots" aria-label={$t("h.msg.thinking")}>
         <span></span><span></span><span></span>
       </span>
     </div>
@@ -117,11 +118,11 @@
     <div class="block error-block">
       <AlertCircle size={14} strokeWidth={2} />
       <span class="error-text">
-        The assistant could not answer. <code>{message.text}</code>
+        {$t("h.msg.error")} <code>{message.text}</code>
       </span>
       {#if canRegenerate}
         <Button variant="outline" size="sm" class="self-center" disabled={$busy} onclick={doRegenerate}>
-          Try again
+          {$t("h.msg.regenerate")}
         </Button>
       {/if}
     </div>
@@ -133,7 +134,7 @@
         {/each}
       </div>
     {:else if message.traceUnavailable}
-      <p class="trace-note">No details were recorded for this answer.</p>
+      <p class="trace-note">{$t("h.msg.noTrace")}</p>
     {/if}
 
     {#if editing}
@@ -142,7 +143,7 @@
           bind:value={editDraft}
           rows={1}
           maxRows={8}
-          aria-label="Edit your message"
+          aria-label={$t("h.msg.editAria")}
           onkeydown={onEditKeydown}
           {@attach (el: HTMLTextAreaElement) => {
             el.focus();
@@ -150,8 +151,8 @@
           }}
         />
         <div class="edit-actions">
-          <Button variant="ghost" size="sm" onclick={() => (editing = false)}>Cancel</Button>
-          <Button variant="default" size="sm" onclick={commitEdit}>Send again</Button>
+          <Button variant="ghost" size="sm" onclick={() => (editing = false)}>{$t("h.msg.cancel")}</Button>
+          <Button variant="default" size="sm" onclick={commitEdit}>{$t("h.msg.sendAgain")}</Button>
         </div>
       </div>
     {:else if message.text}
@@ -196,7 +197,7 @@
   {#if !message.pending && !editing}
     <div class="actions">
       {#if message.text}
-        <IconAction label="Copy" onclick={copyText}>
+        <IconAction label={$t("h.msg.copy")} onclick={copyText}>
           {#if copied}<Check size={13} strokeWidth={2} />{:else}<Copy size={13} strokeWidth={2} />{/if}
         </IconAction>
       {/if}
@@ -208,23 +209,23 @@
         <Bookmark size={13} strokeWidth={2} fill={message.pinned ? "currentColor" : "none"} />
       </IconAction>
       {#if canEdit}
-        <IconAction label="Edit and send again" onclick={beginEdit}>
+        <IconAction label={$t("h.msg.editResend")} onclick={beginEdit}>
           <Pencil size={13} strokeWidth={2} />
         </IconAction>
       {/if}
       <IconAction
-        label="Branch into a new chat from here"
+        label={$t("h.msg.branch")}
         disabled={$busy}
         onclick={() => fork(message.id)}
       >
         <GitBranch size={13} strokeWidth={2} />
       </IconAction>
       {#if canRegenerate}
-        <IconAction label="Try again" disabled={$busy} onclick={doRegenerate}>
+        <IconAction label={$t("h.msg.regenerate")} disabled={$busy} onclick={doRegenerate}>
           <RotateCcw size={13} strokeWidth={2} />
         </IconAction>
       {/if}
-      <IconAction label="Delete this turn" disabled={$busy} onclick={() => deleteTurn(message.id)}>
+      <IconAction label={$t("h.msg.delete")} disabled={$busy} onclick={() => deleteTurn(message.id)}>
         <Trash2 size={13} strokeWidth={2} />
       </IconAction>
     </div>

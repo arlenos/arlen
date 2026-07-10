@@ -3,6 +3,7 @@
   /// right-side drawer form as the transparency drawer (summoned from the composer
   /// foot, mounted once in the layout). Lists the bookmarked turns of the active
   /// conversation; clicking one jumps the transcript to it.
+  import { t } from "$lib/i18n/messages";
   import { onMount } from "svelte";
   import { X } from "@lucide/svelte";
   import { messages } from "$lib/stores/conversation";
@@ -38,17 +39,17 @@
 
 {#if $bookmarksOpen}
   <div class="scrim" onclick={close} role="presentation"></div>
-  <aside class="drawer" aria-label="Bookmarks">
+  <aside class="drawer" aria-label={$t("h.bookmarks.aria")}>
     <header class="head">
-      <span class="head-title">Bookmarks</span>
-      <button class="x" aria-label="Close" onclick={close}>
+      <span class="head-title">{$t("h.bookmarks.title")}</span>
+      <button class="x" aria-label={$t("h.bookmarks.close")} onclick={close}>
         <X size={15} strokeWidth={2} />
       </button>
     </header>
 
     <div class="body">
       {#if pinned.length === 0}
-        <p class="empty">No bookmarks in this conversation yet.</p>
+        <p class="empty">{$t("h.bookmarks.empty")}</p>
       {:else}
         {#each pinned as m (m.id)}
           <button type="button" class="row" onclick={() => jump(m.id)}>

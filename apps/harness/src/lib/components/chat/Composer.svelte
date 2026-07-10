@@ -17,6 +17,7 @@
   import { openTransparency } from "$lib/stores/transparency";
   import { pinnedMessages } from "$lib/bookmark";
   import { openBookmarks, openFind } from "$lib/stores/chatNav";
+  import { t } from "$lib/i18n/messages";
   import ContextChips from "./ContextChips.svelte";
   import ModelPickerBar from "./ModelPickerBar.svelte";
   import AutonomyDial from "./AutonomyDial.svelte";
@@ -247,7 +248,7 @@
 
 <div class="composer-zone">
   {#if $mentionOpen}
-    <div class="mention-popover" role="listbox" aria-label="File suggestions">
+    <div class="mention-popover" role="listbox" aria-label={$t("h.composer.mentions")}>
       {#each $suggestions as s, i (s.path)}
         <button
           type="button"
@@ -280,24 +281,24 @@
       class="composer-input"
       {placeholder}
       disabled={disabled || $busy}
-      aria-label="Message"
+      aria-label={$t("h.composer.message")}
       oninput={onInput}
       onkeydown={onKeydown}
     />
     <div class="composer-foot">
       <div class="foot-left">
-        <IconAction label="Attach a file" size="control" disabled={disabled || $busy} onclick={openPicker}>
+        <IconAction label={$t("h.composer.attach")} size="control" disabled={disabled || $busy} onclick={openPicker}>
           <Paperclip size={14} strokeWidth={2} />
         </IconAction>
-        <IconAction label="Transparency: what the assistant can reach, read, and did" size="control" onclick={() => openTransparency()}>
+        <IconAction label={$t("h.composer.transparency")} size="control" onclick={() => openTransparency()}>
           <ShieldCheck size={14} strokeWidth={2} />
         </IconAction>
         {#if pinned.length > 0}
-          <IconAction label="Bookmarked messages" size="control" onclick={() => openBookmarks()}>
+          <IconAction label={$t("h.composer.bookmarks")} size="control" onclick={() => openBookmarks()}>
             <Bookmark size={14} strokeWidth={2} />
           </IconAction>
         {/if}
-        <IconAction label="Find in chat" size="control" onclick={() => openFind()}>
+        <IconAction label={$t("h.composer.find")} size="control" onclick={() => openFind()}>
           <Search size={14} strokeWidth={2} />
         </IconAction>
       </div>
@@ -308,7 +309,7 @@
         <Button
           size="icon-sm"
           variant="default"
-          aria-label="Send"
+          aria-label={$t("h.composer.send")}
           disabled={disabled || $busy || (draft.trim() === "" && $attached.length === 0)}
           onclick={submit}
         >

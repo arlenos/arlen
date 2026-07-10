@@ -4,6 +4,7 @@
   /// from the ai_working_set endpoint. Rendering the held content would
   /// itself be the Recall failure (the user's own data surfaced twice),
   /// so this is shape only by contract. Rendering only.
+  import { t } from "$lib/i18n/messages";
   import { StatGrid } from "@arlen/ui-kit/components/ui/stat-grid";
   import { StatTile } from "@arlen/ui-kit/components/ui/stat-grid";
   import type { Capability } from "$lib/capability";
@@ -36,20 +37,20 @@
   <SectionState
     tag="AI is off"
     tone="off"
-    message="The AI is off, so it is holding nothing."
+    message={$t("h.memory.off")}
   />
 {:else if !loaded}
-  <SectionState message="Checking what the assistant is holding." />
+  <SectionState message={$t("h.memory.checking")} />
 {:else if workingSet === null}
-  <SectionState message="Can't read what it is holding right now." />
+  <SectionState message={$t("h.memory.cantRead")} />
 {:else if !workingSet.available}
   <SectionState
-    tag="Not measured yet"
+    tag={$t("h.memory.notMeasuredTitle")}
     tone="info"
-    message="Looking inside the assistant's working memory is not available yet."
+    message={$t("h.memory.notMeasured")}
   />
 {:else if !workingSet.held}
-  <SectionState message="It is not holding anything right now." />
+  <SectionState message={$t("h.memory.none")} />
 {:else}
   <div class="memory">
     <div class="tiles">

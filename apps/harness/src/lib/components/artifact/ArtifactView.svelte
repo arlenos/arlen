@@ -5,6 +5,7 @@
   /// tall as its content up to a ceiling, then scrolls in place (no panel, no
   /// "show more"). Text bodies carry `data-selectable` so they can be selected +
   /// copied (the app disables selection globally). No payload grants authority.
+  import { t } from "$lib/i18n/messages";
   import { renderMarkdown } from "$lib/markdown";
   import { imageMime, type Artifact } from "./types";
   import ArtifactChart from "./ArtifactChart.svelte";
@@ -51,7 +52,7 @@
         {#if href}
           <a {href} rel="noreferrer noopener">{link.label ?? link.href}</a>
         {:else}
-          <span class="inert" title="Blocked scheme">{link.label ?? link.href}</span>
+          <span class="inert" title={$t("h.artifact.blockedScheme")}>{link.label ?? link.href}</span>
         {/if}
       </li>
     {/each}

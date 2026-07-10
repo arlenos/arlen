@@ -3,6 +3,7 @@
   /// AI itself never pushes; only these rare, important warnings surface.
   /// An unreadable warning source is shown as exactly that, never as the
   /// all-clear.
+  import { t } from "$lib/i18n/messages";
   import TimelineRow from "./TimelineRow.svelte";
   import { relativeTime } from "$lib/time";
   import type { Notice } from "$lib/ledger";
@@ -19,14 +20,14 @@
 </script>
 
 {#if unreadable}
-  <p class="empty">Warnings can't be read right now. That doesn't mean all is clear.</p>
+  <p class="empty">{$t("h.warnings.cantRead")}</p>
 {:else if !notices || notices.length === 0}
-  <p class="empty">No warnings. Nothing needs your attention.</p>
+  <p class="empty">{$t("h.warnings.none")}</p>
 {:else}
   <ul class="list">
     {#each notices as n (n.tsMicros + n.summary)}
       <TimelineRow
-        label={n.critical ? "Warning" : "Notice"}
+        label={n.critical ? $t("h.warnings.warning") : $t("h.warnings.notice")}
         tone={n.critical ? "warn" : "info"}
         subject={n.summary}
         detail={n.body ? [{ text: n.body }] : []}

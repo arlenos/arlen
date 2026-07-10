@@ -3,6 +3,7 @@
   /// default: a provider on your own machine has no per-token cost, and
   /// the surface says so plainly. A cloud provider shows the running token
   /// count from `ai_usage`. Rendering only.
+  import { t } from "$lib/i18n/messages";
   import type { Capability } from "$lib/capability";
   import { isLocalProvider, providerDisplay } from "$lib/transparency";
   import SectionState from "./SectionState.svelte";
@@ -39,24 +40,24 @@
 </script>
 
 {#if !loaded}
-  <SectionState message="Checking how this is set up." />
+  <SectionState message={$t("h.cost.checking")} />
 {:else if capability === null}
-  <SectionState message="Can't tell how this is set up right now." />
+  <SectionState message={$t("h.cost.cantRead")} />
 {:else if off}
-  <SectionState tag="AI is off" tone="off" message="The AI is off, so it is costing nothing." />
+  <SectionState tag="AI is off" tone="off" message={$t("h.cost.off")} />
 {:else if local}
   <div class="cost">
-    <p class="line">This assistant runs on your own computer.</p>
+    <p class="line">{$t("h.cost.local")}</p>
     <p class="sub">There is no usage cost{tokenLine ? `. ${tokenLine}.` : "."}</p>
   </div>
 {:else}
   <div class="cost">
-    <p class="line">This assistant uses a cloud service{providerSuffix}.</p>
+    <p class="line">{$t("h.cost.cloud")}{providerSuffix}.</p>
     {#if tokenLine}
       <p class="sub">{tokenLine}. Cloud use has a cost; check your provider for the rate.</p>
     {:else}
       <p class="sub">
-        <span class="tag">Not measured yet</span>
+        <span class="tag">{$t("h.cost.notMeasured")}</span>
         Cloud use has a cost. The running count is not available right now.
       </p>
     {/if}

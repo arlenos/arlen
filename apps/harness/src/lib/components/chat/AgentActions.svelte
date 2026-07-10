@@ -4,6 +4,7 @@
   /// composer. The autonomous agent is event-triggered, so this is not tied to a
   /// chat turn - it sits beside the input, impossible to miss. Empty -> renders
   /// nothing. Reuses the GateCard (gate when pending, receipt when done).
+  import { t } from "$lib/i18n/messages";
   import GateCard from "./GateCard.svelte";
   import {
     pendingProposals,
@@ -56,7 +57,7 @@
 </script>
 
 {#if $pendingProposals.length > 0 || recent.length > 0}
-  <div class="agent-actions" role="region" aria-label="Agent actions">
+  <div class="agent-actions" role="region" aria-label={$t("h.agentActions.aria")}>
     {#if notice}
       <p class="aa-notice" role="status">{notice}</p>
     {/if}
@@ -76,7 +77,7 @@
     {/each}
 
     {#if $completedActions.length > recent.length}
-      <a class="aa-all" href="/agent">See everything it did</a>
+      <a class="aa-all" href="/agent">{$t("h.agentActions.seeAll")}</a>
     {/if}
   </div>
 {/if}

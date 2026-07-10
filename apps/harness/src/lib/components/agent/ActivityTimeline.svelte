@@ -4,6 +4,7 @@
   /// record unreadable, empty, nothing matching, tamper warning, interrupted
   /// live updates. Rendering only; the page owns the reads and the filter
   /// state, this component owns the row mapping into user language.
+  import { t } from "$lib/i18n/messages";
   import { RefreshCw, ShieldAlert } from "@lucide/svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import PopoverSelect from "@arlen/ui-kit/components/ui/popover-select/popover-select.svelte";
@@ -52,29 +53,29 @@
   } = $props();
 
   // Explicit filter labels; "Internet" and "Blocked" do not pluralize.
-  const CATEGORY_LABELS: Record<string, string> = {
-    change: "Changes",
-    lookup: "Lookups",
-    question: "Questions",
-    internet: "Internet",
-    blocked: "Blocked",
-  };
-  const CATEGORY_OPTIONS = [
-    { value: "all", label: "All activity" },
+  const CATEGORY_LABELS = $derived<Record<string, string>>({
+    change: $t("h.filter.cat.changes"),
+    lookup: $t("h.filter.cat.lookups"),
+    question: $t("h.filter.cat.questions"),
+    internet: $t("h.filter.cat.internet"),
+    blocked: $t("h.filter.cat.blocked"),
+  });
+  const CATEGORY_OPTIONS = $derived([
+    { value: "all", label: $t("h.filter.type.all") },
     ...FILTER_CATEGORIES.map((c) => ({ value: c.key, label: CATEGORY_LABELS[c.key] ?? c.label })),
-  ];
-  const OUTCOME_OPTIONS = [
-    { value: "all", label: "All outcomes" },
-    { value: "ok", label: "Worked" },
-    { value: "denied", label: "Blocked" },
-    { value: "error", label: "Failed" },
-  ];
-  const TIME_OPTIONS = [
-    { value: "all", label: "All time" },
-    { value: "1h", label: "Last hour" },
-    { value: "24h", label: "Last 24 hours" },
-    { value: "7d", label: "Last 7 days" },
-  ];
+  ]);
+  const OUTCOME_OPTIONS = $derived([
+    { value: "all", label: $t("h.filter.outcome.all") },
+    { value: "ok", label: $t("h.filter.outcome.ok") },
+    { value: "denied", label: $t("h.filter.outcome.denied") },
+    { value: "error", label: $t("h.filter.outcome.error") },
+  ]);
+  const TIME_OPTIONS = $derived([
+    { value: "all", label: $t("h.filter.time.all") },
+    { value: "1h", label: $t("h.filter.time.1h") },
+    { value: "24h", label: $t("h.filter.time.24h") },
+    { value: "7d", label: $t("h.filter.time.7d") },
+  ]);
 
   const filtered = $derived(
     category !== "all" || outcome !== "all" || timeWindow !== "all",
@@ -116,7 +117,7 @@
     {#if liveStale}
       <span
         class="stale"
-        title="A background refresh failed. What you see may be out of date; use Refresh."
+        title={$t("h.filter.stale")}
       >
         <ShieldAlert size={12} strokeWidth={2} />out of date
       </span>
@@ -127,21 +128,21 @@
       value={category}
       options={CATEGORY_OPTIONS}
       width="8.5rem"
-      ariaLabel="Filter by type"
+      ariaLabel={$t("h.filter.byType")}
       onchange={(v) => (category = v)}
     />
     <PopoverSelect
       value={outcome}
       options={OUTCOME_OPTIONS}
       width="8.5rem"
-      ariaLabel="Filter by outcome"
+      ariaLabel={$t("h.filter.byOutcome")}
       onchange={(v) => (outcome = v)}
     />
     <PopoverSelect
       value={timeWindow}
       options={TIME_OPTIONS}
       width="8.5rem"
-      ariaLabel="Filter by time"
+      ariaLabel={$t("h.filter.byTime")}
       onchange={(v) => (timeWindow = v)}
     />
     <Button variant="ghost" size="sm" disabled={loading} onclick={onrefresh}>

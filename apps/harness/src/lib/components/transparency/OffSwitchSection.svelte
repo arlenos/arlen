@@ -4,6 +4,7 @@
   /// master switch itself lives in Settings (settings-app.md §0.3); this
   /// states the removability guarantee and links to it. The link opens the
   /// Settings app at its AI section through a host launch command.
+  import { t } from "$lib/i18n/messages";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import type { Capability } from "$lib/capability";
   import { openAiSettings } from "$lib/transparency";
@@ -20,10 +21,10 @@
     your desktop keeps working without it.
   </p>
   {#if off}
-    <p class="status">The AI is currently off.</p>
+    <p class="status">{$t("h.offswitch.off")}</p>
   {/if}
   <Button id="transparency-offswitch-open" variant="default" size="sm" onclick={openAiSettings}>
-    {off ? "Turn it on in Settings" : "Open AI settings"}
+    {off ? $t("h.offswitch.turnOn") : $t("h.offswitch.openSettings")}
   </Button>
 </div>
 

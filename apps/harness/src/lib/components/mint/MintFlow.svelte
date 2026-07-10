@@ -5,6 +5,7 @@
   /// do not want, personal fields off by default) and the Share action. Mounted
   /// once in the layout, opened from the sidebar. Fixture-backed; mint is a human
   /// act, never an agent path.
+  import { t } from "$lib/i18n/messages";
   import Dialog from "@arlen/ui-kit/components/ui/dialog/dialog.svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
@@ -24,22 +25,22 @@
     type MintForm,
   } from "$lib/stores/mint";
 
-  const STEPS = ["Choose what to share", "Recipient and limits", "Review and share"];
-  const EXPIRY = [
-    { value: "1d", label: "1 day" },
-    { value: "1w", label: "1 week" },
-    { value: "1m", label: "1 month" },
-  ];
-  const OPCOUNT = [
-    { value: "5", label: "5 reads" },
-    { value: "20", label: "20 reads" },
-    { value: "100", label: "100 reads" },
-  ];
-  const AUDIENCE = [
-    { value: "this-machine", label: "This machine", description: "Only this computer can open the share." },
-    { value: "paired", label: "A paired device", description: "A device you have linked. Available once device pairing ships." },
-    { value: "key", label: "A recipient's key", description: "Bind the share to someone's key. Available once external sharing ships." },
-  ];
+  const STEPS = $derived([$t("h.mint.step.choose"), $t("h.mint.step.limits"), $t("h.mint.step.review")]);
+  const EXPIRY = $derived([
+    { value: "1d", label: $t("h.mint.expiry.1d") },
+    { value: "1w", label: $t("h.mint.expiry.1w") },
+    { value: "1m", label: $t("h.mint.expiry.1m") },
+  ]);
+  const OPCOUNT = $derived([
+    { value: "5", label: $t("h.mint.reads.5") },
+    { value: "20", label: $t("h.mint.reads.20") },
+    { value: "100", label: $t("h.mint.reads.100") },
+  ]);
+  const AUDIENCE = $derived([
+    { value: "this-machine", label: $t("h.mint.audience.machine"), description: $t("h.mint.audience.machineDesc") },
+    { value: "paired", label: $t("h.mint.audience.paired"), description: $t("h.mint.audience.pairedDesc") },
+    { value: "key", label: $t("h.mint.audience.key"), description: $t("h.mint.audience.keyDesc") },
+  ]);
 
   const scopeLabel = $derived($scopeOptions.find((o) => o.id === $mintForm.scopeId)?.label ?? "");
   const audienceLabel = $derived(AUDIENCE.find((a) => a.value === $mintForm.audience)?.label ?? "");
@@ -72,7 +73,7 @@
   }
 </script>
 
-<Dialog open={$mintOpen} onClose={closeMint} size="lg" ariaLabel="Share context">
+<Dialog open={$mintOpen} onClose={closeMint} size="lg" ariaLabel={$t("h.mint.aria")}>
   <div class="mint">
     <header class="mint-head">
       {#if $mintResult}
@@ -101,7 +102,7 @@
         <ChoiceList
           value={$mintForm.scopeId ?? ""}
           options={$scopeOptions.map((o) => ({ value: o.id, label: o.label, description: o.description }))}
-          ariaLabel="What to share"
+          ariaLabel={$t("h.mint.whatToShare")}
           onchange={(v) => setForm({ scopeId: v })}
         />
       {:else if $mintStep === 1}
@@ -110,19 +111,19 @@
           <ChoiceList
             value={$mintForm.audience}
             options={AUDIENCE}
-            ariaLabel="Recipient"
+            ariaLabel={$t("h.mint.recipient")}
             onchange={(v) => setForm({ audience: v })}
           />
         </div>
         <div class="mint-row2">
           <div class="mint-field">
             <span class="mint-label">Expires</span>
-            <PopoverSelect value={$mintForm.expiry} options={EXPIRY} ariaLabel="Expiry" onchange={(v) => setForm({ expiry: v })} />
+            <PopoverSelect value={$mintForm.expiry} options={EXPIRY} ariaLabel={$t("h.mint.expiry")} onchange={(v) => setForm({ expiry: v })} />
             <span class="mint-hint">A share always expires. There is no permanent share.</span>
           </div>
           <div class="mint-field">
             <span class="mint-label">Good for</span>
-            <PopoverSelect value={$mintForm.opCount} options={OPCOUNT} ariaLabel="Reads" onchange={(v) => setForm({ opCount: v })} />
+            <PopoverSelect value={$mintForm.opCount} options={OPCOUNT} ariaLabel={$t("h.mint.reads")} onchange={(v) => setForm({ opCount: v })} />
             <span class="mint-hint">How many times the recipient can open it.</span>
           </div>
         </div>
@@ -149,8 +150,8 @@
           {/each}
         </div>
         <label class="sensitive">
-          <Checkbox checked={$mintForm.includeSensitive} onchange={(v) => setForm({ includeSensitive: v })} ariaLabel="Include personal fields" />
-          <span>Include personal fields, like email and phone. Off by default.</span>
+          <Checkbox checked={$mintForm.includeSensitive} onchange={(v) => setForm({ includeSensitive: v })} ariaLabel={$t("h.mint.includeSensitive")} />
+          <span>{$t("h.mint.includeSensitiveHint")}</span>
         </label>
         <p class="mint-summary">
           This share includes <strong>{totalItems.toLocaleString()} items</strong>
@@ -164,17 +165,17 @@
     <footer class="mint-foot">
       {#if $mintResult}
         <span class="mint-spacer"></span>
-        <Button onclick={closeMint}>Done</Button>
+        <Button onclick={closeMint}>{$t("h.mint.done")}</Button>
       {:else}
         {#if $mintStep > 0}
-          <Button variant="ghost" onclick={back}>Back</Button>
+          <Button variant="ghost" onclick={back}>{$t("h.mint.back")}</Button>
         {/if}
         <span class="mint-spacer"></span>
-        <Button variant="ghost" onclick={closeMint}>Cancel</Button>
+        <Button variant="ghost" onclick={closeMint}>{$t("h.mint.cancel")}</Button>
         {#if $mintStep < 2}
-          <Button onclick={next} disabled={!canNext}>Next</Button>
+          <Button onclick={next} disabled={!canNext}>{$t("h.mint.next")}</Button>
         {:else}
-          <Button onclick={share} disabled={$preview === null}>Share</Button>
+          <Button onclick={share} disabled={$preview === null}>{$t("h.mint.share")}</Button>
         {/if}
       {/if}
     </footer>

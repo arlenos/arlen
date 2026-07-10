@@ -5,6 +5,7 @@
   /// right-click context menu (Copy live; Save to file / Pin are coder seams,
   /// disabled until wired). The body fills the pane and scrolls; the left edge
   /// drags to resize (clamped to a minimum width).
+  import { t } from "$lib/i18n/messages";
   import { onDestroy } from "svelte";
   import { X } from "@lucide/svelte";
   import * as ContextMenu from "@arlen/ui-kit/components/ui/context-menu";
@@ -61,12 +62,12 @@
   }
 </script>
 
-<aside class="ap" style="width:{width}px" aria-label="Artifact">
+<aside class="ap" style="width:{width}px" aria-label={$t("h.artifact.aria")}>
   <div
     class="ap-resize"
     role="separator"
     aria-orientation="vertical"
-    aria-label="Resize artifact pane"
+    aria-label={$t("h.artifact.resize")}
     tabindex="0"
     onpointerdown={onDown}
     onkeydown={onKey}
@@ -74,7 +75,7 @@
   <header class="ap-head">
     <span class="ap-title" title={title}>{title}</span>
     <span class="ap-badge">{kindLabel(artifact.kind)}</span>
-    <button class="ap-close" aria-label="Close" onclick={() => onclose?.()}>
+    <button class="ap-close" aria-label={$t("h.artifact.close")} onclick={() => onclose?.()}>
       <X size={15} strokeWidth={2} />
     </button>
   </header>
@@ -83,9 +84,9 @@
       <div class="ap-body"><ArtifactView {artifact} /></div>
     </ContextMenu.Trigger>
     <ContextMenu.Content class="w-52">
-      <ContextMenu.Item onclick={copy}>Copy</ContextMenu.Item>
-      <ContextMenu.Item onclick={onsave} disabled={!onsave}>Save to file&hellip;</ContextMenu.Item>
-      <ContextMenu.Item onclick={onpin} disabled={!onpin}>Pin</ContextMenu.Item>
+      <ContextMenu.Item onclick={copy}>{$t("h.artifact.copy")}</ContextMenu.Item>
+      <ContextMenu.Item onclick={onsave} disabled={!onsave}>{$t("h.artifact.save")}</ContextMenu.Item>
+      <ContextMenu.Item onclick={onpin} disabled={!onpin}>{$t("h.artifact.pin")}</ContextMenu.Item>
     </ContextMenu.Content>
   </ContextMenu.Root>
 </aside>

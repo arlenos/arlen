@@ -6,6 +6,7 @@
   /// only the drag region, the surface title, and the window controls —
   /// nothing essential lives in it (terminal.md §4.4).
   import "../app.css";
+  import { t, dir } from "$lib/i18n/messages";
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
@@ -38,7 +39,7 @@
   // is collapsed; the agent route and an empty conversation fall back to the
   // surface name.
   const viewTitle = $derived(
-    $page.url.pathname.startsWith("/agent") ? "Activity" : $activeTitle || "Chat",
+    $page.url.pathname.startsWith("/agent") ? $t("h.title.agent") : $activeTitle || $t("h.title.chat"),
   );
 
   // On a surface switch, move focus to the new view and announce it, so keyboard +
@@ -93,6 +94,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 
+<div dir={$dir} style="display: contents">
 <SidebarProvider>
   <HarnessSidebar />
   <!-- `h-svh` locks the shell to the viewport so the CSD header never
@@ -125,3 +127,4 @@
 <MintFlow />
 <ImportDialog />
 <LiveRegion message={announcement} />
+</div>

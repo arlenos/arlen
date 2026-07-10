@@ -10,6 +10,7 @@
   } from "@arlen/ui-kit/components/ui/collapsible";
   import type { ToolCall } from "$lib/stores/conversation";
   import { toolLabel } from "$lib/display";
+  import { t } from "$lib/i18n/messages";
 
   let { call }: { call: ToolCall } = $props();
 
@@ -18,11 +19,11 @@
   // expected case, the error colour is the only one that draws the eye.
   const statusLabel = $derived(
     call.status === "failed"
-      ? "Failed"
+      ? $t("h.tool.failed")
       : call.status === "running"
-        ? "Running"
+        ? $t("h.tool.running")
         : call.status === "done"
-          ? "Done"
+          ? $t("h.tool.done")
           : null,
   );
 </script>
@@ -48,18 +49,18 @@
   <CollapsibleContent>
     <div class="tc-detail">
       <div class="tc-section">
-        <span class="tc-key">Tool</span>
+        <span class="tc-key">{$t("h.tool.key.tool")}</span>
         <code class="tc-name">{id}</code>
       </div>
       {#if call.arguments}
         <div class="tc-section">
-          <span class="tc-key">Asked for</span>
+          <span class="tc-key">{$t("h.tool.key.askedFor")}</span>
           <pre>{call.arguments}</pre>
         </div>
       {/if}
       {#if call.result}
         <div class="tc-section">
-          <span class="tc-key">Result</span>
+          <span class="tc-key">{$t("h.tool.key.result")}</span>
           <pre>{call.result}</pre>
         </div>
       {/if}
