@@ -23,6 +23,7 @@
   import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { t } from "$lib/i18n/messages";
 
   // Mirrors `app-settings/src-tauri/src/commands/night_light.rs::NightLightState`.
   // Kept in hand-sync; if the schema grows, ts-rs would be the right
@@ -166,10 +167,10 @@
   const locationUnset = $derived(cfg.latitude === 0 && cfg.longitude === 0);
 </script>
 
-<Group label="Night Light">
+<Group label={$t("s.night.title")}>
   <Row
-    label="Active"
-    description="Warm the screen to reduce blue light."
+    label={$t("s.night.active")}
+    description={$t("s.night.active.desc")}
   >
     {#snippet control()}
       <Switch value={cfg.enabled} onchange={setEnabled} />
@@ -177,8 +178,8 @@
   </Row>
 
   <Row
-    label="Color Temperature"
-    description="Lower is warmer (more orange)."
+    label={$t("s.night.temp")}
+    description={$t("s.night.temp.desc")}
   >
     {#snippet control()}
       <div class="slider-cell">
@@ -195,7 +196,7 @@
     {/snippet}
   </Row>
 
-  <Row label="Schedule">
+  <Row label={$t("s.night.schedule")}>
     {#snippet control()}
       <PopoverSelect
         value={cfg.schedule}
@@ -208,7 +209,7 @@
   </Row>
 
   {#if cfg.schedule === "custom"}
-    <Row label="Start">
+    <Row label={$t("s.night.start")}>
       {#snippet control()}
         <TimeInput
           value={formatHhmm(cfg.custom_start)}
@@ -217,7 +218,7 @@
         />
       {/snippet}
     </Row>
-    <Row label="End">
+    <Row label={$t("s.night.end")}>
       {#snippet control()}
         <TimeInput
           value={formatHhmm(cfg.custom_end)}
@@ -230,7 +231,7 @@
 
   {#if cfg.schedule === "sunset_sunrise"}
     <Row
-      label="Latitude"
+      label={$t("s.night.lat")}
       description={locationUnset
         ? "Set both coordinates to enable sunset/sunrise mode."
         : undefined}
@@ -247,7 +248,7 @@
         />
       {/snippet}
     </Row>
-    <Row label="Longitude">
+    <Row label={$t("s.night.lon")}>
       {#snippet control()}
         <NumberInput
           value={cfg.longitude}

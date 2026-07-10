@@ -21,6 +21,7 @@
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import { ProviderLogo } from "@arlen/ui-kit/components/ui/provider-logo";
   import { Plus } from "lucide-svelte";
+  import { t } from "$lib/i18n/messages";
   import AddProviderDialog from "$lib/components/AddProviderDialog.svelte";
 
   /// One provider as the catalogue + the broker report it. `configured` means
@@ -94,11 +95,11 @@
   function authLabel(m: Provider["authMethod"]): string {
     switch (m) {
       case "subscription-login":
-        return "Your subscription";
+        return $t("s.prov.auth.subscription");
       case "free":
-        return "Free";
+        return $t("s.prov.auth.free");
       case "api-key":
-        return "API key";
+        return $t("s.prov.auth.apiKey");
       default:
         return "";
     }
@@ -112,19 +113,19 @@
     if (p.kind === "local") return [];
     const chips: SovChip[] = [];
     if (p.jurisdiction === "eu")
-      chips.push({ label: "EU", tip: "Servers under EU law: GDPR and data residency." });
+      chips.push({ label: $t("s.prov.jur.eu"), tip: $t("s.prov.jur.eu.tip") });
     else if (p.jurisdiction === "us")
-      chips.push({ label: "US", tip: "Servers under US jurisdiction. The CLOUD Act can compel access." });
+      chips.push({ label: $t("s.prov.jur.us"), tip: $t("s.prov.jur.us.tip") });
     else if (p.jurisdiction === "cn")
-      chips.push({ label: "China", tip: "Servers under Chinese jurisdiction. The Intelligence Law can compel access." });
+      chips.push({ label: $t("s.prov.jur.cn"), tip: $t("s.prov.jur.cn.tip") });
     if (p.trainsOnYou === "no")
-      chips.push({ label: "Won't train on you", tip: "This provider does not train on your data." });
+      chips.push({ label: $t("s.prov.train.no"), tip: $t("s.prov.train.no.tip") });
     else if (p.trainsOnYou === "no-paid")
-      chips.push({ label: "Won't train on you*", tip: "On the paid API only. The free tier trains on your data." });
+      chips.push({ label: $t("s.prov.train.noPaid"), tip: $t("s.prov.train.noPaid.tip") });
     else if (p.trainsOnYou === "yes")
-      chips.push({ label: "Trains on you", tip: "Your conversations may be used to train their models." });
+      chips.push({ label: $t("s.prov.train.yes"), tip: $t("s.prov.train.yes.tip") });
     if (p.openWeight)
-      chips.push({ label: "Open weights", tip: "You can run this model yourself, so you are not locked in." });
+      chips.push({ label: $t("s.prov.openWeights"), tip: $t("s.prov.openWeights.tip") });
     return chips;
   }
 
@@ -146,8 +147,8 @@
   }
 
   function meta(p: Provider): string {
-    if (p.kind === "local") return "Local, no egress";
-    return p.region ? `Cloud, ${p.region}` : "Cloud, egress audited";
+    if (p.kind === "local") return $t("s.prov.local");
+    return p.region ? $t("s.prov.cloudRegion", { region: p.region }) : $t("s.prov.cloud");
   }
 
   // The connection test runs the real `ai_provider_test` (the proxy GETs the
@@ -186,23 +187,23 @@
   function testLabel(v: TestVerdict): string {
     switch (v.state) {
       case "testing":
-        return "Testing…";
+        return $t("s.prov.test.testing");
       case "ok":
-        return "Connection works";
+        return $t("s.prov.test.works");
       case "network":
-        return "Could not reach it";
+        return $t("s.prov.test.network");
       case "http":
-        if (v.status === 401) return "Needs a key";
-        if (v.status === 403) return "Not allowed (403)";
-        if (v.status === 429) return "Rate limited (429)";
-        return `Failed (${v.status})`;
+        if (v.status === 401) return $t("s.prov.test.needsKey");
+        if (v.status === 403) return $t("s.prov.test.notAllowed");
+        if (v.status === 429) return $t("s.prov.test.rateLimited");
+        return $t("s.prov.test.failed", { status: v.status });
     }
   }
 </script>
 
 <Page
-  title="Providers"
-  description="Connect the AI services the assistant may use. Keys are held in the system keystore, never by the assistant. Choosing which model answers lives on the Default models page."
+  title={$t("s.prov.title")}
+  description={$t("s.prov.desc")}
 >
   <SectionGrid>
     <Group class="span-full">
@@ -210,13 +211,13 @@
         {@render row(p)}
       {/each}
       {#if loaded && $providers.length === 0}
-        <p class="empty">No providers are set up yet.</p>
+        <p class="empty">{$t("s.prov.empty")}</p>
       {/if}
     </Group>
     <div class="add-row span-full">
       <Button variant="secondary" size="sm" onclick={() => (showAdd = true)}>
         <Plus size={15} strokeWidth={2} />
-        Add provider
+        {$t("s.prov.add")}
       </Button>
     </div>
   </SectionGrid>
@@ -246,11 +247,11 @@
             <Tooltip.Root>
               <Tooltip.Trigger>
                 {#snippet child({ props })}
-                  <span {...props} class="chip-trigger"><Badge variant="warn">Unofficial</Badge></span>
+                  <span {...props} class="chip-trigger"><Badge variant="warn">{$t("s.prov.unofficial")}</Badge></span>
                 {/snippet}
               </Tooltip.Trigger>
               <Tooltip.TooltipContent side="top">
-                Reverse-engineered access. It may stop working or put your account at risk.
+                {$t("s.prov.unofficial.tip")}
               </Tooltip.TooltipContent>
             </Tooltip.Root>
           {/if}
@@ -271,14 +272,14 @@
           disabled={verdict?.state === "testing"}
           onclick={() => testProvider(p.id)}
         >
-          {verdict?.state === "testing" ? "Testing…" : "Test"}
+          {verdict?.state === "testing" ? $t("s.prov.test.testing") : $t("s.prov.test.action")}
         </Button>
-        <Switch value={p.enabled} ariaLabel={`Enable ${p.name}`} onchange={(v) => setEnabled(p.id, v)} />
+        <Switch value={p.enabled} ariaLabel={$t("s.prov.enable", { name: p.name })} onchange={(v) => setEnabled(p.id, v)} />
       </span>
     {/snippet}
     {#snippet below()}
       {#if p.kind === "local"}
-        <p class="sov-local">Runs on your machine, nothing leaves</p>
+        <p class="sov-local">{$t("s.prov.runsLocal")}</p>
       {:else}
         {@const chips = sovereignChips(p)}
         {#if chips.length}

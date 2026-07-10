@@ -14,6 +14,7 @@
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { t } from "$lib/i18n/messages";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Row } from "@arlen/ui-kit/components/ui/row";
@@ -77,8 +78,8 @@
 </script>
 
 <Page
-  title="System Actions"
-  description="Commands triggered by hardware Fn-row keys and system shortcuts. Edit a command to override the default; reset clears the override."
+  title={$t("s.sysact.title")}
+  description={$t("s.sysact.desc")}
 >
   <SectionGrid>
   {#if modifiedCount > 0}
@@ -120,7 +121,7 @@
   {/each}
 
   <div class="footer-note span-full">
-    <strong>Command grammar:</strong>
+    <strong>{$t("s.sysact.grammar")}</strong>
     <code>shell:event_name</code> dispatches a shell-overlay event
     (e.g. <code>shell:brightness_up</code>),
     <code>spawn:command</code> runs a shell command. Bare strings
@@ -132,7 +133,7 @@
 
 <ConfirmDialog
   open={resetAllOpen}
-  title="Reset all system actions?"
+  title={$t("s.sysact.resetConfirm")}
   message="This removes every custom command. All actions go back to their built-in defaults."
   confirmLabel="Reset all"
   variant="destructive"

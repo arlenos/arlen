@@ -20,6 +20,7 @@
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { t } from "$lib/i18n/messages";
 
   interface Props {
     monitor: Monitor;
@@ -140,14 +141,14 @@
   ]);
 </script>
 
-<Row label="Active" description="{monitor.make} {monitor.model}">
+<Row label={$t("s.monitor.active")} description="{monitor.make} {monitor.model}">
   {#snippet control()}
     <Switch value={isActive} onchange={setEnabled} />
   {/snippet}
 </Row>
 
 {#if isActive}
-  <Row label="Resolution">
+  <Row label={$t("s.monitor.resolution")}>
     {#snippet control()}
       <PopoverSelect
         value={currentMode ? `${currentMode.width}x${currentMode.height}` : ""}
@@ -162,7 +163,7 @@
     {/snippet}
   </Row>
 
-  <Row label="Refresh Rate">
+  <Row label={$t("s.monitor.refresh")}>
     {#snippet control()}
       <PopoverSelect
         value={currentMode ? String(currentMode.refreshMhz) : ""}
@@ -174,7 +175,7 @@
     {/snippet}
   </Row>
 
-  <Row label="Scale">
+  <Row label={$t("s.monitor.scale")}>
     {#snippet control()}
       <div class="presets">
         {#each SCALE_PRESETS as p}
@@ -191,7 +192,7 @@
     {/snippet}
   </Row>
 
-  <Row label="Rotation">
+  <Row label={$t("s.monitor.rotation")}>
     {#snippet control()}
       <PopoverSelect
         value={draft.transform}
@@ -204,8 +205,8 @@
   </Row>
 
   <Row
-    label="Adaptive Sync"
-    description="Variable refresh rate (VRR / FreeSync)"
+    label={$t("s.monitor.adaptiveSync")}
+    description={$t("s.monitor.adaptiveSync.desc")}
   >
     {#snippet control()}
       <PopoverSelect
@@ -219,7 +220,7 @@
   </Row>
 
   {#if others.length > 0}
-    <Row label="Mirror To">
+    <Row label={$t("s.monitor.mirrorTo")}>
       {#snippet control()}
         <PopoverSelect
           value={mirrorTarget ?? "__none__"}
@@ -233,7 +234,7 @@
   {/if}
 {:else}
   <div class="hint-row">
-    This output is currently disabled. Toggle <em>Active</em> to wake it.
+    {$t("s.monitor.disabled")}
   </div>
 {/if}
 

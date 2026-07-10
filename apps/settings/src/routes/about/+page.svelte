@@ -14,6 +14,7 @@
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { t } from "$lib/i18n/messages";
 
   interface DaemonStatus {
     name: string;
@@ -54,29 +55,29 @@
 </script>
 
 <Page
-  title="About"
-  description="System information and service status. Read-only; nothing to change here."
+  title={$t("s.about.title")}
+  description={$t("s.about.desc")}
 >
   <SectionGrid>
     <Group label="Arlen OS">
-      <Row label="Version" id="arlen-version">
+      <Row label={$t("s.about.version")} id="arlen-version">
         {#snippet control()}
-          <span class="meta">{info?.arlenVersion ?? "Unknown"}</span>
+          <span class="meta">{info?.arlenVersion ?? $t("s.about.unknown")}</span>
         {/snippet}
       </Row>
-      <Row label="Kernel" id="kernel">
+      <Row label={$t("s.about.kernel")} id="kernel">
         {#snippet control()}
-          <span class="meta">{info?.kernel ?? "Unknown"}</span>
+          <span class="meta">{info?.kernel ?? $t("s.about.unknown")}</span>
         {/snippet}
       </Row>
-      <Row label="Wayland display" id="wayland-display">
+      <Row label={$t("s.about.wayland")} id="wayland-display">
         {#snippet control()}
-          <span class="meta">{info?.waylandDisplay ?? "Unknown"}</span>
+          <span class="meta">{info?.waylandDisplay ?? $t("s.about.unknown")}</span>
         {/snippet}
       </Row>
     </Group>
 
-    <Group label="Services">
+    <Group label={$t("s.about.services")}>
       {#if info}
         {#each info.daemons as d (d.name)}
           <Row
@@ -86,46 +87,46 @@
           >
             {#snippet control()}
               <span class="meta" class:on={d.running}>
-                {d.running ? "Running" : "Stopped"}
+                {d.running ? $t("s.about.running") : $t("s.about.stopped")}
               </span>
             {/snippet}
           </Row>
         {/each}
       {:else}
-        <Row label="Loading…" id="daemon-loading">
+        <Row label={$t("s.about.loading")} id="daemon-loading">
           {#snippet control()}<span class="meta">…</span>{/snippet}
         </Row>
       {/if}
-      <Row label="Refresh" description="Check the services again." id="about-refresh">
+      <Row label={$t("s.about.refresh")} description={$t("s.about.refreshDesc")} id="about-refresh">
         {#snippet control()}
           <Button variant="ghost" size="sm" disabled={loading} onclick={refresh}>
             <RefreshCw size={14} class={loading ? "about-spin" : ""} />
-            Refresh
+            {$t("s.about.refresh")}
           </Button>
         {/snippet}
       </Row>
     </Group>
 
-    <Group label="Resources">
-      <Row label="Documentation" id="link-docs">
+    <Group label={$t("s.about.resources")}>
+      <Row label={$t("s.about.docs")} id="link-docs">
         {#snippet control()}
           <Button variant="outline" size="sm" onclick={() => openUrl("https://github.com/arlenos/docs")}>
             <FileText size={14} />
-            Open
+            {$t("s.about.open")}
             <ExternalLink size={12} />
           </Button>
         {/snippet}
       </Row>
-      <Row label="GitHub organisation" id="link-github">
+      <Row label={$t("s.about.github")} id="link-github">
         {#snippet control()}
           <Button variant="outline" size="sm" onclick={() => openUrl("https://github.com/arlenos")}>
             <Info size={14} />
-            Open
+            {$t("s.about.open")}
             <ExternalLink size={12} />
           </Button>
         {/snippet}
       </Row>
-      <Row label="Report an issue" id="link-issues">
+      <Row label={$t("s.about.reportIssue")} id="link-issues">
         {#snippet control()}
           <Button
             variant="outline"
@@ -133,7 +134,7 @@
             onclick={() => openUrl("https://github.com/arlenos/desktop-shell/issues/new")}
           >
             <Bug size={14} />
-            Open
+            {$t("s.about.open")}
             <ExternalLink size={12} />
           </Button>
         {/snippet}

@@ -30,6 +30,7 @@
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { t } from "$lib/i18n/messages";
 
   // We deliberately do NOT mirror $monitors / $selectedConnector
   // into local `$state`. Svelte 5's runes scheduler does not detect
@@ -130,12 +131,12 @@
 </script>
 
 <Page
-  title="Displays"
-  description="Drag the boxes to rearrange. Pick a display to tune resolution, scale, rotation, mirror mode, and more."
+  title={$t("s.display.title")}
+  description={$t("s.display.desc")}
 >
   <SectionGrid>
   <div class="span-full disp-column">
-  <Group label="Arrangement">
+  <Group label={$t("s.display.arrangement")}>
     <div class="map-wrap">
       <MonitorMap
         {drafts}
@@ -163,10 +164,10 @@
         />
         <div class="action-row">
           {#if applyError}
-            <p class="apply-error" title={applyError}>Could not apply this layout. Nothing was changed.</p>
+            <p class="apply-error" title={applyError}>{$t("s.display.applyError")}</p>
           {/if}
           <Button variant="outline" onclick={onApply} disabled={!dirty}>
-            Apply
+            {$t("s.display.apply")}
           </Button>
         </div>
       </Group>

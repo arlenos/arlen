@@ -23,6 +23,7 @@
   import { ChoiceList } from "@arlen/ui-kit/components/ui/choice-list";
   import { ChipList } from "@arlen/ui-kit/components/ui/chip-list";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { t } from "$lib/i18n/messages";
   import { ai } from "$lib/stores/ai";
 
   interface AiStatus {
@@ -51,30 +52,30 @@
   // surfaces the three meaningful amounts on one axis (how much of your recent
   // activity); the niche session/project scopes (1/2) stay in the backend, not
   // here. Each row says plainly how much context it uses.
-  const ACCESS_CHOICES = [
+  const ACCESS_CHOICES = $derived([
     {
       value: "0",
-      label: "Just this chat",
-      description: "It uses only what you bring up in the conversation, none of your activity.",
+      label: $t("s.ai.access.chat"),
+      description: $t("s.ai.access.chat.desc"),
     },
     {
       value: "3",
-      label: "Your recent work",
-      description: "What you have worked on over the last few days, so it has useful context.",
-      note: "Recommended. Enough context to be useful, and every read is logged.",
+      label: $t("s.ai.access.recent"),
+      description: $t("s.ai.access.recent.desc"),
+      note: $t("s.ai.access.recent.note"),
     },
     {
       value: "4",
-      label: "Everything",
-      description: "All of your activity and history, including older work.",
+      label: $t("s.ai.access.everything"),
+      description: $t("s.ai.access.everything.desc"),
     },
-  ];
+  ]);
   // How freely it acts, the baseline posture. "supervised" only takes effect
   // once the executor master below is on.
-  const ACTION_MODES = [
-    { value: "suggest", label: "Suggests only" },
-    { value: "supervised", label: "Acts with a preview" },
-  ];
+  const ACTION_MODES = $derived([
+    { value: "suggest", label: $t("s.ai.mode.suggest") },
+    { value: "supervised", label: $t("s.ai.mode.supervised") },
+  ]);
 
   let status = $state<AiStatus | null>(null);
   let statusLoading = $state(false);
@@ -249,115 +250,115 @@
   // nothing until the executor master is on.
   const actsHint = $derived(
     actionMode === "supervised" && !executorLive
-      ? "It still only suggests until you let it act, below."
+      ? $t("s.ai.actsHint.supervisedOff")
       : actionMode === "supervised"
-        ? "It carries out small, reversible things after showing you a preview you can cancel."
-        : "It proposes each action and you run it yourself.",
+        ? $t("s.ai.actsHint.supervised")
+        : $t("s.ai.actsHint.suggest"),
   );
 </script>
 
 <Page
-  title="General"
-  description="Your assistant: how much it can see and do. It draws on your recent activity so it can actually help. Every read is logged and you can dial it back anytime. What it has done shows in the AI app."
+  title={$t("s.ai.title")}
+  description={$t("s.ai.desc")}
 >
   <SectionGrid>
-    <Group label="Assistant">
+    <Group label={$t("s.ai.assistant")}>
       <Row
-        label="Enable the assistant"
-        description="Lets it answer questions and work in the background. Nothing runs until you turn this on."
+        label={$t("s.ai.enable")}
+        description={$t("s.ai.enable.desc")}
         id="ai-enable"
       >
         {#snippet control()}
-          <Switch value={enabled} ariaLabel="Enable the assistant" onchange={setEnabled} />
+          <Switch value={enabled} ariaLabel={$t("s.ai.enable")} onchange={setEnabled} />
         {/snippet}
       </Row>
     </Group>
 
-    <Group label="How freely it acts">
-      <Row label="When it acts" description={actsHint} id="ai-action-mode">
+    <Group label={$t("s.ai.freely")}>
+      <Row label={$t("s.ai.whenActs")} description={actsHint} id="ai-action-mode">
         {#snippet below()}
           <SegmentedControl
             value={actionMode}
             options={ACTION_MODES}
-            ariaLabel="How freely the assistant acts"
+            ariaLabel={$t("s.ai.whenActs.aria")}
             onchange={setActionMode}
           />
         {/snippet}
       </Row>
       <Row
-        label="Let it act on its own"
-        description="The master switch for acting. Until this is on, it only suggests, whatever you pick above. Every change it makes is reversible and shows in the AI app."
+        label={$t("s.ai.onOwn")}
+        description={$t("s.ai.onOwn.desc")}
         id="ai-executor-live"
       >
         {#snippet control()}
-          <Switch value={executorLive} ariaLabel="Let it act on its own" onchange={setExecutorLive} />
+          <Switch value={executorLive} ariaLabel={$t("s.ai.onOwn")} onchange={setExecutorLive} />
         {/snippet}
       </Row>
       <Row
-        label="Always-confirm rule"
-        description="High-impact actions (delete, send, install) and anything triggered by outside content always ask first, whatever the setting."
+        label={$t("s.ai.confirmRule")}
+        description={$t("s.ai.confirmRule.desc")}
         id="ai-confirm-rule"
       >
         {#snippet control()}
-          <span class="meta">enforced</span>
+          <span class="meta">{$t("s.ai.enforced")}</span>
         {/snippet}
       </Row>
       <Row
-        label="Per-app exceptions"
+        label={$t("s.ai.perApp")}
         description={autonomousApps.length === 0
-          ? "No app may act on its own. Add an app id to let that one app act without asking, in its own scope only."
-          : "These apps may act without asking, each in its own scope."}
+          ? $t("s.ai.perApp.none")
+          : $t("s.ai.perApp.some")}
         id="ai-autonomous-apps"
       >
         {#snippet below()}
           <ChipList
             bind:items={autonomousApps}
-            placeholder="Add an app id, e.g. org.arlen.files"
+            placeholder={$t("s.ai.perApp.placeholder")}
             onchange={persistAutonomousApps}
           />
         {/snippet}
       </Row>
     </Group>
 
-    <Group label="What it can see">
+    <Group label={$t("s.ai.canSee")}>
       <Row
-        label="How much it draws on"
-        description="How much of your activity the assistant uses as context, so it can actually help. It uses your recent work by default; narrow this if you prefer. Every read is logged, and you can turn it down anytime."
+        label={$t("s.ai.drawsOn")}
+        description={$t("s.ai.drawsOn.desc")}
         id="ai-access-level"
       >
         {#snippet below()}
           <ChoiceList
             value={displayAccessLevel}
             options={ACCESS_CHOICES}
-            ariaLabel="What the assistant may read"
+            ariaLabel={$t("s.ai.drawsOn.aria")}
             onchange={setAccessLevel}
           />
         {/snippet}
       </Row>
     </Group>
 
-    <Group label="What it does on its own">
+    <Group label={$t("s.ai.doesOnOwn")}>
       <Row
-        label="Background tasks"
-        description="Each is one background task. Turn them on or off here; everything they do shows in the AI app."
+        label={$t("s.ai.bgTasks")}
+        description={$t("s.ai.bgTasks.desc")}
         id="ai-behaviours"
       ></Row>
       {#if behavioursUnavailable}
-        <Row label="Tasks unavailable" description="Can't read the task list right now." id="ai-behaviours-unavailable">
+        <Row label={$t("s.ai.tasksUnavailable")} description={$t("s.ai.tasksUnavailable.desc")} id="ai-behaviours-unavailable">
           {#snippet control()}<AlertCircle size={16} class="ai-error-icon" />{/snippet}
         </Row>
       {:else if behaviours}
         {#if behaviours.behaviours.length === 0}
           <Row
-            label="No background tasks"
-            description="When apps or the system add background tasks, they appear here."
+            label={$t("s.ai.noTasks")}
+            description={$t("s.ai.noTasks.desc")}
             id="ai-behaviours-empty"
           ></Row>
         {/if}
         {#each behaviours.behaviours as b (b.name)}
           <Row
             label={b.name}
-            description={behaviourWriteFailed[b.name] ? "Could not save this change." : b.description}
+            description={behaviourWriteFailed[b.name] ? $t("s.ai.taskSaveFailed") : b.description}
             id={`ai-behaviour-${b.name}`}
           >
             {#snippet control()}
@@ -371,7 +372,7 @@
         {/each}
         {#if behaviours.errors.length > 0}
           <Row
-            label="Some tasks could not be read"
+            label={$t("s.ai.tasksReadFailed")}
             description={behaviours.errors.join("; ")}
             id="ai-behaviours-errors"
           >
@@ -381,66 +382,66 @@
       {/if}
     </Group>
 
-    <Group label="Where AI comes from">
-      <LinkCard href="/ai/providers" title="Providers" description={$providerLine}>
+    <Group label={$t("s.ai.whereFrom")}>
+      <LinkCard href="/ai/providers" title={$t("s.ai.providers")} description={$providerLine}>
         {#snippet icon()}<Cloud size={20} strokeWidth={1.75} />{/snippet}
       </LinkCard>
-      <LinkCard href="/ai/models" title="Models" description={$defaultModelLine}>
+      <LinkCard href="/ai/models" title={$t("s.ai.models")} description={$defaultModelLine}>
         {#snippet icon()}<SlidersHorizontal size={20} strokeWidth={1.75} />{/snippet}
       </LinkCard>
     </Group>
 
-    <Group label="Health">
+    <Group label={$t("s.ai.health")}>
       {#if statusError}
-        <Row label="Status unavailable" description="Can't check the services right now." id="ai-status-error">
+        <Row label={$t("s.ai.statusUnavailable")} description={$t("s.ai.statusUnavailable.desc")} id="ai-status-error">
           {#snippet control()}
             <span title={statusError}><AlertCircle size={16} class="ai-error-icon" /></span>
           {/snippet}
         </Row>
       {:else}
         <Row
-          label="Services"
-          description="The assistant answers in the AI app; the network gate is the only path AI traffic can take off this machine."
+          label={$t("s.ai.services")}
+          description={$t("s.ai.services.desc")}
           id="ai-services"
         >
           {#snippet control()}
             <span class="health">
               <span class="meta" class:on={status?.daemonRunning}>
-                {status?.daemonRunning ? "Assistant on" : "Assistant off"}
+                {status?.daemonRunning ? $t("s.ai.assistantOn") : $t("s.ai.assistantOff")}
               </span>
               <span class="health-sep">·</span>
               <span class="meta" class:on={status?.proxyRunning}>
-                {status?.proxyRunning ? "Gate on" : "Gate off"}
+                {status?.proxyRunning ? $t("s.ai.gateOn") : $t("s.ai.gateOff")}
               </span>
             </span>
           {/snippet}
         </Row>
       {/if}
-      <Row label="Refresh" description="Check the services again." id="ai-refresh">
+      <Row label={$t("s.ai.refresh")} description={$t("s.ai.refresh.desc")} id="ai-refresh">
         {#snippet control()}
           <Button variant="ghost" size="sm" disabled={statusLoading} onclick={refreshStatus}>
             <RefreshCw size={14} class={statusLoading ? "ai-spin" : ""} />
-            Refresh
+            {$t("s.ai.refresh")}
           </Button>
         {/snippet}
       </Row>
     </Group>
 
-    <Group label="What's happening now">
+    <Group label={$t("s.ai.happeningNow")}>
       <Row
-        label="Explain my system"
-        description="A plain summary of what your computer is doing right now. Needs the Everything read level."
+        label={$t("s.ai.explain")}
+        description={$t("s.ai.explain.desc")}
         id="ai-explain"
       >
         {#snippet control()}
           <Button variant="outline" size="sm" disabled={explaining} onclick={runExplain}>
             <Sparkles size={14} class={explaining ? "ai-spin" : ""} />
-            {explaining ? "Working" : "Explain"}
+            {explaining ? $t("s.ai.explain.working") : $t("s.ai.explain.action")}
           </Button>
         {/snippet}
         {#snippet below()}
           {#if explainError}
-            <p class="explain-error" title={explainError}>Could not build an explanation. Try again.</p>
+            <p class="explain-error" title={explainError}>{$t("s.ai.explain.failed")}</p>
           {:else if explanation}
             <p class="explain-text">{explanation}</p>
           {/if}
