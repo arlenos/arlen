@@ -1,0 +1,6 @@
+# Starting permission profile for a system/config/utility app. No file access,
+# no network and no Knowledge Graph by default; it clears well-known trace and
+# cache locations (broader cleanup targets are granted explicitly).
+[info]
+app_id = "org.kde.sweeper"
+tier = "third-party"

@@ -1,0 +1,8 @@
+# Starting permission profile for a music player or creator. Works with the user's
+# Music (edits audio tags); no network and no Knowledge Graph by default.
+[info]
+app_id = "io.github.quodlibet.ExFalso"
+tier = "third-party"
+
+[filesystem]
+music = true
