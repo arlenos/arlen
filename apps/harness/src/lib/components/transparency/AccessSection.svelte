@@ -42,7 +42,7 @@
 
 <div class="access" id="transparency-access">
   {#if capability}
-    <p class="tier" title={statusTooltip(capability)}>{statusSentence(capability)}</p>
+    <p class="tier" title={statusTooltip(capability, $t)}>{statusSentence(capability, $t)}</p>
   {/if}
 
   {#if !loaded}

@@ -9,6 +9,7 @@
   import { ArrowRight } from "@lucide/svelte";
   import TimelineRow from "$lib/components/agent/TimelineRow.svelte";
   import { categorize, entrySentence, failureMarker, undoable } from "$lib/display";
+  import type { Translate } from "@arlen/ui-kit/i18n";
   import { relativeTime } from "$lib/time";
   import type { ActivityEntry, ActivityPage } from "$lib/ledger";
   import SectionState from "./SectionState.svelte";
@@ -29,8 +30,8 @@
     onseeall: () => void;
   } = $props();
 
-  function markerOf(e: ActivityEntry): { text: string; tone: "warn" }[] {
-    const m = failureMarker(e);
+  function markerOf(e: ActivityEntry, translate: Translate): { text: string; tone: "warn" }[] {
+    const m = failureMarker(e, translate);
     return m ? [{ text: m, tone: "warn" }] : [];
   }
 </script>
@@ -46,10 +47,10 @@
     {#each entries as entry (entry.entryRef)}
       {@const cat = categorize(entry.kind)}
       <TimelineRow
-        label={cat.label}
+        label={cat.labelKey ? $t(cat.labelKey) : cat.key}
         tone={cat.tone}
-        subject={entrySentence(entry)}
-        subjectMeta={markerOf(entry)}
+        subject={entrySentence(entry, $t)}
+        subjectMeta={markerOf(entry, $t)}
         time={relativeTime(entry.timestampMicros)}
         undoable={undoable(entry) && !activity.tampered}
         onundo={() => onundo(entry)}

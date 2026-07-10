@@ -158,7 +158,7 @@
 
     {#each groups as group (group.label)}
       <SidebarGroup class="pt-0">
-        <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+        <SidebarGroupLabel>{$t(group.label)}</SidebarGroupLabel>
         <SidebarMenu>
           {#each group.sessions as s (s.id)}
             {@render row(s)}

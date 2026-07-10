@@ -49,10 +49,11 @@
   <ul class="list">
     {#each entries as entry (entry.entryRef)}
       {@const cat = categorize(entry.kind)}
+      {@const catLabel = cat.labelKey ? $t(cat.labelKey) : cat.key}
       <TimelineRow
-        label={cat.label}
+        label={catLabel}
         tone={cat.tone}
-        subject={entrySentence(entry)}
+        subject={entrySentence(entry, $t)}
         time={relativeTime(entry.timestampMicros)}
       />
     {/each}

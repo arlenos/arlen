@@ -9,7 +9,8 @@ import type { Session } from "$lib/stores/conversation";
 /// The label doubles as the `{#each}` key, so the set of labels is fixed and
 /// unique.
 export interface SessionGroup {
-  /// The section heading shown in the rail (also the list key).
+  /// The i18n key for the section heading (also the list key); the rail
+  /// resolves it through the catalog so the heading follows the locale.
   label: string;
   /// The conversations in this section, in the incoming (newest-first) order.
   sessions: Session[];
@@ -42,17 +43,17 @@ export function groupSessions(sessions: Session[], now: number): SessionGroup[] 
     if (items.length > 0) groups.push({ label, sessions: items });
   };
 
-  push("Pinned", pinned);
-  push("Today", rest.filter((s) => s.createdAt >= today));
+  push("h.group.pinned", pinned);
+  push("h.group.today", rest.filter((s) => s.createdAt >= today));
   push(
-    "Yesterday",
+    "h.group.yesterday",
     rest.filter((s) => s.createdAt >= yesterday && s.createdAt < today),
   );
   push(
-    "Previous 7 days",
+    "h.group.previous7",
     rest.filter((s) => s.createdAt >= lastWeek && s.createdAt < yesterday),
   );
-  push("Earlier", rest.filter((s) => s.createdAt < lastWeek));
+  push("h.group.earlier", rest.filter((s) => s.createdAt < lastWeek));
 
   return groups;
 }
