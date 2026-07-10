@@ -1,0 +1,7 @@
+# Starting permission profile for an audio synth / server utility. Produces or
+# routes audio via the audio system (or listens through the microphone); its
+# settings live in its own config dir, so no document-folder access, no network
+# and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "lingot"
+tier = "third-party"
