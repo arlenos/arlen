@@ -109,15 +109,20 @@ fn main() -> Result<()> {
 
     // The timeline FUSE mount now lives in the separate `arlen-timeline` helper
     // (same-uid-isolation-plan.md option b): the mount needs the SUID
-    // `fusermount3`, which the Landlock + no_new_privs fence below would block.
-    // The helper reads the graph over this daemon's read socket; nothing here
-    // mounts FUSE.
+    // `fusermount3`. The helper reads the graph over this daemon's read socket;
+    // nothing here mounts FUSE.
 
-    // Self-confine BEFORE building the async runtime, so the ladybug thread and
-    // every tokio worker spawned afterward inherit the Landlock write-domain.
-    // Read everywhere; write only under the daemon's own dirs. Best-effort: a
-    // kernel that cannot enforce leaves the daemon exactly as safe as no fence.
-    apply_fence(&db_path, &graph_path, &daemon_socket);
+    // This daemon is deliberately NOT landlock-fenced. It authenticates a
+    // cross-uid caller by reading `/proc/<peer-pid>/exe`, which goes through
+    // `PTRACE_MODE_READ_FSCREDS`; landlock's `restrict_self` puts the daemon in a
+    // restricted domain that denies that access for a peer outside the domain,
+    // and no `/proc` grant can lift it (a fenced graph daemon rejects every
+    // cross-uid AI client as unresolvable, breaking the per-user AI layer's reach
+    // into the system Knowledge Graph, which a real image boot confirmed). See
+    // `arlen-landlock-fence`'s crate doc for the same verified finding. Write
+    // confinement comes instead from the unit (`ProtectSystem=strict` +
+    // `ReadWritePaths` in arlen-graph.service); the separate `arlen-timeline`
+    // helper does not read a peer's exe and keeps its own landlock fence.
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -197,59 +202,5 @@ async fn run(
             Ok(()) => bail!("daemon listener exited unexpectedly"),
             Err(e) => bail!("daemon listen ({daemon_socket}): {e}"),
         },
-    }
-}
-
-/// Install the Landlock write-fence over the daemon's own dirs: the SQLite store
-/// (events.db + WAL/SHM live in its parent dir), the ladybug graph dir, the
-/// socket dir it binds, and the system temp dir SQLite/Kuzu may spill to. The
-/// dirs are created first so each grant is expressible (the fence skips a path it
-/// cannot open). Defense-in-depth and best-effort: a kernel that cannot enforce
-/// leaves the daemon exactly as safe as no fence, so a non-enforcing kernel or a
-/// ruleset error is logged and the daemon continues - unless
-/// `ARLEN_KNOWLEDGE_REQUIRE_FENCE=1`, which makes that fatal for a hardened
-/// deployment. Read access stays granted everywhere (config, permission profiles,
-/// `/proc/<pid>/exe` for caller identity); only writes are confined.
-fn apply_fence(db_path: &str, graph_path: &str, daemon_socket: &str) {
-    use arlen_landlock_fence::{fence_writes, FenceOutcome};
-    use std::path::{Path, PathBuf};
-
-    let require = std::env::var_os("ARLEN_KNOWLEDGE_REQUIRE_FENCE").is_some_and(|v| v == "1");
-
-    // Grant each path's PARENT dir, never the leaf itself: the ladybug/Kuzu
-    // database at `graph_path` is created and managed by Kuzu, which refuses a
-    // pre-existing directory at that path ("Database path cannot be a
-    // directory"), and `db_path` is the SQLite file. Granting the parent lets
-    // the daemon create + write both under it; pre-creating the graph leaf as a
-    // dir breaks Kuzu's open. The db and graph parents are normally the same dir
-    // (the StateDirectory); overlapping grants are harmless.
-    let mut writable: Vec<PathBuf> = Vec::new();
-    for leaf in [db_path, graph_path, daemon_socket] {
-        if let Some(p) = Path::new(leaf).parent() {
-            writable.push(p.to_path_buf());
-        }
-    }
-    writable.push(std::env::temp_dir());
-
-    for dir in &writable {
-        let _ = std::fs::create_dir_all(dir);
-    }
-
-    let degraded = match fence_writes(&writable) {
-        Ok(FenceOutcome::Enforced) => {
-            info!("landlock write-fence enforced (db + graph + socket + temp dirs)");
-            None
-        }
-        Ok(FenceOutcome::NotEnforced) => Some("landlock not enforced by this kernel".to_string()),
-        Err(e) => Some(format!("landlock fence not applied: {e}")),
-    };
-    if let Some(reason) = degraded {
-        if require {
-            tracing::error!(
-                "ARLEN_KNOWLEDGE_REQUIRE_FENCE=1 but the fence is not active ({reason}); refusing to run unconfined"
-            );
-            std::process::exit(1);
-        }
-        warn!("{reason}; running unconfined (no worse than no fence)");
     }
 }
