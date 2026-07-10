@@ -1,0 +1,9 @@
+# Starting permission profile for a password manager. Opens a local vault in
+# Documents; no network by default (cloud sync needs an explicit grant) and no
+# Knowledge Graph.
+[info]
+app_id = "enpass"
+tier = "third-party"
+
+[filesystem]
+documents = true
