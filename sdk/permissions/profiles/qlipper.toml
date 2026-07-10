@@ -1,0 +1,6 @@
+# Starting permission profile for a system/config/utility app. No file access,
+# no network and no Knowledge Graph by default; it keeps a clipboard history in
+# its own config dir.
+[info]
+app_id = "qlipper"
+tier = "third-party"

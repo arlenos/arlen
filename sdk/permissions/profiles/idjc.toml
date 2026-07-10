@@ -1,0 +1,12 @@
+# Starting permission profile for an internet radio DJ console. Plays the user's
+# local Music and broadcasts it over the network, so it gets Music and network; no
+# Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "idjc"
+tier = "third-party"
+
+[filesystem]
+music = true
+
+[network]
+allow_all = true
