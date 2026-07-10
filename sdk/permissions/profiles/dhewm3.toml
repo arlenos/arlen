@@ -1,0 +1,6 @@
+# Starting permission profile for a self-contained app (game, emulator or the
+# screen reader). No file access, no network and no Knowledge Graph by default;
+# its data lives in its own app dir (game-data paths are granted explicitly).
+[info]
+app_id = "dhewm3"
+tier = "third-party"

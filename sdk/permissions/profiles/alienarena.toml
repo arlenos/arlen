@@ -1,0 +1,8 @@
+# Starting permission profile for a network game. Needs network for multiplayer;
+# no local file access and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "alienarena"
+tier = "third-party"
+
+[network]
+allow_all = true
