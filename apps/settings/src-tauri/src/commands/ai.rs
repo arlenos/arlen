@@ -21,6 +21,9 @@ const AI_DAEMON_NAME: &str = "org.arlen.AI1";
 const AI_OBJECT_PATH: &str = "/org/arlen/AI1";
 /// AI proxy name on the session bus.
 const AI_PROXY_NAME: &str = "org.arlen.AIProxy1";
+/// The AI proxy's object path. The proxy owns the provider catalog, so the
+/// providers list is fetched here, not from the AI daemon.
+const AI_PROXY_OBJECT_PATH: &str = "/org/arlen/AIProxy1";
 /// The AI agent daemon (behaviours/skills surface), distinct from the AI daemon.
 const AGENT_NAME: &str = "org.arlen.AIAgent1";
 /// The AI agent daemon's object path.
@@ -114,7 +117,28 @@ async fn ai_call_string(member: &str, fallback: &str) -> String {
 /// configured, status }`. Empty array if the daemon is unreachable.
 #[tauri::command]
 pub async fn ai_providers_list() -> String {
-    ai_call_string("ai_providers_list", "[]").await
+    // The provider catalog lives on the AI PROXY (`org.arlen.AIProxy1`), whose
+    // `list_providers` member returns the sovereignty-annotated ProviderView list;
+    // the AI daemon does not serve it.
+    proxy_call_string("list_providers", "[]").await
+}
+
+/// Call a String-returning member on the AI PROXY (`org.arlen.AIProxy1`), which
+/// owns the provider catalog. Distinct from [`ai_call_string`] (the AI daemon
+/// `org.arlen.AI1`); returns `fallback` on any connection or call failure.
+async fn proxy_call_string(member: &str, fallback: &str) -> String {
+    let Ok(connection) = zbus::Connection::session().await else {
+        return fallback.to_string();
+    };
+    let Ok(proxy) =
+        zbus::Proxy::new(&connection, AI_PROXY_NAME, AI_PROXY_OBJECT_PATH, AI_PROXY_NAME).await
+    else {
+        return fallback.to_string();
+    };
+    proxy
+        .call::<_, _, String>(member, &())
+        .await
+        .unwrap_or_else(|_| fallback.to_string())
 }
 
 /// Call a String-returning member on the AI AGENT daemon (`org.arlen.AIAgent1`),
