@@ -1,0 +1,9 @@
+# Starting permission profile for a 3D-printing slicer or EDA/CAD tool. Works with
+# Documents (models, gcode, projects); no network and no Knowledge Graph by
+# default.
+[info]
+app_id = "candle"
+tier = "third-party"
+
+[filesystem]
+documents = true

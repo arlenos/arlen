@@ -1,0 +1,9 @@
+# Starting permission profile for a bioinformatics tool. Reads and writes sequence
+# and alignment files under Documents; no network by default (fetching from online
+# databases needs an explicit grant) and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "jalview"
+tier = "third-party"
+
+[filesystem]
+documents = true
