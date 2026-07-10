@@ -228,6 +228,64 @@ pub struct ProviderCatalog {
     limits: UsageLimits,
 }
 
+/// The mainstream closed majors as available-to-add catalog entries. models.dev
+/// pins no `api` base URL for them (they use the @ai-sdk adapter default), so they
+/// are added here with their well-known endpoints, wire format and curated
+/// sovereignty. Credential-less (`credential_ref: None`) so they list as needs-key
+/// in the picker; the active-routing catalog never carries them until a key exists.
+fn mainstream_available() -> Vec<(String, CatalogEntry)> {
+    // (id, display, endpoint, models_endpoint, wire_format, auth_scheme)
+    const SPECS: &[(&str, &str, &str, &str, WireFormat, AuthScheme)] = &[
+        (
+            "openai",
+            "OpenAI",
+            "https://api.openai.com/v1/chat/completions",
+            "https://api.openai.com/v1/models",
+            WireFormat::Openai,
+            AuthScheme::Bearer,
+        ),
+        (
+            "anthropic",
+            "Anthropic",
+            "https://api.anthropic.com/v1/messages",
+            "https://api.anthropic.com/v1/models",
+            WireFormat::Anthropic,
+            AuthScheme::XApiKey,
+        ),
+        (
+            "mistral",
+            "Mistral",
+            "https://api.mistral.ai/v1/chat/completions",
+            "https://api.mistral.ai/v1/models",
+            WireFormat::Openai,
+            AuthScheme::Bearer,
+        ),
+    ];
+    SPECS
+        .iter()
+        .map(|(id, name, endpoint, models, wire_format, auth_scheme)| {
+            (
+                id.to_string(),
+                CatalogEntry {
+                    endpoint_url: endpoint.to_string(),
+                    backend: id.to_string(),
+                    wire_format: *wire_format,
+                    auth_scheme: *auth_scheme,
+                    auth_method: AuthMethod::ApiKey,
+                    url_template: None,
+                    credential_ref: None,
+                    models_endpoint: Some(models.to_string()),
+                    display_name: Some(name.to_string()),
+                    logo_id: None,
+                    unofficial: false,
+                    builtin: true,
+                    sovereignty: crate::sovereignty::curated_for(id).unwrap_or_default(),
+                },
+            )
+        })
+        .collect()
+}
+
 impl ProviderCatalog {
     /// Build a catalog from an explicit map (no combos, no limits).
     pub fn new(entries: HashMap<String, CatalogEntry>) -> Self {
@@ -356,6 +414,13 @@ impl ProviderCatalog {
             for (id, entry) in seeded {
                 cat.entries.entry(id).or_insert(entry);
             }
+        }
+        // The mainstream closed majors carry no `api` base URL in models.dev (they
+        // rely on the adapter default), so the seed omits them; add them explicitly
+        // as available-to-add entries (credential-less -> configured:false) so the
+        // picker surfaces the providers users most want, sovereignty-annotated.
+        for (id, entry) in mainstream_available() {
+            cat.entries.entry(id).or_insert(entry);
         }
         cat
     }
@@ -729,6 +794,22 @@ mod tests {
             crate::sovereignty::Jurisdiction::Cn
         );
         assert!(deepseek.endpoint_url.ends_with("/chat/completions"));
+        // The mainstream majors (api-less in models.dev) are added explicitly with
+        // their well-known endpoints, wire format and curated sovereignty.
+        let anthropic = cat.get("anthropic").expect("mainstream builtin");
+        assert_eq!(anthropic.endpoint_url, "https://api.anthropic.com/v1/messages");
+        assert_eq!(anthropic.wire_format, WireFormat::Anthropic);
+        assert_eq!(
+            anthropic.sovereignty.jurisdiction,
+            crate::sovereignty::Jurisdiction::Us
+        );
+        // Credential-less -> the picker shows it as needs-key, not active.
+        assert!(!anthropic.is_configured());
+        let mistral = cat.get("mistral").expect("mainstream builtin");
+        assert_eq!(
+            mistral.sovereignty.residency,
+            crate::sovereignty::Residency::EuPolicyDefault
+        );
     }
 
     #[test]
