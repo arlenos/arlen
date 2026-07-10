@@ -1,0 +1,6 @@
+# Starting permission profile for a game-library frontend. No file access, no
+# network and no Knowledge Graph by default; its library/ROM paths are granted
+# explicitly.
+[info]
+app_id = "pegasus-frontend"
+tier = "third-party"
