@@ -17,11 +17,6 @@
 //! their owner. Filing MERGEs by id, so re-filing the same meeting updates in
 //! place; a re-file with fewer items leaves the extra `ActionItem` nodes
 //! orphaned, which is acceptable for the file-once-per-note flow.
-//!
-//! Lib-only until the daemon wires a socket op (the `meetings_list`/`meeting_note`
-//! reads and the note-filing write); the bin tree carries no consumer yet, so the
-//! module allows dead code until that op lands, matching `capsule`/`typed_read`.
-#![allow(dead_code)]
 
 use anyhow::Result;
 
@@ -51,7 +46,7 @@ pub struct MeetingRecord<'a> {
 }
 
 /// One row of the recent-meetings home (`meetings_list`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct MeetingSummaryRow {
     /// The meeting id.
     pub id: String,
@@ -66,7 +61,7 @@ pub struct MeetingSummaryRow {
 }
 
 /// A single filed action item read back from the graph.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct FiledActionItem {
     /// The task text.
     pub text: String,
@@ -75,7 +70,7 @@ pub struct FiledActionItem {
 }
 
 /// A whole meeting note read back from the graph (`meeting_note {id}`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct MeetingDetail {
     /// The summary row fields.
     pub summary: MeetingSummaryRow,

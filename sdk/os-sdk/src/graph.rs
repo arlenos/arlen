@@ -677,6 +677,47 @@ impl UnixGraphClient {
         }
     }
 
+    /// List the recent meetings (newest first) for the meetings home, via the
+    /// daemon's `0x0C` meeting read op. Returns the KG's list metadata (the full
+    /// note document, with its transcript, lives app-side). Only the meetings app
+    /// / AI engine is admitted; a permission error maps to
+    /// [`QueryError::PermissionDenied`].
+    pub async fn meetings_list(&self) -> Result<Vec<MeetingSummary>, QueryError> {
+        let json = serde_json::to_vec(&serde_json::json!({ "op": "list" }))
+            .map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+        // A leading 0x0C byte selects the daemon's meeting read op.
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x0C);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_RESPONSE_BYTES).await?;
+        let response = String::from_utf8_lossy(&bytes);
+        Self::check_error(&response)?;
+        serde_json::from_str(response.trim()).map_err(|e| QueryError::InvalidQuery(e.to_string()))
+    }
+
+    /// Fetch one meeting note's list metadata + action items by id, via the
+    /// daemon's `0x0C` meeting read op. `None` for an unknown id. Same admission as
+    /// [`meetings_list`](Self::meetings_list).
+    pub async fn meeting_get(&self, id: &str) -> Result<Option<MeetingDetail>, QueryError> {
+        let json = serde_json::to_vec(&serde_json::json!({ "op": "get", "id": id }))
+            .map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x0C);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_RESPONSE_BYTES).await?;
+        let response = String::from_utf8_lossy(&bytes);
+        Self::check_error(&response)?;
+        let trimmed = response.trim();
+        if trimmed == "null" {
+            return Ok(None);
+        }
+        serde_json::from_str(trimmed)
+            .map(Some)
+            .map_err(|e| QueryError::InvalidQuery(e.to_string()))
+    }
+
     /// Create a node of a bounded built-in type at a caller-supplied id, via the
     /// daemon's write socket (the node counterpart to [`create_relation`]).
     ///
@@ -906,7 +947,8 @@ impl UnixGraphClient {
 }
 
 /// One action item to file with a meeting note (see
-/// [`file_meeting`](UnixGraphClient::file_meeting)).
+/// [`file_meeting`](UnixGraphClient::file_meeting)). Also the read shape of a
+/// filed action item returned by [`meeting_get`](UnixGraphClient::meeting_get).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MeetingActionItemInput {
     /// The task text.
@@ -915,6 +957,35 @@ pub struct MeetingActionItemInput {
     /// absent so the daemon reads it as an optional.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
+}
+
+/// One row of the recent-meetings home, returned by
+/// [`meetings_list`](UnixGraphClient::meetings_list).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct MeetingSummary {
+    /// The meeting id.
+    pub id: String,
+    /// The note title.
+    pub title: String,
+    /// The prose summary.
+    pub summary: String,
+    /// Participant display names, in listing order.
+    #[serde(default)]
+    pub participants: Vec<String>,
+    /// The recording start, microseconds since epoch.
+    pub started_at: i64,
+}
+
+/// A single meeting note's list metadata + action items, returned by
+/// [`meeting_get`](UnixGraphClient::meeting_get). The full note document (with its
+/// transcript) is held app-side, not in the graph.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct MeetingDetail {
+    /// The summary-row fields.
+    pub summary: MeetingSummary,
+    /// The action items, in filing order.
+    #[serde(default)]
+    pub action_items: Vec<MeetingActionItemInput>,
 }
 
 /// The outcome of a successful [`create_relation`](UnixGraphClient::create_relation):
@@ -1305,6 +1376,78 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         assert!(result.is_ok(), "an `OK: filed` status must map to Ok(()), got {result:?}");
+    }
+
+    #[tokio::test]
+    async fn meetings_list_sends_the_0x0c_op_and_parses_the_summaries() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-meetings-list-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            assert_eq!(req[0], 0x0C, "meeting reads carry the 0x0C prefix");
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["op"], "list");
+
+            let out = br#"[{"id":"m-1","title":"Sync","summary":"we shipped","participants":["Tim"],"started_at":42}]"#;
+            conn.write_all(&(out.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(out).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let rows = client.meetings_list().await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        let rows = rows.expect("list parses");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "m-1");
+        assert_eq!(rows[0].participants, vec!["Tim"]);
+        assert_eq!(rows[0].started_at, 42);
+    }
+
+    #[tokio::test]
+    async fn meeting_get_maps_null_to_none() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-meeting-get-none-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+            assert_eq!(req[0], 0x0C);
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["op"], "get");
+            assert_eq!(body["id"], "nope");
+
+            let out = b"null";
+            conn.write_all(&(out.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(out).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let got = client.meeting_get("nope").await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(matches!(got, Ok(None)), "an unknown id must map to Ok(None), got {got:?}");
     }
 
     #[tokio::test]

@@ -62,8 +62,8 @@ pub use event::{EmitError, EventEmitter, UnixEventEmitter};
 pub use event_consumer::{EventConsumer, SubscribeError, UnixEventConsumer};
 pub use proto::Event;
 pub use graph::{
-    GraphClient, MeetingActionItemInput, QueryError, RelationRetractOutcome, RelationWriteOutcome,
-    UnixGraphClient,
+    GraphClient, MeetingActionItemInput, MeetingDetail, MeetingSummary, QueryError,
+    RelationRetractOutcome, RelationWriteOutcome, UnixGraphClient,
 };
 pub use intents::{IntentError, IntentType, UnixIntentClient};
 pub use menu::{subscribe_menu_actions, Menu, MenuGroup, MenuItem, MenuItemKind};
