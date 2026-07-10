@@ -1,0 +1,11 @@
+# Starting permission profile for Parabolic (a video/audio downloader). Needs the
+# network to fetch and saves media to Downloads; no Knowledge Graph.
+[info]
+app_id = "parabolic"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

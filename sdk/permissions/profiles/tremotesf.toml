@@ -1,0 +1,9 @@
+# Starting permission profile for Tremotesf (a remote Transmission control UI).
+# Talks to a remote daemon over the network; no local downloads and no Knowledge
+# Graph by default.
+[info]
+app_id = "tremotesf"
+tier = "third-party"
+
+[network]
+allow_all = true

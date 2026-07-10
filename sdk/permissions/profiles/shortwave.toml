@@ -1,0 +1,8 @@
+# Starting permission profile for Shortwave (an internet-radio player). Streams
+# stations over the network; no local file access and no Knowledge Graph.
+[info]
+app_id = "shortwave"
+tier = "third-party"
+
+[network]
+allow_all = true

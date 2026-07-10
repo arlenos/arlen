@@ -1,0 +1,11 @@
+# Starting permission profile for LocalSend (a LAN file-sharing app). Needs the
+# network to transfer and saves received files to Downloads; no Knowledge Graph.
+[info]
+app_id = "localsend"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

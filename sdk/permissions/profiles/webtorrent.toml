@@ -1,0 +1,12 @@
+# Starting permission profile for WebTorrent Desktop (a streaming BitTorrent
+# client). Needs the network to transfer and saves to Downloads; no Knowledge
+# Graph.
+[info]
+app_id = "webtorrent"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

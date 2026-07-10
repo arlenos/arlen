@@ -1,0 +1,11 @@
+# Starting permission profile for Warp (a code-based file-transfer app). Needs the
+# network to transfer and saves received files to Downloads; no Knowledge Graph.
+[info]
+app_id = "warp"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
