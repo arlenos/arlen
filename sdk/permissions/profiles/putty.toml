@@ -1,0 +1,10 @@
+# Starting permission profile for a network client (SSH, scanner, container or
+# remote-management tool). Needs network; no local file access and no Knowledge
+# Graph by default (its settings live in its own config dir; file transfer needs
+# an explicit grant).
+[info]
+app_id = "putty"
+tier = "third-party"
+
+[network]
+allow_all = true
