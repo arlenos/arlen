@@ -1,0 +1,12 @@
+# Starting permission profile for a wallpaper browser. Needs network to fetch
+# wallpapers and saves them under Pictures; no other file access and no Knowledge
+# Graph by default. Observe-mode refines it.
+[info]
+app_id = "fondo"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+
+[network]
+allow_all = true

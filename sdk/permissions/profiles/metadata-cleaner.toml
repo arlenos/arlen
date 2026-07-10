@@ -1,0 +1,10 @@
+# Starting permission profile for a metadata-removal tool. Reads and writes files
+# under Documents and Pictures to strip their metadata; no network and no
+# Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "metadata-cleaner"
+tier = "third-party"
+
+[filesystem]
+documents = true
+pictures = true
