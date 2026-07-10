@@ -36,6 +36,11 @@
     now,
     columns = DEFAULT_COLUMNS,
     emptyLabel = "This folder is empty",
+    errorTitle = "Can't open this folder",
+    hintPermission = "You don't have permission to see what's inside.",
+    hintNotConnected = "This place is not connected right now.",
+    hintNoSuchDir = "This folder does not exist anymore.",
+    browserLabel = "File browser",
     icon,
   }: {
     /// The headless browser state; swapping it switches tabs.
@@ -62,6 +67,17 @@
     /// The message shown when this location is empty (a virtual location speaks
     /// for itself: "Trash is empty", "No recent files").
     emptyLabel?: string;
+    /// The can't-open-folder state text. The kit keeps the which-hint mapping;
+    /// the host owns the words (English defaults, so the kit stays i18n-neutral).
+    errorTitle?: string;
+    /// Hint shown when the error is a permission denial.
+    hintPermission?: string;
+    /// Hint shown when the location is not connected.
+    hintNotConnected?: string;
+    /// Hint shown when the directory no longer exists.
+    hintNoSuchDir?: string;
+    /// The accessible name for the browser region.
+    browserLabel?: string;
     /// Icon seam for themed and KG-state icons.
     icon?: Snippet<[FileEntry]>;
   } = $props();
@@ -419,7 +435,7 @@
   class="file-browser"
   bind:this={rootEl}
   role="application"
-  aria-label="File browser"
+  aria-label={browserLabel}
   aria-activedescendant={activeDescendant}
   tabindex="0"
   onkeydown={onkeydown}
@@ -434,14 +450,14 @@
 >
   {#if $error}
     <div class="fb-state">
-      <span class="fb-state-title">Can't open this folder</span>
+      <span class="fb-state-title">{errorTitle}</span>
       <span class="fb-state-hint">
         {#if /permission denied/i.test($error)}
-          You don't have permission to see what's inside.
+          {hintPermission}
         {:else if /not connected/i.test($error)}
-          This place is not connected right now.
+          {hintNotConnected}
         {:else if /no such directory/i.test($error)}
-          This folder does not exist anymore.
+          {hintNoSuchDir}
         {:else}
           {$error}
         {/if}

@@ -62,7 +62,7 @@
   // Each pane's columns + empty message follow its own location (a virtual
   // location swaps Size for the item's home folder), live as the pane navigates.
   let aColumns = $state(DEFAULT_COLUMNS);
-  let aEmpty = $state($t("f.empty.folder"));
+  let aEmpty = $state("f.empty.folder");
   $effect(() => {
     const c = $activeController;
     if (!c) return;
@@ -72,7 +72,7 @@
     });
   });
   let bColumns = $state(DEFAULT_COLUMNS);
-  let bEmpty = $state($t("f.empty.folder"));
+  let bEmpty = $state("f.empty.folder");
   $effect(() => {
     const c = $paneB;
     if (!c) return;
@@ -538,7 +538,12 @@
             <FileBrowser
               controller={$activeController}
               columns={aColumns}
-              emptyLabel={aEmpty}
+              emptyLabel={$t(aEmpty)}
+              errorTitle={$t("f.fb.errorTitle")}
+              hintPermission={$t("f.fb.hintPermission")}
+              hintNotConnected={$t("f.fb.hintNotConnected")}
+              hintNoSuchDir={$t("f.fb.hintNoSuchDir")}
+              browserLabel={$t("f.fb.browserLabel")}
               bind:renamingName
               onactivate={(entry, path) => {
                 if (entry.kind === "directory") return;
@@ -561,7 +566,12 @@
               <FileBrowser
                 controller={$paneB}
                 columns={bColumns}
-                emptyLabel={bEmpty}
+                emptyLabel={$t(bEmpty)}
+                errorTitle={$t("f.fb.errorTitle")}
+                hintPermission={$t("f.fb.hintPermission")}
+                hintNotConnected={$t("f.fb.hintNotConnected")}
+                hintNoSuchDir={$t("f.fb.hintNoSuchDir")}
+                browserLabel={$t("f.fb.browserLabel")}
                 onactivate={(entry, path) => {
                   if (entry.kind === "directory") return;
                   if (isArchiveName(entry.name)) void $paneB?.navigate(path);
