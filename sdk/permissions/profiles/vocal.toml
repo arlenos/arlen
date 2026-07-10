@@ -1,0 +1,12 @@
+# Starting permission profile for a podcast app. Needs network to fetch feeds and
+# episodes and saves downloads under Downloads; no other file access and no
+# Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "vocal"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

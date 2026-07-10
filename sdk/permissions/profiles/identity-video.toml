@@ -1,0 +1,8 @@
+# Starting permission profile for a video comparison tool. Reads video under
+# Videos; no network and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "identity-video"
+tier = "third-party"
+
+[filesystem]
+videos = true

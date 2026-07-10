@@ -1,0 +1,9 @@
+# Starting permission profile for an image converter. Reads and writes images
+# under Pictures; no network and no Knowledge Graph by default. Observe-mode
+# refines it.
+[info]
+app_id = "switcheroo"
+tier = "third-party"
+
+[filesystem]
+pictures = true
