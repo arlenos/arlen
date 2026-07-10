@@ -2,6 +2,7 @@
 name = "arlen-event-emit"
 version = "0.1.0"
 edition = "2021"
+license = "AGPL-3.0-only"
 description = "Dev dogfood tool: inject a synthetic event into the Arlen event bus"
 
 [[bin]]
