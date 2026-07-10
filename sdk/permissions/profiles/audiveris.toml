@@ -1,0 +1,9 @@
+# Starting permission profile for a documents-oriented tool (optical music
+# recognition). Reads scanned scores and writes MusicXML under Documents; no
+# network and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "audiveris"
+tier = "third-party"
+
+[filesystem]
+documents = true
