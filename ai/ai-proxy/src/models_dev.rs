@@ -91,6 +91,23 @@ pub fn catalog_entry_from_models_dev(id: &str, provider: &Value) -> Option<Catal
     })
 }
 
+/// Build catalog entries for every provider in a models.dev `api.json` document
+/// that carries an `api` base URL (the seedable set), each keyed by its provider
+/// id. Providers models.dev pins no URL for are skipped (the adapter-default long
+/// tail, reachable via the "+ Add provider" escape hatch or a later slice). The
+/// entries carry only the machine-derivable facts; the hand-curated sovereignty
+/// overlay is applied on top separately.
+pub fn seed_from_models_dev(doc: &Value) -> Vec<(String, CatalogEntry)> {
+    doc.as_object()
+        .map(|providers| {
+            providers
+                .iter()
+                .filter_map(|(id, p)| catalog_entry_from_models_dev(id, p).map(|e| (id.clone(), e)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,6 +170,25 @@ mod tests {
         // The ~24 adapter-default providers models.dev pins no URL for.
         let p = json!({ "id": "x", "name": "X", "npm": "@ai-sdk/x", "env": ["K"], "models": {} });
         assert!(catalog_entry_from_models_dev("x", &p).is_none());
+    }
+
+    #[test]
+    fn seed_collects_only_the_providers_with_an_api_url() {
+        let doc = json!({
+            "mistral": {
+                "name": "Mistral", "npm": "@ai-sdk/mistral", "env": ["K"],
+                "api": "https://api.mistral.ai/v1", "models": {}
+            },
+            // No api URL: an adapter-default provider, skipped by the seed.
+            "adapter-only": {
+                "name": "Adapter Only", "npm": "@ai-sdk/x", "env": ["K"], "models": {}
+            }
+        });
+        let mut seeded = seed_from_models_dev(&doc);
+        seeded.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(seeded.len(), 1);
+        assert_eq!(seeded[0].0, "mistral");
+        assert_eq!(seeded[0].1.display_name.as_deref(), Some("Mistral"));
     }
 
     #[test]
