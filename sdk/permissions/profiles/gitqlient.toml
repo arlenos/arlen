@@ -1,0 +1,9 @@
+# Starting permission profile for a Git GUI. Works with repositories under
+# Documents; no network by default (pushing and pulling over the network needs an
+# explicit grant) and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "gitqlient"
+tier = "third-party"
+
+[filesystem]
+documents = true
