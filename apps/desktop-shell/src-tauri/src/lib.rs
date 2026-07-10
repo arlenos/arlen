@@ -6,6 +6,7 @@ mod audio;
 mod battery;
 mod clipboard_history;
 mod clipboard_ipc;
+mod consent;
 mod intent_ipc;
 mod permission_watcher;
 mod search_ipc;
@@ -331,6 +332,8 @@ pub fn run() {
             dispatch_app_action,
             app_shortcut_invoke,
             ai_authz::ai_respond_authorization,
+            consent::consent_fetch,
+            consent::consent_resolve,
             modulesd_commands::modulesd_list_modules,
             modulesd_commands::mint_iframe,
             modulesd_commands::module_host_call,
