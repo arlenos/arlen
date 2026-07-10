@@ -6,6 +6,7 @@
     formatSize,
     type FileEntry,
   } from "@arlen/ui-kit/components/browser";
+  import { t } from "$lib/i18n/messages";
 
   let {
     entries,
@@ -25,16 +26,15 @@
   const itemsLine = $derived.by(() => {
     if (errored) return null;
     if (resultsCount !== null) {
-      return resultsCount === 1 ? "1 result" : `${resultsCount} results`;
+      return $t("f.status.results", { count: resultsCount });
     }
-    return entries.length === 1 ? "1 item" : `${entries.length} items`;
+    return $t("f.status.items", { count: entries.length });
   });
 
   const selectionLine = $derived.by(() => {
     if (selected.length === 0) return null;
     const bytes = selected.reduce((sum, e) => sum + (e.size ?? 0), 0);
-    const count =
-      selected.length === 1 ? "1 selected" : `${selected.length} selected`;
+    const count = $t("f.status.selected", { count: selected.length });
     return bytes > 0 ? `${count}, ${formatSize(bytes)}` : count;
   });
 </script>

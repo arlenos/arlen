@@ -18,11 +18,12 @@
   import type { ViewMode } from "@arlen/ui-kit/components/browser";
   import { focusedController, splitView, toggleSplit } from "$lib/stores/panes";
   import { infoOpen } from "$lib/stores/ui";
+  import { t } from "$lib/i18n/messages";
 
-  const VIEW_OPTIONS: { value: ViewMode; label: string; icon: typeof List }[] = [
-    { value: "list", label: "List", icon: List },
-    { value: "grid", label: "Grid", icon: LayoutGrid },
-    { value: "miller", label: "Columns", icon: Columns3 },
+  const VIEW_OPTIONS: { value: ViewMode; key: string; icon: typeof List }[] = [
+    { value: "list", key: "f.view.list", icon: List },
+    { value: "grid", key: "f.view.grid", icon: LayoutGrid },
+    { value: "miller", key: "f.view.columns", icon: Columns3 },
   ];
 
   // Live mirrors of the focused controller's stores.
@@ -49,7 +50,7 @@
     <DropdownMenu.Trigger>
       {#snippet child({ props })}
         {@const Icon = activeIcon}
-        <button class="view-trigger" aria-label="View options" {...props}>
+        <button class="view-trigger" aria-label={$t("f.view.options")} {...props}>
           <Icon size={15} strokeWidth={1.75} />
           <ChevronDown size={12} strokeWidth={2} class="chev" />
         </button>
@@ -64,7 +65,7 @@
           onSelect={() => $focusedController?.viewMode.set(opt.value)}
         >
           <Icon />
-          {opt.label}
+          {$t(opt.key)}
         </DropdownMenu.CheckboxItem>
       {/each}
       <DropdownMenu.Separator />
@@ -74,7 +75,7 @@
         onSelect={() => toggleSplit()}
       >
         <SquareSplitHorizontal />
-        Split panes
+        {$t("f.view.splitPanes")}
       </DropdownMenu.CheckboxItem>
       <DropdownMenu.CheckboxItem
         checked={hidden}
@@ -82,7 +83,7 @@
         onSelect={() => $focusedController?.setShowHidden(!hidden)}
       >
         <Eye />
-        Show hidden files
+        {$t("f.view.showHidden")}
       </DropdownMenu.CheckboxItem>
       <DropdownMenu.CheckboxItem
         checked={$infoOpen}
@@ -90,7 +91,7 @@
         onSelect={() => infoOpen.update((v) => !v)}
       >
         <Info />
-        Show info panel
+        {$t("f.view.showInfo")}
       </DropdownMenu.CheckboxItem>
     </DropdownMenu.Content>
   </DropdownMenu.Root>

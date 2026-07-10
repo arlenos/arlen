@@ -30,6 +30,7 @@
   import { onMount } from "svelte";
   import { infoOpen, pathEditing } from "$lib/stores/ui";
   import { closeSearch, searchOpen } from "$lib/stores/search";
+  import { t, dir } from "$lib/i18n/messages";
   import { facetOpen } from "$lib/stores/facets";
   import { duplicatesOpen, scanDuplicates, closeDuplicates } from "$lib/stores/duplicates";
   import { undoLast } from "$lib/stores/ops";
@@ -156,6 +157,7 @@
 
 <svelte:window onkeydown={onWindowKeydown} />
 
+<div dir={$dir} style="display: contents">
 <SidebarProvider>
   <FmSidebar />
   <SidebarInset class="h-svh">
@@ -182,7 +184,7 @@
         {/if}
         <div class="flex items-center gap-1">
           <IconAction
-            label="Search"
+            label={$t("f.action.search")}
             size="control"
             active={$searchOpen}
             onclick={toggleSearch}
@@ -190,7 +192,7 @@
             <Search size={15} strokeWidth={1.75} />
           </IconAction>
           <IconAction
-            label="Filter"
+            label={$t("f.action.filter")}
             size="control"
             active={$facetOpen}
             onclick={toggleFilter}
@@ -198,7 +200,7 @@
             <SlidersHorizontal size={15} strokeWidth={1.75} />
           </IconAction>
           <IconAction
-            label="Find duplicates"
+            label={$t("f.action.findDuplicates")}
             size="control"
             active={$duplicatesOpen}
             onclick={toggleDuplicates}
@@ -220,3 +222,4 @@
     </div>
   </SidebarInset>
 </SidebarProvider>
+</div>

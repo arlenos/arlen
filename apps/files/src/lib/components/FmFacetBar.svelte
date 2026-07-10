@@ -28,6 +28,7 @@
     type FacetGroup,
     type FacetValue,
   } from "$lib/stores/facets";
+  import { t } from "$lib/i18n/messages";
 
   let {
     basePath,
@@ -109,7 +110,7 @@
             <button
               class="facet-trigger"
               class:on={count > 0}
-              aria-label={`Filter by ${GROUP_LABEL[group].toLowerCase()}`}
+              aria-label={$t("f.facet.filterByAria", { group: GROUP_LABEL[group].toLowerCase() })}
               {...props}
             >
               <span>{GROUP_LABEL[group]}</span>
@@ -120,7 +121,7 @@
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="start" sideOffset={4} class="fm-menu facet-menu">
           {#if values.length === 0}
-            <div class="facet-empty">Nothing to filter by yet</div>
+            <div class="facet-empty">{$t("f.facet.empty")}</div>
           {:else}
             {#each values as v (v.value)}
               <DropdownMenu.CheckboxItem
@@ -139,8 +140,8 @@
 
     <span class="facet-spacer"></span>
 
-    <Button variant="outline" size="sm" disabled={!anyActive} onclick={openSave}>Save</Button>
-    <Button variant="ghost" size="sm" disabled={!anyActive} onclick={clearAll}>Clear</Button>
+    <Button variant="outline" size="sm" disabled={!anyActive} onclick={openSave}>{$t("f.facet.saveBtn")}</Button>
+    <Button variant="ghost" size="sm" disabled={!anyActive} onclick={clearAll}>{$t("f.facet.clearBtn")}</Button>
   </div>
 
   {#if anyActive}
@@ -151,7 +152,7 @@
           <span class="facet-chip-values">{chip.values}</span>
           <button
             class="facet-chip-x"
-            aria-label={`Remove ${chip.label} filter`}
+            aria-label={$t("f.facet.removeAria", { label: chip.label })}
             onclick={() => dropGroup(chip.group)}
           >
             <X size={11} strokeWidth={2.25} />
@@ -164,13 +165,13 @@
 
 <Dialog open={saveOpen} onClose={() => (saveOpen = false)} size="sm" labelledby="facet-save-title">
   <div class="facet-dialog">
-    <h2 id="facet-save-title">Save as folder</h2>
-    <p>This filter joins the sidebar, ready to reopen.</p>
+    <h2 id="facet-save-title">{$t("f.facet.saveAsFolder")}</h2>
+    <p>{$t("f.facet.saveDesc")}</p>
     <Input
       bind:value={saveName}
       class="h-8 text-sm"
-      placeholder="Folder name"
-      aria-label="Folder name"
+      placeholder={$t("f.facet.folderName")}
+      aria-label={$t("f.facet.folderName")}
       onkeydown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
@@ -179,8 +180,8 @@
       }}
     />
     <div class="facet-dialog-actions">
-      <Button variant="ghost" onclick={() => (saveOpen = false)}>Cancel</Button>
-      <Button onclick={commitSave}>Save</Button>
+      <Button variant="ghost" onclick={() => (saveOpen = false)}>{$t("f.ops.cancel")}</Button>
+      <Button onclick={commitSave}>{$t("f.save")}</Button>
     </div>
   </div>
 </Dialog>
@@ -251,7 +252,7 @@
     flex: 1;
   }
   .facet-opt-count {
-    margin-left: 1rem;
+    margin-inline-start: 1rem;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     font-size: 0.6875rem;
     font-variant-numeric: tabular-nums;

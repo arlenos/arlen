@@ -12,6 +12,7 @@
     horizonLine,
     type ProvenanceChain,
   } from "$lib/stores/provenance";
+  import { t } from "$lib/i18n/messages";
 
   let { fileRef }: { fileRef: string } = $props();
 
@@ -28,7 +29,7 @@
 </script>
 
 <Popover.Root bind:open>
-  <Popover.Trigger class="ph-trigger">Where's this from?</Popover.Trigger>
+  <Popover.Trigger class="ph-trigger">{$t("f.prov.trigger")}</Popover.Trigger>
   <Popover.Content align="start" sideOffset={6} class="ph-pop">
     {#if $chain}
       <div class="ph-subject">{$chain.subject}</div>
@@ -41,7 +42,7 @@
         <p class="ph-horizon">{horizonLine($chain)}</p>
       {/if}
     {:else}
-      <p class="ph-loading">Looking up where this came from…</p>
+      <p class="ph-loading">{$t("f.prov.loading")}</p>
     {/if}
   </Popover.Content>
 </Popover.Root>
@@ -55,7 +56,7 @@
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     cursor: pointer;
-    text-align: left;
+    text-align: start;
   }
   :global(.ph-trigger:hover) {
     color: var(--foreground);
