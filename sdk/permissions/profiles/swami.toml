@@ -1,0 +1,8 @@
+# Starting permission profile for Swami (a SoundFont/instrument editor). Opens and
+# saves soundfont files under Documents; no network and no Knowledge Graph.
+[info]
+app_id = "swami"
+tier = "third-party"
+
+[filesystem]
+documents = true

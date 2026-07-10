@@ -1,0 +1,8 @@
+# Starting permission profile for Polyphone (a SoundFont editor). Opens and saves
+# soundfont files under Documents; no network and no Knowledge Graph.
+[info]
+app_id = "polyphone"
+tier = "third-party"
+
+[filesystem]
+documents = true
