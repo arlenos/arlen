@@ -23,6 +23,7 @@ mod graph;
 mod identity;
 mod derivation;
 mod lcg;
+mod meeting;
 mod lifecycle;
 mod links;
 mod migration;
