@@ -20,6 +20,7 @@ pub mod allowlist;
 pub mod audit;
 pub mod catalog;
 pub mod forward;
+pub mod models_dev;
 pub mod peer_auth;
 pub mod service;
 pub mod sovereignty;
