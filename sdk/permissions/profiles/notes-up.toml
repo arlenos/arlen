@@ -1,0 +1,8 @@
+# Starting permission profile for Notes-Up (a Markdown note app). Stores notes
+# under Documents; no network and no Knowledge Graph.
+[info]
+app_id = "notes-up"
+tier = "third-party"
+
+[filesystem]
+documents = true

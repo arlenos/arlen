@@ -1,0 +1,8 @@
+# Starting permission profile for Paper Clip (a PDF metadata editor). Opens and
+# edits PDFs under Documents; no network and no Knowledge Graph.
+[info]
+app_id = "paper-clip"
+tier = "third-party"
+
+[filesystem]
+documents = true

@@ -1,0 +1,8 @@
+# Starting permission profile for Excalidraw (a whiteboard/diagram app). Opens and
+# saves drawings under Documents; no network and no Knowledge Graph.
+[info]
+app_id = "excalidraw-desktop"
+tier = "third-party"
+
+[filesystem]
+documents = true
