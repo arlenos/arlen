@@ -15,7 +15,10 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
-use os_sdk::{MeetingDetail, UnixGraphClient};
+use arlen_meeting_note::MeetingNote;
+use os_sdk::UnixGraphClient;
+
+mod note_store;
 
 /// The knowledge daemon's query socket: the app's own bind override, the daemon's
 /// bind env, then the per-user runtime default, then the system path. Mirrors the
@@ -89,30 +92,34 @@ async fn meetings_list() -> Result<Vec<MeetingSummaryDto>, String> {
         .collect())
 }
 
-/// A single meeting note's list metadata + action items by id, via the daemon's
-/// `0x0C` get op. This is the graph's view (summary + action items); the full note
-/// document with its transcript is the app-owned document a later slice loads. An
-/// unknown id, or a call with no id (the active-meeting path the frontend drives
-/// locally), is an error the frontend handles.
+/// A single past meeting's full note by id: the summary, action items and the
+/// transcript it was grounded in, loaded from the app-owned note document (the
+/// graph carries only list/link metadata, not the transcript). An unknown id, or a
+/// call with no id (the active meeting the frontend drives locally), is an error
+/// the frontend handles by using its own buffer.
 #[tauri::command]
-async fn meeting_note(id: Option<String>) -> Result<MeetingDetail, String> {
+async fn meeting_note(id: Option<String>) -> Result<MeetingNote, String> {
     let Some(id) = id else {
         return Err("no meeting id (the active meeting is held by the app)".to_string());
     };
-    let client = UnixGraphClient::new(graph_socket());
-    match client.meeting_get(&id).await {
-        Ok(Some(detail)) => Ok(detail),
-        Ok(None) => Err(format!("no meeting note for id {id}")),
-        Err(e) => Err(e.to_string()),
+    match note_store::load(&id)? {
+        Some(stored) => Ok(stored.note),
+        None => Err(format!("no meeting note for id {id}")),
     }
 }
 
-/// The human notes saved with a past meeting (the anchor). The note document that
-/// carries them is an app-owned document a later slice persists; until then this is
-/// empty and the frontend uses its live-notes buffer.
+/// The human notes saved with a past meeting (the anchor). Loaded from the note
+/// document when an id is given; empty for the active meeting (the frontend holds
+/// its live-notes buffer). Absent-note ids answer empty rather than error, since
+/// the anchor is auxiliary to the note itself.
 #[tauri::command]
-async fn meeting_human_notes() -> Result<String, String> {
-    Ok(String::new())
+async fn meeting_human_notes(id: Option<String>) -> Result<String, String> {
+    let Some(id) = id else {
+        return Ok(String::new());
+    };
+    Ok(note_store::load(&id)?
+        .map(|s| s.human_notes)
+        .unwrap_or_default())
 }
 
 /// Open a produced note document in its editor. Best-effort via `xdg-open`; a

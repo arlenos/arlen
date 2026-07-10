@@ -106,9 +106,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-meeting-note"
+version = "0.1.0"
+dependencies = [
+ "arlen-transcript",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "arlen-meetings"
 version = "0.1.0"
 dependencies = [
+ "arlen-meeting-note",
+ "arlen-transcript",
  "env_logger",
  "log",
  "os-sdk",
@@ -141,6 +152,14 @@ dependencies = [
  "serde",
  "thiserror 1.0.69",
  "toml 0.8.23",
+]
+
+[[package]]
+name = "arlen-transcript"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
