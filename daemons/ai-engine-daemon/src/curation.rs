@@ -121,10 +121,11 @@ pub async fn run_auto_tag<R: ProjectReader>(
                 }),
                 proof: None,
             };
-            let written = matches!(
-                writer.execute(&execute, &curation_grant()).await,
-                ExecuteOutcome::Ok { .. }
-            );
+            let outcome = writer.execute(&execute, &curation_grant()).await;
+            let written = matches!(outcome, ExecuteOutcome::Ok { .. });
+            if let ExecuteOutcome::Error { code, message } = &outcome {
+                tracing::warn!(?code, %message, %project, "auto-tag write refused");
+            }
             AutoTagResult::Applied { project, written }
         }
         AutoTag::NoProject => AutoTagResult::NoProject,
