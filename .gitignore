@@ -26,3 +26,7 @@ dev/screenshot/out/
 
 # Playwright MCP session artifacts (console logs, snapshots) from local UI checks
 .playwright-mcp/
+
+# transient build/verify logs
+dev/mkosi/buildimg-new.log
+dev/vm/verify-run.log
