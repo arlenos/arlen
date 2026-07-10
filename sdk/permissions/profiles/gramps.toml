@@ -1,0 +1,9 @@
+# Starting permission profile for Gramps (genealogy research). Reads and writes
+# family-tree files under Documents; no network by default and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "gramps"
+tier = "third-party"
+
+[filesystem]
+documents = true

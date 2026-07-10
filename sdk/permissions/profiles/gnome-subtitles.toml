@@ -1,0 +1,10 @@
+# Starting permission profile for GNOME Subtitles (subtitle editor). Edits subtitle
+# files under Documents and Videos; no network and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "gnome-subtitles"
+tier = "third-party"
+
+[filesystem]
+documents = true
+videos = true

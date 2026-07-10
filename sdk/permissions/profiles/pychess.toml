@@ -1,0 +1,9 @@
+# Starting permission profile for PyChess (chess GUI). Opens and saves games (PGN)
+# under Documents; no network by default (online play needs an explicit grant) and
+# no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "pychess"
+tier = "third-party"
+
+[filesystem]
+documents = true
