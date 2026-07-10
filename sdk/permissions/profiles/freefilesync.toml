@@ -2,7 +2,7 @@
 # the user's files, so it gets Home and network; no Knowledge Graph access.
 # Observe-mode refines it.
 [info]
-app_id = "org.gnome.World.PikaBackup"
+app_id = "freefilesync"
 tier = "third-party"
 
 [filesystem]
