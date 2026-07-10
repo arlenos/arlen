@@ -53,6 +53,22 @@ pub fn match_two_nodes(
     )
 }
 
+/// The `(<var>:<Label> {<field>: '<escaped value>'})` node-by-field pattern - the
+/// node-by-id shape generalized to any single trusted-identifier field (e.g.
+/// `app_id`). `var`/`label`/`field` are trusted schema identifiers (interpolated
+/// verbatim); `value` is caller-derived and always escaped.
+fn node_pattern_by_field(var: &str, label: &str, field: &str, value: &str) -> String {
+    format!("({var}:{label} {{{field}: '{}'}})", escape_cypher(value))
+}
+
+/// `MATCH (<var>:<Label> {<field>: '<escaped value>'})` - the node-by-field
+/// lookup that prefixes a `WHERE`/`SET`/`DETACH DELETE`/`RETURN` (e.g. `Grant`
+/// anchored by `app_id`). Byte-for-byte identical to the hand-rolled
+/// `MATCH ({var}:{label} {{{field}: '{}'}})` with `escape_cypher(value)`.
+pub fn match_node_by_field(var: &str, label: &str, field: &str, value: &str) -> String {
+    format!("MATCH {}", node_pattern_by_field(var, label, field, value))
+}
+
 /// A property value in a `SET` clause. The daemon supplies the type (never the
 /// caller), so text is escaped-and-quoted (the injection boundary) while
 /// numerics and bools are bare, exactly as the hand-rolled `format!` sites do.
@@ -100,6 +116,16 @@ mod tests {
     fn node_builders_match_the_hand_rolled_form() {
         assert_eq!(merge_node("a", "App", "org.arlen.files"), "MERGE (a:App {id: 'org.arlen.files'})");
         assert_eq!(match_node("g", "Grant", "grant-1"), "MATCH (g:Grant {id: 'grant-1'})");
+    }
+
+    #[test]
+    fn match_node_by_field_matches_the_hand_rolled_form() {
+        // Byte-identical to the hand-rolled `MATCH (g:Grant {{app_id: '{esc}'}})`
+        // the Grant-by-app_id sites use (space after the field colon).
+        assert_eq!(
+            match_node_by_field("g", "Grant", "app_id", "org.arlen.files"),
+            "MATCH (g:Grant {app_id: 'org.arlen.files'})"
+        );
     }
 
     #[test]
