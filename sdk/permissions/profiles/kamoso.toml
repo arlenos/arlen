@@ -1,0 +1,9 @@
+# Starting permission profile for Kamoso (a webcam app). Saves photos to Pictures
+# and videos to Videos; no network and no Knowledge Graph.
+[info]
+app_id = "kamoso"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+videos = true
