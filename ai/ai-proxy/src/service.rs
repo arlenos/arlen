@@ -1263,6 +1263,7 @@ mod tests {
                 auth_method: crate::catalog::AuthMethod::ApiKey,
                 unofficial: false,
                 builtin: false,
+                sovereignty: Default::default(),
             },
         );
         ProviderCatalog::new(entries)
