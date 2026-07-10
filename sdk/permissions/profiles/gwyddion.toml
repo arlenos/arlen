@@ -1,0 +1,9 @@
+# Starting permission profile for a documents-oriented tool (scientific data,
+# plotting or analysis). Reads and writes its data files under Documents; no
+# network and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "gwyddion"
+tier = "third-party"
+
+[filesystem]
+documents = true
