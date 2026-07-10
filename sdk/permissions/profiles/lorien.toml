@@ -1,0 +1,10 @@
+# Starting permission profile for Lorien (infinite-canvas sketching). Saves and
+# exports sketches under Pictures and Documents; no network and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "lorien"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+documents = true
