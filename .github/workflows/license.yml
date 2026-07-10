@@ -24,9 +24,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # Pin cargo-deny: 0.20.2 takes --config as a top-level option (what the
+      # lint-licenses recipe passes). An unpinned "latest" drifted to a version
+      # that wants `check --config`, which broke the recipe.
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-deny,just
+          tool: cargo-deny@0.20.2,just
       - name: install reuse
         run: pipx install reuse
       - name: lint-licenses
