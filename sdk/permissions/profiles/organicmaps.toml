@@ -1,0 +1,9 @@
+# Starting permission profile for Organic Maps (an offline maps app). Downloads map
+# regions over the network into its own data dir; no broad file access and no
+# Knowledge Graph.
+[info]
+app_id = "organicmaps"
+tier = "third-party"
+
+[network]
+allow_all = true

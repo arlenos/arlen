@@ -1,0 +1,6 @@
+# Starting permission profile for Planify (a to-do app). Keeps tasks in its own
+# data dir; no file access, no network and no Knowledge Graph by default (sync is
+# granted explicitly).
+[info]
+app_id = "planify"
+tier = "third-party"

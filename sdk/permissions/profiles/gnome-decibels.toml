@@ -1,0 +1,8 @@
+# Starting permission profile for Decibels (a simple audio player). Plays audio
+# files from Music; no network and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "gnome-decibels"
+tier = "third-party"
+
+[filesystem]
+music = true
