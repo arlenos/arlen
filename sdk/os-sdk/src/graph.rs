@@ -633,6 +633,50 @@ impl UnixGraphClient {
         }
     }
 
+    /// File a produced meeting note into the graph as a `Meeting` node with its
+    /// `ActionItem` children, via the daemon's write socket (agent-work-surfaces).
+    ///
+    /// The summary + action items are the AI-derived note; the daemon stores them
+    /// as escaped node fields, never Cypher. Idempotent on `id`, so a re-file
+    /// updates the note in place. Only the meetings app / AI engine is admitted;
+    /// a permission error maps to [`QueryError::PermissionDenied`]. `started_at` is
+    /// the recording start in microseconds since epoch.
+    pub async fn file_meeting(
+        &self,
+        id: &str,
+        title: &str,
+        summary: &str,
+        participants: &[String],
+        action_items: &[MeetingActionItemInput],
+        started_at: i64,
+    ) -> Result<(), QueryError> {
+        let req = serde_json::json!({
+            "op": "file_meeting",
+            "id": id,
+            "title": title,
+            "summary": summary,
+            "participants": participants,
+            "action_items": action_items,
+            "started_at": started_at,
+        });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+
+        // A leading 0x02 byte selects the daemon's structured write mode.
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x02);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_WRITE_RESPONSE_BYTES).await?;
+        let response = String::from_utf8_lossy(&bytes);
+        Self::check_error(&response)?;
+        match response.trim() {
+            "OK: filed" => Ok(()),
+            other => Err(QueryError::InvalidQuery(format!(
+                "unexpected daemon write response: {other}"
+            ))),
+        }
+    }
+
     /// Create a node of a bounded built-in type at a caller-supplied id, via the
     /// daemon's write socket (the node counterpart to [`create_relation`]).
     ///
@@ -859,6 +903,18 @@ impl UnixGraphClient {
             ))),
         }
     }
+}
+
+/// One action item to file with a meeting note (see
+/// [`file_meeting`](UnixGraphClient::file_meeting)).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MeetingActionItemInput {
+    /// The task text.
+    pub text: String,
+    /// The owner, when the extractor attributed one. Omitted from the wire when
+    /// absent so the daemon reads it as an optional.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
 }
 
 /// The outcome of a successful [`create_relation`](UnixGraphClient::create_relation):
@@ -1201,6 +1257,54 @@ mod tests {
             matches!(result, Ok(RelationWriteOutcome::Created)),
             "an `OK: created` status must map to Created, got {result:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn file_meeting_sends_a_tagged_write_request_and_accepts_ok() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-meeting-ok-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            assert_eq!(req[0], 0x02, "write requests carry the 0x02 prefix");
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["op"], "file_meeting");
+            assert_eq!(body["id"], "m-1");
+            assert_eq!(body["title"], "Editor direction");
+            assert_eq!(body["started_at"], 1000);
+            assert_eq!(body["participants"][0], "Tim");
+            assert_eq!(body["action_items"][0]["text"], "land the store");
+            assert_eq!(body["action_items"][0]["owner"], "Tim");
+            // The owner is omitted from the wire when absent.
+            assert!(body["action_items"][1].get("owner").is_none());
+
+            let ok = b"OK: filed";
+            conn.write_all(&(ok.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(ok).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let items = [
+            MeetingActionItemInput { text: "land the store".into(), owner: Some("Tim".into()) },
+            MeetingActionItemInput { text: "review".into(), owner: None },
+        ];
+        let result = client
+            .file_meeting("m-1", "Editor direction", "we shipped", &["Tim".to_string()], &items, 1000)
+            .await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(result.is_ok(), "an `OK: filed` status must map to Ok(()), got {result:?}");
     }
 
     #[tokio::test]

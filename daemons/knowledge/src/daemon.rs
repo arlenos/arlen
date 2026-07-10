@@ -538,6 +538,36 @@ enum WriteRequest {
         /// The stable revocation handle = the Grant node id.
         revocation_handle: String,
     },
+    /// File a produced meeting note as a `Meeting` node with its `ActionItem`
+    /// children (agent-work-surfaces). The summary + action items are AI-derived
+    /// from the transcript; only the meetings app / AI engine may file. Idempotent
+    /// on `id`, so a re-file updates the note in place rather than duplicating.
+    FileMeeting {
+        /// The app-minted meeting id.
+        id: String,
+        /// The note title.
+        title: String,
+        /// The prose summary.
+        summary: String,
+        /// Participant display names, in listing order.
+        #[serde(default)]
+        participants: Vec<String>,
+        /// The extracted action items.
+        #[serde(default)]
+        action_items: Vec<MeetingActionItemInput>,
+        /// The recording start, microseconds since epoch.
+        started_at: i64,
+    },
+}
+
+/// One action item in a [`WriteRequest::FileMeeting`] request.
+#[derive(Debug, Deserialize)]
+struct MeetingActionItemInput {
+    /// The task text.
+    text: String,
+    /// The owner, when the extractor attributed one.
+    #[serde(default)]
+    owner: Option<String>,
 }
 
 /// The node types creatable via the `0x02` write socket: the consolidation node
@@ -1556,7 +1586,58 @@ async fn handle_write_request(
                 Err(e) => format!("ERROR: {e}"),
             }
         }
+        WriteRequest::FileMeeting {
+            id,
+            title,
+            summary,
+            participants,
+            action_items,
+            started_at,
+        } => {
+            // The Meeting label is app-owned content, but filing is gated to the
+            // meetings app / AI engine so a third-party app cannot write arbitrary
+            // meeting nodes. The summary/participants/action text are AI/human
+            // content stored as node fields (escaped), never Cypher.
+            if !meeting_writer_admitted(&token.app_id) {
+                return format!("ERROR: permission denied for meeting write by {}", token.app_id);
+            }
+            if id.trim().is_empty() || title.trim().is_empty() {
+                return "ERROR: meeting requires id and title".to_string();
+            }
+            let items: Vec<crate::meeting::ActionItemRecord> = action_items
+                .iter()
+                .map(|a| crate::meeting::ActionItemRecord {
+                    text: &a.text,
+                    owner: a.owner.as_deref(),
+                })
+                .collect();
+            let record = crate::meeting::MeetingRecord {
+                title: &title,
+                summary: &summary,
+                participants: &participants,
+                action_items: &items,
+            };
+            match crate::meeting::file_meeting(graph, &id, record, started_at).await {
+                Ok(()) => "OK: filed".to_string(),
+                Err(e) => format!("ERROR: {e}"),
+            }
+        }
     }
+}
+
+/// App ids permitted to file a meeting note (the meetings app orchestrates
+/// capture -> summarize -> file; the AI engine may file directly). In debug a
+/// `dev.`-prefixed id is admitted (the dev/test convention the other write gates
+/// use).
+fn meeting_writer_admitted(app_id: &str) -> bool {
+    if app_id == "meetings" || app_id == "ai-agent" {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    if app_id.starts_with("dev.") {
+        return true;
+    }
+    false
 }
 
 /// App ids permitted to write a consent Grant node (the Grant label is otherwise
@@ -3268,6 +3349,17 @@ mod tests {
         );
         assert!(!revoke_caller_admitted("dev.evil"));
         assert!(!revoke_caller_admitted("dev.arlen-knowledge"));
+    }
+
+    #[test]
+    fn meeting_writer_admitted_only_meetings_and_engine() {
+        assert!(meeting_writer_admitted("meetings"));
+        assert!(meeting_writer_admitted("ai-agent"));
+        for other in ["settings", "com.x", "knowledge", "unknown", ""] {
+            assert!(!meeting_writer_admitted(other), "{other} must not file meetings");
+        }
+        // A `dev.`-prefixed id is admitted in debug only, never in release.
+        assert_eq!(meeting_writer_admitted("dev.arlen-meetings"), cfg!(debug_assertions));
     }
 
     #[test]
