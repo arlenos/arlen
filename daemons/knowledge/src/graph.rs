@@ -543,7 +543,7 @@ fn create_schema(conn: &Connection) -> Result<()> {
     // A recorded meeting and its produced note (the meetings app, agent-work-
     // surfaces). The note is on-device by design (the Otter/Granola trap we
     // avoid): the summary is AI-derived and grounded, `participants` a
-    // denormalized comma-joined list for the recent-meetings home, `started_at`
+    // denormalized JSON-encoded list for the recent-meetings home, `started_at`
     // the recording start. Action items hang off it as structured `ActionItem`
     // nodes via HAS_ACTION_ITEM so they can be answered and later linked. Fields
     // evolve additively via `ALTER TABLE ... ADD IF NOT EXISTS`; the imminent
