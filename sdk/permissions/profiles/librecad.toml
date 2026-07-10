@@ -1,0 +1,8 @@
+# Starting permission profile for LibreCAD (a 2D CAD application). Opens and saves
+# drawings under Documents; no network and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "librecad"
+tier = "third-party"
+
+[filesystem]
+documents = true

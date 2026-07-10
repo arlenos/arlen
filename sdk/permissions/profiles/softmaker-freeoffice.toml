@@ -1,0 +1,8 @@
+# Starting permission profile for softmaker-freeoffice (an office application). Opens and saves
+# documents under Documents; no network and no Knowledge Graph by default.
+[info]
+app_id = "softmaker-freeoffice"
+tier = "third-party"
+
+[filesystem]
+documents = true
