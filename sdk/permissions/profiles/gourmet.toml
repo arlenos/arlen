@@ -1,0 +1,9 @@
+# Starting permission profile for Gourmet (recipe manager). Imports and exports
+# recipe files under Documents; no network by default and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "gourmet"
+tier = "third-party"
+
+[filesystem]
+documents = true

@@ -1,0 +1,10 @@
+# Starting permission profile for Diffuse (visual file compare and merge). Reads
+# and writes the files being compared under Documents; no network and no Knowledge
+# Graph. Comparing files elsewhere in home needs an explicit grant. Observe-mode
+# refines it.
+[info]
+app_id = "diffuse"
+tier = "third-party"
+
+[filesystem]
+documents = true

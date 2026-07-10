@@ -1,0 +1,7 @@
+# Starting permission profile for the Ulauncher launcher. Reads the installed-app
+# index and keeps its settings in its own config dir, so it needs no document
+# folders, no network (web extensions need an explicit grant) and no Knowledge
+# Graph. Observe-mode refines it.
+[info]
+app_id = "ulauncher"
+tier = "third-party"

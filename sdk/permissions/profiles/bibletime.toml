@@ -1,0 +1,7 @@
+# Starting permission profile for BibleTime (Bible study). Its modules and personal
+# notes live in its own data dir, so it needs no document folders, no network
+# (downloading new modules needs an explicit grant) and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "bibletime"
+tier = "third-party"
