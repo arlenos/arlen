@@ -153,9 +153,11 @@ impl SnapshotRef {
     }
 }
 
-/// The captured inverse of a committed non-graph action (§5): a closed enum
-/// total over the actions the executor can commit. The executor captures one of
-/// these write-ahead; replaying it is the undo.
+/// The captured inverse of a committed action (§5): a closed enum total over the
+/// actions the executor can commit. The first four variants reverse non-graph
+/// effects (filesystem / setting / snapshot); `RetractGraphEdge` reverses a graph
+/// write (the AI engine's graph compensation, re-homed onto the signed log). The
+/// executor captures one of these write-ahead; replaying it is the undo.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InverseReceipt {
     /// Relocation: undo moves `now` back to `prior`. Captured: the prior path.
@@ -186,6 +188,27 @@ pub enum InverseReceipt {
         snapshot: SnapshotRef,
         /// The path scope the snapshot covers.
         scope: CanonicalPath,
+    },
+    /// Graph edge creation: undo retracts exactly the edge the action created,
+    /// keyed by the durable `op_id` it was stamped with, so the retract targets
+    /// that one write and no other. This is the inverse the AI engine's graph
+    /// compensation persists (pi's in-memory RetractReceipt re-homed onto the
+    /// signed log); unlike the other variants it reverses a graph write, not a
+    /// filesystem/setting/snapshot effect, but it is captured and replayed the
+    /// same way.
+    RetractGraphEdge {
+        /// The op id the created edge was stamped with; the retract is keyed to it.
+        op_id: String,
+        /// The source node's namespaced type.
+        from_type: String,
+        /// The source node's id.
+        from_id: String,
+        /// The target node's namespaced type.
+        to_type: String,
+        /// The target node's id.
+        to_id: String,
+        /// The relation (edge) type.
+        relation_type: String,
     },
 }
 
@@ -383,6 +406,25 @@ mod tests {
         let inv = InverseReceipt::RestorePath { now, prior: prior.clone() };
         match inv {
             InverseReceipt::RestorePath { prior: p, .. } => assert_eq!(p, prior),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn retract_graph_edge_round_trips_through_json_keyed_by_op_id() {
+        let inv = InverseReceipt::RetractGraphEdge {
+            op_id: "op-7".to_string(),
+            from_type: "system.File".to_string(),
+            from_id: "/work/x.rs".to_string(),
+            to_type: "system.Project".to_string(),
+            to_id: "proj-1".to_string(),
+            relation_type: "FILE_PART_OF".to_string(),
+        };
+        let json = serde_json::to_string(&inv).unwrap();
+        assert_eq!(serde_json::from_str::<InverseReceipt>(&json).unwrap(), inv);
+        // The op id is the retract key, so it survives the round trip.
+        match serde_json::from_str::<InverseReceipt>(&json).unwrap() {
+            InverseReceipt::RetractGraphEdge { op_id, .. } => assert_eq!(op_id, "op-7"),
             _ => panic!("wrong variant"),
         }
     }

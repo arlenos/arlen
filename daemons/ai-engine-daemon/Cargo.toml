@@ -23,6 +23,9 @@ arlen-consent-contract = { path = "../../contracts/consent-contract" }
 # glue: Authorize -> Capability::decide). The daemon is the glue layer that
 # couples to ai-core; the contract crate stays engine-neutral.
 arlen-ai-core = { path = "../../ai/ai-core" }
+# The signed undo log's inverse-receipt model: the graph compensation receipt maps
+# to InverseReceipt::RetractGraphEdge for the persisted, HMAC-chained undo log.
+arlen-ai-undo-core = { path = "../../ai/ai-undo-core" }
 # The shared behaviour/router/loader vocabulary the curator orchestrator (§E)
 # re-homes onto: the deterministic trigger match + the Workflow/Agent split.
 arlen-ai-skills = { path = "../../ai/ai-skills" }
