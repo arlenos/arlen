@@ -1,0 +1,12 @@
+# Starting permission profile for a stock-market tracker. Fetches quotes over the
+# network and saves portfolios under Documents; no Knowledge Graph access.
+# Observe-mode refines it.
+[info]
+app_id = "jstock"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true
