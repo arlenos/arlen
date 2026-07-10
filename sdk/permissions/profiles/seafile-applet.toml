@@ -1,0 +1,12 @@
+# Starting permission profile for a sync/backup tool. It synchronises the user's
+# files to a Seafile server, so it gets Home and network; no Knowledge Graph
+# access. Observe-mode refines it.
+[info]
+app_id = "seafile-applet"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true
