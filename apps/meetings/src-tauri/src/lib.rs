@@ -16,9 +16,11 @@ use std::path::PathBuf;
 use serde::Serialize;
 
 use arlen_meeting_note::MeetingNote;
+use arlen_transcript::Transcript;
 use os_sdk::UnixGraphClient;
 
 mod note_store;
+mod summarize;
 
 /// The knowledge daemon's query socket: the app's own bind override, the daemon's
 /// bind env, then the per-user runtime default, then the system path. Mirrors the
@@ -147,13 +149,18 @@ async fn meeting_stop_capture() -> Result<(), String> {
     Err("on-device capture requires the ASR engine (not yet provisioned)".to_string())
 }
 
-/// Summarize a captured transcript into a grounded note. The summary runs through
-/// the AI engine (ai-meeting-notes over a provider); until the provider is wired
-/// this reports so, and the frontend falls back to its fixture. The frontend passes
-/// `{transcript, humanNotes}`, which this stub ignores until the engine lands.
+/// Summarize a captured transcript into a grounded note and persist it (the app
+/// document + the KG list metadata). Runs the transcript through the AI summary
+/// engine over a provider (screened, fail-closed). A provider/model that is not
+/// provisioned is an error the frontend handles by falling back to its fixture.
 #[tauri::command]
-async fn meeting_summarize() -> Result<serde_json::Value, String> {
-    Err("summarization requires the AI engine (provider not yet wired)".to_string())
+async fn meeting_summarize(
+    transcript: serde_json::Value,
+    human_notes: String,
+) -> Result<MeetingNote, String> {
+    let transcript: Transcript =
+        serde_json::from_value(transcript).map_err(|e| format!("invalid transcript: {e}"))?;
+    summarize::summarize_and_file(transcript, human_notes).await
 }
 
 /// Tauri entry point (invoked from `main.rs`).
