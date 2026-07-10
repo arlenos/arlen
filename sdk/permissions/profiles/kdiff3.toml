@@ -1,0 +1,8 @@
+# Starting permission profile for kdiff3 (a diff and merge tool). Opens and saves files under
+# Documents; no network and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "kdiff3"
+tier = "third-party"
+
+[filesystem]
+documents = true

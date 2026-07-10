@@ -1,0 +1,8 @@
+# Starting permission profile for pulsar (a code editor). Opens and saves files under
+# Documents; no network and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "pulsar"
+tier = "third-party"
+
+[filesystem]
+documents = true
