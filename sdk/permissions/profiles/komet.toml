@@ -1,0 +1,8 @@
+# Starting permission profile for Komet (a Git commit-message editor). Edits commit
+# messages in a project under Documents; no network and no Knowledge Graph.
+[info]
+app_id = "komet"
+tier = "third-party"
+
+[filesystem]
+documents = true
