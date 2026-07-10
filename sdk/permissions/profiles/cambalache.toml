@@ -1,0 +1,9 @@
+# Starting permission profile for Cambalache (a GTK UI designer). Opens and saves
+# interface files under Documents; no network and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "cambalache"
+tier = "third-party"
+
+[filesystem]
+documents = true

@@ -1,0 +1,8 @@
+# Starting permission profile for Dia (a structured-diagram editor). Opens and
+# saves diagram files under Documents; no network, no Knowledge Graph access.
+[info]
+app_id = "dia"
+tier = "third-party"
+
+[filesystem]
+documents = true
