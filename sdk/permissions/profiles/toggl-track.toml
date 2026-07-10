@@ -1,0 +1,10 @@
+# Starting permission profile for a cloud task/time-tracking app. Needs network to
+# sync with its service (any host); its data lives in the app, so no
+# document-folder access and no Knowledge Graph by default. Observe-mode refines
+# it.
+[info]
+app_id = "toggl-track"
+tier = "third-party"
+
+[network]
+allow_all = true
