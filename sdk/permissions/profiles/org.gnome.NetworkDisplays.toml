@@ -1,5 +1,6 @@
-# Starting permission profile for Network Displays (casts the screen to a network display). Network is its function; no user files, no
-# Knowledge Graph access.
+# Starting permission profile for a network client (screen casting to network
+# displays). Streams the screen to Miracast/network receivers by function, so it
+# gets network; no local file access and no Knowledge Graph by default.
 [info]
 app_id = "org.gnome.NetworkDisplays"
 tier = "third-party"
