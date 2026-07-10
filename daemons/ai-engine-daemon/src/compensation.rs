@@ -15,6 +15,9 @@
 
 use std::collections::{HashMap, VecDeque};
 
+use arlen_ai_undo_core::effect_model::InverseReceipt;
+use arlen_ai_undo_core::undo_log::UndoEntry;
+
 /// The op-id-keyed inverse of a committed relation write: everything
 /// `retract_relation` needs to remove exactly the edge the write created.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,6 +87,38 @@ impl RetractReceipt {
             to_id: s("to_id")?,
             relation_type: s("relation_type")?,
         })
+    }
+
+    /// The captured inverse for the signed undo log: a graph-edge retract keyed by
+    /// this receipt's op id, carrying the same edge identity the in-memory retract
+    /// uses. The persisted counterpart, so a restart-surviving undo replays exactly
+    /// this retract.
+    ///
+    /// The persisted-log submit that consumes this is the next increment (the
+    /// signer round-trip wired into the executor's async write path), so it has no
+    /// production caller yet; the in-memory store is the live undo mechanism today.
+    #[allow(dead_code)]
+    pub fn to_inverse(&self) -> InverseReceipt {
+        InverseReceipt::RetractGraphEdge {
+            op_id: self.op_id.clone(),
+            from_type: self.from_type.clone(),
+            from_id: self.from_id.clone(),
+            to_type: self.to_type.clone(),
+            to_id: self.to_id.clone(),
+            relation_type: self.relation_type.clone(),
+        }
+    }
+
+    /// The undo-log entry the AI engine submits to the signer to persist this
+    /// compensation: the durable op id (the entry key and the retract key), the
+    /// gate `correlation_id` the action came from, and the captured inverse.
+    #[allow(dead_code)]
+    pub fn to_undo_entry(&self, correlation_id: impl Into<String>) -> UndoEntry {
+        UndoEntry {
+            op_id: self.op_id.clone(),
+            correlation_id: correlation_id.into(),
+            inverse: self.to_inverse(),
+        }
     }
 }
 
@@ -186,6 +221,40 @@ mod tests {
         let mut partial = write_result("op");
         partial.as_object_mut().unwrap().remove("op_id");
         assert!(RetractReceipt::from_report("graph.write", false, &partial).is_none());
+    }
+
+    #[test]
+    fn to_undo_entry_maps_the_receipt_onto_the_signed_log_shape() {
+        let r = RetractReceipt::for_write(
+            "op-9",
+            "system.File",
+            "/work/x.rs",
+            "system.Project",
+            "proj-1",
+            "FILE_PART_OF",
+        );
+        let entry = r.to_undo_entry("corr-7");
+        // The op id is both the entry key and the retract key.
+        assert_eq!(entry.op_id, "op-9");
+        assert_eq!(entry.correlation_id, "corr-7");
+        match entry.inverse {
+            InverseReceipt::RetractGraphEdge {
+                op_id,
+                from_type,
+                from_id,
+                to_type,
+                to_id,
+                relation_type,
+            } => {
+                assert_eq!(op_id, "op-9");
+                assert_eq!(from_type, "system.File");
+                assert_eq!(from_id, "/work/x.rs");
+                assert_eq!(to_type, "system.Project");
+                assert_eq!(to_id, "proj-1");
+                assert_eq!(relation_type, "FILE_PART_OF");
+            }
+            _ => panic!("graph compensation must map to RetractGraphEdge"),
+        }
     }
 
     #[test]
