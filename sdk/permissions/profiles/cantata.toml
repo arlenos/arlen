@@ -1,0 +1,9 @@
+# Starting permission profile for an MPD client. Controls a Music Player Daemon
+# over the network (local or remote); no local file access and no Knowledge Graph
+# by default. Observe-mode refines it.
+[info]
+app_id = "cantata"
+tier = "third-party"
+
+[network]
+allow_all = true
