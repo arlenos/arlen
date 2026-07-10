@@ -35,7 +35,10 @@ if [ ! -x "$cache/$NODE_PKG/bin/node" ]; then
     curl --proto '=https' --tlsv1.2 -fsSLO "https://nodejs.org/dist/v${NODE_VER}/SHASUMS256.txt"
     # Verify ONLY our tarball's line from the official SHASUMS for this version.
     grep " ${NODE_PKG}.tar.xz\$" SHASUMS256.txt | sha256sum -c -
-    tar -xJf "${NODE_PKG}.tar.xz"
+    # --no-same-owner: the build overlay is a user namespace where a root-side
+    # chown to the tarball's packaged uid/gid (1001) fails EINVAL; extract the
+    # files owned by the build user instead (ownership is reset at image assembly).
+    tar --no-same-owner -xJf "${NODE_PKG}.tar.xz"
 fi
 node_dest="$DESTDIR/usr/lib/arlen/node-runtime"
 mkdir -p "$(dirname "$node_dest")"
@@ -57,7 +60,7 @@ fi
 pi_dest="$DESTDIR/usr/lib/arlen/pi"
 mkdir -p "$pi_dest"
 # Exclude the git dir + any host-local caches; keep node_modules + dist (runtime).
-( cd "$pi_src" && tar --exclude=.git --exclude=.husky -cf - . ) | ( cd "$pi_dest" && tar -xf - )
+( cd "$pi_src" && tar --exclude=.git --exclude=.husky -cf - . ) | ( cd "$pi_dest" && tar --no-same-owner -xf - )
 echo ">> staged the pinned pi engine into the image"
 
 # --- 3. the pi-plugins extension (in-repo, self-contained tsc build) ----------
