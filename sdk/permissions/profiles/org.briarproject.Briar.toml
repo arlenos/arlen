@@ -1,0 +1,9 @@
+# Starting permission profile for a social/fediverse/secure-messenger client. Needs
+# network to communicate; no local file access and no Knowledge Graph by default
+# (attachments are saved through an explicit grant).
+[info]
+app_id = "org.briarproject.Briar"
+tier = "third-party"
+
+[network]
+allow_all = true

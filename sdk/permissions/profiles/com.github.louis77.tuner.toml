@@ -1,0 +1,9 @@
+# Starting permission profile for an internet-radio player. Streams stations over
+# the network; no local file access and no Knowledge Graph by default. Observe-mode
+# refines it.
+[info]
+app_id = "com.github.louis77.tuner"
+tier = "third-party"
+
+[network]
+allow_all = true
