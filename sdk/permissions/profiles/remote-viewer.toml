@@ -1,0 +1,9 @@
+# Starting permission profile for a network client (remote desktop or VM display).
+# Connects to a remote or virtual-machine display over the network by function, so
+# it gets network; no local file access and no Knowledge Graph by default.
+[info]
+app_id = "remote-viewer"
+tier = "third-party"
+
+[network]
+allow_all = true

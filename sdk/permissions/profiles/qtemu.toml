@@ -1,0 +1,9 @@
+# Starting permission profile for a virtual-machine manager. It stores VM disk
+# images and configs under Home, so it gets Home; no network and no Knowledge
+# Graph by default. Observe-mode refines it.
+[info]
+app_id = "qtemu"
+tier = "third-party"
+
+[filesystem]
+home = true
