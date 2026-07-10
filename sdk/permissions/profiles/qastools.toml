@@ -1,0 +1,6 @@
+# Starting permission profile for an ALSA sound-control utility. No file access,
+# no network and no Knowledge Graph by default; it configures the audio system.
+# Observe-mode refines it.
+[info]
+app_id = "qastools"
+tier = "third-party"
