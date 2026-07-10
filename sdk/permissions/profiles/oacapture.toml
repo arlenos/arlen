@@ -1,0 +1,9 @@
+# Starting permission profile for an astronomy image-capture app. Talks to camera
+# hardware and saves captured images under Pictures; no network and no Knowledge
+# Graph by default. Observe-mode refines it.
+[info]
+app_id = "oacapture"
+tier = "third-party"
+
+[filesystem]
+pictures = true

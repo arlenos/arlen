@@ -1,0 +1,7 @@
+# Starting permission profile for a self-contained app (game, emulator, planetarium
+# or the screen reader). No file access, no network and no Knowledge Graph by
+# default; its star catalogues live in its own app dir (extra catalogues are
+# granted explicitly).
+[info]
+app_id = "skychart"
+tier = "third-party"
