@@ -1,0 +1,6 @@
+# Starting permission profile for a serial-terminal utility. Talks to serial
+# hardware and keeps its settings in its own config dir, so it needs no document
+# folders, no network and no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "moserial"
+tier = "third-party"

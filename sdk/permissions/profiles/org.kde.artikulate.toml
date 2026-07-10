@@ -1,0 +1,7 @@
+# Starting permission profile for an educational reference or trainer. Its course
+# and reference data live in its own data dir, so it needs no document folders, no
+# network (downloading extra courses needs an explicit grant) and no Knowledge
+# Graph. Observe-mode refines it.
+[info]
+app_id = "org.kde.artikulate"
+tier = "third-party"
