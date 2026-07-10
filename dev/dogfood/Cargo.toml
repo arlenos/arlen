@@ -2,6 +2,7 @@
 name = "arlen-dogfood"
 version = "0.1.0"
 edition = "2021"
+license = "AGPL-3.0-only"
 description = "Dev in-VM dogfood: drive the KG-AI loop end to end and log the result"
 
 [[bin]]

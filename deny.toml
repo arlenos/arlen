@@ -40,6 +40,9 @@ allow = [
     "0BSD",
     "BSL-1.0",
     "Apache-2.0 WITH LLVM-exception",
+    # Data license on the Mozilla CA bundle shipped by webpki-roots, pulled in
+    # transitively by every Rust HTTP stack (reqwest, ureq via ort).
+    "CDLA-Permissive-2.0",
 ]
 
 # Some crates ship a license file rather than an SPDX expression cargo-deny can

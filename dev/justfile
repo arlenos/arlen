@@ -173,10 +173,10 @@ lint-licenses:
     # This repo has no single root workspace, so each `[workspace]` root is checked
     # against the one root deny.toml via --config (discovered, so a new workspace is
     # covered automatically). Needs cargo-deny + reuse installed (CI installs them).
-    roots=$(grep -rl '^\[workspace\]' --include=Cargo.toml . | grep -v '/target/' | xargs -n1 dirname | sort -u)
+    roots=$(grep -rl '^\[workspace\]' --include=Cargo.toml . | grep -v '/target/' | grep -v '/mkosi.builddir/' | grep -v '/mkosi.tools/' | xargs -n1 dirname | sort -u)
     for ws in $roots; do
         echo "== cargo-deny licenses: $ws =="
-        cargo deny --manifest-path "$ws/Cargo.toml" check --config "{{ROOT}}/deny.toml" licenses
+        cargo deny --manifest-path "$ws/Cargo.toml" --config "{{ROOT}}/deny.toml" check licenses
     done
     # REUSE.toml licenses the whole tree by the per-component map (precedence
     # "closest" lets a file's own SPDX header win), so the repo is REUSE-compliant
