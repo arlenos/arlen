@@ -1,0 +1,12 @@
+# Starting permission profile for a Usenet newsreader. Reads newsgroups over the
+# network and saves downloaded attachments to Downloads; no Knowledge Graph access.
+# Observe-mode refines it.
+[info]
+app_id = "pan"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
