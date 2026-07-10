@@ -309,11 +309,28 @@ impl ProxyService {
         self.catalog.names().map(str::to_string).collect()
     }
 
-    /// The manager-surface view of every catalogued provider (id, name, kind,
-    /// configured, builtin) - display metadata only, no endpoint or credential.
-    /// Backs the daemon's `ai_providers_list`.
+    /// The manager-surface view of every ADDABLE provider (id, name, kind,
+    /// configured, builtin, sovereignty) - display metadata only, no endpoint or
+    /// credential. Backs the daemon's `ai_providers_list`.
+    ///
+    /// The picker shows the ACTIVE catalog (local builtins + the user's configured
+    /// providers, which carry a credential and so read `configured: true`) merged
+    /// with the models.dev available seed (the addable cloud long tail, shown
+    /// `configured: false` until a key is attached). The active entry wins on id so
+    /// a user-configured provider keeps its state; the forward path is untouched
+    /// (it still routes only the active catalog, so no half-working cloud route).
     pub fn provider_views(&self) -> Vec<crate::catalog::ProviderView> {
-        self.catalog.views()
+        let active = self.catalog.views();
+        let active_ids: std::collections::HashSet<String> =
+            active.iter().map(|v| v.id.clone()).collect();
+        let mut views = active;
+        for v in ProviderCatalog::available_arlen().views() {
+            if !active_ids.contains(&v.id) {
+                views.push(v);
+            }
+        }
+        views.sort_by(|a, b| a.id.cmp(&b.id));
+        views
     }
 
     /// The current-window token usage for a provider, for the AI-transparency surface. Reads
