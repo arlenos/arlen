@@ -1,0 +1,9 @@
+# Starting permission profile for an electronics/CAD design tool. Works with
+# design and layout files under Documents; no network and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "klayout"
+tier = "third-party"
+
+[filesystem]
+documents = true
