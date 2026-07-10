@@ -5,6 +5,7 @@
   /// `startDragging()` rather than `data-tauri-drag-region`, because
   /// the attribute-based path is unreliable on Wayland in Tauri v2.
   import { breadcrumbs } from "$lib/stores/navigation";
+  import { t } from "$lib/i18n/messages";
   import { SidebarTrigger } from "@arlen/ui-kit/components/ui/sidebar";
   import { Separator } from "@arlen/ui-kit/components/ui/separator";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
@@ -53,7 +54,7 @@
     <Separator orientation="vertical" class="mr-1 h-4" />
     <nav
       class="flex items-center gap-1.5 text-sm text-muted-foreground"
-      aria-label="Breadcrumb"
+      aria-label={$t("s.header.breadcrumb")}
     >
       {#each $breadcrumbs as segment, i (segment + i)}
         {#if i > 0}
@@ -64,7 +65,7 @@
             ? "font-medium text-foreground"
             : ""}
         >
-          {segment}
+          {$t(segment)}
         </span>
       {/each}
     </nav>

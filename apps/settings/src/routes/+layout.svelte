@@ -7,6 +7,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import AppSidebar from "$lib/components/AppSidebar.svelte";
   import SiteHeader from "$lib/components/SiteHeader.svelte";
+  import { dir } from "$lib/i18n/messages";
   import {
     SidebarProvider,
     SidebarInset,
@@ -195,12 +196,16 @@
   }
 </script>
 
-<SidebarProvider class="h-screen min-h-0 overflow-hidden">
-  <AppSidebar />
-  <SidebarInset class="h-screen min-h-0 overflow-hidden">
-    <SiteHeader />
-    <div class="min-h-0 flex-1 overflow-y-auto">
-      {@render children()}
-    </div>
-  </SidebarInset>
-</SidebarProvider>
+<!-- A display:contents wrapper carries the reading direction to the whole shell
+     (sidebar, header, content) without adding a layout box. -->
+<div dir={$dir} style="display: contents">
+  <SidebarProvider class="h-screen min-h-0 overflow-hidden">
+    <AppSidebar />
+    <SidebarInset class="h-screen min-h-0 overflow-hidden">
+      <SiteHeader />
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        {@render children()}
+      </div>
+    </SidebarInset>
+  </SidebarProvider>
+</div>

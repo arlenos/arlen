@@ -19,6 +19,7 @@
     MoreHorizontal,
   } from "@lucide/svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
+  import { t } from "$lib/i18n/messages";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
@@ -45,10 +46,10 @@
   const hasOverflow = $derived($topbar.items.some((i) => !i.shown));
 </script>
 
-<Page title="Topbar" description="Arrange the applets and indicators in your top bar.">
+<Page title={$t("s.topbar.title")} description={$t("s.topbar.desc")}>
   <SectionGrid>
-    <Group label="Preview" class="span-full">
-      <div class="tb-preview" aria-label="Top bar preview">
+    <Group label={$t("s.topbar.preview")} class="span-full">
+      <div class="tb-preview" aria-label={$t("s.topbar.previewAria")}>
         <span class="tb-pv-left">Arlen</span>
         <span class="tb-pv-spacer"></span>
         {#each $shownItems as item (item.id)}
@@ -61,7 +62,7 @@
       </div>
     </Group>
 
-    <Group label="Applets" class="span-full">
+    <Group label={$t("s.topbar.applets")} class="span-full">
       {#if $topbar.items.length > 0}
         <SortableList ids={order} onReorder={reorder}>
           {#snippet item(id)}

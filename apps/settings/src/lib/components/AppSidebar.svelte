@@ -14,6 +14,7 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { tick } from "svelte";
   import { PANELS, navigateTo } from "$lib/stores/navigation";
+  import { t } from "$lib/i18n/messages";
   import { search, type SearchResult } from "$lib/search/index";
   import {
     Search,
@@ -126,11 +127,11 @@
   // four new pages).
   const SECTIONS = [
     {
-      label: "System",
+      label: "s.section.system",
       panelIds: ["display", "workspaces", "topbar", "notifications", "printers", "windows-apps", "about"] as const,
     },
     {
-      label: "Personal",
+      label: "s.section.personal",
       panelIds: [
         "appearance",
         "quicksettings",
@@ -140,11 +141,11 @@
       ] as const,
     },
     {
-      label: "AI",
+      label: "s.section.ai",
       panelIds: ["ai", "ai-providers", "ai-models"] as const,
     },
     {
-      label: "Input",
+      label: "s.section.input",
       panelIds: [
         "keyboard",
         "shortcuts",
@@ -154,7 +155,7 @@
       ] as const,
     },
     {
-      label: "Apps & Modules",
+      label: "s.section.apps",
       panelIds: ["extensions", "privacy"] as const,
     },
   ];
@@ -202,8 +203,8 @@
         onfocus={() => {
           if (collapsed) sidebar.toggle();
         }}
-        placeholder={collapsed ? "" : "Search settings..."}
-        aria-label="Search settings"
+        placeholder={collapsed ? "" : $t("s.search.placeholder")}
+        aria-label={$t("s.search.aria")}
         readonly={collapsed}
         class="search-input"
       />
@@ -246,7 +247,7 @@
   <SidebarContent>
     {#each SECTIONS as section (section.label)}
       <SidebarGroup>
-        <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
+        <SidebarGroupLabel>{$t(section.label)}</SidebarGroupLabel>
         <SidebarMenu>
           {#each section.panelIds as id}
             {@const panel = PANELS.find((p) => p.id === id)}
@@ -256,11 +257,11 @@
                 <SidebarMenuButton
                   isActive={isActive(panel.href)}
                   disabled={!panel.enabled}
-                  tooltip={panel.title}
+                  tooltip={$t(panel.title)}
                   onclick={() => navigateTo(panel.id)}
                 >
                   <Icon />
-                  <span>{panel.title}</span>
+                  <span>{$t(panel.title)}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             {/if}

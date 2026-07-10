@@ -16,6 +16,7 @@
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Row } from "@arlen/ui-kit/components/ui/row";
+  import { t } from "$lib/i18n/messages";
 
   interface BacklightDevice {
     name: string;
@@ -108,24 +109,22 @@
   );
 </script>
 
-<Group label="Brightness">
+<Group label={$t("s.bright.title")}>
   {#if snapshots.length === 0}
     <div class="empty">
-      No backlight-controllable display detected. External monitors
-      (HDMI / DisplayPort) typically don't expose software
-      brightness; use the monitor's hardware buttons instead.
+      {$t("s.bright.empty")}
     </div>
   {:else}
     {#if snapshots.length > 1}
       <Row
-        label="Display"
-        description="Pick which panel the slider controls."
+        label={$t("s.bright.display")}
+        description={$t("s.bright.display.desc")}
       >
         {#snippet control()}
           <PopoverSelect
             value={selected ?? ""}
             options={deviceOptions}
-            ariaLabel="Brightness device"
+            ariaLabel={$t("s.bright.device.aria")}
             width="220px"
             onchange={selectDevice}
           />
@@ -134,8 +133,8 @@
     {/if}
 
     <Row
-      label="Brightness"
-      description="Lower for dim rooms, higher for daylight."
+      label={$t("s.bright.title")}
+      description={$t("s.bright.desc")}
     >
       {#snippet control()}
         <div class="slider-cell">

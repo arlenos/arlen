@@ -37,35 +37,37 @@ export interface PanelMeta {
 
 /// All panels in display order. Disabled ones render greyed out.
 /// Sidebar grouping is configured in `AppSidebar.svelte::SECTIONS`.
+/// `title` holds an i18n KEY (not display text); the nav chrome (AppSidebar,
+/// breadcrumbs) resolves it through the catalog, so the labels follow the locale.
 export const PANELS: PanelMeta[] = [
   // System
-  { id: "display", title: "Display", icon: "Monitor", enabled: true, href: "/display" },
-  { id: "workspaces", title: "Workspaces & Tiling", icon: "LayoutGrid", enabled: true, href: "/workspaces" },
-  { id: "topbar", title: "Topbar", icon: "PanelTop", enabled: true, href: "/topbar" },
-  { id: "notifications", title: "Notifications", icon: "Bell", enabled: true, href: "/notifications" },
-  { id: "printers", title: "Printers", icon: "Printer", enabled: true, href: "/printers" },
-  { id: "windows-apps", title: "Windows apps", icon: "Wine", enabled: true, href: "/windows-apps" },
-  { id: "about", title: "About", icon: "Info", enabled: true, href: "/about" },
+  { id: "display", title: "s.nav.display", icon: "Monitor", enabled: true, href: "/display" },
+  { id: "workspaces", title: "s.nav.workspaces", icon: "LayoutGrid", enabled: true, href: "/workspaces" },
+  { id: "topbar", title: "s.nav.topbar", icon: "PanelTop", enabled: true, href: "/topbar" },
+  { id: "notifications", title: "s.nav.notifications", icon: "Bell", enabled: true, href: "/notifications" },
+  { id: "printers", title: "s.nav.printers", icon: "Printer", enabled: true, href: "/printers" },
+  { id: "windows-apps", title: "s.nav.windowsApps", icon: "Wine", enabled: true, href: "/windows-apps" },
+  { id: "about", title: "s.nav.about", icon: "Info", enabled: true, href: "/about" },
 
   // Personal
-  { id: "appearance", title: "Appearance", icon: "Palette", enabled: true, href: "/appearance" },
-  { id: "quicksettings", title: "Quick Settings", icon: "LayoutPanelTop", enabled: true, href: "/appearance/quicksettings" },
-  { id: "accessibility", title: "Accessibility", icon: "Accessibility", enabled: true, href: "/accessibility" },
-  { id: "focus", title: "Focus Mode", icon: "Crosshair", enabled: true, href: "/focus" },
-  { id: "knowledge", title: "Knowledge Graph", icon: "Brain", enabled: true, href: "/knowledge" },
-  { id: "ai", title: "General", icon: "Sparkles", enabled: true, href: "/ai" },
-  { id: "ai-providers", title: "Providers", icon: "Cloud", enabled: true, href: "/ai/providers" },
-  { id: "ai-models", title: "Models", icon: "SlidersHorizontal", enabled: true, href: "/ai/models" },
+  { id: "appearance", title: "s.nav.appearance", icon: "Palette", enabled: true, href: "/appearance" },
+  { id: "quicksettings", title: "s.nav.quicksettings", icon: "LayoutPanelTop", enabled: true, href: "/appearance/quicksettings" },
+  { id: "accessibility", title: "s.nav.accessibility", icon: "Accessibility", enabled: true, href: "/accessibility" },
+  { id: "focus", title: "s.nav.focus", icon: "Crosshair", enabled: true, href: "/focus" },
+  { id: "knowledge", title: "s.nav.knowledge", icon: "Brain", enabled: true, href: "/knowledge" },
+  { id: "ai", title: "s.nav.ai", icon: "Sparkles", enabled: true, href: "/ai" },
+  { id: "ai-providers", title: "s.nav.aiProviders", icon: "Cloud", enabled: true, href: "/ai/providers" },
+  { id: "ai-models", title: "s.nav.aiModels", icon: "SlidersHorizontal", enabled: true, href: "/ai/models" },
 
   // Input
-  { id: "keyboard", title: "Keyboard", icon: "Keyboard", enabled: true, href: "/keyboard" },
-  { id: "shortcuts", title: "Shortcuts", icon: "Command", enabled: true, href: "/keyboard/shortcuts" },
-  { id: "mouse", title: "Mouse", icon: "Mouse", enabled: true, href: "/mouse" },
-  { id: "touchpad", title: "Touchpad", icon: "SquareMousePointer", enabled: true, href: "/touchpad" },
-  { id: "system-actions", title: "System Actions", icon: "Zap", enabled: true, href: "/system-actions" },
+  { id: "keyboard", title: "s.nav.keyboard", icon: "Keyboard", enabled: true, href: "/keyboard" },
+  { id: "shortcuts", title: "s.nav.shortcuts", icon: "Command", enabled: true, href: "/keyboard/shortcuts" },
+  { id: "mouse", title: "s.nav.mouse", icon: "Mouse", enabled: true, href: "/mouse" },
+  { id: "touchpad", title: "s.nav.touchpad", icon: "SquareMousePointer", enabled: true, href: "/touchpad" },
+  { id: "system-actions", title: "s.nav.systemActions", icon: "Zap", enabled: true, href: "/system-actions" },
 
   // Apps & Modules
-  { id: "extensions", title: "Extensions", icon: "Puzzle", enabled: true, href: "/extensions" },
+  { id: "extensions", title: "s.nav.extensions", icon: "Puzzle", enabled: true, href: "/extensions" },
   // Disabled until Phase 8 ships the permission-management UI.
   // The route still resolves (the page renders a placeholder for
   // direct-URL visitors) but the sidebar entry is greyed out and
@@ -73,7 +75,7 @@ export const PANELS: PanelMeta[] = [
   // review HIGH 1: enabling a non-functional permission panel is a
   // security UX trap, users could infer permissions are manageable
   // here.
-  { id: "privacy", title: "Privacy", icon: "Shield", enabled: false, href: "/privacy" },
+  { id: "privacy", title: "s.nav.privacy", icon: "Shield", enabled: false, href: "/privacy" },
 ];
 
 interface NavigationState {

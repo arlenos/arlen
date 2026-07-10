@@ -9,6 +9,7 @@
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
+  import { t } from "$lib/i18n/messages";
   import { mouse, load, set } from "$lib/stores/mouse";
 
   onMount(() => {
@@ -25,14 +26,14 @@
 </script>
 
 <Page
-  title="Mouse"
-  description="Pointer acceleration and scroll direction for external mice."
+  title={$t("s.mouse.title")}
+  description={$t("s.mouse.desc")}
 >
   <SectionGrid>
-    <Group label="Behavior" class="span-full">
+    <Group label={$t("s.mouse.behavior")} class="span-full">
       <Row
-        label="Acceleration"
-        description="Negative values slow the pointer; positive speed it up."
+        label={$t("s.mouse.accel")}
+        description={$t("s.mouse.accel.desc")}
         id="mouse-acceleration"
       >
         {#snippet control()}
@@ -43,7 +44,7 @@
                 max={100}
                 step={1}
                 value={accelToTick($mouse.config.acceleration)}
-                ariaLabel="Acceleration"
+                ariaLabel={$t("s.mouse.accel")}
                 oninput={(v) => set("acceleration", tickToAccel(v))}
               />
             </div>
@@ -53,8 +54,8 @@
       </Row>
 
       <Row
-        label="Natural scroll"
-        description="Scroll direction follows finger or wheel movement."
+        label={$t("s.mouse.naturalScroll")}
+        description={$t("s.mouse.naturalScroll.desc")}
         id="mouse-natural-scroll"
       >
         {#snippet control()}
@@ -62,15 +63,15 @@
         {/snippet}
       </Row>
 
-      <Row label="Left-handed" description="Swap left and right mouse buttons." id="mouse-left-handed">
+      <Row label={$t("s.mouse.leftHanded")} description={$t("s.mouse.leftHanded.desc")} id="mouse-left-handed">
         {#snippet control()}
           <Switch value={$mouse.config.left_handed} onchange={(v) => set("left_handed", v)} />
         {/snippet}
       </Row>
 
       <Row
-        label="Scroll speed"
-        description="Multiplier on wheel scroll deltas. 1.0 is the libinput default."
+        label={$t("s.mouse.scrollSpeed")}
+        description={$t("s.mouse.scrollSpeed.desc")}
         id="mouse-scroll-speed"
       >
         {#snippet control()}
@@ -81,7 +82,7 @@
                 max={300}
                 step={10}
                 value={Math.round($mouse.config.scroll_speed * 100)}
-                ariaLabel="Scroll speed"
+                ariaLabel={$t("s.mouse.scrollSpeed")}
                 oninput={(v) => set("scroll_speed", v / 100)}
               />
             </div>
@@ -92,7 +93,7 @@
     </Group>
 
     {#if $mouse.error}
-      <div class="span-full error-box" title={$mouse.error}>Can't read these settings right now. Changes are paused.</div>
+      <div class="span-full error-box" title={$mouse.error}>{$t("s.err.readPaused")}</div>
     {/if}
   </SectionGrid>
 </Page>
@@ -108,7 +109,7 @@
   }
   .slider-value {
     min-width: 3rem;
-    text-align: right;
+    text-align: end;
     font-variant-numeric: tabular-nums;
     font-size: 0.75rem;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);

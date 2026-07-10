@@ -10,15 +10,13 @@
   import { Group } from "@arlen/ui-kit/components/ui/group";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
+  import { t } from "$lib/i18n/messages";
   import { touchpad, load, set } from "$lib/stores/touchpad";
 
-  const CLICK_METHODS = [
-    {
-      value: "clickfinger",
-      label: "Click with fingers (1 = left, 2 = right, 3 = middle)",
-    },
-    { value: "areas", label: "Click areas (corners of the touchpad)" },
-  ];
+  const CLICK_METHODS = $derived([
+    { value: "clickfinger", label: $t("s.touchpad.clickfinger") },
+    { value: "areas", label: $t("s.touchpad.areas") },
+  ]);
 
   onMount(() => {
     void load();
@@ -33,14 +31,14 @@
 </script>
 
 <Page
-  title="Touchpad"
-  description="Gesture, scroll, and acceleration defaults for integrated trackpads."
+  title={$t("s.touchpad.title")}
+  description={$t("s.touchpad.desc")}
 >
   <SectionGrid>
-    <Group label="Clicking">
+    <Group label={$t("s.touchpad.clicking")}>
       <Row
-        label="Click method"
-        description="How multi-finger clicks are turned into mouse buttons."
+        label={$t("s.touchpad.clickMethod")}
+        description={$t("s.touchpad.clickMethod.desc")}
         id="touchpad-click-method"
       >
         {#snippet control()}
@@ -48,19 +46,19 @@
             value={$touchpad.config.click_method}
             options={CLICK_METHODS}
             onchange={(v) => set("click_method", v)}
-            ariaLabel="Touchpad click method"
+            ariaLabel={$t("s.touchpad.clickMethod.aria")}
             width="280px"
           />
         {/snippet}
       </Row>
-      <Row label="Tap to click" description="Single-finger tap acts as a primary click." id="touchpad-tap-to-click">
+      <Row label={$t("s.touchpad.tapClick")} description={$t("s.touchpad.tapClick.desc")} id="touchpad-tap-to-click">
         {#snippet control()}
           <Switch value={$touchpad.config.tap_to_click} onchange={(v) => set("tap_to_click", v)} />
         {/snippet}
       </Row>
       <Row
-        label="Tap and drag"
-        description="Tap, hold, and drag to move windows or select text. Requires Tap to click."
+        label={$t("s.touchpad.tapDrag")}
+        description={$t("s.touchpad.tapDrag.desc")}
         id="touchpad-tap-drag"
       >
         {#snippet control()}
@@ -72,8 +70,8 @@
         {/snippet}
       </Row>
       <Row
-        label="Disable while typing"
-        description="Ignore touchpad input briefly after each keystroke."
+        label={$t("s.touchpad.disableTyping")}
+        description={$t("s.touchpad.disableTyping.desc")}
         id="touchpad-disable-while-typing"
       >
         {#snippet control()}
@@ -82,23 +80,23 @@
       </Row>
     </Group>
 
-    <Group label="Scrolling">
-      <Row label="Two-finger scroll" description="Scroll by dragging two fingers on the touchpad." id="touchpad-two-finger-scroll">
+    <Group label={$t("s.touchpad.scrolling")}>
+      <Row label={$t("s.touchpad.twoFinger")} description={$t("s.touchpad.twoFinger.desc")} id="touchpad-two-finger-scroll">
         {#snippet control()}
           <Switch value={$touchpad.config.two_finger_scroll} onchange={(v) => set("two_finger_scroll", v)} />
         {/snippet}
       </Row>
-      <Row label="Natural scroll" description="Content follows finger direction (macOS-style)." id="touchpad-natural-scroll">
+      <Row label={$t("s.touchpad.naturalScroll")} description={$t("s.touchpad.naturalScroll.desc")} id="touchpad-natural-scroll">
         {#snippet control()}
           <Switch value={$touchpad.config.natural_scroll} onchange={(v) => set("natural_scroll", v)} />
         {/snippet}
       </Row>
     </Group>
 
-    <Group label="Pointer">
+    <Group label={$t("s.touchpad.pointer")}>
       <Row
-        label="Acceleration"
-        description="Negative values slow the pointer; positive speed it up."
+        label={$t("s.mouse.accel")}
+        description={$t("s.mouse.accel.desc")}
         id="touchpad-acceleration"
       >
         {#snippet control()}
@@ -109,7 +107,7 @@
                 max={100}
                 step={1}
                 value={accelToTick($touchpad.config.acceleration)}
-                ariaLabel="Acceleration"
+                ariaLabel={$t("s.mouse.accel")}
                 oninput={(v) => set("acceleration", tickToAccel(v))}
               />
             </div>
@@ -120,7 +118,7 @@
     </Group>
 
     {#if $touchpad.error}
-      <div class="span-full error-box" title={$touchpad.error}>Can't read these settings right now. Changes are paused.</div>
+      <div class="span-full error-box" title={$touchpad.error}>{$t("s.err.readPaused")}</div>
     {/if}
   </SectionGrid>
 </Page>
@@ -136,7 +134,7 @@
   }
   .slider-value {
     min-width: 3rem;
-    text-align: right;
+    text-align: end;
     font-variant-numeric: tabular-nums;
     font-size: 0.75rem;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);

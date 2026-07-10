@@ -15,6 +15,7 @@
   import { monitors as monitorsStore } from "$lib/stores/displays";
   import { get } from "svelte/store";
   import { Star } from "lucide-svelte";
+  import { t } from "$lib/i18n/messages";
 
   interface Props {
     /** Per-connector draft config the panel is currently editing. */
@@ -229,7 +230,7 @@
   bind:this={canvasEl}
   class="canvas"
   role="region"
-  aria-label="Monitor arrangement"
+  aria-label={$t("s.monitor.arrangement.aria")}
 >
   {#if $monitorsStore.length === 0}
     <div class="empty">

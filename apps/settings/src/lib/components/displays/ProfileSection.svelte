@@ -18,6 +18,7 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { t } from "$lib/i18n/messages";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import type { ApplyHandle, MonitorConfig } from "$lib/stores/displays";
   import { tauriAvailable } from "$lib/tauri";
@@ -173,7 +174,7 @@
   }
 </script>
 
-<Group label="Saved Layouts">
+<Group label={$t("s.profile.title")}>
   {#if profiles.length === 0}
     <div class="empty">
       No saved layouts yet. Save your current arrangement below to
@@ -221,8 +222,8 @@
             variant="ghost"
             size="icon-sm"
             onclick={() => startRename(p)}
-            aria-label="Rename layout"
-            title="Rename"
+            aria-label={$t("s.profile.rename.aria")}
+            title={$t("s.profile.rename")}
           >
             <Pencil size={12} strokeWidth={2} />
           </Button>
@@ -230,8 +231,8 @@
             variant="ghost"
             size="icon-sm"
             onclick={() => (deleteCandidate = p)}
-            aria-label="Delete layout"
-            title="Delete"
+            aria-label={$t("s.profile.delete.aria")}
+            title={$t("s.profile.delete")}
           >
             <Trash2 size={12} strokeWidth={2} />
           </Button>
@@ -244,8 +245,8 @@
     <Input
       value={saveLabel}
       oninput={(e) => (saveLabel = (e.currentTarget as HTMLInputElement).value)}
-      placeholder="New layout name…"
-      aria-label="New layout name"
+      placeholder={$t("s.profile.newName.placeholder")}
+      aria-label={$t("s.profile.newName.aria")}
     />
     <Button
       variant="outline"
@@ -259,7 +260,7 @@
 
 <ConfirmDialog
   open={!!deleteCandidate}
-  title="Delete saved layout?"
+  title={$t("s.profile.deleteConfirm")}
   message={deleteCandidate
     ? `'${deleteCandidate.label}' will be removed permanently. This does not change the current display setup.`
     : ""}

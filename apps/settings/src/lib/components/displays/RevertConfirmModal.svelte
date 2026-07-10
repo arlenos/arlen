@@ -20,6 +20,7 @@
     type MonitorConfig,
   } from "$lib/stores/displays";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { t } from "$lib/i18n/messages";
 
   interface Props {
     /** When true, the modal is visible and the countdown runs. */
@@ -132,7 +133,7 @@
 {#if open}
   <div class="backdrop" role="dialog" aria-modal="true">
     <div class="modal">
-      <h2>Keep these display changes?</h2>
+      <h2>{$t("s.revert.keep")}</h2>
       <p class="body">
         {#if pendingRevertId}
           Reverting…
