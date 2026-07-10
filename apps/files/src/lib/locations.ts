@@ -58,13 +58,14 @@ export function columnsFor(path: string): ColumnSpec {
   return DEFAULT_COLUMNS;
 }
 
-/// The message a location shows when it has no items. A virtual location speaks
-/// for itself rather than the generic folder phrasing.
+/// The i18n key for the message a location shows when it has no items. A virtual
+/// location speaks for itself rather than the generic folder phrasing. The caller
+/// resolves the key through the catalog, so the label follows the locale.
 export function emptyLabelFor(path: string): string {
-  if (path === "trash") return "Trash is empty";
-  if (path === "recent") return "No recent files";
-  if (path.startsWith("project:")) return "No files in this project yet";
-  if (path.startsWith("search:")) return "No matches";
-  if (path.startsWith("facet:")) return "No files match this filter";
-  return "This folder is empty";
+  if (path === "trash") return "f.empty.trash";
+  if (path === "recent") return "f.empty.recent";
+  if (path.startsWith("project:")) return "f.empty.project";
+  if (path.startsWith("search:")) return "f.empty.search";
+  if (path.startsWith("facet:")) return "f.empty.facet";
+  return "f.empty.folder";
 }

@@ -20,6 +20,16 @@ const messages: Catalogs = {
 
     // Empty folder + about
     "f.empty.folder": "This folder is empty",
+    "f.empty.trash": "Trash is empty",
+    "f.empty.recent": "No recent files",
+    "f.empty.project": "No files in this project yet",
+    "f.empty.search": "No matches",
+    "f.empty.facet": "No files match this filter",
+    "f.fb.errorTitle": "Can't open this folder",
+    "f.fb.hintPermission": "You don't have permission to see what's inside.",
+    "f.fb.hintNotConnected": "This place is not connected right now.",
+    "f.fb.hintNoSuchDir": "This folder does not exist anymore.",
+    "f.fb.browserLabel": "File browser",
     "f.about.name": "Files",
     "f.about.desc": "Browse, organise and search your files.",
 
@@ -230,6 +240,16 @@ const messages: Catalogs = {
     "f.save": "Speichern",
 
     "f.empty.folder": "Dieser Ordner ist leer",
+    "f.empty.trash": "Der Papierkorb ist leer",
+    "f.empty.recent": "Keine kürzlichen Dateien",
+    "f.empty.project": "Noch keine Dateien in diesem Projekt",
+    "f.empty.search": "Keine Treffer",
+    "f.empty.facet": "Keine Dateien passen zu diesem Filter",
+    "f.fb.errorTitle": "Ordner kann nicht geöffnet werden",
+    "f.fb.hintPermission": "Du hast keine Berechtigung, den Inhalt zu sehen.",
+    "f.fb.hintNotConnected": "Dieser Ort ist gerade nicht verbunden.",
+    "f.fb.hintNoSuchDir": "Dieser Ordner existiert nicht mehr.",
+    "f.fb.browserLabel": "Dateibrowser",
     "f.about.name": "Dateien",
     "f.about.desc": "Durchsuche, organisiere und finde deine Dateien.",
 
