@@ -123,6 +123,31 @@ pub struct SovereigntyInfo {
 }
 
 impl SovereigntyInfo {
+    /// The jurisdiction chip value for the picker (`"eu"`/`"us"`/`"cn"`), or `None`
+    /// for local/other/unknown (the picker shows no jurisdiction chip). These exact
+    /// strings match the Settings picker's `Provider.jurisdiction` contract, so the
+    /// mapping is explicit here rather than a serde derive.
+    pub fn jurisdiction_value(&self) -> Option<&'static str> {
+        match self.jurisdiction {
+            Jurisdiction::Eu => Some("eu"),
+            Jurisdiction::Us => Some("us"),
+            Jurisdiction::Cn => Some("cn"),
+            Jurisdiction::Local | Jurisdiction::Other | Jurisdiction::Unknown => None,
+        }
+    }
+
+    /// The trains-on-you chip value (`"no"`/`"no-paid"`/`"yes"`), or `None` when
+    /// uncurated. Matches the picker's `Provider.trainsOnYou` contract - note
+    /// `PaidApiOnly` renders `"no-paid"`, not the enum's serde name.
+    pub fn trains_value(&self) -> Option<&'static str> {
+        match self.trains_on_you {
+            TrainsOnYou::No => Some("no"),
+            TrainsOnYou::PaidApiOnly => Some("no-paid"),
+            TrainsOnYou::Yes => Some("yes"),
+            TrainsOnYou::Unknown => None,
+        }
+    }
+
     /// Render the human-facing info line, e.g.
     /// `[jurisdiction: EU*] · [trains on you: no*] · [open-weight: yes] · [self-host]`.
     /// Facts only; the caller decides. The three primary chips are always present;

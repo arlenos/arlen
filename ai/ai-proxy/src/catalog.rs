@@ -469,7 +469,9 @@ impl ProviderCatalog {
                 builtin: entry.builtin,
                 auth_method: entry.auth_method,
                 unofficial: entry.unofficial,
-                sovereignty_line: entry.sovereignty.info_line(),
+                jurisdiction: entry.sovereignty.jurisdiction_value().map(str::to_string),
+                trains_on_you: entry.sovereignty.trains_value().map(str::to_string),
+                open_weight: entry.sovereignty.open_weight,
             })
             .collect();
         views.sort_by(|a, b| a.id.cmp(&b.id));
@@ -529,11 +531,19 @@ pub struct ProviderView {
     /// Whether this provider's access path is unofficial (reverse-engineered,
     /// suspension-risk); the UI shows a clear warning and never offers it silently.
     pub unofficial: bool,
-    /// The hand-curated sovereignty info line for the picker (jurisdiction /
-    /// trains-on-you / open-weight + honesty flags), e.g.
-    /// `[jurisdiction: EU*] · [trains on you: no*] · [open-weight: yes]`. Facts to
-    /// surface, never a verdict. Serializes as `sovereigntyLine`.
-    pub sovereignty_line: String,
+    /// The jurisdiction chip (`"eu"`/`"us"`/`"cn"`), or absent for local/unknown.
+    /// The picker renders it as a chip with a data-law tooltip. Facts to surface,
+    /// never a verdict. Serializes as `jurisdiction`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jurisdiction: Option<String>,
+    /// The training posture (`"no"`/`"no-paid"`/`"yes"`), or absent when uncurated.
+    /// `no-paid` is the load-bearing caveat: no on the paid API, the free tier
+    /// trains. Serializes as `trainsOnYou`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trains_on_you: Option<String>,
+    /// Whether the served models are open-weight (the escape hatch is visible).
+    /// Serializes as `openWeight`.
+    pub open_weight: bool,
 }
 
 #[cfg(test)]
@@ -879,7 +889,9 @@ mod tests {
             builtin: true,
             auth_method: AuthMethod::ApiKey,
             unofficial: false,
-            sovereignty_line: String::new(),
+            jurisdiction: Some("us".to_string()),
+            trains_on_you: Some("no-paid".to_string()),
+            open_weight: false,
         };
         let v = serde_json::to_value(&view).expect("serializes");
         let obj = v.as_object().expect("a JSON object");
@@ -892,9 +904,11 @@ mod tests {
                 "builtin",
                 "configured",
                 "id",
+                "jurisdiction",
                 "kind",
                 "name",
-                "sovereigntyLine",
+                "openWeight",
+                "trainsOnYou",
                 "unofficial"
             ]
         );
@@ -903,6 +917,10 @@ mod tests {
         // the auth class serializes as a camelCase key with a kebab-case value
         assert_eq!(obj["authMethod"], serde_json::json!("api-key"));
         assert_eq!(obj["unofficial"], serde_json::json!(false));
+        // the sovereignty facts match the picker's exact structured contract
+        assert_eq!(obj["jurisdiction"], serde_json::json!("us"));
+        assert_eq!(obj["trainsOnYou"], serde_json::json!("no-paid"));
+        assert_eq!(obj["openWeight"], serde_json::json!(false));
         // A local provider's kind tag is the lowercase counterpart.
         let local = serde_json::to_value(ProviderView {
             id: "ollama-default".to_string(),
@@ -912,7 +930,9 @@ mod tests {
             builtin: true,
             auth_method: AuthMethod::Free,
             unofficial: false,
-            sovereignty_line: String::new(),
+            jurisdiction: None,
+            trains_on_you: None,
+            open_weight: true,
         })
         .expect("serializes");
         assert_eq!(local["kind"], serde_json::json!("local"));
