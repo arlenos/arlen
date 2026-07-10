@@ -1,0 +1,5 @@
+# Starting permission profile for cerebro (an application launcher). Lists and starts
+# installed apps; no file access, no network and no Knowledge Graph by default.
+[info]
+app_id = "cerebro"
+tier = "third-party"

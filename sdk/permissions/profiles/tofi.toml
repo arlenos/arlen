@@ -1,0 +1,5 @@
+# Starting permission profile for tofi (an application launcher). Lists and starts
+# installed apps; no file access, no network and no Knowledge Graph by default.
+[info]
+app_id = "tofi"
+tier = "third-party"
