@@ -1,0 +1,6 @@
+# Starting permission profile for Birdtray (a Thunderbird tray/unread-count helper).
+# Monitors an existing mail client; no file access, no network and no Knowledge
+# Graph of its own.
+[info]
+app_id = "birdtray"
+tier = "third-party"
