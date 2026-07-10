@@ -1,7 +1,7 @@
 # Starting permission profile for a music player or creator. Works with the user's
-# Music (rips audio CDs into it); no network and no Knowledge Graph by default.
+# Music (edits audio tags); no network and no Knowledge Graph by default.
 [info]
-app_id = "org.gnome.SoundJuicer"
+app_id = "io.github.quodlibet.ExFalso"
 tier = "third-party"
 
 [filesystem]
