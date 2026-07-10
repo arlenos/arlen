@@ -1,5 +1,5 @@
-# Starting permission profile for Frog (an OCR text extractor).
-# It extracts text from images and screenshots by function, so it gets Pictures and no network. No Knowledge Graph access.
+# Starting permission profile for a screenshot tool, image viewer or paint app.
+# Works with Pictures; no network and no Knowledge Graph.
 [info]
 app_id = "com.github.tenderowl.frog"
 tier = "third-party"

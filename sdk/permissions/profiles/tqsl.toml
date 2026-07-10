@@ -1,0 +1,12 @@
+# Starting permission profile for TrustedQSL (LoTW log signing and upload).
+# Uploading signed logs is its core function, so network is granted; it also reads
+# ADIF logs under Documents. No Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "tqsl"
+tier = "third-party"
+
+[filesystem]
+documents = true
+
+[network]
+allow_all = true

@@ -1,0 +1,10 @@
+# Starting permission profile for a documents-oriented tool (logging, mapping or
+# data editing). Imports and exports its data files under Documents; no network by
+# default (online upload/lookup needs an explicit grant) and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "xlog"
+tier = "third-party"
+
+[filesystem]
+documents = true
