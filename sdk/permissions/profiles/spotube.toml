@@ -1,0 +1,9 @@
+# Starting permission profile for a network client (streaming or cloud app). Its
+# function is online (music streaming or a cloud service), so it gets network; no
+# local file access and no Knowledge Graph by default.
+[info]
+app_id = "spotube"
+tier = "third-party"
+
+[network]
+allow_all = true
