@@ -1,0 +1,8 @@
+# Starting permission profile for Gtranslator (a gettext PO-file editor). Opens and
+# saves translation files under Documents; no network and no Knowledge Graph.
+[info]
+app_id = "gtranslator"
+tier = "third-party"
+
+[filesystem]
+documents = true

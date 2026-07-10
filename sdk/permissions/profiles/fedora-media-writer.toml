@@ -1,0 +1,12 @@
+# Starting permission profile for Fedora Media Writer (a USB image writer). Reads a
+# disk image from Downloads to flash (and can fetch one over the network); no
+# Knowledge Graph.
+[info]
+app_id = "fedora-media-writer"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
