@@ -1,0 +1,6 @@
+# Starting permission profile for a system monitor. Reads process and hardware
+# stats from the system; it needs no document folders, no network and no Knowledge
+# Graph. Observe-mode refines it.
+[info]
+app_id = "lxtask"
+tier = "third-party"
