@@ -1,0 +1,9 @@
+# Starting permission profile for a music player or creator. Works with the user's
+# Music (exports generated sound effects); no network and no Knowledge Graph by
+# default.
+[info]
+app_id = "sfxr-qt"
+tier = "third-party"
+
+[filesystem]
+music = true
