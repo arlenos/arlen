@@ -18,6 +18,7 @@
     undoable,
     FILTER_CATEGORIES,
   } from "$lib/display";
+  import type { Translate } from "@arlen/ui-kit/i18n";
   import type { ActivityEntry, ActivityPage } from "$lib/ledger";
 
   let {
@@ -62,7 +63,10 @@
   });
   const CATEGORY_OPTIONS = $derived([
     { value: "all", label: $t("h.filter.type.all") },
-    ...FILTER_CATEGORIES.map((c) => ({ value: c.key, label: CATEGORY_LABELS[c.key] ?? c.label })),
+    ...FILTER_CATEGORIES.map((c) => ({
+      value: c.key,
+      label: CATEGORY_LABELS[c.key] ?? (c.labelKey ? $t(c.labelKey) : c.key),
+    })),
   ]);
   const OUTCOME_OPTIONS = $derived([
     { value: "all", label: $t("h.filter.outcome.all") },
@@ -97,8 +101,8 @@
     return d;
   }
 
-  function markerOf(e: ActivityEntry): { text: string; tone: "warn" }[] {
-    const m = failureMarker(e);
+  function markerOf(e: ActivityEntry, translate: Translate): { text: string; tone: "warn" }[] {
+    const m = failureMarker(e, translate);
     return m ? [{ text: m, tone: "warn" }] : [];
   }
 </script>
@@ -171,10 +175,10 @@
     {#each entries as entry (entry.entryRef)}
       {@const cat = categorize(entry.kind)}
       <TimelineRow
-        label={cat.label}
+        label={cat.labelKey ? $t(cat.labelKey) : cat.key}
         tone={cat.tone}
-        subject={entrySentence(entry)}
-        subjectMeta={markerOf(entry)}
+        subject={entrySentence(entry, $t)}
+        subjectMeta={markerOf(entry, $t)}
         details={detailsOf(entry)}
         time={relativeTime(entry.timestampMicros)}
         undoable={undoable(entry) && !activity.tampered}

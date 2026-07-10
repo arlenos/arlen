@@ -23,10 +23,10 @@ describe("groupSessions", () => {
       NOW,
     );
     expect(out.map((g) => g.label)).toEqual([
-      "Today",
-      "Yesterday",
-      "Previous 7 days",
-      "Earlier",
+      "h.group.today",
+      "h.group.yesterday",
+      "h.group.previous7",
+      "h.group.earlier",
     ]);
   });
 
@@ -35,10 +35,10 @@ describe("groupSessions", () => {
       [s("a", NOW - 1000), s("old-pin", NOW - 40 * DAY, true), s("b", NOW - 1000)],
       NOW,
     );
-    expect(out[0].label).toBe("Pinned");
+    expect(out[0].label).toBe("h.group.pinned");
     expect(out[0].sessions.map((x) => x.id)).toEqual(["old-pin"]);
     // The pinned one does not also appear in "Earlier".
-    expect(out.find((g) => g.label === "Earlier")).toBeUndefined();
+    expect(out.find((g) => g.label === "h.group.earlier")).toBeUndefined();
     expect(out[1].sessions.map((x) => x.id)).toEqual(["a", "b"]);
   });
 
@@ -50,7 +50,7 @@ describe("groupSessions", () => {
   it("drops a session created just before midnight into Yesterday", () => {
     const justBeforeMidnight = new Date(2026, 5, 27, 0, 0, 0).getTime() - 1;
     const out = groupSessions([s("late", justBeforeMidnight)], NOW);
-    expect(out.map((g) => g.label)).toEqual(["Yesterday"]);
+    expect(out.map((g) => g.label)).toEqual(["h.group.yesterday"]);
   });
 
   it("returns nothing for an empty list", () => {

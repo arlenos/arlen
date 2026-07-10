@@ -3,31 +3,38 @@
 /// plain sentences the UI shows. Raw values stay available everywhere via
 /// expandable details and tooltips; this layer only decides the surface.
 ///
+/// The copy itself lives in the message catalog; these functions take the
+/// bound translator (`t`) so the sentences follow the locale. Category labels
+/// travel as keys the consumer resolves.
+///
 /// Copy law (binding): no em-dashes, no middot separators, no internal
 /// vocabulary. Short active sentences. Success is silent, only failure is
 /// marked.
 import type { ActivityEntry, Tone } from "$lib/ledger";
 import type { Capability } from "$lib/capability";
+import type { Translate } from "@arlen/ui-kit/i18n";
 
 /// A user-facing activity category: the badge and the type filter share it.
 export interface Category {
   /// Stable key, used as the filter value.
   key: string;
-  /// Badge and filter label.
-  label: string;
+  /// The i18n key for the badge/filter label, or null for an unknown kind
+  /// (the consumer then shows the raw `key`, so nothing is mislabeled).
+  labelKey: string | null;
   tone: Tone;
 }
 
 const CATEGORIES: Record<string, Category> = {
-  change: { key: "change", label: "Change", tone: "ok" },
-  lookup: { key: "lookup", label: "Lookup", tone: "neutral" },
-  question: { key: "question", label: "Question", tone: "neutral" },
-  internet: { key: "internet", label: "Internet", tone: "info" },
-  blocked: { key: "blocked", label: "Blocked", tone: "warn" },
+  change: { key: "change", labelKey: "h.disp.cat.change", tone: "ok" },
+  lookup: { key: "lookup", labelKey: "h.disp.cat.lookup", tone: "neutral" },
+  question: { key: "question", labelKey: "h.disp.cat.question", tone: "neutral" },
+  internet: { key: "internet", labelKey: "h.disp.cat.internet", tone: "info" },
+  blocked: { key: "blocked", labelKey: "h.disp.cat.blocked", tone: "warn" },
 };
 
 /// Map an audit kind onto its user category. Unknown kinds fall back to a
-/// neutral badge carrying the raw kind, so nothing is silently mislabeled.
+/// neutral badge carrying the raw kind (labelKey null), so nothing is silently
+/// mislabeled.
 export function categorize(kind: string): Category {
   switch (kind) {
     case "confirm":
@@ -43,7 +50,7 @@ export function categorize(kind: string): Category {
     case "policy-violation":
       return CATEGORIES.blocked;
     default:
-      return { key: kind, label: kind, tone: "neutral" };
+      return { key: kind, labelKey: null, tone: "neutral" };
   }
 }
 
@@ -56,18 +63,17 @@ export const FILTER_CATEGORIES: Category[] = [
   CATEGORIES.blocked,
 ];
 
-/// Human labels for known tools, keyed by the audit subject / tool id the
-/// backend reports. Unknown tools get an honest generic label; the raw name
-/// always shows in the expanded details.
+/// Known tool ids mapped to the i18n key for their human label. Unknown tools
+/// get an honest generic label; the raw name always shows in the details.
 const TOOL_LABELS: Record<string, string> = {
-  "knowledge/query_graph": "Searched your file records",
-  "files/stat": "Checked file details",
-  "files/list": "Listed a folder",
+  "knowledge/query_graph": "h.disp.tool.queryGraph",
+  "files/stat": "h.disp.tool.stat",
+  "files/list": "h.disp.tool.list",
 };
 
 /// One human line for a tool id like "knowledge/query_graph".
-export function toolLabel(tool: string): string {
-  return TOOL_LABELS[tool] ?? "Used a tool";
+export function toolLabel(tool: string, t: Translate): string {
+  return t(TOOL_LABELS[tool] ?? "h.disp.usedTool");
 }
 
 /// The auto-tag subject shape the agent writes ("auto-tag FILE_PART_OF on
@@ -76,30 +82,30 @@ const AUTO_TAG = /^auto-tag FILE_PART_OF on (.+)$/;
 
 /// One human sentence for an activity entry. The raw subject stays available
 /// in the entry details; this is only the surface line.
-export function entrySentence(e: ActivityEntry): string {
+export function entrySentence(e: ActivityEntry, t: Translate): string {
   switch (e.kind) {
     case "confirm": {
       const m = AUTO_TAG.exec(e.subject);
       if (m) {
         const name = m[1].split("/").pop() || m[1];
         return e.projectId
-          ? `Added ${name} to the ${e.projectId} project`
-          : `Added ${name} to a project`;
+          ? t("h.disp.addedToProject", { name, project: e.projectId })
+          : t("h.disp.addedToAProject", { name });
       }
-      return e.subject || "Made a change";
+      return e.subject || t("h.disp.madeChange");
     }
     case "query":
-      return "Answered a question in Chat";
+      return t("h.disp.answeredChat");
     case "tool-call":
-      return toolLabel(e.subject);
+      return toolLabel(e.subject, t);
     case "graph-access":
-      return "Looked at your file records";
+      return t("h.disp.lookedAtRecords");
     case "permission":
-      return "Checked what it is allowed to do";
+      return t("h.disp.checkedAllowed");
     case "network-call":
-      return "Contacted the AI provider";
+      return t("h.disp.contactedProvider");
     case "policy-violation":
-      return "Tried to go beyond its limits. Stopped";
+      return t("h.disp.policyStopped");
     default:
       return e.subject || e.kind;
   }
@@ -108,9 +114,9 @@ export function entrySentence(e: ActivityEntry): string {
 /// Whether an outcome should carry a failure marker. Success is silent;
 /// `denied` is already expressed by the Blocked category on policy rows, so
 /// only a denial on a non-blocked kind and real errors surface.
-export function failureMarker(e: ActivityEntry): string | null {
-  if (e.outcome === "error") return "Failed";
-  if (e.outcome === "denied" && e.kind !== "policy-violation") return "Blocked";
+export function failureMarker(e: ActivityEntry, t: Translate): string | null {
+  if (e.outcome === "error") return t("h.disp.failed");
+  if (e.outcome === "denied" && e.kind !== "policy-violation") return t("h.disp.blocked");
   return null;
 }
 
@@ -119,37 +125,33 @@ export function undoable(e: ActivityEntry): boolean {
   return e.kind === "confirm" && e.outcome !== "error";
 }
 
-/// Sentences for the known read levels; unknown levels omit the clause
-/// rather than inventing one.
+/// The known read levels mapped to the i18n key for their sentence; unknown
+/// levels omit the clause rather than inventing one.
 const TIER_SENTENCES: Record<string, string> = {
-  none: "It cannot see your files.",
-  metadata: "It sees file names and dates, not what is inside files.",
-  structural: "It sees file names and dates, not what is inside files.",
-  content: "It can read your files.",
-  full: "It can read your files.",
+  none: "h.disp.tier.none",
+  metadata: "h.disp.tier.metadata",
+  structural: "h.disp.tier.metadata",
+  content: "h.disp.tier.content",
+  full: "h.disp.tier.content",
 };
 
 /// The one quiet status sentence under the composer: capability + posture in
 /// plain words. `null` capability means the read failed (unreachable), which
 /// the caller renders separately.
-export function statusSentence(c: Capability): string {
-  if (!c.enabled) return "AI is off. You can turn it on in Settings.";
-  const parts = ["AI is on."];
-  const tier = TIER_SENTENCES[c.tier?.toLowerCase?.() ?? ""];
-  if (tier) parts.push(tier);
-  parts.push(
-    c.executorLive
-      ? "It can make small changes you can undo."
-      : "It only suggests changes.",
-  );
+export function statusSentence(c: Capability, t: Translate): string {
+  if (!c.enabled) return t("h.disp.aiOff");
+  const parts = [t("h.disp.aiOn")];
+  const tierKey = TIER_SENTENCES[c.tier?.toLowerCase?.() ?? ""];
+  if (tierKey) parts.push(t(tierKey));
+  parts.push(c.executorLive ? t("h.disp.canUndo") : t("h.disp.suggests"));
   return parts.join(" ");
 }
 
 /// Tooltip behind the status line: the technical facts, honestly, in one place.
-export function statusTooltip(c: Capability): string {
+export function statusTooltip(c: Capability, t: Translate): string {
   const model = [c.provider, c.model].filter(Boolean).join(" ");
   const lines = [];
-  if (model) lines.push(`Model: ${model}. Change this in Settings.`);
-  lines.push("It does not remember earlier questions in this chat yet.");
+  if (model) lines.push(t("h.disp.model", { model }));
+  lines.push(t("h.disp.noMemory"));
   return lines.join("\n");
 }

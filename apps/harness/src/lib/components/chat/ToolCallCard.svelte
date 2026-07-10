@@ -42,7 +42,7 @@
           {/if}
         </span>
       {/if}
-      <span class="tc-label">{toolLabel(id)}</span>
+      <span class="tc-label">{toolLabel(id, $t)}</span>
     </span>
     <span class="tc-chevron"><ChevronDown size={14} strokeWidth={2} /></span>
   </CollapsibleTrigger>

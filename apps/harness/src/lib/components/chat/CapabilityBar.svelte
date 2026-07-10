@@ -24,9 +24,9 @@
 {#if loaded}
   <div class="status">
     {#if capability}
-      <p class="line" title={statusTooltip(capability)}>
+      <p class="line" title={statusTooltip(capability, $t)}>
         <span class="glyph" class:off={!capability.enabled} aria-hidden="true">◆</span>
-        {statusSentence(capability)}
+        {statusSentence(capability, $t)}
       </p>
     {:else}
       <p class="line">{$t("h.capability.unreachable")}</p>
