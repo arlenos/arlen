@@ -1598,7 +1598,7 @@ async fn handle_write_request(
             // meetings app / AI engine so a third-party app cannot write arbitrary
             // meeting nodes. The summary/participants/action text are AI/human
             // content stored as node fields (escaped), never Cypher.
-            if !meeting_writer_admitted(&token.app_id) {
+            if !meeting_caller_admitted(&token.app_id) {
                 return format!("ERROR: permission denied for meeting write by {}", token.app_id);
             }
             if id.trim().is_empty() || title.trim().is_empty() {
@@ -1625,11 +1625,13 @@ async fn handle_write_request(
     }
 }
 
-/// App ids permitted to file a meeting note (the meetings app orchestrates
-/// capture -> summarize -> file; the AI engine may file directly). In debug a
-/// `dev.`-prefixed id is admitted (the dev/test convention the other write gates
-/// use).
-fn meeting_writer_admitted(app_id: &str) -> bool {
+/// App ids permitted to file OR read a meeting note (the meetings app
+/// orchestrates capture -> summarize -> file and renders the recent-meetings
+/// home; the AI engine may file directly and read for a briefing). Meeting nodes
+/// are the user's own content, so read and write share the same principals. In
+/// debug a `dev.`-prefixed id is admitted (the dev/test convention the other
+/// gates use).
+fn meeting_caller_admitted(app_id: &str) -> bool {
     if app_id == "meetings" || app_id == "ai-agent" {
         return true;
     }
@@ -1638,6 +1640,48 @@ fn meeting_writer_admitted(app_id: &str) -> bool {
         return true;
     }
     false
+}
+
+/// A meeting read request over the `0x0C` socket op: list the recent meetings for
+/// the home, or fetch one note by id. Tagged JSON, gated to the meetings app / AI
+/// engine like the write op.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+enum MeetingReadRequest {
+    /// The recent meetings, newest first (the recent-meetings home).
+    List,
+    /// One meeting note by id (its summary metadata + action items).
+    Get {
+        /// The meeting id.
+        id: String,
+    },
+}
+
+/// Handle a `0x0C` meeting read: list or get, scoped to the attested caller. The
+/// full note document (with its transcript) lives app-side; this returns the KG's
+/// list/link metadata (summary + action items) as JSON. A get for an unknown id
+/// answers `null`.
+async fn handle_meetings_read(app_id: &str, body: &[u8], graph: &GraphHandle) -> String {
+    if !meeting_caller_admitted(app_id) {
+        return format!("ERROR: permission denied for meeting read by {app_id}");
+    }
+    let req: MeetingReadRequest = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(e) => return format!("ERROR: malformed meeting read request: {e}"),
+    };
+    match req {
+        MeetingReadRequest::List => match crate::meeting::list_meetings(graph).await {
+            Ok(rows) => serde_json::to_string(&rows).unwrap_or_else(|e| format!("ERROR: {e}")),
+            Err(e) => format!("ERROR: {e}"),
+        },
+        MeetingReadRequest::Get { id } => match crate::meeting::get_meeting(graph, &id).await {
+            Ok(Some(detail)) => {
+                serde_json::to_string(&detail).unwrap_or_else(|e| format!("ERROR: {e}"))
+            }
+            Ok(None) => "null".to_string(),
+            Err(e) => format!("ERROR: {e}"),
+        },
+    }
 }
 
 /// App ids permitted to write a consent Grant node (the Grant label is otherwise
@@ -2633,6 +2677,31 @@ async fn handle_client(
             continue;
         }
 
+        // Meetings read mode: a leading 0x0C byte selects the meeting note store
+        // read (agent-work-surfaces), the list/get counterpart to the 0x02
+        // FileMeeting write. The body is a JSON `MeetingReadRequest`; gated to the
+        // meetings app / AI engine and rate-limited like the other read ops. 0x0C
+        // is the next free byte after 0x0B (restore).
+        if buf.first() == Some(&0x0C) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                handle_meetings_read(&app_id, &buf[1..], &graph).await
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
         // Read mode. A leading 0x01 byte selects the structured (typed JSON
         // RowSet) response; without it the request is a legacy raw-Cypher text
         // query, so existing clients are unaffected.
@@ -3352,14 +3421,50 @@ mod tests {
     }
 
     #[test]
-    fn meeting_writer_admitted_only_meetings_and_engine() {
-        assert!(meeting_writer_admitted("meetings"));
-        assert!(meeting_writer_admitted("ai-agent"));
+    fn meeting_caller_admitted_only_meetings_and_engine() {
+        assert!(meeting_caller_admitted("meetings"));
+        assert!(meeting_caller_admitted("ai-agent"));
         for other in ["settings", "com.x", "knowledge", "unknown", ""] {
-            assert!(!meeting_writer_admitted(other), "{other} must not file meetings");
+            assert!(!meeting_caller_admitted(other), "{other} must not access meetings");
         }
         // A `dev.`-prefixed id is admitted in debug only, never in release.
-        assert_eq!(meeting_writer_admitted("dev.arlen-meetings"), cfg!(debug_assertions));
+        assert_eq!(meeting_caller_admitted("dev.arlen-meetings"), cfg!(debug_assertions));
+    }
+
+    #[tokio::test]
+    async fn meetings_read_lists_and_gets_filed_notes_and_gates_the_caller() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        // File a note directly through the store, then read it back over the op.
+        let items = [crate::meeting::ActionItemRecord { text: "ship it", owner: Some("Tim") }];
+        let record = crate::meeting::MeetingRecord {
+            title: "Sync",
+            summary: "we shipped",
+            participants: &["Tim".to_string()],
+            action_items: &items,
+        };
+        crate::meeting::file_meeting(&graph, "m-1", record, 42).await.unwrap();
+
+        // A non-admitted caller is refused before any read.
+        let denied = handle_meetings_read("com.x", br#"{"op":"list"}"#, &graph).await;
+        assert!(denied.starts_with("ERROR: permission denied"), "{denied}");
+
+        // List surfaces the filed note.
+        let list = handle_meetings_read("meetings", br#"{"op":"list"}"#, &graph).await;
+        assert!(list.contains("\"id\":\"m-1\"") && list.contains("\"title\":\"Sync\""), "{list}");
+
+        // Get returns the detail with its action item.
+        let got = handle_meetings_read("meetings", br#"{"op":"get","id":"m-1"}"#, &graph).await;
+        assert!(got.contains("\"summary\"") && got.contains("ship it"), "{got}");
+
+        // Get for an unknown id answers null.
+        let none = handle_meetings_read("meetings", br#"{"op":"get","id":"nope"}"#, &graph).await;
+        assert_eq!(none.trim(), "null");
+
+        // A malformed body is a clean error, not a panic.
+        let bad = handle_meetings_read("meetings", b"not json", &graph).await;
+        assert!(bad.starts_with("ERROR: malformed"), "{bad}");
     }
 
     #[test]
