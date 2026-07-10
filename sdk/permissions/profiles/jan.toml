@@ -1,0 +1,9 @@
+# Starting permission profile for an AI chat client. It talks to a model over the
+# network (local or remote server) and may download models, so network is its
+# function; no user files and no Knowledge Graph access.
+[info]
+app_id = "jan"
+tier = "third-party"
+
+[network]
+allow_all = true
