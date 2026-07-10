@@ -1,0 +1,12 @@
+# Starting permission profile for Pika Backup (a Borg-based backup tool). Backs up
+# files under home to local or remote repositories over the network; no Knowledge
+# Graph.
+[info]
+app_id = "pika-backup"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true

@@ -1,0 +1,8 @@
+# Starting permission profile for Graphite (a 2D vector/raster art editor). Opens
+# and exports art under Pictures; no network and no Knowledge Graph.
+[info]
+app_id = "graphite"
+tier = "third-party"
+
+[filesystem]
+pictures = true
