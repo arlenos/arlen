@@ -130,6 +130,12 @@ pub struct CatalogEntry {
     /// (`false`, the default for anything in a user config).
     #[serde(default)]
     pub builtin: bool,
+    /// The hand-curated sovereignty facts surfaced in the picker's per-provider
+    /// info line (jurisdiction / trains-on-you / open-weight + honesty flags).
+    /// Defaults to the conservative un-curated stub, so an entry that omits it
+    /// renders honestly rather than fabricating a guarantee.
+    #[serde(default)]
+    pub sovereignty: crate::sovereignty::SovereigntyInfo,
 }
 
 /// The `ai-routing.toml` shape: a table of named providers, each a full catalog entry
@@ -318,6 +324,15 @@ impl ProviderCatalog {
                 auth_method: AuthMethod::Free,
                 unofficial: false,
                 builtin: true,
+                // A local runtime: inference stays on the device, so the data
+                // never leaves and there is no cloud jurisdiction or training on
+                // it; the served models are open-weight. The most sovereign tier.
+                sovereignty: crate::sovereignty::SovereigntyInfo {
+                    jurisdiction: crate::sovereignty::Jurisdiction::Local,
+                    trains_on_you: crate::sovereignty::TrainsOnYou::No,
+                    open_weight: true,
+                    ..Default::default()
+                },
             },
         );
         Self::new(entries)
@@ -689,6 +704,7 @@ mod tests {
                 auth_method: AuthMethod::ApiKey,
                 unofficial: false,
                 builtin: true,
+                sovereignty: Default::default(),
             },
         );
         let views = ProviderCatalog::new(entries).views();
@@ -714,6 +730,7 @@ mod tests {
             auth_method: AuthMethod::ApiKey,
             unofficial: false,
             builtin: true,
+            sovereignty: Default::default(),
         };
         assert!(configured.is_configured());
         assert_eq!(configured.kind(), ProviderKind::Cloud);

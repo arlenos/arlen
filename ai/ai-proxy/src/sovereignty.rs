@@ -15,6 +15,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Jurisdiction {
+    /// Runs on the user's own device (a local runtime like Ollama / llama.cpp):
+    /// the data never leaves the machine, the most sovereign tier.
+    Local,
     /// United States (CLOUD Act reach).
     Us,
     /// European Union (GDPR; residency detail in [`Residency`]).
@@ -32,6 +35,7 @@ impl Jurisdiction {
     /// The chip token (`US` / `EU` / `CN` / ...).
     fn chip(self) -> &'static str {
         match self {
+            Jurisdiction::Local => "local",
             Jurisdiction::Us => "US",
             Jurisdiction::Eu => "EU",
             Jurisdiction::Cn => "CN",
@@ -210,6 +214,21 @@ mod tests {
         assert_eq!(
             info.info_line(),
             "[jurisdiction: US] · [trains on you: no*] · [open-weight: no] · [aggregator-hop] · [ZDR-gated]"
+        );
+    }
+
+    #[test]
+    fn local_is_the_most_sovereign_tier() {
+        // A local runtime (Ollama): data never leaves the device, open-weight.
+        let info = SovereigntyInfo {
+            jurisdiction: Jurisdiction::Local,
+            trains_on_you: TrainsOnYou::No,
+            open_weight: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            info.info_line(),
+            "[jurisdiction: local] · [trains on you: no] · [open-weight: yes]"
         );
     }
 
