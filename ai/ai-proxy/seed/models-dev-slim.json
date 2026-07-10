@@ -1,0 +1,1697 @@
+{
+ "302ai": {
+  "api": "https://api.302.ai/v1",
+  "env": [
+   "302AI_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "302.AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "abacus": {
+  "api": "https://routellm.abacus.ai/v1",
+  "env": [
+   "ABACUS_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Abacus",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "abliteration-ai": {
+  "api": "https://api.abliteration.ai/v1",
+  "env": [
+   "ABLIT_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "abliteration.ai",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "alibaba": {
+  "api": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+  "env": [
+   "DASHSCOPE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Alibaba",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "alibaba-cn": {
+  "api": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "env": [
+   "DASHSCOPE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Alibaba (China)",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "alibaba-coding-plan": {
+  "api": "https://coding-intl.dashscope.aliyuncs.com/v1",
+  "env": [
+   "ALIBABA_CODING_PLAN_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Alibaba Coding Plan",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "alibaba-coding-plan-cn": {
+  "api": "https://coding.dashscope.aliyuncs.com/v1",
+  "env": [
+   "ALIBABA_CODING_PLAN_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Alibaba Coding Plan (China)",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "alibaba-token-plan": {
+  "api": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+  "env": [
+   "ALIBABA_TOKEN_PLAN_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Alibaba Token Plan",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "alibaba-token-plan-cn": {
+  "api": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+  "env": [
+   "ALIBABA_TOKEN_PLAN_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Alibaba Token Plan (China)",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "ambient": {
+  "api": "https://api.ambient.xyz/v1",
+  "env": [
+   "AMBIENT_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Ambient",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "anyapi": {
+  "api": "https://api.anyapi.ai/v1",
+  "env": [
+   "ANYAPI_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "AnyAPI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "atomic-chat": {
+  "api": "http://127.0.0.1:1337/v1",
+  "env": [
+   "ATOMIC_CHAT_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Atomic Chat",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "auriko": {
+  "api": "https://api.auriko.ai/v1",
+  "env": [
+   "AURIKO_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Auriko",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "bailing": {
+  "api": "https://api.tbox.cn/api/llm/v1/chat/completions",
+  "env": [
+   "BAILING_API_TOKEN"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Bailing",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "baseten": {
+  "api": "https://inference.baseten.co/v1",
+  "env": [
+   "BASETEN_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Baseten",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "berget": {
+  "api": "https://api.berget.ai/v1",
+  "env": [
+   "BERGET_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Berget.AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "chutes": {
+  "api": "https://llm.chutes.ai/v1",
+  "env": [
+   "CHUTES_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Chutes",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "clarifai": {
+  "api": "https://api.clarifai.com/v2/ext/openai/v1",
+  "env": [
+   "CLARIFAI_PAT"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Clarifai",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "claudinio": {
+  "api": "https://api.claudin.io/v1",
+  "env": [
+   "CLAUDINIO_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "Claudinio",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "cloudferro-sherlock": {
+  "api": "https://api-sherlock.cloudferro.com/openai/v1/",
+  "env": [
+   "CLOUDFERRO_SHERLOCK_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "CloudFerro Sherlock",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "cloudflare-workers-ai": {
+  "api": "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/v1",
+  "env": [
+   "CLOUDFLARE_ACCOUNT_ID",
+   "CLOUDFLARE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Cloudflare Workers AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "cortecs": {
+  "api": "https://api.cortecs.ai/v1",
+  "env": [
+   "CORTECS_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Cortecs",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "crof": {
+  "api": "https://crof.ai/v1",
+  "env": [
+   "CROF_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "CrofAI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "crossmodel": {
+  "api": "https://api.crossmodel.ai/v1",
+  "env": [
+   "CROSSMODEL_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "CrossModel",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "databricks": {
+  "api": "https://${DATABRICKS_HOST}/ai-gateway/mlflow/v1",
+  "env": [
+   "DATABRICKS_HOST",
+   "DATABRICKS_TOKEN"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Databricks",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "deepseek": {
+  "api": "https://api.deepseek.com",
+  "env": [
+   "DEEPSEEK_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "DeepSeek",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "digitalocean": {
+  "api": "https://inference.do-ai.run/v1",
+  "env": [
+   "DIGITALOCEAN_ACCESS_TOKEN"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "DigitalOcean",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "dinference": {
+  "api": "https://api.dinference.com/v1",
+  "env": [
+   "DINFERENCE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "DInference",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "drun": {
+  "api": "https://chat.d.run/v1",
+  "env": [
+   "DRUN_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "D.Run (China)",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "evroc": {
+  "api": "https://models.think.evroc.com/v1",
+  "env": [
+   "EVROC_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "evroc",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "fastrouter": {
+  "api": "https://go.fastrouter.ai/api/v1",
+  "env": [
+   "FASTROUTER_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "FastRouter",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "fireworks-ai": {
+  "api": "https://api.fireworks.ai/inference/v1/",
+  "env": [
+   "FIREWORKS_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Fireworks AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "freemodel": {
+  "api": "https://cc.freemodel.dev/v1",
+  "env": [
+   "FREEMODEL_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "FreeModel",
+  "npm": "@ai-sdk/anthropic"
+ },
+ "friendli": {
+  "api": "https://api.friendli.ai/serverless/v1",
+  "env": [
+   "FRIENDLI_TOKEN"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Friendli",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "frogbot": {
+  "api": "https://app.frogbot.ai/api/v1",
+  "env": [
+   "FROGBOT_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "FrogBot",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "github-copilot": {
+  "api": "https://api.githubcopilot.com",
+  "env": [
+   "GITHUB_TOKEN"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "GitHub Copilot",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "github-models": {
+  "api": "https://models.github.ai/inference",
+  "env": [
+   "GITHUB_TOKEN"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "GitHub Models",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "gmicloud": {
+  "api": "https://api.gmi-serving.com/v1",
+  "env": [
+   "GMICLOUD_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "GMI Cloud",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "helicone": {
+  "api": "https://ai-gateway.helicone.ai/v1",
+  "env": [
+   "HELICONE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Helicone",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "hpc-ai": {
+  "api": "https://api.hpc-ai.com/inference/v1",
+  "env": [
+   "HPC_AI_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "HPC-AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "huggingface": {
+  "api": "https://router.huggingface.co/v1",
+  "env": [
+   "HF_TOKEN"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Hugging Face",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "iflowcn": {
+  "api": "https://apis.iflow.cn/v1",
+  "env": [
+   "IFLOW_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "iFlow",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "inception": {
+  "api": "https://api.inceptionlabs.ai/v1/",
+  "env": [
+   "INCEPTION_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "Inception",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "inceptron": {
+  "api": "https://api.inceptron.io/v1",
+  "env": [
+   "INCEPTRON_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Inceptron",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "inference": {
+  "api": "https://inference.net/v1",
+  "env": [
+   "INFERENCE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Inference",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "io-net": {
+  "api": "https://api.intelligence.io.solutions/api/v1",
+  "env": [
+   "IOINTELLIGENCE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "IO.NET",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "jiekou": {
+  "api": "https://api.jiekou.ai/openai",
+  "env": [
+   "JIEKOU_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Jiekou.AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "kenari": {
+  "api": "https://kenari.id/v1",
+  "env": [
+   "KENARI_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Kenari",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "kilo": {
+  "api": "https://api.kilo.ai/api/gateway",
+  "env": [
+   "KILO_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Kilo Gateway",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "kimi-for-coding": {
+  "api": "https://api.kimi.com/coding/v1",
+  "env": [
+   "KIMI_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Kimi For Coding",
+  "npm": "@ai-sdk/anthropic"
+ },
+ "kuae-cloud-coding-plan": {
+  "api": "https://coding-plan-endpoint.kuaecloud.net/v1",
+  "env": [
+   "KUAE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "KUAE Cloud Coding Plan",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "lilac": {
+  "api": "https://api.getlilac.com/v1",
+  "env": [
+   "LILAC_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Lilac",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "llama": {
+  "api": "https://api.llama.com/compat/v1/",
+  "env": [
+   "LLAMA_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Llama",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "llmgateway": {
+  "api": "https://api.llmgateway.io/v1",
+  "env": [
+   "LLMGATEWAY_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "LLM Gateway",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "llmtr": {
+  "api": "https://llmtr.com/v1",
+  "env": [
+   "LLMTR_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "LLMTR",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "lmstudio": {
+  "api": "http://127.0.0.1:1234/v1",
+  "env": [
+   "LMSTUDIO_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "LMStudio",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "longcat": {
+  "api": "https://api.longcat.chat/openai",
+  "env": [
+   "LONGCAT_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "LongCat",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "lucidquery": {
+  "api": "https://api.lucidquery.com/v1",
+  "env": [
+   "LUCIDQUERY_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "LucidQuery",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "meganova": {
+  "api": "https://api.meganova.ai/v1",
+  "env": [
+   "MEGANOVA_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Meganova",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "meta": {
+  "api": "https://api.meta.ai/v1",
+  "env": [
+   "META_MODEL_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "Meta",
+  "npm": "@ai-sdk/openai"
+ },
+ "minimax": {
+  "api": "https://api.minimax.io/anthropic/v1",
+  "env": [
+   "MINIMAX_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "MiniMax (minimax.io)",
+  "npm": "@ai-sdk/anthropic"
+ },
+ "minimax-cn": {
+  "api": "https://api.minimaxi.com/anthropic/v1",
+  "env": [
+   "MINIMAX_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "MiniMax (minimaxi.com)",
+  "npm": "@ai-sdk/anthropic"
+ },
+ "minimax-cn-coding-plan": {
+  "api": "https://api.minimaxi.com/anthropic/v1",
+  "env": [
+   "MINIMAX_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "MiniMax Token Plan (minimaxi.com)",
+  "npm": "@ai-sdk/anthropic"
+ },
+ "minimax-coding-plan": {
+  "api": "https://api.minimax.io/anthropic/v1",
+  "env": [
+   "MINIMAX_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "MiniMax Token Plan (minimax.io)",
+  "npm": "@ai-sdk/anthropic"
+ },
+ "mixlayer": {
+  "api": "https://models.mixlayer.ai/v1",
+  "env": [
+   "MIXLAYER_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Mixlayer",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "moark": {
+  "api": "https://moark.com/v1",
+  "env": [
+   "MOARK_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Moark",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "modelscope": {
+  "api": "https://api-inference.modelscope.cn/v1",
+  "env": [
+   "MODELSCOPE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "ModelScope",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "moonshotai": {
+  "api": "https://api.moonshot.ai/v1",
+  "env": [
+   "MOONSHOT_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Moonshot AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "moonshotai-cn": {
+  "api": "https://api.moonshot.cn/v1",
+  "env": [
+   "MOONSHOT_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Moonshot AI (China)",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "morph": {
+  "api": "https://api.morphllm.com/v1",
+  "env": [
+   "MORPH_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "Morph",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "nano-gpt": {
+  "api": "https://nano-gpt.com/api/v1",
+  "env": [
+   "NANO_GPT_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "NanoGPT",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "nearai": {
+  "api": "https://cloud-api.near.ai/v1",
+  "env": [
+   "NEARAI_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "NEAR AI Cloud",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "nebius": {
+  "api": "https://api.tokenfactory.nebius.com/v1",
+  "env": [
+   "NEBIUS_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Nebius Token Factory",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "neon": {
+  "api": "${NEON_AI_GATEWAY_BASE_URL}/ai-gateway/mlflow/v1",
+  "env": [
+   "NEON_AI_GATEWAY_BASE_URL",
+   "NEON_AI_GATEWAY_TOKEN"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Neon",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "neuralwatt": {
+  "api": "https://api.neuralwatt.com/v1",
+  "env": [
+   "NEURALWATT_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Neuralwatt",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "nova": {
+  "api": "https://api.nova.amazon.com/v1",
+  "env": [
+   "NOVA_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "Nova",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "novita-ai": {
+  "api": "https://api.novita.ai/openai",
+  "env": [
+   "NOVITA_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "NovitaAI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "nvidia": {
+  "api": "https://integrate.api.nvidia.com/v1",
+  "env": [
+   "NVIDIA_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Nvidia",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "ollama-cloud": {
+  "api": "https://ollama.com/v1",
+  "env": [
+   "OLLAMA_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Ollama Cloud",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "opencode": {
+  "api": "https://opencode.ai/zen/v1",
+  "env": [
+   "OPENCODE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "OpenCode Zen",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "opencode-go": {
+  "api": "https://opencode.ai/zen/go/v1",
+  "env": [
+   "OPENCODE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "OpenCode Go",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "openrouter": {
+  "api": "https://openrouter.ai/api/v1",
+  "env": [
+   "OPENROUTER_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "OpenRouter",
+  "npm": "@openrouter/ai-sdk-provider"
+ },
+ "orcarouter": {
+  "api": "https://api.orcarouter.ai/v1",
+  "env": [
+   "ORCAROUTER_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "OrcaRouter",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "ovhcloud": {
+  "api": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
+  "env": [
+   "OVHCLOUD_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "OVHcloud AI Endpoints",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "perplexity-agent": {
+  "api": "https://api.perplexity.ai/v1",
+  "env": [
+   "PERPLEXITY_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Perplexity Agent",
+  "npm": "@ai-sdk/openai"
+ },
+ "poe": {
+  "api": "https://api.poe.com/v1",
+  "env": [
+   "POE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Poe",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "poolside": {
+  "api": "https://inference.poolside.ai/v1",
+  "env": [
+   "POOLSIDE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Poolside",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "privatemode-ai": {
+  "api": "http://localhost:8080/v1",
+  "env": [
+   "PRIVATEMODE_API_KEY",
+   "PRIVATEMODE_ENDPOINT"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Privatemode AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "qihang-ai": {
+  "api": "https://api.qhaigc.net/v1",
+  "env": [
+   "QIHANG_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "QiHang",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "qiniu-ai": {
+  "api": "https://api.qnaigc.com/v1",
+  "env": [
+   "QINIU_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Qiniu",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "regolo-ai": {
+  "api": "https://api.regolo.ai/v1",
+  "env": [
+   "REGOLO_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Regolo AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "requesty": {
+  "api": "https://router.requesty.ai/v1",
+  "env": [
+   "REQUESTY_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "Requesty",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "routing-run": {
+  "api": "https://api.routing.run/v1",
+  "env": [
+   "ROUTING_RUN_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "routing.run",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "sakana": {
+  "api": "https://api.sakana.ai/v1",
+  "env": [
+   "SAKANA_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "Sakana AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "sarvam": {
+  "api": "https://api.sarvam.ai/v1",
+  "env": [
+   "SARVAM_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Sarvam AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "scaleway": {
+  "api": "https://api.scaleway.ai/v1",
+  "env": [
+   "SCALEWAY_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Scaleway",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "siliconflow": {
+  "api": "https://api.siliconflow.com/v1",
+  "env": [
+   "SILICONFLOW_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "SiliconFlow",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "siliconflow-cn": {
+  "api": "https://api.siliconflow.cn/v1",
+  "env": [
+   "SILICONFLOW_CN_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "SiliconFlow (China)",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "snowflake-cortex": {
+  "api": "https://${SNOWFLAKE_ACCOUNT}.snowflakecomputing.com/api/v2/cortex/v1",
+  "env": [
+   "SNOWFLAKE_ACCOUNT",
+   "SNOWFLAKE_CORTEX_PAT"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Snowflake Cortex",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "stackit": {
+  "api": "https://api.openai-compat.model-serving.eu01.onstackit.cloud/v1",
+  "env": [
+   "STACKIT_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "STACKIT",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "stepfun": {
+  "api": "https://api.stepfun.com/v1",
+  "env": [
+   "STEPFUN_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "StepFun",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "stepfun-ai": {
+  "api": "https://api.stepfun.ai/step_plan/v1",
+  "env": [
+   "STEPFUN_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "StepFun AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "subconscious": {
+  "api": "https://api.subconscious.dev/v1",
+  "env": [
+   "SUBCONSCIOUS_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Subconscious",
+  "npm": "@ai-sdk/anthropic"
+ },
+ "submodel": {
+  "api": "https://llm.submodel.ai/v1",
+  "env": [
+   "SUBMODEL_INSTAGEN_ACCESS_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "submodel",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "synthetic": {
+  "api": "https://api.synthetic.new/openai/v1",
+  "env": [
+   "SYNTHETIC_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Synthetic",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "tencent-coding-plan": {
+  "api": "https://api.lkeap.cloud.tencent.com/coding/v3",
+  "env": [
+   "TENCENT_CODING_PLAN_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Tencent Coding Plan (China)",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "tencent-token-plan": {
+  "api": "https://api.lkeap.cloud.tencent.com/plan/v3",
+  "env": [
+   "TENCENT_TOKEN_PLAN_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Tencent Token Plan",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "tencent-tokenhub": {
+  "api": "https://tokenhub.tencentmaas.com/v1",
+  "env": [
+   "TENCENT_TOKENHUB_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Tencent TokenHub",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "the-grid-ai": {
+  "api": "https://api.thegrid.ai/v1",
+  "env": [
+   "THEGRIDAI_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "The Grid AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "tinfoil": {
+  "api": "https://inference.tinfoil.sh/v1",
+  "env": [
+   "TINFOIL_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Tinfoil",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "trustedrouter": {
+  "api": "https://api.trustedrouter.com/v1",
+  "env": [
+   "TRUSTEDROUTER_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "TrustedRouter",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "umans-ai": {
+  "api": "https://api.code.umans.ai/v1",
+  "env": [
+   "UMANS_AI_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Umans AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "umans-ai-coding-plan": {
+  "api": "https://api.code.umans.ai/v1",
+  "env": [
+   "UMANS_AI_CODING_PLAN_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Umans AI Coding Plan",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "upstage": {
+  "api": "https://api.upstage.ai/v1/solar",
+  "env": [
+   "UPSTAGE_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "Upstage",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "vivgrid": {
+  "api": "https://api.vivgrid.com/v1",
+  "env": [
+   "VIVGRID_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Vivgrid",
+  "npm": "@ai-sdk/openai"
+ },
+ "vultr": {
+  "api": "https://api.vultrinference.com/v1",
+  "env": [
+   "VULTR_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Vultr",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "wafer.ai": {
+  "api": "https://pass.wafer.ai/v1",
+  "env": [
+   "WAFER_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Wafer",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "wandb": {
+  "api": "https://api.inference.wandb.ai/v1",
+  "env": [
+   "WANDB_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Weights & Biases",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "xiaomi": {
+  "api": "https://api.xiaomimimo.com/v1",
+  "env": [
+   "XIAOMI_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Xiaomi",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "xiaomi-token-plan-ams": {
+  "api": "https://token-plan-ams.xiaomimimo.com/v1",
+  "env": [
+   "XIAOMI_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Xiaomi Token Plan (Europe)",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "xiaomi-token-plan-cn": {
+  "api": "https://token-plan-cn.xiaomimimo.com/v1",
+  "env": [
+   "XIAOMI_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Xiaomi Token Plan (China)",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "xiaomi-token-plan-sgp": {
+  "api": "https://token-plan-sgp.xiaomimimo.com/v1",
+  "env": [
+   "XIAOMI_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Xiaomi Token Plan (Singapore)",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "xpersona": {
+  "api": "https://www.xpersona.co/v1",
+  "env": [
+   "XPERSONA_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "Xpersona",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "zai": {
+  "api": "https://api.z.ai/api/paas/v4",
+  "env": [
+   "ZHIPU_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Z.AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "zai-coding-plan": {
+  "api": "https://api.z.ai/api/coding/paas/v4",
+  "env": [
+   "ZHIPU_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Z.AI Coding Plan",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "zeldoc": {
+  "api": "https://api.zeldoc.ai/v1",
+  "env": [
+   "ZELDOC_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": false
+   }
+  },
+  "name": "Zeldoc",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "zenifra": {
+  "api": "https://ai.zenifra.com/v1",
+  "env": [
+   "ZENIFRA_AI_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Zenifra",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "zenmux": {
+  "api": "https://zenmux.ai/api/v1",
+  "env": [
+   "ZENMUX_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "ZenMux",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "zhipuai": {
+  "api": "https://open.bigmodel.cn/api/paas/v4",
+  "env": [
+   "ZHIPU_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Zhipu AI",
+  "npm": "@ai-sdk/openai-compatible"
+ },
+ "zhipuai-coding-plan": {
+  "api": "https://open.bigmodel.cn/api/coding/paas/v4",
+  "env": [
+   "ZHIPU_API_KEY"
+  ],
+  "models": {
+   "agg": {
+    "open_weights": true
+   }
+  },
+  "name": "Zhipu AI Coding Plan",
+  "npm": "@ai-sdk/openai-compatible"
+ }
+}

@@ -338,6 +338,28 @@ impl ProviderCatalog {
         Self::new(entries)
     }
 
+    /// The full available-to-add catalog for the provider picker: the local active
+    /// builtins ([`Self::default_arlen`]) plus every models.dev-seeded provider
+    /// (sovereignty overlaid via the hand-curated table). Unlike `default_arlen`,
+    /// this deliberately includes credential-less cloud providers - it is the
+    /// SHOW-and-ADD surface, so a listed cloud provider reads as `configured:
+    /// false` until the user attaches a key. The active-routing catalog stays
+    /// `default_arlen` (local-only) so no half-working cloud route is ever taken.
+    /// The seed is a vendored models.dev snapshot (MIT); a seeded entry never
+    /// overrides a local builtin.
+    pub fn available_arlen() -> Self {
+        const SEED: &str = include_str!("../seed/models-dev-slim.json");
+        let mut cat = Self::default_arlen();
+        if let Ok(doc) = serde_json::from_str::<serde_json::Value>(SEED) {
+            let mut seeded = crate::models_dev::seed_from_models_dev(&doc);
+            crate::models_dev::apply_curated_overlay(&mut seeded);
+            for (id, entry) in seeded {
+                cat.entries.entry(id).or_insert(entry);
+            }
+        }
+        cat
+    }
+
     /// Look up a provider by name.
     pub fn get(&self, provider_name: &str) -> Option<&CatalogEntry> {
         self.entries.get(provider_name)
@@ -686,6 +708,27 @@ mod tests {
     fn unknown_provider_returns_none() {
         let cat = ProviderCatalog::default_arlen();
         assert!(cat.get("missing-provider").is_none());
+    }
+
+    #[test]
+    fn available_arlen_seeds_the_picker_catalog_but_keeps_the_local_builtin() {
+        let cat = ProviderCatalog::available_arlen();
+        // The local active builtin survives (seeded entries never override it).
+        let ollama = cat.get("ollama-default").expect("local builtin kept");
+        assert_eq!(ollama.kind(), ProviderKind::Local);
+        // The vendored models.dev snapshot populated the addable cloud providers.
+        assert!(
+            cat.entries.len() > 100,
+            "expected the ~130-provider models.dev seed"
+        );
+        // A seeded curated provider carries its hand-curated sovereignty overlay,
+        // while its endpoint came from the machine seed.
+        let deepseek = cat.get("deepseek").expect("deepseek seeded");
+        assert_eq!(
+            deepseek.sovereignty.jurisdiction,
+            crate::sovereignty::Jurisdiction::Cn
+        );
+        assert!(deepseek.endpoint_url.ends_with("/chat/completions"));
     }
 
     #[test]
