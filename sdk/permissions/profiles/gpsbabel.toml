@@ -1,0 +1,9 @@
+# Starting permission profile for a documents-oriented tool (GIS, mapping or GPS
+# data). Reads and writes its map and data files under Documents; no network and
+# no Knowledge Graph by default. Observe-mode refines it.
+[info]
+app_id = "gpsbabel"
+tier = "third-party"
+
+[filesystem]
+documents = true
