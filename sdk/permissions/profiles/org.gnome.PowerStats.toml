@@ -1,0 +1,6 @@
+# Starting permission profile for a system monitor. Reads power and battery stats
+# from the system; it needs no document folders, no network and no Knowledge
+# Graph. Observe-mode refines it.
+[info]
+app_id = "org.gnome.PowerStats"
+tier = "third-party"
