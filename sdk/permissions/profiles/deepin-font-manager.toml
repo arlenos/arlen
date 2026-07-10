@@ -1,0 +1,9 @@
+# Starting permission profile for a font management app. Installs fonts from
+# Downloads into its own font dir; no network and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "deepin-font-manager"
+tier = "third-party"
+
+[filesystem]
+downloads = true

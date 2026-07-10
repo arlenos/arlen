@@ -1,0 +1,9 @@
+# Starting permission profile for a disk-usage, disc-burning or archive tool.
+# Reading and writing the user's files across Home is its function; no network
+# and no Knowledge Graph.
+[info]
+app_id = "deepin-compressor"
+tier = "third-party"
+
+[filesystem]
+home = true
