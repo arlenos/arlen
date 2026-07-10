@@ -1,0 +1,13 @@
+# Starting permission profile for a LAN file-transfer app. Needs network to send
+# and receive files over the local network and writes received files to
+# Downloads; no other file access and no Knowledge Graph by default. Observe-mode
+# refines it.
+[info]
+app_id = "nitroshare"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
