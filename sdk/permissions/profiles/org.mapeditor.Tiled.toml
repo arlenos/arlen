@@ -1,0 +1,9 @@
+# Starting permission profile for a game-development editor (maps, levels or
+# models). Edits its project files under Documents; no network by default (asset
+# downloads need an explicit grant) and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "org.mapeditor.Tiled"
+tier = "third-party"
+
+[filesystem]
+documents = true

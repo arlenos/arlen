@@ -1,0 +1,6 @@
+# Starting permission profile for a self-contained app (game, emulator or the
+# screen reader). No file access, no network and no Knowledge Graph by default;
+# it runs a game passed to it (the game folder is granted explicitly).
+[info]
+app_id = "love"
+tier = "third-party"
