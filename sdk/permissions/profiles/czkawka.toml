@@ -1,0 +1,8 @@
+# Starting permission profile for Czkawka (a duplicate/empty-file finder). Scans
+# files under home to find duplicates; no network and no Knowledge Graph.
+[info]
+app_id = "czkawka"
+tier = "third-party"
+
+[filesystem]
+home = true

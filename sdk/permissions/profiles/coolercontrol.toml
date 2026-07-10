@@ -1,0 +1,6 @@
+# Starting permission profile for CoolerControl (a fan/cooling control UI). Talks
+# to its local system daemon; no file access, no network and no Knowledge Graph by
+# default.
+[info]
+app_id = "coolercontrol"
+tier = "third-party"

@@ -1,0 +1,9 @@
+# Starting permission profile for the Bitwarden desktop password manager. Syncs
+# the vault with the Bitwarden service over the network; no local file access and
+# no Knowledge Graph.
+[info]
+app_id = "bitwarden"
+tier = "third-party"
+
+[network]
+allow_all = true
