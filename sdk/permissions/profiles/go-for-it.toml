@@ -1,0 +1,9 @@
+# Starting permission profile for Go For It! (a to-do and timer app). Reads and
+# writes its todo.txt list under Documents; no network and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "go-for-it"
+tier = "third-party"
+
+[filesystem]
+documents = true

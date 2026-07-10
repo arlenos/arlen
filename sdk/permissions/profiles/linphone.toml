@@ -1,0 +1,10 @@
+# Starting permission profile for a network client (crypto wallet, remote desktop,
+# scanner or web app). Needs network; no local file access and no Knowledge Graph
+# by default (its account and history live in its own dir; file transfer needs an
+# explicit grant).
+[info]
+app_id = "linphone"
+tier = "third-party"
+
+[network]
+allow_all = true

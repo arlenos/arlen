@@ -1,0 +1,9 @@
+# Starting permission profile for wxGlade (a wxWidgets GUI designer). Opens design
+# files and writes generated code under Documents; no network and no Knowledge
+# Graph. Observe-mode refines it.
+[info]
+app_id = "wxglade"
+tier = "third-party"
+
+[filesystem]
+documents = true
