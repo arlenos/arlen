@@ -1,0 +1,9 @@
+# Starting permission profile for Xastir (APRS mapping). Connecting to the
+# internet APRS-IS servers is core to it, so network is granted; no document
+# folders and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "xastir"
+tier = "third-party"
+
+[network]
+allow_all = true

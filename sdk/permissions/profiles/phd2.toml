@@ -1,0 +1,6 @@
+# Starting permission profile for PHD2 (telescope autoguiding). Talks to mount and
+# camera hardware and keeps its logs in its own data dir, so it needs no document
+# folders, no network and no Knowledge Graph. Observe-mode refines it.
+[info]
+app_id = "phd2"
+tier = "third-party"

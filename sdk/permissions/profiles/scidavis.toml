@@ -1,0 +1,9 @@
+# Starting permission profile for SciDAVis (data analysis and plotting). Edits
+# project and data files under Documents; no network and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "scidavis"
+tier = "third-party"
+
+[filesystem]
+documents = true

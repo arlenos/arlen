@@ -1,0 +1,9 @@
+# Starting permission profile for PyMOL (molecular visualisation). Opens structure
+# files under Documents; no network by default and no Knowledge Graph. Observe-mode
+# refines it.
+[info]
+app_id = "pymol"
+tier = "third-party"
+
+[filesystem]
+documents = true

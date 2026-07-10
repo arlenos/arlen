@@ -1,0 +1,7 @@
+# Starting permission profile for JS8Call (keyboard-to-keyboard ham messaging).
+# Keeps its logs in its own data dir, so it needs no document folders and no
+# Knowledge Graph. Spotting to the internet needs an explicit network grant.
+# Observe-mode refines it.
+[info]
+app_id = "js8call"
+tier = "third-party"

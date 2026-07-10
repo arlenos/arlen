@@ -1,0 +1,9 @@
+# Starting permission profile for QtiPlot (data analysis and plotting). Edits
+# project and data files under Documents; no network and no Knowledge Graph.
+# Observe-mode refines it.
+[info]
+app_id = "qtiplot"
+tier = "third-party"
+
+[filesystem]
+documents = true
