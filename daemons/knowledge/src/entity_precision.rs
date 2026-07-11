@@ -62,6 +62,18 @@ pub enum Liveness {
     Retired,
 }
 
+impl Liveness {
+    /// A stable lowercase tag for the wire / a surface to bucket on.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Liveness::Live => "live",
+            Liveness::Dormant => "dormant",
+            Liveness::Stale => "stale",
+            Liveness::Retired => "retired",
+        }
+    }
+}
+
 /// The recency anchor for an entity: the explicit activity stamp if present, else
 /// the creation stamp (a just-created entity with no activity yet is still recent).
 fn recency_anchor(signals: &LivenessSignals) -> Option<i64> {
