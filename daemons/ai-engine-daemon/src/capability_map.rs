@@ -327,10 +327,10 @@ pub fn gate_class_for_tool(tool: &str) -> GateClass {
     match tool {
         // Reads: Allow, scope-bounded (D3).
         "graph.read" => GateClass::Read,
-        // Reversible graph + fs actions: Allow autonomous.
-        "graph.assert_edge" | "graph.retract_edge" | "fs.move" | "fs.trash" => {
-            GateClass::ReversibleAction
-        }
+        // Reversible graph + fs + settings actions: Allow autonomous. A settings
+        // write captures the prior value (RestoreValue), so undo restores it.
+        "graph.assert_edge" | "graph.retract_edge" | "fs.move" | "fs.trash"
+        | "settings.set" => GateClass::ReversibleAction,
         // Irreversible graph + fs actions: Confirm.
         "graph.set_field" | "graph.retract_node" | "fs.delete" => GateClass::Confirm,
         // Package / external-send / egress-reach / opaque-exec / elevated: Confirm
@@ -356,6 +356,7 @@ mod tests {
         assert_eq!(gate_class_for_tool("graph.retract_edge"), GateClass::ReversibleAction);
         assert_eq!(gate_class_for_tool("fs.move"), GateClass::ReversibleAction);
         assert_eq!(gate_class_for_tool("fs.trash"), GateClass::ReversibleAction);
+        assert_eq!(gate_class_for_tool("settings.set"), GateClass::ReversibleAction);
         // Irreversible / exec / egress / elevated confirm.
         assert_eq!(gate_class_for_tool("graph.set_field"), GateClass::Confirm);
         assert_eq!(gate_class_for_tool("graph.retract_node"), GateClass::Confirm);

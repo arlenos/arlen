@@ -21,6 +21,7 @@ use arlen_ai_engine_daemon::consent_client::ConsentBrokerClient;
 use arlen_ai_engine_daemon::dispatch::Dispatcher;
 use arlen_ai_engine_daemon::dispatch::Executor;
 use arlen_ai_engine_daemon::file_executor::FileSystemExecutor;
+use arlen_ai_engine_daemon::settings_executor::SettingsExecutor;
 use arlen_ai_engine_daemon::proxy_executor::ProxyExecutor;
 use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
 use arlen_ai_core::pipeline::{CypherPipeline, GraphQuerier, QueryRunner};
@@ -393,6 +394,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_audit(audit.clone())
             .with_undo_signer(arlen_ai_undo_proto::socket_path()),
     );
+    // The ACT layer's reversible settings write: settings.set, gated
+    // ReversibleAction, confined to ~/.config/arlen and refusing the protected AI
+    // master-switch file (ai.toml) so an autonomous write cannot self-escalate. Same
+    // discipline (executor-live gated, audit-before-act, RestoreValue compensation to
+    // the signed undo log).
+    let settings_executor: Arc<dyn Executor> = Arc::new(
+        SettingsExecutor::new()
+            .with_audit(audit.clone())
+            .with_undo_signer(arlen_ai_undo_proto::socket_path()),
+    );
     // GATE-CLASSIFIER PRE-CONDITION (review MEDIUM): only tools registered here are
     // executable, and the gate's `action_kind_for_tool` classifies by NAME segment.
     // The irreversible graph mutators `graph.set_field` / `graph.retract_node`
@@ -422,7 +433,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // write-ahead (RestorePath / RestoreFromTrash) and persists it to the undo
         // signer. One instance runs both.
         .register("fs.move", fs_executor.clone())
-        .register("fs.trash", fs_executor);
+        .register("fs.trash", fs_executor)
+        // The settings forward act (ai-act-layer-plan.md §⟳): a reversible scalar
+        // config write, RestoreValue inverse write-ahead, ai.toml protected.
+        .register("settings.set", settings_executor);
     // A gate Confirm is resolved daemon-side by driving the consent-broker over
     // its intake socket (the trusted-path dialog). An unreachable broker fails
     // closed to a denial, so wiring the real client is safe even headless.

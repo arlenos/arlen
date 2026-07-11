@@ -73,6 +73,10 @@ pub mod proxy_executor;
 pub mod file_executor;
 pub mod write_executor;
 
+/// The settings.set executor: a reversible scalar-setting write (RestoreValue),
+/// confined to `~/.config/arlen` and refusing the protected AI master-switch file.
+pub mod settings_executor;
+
 /// Report-side compensation: op-id-keyed retract receipts for committed writes.
 pub mod compensation;
 pub mod undo_enact;
