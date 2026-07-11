@@ -167,6 +167,22 @@ pub enum InverseReceipt {
         /// Where it was before, where undo restores it.
         prior: CanonicalPath,
     },
+    /// Trash (freedesktop): undo moves `trashed` back to `original` AND removes the
+    /// companion `.trashinfo`. A `fs.trash` moves the entity into `Trash/files/` and
+    /// writes a `Trash/info/<name>.trashinfo` sidecar naming its origin; a plain
+    /// `RestorePath` inverse would move the file back but ORPHAN the sidecar, so the
+    /// trash view would show a phantom entry pointing at a file that is gone. This
+    /// trash-aware inverse cleans the sidecar as part of the undo, so a restore
+    /// leaves no dangling trash record.
+    RestoreFromTrash {
+        /// The entity's original location, where undo restores it.
+        original: CanonicalPath,
+        /// Where the trash op moved the entity to (in `Trash/files/`).
+        trashed: CanonicalPath,
+        /// The companion `.trashinfo` sidecar (in `Trash/info/`) the trash op wrote;
+        /// undo removes it so no orphan trash entry survives the restore.
+        trash_info: CanonicalPath,
+    },
     /// Scalar setting: undo sets `target` back to `prior` (`None` unsets a key
     /// that was absent before the action).
     RestoreValue {
@@ -406,6 +422,27 @@ mod tests {
         let inv = InverseReceipt::RestorePath { now, prior: prior.clone() };
         match inv {
             InverseReceipt::RestorePath { prior: p, .. } => assert_eq!(p, prior),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn restore_from_trash_round_trips_and_carries_the_sidecar() {
+        let inv = InverseReceipt::RestoreFromTrash {
+            original: CanonicalPath::new("/home/tim/notes.md").unwrap(),
+            trashed: CanonicalPath::new("/home/tim/.local/share/Trash/files/notes.md").unwrap(),
+            trash_info: CanonicalPath::new(
+                "/home/tim/.local/share/Trash/info/notes.md.trashinfo",
+            )
+            .unwrap(),
+        };
+        let json = serde_json::to_string(&inv).unwrap();
+        assert_eq!(serde_json::from_str::<InverseReceipt>(&json).unwrap(), inv);
+        // The sidecar the undo must clean survives the round trip.
+        match serde_json::from_str::<InverseReceipt>(&json).unwrap() {
+            InverseReceipt::RestoreFromTrash { trash_info, .. } => {
+                assert!(trash_info.as_str().ends_with(".trashinfo"));
+            }
             _ => panic!("wrong variant"),
         }
     }

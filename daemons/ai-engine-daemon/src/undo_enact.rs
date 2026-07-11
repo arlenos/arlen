@@ -95,6 +95,9 @@ fn hex_lower(bytes: &[u8]) -> String {
 pub fn enact_inverse(receipt: &InverseReceipt) -> Result<EnactOutcome, EnactError> {
     match receipt {
         InverseReceipt::RestorePath { now, prior } => enact_restore_path(now.as_str(), prior.as_str()),
+        InverseReceipt::RestoreFromTrash { original, trashed, trash_info } => {
+            enact_restore_from_trash(original.as_str(), trashed.as_str(), trash_info.as_str())
+        }
         InverseReceipt::DeleteCreated { created } => {
             enact_delete_created(created.path().as_str(), created.fingerprint())
         }
@@ -115,6 +118,26 @@ fn enact_restore_path(now: &str, prior: &str) -> Result<EnactOutcome, EnactError
         return Ok(EnactOutcome::RefusedPriorOccupied);
     }
     std::fs::rename(now, prior).map_err(|e| EnactError::Io(e.to_string()))?;
+    Ok(EnactOutcome::Restored)
+}
+
+/// Restore a trashed entity from `trashed` back to `original`, then remove the
+/// companion `.trashinfo` sidecar so no orphan trash-view entry survives the undo.
+/// Refuses to clobber an occupied `original` (same as [`enact_restore_path`]); the
+/// file restoration is the load-bearing step, so the sidecar removal is best-effort
+/// AFTER it (a leftover `.trashinfo` is a cosmetic trash-view artifact, never a lost
+/// file), and an already-absent sidecar is fine - undo is idempotent.
+fn enact_restore_from_trash(
+    original: &str,
+    trashed: &str,
+    trash_info: &str,
+) -> Result<EnactOutcome, EnactError> {
+    if Path::new(original).exists() {
+        return Ok(EnactOutcome::RefusedPriorOccupied);
+    }
+    std::fs::rename(trashed, original).map_err(|e| EnactError::Io(e.to_string()))?;
+    // The file is back at its origin; clean the trash metadata best-effort.
+    let _ = std::fs::remove_file(trash_info);
     Ok(EnactOutcome::Restored)
 }
 
@@ -404,6 +427,53 @@ mod tests {
         // Both files untouched.
         assert_eq!(std::fs::read(&prior).unwrap(), b"someone-else");
         assert_eq!(std::fs::read(&now).unwrap(), b"a");
+    }
+
+    #[test]
+    fn restore_from_trash_moves_back_and_cleans_the_sidecar() {
+        let d = tmp();
+        let original = d.join("notes.md");
+        let trash_files = d.join("Trash/files");
+        let trash_info = d.join("Trash/info");
+        std::fs::create_dir_all(&trash_files).unwrap();
+        std::fs::create_dir_all(&trash_info).unwrap();
+        let trashed = trash_files.join("notes.md");
+        let info = trash_info.join("notes.md.trashinfo");
+        // Simulate a completed trash: the file sits in Trash/files with its sidecar.
+        std::fs::write(&trashed, b"content").unwrap();
+        std::fs::write(&info, b"[Trash Info]\nPath=/x\n").unwrap();
+
+        let receipt = InverseReceipt::RestoreFromTrash {
+            original: canonical(&original),
+            trashed: canonical(&trashed),
+            trash_info: canonical(&info),
+        };
+        assert_eq!(enact_inverse(&receipt).unwrap(), EnactOutcome::Restored);
+        assert_eq!(std::fs::read(&original).unwrap(), b"content", "the file is back at its origin");
+        assert!(!trashed.exists(), "the trash copy is gone");
+        assert!(!info.exists(), "the sidecar was cleaned - no orphan trash entry");
+    }
+
+    #[test]
+    fn restore_from_trash_refuses_an_occupied_origin() {
+        let d = tmp();
+        let original = d.join("notes.md");
+        let trashed = d.join("trashed.md");
+        let info = d.join("notes.md.trashinfo");
+        std::fs::write(&trashed, b"trashed").unwrap();
+        std::fs::write(&info, b"[Trash Info]\n").unwrap();
+        // The user recreated something at the original path since the trash.
+        std::fs::write(&original, b"user-new").unwrap();
+
+        let receipt = InverseReceipt::RestoreFromTrash {
+            original: canonical(&original),
+            trashed: canonical(&trashed),
+            trash_info: canonical(&info),
+        };
+        assert_eq!(enact_inverse(&receipt).unwrap(), EnactOutcome::RefusedPriorOccupied);
+        assert_eq!(std::fs::read(&original).unwrap(), b"user-new", "the occupant is untouched");
+        assert!(trashed.exists(), "the trash copy stays put");
+        assert!(info.exists(), "the sidecar stays until a real restore");
     }
 
     fn restore_value(file: &Path, key: &str, prior: Option<&str>) -> InverseReceipt {
