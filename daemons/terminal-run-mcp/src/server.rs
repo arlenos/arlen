@@ -24,6 +24,7 @@
 
 use std::borrow::Cow;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -138,10 +139,33 @@ fn authorize_run(_args: &RunArgs) -> Result<(), String> {
         .to_string())
 }
 
-/// A fresh per-call writable scratch dir under the runtime dir, cleaned on drop.
-fn scratch_workdir() -> PathBuf {
-    let base = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    base.join("arlen").join("terminal-run")
+/// A per-call writable scratch dir, UNIQUE per call and removed on drop. Two
+/// concurrent runs must not share a workdir (one command's scratch must never be
+/// visible to another), and each command gets a fresh empty dir; `Drop` cleans it
+/// up so a command's scratch never leaks into the next.
+struct ScratchDir {
+    path: PathBuf,
+}
+
+impl ScratchDir {
+    /// Create a unique empty scratch dir under `$XDG_RUNTIME_DIR/arlen/terminal-run`.
+    fn create() -> std::io::Result<ScratchDir> {
+        static N: AtomicU64 = AtomicU64::new(0);
+        let base = std::env::var_os("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        let path =
+            base.join("arlen").join("terminal-run").join(format!("{}-{n}", std::process::id()));
+        std::fs::create_dir_all(&path)?;
+        Ok(ScratchDir { path })
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
 }
 
 impl ServerHandler for TerminalRunMcp {
@@ -177,23 +201,28 @@ impl ServerHandler for TerminalRunMcp {
             ))]));
         }
 
-        // Reached only once consent is wired: run the confined command + return the
-        // captured output.
-        let workdir = scratch_workdir();
-        if let Err(e) = std::fs::create_dir_all(&workdir) {
-            return Ok(CallToolResult::error(vec![Content::text(format!(
-                "run_command: could not prepare the scratch dir: {e}"
-            ))]));
-        }
+        // Reached only once consent is wired: run the confined command in a fresh,
+        // isolated, per-call scratch dir (cleaned up when `scratch` drops) + return
+        // the captured output.
+        let scratch = match ScratchDir::create() {
+            Ok(s) => s,
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "run_command: could not prepare the scratch dir: {e}"
+                ))]))
+            }
+        };
         let req = RunRequest {
             command: args.command,
             args: args.args,
             read_only_roots: vec![PathBuf::from("/")],
-            workdir,
+            workdir: scratch.path.clone(),
             network: NetworkPolicy::None,
             timeout: args.timeout,
         };
-        match run_confined(&req).await {
+        let result = run_confined(&req).await;
+        drop(scratch); // clean the per-call scratch before returning.
+        match result {
             Ok(outcome) => {
                 let json = serde_json::to_string(&outcome).unwrap_or_else(|_| "{}".to_string());
                 Ok(CallToolResult::success(vec![Content::text(json)]))
@@ -244,5 +273,17 @@ mod tests {
         // The sharp edge refuses to run until the per-action consent boundary lands.
         let a = parse_run_args(Some(&args("ls"))).unwrap();
         assert!(authorize_run(&a).is_err(), "run_command must fail closed on consent");
+    }
+
+    #[test]
+    fn scratch_dirs_are_unique_and_cleaned_on_drop() {
+        let a = ScratchDir::create().unwrap();
+        let b = ScratchDir::create().unwrap();
+        assert_ne!(a.path, b.path, "each call gets its own scratch dir");
+        assert!(a.path.is_dir() && b.path.is_dir(), "both created");
+        let a_path = a.path.clone();
+        drop(a);
+        assert!(!a_path.exists(), "the scratch is removed on drop, no leak into the next run");
+        assert!(b.path.is_dir(), "the other run's scratch is untouched");
     }
 }
