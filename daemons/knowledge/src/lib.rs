@@ -17,6 +17,7 @@ pub mod lifecycle;
 pub mod links;
 pub mod migration;
 pub mod permission;
+pub mod entity_precision;
 pub mod project;
 pub mod provenance;
 pub mod retrieval;
