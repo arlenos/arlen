@@ -63,7 +63,7 @@ pub struct SliceRelation {
 /// A frozen slice: the scope-selected subgraph as of `T_mint`. Its
 /// [`canonical_bytes`](FrozenSlice::canonical_bytes) is the content-addressed,
 /// order-independent serialization the capsule's identity hashes.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FrozenSlice {
     /// The included nodes.
     pub nodes: Vec<SliceNode>,

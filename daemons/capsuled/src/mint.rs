@@ -25,6 +25,7 @@ use crate::store::store_frozen_slice;
 
 /// The inputs to a mint that are not the slice or the local resources: who the
 /// capsule is for, until when, how many reads, and under whose name.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MintParams {
     /// The shared scope (the same selection that produced the slice).
     pub scope: CapsuleScope,
