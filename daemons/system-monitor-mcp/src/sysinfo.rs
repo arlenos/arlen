@@ -413,6 +413,129 @@ impl ProcReader {
             hostname: read("hostname"),
         }
     }
+
+    /// A detailed sample of every user process (kernel threads skipped), for the
+    /// task manager. Each carries the raw counters the caller turns into rates
+    /// (CPU% and I/O KB/s are deltas between two samples); a vanished PID or an
+    /// unreadable file is skipped or reads as zero, never an error. Bounded so a
+    /// pathological `/proc` cannot blow the response.
+    pub fn list_processes_detailed(&self) -> Vec<ProcessDetail> {
+        let Ok(entries) = std::fs::read_dir(&self.root) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for entry in entries.flatten() {
+            if out.len() >= MAX_DETAILED_PROCESSES {
+                break;
+            }
+            let file_name = entry.file_name();
+            let Some(pid) = file_name
+                .to_str()
+                .filter(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+                .and_then(|s| s.parse::<u32>().ok())
+            else {
+                continue;
+            };
+            let dir = self.root.join(pid.to_string());
+            let cmdline_raw = std::fs::read(dir.join("cmdline")).unwrap_or_default();
+            // A kernel thread has an empty cmdline (all NUL or truly empty); skip it,
+            // the task manager surfaces user processes.
+            if cmdline_raw.iter().all(|&b| b == 0) {
+                continue;
+            }
+            let cmdline = String::from_utf8_lossy(&cmdline_raw);
+            let comm = std::fs::read_to_string(dir.join("comm")).unwrap_or_default();
+            let stat = std::fs::read_to_string(dir.join("stat")).unwrap_or_default();
+            let status = std::fs::read_to_string(dir.join("status")).unwrap_or_default();
+            let io = std::fs::read_to_string(dir.join("io")).unwrap_or_default();
+            let (io_read_bytes, io_write_bytes) = parse_io_bytes(&io);
+            out.push(ProcessDetail {
+                pid,
+                name: process_name(&comm, &cmdline),
+                state: proc_state(&stat).unwrap_or('?'),
+                mem_kb: parse_vmrss_kb(&status).unwrap_or(0),
+                cpu_jiffies: parse_stat_cpu_jiffies(&stat).unwrap_or(0),
+                io_read_bytes,
+                io_write_bytes,
+            });
+        }
+        out
+    }
+}
+
+/// The upper bound on the detailed process list (a desktop runs a few hundred;
+/// this only guards against a pathological `/proc`).
+const MAX_DETAILED_PROCESSES: usize = 4096;
+
+/// A detailed per-process sample for the task manager: the raw counters it needs
+/// to compute CPU%, memory and I/O rates. The rates (CPU% and KB/s) are deltas the
+/// caller derives from two samples spaced by an interval; `state` is the raw
+/// `/proc/<pid>/stat` state char, which the caller maps to a display status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProcessDetail {
+    /// The process id.
+    pub pid: u32,
+    /// A display name (the first cmdline arg's basename, else `comm`).
+    pub name: String,
+    /// The raw `/proc/<pid>/stat` state char (`R`/`S`/`D`/`T`/`Z`/...).
+    pub state: char,
+    /// Resident memory in kibibytes (`VmRSS`).
+    pub mem_kb: u64,
+    /// CPU time in clock ticks (`utime`+`stime`), for a rate delta.
+    pub cpu_jiffies: u64,
+    /// Cumulative storage bytes read (0 if `/proc/<pid>/io` is unreadable, which it
+    /// is for another user's process).
+    pub io_read_bytes: u64,
+    /// Cumulative storage bytes written.
+    pub io_write_bytes: u64,
+}
+
+/// `utime`+`stime` (fields 14 and 15 of `/proc/<pid>/stat`), the process CPU time
+/// in clock ticks. `comm` (field 2) may contain spaces and parentheses, so the
+/// fields are counted from after the **last** `)`: state is token 0, so `utime`
+/// (field 14) is token 11 and `stime` (field 15) is token 12. Pure.
+fn parse_stat_cpu_jiffies(stat: &str) -> Option<u64> {
+    let close = stat.rfind(')')?;
+    let toks: Vec<&str> = stat[close + 1..].split_whitespace().collect();
+    let utime: u64 = toks.get(11)?.parse().ok()?;
+    let stime: u64 = toks.get(12)?.parse().ok()?;
+    Some(utime + stime)
+}
+
+/// `VmRSS` in kB from `/proc/<pid>/status` (`"VmRSS:\t   12345 kB"`). Pure.
+fn parse_vmrss_kb(status: &str) -> Option<u64> {
+    status
+        .lines()
+        .find_map(|l| l.strip_prefix("VmRSS:"))
+        .and_then(|rest| rest.split_whitespace().next()?.parse().ok())
+}
+
+/// `read_bytes` and `write_bytes` from `/proc/<pid>/io` (0 each if absent or
+/// unreadable). Pure.
+fn parse_io_bytes(io: &str) -> (u64, u64) {
+    let mut read = 0;
+    let mut write = 0;
+    for line in io.lines() {
+        if let Some(v) = line.strip_prefix("read_bytes:") {
+            read = v.trim().parse().unwrap_or(0);
+        } else if let Some(v) = line.strip_prefix("write_bytes:") {
+            write = v.trim().parse().unwrap_or(0);
+        }
+    }
+    (read, write)
+}
+
+/// A process display name: the first `cmdline` argument's basename if present
+/// (NUL-separated args), else the `comm`. Pure.
+fn process_name(comm: &str, cmdline: &str) -> String {
+    let first = cmdline.split('\0').next().unwrap_or("").trim();
+    if !first.is_empty() {
+        let base = first.rsplit('/').next().unwrap_or(first);
+        if !base.is_empty() {
+            return base.to_string();
+        }
+    }
+    comm.trim().to_string()
 }
 
 impl Default for ProcReader {
@@ -424,6 +547,64 @@ impl Default for ProcReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cpu_jiffies_sum_utime_and_stime_past_a_parenthesised_comm() {
+        // comm with spaces AND parens: state is the token after the last ')',
+        // utime is field 14 (token 11), stime field 15 (token 12).
+        let stat = "42 (weird (name) ) S 1 1 1 0 -1 0 10 20 30 40 111 222 5 6";
+        assert_eq!(parse_stat_cpu_jiffies(stat), Some(333));
+        assert_eq!(parse_stat_cpu_jiffies("bad"), None);
+    }
+
+    #[test]
+    fn vmrss_and_io_parse_from_their_files() {
+        let status = "Name:\tbash\nVmRSS:\t   12345 kB\nThreads:\t1\n";
+        assert_eq!(parse_vmrss_kb(status), Some(12345));
+        assert_eq!(parse_vmrss_kb("no rss here"), None);
+        let io = "rchar: 100\nread_bytes: 4096\nwrite_bytes: 8192\n";
+        assert_eq!(parse_io_bytes(io), (4096, 8192));
+        assert_eq!(parse_io_bytes(""), (0, 0));
+    }
+
+    #[test]
+    fn process_name_prefers_the_cmdline_basename() {
+        assert_eq!(process_name("firefox", "/usr/lib/firefox/firefox\0-P\0"), "firefox");
+        // No cmdline arg -> fall back to comm.
+        assert_eq!(process_name("kworker", ""), "kworker");
+    }
+
+    #[test]
+    fn detailed_list_reads_a_user_process_and_skips_a_kernel_thread() {
+        let tmp = tempfile::tempdir().unwrap();
+        let proc = |pid: &str| {
+            let d = tmp.path().join(pid);
+            std::fs::create_dir_all(&d).unwrap();
+            d
+        };
+        // A user process: non-empty cmdline, VmRSS, cpu jiffies, io.
+        let u = proc("100");
+        std::fs::write(u.join("cmdline"), b"/usr/bin/bash\0").unwrap();
+        std::fs::write(u.join("comm"), "bash\n").unwrap();
+        std::fs::write(u.join("stat"), "100 (bash) R 1 1 1 0 -1 0 0 0 0 0 70 30 0 0").unwrap();
+        std::fs::write(u.join("status"), "VmRSS:\t 2048 kB\n").unwrap();
+        std::fs::write(u.join("io"), "read_bytes: 1024\nwrite_bytes: 512\n").unwrap();
+        // A kernel thread: empty cmdline -> skipped.
+        let k = proc("2");
+        std::fs::write(k.join("cmdline"), b"").unwrap();
+        std::fs::write(k.join("comm"), "kthreadd\n").unwrap();
+        std::fs::write(k.join("stat"), "2 (kthreadd) S 0 0 0 0 -1 0 0 0 0 0 0 0 0 0").unwrap();
+
+        let list = ProcReader::with_root(tmp.path()).list_processes_detailed();
+        assert_eq!(list.len(), 1, "the kernel thread is skipped");
+        let p = &list[0];
+        assert_eq!(p.pid, 100);
+        assert_eq!(p.name, "bash");
+        assert_eq!(p.state, 'R');
+        assert_eq!(p.mem_kb, 2048);
+        assert_eq!(p.cpu_jiffies, 100);
+        assert_eq!((p.io_read_bytes, p.io_write_bytes), (1024, 512));
+    }
 
     #[test]
     fn proc_state_reads_the_char_after_the_last_paren() {
