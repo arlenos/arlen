@@ -141,6 +141,18 @@ impl Executor for FileSystemExecutor {
                 };
             }
         }
+        // No-clobber: `fs::rename` OVERWRITES an existing destination, which would
+        // destroy the file at `to` and leave the RestorePath inverse unable to
+        // restore it (the undo moves the source back but the clobbered file is
+        // gone). A reversible move must not clobber, so refuse when `to` exists.
+        if std::path::Path::new(&to).exists() {
+            return ExecuteOutcome::Error {
+                code: ContractError::ExecutionFailed,
+                message: "fs.move refused: the destination already exists (a clobber is not \
+                          reversible)"
+                    .to_string(),
+            };
+        }
         // Perform the move. `fs::rename` matches the enact path's own primitive; a
         // cross-filesystem move (`EXDEV`) is refused rather than silently
         // copy-then-deleting (which would need its own inverse) - a follow-up.
@@ -265,6 +277,24 @@ mod tests {
             .await;
         assert!(matches!(out, ExecuteOutcome::Error { .. }));
         assert!(from.exists(), "nothing moved when the executor is off");
+    }
+
+    #[tokio::test]
+    async fn a_move_onto_an_existing_file_is_refused_no_clobber() {
+        // A move whose destination exists would clobber it irreversibly; refuse it,
+        // leaving BOTH files intact.
+        let dir = tmp();
+        let from = dir.join("a.txt");
+        let to = dir.join("b.txt");
+        std::fs::write(&from, b"src").unwrap();
+        std::fs::write(&to, b"dst").unwrap();
+
+        let out = live()
+            .execute(&move_req(from.to_str().unwrap(), to.to_str().unwrap()), &grant())
+            .await;
+        assert!(matches!(out, ExecuteOutcome::Error { .. }));
+        assert_eq!(std::fs::read(&from).unwrap(), b"src", "the source is untouched");
+        assert_eq!(std::fs::read(&to).unwrap(), b"dst", "the destination was not clobbered");
     }
 
     #[tokio::test]
