@@ -51,6 +51,18 @@ export interface PendingView {
   /// Whether it can be undone - the gate on "remember" + autonomy. (Contract seam:
   /// the broker holds this via InverseClass; PendingView must surface it.)
   reversibility: Reversibility;
+  /// External-send only: the named recipient the data leaves Arlen to.
+  recipient?: string;
+  /// External-send only: a short preview of the content that would leave Arlen,
+  /// so "send once" is an informed decision, not a blind one.
+  preview?: string;
+  /// Destructive only: the concrete items and their sizes. Names what is lost.
+  targets?: { name: string; size: string }[];
+  /// Destructive only: the total size affected, shown beside the target.
+  total?: string;
+  /// True when an external document or site triggered this, not the user
+  /// directly - the surface warns before a standing grant is spent unattended.
+  triggeredExternally?: boolean;
 }
 
 // One representative request per tier/class so the design language + the
@@ -59,8 +71,12 @@ const MOCK_PENDING: PendingView[] = [
   { id: 1, requester: "org.arlen.files", class: "portal", tier: "standard", summary: "open one file you pick", scope: "a single file you choose", reversibility: "reversible" },
   { id: 2, requester: "com.example.notes", class: "capability_grant", tier: "standard", summary: "read your notes and their tags", scope: "your notes", reversibility: "reversible" },
   { id: 3, requester: "org.arlen.files", class: "destructive", tier: "standard", summary: "move 8 files to the Trash", scope: "~/Downloads", reversibility: "reversible" },
-  { id: 4, requester: "org.arlen.files", class: "destructive", tier: "high_stakes", summary: "permanently delete 3 files", scope: "~/Documents/old", reversibility: "irreversible" },
-  { id: 5, requester: "com.example.mail", class: "external_send", tier: "high_stakes", summary: "send an email on your behalf", scope: "alex@example.com", reversibility: "irreversible" },
+  { id: 4, requester: "org.arlen.files", class: "destructive", tier: "high_stakes", summary: "permanently delete 3 files", scope: "~/Documents/old", reversibility: "irreversible", total: "1.2 GB", targets: [
+    { name: "report-final.pdf", size: "840 MB" },
+    { name: "archive-2025.zip", size: "360 MB" },
+    { name: "notes.md", size: "4 KB" },
+  ] },
+  { id: 5, requester: "com.example.mail", class: "external_send", tier: "high_stakes", summary: "send an email on your behalf", scope: "alex@example.com", reversibility: "irreversible", recipient: "alex@example.com", preview: "Subject: Re: Thursday\n\"Sounds good, see you at 3. I'll bring the printouts.\"" },
   { id: 6, requester: "org.arlen.installd", class: "elevated_privilege", tier: "high_stakes", summary: "install system software with admin rights", scope: "3 packages", reversibility: "reversible_with_cost" },
 ];
 
