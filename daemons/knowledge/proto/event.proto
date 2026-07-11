@@ -184,6 +184,19 @@ message PresenceClearPayload {
   string app_id = 1;
 }
 
+// Emitted when the terminal finishes a command block. Promoted into a
+// reserved `Command` KG node so command history spans sessions and survives
+// a restart (⌃R). `ran_at` is the event envelope timestamp, not repeated here.
+// Event type: "command.finished"
+message CommandFinishedPayload {
+  string id          = 1;  // block id; the Command node primary key
+  string command     = 2;  // the command line that ran
+  string cwd         = 3;  // working directory it ran in
+  int32  exit_code   = 4;  // exit status
+  uint64 duration_ms = 5;  // wall-clock duration
+  string origin      = 6;  // "you" | "agent"
+}
+
 // Emitted when an app calls `shell.timeline.record`. Persistent
 // (point-in-time or duration) record of a completed semantic event.
 // Distinct from Presence (which is ephemeral state).

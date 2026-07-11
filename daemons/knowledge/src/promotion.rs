@@ -2,7 +2,8 @@ use crate::graph::GraphHandle;
 use crate::project::ProjectStore;
 use crate::proto::{
     AnnotationClearPayload, AnnotationSetPayload, BadgeSetPayload, BadgeStatus,
-    CodeFileIndexPayload, FileOpenedPayload, FileWrittenPayload, NetworkConnectionPayload,
+    CodeFileIndexPayload, CommandFinishedPayload, FileOpenedPayload, FileWrittenPayload,
+    NetworkConnectionPayload,
     PresenceClearPayload, PresenceSetPayload, ServiceEventPayload, ShortcutActionInvokedPayload,
     TimelineRecordPayload, WindowFocusedPayload,
 };
@@ -208,6 +209,11 @@ async fn run_pass(
             }
             "app.timeline.record" => {
                 promote_timeline_record(graph, id, timestamp, payload).await
+            }
+            // A finished terminal command block becomes a reserved Command node,
+            // so ⌃R history spans sessions and survives a restart.
+            "command.finished" => {
+                promote_command_finished(graph, timestamp, payload).await
             }
             "app.annotation.set" => {
                 promote_annotation_set(graph, timestamp, payload).await
@@ -965,6 +971,45 @@ async fn promote_timeline_record(
     Ok(())
 }
 
+/// Promote a finished terminal command block into the reserved `Command` KG node
+/// (`command.finished`), so command history spans sessions and survives a restart.
+/// Keyed by the block id (a re-emit of the same block merges in place); `ran_at` is
+/// the Event envelope timestamp (the in-memory block carries no wall-clock start).
+/// String fields are escaped; the numeric fields are bare kernel/engine-sourced ints.
+async fn promote_command_finished(
+    graph: &GraphHandle,
+    timestamp: &i64,
+    payload: &[u8],
+) -> Result<()> {
+    let p = CommandFinishedPayload::decode(payload)?;
+    // A block id is required; without it there is no stable node key to merge on.
+    if p.id.is_empty() {
+        return Ok(());
+    }
+    let id_esc = escape_cypher(&p.id);
+    let command_esc = escape_cypher(&p.command);
+    let cwd_esc = escape_cypher(&p.cwd);
+    let origin_esc = escape_cypher(&p.origin);
+    let exit_code = p.exit_code;
+    let duration_ms = p.duration_ms;
+    let ran_at = *timestamp;
+
+    graph
+        .write(format!(
+            "MERGE (c:Command {{id: '{id_esc}'}})
+             SET c.command     = '{command_esc}',
+                 c.cwd         = '{cwd_esc}',
+                 c.exit_code   = {exit_code},
+                 c.duration_ms = {duration_ms},
+                 c.origin      = '{origin_esc}',
+                 c.ran_at      = {ran_at}"
+        ))
+        .await?;
+
+    debug!(id = %p.id, command = %p.command, "promoted command.finished");
+    Ok(())
+}
+
 /// Promote an `app.annotation.set` event into an Annotation node
 /// keyed by the deterministic UUIDv5 of (target_type, target_id,
 /// namespace). MERGE-style upsert: re-setting on the same triple
@@ -1683,6 +1728,49 @@ mod shell_event_tests {
             .await
             .unwrap();
         assert_eq!(edge.rows[0][0].as_i64(), 1, "the app is active in the session");
+    }
+
+    #[tokio::test]
+    async fn promote_command_finished_creates_a_reserved_command_node() {
+        let (graph, _tmp) = setup().await;
+        let payload = CommandFinishedPayload {
+            id: "blk-7".into(),
+            command: "cargo test".into(),
+            cwd: "/work/arlen".into(),
+            exit_code: 0,
+            duration_ms: 4200,
+            origin: "you".into(),
+        };
+        let mut buf = Vec::new();
+        payload.encode(&mut buf).unwrap();
+        promote_command_finished(&graph, &1_700_000_000, &buf)
+            .await
+            .expect("command.finished promotes without error");
+
+        let rs = graph
+            .query_rows(
+                "MATCH (c:Command {id: 'blk-7'}) \
+                 RETURN c.command AS cmd, c.cwd AS cwd, c.exit_code AS ec, c.ran_at AS ra"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        let row = rs.rows.first().expect("the Command node exists");
+        assert_eq!(row[0].as_str(), "cargo test");
+        assert_eq!(row[1].as_str(), "/work/arlen");
+        assert_eq!(row[2].as_i64(), 0);
+        assert_eq!(row[3].as_i64(), 1_700_000_000, "ran_at is the event envelope timestamp");
+
+        // An id-less payload is a no-op (no stable node key to merge on).
+        let empty = CommandFinishedPayload { id: String::new(), ..payload };
+        let mut b2 = Vec::new();
+        empty.encode(&mut b2).unwrap();
+        promote_command_finished(&graph, &1, &b2).await.unwrap();
+        let count = graph
+            .query_rows("MATCH (c:Command) RETURN count(*) AS c".into())
+            .await
+            .unwrap();
+        assert_eq!(count.rows[0][0].as_i64(), 1, "an id-less command creates no node");
     }
 
     #[tokio::test]
