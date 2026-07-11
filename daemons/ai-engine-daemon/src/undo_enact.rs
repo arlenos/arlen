@@ -194,6 +194,17 @@ fn enact_restore_value(
     Ok(EnactOutcome::Restored)
 }
 
+/// Apply a scalar setting: set `key` in `file` to `value` through the same
+/// format-preserving editor + atomic write + read-after-write self-check the undo
+/// path uses. This is the FORWARD of a settings write; the executor captures the
+/// prior first ([`capture_prior_value`]) so a later undo restores it. `value` is
+/// typed best-effort (`true`/`false`/int/float, else string) exactly as the restore
+/// path types a prior, so the forward set and the undo restore round-trip identically.
+pub fn apply_setting_value(file: &str, key: &str, value: &str) -> Result<EnactOutcome, EnactError> {
+    // Setting to a concrete value is exactly the restore path with `Some(value)`.
+    enact_restore_value(file, key, Some(value))
+}
+
 /// Detect the config format from a setting file's name. `prefs.js` and `.env` are
 /// recognized by name; the rest by extension. `None` for an unrecognized name, so
 /// the caller refuses rather than corrupting an unknown format.
