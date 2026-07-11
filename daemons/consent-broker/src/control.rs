@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::grant::{mint_grant, ConsentGrant};
 use crate::queue::{ConsentQueue, PendingRequest, RequestId};
-use crate::{ConsentClass, ConsentOutcome, Reversibility, SeverityTier};
+use crate::{ConsentClass, ConsentOutcome, ConsentTarget, Reversibility, SeverityTier};
 
 /// The dialog content the shell renders for one pending request - exactly what
 /// the user must see to decide, and nothing internal (no seq / queue state). The
@@ -41,6 +41,14 @@ pub struct PendingView {
     /// prompt-injection containment), so the dialog can show the extra "this was
     /// triggered by something you opened" warning line.
     pub triggered_externally: bool,
+    /// External-send only: the recipient the data leaves Arlen to.
+    pub recipient: Option<String>,
+    /// External-send only: a short preview of the content that would leave Arlen.
+    pub preview: Option<String>,
+    /// Destructive only: the named targets (name + size) the action affects.
+    pub targets: Vec<ConsentTarget>,
+    /// Destructive only: the total size affected.
+    pub total: Option<String>,
 }
 
 impl PendingView {
@@ -55,6 +63,10 @@ impl PendingView {
             scope: pending.request.scope.clone(),
             reversibility: Reversibility::of(pending.request.kind),
             triggered_externally: pending.request.triggered_by_external_content,
+            recipient: pending.request.recipient.clone(),
+            preview: pending.request.preview.clone(),
+            targets: pending.request.targets.clone(),
+            total: pending.request.total.clone(),
         }
     }
 }
@@ -117,6 +129,10 @@ mod tests {
             class: ConsentClass::Destructive,
             kind,
             triggered_by_external_content: false,
+            recipient: None,
+            preview: None,
+            targets: Vec::new(),
+            total: None,
             summary: "permanently delete 3 files".to_string(),
             scope: scope.map(str::to_string),
         };

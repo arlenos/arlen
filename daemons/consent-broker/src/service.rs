@@ -44,6 +44,10 @@ pub fn assemble(body: RequestBody, requester: AttestedRequester) -> ConsentReque
         triggered_by_external_content: body.triggered_by_external_content,
         summary: body.summary,
         scope: body.scope,
+        recipient: body.recipient,
+        preview: body.preview,
+        targets: body.targets,
+        total: body.total,
     }
 }
 
@@ -89,6 +93,10 @@ mod tests {
             class: ConsentClass::CapabilityGrant,
             kind,
             triggered_by_external_content: false,
+            recipient: None,
+            preview: None,
+            targets: Vec::new(),
+            total: None,
             summary: "do a thing".to_string(),
             scope: Some("/x".to_string()),
         }
