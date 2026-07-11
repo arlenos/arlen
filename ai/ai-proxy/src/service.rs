@@ -262,10 +262,12 @@ pub struct ProxyService {
     max_inflight: usize,
 }
 
-/// A credential source that injects nothing: the default until the real
-/// Connections-backed source is wired in `main`. It returns `Ok(None)` for every
-/// request, so a keyed provider simply gets no auth header (the pre-injection
-/// behaviour), never a spurious credential.
+/// The default credential source until the real Connections-backed source is wired
+/// in `main`. A key-less provider (`AuthScheme::None`) needs no credential, so it
+/// returns `Ok(None)`. A KEYED provider with no source configured FAILS CLOSED
+/// (`Err`), so a misconfiguration (a keyed catalog built without
+/// `with_credential_source`) refuses the forward rather than dialing upstream
+/// un-authenticated. In production `main` always attaches the real source.
 struct NoCredentialSource;
 
 #[async_trait::async_trait]
@@ -274,9 +276,15 @@ impl crate::connections_client::EgressCredentialSource for NoCredentialSource {
         &self,
         _connection: &str,
         _host: &str,
-        _scheme: crate::catalog::AuthScheme,
+        scheme: crate::catalog::AuthScheme,
     ) -> Result<Option<(String, String)>, crate::connections_client::CredentialError> {
-        Ok(None)
+        if scheme == crate::catalog::AuthScheme::None {
+            Ok(None)
+        } else {
+            Err(crate::connections_client::CredentialError::Daemon(
+                "no credential source configured".to_string(),
+            ))
+        }
     }
 }
 
@@ -1409,7 +1417,13 @@ mod tests {
             CallerAllowlist::default_arlen(),
             forwarder.clone() as Arc<dyn Forwarder>,
             sink.clone() as Arc<dyn AuditSink>,
-        );
+        )
+        // A keyed provider needs a source; this test is about transcoding, so a
+        // fixed dummy key stands in (the auth header does not affect the body shape).
+        .with_credential_source(Arc::new(FixedCredentialSource(Ok(Some((
+            "x-api-key".to_string(),
+            "test-key".to_string(),
+        ))))));
 
         let out = svc
             .forward(
