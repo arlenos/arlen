@@ -9,9 +9,12 @@
 //! candidates; the graph gather and the socket op wire it. Pure + deterministic,
 //! so it is fully unit-tested.
 
+use anyhow::Result;
 use serde::Serialize;
 
 use crate::entity_precision::{classify, liveness_score, LivenessSignals};
+use crate::graph::{CellValue, GraphHandle};
+use crate::utils::escape_cypher;
 
 /// A candidate related entity gathered from the graph, carrying the temporal
 /// signals its liveness is scored from and how it relates to the prep subject.
@@ -21,7 +24,7 @@ pub struct PrepCandidate {
     pub id: String,
     /// A human label (path basename / project name / meeting title).
     pub label: String,
-    /// The KG node type (File / Project / Meeting / ActionItem / ...).
+    /// The KG node type (File / Project / Meeting / `ActionItem` / ...).
     pub kind: String,
     /// How it relates to the subject (the edge type or a rendered phrase).
     pub relation: String,
@@ -83,6 +86,120 @@ pub fn rank_prep(candidates: Vec<PrepCandidate>, now_micros: i64, max: usize) ->
     });
     items.truncate(max);
     items
+}
+
+/// A non-zero int cell as `Some(v)`, else `None` (a `0` / absent stamp is "unset",
+/// never a real epoch-micros time).
+fn opt_time(cell: Option<&CellValue>) -> Option<i64> {
+    cell.map(CellValue::as_i64).filter(|v| *v != 0)
+}
+
+/// Load a neighbour's kind, human label and liveness signals. The `FILE_PART_OF`
+/// membership edge only connects `File` and `Project`, so this tries those two;
+/// `None` if the id is neither (unexpected, since the gather already filtered to
+/// live membership neighbours). Broader entity types (Meeting, `ActionItem`) extend
+/// this as their relation families are gathered.
+async fn load_prep_node(
+    graph: &GraphHandle,
+    id: &str,
+) -> Result<Option<(String, String, LivenessSignals)>> {
+    let id_esc = escape_cypher(id);
+
+    // File: label = the path basename; recency = last_accessed.
+    let cypher = format!(
+        "MATCH (n:File {{id: '{id_esc}'}}) RETURN n.path AS path, n.last_accessed AS la LIMIT 1"
+    );
+    let rs = graph.query_rows(cypher).await?;
+    if let Some(row) = rs.rows.first() {
+        let path = row.first().map(|c| c.as_str().to_string()).unwrap_or_default();
+        let la = opt_time(row.get(1));
+        let label = path.rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or(id);
+        return Ok(Some((
+            "File".to_string(),
+            label.to_string(),
+            LivenessSignals {
+                last_activity_micros: la,
+                created_at_micros: la,
+                activity_count: 1,
+                expired_at_micros: None,
+            },
+        )));
+    }
+
+    // Project: label = the name; recency = last_accessed or created_at; expired_at
+    // carries the archive state so a retired project is dropped by the ranking.
+    let cypher = format!(
+        "MATCH (n:Project {{id: '{id_esc}'}}) \
+         RETURN n.name AS name, n.last_accessed AS la, n.created_at AS ca, n.expired_at AS ea LIMIT 1"
+    );
+    let rs = graph.query_rows(cypher).await?;
+    if let Some(row) = rs.rows.first() {
+        let name = row.first().map(|c| c.as_str().to_string()).unwrap_or_default();
+        let la = opt_time(row.get(1));
+        let ca = opt_time(row.get(2));
+        let ea = opt_time(row.get(3));
+        let label = if name.is_empty() { id.to_string() } else { name };
+        return Ok(Some((
+            "Project".to_string(),
+            label,
+            LivenessSignals {
+                last_activity_micros: la.or(ca),
+                created_at_micros: ca,
+                activity_count: 1,
+                expired_at_micros: ea,
+            },
+        )));
+    }
+
+    Ok(None)
+}
+
+/// The subject entity's live `FILE_PART_OF` neighbour ids, both directions (a
+/// project's files / a file's project). The same live-edge predicate the capsule
+/// materializer uses (`invalid_at`/`expired_at` NULL on the edge and the far node),
+/// so no new graph behaviour is introduced.
+async fn prep_neighbour_ids(graph: &GraphHandle, subject_id: &str) -> Result<Vec<String>> {
+    let id = escape_cypher(subject_id);
+    let cypher = format!(
+        "MATCH (n {{id: '{id}'}})-[r:FILE_PART_OF]-(m) \
+         WHERE r.invalid_at IS NULL AND r.expired_at IS NULL AND m.expired_at IS NULL \
+         RETURN m.id AS id"
+    );
+    let rs = graph.query_rows(cypher).await?;
+    let mut ids: Vec<String> = rs
+        .rows
+        .iter()
+        .filter_map(|row| row.first())
+        .map(|c| c.as_str().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    ids.sort();
+    ids.dedup();
+    Ok(ids)
+}
+
+/// Gather the subject entity's live `FILE_PART_OF` neighbours as prep candidates,
+/// each with its liveness signals loaded. `FILE_PART_OF` is the built membership
+/// edge (a project's files / a file's project). Broader relation families
+/// (`ACCESSED_BY`, meetings, action-items) extend this as they land.
+pub(crate) async fn gather_prep_candidates(
+    graph: &GraphHandle,
+    subject_id: &str,
+) -> Result<Vec<PrepCandidate>> {
+    let neighbour_ids = prep_neighbour_ids(graph, subject_id).await?;
+    let mut candidates = Vec::new();
+    for id in neighbour_ids {
+        if let Some((kind, label, signals)) = load_prep_node(graph, &id).await? {
+            candidates.push(PrepCandidate {
+                id,
+                label,
+                kind,
+                relation: "FILE_PART_OF".to_string(),
+                signals,
+            });
+        }
+    }
+    Ok(candidates)
 }
 
 #[cfg(test)]
@@ -162,5 +279,72 @@ mod tests {
     #[test]
     fn an_empty_gather_yields_an_empty_view() {
         assert!(rank_prep(vec![], NOW, 10).is_empty());
+    }
+
+    #[tokio::test]
+    async fn gather_ranks_a_projects_live_files_over_its_cold_ones() {
+        // Prep for a project: its live files lead, a long-cold file drops as noise.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        graph.write("CREATE (p:Project {id: 'p1', name: 'Arlen'})".into()).await.unwrap();
+        let fresh = NOW - 1 * DAY;
+        let cold = NOW - 200 * DAY;
+        graph
+            .write(format!(
+                "CREATE (f:File {{id: 'fresh', path: '/proj/fresh.rs', app_id: 't', last_accessed: {fresh}}})"
+            ))
+            .await
+            .unwrap();
+        graph
+            .write(format!(
+                "CREATE (f:File {{id: 'cold', path: '/proj/cold.rs', app_id: 't', last_accessed: {cold}}})"
+            ))
+            .await
+            .unwrap();
+        for f in ["fresh", "cold"] {
+            graph
+                .write(format!(
+                    "MATCH (f:File {{id:'{f}'}}), (p:Project {{id:'p1'}}) CREATE (f)-[:FILE_PART_OF]->(p)"
+                ))
+                .await
+                .unwrap();
+        }
+
+        let candidates = gather_prep_candidates(&graph, "p1").await.unwrap();
+        assert_eq!(candidates.len(), 2, "both files are gathered as candidates");
+        let view = rank_prep(candidates, NOW, 10);
+        // The fresh file leads and reads as a File with its basename; the cold one
+        // is dropped as noise (200 days -> below the floor).
+        assert_eq!(view[0].id, "fresh");
+        assert_eq!(view[0].kind, "File");
+        assert_eq!(view[0].label, "fresh.rs");
+        assert_eq!(view[0].liveness, "live");
+        assert!(view.iter().all(|i| i.id != "cold"), "the cold file is noise, dropped");
+    }
+
+    #[tokio::test]
+    async fn gather_from_a_file_returns_its_project() {
+        // Prep for a file surfaces the project it belongs to (the reverse direction).
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        let recent = NOW - 2 * DAY;
+        graph
+            .write(format!("CREATE (p:Project {{id: 'p1', name: 'Arlen', last_accessed: {recent}}})"))
+            .await
+            .unwrap();
+        graph
+            .write("CREATE (f:File {id: 'f1', path: '/x', app_id: 't', last_accessed: 0})".into())
+            .await
+            .unwrap();
+        graph
+            .write("MATCH (f:File {id:'f1'}), (p:Project {id:'p1'}) CREATE (f)-[:FILE_PART_OF]->(p)".into())
+            .await
+            .unwrap();
+
+        let view = rank_prep(gather_prep_candidates(&graph, "f1").await.unwrap(), NOW, 10);
+        assert_eq!(view.len(), 1);
+        assert_eq!(view[0].id, "p1");
+        assert_eq!(view[0].kind, "Project");
+        assert_eq!(view[0].label, "Arlen");
     }
 }
