@@ -85,6 +85,33 @@ impl RevocationLedger {
     pub fn state(&self, handle: &str) -> Option<&CapsuleState> {
         self.entries.get(handle)
     }
+
+    /// Every registered capsule (handle + state), for the active-capsules surface
+    /// (the list + one-gesture revoke-by-handle, CC-R6). Ordered by handle (the
+    /// `BTreeMap` order), so the listing is deterministic.
+    pub fn list(&self) -> Vec<CapsuleListEntry> {
+        self.entries
+            .iter()
+            .map(|(handle, s)| CapsuleListEntry {
+                handle: handle.clone(),
+                revoked: s.revoked,
+                ops_used: s.ops_used,
+            })
+            .collect()
+    }
+}
+
+/// One capsule's listing for the active-capsules surface: its revocation handle
+/// (the revoke key) and durable state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CapsuleListEntry {
+    /// The revocation handle - the id the revoke-by-handle gesture targets.
+    pub handle: String,
+    /// Whether it has been revoked (a revoked capsule stays listed so the user
+    /// sees it was theirs; a future prune is a retention decision, not here).
+    pub revoked: bool,
+    /// How many reads have been served against it.
+    pub ops_used: u64,
 }
 
 /// The flock'd, durable persistence of a [`RevocationLedger`]. Every operation
@@ -189,6 +216,13 @@ impl RevocationFile {
         let _g = self.lock()?;
         Ok(self.load()?.state(handle).cloned())
     }
+
+    /// Every persisted capsule (handle + state), for the active-capsules surface.
+    /// Takes the shared lock, loads and returns the snapshot.
+    pub fn list(&self) -> io::Result<Vec<CapsuleListEntry>> {
+        let _g = self.lock()?;
+        Ok(self.load()?.list())
+    }
 }
 
 #[cfg(test)]
@@ -199,6 +233,25 @@ mod tests {
     fn an_unknown_handle_is_refused() {
         let mut l = RevocationLedger::default();
         assert_eq!(l.consume("nope", 10), ConsumeVerdict::Unknown);
+    }
+
+    #[test]
+    fn list_returns_every_capsule_with_its_state_ordered_by_handle() {
+        let mut l = RevocationLedger::default();
+        l.register("b");
+        l.register("a");
+        assert_eq!(l.consume("a", 10), ConsumeVerdict::Allowed);
+        l.revoke("b");
+
+        let list = l.list();
+        assert_eq!(list.len(), 2);
+        // Ordered by handle.
+        assert_eq!(list[0].handle, "a");
+        assert!(!list[0].revoked);
+        assert_eq!(list[0].ops_used, 1);
+        assert_eq!(list[1].handle, "b");
+        assert!(list[1].revoked, "a revoked capsule stays listed");
+        assert!(RevocationLedger::default().list().is_empty());
     }
 
     #[test]
