@@ -245,6 +245,40 @@ pub fn curated_for(provider_id: &str) -> Option<SovereigntyInfo> {
             open_weight: true,
             ..Default::default()
         },
+        // Groq (US): an open-weight inference host with zero-data-retention for
+        // ALL tiers (not a gated toggle), so a plain no-train is honest here.
+        "groq" => SovereigntyInfo {
+            jurisdiction: Jurisdiction::Us,
+            trains_on_you: TrainsOnYou::No,
+            open_weight: true,
+            ..Default::default()
+        },
+        // Together / Fireworks (US): open-weight inference hosts - the escape
+        // hatch is the open weights, but their retention/training terms are
+        // unpulled, so the train field stays Unknown rather than overstate.
+        "together" | "togetherai" | "fireworks" | "fireworks-ai" => SovereigntyInfo {
+            jurisdiction: Jurisdiction::Us,
+            open_weight: true,
+            ..Default::default()
+        },
+        // Nebius (NL): the renamed Yandex - EU by policy default, but it stores
+        // and TRAINS by default unless the user enables ZDR, the caveat encoded
+        // (trains yes + ZDR-gated) rather than hidden behind an EU chip.
+        "nebius" => SovereigntyInfo {
+            jurisdiction: Jurisdiction::Eu,
+            residency: Residency::EuPolicyDefault,
+            trains_on_you: TrainsOnYou::Yes,
+            zdr_gated: true,
+            ..Default::default()
+        },
+        // Scaleway (FR) / STACKIT (DE): hard EU-confined open-weight hosts; the
+        // per-tier training terms are unpulled, so the train field stays Unknown.
+        "scaleway" | "stackit" => SovereigntyInfo {
+            jurisdiction: Jurisdiction::Eu,
+            residency: Residency::EuConfined,
+            open_weight: true,
+            ..Default::default()
+        },
         _ => return None,
     };
     Some(info)
@@ -356,6 +390,50 @@ mod tests {
         assert!(curated_for("openrouter").expect("curated").aggregator_hop);
         // An un-curated provider stays an Unknown stub.
         assert!(curated_for("some-unknown-provider").is_none());
+    }
+
+    #[test]
+    fn open_weight_hosts_carry_us_jurisdiction_and_leave_terms_unknown() {
+        // Groq: ZDR-for-all is a stated fact, so a plain no-train is honest.
+        let g = curated_for("groq").expect("curated");
+        assert_eq!(g.jurisdiction, Jurisdiction::Us);
+        assert_eq!(g.trains_on_you, TrainsOnYou::No);
+        assert!(g.open_weight);
+        assert!(!g.zdr_gated, "ZDR-for-all is not a gated toggle");
+        // Together / Fireworks: US open-weight, but the train terms stay Unknown.
+        for id in ["together", "togetherai", "fireworks", "fireworks-ai"] {
+            let t = curated_for(id).unwrap_or_else(|| panic!("curated {id}"));
+            assert_eq!(t.jurisdiction, Jurisdiction::Us);
+            assert_eq!(t.trains_on_you, TrainsOnYou::Unknown);
+            assert!(t.open_weight);
+        }
+    }
+
+    #[test]
+    fn nebius_encodes_the_trains_by_default_caveat_not_a_clean_eu_chip() {
+        // Nebius (renamed Yandex): EU by policy default, but stores + trains by
+        // default unless the user sets ZDR - the caveat must be visible.
+        let n = curated_for("nebius").expect("curated");
+        assert_eq!(n.jurisdiction, Jurisdiction::Eu);
+        assert_eq!(n.residency, Residency::EuPolicyDefault);
+        assert_eq!(n.trains_on_you, TrainsOnYou::Yes);
+        assert!(n.zdr_gated);
+        assert_eq!(
+            n.info_line(),
+            "[jurisdiction: EU*] · [trains on you: yes] · [open-weight: no] · [ZDR-gated]"
+        );
+    }
+
+    #[test]
+    fn eu_confined_open_weight_hosts_are_curated() {
+        // Scaleway (FR) / STACKIT (DE): hard EU-confined, open-weight, terms unpulled.
+        for id in ["scaleway", "stackit"] {
+            let e = curated_for(id).unwrap_or_else(|| panic!("curated {id}"));
+            assert_eq!(e.jurisdiction, Jurisdiction::Eu);
+            assert_eq!(e.residency, Residency::EuConfined);
+            assert!(e.open_weight);
+            assert_eq!(e.trains_on_you, TrainsOnYou::Unknown);
+        }
     }
 
     #[test]
