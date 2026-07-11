@@ -19,6 +19,7 @@
 
 pub use arlen_capsule::{scope, slice};
 
+pub mod control;
 pub mod grant;
 pub mod key;
 pub mod mint;
