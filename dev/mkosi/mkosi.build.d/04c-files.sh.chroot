@@ -1,0 +1,50 @@
+#!/bin/sh
+# Phase 4b of the Debian-native build (CHROOT): the daily-driver apps, first the
+# files (arlen-files, a Tauri 2 app). Same two-step as the shell
+# (04-shell): build the SvelteKit frontend (vite -> ../build, the tauri
+# frontendDist), then the Tauri Rust backend (links WebKitGTK/GTK/soup, embeds the
+# frontend). This is TIER-A #1b - packaging the daily-driver apps into the minimal
+# image so "app backend done" becomes "shown working in a real boot", NOT the full
+# distro. rustup + node + the -dev libs were installed by phases 1-2; network is on
+# via WithNetwork=yes.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-files"  # own dir; app is a separate workspace
+export CXXFLAGS="-include cstdint"
+export LIBGL_ALWAYS_SOFTWARE=1                           # llvmpipe, harmless at build time
+export npm_config_cache="$cache/npm"                    # persist the npm cache across builds
+mkdir -p "$CARGO_TARGET_DIR" "$npm_config_cache"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen/apps/files"
+# Reuse a complete + current node_modules instead of re-running npm ci (the chroot
+# overlay's per-file fchown EINVAL makes a fresh npm ci pathologically slow); the
+# repo is bind-mounted via BuildSources, so a host-prepared node_modules is visible
+# here. Fall back to a quieted npm ci with the audit/fund round-trips skipped.
+if [ -x ./node_modules/.bin/tauri ] && [ ! package-lock.json -nt node_modules ]; then
+    echo ">> node_modules is complete and current; skipping npm ci"
+else
+    echo ">> npm ci (frontend + tauri-cli deps)"
+    npm ci --no-audit --no-fund --loglevel=error
+fi
+
+# Production build (not a plain cargo build, which leaves the webview pointed at
+# the dev URL): tauri build runs the beforeBuildCommand (vite -> ../build) then a
+# release cargo build loading the embedded assets. --no-bundle: we want the binary,
+# not a .deb/AppImage.
+echo ">> tauri build --no-bundle (production) arlen-files"
+./node_modules/.bin/tauri build --no-bundle
+
+out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-files' 2>/dev/null \
+        | head -1)
+[ -n "$out" ] || { echo "!! arlen-files not found after build" >&2; exit 1; }
+install -Dm755 "$out" "$DESTDIR/usr/bin/arlen-files"
+echo ">> staged arlen-files into the image"
