@@ -215,10 +215,12 @@ def main():
         "-no-reboot",
     ]
     # TIER-A 1b: request the session launch a daily-driver app for the screenshot.
-    # arlen-session reads this fw_cfg key and launches the (sanitised, installed)
-    # binary after the shell; absent on a normal boot.
+    # The app's binary name rides the SMBIOS system SKU; arlen-session reads it from
+    # /sys/class/dmi/id/product_sku (built-in DMI driver, no kernel module) and
+    # launches the (sanitised, installed) binary after the shell. Empty SKU on a
+    # normal boot, so nothing extra launches.
     if args.app:
-        qemu += ["-fw_cfg", f"name=opt/arlen/verify_app,string={args.app}"]
+        qemu += ["-smbios", f"type=1,sku={args.app}"]
     print("+ " + " ".join(qemu))
     proc = subprocess.Popen(qemu, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -296,14 +298,16 @@ def main():
         except OSError:
             journal = ""
         if f"launching verify app '{args.app}'" in journal:
-            print(f"app: session launched {args.app} (fw_cfg hook fired)")
-        elif "qemu_fw_cfg sysfs absent" in journal:
-            print(f"VERIFY FAIL: --app {args.app} - the fw_cfg sysfs is absent, hook could not read it")
+            print(f"app: session launched {args.app} (SMBIOS SKU hook fired)")
+        elif f"'{args.app}' not an installed binary" in journal:
+            print(f"VERIFY FAIL: --app {args.app} - the session saw the SKU but the binary is not installed")
             print(f"  serial log: {serial}")
             return 1
         else:
-            print(f"app: --app {args.app} requested; no launch marker in the serial "
-                  f"(hook may not have fired - check {serial})")
+            print(f"VERIFY FAIL: --app {args.app} - no launch marker in the serial "
+                  f"(the SMBIOS SKU did not reach the session)")
+            print(f"  serial log: {serial}")
+            return 1
         if args.require_app_text:
             want = args.require_app_text.lower()
             if want not in lower:
