@@ -35,6 +35,33 @@ pub fn credential_handout_event(caller: &str, connection: &str, outcome: &str) -
     }
 }
 
+/// Build the content-free `IngestRequest` for one raw-credential EGRESS release
+/// (connections-plan.md §7b): the net-guard fetched the raw Proxy-mode credential
+/// to inject it into an outbound request. This is the most sensitive release the
+/// daemon makes (the raw key leaves for the egress boundary), so it records under
+/// a DISTINCT subject `connection.egress` to separate it in the ledger from a
+/// scoped [`credential_handout_event`]. Only the attested net-guard `caller`, the
+/// `connection`, and the coarse `outcome` are carried; never the credential or the
+/// destination.
+pub fn credential_egress_event(caller: &str, connection: &str, outcome: &str) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::Permission,
+        structural: StructuralRecord {
+            subject: "connection.egress".to_string(),
+            node_types: vec![caller.to_string(), connection.to_string()],
+            relations: vec![],
+            result_count: None,
+            duration_ms: None,
+            outcome: outcome.to_string(),
+            depth: None,
+            capability_change: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,5 +90,16 @@ mod tests {
         );
         assert!(!haystack.contains("ghp_")); // no GitHub token prefix
         assert!(!haystack.contains("repo")); // no scope token
+    }
+
+    #[test]
+    fn an_egress_release_records_under_its_own_subject() {
+        let req = credential_egress_event("ai-proxy", "anthropic", "granted");
+        assert_eq!(req.kind, AuditKind::Permission);
+        assert_eq!(req.structural.subject, "connection.egress");
+        assert_eq!(req.structural.node_types, vec!["ai-proxy", "anthropic"]);
+        assert_eq!(req.structural.outcome, "granted");
+        assert!(req.forensic.is_none());
+        req.validate().expect("within structural caps");
     }
 }
