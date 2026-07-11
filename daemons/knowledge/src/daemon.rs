@@ -634,6 +634,19 @@ fn default_prep_limit() -> i64 {
 /// The hard ceiling on a prep view's item count.
 const MAX_PREP_LIMIT: i64 = 100;
 
+/// A live-working-set request, sent with a leading `0x0A` byte (agent-work-surfaces-
+/// plan.md surface 2, the briefing engine). The body is JSON `{limit}`; the response
+/// is a JSON array of ranked [`crate::prep::PrepItem`] across the caller's graph
+/// (the briefing digest's ranked foundation). A pure read scoped to the caller's
+/// readable labels, like prep.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkingSetRequest {
+    /// The maximum number of items, clamped to `[1, MAX_PREP_LIMIT]`.
+    #[serde(default = "default_prep_limit")]
+    limit: i64,
+}
+
 /// The hard ceiling on a capsule scope's hop expansion, so a request cannot walk
 /// the whole graph from a high-degree root (the relation-type / count over-share
 /// controls are the CC-R6 mint preview; this is the coarse DoS bound). The manifest
@@ -2400,6 +2413,61 @@ async fn handle_client(
                         }
                     }
                     Err(e) => format!("ERROR: invalid retrieve request: {e}"),
+                }
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
+        // Live-working-set mode: a leading 0x0A byte selects the briefing engine's
+        // ranked-live-set aggregation (agent-work-surfaces-plan.md surface 2). The
+        // body is a JSON `{limit}`; the response is a JSON array of ranked items
+        // across the caller's graph. A pure read, rate-limited + scoped to the
+        // caller's readable labels for a non-system caller, exactly like prep.
+        if buf.first() == Some(&0x0A) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                match serde_json::from_slice::<WorkingSetRequest>(&buf[1..]) {
+                    Ok(req) => {
+                        let limit = req.limit.clamp(1, MAX_PREP_LIMIT) as usize;
+                        match crate::working_set::gather_working_set(&graph, crate::time::now().0, limit)
+                            .await
+                        {
+                            Ok(items) => {
+                                let system_anchored = app_id != "unknown"
+                                    && QuotaConfig::arlen_default().tier_for_app(&app_id)
+                                        != AppTier::ThirdParty;
+                                let scoped = if system_anchored {
+                                    items
+                                } else {
+                                    let ids: Vec<String> =
+                                        items.iter().map(|i| i.id.clone()).collect();
+                                    let readable =
+                                        caller_readable_labels(peer.as_ref(), &auth).await;
+                                    let allowed: std::collections::HashSet<String> =
+                                        filter_ids_to_readable_labels(&graph, &ids, &readable)
+                                            .await
+                                            .into_iter()
+                                            .collect();
+                                    items.into_iter().filter(|i| allowed.contains(&i.id)).collect()
+                                };
+                                serde_json::to_string(&scoped).unwrap_or_else(|_| "[]".to_string())
+                            }
+                            Err(e) => format!("ERROR: {e}"),
+                        }
+                    }
+                    Err(e) => format!("ERROR: invalid working-set request: {e}"),
                 }
             };
             timing_noise().await;
