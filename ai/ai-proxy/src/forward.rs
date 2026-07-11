@@ -41,22 +41,28 @@ pub enum ForwardError {
     },
 }
 
+/// An auth header to inject into the outbound request: `(name, value)`. The proxy
+/// resolves this from the Connections daemon at egress time for a keyed provider;
+/// `None` means no credential (a local, key-less provider).
+pub type AuthHeader<'a> = Option<(&'a str, &'a str)>;
+
 /// Async outbound HTTP forwarder.
 #[async_trait]
 pub trait Forwarder: Send + Sync {
-    /// POST `body_json` to `endpoint_url` and return the upstream
-    /// response.
+    /// POST `body_json` to `endpoint_url`, injecting `auth` when present, and
+    /// return the upstream response.
     async fn post(
         &self,
         endpoint_url: &str,
         body_json: &str,
+        auth: AuthHeader<'_>,
     ) -> Result<ForwardResult, ForwardError>;
 
-    /// GET `endpoint_url` and return the upstream response. Used by the
-    /// connection test (`test_provider`): a body-less probe of a
-    /// catalogued provider's model-list endpoint. The same response cap
-    /// and redirect-disable posture as `post` apply.
-    async fn get(&self, endpoint_url: &str) -> Result<ForwardResult, ForwardError>;
+    /// GET `endpoint_url` (injecting `auth` when present) and return the upstream
+    /// response. Used by the connection test (`test_provider`): a body-less probe of
+    /// a catalogued provider's model-list endpoint. The same response cap and
+    /// redirect-disable posture as `post` apply.
+    async fn get(&self, endpoint_url: &str, auth: AuthHeader<'_>) -> Result<ForwardResult, ForwardError>;
 }
 
 /// Drop every resolved address that falls in a blocked range (loopback,
@@ -181,22 +187,29 @@ impl Forwarder for ReqwestForwarder {
         &self,
         endpoint_url: &str,
         body_json: &str,
+        auth: AuthHeader<'_>,
     ) -> Result<ForwardResult, ForwardError> {
-        let resp = self
+        let mut builder = self
             .http
             .post(endpoint_url)
             .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .body(body_json.to_string())
+            .body(body_json.to_string());
+        if let Some((name, value)) = auth {
+            builder = builder.header(name, value);
+        }
+        let resp = builder
             .send()
             .await
             .map_err(|err| ForwardError::Transport(err.to_string()))?;
         self.read_capped(resp).await
     }
 
-    async fn get(&self, endpoint_url: &str) -> Result<ForwardResult, ForwardError> {
-        let resp = self
-            .http
-            .get(endpoint_url)
+    async fn get(&self, endpoint_url: &str, auth: AuthHeader<'_>) -> Result<ForwardResult, ForwardError> {
+        let mut builder = self.http.get(endpoint_url);
+        if let Some((name, value)) = auth {
+            builder = builder.header(name, value);
+        }
+        let resp = builder
             .send()
             .await
             .map_err(|err| ForwardError::Transport(err.to_string()))?;
@@ -216,13 +229,21 @@ pub(crate) mod test_support {
     pub struct StubForwarder {
         pub script: Arc<Mutex<Vec<Result<ForwardResult, ForwardError>>>>,
         pub calls: Arc<Mutex<Vec<(String, String)>>>,
+        /// The auth header injected on each call, in call order, so an injection
+        /// test can assert the credential reached (or did not reach) the wire.
+        pub auth_headers: RecordedAuthHeaders,
     }
+
+    /// The recorded auth headers, in call order (a factored alias to keep the stub
+    /// field type readable).
+    pub type RecordedAuthHeaders = Arc<Mutex<Vec<Option<(String, String)>>>>;
 
     impl StubForwarder {
         pub fn new(script: Vec<Result<ForwardResult, ForwardError>>) -> Self {
             Self {
                 script: Arc::new(Mutex::new(script)),
                 calls: Arc::new(Mutex::new(Vec::new())),
+                auth_headers: Arc::new(Mutex::new(Vec::new())),
             }
         }
     }
@@ -233,11 +254,16 @@ pub(crate) mod test_support {
             &self,
             endpoint_url: &str,
             body_json: &str,
+            auth: AuthHeader<'_>,
         ) -> Result<ForwardResult, ForwardError> {
             self.calls
                 .lock()
                 .await
                 .push((endpoint_url.to_string(), body_json.to_string()));
+            self.auth_headers
+                .lock()
+                .await
+                .push(auth.map(|(n, v)| (n.to_string(), v.to_string())));
             let mut script = self.script.lock().await;
             if script.is_empty() {
                 return Err(ForwardError::Transport("stub exhausted".to_string()));
@@ -245,13 +271,17 @@ pub(crate) mod test_support {
             script.remove(0)
         }
 
-        async fn get(&self, endpoint_url: &str) -> Result<ForwardResult, ForwardError> {
+        async fn get(&self, endpoint_url: &str, auth: AuthHeader<'_>) -> Result<ForwardResult, ForwardError> {
             // A GET has no body; record an empty body so the call list
             // is a uniform `(url, body)` pair across post/get.
             self.calls
                 .lock()
                 .await
                 .push((endpoint_url.to_string(), String::new()));
+            self.auth_headers
+                .lock()
+                .await
+                .push(auth.map(|(n, v)| (n.to_string(), v.to_string())));
             let mut script = self.script.lock().await;
             if script.is_empty() {
                 return Err(ForwardError::Transport("stub exhausted".to_string()));
@@ -293,7 +323,7 @@ mod tests {
             .await;
         let fwd = ReqwestForwarder::with_max_response(100).unwrap();
         let err = fwd
-            .post(&format!("{}/x", server.uri()), "{}")
+            .post(&format!("{}/x", server.uri()), "{}", None)
             .await
             .expect_err("must reject oversized body");
         assert!(matches!(
@@ -311,7 +341,7 @@ mod tests {
             .await;
         let fwd = ReqwestForwarder::with_max_response(1024).unwrap();
         let result = fwd
-            .post(&format!("{}/x", server.uri()), "{}")
+            .post(&format!("{}/x", server.uri()), "{}", None)
             .await
             .expect("within cap");
         assert_eq!(result.status, 200);
@@ -327,7 +357,7 @@ mod tests {
             .await;
         let fwd = ReqwestForwarder::with_max_response(1024).unwrap();
         let result = fwd
-            .get(&format!("{}/v1/models", server.uri()))
+            .get(&format!("{}/v1/models", server.uri()), None)
             .await
             .expect("get models");
         assert_eq!(result.status, 200);
