@@ -1,0 +1,11 @@
+# Starting permission profile for an RSS/Atom feed reader. Needs network to fetch
+# feeds; saves saved articles to Downloads. No Knowledge Graph access.
+[info]
+app_id = "gfeeds"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

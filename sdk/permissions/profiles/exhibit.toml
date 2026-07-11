@@ -1,0 +1,8 @@
+# Starting permission profile for a 3D model viewer. Opens model files from
+# Documents; no network and no Knowledge Graph by default.
+[info]
+app_id = "exhibit"
+tier = "third-party"
+
+[filesystem]
+documents = true
