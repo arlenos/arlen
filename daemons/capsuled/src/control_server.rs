@@ -6,10 +6,11 @@
 //! Same shell as the read serve loop: a `0600` Unix socket, SO_PEERCRED same-uid
 //! admission with a PID-reuse re-check (there is no app-id allowlist - listing and
 //! revoking one's OWN capsules is a same-user operation), the shared length-prefixed
-//! framing. `Mint` (the deliberate human "share a slice" action) is dispatched here
-//! too, but is key-gated: the serve loop passes no signing key yet, so a Mint fails
-//! closed until the signing-key + mint-gate wiring lands (the caller materializes the
-//! slice via the knowledge daemon's `0x07` op; this daemon signs and registers it).
+//! framing. `Mint` (the deliberate human "share a slice" action) is served here too
+//! but is gated by MINT-REQUIRES-HUMAN: the accept loop hands the signing key only to
+//! a mint-admitted app_id (the human UIs harness/settings), so a Mint from the agent
+//! or any other same-uid peer fails closed. The caller materializes the slice via the
+//! knowledge daemon's `0x07` op; this daemon signs and registers it.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -26,9 +27,11 @@ use crate::mint::{mint_capsule, revoke_capsule};
 use crate::revocation::RevocationFile;
 use crate::server::{bind_socket, current_uid, read_frame, write_frame};
 
-/// The largest control request accepted (a `List` or `Revoke` is tiny); a hostile
-/// length cannot force a large allocation.
-const MAX_CONTROL_REQUEST_FRAME: usize = 64 * 1024;
+/// The largest control request accepted. `List`/`Revoke` are tiny, but a `Mint`
+/// carries a frozen slice (bounded by the knowledge daemon's manifest cap), so the
+/// bound is sized for a slice; a hostile length past this cannot force a larger
+/// allocation, and the same-uid admission bounds who can send one.
+const MAX_CONTROL_REQUEST_FRAME: usize = 16 * 1024 * 1024;
 
 /// The control socket path: `$XDG_RUNTIME_DIR/arlen/capsule-control.sock`, beside the
 /// read socket. `None` when the runtime dir is unset (fail closed rather than bind
@@ -46,6 +49,25 @@ pub struct ControlContext {
     pub ledger: Arc<RevocationFile>,
     /// The frozen-slice blob store (revoke releases the owner's blob).
     pub store: Arc<Store>,
+    /// The capsule signing key, used only for a `Mint` from a mint-admitted caller.
+    pub key: SigningKey,
+}
+
+/// App ids permitted to MINT a capsule: the human-driven UIs only (the "share a
+/// slice" surface is a deliberate human action). The agent is explicitly refused -
+/// a mint is never agent-reachable (context-capsule.md: mint-requires-human). List
+/// and revoke are open to any same-uid caller (managing one's own capsules), but
+/// mint alone carries this gate. In debug a `dev.`-prefixed id is admitted (the
+/// dev/test convention), never in release.
+fn mint_caller_admitted(app_id: &str) -> bool {
+    if app_id == "harness" || app_id == "settings" {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    if app_id.starts_with("dev.") {
+        return true;
+    }
+    false
 }
 
 /// Apply one control request, producing its reply. Pure over the ledger + store +
@@ -92,15 +114,16 @@ pub async fn serve_control_connection<S>(
     mut stream: S,
     ledger: &RevocationFile,
     store: &Store,
+    key: Option<&SigningKey>,
 ) -> std::io::Result<()>
 where
     S: AsyncReadExt + AsyncWriteExt + Unpin,
 {
     let request = read_frame(&mut stream, MAX_CONTROL_REQUEST_FRAME).await?;
     let response = match serde_json::from_slice::<ControlRequest>(&request) {
-        // `None` key: mint is not served yet (the signing-key + mint-gate wiring is
-        // a follow-up); List/Revoke are unaffected, and a Mint fails closed.
-        Ok(req) => handle_control(req, ledger, store, None),
+        // `key` is `Some` only for a mint-admitted caller (the accept loop gates it);
+        // a `Mint` from any other caller fails closed, List/Revoke are unaffected.
+        Ok(req) => handle_control(req, ledger, store, key),
         Err(e) => ControlResponse::Error(format!("malformed control request: {e}")),
     };
     let bytes = serde_json::to_vec(&response).unwrap_or_else(|_| b"null".to_vec());
@@ -134,7 +157,12 @@ async fn handle_control_conn(stream: UnixStream, caller_uid: u32, ctx: ControlCo
     if auth.verify_alive().is_err() {
         return;
     }
-    if let Err(e) = serve_control_connection(stream, &ctx.ledger, &ctx.store).await {
+    // Mint is gated to human-UI callers (mint-requires-human): only a mint-admitted
+    // app_id gets the signing key, so a Mint from the agent (or any other same-uid
+    // peer) fails closed. List/revoke need no such gate (managing one's own capsules
+    // is a same-user operation).
+    let mint_key = mint_caller_admitted(auth.app_id()).then_some(&ctx.key);
+    if let Err(e) = serve_control_connection(stream, &ctx.ledger, &ctx.store, mint_key).await {
         tracing::debug!(error = %e, "capsule control connection closed");
     }
 }
@@ -186,6 +214,17 @@ mod tests {
             handle_control(ControlRequest::Revoke { handle: "  ".into() }, &ledger, &store, None),
             ControlResponse::Error(_)
         ));
+    }
+
+    #[test]
+    fn mint_is_admitted_only_for_the_human_uis_not_the_agent() {
+        assert!(mint_caller_admitted("harness"));
+        assert!(mint_caller_admitted("settings"));
+        for other in ["ai-agent", "ai-daemon", "com.x", "knowledge", "unknown", ""] {
+            assert!(!mint_caller_admitted(other), "{other} must not mint (mint-requires-human)");
+        }
+        // A `dev.`-prefixed id is admitted in debug only, never in release.
+        assert_eq!(mint_caller_admitted("dev.arlen-harness"), cfg!(debug_assertions));
     }
 
     #[test]
@@ -241,7 +280,7 @@ mod tests {
         let (mut client, server) = UnixStream::pair().unwrap();
 
         let srv = tokio::spawn(async move {
-            serve_control_connection(server, &ledger, &store).await.unwrap();
+            serve_control_connection(server, &ledger, &store, None).await.unwrap();
         });
 
         let req = serde_json::to_vec(&ControlRequest::List).unwrap();
