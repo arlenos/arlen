@@ -14,7 +14,7 @@ import { writable, derived } from "svelte/store";
 export const TYPO_DEFAULTS: Record<string, string | number> = {
   fontSans: "Inter Variable",
   fontMono: "JetBrains Mono",
-  sizeBase: 14,
+  sizeBase: 15,
   lineHeight: 1.5,
   weightNormal: 400,
   weightMedium: 500,

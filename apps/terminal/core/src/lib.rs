@@ -234,6 +234,32 @@ pub struct HistoryFilters {
     pub only_failures: bool,
 }
 
+/// Search a set of blocks for a `⌃R` history query. Case-insensitive substring over the
+/// command line, then the block-LOCAL [`HistoryFilters`] (`cwd` at-or-under, `origin`,
+/// `only_failures`). `project_id` is NOT block-local (a [`Block`] carries a `cwd`, not a
+/// project id), so it is out of this function's contract: the graph-backed history path
+/// pre-filters blocks by project before calling this, and the live-session path (which has
+/// no cwd->project mapping) refuses a project-scoped search rather than return unscoped
+/// results. Pure, so the matching is unit-tested without a live session.
+pub fn search_blocks(blocks: &[Block], query: &str, filters: &HistoryFilters) -> Vec<Block> {
+    let q = query.trim().to_lowercase();
+    blocks
+        .iter()
+        .filter(|b| q.is_empty() || b.command.to_lowercase().contains(&q))
+        .filter(|b| filters.cwd.as_deref().is_none_or(|c| path_at_or_under(&b.cwd, c)))
+        .filter(|b| filters.origin.is_none_or(|o| b.origin == o))
+        .filter(|b| !filters.only_failures || matches!(b.exit_code, Some(code) if code != 0))
+        .cloned()
+        .collect()
+}
+
+/// Whether `path` is `base` or nested under it, comparing whole path components so `/a/bc`
+/// is not treated as under `/a/b`.
+fn path_at_or_under(path: &str, base: &str) -> bool {
+    let base = base.trim_end_matches('/');
+    path == base || path.starts_with(&format!("{base}/"))
+}
+
 /// The contract command handlers, as stubs.
 ///
 /// These are the backend behind the `terminal_*` Tauri commands. They live in
@@ -409,6 +435,44 @@ mod tests {
         let v = serde_json::to_value(&s).unwrap();
         assert!(v.get("id").is_some() && v.get("cwd").is_some());
         assert_eq!(v["status"], json!("running"));
+    }
+
+    fn blk(id: &str, command: &str, cwd: &str, origin: Origin, exit: Option<i32>) -> Block {
+        Block {
+            id: id.into(),
+            command: command.into(),
+            exit_code: exit,
+            duration_ms: None,
+            cwd: cwd.into(),
+            git: None,
+            origin,
+            body_kind: BlockBodyKind::Grid,
+            body: serde_json::Value::Null,
+        }
+    }
+
+    #[test]
+    fn search_blocks_matches_the_command_and_applies_block_local_filters() {
+        use super::{search_blocks, BlockBodyKind};
+        let blocks = vec![
+            blk("1", "git status", "/work/arlen", Origin::You, Some(0)),
+            blk("2", "git push --force", "/work/arlen", Origin::You, Some(1)),
+            blk("3", "cargo build", "/work/other", Origin::Agent, Some(0)),
+        ];
+        // Query is a case-insensitive substring over the command line.
+        let git = search_blocks(&blocks, "GIT", &HistoryFilters::default());
+        assert_eq!(git.iter().map(|b| b.id.as_str()).collect::<Vec<_>>(), ["1", "2"]);
+        // cwd filter is at-or-under, whole-component (so /work/arlen matches, /work/other not).
+        let f = HistoryFilters { cwd: Some("/work/arlen".into()), ..Default::default() };
+        assert_eq!(search_blocks(&blocks, "", &f).len(), 2);
+        // origin + only_failures narrow to block-local matches.
+        let agent = HistoryFilters { origin: Some(Origin::Agent), ..Default::default() };
+        assert_eq!(search_blocks(&blocks, "", &agent).iter().map(|b| b.id.as_str()).collect::<Vec<_>>(), ["3"]);
+        let fails = HistoryFilters { only_failures: true, ..Default::default() };
+        assert_eq!(search_blocks(&blocks, "", &fails).iter().map(|b| b.id.as_str()).collect::<Vec<_>>(), ["2"]);
+        // A non-component cwd prefix does not over-match.
+        let not_under = HistoryFilters { cwd: Some("/work/arl".into()), ..Default::default() };
+        assert!(search_blocks(&blocks, "", &not_under).is_empty());
     }
 
     #[test]
