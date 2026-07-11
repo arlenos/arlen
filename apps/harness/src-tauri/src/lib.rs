@@ -8,6 +8,7 @@
 
 mod activity;
 mod ai_client;
+mod capsule;
 mod drive;
 mod ai_manage;
 mod app_meta;
@@ -79,6 +80,9 @@ pub fn run() {
             pins::artifact_pins_save,
             sessions::harness_sessions_load,
             sessions::harness_sessions_save,
+            capsule::capsule_scope_options,
+            capsule::capsule_preview,
+            capsule::capsule_mint,
             url::open_url
         ])
         .run(tauri::generate_context!())

@@ -235,8 +235,7 @@
   {#if $monitorsStore.length === 0}
     <div class="empty">
       <p class="empty-text">
-        No displays detected. Are you running under a Wayland compositor that
-        implements <code>wlr-output-management</code>?
+        {$t("s.monitor.noDisplays.pre")} <code>wlr-output-management</code> {$t("s.monitor.noDisplays.post")}
       </p>
     </div>
   {:else}
