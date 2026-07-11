@@ -17,6 +17,7 @@ pub mod audit;
 pub mod capability;
 pub mod config;
 pub mod dbus;
+pub mod deliver;
 pub mod downscope;
 pub mod revocation;
 pub mod master;
