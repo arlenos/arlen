@@ -42,13 +42,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let audit_sink: Arc<dyn AuditSink> = Arc::new(LedgerAuditSink::at_default_socket());
     let catalog_path = catalog_config_path();
     tracing::info!(path = %catalog_path.display(), "loading the provider catalog");
-    let service = Arc::new(ProxyService::new(
-        Allowlist::default_arlen(),
-        ProviderCatalog::load_or_default(&catalog_path)?,
-        CallerAllowlist::default_arlen(),
-        forwarder,
-        audit_sink,
-    ));
+
+    // The credential source reads a keyed provider's key from the Connections
+    // daemon at egress time and injects it into the outbound request, so the
+    // calling app never sees it. Its own client bus connection; the actual
+    // Connections1 calls are lazy per request.
+    let credential_source = Arc::new(
+        arlen_ai_proxy::connections_client::ConnectionsCredentialSource::connect().await?,
+    );
+    let service = Arc::new(
+        ProxyService::new(
+            Allowlist::default_arlen(),
+            ProviderCatalog::load_or_default(&catalog_path)?,
+            CallerAllowlist::default_arlen(),
+            forwarder,
+            audit_sink,
+        )
+        .with_credential_source(credential_source),
+    );
 
     let peer_map = Arc::new(PeerAuthMap::default_arlen());
     let dbus = ProxyInterface {

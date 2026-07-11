@@ -91,6 +91,14 @@ pub enum ProxyError {
         /// The combo whose members are all capped.
         combo: String,
     },
+    /// The keyed provider's credential could not be resolved from the Connections
+    /// daemon, so the forward was refused rather than dialled without the key (an
+    /// un-authenticated call would leak the prompt upstream for nothing).
+    #[error("credential unavailable for provider {provider}")]
+    CredentialUnavailable {
+        /// Provider name from the request.
+        provider: String,
+    },
 }
 
 impl ProxyError {
@@ -111,6 +119,7 @@ impl ProxyError {
             ProxyError::TranscodeFailed { .. } => "transcode-failed",
             ProxyError::NoModelsEndpoint { .. } => "no-models-endpoint",
             ProxyError::SpendingCapReached { .. } => "spending-cap-reached",
+            ProxyError::CredentialUnavailable { .. } => "credential-unavailable",
         }
     }
 }
@@ -241,12 +250,34 @@ pub struct ProxyService {
     caller_allowlist: CallerAllowlist,
     forwarder: Arc<dyn Forwarder>,
     audit_sink: Arc<dyn AuditSink>,
+    /// Resolves the auth header to inject for a keyed provider (from the Connections
+    /// daemon). Defaults to a no-op source that injects nothing, so a build without
+    /// a wired source behaves exactly as before (key-less providers only).
+    credential_source: Arc<dyn crate::connections_client::EgressCredentialSource>,
     /// Per-provider token usage over the configured window, for spending caps + the
     /// transparency surface. Behind a mutex; the accrue is a brief sync lock, never held
     /// across an await.
     usage: Arc<std::sync::Mutex<crate::usage::UsageLedger>>,
     inflight: Arc<std::sync::atomic::AtomicUsize>,
     max_inflight: usize,
+}
+
+/// A credential source that injects nothing: the default until the real
+/// Connections-backed source is wired in `main`. It returns `Ok(None)` for every
+/// request, so a keyed provider simply gets no auth header (the pre-injection
+/// behaviour), never a spurious credential.
+struct NoCredentialSource;
+
+#[async_trait::async_trait]
+impl crate::connections_client::EgressCredentialSource for NoCredentialSource {
+    async fn credential_header(
+        &self,
+        _connection: &str,
+        _host: &str,
+        _scheme: crate::catalog::AuthScheme,
+    ) -> Result<Option<(String, String)>, crate::connections_client::CredentialError> {
+        Ok(None)
+    }
 }
 
 /// Current wall-clock time as epoch seconds, for the usage ledger's window. A clock error
@@ -297,10 +328,22 @@ impl ProxyService {
             caller_allowlist,
             forwarder,
             audit_sink,
+            credential_source: Arc::new(NoCredentialSource),
             usage,
             inflight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             max_inflight,
         }
+    }
+
+    /// Attach the credential source that resolves a keyed provider's auth header at
+    /// egress time (the Connections-backed source in production, a mock in tests).
+    /// Without this, the service injects no credentials.
+    pub fn with_credential_source(
+        mut self,
+        source: Arc<dyn crate::connections_client::EgressCredentialSource>,
+    ) -> Self {
+        self.credential_source = source;
+        self
     }
 
     /// Names of catalogued providers the proxy will accept. Returned
@@ -484,6 +527,8 @@ impl ProxyService {
         };
         let endpoint_url = entry.endpoint_url.clone();
         let wire_format = entry.wire_format;
+        let credential_ref = entry.credential_ref.clone();
+        let auth_scheme = entry.auth_scheme;
 
         // 2b. Dispatch on the catalogued wire format. The OpenAI chat-completions
         //     shape is forwarded verbatim; an Anthropic entry is transcoded both
@@ -582,10 +627,45 @@ impl ProxyService {
         //    `_slot` drops and releases the concurrency slot.
         self.audit_forwarding_gate(&req, &host).await?;
 
+        // 5b. Resolve the credential to inject for a keyed provider. The proxy reads
+        //     the raw key from the Connections daemon (`credential_ref` names the
+        //     connection) and injects it into the outbound request here, so the
+        //     calling app never sees it. A key-less provider (`credential_ref: None`,
+        //     e.g. a local model) injects nothing. A resolution failure refuses the
+        //     forward closed rather than dial upstream un-authenticated.
+        let injected = match credential_ref.as_deref() {
+            Some(cref) => {
+                let connection = cref.strip_prefix("conn:").unwrap_or(cref);
+                match self
+                    .credential_source
+                    .credential_header(connection, &host, auth_scheme)
+                    .await
+                {
+                    Ok(header) => header,
+                    Err(_) => {
+                        let err = ProxyError::CredentialUnavailable {
+                            provider: req.provider_name.clone(),
+                        };
+                        self.audit_best_effort(
+                            &req,
+                            Some(&host),
+                            AuditOutcome::RejectedByPolicy {
+                                code: err.code().to_string(),
+                            },
+                        )
+                        .await;
+                        return Err(err);
+                    }
+                }
+            }
+            None => None,
+        };
+        let auth = injected.as_ref().map(|(n, v)| (n.as_str(), v.as_str()));
+
         // 6. Forward. The status entry is best-effort: the call has
         //    already happened, so a ledger hiccup here does not undo
         //    it; the pre-forward entry already satisfies §8.4.6.
-        match self.forwarder.post(&endpoint_url, &body_to_post).await {
+        match self.forwarder.post(&endpoint_url, &body_to_post, auth).await {
             Ok(result) => {
                 self.audit_best_effort(
                     &req,
@@ -683,6 +763,8 @@ impl ProxyService {
                 return Err(err);
             }
         };
+        let credential_ref = entry.credential_ref.clone();
+        let auth_scheme = entry.auth_scheme;
         let endpoint_url = match entry.models_endpoint.clone() {
             Some(url) => url,
             None => {
@@ -734,10 +816,35 @@ impl ProxyService {
                 })?;
         }
 
+        // 5b. Inject the provider credential (a keyed provider's model-list probe
+        //     needs the key to answer "does the provider accept our credentials").
+        //     A resolution failure refuses the test closed.
+        let injected = match credential_ref.as_deref() {
+            Some(cref) => {
+                let connection = cref.strip_prefix("conn:").unwrap_or(cref);
+                match self
+                    .credential_source
+                    .credential_header(connection, &host, auth_scheme)
+                    .await
+                {
+                    Ok(header) => header,
+                    Err(_) => {
+                        let err = ProxyError::CredentialUnavailable {
+                            provider: provider_name.to_string(),
+                        };
+                        audit(Some(&host), AuditOutcome::RejectedByPolicy { code: err.code().to_string() }).await;
+                        return Err(err);
+                    }
+                }
+            }
+            None => None,
+        };
+        let auth = injected.as_ref().map(|(n, v)| (n.as_str(), v.as_str()));
+
         // 6. Probe. The transport outcome IS the test result, not an error:
         //    a refused dial is the truthful "network" verdict, a non-2xx the
         //    "httpStatus" verdict. Body is discarded (only the status matters).
-        match self.forwarder.get(&endpoint_url).await {
+        match self.forwarder.get(&endpoint_url, auth).await {
             Ok(result) => {
                 audit(
                     Some(&host),
@@ -1333,6 +1440,99 @@ mod tests {
         assert_eq!(got["choices"][0]["finish_reason"], serde_json::json!("stop"));
     }
 
+    /// A scripted credential source for the injection tests.
+    struct FixedCredentialSource(Result<Option<(String, String)>, ()>);
+
+    #[async_trait::async_trait]
+    impl crate::connections_client::EgressCredentialSource for FixedCredentialSource {
+        async fn credential_header(
+            &self,
+            _connection: &str,
+            _host: &str,
+            _scheme: crate::catalog::AuthScheme,
+        ) -> Result<Option<(String, String)>, crate::connections_client::CredentialError> {
+            match &self.0 {
+                Ok(v) => Ok(v.clone()),
+                Err(()) => Err(crate::connections_client::CredentialError::Daemon("x".into())),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_keyed_provider_injects_the_resolved_header() {
+        // A keyed provider (credential_ref set) must carry the credential the source
+        // resolves as an auth header on the outbound POST; the calling app supplies
+        // nothing.
+        let forwarder = Arc::new(StubForwarder::new(vec![Ok(ForwardResult {
+            status: 200,
+            body: r#"{"id":"msg_1","type":"message","role":"assistant","model":"c","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}"#.to_string(),
+        })]));
+        let sink = Arc::new(CollectingAuditSink::new());
+        let svc = ProxyService::new(
+            Allowlist::default_arlen(),
+            catalog_with("anthropic", "https://api.anthropic.com/v1/messages", WireFormat::Anthropic),
+            CallerAllowlist::default_arlen(),
+            forwarder.clone() as Arc<dyn Forwarder>,
+            sink as Arc<dyn AuditSink>,
+        )
+        .with_credential_source(Arc::new(FixedCredentialSource(Ok(Some((
+            "x-api-key".to_string(),
+            "sk-ant-secret".to_string(),
+        ))))));
+
+        svc.forward(
+            &ai_daemon_caller(),
+            ForwardRequest {
+                provider_name: "anthropic".to_string(),
+                body_json: r#"{"model":"c","messages":[{"role":"user","content":"hi"}]}"#.to_string(),
+                audit_token: "tok-1".to_string(),
+            },
+        )
+        .await
+        .expect("keyed provider forwards with the injected key");
+
+        let headers = forwarder.auth_headers.lock().await;
+        assert_eq!(
+            headers[0],
+            Some(("x-api-key".to_string(), "sk-ant-secret".to_string())),
+            "the resolved credential must be injected as the auth header"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_credential_source_failure_refuses_the_forward() {
+        // If the Connections daemon cannot hand over the key, the proxy refuses the
+        // forward closed rather than dial upstream un-authenticated.
+        let forwarder = Arc::new(StubForwarder::new(vec![Ok(ForwardResult {
+            status: 200,
+            body: "{}".to_string(),
+        })]));
+        let sink = Arc::new(CollectingAuditSink::new());
+        let svc = ProxyService::new(
+            Allowlist::default_arlen(),
+            catalog_with("anthropic", "https://api.anthropic.com/v1/messages", WireFormat::Anthropic),
+            CallerAllowlist::default_arlen(),
+            forwarder.clone() as Arc<dyn Forwarder>,
+            sink as Arc<dyn AuditSink>,
+        )
+        .with_credential_source(Arc::new(FixedCredentialSource(Err(()))));
+
+        let err = svc
+            .forward(
+                &ai_daemon_caller(),
+                ForwardRequest {
+                    provider_name: "anthropic".to_string(),
+                    body_json: r#"{"model":"c","messages":[{"role":"user","content":"hi"}]}"#.to_string(),
+                    audit_token: "tok-1".to_string(),
+                },
+            )
+            .await
+            .expect_err("a credential failure must refuse the forward");
+        assert_eq!(err.code(), "credential-unavailable");
+        // No dial happened: the key was never resolved, so nothing left the host.
+        assert!(forwarder.calls.lock().await.is_empty());
+    }
+
     #[tokio::test]
     async fn a_malformed_request_body_is_refused_before_forwarding() {
         // A body that is not valid OpenAI JSON cannot be transcoded; the proxy
@@ -1511,6 +1711,7 @@ mod tests {
             &self,
             _endpoint_url: &str,
             _body_json: &str,
+            _auth: crate::forward::AuthHeader<'_>,
         ) -> Result<ForwardResult, ForwardError> {
             self.gate.notified().await;
             Ok(ForwardResult {
@@ -1519,7 +1720,11 @@ mod tests {
             })
         }
 
-        async fn get(&self, _endpoint_url: &str) -> Result<ForwardResult, ForwardError> {
+        async fn get(
+            &self,
+            _endpoint_url: &str,
+            _auth: crate::forward::AuthHeader<'_>,
+        ) -> Result<ForwardResult, ForwardError> {
             self.gate.notified().await;
             Ok(ForwardResult {
                 status: 200,
