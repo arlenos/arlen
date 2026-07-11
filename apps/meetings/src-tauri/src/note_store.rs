@@ -105,6 +105,7 @@ mod tests {
             title: "Sync".into(),
             participants: vec!["Tim".into(), "Ada, the reviewer".into()],
             summary: "we shipped the parser".into(),
+            summary_claims: Vec::new(),
             action_items: vec![],
             transcript: Transcript {
                 language: Some("en".into()),

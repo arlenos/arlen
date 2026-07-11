@@ -13,7 +13,7 @@
 use arlen_ai_core::provider::{AIProvider, CompletionRequest, ProviderError};
 use arlen_ai_core::screen::{Screener, Verdict};
 use arlen_ai_core::tagging::{Block, Origin, TaggedPrompt};
-use arlen_meeting_note::{ActionItem, MeetingNote};
+use arlen_meeting_note::{ActionItem, MeetingNote, SummaryClaim};
 use arlen_transcript::Transcript;
 use serde::Deserialize;
 
@@ -128,13 +128,53 @@ fn build_note(
             }
         })
         .collect();
+    // Split the summary into sentence-claims and ground each to its span, for the same
+    // click-to-transcript surface (borrows the transcript before it moves into the note).
+    let summary_claims = ground_summary_claims(summary, &transcript);
     Ok(MeetingNote {
         title: ctx.title,
         participants: ctx.participants,
         summary: summary.to_string(),
+        summary_claims,
         action_items,
         transcript,
     })
+}
+
+/// Split the prose summary into sentence-claims and ground each to its transcript span,
+/// deterministic + fail-closed like the action items. A sentence that matches no segment
+/// keeps `source_segment: None`, so the surface links only a claim the transcript supports.
+fn ground_summary_claims(summary: &str, transcript: &Transcript) -> Vec<SummaryClaim> {
+    split_sentences(summary)
+        .into_iter()
+        .map(|text| {
+            let source_segment = ground_to_segment(&text, transcript);
+            SummaryClaim { text, source_segment }
+        })
+        .collect()
+}
+
+/// Split prose into trimmed, non-empty sentences on `.`/`!`/`?` boundaries. A pragmatic
+/// splitter: it may over-split an abbreviation rather than merge two claims, which only
+/// changes the granularity of a jump-link, never correctness.
+fn split_sentences(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for ch in s.chars() {
+        cur.push(ch);
+        if matches!(ch, '.' | '!' | '?') {
+            let t = cur.trim();
+            if !t.is_empty() {
+                out.push(t.to_string());
+            }
+            cur.clear();
+        }
+    }
+    let t = cur.trim();
+    if !t.is_empty() {
+        out.push(t.to_string());
+    }
+    out
 }
 
 /// The lowercased content words of a string (alphanumeric runs over two chars, minus a
@@ -292,6 +332,29 @@ mod tests {
         .unwrap();
         assert_eq!(note.action_items[0].source_segment, Some(0), "strong, unambiguous match links");
         assert_eq!(note.action_items[1].source_segment, None, "no fabricated citation for an unmatched item");
+    }
+
+    #[test]
+    fn summary_splits_into_grounded_sentence_claims() {
+        let t = Transcript {
+            language: None,
+            segments: vec![
+                seg("Ada will migrate the billing database this week"),
+                seg("we should also refresh the marketing landing page"),
+            ],
+        };
+        // Two sentences: one plainly derived from a segment, one paraphrased with no match.
+        let note = build_note(
+            r#"{"summary": "Ada will migrate the billing database. Morale was high overall.", "action_items": []}"#,
+            ctx(),
+            t,
+        )
+        .unwrap();
+        assert_eq!(note.summary_claims.len(), 2, "two sentence-claims");
+        assert_eq!(note.summary_claims[0].source_segment, Some(0), "the grounded claim links");
+        assert_eq!(note.summary_claims[1].source_segment, None, "the paraphrase-only claim is unlinked");
+        // The rendered summary string is unchanged; claims are the interactive overlay.
+        assert!(note.summary.contains("Ada will migrate"));
     }
 
     #[test]
