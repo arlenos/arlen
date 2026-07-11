@@ -32,6 +32,9 @@ arlen-ai-undo-proto = { path = "../../ai/ai-undo-proto" }
 # The shared behaviour/router/loader vocabulary the curator orchestrator (§E)
 # re-homes onto: the deterministic trigger match + the Workflow/Agent split.
 arlen-ai-skills = { path = "../../ai/ai-skills" }
+# Format-preserving setting editor (read-after-write self-check) for the undo
+# RestoreValue arm: restore a setting's prior value without losing comments.
+arlen-config-format = { path = "../../sdk/config-format" }
 # Decoding the event-bus protobuf payloads the curator orchestrator triggers on.
 prost = "0.13"
 # CSPRNG for the unguessable session token + execution-proof handle.
