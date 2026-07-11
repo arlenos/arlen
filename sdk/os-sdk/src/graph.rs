@@ -42,6 +42,25 @@ pub struct ProvenanceView {
     pub accessed_by_others: bool,
 }
 
+/// One item in a prep-for-this view, as served by [`UnixGraphClient::prep`]. Mirrors
+/// the daemon's `PrepItem` projection: a related entity ranked by liveness, so the
+/// surface leads with what is live-and-important. Not `Eq` (`score` is an `f64`).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PrepItem {
+    /// The related entity's node id.
+    pub id: String,
+    /// A human label (path basename / project name / meeting title).
+    pub label: String,
+    /// The KG node type (File / Project / ...).
+    pub kind: String,
+    /// How it relates to the subject (the edge type or a rendered phrase).
+    pub relation: String,
+    /// The liveness bucket (`live` / `dormant` / `stale`), for the surface to group on.
+    pub liveness: String,
+    /// The liveness score in `[0, 1]`, the sort key (higher = more live-and-important).
+    pub score: f64,
+}
+
 /// One capability grant in the Living Capability Graph browse surface, as served
 /// by [`UnixGraphClient::access_grants`]. Mirrors the daemon's projection: the
 /// declared ceiling (faithful scope JSON), the queryable type `reach`, and the
@@ -357,6 +376,30 @@ impl UnixGraphClient {
         }
         serde_json::from_slice::<Vec<String>>(&bytes)
             .map_err(|e| QueryError::InvalidQuery(format!("malformed retrieve response: {e}")))
+    }
+
+    /// Prep-for-this: the ranked context view for an entity, via the read socket's
+    /// prep op (agent-work-surfaces-plan.md surface 3).
+    ///
+    /// A leading `0x09` byte selects the daemon's prep aggregation; the body is the
+    /// JSON `{ "subject_id": ..., "limit": ... }`. The daemon gathers the entity's
+    /// related nodes, ranks them by liveness (live-and-important first, stale noise
+    /// dropped), scopes the result to the caller's read scope, and returns a JSON
+    /// array of [`PrepItem`]. `ERROR:` maps to a [`QueryError`].
+    pub async fn prep(&self, subject_id: &str, limit: i64) -> Result<Vec<PrepItem>, QueryError> {
+        let req = serde_json::json!({ "subject_id": subject_id, "limit": limit });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x09);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
+        if bytes.starts_with(b"ERROR:") {
+            Self::check_error(&String::from_utf8_lossy(&bytes))?;
+        }
+        serde_json::from_slice::<Vec<PrepItem>>(&bytes)
+            .map_err(|e| QueryError::InvalidQuery(format!("malformed prep response: {e}")))
     }
 
     /// Read the caller-scoped provenance of a graph object via the read socket's
@@ -1448,6 +1491,47 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         assert!(matches!(got, Ok(None)), "an unknown id must map to Ok(None), got {got:?}");
+    }
+
+    #[tokio::test]
+    async fn prep_sends_a_tagged_request_and_parses_ranked_items() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-prep-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            // The prep-mode prefix, then the JSON request.
+            assert_eq!(req[0], 0x09, "prep requests carry the 0x09 prefix");
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["subject_id"], "p1");
+            assert_eq!(body["limit"], 20);
+
+            let resp = br#"[{"id":"fresh","label":"fresh.rs","kind":"File","relation":"FILE_PART_OF","liveness":"live","score":0.72}]"#;
+            conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(resp).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let result = client.prep("p1", 20).await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        let items = result.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id, "fresh");
+        assert_eq!(items[0].kind, "File");
+        assert_eq!(items[0].liveness, "live");
+        assert!((items[0].score - 0.72).abs() < 1e-9);
     }
 
     #[tokio::test]
