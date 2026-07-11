@@ -76,6 +76,8 @@ pub fn run() {
             commands::ai::ai_status,
             commands::ai::ai_explain,
             commands::ai::ai_providers_list,
+            commands::capsules::list_capsules,
+            commands::capsules::revoke_capsule,
             commands::ai::ai_behaviours,
             commands::ai::ai_behaviour_set_enabled,
             commands::ai::ai_defaults_get,
