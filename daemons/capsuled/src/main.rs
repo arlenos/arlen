@@ -69,7 +69,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         store: store.clone(),
         audit: Arc::new(audit),
     };
-    let control_ctx = ControlContext { ledger, store };
+    let control_ctx = ControlContext {
+        ledger,
+        store,
+        // Used only for a Mint from a mint-admitted (human-UI) caller; the accept
+        // loop withholds it from any other same-uid peer.
+        key: key.signing_key().clone(),
+    };
     // The control socket sits beside the read socket in the same runtime dir, so
     // the write-fence's socket-dir grant already covers it.
     let control_sock =
