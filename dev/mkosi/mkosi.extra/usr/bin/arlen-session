@@ -83,10 +83,19 @@ fi
 # value is sanitised to the app-name charset and must resolve to an installed
 # binary, so it can only start a real app (never inject a command).
 verify_app_file=/sys/firmware/qemu_fw_cfg/by_name/opt/arlen/verify_app/raw
-if [ -n "$wl" ] && [ -r "$verify_app_file" ]; then
-    verify_app=$(tr -cd 'a-z0-9-' < "$verify_app_file")
-    if [ -n "$verify_app" ] && command -v "$verify_app" >/dev/null 2>&1; then
-        systemd-cat -t "verify-app" "$verify_app" &
+if [ -n "$wl" ]; then
+    if [ -r "$verify_app_file" ]; then
+        verify_app=$(tr -cd 'a-z0-9-' < "$verify_app_file")
+        if [ -n "$verify_app" ] && command -v "$verify_app" >/dev/null 2>&1; then
+            # A clear serial marker so the boot-verify harness can confirm the launch
+            # even when the app itself renders silently.
+            echo "arlen-session: launching verify app '$verify_app'" | systemd-cat -t arlen-verify
+            systemd-cat -t "verify-app" "$verify_app" &
+        else
+            echo "arlen-session: verify app '$verify_app' not an installed binary" | systemd-cat -t arlen-verify
+        fi
+    else
+        echo "arlen-session: no verify-app fw_cfg (normal boot, or qemu_fw_cfg sysfs absent)" | systemd-cat -t arlen-verify
     fi
 fi
 
