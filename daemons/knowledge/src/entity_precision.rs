@@ -84,6 +84,8 @@ fn recency_anchor(signals: &LivenessSignals) -> Option<i64> {
 
 /// Age in days from the recency anchor to `now`. A future anchor (clock skew)
 /// clamps to 0 so it never scores as "older than now".
+// The micros -> f64 cast loses precision above 2^52, irrelevant for an age in days.
+#[allow(clippy::cast_precision_loss)]
 fn age_days(anchor_micros: i64, now_micros: i64) -> f64 {
     let delta = (now_micros - anchor_micros).max(0);
     delta as f64 / MICROS_PER_DAY as f64
@@ -113,6 +115,9 @@ pub fn classify(signals: &LivenessSignals, now_micros: i64) -> Liveness {
 /// dominant term, a bounded activity-frequency bonus differentiates within a tier.
 /// A retired or signal-less entity scores 0, so an aggregation can rank + threshold
 /// on one number. Deterministic for a given `(signals, now)`.
+// The i64/u64 -> f64 casts lose precision above 2^52, irrelevant for a bounded
+// `[0, 1]` recency/activity score (days and a saturated count are tiny).
+#[allow(clippy::cast_precision_loss)]
 pub fn liveness_score(signals: &LivenessSignals, now_micros: i64) -> f64 {
     if signals.expired_at_micros.is_some() {
         return 0.0;

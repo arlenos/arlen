@@ -610,6 +610,30 @@ fn default_retrieve_limit() -> i64 {
 /// for an unbounded fused/confirmed set.
 const MAX_RETRIEVE_LIMIT: i64 = 100;
 
+/// A prep-for-this request, sent with a leading `0x09` byte (agent-work-surfaces-
+/// plan.md surface 3). The body is JSON `{subject_id, limit}`; the response is a
+/// JSON array of ranked [`crate::prep::PrepItem`] (live-and-important first, noise
+/// dropped), or the plaintext `ERROR:` form. A pure read of the caller's own graph
+/// (like retrieve), so it is rate-limited and its returned ids are scoped to the
+/// caller's readable labels for a non-system caller.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PrepRequest {
+    /// The entity to prep for (a project / file / ... node id).
+    subject_id: String,
+    /// The maximum number of prep items, clamped to `[1, MAX_PREP_LIMIT]`.
+    #[serde(default = "default_prep_limit")]
+    limit: i64,
+}
+
+/// The default prep item cap when the request omits `limit`.
+fn default_prep_limit() -> i64 {
+    20
+}
+
+/// The hard ceiling on a prep view's item count.
+const MAX_PREP_LIMIT: i64 = 100;
+
 /// The hard ceiling on a capsule scope's hop expansion, so a request cannot walk
 /// the whole graph from a high-degree root (the relation-type / count over-share
 /// controls are the CC-R6 mint preview; this is the coarse DoS bound). The manifest
@@ -2376,6 +2400,67 @@ async fn handle_client(
                         }
                     }
                     Err(e) => format!("ERROR: invalid retrieve request: {e}"),
+                }
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
+        // Prep-for-this mode: a leading 0x09 byte selects the prep aggregation
+        // (agent-work-surfaces-plan.md surface 3). The body is a JSON
+        // `{subject_id, limit}`; the response is a JSON array of ranked prep items,
+        // or the plaintext `ERROR:` form. It is a pure read of the caller's own
+        // graph, so it is query-rate-limited and, like retrieve, its returned ids
+        // are scoped to the caller's readable labels for a non-system caller
+        // (so a third-party app cannot prep-harvest the user's project structure).
+        if buf.first() == Some(&0x09) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                match serde_json::from_slice::<PrepRequest>(&buf[1..]) {
+                    Ok(req) => {
+                        let limit = req.limit.clamp(1, MAX_PREP_LIMIT) as usize;
+                        match crate::prep::gather_prep_candidates(&graph, &req.subject_id).await {
+                            Ok(candidates) => {
+                                let system_anchored = app_id != "unknown"
+                                    && QuotaConfig::arlen_default().tier_for_app(&app_id)
+                                        != AppTier::ThirdParty;
+                                let scoped = if system_anchored {
+                                    candidates
+                                } else {
+                                    // Keep only candidates whose id is readable by
+                                    // the caller (mirrors the retrieve scoping).
+                                    let ids: Vec<String> =
+                                        candidates.iter().map(|c| c.id.clone()).collect();
+                                    let readable =
+                                        caller_readable_labels(peer.as_ref(), &auth).await;
+                                    let allowed: std::collections::HashSet<String> =
+                                        filter_ids_to_readable_labels(&graph, &ids, &readable)
+                                            .await
+                                            .into_iter()
+                                            .collect();
+                                    candidates
+                                        .into_iter()
+                                        .filter(|c| allowed.contains(&c.id))
+                                        .collect()
+                                };
+                                let view = crate::prep::rank_prep(scoped, crate::time::now().0, limit);
+                                serde_json::to_string(&view).unwrap_or_else(|_| "[]".to_string())
+                            }
+                            Err(e) => format!("ERROR: {e}"),
+                        }
+                    }
+                    Err(e) => format!("ERROR: invalid prep request: {e}"),
                 }
             };
             timing_noise().await;
