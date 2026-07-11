@@ -20,7 +20,27 @@
 //! durable, HMAC-chained undo signer IS this executor's compensation record; the
 //! in-memory session-store parallel (for the activity-view undo trigger) is the
 //! documented follow-up.
+//!
+//! ## Confinement posture (accepted: single-uid, reversibility-is-the-net)
+//!
+//! This executor does NOT confine which paths it may move. The Authorize proof
+//! binds the exact `{from, to}` pair (a proof minted for one pair cannot execute a
+//! different one), but it does not bound them to the user's home or the session's
+//! project anchor. That is the design's deliberate posture for the reversible act
+//! tier (ai-act-layer-plan.md, "Reversible autonomy still audits + is revocable"):
+//! the move runs as the single session uid, hits the audit ledger, shows in the
+//! pull activity view, is undoable (the `RestorePath` compensation) and the standing
+//! grant is revocable. The blast radius is "any file this uid may rename", bounded
+//! by `executor_live` (default off), the registered-tools-only dispatch and the
+//! one-time args-bound proof, not by a filesystem scope.
+//!
+//! The path gate is SYNTACTIC (`CanonicalPath`: absolute, no `.`/`..`), not
+//! symlink-resolved, so a component that is itself a symlink resolves wherever it
+//! points at rename time. That is acceptable under the unconfined posture above;
+//! should a future scope gate be added it MUST be driven off a symlink-resolved
+//! path, or a symlinked parent would bypass it.
 
+use std::ffi::CString;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -141,26 +161,39 @@ impl Executor for FileSystemExecutor {
                 };
             }
         }
-        // No-clobber: `fs::rename` OVERWRITES an existing destination, which would
-        // destroy the file at `to` and leave the RestorePath inverse unable to
-        // restore it (the undo moves the source back but the clobbered file is
-        // gone). A reversible move must not clobber, so refuse when `to` exists.
-        if std::path::Path::new(&to).exists() {
-            return ExecuteOutcome::Error {
-                code: ContractError::ExecutionFailed,
-                message: "fs.move refused: the destination already exists (a clobber is not \
-                          reversible)"
-                    .to_string(),
-            };
-        }
-        // Perform the move. `fs::rename` matches the enact path's own primitive; a
-        // cross-filesystem move (`EXDEV`) is refused rather than silently
-        // copy-then-deleting (which would need its own inverse) - a follow-up.
-        if let Err(e) = std::fs::rename(&from, &to) {
-            return ExecuteOutcome::Error {
-                code: ContractError::ExecutionFailed,
-                message: format!("fs.move failed: {e}"),
-            };
+        // Perform the move ATOMICALLY with no-clobber (`RENAME_NOREPLACE`). A plain
+        // `fs::rename` OVERWRITES an existing destination, and a check-then-rename
+        // (`exists()` then `rename`) leaves a TOCTOU window in which a racing
+        // same-uid process re-creates `to` and the rename clobbers it - either way
+        // destroying a file the `RestorePath` inverse could never restore. The
+        // kernel refuses to create `to` if it already exists, so the reversibility
+        // invariant holds against the race. A cross-filesystem move (`EXDEV`) or a
+        // filesystem without no-clobber-rename support is refused, never softened
+        // into a clobbering fallback.
+        match rename_noreplace(&from, &to) {
+            Ok(()) => {}
+            Err(RenameError::DestinationExists) => {
+                return ExecuteOutcome::Error {
+                    code: ContractError::ExecutionFailed,
+                    message: "fs.move refused: the destination already exists (a clobber is not \
+                              reversible)"
+                        .to_string(),
+                };
+            }
+            Err(RenameError::Unsupported) => {
+                return ExecuteOutcome::Error {
+                    code: ContractError::ExecutionFailed,
+                    message: "fs.move refused: this filesystem cannot perform an atomic no-clobber \
+                              move"
+                        .to_string(),
+                };
+            }
+            Err(RenameError::Other(m)) => {
+                return ExecuteOutcome::Error {
+                    code: ContractError::ExecutionFailed,
+                    message: format!("fs.move failed: {m}"),
+                };
+            }
         }
         // Register the compensation to the durable, HMAC-chained undo signer (the
         // captured RestorePath, keyed on this op id). Best-effort: a signer that is
@@ -180,6 +213,50 @@ impl Executor for FileSystemExecutor {
         ExecuteOutcome::Ok {
             result: serde_json::json!({ "op_id": op_id, "from": from, "to": to }),
         }
+    }
+}
+
+/// Why an atomic no-clobber rename could not complete.
+enum RenameError {
+    /// `to` already exists; the kernel refused to clobber it (`EEXIST`).
+    DestinationExists,
+    /// The kernel or filesystem does not support `RENAME_NOREPLACE`. Refuse the
+    /// move rather than fall back to a clobbering rename.
+    Unsupported,
+    /// Any other rename failure (`EXDEV`, permissions, a NUL in the path, ...).
+    Other(String),
+}
+
+/// Rename `from` to `to`, refusing to overwrite an existing `to`
+/// (`RENAME_NOREPLACE`). The kernel creates `to` only if it did not already
+/// exist, so this closes the check-then-rename TOCTOU: a racing same-uid process
+/// cannot make the move clobber (and thus irreversibly destroy) a file the
+/// reversible tier promised to be able to restore. Both paths are canonical-
+/// absolute, so `AT_FDCWD` is a placeholder the kernel ignores.
+fn rename_noreplace(from: &str, to: &str) -> Result<(), RenameError> {
+    let nul = |_| RenameError::Other("path contains an interior NUL byte".to_string());
+    let cfrom = CString::new(from).map_err(nul)?;
+    let cto = CString::new(to).map_err(nul)?;
+    // SAFETY: both pointers are valid NUL-terminated C strings that outlive the
+    // call; `renameat2` with `AT_FDCWD` and absolute paths ignores the dir fds.
+    let rc = unsafe {
+        libc::renameat2(
+            libc::AT_FDCWD,
+            cfrom.as_ptr(),
+            libc::AT_FDCWD,
+            cto.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    if rc == 0 {
+        return Ok(());
+    }
+    let err = std::io::Error::last_os_error();
+    match err.raw_os_error() {
+        Some(libc::EEXIST) => Err(RenameError::DestinationExists),
+        // The flag or the syscall is unavailable (old kernel / exotic fs).
+        Some(libc::EINVAL | libc::ENOSYS | libc::EOPNOTSUPP) => Err(RenameError::Unsupported),
+        _ => Err(RenameError::Other(err.to_string())),
     }
 }
 
@@ -295,6 +372,26 @@ mod tests {
         assert!(matches!(out, ExecuteOutcome::Error { .. }));
         assert_eq!(std::fs::read(&from).unwrap(), b"src", "the source is untouched");
         assert_eq!(std::fs::read(&to).unwrap(), b"dst", "the destination was not clobbered");
+    }
+
+    #[tokio::test]
+    async fn a_move_onto_an_existing_symlink_target_is_refused() {
+        // `RENAME_NOREPLACE` refuses when `to` resolves to an existing file, so a
+        // symlink at `to` pointing at a real file cannot be used to clobber it.
+        let dir = tmp();
+        let from = dir.join("a.txt");
+        let real = dir.join("real.txt");
+        let link = dir.join("link.txt");
+        std::fs::write(&from, b"src").unwrap();
+        std::fs::write(&real, b"real").unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let out = live()
+            .execute(&move_req(from.to_str().unwrap(), link.to_str().unwrap()), &grant())
+            .await;
+        assert!(matches!(out, ExecuteOutcome::Error { .. }));
+        assert_eq!(std::fs::read(&from).unwrap(), b"src", "the source is untouched");
+        assert_eq!(std::fs::read(&real).unwrap(), b"real", "the real file was not clobbered");
     }
 
     #[tokio::test]
