@@ -6,10 +6,9 @@
 //! by the graph compensation path (`compensation.rs` -> the knowledge retract op),
 //! so this module handles only the filesystem/setting variants and reports the
 //! graph one as [`EnactOutcome::NotFilesystem`]. Snapshot restore is gated on a
-//! snapshot-capable filesystem and the setting-value restore rides the
-//! format-preserving editor, so both report a clear unsupported reason until their
-//! own slices land; the two content-safe filesystem arms - relocation-undo and
-//! identity-bound delete - are enacted here.
+//! snapshot-capable filesystem, so it reports a clear unsupported reason until its
+//! own slice lands; the relocation-undo, identity-bound delete and the
+//! setting-value restore (through the format-preserving editor) are enacted here.
 //!
 //! Safety property: an undo only ever touches exactly the entity the action
 //! produced. [`InverseReceipt::DeleteCreated`] deletes ONLY when the file still
@@ -20,6 +19,7 @@ use std::io::Read;
 use std::path::Path;
 
 use arlen_ai_undo_core::effect_model::InverseReceipt;
+use arlen_config_format::{checked_remove, checked_set, handler_for, ConfigValue, Format};
 use sha2::{Digest, Sha256};
 
 /// What the enactment did.
@@ -96,9 +96,9 @@ pub fn enact_inverse(receipt: &InverseReceipt) -> Result<EnactOutcome, EnactErro
         InverseReceipt::DeleteCreated { created } => {
             enact_delete_created(created.path().as_str(), created.fingerprint())
         }
-        InverseReceipt::RestoreValue { .. } => Err(EnactError::Unsupported(
-            "setting-value restore rides the format-preserving editor (next slice)",
-        )),
+        InverseReceipt::RestoreValue { target, prior } => {
+            enact_restore_value(target.file(), target.key(), prior.as_deref())
+        }
         InverseReceipt::RestoreSnapshot { .. } => Err(EnactError::Unsupported(
             "snapshot restore is gated on a snapshot-capable filesystem",
         )),
@@ -130,10 +130,112 @@ fn enact_delete_created(path: &str, fingerprint: &str) -> Result<EnactOutcome, E
     }
 }
 
+/// Restore a setting `key` in `file` to its `prior` value (or remove the key when
+/// `prior` is `None` - it was absent before the action), through the
+/// format-preserving editor with its read-after-write self-check. The edit is
+/// written back atomically (temp + rename) so a crash never leaves a half-written
+/// config. The format is detected from the file's name; an unknown format refuses
+/// (never guesses + corrupts). An unset-of-an-absent-file is an idempotent no-op.
+fn enact_restore_value(
+    file: &str,
+    key: &str,
+    prior: Option<&str>,
+) -> Result<EnactOutcome, EnactError> {
+    let format = format_for_file(file)
+        .ok_or(EnactError::Unsupported("unrecognized setting file format"))?;
+    let handler = handler_for(format);
+
+    let text = match std::fs::read_to_string(file) {
+        Ok(t) => t,
+        // An unset (prior None) of a key in an absent file is already the desired
+        // state; a set into an absent file starts from empty (the natural place).
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if prior.is_none() {
+                return Ok(EnactOutcome::Restored);
+            }
+            String::new()
+        }
+        Err(e) => return Err(EnactError::Io(e.to_string())),
+    };
+
+    let candidate = match prior {
+        Some(v) => checked_set(handler.as_ref(), &text, key, &parse_prior(v))
+            .map_err(|e| EnactError::Io(e.to_string()))?,
+        None => checked_remove(handler.as_ref(), &text, key)
+            .map_err(|e| EnactError::Io(e.to_string()))?,
+    };
+
+    atomic_write(file, candidate.as_bytes())?;
+    Ok(EnactOutcome::Restored)
+}
+
+/// Detect the config format from a setting file's name. `prefs.js` and `.env` are
+/// recognized by name; the rest by extension. `None` for an unrecognized name, so
+/// the caller refuses rather than corrupting an unknown format.
+fn format_for_file(file: &str) -> Option<Format> {
+    let name = Path::new(file).file_name()?.to_str()?;
+    if name == "prefs.js" {
+        return Some(Format::FirefoxPrefs);
+    }
+    if name == ".env" || name.ends_with(".env") {
+        return Some(Format::Env);
+    }
+    let ext = Path::new(file).extension()?.to_str()?.to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "toml" => Format::Toml,
+        "json" | "jsonc" => Format::Json,
+        "ini" | "conf" | "cfg" => Format::Ini,
+        _ => return None,
+    })
+}
+
+/// Best-effort type a `prior` string back into a scalar [`ConfigValue`]: `true`/
+/// `false` as a bool, an integer or float literal as that number, else a string.
+/// A limitation of the receipt carrying the prior as text: a string setting whose
+/// literal value is `"true"` or `"42"` restores as a bool/int - rare, and the fix
+/// is a typed prior in a future receipt-model refinement. Pure.
+fn parse_prior(s: &str) -> ConfigValue {
+    match s {
+        "true" => return ConfigValue::Bool(true),
+        "false" => return ConfigValue::Bool(false),
+        _ => {}
+    }
+    if let Ok(i) = s.parse::<i64>() {
+        return ConfigValue::Int(i);
+    }
+    if let Ok(f) = s.parse::<f64>() {
+        return ConfigValue::Float(f);
+    }
+    ConfigValue::String(s.to_string())
+}
+
+/// Write `bytes` to `path` atomically: a sibling temp file, fsync, then rename over
+/// the target, so a crash never leaves a half-written config.
+fn atomic_write(path: &str, bytes: &[u8]) -> Result<(), EnactError> {
+    use std::io::Write;
+    let target = Path::new(path);
+    let dir = target.parent().unwrap_or_else(|| Path::new("."));
+    let tmp = dir.join(format!(
+        ".{}.undo-tmp",
+        target.file_name().and_then(|n| n.to_str()).unwrap_or("cfg")
+    ));
+    let write = || -> std::io::Result<()> {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, target)?;
+        Ok(())
+    };
+    write().map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        EnactError::Io(e.to_string())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arlen_ai_undo_core::effect_model::{CanonicalPath, CreatedIdentity};
+    use arlen_ai_undo_core::effect_model::{CanonicalPath, CreatedIdentity, SettingTarget};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn tmp() -> std::path::PathBuf {
@@ -225,6 +327,76 @@ mod tests {
         // Both files untouched.
         assert_eq!(std::fs::read(&prior).unwrap(), b"someone-else");
         assert_eq!(std::fs::read(&now).unwrap(), b"a");
+    }
+
+    fn restore_value(file: &Path, key: &str, prior: Option<&str>) -> InverseReceipt {
+        InverseReceipt::RestoreValue {
+            target: SettingTarget::new(file.to_str().unwrap(), key).unwrap(),
+            prior: prior.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn restore_value_sets_a_prior_string_preserving_comments() {
+        let d = tmp();
+        let f = d.join("appearance.toml");
+        std::fs::write(&f, "# theme\naccent = \"#ff0000\"\n").unwrap();
+        // Undo restores the prior accent, keeping the comment.
+        let r = restore_value(&f, "accent", Some("#6366f1"));
+        assert_eq!(enact_inverse(&r).unwrap(), EnactOutcome::Restored);
+        let out = std::fs::read_to_string(&f).unwrap();
+        assert!(out.contains("accent = \"#6366f1\""), "prior value restored: {out}");
+        assert!(out.contains("# theme"), "comment preserved: {out}");
+    }
+
+    #[test]
+    fn restore_value_types_a_bool_prior() {
+        let d = tmp();
+        let f = d.join("shell.toml");
+        std::fs::write(&f, "enabled = false\n").unwrap();
+        let r = restore_value(&f, "enabled", Some("true"));
+        assert_eq!(enact_inverse(&r).unwrap(), EnactOutcome::Restored);
+        // Restored as a bool (enabled = true), not the string "true".
+        assert!(std::fs::read_to_string(&f).unwrap().contains("enabled = true"));
+    }
+
+    #[test]
+    fn restore_value_none_removes_a_key_that_was_absent_before() {
+        let d = tmp();
+        let f = d.join("shell.toml");
+        std::fs::write(&f, "a = 1\nadded_by_agent = 2\n").unwrap();
+        // The action added the key; prior None means undo removes it.
+        let r = restore_value(&f, "added_by_agent", None);
+        assert_eq!(enact_inverse(&r).unwrap(), EnactOutcome::Restored);
+        let out = std::fs::read_to_string(&f).unwrap();
+        assert!(!out.contains("added_by_agent"), "the added key is gone: {out}");
+        assert!(out.contains("a = 1"), "the untouched key stays");
+    }
+
+    #[test]
+    fn restore_value_unset_on_an_absent_file_is_a_no_op() {
+        let d = tmp();
+        let f = d.join("gone.toml");
+        let r = restore_value(&f, "k", None);
+        assert_eq!(enact_inverse(&r).unwrap(), EnactOutcome::Restored);
+        assert!(!f.exists(), "no file is created for a no-op unset");
+    }
+
+    #[test]
+    fn restore_value_refuses_an_unknown_format() {
+        let d = tmp();
+        let f = d.join("mystery.xyz");
+        std::fs::write(&f, "k=v\n").unwrap();
+        let r = restore_value(&f, "k", Some("old"));
+        assert!(matches!(enact_inverse(&r), Err(EnactError::Unsupported(_))));
+    }
+
+    #[test]
+    fn prior_typing_is_best_effort() {
+        assert_eq!(parse_prior("true"), ConfigValue::Bool(true));
+        assert_eq!(parse_prior("42"), ConfigValue::Int(42));
+        assert_eq!(parse_prior("3.5"), ConfigValue::Float(3.5));
+        assert_eq!(parse_prior("#6366f1"), ConfigValue::String("#6366f1".into()));
     }
 
     #[test]
