@@ -30,3 +30,4 @@ dev/screenshot/out/
 # transient build/verify logs
 dev/mkosi/buildimg-new.log
 dev/vm/verify-run.log
+dev/mkosi/buildimg*.log
