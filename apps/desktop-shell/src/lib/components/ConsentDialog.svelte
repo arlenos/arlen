@@ -5,13 +5,14 @@
   ///
   /// The frame is common to every request - the attested requester (the shown
   /// identity IS the grant recipient), the plain-language ask, the concrete
-  /// scope - but the WEIGHT scales with the stakes. A benign grant is calm and
-  /// neutral; a caution-class ask (leaves Arlen, admin rights) wears an amber
-  /// edge and an eyebrow; a permanent delete wears a red edge, names every file
-  /// it destroys, and can only be answered by a deliberate press-and-hold that
-  /// spells out the target. Deny is always first-class; the least-privilege
-  /// default is "once". This makes the dangerous request impossible to dispatch
-  /// with the same reflex as the routine one.
+  /// scope - but the WEIGHT scales with the stakes, carried by a single accent
+  /// edge (none / amber caution / red danger) so nothing is said twice. A benign
+  /// grant is calm and neutral; a caution-class ask wears an amber edge; a
+  /// permanent delete wears a red edge, names every file it destroys, and can
+  /// only be answered by a deliberate press-and-hold. Deny is always
+  /// first-class; the least-privilege default is "once". This makes the
+  /// dangerous request impossible to dispatch with the same reflex as the
+  /// routine one.
   import { onMount } from "svelte";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
