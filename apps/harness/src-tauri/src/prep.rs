@@ -29,3 +29,15 @@ pub async fn prep_for(subject_id: String, limit: Option<i64>) -> Result<Vec<Prep
         .await
         .map_err(|e| e.to_string())
 }
+
+/// The live working set: the user's most live-and-important entities across the
+/// graph (the briefing digest's ranked foundation - agent-work-surfaces-plan.md
+/// surface 2). `limit` bounds the number of items (default when `None`).
+#[tauri::command]
+pub async fn working_set_briefing(limit: Option<i64>) -> Result<Vec<PrepItem>, String> {
+    let limit = limit.unwrap_or(DEFAULT_PREP_LIMIT);
+    graph_client()
+        .working_set(limit)
+        .await
+        .map_err(|e| e.to_string())
+}
