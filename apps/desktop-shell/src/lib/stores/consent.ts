@@ -85,13 +85,15 @@ export const current = writable<PendingView | null>(null);
 
 let mockIndex = 0;
 
-/// Fetch the front pending request. Live: `consent_fetch`; under vite it serves
-/// the current fixture so the surface renders.
+/// Fetch the front pending request. Live: `consent_fetch`. When no broker
+/// answers, the fixture is served ONLY under vite (dev) so the surface renders
+/// for screenshots; on a real boot a broker failure shows nothing rather than
+/// covering the desktop with a mock request every session.
 export async function pollConsent(): Promise<void> {
   try {
     current.set(await invoke<PendingView | null>("consent_fetch"));
   } catch {
-    current.set(MOCK_PENDING[mockIndex % MOCK_PENDING.length]);
+    current.set(import.meta.env.DEV ? MOCK_PENDING[mockIndex % MOCK_PENDING.length] : null);
   }
 }
 
