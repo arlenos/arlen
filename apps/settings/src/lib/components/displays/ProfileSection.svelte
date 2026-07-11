@@ -176,10 +176,7 @@
 
 <Group label={$t("s.profile.title")}>
   {#if profiles.length === 0}
-    <div class="empty">
-      No saved layouts yet. Save your current arrangement below to
-      restore it automatically when you re-attach the same monitors.
-    </div>
+    <div class="empty">{$t("s.profile.empty")}</div>
   {:else}
     {#each profiles as p (p.id)}
       <div class="row" class:active={p.isCurrent}>
@@ -199,7 +196,7 @@
             <div class="label-line">
               <span class="label">{p.label}</span>
               {#if p.isCurrent}
-                <span class="badge"><Check size={12} strokeWidth={2.5} /> Active</span>
+                <span class="badge"><Check size={12} strokeWidth={2.5} /> {$t("s.profile.active")}</span>
               {/if}
             </div>
             <div class="meta">
@@ -214,9 +211,9 @@
             size="sm"
             onclick={() => onApply(p)}
             disabled={p.isCurrent}
-            title={p.isCurrent ? "This layout is already active" : "Apply"}
+            title={p.isCurrent ? $t("s.profile.alreadyActive") : $t("s.profile.apply")}
           >
-            <Play size={12} strokeWidth={2.5} /> Apply
+            <Play size={12} strokeWidth={2.5} /> {$t("s.profile.apply")}
           </Button>
           <Button
             variant="ghost"
@@ -253,7 +250,7 @@
       onclick={doSave}
       disabled={saving || !saveLabel.trim()}
     >
-      Save current
+      {$t("s.profile.saveCurrent")}
     </Button>
   </form>
 </Group>
@@ -262,9 +259,9 @@
   open={!!deleteCandidate}
   title={$t("s.profile.deleteConfirm")}
   message={deleteCandidate
-    ? `'${deleteCandidate.label}' will be removed permanently. This does not change the current display setup.`
+    ? $t("s.profile.deleteMsg", { name: deleteCandidate.label })
     : ""}
-  confirmLabel="Delete"
+  confirmLabel={$t("s.profile.deleteAction")}
   variant="destructive"
   onConfirm={confirmDelete}
   onCancel={() => (deleteCandidate = null)}

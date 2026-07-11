@@ -43,6 +43,12 @@ arlen-ai-skills = { path = "../../../ai/ai-skills" }
 arlen-artifact = { path = "../../../contracts/artifact" }
 # Decode an image artifact's base64 payload back to raw bytes for Save-to-file.
 base64 = "0.22"
+# The context-capsule mint seams: os-sdk is the knowledge graph client (the
+# `0x07` materialize + the scope/preview reads); capsuled's control client mints
+# the materialized slice over the daemon's owner control socket (mint-requires-human,
+# enforced daemon-side).
+os-sdk = { path = "../../../sdk/os-sdk" }
+capsuled = { path = "../../../daemons/capsuled" }
 
 [dev-dependencies]
 # Temp directories for the mention file-listing/read tests, and the tokio

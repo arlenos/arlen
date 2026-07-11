@@ -16,6 +16,7 @@
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
+  import { t } from "$lib/i18n/messages";
   import {
     compositor,
     screenFilter,
@@ -83,28 +84,28 @@
 </script>
 
 <Page
-  title="Accessibility"
-  description="Screen magnifier, color filters, and visual aids."
+  title={$t("s.a11y.title")}
+  description={$t("s.a11y.desc")}
 >
   <SectionGrid>
-    <Group label="Screen Magnifier">
+    <Group label={$t("s.a11y.magnifier")}>
     <Row
-      label="Enable mouse zoom shortcuts"
-      description="Super+Scroll, Super+= and Super+- to zoom in and out."
+      label={$t("s.a11y.mouseZoom")}
+      description={$t("s.a11y.mouseZoom.desc")}
       id="zoom-shortcuts"
     >
       {#snippet control()}
         <Switch
           value={enableMouseZoom}
-          ariaLabel="Enable mouse zoom shortcuts"
+          ariaLabel={$t("s.a11y.mouseZoom")}
           onchange={setEnableMouseZoom}
         />
       {/snippet}
     </Row>
 
     <Row
-      label="Zoom increment"
-      description="How much each zoom step changes the magnification."
+      label={$t("s.a11y.increment")}
+      description={$t("s.a11y.increment.desc")}
       id="zoom-increment"
     >
       {#snippet control()}
@@ -114,22 +115,22 @@
           max={200}
           step={5}
           unit="%"
-          ariaLabel="Zoom increment"
+          ariaLabel={$t("s.a11y.increment")}
           onchange={setIncrement}
         />
       {/snippet}
     </Row>
 
     <Row
-      label="Movement"
-      description="How the magnified region tracks the mouse cursor."
+      label={$t("s.a11y.movement")}
+      description={$t("s.a11y.movement.desc")}
       id="zoom-movement"
     >
       {#snippet control()}
         <PopoverSelect
           value={viewMoves}
           options={ZOOM_MOVEMENT_OPTIONS as unknown as { value: string; label: string }[]}
-          ariaLabel="Zoom movement"
+          ariaLabel={$t("s.a11y.movement.aria")}
           width="180px"
           onchange={setViewMoves}
         />
@@ -137,59 +138,59 @@
     </Row>
 
     <Row
-      label="Show zoom overlay"
-      description="Outline indicating the magnified region."
+      label={$t("s.a11y.overlay")}
+      description={$t("s.a11y.overlay.desc")}
       id="zoom-overlay"
     >
       {#snippet control()}
         <Switch
           value={showOverlay}
-          ariaLabel="Show zoom overlay"
+          ariaLabel={$t("s.a11y.overlay")}
           onchange={setShowOverlay}
         />
       {/snippet}
     </Row>
 
     <Row
-      label="Start zoom on login"
-      description="Auto-enable the magnifier when the session starts. Takes effect on next login."
+      label={$t("s.a11y.startLogin")}
+      description={$t("s.a11y.startLogin.desc")}
       id="zoom-start-on-login"
     >
       {#snippet control()}
         <Switch
           value={startOnLogin}
-          ariaLabel="Start zoom on login"
+          ariaLabel={$t("s.a11y.startLogin")}
           onchange={setStartOnLogin}
         />
       {/snippet}
     </Row>
   </Group>
 
-  <Group label="Color Filters">
+  <Group label={$t("s.a11y.colorFilters")}>
     <Row
-      label="Invert colors"
-      description="High-contrast inverted display. Helpful in dark environments."
+      label={$t("s.a11y.invert")}
+      description={$t("s.a11y.invert.desc")}
       id="invert-colors"
     >
       {#snippet control()}
         <Switch
           value={inverted}
-          ariaLabel="Invert colors"
+          ariaLabel={$t("s.a11y.invert")}
           onchange={setInverted}
         />
       {/snippet}
     </Row>
 
     <Row
-      label="Color blindness filter"
-      description="Compensation for the most common forms of color blindness."
+      label={$t("s.a11y.colorBlind")}
+      description={$t("s.a11y.colorBlind.desc")}
       id="color-blindness-filter"
     >
       {#snippet control()}
         <PopoverSelect
           value={colorFilter}
           options={COLOR_FILTER_OPTIONS as unknown as { value: string; label: string }[]}
-          ariaLabel="Color blindness filter"
+          ariaLabel={$t("s.a11y.colorBlind")}
           width="240px"
           onchange={(v) => setColorFilter(v as ColorFilterLabel)}
         />
