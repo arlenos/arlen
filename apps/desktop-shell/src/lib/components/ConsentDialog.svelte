@@ -52,28 +52,18 @@
     if (p.reversibility === "irreversible") return "danger";
     return "neutral";
   }
-  // A short eyebrow that names WHAT kind of request this is - true information,
-  // not decoration, and the first thing the eye meets on a high-stakes ask.
-  function eyebrowOf(p: PendingView): string | null {
-    if (p.class === "destructive" && p.reversibility === "irreversible") return "Permanent delete";
-    if (p.class === "external_send") return "Leaves Arlen";
-    if (p.class === "elevated_privilege") return "Admin rights";
-    if (p.class === "exec_confined") return "Runs a program";
-    if (p.class === "install") return "System change";
-    if (p.reversibility === "irreversible") return "Cannot be undone";
-    return null;
-  }
   function scopeLabel(p: PendingView): string {
     if (p.class === "external_send") return "To";
     if (p.class === "destructive") return "Target";
     return "Scope";
   }
-  // Habituation defeat: the destructive confirm names its concrete target, so it
-  // reads differently every time and cannot be answered from muscle memory.
-  function holdTargetName(p: PendingView): string {
-    if (p.targets && p.targets.length)
-      return p.targets.length === 1 ? p.targets[0].name : `${p.targets.length} files`;
-    return p.scope ?? "these files";
+  // Habituation defeat: with a single target the confirm names it, so the button
+  // reads differently each time and cannot be answered from muscle memory. With
+  // several, the list above already names them - the button stays plain rather
+  // than repeat the count.
+  function holdLabel(p: PendingView): string {
+    if (p.targets && p.targets.length === 1) return `Hold to delete ${p.targets[0].name}`;
+    return "Hold to delete";
   }
 
   function deny(p: PendingView) {
@@ -112,7 +102,6 @@
        only the genuinely irreversible confirm per instance. Destructive is NOT
        automatically irreversible - move-to-Trash is reversible. -->
   {@const tone = toneOf(p)}
-  {@const eyebrow = eyebrowOf(p)}
   {@const holdDestructive = p.class === "destructive" && p.reversibility === "irreversible"}
   {@const standingElsewhere = p.class === "external_send" || p.class === "elevated_privilege"}
   {@const irreversibleOther = p.reversibility === "irreversible" && !holdDestructive && !standingElsewhere}
@@ -140,9 +129,6 @@
           </span>
         </div>
 
-        {#if eyebrow}
-          <p class="cd-eyebrow tone-{tone}">{eyebrow}</p>
-        {/if}
         <h2 class="cd-title" class:big={p.tier === "high_stakes"}>
           Allow {friendly(p.requester)} to {p.summary}?
         </h2>
@@ -159,10 +145,6 @@
             </div>
           {/if}
         {:else if p.class === "destructive" && p.targets?.length}
-          <div class="cd-field">
-            <span class="cd-field-label">Target</span>
-            <span class="cd-field-val">{p.scope}</span>
-          </div>
           <ul class="cd-items">
             {#each p.targets as item}
               <li class="cd-item">
@@ -172,7 +154,7 @@
             {/each}
           </ul>
           {#if p.total}
-            <p class="cd-meta">{p.total} total{#if p.reversibility === "irreversible"}, Trash bypassed{/if}</p>
+            <p class="cd-meta">{p.total} total</p>
           {/if}
         {:else if p.scope}
           <div class="cd-field">
@@ -190,8 +172,7 @@
 
         {#if standingElsewhere}
           <p class="cd-note">
-            Only continue if you started this. To let {friendly(p.requester)} do it on its own,
-            allow it in App access.
+            To let {friendly(p.requester)} do this on its own, allow it in App access.
           </p>
         {:else if reversibleDestructive}
           <p class="cd-note">You can undo this from the Trash.</p>
@@ -214,7 +195,7 @@
               <span class="cd-hold-fill" aria-hidden="true"></span>
               <span class="cd-hold-label">
                 <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
-                Hold to delete {holdTargetName(p)}
+                {holdLabel(p)}
               </span>
             </button>
           {:else if standingElsewhere}
@@ -311,23 +292,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  /* The eyebrow names the request kind. Toned, uppercase, tracked - it reads as a
-     classification, not a sentence. */
-  .cd-eyebrow {
-    margin: 0 0 -0.375rem;
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .cd-eyebrow.tone-caution {
-    color: var(--color-warning);
-  }
-  .cd-eyebrow.tone-danger {
-    color: var(--color-error);
   }
 
   .cd-title {

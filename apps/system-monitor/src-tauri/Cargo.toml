@@ -1,0 +1,32 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-system-monitor"
+version = "0.1.0"
+description = "Arlen OS system monitor - the task manager with a live process + resource feed"
+authors = ["Arlen"]
+edition = "2021"
+
+[lib]
+name = "arlen_system_monitor_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-arlen-shell = { path = "../../../sdk/tauri-plugin-shell" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"
+# The /proc reader + rate sampler: ProcessDetail/list_processes_detailed +
+# process_rates/total_cpu_jiffies, the shared system-status reader (also the
+# MCP server's). The task manager maps its ProcessDetail + ProcessRates to the
+# frontend Process shape.
+arlen-system-monitor-mcp = { path = "../../../daemons/system-monitor-mcp" }
+# The kill/stop/freeze process actions go through raw signals.
+libc = "0.2"
+
+# This app is its own standalone crate (not a member of a parent workspace).
+[workspace]
