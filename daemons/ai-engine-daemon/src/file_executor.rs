@@ -1,6 +1,8 @@
-//! The filesystem forward executor (ai-act-layer-plan.md §⟳): the ACT layer's one
-//! live non-graph act, `fs.move`, over the already-built capture/enact/undo-signer
-//! machinery.
+//! The filesystem forward executor (ai-act-layer-plan.md §⟳): the ACT layer's live
+//! non-graph acts, `fs.move` and `fs.trash`, over the already-built capture/enact/
+//! undo-signer machinery. `fs.trash` moves the entity into the freedesktop home
+//! trash and captures a trash-aware inverse (undo restores it AND cleans the
+//! `.trashinfo`), so a reversible delete leaves no orphaned trash-view entry.
 //!
 //! It mirrors [`crate::write_executor::GraphWriteExecutor`] exactly: tool-check ->
 //! per-call executor-live gate (fail-closed) -> validate the required args ->
@@ -41,11 +43,12 @@
 //! path, or a symlinked parent would bypass it.
 
 use std::ffi::CString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ai_engine_contract::{ContractError, Execute, ExecuteOutcome};
 use arlen_ai_core::audit::behaviour_action_event;
+use arlen_ai_undo_core::effect_model::{CanonicalPath, InverseReceipt};
 use arlen_ai_undo_core::undo_log::UndoEntry;
 use async_trait::async_trait;
 use audit_proto::sink::AuditSink;
@@ -53,15 +56,24 @@ use audit_proto::sink::AuditSink;
 use crate::dispatch::Executor;
 use crate::session::SessionGrant;
 
-/// The one filesystem act this executor runs.
+/// The relocation act.
 const FS_MOVE_TOOL: &str = "fs.move";
 
-/// The forward producer for `fs.move`. Audit + undo-signer are optional (tests that
-/// exercise only the move mechanics omit them); the daemon always wires both.
+/// The reversible-delete act (freedesktop home trash).
+const FS_TRASH_TOOL: &str = "fs.trash";
+
+/// The forward producer for the reversible filesystem acts (`fs.move`, `fs.trash`).
+/// Audit + undo-signer are optional (tests that exercise only the mechanics omit
+/// them); the daemon always wires both. The same instance registers under both tool
+/// names in the [`crate::proxy_executor::ProxyExecutor`].
 pub struct FileSystemExecutor {
     audit: Option<Arc<dyn AuditSink>>,
     undo_signer: Option<PathBuf>,
     executor_live: fn() -> bool,
+    /// A fixed home-trash root (tests, so a trash does not touch the developer's
+    /// real `~/.local/share/Trash`); production leaves it `None` and resolves the
+    /// XDG home trash per call.
+    trash_root: Option<PathBuf>,
 }
 
 impl Default for FileSystemExecutor {
@@ -78,6 +90,7 @@ impl FileSystemExecutor {
             audit: None,
             undo_signer: None,
             executor_live: crate::engine_config::executor_live,
+            trash_root: None,
         }
     }
 
@@ -85,6 +98,13 @@ impl FileSystemExecutor {
     /// not depend on the developer's `ai.toml`).
     pub fn with_executor_live_gate(mut self, executor_live: fn() -> bool) -> Self {
         self.executor_live = executor_live;
+        self
+    }
+
+    /// Pin the home-trash root (tests, so `fs.trash` uses a temp dir, not the
+    /// developer's real trash).
+    pub fn with_trash_root(mut self, root: PathBuf) -> Self {
+        self.trash_root = Some(root);
         self
     }
 
@@ -106,12 +126,20 @@ impl FileSystemExecutor {
 #[async_trait]
 impl Executor for FileSystemExecutor {
     async fn execute(&self, req: &Execute, _grant: &SessionGrant) -> ExecuteOutcome {
-        if req.tool_name != FS_MOVE_TOOL {
-            return ExecuteOutcome::Error {
+        match req.tool_name.as_str() {
+            FS_MOVE_TOOL => self.execute_move(req).await,
+            FS_TRASH_TOOL => self.execute_trash(req).await,
+            other => ExecuteOutcome::Error {
                 code: ContractError::UnknownTool,
-                message: format!("{} is not a filesystem tool this daemon runs", req.tool_name),
-            };
+                message: format!("{other} is not a filesystem tool this daemon runs"),
+            },
         }
+    }
+}
+
+impl FileSystemExecutor {
+    /// Relocate `from` -> `to` reversibly (the `RestorePath` inverse moves it back).
+    async fn execute_move(&self, req: &Execute) -> ExecuteOutcome {
         // Executor-live gate, re-read PER CALL (fail-closed): even an authorized
         // proof cannot move a file once executor_live is off; nothing is audited or
         // performed when it is off.
@@ -214,6 +242,135 @@ impl Executor for FileSystemExecutor {
             result: serde_json::json!({ "op_id": op_id, "from": from, "to": to }),
         }
     }
+
+    /// Trash `path` into the freedesktop home trash reversibly. Writes the
+    /// `.trashinfo` sidecar and moves the entity into `Trash/files/` atomically
+    /// (no-clobber), capturing a [`InverseReceipt::RestoreFromTrash`] so an undo
+    /// restores the file AND cleans the sidecar. Same discipline as `fs.move`:
+    /// per-call executor-live gate, S13 audit-before-act, write-ahead inverse.
+    async fn execute_trash(&self, req: &Execute) -> ExecuteOutcome {
+        if !(self.executor_live)() {
+            return exec_err(
+                ContractError::ExecutionFailed,
+                "fs.trash is not permitted: the executor is not live",
+            );
+        }
+        let Some(path) = req.tool_input.get("path").and_then(|v| v.as_str()).map(str::to_string)
+        else {
+            return exec_err(
+                ContractError::InvalidArguments,
+                "fs.trash needs a string path (canonical-absolute) in the tool input",
+            );
+        };
+        // The entity's original location - the inverse restores here. A
+        // non-canonical-absolute path is refused fail-closed (never a `..`/relative).
+        let Some(original) = CanonicalPath::new(&path) else {
+            return exec_err(
+                ContractError::InvalidArguments,
+                "fs.trash path must be canonical-absolute",
+            );
+        };
+        let Some(base_name) = Path::new(&path).file_name().and_then(|n| n.to_str()) else {
+            return exec_err(ContractError::InvalidArguments, "fs.trash path has no file name");
+        };
+        let base_name = base_name.to_string();
+        // Resolve the home trash (test override or XDG). Fail closed with no root.
+        let Some(trash) = self.trash_root.clone().or_else(home_trash_dir) else {
+            return exec_err(
+                ContractError::ExecutionFailed,
+                "fs.trash: no writable home trash ($HOME/$XDG_DATA_HOME unset)",
+            );
+        };
+        let op_id = match crate::write_executor::mint_op_id() {
+            Ok(id) => id,
+            Err(e) => {
+                return exec_err(
+                    ContractError::ExecutionFailed,
+                    format!("could not mint an op id: {e}"),
+                )
+            }
+        };
+        // S13 audit-before-act: record the trash intent content-free BEFORE any side
+        // effect (sidecar write or move), correlated by the op id. Fail closed.
+        if let Some(audit) = &self.audit {
+            let event = behaviour_action_event(FS_TRASH_TOOL, "fs-trash", &op_id);
+            if audit.submit(event).await.is_err() {
+                return exec_err(
+                    ContractError::ExecutionFailed,
+                    "audit ledger unavailable; fs.trash refused",
+                );
+            }
+        }
+        let files_dir = trash.join("files");
+        let info_dir = trash.join("info");
+        if let Err(e) = std::fs::create_dir_all(&files_dir)
+            .and_then(|()| std::fs::create_dir_all(&info_dir))
+        {
+            return exec_err(
+                ContractError::ExecutionFailed,
+                format!("fs.trash: could not prepare the trash directory: {e}"),
+            );
+        }
+        // Reserve a unique slot, write the sidecar (info-first per spec), and move
+        // the entity in atomically. The canonical trashed + sidecar paths are
+        // validated BEFORE the move inside `trash_into`, so once the move lands the
+        // inverse is always constructible (the write-ahead guarantee).
+        let slot = match trash_into(&files_dir, &info_dir, &base_name, &path) {
+            Ok(s) => s,
+            Err(TrashError::NotFound) => {
+                return exec_err(ContractError::ExecutionFailed, "fs.trash: the path does not exist")
+            }
+            Err(TrashError::Unsupported) => {
+                return exec_err(
+                    ContractError::ExecutionFailed,
+                    "fs.trash refused: this filesystem cannot perform an atomic no-clobber move",
+                )
+            }
+            Err(TrashError::NoSlot) => {
+                return exec_err(
+                    ContractError::ExecutionFailed,
+                    "fs.trash: could not find a free trash name",
+                )
+            }
+            Err(TrashError::NonCanonical) => {
+                return exec_err(
+                    ContractError::ExecutionFailed,
+                    "fs.trash: the resolved trash path is not canonical",
+                )
+            }
+            Err(TrashError::Io(m)) => {
+                return exec_err(ContractError::ExecutionFailed, format!("fs.trash failed: {m}"))
+            }
+        };
+        let trashed_display = slot.trashed.as_str().to_string();
+        let inverse = InverseReceipt::RestoreFromTrash {
+            original,
+            trashed: slot.trashed,
+            trash_info: slot.trash_info,
+        };
+        // Register the compensation to the durable, HMAC-chained undo signer.
+        // Best-effort: an absent/failing signer never fails a committed trash.
+        if let Some(signer) = &self.undo_signer {
+            if signer.exists() {
+                let entry = UndoEntry {
+                    op_id: op_id.clone(),
+                    correlation_id: op_id.clone(),
+                    inverse,
+                };
+                if let Err(e) = crate::undo_signer::submit_created(signer, &entry).await {
+                    tracing::debug!("undo signer submit failed for fs.trash: {e}");
+                }
+            }
+        }
+        ExecuteOutcome::Ok {
+            result: serde_json::json!({ "op_id": op_id, "path": path, "trashed": trashed_display }),
+        }
+    }
+}
+
+/// A short constructor for an error outcome.
+fn exec_err(code: ContractError, message: impl Into<String>) -> ExecuteOutcome {
+    ExecuteOutcome::Error { code, message: message.into() }
 }
 
 /// Why an atomic no-clobber rename could not complete.
@@ -260,6 +417,179 @@ fn rename_noreplace(from: &str, to: &str) -> Result<(), RenameError> {
     }
 }
 
+/// The canonical trashed + sidecar paths of a reserved trash slot, for the inverse.
+struct TrashSlot {
+    /// The entity's new location under `Trash/files/`.
+    trashed: CanonicalPath,
+    /// The companion `Trash/info/<name>.trashinfo` sidecar.
+    trash_info: CanonicalPath,
+}
+
+/// Why a trash operation could not complete.
+enum TrashError {
+    /// The source path does not exist.
+    NotFound,
+    /// The filesystem does not support an atomic no-clobber move.
+    Unsupported,
+    /// No free trash name was found within the dedup bound.
+    NoSlot,
+    /// A resolved trash path was not canonical-absolute (fail-closed; the inverse
+    /// relies on canonical paths).
+    NonCanonical,
+    /// Any other IO failure.
+    Io(String),
+}
+
+/// The most trash names to try before giving up (a name collides only with an
+/// existing trash entry of the same base name).
+const MAX_TRASH_DEDUP: u32 = 10_000;
+
+/// The user's home trash directory (`$XDG_DATA_HOME/Trash`, else
+/// `$HOME/.local/share/Trash`). `None` if neither yields an absolute base, so a
+/// trash never lands at a relative path.
+fn home_trash_dir() -> Option<PathBuf> {
+    let data_home = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .filter(|p| p.is_absolute())
+                .map(|h| h.join(".local/share"))
+        })?;
+    Some(data_home.join("Trash"))
+}
+
+/// Reserve a unique trash slot, write its `.trashinfo` sidecar, and move `source`
+/// into `files/<name>` atomically (no-clobber). The sidecar is created first
+/// (freedesktop info-first) and removed on a move failure, so a failed trash leaves
+/// no partial state. Each candidate's canonical paths are validated BEFORE its move,
+/// so a returned slot always yields a constructible inverse.
+fn trash_into(
+    files_dir: &Path,
+    info_dir: &Path,
+    base_name: &str,
+    source: &str,
+) -> Result<TrashSlot, TrashError> {
+    use std::io::Write;
+    for n in 0..MAX_TRASH_DEDUP {
+        let candidate = dedup_name(base_name, n);
+        let trashed_path = files_dir.join(&candidate);
+        let info_path = info_dir.join(format!("{candidate}.trashinfo"));
+        // Canonicity check BEFORE any side effect for this candidate.
+        let (Some(trashed_canon), Some(info_canon)) = (
+            trashed_path.to_str().and_then(CanonicalPath::new),
+            info_path.to_str().and_then(CanonicalPath::new),
+        ) else {
+            return Err(TrashError::NonCanonical);
+        };
+        // Atomically reserve the info slot (create-new); a taken name bumps n.
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&info_path) {
+            Ok(mut f) => {
+                if let Err(e) = f
+                    .write_all(trashinfo_bytes(source).as_bytes())
+                    .and_then(|()| f.sync_all())
+                {
+                    let _ = std::fs::remove_file(&info_path);
+                    return Err(TrashError::Io(e.to_string()));
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(TrashError::Io(e.to_string())),
+        }
+        // Move the entity into files/<candidate> atomically, no-clobber.
+        match rename_noreplace(source, trashed_canon.as_str()) {
+            Ok(()) => return Ok(TrashSlot { trashed: trashed_canon, trash_info: info_canon }),
+            Err(RenameError::DestinationExists) => {
+                // An orphan file already occupies files/<candidate>; drop our sidecar
+                // and try the next name.
+                let _ = std::fs::remove_file(&info_path);
+                continue;
+            }
+            Err(RenameError::Unsupported) => {
+                let _ = std::fs::remove_file(&info_path);
+                return Err(TrashError::Unsupported);
+            }
+            Err(RenameError::Other(m)) => {
+                let _ = std::fs::remove_file(&info_path);
+                // A missing source gets a clearer error than a raw ENOENT.
+                if !Path::new(source).exists() {
+                    return Err(TrashError::NotFound);
+                }
+                return Err(TrashError::Io(m));
+            }
+        }
+    }
+    Err(TrashError::NoSlot)
+}
+
+/// The nth candidate trash name: the base for `n == 0`, else `<stem>.<n>.<ext>`
+/// (or `<base>.<n>` without an extension), so a collision picks a fresh but still
+/// recognizable name. A leading-dot file (`.bashrc`) is treated as extension-less.
+fn dedup_name(base: &str, n: u32) -> String {
+    if n == 0 {
+        return base.to_string();
+    }
+    match base.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => format!("{stem}.{n}.{ext}"),
+        _ => format!("{base}.{n}"),
+    }
+}
+
+/// The freedesktop `.trashinfo` body for a file trashed from `original_path`.
+fn trashinfo_bytes(original_path: &str) -> String {
+    format!(
+        "[Trash Info]\nPath={}\nDeletionDate={}\n",
+        percent_encode_path(original_path),
+        utc_iso8601_now(),
+    )
+}
+
+/// Percent-encode a path for the `.trashinfo` `Path` field: unreserved bytes
+/// (`A-Za-z0-9-._~`) and `/` pass through, every other byte becomes `%XX`.
+fn percent_encode_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for &b in path.as_bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~' | b'/') {
+            out.push(b as char);
+        } else {
+            out.push('%');
+            out.push_str(&format!("{b:02X}"));
+        }
+    }
+    out
+}
+
+/// The current UTC time as `YYYY-MM-DDThh:mm:ss` (the `.trashinfo` DeletionDate
+/// shape). Freedesktop specifies local time; UTC without a zone suffix parses as a
+/// naive datetime that trash viewers tolerate, keeping this dependency-free.
+fn utc_iso8601_now() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let days = secs.div_euclid(86_400);
+    let rem = secs.rem_euclid(86_400);
+    let (h, mi, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    let (y, mo, d) = civil_from_days(days);
+    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}")
+}
+
+/// Convert days since the Unix epoch to a `(year, month, day)` civil date (Howard
+/// Hinnant's algorithm, pure integer arithmetic).
+fn civil_from_days(z: i64) -> (i64, i64, i64) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,6 +628,129 @@ mod tests {
 
     fn live() -> FileSystemExecutor {
         FileSystemExecutor::new().with_executor_live_gate(|| true)
+    }
+
+    fn trash_req(path: &str) -> Execute {
+        Execute {
+            tool_name: FS_TRASH_TOOL.to_string(),
+            tool_input: serde_json::json!({ "path": path }),
+            proof: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_live_trash_moves_the_file_into_the_trash_with_a_sidecar() {
+        let dir = tmp();
+        let trash_root = dir.join("trash");
+        let target = dir.join("doc.txt");
+        std::fs::write(&target, b"payload").unwrap();
+
+        let exec = live().with_trash_root(trash_root.clone());
+        let out = exec.execute(&trash_req(target.to_str().unwrap()), &grant()).await;
+        let trashed = match out {
+            ExecuteOutcome::Ok { result } => {
+                assert_eq!(result["path"], target.to_str().unwrap());
+                assert!(result["op_id"].as_str().is_some_and(|s| !s.is_empty()));
+                result["trashed"].as_str().unwrap().to_string()
+            }
+            other => panic!("expected Ok, got {other:?}"),
+        };
+        assert!(!target.exists(), "the original is gone from its place");
+        assert_eq!(std::fs::read(&trashed).unwrap(), b"payload", "the file is in the trash");
+        // The sidecar exists and names the origin.
+        let info = trash_root.join("info/doc.txt.trashinfo");
+        let info_body = std::fs::read_to_string(&info).unwrap();
+        assert!(info_body.contains("[Trash Info]"), "sidecar header: {info_body}");
+        assert!(info_body.contains("DeletionDate="), "sidecar date: {info_body}");
+    }
+
+    #[tokio::test]
+    async fn a_trash_round_trips_through_its_captured_inverse() {
+        // The RestoreFromTrash inverse the trash captures actually restores the file
+        // AND cleans the sidecar - the undo a later restore runs.
+        let dir = tmp();
+        let trash_root = dir.join("trash");
+        let target = dir.join("notes.md");
+        std::fs::write(&target, b"body").unwrap();
+
+        let exec = live().with_trash_root(trash_root.clone());
+        exec.execute(&trash_req(target.to_str().unwrap()), &grant()).await;
+        let trashed = trash_root.join("files/notes.md");
+        let info = trash_root.join("info/notes.md.trashinfo");
+        assert!(trashed.exists() && info.exists());
+
+        let inverse = InverseReceipt::RestoreFromTrash {
+            original: CanonicalPath::new(target.to_str().unwrap()).unwrap(),
+            trashed: CanonicalPath::new(trashed.to_str().unwrap()).unwrap(),
+            trash_info: CanonicalPath::new(info.to_str().unwrap()).unwrap(),
+        };
+        crate::undo_enact::enact_inverse(&inverse).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"body", "the file is back");
+        assert!(!trashed.exists(), "the trash copy is gone");
+        assert!(!info.exists(), "the sidecar is cleaned - no orphan");
+    }
+
+    #[tokio::test]
+    async fn trashing_a_same_named_file_dedups_the_name() {
+        let dir = tmp();
+        let trash_root = dir.join("trash");
+        let exec = live().with_trash_root(trash_root.clone());
+
+        // Trash two files that share a base name from different places.
+        let a = dir.join("a/report.txt");
+        let b = dir.join("b/report.txt");
+        std::fs::create_dir_all(a.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(b.parent().unwrap()).unwrap();
+        std::fs::write(&a, b"first").unwrap();
+        std::fs::write(&b, b"second").unwrap();
+
+        exec.execute(&trash_req(a.to_str().unwrap()), &grant()).await;
+        exec.execute(&trash_req(b.to_str().unwrap()), &grant()).await;
+        // Both survive in the trash under distinct names, neither clobbered.
+        assert_eq!(std::fs::read(trash_root.join("files/report.txt")).unwrap(), b"first");
+        assert_eq!(std::fs::read(trash_root.join("files/report.1.txt")).unwrap(), b"second");
+    }
+
+    #[tokio::test]
+    async fn a_trash_is_refused_when_the_executor_is_not_live() {
+        let dir = tmp();
+        let target = dir.join("x.txt");
+        std::fs::write(&target, b"h").unwrap();
+        let exec = FileSystemExecutor::new()
+            .with_executor_live_gate(|| false)
+            .with_trash_root(dir.join("trash"));
+        let out = exec.execute(&trash_req(target.to_str().unwrap()), &grant()).await;
+        assert!(matches!(out, ExecuteOutcome::Error { .. }));
+        assert!(target.exists(), "nothing trashed when the executor is off");
+    }
+
+    #[tokio::test]
+    async fn a_relative_trash_path_is_refused() {
+        let exec = live().with_trash_root(tmp());
+        match exec.execute(&trash_req("relative/x.txt"), &grant()).await {
+            ExecuteOutcome::Error { code, .. } => assert_eq!(code, ContractError::InvalidArguments),
+            other => panic!("expected InvalidArguments, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dedup_name_inserts_a_counter_before_the_extension() {
+        assert_eq!(dedup_name("report.txt", 0), "report.txt");
+        assert_eq!(dedup_name("report.txt", 1), "report.1.txt");
+        assert_eq!(dedup_name("noext", 2), "noext.2");
+        assert_eq!(dedup_name(".bashrc", 1), ".bashrc.1");
+    }
+
+    #[test]
+    fn civil_from_days_matches_known_dates() {
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+        assert_eq!(civil_from_days(18_993), (2022, 1, 1));
+    }
+
+    #[test]
+    fn percent_encode_keeps_slashes_and_encodes_spaces() {
+        assert_eq!(percent_encode_path("/home/tim/a b.txt"), "/home/tim/a%20b.txt");
+        assert_eq!(percent_encode_path("/x/y-_.~z"), "/x/y-_.~z");
     }
 
     #[tokio::test]

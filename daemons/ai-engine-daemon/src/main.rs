@@ -382,10 +382,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // SAME gated write executor (executor-live gated, audited, undo-registered);
     // clone the handle before the ProxyExecutor consumes it below.
     let curator_writer = write_executor.clone();
-    // The ACT layer's one live non-graph act: fs.move, gated ReversibleAction. Same
-    // discipline as graph.write (executor-live gated, audit-before-act, RestorePath
-    // compensation persisted to the signed undo log). fs.move has no in-memory
-    // session store (the graph store is graph-only); the signer is its record.
+    // The ACT layer's live non-graph acts: fs.move + fs.trash, both gated
+    // ReversibleAction. Same discipline as graph.write (executor-live gated,
+    // audit-before-act, RestorePath/RestoreFromTrash compensation persisted to the
+    // signed undo log). One instance serves both tools (registered under each name);
+    // neither has an in-memory session store (the graph store is graph-only), so the
+    // signer is their record.
     let fs_executor: Arc<dyn Executor> = Arc::new(
         FileSystemExecutor::new()
             .with_audit(audit.clone())
@@ -415,10 +417,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register("graph.assert_edge", write_executor.clone())
         .register("graph.retract_edge", write_executor.clone())
         .register("graph.write", write_executor)
-        // The filesystem forward act (ai-act-layer-plan.md §⟳). fs.move is
-        // gate-classified ReversibleAction; the executor captures its RestorePath
-        // inverse write-ahead and persists it to the undo signer.
-        .register("fs.move", fs_executor);
+        // The filesystem forward acts (ai-act-layer-plan.md §⟳). Both are
+        // gate-classified ReversibleAction; the executor captures each act's inverse
+        // write-ahead (RestorePath / RestoreFromTrash) and persists it to the undo
+        // signer. One instance runs both.
+        .register("fs.move", fs_executor.clone())
+        .register("fs.trash", fs_executor);
     // A gate Confirm is resolved daemon-side by driving the consent-broker over
     // its intake socket (the trusted-path dialog). An unreachable broker fails
     // closed to a denial, so wiring the real client is safe even headless.
