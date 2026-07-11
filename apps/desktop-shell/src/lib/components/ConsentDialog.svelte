@@ -16,8 +16,8 @@
   import { onMount } from "svelte";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { Avatar, AvatarFallback } from "@arlen/ui-kit/components/ui/avatar";
-  import { AlertTriangle, Send, Trash2, ShieldCheck } from "lucide-svelte";
+  import { AlertTriangle, Send, Trash2 } from "lucide-svelte";
+  import ConsentCard from "$lib/components/ConsentCard.svelte";
   import { current, resolve, pollConsent, type PendingView } from "$lib/stores/consent";
 
   onMount(() => {
@@ -109,6 +109,95 @@
   {@const irreversibleOther = p.reversibility === "irreversible" && !holdDestructive && !standingElsewhere}
   {@const reversibleDestructive = p.class === "destructive" && p.reversibility !== "irreversible"}
   {@const plainReversible = !holdDestructive && !standingElsewhere && !irreversibleOther && !reversibleDestructive}
+  {#snippet body()}
+    {#if p.class === "external_send"}
+      <div class="cd-field">
+        <span class="cd-field-label">To</span>
+        <span class="cd-field-val">{p.recipient ?? p.scope}</span>
+      </div>
+      {#if p.preview}
+        <div class="cd-preview">
+          <span class="cd-field-label">Preview</span>
+          <pre class="cd-preview-body">{p.preview}</pre>
+        </div>
+      {/if}
+    {:else if p.class === "destructive" && p.targets?.length}
+      <ul class="cd-items">
+        {#each p.targets as item}
+          <li class="cd-item">
+            <span class="cd-item-name">{item.name}</span>
+            <span class="cd-item-size">{item.size}</span>
+          </li>
+        {/each}
+      </ul>
+      {#if p.total}
+        <p class="cd-meta">{p.total} total</p>
+      {/if}
+    {:else if p.scope}
+      <div class="cd-field">
+        <span class="cd-field-label">{scopeLabel(p)}</span>
+        <span class="cd-field-val">{p.scope}</span>
+      </div>
+    {/if}
+
+    {#if p.triggeredExternally}
+      <div class="cd-warn tone-caution">
+        <AlertTriangle size={14} strokeWidth={2} aria-hidden="true" />
+        Started by another app or document. Only continue if you expected this.
+      </div>
+    {/if}
+
+    {#if standingElsewhere}
+      <p class="cd-note">
+        To let {friendly(p.requester)} do this on its own, allow it in App access.
+      </p>
+    {:else if reversibleDestructive}
+      <p class="cd-note">You can undo this from the Trash.</p>
+    {:else if plainReversible}
+      <p class="cd-note">Reversible. Revoke anytime from App access.</p>
+    {/if}
+  {/snippet}
+
+  {#snippet footer()}
+    {#if holdDestructive}
+      <Button variant="outline" onclick={() => deny(p)}>Cancel</Button>
+      <span class="cd-spacer"></span>
+      <button
+        type="button"
+        class="cd-hold"
+        class:holding
+        onpointerdown={() => holdStart(p)}
+        onpointerup={holdEnd}
+        onpointerleave={holdEnd}
+      >
+        <span class="cd-hold-fill" aria-hidden="true"></span>
+        <span class="cd-hold-label">
+          <Trash2 size={16} strokeWidth={2} aria-hidden="true" />
+          {holdLabel(p)}
+        </span>
+      </button>
+    {:else if standingElsewhere}
+      <Button variant="outline" onclick={() => deny(p)}>Deny</Button>
+      <span class="cd-spacer"></span>
+      {#if p.class === "external_send"}
+        <Button onclick={() => allowOnce(p)}>
+          <Send size={14} strokeWidth={2} aria-hidden="true" /> Send once
+        </Button>
+      {:else}
+        <Button onclick={() => allowOnce(p)}>Allow once</Button>
+      {/if}
+    {:else if irreversibleOther}
+      <Button variant="outline" onclick={() => deny(p)}>Deny</Button>
+      <span class="cd-spacer"></span>
+      <Button onclick={() => allowOnce(p)}>Allow once</Button>
+    {:else}
+      <Button variant="outline" onclick={() => deny(p)}>Deny</Button>
+      <span class="cd-spacer"></span>
+      <Button variant="ghost" onclick={() => allowRemember(p)}>Always allow</Button>
+      <Button onclick={() => allowOnce(p)}>Allow once</Button>
+    {/if}
+  {/snippet}
+
   <Dialog.Root
     open={true}
     onOpenChange={(open) => {
@@ -116,186 +205,20 @@
     }}
   >
     <Dialog.Content>
-      <div class="cd">
-        {#if tone !== "neutral"}
-          <span class="cd-edge tone-{tone}" aria-hidden="true"></span>
-        {/if}
-
-        <div class="cd-req">
-          <Avatar>
-            <AvatarFallback>{friendly(p.requester).charAt(0)}</AvatarFallback>
-          </Avatar>
-          <span class="cd-req-text">
-            <span class="cd-req-name">{friendly(p.requester)}</span>
-            <span class="cd-req-id">
-              <ShieldCheck size={11} strokeWidth={2} aria-hidden="true" />{p.requester}
-            </span>
-          </span>
-        </div>
-
-        <h2 class="cd-title" class:big={p.tier === "high_stakes"}>
-          Allow {friendly(p.requester)} to {p.summary}?
-        </h2>
-
-        {#if p.class === "external_send"}
-          <div class="cd-field">
-            <span class="cd-field-label">To</span>
-            <span class="cd-field-val">{p.recipient ?? p.scope}</span>
-          </div>
-          {#if p.preview}
-            <div class="cd-preview">
-              <span class="cd-field-label">Preview</span>
-              <pre class="cd-preview-body">{p.preview}</pre>
-            </div>
-          {/if}
-        {:else if p.class === "destructive" && p.targets?.length}
-          <ul class="cd-items">
-            {#each p.targets as item}
-              <li class="cd-item">
-                <span class="cd-item-name">{item.name}</span>
-                <span class="cd-item-size">{item.size}</span>
-              </li>
-            {/each}
-          </ul>
-          {#if p.total}
-            <p class="cd-meta">{p.total} total</p>
-          {/if}
-        {:else if p.scope}
-          <div class="cd-field">
-            <span class="cd-field-label">{scopeLabel(p)}</span>
-            <span class="cd-field-val">{p.scope}</span>
-          </div>
-        {/if}
-
-        {#if p.triggeredExternally}
-          <div class="cd-warn tone-caution">
-            <AlertTriangle size={14} strokeWidth={2} aria-hidden="true" />
-            Started by another app or document. Only continue if you expected this.
-          </div>
-        {/if}
-
-        {#if standingElsewhere}
-          <p class="cd-note">
-            To let {friendly(p.requester)} do this on its own, allow it in App access.
-          </p>
-        {:else if reversibleDestructive}
-          <p class="cd-note">You can undo this from the Trash.</p>
-        {:else if plainReversible}
-          <p class="cd-note">Reversible. Revoke anytime from App access.</p>
-        {/if}
-
-        <div class="cd-foot">
-          {#if holdDestructive}
-            <Button variant="outline" onclick={() => deny(p)}>Cancel</Button>
-            <span class="cd-spacer"></span>
-            <button
-              type="button"
-              class="cd-hold"
-              class:holding
-              onpointerdown={() => holdStart(p)}
-              onpointerup={holdEnd}
-              onpointerleave={holdEnd}
-            >
-              <span class="cd-hold-fill" aria-hidden="true"></span>
-              <span class="cd-hold-label">
-                <Trash2 size={16} strokeWidth={2} aria-hidden="true" />
-                {holdLabel(p)}
-              </span>
-            </button>
-          {:else if standingElsewhere}
-            <Button variant="outline" onclick={() => deny(p)}>Deny</Button>
-            <span class="cd-spacer"></span>
-            {#if p.class === "external_send"}
-              <Button onclick={() => allowOnce(p)}>
-                <Send size={14} strokeWidth={2} aria-hidden="true" /> Send once
-              </Button>
-            {:else}
-              <Button onclick={() => allowOnce(p)}>Allow once</Button>
-            {/if}
-          {:else if irreversibleOther}
-            <Button variant="outline" onclick={() => deny(p)}>Deny</Button>
-            <span class="cd-spacer"></span>
-            <Button onclick={() => allowOnce(p)}>Allow once</Button>
-          {:else}
-            <Button variant="outline" onclick={() => deny(p)}>Deny</Button>
-            <span class="cd-spacer"></span>
-            <Button variant="ghost" onclick={() => allowRemember(p)}>Always allow</Button>
-            <Button onclick={() => allowOnce(p)}>Allow once</Button>
-          {/if}
-        </div>
-      </div>
+      <ConsentCard
+        requesterName={friendly(p.requester)}
+        requesterId={p.requester}
+        {tone}
+        title={`Allow ${friendly(p.requester)} to ${p.summary}?`}
+        big={p.tier === "high_stakes"}
+        {body}
+        {footer}
+      />
     </Dialog.Content>
   </Dialog.Root>
 {/if}
 
 <style>
-  .cd {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  /* The accent edge: a thin bar flush to the card's top, the ambient signal that
-     the stakes are above routine. Absolute so it never disturbs the layout; the
-     -1.25rem offsets counter the dialog's p-5 padding to reach the card edge. */
-  .cd-edge {
-    position: absolute;
-    top: -1.25rem;
-    left: -1.25rem;
-    right: -1.25rem;
-    height: 3px;
-    border-radius: var(--radius-input) var(--radius-input) 0 0;
-  }
-  .cd-edge.tone-caution {
-    background: var(--color-warning);
-  }
-  .cd-edge.tone-danger {
-    height: 4px;
-    background: var(--color-error);
-  }
-
-  /* WHO - the trust anchor. The monogram identifies the app; the id line carries
-     the attested identity (shown == grant recipient) with the verified mark. */
-  .cd-req {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-  }
-  .cd-req-text {
-    display: flex;
-    flex-direction: column;
-    gap: 0.0625rem;
-    min-width: 0;
-  }
-  .cd-req-name {
-    font-size: var(--text-md);
-    font-weight: 600;
-    color: var(--foreground);
-  }
-  .cd-req-id {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 42%, transparent);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .cd-title {
-    margin: 0;
-    font-size: var(--text-md);
-    font-weight: 600;
-    line-height: 1.35;
-    color: var(--foreground);
-  }
-  .cd-title.big {
-    font-size: var(--text-lg);
-  }
-
   /* A labelled field: the concrete scope/target/recipient, a quiet bordered box
      so the value reads as data, distinct from the prose. */
   .cd-field {
@@ -407,12 +330,6 @@
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
 
-  .cd-foot {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.25rem;
-  }
   .cd-spacer {
     flex: 1;
   }
