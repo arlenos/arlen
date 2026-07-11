@@ -6,8 +6,10 @@
 //! Same shell as the read serve loop: a `0600` Unix socket, SO_PEERCRED same-uid
 //! admission with a PID-reuse re-check (there is no app-id allowlist - listing and
 //! revoking one's OWN capsules is a same-user operation), the shared length-prefixed
-//! framing. `mint` is not served here (it composes the knowledge daemon's slice
-//! materialization with the local mint and is a checked human action; a later slice).
+//! framing. `Mint` (the deliberate human "share a slice" action) is dispatched here
+//! too, but is key-gated: the serve loop passes no signing key yet, so a Mint fails
+//! closed until the signing-key + mint-gate wiring lands (the caller materializes the
+//! slice via the knowledge daemon's `0x07` op; this daemon signs and registers it).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -17,8 +19,10 @@ use arlen_permissions::ConnectionAuth;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
+use ed25519_dalek::SigningKey;
+
 use crate::control::{ControlRequest, ControlResponse};
-use crate::mint::revoke_capsule;
+use crate::mint::{mint_capsule, revoke_capsule};
 use crate::revocation::RevocationFile;
 use crate::server::{bind_socket, current_uid, read_frame, write_frame};
 
@@ -44,12 +48,15 @@ pub struct ControlContext {
     pub store: Arc<Store>,
 }
 
-/// Apply one control request, producing its reply. Pure over the ledger + store
-/// (no socket), so the dispatch is unit-tested directly.
+/// Apply one control request, producing its reply. Pure over the ledger + store +
+/// the optional signing key (no socket), so the dispatch is unit-tested directly.
+/// `key` is present only when a mint is permitted (the signing key is wired and the
+/// caller passed the mint gate); `Mint` fails closed without it.
 pub fn handle_control(
     req: ControlRequest,
     ledger: &RevocationFile,
     store: &Store,
+    key: Option<&SigningKey>,
 ) -> ControlResponse {
     if let Err(e) = req.validate() {
         return ControlResponse::Error(e);
@@ -62,6 +69,18 @@ pub fn handle_control(
         ControlRequest::Revoke { handle } => match revoke_capsule(&handle, store, ledger) {
             Ok(()) => ControlResponse::Revoked,
             Err(e) => ControlResponse::Error(format!("revoke failed: {e}")),
+        },
+        ControlRequest::Mint { slice, params } => match key {
+            Some(key) => match mint_capsule(&slice, params, store, ledger, key) {
+                Ok((hash, signed)) => ControlResponse::Minted {
+                    handle: signed.grant.revocation_handle,
+                    slice_hash: hash.as_str().to_string(),
+                },
+                Err(e) => ControlResponse::Error(format!("mint failed: {e}")),
+            },
+            None => ControlResponse::Error(
+                "mint is not available (no signing key wired)".to_string(),
+            ),
         },
     }
 }
@@ -79,7 +98,9 @@ where
 {
     let request = read_frame(&mut stream, MAX_CONTROL_REQUEST_FRAME).await?;
     let response = match serde_json::from_slice::<ControlRequest>(&request) {
-        Ok(req) => handle_control(req, ledger, store),
+        // `None` key: mint is not served yet (the signing-key + mint-gate wiring is
+        // a follow-up); List/Revoke are unaffected, and a Mint fails closed.
+        Ok(req) => handle_control(req, ledger, store, None),
         Err(e) => ControlResponse::Error(format!("malformed control request: {e}")),
     };
     let bytes = serde_json::to_vec(&response).unwrap_or_else(|_| b"null".to_vec());
@@ -138,7 +159,7 @@ mod tests {
         let (ledger, store) = ledger_and_store();
         ledger.register("h-1").unwrap();
         ledger.register("h-2").unwrap();
-        match handle_control(ControlRequest::List, &ledger, &store) {
+        match handle_control(ControlRequest::List, &ledger, &store, None) {
             ControlResponse::Capsules(list) => {
                 let handles: Vec<_> = list.iter().map(|e| e.handle.as_str()).collect();
                 assert_eq!(handles, vec!["h-1", "h-2"]);
@@ -152,7 +173,7 @@ mod tests {
         let (ledger, store) = ledger_and_store();
         ledger.register("h-1").unwrap();
         assert_eq!(
-            handle_control(ControlRequest::Revoke { handle: "h-1".into() }, &ledger, &store),
+            handle_control(ControlRequest::Revoke { handle: "h-1".into() }, &ledger, &store, None),
             ControlResponse::Revoked
         );
         assert!(ledger.state("h-1").unwrap().unwrap().revoked, "the capsule is now revoked");
@@ -162,9 +183,55 @@ mod tests {
     fn a_blank_revoke_handle_is_an_error() {
         let (ledger, store) = ledger_and_store();
         assert!(matches!(
-            handle_control(ControlRequest::Revoke { handle: "  ".into() }, &ledger, &store),
+            handle_control(ControlRequest::Revoke { handle: "  ".into() }, &ledger, &store, None),
             ControlResponse::Error(_)
         ));
+    }
+
+    #[test]
+    fn mint_is_refused_without_a_key_and_records_metadata_with_one() {
+        use crate::scope::CapsuleScope;
+        use crate::slice::{FrozenSlice, SliceNode, SliceValue};
+        use crate::mint::MintParams;
+        use std::collections::BTreeMap;
+
+        let (ledger, store) = ledger_and_store();
+        let mut fields = BTreeMap::new();
+        fields.insert("path".to_string(), SliceValue::Text("/a".to_string()));
+        let slice = FrozenSlice {
+            nodes: vec![SliceNode { id: "f1".into(), label: "File".into(), fields }],
+            relations: vec![],
+        };
+        let params = MintParams {
+            scope: CapsuleScope { roots: vec!["p1".into()], expand_hops: 1 },
+            audience_hex: "00".repeat(32),
+            expires_at_micros: i64::MAX,
+            max_ops: 3,
+            originating_user: "tim".into(),
+            label: "Reading list".into(),
+            scope_summary: "files in p1".into(),
+        };
+
+        // No key: mint fails closed (the mint-gate/key wiring is a follow-up).
+        let refused = handle_control(
+            ControlRequest::Mint { slice: slice.clone(), params: params.clone() },
+            &ledger,
+            &store,
+            None,
+        );
+        assert!(matches!(refused, ControlResponse::Error(_)));
+
+        // With a key: mints, and the handle lists with its recorded metadata.
+        let key = SigningKey::from_bytes(&[2u8; 32]);
+        match handle_control(ControlRequest::Mint { slice, params }, &ledger, &store, Some(&key)) {
+            ControlResponse::Minted { handle, slice_hash } => {
+                assert!(!handle.is_empty() && !slice_hash.is_empty());
+                let listed = ledger.list().unwrap();
+                let e = listed.iter().find(|e| e.handle == handle).unwrap();
+                assert_eq!(e.meta.as_ref().unwrap().label, "Reading list");
+            }
+            other => panic!("expected Minted, got {other:?}"),
+        }
     }
 
     #[tokio::test]

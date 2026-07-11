@@ -12,7 +12,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::mint::MintParams;
 use crate::revocation::CapsuleListEntry;
+use crate::slice::FrozenSlice;
 
 /// A control request from the capsule owner's surface.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,11 +27,22 @@ pub enum ControlRequest {
         /// The revocation handle to revoke.
         handle: String,
     },
+    /// Mint a capsule from an already-materialized slice (the caller materialized it
+    /// via the knowledge daemon's `0x07` op): the daemon signs the grant, stores the
+    /// slice blob and registers the handle with its mint metadata. This is the
+    /// deliberate human "share a slice" action; the serve side gates it so it is
+    /// never reachable by the agent.
+    Mint {
+        /// The frozen slice to freeze into a capsule.
+        slice: FrozenSlice,
+        /// The mint terms + the human label/scope summary for the list surface.
+        params: MintParams,
+    },
 }
 
 impl ControlRequest {
-    /// Reject a structurally invalid request before it reaches the ledger: a revoke
-    /// needs a non-empty handle.
+    /// Reject a structurally invalid request before it reaches the ledger/mint: a
+    /// revoke needs a non-empty handle; a mint needs a non-empty label.
     pub fn validate(&self) -> Result<(), String> {
         match self {
             ControlRequest::List => Ok(()),
@@ -37,6 +50,10 @@ impl ControlRequest {
                 Err("revoke requires a non-empty handle".to_string())
             }
             ControlRequest::Revoke { .. } => Ok(()),
+            ControlRequest::Mint { params, .. } if params.label.trim().is_empty() => {
+                Err("mint requires a non-empty label".to_string())
+            }
+            ControlRequest::Mint { .. } => Ok(()),
         }
     }
 }
@@ -48,6 +65,14 @@ pub enum ControlResponse {
     Capsules(Vec<CapsuleListEntry>),
     /// A [`ControlRequest::Revoke`] completed (idempotent).
     Revoked,
+    /// A [`ControlRequest::Mint`] completed: the new capsule's revocation handle and
+    /// the slice content hash (the capsule identity).
+    Minted {
+        /// The revocation handle the owner uses to revoke it.
+        handle: String,
+        /// The slice content hash (hex), the capsule's identity.
+        slice_hash: String,
+    },
     /// The request was rejected or failed; the message is a coarse reason.
     Error(String),
 }
