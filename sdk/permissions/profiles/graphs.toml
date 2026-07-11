@@ -1,0 +1,9 @@
+# Starting permission profile for a plotting/graphing app. It opens and exports
+# data files over the user's files (Home); its work is offline, so no network and
+# no Knowledge Graph.
+[info]
+app_id = "graphs"
+tier = "third-party"
+
+[filesystem]
+home = true
