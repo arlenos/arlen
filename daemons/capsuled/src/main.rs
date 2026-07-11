@@ -14,6 +14,7 @@ use std::sync::Arc;
 use arlen_forage_store::Store;
 use audit_proto::LedgerAuditSink;
 use capsuled::key::{capsule_key_path, CapsuleSigningKey};
+use capsuled::control_server::{control_socket_path, run_control, ControlContext};
 use capsuled::revocation::RevocationFile;
 use capsuled::server::{run, socket_path, ServeContext};
 
@@ -57,24 +58,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // child, so there is no inherited-domain concern.
     apply_fence(&state_dir, &sock);
 
+    // The read serve loop and the owner-facing control loop share the durable
+    // ledger + slice store (revoke on the control loop is observed by the read
+    // loop's per-read consume).
+    let ledger = Arc::new(ledger);
+    let store = Arc::new(store);
     let ctx = ServeContext {
         verifying_key,
-        ledger: Arc::new(ledger),
-        store: Arc::new(store),
+        ledger: ledger.clone(),
+        store: store.clone(),
         audit: Arc::new(audit),
     };
+    let control_ctx = ControlContext { ledger, store };
+    // The control socket sits beside the read socket in the same runtime dir, so
+    // the write-fence's socket-dir grant already covers it.
+    let control_sock =
+        control_socket_path().ok_or("no XDG_RUNTIME_DIR for the capsule control socket")?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
     runtime.block_on(async move {
-        tracing::info!(socket = %sock.display(), "capsule daemon listening");
+        tracing::info!(
+            socket = %sock.display(),
+            control = %control_sock.display(),
+            "capsule daemon listening"
+        );
         tokio::select! {
             r = run(&sock, ctx) => { r?; }
+            r = run_control(&control_sock, control_ctx) => { r?; }
             _ = shutdown_signal() => { tracing::info!("capsule daemon shutting down"); }
         }
         // Best-effort socket cleanup on a clean exit.
         let _ = std::fs::remove_file(&sock);
+        let _ = std::fs::remove_file(&control_sock);
         Ok::<(), Box<dyn std::error::Error>>(())
     })
 }
