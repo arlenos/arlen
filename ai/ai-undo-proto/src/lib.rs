@@ -89,6 +89,9 @@ pub enum Request {
         /// The entry to look up.
         op_id: String,
     },
+    /// Enumerate every entry still in a non-terminal state - what a restarting
+    /// consumer re-arms so a persisted compensation survives (no fields).
+    LiveEntries,
 }
 
 impl Request {
@@ -118,6 +121,9 @@ impl Request {
             | Request::LookupEntry { op_id } => {
                 check("op_id", op_id, MAX_OP_ID_LEN)?;
             }
+            // No caller-supplied field to bound; the frame length already caps
+            // the response the signer streams back.
+            Request::LiveEntries => {}
         }
         Ok(())
     }
@@ -145,6 +151,8 @@ pub enum Response {
     State(StateReply),
     /// The result of a [`Request::LookupEntry`]: the sealed entry, or `None`.
     Entry(Option<UndoEntry>),
+    /// The result of a [`Request::LiveEntries`]: the entries still non-terminal.
+    Entries(Vec<UndoEntry>),
     /// The request was rejected or failed; the message is a coarse reason.
     Error(String),
 }

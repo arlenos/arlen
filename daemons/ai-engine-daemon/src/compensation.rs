@@ -116,6 +116,32 @@ impl RetractReceipt {
     }
 }
 
+/// Reconstruct the in-memory retract receipt from a persisted undo entry's
+/// captured inverse, for re-arming the compensation store on restart. Only a
+/// graph-edge inverse maps to this graph compensation store; a filesystem inverse
+/// (`RestorePath` / `RestoreValue` / ...) belongs to a different undo path and
+/// yields `None`, so it is skipped rather than mis-registered.
+pub fn receipt_from_entry(entry: &UndoEntry) -> Option<RetractReceipt> {
+    match &entry.inverse {
+        InverseReceipt::RetractGraphEdge {
+            op_id,
+            from_type,
+            from_id,
+            to_type,
+            to_id,
+            relation_type,
+        } => Some(RetractReceipt::for_write(
+            op_id.clone(),
+            from_type.clone(),
+            from_id.clone(),
+            to_type.clone(),
+            to_id.clone(),
+            relation_type.clone(),
+        )),
+        _ => None,
+    }
+}
+
 /// A bounded, correlation-id-keyed store of retract receipts with first-in-
 /// first-out eviction. Re-recording an existing key refreshes its receipt and
 /// recency rather than evicting another entry. Mirrors the agent's bounded
@@ -148,6 +174,24 @@ impl CompensationStore {
             }
         }
         self.order.push_back(key);
+    }
+
+    /// Re-arm the store from persisted undo entries (the restart restore path):
+    /// each graph-edge entry becomes a receipt keyed by its `correlation_id`, so
+    /// an undo issued after a restart still finds the write the signed log
+    /// recorded. The edge identity comes verbatim from the signed entry (the
+    /// signer's HMAC chain is the integrity guarantee), so a restored receipt
+    /// targets exactly the edge the original write created - as authoritative as
+    /// the live `for_write` path. Returns how many entries were armed.
+    pub fn restore(&mut self, entries: &[UndoEntry]) -> usize {
+        let mut armed = 0;
+        for entry in entries {
+            if let Some(receipt) = receipt_from_entry(entry) {
+                self.register(entry.correlation_id.clone(), receipt);
+                armed += 1;
+            }
+        }
+        armed
     }
 
     /// The receipt recorded under `key`, if it is still retained.
@@ -249,6 +293,35 @@ mod tests {
             }
             _ => panic!("graph compensation must map to RetractGraphEdge"),
         }
+    }
+
+    #[test]
+    fn restore_rearms_graph_entries_by_correlation_id_and_round_trips() {
+        // A receipt -> signed entry -> restored receipt must land under its
+        // correlation id, so an undo issued after a restart finds it.
+        let r = RetractReceipt::for_write("op-3", "File", "/a.rs", "Project", "p", "FILE_PART_OF");
+        let entry = r.to_undo_entry("corr-3");
+        assert_eq!(receipt_from_entry(&entry), Some(r.clone()));
+        let mut store = CompensationStore::new(8);
+        assert_eq!(store.restore(&[entry]), 1);
+        assert_eq!(store.get("corr-3"), Some(&r), "keyed by correlation id, ready to compensate");
+    }
+
+    #[test]
+    fn restore_skips_a_non_graph_inverse() {
+        use arlen_ai_undo_core::effect_model::{CanonicalPath, InverseReceipt};
+        let fs_entry = UndoEntry {
+            op_id: "op-fs".into(),
+            correlation_id: "corr-fs".into(),
+            inverse: InverseReceipt::RestorePath {
+                now: CanonicalPath::new("/b/x").unwrap(),
+                prior: CanonicalPath::new("/a/x").unwrap(),
+            },
+        };
+        assert!(receipt_from_entry(&fs_entry).is_none(), "a filesystem inverse is not a graph receipt");
+        let mut store = CompensationStore::new(8);
+        assert_eq!(store.restore(&[fs_entry]), 0, "non-graph entries arm nothing here");
+        assert_eq!(store.len(), 0);
     }
 
     #[test]

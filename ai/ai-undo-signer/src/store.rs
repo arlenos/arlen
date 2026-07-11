@@ -154,6 +154,13 @@ impl SignerStore {
     pub fn entry(&self, op_id: &str) -> Option<&UndoEntry> {
         self.log.entry(op_id)
     }
+
+    /// The sealed entries still in a non-terminal state - what a restarting
+    /// consumer re-arms so a persisted compensation survives (delegates to the
+    /// fold in the log; a terminal or illegal-chain entry is omitted).
+    pub fn live_entries(&self) -> Vec<UndoEntry> {
+        self.log.live_entries().into_iter().cloned().collect()
+    }
 }
 
 /// Whether the undo-log file at `path` already holds at least one record: it

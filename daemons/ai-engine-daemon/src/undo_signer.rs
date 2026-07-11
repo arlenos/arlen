@@ -54,6 +54,43 @@ pub async fn submit_created(socket: &Path, entry: &UndoEntry) -> Result<(), Stri
     }
 }
 
+/// Fetch the signer's live (non-terminal) entries over an already-connected
+/// `stream`. Returns the sealed entries a restarting consumer re-arms; any
+/// transport, framing or non-`Entries` reply is an error the caller logs and
+/// swallows (best-effort: an absent signer just means no restore).
+pub async fn fetch_live_on<S>(stream: &mut S) -> Result<Vec<UndoEntry>, String>
+where
+    S: AsyncReadExt + AsyncWriteExt + Unpin,
+{
+    write_request(stream, &Request::LiveEntries)
+        .await
+        .map_err(|e| format!("write: {e}"))?;
+    match read_response(stream)
+        .await
+        .map_err(|e| format!("read: {e}"))?
+    {
+        Response::Entries(entries) => Ok(entries),
+        other => Err(format!("signer did not return live entries: {other:?}")),
+    }
+}
+
+/// Connect to the signer at `socket` and fetch its live entries, bounded by
+/// [`SUBMIT_TIMEOUT`]. Best-effort: a connect/transport/timeout failure is
+/// returned for the caller to swallow, so an unreachable signer never hangs or
+/// fails startup - the session simply starts with no persisted undo restored.
+pub async fn fetch_live(socket: &Path) -> Result<Vec<UndoEntry>, String> {
+    let fetch = async {
+        let mut stream = UnixStream::connect(socket)
+            .await
+            .map_err(|e| format!("connect {}: {e}", socket.display()))?;
+        fetch_live_on(&mut stream).await
+    };
+    match tokio::time::timeout(SUBMIT_TIMEOUT, fetch).await {
+        Ok(result) => result,
+        Err(_) => Err(format!("signer live-entries fetch timed out after {SUBMIT_TIMEOUT:?}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,5 +139,35 @@ mod tests {
         let r = submit_created_on(&mut client, &e).await;
         signer.await.unwrap();
         assert!(r.is_err(), "a non-Sealed reply must be an error");
+    }
+
+    #[tokio::test]
+    async fn fetch_live_returns_the_signers_entries() {
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let e = entry("op-live");
+        let served = e.clone();
+        let signer = tokio::spawn(async move {
+            match read_request(&mut server).await.unwrap() {
+                Request::LiveEntries => {}
+                other => panic!("expected LiveEntries, got {other:?}"),
+            }
+            write_response(&mut server, &Response::Entries(vec![served])).await.unwrap();
+        });
+        let got = fetch_live_on(&mut client).await.expect("entries");
+        signer.await.unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].op_id, "op-live");
+    }
+
+    #[tokio::test]
+    async fn a_non_entries_reply_to_fetch_live_is_an_error() {
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let signer = tokio::spawn(async move {
+            let _ = read_request(&mut server).await.unwrap();
+            write_response(&mut server, &Response::Error("no".into())).await.unwrap();
+        });
+        let r = fetch_live_on(&mut client).await;
+        signer.await.unwrap();
+        assert!(r.is_err(), "a non-Entries reply must be an error");
     }
 }
