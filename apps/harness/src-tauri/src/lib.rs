@@ -17,6 +17,7 @@ mod capability;
 mod file_ref;
 mod mention;
 mod notices;
+mod prep;
 mod pins;
 mod save;
 mod sessions;
@@ -83,6 +84,7 @@ pub fn run() {
             capsule::capsule_scope_options,
             capsule::capsule_preview,
             capsule::capsule_mint,
+            prep::prep_for,
             url::open_url
         ])
         .run(tauri::generate_context!())
