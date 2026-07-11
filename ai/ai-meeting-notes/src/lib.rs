@@ -116,9 +116,16 @@ fn build_note(
         .action_items
         .into_iter()
         .filter(|i| !i.text.trim().is_empty())
-        .map(|i| ActionItem {
-            text: i.text.trim().to_string(),
-            owner: i.owner.map(|o| o.trim().to_string()).filter(|o| !o.is_empty()),
+        .map(|i| {
+            let text = i.text.trim().to_string();
+            // Ground the item to its transcript span deterministically (below), for
+            // the click-to-transcript surface. Content-matched, not model-attributed.
+            let source_segment = ground_to_segment(&text, &transcript);
+            ActionItem {
+                text,
+                owner: i.owner.map(|o| o.trim().to_string()).filter(|o| !o.is_empty()),
+                source_segment,
+            }
         })
         .collect();
     Ok(MeetingNote {
@@ -128,6 +135,56 @@ fn build_note(
         action_items,
         transcript,
     })
+}
+
+/// The lowercased content words of a string (alphanumeric runs over two chars, minus a
+/// small stopword set), for the deterministic action-item grounding. Keying on meaningful
+/// terms keeps a match from riding on filler words.
+fn significant_words(s: &str) -> std::collections::HashSet<String> {
+    const STOP: &[&str] = &[
+        "the", "and", "for", "are", "was", "will", "with", "that", "this", "you", "your",
+        "our", "let", "get", "can", "should", "need", "into", "from", "have", "has",
+    ];
+    s.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() > 2)
+        .map(|w| w.to_ascii_lowercase())
+        .filter(|w| !STOP.contains(&w.as_str()))
+        .collect()
+}
+
+/// Deterministically ground an action item to the transcript segment it was most plainly
+/// derived from, or `None`. Content-matched, NOT model-attributed: the segment whose words
+/// most cover the item's significant words wins, and only on strong, unambiguous coverage -
+/// a weak or tied match is left unlinked rather than citing a segment the item did not come
+/// from. A hijacked transcript line thus cannot earn a citation it does not literally match,
+/// and the surface never shows a fabricated "from here" link.
+fn ground_to_segment(text: &str, transcript: &Transcript) -> Option<usize> {
+    let item_words = significant_words(text);
+    if item_words.is_empty() {
+        return None;
+    }
+    let mut scores: Vec<(usize, f32)> = transcript
+        .segments
+        .iter()
+        .enumerate()
+        .map(|(i, seg)| {
+            let seg_words = significant_words(&seg.text);
+            let covered = item_words.iter().filter(|w| seg_words.contains(*w)).count();
+            (i, covered as f32 / item_words.len() as f32)
+        })
+        .collect();
+    // Highest coverage first, earliest segment as a stable tiebreak.
+    scores.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0))
+    });
+    let (idx, best) = *scores.first()?;
+    let second = scores.get(1).map(|s| s.1).unwrap_or(0.0);
+    // Fail-closed: strong coverage AND a clear margin over the runner-up, else unlinked.
+    if best >= 0.6 && best - second >= 0.2 {
+        Some(idx)
+    } else {
+        None
+    }
 }
 
 /// Extract the note JSON from a reply, tolerating prose around it. A local model often adds
@@ -207,6 +264,50 @@ mod tests {
         assert_eq!(note.action_items.len(), 1);
         assert_eq!(note.action_items[0].text, "write docs");
         assert_eq!(note.action_items[0].owner.as_deref(), Some("Ada"));
+    }
+
+    fn seg(text: &str) -> TranscriptSegment {
+        TranscriptSegment { start_ms: 0, end_ms: 1, text: text.into(), speaker: None, confidence: None }
+    }
+
+    #[test]
+    fn action_items_ground_to_their_transcript_span_and_fail_closed_when_unclear() {
+        let t = Transcript {
+            language: None,
+            segments: vec![
+                seg("Ada will migrate the billing database this week"),
+                seg("we should also refresh the marketing landing page"),
+                seg("great, thanks everyone"),
+            ],
+        };
+        // A clear derivation links to its segment; an item with no strong match is unlinked.
+        let note = build_note(
+            r#"{"summary": "s", "action_items": [
+                {"text": "migrate the billing database", "owner": "Ada"},
+                {"text": "schedule the offsite retreat", "owner": null}
+            ]}"#,
+            ctx(),
+            t,
+        )
+        .unwrap();
+        assert_eq!(note.action_items[0].source_segment, Some(0), "strong, unambiguous match links");
+        assert_eq!(note.action_items[1].source_segment, None, "no fabricated citation for an unmatched item");
+    }
+
+    #[test]
+    fn a_tie_between_segments_leaves_the_item_unlinked() {
+        // Two segments cover the item's words equally: fail-closed rather than pick one.
+        let t = Transcript {
+            language: None,
+            segments: vec![seg("update the roadmap"), seg("update the roadmap")],
+        };
+        let note = build_note(
+            r#"{"summary": "s", "action_items": [{"text": "update the roadmap", "owner": null}]}"#,
+            ctx(),
+            t,
+        )
+        .unwrap();
+        assert_eq!(note.action_items[0].source_segment, None, "an ambiguous tie is not cited");
     }
 
     #[test]
