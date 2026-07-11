@@ -540,6 +540,27 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create Branch table: {e}"))?;
 
+    // Reserved terminal command-history node. A finished terminal block (the
+    // `apps/terminal` `Block`, documented as "the projection of a future KG
+    // command node") persists here so `⌃R` history search spans sessions and
+    // survives a restart. Reserved from the start (no producer writes it yet, the
+    // no-migration promise); `ran_at` carries the wall-clock start the in-memory
+    // `Block` lacks, so the graph-backed history can order newest-first. Fields
+    // evolve additively via `ALTER TABLE ... ADD IF NOT EXISTS`.
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS Command(
+            id          STRING,
+            command     STRING,
+            cwd         STRING,
+            exit_code   INT64,
+            duration_ms INT64,
+            origin      STRING,
+            ran_at      INT64,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create Command table: {e}"))?;
+
     // A recorded meeting and its produced note (the meetings app, agent-work-
     // surfaces). The note is on-device by design (the Otter/Granola trap we
     // avoid): the summary is AI-derived and grounded, `participants` a
@@ -1160,6 +1181,24 @@ mod tests {
             })
             .collect();
         assert_eq!(head, vec!["abc123".to_string()], "the reserved Branch round-trips");
+
+        // The reserved terminal Command node writes with its conventional columns.
+        conn.query(
+            "CREATE (:Command {id:'blk1', command:'git status', cwd:'/w', \
+             exit_code:0, duration_ms:12, origin:'you', ran_at:1700000000})",
+        )
+        .expect("a Command node writes with its conventional columns");
+        let mut cq = conn
+            .query("MATCH (c:Command {id:'blk1'}) RETURN c.command")
+            .expect("the Command is queryable");
+        let cmd: Vec<String> = cq
+            .by_ref()
+            .filter_map(|row| match row.first() {
+                Some(Value::String(s)) => Some(s.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(cmd, vec!["git status".to_string()], "the reserved Command round-trips");
     }
 
     #[test]
