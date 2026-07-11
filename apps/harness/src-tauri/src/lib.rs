@@ -85,6 +85,7 @@ pub fn run() {
             capsule::capsule_preview,
             capsule::capsule_mint,
             prep::prep_for,
+            prep::working_set_briefing,
             url::open_url
         ])
         .run(tauri::generate_context!())
