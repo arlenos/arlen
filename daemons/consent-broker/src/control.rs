@@ -101,12 +101,42 @@ pub fn resolve_decision(
     outcome: ConsentOutcome,
 ) -> Option<ResolvedDecision> {
     let (pending, outcome) = queue.resolve(id, outcome)?;
+    // Reversibility gates a remembered ("always allow") grant on the consent
+    // footer (system-dialog-plan.md Agent-autonomy, DECIDED 6/11 Jul): standing
+    // authority is minted here ONLY for a fully-reversible scope, where the undo
+    // is the safety net. An irreversible scope (a genuine no-undo delete /
+    // external send / undeclared network) or a reversible-with-cost one (elevated
+    // privilege, package or system-config change) is allowed at most ONCE from
+    // this dialog - its standing authority, if any, is granted on the heavier
+    // App-access / capability-tier surface, never this footer. So a remembered
+    // allow on such a scope is downgraded to allow-once: no grant is recorded and
+    // the requester is told it was one-time, keeping the reply and the (absent)
+    // grant consistent. Fail-closed - the gate holds even if the dialog mistakenly
+    // offered the remember toggle.
+    let outcome = gate_remember(pending.request.kind, outcome);
     let grant = mint_grant(&pending, outcome);
     Some(ResolvedDecision {
         recipient: pending.request.requester.grant_recipient().to_string(),
         reply: outcome,
         grant,
     })
+}
+
+/// Downgrade a remembered allow to a one-time allow unless the scope is fully
+/// reversible. The consent footer only mints standing authority for the
+/// [`Reversibility::Reversible`] class; every heavier class is allow-once here
+/// (system-dialog-plan.md Agent-autonomy).
+fn gate_remember(
+    kind: arlen_ai_core::capability::ActionKind,
+    outcome: ConsentOutcome,
+) -> ConsentOutcome {
+    if outcome == ConsentOutcome::AllowedRemembered
+        && Reversibility::of(kind) != Reversibility::Reversible
+    {
+        ConsentOutcome::AllowedOnce
+    } else {
+        outcome
+    }
 }
 
 #[cfg(test)]
@@ -171,15 +201,38 @@ mod tests {
     }
 
     #[test]
-    fn always_allow_resolves_to_a_grant_and_removes_from_queue() {
+    fn always_allow_on_a_reversible_scope_mints_a_grant_and_removes_from_queue() {
         let mut q = ConsentQueue::new();
-        let id = enqueue(&mut q, "org.arlen.files", ActionKind::PermanentDelete, Some("/x"));
+        // Ordinary is fully reversible, so a remembered allow mints standing authority.
+        let id = enqueue(&mut q, "org.arlen.files", ActionKind::Ordinary, Some("/x"));
         let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedRemembered).unwrap();
         assert_eq!(d.recipient, "org.arlen.files");
         assert_eq!(d.reply, ConsentOutcome::AllowedRemembered);
-        let grant = d.grant.expect("always-allow mints a grant");
+        let grant = d.grant.expect("always-allow on a reversible scope mints a grant");
         assert_eq!(grant.recipient, "org.arlen.files");
         assert!(q.is_empty(), "the resolved request leaves the queue");
+    }
+
+    #[test]
+    fn always_allow_on_an_irreversible_scope_downgrades_to_allow_once_and_mints_nothing() {
+        let mut q = ConsentQueue::new();
+        // A genuine no-undo delete: the footer never grants standing authority.
+        let id = enqueue(&mut q, "org.arlen.files", ActionKind::PermanentDelete, Some("/x"));
+        let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedRemembered).unwrap();
+        assert_eq!(d.reply, ConsentOutcome::AllowedOnce, "remember is downgraded to once");
+        assert!(d.grant.is_none(), "an irreversible scope mints no standing grant");
+        assert!(q.is_empty());
+    }
+
+    #[test]
+    fn always_allow_on_a_reversible_with_cost_scope_downgrades_to_allow_once() {
+        let mut q = ConsentQueue::new();
+        // Elevated privilege is reversible-with-cost: standing authority is the
+        // heavier capability surface, not this dialog footer.
+        let id = enqueue(&mut q, "org.arlen.installd", ActionKind::ElevatedPrivilege, None);
+        let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedRemembered).unwrap();
+        assert_eq!(d.reply, ConsentOutcome::AllowedOnce);
+        assert!(d.grant.is_none(), "reversible-with-cost is allow-once on the footer");
     }
 
     #[test]
