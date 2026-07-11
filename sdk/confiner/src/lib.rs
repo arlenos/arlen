@@ -289,9 +289,11 @@ pub fn ephemeral_profile(
 }
 
 /// The fixed in-sandbox path a [`command_profile`]'s writable scratch dir is bound
-/// to (the confined command's working directory and `HOME`). The host path never
-/// enters the command's view.
-pub const WORK_MOUNT: &str = "/work";
+/// to (the confined command's working directory and `HOME`). It lives UNDER `/tmp`
+/// so it lands on the fresh tmpfs: a read-only root (e.g. host `/`) leaves the
+/// sandbox root read-only, and bwrap can only create the scratch mount point on a
+/// writable filesystem. The host path never enters the command's view.
+pub const WORK_MOUNT: &str = "/tmp/work";
 
 /// The confined-command profile (ai-act-layer-plan.md, the `run_command` sharp
 /// edge): run an arbitrary, user-approved command with DAMAGE prevention. The
@@ -321,14 +323,11 @@ pub fn command_profile(
         }
     }
     let work = checked_abs(workdir)?;
-    let mut binds = Vec::with_capacity(read_only_roots.len() + 1);
+    let mut binds = Vec::with_capacity(read_only_roots.len());
     for root in read_only_roots {
         let r = checked_abs(root)?;
         binds.push(Bind::ReadOnly(r.clone(), r));
     }
-    // The one writable window, at a fixed in-sandbox path, applied AFTER the
-    // read-only roots so it wins even when a root exposes the host `/`.
-    binds.push(Bind::ReadWrite(work, WORK_MOUNT.into()));
 
     let mut env = env;
     env.insert("PATH".into(), "/usr/bin:/bin".into());
@@ -338,7 +337,10 @@ pub fn command_profile(
         network,
         binds,
         tmpfs: vec!["/tmp".into()],
-        post_mask_binds: vec![],
+        // The one writable window, bound AFTER the `/tmp` tmpfs mask: a read-only
+        // root (e.g. host `/`) leaves the sandbox root read-only, so the scratch
+        // must land on the writable tmpfs where bwrap can create the mount point.
+        post_mask_binds: vec![Bind::ReadWrite(work, WORK_MOUNT.into())],
         env,
         chdir: Some(WORK_MOUNT.into()),
     })
@@ -741,10 +743,15 @@ mod tests {
         assert!(joined.contains("--unshare-net"), "no network: {joined}");
         assert!(joined.contains("--ro-bind /usr /usr"), "usr read-only: {joined}");
         assert!(joined.contains("--ro-bind /etc /etc"), "etc read-only: {joined}");
-        assert!(joined.contains("--bind /tmp/run-scratch /work"), "scratch writable: {joined}");
-        assert!(joined.contains("--chdir /work"), "cwd is the scratch: {joined}");
+        assert!(joined.contains("--bind /tmp/run-scratch /tmp/work"), "scratch writable: {joined}");
+        assert!(joined.contains("--chdir /tmp/work"), "cwd is the scratch: {joined}");
         assert!(joined.contains("--setenv PATH /usr/bin:/bin"), "fixed PATH: {joined}");
-        assert!(joined.contains("--setenv HOME /work"), "HOME in scratch: {joined}");
+        assert!(joined.contains("--setenv HOME /tmp/work"), "HOME in scratch: {joined}");
+        // The scratch bind is applied AFTER the /tmp tmpfs (a read-only root leaves
+        // the sandbox root read-only, so the writable window must land on the tmpfs).
+        let tmpfs_at = args.iter().position(|a| a == "/tmp").expect("the /tmp tmpfs");
+        let scratch_at = args.iter().position(|a| a == "/tmp/work").expect("the scratch dest");
+        assert!(scratch_at > tmpfs_at, "scratch bound after the tmpfs mask: {joined}");
         // The scratch is the ONLY writable bind: no host write window.
         assert_eq!(
             args.iter().filter(|a| *a == "--bind").count(),
