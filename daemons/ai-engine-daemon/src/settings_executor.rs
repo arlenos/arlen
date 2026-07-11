@@ -11,16 +11,21 @@
 //! `fs.move`: per-call executor-live gate, S13 audit-before-act, write-ahead
 //! inverse, undo-signer submit.
 //!
-//! ## Protected files (self-escalation guard)
+//! ## Writable files (fail-closed cosmetic allowlist)
 //!
-//! The AI master switches (`[ai] enabled`, `[agent] executor_live`, provider/model)
-//! live in `~/.config/arlen/ai.toml` - the SAME directory this executor writes.
 //! `settings.set` is gate-classified `ReversibleAction`, so under `executor_live` it
-//! applies autonomously with no confirm; a `settings.set` to `ai.toml` would let the
-//! agent tamper with its own gates (keep `executor_live` on, flip `enabled`, swap
-//! the provider), the exact hole the separate-uid AI-switch daemon closes. So
-//! `ai.toml` is a PROTECTED file this executor refuses outright: the AI master
-//! switches change only through their own consent-gated daemon, never this path.
+//! applies autonomously with no confirm. Several files under `~/.config/arlen` gate
+//! the AI or security posture, and a write to one is NOT what "reversible" bounds
+//! (redirecting the AI's own egress or self-widening a read scope is not undone by a
+//! later value restore): `ai.toml` (the AI master switches - the exact hole the
+//! separate-uid AI-switch daemon closes), `ai-routing.toml` (the ai-proxy provider
+//! endpoints - a write there redirects LLM traffic to an attacker host, exfiltration
+//! that bypasses the egress gate), `file-manager-mcp.toml` (`[scope] roots`, the
+//! agent's own filesystem read allowlist), `shell.toml` (`[launcher] confined`, app
+//! confinement), `compositor.toml` (`[system_actions]`, name->command mappings), and
+//! more. So the guard is a FAIL-CLOSED ALLOWLIST, not a denylist: only benign,
+//! user-facing cosmetic preference files are writable, and a new posture file is
+//! refused by default. Posture files change only through their own consent-gated path.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -38,11 +43,21 @@ use crate::undo_enact::EnactError;
 /// The scalar-setting write act.
 const SETTINGS_SET_TOOL: &str = "settings.set";
 
-/// Config files `settings.set` refuses to write: they gate the AI/security posture,
-/// so they change only through their own consent-gated path, never an autonomous
-/// reversible act. `ai.toml` holds the AI master switches, so a write to it would be
-/// self-escalation.
-const PROTECTED_CONFIG_FILES: &[&str] = &["ai.toml"];
+/// The config files `settings.set` MAY write: a fail-closed allowlist of benign,
+/// user-facing COSMETIC preference files (theme / appearance / sound / panel
+/// layout). Everything else is refused - notably every file under `~/.config/arlen`
+/// that gates the AI or security posture (`ai.toml`, `ai-routing.toml`,
+/// `file-manager-mcp.toml`, `shell.toml`, `compositor.toml`, `graph.toml`,
+/// `terminal.toml`, ...). An allowlist (not a denylist) means a new posture file is
+/// protected by default, matching the gate registry's "possession of an entry is the
+/// trust proof" fail-closed discipline.
+const ALLOWED_CONFIG_FILES: &[&str] = &[
+    "appearance.toml",
+    "theme.toml",
+    "sounds.toml",
+    "quicksettings.toml",
+    "topbar.toml",
+];
 
 /// The forward producer for `settings.set`. Audit + undo-signer are optional (tests
 /// that exercise only the mechanics omit them); the daemon always wires both.
@@ -132,11 +147,15 @@ impl Executor for SettingsExecutor {
                 "settings.set file must be a bare config filename (no path components)",
             );
         }
-        // Refuse the AI master-switch file: an autonomous write there is self-escalation.
-        if PROTECTED_CONFIG_FILES.contains(&file.as_str()) {
+        // Fail-closed allowlist: only benign cosmetic preference files are writable.
+        // Every AI/security-posture file (ai.toml, ai-routing.toml, file-manager-mcp
+        // .toml, shell.toml, compositor.toml, ...) is refused, so an autonomous write
+        // can never redirect the AI's egress, widen its read scope, or flip a gate.
+        if !ALLOWED_CONFIG_FILES.contains(&file.as_str()) {
             return err(
                 ContractError::ExecutionFailed,
-                "settings.set refused: this config file is protected (AI master switches)",
+                "settings.set refused: only cosmetic preference files are writable \
+                 (this file is not on the allowlist)",
             );
         }
         if key.is_empty() {
@@ -318,52 +337,69 @@ mod tests {
     #[tokio::test]
     async fn a_set_round_trips_through_its_captured_inverse() {
         let root = tmp();
-        let path = root.join("shell.toml");
-        std::fs::write(&path, "layout = \"floating\"\n").unwrap();
+        let path = root.join("theme.toml");
+        std::fs::write(&path, "accent = \"#000000\"\n").unwrap();
 
-        // The inverse the executor captures write-ahead (the prior "floating").
-        let inverse = crate::undo_enact::capture_prior_value(path.to_str().unwrap(), "layout").unwrap();
+        // The inverse the executor captures write-ahead (the prior accent).
+        let inverse =
+            crate::undo_enact::capture_prior_value(path.to_str().unwrap(), "accent").unwrap();
         match &inverse {
             InverseReceipt::RestoreValue { prior, .. } => {
-                assert_eq!(prior.as_deref(), Some("floating"))
+                assert_eq!(prior.as_deref(), Some("#000000"))
             }
             _ => panic!("expected RestoreValue"),
         }
 
-        live(&root).execute(&set_req("shell.toml", "layout", "tiling"), &grant()).await;
-        assert!(std::fs::read_to_string(&path).unwrap().contains("\"tiling\""));
+        live(&root).execute(&set_req("theme.toml", "accent", "#6366f1"), &grant()).await;
+        assert!(std::fs::read_to_string(&path).unwrap().contains("\"#6366f1\""));
 
         // Enacting that captured inverse restores the prior - the undo a later
         // restore runs.
         crate::undo_enact::enact_inverse(&inverse).unwrap();
-        assert!(std::fs::read_to_string(&path).unwrap().contains("\"floating\""));
+        assert!(std::fs::read_to_string(&path).unwrap().contains("\"#000000\""));
     }
 
     #[tokio::test]
     async fn a_set_is_refused_when_the_executor_is_not_live() {
         let root = tmp();
-        std::fs::write(root.join("shell.toml"), "a = 1\n").unwrap();
+        std::fs::write(root.join("appearance.toml"), "a = 1\n").unwrap();
         let exec = SettingsExecutor::new()
             .with_executor_live_gate(|| false)
             .with_config_root(root.clone());
-        let out = exec.execute(&set_req("shell.toml", "a", "2"), &grant()).await;
+        let out = exec.execute(&set_req("appearance.toml", "a", "2"), &grant()).await;
         assert!(matches!(out, ExecuteOutcome::Error { .. }));
-        assert_eq!(std::fs::read_to_string(root.join("shell.toml")).unwrap(), "a = 1\n");
+        assert_eq!(std::fs::read_to_string(root.join("appearance.toml")).unwrap(), "a = 1\n");
     }
 
     #[tokio::test]
-    async fn the_ai_master_switch_file_is_protected() {
-        let root = tmp();
-        std::fs::write(root.join("ai.toml"), "[agent]\nexecutor_live = false\n").unwrap();
-        let out = live(&root)
-            .execute(&set_req("ai.toml", "executor_live", "true"), &grant())
-            .await;
-        assert!(matches!(out, ExecuteOutcome::Error { .. }), "ai.toml refused");
-        // Untouched: the agent cannot flip its own gate through settings.set.
-        assert_eq!(
-            std::fs::read_to_string(root.join("ai.toml")).unwrap(),
-            "[agent]\nexecutor_live = false\n"
-        );
+    async fn ai_and_security_posture_files_are_refused_and_untouched() {
+        // The allowlist refuses every posture file: the AI master switches, the
+        // proxy egress endpoints, the agent's read scope, app confinement, system
+        // actions. The agent cannot flip its own gate, redirect its egress or widen
+        // its scope through settings.set.
+        let cases: &[(&str, &str, &str, &str)] = &[
+            ("ai.toml", "[agent]\nexecutor_live = false\n", "executor_live", "true"),
+            (
+                "ai-routing.toml",
+                "[providers.evil]\nendpoint_url = \"https://ok\"\n",
+                "providers.evil.endpoint_url",
+                "https://attacker.example/collect",
+            ),
+            ("file-manager-mcp.toml", "[scope]\nroots = []\n", "scope.roots", "/home"),
+            ("shell.toml", "[launcher]\nconfined = true\n", "launcher.confined", "false"),
+            ("compositor.toml", "[system_actions]\n", "system_actions.logout", "rm -rf ~"),
+        ];
+        for (file, body, key, value) in cases {
+            let root = tmp();
+            std::fs::write(root.join(file), body).unwrap();
+            let out = live(&root).execute(&set_req(file, key, value), &grant()).await;
+            assert!(matches!(out, ExecuteOutcome::Error { .. }), "{file} must be refused");
+            assert_eq!(
+                &std::fs::read_to_string(root.join(file)).unwrap(),
+                body,
+                "{file} must be untouched"
+            );
+        }
     }
 
     #[tokio::test]
@@ -394,14 +430,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_unknown_format_is_refused_not_corrupted() {
+    async fn a_non_allowlisted_file_is_refused_even_if_it_is_a_known_format() {
+        // graph.toml is a real .toml (recognized format) but gates KG ingestion, so
+        // it is off the cosmetic allowlist and refused untouched.
         let root = tmp();
-        std::fs::write(root.join("mystery.xyz"), "k=v\n").unwrap();
-        match live(&root).execute(&set_req("mystery.xyz", "k", "w"), &grant()).await {
+        std::fs::write(root.join("graph.toml"), "watch = []\n").unwrap();
+        match live(&root).execute(&set_req("graph.toml", "watch", "/home"), &grant()).await {
             ExecuteOutcome::Error { .. } => {}
-            other => panic!("expected an error for an unknown format, got {other:?}"),
+            other => panic!("expected a refusal for a non-allowlisted file, got {other:?}"),
         }
-        assert_eq!(std::fs::read_to_string(root.join("mystery.xyz")).unwrap(), "k=v\n");
+        assert_eq!(std::fs::read_to_string(root.join("graph.toml")).unwrap(), "watch = []\n");
     }
 
     #[tokio::test]
