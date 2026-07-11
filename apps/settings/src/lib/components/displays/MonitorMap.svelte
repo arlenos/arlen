@@ -234,8 +234,10 @@
 >
   {#if $monitorsStore.length === 0}
     <div class="empty">
-      No displays detected. Are you running under a Wayland compositor
-      that implements <code>wlr-output-management</code>?
+      <p class="empty-text">
+        No displays detected. Are you running under a Wayland compositor that
+        implements <code>wlr-output-management</code>?
+      </p>
     </div>
   {:else}
     {@const layout = computeLayout($monitorsStore, drafts, canvasW, canvasH)}
@@ -290,6 +292,13 @@
     color: color-mix(in srgb, var(--color-fg-app) 60%, transparent);
     font-size: 0.875rem;
     line-height: 1.4;
+  }
+
+  /* One flowing paragraph (the code chip stays inline) inside the flex-centred
+     box, capped so it wraps as a tidy block instead of a full-width line. */
+  .empty-text {
+    margin: 0;
+    max-width: 24rem;
   }
 
   .empty code {
