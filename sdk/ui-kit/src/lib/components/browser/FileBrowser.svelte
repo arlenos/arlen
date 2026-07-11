@@ -564,12 +564,12 @@
     padding: 2rem;
   }
   .fb-state-title {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--foreground);
   }
   .fb-state-hint {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     max-width: 36ch;
   }

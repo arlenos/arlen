@@ -105,7 +105,7 @@
   }
   .title {
     margin: 0 0 0.4rem;
-    font-size: 1.0625rem;
+    font-size: var(--text-lg);
     font-weight: 600;
   }
   .parts {
@@ -137,7 +137,7 @@
   }
   .sec-label {
     margin: 0 0 0.5rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -153,18 +153,18 @@
   /* The AI summary: greyed, clearly not yours - the verifiable-merge signal. */
   .summary {
     margin: 0;
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     line-height: 1.65;
     color: color-mix(in srgb, var(--color-fg-primary) 58%, transparent);
   }
   .grounded {
     margin: 0.5rem 0 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 38%, transparent);
   }
   .empty {
     margin: 0;
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
   .items {
@@ -179,7 +179,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
   }
   .box {
     display: inline-flex;

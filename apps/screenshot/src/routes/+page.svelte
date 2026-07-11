@@ -359,7 +359,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .tool {

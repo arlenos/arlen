@@ -210,7 +210,7 @@
     gap: 0.5rem;
     margin: 0;
     min-width: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     white-space: nowrap;
   }
@@ -219,7 +219,7 @@
     align-items: center;
     gap: 0.25rem;
     color: var(--color-error);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
   .stale :global(svg) {
     flex-shrink: 0;
@@ -234,7 +234,7 @@
   .empty {
     margin: 0;
     padding: 0.75rem var(--space-row, 0.75rem) 1rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .list {

@@ -136,7 +136,7 @@
     min-width: 3rem;
     text-align: end;
     font-variant-numeric: tabular-nums;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .error-box {
@@ -144,7 +144,7 @@
     border-radius: var(--radius-chip, 4px);
     border: 1px solid color-mix(in srgb, var(--destructive) 40%, transparent);
     background: color-mix(in srgb, var(--destructive) 10%, transparent);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--destructive);
   }
 </style>

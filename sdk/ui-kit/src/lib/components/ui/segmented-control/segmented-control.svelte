@@ -144,7 +144,7 @@
     border: 1px solid transparent;
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     padding: 4px 12px;
     min-height: calc(var(--height-control, 28px) - 6px);

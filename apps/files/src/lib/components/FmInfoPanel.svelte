@@ -490,7 +490,7 @@
     gap: 0.125rem;
   }
   .ident-name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--foreground);
     overflow: hidden;
@@ -498,7 +498,7 @@
     white-space: nowrap;
   }
   .ident-sub {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .close {
@@ -541,7 +541,7 @@
   .kv {
     display: flex;
     gap: 0.75rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.45;
   }
   .kv-label {
@@ -561,11 +561,11 @@
     display: flex;
     flex-direction: column;
     gap: 0.0625rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.4;
   }
   .prov-label {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .prov-value {
@@ -588,7 +588,7 @@
     gap: 0.5rem;
   }
   .sec-title {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -603,16 +603,16 @@
     flex-shrink: 0;
   }
   .asof-key {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
     white-space: nowrap;
   }
   .note {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: var(--color-warning, #d4b483);
   }
   .empty {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 
@@ -627,7 +627,7 @@
     border: none;
     background: transparent;
     border-radius: var(--radius-chip);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     text-align: start;
     transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
   }
@@ -659,7 +659,7 @@
   }
   .perm-label {
     flex: 0 0 3.25rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
   .perm-ctl {
@@ -670,7 +670,7 @@
     justify-content: space-between;
   }
   .perm-label-wide {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
 
@@ -684,13 +684,13 @@
     border: none;
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
   .disc:hover {
     color: var(--foreground);
   }
   .disc-title {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -709,7 +709,7 @@
     gap: 0.1875rem;
   }
   .field-label {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   :global(.field-save) {
@@ -718,7 +718,7 @@
   }
 
   .err {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: var(--color-error, #e5484d);
   }
 </style>

@@ -73,7 +73,7 @@
     padding: 0 10px;
     border-radius: var(--radius-card);
     border: none;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 500;
     line-height: 1;
     white-space: nowrap;
@@ -175,7 +175,7 @@
   /* ── Text ───────────────────────────────────────────────────────────── */
 
   .ws-text {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 500;
     color: var(--foreground);
     letter-spacing: 0.02em;

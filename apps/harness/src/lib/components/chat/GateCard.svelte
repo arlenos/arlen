@@ -151,13 +151,13 @@
     flex-shrink: 0;
   }
   .gate-title {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
   .gate-detail {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
@@ -165,7 +165,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
   .diff-summary .add {
@@ -186,7 +186,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: #8fae74;
     margin-right: auto;
   }
@@ -204,7 +204,7 @@
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, #8fae74 16%, transparent);
     color: #8fae74;
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;

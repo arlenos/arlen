@@ -68,7 +68,7 @@
   .pop-title {
     flex: 1;
     min-width: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     overflow: hidden;
     text-overflow: ellipsis;

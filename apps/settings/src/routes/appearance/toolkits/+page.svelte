@@ -132,22 +132,22 @@
     min-width: 0;
   }
   .tk-name {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 500;
     color: var(--foreground);
   }
   .tk-always {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .tk-note {
     margin: 0.375rem 0 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
   .tk-prereq {
     margin: 0.25rem 0 0;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 42%, transparent);
   }
 
@@ -160,7 +160,7 @@
     padding: 0.25rem 0;
     border: none;
     background: transparent;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     cursor: pointer;
@@ -190,7 +190,7 @@
     gap: 0.75rem;
   }
   .ovr-label {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
   }
   .ovr-accent {
@@ -227,7 +227,7 @@
   }
   .ovr-note {
     margin: 0.5rem 0 0;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 </style>

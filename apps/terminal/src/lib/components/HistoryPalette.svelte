@@ -196,13 +196,13 @@
     padding: 0 7px;
     border: 1px solid var(--control-border);
     border-radius: var(--radius-chip);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .hp-in {
     align-self: center;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 35%, transparent);
   }
   .hp-chips :global(.hp-chip[data-state="on"]) {
@@ -221,7 +221,7 @@
     flex: 1;
     min-width: 0;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -232,7 +232,7 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .hp-exit {
@@ -243,7 +243,7 @@
   .hp-empty {
     padding: 1.25rem;
     text-align: center;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
@@ -252,7 +252,7 @@
     gap: 14px;
     padding: 6px 12px;
     border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 35%, transparent);
   }
 </style>

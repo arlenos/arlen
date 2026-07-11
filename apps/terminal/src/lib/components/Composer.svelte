@@ -139,7 +139,7 @@
   .ap-char {
     flex-shrink: 0;
     font-family: "JetBrains Mono", var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: var(--foreground);
   }
@@ -153,7 +153,7 @@
     padding: 0;
     color: var(--foreground);
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     outline: none;
   }

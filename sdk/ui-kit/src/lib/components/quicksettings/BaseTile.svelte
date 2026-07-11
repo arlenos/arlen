@@ -258,13 +258,13 @@
 
   .qs-tile-head-trailing {
     flex-shrink: 0;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
 
   .qs-tile-label {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     line-height: 1.2;
     overflow: hidden;
@@ -273,7 +273,7 @@
   }
 
   .qs-tile-status {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     line-height: 1.2;
     overflow: hidden;

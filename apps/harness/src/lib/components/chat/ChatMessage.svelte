@@ -254,11 +254,11 @@
   .role {
     margin: 0;
     padding-inline: var(--space-card, 1rem);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .block {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     line-height: 1.6;
     color: var(--foreground);
     word-break: break-word;
@@ -289,7 +289,7 @@
     border-radius: var(--radius-card);
     padding: 0.75rem var(--space-card, 1rem);
     color: var(--color-error);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
   }
   .error-block :global(svg) {
@@ -304,7 +304,7 @@
      app's own sentence. */
   .error-text code {
     font-family: var(--font-mono, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     background: color-mix(in srgb, var(--color-error) 12%, transparent);
     padding: 0.1em 0.3em;
     border-radius: var(--radius-chip);
@@ -318,7 +318,7 @@
   .trace-note {
     margin: 0;
     padding-inline: var(--space-card, 1rem);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .mentions {
@@ -341,7 +341,7 @@
     padding: 0 0.5rem;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
   .edit {

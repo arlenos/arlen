@@ -161,7 +161,7 @@
     padding: 20px;
   }
   .br-title {
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     font-weight: 600;
     color: var(--foreground);
   }
@@ -184,7 +184,7 @@
     flex-shrink: 0;
   }
   .br-label {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
@@ -193,7 +193,7 @@
     align-items: center;
     gap: 8px;
     height: var(--height-control, 28px);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--foreground);
     white-space: nowrap;
   }
@@ -219,7 +219,7 @@
     gap: 8px;
     padding: 4px 12px;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
   .br-old {
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
@@ -249,7 +249,7 @@
   .br-badge {
     flex-shrink: 0;
     font-family: var(--font-sans, inherit);
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -262,7 +262,7 @@
     gap: 8px;
   }
   .br-summary {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .br-spacer {

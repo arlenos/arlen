@@ -130,7 +130,7 @@
     gap: 8px;
   }
   .notif-section-title {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--color-fg-shell);
     letter-spacing: -0.01em;
@@ -140,7 +140,7 @@
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
     border-radius: var(--radius-full, 9999px);
     padding: 0 7px;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     line-height: 1.5;
     font-variant-numeric: tabular-nums;
@@ -154,7 +154,7 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
     border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 65%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     transition: background-color var(--duration-micro, 100ms) ease, color var(--duration-micro, 100ms) ease, border-color var(--duration-micro, 100ms) ease;
   }
@@ -171,7 +171,7 @@
     gap: 8px;
     padding: 32px 0;
     color: color-mix(in srgb, var(--color-fg-shell) 35%, transparent);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
   }
 
   .notif-list {
@@ -216,7 +216,7 @@
     flex-shrink: 0;
   }
   .notif-group-name {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: color-mix(in srgb, var(--color-fg-shell) 80%, transparent);
   }
@@ -225,7 +225,7 @@
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
     border-radius: var(--radius-full, 9999px);
     padding: 0 6px;
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     line-height: 1.5;
     font-variant-numeric: tabular-nums;

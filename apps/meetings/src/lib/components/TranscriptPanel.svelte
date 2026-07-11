@@ -52,7 +52,7 @@
   .tp-head {
     flex-shrink: 0;
     padding: 0.85rem 1rem 0.6rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -88,7 +88,7 @@
     display: flex;
     align-items: baseline;
     gap: 0.5rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
   }
   .utt-time {
     font-variant-numeric: tabular-nums;
@@ -98,7 +98,7 @@
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .utt-text {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: color-mix(in srgb, var(--color-fg-primary) 78%, transparent);
   }

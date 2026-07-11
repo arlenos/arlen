@@ -115,14 +115,14 @@
     width: 14px;
   }
   .mp-label {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
     white-space: nowrap;
   }
   .mp-path {
     flex: 1;
     min-width: 0;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 42%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;

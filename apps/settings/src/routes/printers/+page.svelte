@@ -315,7 +315,7 @@
   .note {
     margin: 0;
     padding: 8px 12px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--color-fg-secondary);
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
     border: 1px solid var(--color-border);
@@ -324,7 +324,7 @@
   .empty {
     margin: 0;
     padding: var(--space-row, 0.75rem) 1rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--color-fg-secondary);
   }
 
@@ -360,7 +360,7 @@
 
   .job-state {
     margin-right: 6px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--color-fg-secondary);
     white-space: nowrap;
   }
@@ -383,7 +383,7 @@
     display: flex;
     flex-direction: column;
     gap: 5px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--color-fg-secondary);
   }
   .opt-actions {

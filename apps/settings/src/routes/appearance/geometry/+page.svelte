@@ -181,7 +181,7 @@
     gap: 0.5rem;
   }
   .preview-label {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -204,7 +204,7 @@
     align-items: flex-end;
     padding: 0.5rem;
     height: 3.5rem;
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border-style: solid;
@@ -232,7 +232,7 @@
     padding: 0.5rem 0.25rem;
     border: none;
     background: transparent;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
     cursor: pointer;

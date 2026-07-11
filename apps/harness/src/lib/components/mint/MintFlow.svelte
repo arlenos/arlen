@@ -193,7 +193,7 @@
   }
   .mint-eyebrow {
     display: block;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -201,7 +201,7 @@
   }
   .mint-title {
     margin: 0.15rem 0 0;
-    font-size: 1.0625rem;
+    font-size: var(--text-lg);
     font-weight: 600;
     color: var(--foreground);
   }
@@ -216,7 +216,7 @@
   }
   .mint-lead {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
@@ -230,7 +230,7 @@
     gap: 0.4rem;
   }
   .mint-label {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--foreground);
   }
@@ -240,7 +240,7 @@
     gap: 1rem;
   }
   .mint-hint {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
@@ -282,13 +282,13 @@
     text-decoration: line-through;
   }
   .rel-what {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
     min-width: 0;
   }
   .rel-reach {
     justify-self: end;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
@@ -299,7 +299,7 @@
     gap: 0.625rem;
     padding: 0.25rem 0.125rem;
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
     cursor: pointer;
   }
@@ -307,7 +307,7 @@
   .mint-summary {
     margin: 0;
     padding-top: 0.25rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }

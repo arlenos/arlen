@@ -56,13 +56,13 @@
   }
   .home-title {
     margin: 0;
-    font-size: 1.25rem;
+    font-size: var(--text-xl);
     font-weight: 600;
   }
   .empty {
     max-width: 44rem;
     margin: 2rem auto;
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .list {
@@ -90,21 +90,21 @@
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
   }
   .row-title {
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     font-weight: 500;
     color: var(--color-fg-primary);
   }
   .row-meta {
     display: flex;
     gap: 1rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .row-date {
     font-variant-numeric: tabular-nums;
   }
   .row-preview {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.4;
     color: color-mix(in srgb, var(--color-fg-primary) 62%, transparent);
     overflow: hidden;
@@ -114,7 +114,7 @@
   .foot {
     max-width: 44rem;
     margin: 1.5rem auto 0;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-primary) 38%, transparent);
   }
 </style>

@@ -176,7 +176,7 @@
   }
 
   .title {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     overflow: hidden;
     white-space: nowrap;
@@ -184,7 +184,7 @@
   }
 
   .badge {
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -237,11 +237,11 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
   }
   .row-hint {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 400;
     color: color-mix(in srgb, var(--foreground) 48%, transparent);
   }
@@ -258,7 +258,7 @@
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 500;
     text-transform: capitalize;
     transition:

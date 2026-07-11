@@ -73,7 +73,7 @@
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
   }
   .vh-label {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
   }
   .vh-meter {
@@ -119,13 +119,13 @@
 
   .vh-transcript {
     margin: 0.6rem 0 0;
-    font-size: 1rem;
+    font-size: var(--text-md);
     line-height: 1.4;
     color: var(--color-fg-primary);
   }
   .vh-reply {
     margin: 0.55rem 0 0;
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     line-height: 1.45;
     color: color-mix(in srgb, var(--color-fg-primary) 72%, transparent);
   }
@@ -135,7 +135,7 @@
     align-items: center;
     gap: 0.4rem;
     margin-top: 0.7rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-primary) 42%, transparent);
   }
   .vh-dot {

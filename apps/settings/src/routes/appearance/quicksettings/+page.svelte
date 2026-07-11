@@ -481,7 +481,7 @@
     gap: 10px;
     padding: 10px 12px;
     border-radius: var(--radius-input);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.4;
   }
   .qs-banner.kind-warning {
@@ -502,7 +502,7 @@
 
   .qs-unknown-row {
     padding: 1rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-shell) 75%, transparent);
   }
   .qs-unknown-row p {
@@ -513,7 +513,7 @@
     padding-left: 1rem;
   }
   .qs-unknown-row code {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
     padding: 1px 6px;
     border-radius: var(--radius-chip);

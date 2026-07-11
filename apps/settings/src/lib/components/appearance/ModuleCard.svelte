@@ -206,7 +206,7 @@
     flex: 1;
   }
   .name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--foreground);
     white-space: nowrap;
@@ -218,7 +218,7 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 4px;
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .version {
@@ -265,7 +265,7 @@
 
   .desc {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.45;
     color: color-mix(in srgb, var(--foreground) 80%, transparent);
   }
@@ -282,7 +282,7 @@
   .row {
     display: flex;
     gap: 10px;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
   }
   .row-label {
     width: 84px;
@@ -296,7 +296,7 @@
   }
   .mono {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
   }
   .path {
     white-space: nowrap;
@@ -310,7 +310,7 @@
     background: color-mix(in srgb, var(--color-warning) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
     color: var(--color-warning);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
   }
   .warnings-head {
     display: flex;

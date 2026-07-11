@@ -165,7 +165,7 @@
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, black 55%, transparent);
     color: color-mix(in srgb, white 92%, transparent);
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.02em;
@@ -175,7 +175,7 @@
   /* A fixed two-line box (not clamp-only): one-line names get the
      same tile height, which the grid windowing depends on. */
   .ft-name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 16px;
     height: 32px;
     color: var(--foreground);

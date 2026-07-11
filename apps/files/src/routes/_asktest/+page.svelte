@@ -109,11 +109,11 @@
   }
   .ask-fallback {
     padding: 8px 12px;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
   .listing {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
   }
   .lhead,
   .lrow {
@@ -125,7 +125,7 @@
   }
   .lhead {
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);

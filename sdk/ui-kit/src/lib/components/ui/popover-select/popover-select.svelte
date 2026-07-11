@@ -265,7 +265,7 @@
   .ps-label {
     flex: 1;
     min-width: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--foreground);
     line-height: 1;

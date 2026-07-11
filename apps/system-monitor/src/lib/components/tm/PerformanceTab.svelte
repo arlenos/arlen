@@ -82,11 +82,11 @@
     gap: 0.1rem;
   }
   .dev-name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--color-fg-primary);
   }
   .dev-val {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
@@ -130,7 +130,7 @@
   }
   .main-detail {
     margin-top: 0.9rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }

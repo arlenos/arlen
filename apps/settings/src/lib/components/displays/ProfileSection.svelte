@@ -325,7 +325,7 @@
   .meta {
     display: flex;
     gap: 0.75rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-app) 55%, transparent);
   }
 

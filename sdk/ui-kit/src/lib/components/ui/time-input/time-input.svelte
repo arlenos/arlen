@@ -35,7 +35,7 @@
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     color: var(--foreground);
     font: inherit;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     transition:
       background-color 150ms ease,

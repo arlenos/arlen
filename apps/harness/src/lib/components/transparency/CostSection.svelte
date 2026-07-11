@@ -73,7 +73,7 @@
   }
   .line {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: var(--foreground);
   }
@@ -82,7 +82,7 @@
     align-items: center;
     gap: 0.5rem;
     margin: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
@@ -92,7 +92,7 @@
     height: var(--height-tag, 20px);
     padding: 0 0.5rem;
     border-radius: var(--radius-chip);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 500;
     color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 14%, transparent);

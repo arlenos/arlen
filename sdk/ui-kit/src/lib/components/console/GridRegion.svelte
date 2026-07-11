@@ -169,7 +169,7 @@
      stand-in previews the exact type the grid will paint. */
   .grid-region-label {
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 35%, transparent);
     white-space: nowrap;

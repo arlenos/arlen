@@ -13,6 +13,6 @@
     background: color-mix(in srgb, var(--color-error) 15%, transparent);
     border-radius: var(--radius-input);
     color: var(--color-error);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
   }
 </style>

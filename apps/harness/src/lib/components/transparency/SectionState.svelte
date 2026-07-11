@@ -46,7 +46,7 @@
     height: var(--height-tag, 20px);
     padding: 0 0.5rem;
     border-radius: var(--radius-chip);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 500;
     letter-spacing: 0.02em;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
@@ -62,13 +62,13 @@
   }
   .msg {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
   }
   .hint {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     max-width: 60ch;

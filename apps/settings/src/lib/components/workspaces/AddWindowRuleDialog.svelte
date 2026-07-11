@@ -198,13 +198,13 @@
   }
 
   .title {
-    font-size: 1rem;
+    font-size: var(--text-md);
     font-weight: 600;
     margin: 0;
   }
 
   .description {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     margin: 0;
     line-height: 1.4;
@@ -218,12 +218,12 @@
 
   .field label,
   .label-static {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
   }
 
   .field-error {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--destructive);
   }
 
@@ -241,7 +241,7 @@
   }
 
   .hint {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     font-weight: 400;
   }

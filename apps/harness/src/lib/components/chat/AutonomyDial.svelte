@@ -100,7 +100,7 @@
     border-radius: var(--radius-button);
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     transition: color var(--duration-fast) var(--ease-out);
   }
   .dial:hover {
@@ -120,7 +120,7 @@
     margin: 0;
     padding: 0.25rem 0.5rem 0.375rem;
     max-width: 15rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }

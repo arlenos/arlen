@@ -106,7 +106,7 @@ new file mode 100644
   }
   h2 {
     margin: 0 0 12px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }

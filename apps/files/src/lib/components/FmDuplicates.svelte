@@ -166,12 +166,12 @@
     }
   }
   .dup-state-title {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 500;
     color: var(--foreground);
   }
   .dup-state-hint {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
@@ -190,12 +190,12 @@
     min-width: 0;
   }
   .dup-title {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--foreground);
   }
   .dup-sub {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .dup-actions {
@@ -214,7 +214,7 @@
     background: var(--control-bg);
     border-radius: var(--radius-input);
     color: var(--foreground);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
   }
   .dup-btn:hover:not(:disabled) {
@@ -243,7 +243,7 @@
   }
   .group-head {
     padding: 6px 8px 2px;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -274,7 +274,7 @@
     border: none;
     background: transparent;
     border-radius: var(--radius-chip);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
@@ -310,7 +310,7 @@
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -318,7 +318,7 @@
   }
   .dir {
     min-width: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 38%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -326,7 +326,7 @@
   }
   .size,
   .mod {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }

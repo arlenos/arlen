@@ -298,7 +298,7 @@
 
 <style>
   .pt {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
   }
   .head,
   .row,
@@ -321,7 +321,7 @@
     padding: 0.5rem 0.6rem;
     border: none;
     background: transparent;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.02em;
     text-transform: uppercase;
@@ -346,7 +346,7 @@
     gap: 0.2rem;
   }
   .h-total {
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 400;
     text-transform: none;
     letter-spacing: 0;
@@ -354,12 +354,12 @@
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .arrow {
-    font-size: 0.5rem;
+    font-size: var(--text-2xs);
   }
 
   .grouprow {
     padding: 0.55rem 0.6rem 0.25rem;
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -429,7 +429,7 @@
   .picon.avatar {
     border-radius: var(--radius-chip, 4px);
     background: color-mix(in srgb, var(--color-fg-primary) 12%, transparent);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     color: var(--color-fg-primary);
   }
@@ -451,14 +451,14 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .limtag {
     padding: 0.02rem 0.3rem;
     border-radius: var(--radius-chip, 4px);
     background: color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
   }
   .cell.status[data-status="not-responding"] {

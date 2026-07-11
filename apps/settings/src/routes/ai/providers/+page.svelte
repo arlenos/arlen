@@ -305,7 +305,7 @@
   .empty {
     margin: 0;
     padding: var(--space-row, 0.75rem) 1rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   /* The add escape hatch sits just under the catalogue, reading as secondary. */
@@ -318,7 +318,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     white-space: nowrap;
   }
@@ -356,7 +356,7 @@
   .sov-local {
     margin: 0;
     padding-inline-start: 2.375rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .pctl {

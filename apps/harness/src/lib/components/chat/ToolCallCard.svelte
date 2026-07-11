@@ -117,7 +117,7 @@
     }
   }
   .tc-label {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -144,12 +144,12 @@
     min-width: 0;
   }
   .tc-key {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .tc-name {
     font-family: var(--font-mono, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
   }
   pre {
@@ -157,7 +157,7 @@
     padding: 0.5rem 0.75rem;
     background: var(--color-bg-app);
     border-radius: var(--radius-chip);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;

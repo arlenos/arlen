@@ -160,7 +160,7 @@
     gap: 0.5rem;
   }
   .preview-label {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -180,7 +180,7 @@
     padding: 0.5rem 0.25rem;
     border: none;
     background: transparent;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
     cursor: pointer;
@@ -202,7 +202,7 @@
     padding: 0.4375rem 1rem;
   }
   .contrast-label {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
   }
   .contrast-value {
@@ -211,7 +211,7 @@
     gap: 0.5rem;
   }
   .contrast-num {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
@@ -240,7 +240,7 @@
   .cf-hex {
     width: 6rem;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     padding: 0.3125rem 0.5rem;
     border-radius: var(--radius-input, 8px);
     background: color-mix(in srgb, var(--foreground) 6%, transparent);

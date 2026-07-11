@@ -236,7 +236,7 @@
     gap: 0.5rem;
   }
   .preview-label {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -309,7 +309,7 @@
     height: 1.5rem;
   }
   .fgbg-label {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
     margin-right: 0.5rem;
   }
@@ -317,7 +317,7 @@
     margin-left: auto;
     border: none;
     background: transparent;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     cursor: pointer;
   }
@@ -334,7 +334,7 @@
     border-radius: var(--radius-card, 12px);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.5;
   }
   .tp-swatchrow {
@@ -364,7 +364,7 @@
     gap: 0.625rem;
   }
   .ind-note {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .icon-tiles {
@@ -390,7 +390,7 @@
     padding: 0.5rem 0.25rem;
     border: none;
     background: transparent;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
     cursor: pointer;

@@ -133,7 +133,7 @@
     padding: 0;
     border: none;
     background: transparent;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     text-align: start;
@@ -175,7 +175,7 @@
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .sr-name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -183,14 +183,14 @@
   }
   .sr-dir {
     min-width: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 35%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .sr-meta {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
@@ -204,18 +204,18 @@
     padding: 2rem;
   }
   .sr-empty-title {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--foreground);
   }
   .sr-empty-hint {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
   .sr-more {
     padding: 8px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 </style>

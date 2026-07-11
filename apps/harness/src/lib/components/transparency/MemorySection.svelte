@@ -78,13 +78,13 @@
   }
   .task {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: var(--foreground);
   }
   .shape {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }

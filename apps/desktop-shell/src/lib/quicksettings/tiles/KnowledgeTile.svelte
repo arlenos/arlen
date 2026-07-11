@@ -162,7 +162,7 @@
     box-sizing: border-box;
     display: flex;
     align-items: center;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
     line-height: 1.2;
   }

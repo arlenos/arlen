@@ -55,6 +55,20 @@
   --radius-modal:  16px;
   --radius-full:   9999px;
 
+  /* Type scale — a base-relative ladder off the theme's --font-size-base
+     (emitted by sdk/theme, driven live by the Appearance "Text size" slider).
+     Both the scoped primitives and the Tailwind text-* utilities read these,
+     so one knob scales the whole UI. The 15px fallback holds until the theme
+     injects the user's value; see docs plan "PR-3 semantic type scale". */
+  --font-size-base: 15px;
+  --text-2xs: calc(var(--font-size-base) - 3px);
+  --text-xs:  calc(var(--font-size-base) - 2px);
+  --text-sm:  calc(var(--font-size-base) - 1px);
+  --text-base: var(--font-size-base);
+  --text-md:  calc(var(--font-size-base) + 1px);
+  --text-lg:  calc(var(--font-size-base) + 3px);
+  --text-xl:  calc(var(--font-size-base) + 6px);
+
   /* Sizing scale — see docs/architecture/sizing-system.md.
      Semantic naming over t-shirt sizing. Components pick a token
      by VISUAL ROLE. Variant props on components (sm/default/lg)
@@ -204,6 +218,17 @@
   --radius-card:   var(--radius-card);
   --radius-modal:  var(--radius-modal);
   --radius-full:   var(--radius-full);
+
+  /* Type-scale utilities — text-2xs .. text-xl emit var(--text-*), the
+     :root ladder above, so Tailwind text sizes are base-relative and the
+     "Text size" slider scales the whole UI (not just the terminal console). */
+  --text-2xs:  var(--text-2xs);
+  --text-xs:   var(--text-xs);
+  --text-sm:   var(--text-sm);
+  --text-base: var(--text-base);
+  --text-md:   var(--text-md);
+  --text-lg:   var(--text-lg);
+  --text-xl:   var(--text-xl);
 
   /* Sizing-scale utilities — see docs/architecture/sizing-system.md.
      Generates h-tag, h-control-compact, h-control,

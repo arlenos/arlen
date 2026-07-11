@@ -140,7 +140,7 @@
   }
 
   .pill-label {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 500;
     color: var(--foreground);
     line-height: 1;

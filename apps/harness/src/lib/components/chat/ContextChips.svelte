@@ -49,7 +49,7 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-button);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
     max-width: 16rem;
   }

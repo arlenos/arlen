@@ -306,7 +306,7 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-app) 8%, transparent);
     border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
     color: var(--color-fg-app);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     outline: none;
     transition:
       background 120ms ease,
@@ -412,7 +412,7 @@
   }
 
   .search-result-title {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 500;
     color: var(--color-fg-app);
     white-space: nowrap;
@@ -424,7 +424,7 @@
     display: flex;
     gap: 0.625rem;
     min-width: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-app) 55%, transparent);
     white-space: nowrap;
     overflow: hidden;

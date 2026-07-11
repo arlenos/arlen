@@ -43,7 +43,7 @@
     /* Chips ride the roundness scale (radius-chip), not the categorical pill. */
     border-radius: var(--radius-chip, 4px);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1;
     color: color-mix(in srgb, var(--foreground) 80%, transparent);
   }

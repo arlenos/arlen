@@ -325,7 +325,7 @@
     border-radius: var(--radius-button);
     color: var(--foreground);
     font-family: ui-monospace, SFMono-Regular, monospace;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     padding: 0 8px;
     outline: none;
     transition: border-color var(--duration-fast, 150ms) var(--ease-out, ease);

@@ -101,7 +101,7 @@
 
   .wp-inline-hint {
     margin-left: auto;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     opacity: 0.35;
   }
 </style>

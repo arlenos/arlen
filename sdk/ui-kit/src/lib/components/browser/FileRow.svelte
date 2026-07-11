@@ -252,7 +252,7 @@
     opacity: 1;
   }
   .fr-name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -270,14 +270,14 @@
     border-radius: var(--radius-chip);
     background: var(--color-bg-input, var(--background));
     color: var(--foreground);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     outline: none;
   }
 
   .fr-target {
     flex-shrink: 1;
     min-width: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 35%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -285,20 +285,20 @@
   }
 
   .fr-size {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     text-align: end;
   }
   .fr-location {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .fr-modified {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }

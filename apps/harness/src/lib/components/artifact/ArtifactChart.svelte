@@ -124,7 +124,7 @@
     flex-wrap: wrap;
     gap: 0.25rem 0.875rem;
     margin-top: 0.5rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
   .legend-item {

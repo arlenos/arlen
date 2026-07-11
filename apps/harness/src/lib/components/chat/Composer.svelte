@@ -398,7 +398,7 @@
     border: none;
     background: transparent;
     color: var(--foreground);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     text-align: left;
     border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
   }

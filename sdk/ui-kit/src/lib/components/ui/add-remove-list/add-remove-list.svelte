@@ -79,7 +79,7 @@
 
   .empty {
     padding: 0.75rem 1rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     border: 1px dashed
       color-mix(in srgb, var(--foreground) 14%, transparent);
@@ -110,7 +110,7 @@
   .content {
     flex: 1;
     min-width: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
   }
 

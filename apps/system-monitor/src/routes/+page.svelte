@@ -141,7 +141,7 @@
     flex-shrink: 0;
   }
   .app-title {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
   }
@@ -157,7 +157,7 @@
     padding: 0.6rem 0.75rem;
     border: none;
     background: transparent;
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
     cursor: pointer;
   }
@@ -202,7 +202,7 @@
     border: none;
     background: transparent;
     color: var(--color-fg-primary);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     outline: none;
   }
   .filter-input::placeholder {
@@ -219,7 +219,7 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-primary) 14%, transparent);
     border-radius: var(--radius-input, 8px);
     background: transparent;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
     cursor: pointer;
   }

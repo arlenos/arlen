@@ -167,7 +167,7 @@
 
 <style>
   .meta-count {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 

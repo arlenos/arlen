@@ -166,7 +166,7 @@
     border-radius: var(--radius-button);
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     transition: color var(--duration-fast) var(--ease-out);
   }
   .mp-trigger:hover {
@@ -204,7 +204,7 @@
     align-items: center;
     gap: 0.375rem;
     padding: 0.375rem 0.625rem 0.25rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
@@ -221,13 +221,13 @@
   }
   .mp-ctx {
     flex-shrink: 0;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-family: var(--font-mono, monospace);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .mp-note {
     flex-shrink: 0;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
   /* A fixed check gutter on every row so the ctx column stays aligned whether

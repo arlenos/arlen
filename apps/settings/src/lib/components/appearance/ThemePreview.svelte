@@ -100,12 +100,12 @@
     gap: 0.1875rem;
   }
   .pv-h {
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     font-weight: 600;
     color: var(--foreground);
   }
   .pv-p {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--muted-foreground);
   }
   .pv-row {
@@ -122,7 +122,7 @@
   }
   .pv-item {
     padding: 0.375rem 0.625rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--foreground);
   }
   .pv-selected {

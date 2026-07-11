@@ -369,7 +369,7 @@
     flex-shrink: 0;
   }
   .focus-name {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--foreground);
     opacity: 0.85;

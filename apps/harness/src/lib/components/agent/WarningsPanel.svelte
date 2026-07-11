@@ -41,7 +41,7 @@
   .empty {
     margin: 0;
     padding: 0.75rem var(--space-row, 0.75rem);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .list {

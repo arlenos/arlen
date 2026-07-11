@@ -56,13 +56,13 @@
   }
   .title {
     margin: 0;
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--foreground);
   }
   .sub {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
@@ -82,7 +82,7 @@
     border-radius: var(--radius-button);
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     transition:
       background-color var(--duration-fast) var(--ease-out),
       color var(--duration-fast) var(--ease-out);

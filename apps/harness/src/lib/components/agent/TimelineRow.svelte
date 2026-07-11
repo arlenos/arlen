@@ -126,7 +126,7 @@
     height: var(--height-tag, 20px);
     padding: 0 0.5rem;
     border-radius: var(--radius-chip);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
@@ -159,13 +159,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
   .meta {
     flex-shrink: 0;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   /* Failure markers are first-class, same register as the badges. */
@@ -186,7 +186,7 @@
     align-items: baseline;
     gap: 0.5rem;
     margin-top: 0.125rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
@@ -202,7 +202,7 @@
   }
   .raw-title {
     margin: 0 0 0.375rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .raw-grid {
@@ -212,19 +212,19 @@
     margin: 0;
   }
   .raw-grid dt {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .raw-grid dd {
     margin: 0;
     font-family: var(--font-mono, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
     word-break: break-word;
   }
   .undo-note {
     margin: 0.375rem 0 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--color-error);
   }
   .end {
@@ -234,7 +234,7 @@
     min-height: var(--height-tag, 20px);
   }
   .time {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: var(--height-tag, 20px);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
@@ -249,7 +249,7 @@
     border: none;
     background: transparent;
     border-radius: var(--radius-button);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
     transition:
       background-color var(--duration-fast) var(--ease-out),

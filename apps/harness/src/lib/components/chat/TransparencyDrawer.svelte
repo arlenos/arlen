@@ -191,7 +191,7 @@
     background: var(--color-bg-app, #0f0f0f);
     border-left: 1px solid var(--color-border);
     box-shadow: -12px 0 40px rgba(0, 0, 0, 0.4);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: var(--foreground, #fafafa);
   }
   .head {
@@ -204,7 +204,7 @@
     flex-shrink: 0;
   }
   .head-title {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
   }
   .x {
@@ -236,7 +236,7 @@
      component renders its real content below it. */
   .sec-head {
     margin-bottom: 0.375rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);

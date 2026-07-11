@@ -169,7 +169,7 @@
      button's text-sm never reaches a bare text node. */
   .ts-text {
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     min-width: 0;
     overflow: hidden;
@@ -179,7 +179,7 @@
 
   .ts-empty {
     padding: 4px 8px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.5;
     color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
   }
@@ -220,7 +220,7 @@
     border-radius: var(--radius-input);
     background: transparent;
     color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }

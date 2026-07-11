@@ -96,7 +96,7 @@
     border: none;
     background: transparent;
     color: var(--foreground);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     text-align: start;
   }
   .file-head:hover {
@@ -140,7 +140,7 @@
     display: inline-flex;
     gap: 0.4rem;
     font-family: var(--font-mono, monospace);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-variant-numeric: tabular-nums;
   }
   .counts .add {
@@ -152,7 +152,7 @@
   .body {
     border-top: 1px solid var(--color-border);
     font-family: var(--font-mono, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.5;
     overflow-x: auto;
   }

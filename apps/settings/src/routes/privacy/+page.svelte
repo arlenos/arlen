@@ -487,7 +487,7 @@
     gap: 0.625rem;
   }
   .p-label {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--foreground);
   }
@@ -496,7 +496,7 @@
   }
   .warn {
     margin-left: 0.375rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: var(--color-warning, #ca8a04);
   }
 
@@ -515,7 +515,7 @@
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
   .fam-sub-label {
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -537,7 +537,7 @@
      emphasized word. Own-data dims the line. */
   .verb {
     justify-self: end;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .object {
@@ -545,13 +545,13 @@
     display: inline-flex;
     align-items: baseline;
     gap: 0.375rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
   .prov {
     justify-self: start;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
     white-space: nowrap;
   }
@@ -567,7 +567,7 @@
     border: none;
     background: transparent;
     padding: 0.125rem 0.25rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
     cursor: pointer;
@@ -582,7 +582,7 @@
     justify-self: end;
     flex-shrink: 0;
     padding: 0.125rem 0.25rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 32%, transparent);
     white-space: nowrap;
   }
@@ -618,7 +618,7 @@
     gap: 0.1875rem;
   }
   .detail li {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
 
@@ -636,13 +636,13 @@
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .data-name {
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     font-weight: 600;
     color: var(--foreground);
   }
   .data-count {
     margin-left: auto;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 
@@ -662,19 +662,19 @@
      never repeats "declared" down the list. */
   .reacher-prov {
     justify-self: end;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 42%, transparent);
     white-space: nowrap;
   }
   .who {
     justify-self: start;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
   .how {
     justify-self: end;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .how.dim {
@@ -697,7 +697,7 @@
     border: none;
     background: transparent;
     padding: 0.125rem 0.25rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     cursor: pointer;
@@ -724,14 +724,14 @@
     box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.3));
   }
   .snack-text {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
   }
   .snack-undo {
     border: none;
     background: transparent;
     padding: 0.125rem 0.375rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--color-accent, var(--foreground));
     cursor: pointer;
@@ -757,30 +757,30 @@
     min-width: 0;
   }
   .cap-label {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--foreground);
   }
   .cap-scope {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .cap-who {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
     white-space: nowrap;
   }
   .cap-when {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
     white-space: nowrap;
   }
   .cap-reads {
     justify-self: end;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
@@ -792,13 +792,13 @@
   .note {
     margin: 0;
     padding: var(--space-row, 0.75rem) 1rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .usage-note {
     margin: 0;
     padding: 0 0.25rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
 </style>

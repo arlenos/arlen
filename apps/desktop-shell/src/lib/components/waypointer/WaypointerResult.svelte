@@ -109,7 +109,7 @@
   }
 
   .wp-unicode-char {
-    font-size: 1.25rem;
+    font-size: var(--text-xl);
     line-height: 1;
     width: var(--height-control-compact, 24px);
     text-align: center;
@@ -144,12 +144,12 @@
   }
 
   .wp-app-name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.3;
   }
 
   .wp-app-desc {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     line-height: 1.3;
     opacity: 0.45;
     white-space: nowrap;

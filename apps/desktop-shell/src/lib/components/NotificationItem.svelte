@@ -102,7 +102,7 @@
     object-fit: contain;
   }
   .notif-icon-letter {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--color-fg-shell);
     opacity: 0.7;
@@ -127,7 +127,7 @@
   }
 
   .notif-summary {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 500;
     line-height: 1.3;
     color: var(--color-fg-shell);
@@ -138,13 +138,13 @@
     text-overflow: ellipsis;
   }
   .notif-time {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
   }
   .notif-body {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
     line-height: 1.4;
     display: -webkit-box;
@@ -184,7 +184,7 @@
   .notif-action-btn {
     padding: 6px 10px;
     border-radius: var(--radius-chip);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);

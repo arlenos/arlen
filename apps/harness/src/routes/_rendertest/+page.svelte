@@ -143,7 +143,7 @@
   }
   .role {
     margin: 0;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.04em;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
@@ -153,10 +153,10 @@
     padding: 0.5rem 0.75rem;
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
   }
   .prose {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.55;
     color: var(--foreground);
   }

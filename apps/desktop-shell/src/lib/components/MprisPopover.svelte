@@ -147,7 +147,7 @@
     min-width: 0;
   }
   .np-title {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--color-fg-shell);
     overflow: hidden;
@@ -155,14 +155,14 @@
     white-space: nowrap;
   }
   .np-artist {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .np-album {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-shell) 45%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -177,7 +177,7 @@
   .np-times {
     display: flex;
     justify-content: space-between;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
   }
@@ -199,7 +199,7 @@
     border-radius: var(--radius-chip);
     background: transparent;
     color: color-mix(in srgb, var(--color-fg-shell) 75%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
   .np-player:hover {
     background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);

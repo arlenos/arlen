@@ -158,7 +158,7 @@
     min-width: 0;
     padding: 0.375rem 0.5rem;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--foreground);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
     border-radius: var(--radius-chip);
@@ -181,7 +181,7 @@
   }
 
   .error {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--destructive);
   }
 

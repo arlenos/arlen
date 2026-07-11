@@ -82,7 +82,7 @@
     background: var(--color-bg-app, #0f0f0f);
     border-left: 1px solid var(--color-border);
     box-shadow: -12px 0 40px rgba(0, 0, 0, 0.4);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: var(--foreground, #fafafa);
   }
   .head {
@@ -95,7 +95,7 @@
     flex-shrink: 0;
   }
   .head-title {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
   }
   .x {
@@ -121,7 +121,7 @@
   }
   .empty {
     padding: 0.75rem 0.5rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .row {
@@ -140,13 +140,13 @@
     background: color-mix(in srgb, var(--foreground) 6%, transparent);
   }
   .role {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .text {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.4;
     color: var(--foreground);
     display: -webkit-box;

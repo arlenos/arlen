@@ -99,12 +99,12 @@
   }
   .imp-title {
     margin: 0;
-    font-size: 1rem;
+    font-size: var(--text-md);
     font-weight: 600;
   }
   .imp-lead {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
@@ -131,15 +131,15 @@
     color: var(--foreground);
   }
   .drop-label {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
   }
   .drop-hint {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
   .imp-error {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--destructive, #c96a6a);
   }
 </style>

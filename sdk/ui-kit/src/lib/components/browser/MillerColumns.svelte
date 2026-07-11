@@ -233,7 +233,7 @@
   .mc-name {
     flex: 1;
     min-width: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -250,7 +250,7 @@
 
   .mc-empty {
     padding: 8px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 </style>

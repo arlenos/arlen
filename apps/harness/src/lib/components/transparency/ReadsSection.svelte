@@ -78,7 +78,7 @@
     margin: 0;
     padding: 0.5rem var(--space-row, 0.75rem);
     border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
     text-align: center;
   }

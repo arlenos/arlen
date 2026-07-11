@@ -43,7 +43,7 @@
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, currentColor 12%, transparent);
     color: inherit;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     line-height: 1;
     flex-shrink: 0;

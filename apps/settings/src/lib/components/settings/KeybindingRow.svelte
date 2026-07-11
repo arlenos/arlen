@@ -112,7 +112,7 @@
     gap: 0.5rem;
   }
   .kb-title {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
@@ -122,7 +122,7 @@
   }
   .kb-desc {
     margin-top: 0.0625rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .kb-mono,

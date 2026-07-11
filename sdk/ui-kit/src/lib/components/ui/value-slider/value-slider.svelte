@@ -65,7 +65,7 @@
     justify-content: flex-end;
     gap: 2px;
     min-width: 40px;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
@@ -74,7 +74,7 @@
   }
 
   .unit {
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 </style>

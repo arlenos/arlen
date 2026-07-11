@@ -158,13 +158,13 @@
     display: inline-flex;
     align-items: center;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
   }
 
   .cb-command {
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: var(--foreground);
     white-space: pre-wrap;
@@ -200,7 +200,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .cb-running-dot {
@@ -234,14 +234,14 @@
   .cb-exit {
     flex-shrink: 0;
     color: var(--color-error);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
   }
 
   .cb-duration {
     flex-shrink: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }

@@ -156,12 +156,12 @@
   }
 
   .modified-badge {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
 
   .footer-note {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.5;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     padding: 0.75rem 1rem;

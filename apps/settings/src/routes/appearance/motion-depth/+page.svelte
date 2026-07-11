@@ -207,7 +207,7 @@
     gap: 0.5rem;
   }
   .preview-label {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -228,7 +228,7 @@
     border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
   }
   .ms-caption {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .ms-track {
@@ -268,7 +268,7 @@
     border-radius: var(--radius-card, 12px);
     background: color-mix(in srgb, var(--foreground) 12%, transparent);
     color: var(--foreground);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
 
   /* The expander trigger (class rides the Collapsible root, so global). */
@@ -279,7 +279,7 @@
     padding: 0.5rem 0.25rem;
     border: none;
     background: transparent;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
     cursor: pointer;

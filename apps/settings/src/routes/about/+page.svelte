@@ -145,7 +145,7 @@
 
 <style>
   .meta {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
   .meta.on {

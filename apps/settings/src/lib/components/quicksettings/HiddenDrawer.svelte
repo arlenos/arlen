@@ -117,7 +117,7 @@
     background: transparent;
     border: none;
     color: var(--color-fg-shell);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     text-align: left;
     transition: background-color 100ms ease;
@@ -135,7 +135,7 @@
   }
   .drawer-count {
     margin-left: auto;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
     background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
     padding: 0 8px;
@@ -160,7 +160,7 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 14%, transparent);
     border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 75%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     cursor: grab;
     transition: background-color 100ms ease, color 100ms ease;
   }
