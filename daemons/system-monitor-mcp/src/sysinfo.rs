@@ -461,6 +461,16 @@ impl ProcReader {
         }
         out
     }
+
+    /// The system-wide total CPU time in clock ticks: the sum of the fields on the
+    /// aggregate `cpu ` line of `/proc/stat`. This is the denominator for a
+    /// process's CPU%. 0 if `/proc/stat` is unreadable.
+    pub fn total_cpu_jiffies(&self) -> u64 {
+        std::fs::read_to_string(self.root.join("stat"))
+            .ok()
+            .and_then(|t| parse_total_cpu_jiffies(&t))
+            .unwrap_or(0)
+    }
 }
 
 /// The upper bound on the detailed process list (a desktop runs a few hundred;
@@ -538,6 +548,61 @@ fn process_name(comm: &str, cmdline: &str) -> String {
     comm.trim().to_string()
 }
 
+/// Sum the numeric fields of the aggregate `cpu ` line of `/proc/stat`
+/// (`"cpu  123 45 678 ..."`), the total CPU time in clock ticks. Pure.
+fn parse_total_cpu_jiffies(stat: &str) -> Option<u64> {
+    let line = stat.lines().find(|l| l.starts_with("cpu "))?;
+    Some(
+        line.split_whitespace()
+            .skip(1)
+            .filter_map(|t| t.parse::<u64>().ok())
+            .sum(),
+    )
+}
+
+/// The per-process rates the task manager shows, derived from two
+/// [`ProcessDetail`] snapshots spaced by an interval plus the system CPU jiffies
+/// at each snapshot.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ProcessRates {
+    /// Share of total CPU capacity used in the window (0-100): the process's CPU
+    /// jiffies delta over the system's total jiffies delta.
+    pub cpu_pct: f64,
+    /// Storage I/O rate in kibibytes per second (read+write bytes delta / interval).
+    pub disk_kbs: f64,
+}
+
+/// Derive a process's CPU% and disk KB/s from two snapshots. `total_prev`/
+/// `total_now` are [`ProcReader::total_cpu_jiffies`] at each snapshot;
+/// `interval_secs` is the wall time between them. CPU% is a ratio (needs no
+/// interval); disk rate is bytes-delta over the interval. Per-process NETWORK is
+/// not exposed by `/proc/<pid>` (it needs eBPF/cgroup attribution), so `net_kbs`
+/// is a separate later concern and is not produced here. Saturating deltas so a
+/// counter reset (PID reuse) reads as zero, never negative. Pure.
+pub fn process_rates(
+    prev: &ProcessDetail,
+    now: &ProcessDetail,
+    total_prev: u64,
+    total_now: u64,
+    interval_secs: f64,
+) -> ProcessRates {
+    let cpu_delta = now.cpu_jiffies.saturating_sub(prev.cpu_jiffies) as f64;
+    let total_delta = total_now.saturating_sub(total_prev) as f64;
+    let cpu_pct = if total_delta > 0.0 {
+        (cpu_delta / total_delta * 100.0).clamp(0.0, 100.0)
+    } else {
+        0.0
+    };
+    let io_now = now.io_read_bytes.saturating_add(now.io_write_bytes);
+    let io_prev = prev.io_read_bytes.saturating_add(prev.io_write_bytes);
+    let disk_kbs = if interval_secs > 0.0 {
+        io_now.saturating_sub(io_prev) as f64 / interval_secs / 1024.0
+    } else {
+        0.0
+    };
+    ProcessRates { cpu_pct, disk_kbs }
+}
+
 impl Default for ProcReader {
     fn default() -> Self {
         Self::new()
@@ -604,6 +669,34 @@ mod tests {
         assert_eq!(p.mem_kb, 2048);
         assert_eq!(p.cpu_jiffies, 100);
         assert_eq!((p.io_read_bytes, p.io_write_bytes), (1024, 512));
+    }
+
+    #[test]
+    fn total_cpu_jiffies_sums_the_aggregate_cpu_line() {
+        let stat = "cpu  100 20 300 4000 5 6 7 0 0 0\ncpu0 50 10 150 2000 ...\n";
+        assert_eq!(parse_total_cpu_jiffies(stat), Some(100 + 20 + 300 + 4000 + 5 + 6 + 7));
+        assert_eq!(parse_total_cpu_jiffies("no cpu line"), None);
+    }
+
+    #[test]
+    fn process_rates_are_cpu_ratio_and_disk_rate() {
+        let mk = |cpu: u64, r: u64, w: u64| ProcessDetail {
+            pid: 1,
+            name: "x".into(),
+            state: 'R',
+            mem_kb: 0,
+            cpu_jiffies: cpu,
+            io_read_bytes: r,
+            io_write_bytes: w,
+        };
+        // 50 proc jiffies over 200 total = 25%; io grew 4096+4096 bytes over 2s = 4 KiB/s.
+        let rates = process_rates(&mk(100, 0, 0), &mk(150, 4096, 4096), 1000, 1200, 2.0);
+        assert!((rates.cpu_pct - 25.0).abs() < 1e-9);
+        assert!((rates.disk_kbs - 4.0).abs() < 1e-9);
+        // A counter reset (now < prev) saturates to zero, never negative.
+        let reset = process_rates(&mk(150, 9000, 0), &mk(10, 0, 0), 1200, 1000, 1.0);
+        assert_eq!(reset.cpu_pct, 0.0);
+        assert_eq!(reset.disk_kbs, 0.0);
     }
 
     #[test]

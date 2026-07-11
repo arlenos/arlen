@@ -131,7 +131,7 @@
         {/if}
 
         <div class="cd-req">
-          <span class="cd-avatar tone-{tone}">{friendly(p.requester).charAt(0)}</span>
+          <span class="cd-avatar">{friendly(p.requester).charAt(0)}</span>
           <span class="cd-req-text">
             <span class="cd-req-name">{friendly(p.requester)}</span>
             <span class="cd-req-id">
@@ -188,12 +188,7 @@
           </div>
         {/if}
 
-        {#if holdDestructive || irreversibleOther}
-          <div class="cd-warn tone-danger">
-            <AlertTriangle size={14} strokeWidth={2} aria-hidden="true" />
-            This cannot be undone.
-          </div>
-        {:else if standingElsewhere}
+        {#if standingElsewhere}
           <p class="cd-note">
             Only continue if you started this. To let {friendly(p.requester)} do it on its own,
             allow it in App access.
@@ -294,14 +289,6 @@
     font-size: 0.875rem;
     font-weight: 600;
     color: var(--foreground);
-  }
-  .cd-avatar.tone-caution {
-    background: color-mix(in srgb, var(--color-warning) 16%, transparent);
-    color: var(--color-warning);
-  }
-  .cd-avatar.tone-danger {
-    background: color-mix(in srgb, var(--color-error) 16%, transparent);
-    color: var(--color-error);
   }
   .cd-req-text {
     display: flex;
@@ -455,10 +442,6 @@
   .cd-warn.tone-caution {
     background: color-mix(in srgb, var(--color-warning) 12%, transparent);
     color: color-mix(in srgb, var(--color-warning) 92%, var(--foreground));
-  }
-  .cd-warn.tone-danger {
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
-    color: var(--color-error);
   }
   /* A quiet reassurance / pointer (reversible undo, where standing access lives)
      - not a wall, just a line. */
