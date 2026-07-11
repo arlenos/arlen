@@ -1,0 +1,10 @@
+# Starting permission profile for a Flatpak manager GUI. It inspects and manages
+# installed app data under the user's files (Home); it drives the system package
+# tooling rather than the network directly, so no network of its own and no
+# Knowledge Graph.
+[info]
+app_id = "warehouse"
+tier = "third-party"
+
+[filesystem]
+home = true

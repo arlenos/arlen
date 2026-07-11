@@ -1,0 +1,9 @@
+# Starting permission profile for a personal-finance manager. It keeps account
+# books as local files, so it gets Home; its work is offline, so no network of its
+# own and no Knowledge Graph.
+[info]
+app_id = "denaro"
+tier = "third-party"
+
+[filesystem]
+home = true
