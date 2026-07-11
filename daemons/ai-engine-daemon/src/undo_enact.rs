@@ -18,7 +18,9 @@
 use std::io::Read;
 use std::path::Path;
 
-use arlen_ai_undo_core::effect_model::InverseReceipt;
+use arlen_ai_undo_core::effect_model::{
+    CanonicalPath, CreatedIdentity, InverseReceipt, SettingTarget,
+};
 use arlen_config_format::{checked_remove, checked_set, handler_for, ConfigValue, Format};
 use sha2::{Digest, Sha256};
 
@@ -232,10 +234,85 @@ fn atomic_write(path: &str, bytes: &[u8]) -> Result<(), EnactError> {
     })
 }
 
+// --- Capture: the forward half. A reversible executor arm records the inverse of
+// the action it is about to perform (or just performed), so a later undo replays
+// it through `enact_inverse`. Capture + enact are a pair: `capture -> perform ->
+// enact` restores the pre-action state (the round-trip invariant tested below).
+
+/// The inverse of a relocation `from -> to`: undo moves `to` back to `from`.
+/// Captured trivially from the two paths (no read); `None` if either is not a
+/// canonical absolute path (the executor works in canonical paths, so this only
+/// guards a mis-supplied argument).
+pub fn inverse_of_move(from: &str, to: &str) -> Option<InverseReceipt> {
+    Some(InverseReceipt::RestorePath {
+        now: CanonicalPath::new(to)?,
+        prior: CanonicalPath::new(from)?,
+    })
+}
+
+/// The inverse of creating `path`: undo deletes exactly that file, identity-bound
+/// to the content it holds NOW. Call AFTER the create so the fingerprint witnesses
+/// the created bytes. `Err` if the file is unreadable (nothing to bind to) or the
+/// path is not canonical-absolute.
+pub fn capture_created(path: &str) -> Result<InverseReceipt, EnactError> {
+    let fingerprint = fingerprint_file(Path::new(path))
+        .ok_or_else(|| EnactError::Io(format!("created file unreadable: {path}")))?;
+    let canon = CanonicalPath::new(path)
+        .ok_or(EnactError::Unsupported("created path is not canonical-absolute"))?;
+    let created = CreatedIdentity::new(canon, &fingerprint)
+        .ok_or(EnactError::Unsupported("empty fingerprint"))?;
+    Ok(InverseReceipt::DeleteCreated { created })
+}
+
+/// The inverse of setting `key` in `file`: undo restores the value the key holds
+/// NOW (or removes the key if it is currently absent). Call BEFORE the set so the
+/// captured prior is the pre-action value. `Err` for an unknown format or a
+/// non-scalar (Opaque) current value that cannot be represented as a restorable
+/// prior (the action is then not RestoreValue-reversible).
+pub fn capture_prior_value(file: &str, key: &str) -> Result<InverseReceipt, EnactError> {
+    let format = format_for_file(file)
+        .ok_or(EnactError::Unsupported("unrecognized setting file format"))?;
+    let handler = handler_for(format);
+    let target =
+        SettingTarget::new(file, key).ok_or(EnactError::Unsupported("empty file or key"))?;
+
+    let prior = match std::fs::read_to_string(file) {
+        Ok(text) => {
+            let model = handler
+                .read(&text)
+                .map_err(|e| EnactError::Io(format!("read setting: {e}")))?;
+            match model.get(key) {
+                Some(ConfigValue::Opaque) => {
+                    return Err(EnactError::Unsupported("current value is non-scalar"))
+                }
+                Some(v) => Some(value_to_prior_string(v)),
+                None => None,
+            }
+        }
+        // Absent file: the key is currently absent, so undo removes it.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(EnactError::Io(e.to_string())),
+    };
+    Ok(InverseReceipt::RestoreValue { target, prior })
+}
+
+/// A scalar [`ConfigValue`] as the textual prior a [`InverseReceipt::RestoreValue`]
+/// carries. The inverse of [`parse_prior`], so a captured value round-trips back to
+/// the same scalar on enactment.
+fn value_to_prior_string(v: &ConfigValue) -> String {
+    match v {
+        ConfigValue::String(s) => s.clone(),
+        ConfigValue::Bool(b) => b.to_string(),
+        ConfigValue::Int(i) => i.to_string(),
+        ConfigValue::Float(f) => f.to_string(),
+        // Guarded before the call; a String rendering is the safe fallback.
+        ConfigValue::Opaque => String::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arlen_ai_undo_core::effect_model::{CanonicalPath, CreatedIdentity, SettingTarget};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn tmp() -> std::path::PathBuf {
@@ -397,6 +474,74 @@ mod tests {
         assert_eq!(parse_prior("42"), ConfigValue::Int(42));
         assert_eq!(parse_prior("3.5"), ConfigValue::Float(3.5));
         assert_eq!(parse_prior("#6366f1"), ConfigValue::String("#6366f1".into()));
+    }
+
+    #[test]
+    fn round_trip_move_capture_perform_enact_restores_the_origin() {
+        let d = tmp();
+        let from = d.join("a");
+        let to = d.join("b");
+        std::fs::write(&from, b"payload").unwrap();
+        // Capture the inverse, then perform the move, then undo.
+        let inv = inverse_of_move(from.to_str().unwrap(), to.to_str().unwrap()).unwrap();
+        std::fs::rename(&from, &to).unwrap();
+        assert_eq!(enact_inverse(&inv).unwrap(), EnactOutcome::Restored);
+        assert!(from.exists() && !to.exists(), "the file is back at its origin");
+        assert_eq!(std::fs::read(&from).unwrap(), b"payload");
+    }
+
+    #[test]
+    fn round_trip_create_capture_after_enact_deletes_the_creation() {
+        let d = tmp();
+        let f = d.join("created");
+        // Perform the create, then capture (fingerprint the created bytes), then undo.
+        std::fs::write(&f, b"agent output").unwrap();
+        let inv = capture_created(f.to_str().unwrap()).unwrap();
+        assert_eq!(enact_inverse(&inv).unwrap(), EnactOutcome::Deleted);
+        assert!(!f.exists());
+    }
+
+    #[test]
+    fn round_trip_setting_capture_before_perform_enact_restores_the_prior() {
+        let d = tmp();
+        let f = d.join("shell.toml");
+        std::fs::write(&f, "# keep\naccent = \"#6366f1\"\nflag = true\n").unwrap();
+        // Capture the prior BEFORE changing, then perform the set, then undo.
+        let inv_accent = capture_prior_value(f.to_str().unwrap(), "accent").unwrap();
+        let inv_flag = capture_prior_value(f.to_str().unwrap(), "flag").unwrap();
+        std::fs::write(&f, "# keep\naccent = \"#ff0000\"\nflag = false\n").unwrap();
+        // Undo both: the string and the bool round-trip back to their pre-values.
+        assert_eq!(enact_inverse(&inv_accent).unwrap(), EnactOutcome::Restored);
+        assert_eq!(enact_inverse(&inv_flag).unwrap(), EnactOutcome::Restored);
+        let out = std::fs::read_to_string(&f).unwrap();
+        assert!(out.contains("accent = \"#6366f1\""), "string prior restored: {out}");
+        assert!(out.contains("flag = true"), "bool prior restored: {out}");
+    }
+
+    #[test]
+    fn capture_prior_of_an_absent_key_is_a_removal_inverse() {
+        let d = tmp();
+        let f = d.join("shell.toml");
+        std::fs::write(&f, "a = 1\n").unwrap();
+        // The agent is about to ADD `b`; its prior is absent, so the inverse removes it.
+        let inv = capture_prior_value(f.to_str().unwrap(), "b").unwrap();
+        match &inv {
+            InverseReceipt::RestoreValue { prior, .. } => assert!(prior.is_none()),
+            _ => panic!("expected RestoreValue"),
+        }
+        std::fs::write(&f, "a = 1\nb = 2\n").unwrap();
+        assert_eq!(enact_inverse(&inv).unwrap(), EnactOutcome::Restored);
+        assert!(!std::fs::read_to_string(&f).unwrap().contains("b ="), "the added key is undone");
+    }
+
+    #[test]
+    fn capture_helpers_refuse_bad_input() {
+        assert!(inverse_of_move("relative/from", "/abs/to").is_none());
+        assert!(capture_created("/no/such/file/here").is_err());
+        assert!(matches!(
+            capture_prior_value("/x/mystery.xyz", "k"),
+            Err(EnactError::Unsupported(_))
+        ));
     }
 
     #[test]
