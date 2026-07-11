@@ -18,7 +18,7 @@ use ed25519_dalek::SigningKey;
 
 use crate::grant::CapsuleGrant;
 use crate::proto::SignedGrant;
-use crate::revocation::RevocationFile;
+use crate::revocation::{CapsuleMeta, RevocationFile};
 use crate::scope::CapsuleScope;
 use crate::slice::FrozenSlice;
 use crate::store::store_frozen_slice;
@@ -36,6 +36,12 @@ pub struct MintParams {
     pub max_ops: u64,
     /// The minting user.
     pub originating_user: String,
+    /// The user-facing name for the capsule ("Reading list"), recorded so the
+    /// active-capsules surface can label it.
+    pub label: String,
+    /// A plain, relation-type-level summary of what the slice carries, recorded for
+    /// the same surface (the mint caller derives it from the scope).
+    pub scope_summary: String,
 }
 
 /// Why a mint failed.
@@ -66,7 +72,19 @@ pub fn mint_capsule(
     let handle = fresh_handle()?;
     let owner = format!("capsule:{handle}");
     let hash = store_frozen_slice(store, slice, &owner)?;
-    ledger.register(&handle)?;
+    // Record the mint metadata alongside the revocation handle so the active-
+    // capsules surface can name and describe the capsule. Day-one every capsule's
+    // audience is the local machine (cross-device is parked, CC-R8); the raw
+    // audience key stays in the grant.
+    let meta = CapsuleMeta {
+        label: params.label,
+        audience: "this machine".to_string(),
+        scope: params.scope_summary,
+        expiry_micros: params.expires_at_micros,
+        max_ops: params.max_ops,
+        minted_at_micros: now_micros(),
+    };
+    ledger.register_with_meta(&handle, meta)?;
     let grant = CapsuleGrant {
         scope: params.scope,
         slice_hash: hash.as_str().to_string(),
@@ -106,6 +124,14 @@ fn fresh_handle() -> Result<String, MintError> {
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
+/// Now, in microseconds since the epoch (the capsule's `minted_at` stamp).
+fn now_micros() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,6 +169,8 @@ mod tests {
             expires_at_micros: i64::MAX,
             max_ops: 3,
             originating_user: "tim".into(),
+            label: "Reading list".into(),
+            scope_summary: "files in project p1".into(),
         }
     }
 
@@ -162,6 +190,16 @@ mod tests {
         assert!(verify_grant(&signed.grant, &sig, &key.verifying_key()));
         // The handle was registered, so a serve can find it.
         assert!(ledger.state(&signed.grant.revocation_handle).unwrap().is_some());
+        // The mint recorded the metadata the active-capsules surface shows.
+        let listed = ledger.list().unwrap();
+        let entry = listed
+            .iter()
+            .find(|e| e.handle == signed.grant.revocation_handle)
+            .unwrap();
+        let meta = entry.meta.as_ref().expect("mint records metadata");
+        assert_eq!(meta.label, "Reading list");
+        assert_eq!(meta.max_ops, 3);
+        assert_eq!(meta.scope, "files in project p1");
         // End to end: the minted capsule serves its slice.
         let bytes = serve_capsule_read(&signed.grant, &sig, &key.verifying_key(), 1, &ledger, &store).unwrap();
         assert_eq!(bytes, s.canonical_bytes());
