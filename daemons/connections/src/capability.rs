@@ -28,6 +28,21 @@
 //! requested_host($h), [$h in subset]`, so a host dropped by the subset now
 //! fails the check and is denied. This is the subtract-only property the plan
 //! mandates, enforced by Biscuit's block-scoping rather than by our own code.
+//!
+//! ## Residual limits the caller must honour (from the adversarial review)
+//!
+//! Host comparison is EXACT bytewise equality: `API.Github.com`, a trailing dot,
+//! or a punycode look-alike do not match an allowed `host` fact. Normalization
+//! (lowercasing, IDNA/punycode canonicalization, trailing-dot stripping) is the
+//! CALLER's responsibility, and it must normalize the SAME way at mint and at
+//! verify, or a legitimate request is denied. The module compares raw bytes on
+//! purpose so the security-relevant match is unambiguous.
+//!
+//! The TTL is enforced as a check inside the token, so an accepted token's expiry
+//! rests on it having been minted by [`mint_token`] (which always appends the
+//! check). Since [`verify_token`] also checks the root signature, only the sole
+//! key-holder can mint an accepted token, so a TTL-less token cannot arise in
+//! practice; there is no separate authorizer-side expiry check.
 
 use biscuit_auth::builder::{AuthorizerBuilder, BiscuitBuilder, BlockBuilder, Term};
 use biscuit_auth::{Biscuit, KeyPair, PublicKey};
