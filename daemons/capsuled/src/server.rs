@@ -165,7 +165,7 @@ where
 
 /// Bind the capsule serve socket at `path`, replacing any stale socket, and clamp
 /// it to `0600` (owner-only; same-uid is also enforced per connection).
-fn bind_socket(path: &Path) -> std::io::Result<UnixListener> {
+pub(crate) fn bind_socket(path: &Path) -> std::io::Result<UnixListener> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -226,7 +226,7 @@ async fn handle(stream: UnixStream, caller_uid: u32, ctx: ServeContext) {
 
 /// Read a length-prefixed frame (4-byte big-endian length + body), bounded by
 /// `max` so a hostile length cannot force a large allocation.
-async fn read_frame<S: AsyncReadExt + Unpin>(stream: &mut S, max: usize) -> std::io::Result<Vec<u8>> {
+pub(crate) async fn read_frame<S: AsyncReadExt + Unpin>(stream: &mut S, max: usize) -> std::io::Result<Vec<u8>> {
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf).await?;
     let len = u32::from_be_bytes(len_buf) as usize;
@@ -242,7 +242,7 @@ async fn read_frame<S: AsyncReadExt + Unpin>(stream: &mut S, max: usize) -> std:
 }
 
 /// Write a length-prefixed frame, bounded by [`MAX_RESPONSE_FRAME`].
-async fn write_frame<S: AsyncWriteExt + Unpin>(stream: &mut S, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) async fn write_frame<S: AsyncWriteExt + Unpin>(stream: &mut S, bytes: &[u8]) -> std::io::Result<()> {
     if bytes.len() > MAX_RESPONSE_FRAME {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
