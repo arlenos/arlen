@@ -402,6 +402,31 @@ impl UnixGraphClient {
             .map_err(|e| QueryError::InvalidQuery(format!("malformed prep response: {e}")))
     }
 
+    /// The live working set: the caller's most live-and-important entities across
+    /// the graph, via the read socket's briefing-engine op (agent-work-surfaces-
+    /// plan.md surface 2).
+    ///
+    /// A leading `0x0A` byte selects the daemon's live-working-set aggregation; the
+    /// body is the JSON `{ "limit": ... }`. The daemon gathers the recent files and
+    /// projects, ranks them by liveness (stale noise dropped), scopes the result to
+    /// the caller's read scope, and returns a JSON array of [`PrepItem`]. `ERROR:`
+    /// maps to a [`QueryError`].
+    pub async fn working_set(&self, limit: i64) -> Result<Vec<PrepItem>, QueryError> {
+        let req = serde_json::json!({ "limit": limit });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x0A);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
+        if bytes.starts_with(b"ERROR:") {
+            Self::check_error(&String::from_utf8_lossy(&bytes))?;
+        }
+        serde_json::from_slice::<Vec<PrepItem>>(&bytes)
+            .map_err(|e| QueryError::InvalidQuery(format!("malformed working-set response: {e}")))
+    }
+
     /// Read the caller-scoped provenance of a graph object via the read socket's
     /// provenance op.
     ///
@@ -1532,6 +1557,44 @@ mod tests {
         assert_eq!(items[0].kind, "File");
         assert_eq!(items[0].liveness, "live");
         assert!((items[0].score - 0.72).abs() < 1e-9);
+    }
+
+    #[tokio::test]
+    async fn working_set_sends_a_tagged_request_and_parses_ranked_items() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-workingset-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            assert_eq!(req[0], 0x0A, "working-set requests carry the 0x0A prefix");
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            assert_eq!(body["limit"], 20);
+
+            let resp = br#"[{"id":"proj","label":"Arlen","kind":"Project","relation":"recent","liveness":"live","score":0.81}]"#;
+            conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(resp).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let result = client.working_set(20).await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        let items = result.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id, "proj");
+        assert_eq!(items[0].kind, "Project");
+        assert_eq!(items[0].liveness, "live");
     }
 
     #[tokio::test]
