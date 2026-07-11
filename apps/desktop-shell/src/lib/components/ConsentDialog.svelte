@@ -198,7 +198,7 @@
             >
               <span class="cd-hold-fill" aria-hidden="true"></span>
               <span class="cd-hold-label">
-                <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
+                <Trash2 size={16} strokeWidth={2} aria-hidden="true" />
                 {holdLabel(p)}
               </span>
             </button>
@@ -433,7 +433,7 @@
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-error) 10%, transparent);
     color: var(--color-error);
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
     user-select: none;
@@ -452,7 +452,7 @@
     position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.375rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
