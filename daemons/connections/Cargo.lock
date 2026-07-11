@@ -288,6 +288,7 @@ dependencies = [
  "arlen-secret-vault",
  "audit-proto",
  "biscuit-auth",
+ "getrandom 0.2.17",
  "serde",
  "serde_json",
  "tempfile",
