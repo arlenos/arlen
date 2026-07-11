@@ -1,0 +1,21 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-terminal-run-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "Terminal-run MCP server: runs a single user-approved command inside a confined sandbox (no network, no host write, no privilege) with captured output. The sharp edge - always Confirm-gated by the registry, never autonomous"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+arlen-confiner = { path = "../../sdk/confiner" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "io-util"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
