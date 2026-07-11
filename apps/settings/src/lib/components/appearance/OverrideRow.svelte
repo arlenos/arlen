@@ -77,11 +77,11 @@
     min-width: 0;
   }
   .or-title {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
   }
   .or-hint {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .or-control {

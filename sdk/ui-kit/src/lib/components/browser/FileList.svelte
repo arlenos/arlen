@@ -206,7 +206,7 @@
     padding: 0;
     border: none;
     background: transparent;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     text-align: start;

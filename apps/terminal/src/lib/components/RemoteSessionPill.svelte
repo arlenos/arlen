@@ -66,7 +66,7 @@
     border-radius: var(--radius-input);
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
   :global(.rsp-pill:hover) {
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
@@ -101,13 +101,13 @@
   }
   .rsp-addr {
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .rsp-sub {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .rsp-facts {
@@ -115,7 +115,7 @@
     flex-direction: column;
     gap: 0.3rem;
     margin-top: 0.25rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .rsp-fact {
@@ -128,7 +128,7 @@
   }
   .rsp-note {
     margin-top: 0.15rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
@@ -143,7 +143,7 @@
     border-radius: var(--radius-input);
     background: transparent;
     color: var(--color-error);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     cursor: pointer;
   }

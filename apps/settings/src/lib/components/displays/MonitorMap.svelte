@@ -289,7 +289,7 @@
     padding: 24px;
     text-align: center;
     color: color-mix(in srgb, var(--color-fg-app) 60%, transparent);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     line-height: 1.4;
   }
 

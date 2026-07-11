@@ -213,7 +213,7 @@
     background: var(--control-bg);
     border-radius: var(--radius-input);
     color: var(--foreground);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     transition:
       background-color var(--duration-fast) var(--ease-out),
@@ -238,7 +238,7 @@
     padding: 0 4px;
     border-radius: var(--radius-full);
     background: color-mix(in srgb, var(--foreground) 12%, transparent);
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     line-height: 1;
   }
@@ -254,13 +254,13 @@
   .facet-opt-count {
     margin-inline-start: 1rem;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-variant-numeric: tabular-nums;
   }
   .facet-empty {
     padding: 6px 10px;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
 
   /* A hairline parts the selected tags from the selectors above, so a long
@@ -284,7 +284,7 @@
     border: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
   .facet-chip-group {
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
@@ -315,13 +315,13 @@
     padding: 20px;
   }
   .facet-dialog h2 {
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     font-weight: 600;
     color: var(--foreground);
   }
   .facet-dialog p {
     margin-top: -4px;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
   .facet-dialog-actions {

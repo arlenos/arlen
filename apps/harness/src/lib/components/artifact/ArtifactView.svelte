@@ -70,7 +70,7 @@
   }
 
   .markdown {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
     line-height: 1.55;
     cursor: text;
@@ -105,7 +105,7 @@
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
   th,
   td {
@@ -139,7 +139,7 @@
     gap: 0.5rem;
   }
   .diagram-note {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: var(--color-warning, #d4b483);
   }
 
@@ -152,7 +152,7 @@
     gap: 0.25rem;
   }
   .links li {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
   }
   .links a {
     color: var(--color-accent);

@@ -95,7 +95,7 @@
     border: none;
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
     cursor: default;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     line-height: 1;
     transition: background-color 100ms ease, color 100ms ease;
   }

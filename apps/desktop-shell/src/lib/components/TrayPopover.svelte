@@ -101,7 +101,7 @@
 </ShellPopover>
 
 <style>
-  .tray-empty { padding: 20px; text-align: center; color: color-mix(in srgb, var(--color-fg-shell) 40%, transparent); font-size: 0.75rem; }
+  .tray-empty { padding: 20px; text-align: center; color: color-mix(in srgb, var(--color-fg-shell) 40%, transparent); font-size: var(--text-xs); }
 
   .tray-list { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; }
 
@@ -117,11 +117,11 @@
   .tray-item-icon {
     width: var(--height-control-compact, 24px); height: var(--height-control-compact, 24px); display: flex; align-items: center; justify-content: center;
     background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
-    border-radius: var(--radius-chip); font-size: 0.625rem; font-weight: 600; flex-shrink: 0;
+    border-radius: var(--radius-chip); font-size: var(--text-2xs); font-weight: 600; flex-shrink: 0;
   }
   .tray-item-icon img { width: 18px; height: 18px; object-fit: contain; }
   .tray-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .tray-item-title { font-size: 0.8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-  .tray-item-subtitle { font-size: 0.6875rem; color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .tray-item-title { font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .tray-item-subtitle { font-size: var(--text-2xs); color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
   .tray-item-badge { width: 8px; height: 8px; background: var(--color-error); border-radius: var(--radius-full); flex-shrink: 0; }
 </style>

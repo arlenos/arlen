@@ -65,18 +65,18 @@ The old [scratch.rs](arlenfile://${MISSING}) is gone now, so I left it alone. Th
   }
   h2 {
     margin: 0 0 16px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .bubble {
     max-width: 44rem;
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     line-height: 1.6;
   }
   .hint {
     margin-top: 24px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 </style>

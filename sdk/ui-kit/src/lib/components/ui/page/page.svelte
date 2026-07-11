@@ -49,7 +49,7 @@
   }
 
   .page-title {
-    font-size: 1.25rem;
+    font-size: var(--text-xl);
     font-weight: 600;
     line-height: 1.2;
     color: var(--foreground);
@@ -57,7 +57,7 @@
 
   .page-desc {
     margin-top: 0.25rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }

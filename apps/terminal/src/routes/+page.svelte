@@ -96,12 +96,12 @@
   }
   /* Chrome voice; the hierarchy is weight + dim, not size. */
   .stream-empty-title {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--foreground);
   }
   .stream-empty-hint {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .stream-empty-btn {
@@ -112,7 +112,7 @@
     border: 1px solid var(--control-border);
     background: var(--control-bg);
     color: var(--foreground);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
   }

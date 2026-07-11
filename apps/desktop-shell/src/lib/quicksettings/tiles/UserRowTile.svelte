@@ -155,13 +155,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     flex-shrink: 0;
     user-select: none;
   }
   .user-name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
   }
 
   .user-actions {
@@ -210,7 +210,7 @@
     border: none;
     border-radius: var(--radius-input);
     color: var(--color-fg-shell);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     text-align: left;
     transition: background-color 100ms ease;
   }

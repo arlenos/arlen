@@ -124,7 +124,7 @@
   }
   h2 {
     margin: 0 0 0.25rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: #e4e5ea;
     display: flex;
@@ -132,7 +132,7 @@
     gap: 0.5rem;
   }
   .rec {
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -140,7 +140,7 @@
   }
   .note {
     margin: 0 0 0.75rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: #888;
   }
 
@@ -165,7 +165,7 @@
   .spacer { flex: 1; }
   .actions { color: var(--faint); }
   .chip {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: var(--muted);
   }
   .chip.err { color: var(--red); }

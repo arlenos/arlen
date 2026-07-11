@@ -160,19 +160,19 @@
     min-width: 0;
   }
   .label {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
     line-height: 1.3;
   }
   .desc {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .note {
     margin-top: 0.125rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     line-height: 1.4;
     color: var(--color-warning, #d4b483);
   }

@@ -83,7 +83,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
   .wf-avatar {
     display: inline-flex;
@@ -94,7 +94,7 @@
     flex-shrink: 0;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--foreground);
   }
@@ -106,20 +106,20 @@
     padding: 0.05rem 0.35rem;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     letter-spacing: 0.02em;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
   .wf-title {
     margin: 0;
-    font-size: 1rem;
+    font-size: var(--text-md);
     font-weight: 600;
     line-height: 1.35;
     color: var(--foreground);
   }
   .wf-status {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 65%, transparent);
   }

@@ -88,7 +88,7 @@
     border: none;
     background: transparent;
     color: inherit;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     overflow: hidden;
     text-overflow: ellipsis;

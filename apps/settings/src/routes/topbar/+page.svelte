@@ -106,7 +106,7 @@
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
   }
   .tb-pv-left {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
@@ -157,7 +157,7 @@
     color: color-mix(in srgb, var(--foreground) 65%, transparent);
   }
   .tb-name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
   }
   .tb-row.dimmed .tb-name,
@@ -168,7 +168,7 @@
     padding: 0.05rem 0.35rem;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 9%, transparent);
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -178,7 +178,7 @@
     flex: 1;
   }
   .tb-state {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
     font-variant-numeric: tabular-nums;
   }
@@ -187,7 +187,7 @@
     border-radius: var(--radius-chip, 4px);
     border: 1px solid color-mix(in srgb, var(--destructive) 40%, transparent);
     background: color-mix(in srgb, var(--destructive) 10%, transparent);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--destructive);
   }
 </style>

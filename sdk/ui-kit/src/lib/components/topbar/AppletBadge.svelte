@@ -72,7 +72,7 @@
     min-width: 14px;
     height: 14px;
     padding: 0 4px;
-    font-size: 0.5625rem;
+    font-size: var(--text-2xs);
     font-weight: 700;
     line-height: 14px;
     text-align: center;

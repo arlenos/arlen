@@ -46,7 +46,7 @@
     width: 100%;
     border-collapse: collapse;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
   }
 

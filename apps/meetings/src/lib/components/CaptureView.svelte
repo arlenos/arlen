@@ -82,11 +82,11 @@
     }
   }
   .rec-label {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 500;
   }
   .elapsed {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
@@ -105,7 +105,7 @@
   }
   .pane-label {
     margin: 0 0 0.5rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;

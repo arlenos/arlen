@@ -269,7 +269,7 @@
     min-width: 0;
   }
   .cd-req-name {
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     font-weight: 600;
     color: var(--foreground);
   }
@@ -278,7 +278,7 @@
     align-items: center;
     gap: 0.25rem;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 42%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -287,13 +287,13 @@
 
   .cd-title {
     margin: 0;
-    font-size: 1rem;
+    font-size: var(--text-md);
     font-weight: 600;
     line-height: 1.35;
     color: var(--foreground);
   }
   .cd-title.big {
-    font-size: 1.0625rem;
+    font-size: var(--text-lg);
   }
 
   /* A labelled field: the concrete scope/target/recipient, a quiet bordered box
@@ -307,7 +307,7 @@
     border-radius: var(--radius-input);
   }
   .cd-field-label {
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -315,7 +315,7 @@
   }
   .cd-field-val {
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 80%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -338,7 +338,7 @@
     max-height: 6rem;
     overflow: auto;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.45;
     white-space: pre-wrap;
     word-break: break-word;
@@ -360,7 +360,7 @@
     justify-content: space-between;
     gap: 1rem;
     padding: 0.25rem 0.125rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
   }
   .cd-item:last-child {
@@ -380,7 +380,7 @@
   }
   .cd-meta {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
@@ -391,7 +391,7 @@
     padding: 0.5rem 0.625rem;
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 65%, transparent);
   }
   .cd-warn.tone-caution {
@@ -402,7 +402,7 @@
      - not a wall, just a line. */
   .cd-note {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
@@ -433,7 +433,7 @@
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-error) 10%, transparent);
     color: var(--color-error);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 500;
     cursor: pointer;
     user-select: none;

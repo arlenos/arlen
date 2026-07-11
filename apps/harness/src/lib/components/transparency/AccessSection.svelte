@@ -84,7 +84,7 @@
   .tier {
     margin: 0;
     padding: 0.625rem var(--space-row, 0.75rem);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: var(--foreground);
     border-bottom: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
@@ -92,7 +92,7 @@
   .inactive {
     margin: 0;
     padding: 0.5rem var(--space-row, 0.75rem) 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .grants {
@@ -111,7 +111,7 @@
     border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
   }
   .who {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
@@ -126,13 +126,13 @@
     height: var(--height-tag, 20px);
     padding: 0 0.5rem;
     border-radius: var(--radius-chip);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
   }
   .none {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 </style>

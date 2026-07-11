@@ -66,7 +66,7 @@
     border-radius: var(--radius-chip);
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     transition:
       background-color var(--duration-micro, 100ms) var(--ease-out, ease),

@@ -664,7 +664,7 @@
   }
 
   .status {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .error {
@@ -673,7 +673,7 @@
     border: 1px solid color-mix(in srgb, var(--color-error) 40%, transparent);
     background: color-mix(in srgb, var(--color-error) 10%, transparent);
     color: var(--color-error);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
   }
 
   /* ── DND ────────────────────────────────── */
@@ -725,12 +725,12 @@
     color: var(--color-accent);
   }
   .dnd-pill-title {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--foreground);
   }
   .dnd-pill-hint {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     line-height: 1.25;
   }
@@ -744,7 +744,7 @@
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
     color: var(--color-accent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
   .expires-banner strong {
     color: var(--foreground);
@@ -761,7 +761,7 @@
     border-radius: var(--radius-button);
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
     font: inherit;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     padding: 0;
   }
 
@@ -789,7 +789,7 @@
     background: color-mix(in srgb, var(--color-accent) 18%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
     color: var(--foreground);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     transition: background-color 120ms ease;
   }
   .chip:hover {
@@ -823,7 +823,7 @@
   .apps-empty {
     padding: 0.75rem 0.6rem;
     text-align: center;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .apps-list {

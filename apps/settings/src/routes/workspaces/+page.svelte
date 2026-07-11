@@ -227,7 +227,7 @@
 
 <style>
   .rule-count {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
@@ -237,6 +237,6 @@
 
   .rule-code {
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
 </style>

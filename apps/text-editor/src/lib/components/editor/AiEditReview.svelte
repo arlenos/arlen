@@ -104,7 +104,7 @@
     min-width: 0;
   }
   .who-name {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--color-fg-primary);
   }
@@ -122,7 +122,7 @@
   }
   .prompt {
     margin: 0 0 1rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
 
@@ -148,7 +148,7 @@
     padding: 0.5rem 0.65rem;
   }
   .hunk-title {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--color-fg-primary);
   }
@@ -156,7 +156,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     white-space: nowrap;
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
@@ -169,7 +169,7 @@
 
   .diff {
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.5;
     border-top: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
@@ -211,7 +211,7 @@
     padding: 0.5rem 0.65rem;
   }
   .rationale {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     line-height: 1.4;
     color: color-mix(in srgb, var(--color-fg-primary) 48%, transparent);
   }
@@ -228,7 +228,7 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-primary) 15%, transparent);
     border-radius: var(--radius-input, 8px);
     background: transparent;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--color-fg-primary);
     cursor: pointer;
     white-space: nowrap;
@@ -244,7 +244,7 @@
 
   .foot {
     margin: 1.25rem 0 0;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     line-height: 1.5;
     color: color-mix(in srgb, var(--color-fg-primary) 42%, transparent);
   }

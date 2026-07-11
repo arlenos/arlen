@@ -40,7 +40,7 @@
   }
 
   .stat-label {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -51,7 +51,7 @@
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     font-weight: 500;
     color: var(--foreground);
     min-width: 0;

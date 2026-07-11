@@ -148,7 +148,7 @@
     flex-shrink: 0;
     border-radius: var(--radius-chip, 4px);
     background: color-mix(in srgb, var(--color-fg-primary) 12%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--color-fg-primary);
   }
@@ -159,14 +159,14 @@
     flex-direction: column;
   }
   .dp-name {
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     font-weight: 600;
     color: var(--color-fg-primary);
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .dp-pid {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
@@ -176,7 +176,7 @@
     border: 1px solid color-mix(in srgb, var(--color-error, #c96a6a) 40%, transparent);
     border-radius: var(--radius-input, 8px);
     background: transparent;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--color-error, #c96a6a);
     cursor: pointer;
   }
@@ -207,7 +207,7 @@
     padding: 0.5rem 0.55rem;
     border: none;
     background: transparent;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     cursor: pointer;
   }
@@ -239,7 +239,7 @@
     padding: 0.55rem 0.65rem;
     border-radius: var(--radius-input, 8px);
     background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 65%, transparent);
   }
   .acc-sensor[data-lit="true"] {
@@ -248,7 +248,7 @@
   }
   .acc-reach {
     margin: 0.9rem 0 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: color-mix(in srgb, var(--color-fg-primary) 78%, transparent);
   }
@@ -257,7 +257,7 @@
   }
   .acc-h {
     margin: 0 0 0.5rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -274,7 +274,7 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-primary) 15%, transparent);
     border-radius: var(--radius-input, 8px);
     background: transparent;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--color-fg-primary);
     cursor: pointer;
   }
@@ -293,7 +293,7 @@
     gap: 1rem;
     padding: 0.5rem 0;
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
   }
   .stat dt {
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
@@ -306,7 +306,7 @@
 
   .files {
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
   .fline {
     padding: 0.25rem 0;
@@ -320,7 +320,7 @@
   }
   .empty {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
 </style>

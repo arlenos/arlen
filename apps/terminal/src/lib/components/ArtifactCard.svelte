@@ -30,7 +30,7 @@
     min-width: 0;
   }
   .ac-title {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
     overflow: hidden;
@@ -38,7 +38,7 @@
     white-space: nowrap;
   }
   .ac-summary {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;

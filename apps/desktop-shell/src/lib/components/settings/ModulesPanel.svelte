@@ -177,8 +177,8 @@
 <style>
   .mod-panel { padding: 16px; color: var(--color-fg-primary); }
   .mod-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-  .mod-header h2 { font-size: 1rem; font-weight: 600; margin: 0; }
-  .mod-empty { text-align: center; padding: 32px; opacity: 0.4; font-size: 0.875rem; }
+  .mod-header h2 { font-size: var(--text-md); font-weight: 600; margin: 0; }
+  .mod-empty { text-align: center; padding: 32px; opacity: 0.4; font-size: var(--text-base); }
 
   .mod-list { display: flex; flex-direction: column; gap: 4px; }
 
@@ -192,11 +192,11 @@
 
   .mod-row { display: flex; align-items: center; gap: 8px; }
   .mod-info { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; flex-wrap: wrap; }
-  .mod-name { font-size: 0.8125rem; font-weight: 500; }
-  .mod-version { font-size: 0.6875rem; opacity: 0.5; }
+  .mod-name { font-size: var(--text-sm); font-weight: 500; }
+  .mod-version { font-size: var(--text-2xs); opacity: 0.5; }
 
   .mod-badge {
-    font-size: 0.5625rem; font-weight: 600; text-transform: uppercase;
+    font-size: var(--text-2xs); font-weight: 600; text-transform: uppercase;
     padding: 1px 5px; border-radius: var(--radius-sm, 4px);
     background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
   }
@@ -214,7 +214,7 @@
 
   .mod-reenable {
     display: flex; align-items: center; gap: 4px; padding: 3px 8px;
-    font-size: 0.6875rem; font-weight: 500;
+    font-size: var(--text-2xs); font-weight: 500;
     background: color-mix(in srgb, var(--color-warning) 15%, transparent);
     color: var(--color-warning); border: none; border-radius: var(--radius-sm, 4px);
   }
@@ -222,7 +222,7 @@
 
   .mod-warning {
     display: flex; align-items: center; gap: 6px; margin-top: 4px;
-    font-size: 0.6875rem; color: var(--color-error); opacity: 0.9;
+    font-size: var(--text-2xs); color: var(--color-error); opacity: 0.9;
   }
 
   .mod-detail {
@@ -230,13 +230,13 @@
     border-top: 1px solid color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
     display: flex; flex-direction: column; gap: 4px;
   }
-  .mod-id { font-size: 0.6875rem; font-family: monospace; opacity: 0.5; }
-  .mod-desc { font-size: 0.75rem; opacity: 0.7; }
+  .mod-id { font-size: var(--text-2xs); font-family: monospace; opacity: 0.5; }
+  .mod-desc { font-size: var(--text-xs); opacity: 0.7; }
   .mod-extensions { display: flex; gap: 4px; flex-wrap: wrap; }
   .mod-ext-chip {
-    font-size: 0.625rem; padding: 1px 6px;
+    font-size: var(--text-2xs); padding: 1px 6px;
     background: color-mix(in srgb, var(--color-accent) 15%, transparent);
     color: var(--color-accent); border-radius: var(--radius-sm, 4px);
   }
-  .mod-error-info { font-size: 0.6875rem; color: var(--color-error); opacity: 0.8; }
+  .mod-error-info { font-size: var(--text-2xs); color: var(--color-error); opacity: 0.8; }
 </style>

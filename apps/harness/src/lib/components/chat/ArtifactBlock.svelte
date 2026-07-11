@@ -53,7 +53,7 @@
     gap: 0.375rem;
   }
   .ab-title {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.02em;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);

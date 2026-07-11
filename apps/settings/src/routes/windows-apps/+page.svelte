@@ -351,13 +351,13 @@
   .note {
     margin: 0;
     padding: 0 0.25rem 0.5rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .empty {
     margin: 0;
     padding: var(--space-row, 0.75rem) 1rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .wa-avatar {
@@ -368,7 +368,7 @@
     height: 1.75rem;
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--foreground);
   }
@@ -401,7 +401,7 @@
     padding: 0.5rem 0.25rem;
     border: none;
     background: transparent;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
     text-align: left;
@@ -425,7 +425,7 @@
   }
   .wa-access {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
   }
   .wa-row {
@@ -441,7 +441,7 @@
     gap: 0.35rem;
   }
   .wa-label {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
   .wa-input {
@@ -464,7 +464,7 @@
     border: none;
     background: transparent;
     border-radius: var(--radius-input);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--color-error);
     cursor: pointer;
@@ -473,7 +473,7 @@
     background: color-mix(in srgb, var(--color-error) 12%, transparent);
   }
   .wa-installed {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 </style>

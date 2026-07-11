@@ -148,7 +148,7 @@
     padding: 6px 8px;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 3%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 </style>

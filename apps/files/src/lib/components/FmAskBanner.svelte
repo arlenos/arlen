@@ -51,7 +51,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
   }
   .ask-line :global(.ask-spark) {
     flex-shrink: 0;
@@ -79,7 +79,7 @@
     background: transparent;
     border-radius: var(--radius-input);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
   }
   .ask-dismiss:hover {
@@ -87,7 +87,7 @@
     color: var(--foreground);
   }
   .ask-reads {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 </style>

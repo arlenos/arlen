@@ -51,19 +51,19 @@
   }
   .hint {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.45;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .text {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.55;
     color: var(--foreground);
   }
   .error {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--color-error);
   }
 </style>

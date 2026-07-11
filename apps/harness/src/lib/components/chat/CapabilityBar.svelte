@@ -46,7 +46,7 @@
   }
   .line {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
     overflow: hidden;

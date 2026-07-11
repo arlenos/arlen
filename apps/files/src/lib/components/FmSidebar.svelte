@@ -176,7 +176,7 @@
   }
 
   .fs-label {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

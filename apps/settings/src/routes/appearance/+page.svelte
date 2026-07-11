@@ -173,7 +173,7 @@
 <style>
   .theme-label,
   .cust-label {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -249,7 +249,7 @@
     padding: 0.625rem 0.75rem;
   }
   .name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
@@ -257,7 +257,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--color-success, #16a34a);
   }
@@ -297,7 +297,7 @@
   .empty {
     margin: 0;
     padding: 0.5rem 1rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .reset-all {
@@ -308,7 +308,7 @@
     padding: 0.625rem 1rem;
   }
   .reset-total {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 </style>

@@ -333,12 +333,12 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0 0.25rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 65%, transparent);
   }
   .muted-line {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
 
@@ -363,12 +363,12 @@
     gap: 0.125rem;
   }
   .tier-label {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--foreground);
   }
   .tier-note {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   /* The model block stacks; the action pins to the bottom so all three tier
@@ -400,7 +400,7 @@
     min-width: 0;
   }
   .model-name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
@@ -411,7 +411,7 @@
     gap: 0.375rem;
   }
   .model-meta {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .model-action {
@@ -452,7 +452,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.625rem 1rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     cursor: pointer;
   }

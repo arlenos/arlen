@@ -43,7 +43,7 @@
   }
 
   .lr-text {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--foreground);
     border-bottom: 1px solid transparent;
     transition: border-color var(--duration-fast, 150ms) var(--ease-out, ease);
@@ -53,7 +53,7 @@
   }
 
   .lr-target {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -63,7 +63,7 @@
 
   .link-render-inert {
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 </style>

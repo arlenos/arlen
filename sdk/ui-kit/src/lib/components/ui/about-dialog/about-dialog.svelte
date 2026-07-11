@@ -55,23 +55,23 @@
     border-radius: var(--radius-card, 12px);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
     color: var(--foreground);
-    font-size: 1.25rem;
+    font-size: var(--text-xl);
     font-weight: 600;
   }
   .about-name {
-    font-size: 1.0625rem;
+    font-size: var(--text-lg);
     font-weight: 600;
     color: var(--foreground);
   }
   .about-sub {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     font-variant-numeric: tabular-nums;
   }
   .about-desc {
     margin-top: 8px;
     max-width: 36ch;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
   }
   .about-foot {

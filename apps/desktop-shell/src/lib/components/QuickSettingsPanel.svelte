@@ -279,7 +279,7 @@
   .qs-empty {
     padding: 24px 12px;
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     text-align: center;
   }
@@ -315,14 +315,14 @@
   }
   .qs-help h3 {
     margin: 0 0 8px 0;
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
   }
   .qs-help ul {
     margin: 0;
     padding: 0;
     list-style: none;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
   }
   .qs-help li {
     padding: 4px 0;
@@ -334,7 +334,7 @@
     background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);
     border-radius: var(--radius-chip);
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     margin-right: 4px;
   }
 </style>

@@ -180,7 +180,7 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
     border: 1px solid color-mix(in srgb, var(--color-fg-primary) 14%, transparent);
     border-radius: var(--radius-input, 8px);
     background: transparent;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
     cursor: pointer;
   }

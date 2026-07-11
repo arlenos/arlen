@@ -162,7 +162,7 @@
     margin: 0 auto;
     padding: 1rem 0 6rem;
     font-family: var(--font-mono, ui-monospace, "SF Mono", monospace);
-    font-size: 1rem;
+    font-size: var(--text-md);
     line-height: 1.85;
     color: color-mix(in srgb, var(--color-fg-primary) 88%, transparent);
   }
@@ -230,13 +230,13 @@
     position: absolute;
     top: 0.5rem;
     right: 0.75rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     letter-spacing: 0.03em;
     color: color-mix(in srgb, var(--color-fg-primary) 35%, transparent);
   }
   .code-body {
     display: flex;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.6;
   }
   .gutter {
@@ -285,7 +285,7 @@
   .codefile {
     display: flex;
     font-family: var(--font-mono, ui-monospace, "SF Mono", monospace);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     line-height: 1.65;
   }
   .cf-gutter {

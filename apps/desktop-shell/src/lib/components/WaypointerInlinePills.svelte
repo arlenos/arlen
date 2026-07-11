@@ -52,7 +52,7 @@
     background: transparent;
     border: none;
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 500;
     white-space: nowrap;
     transition:

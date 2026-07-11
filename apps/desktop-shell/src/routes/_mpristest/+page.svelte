@@ -74,7 +74,7 @@
   }
   .hint {
     padding: 16px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
   }
 </style>

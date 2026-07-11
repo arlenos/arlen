@@ -59,7 +59,7 @@
   .art-title {
     flex: 1;
     min-width: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
     overflow: hidden;
@@ -71,7 +71,7 @@
     padding: 0.0625rem 0.375rem;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;

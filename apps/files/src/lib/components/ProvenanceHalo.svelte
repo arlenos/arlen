@@ -52,7 +52,7 @@
     padding: 0;
     border: none;
     background: transparent;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     cursor: pointer;
@@ -70,7 +70,7 @@
   }
   .ph-subject {
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -83,7 +83,7 @@
   }
   .ph-step {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.45;
     color: var(--foreground);
   }
@@ -95,14 +95,14 @@
   .ph-horizon {
     margin: 0;
     padding-top: 0.15rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 42%, transparent);
     border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
   }
   .ph-loading {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 </style>

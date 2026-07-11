@@ -169,7 +169,7 @@
     background: transparent;
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
-    font-size: 0.625rem; font-weight: 500;
+    font-size: var(--text-2xs); font-weight: 500;
     transition:
       background-color var(--duration-micro, 100ms) ease,
       border-color var(--duration-micro, 100ms) ease,
@@ -187,8 +187,8 @@
 
   /* Gap slider */
   .gap-row { display: flex; align-items: center; gap: 10px; }
-  .gap-label { font-size: 0.75rem; flex-shrink: 0; }
-  .gap-value { font-size: 0.6875rem; opacity: 0.5; min-width: 28px; text-align: right; }
+  .gap-label { font-size: var(--text-xs); flex-shrink: 0; }
+  .gap-value { font-size: var(--text-2xs); opacity: 0.5; min-width: 28px; text-align: right; }
   .gap-slider-wrap { flex: 1; display: flex; align-items: center; }
 
   /* Toggle row uses the same flex+gap pattern as `.gap-row` so
@@ -200,7 +200,7 @@
   .toggle-label {
     flex: 1;
     min-width: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

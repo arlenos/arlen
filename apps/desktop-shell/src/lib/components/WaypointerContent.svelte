@@ -1199,7 +1199,7 @@
   .wp-empty {
     padding: 1.5rem 1rem;
     text-align: center;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-shell) 45%, transparent);
   }
 
@@ -1208,7 +1208,7 @@
     gap: 14px;
     padding: 6px 12px;
     border-top: 1px solid color-mix(in srgb, var(--color-fg-shell) 10%, transparent);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-shell) 45%, transparent);
   }
 

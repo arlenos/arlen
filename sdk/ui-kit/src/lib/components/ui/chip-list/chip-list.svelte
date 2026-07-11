@@ -86,7 +86,7 @@
     gap: 4px;
     height: var(--height-control-compact, 24px);
     padding: 0 4px 0 8px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--foreground);
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
@@ -105,7 +105,7 @@
     border: none;
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     line-height: 1;
     padding: 0 2px;
     border-radius: var(--radius-chip, 4px);
@@ -122,7 +122,7 @@
     border: none;
     background: transparent;
     color: var(--foreground);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     padding: 4px 2px;
     outline: none;
   }

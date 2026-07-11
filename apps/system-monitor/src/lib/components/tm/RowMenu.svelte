@@ -144,7 +144,7 @@
   }
   .menu-head {
     padding: 0.35rem 0.55rem 0.4rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -157,7 +157,7 @@
     border: none;
     border-radius: var(--radius-chip, 4px);
     background: transparent;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--color-fg-primary);
     text-align: start;
     cursor: pointer;

@@ -98,12 +98,12 @@
   }
   .aa-notice {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--color-warning, #d4b483);
   }
   .aa-all {
     align-self: flex-start;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     text-decoration: none;
   }

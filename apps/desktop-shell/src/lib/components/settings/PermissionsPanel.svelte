@@ -174,8 +174,8 @@
 <style>
   .perm-panel { padding: 16px; color: var(--color-fg-primary); }
   .perm-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-  .perm-header h2 { font-size: 1rem; font-weight: 600; margin: 0; }
-  .perm-empty { text-align: center; padding: 32px; opacity: 0.4; font-size: 0.875rem; }
+  .perm-header h2 { font-size: var(--text-md); font-weight: 600; margin: 0; }
+  .perm-empty { text-align: center; padding: 32px; opacity: 0.4; font-size: var(--text-base); }
 
   .perm-list { display: flex; flex-direction: column; gap: 4px; }
   .perm-app { border-radius: var(--radius-md, 8px); overflow: hidden; }
@@ -185,14 +185,14 @@
     display: flex; align-items: center; gap: 10px; width: 100%;
     padding: 10px 12px; background: transparent; border: none;
     color: var(--color-fg-primary, var(--color-fg-shell));
-    font-size: 0.8125rem; text-align: left;
+    font-size: var(--text-sm); text-align: left;
     border-radius: var(--radius-md, 8px);
     transition: background-color var(--duration-fast, 100ms) ease;
   }
   .perm-app-row:hover { background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent); }
 
   .perm-tier-badge {
-    font-size: 0.625rem; font-weight: 600; text-transform: uppercase;
+    font-size: var(--text-2xs); font-weight: 600; text-transform: uppercase;
     padding: 2px 6px; border-radius: var(--radius-sm, 4px);
     background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     flex-shrink: 0;
@@ -201,7 +201,7 @@
   .perm-tier-badge.first-party { background: color-mix(in srgb, var(--color-success) 20%, transparent); color: var(--color-success); }
 
   .perm-app-name { flex: 1; font-weight: 500; }
-  .perm-count { font-size: 0.6875rem; opacity: 0.5; flex-shrink: 0; }
+  .perm-count { font-size: var(--text-2xs); opacity: 0.5; flex-shrink: 0; }
 
   .perm-detail { padding: 8px 12px 12px; }
 </style>

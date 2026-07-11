@@ -99,13 +99,13 @@
   }
   .sp-title {
     margin: 0;
-    font-size: 1.0625rem;
+    font-size: var(--text-lg);
     font-weight: 600;
     color: var(--foreground);
   }
   .sp-sub {
     margin: 0.2rem 0 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
 
@@ -120,7 +120,7 @@
   }
   .sp-group {
     margin-top: 0.5rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -157,12 +157,12 @@
     margin-bottom: 0.3rem;
   }
   .sp-mon-name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
   .sp-mon-res {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
     font-variant-numeric: tabular-nums;
   }
@@ -192,7 +192,7 @@
     flex-shrink: 0;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--foreground);
   }
@@ -202,12 +202,12 @@
     min-width: 0;
   }
   .sp-win-app {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
   .sp-win-title {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -220,7 +220,7 @@
     border-radius: var(--radius-input);
     background: transparent;
     text-align: left;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
     cursor: pointer;
   }
@@ -252,7 +252,7 @@
     padding: 0.25rem 0;
   }
   .sp-toggle label {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 75%, transparent);
     cursor: pointer;
   }

@@ -104,7 +104,7 @@
     border-radius: var(--radius-button);
     background: color-mix(in srgb, var(--foreground) 8%, transparent);
     color: var(--foreground);
-    font-size: 0.9375rem;
+    font-size: var(--text-md);
     transition:
       background-color var(--duration-micro) var(--ease-out),
       transform var(--duration-micro) var(--ease-out);
@@ -130,7 +130,7 @@
     min-width: 6rem;
     background: color-mix(in srgb, var(--foreground) 90%, transparent);
     color: var(--color-fg-inverse);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
   }
   .enter:hover {
     background: var(--foreground);

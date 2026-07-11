@@ -82,7 +82,7 @@
     }
   }
   .op-label {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--foreground);
   }
 
@@ -95,13 +95,13 @@
     padding: 16px 20px;
   }
   .op-title {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
     overflow-wrap: anywhere;
   }
   .op-hint {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .op-actions {
@@ -122,7 +122,7 @@
     padding: 6px 16px;
     border-top: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
     background: color-mix(in srgb, var(--color-error) 8%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--foreground);
   }
   .op-errorline span {
@@ -139,7 +139,7 @@
     border-radius: var(--radius-chip);
     background: transparent;
     color: var(--foreground);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
   .op-dismiss:hover {
     background: var(--control-bg-hover);

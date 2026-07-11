@@ -31,7 +31,7 @@
   }
 
   .group-label {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;

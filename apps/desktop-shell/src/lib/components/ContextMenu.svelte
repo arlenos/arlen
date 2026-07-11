@@ -206,7 +206,7 @@
         padding: 6px 12px;
         background: none;
         border: none;
-        font-size: 0.875rem;
+        font-size: var(--text-base);
         text-align: left;
         color: var(--color-fg-primary, var(--color-fg-shell));
         border-radius: 0;
@@ -220,7 +220,7 @@
         cursor: default;
     }
     .ctx-shortcut {
-        font-size: 0.75rem;
+        font-size: var(--text-xs);
         color: var(--color-fg-secondary, color-mix(in srgb, var(--color-fg-shell) 50%, transparent));
         margin-left: 24px;
     }

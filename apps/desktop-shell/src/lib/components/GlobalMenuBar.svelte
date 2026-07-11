@@ -175,7 +175,7 @@
   }
 
   .menubar-appname {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--foreground);
     white-space: nowrap;
@@ -235,7 +235,7 @@
     border: none;
     background: transparent;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     border-radius: var(--radius-chip);
     white-space: nowrap;

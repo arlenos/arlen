@@ -75,12 +75,12 @@
     flex-direction: column;
   }
   .lc-title {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
   }
   .lc-desc {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;

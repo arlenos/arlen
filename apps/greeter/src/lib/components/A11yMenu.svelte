@@ -41,7 +41,7 @@
   .title {
     margin: 0;
     padding: 0.25rem 0.5rem 0.375rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -65,7 +65,7 @@
   }
   .hint {
     margin: 0.25rem 0.5rem 0.25rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.45;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }

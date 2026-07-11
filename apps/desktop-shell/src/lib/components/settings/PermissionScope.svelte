@@ -42,11 +42,11 @@
 
 <style>
   .scope { margin-bottom: 12px; }
-  .scope-title { font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.5; margin-bottom: 4px; }
+  .scope-title { font-size: var(--text-2xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.5; margin-bottom: 4px; }
   .scope-list { display: flex; flex-wrap: wrap; gap: 4px; }
-  .scope-chip { font-size: 0.75rem; padding: 2px 8px; background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); border-radius: var(--radius-sm, 4px); }
-  .scope-bool { display: flex; align-items: center; gap: 4px; font-size: 0.75rem; padding: 2px 0; }
+  .scope-chip { font-size: var(--text-xs); padding: 2px 8px; background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); border-radius: var(--radius-sm, 4px); }
+  .scope-bool { display: flex; align-items: center; gap: 4px; font-size: var(--text-xs); padding: 2px 0; }
   :global(.scope-yes) { color: var(--color-success); }
   :global(.scope-no) { color: var(--color-fg-disabled); }
-  .scope-none { font-size: 0.75rem; opacity: 0.4; }
+  .scope-none { font-size: var(--text-xs); opacity: 0.4; }
 </style>

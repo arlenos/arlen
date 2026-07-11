@@ -92,7 +92,7 @@
      row-rhythm spec while still allowing prose-style hints
      below the title. */
   .label-title {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
     line-height: 1.3;
@@ -102,7 +102,7 @@
   }
 
   .label-desc {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     line-height: 1.3;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     margin-top: 0.0625rem;

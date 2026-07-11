@@ -162,7 +162,7 @@
     align-items: center;
     gap: 6px;
     padding: 8px 8px 4px;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -179,7 +179,7 @@
     background: color-mix(in srgb, var(--foreground) 22%, transparent);
   }
   .qc-name {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
     white-space: nowrap;
@@ -188,7 +188,7 @@
     flex: 1;
     min-width: 0;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -196,7 +196,7 @@
   }
   .qc-meta {
     flex-shrink: 0;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 40%, transparent);
   }
   .qc-promote {
@@ -215,7 +215,7 @@
   .qc-empty {
     padding: 1.25rem;
     text-align: center;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .qc-foot {
@@ -223,7 +223,7 @@
     gap: 14px;
     padding: 6px 12px;
     border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 35%, transparent);
   }
 </style>

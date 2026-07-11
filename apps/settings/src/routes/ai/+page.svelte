@@ -456,7 +456,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .meta.on {
@@ -483,14 +483,14 @@
   }
   .explain-text {
     margin: 0.5rem 0 0;
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     line-height: 1.55;
     color: var(--foreground);
     white-space: pre-wrap;
   }
   .explain-error {
     margin: 0.5rem 0 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: var(--color-error);
   }
 </style>

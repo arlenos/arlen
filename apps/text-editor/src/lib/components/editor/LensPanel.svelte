@@ -72,7 +72,7 @@
   }
   .sec-title {
     margin: 0 0 0.7rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -101,7 +101,7 @@
     background: color-mix(in srgb, var(--color-fg-primary) 65%, transparent);
   }
   .prov-what {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
   }
   .prov-actor {
@@ -109,7 +109,7 @@
     font-weight: 500;
   }
   .prov-when {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
   }
 
@@ -136,24 +136,24 @@
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--color-fg-primary);
   }
   .rel-snippet {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.45;
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .empty {
     margin: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
 
   .proj-name {
     margin: 0 0 0.55rem;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 75%, transparent);
   }
   .proj-members {
@@ -166,7 +166,7 @@
     border: none;
     border-radius: var(--radius-chip, 4px);
     background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
     cursor: pointer;
   }

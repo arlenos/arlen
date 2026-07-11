@@ -325,15 +325,15 @@
 </ShellPopover>
 
 <style>
-  .bt-msg { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 12px; color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); text-align: center; font-size: 0.8125rem; }
-  .bt-hint { font-size: 0.6875rem; opacity: 0.5; }
+  .bt-msg { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 12px; color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); text-align: center; font-size: var(--text-sm); }
+  .bt-hint { font-size: var(--text-2xs); opacity: 0.5; }
 
-  .bt-section-label { font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .bt-section-label { font-size: var(--text-2xs); opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 
   .bt-device {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-input);
-    color: var(--color-fg-shell); font-size: 0.8125rem;
+    color: var(--color-fg-shell); font-size: var(--text-sm);
     text-align: left; width: 100%;
     transition: background-color var(--duration-micro, 100ms) ease;
   }
@@ -342,8 +342,8 @@
   .bt-device.connecting { opacity: 0.7; }
   .bt-device-icon { flex-shrink: 0; opacity: 0.7; }
   .bt-device-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-  .bt-device-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; font-size: 0.8125rem; }
-  .bt-device-detail { font-size: 0.6875rem; opacity: 0.5; display: flex; align-items: center; gap: 3px; }
+  .bt-device-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; font-size: var(--text-sm); }
+  .bt-device-detail { font-size: var(--text-2xs); opacity: 0.5; display: flex; align-items: center; gap: 3px; }
   /* Battery reading sits apart from the status word by spacing, not
      a separator glyph. */
   .bt-battery { display: inline-flex; align-items: center; gap: 3px; }
@@ -354,7 +354,7 @@
     display: flex; align-items: center; justify-content: center; gap: 6px;
     padding: 7px; background: transparent; border: 1px solid color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
     border-radius: var(--radius-input); color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     transition:
       background-color var(--duration-fast, 150ms) ease,
       color var(--duration-fast, 150ms) ease;

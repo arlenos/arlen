@@ -129,12 +129,12 @@
     padding: 0 0.125rem;
   }
   .jobs-title {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--foreground);
   }
   .jobs-count {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
 
@@ -160,14 +160,14 @@
     flex-shrink: 0;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 12%, transparent);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     color: var(--foreground);
   }
   .job-title {
     flex: 1;
     min-width: 0;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--foreground);
     overflow: hidden;
@@ -210,7 +210,7 @@
     align-items: baseline;
     justify-content: space-between;
     gap: 0.75rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .job-metrics {
@@ -224,11 +224,11 @@
     white-space: nowrap;
   }
   .job-egress {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .job-error {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     line-height: 1.4;
     color: var(--color-error);
   }
@@ -236,7 +236,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--color-success);
   }
 
@@ -248,7 +248,7 @@
     padding: 0.125rem 0;
     border: none;
     background: transparent;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     cursor: pointer;
   }
@@ -268,7 +268,7 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
   .job-item-dot {

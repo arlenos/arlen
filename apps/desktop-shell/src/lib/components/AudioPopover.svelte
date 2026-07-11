@@ -209,7 +209,7 @@
 </ShellPopover>
 
 <style>
-  .section-label { font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .section-label { font-size: var(--text-2xs); opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 
   /* Volume row */
   .vol-row { display: flex; align-items: center; gap: 8px; }
@@ -223,7 +223,7 @@
       color var(--duration-micro, 100ms) ease;
   }
   .vol-icon-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
-  .vol-value { font-size: 0.6875rem; opacity: 0.5; min-width: 30px; text-align: right; }
+  .vol-value { font-size: var(--text-2xs); opacity: 0.5; min-width: 30px; text-align: right; }
 
   /* Slider wrappers: sizing only; the bar itself comes from FillSlider. */
   .vol-slider-wrap { flex: 1; display: flex; align-items: center; }
@@ -241,7 +241,7 @@
     display: flex; align-items: center; gap: 6px;
     padding: 4px 0; background: transparent; border: none;
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
-    font-size: 0.75rem; font-weight: 500; width: 100%; text-align: left;
+    font-size: var(--text-xs); font-weight: 500; width: 100%; text-align: left;
     transition: color var(--duration-micro, 100ms) ease;
   }
   .apps-header:hover { color: var(--color-fg-shell); }
@@ -255,6 +255,6 @@
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
   }
   .app-icon-img { width: 16px; height: 16px; object-fit: contain; border-radius: var(--radius-chip); }
-  .app-icon-letter { font-size: 0.6875rem; font-weight: 600; color: var(--color-fg-shell); }
-  .app-name { font-size: 0.6875rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app-icon-letter { font-size: var(--text-2xs); font-weight: 600; color: var(--color-fg-shell); }
+  .app-name { font-size: var(--text-2xs); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

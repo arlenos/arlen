@@ -184,7 +184,7 @@
     border: none;
     border-radius: var(--radius-chip);
     background: transparent;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     transition: background-color var(--duration-micro, 100ms) var(--ease-out, ease);
   }
@@ -204,7 +204,7 @@
   .bc-fold {
     flex-shrink: 0;
     padding: 0 2px;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 35%, transparent);
   }
   .bc.tight .bc-crumb {
@@ -221,7 +221,7 @@
     background: var(--color-bg-input, var(--background));
     color: var(--foreground);
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     outline: none;
   }
   .bc-input:focus-visible {

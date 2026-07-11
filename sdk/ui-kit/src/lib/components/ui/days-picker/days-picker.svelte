@@ -65,7 +65,7 @@
     background: color-mix(in srgb, var(--foreground) 5%, transparent);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     font-weight: 600;
     transition:
       background-color 120ms ease,

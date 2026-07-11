@@ -163,7 +163,7 @@
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
     color: var(--color-accent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
   }
   .banner span {
     flex: 1;
@@ -171,7 +171,7 @@
   }
 
   .summary {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
     margin-bottom: 0.5rem;
   }
@@ -193,7 +193,7 @@
   }
 
   .status {
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .error {
@@ -202,7 +202,7 @@
     border: 1px solid color-mix(in srgb, var(--color-error) 40%, transparent);
     background: color-mix(in srgb, var(--color-error) 10%, transparent);
     color: var(--color-error);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
   }
 
   .empty {
@@ -218,7 +218,7 @@
   }
   .empty.small {
     padding: 1.25rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .empty-icon {
@@ -233,20 +233,20 @@
   }
   .empty h2 {
     margin: 0;
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--foreground);
   }
   .empty p {
     margin: 0;
     max-width: 32rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1.55;
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
   }
   .empty code {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     padding: 0.05rem 0.3rem;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
@@ -258,7 +258,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: var(--color-accent);
     text-decoration: none;
     padding: 0.3rem 0.6rem;

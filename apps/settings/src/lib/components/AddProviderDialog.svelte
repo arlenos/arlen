@@ -176,7 +176,7 @@
   }
   .ap-title {
     margin: 0;
-    font-size: 1rem;
+    font-size: var(--text-md);
     font-weight: 600;
     color: var(--foreground);
   }
@@ -186,7 +186,7 @@
     gap: 0.375rem;
   }
   .flabel {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 65%, transparent);
   }
@@ -204,12 +204,12 @@
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
   }
   .rlabel {
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
   .rurl {
     font-family: var(--font-mono, monospace);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 80%, transparent);
     word-break: break-all;
   }
@@ -230,7 +230,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 65%, transparent);
   }
   .actions {

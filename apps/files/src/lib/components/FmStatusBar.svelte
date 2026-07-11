@@ -56,7 +56,7 @@
     height: var(--height-control, 28px);
     padding: 0 16px;
     border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     flex-shrink: 0;

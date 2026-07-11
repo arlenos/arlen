@@ -20,7 +20,7 @@
     align-items: flex-start;
     gap: 0.5rem;
     padding: 0.625rem var(--space-row, 0.75rem);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     line-height: 1.4;
     color: var(--color-error);
     background: color-mix(in srgb, var(--color-error) 10%, transparent);

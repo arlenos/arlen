@@ -115,11 +115,11 @@
 
 <style>
   .bat-status { display: flex; flex-direction: column; gap: 2px; }
-  .bat-pct { font-size: 1.25rem; font-weight: 600; }
-  .bat-detail { font-size: 0.6875rem; opacity: 0.5; display: flex; align-items: center; gap: 4px; }
+  .bat-pct { font-size: var(--text-xl); font-weight: 600; }
+  .bat-detail { font-size: var(--text-2xs); opacity: 0.5; display: flex; align-items: center; gap: 4px; }
 
   .bat-section { display: flex; flex-direction: column; gap: 8px; }
-  .bat-heading { font-size: 0.6875rem; font-weight: 600; opacity: 0.5; }
+  .bat-heading { font-size: var(--text-2xs); font-weight: 600; opacity: 0.5; }
   .bat-profiles { display: flex; gap: 4px; }
 
   .bat-pill {

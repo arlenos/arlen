@@ -334,19 +334,19 @@
 </ShellPopover>
 
 <style>
-  .net-msg { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 12px; color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); text-align: center; font-size: 0.8125rem; }
+  .net-msg { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 12px; color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent); text-align: center; font-size: var(--text-sm); }
   .net-msg-title { color: var(--color-fg-shell); }
-  .net-msg-hint { font-size: 0.6875rem; opacity: 0.5; }
+  .net-msg-hint { font-size: var(--text-2xs); opacity: 0.5; }
   .net-status { display: flex; align-items: center; gap: 10px; }
   .net-status-icon { opacity: 0.7; }
   .net-off { opacity: 0.3; }
   .net-status-info { display: flex; flex-direction: column; gap: 1px; }
-  .net-status-name { font-size: 0.8125rem; font-weight: 500; }
-  .net-status-detail { font-size: 0.6875rem; opacity: 0.5; }
+  .net-status-name { font-size: var(--text-sm); font-weight: 500; }
+  .net-status-detail { font-size: var(--text-2xs); opacity: 0.5; }
 
-  .net-loading { padding: 20px; text-align: center; opacity: 0.4; font-size: 0.75rem; }
+  .net-loading { padding: 20px; text-align: center; opacity: 0.4; font-size: var(--text-xs); }
 
-  .net-list-header { display: flex; align-items: center; justify-content: space-between; font-size: 0.6875rem; opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .net-list-header { display: flex; align-items: center; justify-content: space-between; font-size: var(--text-2xs); opacity: 0.5; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
   .net-refresh { width: var(--height-control-compact, 24px); height: var(--height-control-compact, 24px); display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius-chip); color: inherit; padding: 0; }
   .net-refresh:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
 
@@ -354,7 +354,7 @@
   .net-item {
     display: flex; align-items: center; justify-content: space-between;
     padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-input);
-    color: var(--color-fg-shell); font-size: 0.8125rem;
+    color: var(--color-fg-shell); font-size: var(--text-sm);
     text-align: left; width: 100%;
     transition: background-color var(--duration-micro, 100ms) ease;
   }
@@ -368,39 +368,39 @@
   .net-item-info :global(span) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   :global(.net-check) { color: var(--color-success); flex-shrink: 0; }
   .net-item-meta { display: flex; align-items: center; gap: 6px; opacity: 0.5; flex-shrink: 0; }
-  .net-empty { padding: 20px; text-align: center; opacity: 0.3; font-size: 0.75rem; }
+  .net-empty { padding: 20px; text-align: center; opacity: 0.3; font-size: var(--text-xs); }
 
-  :global(.ctx-label) { opacity: 0.5; font-size: 0.625rem; min-width: 48px; text-transform: uppercase; letter-spacing: 0.03em; }
-  :global(.ctx-value) { font-size: 0.6875rem; font-family: monospace; }
+  :global(.ctx-label) { opacity: 0.5; font-size: var(--text-2xs); min-width: 48px; text-transform: uppercase; letter-spacing: 0.03em; }
+  :global(.ctx-value) { font-size: var(--text-2xs); font-family: monospace; }
 
-  .net-ethernet { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 0.8125rem; opacity: 0.7; }
-  .net-ethernet-badge { margin-left: auto; font-size: 0.6875rem; opacity: 0.5; }
+  .net-ethernet { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: var(--text-sm); opacity: 0.7; }
+  .net-ethernet-badge { margin-left: auto; font-size: var(--text-2xs); opacity: 0.5; }
 
   .vpn-header {
     display: flex; align-items: center; gap: 6px;
     padding: 6px 4px; background: transparent; border: none; border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
-    font-size: 0.75rem; font-weight: 500; width: 100%; text-align: left;
+    font-size: var(--text-xs); font-weight: 500; width: 100%; text-align: left;
     transition: color var(--duration-micro, 100ms) ease;
   }
   .vpn-header:hover { color: var(--color-fg-shell); }
   :global(.vpn-chevron-open) { transform: rotate(90deg); }
-  .vpn-badge { margin-left: auto; font-size: 0.625rem; opacity: 0.5; font-weight: 400; }
+  .vpn-badge { margin-left: auto; font-size: var(--text-2xs); opacity: 0.5; font-weight: 400; }
   .vpn-list { display: flex; flex-direction: column; gap: 2px; }
-  .vpn-status { font-size: 0.6875rem; opacity: 0.5; }
+  .vpn-status { font-size: var(--text-2xs); opacity: 0.5; }
 
   .pw-section { display: flex; flex-direction: column; gap: 10px; }
-  .pw-title { font-size: 0.8125rem; }
+  .pw-title { font-size: var(--text-sm); }
   .pw-input {
     width: 100%; padding: 7px 10px; border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
-    color: var(--color-fg-shell); font-size: 0.8125rem; outline: none;
+    color: var(--color-fg-shell); font-size: var(--text-sm); outline: none;
   }
   .pw-input:focus { border-color: color-mix(in srgb, var(--color-fg-shell) 40%, transparent); }
   .pw-actions { display: flex; justify-content: flex-end; gap: 6px; }
   .pw-btn {
-    padding: 5px 12px; border-radius: var(--radius-input); font-size: 0.6875rem;
+    padding: 5px 12px; border-radius: var(--radius-input); font-size: var(--text-2xs);
     background: transparent; border: 1px solid color-mix(in srgb, var(--color-fg-shell) 20%, transparent);
     color: var(--color-fg-shell);
   }

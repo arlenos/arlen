@@ -210,7 +210,7 @@
     outline: none;
     color: var(--foreground);
     font: inherit;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     padding: 0;
   }
   .input::placeholder {
@@ -268,7 +268,7 @@
     border: none;
     border-radius: var(--radius-chip);
     color: var(--foreground);
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     text-align: left;
     transition: background-color 100ms ease;
   }
@@ -290,13 +290,13 @@
 
   .empty {
     padding: 0.6rem 0.7rem;
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     line-height: 1.4;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .empty code {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: var(--text-2xs);
     padding: 0.05rem 0.3rem;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 10%, transparent);

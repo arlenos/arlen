@@ -294,7 +294,7 @@
   }
 
   .applet-label {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     line-height: 1;
     max-width: var(--topbar-applet-label-max-w, 120px);
     white-space: nowrap;
@@ -321,7 +321,7 @@
   :global(.applet-tooltip) {
     background: var(--topbar-tooltip-bg, var(--color-bg-card, #171717));
     color: var(--topbar-tooltip-fg, var(--color-fg-shell));
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     padding: 4px 8px;
     border-radius: var(--radius-chip);
     border: 1px solid color-mix(in srgb, var(--color-fg-shell) 12%, transparent);

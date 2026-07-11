@@ -245,7 +245,7 @@
     border: none;
     background: transparent;
     color: var(--foreground);
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     outline: none;
   }
   .find-input::placeholder {
@@ -254,7 +254,7 @@
   .find-count {
     min-width: 4rem;
     text-align: right;
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--foreground) 50%, transparent);

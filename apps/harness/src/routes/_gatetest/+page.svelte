@@ -65,6 +65,6 @@
     border-radius: var(--radius-card);
     background: var(--card);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
   }
 </style>
