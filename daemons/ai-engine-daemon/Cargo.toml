@@ -26,6 +26,9 @@ arlen-ai-core = { path = "../../ai/ai-core" }
 # The signed undo log's inverse-receipt model: the graph compensation receipt maps
 # to InverseReceipt::RetractGraphEdge for the persisted, HMAC-chained undo log.
 arlen-ai-undo-core = { path = "../../ai/ai-undo-core" }
+# The wire protocol to the separate-uid undo signer: submit a created undo entry
+# so a graph compensation survives a restart.
+arlen-ai-undo-proto = { path = "../../ai/ai-undo-proto" }
 # The shared behaviour/router/loader vocabulary the curator orchestrator (§E)
 # re-homes onto: the deterministic trigger match + the Workflow/Agent split.
 arlen-ai-skills = { path = "../../ai/ai-skills" }

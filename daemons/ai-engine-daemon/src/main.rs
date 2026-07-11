@@ -351,7 +351,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let write_executor: Arc<dyn Executor> = Arc::new(
         GraphWriteExecutor::new(build_write_runner())
             .with_audit(audit.clone())
-            .with_compensation(compensation),
+            .with_compensation(compensation)
+            // Persist each created write's compensation to the separate-uid signed
+            // undo log too (best-effort), so an undo survives a restart. Absent
+            // signer -> the in-memory store still covers the session.
+            .with_undo_signer(arlen_ai_undo_proto::socket_path()),
     );
     // The autonomous curator's deterministic auto-tag write applies through the
     // SAME gated write executor (executor-live gated, audited, undo-registered);

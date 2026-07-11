@@ -174,6 +174,11 @@ pub struct GraphWriteExecutor {
     /// The compensation store the op-id-keyed retract is registered into at apply
     /// time, so a created write is undoable regardless of the engine.
     compensation: Option<Arc<Mutex<CompensationStore>>>,
+    /// The separate-uid undo signer's socket, when set: a created write's
+    /// compensation is also submitted here (best-effort) so it survives a restart
+    /// in the signed, HMAC-chained log. A signer that is absent or failing never
+    /// fails the write - the in-memory `compensation` store covers the session.
+    undo_signer: Option<std::path::PathBuf>,
     /// The executor-live gate, re-read PER CALL (fail-closed). A write applies only
     /// when it returns true, so a runtime `[agent] executor_live` change - either
     /// direction - takes effect on the next write with no restart, and a mid-flight
@@ -192,6 +197,7 @@ impl GraphWriteExecutor {
             writer,
             audit: None,
             compensation: None,
+            undo_signer: None,
             executor_live: crate::engine_config::executor_live,
         }
     }
@@ -216,6 +222,14 @@ impl GraphWriteExecutor {
     /// registered at apply time, from the daemon's own op id (not an engine report).
     pub fn with_compensation(mut self, store: Arc<Mutex<CompensationStore>>) -> Self {
         self.compensation = Some(store);
+        self
+    }
+
+    /// Attach the undo-signer socket so a created write's compensation is also
+    /// persisted to the signed log (best-effort, in addition to the in-memory
+    /// store), surviving a restart.
+    pub fn with_undo_signer(mut self, socket: std::path::PathBuf) -> Self {
+        self.undo_signer = Some(socket);
         self
     }
 }
@@ -294,19 +308,35 @@ impl Executor for GraphWriteExecutor {
                 // genuine create needs an undo; an already-existing edge created
                 // nothing.
                 if created {
+                    let receipt = RetractReceipt::for_write(
+                        &op_id,
+                        &from_type,
+                        &from_id,
+                        &to_type,
+                        &to_id,
+                        &relation_type,
+                    );
                     if let Some(store) = &self.compensation {
                         if let Ok(mut s) = store.lock() {
-                            s.register(
-                                op_id.clone(),
-                                RetractReceipt::for_write(
-                                    &op_id,
-                                    &from_type,
-                                    &from_id,
-                                    &to_type,
-                                    &to_id,
-                                    &relation_type,
-                                ),
-                            );
+                            s.register(op_id.clone(), receipt.clone());
+                        }
+                    }
+                    // Best-effort: also persist the compensation to the signed undo
+                    // log so it survives a restart. A signer that is absent or
+                    // failing must never fail the write - the in-memory store above
+                    // already covers the session. No gate correlation id reaches the
+                    // executor, so the durable entry keys the retract on the write's
+                    // own op id.
+                    if let Some(signer) = &self.undo_signer {
+                        if signer.exists() {
+                            let entry = receipt.to_undo_entry(op_id.as_str());
+                            if let Err(e) =
+                                crate::undo_signer::submit_created(signer, &entry).await
+                            {
+                                tracing::debug!(
+                                    "undo signer submit failed (in-memory store still covers it): {e}"
+                                );
+                            }
                         }
                     }
                 }
