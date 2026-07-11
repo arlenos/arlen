@@ -1,0 +1,43 @@
+[Unit]
+Description=Arlen Terminal-run MCP Server (user service)
+Documentation=https://github.com/arlenos/arlen
+# Serves the `run_command` tool on an MCP socket the AI daemon connects to. Each
+# call runs a single previously-confirmed command inside a bwrap sandbox (no host
+# write, no network, no privilege) and returns its captured output. It depends on
+# nothing: it binds its own socket and spawns the confinement directly.
+
+[Service]
+Type=simple
+# Installed at /usr/bin/arlen-terminal-run-mcp on purpose: the AI daemon resolves
+# a server's binary path to its app id (arlen-permissions maps /usr/bin/arlen-<name>
+# to <name>), so a different install path would change the id and be refused.
+ExecStart=/usr/bin/arlen-terminal-run-mcp
+Restart=on-failure
+RestartSec=2
+
+Environment=RUST_LOG=info
+
+# NB this server is a NAMESPACE-CREATING process, unlike the pure-reader MCP
+# servers: it spawns bwrap, which unshares user/mount/pid/ipc/uts/cgroup/net to
+# build the command sandbox. So the hardening deliberately differs:
+#   - RestrictNamespaces allows exactly the sandbox namespace types (a blanket
+#     RestrictNamespaces=yes would break bwrap).
+#   - MemoryDenyWriteExecute is NOT set: a confined command may legitimately JIT
+#     (node, a python JIT), and a W^X filter is inherited by children.
+# The confinement of the RUN command is bwrap's job (no host write, no network);
+# this unit hardens the SERVER process. DEPLOYMENT CAVEAT: the bwrap-under-systemd
+# interaction (PrivateDevices vs bwrap's --dev, unprivileged-userns availability)
+# must be verified on the target image at go-live; run_command is fail-closed on
+# consent until then, so nothing spawns yet.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/run/user/%U/arlen
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=user mnt pid net ipc uts cgroup
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

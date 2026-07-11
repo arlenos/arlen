@@ -5,15 +5,22 @@ version = "0.1.0"
 edition = "2021"
 description = "Terminal-run MCP server: runs a single user-approved command inside a confined sandbox (no network, no host write, no privilege) with captured output. The sharp edge - always Confirm-gated by the registry, never autonomous"
 
+[[bin]]
+name = "arlen-terminal-run-mcp"
+path = "src/main.rs"
+
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
 arlen-confiner = { path = "../../sdk/confiner" }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "io-util"] }
+os-sdk = { path = "../../sdk/os-sdk" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "io-util", "signal"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 thiserror = "1"
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 tempfile = "3"
