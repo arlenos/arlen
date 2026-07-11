@@ -37,6 +37,10 @@ pub struct PendingView {
     /// Whether the action can be undone - drives the footer/tone; without it every
     /// request degrades to a single tone.
     pub reversibility: Reversibility,
+    /// Whether the request was triggered by external / untrusted content (the
+    /// prompt-injection containment), so the dialog can show the extra "this was
+    /// triggered by something you opened" warning line.
+    pub triggered_externally: bool,
 }
 
 impl PendingView {
@@ -50,6 +54,7 @@ impl PendingView {
             summary: pending.request.summary.clone(),
             scope: pending.request.scope.clone(),
             reversibility: Reversibility::of(pending.request.kind),
+            triggered_externally: pending.request.triggered_by_external_content,
         }
     }
 }
