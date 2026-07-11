@@ -32,6 +32,20 @@ pub struct ActionItem {
     pub source_segment: Option<usize>,
 }
 
+/// One sentence of the prose summary paired with the transcript segment it was plainly
+/// derived from, for the click-to-transcript surface (the Granola grounded-summary
+/// pattern). `source_segment` is content-matched deterministically and set only on a
+/// strong, unambiguous match, so a synthesized/paraphrased claim that matches no segment
+/// stays `None` rather than citing one it did not come from.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SummaryClaim {
+    /// The summary sentence text.
+    pub text: String,
+    /// The transcript segment index this claim grounds to, or `None` when unclear.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_segment: Option<usize>,
+}
+
 /// A meeting note: the human-facing title, the participants, the summary, the extracted
 /// action items and the transcript it was built from. The engine produces this; the
 /// text-editor renders [`MeetingNote::to_markdown`] as an editable document and the
@@ -43,8 +57,13 @@ pub struct MeetingNote {
     /// The participant display names, in the order to list them.
     #[serde(default)]
     pub participants: Vec<String>,
-    /// The prose summary.
+    /// The prose summary (the rendered/stored form).
     pub summary: String,
+    /// The summary split into sentence-claims, each grounded to its transcript span for
+    /// the click-to-transcript surface. Derived from `summary`; omitted from the wire when
+    /// empty. The rendered document still uses `summary`; this is the interactive overlay.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub summary_claims: Vec<SummaryClaim>,
     /// The extracted action items.
     #[serde(default)]
     pub action_items: Vec<ActionItem>,
@@ -175,6 +194,7 @@ mod tests {
             title: "Sprint sync".into(),
             participants: vec!["Ada".into(), "Grace".into()],
             summary: summary.into(),
+            summary_claims: Vec::new(),
             action_items: items,
             transcript: Transcript { language: None, segments: segs },
         }
