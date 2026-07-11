@@ -190,6 +190,7 @@ mod tests {
             app_id: app.to_string(),
             connection_id: conn(connection),
             max_scope: scope.iter().map(|s| s.to_string()).collect(),
+            allowed_hosts: vec![],
         }
     }
 

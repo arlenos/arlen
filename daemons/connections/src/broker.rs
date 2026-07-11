@@ -82,6 +82,28 @@ pub struct ConnectionGrant {
     /// The ceiling: the maximum set of scope tokens a handout may carry. A
     /// request may ask for any subset, never a superset.
     pub max_scope: Vec<String>,
+    /// The per-connection egress endpoint allowlist (CONN-R3): the hosts this app
+    /// may reach for this connection. The daemon binds a minted capability token to
+    /// exactly these hosts, so the destination scope is DECLARATIVE (from the
+    /// trusted config), never a value the requesting app chooses. Empty means no
+    /// host is authorized (fail-closed: no egress token can be minted).
+    #[serde(default)]
+    pub allowed_hosts: Vec<String>,
+}
+
+/// The declared egress allowlist for one `(app_id, connection)` pair, or `None`
+/// when the app holds no grant for that connection. The mint path binds a token to
+/// exactly this host set, so the destination scope comes from the trusted grant
+/// config, never from the requesting app.
+pub fn allowed_hosts_for<'a>(
+    grants: &'a [ConnectionGrant],
+    app_id: &str,
+    connection: &ConnectionId,
+) -> Option<&'a [String]> {
+    grants
+        .iter()
+        .find(|g| g.app_id == app_id && &g.connection_id == connection)
+        .map(|g| g.allowed_hosts.as_slice())
 }
 
 /// An app's request for a scoped credential handout.
@@ -201,7 +223,36 @@ mod tests {
             app_id: app.to_string(),
             connection_id: conn(connection),
             max_scope: scope.iter().map(|s| s.to_string()).collect(),
+            allowed_hosts: vec![],
         }
+    }
+
+    #[test]
+    fn allowed_hosts_are_looked_up_per_app_and_connection() {
+        let grants = vec![
+            ConnectionGrant {
+                app_id: "com.example.app".to_string(),
+                connection_id: conn("anthropic"),
+                max_scope: vec![],
+                allowed_hosts: vec!["api.anthropic.com".to_string()],
+            },
+            ConnectionGrant {
+                app_id: "com.other.app".to_string(),
+                connection_id: conn("anthropic"),
+                max_scope: vec![],
+                allowed_hosts: vec!["evil.example".to_string()],
+            },
+        ];
+        // Matches on BOTH app and connection: the first app's hosts, never the
+        // other app's (an app can only mint for its own grant).
+        assert_eq!(
+            allowed_hosts_for(&grants, "com.example.app", &conn("anthropic")),
+            Some(&["api.anthropic.com".to_string()][..])
+        );
+        // No grant for this connection -> None (no token can be minted).
+        assert_eq!(allowed_hosts_for(&grants, "com.example.app", &conn("github")), None);
+        // No grant for this app -> None.
+        assert_eq!(allowed_hosts_for(&grants, "com.stranger", &conn("anthropic")), None);
     }
 
     fn request(app: &str, connection: &str, scope: &[&str]) -> CredentialRequest {

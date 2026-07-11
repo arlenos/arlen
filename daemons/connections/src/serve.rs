@@ -124,6 +124,7 @@ mod tests {
             app_id: "com.example.app".to_string(),
             connection_id: conn("github"),
             max_scope: vec!["repo".to_string(), "read:user".to_string()],
+            allowed_hosts: vec![],
         }]
     }
 
