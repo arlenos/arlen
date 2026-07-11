@@ -64,6 +64,7 @@ pub fn dispatch(store: &mut SignerStore, request: Request) -> Response {
             Response::State(reply)
         }
         Request::LookupEntry { op_id } => Response::Entry(store.entry(&op_id).cloned()),
+        Request::LiveEntries => Response::Entries(store.live_entries()),
     }
 }
 

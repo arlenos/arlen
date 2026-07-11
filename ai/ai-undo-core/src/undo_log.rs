@@ -191,6 +191,30 @@ impl UndoLog {
             _ => None,
         })
     }
+
+    /// Every created entry whose folded lifecycle state is still non-terminal -
+    /// the set a restarting consumer re-arms so a persisted compensation stays
+    /// undoable. A terminal (`Aborted` / `Compensated` / `Superseded`) entry is
+    /// done and omitted; an entry whose record chain folds to an illegal sequence
+    /// is skipped fail-closed (never guessed live). Ordered by creation, deduped
+    /// by `op_id`.
+    pub fn live_entries(&self) -> Vec<&UndoEntry> {
+        let mut seen = std::collections::HashSet::new();
+        let mut live = Vec::new();
+        for record in &self.records {
+            if let LogRecord::Created(entry) = record {
+                if !seen.insert(entry.op_id.as_str()) {
+                    continue;
+                }
+                if let Some(Ok(state)) = self.current_state(&entry.op_id) {
+                    if !state.is_terminal() {
+                        live.push(entry);
+                    }
+                }
+            }
+        }
+        live
+    }
 }
 
 /// One persisted line: a record paired with its HMAC chain hash over the running
@@ -352,6 +376,13 @@ impl FileUndoLog {
     pub fn entry(&self, op_id: &str) -> Option<&UndoEntry> {
         self.log.entry(op_id)
     }
+
+    /// The created entries still in a non-terminal state (see
+    /// [`UndoLog::live_entries`]) - the set a consumer re-arms on restart so a
+    /// persisted compensation survives.
+    pub fn live_entries(&self) -> Vec<&UndoEntry> {
+        self.log.live_entries()
+    }
 }
 
 /// The genesis previous-hash: 32 zero bytes, the chain's index-0 anchor (the same
@@ -474,6 +505,22 @@ mod tests {
         log.append_transition("op-1", Compensating);
         log.append_transition("op-1", Compensated);
         assert_eq!(log.current_state("op-1").unwrap().unwrap(), Compensated);
+    }
+
+    #[test]
+    fn live_entries_are_the_non_terminal_ones_deduped_and_fail_closed() {
+        let mut log = UndoLog::new();
+        log.append_created(entry("committed")); // stays InFlight->Committed: live
+        log.append_created(entry("done")); // compensated: terminal, omitted
+        log.append_created(entry("inflight")); // still InFlight: live
+        log.append_created(entry("illegal")); // folds illegal: skipped fail-closed
+        log.append_transition("committed", Committed);
+        log.append_transition("done", Committed);
+        log.append_transition("done", Compensating);
+        log.append_transition("done", Compensated);
+        log.append_transition("illegal", Compensated); // InFlight->Compensated is illegal
+        let live: Vec<&str> = log.live_entries().iter().map(|e| e.op_id.as_str()).collect();
+        assert_eq!(live, ["committed", "inflight"], "only non-terminal, legal entries, in order");
     }
 
     #[test]

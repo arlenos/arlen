@@ -281,9 +281,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // so nothing executes yet regardless.
     // A bounded, daemon-lived store of op-id-keyed retract receipts: a reported
     // graph.write records its undo here for the activity-view undo trigger (a
-    // later consumer) to reverse. In-memory + bounded (a persisted/signed undo
-    // log is a separate increment).
+    // later consumer) to reverse. In-memory + bounded; on startup it is re-armed
+    // from the separate-uid signer's signed, HMAC-chained log (below), so a
+    // graph compensation recorded before a restart is still undoable.
     let compensation = Arc::new(Mutex::new(CompensationStore::new(256)));
+    // Restart restore: fetch the signer's still-undoable (non-terminal) entries and
+    // re-arm the in-memory store, so an undo issued after a restart finds a write
+    // the signed log recorded. Best-effort - an absent/failing signer just means no
+    // restore (the session starts with an empty store), never a startup failure.
+    {
+        let signer = arlen_ai_undo_proto::socket_path();
+        match arlen_ai_engine_daemon::undo_signer::fetch_live(&signer).await {
+            Ok(entries) => {
+                let armed = compensation
+                    .lock()
+                    .map(|mut store| store.restore(&entries))
+                    .unwrap_or(0);
+                if armed > 0 {
+                    info!("re-armed {armed} persisted compensation(s) from the signer");
+                }
+            }
+            Err(e) => tracing::debug!(error = %e, "no persisted compensation restored"),
+        }
+    }
     let audit: Arc<dyn AuditSink> = Arc::new(LedgerAuditSink::at_default_socket());
     // The curator loop publishes its live status here; the AIAgent1 `status` method
     // reads the same handle (the orchestrator writes idle/busy, the interface reads).
