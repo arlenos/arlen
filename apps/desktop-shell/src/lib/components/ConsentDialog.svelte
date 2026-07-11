@@ -14,6 +14,7 @@
   /// dangerous request impossible to dispatch with the same reflex as the
   /// routine one.
   import { onMount } from "svelte";
+  import { get } from "svelte/store";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { AlertTriangle, Send, Trash2 } from "lucide-svelte";
@@ -23,6 +24,15 @@
   onMount(() => {
     void pollConsent();
   });
+
+  // A pending request must always be deniable by Escape. The dialog's `open` is
+  // controlled (static true; the request clears via the store), which does not
+  // reliably fire the primitive's escape-close, so deny explicitly here.
+  function onWindowKeydown(e: KeyboardEvent): void {
+    if (e.key !== "Escape") return;
+    const p = get(current);
+    if (p) deny(p);
+  }
 
   const NAMES: Record<string, string> = {
     "org.arlen.files": "Files",
@@ -96,6 +106,8 @@
     holdTimer = null;
   }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 {#if $current}
   {@const p = $current}
