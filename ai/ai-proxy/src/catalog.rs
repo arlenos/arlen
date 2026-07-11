@@ -56,6 +56,23 @@ pub enum AuthScheme {
     XGoogApiKey,
 }
 
+impl AuthScheme {
+    /// The egress request header carrying the broker-injected credential, or `None`
+    /// for a no-auth local provider (which needs no header). The injection half of
+    /// the credential path (CONN-R3): the proxy fetches the credential from the
+    /// Connections broker (destination-scope gated) and sets exactly this header at
+    /// forward. Pure, so the scheme→header mapping is tested without the fetch.
+    pub fn header(self, credential: &str) -> Option<(&'static str, String)> {
+        match self {
+            AuthScheme::None => None,
+            AuthScheme::Bearer => Some(("authorization", format!("Bearer {credential}"))),
+            AuthScheme::XApiKey => Some(("x-api-key", credential.to_string())),
+            AuthScheme::AzureApiKey => Some(("api-key", credential.to_string())),
+            AuthScheme::XGoogApiKey => Some(("x-goog-api-key", credential.to_string())),
+        }
+    }
+}
+
 /// The access class of a provider: how a caller obtains the credential and what it costs.
 /// Orthogonal both to [`AuthScheme`] (the header the token rides in) and to the sovereignty
 /// tier - a free or subscription provider can still be a closed-jurisdiction one that trains
@@ -549,6 +566,21 @@ pub struct ProviderView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auth_scheme_maps_the_credential_to_its_egress_header() {
+        assert_eq!(AuthScheme::None.header("k"), None, "a local provider injects no header");
+        assert_eq!(
+            AuthScheme::Bearer.header("sk-123"),
+            Some(("authorization", "Bearer sk-123".to_string()))
+        );
+        assert_eq!(AuthScheme::XApiKey.header("sk-123"), Some(("x-api-key", "sk-123".to_string())));
+        assert_eq!(AuthScheme::AzureApiKey.header("sk-123"), Some(("api-key", "sk-123".to_string())));
+        assert_eq!(
+            AuthScheme::XGoogApiKey.header("sk-123"),
+            Some(("x-goog-api-key", "sk-123".to_string()))
+        );
+    }
 
     fn tmp_catalog(name: &str, content: &str) -> std::path::PathBuf {
         let path = std::env::temp_dir()
