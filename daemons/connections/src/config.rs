@@ -35,6 +35,11 @@ struct GrantEntry {
     /// empty ceiling: the app may name the connection but request no scope.
     #[serde(default)]
     max_scope: Vec<String>,
+    /// The per-connection egress endpoint allowlist (CONN-R3): the hosts this app
+    /// may reach for this connection. Absent means no host is authorized, so no
+    /// egress capability token can be minted (fail-closed).
+    #[serde(default)]
+    allowed_hosts: Vec<String>,
 }
 
 impl ConnectionsConfig {
@@ -55,6 +60,7 @@ impl ConnectionsConfig {
                     app_id: e.app_id.clone(),
                     connection_id,
                     max_scope: e.max_scope.clone(),
+                    allowed_hosts: e.allowed_hosts.clone(),
                 })
             })
             .collect()
@@ -91,6 +97,7 @@ mod tests {
             app_id = "com.example.app"
             connection = "github"
             max_scope = ["repo", "read:user"]
+            allowed_hosts = ["api.github.com"]
 
             [[grant]]
             app_id = "com.example.app"
@@ -102,9 +109,12 @@ mod tests {
         assert_eq!(grants[0].app_id, "com.example.app");
         assert_eq!(grants[0].connection_id.as_str(), "github");
         assert_eq!(grants[0].max_scope, vec!["repo".to_string(), "read:user".to_string()]);
+        assert_eq!(grants[0].allowed_hosts, vec!["api.github.com".to_string()]);
         // A grant with no max_scope is an empty ceiling (name-only).
         assert_eq!(grants[1].connection_id.as_str(), "google-drive");
         assert!(grants[1].max_scope.is_empty());
+        // Absent allowed_hosts is an empty allowlist (no egress token mintable).
+        assert!(grants[1].allowed_hosts.is_empty());
     }
 
     #[test]
