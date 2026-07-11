@@ -670,20 +670,23 @@ mod tests {
         let view = state.front_view().expect("the request is pending");
         assert_eq!(view.id, id.get());
         assert_eq!(view.requester, "org.arlen.files");
-        // The shell resolves it; audited, and the parked requester unblocks.
+        // The shell resolves it "always allow", but a permanent delete is
+        // irreversible: the reversibility gate downgrades remember to allow-once
+        // end to end, so no standing grant is minted and the requester is told
+        // it was a one-time allow.
         let resolved = state.resolve(id, ConsentOutcome::AllowedRemembered).await;
         match resolved {
             ResolveResult::Resolved { audited, reply, grant } => {
                 assert!(audited, "the accepting sink records the decision");
-                assert_eq!(reply, ConsentOutcome::AllowedRemembered);
-                assert!(grant.is_some(), "an audited always-allow yields a grant");
+                assert_eq!(reply, ConsentOutcome::AllowedOnce, "irreversible remember downgrades to once");
+                assert!(grant.is_none(), "an irreversible scope mints no standing grant");
             }
             ResolveResult::Unknown => panic!("the pending request resolves"),
         }
         assert_eq!(
             decision.await.unwrap(),
-            ConsentOutcome::AllowedRemembered,
-            "the waiting requester receives the decision"
+            ConsentOutcome::AllowedOnce,
+            "the waiting requester receives the downgraded decision"
         );
         assert!(state.front_view().is_none(), "the resolved request leaves the queue");
     }
