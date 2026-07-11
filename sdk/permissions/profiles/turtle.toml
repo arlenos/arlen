@@ -1,0 +1,12 @@
+# Starting permission profile for a Git GUI. It works with the user's
+# repositories under Home and needs network to fetch and push. No Knowledge
+# Graph access.
+[info]
+app_id = "turtle"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true
