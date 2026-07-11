@@ -1,0 +1,8 @@
+# Starting permission profile for an image annotation / screenshot editor. Works
+# with the user's Pictures; no network and no Knowledge Graph by default.
+[info]
+app_id = "gradia"
+tier = "third-party"
+
+[filesystem]
+pictures = true

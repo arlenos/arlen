@@ -1,0 +1,10 @@
+# Starting permission profile for a game library manager. It organizes and
+# launches the user's games under Home (launched games carry their own grants);
+# no network by default (its optional cover-art fetch is refined later). No
+# Knowledge Graph.
+[info]
+app_id = "cartridges"
+tier = "third-party"
+
+[filesystem]
+home = true
