@@ -1,9 +1,9 @@
 <script lang="ts">
-  /// The responsive section grid: the canonical settings/app body layout.
-  /// One column when narrow (readable), two columns when wide (cards reflow to
-  /// use the width), capped so it never sprawls into a thin many-column wall.
-  /// Holds `Group` (section) cards. A child with class `span-full` spans the
-  /// whole width (for wide content: an activity log, a table, an editor).
+  /// The section body layout: the canonical settings/app body. A single column
+  /// of full-width section cards stacked top to bottom, capped at a readable
+  /// width and centred, so reading order is predictable and nothing sprawls.
+  /// Holds `Group` (section) cards. `span-full` is now a no-op (every child is
+  /// already full-width); it stays accepted so existing markup is untouched.
   /// See `docs/architecture/design-system.md` §5.
   import type { Snippet } from "svelte";
 
@@ -20,13 +20,12 @@
     /* Use the shared spacing token; the fallback matches the design-system
        spec value so this works even before the token is set in :root. */
     gap: var(--space-section, 1.5rem);
-    /* `min(100%, 28rem)` keeps each card readable (~448px) while collapsing to
-       a single column below that width instead of overflowing. `auto-fit`
-       yields two columns once the container can hold them. */
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
-    /* Cap at two readable columns + gap so wide/ultrawide windows do not
-       stretch into a thin wall; raise this token to allow a third column. */
-    max-width: 64rem;
+    /* One column: sections stack top to bottom, each full-width, so reading
+       order is predictable (no reflowed masonry). */
+    grid-template-columns: 1fr;
+    /* Cap at a readable single-column width so a control stays close to its
+       label and lines do not run long; a token, tune here to taste. */
+    max-width: var(--width-section-body, 46rem);
     width: 100%;
     margin-inline: auto;
   }

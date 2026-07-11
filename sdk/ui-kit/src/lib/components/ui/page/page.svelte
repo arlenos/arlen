@@ -44,7 +44,7 @@
      with the left edge of the section cards. */
   .page-header {
     width: 100%;
-    max-width: 64rem;
+    max-width: var(--width-section-body, 46rem);
     margin-inline: auto;
   }
 
