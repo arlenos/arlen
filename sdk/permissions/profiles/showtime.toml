@@ -1,0 +1,9 @@
+# Starting permission profile for a video player. It plays the user's local video
+# files, so it gets Home; playback is offline, so no network of its own and no
+# Knowledge Graph.
+[info]
+app_id = "showtime"
+tier = "third-party"
+
+[filesystem]
+home = true

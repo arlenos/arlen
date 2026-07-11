@@ -1,0 +1,9 @@
+# Starting permission profile for a public-transport connection app. It fetches
+# schedules and routes online, so it gets network; it needs no file access and no
+# Knowledge Graph.
+[info]
+app_id = "railway"
+tier = "third-party"
+
+[network]
+allow_all = true
