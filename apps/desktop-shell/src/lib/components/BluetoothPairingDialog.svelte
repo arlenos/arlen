@@ -1,24 +1,24 @@
 <script lang="ts">
-  /// Modal dialog driven by the `bluetoothPairing` store.
+  /// BlueZ Agent1 pairing requests, rendered through the shared `ConsentCard`
+  /// so the whole permission cluster reads as one dialog (system-dialog-plan.md).
+  /// The requester is the DEVICE (name + address, not a system-attested app id,
+  /// so `attested={false}`), toned caution because it is a foreign device.
   ///
-  /// Mounted once globally in `+layout.svelte`. The component is
-  /// inert (`open={false}`) when no pairing request is active, so
-  /// it has zero visual cost in the common case.
+  /// Mounted once globally in `+layout.svelte`. Inert when no request is active.
+  /// The allow/deny kinds (confirmation / authorization / authorizeService) are
+  /// a yes-no consent; the display + input kinds (pin/passkey) are a code-exchange
+  /// mechanic - they keep their own body + affordances (Cancel, or Cancel/OK), the
+  /// same way the xdg-portal file-PICKER stays its own interaction, but wear the
+  /// shared chrome for one consistent look.
   ///
-  /// One layout per request kind. The discriminated union is
-  /// flattened with `{#if request.kind === "..."}` so each branch
-  /// can read its own typed fields without casts.
-  ///
-  /// User actions:
-  /// - Cancel button / Escape / backdrop click → respond with
-  ///   `reject`, dialog closes immediately.
-  /// - Confirm / Pair / Allow button → respond with the appropriate
-  ///   typed payload. Inputs are validated client-side before send.
-
+  /// User actions: Cancel / Escape / backdrop → reject, closes immediately.
+  /// Confirm / Pair / Allow / OK → the appropriate typed payload; inputs are
+  /// validated client-side before send.
   import { onMount, onDestroy } from "svelte";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
+  import ConsentCard from "$lib/components/ConsentCard.svelte";
   import {
     current,
     init,
@@ -38,8 +38,8 @@
     dispose();
   });
 
-  // Reset inputs whenever the active request changes so a leftover
-  // value from a prior dialog can't get sent into a new one.
+  // Reset inputs whenever the active request changes so a leftover value from a
+  // prior dialog can't get sent into a new one.
   let lastId: number | null = null;
   $effect(() => {
     const cur = $current;
@@ -55,17 +55,15 @@
   function titleFor(req: PairRequest): string {
     switch (req.kind) {
       case "confirmation":
+      case "authorization":
         return `Pair with ${req.deviceName}?`;
       case "pinCodeInput":
         return `Enter PIN for ${req.deviceName}`;
       case "passkeyInput":
         return `Enter passkey for ${req.deviceName}`;
       case "displayPinCode":
-        return `Pair with ${req.deviceName}`;
       case "displayPasskey":
         return `Pair with ${req.deviceName}`;
-      case "authorization":
-        return `Pair with ${req.deviceName}?`;
       case "authorizeService":
         return `Allow ${req.deviceName} to use ${req.uuidLabel}?`;
     }
@@ -138,9 +136,17 @@
     }
   }
 
+  // The allow/deny kinds are rejecting a request (Deny); the input kinds are
+  // cancelling your own entry (Cancel).
+  function rejectLabel(req: PairRequest): string {
+    return req.kind === "confirmation" || req.kind === "authorization" || req.kind === "authorizeService"
+      ? "Deny"
+      : "Cancel";
+  }
+
   function showsConfirmButton(req: PairRequest): boolean {
-    // Display variants are informational — the user types on the
-    // peer device, no confirmation here. Only Cancel is meaningful.
+    // Display variants are informational — the user types on the peer device,
+    // no confirmation here. Only the reject button is meaningful.
     return req.kind !== "displayPinCode" && req.kind !== "displayPasskey";
   }
 
@@ -153,6 +159,63 @@
 
 {#if $current}
   {@const request = $current}
+
+  {#snippet body()}
+    {#if request.kind === "confirmation"}
+      <div class="code-display">{pad6(request.passkey)}</div>
+    {:else if request.kind === "displayPinCode"}
+      <div class="code-display">{request.pinCode}</div>
+    {:else if request.kind === "displayPasskey"}
+      <div class="code-display">{pad6(request.passkey)}</div>
+      <div
+        class="entered-progress"
+        role="progressbar"
+        aria-label="Digits entered on device"
+        aria-valuemin={0}
+        aria-valuemax={6}
+        aria-valuenow={request.entered}
+      >
+        {#each Array.from({ length: 6 }) as _, i}
+          <span class="entered-slot" class:filled={i < request.entered}></span>
+        {/each}
+      </div>
+    {:else if request.kind === "pinCodeInput"}
+      <div class="input-row">
+        <Input bind:value={pinInput} maxlength={16} autofocus placeholder="PIN" aria-label="PIN code" />
+      </div>
+    {:else if request.kind === "passkeyInput"}
+      <div class="input-row">
+        <Input
+          bind:value={passkeyInput}
+          inputmode="numeric"
+          maxlength={6}
+          autofocus
+          placeholder="000000"
+          aria-label="Passkey"
+          oninput={() => {
+            passkeyInput = passkeyInput.replace(/[^0-9]/g, "");
+          }}
+        />
+      </div>
+    {:else if request.kind === "authorizeService"}
+      <div class="meta">
+        <span>{request.deviceAddress}</span>
+        <span>{request.uuidLabel}</span>
+      </div>
+    {/if}
+    <p class="bt-note">{descriptionFor(request)}</p>
+  {/snippet}
+
+  {#snippet footer()}
+    <Button variant="outline" onclick={onCancel}>{rejectLabel(request)}</Button>
+    {#if showsConfirmButton(request)}
+      <span style="flex:1"></span>
+      <Button disabled={isConfirmDisabled(request)} onclick={onConfirm}>
+        {confirmLabel(request)}
+      </Button>
+    {/if}
+  {/snippet}
+
   <Dialog.Root
     open={true}
     onOpenChange={(v) => {
@@ -160,110 +223,44 @@
     }}
   >
     <Dialog.Content>
-      <Dialog.Header>
-        <Dialog.Title>{titleFor(request)}</Dialog.Title>
-        <Dialog.Description>{descriptionFor(request)}</Dialog.Description>
-      </Dialog.Header>
-
-      {#if request.kind === "confirmation"}
-        <div class="code-display">
-          {pad6(request.passkey)}
-        </div>
-      {:else if request.kind === "displayPinCode"}
-        <div class="code-display">
-          {request.pinCode}
-        </div>
-      {:else if request.kind === "displayPasskey"}
-        <div class="code-display">
-          {pad6(request.passkey)}
-        </div>
-        <div
-          class="entered-progress"
-          role="progressbar"
-          aria-label="Digits entered on device"
-          aria-valuemin={0}
-          aria-valuemax={6}
-          aria-valuenow={request.entered}
-        >
-          {#each Array.from({ length: 6 }) as _, i}
-            <span
-              class="entered-slot"
-              class:filled={i < request.entered}
-            ></span>
-          {/each}
-        </div>
-      {:else if request.kind === "pinCodeInput"}
-        <div class="input-row">
-          <Input
-            bind:value={pinInput}
-            maxlength={16}
-            autofocus
-            placeholder="PIN"
-            aria-label="PIN code"
-          />
-        </div>
-      {:else if request.kind === "passkeyInput"}
-        <div class="input-row">
-          <Input
-            bind:value={passkeyInput}
-            inputmode="numeric"
-            maxlength={6}
-            autofocus
-            placeholder="000000"
-            aria-label="Passkey"
-            oninput={() => {
-              passkeyInput = passkeyInput.replace(/[^0-9]/g, "");
-            }}
-          />
-        </div>
-      {:else if request.kind === "authorizeService"}
-        <div class="meta">
-          <span>{request.deviceAddress}</span>
-          <span>{request.uuidLabel}</span>
-        </div>
-      {/if}
-
-      <Dialog.Footer>
-        <Button variant="outline" onclick={onCancel}>Cancel</Button>
-        {#if showsConfirmButton(request)}
-          <Button
-            disabled={isConfirmDisabled(request)}
-            onclick={onConfirm}
-          >
-            {confirmLabel(request)}
-          </Button>
-        {/if}
-      </Dialog.Footer>
+      <ConsentCard
+        requesterName={request.deviceName}
+        requesterId={request.deviceAddress}
+        attested={false}
+        tone="caution"
+        title={titleFor(request)}
+        {body}
+        {footer}
+      />
     </Dialog.Content>
   </Dialog.Root>
 {/if}
 
 <style>
   .code-display {
-    margin: 4px 0 8px;
+    margin: 2px 0;
     padding: 14px 16px;
-    border-radius: var(--radius-chip);
-    background: color-mix(in srgb, var(--color-fg-shell) 8%, transparent);
+    border-radius: var(--radius-input);
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 1.6rem;
     font-weight: 600;
     letter-spacing: 0.18em;
     text-align: center;
-    color: var(--color-fg-shell);
+    color: var(--foreground);
   }
 
   .entered-progress {
     display: flex;
     justify-content: center;
     gap: 6px;
-    margin: 0 0 4px;
   }
 
   .entered-slot {
     width: 22px;
     height: 4px;
     border-radius: var(--radius-full);
-    background: color-mix(in srgb, var(--color-fg-shell) 15%, transparent);
+    background: color-mix(in srgb, var(--foreground) 15%, transparent);
     transition: background var(--duration-fast, 150ms) ease;
   }
 
@@ -272,15 +269,22 @@
   }
 
   .input-row {
-    margin: 4px 0 8px;
+    margin: 2px 0;
   }
 
   .meta {
-    margin: 4px 0 8px;
     display: flex;
     flex-direction: column;
     gap: 2px;
     font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+
+  .bt-note {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
 </style>
