@@ -14,6 +14,7 @@
 
 pub mod broker;
 pub mod audit;
+pub mod capability;
 pub mod config;
 pub mod dbus;
 pub mod downscope;
