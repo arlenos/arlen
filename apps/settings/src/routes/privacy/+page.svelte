@@ -64,6 +64,7 @@
     revokeCapsule,
     type Capsule,
   } from "$lib/stores/capsules";
+  import { t } from "$lib/i18n/messages";
 
   onMount(() => {
     loadGrants();
@@ -74,10 +75,10 @@
   // one row in the same model - the anti-Recall story). "By capability" is the
   // second lens, grouping by what an app can reach.
   let pivot = $state<"app" | "capability">("app");
-  const PIVOTS = [
-    { value: "app", label: "By app" },
-    { value: "capability", label: "By capability" },
-  ];
+  const PIVOTS = $derived([
+    { value: "app", label: $t("s.priv.byApp") },
+    { value: "capability", label: $t("s.priv.byCapability") },
+  ]);
 
   // The mark for each capability family (the hero anchor of the by-capability
   // view and the subheaders in the by-app view).
@@ -136,9 +137,9 @@
 
   function askScope(appLabel: string, line: ScopeLine) {
     pending = {
-      title: "Remove access?",
-      message: `"${line.text}" will be removed from ${appLabel}. It loses this on its next access, not immediately. It can ask again if it needs it, and you can put it back under Recently removed.`,
-      confirmLabel: "Remove",
+      title: $t("s.priv.askScope.title"),
+      message: $t("s.priv.askScope.msg", { what: line.text, app: appLabel }),
+      confirmLabel: $t("s.priv.remove"),
       run: async () => {
         const it = await revokeScope(line, appLabel);
         return it ? [it] : [];
@@ -147,9 +148,9 @@
   }
   function askAll(p: Principal) {
     pending = {
-      title: "Remove all access?",
-      message: `${p.label} will no longer reach anything on your system. It can ask again if it needs to, and you can put it back under Recently removed.`,
-      confirmLabel: "Remove all",
+      title: $t("s.priv.askAll.title"),
+      message: $t("s.priv.askAll.msg", { app: p.label }),
+      confirmLabel: $t("s.priv.removeAll"),
       run: () => revokeAllFor(p.lines, p.label),
     };
   }
@@ -159,9 +160,9 @@
   // that, and run returns nothing (no undo snackbar).
   function askRevokeCapsule(c: Capsule) {
     pending = {
-      title: "Revoke this share?",
-      message: `"${c.label}" (shared with ${c.audience}) stops being readable on its next access. It cannot pull back a copy the recipient already made, and this cannot be undone.`,
-      confirmLabel: "Revoke",
+      title: $t("s.priv.askCapsule.title"),
+      message: $t("s.priv.askCapsule.msg", { label: c.label, audience: c.audience }),
+      confirmLabel: $t("s.priv.revoke"),
       run: async () => {
         await revokeCapsule(c.id);
         return [];
@@ -183,8 +184,8 @@
   function showUndo(items: RemovedItem[]) {
     const text =
       items.length === 1
-        ? `Removed ${items[0].text}.`
-        : `Removed ${items.length} from ${items[0].appLabel}.`;
+        ? $t("s.priv.undoOne", { what: items[0].text })
+        : $t("s.priv.undoMany", { count: items.length, app: items[0].appLabel });
     undo = { items, text };
     if (undoTimer) clearTimeout(undoTimer);
     undoTimer = setTimeout(() => (undo = null), 7000);
@@ -207,9 +208,9 @@
   // The short muted marker shown where a Remove button cannot be, with the reason
   // stated (settled model: explained before the click, no tooltip).
   function revokeLabel(line: ScopeLine): string {
-    if (line.required) return "Required";
-    if (line.systemManaged) return "System-managed";
-    return "Not yet revocable";
+    if (line.required) return $t("s.priv.required");
+    if (line.systemManaged) return $t("s.priv.systemManaged");
+    return $t("s.priv.notRevocable");
   }
 
   // Clear a revoke/restore failure notice after a moment.
@@ -222,37 +223,37 @@
 </script>
 
 <Page
-  title="App access"
-  description="Everything that can reach your data, and everything you share out. You remove access or revoke a share here; an app asks when it needs more."
+  title={$t("s.priv.title")}
+  description={$t("s.priv.desc")}
 >
   <SectionGrid>
     <div class="pivot span-full">
       <SegmentedControl
         options={PIVOTS}
         value={pivot}
-        ariaLabel="Group access by app or by data"
+        ariaLabel={$t("s.priv.pivotAria")}
         onchange={(v) => (pivot = v as "app" | "capability")}
       />
     </div>
 
     {#if $grantsError}
-      <Group label="App access" class="span-full">
-        <p class="note">Could not read app access. The permission service did not answer.</p>
+      <Group label={$t("s.priv.title")} class="span-full">
+        <p class="note">{$t("s.priv.readError")}</p>
       </Group>
     {:else if isEmpty}
-      <Group label="App access" class="span-full">
-        <p class="note">No app holds access to your data.</p>
+      <Group label={$t("s.priv.title")} class="span-full">
+        <p class="note">{$t("s.priv.empty")}</p>
       </Group>
     {:else if pivot === "app"}
       {#if assistants.length > 0}
-        <Group label="The assistant" class="span-full">
+        <Group label={$t("s.priv.assistant")} class="span-full">
           {#each assistants as p (p.appId)}
             {@render principalBlock(p)}
           {/each}
         </Group>
       {/if}
       {#if apps.length > 0}
-        <Group label="Apps" class="span-full">
+        <Group label={$t("s.priv.apps")} class="span-full">
           {#each apps as p (p.appId)}
             {@render principalBlock(p)}
           {/each}
@@ -267,15 +268,14 @@
             <span class="data-icon"><FamilyIcon size={16} strokeWidth={1.75} /></span>
             <span class="data-name">{r.label}</span>
             <span class="data-count">
-              {appCount}
-              {appCount === 1 ? "app" : "apps"}
+              {$t("s.priv.appCount", { count: appCount })}
             </span>
           </div>
           <div class="reacher-list">
             {#each r.reachers as reacher (reacher.appId + reacher.line.key)}
               {@render avatar(reacher.appId, reacher.label, 24)}
               <span class="who">
-                {reacher.label}{#if !reacher.identityVerified}<span class="warn">unverified</span>{/if}
+                {reacher.label}{#if !reacher.identityVerified}<span class="warn">{$t("s.priv.unverified")}</span>{/if}
               </span>
               <span class="how" class:dim={reacher.line.own}>{howText(reacher.line)}</span>
               <span class="reacher-prov">{reacher.line.provenance}</span>
@@ -283,10 +283,10 @@
                 <button
                   type="button"
                   class="remove"
-                  aria-label={`Remove ${reacher.label} ${reacher.line.text}`}
+                  aria-label={$t("s.priv.removeAria", { app: reacher.label, what: reacher.line.text })}
                   onclick={() => askScope(reacher.label, reacher.line)}
                 >
-                  Remove
+                  {$t("s.priv.remove")}
                 </button>
               {:else}
                 <span class="remove-off">{revokeLabel(reacher.line)}</span>
@@ -298,7 +298,7 @@
     {/if}
 
     {#if $capsulesLoaded}
-      <Group label="Shared context" class="span-full">
+      <Group label={$t("s.priv.sharedContext")} class="span-full">
         {#if $capsules.length > 0}
           <div class="cap-list">
             {#each $capsules as c (c.id)}
@@ -309,41 +309,39 @@
               <span class="cap-who">{c.audience}</span>
               <span class="cap-when">{c.expiresAt}</span>
               {#if c.state === "active"}
-                <span class="cap-reads">{c.readsLeft} {c.readsLeft === 1 ? "read" : "reads"} left</span>
+                <span class="cap-reads">{$t("s.priv.readsLeft", { count: c.readsLeft })}</span>
                 <button
                   type="button"
                   class="remove"
-                  aria-label={`Revoke the share "${c.label}"`}
+                  aria-label={$t("s.priv.revokeShareAria", { label: c.label })}
                   onclick={() => askRevokeCapsule(c)}
                 >
-                  Revoke
+                  {$t("s.priv.revoke")}
                 </button>
               {:else}
-                <span class="cap-reads dim">{c.state === "expired" ? "expired" : "no reads left"}</span>
-                <span class="remove-off">closed</span>
+                <span class="cap-reads dim">{c.state === "expired" ? $t("s.priv.expired") : $t("s.priv.noReadsLeft")}</span>
+                <span class="remove-off">{$t("s.priv.closed")}</span>
               {/if}
             {/each}
           </div>
           <p class="note">
-            Revoking a share stops any further reads. It cannot pull back a copy
-            the recipient already made, and a share is a snapshot from when you
-            made it, not a live feed.
+            {$t("s.priv.shareNote")}
           </p>
         {:else}
-          <p class="note">You have not shared any context.</p>
+          <p class="note">{$t("s.priv.noShares")}</p>
         {/if}
       </Group>
     {/if}
 
     {#if $removed.length > 0}
-      <Group label="Recently removed" class="span-full">
+      <Group label={$t("s.priv.recentlyRemoved")} class="span-full">
         <div class="removed-list">
           {#each $removed as it (it.id)}
             {@render avatar(it.appId, it.appLabel, 24)}
             <span class="who">{it.appLabel}</span>
             <span class="how">{it.text}</span>
             <button type="button" class="restore" onclick={() => restore(it)}>
-              Restore
+              {$t("s.priv.restore")}
             </button>
           {/each}
         </div>
@@ -352,8 +350,7 @@
 
     {#if !isEmpty && !$grantsError}
       <p class="usage-note span-full">
-        Usage is not measured yet, so this shows what each app can reach, not
-        what it has used.
+        {$t("s.priv.usageNote")}
       </p>
     {/if}
   </SectionGrid>
@@ -362,14 +359,14 @@
 {#if undo}
   <div class="snackbar" role="status">
     <span class="snack-text">{undo.text}</span>
-    <button type="button" class="snack-undo" onclick={doUndo}>Undo</button>
+    <button type="button" class="snack-undo" onclick={doUndo}>{$t("s.priv.undo")}</button>
   </div>
 {/if}
 
 {#if $actionNotice}
   <div class="snackbar" role="status">
     <span class="snack-text">{$actionNotice}</span>
-    <button type="button" class="snack-undo" onclick={() => actionNotice.set(null)}>Dismiss</button>
+    <button type="button" class="snack-undo" onclick={() => actionNotice.set(null)}>{$t("s.priv.dismiss")}</button>
   </div>
 {/if}
 
@@ -391,9 +388,9 @@
     <div class="p-head">
       {@render avatar(p.appId, p.label, 28)}
       <span class="p-label">{p.label}</span>
-      {#if !p.identityVerified}<span class="warn">unverified</span>{/if}
+      {#if !p.identityVerified}<span class="warn">{$t("s.priv.unverified")}</span>{/if}
       <span class="p-spacer"></span>
-      <button type="button" class="remove" onclick={() => askAll(p)}>Remove all</button>
+      <button type="button" class="remove" onclick={() => askAll(p)}>{$t("s.priv.removeAll")}</button>
     </div>
     {#each familyGroups(p.lines) as fam (fam.key)}
       {@const FamIcon = familyIcon(fam.key)}
@@ -411,7 +408,7 @@
                 type="button"
                 class="expand"
                 class:open={expanded.has(line.key)}
-                aria-label="Show detail"
+                aria-label={$t("s.priv.showDetail")}
                 onclick={() => toggle(line.key)}
               >
                 <ChevronRight size={13} strokeWidth={2} />
@@ -423,10 +420,10 @@
             <button
               type="button"
               class="remove"
-              aria-label={`Remove ${line.text}`}
+              aria-label={$t("s.priv.removeLineAria", { what: line.text })}
               onclick={() => askScope(p.label, line)}
             >
-              Remove
+              {$t("s.priv.remove")}
             </button>
           {:else}
             <span class="remove-off">{revokeLabel(line)}</span>
@@ -448,7 +445,7 @@
   open={pending !== null}
   title={pending?.title ?? ""}
   message={pending?.message ?? ""}
-  confirmLabel={pending?.confirmLabel ?? "Remove"}
+  confirmLabel={pending?.confirmLabel ?? $t("s.priv.remove")}
   variant="destructive"
   {onConfirm}
   onCancel={() => (pending = null)}
