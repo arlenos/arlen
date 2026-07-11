@@ -1,0 +1,9 @@
+# Starting permission profile for a terminal code editor. It edits the user's
+# files across their tree and spawns language servers that carry their own
+# grants, so it gets Home; no network of its own. No Knowledge Graph.
+[info]
+app_id = "helix"
+tier = "third-party"
+
+[filesystem]
+home = true

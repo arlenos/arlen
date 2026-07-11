@@ -1,0 +1,10 @@
+# Starting permission profile for a media player. Plays the user's local video
+# and music; no network by default (its server streaming is refined later). No
+# Knowledge Graph.
+[info]
+app_id = "jellyfin-media-player"
+tier = "third-party"
+
+[filesystem]
+videos = true
+music = true
