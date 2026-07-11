@@ -20,6 +20,7 @@ use arlen_ai_engine_daemon::compensation::CompensationStore;
 use arlen_ai_engine_daemon::consent_client::ConsentBrokerClient;
 use arlen_ai_engine_daemon::dispatch::Dispatcher;
 use arlen_ai_engine_daemon::dispatch::Executor;
+use arlen_ai_engine_daemon::file_executor::FileSystemExecutor;
 use arlen_ai_engine_daemon::proxy_executor::ProxyExecutor;
 use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
 use arlen_ai_core::pipeline::{CypherPipeline, GraphQuerier, QueryRunner};
@@ -381,6 +382,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // SAME gated write executor (executor-live gated, audited, undo-registered);
     // clone the handle before the ProxyExecutor consumes it below.
     let curator_writer = write_executor.clone();
+    // The ACT layer's one live non-graph act: fs.move, gated ReversibleAction. Same
+    // discipline as graph.write (executor-live gated, audit-before-act, RestorePath
+    // compensation persisted to the signed undo log). fs.move has no in-memory
+    // session store (the graph store is graph-only); the signer is its record.
+    let fs_executor: Arc<dyn Executor> = Arc::new(
+        FileSystemExecutor::new()
+            .with_audit(audit.clone())
+            .with_undo_signer(arlen_ai_undo_proto::socket_path()),
+    );
     // GATE-CLASSIFIER PRE-CONDITION (review MEDIUM): only tools registered here are
     // executable, and the gate's `action_kind_for_tool` classifies by NAME segment.
     // The irreversible graph mutators `graph.set_field` / `graph.retract_node`
@@ -404,7 +414,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // tier since every write is op-id-keyed and undoable).
         .register("graph.assert_edge", write_executor.clone())
         .register("graph.retract_edge", write_executor.clone())
-        .register("graph.write", write_executor);
+        .register("graph.write", write_executor)
+        // The filesystem forward act (ai-act-layer-plan.md §⟳). fs.move is
+        // gate-classified ReversibleAction; the executor captures its RestorePath
+        // inverse write-ahead and persists it to the undo signer.
+        .register("fs.move", fs_executor);
     // A gate Confirm is resolved daemon-side by driving the consent-broker over
     // its intake socket (the trusted-path dialog). An unreachable broker fails
     // closed to a denial, so wiring the real client is safe even headless.

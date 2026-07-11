@@ -149,7 +149,7 @@ impl RelationWriter for UnixRelationWriter {
 /// retract. A retry deriving a fresh id would create a second edge; tying the id
 /// to the originating request is the executor-live refinement (the Knowledge
 /// Daemon's create is idempotent per op id, so a same-id retry is `exists`).
-fn mint_op_id() -> Result<String, String> {
+pub(crate) fn mint_op_id() -> Result<String, String> {
     let mut bytes = [0u8; 16];
     getrandom::getrandom(&mut bytes).map_err(|e| e.to_string())?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
