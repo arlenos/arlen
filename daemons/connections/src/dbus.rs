@@ -185,8 +185,12 @@ fn now_unix() -> i64 {
 }
 
 /// A fresh 16-byte CSPRNG nonce, hex-encoded (32 ASCII chars, control-char-free and
-/// within the capability layer's nonce cap). Binds each minted token to a distinct
-/// request so a captured token cannot be conflated with another.
+/// within the capability layer's nonce cap). Each minted token carries a distinct
+/// nonce for uniqueness/correlation. NOTE: the nonce is not currently VERIFIED
+/// (there is no consumed-nonce ledger), so it is not an anti-replay control within
+/// the TTL; the replay window is bounded by the short TTL + the ai-proxy-only fetch
+/// gate. A single-use consumed-nonce set is the follow-up if tighter replay defense
+/// is needed.
 fn fresh_nonce() -> Result<String, getrandom::Error> {
     let mut bytes = [0u8; 16];
     getrandom::getrandom(&mut bytes)?;
