@@ -140,6 +140,7 @@ mod tests {
                 handle: "h-1".into(),
                 revoked: false,
                 ops_used: 2,
+                meta: None,
             }]);
             write_frame_sync(&mut server, &serde_json::to_vec(&resp).unwrap());
         });
