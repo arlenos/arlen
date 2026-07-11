@@ -1,0 +1,9 @@
+# Starting permission profile for a screen-casting tool (casts the display to
+# network receivers). Needs network; screen capture is mediated by the portal,
+# not a filesystem grant. No Knowledge Graph.
+[info]
+app_id = "gnome-network-displays"
+tier = "third-party"
+
+[network]
+allow_all = true
