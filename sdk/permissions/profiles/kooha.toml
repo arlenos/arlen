@@ -1,0 +1,9 @@
+# Starting permission profile for a screen recorder. It captures the screen via the
+# ScreenCast portal and writes the recording to the user's files (Home); no network
+# of its own and no Knowledge Graph.
+[info]
+app_id = "kooha"
+tier = "third-party"
+
+[filesystem]
+home = true

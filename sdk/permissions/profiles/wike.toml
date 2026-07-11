@@ -1,0 +1,9 @@
+# Starting permission profile for a Wikipedia reader. Its function is fetching
+# articles online, so it gets network; it reads no local files and has no Knowledge
+# Graph access.
+[info]
+app_id = "wike"
+tier = "third-party"
+
+[network]
+allow_all = true
