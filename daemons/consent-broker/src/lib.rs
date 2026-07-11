@@ -132,6 +132,50 @@ impl SeverityTier {
     }
 }
 
+/// Whether the action a request would perform can be undone, for the consent
+/// footer + tone. Derived from the request's [`ActionKind`] (the same impact
+/// classification the AI decision engine uses), so the footer never has to guess:
+/// without it every request degrades to one tone. Reversible actions carry into
+/// autonomous agent use; only the genuinely irreversible ones warrant the strongest
+/// footer per instance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Reversibility {
+    /// The action can be undone with no material cost (the lightest footer).
+    Reversible,
+    /// The action can be undone, but at a real cost - a re-download, a re-run, a
+    /// re-grant (a middle footer that names the cost).
+    ReversibleWithCost,
+    /// The action cannot be undone: a permanent delete, a sent message, an egress
+    /// to an undeclared host (the strongest footer).
+    Irreversible,
+}
+
+impl Reversibility {
+    /// The reversibility of an [`ActionKind`]. CONSERVATIVE: an ambiguous
+    /// high-impact kind maps to the less-reversible tone, so the user is warned,
+    /// never falsely reassured. Total over the closed [`ActionKind`] set.
+    pub fn of(kind: ActionKind) -> Reversibility {
+        match kind {
+            // No undo exists: a permanent delete, a sent message, an undeclared
+            // egress (data may already have left), or an action the engine flagged
+            // as having no captured inverse.
+            ActionKind::PermanentDelete
+            | ActionKind::SendExternalMessage
+            | ActionKind::UndeclaredNetwork
+            | ActionKind::Irreversible => Reversibility::Irreversible,
+            // Undoable, but only by paying a cost: a package uninstall, a config
+            // restore, dropping an elevated grant, or an explicit with-cost inverse.
+            ActionKind::PackageChange
+            | ActionKind::SystemConfigChange
+            | ActionKind::ElevatedPrivilege
+            | ActionKind::ReversibleWithCost => Reversibility::ReversibleWithCost,
+            // A plain reversible action.
+            ActionKind::Ordinary => Reversibility::Reversible,
+        }
+    }
+}
+
 /// Classify a request into its severity tier by REUSING the caller's
 /// [`Capability`] decision engine - the high-impact + external-content
 /// overrides and the per-application action mode. The broker never reinvents

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::grant::{mint_grant, ConsentGrant};
 use crate::queue::{ConsentQueue, PendingRequest, RequestId};
-use crate::{ConsentClass, ConsentOutcome, SeverityTier};
+use crate::{ConsentClass, ConsentOutcome, Reversibility, SeverityTier};
 
 /// The dialog content the shell renders for one pending request - exactly what
 /// the user must see to decide, and nothing internal (no seq / queue state). The
@@ -34,6 +34,9 @@ pub struct PendingView {
     pub summary: String,
     /// The concrete scope/target, when there is one.
     pub scope: Option<String>,
+    /// Whether the action can be undone - drives the footer/tone; without it every
+    /// request degrades to a single tone.
+    pub reversibility: Reversibility,
 }
 
 impl PendingView {
@@ -46,6 +49,7 @@ impl PendingView {
             tier: pending.tier,
             summary: pending.request.summary.clone(),
             scope: pending.request.scope.clone(),
+            reversibility: Reversibility::of(pending.request.kind),
         }
     }
 }
@@ -127,6 +131,17 @@ mod tests {
         assert_eq!(v.tier, SeverityTier::HighStakes); // PermanentDelete
         assert_eq!(v.summary, "permanently delete 3 files");
         assert_eq!(v.scope.as_deref(), Some("/x"));
+        assert_eq!(v.reversibility, Reversibility::Irreversible); // PermanentDelete has no undo
+    }
+
+    #[test]
+    fn front_view_reversibility_is_derived_from_the_kind() {
+        let mut q = ConsentQueue::new();
+        enqueue(&mut q, "org.arlen.mail", ActionKind::SendExternalMessage, None);
+        assert_eq!(front_view(&q).unwrap().reversibility, Reversibility::Irreversible);
+        let mut q2 = ConsentQueue::new();
+        enqueue(&mut q2, "org.arlen.installd", ActionKind::ElevatedPrivilege, None);
+        assert_eq!(front_view(&q2).unwrap().reversibility, Reversibility::ReversibleWithCost);
     }
 
     #[test]
