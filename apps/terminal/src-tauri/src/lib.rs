@@ -15,7 +15,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use arlen_terminal_core::blocks::BlockAssembler;
 use arlen_terminal_core::vt::VtEngine;
 use arlen_terminal_core::{
-    stub, Block, BlockBodyKind, GridSnapshot, HistoryFilters, Project, Session, SessionStatus,
+    Block, BlockBodyKind, GridSnapshot, HistoryFilters, Project, Session, SessionStatus,
 };
 use arlen_terminal_engine::PtyEngine;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -373,10 +373,32 @@ fn maybe_autorun(app: &AppHandle, id: &str) {
     });
 }
 
-/// Search past blocks.
+/// Search past blocks (`⌃R`). First cut: the blocks of the live sessions (a within-session
+/// recall, strictly better than the empty stub); cross-session history lands with the
+/// graph-backed command store. A `project_id` filter needs the cwd->project mapping that
+/// store provides, so a project-scoped search returns empty here rather than leak blocks
+/// from outside the project. Newest-first (most recent session, most recent block).
 #[tauri::command]
-fn terminal_history_search(query: String, filters: HistoryFilters) -> Vec<Block> {
-    stub::history_search(&query, &filters)
+fn terminal_history_search(
+    query: String,
+    filters: HistoryFilters,
+    registry: State<Mutex<SessionRegistry>>,
+) -> Vec<Block> {
+    // A project-scoped search cannot be honoured over live sessions (a Block carries a cwd,
+    // not a project id); fail closed rather than return cross-project results.
+    if filters.project_id.is_some() {
+        return Vec::new();
+    }
+    let Ok(reg) = registry.lock() else {
+        return Vec::new();
+    };
+    let mut blocks: Vec<Block> = Vec::new();
+    for live in reg.sessions.values() {
+        blocks.extend(live.assembler.blocks());
+    }
+    let mut hits = arlen_terminal_core::search_blocks(&blocks, &query, &filters);
+    hits.reverse(); // approximate newest-first over the collected order
+    hits
 }
 
 /// Map project rows (`{ id, name, path }`) into the contract [`Project`],
