@@ -86,6 +86,29 @@ pub struct RequestBody {
     /// The concrete scope / target, when there is one.
     #[serde(default)]
     pub scope: Option<String>,
+    /// External-send only: the named recipient the data leaves Arlen to.
+    #[serde(default)]
+    pub recipient: Option<String>,
+    /// External-send only: a short preview of the content that would leave Arlen.
+    #[serde(default)]
+    pub preview: Option<String>,
+    /// Destructive only: the named targets (each with a human-readable size) the
+    /// action affects, so the dialog can list what would be lost.
+    #[serde(default)]
+    pub targets: Vec<ConsentTarget>,
+    /// Destructive only: the total size affected, shown beside the targets.
+    #[serde(default)]
+    pub total: Option<String>,
+}
+
+/// One named target of a destructive request, with a human-readable size (e.g.
+/// `"840 MB"`), for the informed-consent preview.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConsentTarget {
+    /// The target's display name (a file name).
+    pub name: String,
+    /// The target's human-readable size (e.g. `"840 MB"`).
+    pub size: String,
 }
 
 /// The wire reply the requester reads back over the intake socket: a single

@@ -36,7 +36,7 @@ pub use service::{assemble, handle_intake, IntakeReply, RequestBody};
 // contract, not the whole broker. Re-exported at the original crate-root paths
 // so every internal `crate::ConsentClass` / `crate::ConsentOutcome` reference and
 // every downstream `arlen_consent_broker::ConsentClass` import is unchanged.
-pub use arlen_consent_contract::{ConsentClass, ConsentOutcome};
+pub use arlen_consent_contract::{ConsentClass, ConsentOutcome, ConsentTarget};
 
 /// The attested identity of the requester: the SINGLE value that is BOTH shown
 /// in the dialog AND recorded as the grant recipient.
@@ -93,6 +93,14 @@ pub struct ConsentRequest {
     /// The concrete scope / target of the action, when there is a useful
     /// detail line to show.
     pub scope: Option<String>,
+    /// External-send only: the recipient the data leaves Arlen to.
+    pub recipient: Option<String>,
+    /// External-send only: a short preview of the content that would leave Arlen.
+    pub preview: Option<String>,
+    /// Destructive only: the named targets (name + human-readable size) affected.
+    pub targets: Vec<ConsentTarget>,
+    /// Destructive only: the total size affected.
+    pub total: Option<String>,
 }
 
 /// The severity tier the broker resolves a request to. EXACTLY the three
@@ -204,6 +212,10 @@ mod tests {
             class: ConsentClass::CapabilityGrant,
             kind,
             triggered_by_external_content: external,
+            recipient: None,
+            preview: None,
+            targets: Vec::new(),
+            total: None,
             summary: "test".to_string(),
             scope: None,
         }

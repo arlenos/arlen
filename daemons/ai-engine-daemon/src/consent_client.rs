@@ -89,6 +89,13 @@ impl ConsentDriver for ConsentBrokerClient {
             triggered_by_external_content: external_triggered,
             summary: prompt.to_string(),
             scope: Some(tool_name.to_string()),
+            // The generic agent-confirm path carries no structured
+            // recipient/target preview; the FM destructive + external-send
+            // requesters populate those.
+            recipient: None,
+            preview: None,
+            targets: Vec::new(),
+            total: None,
         };
         match self.request(&body).await {
             Ok(IntakeResult::SilentGranted) => ConfirmAnswer::Approved,

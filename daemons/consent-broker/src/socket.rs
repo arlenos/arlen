@@ -134,6 +134,10 @@ mod tests {
             class: ConsentClass::CapabilityGrant,
             kind,
             triggered_by_external_content: false,
+            recipient: None,
+            preview: None,
+            targets: Vec::new(),
+            total: None,
             summary: "s".to_string(),
             scope: None,
         }
