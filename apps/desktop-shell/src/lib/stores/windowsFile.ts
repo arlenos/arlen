@@ -59,12 +59,15 @@ export const current = writable<PendingWindowsFile | null>(null);
 
 let mockIndex = 0;
 
-/// Fetch the pending open request. Live: `windows_file_request`; fixture under vite.
+/// Fetch the pending open request. Live: `windows_file_request`. The fixture is
+/// served ONLY under vite (dev) so the surface renders for screenshots; on a real
+/// boot a failed request shows nothing rather than covering the desktop with a
+/// demo "Open Paint.NET Setup?" modal every session.
 export async function openWindowsFile(): Promise<void> {
   try {
     current.set(await invoke<PendingWindowsFile | null>("windows_file_request"));
   } catch {
-    current.set(MOCK[mockIndex % MOCK.length]);
+    current.set(import.meta.env.DEV ? MOCK[mockIndex % MOCK.length] : null);
   }
 }
 
