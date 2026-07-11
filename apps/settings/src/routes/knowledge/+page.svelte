@@ -31,6 +31,7 @@
   import { ChipList } from "@arlen/ui-kit/components/ui/chip-list";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
+  import { t } from "$lib/i18n/messages";
   import { graph, PROJECTS_DEFAULTS } from "$lib/stores/projectsConfig";
 
   interface KnowledgeStats {
@@ -95,7 +96,7 @@
   }
 
   function formatBytes(bytes: number | null): string {
-    if (bytes === null) return "Unknown";
+    if (bytes === null) return $t("s.know.unknown");
     if (bytes < 1024) return `${bytes} B`;
     const kb = bytes / 1024;
     if (kb < 1024) return `${kb.toFixed(1)} KB`;
@@ -106,13 +107,13 @@
 </script>
 
 <Page
-  title="Knowledge Graph"
-  description="Arlen keeps a private record of the files, projects, and apps you use. Configure project detection here."
+  title={$t("s.know.title")}
+  description={$t("s.know.desc")}
 >
   <SectionGrid>
-    <Group label="Status">
+    <Group label={$t("s.know.status")}>
       {#if error}
-        <Row label="Stats unavailable" description="Can't read the stats right now." id="kg-error">
+        <Row label={$t("s.know.statsUnavail")} description={$t("s.know.statsUnavail.desc")} id="kg-error">
           {#snippet control()}
             <span title={error}><AlertCircle size={16} class="kg-error-icon" /></span>
           {/snippet}
@@ -120,32 +121,32 @@
       {:else if stats}
         {@const s = stats}
         <Row
-          label="Knowledge service"
+          label={$t("s.know.service")}
           description={s.daemonRunning
-            ? "Running. Stats are live."
-            : "Not running. Stats fill in once it starts."}
+            ? $t("s.know.service.running")
+            : $t("s.know.service.stopped")}
           id="kg-daemon-status"
         >
           {#snippet control()}
             <span class="meta" class:on={s.daemonRunning}>
-              {s.daemonRunning ? "Running" : "Stopped"}
+              {s.daemonRunning ? $t("s.know.running") : $t("s.know.stopped")}
             </span>
           {/snippet}
         </Row>
         {#if s.daemonRunning}
-          <Row label="Database size" description="SQLite event store." id="kg-db-size">
+          <Row label={$t("s.know.dbSize")} description={$t("s.know.dbSize.desc")} id="kg-db-size">
             {#snippet control()}
               <span class="meta"><Database size={12} strokeWidth={1.5} />{formatBytes(s.dbSizeBytes)}</span>
             {/snippet}
           </Row>
-          <Row label="Graph size" description="Ladybug graph storage on disk." id="kg-graph-size">
+          <Row label={$t("s.know.graphSize")} description={$t("s.know.graphSize.desc")} id="kg-graph-size">
             {#snippet control()}
               <span class="meta"><HardDrive size={12} strokeWidth={1.5} />{formatBytes(s.graphSizeBytes)}</span>
             {/snippet}
           </Row>
           <Row
-            label="FUSE mount"
-            description={s.fuseMounted ? "Browseable as a filesystem." : "Not mounted."}
+            label={$t("s.know.fuse")}
+            description={s.fuseMounted ? $t("s.know.fuse.mounted") : $t("s.know.fuse.notMounted")}
             id="kg-fuse-mount"
           >
             {#snippet control()}
@@ -156,35 +157,35 @@
           </Row>
         {/if}
       {/if}
-      <Row label="Refresh" description="Re-read filesystem stats." id="kg-refresh">
+      <Row label={$t("s.know.refresh")} description={$t("s.know.refresh.desc")} id="kg-refresh">
         {#snippet control()}
           <Button variant="ghost" size="sm" disabled={loading} onclick={refresh}>
             <RefreshCw size={14} class={loading ? "kg-spin" : ""} />
-            Refresh
+            {$t("s.know.refresh")}
           </Button>
         {/snippet}
       </Row>
     </Group>
 
-    <Group label="Project Detection">
+    <Group label={$t("s.know.projectDetection")}>
       <Row
-        label="Watch directories"
+        label={$t("s.know.watchDirs")}
         description={watchDirs.length === 0
-          ? `Using defaults: ${PROJECTS_DEFAULTS.watch_directories.join(", ")}. Add a directory to override.`
-          : "Directories scanned for projects. Restart the service to apply."}
+          ? $t("s.know.watchDirs.default", { dirs: PROJECTS_DEFAULTS.watch_directories.join(", ") })
+          : $t("s.know.watchDirs.set")}
         id="kg-watch-dirs"
       >
         {#snippet below()}
           <ChipList
             bind:items={watchDirs}
-            placeholder="Add a directory, e.g. ~/Projects"
+            placeholder={$t("s.know.watchDirs.placeholder")}
             onchange={persistWatchDirs}
           />
         {/snippet}
       </Row>
       <Row
-        label="Recursion depth"
-        description="How deep to scan each watch directory for projects."
+        label={$t("s.know.depth")}
+        description={$t("s.know.depth.desc")}
         id="kg-max-depth"
       >
         {#snippet control()}
@@ -192,8 +193,8 @@
         {/snippet}
       </Row>
       <Row
-        label="Auto-promote threshold"
-        description="Files opened in a session before an inferred project is promoted."
+        label={$t("s.know.promote")}
+        description={$t("s.know.promote.desc")}
         id="kg-promote"
       >
         {#snippet control()}
@@ -202,8 +203,8 @@
       </Row>
       {#if projectDirty}
         <Row
-          label="Restart required"
-          description="The knowledge service reads this at startup; restart it to apply project-detection changes."
+          label={$t("s.know.restart")}
+          description={$t("s.know.restart.desc")}
           id="kg-restart-hint"
         >
           {#snippet control()}
@@ -213,10 +214,10 @@
       {/if}
     </Group>
 
-    <Group label="Timeline">
+    <Group label={$t("s.know.timeline")}>
       <Row
-        label="Timeline filesystem"
-        description="The graph is browseable as files at the mount path."
+        label={$t("s.know.timelineFs")}
+        description={$t("s.know.timelineFs.desc")}
         id="kg-timeline"
       >
         {#snippet control()}
@@ -228,16 +229,16 @@
       </Row>
     </Group>
 
-    <Group label="Knowledge App">
+    <Group label={$t("s.know.app")}>
       <Row
-        label="Browse the graph"
-        description="Timeline, projects, and search across your files. The Knowledge app is not built yet."
+        label={$t("s.know.browse")}
+        description={$t("s.know.browse.desc")}
         id="kg-app-link"
       >
         {#snippet control()}
           <Button variant="outline" size="sm" disabled>
             <Brain size={14} />
-            Open Knowledge App
+            {$t("s.know.openApp")}
           </Button>
         {/snippet}
       </Row>

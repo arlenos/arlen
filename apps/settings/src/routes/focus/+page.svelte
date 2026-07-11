@@ -84,36 +84,35 @@
 </script>
 
 <Page
-  title="Focus Mode"
-  description="The top-bar indicator and which apps are silenced while Focus Mode is active."
+  title={$t("s.focus.title")}
+  description={$t("s.focus.desc")}
 >
   <SectionGrid>
-    <Group label="Top Bar Indicator">
+    <Group label={$t("s.focus.topBar")}>
     <Row
-      label="Show project name when active"
-      description="Pin the active project name to the top bar while Focus Mode is on."
+      label={$t("s.focus.showProject")}
+      description={$t("s.focus.showProject.desc")}
       id="focus-show-project-name"
     >
       {#snippet control()}
         <Switch
           value={showProjectName}
-          ariaLabel="Show project name in top bar"
+          ariaLabel={$t("s.focus.showProject.aria")}
           onchange={setShowProjectName}
         />
       {/snippet}
     </Row>
   </Group>
 
-  <Group label="Default Suppressed Apps">
+  <Group label={$t("s.focus.suppressed")}>
     <Row
-      label="Suppress these apps' notifications by default"
-      description="Whenever Focus Mode is active, notifications from these apps are silenced. Per-project .project files override this list."
+      label={$t("s.focus.suppress")}
+      description={$t("s.focus.suppress.desc")}
       id="focus-suppressed-apps"
     >
       {#snippet control()}
         <span class="meta-count">
-          {suppressedApps.length}
-          {suppressedApps.length === 1 ? "app" : "apps"}
+          {$t("s.focus.appCount", { count: suppressedApps.length })}
         </span>
       {/snippet}
     </Row>
@@ -121,7 +120,7 @@
       <AppPicker
         {knownApps}
         excluded={suppressedApps}
-        placeholder="Add app..."
+        placeholder={$t("s.focus.addApp")}
         onpick={addSuppressedApp}
       />
       <AddRemoveList
@@ -133,7 +132,7 @@
           // the button is hidden via empty addLabel.
         }}
         addLabel=""
-        emptyMessage="No apps configured. Focus Mode uses per-project lists only."
+        emptyMessage={$t("s.focus.noApps")}
       >
         {#snippet itemSnippet({ item }: { item: string; index: number })}
           <span class="app-row">
@@ -145,10 +144,10 @@
     </div>
   </Group>
 
-  <Group label="Project Detection">
+  <Group label={$t("s.focus.projectDetection")}>
     <Row
-      label="Configured on the Knowledge page"
-      description="Which directories are scanned for projects, the recursion depth, and the auto-promote threshold are part of the knowledge graph. Focus Mode uses the projects it detects."
+      label={$t("s.focus.configKnowledge")}
+      description={$t("s.focus.configKnowledge.desc")}
       id="focus-project-detection-link"
     >
       {#snippet control()}
@@ -158,7 +157,7 @@
           onclick={() => navigateTo("knowledge", "kg-watch-dirs")}
         >
           <FolderSearch size={14} />
-          Open Knowledge
+          {$t("s.focus.openKnowledge")}
         </Button>
       {/snippet}
     </Row>

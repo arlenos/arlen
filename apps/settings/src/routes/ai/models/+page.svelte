@@ -22,6 +22,7 @@
   import { ProviderLogo } from "@arlen/ui-kit/components/ui/provider-logo";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
+  import { t } from "$lib/i18n/messages";
   import {
     models,
     hardware,
@@ -61,13 +62,13 @@
   let query = $state("");
   let taskFilter = $state("all");
   let showAdvanced = $state(false);
-  const TASK_OPTIONS = [
-    { value: "all", label: "All tasks" },
-    { value: "general", label: "Everyday" },
-    { value: "coding", label: "Coding" },
-    { value: "reasoning", label: "Reasoning" },
-    { value: "writing", label: "Writing" },
-  ];
+  const TASK_OPTIONS = $derived([
+    { value: "all", label: $t("s.mdl.task.all") },
+    { value: "general", label: $t("s.mdl.task.general") },
+    { value: "coding", label: $t("s.mdl.task.coding") },
+    { value: "reasoning", label: $t("s.mdl.task.reasoning") },
+    { value: "writing", label: $t("s.mdl.task.writing") },
+  ]);
   const browseList = $derived(
     $models
       .filter((m) => m.kind === "local")
@@ -85,11 +86,18 @@
     if (m) await startDownload(m);
   }
 
-  const FIT: Record<Fit, { text: string; tone: "success" | "warn" | "destructive" }> = {
-    fits: { text: "Fits", tone: "success" },
-    "may-be-slow": { text: "May be slow", tone: "warn" },
-    "wont-fit": { text: "Won't fit", tone: "destructive" },
+  const FIT_TONE: Record<Fit, "success" | "warn" | "destructive"> = {
+    fits: "success",
+    "may-be-slow": "warn",
+    "wont-fit": "destructive",
   };
+  function fitText(fit: Fit): string {
+    return fit === "fits"
+      ? $t("s.mdl.fits")
+      : fit === "may-be-slow"
+        ? $t("s.mdl.maybeSlow")
+        : $t("s.mdl.wontFit");
+  }
 
   function downloadPct(id: string): number | null {
     const d = $download;
@@ -99,16 +107,16 @@
 
   function meta(m: Model): string {
     const parts: string[] = [];
-    if (m.baked) parts.push("built in");
-    if (m.imported) parts.push("imported");
+    if (m.baked) parts.push($t("s.mdl.builtIn"));
+    if (m.imported) parts.push($t("s.mdl.imported"));
     if (m.sizeGb != null) parts.push(`${m.sizeGb.toFixed(1)} GB`);
     return parts.join(" · ");
   }
 </script>
 
 <Page
-  title="Models"
-  description="Pick which model answers each task, get new ones made for your machine, or bring your own. Everything runs on your computer unless you connect a cloud service."
+  title={$t("s.mdl.title")}
+  description={$t("s.mdl.desc")}
 >
   <SectionGrid>
     {#if $hardware}
@@ -118,7 +126,7 @@
       </div>
     {/if}
 
-    <Group label="Active" class="span-full">
+    <Group label={$t("s.mdl.active")} class="span-full">
       {#each ROLES as role (role)}
         {@const rm = roleMeta(role)}
         <Row label={rm.label} description={rm.description} id={`role-${role}`}>
@@ -126,7 +134,7 @@
             <PopoverSelect
               value={$roles[role]}
               options={roleOptions}
-              ariaLabel={`${rm.label} model`}
+              ariaLabel={$t("s.mdl.roleModel", { role: rm.label })}
               width="15rem"
               onchange={(v) => setRole(role, v)}
               renderLabel={modelOption as never}
@@ -136,7 +144,7 @@
       {/each}
     </Group>
 
-    <Group label="Recommended for your machine" class="span-full">
+    <Group label={$t("s.mdl.recommended")} class="span-full">
       <div class="tiers">
         {#each TIERS as tier (tier)}
           {@const m = picks[tier]}
@@ -151,16 +159,16 @@
                 <span class="model-name">{m.name}</span>
                 <span class="model-tags">
                   {#each m.tasks as t (t)}<Badge variant="outline">{taskLabel(t)}</Badge>{/each}
-                  {#if m.fit}<Badge variant={FIT[m.fit].tone}>{FIT[m.fit].text}</Badge>{/if}
+                  {#if m.fit}<Badge variant={FIT_TONE[m.fit]}>{fitText(m.fit)}</Badge>{/if}
                 </span>
                 <span class="model-meta">
                   {m.sizeGb != null ? `${m.sizeGb.toFixed(1)} GB` : ""}
-                  {#if m.tokensPerSec != null}· {Math.round(m.tokensPerSec)} words/sec{/if}
+                  {#if m.tokensPerSec != null}· {$t("s.mdl.wordsPerSec", { n: Math.round(m.tokensPerSec) })}{/if}
                 </span>
               </div>
               <div class="tier-foot">{@render modelAction(m, true)}</div>
             {:else}
-              <p class="muted-line">Nothing in this tier runs well on your machine.</p>
+              <p class="muted-line">{$t("s.mdl.tierEmpty")}</p>
             {/if}
           </div>
         {/each}
@@ -168,12 +176,12 @@
     </Group>
 
     {#if $installedModels.length > 0}
-      <Group label="Your models" class="span-full">
+      <Group label={$t("s.mdl.yourModels")} class="span-full">
         {#each $installedModels as m (m.id)}
           <Row label={m.name} description={meta(m)} id={`installed-${m.id}`}>
             {#snippet control()}
               <IconAction
-                label={m.baked ? "The built-in model cannot be removed" : `Delete ${m.name}`}
+                label={m.baked ? $t("s.mdl.bakedNoRemove") : $t("s.mdl.delete", { name: m.name })}
                 disabled={m.baked}
                 onclick={() => deleteModel(m.id)}
               >
@@ -188,52 +196,52 @@
           onclick={() => importModel()}
         >
           <Upload size={15} strokeWidth={1.75} />
-          Import a model from your computer
+          {$t("s.mdl.import")}
         </Button>
       </Group>
     {/if}
 
-    <Group label="Browse more" class="span-full">
+    <Group label={$t("s.mdl.browse")} class="span-full">
       <div class="browse-bar">
         <span class="browse-search">
-          <Input bind:value={query} placeholder="Search models" />
+          <Input bind:value={query} placeholder={$t("s.mdl.search")} />
         </span>
         <PopoverSelect
           value={taskFilter}
           options={TASK_OPTIONS}
-          ariaLabel="Filter by task"
+          ariaLabel={$t("s.mdl.filterTask")}
           width="11rem"
           onchange={(v) => (taskFilter = v)}
         />
         <Button variant="outline" size="sm" onclick={() => searchHuggingFace()}>
-          Search Hugging Face
+          {$t("s.mdl.searchHf")}
           <ExternalLink size={13} strokeWidth={2} />
         </Button>
       </div>
 
       {#if $hfSearch}
-        <p class="muted-line browse-note">Showing curated models plus results from Hugging Face.</p>
+        <p class="muted-line browse-note">{$t("s.mdl.hfNote")}</p>
       {/if}
 
       {#each browseList as m (m.id)}
         <div class="browse-row">{@render modelBody(m)}</div>
       {:else}
-        <p class="muted-line browse-note">No models match. Try a different search or Hugging Face.</p>
+        <p class="muted-line browse-note">{$t("s.mdl.noMatch")}</p>
       {/each}
 
       <label class="adv-check">
         <Checkbox
           checked={showAdvanced}
-          ariaLabel="Show uncurated community models"
+          ariaLabel={$t("s.mdl.showUncurated")}
           onchange={(v) => (showAdvanced = v)}
         />
-        Show uncurated community models
+        {$t("s.mdl.showUncurated")}
       </label>
     </Group>
 
     {#if $modelsLoaded && $models.length === 0}
-      <Group label="Models" class="span-full">
-        <p class="muted-line">No models are available.</p>
+      <Group label={$t("s.mdl.models")} class="span-full">
+        <p class="muted-line">{$t("s.mdl.noneAvailable")}</p>
       </Group>
     {/if}
   </SectionGrid>
@@ -262,11 +270,11 @@
       <span class="model-name">{m.name}</span>
       <span class="model-tags">
         {#each m.tasks as t (t)}<Badge variant="outline">{taskLabel(t)}</Badge>{/each}
-        {#if m.fit}<Badge variant={FIT[m.fit].tone}>{FIT[m.fit].text}</Badge>{/if}
+        {#if m.fit}<Badge variant={FIT_TONE[m.fit]}>{fitText(m.fit)}</Badge>{/if}
       </span>
       <span class="model-meta">
         {m.sizeGb != null ? `${m.sizeGb.toFixed(1)} GB` : ""}
-        {#if m.tokensPerSec != null}· {Math.round(m.tokensPerSec)} words/sec{/if}
+        {#if m.tokensPerSec != null}· {$t("s.mdl.wordsPerSec", { n: Math.round(m.tokensPerSec) })}{/if}
       </span>
     </div>
     <div class="model-action">{@render modelAction(m, false)}</div>
@@ -282,19 +290,19 @@
     <div class="dl" class:dl-full={full}>
       <Progress value={pct} />
       <div class="dl-row">
-        <span class="muted-line">{$download?.status === "verifying" ? "Verifying…" : `${Math.round(pct)}%`}</span>
+        <span class="muted-line">{$download?.status === "verifying" ? $t("s.mdl.verifying") : `${Math.round(pct)}%`}</span>
         <Button
           variant="link"
           size="sm"
           class="h-auto p-0 text-xs text-muted-foreground hover:text-destructive"
           onclick={() => cancelDownload(m.id)}
         >
-          Cancel
+          {$t("s.mdl.cancel")}
         </Button>
       </div>
     </div>
   {:else if m.installed}
-    <Badge variant="success">Installed</Badge>
+    <Badge variant="success">{$t("s.mdl.installed")}</Badge>
   {:else}
     <Button
       variant={m.fit === "wont-fit" ? "outline" : "default"}
@@ -303,18 +311,18 @@
       disabled={m.fit === "wont-fit" || $download !== null}
       onclick={() => (pending = m)}
     >
-      Download
+      {$t("s.mdl.download")}
     </Button>
   {/if}
 {/snippet}
 
 <ConfirmDialog
   open={pending !== null}
-  title="Download this model?"
+  title={$t("s.mdl.confirmTitle")}
   message={pending
-    ? `This downloads ${pending.name} (${pending.sizeGb?.toFixed(1)} GB) from Hugging Face. It is the one time Arlen reaches out; after that the model runs fully offline.`
+    ? $t("s.mdl.confirmMsg", { name: pending.name, size: pending.sizeGb?.toFixed(1) ?? "?" })
     : ""}
-  confirmLabel="Download"
+  confirmLabel={$t("s.mdl.download")}
   onConfirm={confirmDownload}
   onCancel={() => (pending = null)}
 />

@@ -18,6 +18,7 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
+  import { t } from "$lib/i18n/messages";
   import ModuleCard from "$lib/components/appearance/ModuleCard.svelte";
   import { modules, moduleGroups } from "$lib/stores/modules";
 
@@ -60,13 +61,13 @@
 </script>
 
 <Page
-  title="Extensions"
-  description="Modules that extend the Arlen shell. Install them with forage or place them in your modules folder."
+  title={$t("s.ext.title")}
+  description={$t("s.ext.desc")}
 >
   <SectionGrid>
   <div class="span-full ext-column">
   <div class="ext-toolbar">
-    <IconAction label="Re-scan module directories" onclick={() => modules.load()}>
+    <IconAction label={$t("s.ext.rescan")} onclick={() => modules.load()}>
       <RefreshCw size={14} strokeWidth={2} />
     </IconAction>
   </div>
@@ -75,28 +76,26 @@
     <div class="banner">
       <Info size={12} strokeWidth={2.25} />
       <span>
-        Changes will take effect after the Arlen shell restarts.
+        {$t("s.ext.restart")}
       </span>
       <Button variant="ghost" size="sm" onclick={() => modules.dismissRestartBanner()}>
-        Dismiss
+        {$t("s.ext.dismiss")}
       </Button>
     </div>
   {/if}
 
   {#if $modules.loading && $modules.data.length === 0}
-    <div class="status">Scanning module directories…</div>
+    <div class="status">{$t("s.ext.scanning")}</div>
   {:else if $modules.error}
-    <div class="error" title={$modules.error}>Can't read the modules right now.</div>
+    <div class="error" title={$modules.error}>{$t("s.ext.error")}</div>
   {:else if total === 0}
     <div class="empty">
       <div class="empty-icon">
         <Puzzle size={28} strokeWidth={1.5} />
       </div>
-      <h2>No modules installed</h2>
+      <h2>{$t("s.ext.noModules")}</h2>
       <p>
-        Install modules with <code>forage install</code>, or place them in
-        your modules folder (<code>{USER_MODULES_DIR}</code>). Press refresh
-        to rescan.
+        {$t("s.ext.install.pre")} <code>forage install</code>{$t("s.ext.install.mid")}<code>{USER_MODULES_DIR}</code>{$t("s.ext.install.post")}
       </p>
       <a
         class="empty-link"
@@ -104,17 +103,17 @@
         target="_blank"
         rel="noopener noreferrer"
       >
-        Learn about modules
+        {$t("s.ext.learn")}
         <ExternalLink size={12} strokeWidth={2} />
       </a>
     </div>
   {:else}
     <div class="summary">
-      <span>{enabledCount}/{total} modules enabled</span>
+      <span>{$t("s.ext.summary", { enabled: enabledCount, total })}</span>
     </div>
 
     <div class="search-wrap">
-      <Input placeholder="Filter modules…" bind:value={filter} />
+      <Input placeholder={$t("s.ext.filter")} bind:value={filter} />
     </div>
 
     <div class="groups">
@@ -134,7 +133,7 @@
 
       {#if filter && filteredGroups.length === 0}
         <div class="empty small">
-          No modules match "<strong>{filter}</strong>".
+          {$t("s.ext.noMatchPre")}<strong>{filter}</strong>{$t("s.ext.noMatchPost")}
         </div>
       {/if}
     </div>
