@@ -38,6 +38,7 @@ mod retention;
 mod revoke;
 mod schema;
 mod shared;
+mod working_set;
 mod time;
 mod token;
 mod token_cache;
