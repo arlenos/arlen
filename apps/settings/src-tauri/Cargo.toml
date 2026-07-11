@@ -106,6 +106,7 @@ arlen-permissions = { path = "../../../sdk/permissions" }
 # control socket (settings is admitted for the grant-management ops); the client
 # transport lives in the broker's lib.
 arlen-consent-broker = { path = "../../../daemons/consent-broker" }
+capsuled = { path = "../../../daemons/capsuled" }
 
 [dev-dependencies]
 tempfile = "3"

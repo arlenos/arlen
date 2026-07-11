@@ -5,6 +5,7 @@ pub mod accessibility;
 pub mod activity;
 pub mod ai;
 pub mod brightness;
+pub mod capsules;
 pub mod config;
 pub mod displays;
 pub mod input;
