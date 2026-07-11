@@ -74,6 +74,7 @@ pub mod write_executor;
 
 /// Report-side compensation: op-id-keyed retract receipts for committed writes.
 pub mod compensation;
+pub mod undo_enact;
 
 /// The undo-signer client: submit a created undo entry to the signed, HMAC-chained
 /// log so a graph compensation survives a restart.
