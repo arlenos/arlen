@@ -16,6 +16,7 @@
   import { onMount } from "svelte";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
+  import { Avatar, AvatarFallback } from "@arlen/ui-kit/components/ui/avatar";
   import { AlertTriangle, Send, Trash2, ShieldCheck } from "lucide-svelte";
   import { current, resolve, pollConsent, type PendingView } from "$lib/stores/consent";
 
@@ -121,7 +122,9 @@
         {/if}
 
         <div class="cd-req">
-          <span class="cd-avatar">{friendly(p.requester).charAt(0)}</span>
+          <Avatar>
+            <AvatarFallback>{friendly(p.requester).charAt(0)}</AvatarFallback>
+          </Avatar>
           <span class="cd-req-text">
             <span class="cd-req-name">{friendly(p.requester)}</span>
             <span class="cd-req-id">
@@ -258,19 +261,6 @@
     display: flex;
     align-items: center;
     gap: 0.625rem;
-  }
-  .cd-avatar {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    flex-shrink: 0;
-    border-radius: var(--radius-chip);
-    background: color-mix(in srgb, var(--foreground) 10%, transparent);
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--foreground);
   }
   .cd-req-text {
     display: flex;
@@ -437,8 +427,8 @@
     align-items: center;
     justify-content: center;
     max-width: 15rem;
-    height: var(--height-control, 32px);
-    padding: 0 0.75rem;
+    height: var(--height-control-prominent, 36px);
+    padding: 0 0.625rem;
     border: 1px solid color-mix(in srgb, var(--color-error) 45%, transparent);
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--color-error) 10%, transparent);

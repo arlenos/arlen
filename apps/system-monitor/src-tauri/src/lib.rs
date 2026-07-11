@@ -10,6 +10,7 @@
 
 use tauri::Manager;
 
+mod actions;
 mod procmon;
 
 use procmon::{Monitor, Process};
@@ -33,6 +34,28 @@ fn list_processes(monitor: tauri::State<'_, Monitor>) -> Vec<Process> {
     monitor.sample()
 }
 
+/// Gracefully stop a process (SIGTERM). The kernel refuses a process the user does
+/// not own, so the error is surfaced to the row.
+#[tauri::command]
+fn stop_process(id: u32) -> Result<(), String> {
+    actions::stop(id)
+}
+
+/// Freeze (`paused=true`) or thaw (`paused=false`) a process - the non-destructive
+/// pause (SIGSTOP/SIGCONT).
+#[tauri::command]
+fn freeze_process(id: u32, paused: bool) -> Result<(), String> {
+    actions::freeze(id, paused)
+}
+
+/// Soft-leash (`limited=true`) or release a process's CPU via its cgroup `cpu.max`.
+/// Best-effort: without cgroup delegation the write fails and the error is
+/// surfaced, so the UI never falsely shows a limit.
+#[tauri::command]
+fn limit_process(id: u32, limited: bool) -> Result<(), String> {
+    actions::limit(id, limited)
+}
+
 /// Build + run the app.
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -43,7 +66,13 @@ pub fn run() {
             app.manage(Monitor::new());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![frontend_log, list_processes])
+        .invoke_handler(tauri::generate_handler![
+            frontend_log,
+            list_processes,
+            stop_process,
+            freeze_process,
+            limit_process
+        ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-system-monitor");
 }
