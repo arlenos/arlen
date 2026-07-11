@@ -8,12 +8,13 @@
 //! monotonically attenuable (a holder can append caveats that only ever narrow
 //! authority, never broaden it).
 //!
-//! A minted token carries a set of allowed hosts, an expiry as unix seconds and
-//! a nonce, plus its connection id for context. Verification asks a single
-//! question: may this token reach host H at time T? It answers yes only when H
-//! is in the allowed set and T is at or before the expiry. Everything fails
-//! closed: a bad signature, a malformed token, a disallowed host or an expired
-//! token all deny.
+//! A minted token carries a set of allowed hosts, an expiry as unix seconds, a
+//! nonce, and its connection id. Verification asks: may this token reach host H
+//! at time T (and, when a connection is required, is the token bound to that
+//! connection)? It answers yes only when H is in the allowed set, T is at or
+//! before the expiry, and the token's connection matches the requested one.
+//! Everything fails closed: a bad signature, a malformed token, a disallowed
+//! host, a wrong connection or an expired token all deny.
 //!
 //! ## Why the attenuation cannot broaden
 //!
@@ -189,18 +190,29 @@ pub fn mint_token(
 /// token whose authority allows the host and whose TTL check passes at `now_unix`
 /// returns `Ok(true)`.
 ///
-/// The authorizer supplies exactly two facts, `time(now)` and
-/// `requested_host(host)`, and one allow policy scoped `trusting authority`, so
-/// the membership test reads only the authority block's host set. Biscuit's
-/// default deny means any unmatched or failed check ends as an `Err` from
-/// `authorize`, which we fold to `Ok(false)`.
+/// The authorizer supplies `time(now)`, `requested_host(host)`, and (when a
+/// connection is required) `requested_connection(conn)`, plus one allow policy
+/// scoped `trusting authority`, so the membership tests read only the authority
+/// block's own facts. Biscuit's default deny means any unmatched or failed check
+/// ends as an `Err` from `authorize`, which we fold to `Ok(false)`.
+///
+/// `requested_connection` binds the token to the connection whose credential is
+/// about to be released: when `Some(conn)`, the token's authority-block
+/// `connection` fact must equal `conn`, so a token minted for connection A cannot
+/// unlock connection B even when the two connections share a destination host.
+/// When `None`, only the host and TTL are checked (the pure destination-scope
+/// property); the delivery path always passes `Some`.
 pub fn verify_token(
     token_b64: &str,
     root_public: &PublicKey,
     requested_host: &str,
+    requested_connection: Option<&str>,
     now_unix: i64,
 ) -> Result<bool, CapabilityError> {
     validate_term(requested_host, MAX_HOST_LEN, "host")?;
+    if let Some(conn) = requested_connection {
+        validate_term(conn, 128, "connection id")?;
+    }
     if now_unix < 0 {
         return Err(CapabilityError::InvalidInput("negative time"));
     }
@@ -213,16 +225,25 @@ pub fn verify_token(
     params.insert("now".to_string(), Term::Date(now_unix as u64));
     params.insert("req".to_string(), Term::Str(requested_host.to_string()));
 
-    let authorizer: AuthorizerBuilder = AuthorizerBuilder::new().code_with_params(
-        // Provide the request as facts, then allow only if the requested host is
-        // among the authority block's hosts. `trusting authority` keeps the
-        // membership test blind to any host fact a later attenuation block might
-        // carry, so a holder cannot re-broaden. The TTL check inside the token
-        // consumes the same `time` fact.
-        "time({now}); requested_host({req}); allow if requested_host($h), host($h) trusting authority;",
-        params,
-        HashMap::new(),
-    )?;
+    // The allow policy always requires the host; when a connection is required it
+    // also requires the authority-block `connection` fact to equal the requested
+    // connection. `trusting authority` keeps both membership tests blind to any
+    // fact a later attenuation block might carry, so a holder cannot re-broaden.
+    // The TTL check inside the token consumes the same `time` fact.
+    let source = match requested_connection {
+        Some(conn) => {
+            params.insert("reqconn".to_string(), Term::Str(conn.to_string()));
+            "time({now}); requested_host({req}); requested_connection({reqconn}); \
+             allow if requested_host($h), host($h), connection($c), requested_connection($c) trusting authority;"
+        }
+        None => {
+            "time({now}); requested_host({req}); \
+             allow if requested_host($h), host($h) trusting authority;"
+        }
+    };
+
+    let authorizer: AuthorizerBuilder =
+        AuthorizerBuilder::new().code_with_params(source, params, HashMap::new())?;
 
     let mut built = authorizer.build(&token)?;
     match built.authorize() {
@@ -299,8 +320,22 @@ mod tests {
         )
         .unwrap();
 
-        assert!(verify_token(&token, &root.public(), "api.github.com", NOW).unwrap());
-        assert!(verify_token(&token, &root.public(), "uploads.github.com", NOW).unwrap());
+        assert!(verify_token(&token, &root.public(), "api.github.com", None, NOW).unwrap());
+        assert!(verify_token(&token, &root.public(), "uploads.github.com", None, NOW).unwrap());
+    }
+
+    #[test]
+    fn connection_binding_is_enforced_when_requested() {
+        // A token minted for "github" is bound to that connection: with the same
+        // authorized host, it verifies for connection "github" but NOT for a
+        // different connection - the cross-connection replay the review flagged.
+        let root = KeyPair::new();
+        let token = mint_token(&root, "github", &hosts(&["shared.example"]), FAR_FUTURE, "n").unwrap();
+        assert!(verify_token(&token, &root.public(), "shared.example", Some("github"), NOW).unwrap());
+        assert!(!verify_token(&token, &root.public(), "shared.example", Some("gitlab"), NOW).unwrap());
+        // With no connection required, the host-only check still passes (the pure
+        // destination-scope property the other tests rely on).
+        assert!(verify_token(&token, &root.public(), "shared.example", None, NOW).unwrap());
     }
 
     #[test]
@@ -309,10 +344,10 @@ mod tests {
         let token = mint_token(&root, "github", &hosts(&["api.github.com"]), FAR_FUTURE, "n").unwrap();
 
         // A host the token never granted is denied, not errored.
-        assert!(!verify_token(&token, &root.public(), "evil.example.com", NOW).unwrap());
+        assert!(!verify_token(&token, &root.public(), "evil.example.com", None, NOW).unwrap());
         // A near miss (subdomain confusion) is also denied: membership is exact.
-        assert!(!verify_token(&token, &root.public(), "api.github.com.evil.com", NOW).unwrap());
-        assert!(!verify_token(&token, &root.public(), "github.com", NOW).unwrap());
+        assert!(!verify_token(&token, &root.public(), "api.github.com.evil.com", None, NOW).unwrap());
+        assert!(!verify_token(&token, &root.public(), "github.com", None, NOW).unwrap());
     }
 
     #[test]
@@ -323,11 +358,11 @@ mod tests {
 
         // Now is after expiry: denied.
         let after = expiry + 1;
-        assert!(!verify_token(&token, &root.public(), "api.github.com", after).unwrap());
+        assert!(!verify_token(&token, &root.public(), "api.github.com", None, after).unwrap());
         // Exactly at expiry: still valid (the check is `<=`).
-        assert!(verify_token(&token, &root.public(), "api.github.com", expiry).unwrap());
+        assert!(verify_token(&token, &root.public(), "api.github.com", None, expiry).unwrap());
         // Before expiry: valid.
-        assert!(verify_token(&token, &root.public(), "api.github.com", expiry - 1).unwrap());
+        assert!(verify_token(&token, &root.public(), "api.github.com", None, expiry - 1).unwrap());
     }
 
     #[test]
@@ -338,7 +373,7 @@ mod tests {
 
         // Verifying with a different root public key must fail the signature
         // check and surface as an error, never as a soft allow.
-        let err = verify_token(&token, &attacker.public(), "api.github.com", NOW);
+        let err = verify_token(&token, &attacker.public(), "api.github.com", None, NOW);
         assert!(matches!(err, Err(CapabilityError::Biscuit(_))));
     }
 
@@ -347,9 +382,9 @@ mod tests {
         let root = KeyPair::new();
 
         // Pure garbage base64.
-        assert!(verify_token("not-a-real-token", &root.public(), "api.github.com", NOW).is_err());
+        assert!(verify_token("not-a-real-token", &root.public(), "api.github.com", None, NOW).is_err());
         // Empty string.
-        assert!(verify_token("", &root.public(), "api.github.com", NOW).is_err());
+        assert!(verify_token("", &root.public(), "api.github.com", None, NOW).is_err());
 
         // A valid token with one byte flipped in its base64 payload.
         let token = mint_token(&root, "github", &hosts(&["api.github.com"]), FAR_FUTURE, "n").unwrap();
@@ -358,7 +393,7 @@ mod tests {
         // Flip the final char to a different valid base64 char to corrupt the signature.
         bytes[last] = if bytes[last] == b'A' { b'B' } else { b'A' };
         let tampered = String::from_utf8(bytes).unwrap();
-        assert!(verify_token(&tampered, &root.public(), "api.github.com", NOW).is_err());
+        assert!(verify_token(&tampered, &root.public(), "api.github.com", None, NOW).is_err());
     }
 
     #[test]
@@ -378,20 +413,20 @@ mod tests {
             attenuate_token(&token, &root.public(), &hosts(&["api.github.com"])).unwrap();
 
         // The retained host still verifies.
-        assert!(verify_token(&narrowed, &root.public(), "api.github.com", NOW).unwrap());
+        assert!(verify_token(&narrowed, &root.public(), "api.github.com", None, NOW).unwrap());
         // A host removed by attenuation now fails, even though the original token allowed it.
-        assert!(!verify_token(&narrowed, &root.public(), "uploads.github.com", NOW).unwrap());
-        assert!(!verify_token(&narrowed, &root.public(), "raw.github.com", NOW).unwrap());
+        assert!(!verify_token(&narrowed, &root.public(), "uploads.github.com", None, NOW).unwrap());
+        assert!(!verify_token(&narrowed, &root.public(), "raw.github.com", None, NOW).unwrap());
 
         // Attenuation cannot re-broaden to a host the original never allowed:
         // naming it in the subset writes a caveat that never matches a granted
         // host fact, so the host stays unreachable.
         let attempted_broaden =
             attenuate_token(&token, &root.public(), &hosts(&["new.evil.com"])).unwrap();
-        assert!(!verify_token(&attempted_broaden, &root.public(), "new.evil.com", NOW).unwrap());
+        assert!(!verify_token(&attempted_broaden, &root.public(), "new.evil.com", None, NOW).unwrap());
         // And it cannot even reach the original hosts, since the caveat now
         // only permits new.evil.com, which is not granted: the token authorizes nothing.
-        assert!(!verify_token(&attempted_broaden, &root.public(), "api.github.com", NOW).unwrap());
+        assert!(!verify_token(&attempted_broaden, &root.public(), "api.github.com", None, NOW).unwrap());
     }
 
     #[test]
@@ -412,15 +447,15 @@ mod tests {
         // Second attenuation narrows further to just a.example.com.
         let step2 = attenuate_token(&step1, &root.public(), &hosts(&["a.example.com"])).unwrap();
 
-        assert!(verify_token(&step2, &root.public(), "a.example.com", NOW).unwrap());
+        assert!(verify_token(&step2, &root.public(), "a.example.com", None, NOW).unwrap());
         // b was dropped by the second step, c by the first: both denied.
-        assert!(!verify_token(&step2, &root.public(), "b.example.com", NOW).unwrap());
-        assert!(!verify_token(&step2, &root.public(), "c.example.com", NOW).unwrap());
+        assert!(!verify_token(&step2, &root.public(), "b.example.com", None, NOW).unwrap());
+        assert!(!verify_token(&step2, &root.public(), "c.example.com", None, NOW).unwrap());
 
         // A second step cannot re-widen to c, dropped in the first step.
         let widen_attempt =
             attenuate_token(&step1, &root.public(), &hosts(&["c.example.com"])).unwrap();
-        assert!(!verify_token(&widen_attempt, &root.public(), "c.example.com", NOW).unwrap());
+        assert!(!verify_token(&widen_attempt, &root.public(), "c.example.com", None, NOW).unwrap());
     }
 
     #[test]

@@ -144,10 +144,12 @@ pub async fn deliver_egress_credential(
         return Err(DeliverError::EmptyHost);
     }
 
-    // (3) The presented capability token must verify for that host under the root
-    // public key and be unexpired. A bad signature/garbage token is an Err from
-    // verify (fail closed); an unauthorized/expired token is Ok(false).
-    match verify_token(req.presented_token, root_public, &host, req.now_unix) {
+    // (3) The presented capability token must verify for that host AND be bound to
+    // this exact connection (so a token minted for connection A cannot unlock
+    // connection B even if they share a host) under the root public key, and be
+    // unexpired. A bad signature/garbage token is an Err from verify (fail closed);
+    // an unauthorized/expired/wrong-connection token is Ok(false).
+    match verify_token(req.presented_token, root_public, &host, Some(req.connection), req.now_unix) {
         Ok(true) => {}
         _ => {
             best_effort_deny(audit, req.caller, req.connection).await;
@@ -318,6 +320,41 @@ mod tests {
         .unwrap_err();
         assert!(matches!(err, DeliverError::NotAuthorizedCaller));
         assert_eq!(audit.recorded().await[0].structural.outcome, "denied");
+    }
+
+    #[tokio::test]
+    async fn a_token_for_a_different_connection_is_rejected_on_a_shared_host() {
+        // Two connections could share a destination host; a token minted for
+        // connection "other" must NOT unlock "anthropic"'s credential even though
+        // the host matches (the review's cross-connection replay).
+        let root = KeyPair::new();
+        let (_t, store) = store_with(CredentialKind::ApiKey, b"sk-ant-secret");
+        let audit = MockAuditSink::accepting();
+        // Token minted for a DIFFERENT connection, same host.
+        let tok = mint_egress_capability(
+            &root,
+            "other",
+            &["api.anthropic.com".to_string()],
+            FAR_FUTURE,
+            "n",
+        )
+        .unwrap();
+        let err = deliver_egress_credential(
+            &EgressRequest {
+                caller: "ai-proxy",
+                connection: "anthropic",
+                presented_token: &tok,
+                destination_host: "api.anthropic.com",
+                now_unix: NOW,
+            },
+            &proxy(),
+            &root.public(),
+            &store,
+            &audit,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, DeliverError::TokenRejected));
     }
 
     #[tokio::test]

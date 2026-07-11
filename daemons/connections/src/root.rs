@@ -116,6 +116,7 @@ mod tests {
             &minted,
             &reloaded.public(),
             "api.github.com",
+            None,
             1_000_000_000,
         )
         .unwrap();
