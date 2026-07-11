@@ -144,6 +144,14 @@ def main():
     ap.add_argument("--super", dest="press_super", action="store_true",
                     help="after verifying, press Super and capture a second shot "
                          "(the waypointer/launcher) to exercise the input->shell path")
+    ap.add_argument("--app", default=None, metavar="BINARY",
+                    help="launch a daily-driver app (its binary name, e.g. "
+                         "arlen-system-monitor) in the booted session via QEMU fw_cfg, "
+                         "so its window renders for the screenshot (TIER-A 1b). Use a "
+                         "longer --wait so the app has time to come up after the shell")
+    ap.add_argument("--require-app-text", default=None, metavar="SUBSTR",
+                    help="with --app, fail unless the screenshot OCRs a substring "
+                         "(case-insensitive), e.g. a process name the app must show")
     ap.add_argument("--require-ai", action="store_true",
                     help="fail unless the AI layer came up: the journal (forwarded to "
                          "serial) must show the llama engine + the AI session daemons started")
@@ -206,6 +214,11 @@ def main():
         "-serial", f"file:{serial}",
         "-no-reboot",
     ]
+    # TIER-A 1b: request the session launch a daily-driver app for the screenshot.
+    # arlen-session reads this fw_cfg key and launches the (sanitised, installed)
+    # binary after the shell; absent on a normal boot.
+    if args.app:
+        qemu += ["-fw_cfg", f"name=opt/arlen/verify_app,string={args.app}"]
     print("+ " + " ".join(qemu))
     proc = subprocess.Popen(qemu, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -268,6 +281,19 @@ def main():
         print("VERIFY FAIL: the shell's top bar is absent (compositor up, shell did not render)")
         print(f"  serial log: {serial}")
         return 1
+    if args.app:
+        # The app was requested to launch; the frame is non-black + not the console
+        # (checked above), so the compositor rendered. If a text substring is
+        # required, gate on the OCR (the app must show it, e.g. a process name).
+        print(f"app: launched {args.app} in the session")
+        if args.require_app_text:
+            want = args.require_app_text.lower()
+            if want not in lower:
+                print(f"VERIFY FAIL: --app {args.app} did not show '{args.require_app_text}' "
+                      f"(OCR of the frame)")
+                print(f"  serial log: {serial}")
+                return 1
+            print(f"app text: '{args.require_app_text}' present in the frame")
     if args.require_ai:
         try:
             with open(serial, "r", errors="replace") as fh:
