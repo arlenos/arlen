@@ -23,6 +23,7 @@ audit-proto = { path = "../../contracts/audit-proto" }
 arlen-forage-signing = { path = "../../forage/signing" }
 zeroize = "1"
 arlen-permissions = { path = "../../sdk/permissions" }
+biscuit-auth = "6.0.0"
 zbus = { version = "5", default-features = false, features = ["tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 tracing = "0.1"
