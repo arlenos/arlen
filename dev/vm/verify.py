@@ -225,6 +225,11 @@ def main():
         sock, f = qmp_connect(qmp_path, time.monotonic() + 30)
         print(f"QMP connected; letting the session come up ({args.wait}s)...")
         time.sleep(args.wait)
+        if args.app:
+            # The shell may show a modal (e.g. its consent fixture) over the desktop;
+            # press Escape so a launched app window is not hidden behind it.
+            qmp_key(f, "esc")
+            time.sleep(1.5)
         res = qmp(f, "screendump", filename=out, format="png")
         if "error" in res:
             sys.exit(f"screendump failed: {res['error']}")
@@ -282,10 +287,23 @@ def main():
         print(f"  serial log: {serial}")
         return 1
     if args.app:
-        # The app was requested to launch; the frame is non-black + not the console
-        # (checked above), so the compositor rendered. If a text substring is
-        # required, gate on the OCR (the app must show it, e.g. a process name).
-        print(f"app: launched {args.app} in the session")
+        # Confirm the session's fw_cfg launch hook actually fired (arlen-session
+        # logs a marker), not just that --app was passed - a silent Tauri app leaves
+        # no other trace.
+        try:
+            with open(serial, "r", errors="replace") as fh:
+                journal = fh.read()
+        except OSError:
+            journal = ""
+        if f"launching verify app '{args.app}'" in journal:
+            print(f"app: session launched {args.app} (fw_cfg hook fired)")
+        elif "qemu_fw_cfg sysfs absent" in journal:
+            print(f"VERIFY FAIL: --app {args.app} - the fw_cfg sysfs is absent, hook could not read it")
+            print(f"  serial log: {serial}")
+            return 1
+        else:
+            print(f"app: --app {args.app} requested; no launch marker in the serial "
+                  f"(hook may not have fired - check {serial})")
         if args.require_app_text:
             want = args.require_app_text.lower()
             if want not in lower:
