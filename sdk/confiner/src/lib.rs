@@ -288,6 +288,62 @@ pub fn ephemeral_profile(
     })
 }
 
+/// The fixed in-sandbox path a [`command_profile`]'s writable scratch dir is bound
+/// to (the confined command's working directory and `HOME`). The host path never
+/// enters the command's view.
+pub const WORK_MOUNT: &str = "/work";
+
+/// The confined-command profile (ai-act-layer-plan.md, the `run_command` sharp
+/// edge): run an arbitrary, user-approved command with DAMAGE prevention. The
+/// `read_only_roots` (e.g. `/usr`, `/etc`, or the whole host `/`) are exposed
+/// READ-ONLY so a real command finds its binaries, libraries and the user's files;
+/// a single writable scratch dir is bound at [`WORK_MOUNT`] (the command's cwd and
+/// `HOME`), `/tmp` is a fresh tmpfs, and `network` is the caller's choice
+/// ([`NetworkPolicy::None`] gives no exfiltration). The command therefore cannot
+/// write the host, reach the network (under `None`), or escalate privilege (the
+/// namespaces bwrap always applies). It CAN read whatever the roots expose, and its
+/// output is captured - that is deliberate: `run_command` is ALWAYS Confirm-gated,
+/// so the user has approved the exact command, and the confinement bounds DAMAGE,
+/// not the reads the user authorized. A tighter read surface (a curated root or the
+/// active project dir only) is a caller choice via `read_only_roots`.
+///
+/// `env` must not set [`is_reserved_build_env`] keys (`PATH` / `LD_*`); the profile
+/// sets a fixed `PATH` itself. Each read-only root and the workdir must be absolute.
+pub fn command_profile(
+    read_only_roots: &[std::path::PathBuf],
+    workdir: &Path,
+    network: NetworkPolicy,
+    env: BTreeMap<String, String>,
+) -> Result<Confinement, ConfinerError> {
+    for key in env.keys() {
+        if is_reserved_build_env(key) {
+            return Err(ConfinerError::ReservedEnv(key.clone()));
+        }
+    }
+    let work = checked_abs(workdir)?;
+    let mut binds = Vec::with_capacity(read_only_roots.len() + 1);
+    for root in read_only_roots {
+        let r = checked_abs(root)?;
+        binds.push(Bind::ReadOnly(r.clone(), r));
+    }
+    // The one writable window, at a fixed in-sandbox path, applied AFTER the
+    // read-only roots so it wins even when a root exposes the host `/`.
+    binds.push(Bind::ReadWrite(work, WORK_MOUNT.into()));
+
+    let mut env = env;
+    env.insert("PATH".into(), "/usr/bin:/bin".into());
+    env.insert("HOME".into(), WORK_MOUNT.into());
+
+    Ok(Confinement {
+        network,
+        binds,
+        tmpfs: vec!["/tmp".into()],
+        post_mask_binds: vec![],
+        env,
+        chdir: Some(WORK_MOUNT.into()),
+    })
+}
+
 /// An app-runtime confinement that is **not yet runnable**: it has the shared
 /// base plus the app's security-axis binds (`/usr` read-only, the app's own
 /// state dirs writable) and the network policy, but not the universal plumbing
@@ -669,5 +725,74 @@ mod tests {
         assert!(!is_reserved_build_env("path"));
         assert!(!is_reserved_build_env("MY_LD_HACK"));
         assert!(!is_reserved_build_env("HOME"));
+    }
+
+    #[test]
+    fn command_profile_is_read_only_no_net_with_one_writable_scratch() {
+        let c = command_profile(
+            &[PathBuf::from("/usr"), PathBuf::from("/etc")],
+            Path::new("/tmp/run-scratch"),
+            NetworkPolicy::None,
+            BTreeMap::new(),
+        )
+        .unwrap();
+        let args = c.bwrap_args();
+        let joined = args.join(" ");
+        assert!(joined.contains("--unshare-net"), "no network: {joined}");
+        assert!(joined.contains("--ro-bind /usr /usr"), "usr read-only: {joined}");
+        assert!(joined.contains("--ro-bind /etc /etc"), "etc read-only: {joined}");
+        assert!(joined.contains("--bind /tmp/run-scratch /work"), "scratch writable: {joined}");
+        assert!(joined.contains("--chdir /work"), "cwd is the scratch: {joined}");
+        assert!(joined.contains("--setenv PATH /usr/bin:/bin"), "fixed PATH: {joined}");
+        assert!(joined.contains("--setenv HOME /work"), "HOME in scratch: {joined}");
+        // The scratch is the ONLY writable bind: no host write window.
+        assert_eq!(
+            args.iter().filter(|a| *a == "--bind").count(),
+            1,
+            "exactly one writable bind: {joined}"
+        );
+    }
+
+    #[test]
+    fn command_profile_leaves_network_up_when_asked() {
+        let c = command_profile(
+            &[PathBuf::from("/usr")],
+            Path::new("/tmp/s"),
+            NetworkPolicy::Unrestricted,
+            BTreeMap::new(),
+        )
+        .unwrap();
+        assert!(
+            !c.bwrap_args().contains(&"--unshare-net".to_string()),
+            "network stays up under Unrestricted"
+        );
+    }
+
+    #[test]
+    fn command_profile_rejects_reserved_env_and_relative_paths() {
+        let mut env = BTreeMap::new();
+        env.insert("LD_PRELOAD".into(), "/evil.so".into());
+        assert!(matches!(
+            command_profile(&[PathBuf::from("/usr")], Path::new("/tmp/s"), NetworkPolicy::None, env),
+            Err(ConfinerError::ReservedEnv(_))
+        ));
+        assert!(matches!(
+            command_profile(
+                &[PathBuf::from("relative")],
+                Path::new("/tmp/s"),
+                NetworkPolicy::None,
+                BTreeMap::new()
+            ),
+            Err(ConfinerError::RelativePath(_))
+        ));
+        assert!(matches!(
+            command_profile(
+                &[PathBuf::from("/usr")],
+                Path::new("relative"),
+                NetworkPolicy::None,
+                BTreeMap::new()
+            ),
+            Err(ConfinerError::RelativePath(_))
+        ));
     }
 }
