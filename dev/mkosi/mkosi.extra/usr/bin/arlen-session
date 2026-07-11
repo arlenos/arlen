@@ -75,6 +75,21 @@ if [ -n "$wl" ]; then
     systemd-cat -t arlen-shell arlen-desktop-shell &
 fi
 
+# Boot-verify hook (TIER-A 1b): the boot-verify harness (dev/vm/verify.py) can
+# request ONE daily-driver app be launched so it can screenshot + assert it renders
+# with real data. It passes the app's binary name over QEMU fw_cfg
+# (`-fw_cfg name=opt/arlen/verify_app,string=<binary>`); the guest reads it from the
+# qemu_fw_cfg sysfs. Absent/empty on a normal boot, so nothing extra launches. The
+# value is sanitised to the app-name charset and must resolve to an installed
+# binary, so it can only start a real app (never inject a command).
+verify_app_file=/sys/firmware/qemu_fw_cfg/by_name/opt/arlen/verify_app/raw
+if [ -n "$wl" ] && [ -r "$verify_app_file" ]; then
+    verify_app=$(tr -cd 'a-z0-9-' < "$verify_app_file")
+    if [ -n "$verify_app" ] && command -v "$verify_app" >/dev/null 2>&1; then
+        systemd-cat -t "verify-app" "$verify_app" &
+    fi
+fi
+
 # Keep the session alive; when the compositor exits, the session ends and greetd
 # returns to the greeter (or, for [initial_session], the VT).
 wait "$compositor_pid"
