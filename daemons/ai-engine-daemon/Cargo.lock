@@ -71,6 +71,7 @@ dependencies = [
  "arlen-ai-core",
  "arlen-ai-skills",
  "arlen-ai-undo-core",
+ "arlen-ai-undo-proto",
  "arlen-confiner",
  "arlen-consent-contract",
  "arlen-permissions",
@@ -109,6 +110,17 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "arlen-ai-undo-proto"
+version = "0.1.0"
+dependencies = [
+ "arlen-ai-undo-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

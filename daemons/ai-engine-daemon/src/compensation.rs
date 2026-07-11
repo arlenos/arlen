@@ -93,11 +93,6 @@ impl RetractReceipt {
     /// this receipt's op id, carrying the same edge identity the in-memory retract
     /// uses. The persisted counterpart, so a restart-surviving undo replays exactly
     /// this retract.
-    ///
-    /// The persisted-log submit that consumes this is the next increment (the
-    /// signer round-trip wired into the executor's async write path), so it has no
-    /// production caller yet; the in-memory store is the live undo mechanism today.
-    #[allow(dead_code)]
     pub fn to_inverse(&self) -> InverseReceipt {
         InverseReceipt::RetractGraphEdge {
             op_id: self.op_id.clone(),
@@ -112,7 +107,6 @@ impl RetractReceipt {
     /// The undo-log entry the AI engine submits to the signer to persist this
     /// compensation: the durable op id (the entry key and the retract key), the
     /// gate `correlation_id` the action came from, and the captured inverse.
-    #[allow(dead_code)]
     pub fn to_undo_entry(&self, correlation_id: impl Into<String>) -> UndoEntry {
         UndoEntry {
             op_id: self.op_id.clone(),
