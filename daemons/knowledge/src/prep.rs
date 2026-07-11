@@ -154,49 +154,77 @@ async fn load_prep_node(
     Ok(None)
 }
 
-/// The subject entity's live `FILE_PART_OF` neighbour ids, both directions (a
-/// project's files / a file's project). The same live-edge predicate the capsule
-/// materializer uses (`invalid_at`/`expired_at` NULL on the edge and the far node),
-/// so no new graph behaviour is introduced.
-async fn prep_neighbour_ids(graph: &GraphHandle, subject_id: &str) -> Result<Vec<String>> {
-    let id = escape_cypher(subject_id);
+/// The subject's live `FILE_PART_OF` neighbour ids, both directions (a project's
+/// files / a file's project). The same live-edge predicate the capsule materializer
+/// uses (`invalid_at`/`expired_at` NULL on the edge and the far node).
+async fn file_part_of_neighbours(graph: &GraphHandle, id_esc: &str) -> Result<Vec<String>> {
     let cypher = format!(
-        "MATCH (n {{id: '{id}'}})-[r:FILE_PART_OF]-(m) \
+        "MATCH (n {{id: '{id_esc}'}})-[r:FILE_PART_OF]-(m) \
          WHERE r.invalid_at IS NULL AND r.expired_at IS NULL AND m.expired_at IS NULL \
          RETURN m.id AS id"
     );
+    edge_neighbour_ids(graph, cypher).await
+}
+
+/// The subject file's neighbours across a File-to-File relation with no temporal
+/// stamps (`CO_ACCESSED` files worked on together, `LINKS_TO` explicit references),
+/// both directions. The far node is bound to `:File`, which carries no `expired_at`
+/// (files are not archived), so there is no liveness stamp to filter here.
+async fn file_relation_neighbours(
+    graph: &GraphHandle,
+    id_esc: &str,
+    rel: &str,
+) -> Result<Vec<String>> {
+    let cypher =
+        format!("MATCH (n {{id: '{id_esc}'}})-[:{rel}]-(m:File) RETURN m.id AS id");
+    edge_neighbour_ids(graph, cypher).await
+}
+
+/// Run a neighbour-id query and collect the non-empty ids.
+async fn edge_neighbour_ids(graph: &GraphHandle, cypher: String) -> Result<Vec<String>> {
     let rs = graph.query_rows(cypher).await?;
-    let mut ids: Vec<String> = rs
+    Ok(rs
         .rows
         .iter()
         .filter_map(|row| row.first())
         .map(|c| c.as_str().to_string())
         .filter(|s| !s.is_empty())
-        .collect();
-    ids.sort();
-    ids.dedup();
-    Ok(ids)
+        .collect())
 }
 
-/// Gather the subject entity's live `FILE_PART_OF` neighbours as prep candidates,
-/// each with its liveness signals loaded. `FILE_PART_OF` is the built membership
-/// edge (a project's files / a file's project). Broader relation families
-/// (`ACCESSED_BY`, meetings, action-items) extend this as they land.
+/// Gather the subject entity's related neighbours as prep candidates, each with its
+/// liveness signals loaded and its actual relation. Follows the built membership
+/// edge (`FILE_PART_OF`: a project's files / a file's project) plus the File-to-File
+/// families (`CO_ACCESSED`: worked on together; `LINKS_TO`: explicit references).
+/// A neighbour reachable by several relations is kept once, under the first
+/// relation found (membership before co-access before links). Broader families
+/// (meetings, action-items) extend this as they land.
 pub(crate) async fn gather_prep_candidates(
     graph: &GraphHandle,
     subject_id: &str,
 ) -> Result<Vec<PrepCandidate>> {
-    let neighbour_ids = prep_neighbour_ids(graph, subject_id).await?;
+    let id_esc = escape_cypher(subject_id);
+
+    // Collect (relation, ids) in priority order; dedup keeps the first relation.
+    let mut seen = std::collections::BTreeSet::new();
+    let mut pairs: Vec<(String, String)> = Vec::new(); // (id, relation)
+    let families: [(&str, Vec<String>); 3] = [
+        ("FILE_PART_OF", file_part_of_neighbours(graph, &id_esc).await?),
+        ("CO_ACCESSED", file_relation_neighbours(graph, &id_esc, "CO_ACCESSED").await?),
+        ("LINKS_TO", file_relation_neighbours(graph, &id_esc, "LINKS_TO").await?),
+    ];
+    for (relation, ids) in families {
+        for id in ids {
+            if seen.insert(id.clone()) {
+                pairs.push((id, relation.to_string()));
+            }
+        }
+    }
+
     let mut candidates = Vec::new();
-    for id in neighbour_ids {
+    for (id, relation) in pairs {
         if let Some((kind, label, signals)) = load_prep_node(graph, &id).await? {
-            candidates.push(PrepCandidate {
-                id,
-                label,
-                kind,
-                relation: "FILE_PART_OF".to_string(),
-                signals,
-            });
+            candidates.push(PrepCandidate { id, label, kind, relation, signals });
         }
     }
     Ok(candidates)
@@ -320,6 +348,37 @@ mod tests {
         assert_eq!(view[0].label, "fresh.rs");
         assert_eq!(view[0].liveness, "live");
         assert!(view.iter().all(|i| i.id != "cold"), "the cold file is noise, dropped");
+    }
+
+    #[tokio::test]
+    async fn gather_follows_co_accessed_and_linked_files() {
+        // Prep for a file surfaces the files worked on together (CO_ACCESSED) and
+        // explicitly referenced (LINKS_TO), each under its real relation.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        let recent = NOW - 1 * DAY;
+        for f in ["f0", "co", "link"] {
+            graph
+                .write(format!(
+                    "CREATE (f:File {{id: '{f}', path: '/p/{f}.rs', app_id: 't', last_accessed: {recent}}})"
+                ))
+                .await
+                .unwrap();
+        }
+        graph
+            .write("MATCH (a:File {id:'f0'}), (b:File {id:'co'}) CREATE (a)-[:CO_ACCESSED {last_seen: 0}]->(b)".into())
+            .await
+            .unwrap();
+        graph
+            .write("MATCH (a:File {id:'f0'}), (b:File {id:'link'}) CREATE (a)-[:LINKS_TO]->(b)".into())
+            .await
+            .unwrap();
+
+        let view = rank_prep(gather_prep_candidates(&graph, "f0").await.unwrap(), NOW, 10);
+        let co = view.iter().find(|i| i.id == "co").expect("co-accessed file surfaced");
+        assert_eq!(co.relation, "CO_ACCESSED");
+        let link = view.iter().find(|i| i.id == "link").expect("linked file surfaced");
+        assert_eq!(link.relation, "LINKS_TO");
     }
 
     #[tokio::test]
