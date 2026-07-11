@@ -21,6 +21,26 @@ use std::path::PathBuf;
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 
+/// The immutable facts a capsule was minted with, recorded once at mint so the
+/// active-capsules surface can name and describe it. These come from the grant
+/// (audience, expiry, op-count) plus the user-supplied label; the ledger's
+/// revoke/op-count state is mutable and tracked separately on [`CapsuleState`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CapsuleMeta {
+    /// The user-facing name ("Reading list", "Project Atlas notes").
+    pub label: String,
+    /// Who can read it: day-one "this machine", else a short verifying-key label.
+    pub audience: String,
+    /// A plain, relation-type-level summary of what the slice carries.
+    pub scope: String,
+    /// When the grant expires (mandatory), microseconds since the epoch.
+    pub expiry_micros: i64,
+    /// The op-count bound; `max_ops - ops_used` is the reads remaining.
+    pub max_ops: u64,
+    /// When it was minted, microseconds since the epoch.
+    pub minted_at_micros: i64,
+}
+
 /// The durable per-capsule state.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapsuleState {
@@ -28,6 +48,11 @@ pub struct CapsuleState {
     pub revoked: bool,
     /// How many reads have been served (checked against the grant's `max_ops`).
     pub ops_used: u64,
+    /// The mint metadata, set once at registration. `None` for a bare `register`
+    /// (or a record written before this field existed); the active-capsules surface
+    /// falls back to the handle when it is absent.
+    #[serde(default)]
+    pub meta: Option<CapsuleMeta>,
 }
 
 /// The outcome of a per-read check.
@@ -55,6 +80,17 @@ impl RevocationLedger {
     /// never resets an accrued count or un-revokes a revoked capsule.
     pub fn register(&mut self, handle: &str) {
         self.entries.entry(handle.to_string()).or_default();
+    }
+
+    /// Record a freshly minted capsule with its mint metadata (the mint path).
+    /// Idempotent like [`register`](Self::register): the metadata is set only when
+    /// the handle is new (first mint wins), so a re-mint never overwrites the
+    /// recorded terms or resets the accrued state.
+    pub fn register_with_meta(&mut self, handle: &str, meta: CapsuleMeta) {
+        let entry = self.entries.entry(handle.to_string()).or_default();
+        if entry.meta.is_none() {
+            entry.meta = Some(meta);
+        }
     }
 
     /// Revoke a capsule: every future read refuses. Inserts a revoked entry if the
@@ -96,6 +132,7 @@ impl RevocationLedger {
                 handle: handle.clone(),
                 revoked: s.revoked,
                 ops_used: s.ops_used,
+                meta: s.meta.clone(),
             })
             .collect()
     }
@@ -112,6 +149,9 @@ pub struct CapsuleListEntry {
     pub revoked: bool,
     /// How many reads have been served against it.
     pub ops_used: u64,
+    /// The mint metadata (label, audience, scope, expiry, op-count bound), when it
+    /// was recorded at mint. `None` for a bare-registered or pre-metadata capsule.
+    pub meta: Option<CapsuleMeta>,
 }
 
 /// The flock'd, durable persistence of a [`RevocationLedger`]. Every operation
@@ -191,6 +231,14 @@ impl RevocationFile {
         self.save(&ledger)
     }
 
+    /// Register a freshly minted capsule with its mint metadata (the mint path).
+    pub fn register_with_meta(&self, handle: &str, meta: CapsuleMeta) -> io::Result<()> {
+        let _g = self.lock()?;
+        let mut ledger = self.load()?;
+        ledger.register_with_meta(handle, meta);
+        self.save(&ledger)
+    }
+
     /// Revoke a capsule (terminal).
     pub fn revoke(&self, handle: &str) -> io::Result<()> {
         let _g = self.lock()?;
@@ -252,6 +300,28 @@ mod tests {
         assert_eq!(list[1].handle, "b");
         assert!(list[1].revoked, "a revoked capsule stays listed");
         assert!(RevocationLedger::default().list().is_empty());
+    }
+
+    #[test]
+    fn register_with_meta_records_the_mint_facts_and_is_idempotent() {
+        let mut l = RevocationLedger::default();
+        let meta = CapsuleMeta {
+            label: "Reading list".into(),
+            audience: "this machine".into(),
+            scope: "files in a project".into(),
+            expiry_micros: 1_000,
+            max_ops: 5,
+            minted_at_micros: 42,
+        };
+        l.register_with_meta("h", meta.clone());
+        assert_eq!(l.list()[0].meta.as_ref().unwrap().label, "Reading list");
+
+        // A re-register never overwrites the recorded terms (first mint wins).
+        l.register_with_meta("h", CapsuleMeta { label: "changed".into(), ..meta });
+        assert_eq!(l.list()[0].meta.as_ref().unwrap().label, "Reading list");
+        // A bare register leaves meta absent.
+        l.register("bare");
+        assert!(l.list().iter().find(|e| e.handle == "bare").unwrap().meta.is_none());
     }
 
     #[test]

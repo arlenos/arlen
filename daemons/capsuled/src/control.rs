@@ -73,6 +73,7 @@ mod tests {
             handle: "h-1".into(),
             revoked: false,
             ops_used: 3,
+            meta: None,
         }]);
         let json = serde_json::to_string(&resp).unwrap();
         assert_eq!(serde_json::from_str::<ControlResponse>(&json).unwrap(), resp);
