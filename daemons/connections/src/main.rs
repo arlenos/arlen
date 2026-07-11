@@ -11,6 +11,7 @@
 use audit_proto::LedgerAuditSink;
 use connections::dbus::ConnectionsDaemon;
 use connections::master::{self, MasterSecret};
+use connections::root::{self, RootKeypair};
 use connections::store::CredentialStore;
 use zbus::connection;
 
@@ -29,8 +30,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store = CredentialStore::new(*master.bytes(), &dir);
     tracing::info!(dir = %dir.display(), "credential store opened");
 
+    // The capability-token root keypair (separate file from the master), for the
+    // egress-delivery mint/verify. Fail-closed if it cannot be resolved or loaded.
+    let root_path = root::root_key_path().ok_or("no state home for the token root key")?;
+    let root = RootKeypair::load_or_create(&root_path)?;
+
     let audit = LedgerAuditSink::at_default_socket();
-    let daemon = ConnectionsDaemon::new(store, audit);
+    let daemon = ConnectionsDaemon::new(store, audit, root);
 
     // The name request fails closed if the well-known name is already owned, so
     // the real daemon never serves a decoy. When CONN-R2 delivers tokens, request
