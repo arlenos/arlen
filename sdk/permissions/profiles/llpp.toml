@@ -1,0 +1,8 @@
+# Starting permission profile for a lightweight PDF viewer (llpp). Reads
+# documents from Documents; no network and no Knowledge Graph.
+[info]
+app_id = "llpp"
+tier = "third-party"
+
+[filesystem]
+documents = true
