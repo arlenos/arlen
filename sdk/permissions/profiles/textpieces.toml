@@ -1,0 +1,6 @@
+# Starting permission profile for a text-transformation utility (Text Pieces). Its
+# transforms run locally on typed or pasted text; it needs no file access and no
+# network.
+[info]
+app_id = "textpieces"
+tier = "third-party"

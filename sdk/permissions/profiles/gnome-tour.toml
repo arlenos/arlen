@@ -1,0 +1,5 @@
+# Starting permission profile for the first-run welcome tour (GNOME Tour). It shows
+# a static local walkthrough; it needs no file access and no network.
+[info]
+app_id = "gnome-tour"
+tier = "third-party"

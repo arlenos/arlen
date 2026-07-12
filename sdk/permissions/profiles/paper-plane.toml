@@ -1,0 +1,9 @@
+# Starting permission profile for a Telegram client (Paper Plane). It connects to
+# the Telegram servers, so it gets network; file access for saving/sending media is
+# granted per-file through the portal, not a broad grant here.
+[info]
+app_id = "paper-plane"
+tier = "third-party"
+
+[network]
+allow_all = true
