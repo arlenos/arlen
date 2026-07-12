@@ -54,9 +54,15 @@ const FIXTURE: Meeting = {
     participants: ["You", "Tim"],
     summary:
       "The KG-lens is the reason to build a first-party editor rather than reuse gedit; a plain editor cannot show provenance and project context. Meeting capture stays fully on-device, which is the edge over cloud transcription bots. Capture lives in its own small surface and the resulting note becomes a knowledge-graph file, opened in the editor for follow-up.",
+    summary_claims: [
+      { text: "The KG-lens is the reason to build a first-party editor rather than reuse gedit.", source_segment: 0 },
+      { text: "Meeting capture stays fully on-device, the edge over cloud transcription bots.", source_segment: 2 },
+      { text: "Capture lives in its own small surface and the note becomes a knowledge-graph file.", source_segment: 3 },
+      { text: "This keeps the whole workflow sovereign end to end." },
+    ],
     action_items: [
-      { text: "Split capture into its own Meetings surface", owner: "arlen-ui" },
-      { text: "File the produced note as a knowledge-graph node", owner: "coder" },
+      { text: "Split capture into its own Meetings surface", owner: "arlen-ui", source_segment: 3 },
+      { text: "File the produced note as a knowledge-graph node", owner: "coder", source_segment: 4 },
     ],
     transcript: {
       language: "en",
