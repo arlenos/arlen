@@ -16,6 +16,14 @@
 import { calls, ContractClient, type Reply } from "./contract.js";
 import { stashProof } from "./proof-store.js";
 
+/** The one tool whose authorization proof is a per-action consent BISCUIT that
+ *  rides in the call's `consent` argument rather than being presented at the
+ *  daemon's Execute. `run_command` runs in the SEPARATE terminal-run MCP server,
+ *  which the daemon's in-memory proof cannot reach; the daemon mints a
+ *  public-key-verifiable token on approval and the MCP server verifies it. Must
+ *  match the Rust `RUN_COMMAND_TOOL` in `contracts/run-consent-token`. */
+export const RUN_COMMAND_TOOL = "run_command";
+
 /** The subset of pi's `ToolCallEvent` the gate reads. `input` is mutated in
  *  place to apply a Modify decision (pi's documented argument-patch path). */
 export interface ToolCallEvent {
@@ -78,9 +86,21 @@ export function makeGate(opts: GateOptions = {}): (pi: GateExtensionAPI) => void
       }
       switch (reply.decision) {
         case "allow":
-          // Hand the minted proof to the proxy tool that will run (HIGH-1), so it
-          // presents it at Execute instead of authorizing a second time.
-          stashProof(event.toolName, event.input, reply.proof);
+          if (event.toolName === RUN_COMMAND_TOOL) {
+            // run_command runs in the separate terminal-run MCP server, which
+            // verifies a per-action consent biscuit at its boundary. The daemon
+            // minted that biscuit as the proof; thread it into the call's `consent`
+            // argument so it reaches the MCP server. The daemon digested only
+            // command+args, so adding `consent` does not change what was authorized.
+            // A missing proof (fail-closed: no minter) leaves `consent` absent, so
+            // the MCP server refuses. This is the daemon's own argument-patch path
+            // (as Modify uses); other tools present the proof at Execute instead.
+            if (reply.proof) event.input.consent = reply.proof;
+          } else {
+            // Hand the minted proof to the proxy tool that will run (HIGH-1), so it
+            // presents it at Execute instead of authorizing a second time.
+            stashProof(event.toolName, event.input, reply.proof);
+          }
           return {};
         case "deny":
           return { block: true, reason: reply.reason };

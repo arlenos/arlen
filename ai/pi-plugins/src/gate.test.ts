@@ -82,6 +82,28 @@ test("Confirm holds the call (blocked) with the prompt, never auto-runs", async 
   assert.deepEqual(await pi.fire(event("fs.delete", {})), { block: true, reason: "Delete everything?" });
 });
 
+test("Allow on run_command threads the consent biscuit into the call's `consent` arg", async () => {
+  const mock = mockClient({ reply: "authorize", decision: "allow", proof: "biscuit-xyz" });
+  const pi = fakePi();
+  makeGate({ connect: async () => mock.client })(pi.api);
+  const ev = event("run_command", { command: "ls", args: ["-la"] });
+  const result = await pi.fire(ev);
+  assert.deepEqual(result, {});
+  // The biscuit rides in the call arguments the MCP server verifies; command+args
+  // (the digested part) are untouched.
+  assert.deepEqual(ev.input, { command: "ls", args: ["-la"], consent: "biscuit-xyz" });
+});
+
+test("Allow on run_command with no minted proof leaves `consent` absent (fail-closed)", async () => {
+  const mock = mockClient({ reply: "authorize", decision: "allow" });
+  const pi = fakePi();
+  makeGate({ connect: async () => mock.client })(pi.api);
+  const ev = event("run_command", { command: "ls" });
+  await pi.fire(ev);
+  // No proof -> no consent arg -> the MCP server refuses the run.
+  assert.deepEqual(ev.input, { command: "ls" });
+});
+
 test("an unexpected reply blocks fail-closed", async () => {
   const mock = mockClient({ reply: "error", code: "internal" });
   const pi = fakePi();
