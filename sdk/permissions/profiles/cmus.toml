@@ -1,0 +1,8 @@
+# Starting permission profile for a terminal music player (cmus). It plays the user's music library, so it
+# gets Music; no network of its own and no Knowledge Graph.
+[info]
+app_id = "cmus"
+tier = "third-party"
+
+[filesystem]
+music = true
