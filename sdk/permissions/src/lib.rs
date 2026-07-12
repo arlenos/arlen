@@ -13,11 +13,13 @@ pub mod learning;
 pub mod lint;
 pub mod identity_registry;
 pub mod peer_pidfd;
+pub mod stamped_identity;
 pub mod profile_watcher;
 pub mod revoke;
 
 pub use connection_auth::{AuthError, ConnectionAuth};
 pub use peer_pidfd::{PeerPidfd, PidfdError};
+pub use stamped_identity::{app_id_from_connection, IdentitySource, StampedIdentity};
 pub use profile_watcher::{ProfileChange, ProfileWatcher};
 pub use revoke::{RevokeInitiator, RevokeOutcome, RevokeReach, RevokedReach};
 

@@ -55,7 +55,7 @@ pub fn app_id_from_pid(pid: u32) -> Result<String, IdentityError> {
 /// for `/proc/{pid}` is held open while we read `exe`, so the
 /// kernel's per-process subdirectory is the same lifetime as the
 /// readlink.
-fn exe_path_openat(pid: u32) -> Result<PathBuf, IdentityError> {
+pub(crate) fn exe_path_openat(pid: u32) -> Result<PathBuf, IdentityError> {
     use std::ffi::CString;
     let proc_dir = format!("/proc/{pid}");
     // O_PATH gives us a fd we can use for `*at` syscalls without
