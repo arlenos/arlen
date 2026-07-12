@@ -2217,3 +2217,110 @@ async fn a_confirm_round_trips_through_the_consent_loop() {
         "the requester received the AllowedOnce decision end-to-end"
     );
 }
+
+/// IT-1 consent deny branch: the same round-trip, but the shell DENIES. The
+/// requester's blocked submit returns Decided { Denied } - the broker relays a
+/// refusal end-to-end, and no grant is minted (Denied never remembers). Same
+/// `#[ignore]` rationale.
+#[tokio::test]
+#[ignore = "needs audit-daemon + consent-broker binaries built and a per-user runtime dir"]
+async fn a_denied_confirm_relays_the_refusal() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    if !arlen_integration::binary_built("daemons/consent-broker", "arlen-consent-broker") {
+        eprintln!(
+            "SKIP a_denied_confirm_relays_the_refusal: arlen-consent-broker not built (run `just integration-nightly`)"
+        );
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    if arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd") {
+        stack
+            .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+            .expect("spawn audit-daemon");
+        stack
+            .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+            .expect("audit ingest socket appears");
+    }
+    stack
+        .spawn("daemons/consent-broker", "arlen-consent-broker", &[])
+        .expect("spawn consent-broker");
+    stack
+        .wait_socket("arlen/consent-intake.sock", Duration::from_secs(20))
+        .expect("consent intake socket appears");
+    stack
+        .wait_socket("arlen/consent-control.sock", Duration::from_secs(20))
+        .expect("consent control socket appears");
+
+    let intake = stack.consent_intake_socket();
+    let control = stack.consent_control_socket();
+
+    let requester = tokio::spawn(async move {
+        let body = arlen_consent_contract::RequestBody {
+            class: arlen_consent_contract::ConsentClass::Destructive,
+            kind: arlen_ai_core::capability::ActionKind::PermanentDelete,
+            triggered_by_external_content: false,
+            summary: "permanently delete another important file".into(),
+            scope: Some("/work/it/also-doomed.txt".into()),
+            recipient: None,
+            preview: None,
+            targets: Vec::new(),
+            total: None,
+        };
+        let bytes = serde_json::to_vec(&body).expect("serialise request");
+        let mut stream = tokio::net::UnixStream::connect(&intake)
+            .await
+            .expect("connect intake");
+        stream
+            .write_all(&(bytes.len() as u32).to_le_bytes())
+            .await
+            .expect("write len");
+        stream.write_all(&bytes).await.expect("write body");
+        stream.flush().await.expect("flush");
+        let mut len_buf = [0u8; 4];
+        stream.read_exact(&mut len_buf).await.expect("read result len");
+        let len = u32::from_le_bytes(len_buf) as usize;
+        let mut rbody = vec![0u8; len];
+        stream.read_exact(&mut rbody).await.expect("read result body");
+        serde_json::from_slice::<arlen_consent_contract::IntakeResult>(&rbody)
+            .expect("parse IntakeResult")
+    });
+
+    let mut request_id = None;
+    for _ in 0..100 {
+        let path = control.clone();
+        let pending = tokio::task::spawn_blocking(move || {
+            arlen_consent_broker::ControlClient::new(path).fetch()
+        })
+        .await
+        .expect("join fetch")
+        .expect("fetch pending");
+        if let Some(view) = pending {
+            request_id = Some(view.id);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let id = request_id.expect("a pending consent request appeared on the control socket");
+
+    let path = control.clone();
+    let resolved = tokio::task::spawn_blocking(move || {
+        arlen_consent_broker::ControlClient::new(path)
+            .resolve(id, arlen_consent_contract::ConsentOutcome::Denied)
+    })
+    .await
+    .expect("join resolve")
+    .expect("resolve");
+    assert!(resolved, "the front pending id resolved");
+
+    let result = tokio::time::timeout(Duration::from_secs(10), requester)
+        .await
+        .expect("requester returned in time")
+        .expect("requester task");
+    assert_eq!(
+        result,
+        arlen_consent_contract::IntakeResult::Decided {
+            outcome: arlen_consent_contract::ConsentOutcome::Denied
+        },
+        "the requester received the Denied decision end-to-end"
+    );
+}
