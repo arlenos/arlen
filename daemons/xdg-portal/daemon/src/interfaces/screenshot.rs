@@ -17,14 +17,44 @@
 //! OpenURI `OpenFile` fd path does.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use audit_proto::sink::{AuditSink, LedgerAuditSink};
+use audit_proto::{AuditKind, IngestRequest, StructuralRecord};
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use zbus::interface;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 
 use crate::request::{response, RequestHandle};
 use crate::state::DaemonState;
+
+/// Build the content-free audit event for one screen capture (screen-capture-plan.md
+/// §6.2, the no-silent-capture principle: "app X captured the screen at time T" is
+/// recorded, every time). The STRUCTURAL tier stays content-free - the calling app
+/// id is a coarse label (the audit daemon attributes the connection actor to the
+/// portal), and the captured IMAGE and its path are never recorded. Kind
+/// [`AuditKind::Permission`]: a capture is a mediated, permitted, privacy-sensitive
+/// action, not an egress.
+fn screenshot_audit_event(app_id: &str, outcome: &str) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::Permission,
+        structural: StructuralRecord {
+            subject: "capture.screenshot".to_string(),
+            // Who captured - a coarse id. No image, no output geometry, no path.
+            node_types: vec![app_id.to_string()],
+            relations: vec![],
+            result_count: None,
+            duration_ms: None,
+            outcome: outcome.to_string(),
+            depth: None,
+            capability_change: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
 
 /// Percent-encoding set for a `file://` URI path: controls plus the
 /// characters that are unsafe or delimiters in a URI path segment.
@@ -49,12 +79,20 @@ const URI_PATH_SET: &AsciiSet = &CONTROLS
 #[derive(Clone)]
 pub struct Screenshot {
     state: DaemonState,
+    /// The audit ledger sink: every capture is recorded (no silent capture).
+    audit: Arc<dyn AuditSink>,
 }
 
 impl Screenshot {
-    /// Build the interface over the shared daemon state.
+    /// Build the interface over the shared daemon state, recording captures to the
+    /// default audit ledger socket.
     pub fn new(state: DaemonState) -> Self {
-        Self { state }
+        Self::with_audit(state, Arc::new(LedgerAuditSink::at_default_socket()))
+    }
+
+    /// Build over an injected audit sink (tests supply a mock).
+    pub fn with_audit(state: DaemonState, audit: Arc<dyn AuditSink>) -> Self {
+        Self { state, audit }
     }
 }
 
@@ -127,6 +165,28 @@ impl Screenshot {
             tokio::task::spawn_blocking(|| arlen_screen_capture::capture_output(0, false)),
         )
         .await;
+        // The no-silent-capture principle (SC-R6): record every capture attempt +
+        // outcome, content-free. A SUCCESSFUL capture that cannot be recorded is
+        // refused - the image is never handed back unaudited (fail-closed for a
+        // privacy-sensitive act). A FAILED capture read nothing, so its record is
+        // best-effort (a warn, not a refusal).
+        let succeeded = matches!(capture, Ok(Ok(Ok(_))));
+        let outcome = match &capture {
+            Ok(Ok(Ok(_))) => "captured",
+            Ok(Ok(Err(_))) => "capture-failed",
+            Ok(Err(_)) => "capture-panicked",
+            Err(_) => "capture-timed-out",
+        };
+        let audit_result = self.audit.submit(screenshot_audit_event(app_id, outcome)).await;
+        if succeeded {
+            if let Err(e) = audit_result {
+                tracing::warn!(request = %req.path, "Screenshot audit failed; refusing to return the capture: {e}");
+                return (response::OTHER, error_results("capture could not be recorded"));
+            }
+        } else if let Err(e) = audit_result {
+            tracing::warn!(request = %req.path, "Screenshot audit of a failed capture could not be recorded: {e}");
+        }
+
         let image = match capture {
             Ok(Ok(Ok(image))) => image,
             Ok(Ok(Err(e))) => {
@@ -189,5 +249,39 @@ impl Screenshot {
             response::OTHER,
             error_results("PickColor is not yet implemented"),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_capture_records_the_app_and_outcome_content_free() {
+        let req = screenshot_audit_event("org.example.recorder", "captured");
+        assert_eq!(req.kind, AuditKind::Permission, "a capture is a permitted, mediated act");
+        assert_eq!(req.structural.subject, "capture.screenshot");
+        assert_eq!(req.structural.node_types, vec!["org.example.recorder"]);
+        assert_eq!(req.structural.outcome, "captured");
+        req.validate().expect("within the structural caps");
+    }
+
+    #[test]
+    fn the_image_and_path_never_reach_the_structural_tier() {
+        let req = screenshot_audit_event("app", "captured");
+        // Only the coarse app id is carried; no path, no output geometry, no bytes.
+        let haystack = format!("{} {}", req.structural.subject, req.structural.node_types.join(","));
+        assert!(!haystack.contains("/"), "no filesystem path in the record");
+        assert!(!haystack.contains(".png"), "no image file name in the record");
+        assert!(req.forensic.is_none(), "the capture never reaches the forensic tier");
+    }
+
+    #[test]
+    fn a_failed_capture_records_its_outcome() {
+        for outcome in ["capture-failed", "capture-panicked", "capture-timed-out"] {
+            let req = screenshot_audit_event("app", outcome);
+            assert_eq!(req.structural.outcome, outcome);
+            req.validate().expect("within the structural caps");
+        }
     }
 }
