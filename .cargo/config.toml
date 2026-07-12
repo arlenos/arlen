@@ -5,3 +5,6 @@
 # a plain `cargo build` works everywhere; CI sets the same in its env.
 [env]
 CXXFLAGS = "-include cstdint"
+
+[build]
+target-dir = "target"

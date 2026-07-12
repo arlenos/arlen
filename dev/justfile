@@ -95,7 +95,7 @@ dev-ui app:
     set -euo pipefail
     if [ "{{app}}" = "files" ]; then
         just thumbnail-worker
-        export ARLEN_THUMBNAIL_SANDBOX_BIN="{{ROOT}}/ai/target/debug/arlen-thumbnail-sandbox"
+        export ARLEN_THUMBNAIL_SANDBOX_BIN="{{ROOT}}/target/debug/arlen-thumbnail-sandbox"
     fi
     cd "{{ROOT}}/apps/{{app}}" && cargo tauri dev
 
@@ -105,12 +105,12 @@ dev-ui app:
 # backs the list up first. Revert with `just viewer-unset-default`.
 viewer-set-default:
     cargo build --manifest-path "{{ROOT}}/apps/viewers/src-tauri/Cargo.toml"
-    "{{ROOT}}/apps/viewers/src-tauri/target/debug/arlen-viewers" --register-default-handler
+    "{{ROOT}}/target/debug/arlen-viewers" --register-default-handler
 
 # Revert `viewer-set-default`: restore the backed-up mimeapps.list and drop the
 # viewer's .desktop entry.
 viewer-unset-default:
-    "{{ROOT}}/apps/viewers/src-tauri/target/debug/arlen-viewers" --unregister-default-handler
+    "{{ROOT}}/target/debug/arlen-viewers" --unregister-default-handler
 
 # eBPF kernel-layer in QEMU (off-host, by design).
 vm:
@@ -308,7 +308,7 @@ terminal-smoke:
     cd "{{ROOT}}/apps/terminal" && cargo tauri build --debug --no-bundle
     SHOOT_EXEC='sleep 1; echo ARLEN_TERMINAL_SMOKE' SHOOT_EXPECT='ARLEN_TERMINAL_SMOKE' \
         "{{ROOT}}/dev/screenshot/shoot-app.sh" \
-        "{{ROOT}}/apps/terminal/src-tauri/target/debug/arlen-terminal" "" "" 12
+        "{{ROOT}}/target/debug/arlen-terminal" "" "" 12
 
 # IT-1 nightly (integration-testing-plan.md §4 / coder-night-backlog-2 §4.3):
 # build EVERY daemon the suite spawns (event-bus, knowledge, audit-daemon, the
@@ -321,7 +321,7 @@ terminal-smoke:
 # and a morning digest can parse the report. Each scenario owns a hermetic
 # `EphemeralStack`, so teardown is automatic (no shared state to clean). Needs a
 # FUSE-capable host for the timeline mount, by design. Debug builds, because the
-# harness resolves spawned binaries from each crate's `target/debug`.
+# harness resolves spawned binaries from the shared `target/debug`.
 integration-nightly:
     #!/usr/bin/env bash
     set -uo pipefail
