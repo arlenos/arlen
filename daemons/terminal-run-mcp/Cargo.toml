@@ -19,6 +19,9 @@ arlen-confiner = { path = "../../sdk/confiner" }
 # args) against the daemon's published root public key before running anything.
 arlen-run-consent-token = { path = "../../contracts/run-consent-token" }
 os-sdk = { path = "../../sdk/os-sdk" }
+# The seccomp allowlist installed on the confined command via bwrap --seccomp <fd>.
+seccompiler = "0.5"
+libc = "0.2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "io-util", "signal"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

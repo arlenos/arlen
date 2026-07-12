@@ -135,15 +135,37 @@ async fn read_capped<R: AsyncRead + Unpin>(mut r: R, cap: usize) -> (Vec<u8>, bo
 /// structured outcome. Fail-closed on a spawn / confinement error. `stdin` is
 /// `/dev/null` (a confined command reads no interactive input).
 pub async fn run_confined(req: &RunRequest) -> Result<RunOutcome, RunError> {
-    let argv = confined_argv(req)?;
-    let mut child = Command::new(BWRAP)
+    let mut argv = confined_argv(req)?;
+
+    // Install the seccomp allowlist on the confined command: the compiled cBPF lives
+    // in a memfd the child inherits, and `bwrap --seccomp <fd>` applies it right before
+    // the command execs. The memfd is created without CLOEXEC (so it survives the exec
+    // into bwrap; every other daemon fd is CLOEXEC by Rust default and does not leak),
+    // and `--seccomp <fd>` is a bwrap flag, so it goes BEFORE the `--` separator. The
+    // filter denies the catastrophic escape syscalls even if a namespace-setup bug
+    // would otherwise allow them - defence in depth over bwrap's namespaces.
+    let bpf = crate::seccomp::command_filter_bytes()
+        .map_err(|e| RunError::Spawn(format!("seccomp compile: {e}")))?;
+    let seccomp_fd = crate::seccomp::make_seccomp_memfd(&bpf)
+        .map_err(|e| RunError::Spawn(format!("seccomp memfd: {e}")))?;
+    let sep = argv
+        .iter()
+        .position(|a| a == "--")
+        .expect("confined_argv always emits the -- separator");
+    argv.splice(sep..sep, ["--seccomp".to_string(), seccomp_fd.to_string()]);
+
+    let spawned = Command::new(BWRAP)
         .args(&argv)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| RunError::Spawn(e.to_string()))?;
+        .spawn();
+    // The child has forked and inherited the memfd (or the spawn failed); either way
+    // the parent's copy is no longer needed, so close it to avoid a per-run fd leak.
+    // SAFETY: seccomp_fd is a fd this function owns and has not closed.
+    unsafe { libc::close(seccomp_fd) };
+    let mut child = spawned.map_err(|e| RunError::Spawn(e.to_string()))?;
 
     let stdout = child.stdout.take().ok_or_else(|| RunError::Io("no stdout pipe".into()))?;
     let stderr = child.stderr.take().ok_or_else(|| RunError::Io("no stderr pipe".into()))?;

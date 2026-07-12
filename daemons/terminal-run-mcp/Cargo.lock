@@ -52,6 +52,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "toml",
+ "tracing",
 ]
 
 [[package]]
@@ -71,7 +72,9 @@ dependencies = [
  "arlen-confiner",
  "arlen-run-consent-token",
  "biscuit-auth",
+ "libc",
  "os-sdk",
+ "seccompiler",
  "serde",
  "serde_json",
  "tempfile",
@@ -1513,6 +1516,15 @@ dependencies = [
  "serdect",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "seccompiler"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4ae55de56877481d112a559bbc12667635fdaf5e005712fd4e2b2fa50ffc884"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

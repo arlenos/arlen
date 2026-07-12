@@ -14,4 +14,6 @@
 
 pub mod run;
 
+pub mod seccomp;
+
 pub mod server;
