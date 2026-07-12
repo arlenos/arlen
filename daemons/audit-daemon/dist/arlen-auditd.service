@@ -18,6 +18,17 @@ ExecStart=/usr/lib/arlen/libexec/arlen-auditd
 Restart=on-failure
 RestartSec=2
 
+# Stamped-identity ENFORCE for the ingest trust root. The audit ledger is the
+# root every fail-closed audit depends on, so it is the first socket cut over
+# from the racy SO_PEERCRED-pid resolution to the pidfd-pinned resolver
+# (ConnectionAuth reads ARLEN_STAMPED_IDENTITY per process). Its ADMITTED
+# producers are all system daemons at canonical /usr/lib/arlen/libexec paths, so
+# the stamped app_id equals the legacy one by construction (no rule-4 inode gate
+# involved); a shadow boot confirmed zero divergence and that SO_PEERPIDFD is
+# available on the target kernel. Enforce fails closed: an unresolvable pidfd
+# denies the ingest rather than falling back to the weaker path.
+Environment=ARLEN_STAMPED_IDENTITY=enforce
+
 # The audit daemon authenticates each ingest peer by resolving its
 # /proc/<pid>/exe against the producer allowlist (SO_PEERCRED gives the PID;
 # the exe is the identity). A mount-namespace sandbox (ProtectSystem,
