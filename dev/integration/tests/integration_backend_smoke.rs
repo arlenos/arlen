@@ -2450,3 +2450,108 @@ async fn a_remembered_grant_silently_admits_a_repeat_request() {
         "the remembered grant silently admits the repeat request"
     );
 }
+
+/// IT-1 consent -> audit: a resolved decision is written to the tamper-evident
+/// ledger under the requester's identity BEFORE the decision returns (the broker's
+/// audit-before-decide: main.rs fails a resolve closed to a denial if the audit
+/// does not land). Requires the audit daemon (the assertion reads the ledger back).
+/// Same `#[ignore]` rationale.
+#[tokio::test]
+#[ignore = "needs audit-daemon + consent-broker binaries built and a per-user runtime dir"]
+async fn a_resolved_decision_lands_in_the_audit_ledger() {
+    use audit_proto::ReadClient;
+    if !arlen_integration::binary_built("daemons/consent-broker", "arlen-consent-broker")
+        || !arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
+    {
+        eprintln!(
+            "SKIP a_resolved_decision_lands_in_the_audit_ledger: consent-broker + audit-daemon required (run `just integration-nightly`)"
+        );
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .expect("audit ingest socket appears");
+    stack
+        .wait_socket("arlen/audit-read.sock", Duration::from_secs(20))
+        .expect("audit read socket appears");
+    stack
+        .spawn("daemons/consent-broker", "arlen-consent-broker", &[])
+        .expect("spawn consent-broker");
+    stack
+        .wait_socket("arlen/consent-intake.sock", Duration::from_secs(20))
+        .expect("consent intake socket appears");
+    stack
+        .wait_socket("arlen/consent-control.sock", Duration::from_secs(20))
+        .expect("consent control socket appears");
+
+    let intake = stack.consent_intake_socket();
+    let control = stack.consent_control_socket();
+    // The requester is this test process; the broker attributes the request (and so
+    // the audited decision's subject) to the test's own resolved app id.
+    let me = arlen_integration::own_app_id().expect("resolve own app id");
+
+    let intake1 = intake.clone();
+    let requester = tokio::spawn(async move { consent_submit(&intake1, &consent_app_data_body()).await });
+
+    let mut request_id = None;
+    for _ in 0..100 {
+        let path = control.clone();
+        let pending = tokio::task::spawn_blocking(move || {
+            arlen_consent_broker::ControlClient::new(path).fetch()
+        })
+        .await
+        .expect("join fetch")
+        .expect("fetch pending");
+        if let Some(view) = pending {
+            request_id = Some(view.id);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let id = request_id.expect("a pending consent request appeared");
+    let path = control.clone();
+    tokio::task::spawn_blocking(move || {
+        arlen_consent_broker::ControlClient::new(path)
+            .resolve(id, arlen_consent_contract::ConsentOutcome::AllowedOnce)
+    })
+    .await
+    .expect("join resolve")
+    .expect("resolve");
+    let r = tokio::time::timeout(Duration::from_secs(10), requester)
+        .await
+        .expect("requester returned")
+        .expect("requester task");
+    assert_eq!(
+        r,
+        arlen_consent_contract::IntakeResult::Decided {
+            outcome: arlen_consent_contract::ConsentOutcome::AllowedOnce
+        }
+    );
+
+    // The decision is audited before it returns; it reads back from the ledger as a
+    // Permission entry under the requester's identity, chain intact.
+    let reader = ReadClient::new(stack.audit_read_socket());
+    let mut found = false;
+    for _ in 0..40 {
+        let page = reader.recent(64).await;
+        if page.available
+            && !page.tampered
+            && page
+                .entries
+                .iter()
+                .any(|e| e.kind == "permission" && e.subject == me)
+        {
+            found = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        found,
+        "the resolved consent decision was audited (Permission, subject={me}) in the tamper-evident ledger"
+    );
+}
