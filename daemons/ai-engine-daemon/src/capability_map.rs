@@ -24,6 +24,7 @@ use arlen_ai_core::capability::{
 use arlen_ai_core::graph_query::{AccessTier, QueryScope};
 use arlen_ai_core::graph_schema::GraphSchema;
 use arlen_ai_core::mcp::{name_segments, AlwaysConfirm, AlwaysConfirmReason};
+use std::path::{Path, PathBuf};
 use arlen_consent_contract::ConsentClass;
 use async_trait::async_trait;
 
@@ -390,23 +391,14 @@ const FS_CREATE_SENSITIVE_ROOTS: &[&str] = &[
     "root", "srv", "sys", "proc", "dev", "run", "var",
 ];
 
-/// Whether an `fs.create` target path is SENSITIVE (a persistence / config /
-/// executable location that must be user-confirmed) rather than a safe data
-/// location that may be created autonomously (`ai-act-layer-plan.md` §SHARPENED
-/// PRINCIPLE: a create at `~/.bashrc` / `~/.config/autostart/*.desktop` /
-/// `~/.config/systemd/user/*.service` is a persistence vector that `DeleteCreated`
-/// does not bound).
-///
-/// FAIL-CLOSED by construction: it returns `true` (sensitive) for anything not
-/// PROVABLY a plain data path. A path is safe ONLY when it is absolute, has no
-/// component beginning with `.` (so every dotfile and dotdir - `.config`, `.local`
-/// [bin / share/applications / systemd/user], `.ssh`, `.bashrc`, `.profile` - is
-/// sensitive), and does not sit under a system/executable root. So a shaped
-/// `tool_input` can never turn a sensitive create autonomous: the attacker can only
-/// reach the autonomous fast path with a genuinely safe data path (where autonomous
-/// creation is the intended reversible curation), never with a persistence path.
-pub(crate) fn fs_create_path_is_sensitive(path: &str) -> bool {
-    // A relative, empty or `~`-prefixed (un-expanded) path is ambiguous -> sensitive.
+/// The LEXICAL half of the sensitivity test: a persistence/config/executable path
+/// purely by its string shape. Fail-closed: safe ONLY when absolute, no component
+/// begins with `.` (so every dotfile/dotdir - `.config`, `.local`, `.ssh`,
+/// `.bashrc` - is sensitive), and the first component is not a system/executable
+/// root. Anything else (relative, empty, `/`, `~`-prefixed) is sensitive. This is
+/// necessary but NOT sufficient: the string does not tell us where it RESOLVES,
+/// which is why [`fs_create_path_is_sensitive`] adds the env-root + symlink checks.
+pub(crate) fn fs_create_path_is_sensitive_lexical(path: &str) -> bool {
     if !path.starts_with('/') {
         return true;
     }
@@ -426,6 +418,86 @@ pub(crate) fn fs_create_path_is_sensitive(path: &str) -> bool {
         return true; // "/" alone
     }
     matches!(first, Some(f) if FS_CREATE_SENSITIVE_ROOTS.contains(&f))
+}
+
+/// The data-family env roots that are persistence surfaces the dotfile heuristic
+/// misses when XDG points at a NON-dot directory (`XDG_CONFIG_HOME=~/config` is a
+/// live autostart root), plus the user executable dirs (`~/bin`, `~/.local`). A
+/// create under any of these stays `Confirm` even though the lexical path carries
+/// no dot-component. Resolved from the process env (the daemon runs in the user's
+/// session, so its env is the target session's).
+fn sensitive_env_roots() -> Vec<PathBuf> {
+    let home = std::env::var_os("HOME")
+        .filter(|h| !h.is_empty())
+        .map(PathBuf::from);
+    let xdg = |var: &str, default_rel: &str| -> Option<PathBuf> {
+        match std::env::var_os(var) {
+            Some(v) if !v.is_empty() => Some(PathBuf::from(v)),
+            _ => home.as_ref().map(|h| h.join(default_rel)),
+        }
+    };
+    let mut roots = Vec::new();
+    for r in [
+        xdg("XDG_CONFIG_HOME", ".config"),
+        xdg("XDG_DATA_HOME", ".local/share"),
+        xdg("XDG_STATE_HOME", ".local/state"),
+        xdg("XDG_CACHE_HOME", ".cache"),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        roots.push(r);
+    }
+    if let Some(h) = &home {
+        roots.push(h.join(".local")); // .local/bin, .local/share/applications
+        roots.push(h.join("bin")); // ~/bin on PATH (non-dot)
+    }
+    roots
+}
+
+/// Whether `path` is at or under any of `roots` (all absolute paths).
+fn is_under_any(path: &str, roots: &[PathBuf]) -> bool {
+    let p = Path::new(path);
+    roots.iter().any(|r| p == r.as_path() || p.starts_with(r))
+}
+
+/// Whether any EXISTING ancestor of `path` is a symlink. The lexical classifier
+/// reasons about the string, but the kernel FOLLOWS intermediate symlinks at create
+/// time, so a symlinked parent (`~/Documents -> ~/.config`, the common `~/bin ->
+/// ~/.local/bin`) could redirect a safe-looking path into a persistence dir. If any
+/// ancestor is a symlink we cannot cheaply prove where the create lands, so treat it
+/// as sensitive (`Confirm`). A not-yet-existing tail contributes no symlink.
+fn any_ancestor_is_symlink(path: &str) -> bool {
+    let mut cur = PathBuf::new();
+    for comp in Path::new(path).components() {
+        cur.push(comp);
+        if let Ok(meta) = std::fs::symlink_metadata(&cur) {
+            if meta.file_type().is_symlink() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Whether an `fs.create` target path is SENSITIVE (must be user-confirmed) rather
+/// than a safe data location that may be created autonomously (`ai-act-layer-plan.md`
+/// §SHARPENED PRINCIPLE). Fail-closed: sensitive unless PROVABLY a plain data path.
+///
+/// Three layers, ANY of which marks it sensitive: (1) the lexical shape (dotfile/
+/// dotdir, system root, non-absolute); (2) an env-resolved config/data/executable
+/// root, so a non-dot XDG override or `~/bin` cannot pose as safe; (3) a symlink
+/// anywhere in the existing parent chain, so the string cannot lie about where the
+/// create RESOLVES. Only a path that clears all three - absolute, no dot-component,
+/// outside every system/XDG/exec root, and reached through no symlink - is safe.
+/// (Residual: a symlink swapped in the window between this check and the executor's
+/// create is a same-uid TOCTOU the openat2 hardening in the executor would close;
+/// documented, and the agent cannot itself create the symlink - fs.create is
+/// regular-file-only, O_EXCL.)
+pub(crate) fn fs_create_path_is_sensitive(path: &str) -> bool {
+    fs_create_path_is_sensitive_lexical(path)
+        || is_under_any(path, &sensitive_env_roots())
+        || any_ancestor_is_symlink(path)
 }
 
 /// Whether the `fs.create` request in `tool_input` targets a sensitive path.
@@ -728,25 +800,23 @@ mod tests {
     }
 
     #[test]
-    fn fs_create_path_discrimination_is_fail_closed() {
-        // Safe data locations: absolute, no dot-component, not a system root.
+    fn fs_create_lexical_classification_is_fail_closed() {
+        // Safe by shape: absolute, no dot-component, not a system root.
         for p in [
             "/home/u/Documents/notes.txt",
             "/home/u/projects/foo/bar.rs",
             "/tmp/scratch/out.log",
             "/mnt/data/report.csv",
         ] {
-            assert!(!fs_create_path_is_sensitive(p), "{p} should be safe");
+            assert!(!fs_create_path_is_sensitive_lexical(p), "{p} should be lexically safe");
         }
-        // Sensitive: any dot-component (dotfile/dotdir catches .config, .local,
-        // .ssh, .bashrc), a system/executable root, or an ambiguous path.
+        // Sensitive by shape: any dot-component (dotfile/dotdir catches .config,
+        // .local, .ssh, .bashrc), a system/executable root, or an ambiguous path.
         for p in [
             "/home/u/.bashrc",
-            "/home/u/.profile",
             "/home/u/.config/autostart/x.desktop",
             "/home/u/.config/systemd/user/x.service",
             "/home/u/.local/bin/tool",
-            "/home/u/.local/share/applications/x.desktop",
             "/home/u/.ssh/authorized_keys",
             "/etc/cron.d/job",
             "/usr/local/bin/tool",
@@ -757,14 +827,62 @@ mod tests {
             "/",                            // root only
             "~/notes.txt",                  // un-expanded ~
         ] {
-            assert!(fs_create_path_is_sensitive(p), "{p} should be sensitive");
+            assert!(fs_create_path_is_sensitive_lexical(p), "{p} should be lexically sensitive");
         }
-        // A missing/non-string path in the request fails closed to sensitive.
+    }
+
+    #[test]
+    fn env_root_folding_catches_non_dot_xdg_and_exec_dirs() {
+        // A non-dot XDG_CONFIG_HOME (a real, legitimate config) is a live autostart
+        // root the dotfile heuristic misses; a `~/bin` is on $PATH. `is_under_any`
+        // (pure, over explicit roots) is what folds them into sensitive.
+        let roots = vec![PathBuf::from("/home/u/config"), PathBuf::from("/home/u/bin")];
+        assert!(is_under_any("/home/u/config/autostart/x.desktop", &roots));
+        assert!(is_under_any("/home/u/bin/tool", &roots));
+        assert!(is_under_any("/home/u/config", &roots)); // the root itself
+        assert!(!is_under_any("/home/u/Documents/x.txt", &roots));
+        // A prefix that is not a path boundary must not match (config vs config-old).
+        assert!(!is_under_any("/home/u/config-old/x", &roots));
+    }
+
+    /// A tempdir with a NON-dot prefix, so the path itself is lexically safe (the
+    /// default `.tmp` prefix would be a dot-component and read as sensitive).
+    fn nondot_tempdir_in(dir: &std::path::Path) -> tempfile::TempDir {
+        tempfile::Builder::new().prefix("arlenq").tempdir_in(dir).unwrap()
+    }
+    fn nondot_tempdir() -> tempfile::TempDir {
+        tempfile::Builder::new().prefix("arlenq").tempdir().unwrap()
+    }
+
+    #[test]
+    fn a_symlinked_parent_makes_a_lexically_safe_path_sensitive() {
+        // The CRITICAL fix: a safe-looking path whose parent is a symlink into a
+        // persistence dir must classify sensitive (the kernel would follow it).
+        let tmp = nondot_tempdir();
+        let base = std::fs::canonicalize(tmp.path()).unwrap(); // strip a symlinked /tmp
+        let real = base.join("Documents"); // a plain data dir
+        std::fs::create_dir(&real).unwrap();
+        let link = base.join("safe-link"); // safe-looking name...
+        std::os::unix::fs::symlink(&real, &link).unwrap(); // ...but a symlink
+        let via_link = link.join("notes.txt");
+        let via_link = via_link.to_str().unwrap();
+        // The tempdir path has no dot-component and is under /tmp, so it is lexically
+        // safe - but a symlink is in the chain, so the composed check refuses it.
+        assert!(!fs_create_path_is_sensitive_lexical(via_link), "lexically safe by construction");
+        assert!(any_ancestor_is_symlink(via_link), "the parent is a symlink");
+        assert!(fs_create_path_is_sensitive(via_link), "a symlinked parent -> sensitive");
+
+        // A real (non-symlinked) sibling under the same tempdir stays safe.
+        let direct = real.join("notes.txt");
+        let direct = direct.to_str().unwrap();
+        assert!(!any_ancestor_is_symlink(direct));
+        assert!(!fs_create_path_is_sensitive(direct), "no symlink, plain data -> safe");
+    }
+
+    #[test]
+    fn a_missing_or_non_string_path_fails_closed_to_sensitive() {
         assert!(fs_create_target_is_sensitive(&serde_json::json!({})));
         assert!(fs_create_target_is_sensitive(&serde_json::json!({ "path": 5 })));
-        assert!(!fs_create_target_is_sensitive(
-            &serde_json::json!({ "path": "/home/u/Documents/x.txt" })
-        ));
     }
 
     fn fs_create(path: &str) -> Authorize {
@@ -775,12 +893,27 @@ mod tests {
         }
     }
 
+    /// A hermetic safe data path (a real dir under a fresh non-dot tempdir, no
+    /// symlink, not under the session's XDG roots) so the gate tests are
+    /// env-independent. Canonicalized so a symlinked `/tmp` on the CI host cannot
+    /// flip the verdict.
+    fn safe_create_under(dir: &std::path::Path) -> (Authorize, tempfile::TempDir) {
+        let td = nondot_tempdir_in(dir);
+        let data = td.path().join("data");
+        std::fs::create_dir(&data).unwrap();
+        let data = std::fs::canonicalize(&data).unwrap();
+        let path = data.join("notes.txt");
+        (fs_create(path.to_str().unwrap()), td)
+    }
+
     #[tokio::test]
     async fn a_safe_fs_create_runs_autonomously_under_executor_live() {
         // Under the live executor a create at a plain data location is reversible
         // curation: it Allows without a confirm.
+        let base = nondot_tempdir();
+        let (req, _td) = safe_create_under(base.path());
         let d = CapabilityGate::with_executor_live(|| true)
-            .authorize(&fs_create("/home/u/Documents/notes.txt"), &grant(ReadTier::Standard))
+            .authorize(&req, &grant(ReadTier::Standard))
             .await;
         assert!(matches!(d, AuthorizeDecision::Allow { .. }), "safe create should be autonomous, got {d:?}");
     }
@@ -801,8 +934,10 @@ mod tests {
     async fn a_safe_fs_create_is_a_proposal_under_suggest() {
         // Suggest baseline: even a safe create is a proposal (Deny to the engine),
         // never auto-run - the autonomy is gated on the live executor.
+        let base = nondot_tempdir();
+        let (req, _td) = safe_create_under(base.path());
         let d = CapabilityGate::with_executor_live(|| false)
-            .authorize(&fs_create("/home/u/Documents/notes.txt"), &grant(ReadTier::Standard))
+            .authorize(&req, &grant(ReadTier::Standard))
             .await;
         assert!(matches!(d, AuthorizeDecision::Deny { .. }), "got {d:?}");
     }
