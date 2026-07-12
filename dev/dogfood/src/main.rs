@@ -30,10 +30,12 @@ use zbus::{Connection, Proxy};
 
 const AGENT_BUS_NAME: &str = "org.arlen.AIAgent1";
 const AGENT_OBJECT_PATH: &str = "/org/arlen/AIAgent1";
-/// The System Explanation Mode surface: the conversational read path moved onto
-/// pi, and `explain_system` is the read-and-explain method the engine still owns
-/// on `org.arlen.AI1`; it exercises the same daemon -> proxy -> llama -> KG-read
-/// stack the old `query` did.
+/// The System Explanation Mode surface. The conversational read path moved onto
+/// pi, and a VM boot confirmed `explain_system` is no longer exported on
+/// `org.arlen.AI1` (the call returns `UnknownMethod`). The ASK stage below is
+/// therefore a vestigial best-effort probe of this once-owned read-and-explain
+/// method: it never gates the dogfood (EMIT + WRITE are the deterministic proof)
+/// and its absence is expected until a pi-side read surface is wired here.
 const AI_BUS_NAME: &str = "org.arlen.AI1";
 const AI_OBJECT_PATH: &str = "/org/arlen/AI1";
 /// A promotion pass runs on a fixed interval (knowledge promotion.rs); wait past
@@ -43,11 +45,11 @@ const PROMOTION_WAIT: Duration = Duration::from_secs(35);
 /// directory as a Project before re-emitting (auto-tag only links a file whose dir
 /// is already a known Project).
 const PROJECT_DETECT_WAIT: Duration = Duration::from_secs(10);
-/// Budget for a curation write to surface. The current engine confirm-gates every
-/// event-triggered auto-tag (external_content=true -> RequireConfirmation), so no
-/// autonomous write surfaces here today and this loop fails fast; once a manual
-/// skill-run or consent-approve write path lands, a real write surfaces well within
-/// this budget, so it stays a genuine (not merely tolerant) check.
+/// Budget for a curation write to surface. The autonomous curator now applies a
+/// proven reversible auto-tag immediately (the silent-immediate curator path, no
+/// Confirm), so a real write surfaces autonomously within this budget - a VM boot
+/// confirmed `curator ... result=Applied { written: true }` well under it. It stays
+/// a genuine (not merely tolerant) check.
 const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Whole-turn budget for the best-effort explain call.
 const EXPLAIN_TIMEOUT: Duration = Duration::from_secs(30);
@@ -112,11 +114,12 @@ async fn main() {
         Err(e) => println!("DOGFOOD EXECUTOR skipped (best-effort): {e}"),
     }
 
-    // BEST-EFFORT: the explain call exercises the daemon -> proxy -> llama ->
-    // KG-read path, but the baked 1B model is nondeterministic (it intermittently
-    // emits a non-JSON or unknown-action step that the tool-loop parser rejects),
-    // so a failure here is NOT a dogfood failure - the executor write above is the
-    // deterministic proof. Logged for inspection only.
+    // BEST-EFFORT: the explain call once exercised the daemon -> proxy -> llama ->
+    // KG-read path, but the read surface moved to pi and `explain_system` is no
+    // longer exported on org.arlen.AI1 (a VM boot showed UnknownMethod), so this
+    // probe now reports absent every run. A failure here is NOT a dogfood failure -
+    // the executor write above is the deterministic proof. Logged for inspection
+    // only, pending a pi-side read surface to re-point it at.
     let mut answered = false;
     let mut last = String::new();
     for attempt in 1..=ASK_ATTEMPTS {
@@ -137,8 +140,8 @@ async fn main() {
         }
     }
     if !answered {
-        // Best-effort: report, do not fail the dogfood (the 1B model is flaky).
-        println!("DOGFOOD ASK skipped (best-effort, 1B model): {last}");
+        // Best-effort: report, do not fail the dogfood (explain_system moved to pi).
+        println!("DOGFOOD ASK skipped (best-effort, read surface on pi): {last}");
     }
 
     println!("DOGFOOD OK");
