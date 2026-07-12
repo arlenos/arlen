@@ -8,6 +8,11 @@ Documentation=https://github.com/arlenos/arlen
 # the ledger. It reads the grant config under ~/.config/arlen/connections.toml (no
 # secrets there) and writes the master-key-sealed credential store under the state
 # dir; it talks only over AF_UNIX (the session bus and the audit ingest socket).
+# The credential handout audits FAIL-CLOSED (audit-before-release), so `After=`
+# orders startup after the Type=notify audit daemon to shrink the window in which a
+# handout would be refused with AuditUnavailable (same convention as the consent
+# broker and the AI engine); it still binds and serves whether or not auditd is up.
+After=arlen-auditd.service
 
 [Service]
 # Type=dbus: the service is "started" once it owns its bus name, which also lets
