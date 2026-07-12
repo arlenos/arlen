@@ -1,0 +1,9 @@
+# Starting permission profile for a minimal image viewer (nsxiv, the suckless-
+# style X image viewer). Views images from Pictures; no network and no Knowledge
+# Graph.
+[info]
+app_id = "nsxiv"
+tier = "third-party"
+
+[filesystem]
+pictures = true
