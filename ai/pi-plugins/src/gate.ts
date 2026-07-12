@@ -91,11 +91,14 @@ export function makeGate(opts: GateOptions = {}): (pi: GateExtensionAPI) => void
             // verifies a per-action consent biscuit at its boundary. The daemon
             // minted that biscuit as the proof; thread it into the call's `consent`
             // argument so it reaches the MCP server. The daemon digested only
-            // command+args, so adding `consent` does not change what was authorized.
-            // A missing proof (fail-closed: no minter) leaves `consent` absent, so
-            // the MCP server refuses. This is the daemon's own argument-patch path
-            // (as Modify uses); other tools present the proof at Execute instead.
+            // command+args, so setting `consent` does not change what was authorized.
+            // The gate OWNS this field: overwrite any model-supplied value with the
+            // daemon's real biscuit (the model must never smuggle a consent token),
+            // or DELETE it when no proof was minted (fail-closed: the MCP server then
+            // gets no token and refuses). This is the daemon's own argument-patch
+            // path (as Modify uses); other tools present the proof at Execute.
             if (reply.proof) event.input.consent = reply.proof;
+            else delete event.input.consent;
           } else {
             // Hand the minted proof to the proxy tool that will run (HIGH-1), so it
             // presents it at Execute instead of authorizing a second time.

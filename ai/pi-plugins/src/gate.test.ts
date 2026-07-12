@@ -94,13 +94,24 @@ test("Allow on run_command threads the consent biscuit into the call's `consent`
   assert.deepEqual(ev.input, { command: "ls", args: ["-la"], consent: "biscuit-xyz" });
 });
 
-test("Allow on run_command with no minted proof leaves `consent` absent (fail-closed)", async () => {
+test("Allow on run_command overwrites any model-supplied `consent` (no smuggling)", async () => {
+  const mock = mockClient({ reply: "authorize", decision: "allow", proof: "real-biscuit" });
+  const pi = fakePi();
+  makeGate({ connect: async () => mock.client })(pi.api);
+  // The model tries to smuggle a forged consent token in its own arguments.
+  const ev = event("run_command", { command: "ls", consent: "forged-by-model" });
+  await pi.fire(ev);
+  // The gate owns the field: the daemon's real biscuit replaces the forged one.
+  assert.equal(ev.input.consent, "real-biscuit");
+});
+
+test("Allow on run_command with no minted proof deletes any `consent` (fail-closed)", async () => {
   const mock = mockClient({ reply: "authorize", decision: "allow" });
   const pi = fakePi();
   makeGate({ connect: async () => mock.client })(pi.api);
-  const ev = event("run_command", { command: "ls" });
+  // Even a model-supplied consent is removed when the daemon minted no proof.
+  const ev = event("run_command", { command: "ls", consent: "forged-by-model" });
   await pi.fire(ev);
-  // No proof -> no consent arg -> the MCP server refuses the run.
   assert.deepEqual(ev.input, { command: "ls" });
 });
 
