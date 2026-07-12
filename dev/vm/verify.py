@@ -289,9 +289,15 @@ def main():
         print(f"  serial log: {serial}")
         return 1
     if args.app:
-        # Confirm the session's fw_cfg launch hook actually fired (arlen-session
-        # logs a marker), not just that --app was passed - a silent Tauri app leaves
-        # no other trace.
+        # Confirm the SKU launch hook actually fired, not just that --app was passed.
+        # Two independent signals, either suffices: (1) the session's explicit marker
+        # (arlen-session logs `launching verify app '<app>'`), and (2) the launched
+        # app's own journal identifier (`<app>[<pid>]:`). The one-shot session marker
+        # is piped through `systemd-cat` and can lose the early journal-to-console
+        # forwarding race, whereas the app logs to the journal directly under its own
+        # identifier once it is up - which forwards to serial reliably - so its
+        # presence is direct launch evidence. A systemd unit line reads `systemd[1]:`,
+        # never `<app>[`, so this does not false-match a mere "Started ..." log.
         try:
             with open(serial, "r", errors="replace") as fh:
                 journal = fh.read()
@@ -303,9 +309,11 @@ def main():
             print(f"VERIFY FAIL: --app {args.app} - the session saw the SKU but the binary is not installed")
             print(f"  serial log: {serial}")
             return 1
+        elif f"{args.app}[" in journal:
+            print(f"app: {args.app} is running ({args.app}[pid] in the journal; SKU hook fired)")
         else:
-            print(f"VERIFY FAIL: --app {args.app} - no launch marker in the serial "
-                  f"(the SMBIOS SKU did not reach the session)")
+            print(f"VERIFY FAIL: --app {args.app} - no launch signal in the serial "
+                  f"(neither the session marker nor a {args.app}[pid] journal line)")
             print(f"  serial log: {serial}")
             return 1
         if args.require_app_text:
