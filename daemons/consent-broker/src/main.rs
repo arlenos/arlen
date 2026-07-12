@@ -279,11 +279,39 @@ async fn handle_intake_conn(state: Arc<SharedState>, mut stream: UnixStream, uid
 
 /// Serve one control connection: attest the peer, require it be the trusted
 /// shell, then service one fetch-or-resolve request.
+/// Best-effort peer identity for a diagnostic log: the SO_PEERCRED pid + comm
+/// (the process name, readable via `/proc/<pid>/comm` even when `/proc/<pid>/exe`
+/// is not, e.g. a non-dumpable WebKit process). Lets an operator see WHICH caller
+/// was refused when exe-path identity resolution is denied.
+fn peer_diag(stream: &UnixStream) -> String {
+    use std::os::unix::io::AsRawFd;
+    let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    // SAFETY: getsockopt(SO_PEERCRED) fills `cred`; the fd is valid for the call
+    // and `len` is initialised to the buffer size.
+    let rc = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            std::ptr::addr_of_mut!(cred).cast(),
+            &mut len,
+        )
+    };
+    if rc != 0 {
+        return "pid=? comm=?".to_string();
+    }
+    let comm = std::fs::read_to_string(format!("/proc/{}/comm", cred.pid))
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|_| "?".to_string());
+    format!("pid={} uid={} comm={}", cred.pid, cred.uid, comm)
+}
+
 async fn handle_control_conn(state: Arc<SharedState>, mut stream: UnixStream, uid: u32) {
     let auth = match ConnectionAuth::extract_from(&stream, uid) {
         Ok(a) => a,
         Err(e) => {
-            tracing::warn!(error = %e, "control: peer authentication failed");
+            tracing::warn!(error = %e, peer = %peer_diag(&stream), "control: peer authentication failed");
             return;
         }
     };
@@ -295,6 +323,16 @@ async fn handle_control_conn(state: Arc<SharedState>, mut stream: UnixStream, ui
     if !control_caller_admitted(&app_id) {
         tracing::warn!(app_id = %app_id, "control: caller not admitted");
         return;
+    }
+    {
+        // One-shot: confirm a caller successfully authenticated to the CONTROL
+        // socket (the broker otherwise only logs failures), so a boot-verify can
+        // see the shell get through.
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static FIRST: AtomicBool = AtomicBool::new(true);
+        if FIRST.swap(false, Ordering::Relaxed) {
+            tracing::info!(app_id = %app_id, "control: first caller authenticated");
+        }
     }
 
     let frame = match read_request_frame(&mut stream, REQUEST_READ_TIMEOUT).await {
