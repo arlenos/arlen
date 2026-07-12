@@ -140,6 +140,43 @@ impl ConsentRoot {
     }
 }
 
+/// How long a minted `run_command` consent token stays valid (unix seconds). The
+/// user has just confirmed and pi executes promptly, so a short window suffices; it
+/// is generous enough to absorb the cross-process round-trip to the MCP server and
+/// the confined-sandbox spawn, and short enough that a leaked token is a narrow
+/// window (a re-run within it is a re-run of the same approved command).
+pub const CONSENT_TOKEN_TTL_SECS: i64 = 120;
+
+/// The keypair-backed [`crate::dispatch::ConsentMinter`]: mints a consent biscuit
+/// bound to the exact command + args, valid for [`CONSENT_TOKEN_TTL_SECS`] from now.
+/// Wall-clock time is read at mint (the MCP server verifies against its own
+/// wall-clock, so both must agree on real time, not the daemon's monotonic proof
+/// epoch).
+pub struct BiscuitConsentMinter {
+    root: std::sync::Arc<ConsentRoot>,
+    ttl_secs: i64,
+}
+
+impl BiscuitConsentMinter {
+    /// Build a minter over the daemon's consent root with the default TTL.
+    pub fn new(root: std::sync::Arc<ConsentRoot>) -> Self {
+        Self { root, ttl_secs: CONSENT_TOKEN_TTL_SECS }
+    }
+}
+
+impl crate::dispatch::ConsentMinter for BiscuitConsentMinter {
+    fn mint_run(&self, command: &str, args: &[String]) -> Option<String> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_secs() as i64;
+        let expiry = now.checked_add(self.ttl_secs)?;
+        // A mint failure (e.g. an over-long argv past the token's caps) is fail-
+        // closed: no credential, so the MCP server refuses the run.
+        arlen_run_consent_token::mint_run_consent(self.root.keypair(), command, args, expiry).ok()
+    }
+}
+
 /// Parse a published hex public key back into a Biscuit [`PublicKey`]. This is the
 /// verify-side reader the MCP server uses; it lives here so the mint side and the
 /// verify side share one encoding. A malformed hex string or a non-Ed25519 key is a
