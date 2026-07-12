@@ -16,11 +16,14 @@
 //! 2. **Per-action consent** ([`authorize_run`]): the pi gate classifies
 //!    `run_command` `Confirm` and the consent broker surfaces it, but a compromised
 //!    caller could otherwise invoke this server directly. So the server ITSELF
-//!    verifies per-action consent at the boundary. That verification (the biscuit
-//!    minted at Authorize, verified here - ai-act-layer-plan.md "biscuit per-action
-//!    tie-in") is NOT wired yet, so [`authorize_run`] FAILS CLOSED: the full run
-//!    pipeline is built and wired, but no command executes until the consent boundary
-//!    lands (the same fail-closed-by-a-stub discipline the pi write path uses).
+//!    verifies per-action consent at the boundary: the AI-engine daemon mints a
+//!    public-key-verifiable Biscuit (ai-act-layer-plan.md "biscuit per-action
+//!    tie-in") only after the user approves the Confirm, bound to the exact
+//!    command + args, and this server verifies it here against the daemon's
+//!    published root public key. A missing token, a token for a different command,
+//!    an expired token or a bad signature all refuse - fail-closed, so no command
+//!    runs without a verified, per-action confirmation. (The remaining wiring is
+//!    pi threading the daemon-minted token into the call's `consent` argument.)
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -70,9 +73,10 @@ impl TerminalRunMcp {
                     "items": { "type": "string" },
                     "description": "Arguments, each a separate string (never a shell line)."
                 },
-                "timeout_ms": { "type": "integer", "description": "Wall-clock budget in ms (capped)." }
+                "timeout_ms": { "type": "integer", "description": "Wall-clock budget in ms (capped)." },
+                "consent": { "type": "string", "description": "The per-action consent token proving the user confirmed THIS command (minted by the AI-engine daemon on approval)." }
             },
-            "required": ["command"]
+            "required": ["command", "consent"]
         }))
         .expect("the static run_command schema is a valid JSON object");
         Tool::new_with_raw(
@@ -90,6 +94,10 @@ struct RunArgs {
     command: String,
     args: Vec<String>,
     timeout: Duration,
+    /// The per-action consent token (a base64 Biscuit) the daemon minted on
+    /// approval; verified against the daemon's published root public key before any
+    /// command runs.
+    consent: String,
 }
 
 /// Parse + validate the `run_command` arguments. A missing/empty command or a
@@ -124,19 +132,56 @@ fn parse_run_args(arguments: Option<&JsonObject>) -> Result<RunArgs, McpError> {
         Some(ms) => Duration::from_millis(ms).min(MAX_TIMEOUT),
         None => DEFAULT_TIMEOUT,
     };
-    Ok(RunArgs { command, args, timeout })
+    let consent = map
+        .get("consent")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| McpError::invalid_request("run_command needs a non-empty 'consent' token", None))?
+        .to_string();
+    Ok(RunArgs { command, args, timeout, consent })
 }
 
-/// Verify per-action consent for a `run_command` at the MCP boundary. FAIL-CLOSED:
-/// the biscuit-minted-at-Authorize, verified-here tie-in is not wired yet, so this
-/// always refuses. run_command is the sharp edge; it must never run without a
-/// verified, per-action user confirmation, so the server executes nothing until the
-/// consent boundary lands. Replacing this stub with the biscuit verification is the
-/// go-live step (paired with the pi executor-live cutover).
-fn authorize_run(_args: &RunArgs) -> Result<(), String> {
-    Err("per-action consent verification is not wired yet (the biscuit-at-the-MCP-boundary \
-         follow-up); run_command executes nothing until it lands"
-        .to_string())
+/// Verify per-action consent for a `run_command` at the MCP boundary. FAIL-CLOSED
+/// everywhere: reads the AI-engine daemon's published root PUBLIC key (the shared
+/// rendezvous file) and verifies the presented biscuit binds THIS exact command +
+/// args and has not expired. A missing/malformed key file, a token that does not
+/// authorize this command, an expired token, or a bad signature all refuse - so the
+/// server runs nothing without a verified, per-action user confirmation. The daemon
+/// mints the token only after the consent broker approves the run_command Confirm.
+fn authorize_run(args: &RunArgs) -> Result<(), String> {
+    let pub_path = arlen_run_consent_token::published_public_key_path()
+        .ok_or_else(|| "no state dir to read the consent public key from".to_string())?;
+    let hex = std::fs::read_to_string(&pub_path)
+        .map_err(|e| format!("consent public key unavailable ({}): {e}", pub_path.display()))?;
+    let key = arlen_run_consent_token::public_key_from_hex(&hex)
+        .map_err(|e| format!("consent public key malformed: {e}"))?;
+    authorize_run_with_key(args, &key)
+}
+
+/// The consent-verify core, over a resolved public key (so it is hermetically
+/// testable without touching the rendezvous file). Verifies the presented biscuit
+/// binds THIS exact command + args and has not expired at the current wall clock.
+fn authorize_run_with_key(
+    args: &RunArgs,
+    key: &arlen_run_consent_token::PublicKey,
+) -> Result<(), String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| "system clock is before the unix epoch".to_string())?
+        .as_secs() as i64;
+    match arlen_run_consent_token::verify_run_consent(
+        &args.consent,
+        key,
+        &args.command,
+        &args.args,
+        now,
+    ) {
+        Ok(true) => Ok(()),
+        Ok(false) => {
+            Err("the consent token does not authorize this command, or it has expired".to_string())
+        }
+        Err(e) => Err(format!("consent token invalid: {e}")),
+    }
 }
 
 /// A per-call writable scratch dir, UNIQUE per call and removed on drop. Two
@@ -239,40 +284,118 @@ mod tests {
     use super::*;
 
     fn args(command: &str) -> JsonObject {
-        serde_json::from_value(serde_json::json!({ "command": command, "args": ["-la"] })).unwrap()
+        serde_json::from_value(
+            serde_json::json!({ "command": command, "args": ["-la"], "consent": "tok" }),
+        )
+        .unwrap()
     }
 
     #[test]
     fn parse_requires_a_non_empty_command() {
         assert!(parse_run_args(Some(&args("ls"))).is_ok());
-        let empty: JsonObject = serde_json::from_value(serde_json::json!({ "command": "" })).unwrap();
+        let empty: JsonObject =
+            serde_json::from_value(serde_json::json!({ "command": "", "consent": "t" })).unwrap();
         assert!(parse_run_args(Some(&empty)).is_err());
-        let missing: JsonObject = serde_json::from_value(serde_json::json!({ "args": [] })).unwrap();
+        let missing: JsonObject =
+            serde_json::from_value(serde_json::json!({ "args": [], "consent": "t" })).unwrap();
         assert!(parse_run_args(Some(&missing)).is_err());
         assert!(parse_run_args(None).is_err());
     }
 
     #[test]
+    fn parse_requires_a_consent_token() {
+        // run_command is the sharp edge: it cannot even be parsed without a consent
+        // token, so no command reaches the runner without one.
+        let no_consent: JsonObject =
+            serde_json::from_value(serde_json::json!({ "command": "ls" })).unwrap();
+        assert!(parse_run_args(Some(&no_consent)).is_err());
+        let empty_consent: JsonObject =
+            serde_json::from_value(serde_json::json!({ "command": "ls", "consent": "" })).unwrap();
+        assert!(parse_run_args(Some(&empty_consent)).is_err());
+    }
+
+    #[test]
     fn parse_rejects_non_string_args() {
-        let bad: JsonObject =
-            serde_json::from_value(serde_json::json!({ "command": "ls", "args": [1, 2] })).unwrap();
+        let bad: JsonObject = serde_json::from_value(
+            serde_json::json!({ "command": "ls", "args": [1, 2], "consent": "t" }),
+        )
+        .unwrap();
         assert!(parse_run_args(Some(&bad)).is_err());
     }
 
     #[test]
     fn parse_clamps_the_timeout() {
         let long: JsonObject = serde_json::from_value(
-            serde_json::json!({ "command": "ls", "timeout_ms": 9_999_999 }),
+            serde_json::json!({ "command": "ls", "timeout_ms": 9_999_999, "consent": "t" }),
         )
         .unwrap();
         assert_eq!(parse_run_args(Some(&long)).unwrap().timeout, MAX_TIMEOUT);
     }
 
+    /// A RunArgs carrying a real minted consent token for `(command, args)`.
+    fn run_args_with_consent(
+        root: &biscuit_auth::KeyPair,
+        command: &str,
+        cmd_args: &[&str],
+    ) -> RunArgs {
+        let owned: Vec<String> = cmd_args.iter().map(|s| s.to_string()).collect();
+        let consent =
+            arlen_run_consent_token::mint_run_consent(root, command, &owned, 4_102_444_800).unwrap();
+        RunArgs {
+            command: command.to_string(),
+            args: owned,
+            timeout: DEFAULT_TIMEOUT,
+            consent,
+        }
+    }
+
     #[test]
-    fn consent_is_fail_closed_until_wired() {
-        // The sharp edge refuses to run until the per-action consent boundary lands.
-        let a = parse_run_args(Some(&args("ls"))).unwrap();
-        assert!(authorize_run(&a).is_err(), "run_command must fail closed on consent");
+    fn a_valid_consent_token_authorizes_exactly_its_command() {
+        let root = biscuit_auth::KeyPair::new();
+        let a = run_args_with_consent(&root, "ls", &["-la"]);
+        assert!(authorize_run_with_key(&a, &root.public()).is_ok());
+    }
+
+    #[test]
+    fn a_consent_token_for_another_command_is_refused() {
+        // A token minted for `ls -la` cannot authorize a different command, even under
+        // the correct key: the digest binds the exact argv.
+        let root = biscuit_auth::KeyPair::new();
+        let token = arlen_run_consent_token::mint_run_consent(
+            &root,
+            "ls",
+            &["-la".to_string()],
+            4_102_444_800,
+        )
+        .unwrap();
+        let evil = RunArgs {
+            command: "rm".to_string(),
+            args: vec!["-rf".to_string(), "/".to_string()],
+            timeout: DEFAULT_TIMEOUT,
+            consent: token,
+        };
+        assert!(authorize_run_with_key(&evil, &root.public()).is_err());
+    }
+
+    #[test]
+    fn a_token_signed_by_the_wrong_key_is_refused() {
+        let root = biscuit_auth::KeyPair::new();
+        let attacker = biscuit_auth::KeyPair::new();
+        let a = run_args_with_consent(&root, "ls", &["-la"]);
+        // Verifying under a different public key is a signature failure -> refused.
+        assert!(authorize_run_with_key(&a, &attacker.public()).is_err());
+    }
+
+    #[test]
+    fn a_garbage_consent_token_is_refused() {
+        let root = biscuit_auth::KeyPair::new();
+        let a = RunArgs {
+            command: "ls".to_string(),
+            args: vec!["-la".to_string()],
+            timeout: DEFAULT_TIMEOUT,
+            consent: "not-a-biscuit".to_string(),
+        };
+        assert!(authorize_run_with_key(&a, &root.public()).is_err());
     }
 
     #[test]
