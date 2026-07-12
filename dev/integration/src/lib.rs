@@ -10,8 +10,9 @@
 //! The daemons take their socket paths from the environment (`ARLEN_RUNTIME_DIR`
 //! and the explicit `ARLEN_*_SOCKET` overrides, the same contract
 //! `dev/process-compose.yaml` uses), so the harness points those at the temp
-//! root before spawning. Binaries are located in each repo's `target/debug`
-//! (built beforehand, like the existing `integration_compositor` test).
+//! root before spawning. Binaries are located in the shared
+//! `<repo-root>/target/debug` (one target dir for every crate, set by the
+//! repo-root `.cargo/config.toml`; built beforehand).
 //!
 //! The harness itself is synchronous (spawn + poll + kill); a scenario that
 //! needs async (sqlx, a tokio socket client) drives it from a `#[tokio::test]`.
@@ -505,12 +506,13 @@ impl Drop for EphemeralStack {
     }
 }
 
-/// Locate a binary in its repo's `target/debug` directory, relative to the
-/// integration crate's manifest dir (the workspace root is its parent's parent:
-/// `dev/integration` -> `dev` -> repo root). Matches the existing
-/// `integration_compositor` test's resolution.
-pub fn binary_path(repo: &str, name: &str) -> PathBuf {
-    repo_path(&format!("{repo}/target/debug/{name}"))
+/// Locate a spawned binary. Every crate builds into the ONE shared target dir
+/// (repo-root `.cargo/config.toml` `[build] target-dir = "target"`), so all
+/// binaries land in `<repo-root>/target/debug/<name>` regardless of their crate.
+/// `repo` is kept for the `spawn`/`binary_built` call-site API (and reads as the
+/// producing crate) but no longer part of the artifact path.
+pub fn binary_path(_repo: &str, name: &str) -> PathBuf {
+    repo_path(&format!("target/debug/{name}"))
 }
 
 /// Whether a daemon binary has been built (its `target/debug/<name>` exists).
@@ -629,7 +631,7 @@ mod tests {
     #[test]
     fn binary_path_resolves_under_the_repo_root() {
         let p = binary_path("daemons/event-bus", "event-bus");
-        assert!(p.ends_with("daemons/event-bus/target/debug/event-bus"));
+        assert!(p.ends_with("target/debug/event-bus"));
     }
 
     #[test]
