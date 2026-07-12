@@ -362,4 +362,81 @@ mod tests {
         sorted.dedup();
         assert_eq!(sorted.len(), allow.len(), "the allowlist has duplicate entries");
     }
+
+    /// The x32 ABI syscall bit: an x32 caller invokes a native syscall number
+    /// OR'd with this. A deny-by-default allowlist denies every x32 alias by its
+    /// absence, closing the blocklist bypass the module doc names.
+    const X32_SYSCALL_BIT: libc::c_long = 0x4000_0000;
+
+    /// Runtime proof that the COMPILED filter denies at exec time, not merely that
+    /// the allowlist SET excludes catastrophic entries. Forks a child, installs
+    /// the real cBPF via `seccompiler::apply_filter` (sets `NO_NEW_PRIVS` +
+    /// seccomp - exactly what `bwrap --seccomp` does after its ns/mount setup),
+    /// then probes three properties from inside the filtered child: an allowed
+    /// syscall (`getpid`) still succeeds, a catastrophic one (`unshare`) returns
+    /// `EPERM` instead of executing, and the x32 ALIAS of an allowed syscall
+    /// (`getuid | X32`) is denied too. It skips (never fails) where the
+    /// environment forbids installing a filter, so it is safe in any CI.
+    ///
+    /// The child touches only async-signal-safe primitives (raw syscalls, an
+    /// errno read, `_exit`) and never returns to the harness, so the fork is
+    /// sound in the multi-threaded test process.
+    #[test]
+    fn the_compiled_filter_denies_catastrophic_syscalls_at_runtime() {
+        const OK: i32 = 0;
+        const SKIP_INSTALL_FAILED: i32 = 90;
+        const FAIL_ALLOWED_DENIED: i32 = 91;
+        const FAIL_CATASTROPHIC_ALLOWED: i32 = 92;
+        const FAIL_X32_ALLOWED: i32 = 93;
+
+        let program = compile_app_filter().expect("filter compiles on this arch");
+
+        // SAFETY: a fork in a test; the child only issues raw syscalls, reads
+        // errno and `_exit`s - all async-signal-safe - and never returns.
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0, "fork failed");
+        if pid == 0 {
+            if seccompiler::apply_filter(&program).is_err() {
+                unsafe { libc::_exit(SKIP_INSTALL_FAILED) };
+            }
+            // An allowed syscall still returns normally.
+            if unsafe { libc::syscall(libc::SYS_getpid) } < 0 {
+                unsafe { libc::_exit(FAIL_ALLOWED_DENIED) };
+            }
+            // A catastrophic syscall is answered EPERM by the filter, not run.
+            let unshare_r = unsafe { libc::syscall(libc::SYS_unshare, 0) };
+            let e = unsafe { *libc::__errno_location() };
+            if !(unshare_r == -1 && e == libc::EPERM) {
+                unsafe { libc::_exit(FAIL_CATASTROPHIC_ALLOWED) };
+            }
+            // The x32 alias of an allowed syscall matches no rule, so the default
+            // EPERM fires - never reaching the real getuid.
+            let x32_r = unsafe { libc::syscall(libc::SYS_getuid | X32_SYSCALL_BIT) };
+            let e = unsafe { *libc::__errno_location() };
+            if !(x32_r == -1 && e == libc::EPERM) {
+                unsafe { libc::_exit(FAIL_X32_ALLOWED) };
+            }
+            unsafe { libc::_exit(OK) };
+        }
+
+        let mut status: libc::c_int = 0;
+        let w = unsafe { libc::waitpid(pid, &mut status, 0) };
+        assert_eq!(w, pid, "waitpid returned the child");
+        assert!(libc::WIFEXITED(status), "child did not exit normally");
+        match libc::WEXITSTATUS(status) {
+            OK => {}
+            SKIP_INSTALL_FAILED => eprintln!(
+                "SKIP the_compiled_filter_denies_catastrophic_syscalls_at_runtime: \
+                 this environment forbids installing a seccomp filter"
+            ),
+            FAIL_ALLOWED_DENIED => panic!("an allowed syscall (getpid) was denied by the filter"),
+            FAIL_CATASTROPHIC_ALLOWED => {
+                panic!("a catastrophic syscall (unshare) was NOT denied at runtime")
+            }
+            FAIL_X32_ALLOWED => {
+                panic!("the x32 alias of an allowed syscall was NOT denied (blocklist bypass open)")
+            }
+            other => panic!("filtered child exited with unexpected code {other}"),
+        }
+    }
 }
