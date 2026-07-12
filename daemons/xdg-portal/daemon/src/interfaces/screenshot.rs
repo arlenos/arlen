@@ -166,25 +166,18 @@ impl Screenshot {
         )
         .await;
         // The no-silent-capture principle (SC-R6): record every capture attempt +
-        // outcome, content-free. A SUCCESSFUL capture that cannot be recorded is
-        // refused - the image is never handed back unaudited (fail-closed for a
-        // privacy-sensitive act). A FAILED capture read nothing, so its record is
-        // best-effort (a warn, not a refusal).
-        let succeeded = matches!(capture, Ok(Ok(Ok(_))));
+        // outcome, content-free. BEST-EFFORT, matching the sibling print backend's
+        // "print still proceeded" posture (print/service.rs): a user-initiated portal
+        // capture must NOT be broken by an unreachable or unadmitted audit ledger, so
+        // an audit failure is a warning, not a refusal (the ledger loss is logged).
         let outcome = match &capture {
             Ok(Ok(Ok(_))) => "captured",
             Ok(Ok(Err(_))) => "capture-failed",
             Ok(Err(_)) => "capture-panicked",
             Err(_) => "capture-timed-out",
         };
-        let audit_result = self.audit.submit(screenshot_audit_event(app_id, outcome)).await;
-        if succeeded {
-            if let Err(e) = audit_result {
-                tracing::warn!(request = %req.path, "Screenshot audit failed; refusing to return the capture: {e}");
-                return (response::OTHER, error_results("capture could not be recorded"));
-            }
-        } else if let Err(e) = audit_result {
-            tracing::warn!(request = %req.path, "Screenshot audit of a failed capture could not be recorded: {e}");
+        if let Err(e) = self.audit.submit(screenshot_audit_event(app_id, outcome)).await {
+            tracing::warn!(request = %req.path, "Screenshot audit record failed (capture still served): {e}");
         }
 
         let image = match capture {
