@@ -151,7 +151,10 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ${{ matrix.component }}
+          # Every crate builds into the ONE shared target dir (repo-root
+          # .cargo/config.toml `[build] target-dir = "target"`), so cache
+          # <root>/target while still keying on this component's Cargo.lock.
+          workspaces: ${{ matrix.component }} -> target
       - name: check
         run: cargo check --manifest-path ${{ matrix.component }}/Cargo.toml
       - name: test
