@@ -1,0 +1,8 @@
+# Starting permission profile for a command-line audio player (mpg123). It plays the user's music library, so it
+# gets Music; no network of its own and no Knowledge Graph.
+[info]
+app_id = "mpg123"
+tier = "third-party"
+
+[filesystem]
+music = true

@@ -1,0 +1,8 @@
+# Starting permission profile for a terminal music player (Music On Console). It plays the user's music library, so it
+# gets Music; no network of its own and no Knowledge Graph.
+[info]
+app_id = "moc"
+tier = "third-party"
+
+[filesystem]
+music = true
