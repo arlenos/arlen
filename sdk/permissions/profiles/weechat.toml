@@ -1,0 +1,8 @@
+# Starting permission profile for an extensible chat client (WeeChat) - IRC and more. It connects to chat servers over the
+# network; no local file access and no Knowledge Graph by default.
+[info]
+app_id = "weechat"
+tier = "third-party"
+
+[network]
+allow_all = true
