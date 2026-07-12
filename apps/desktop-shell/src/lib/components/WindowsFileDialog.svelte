@@ -5,6 +5,7 @@
   /// line, decide. Mounted once in +layout, inert when nothing is pending. Run and
   /// Install are reversible, so there is no hold-to-confirm.
   import { onMount } from "svelte";
+  import { get } from "svelte/store";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Play, Download } from "lucide-svelte";
@@ -21,6 +22,13 @@
     void openWindowsFile();
   });
 
+  // A pending open request must always be cancellable by Escape. `open` is
+  // controlled (static true; the request clears via the store), which does not
+  // reliably fire the primitive's escape-close, so cancel explicitly here.
+  function onWindowKeydown(e: KeyboardEvent): void {
+    if (e.key === "Escape" && get(current)) cancel();
+  }
+
   // The honest tier + the sandbox reach, folded into one quiet line. Never "just
   // works": each tier states its certainty plainly.
   function statusLine(p: PendingWindowsFile): string {
@@ -36,6 +44,8 @@
     return `${tier} Runs sandboxed with access to ${reach}.`;
   }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 {#if $current}
   {@const p = $current}

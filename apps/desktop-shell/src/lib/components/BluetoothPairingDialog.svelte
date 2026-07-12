@@ -15,6 +15,7 @@
   /// Confirm / Pair / Allow / OK → the appropriate typed payload; inputs are
   /// validated client-side before send.
   import { onMount, onDestroy } from "svelte";
+  import { get } from "svelte/store";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
@@ -107,6 +108,13 @@
     await respond($current.id, { kind: "reject" });
   }
 
+  // A pending request must always be cancellable by Escape. `open` is controlled
+  // (static true; the request clears via the store), which does not reliably fire
+  // the primitive's escape-close, so reject explicitly here.
+  function onWindowKeydown(e: KeyboardEvent): void {
+    if (e.key === "Escape" && get(current)) void onCancel();
+  }
+
   async function onConfirm() {
     const cur = $current;
     if (!cur) return;
@@ -156,6 +164,8 @@
     return false;
   }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 {#if $current}
   {@const request = $current}
