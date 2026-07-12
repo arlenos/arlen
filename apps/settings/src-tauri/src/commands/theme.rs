@@ -96,6 +96,54 @@ pub fn theme_resolved_palette() -> Result<Vec<PaletteRole>, String> {
     Ok(palette_of(&resolve_active_theme()?))
 }
 
+/// One foreground-over-background pair audited for contrast, serialized for the
+/// Accessibility page's contrast surface: the human label, both measures (the
+/// WCAG 2.x ratio and the signed APCA `Lc`), the floor the pair is held to
+/// (`body` or `large`), and whether it clears each. `apca` is signed only for
+/// polarity; the pass tests its magnitude.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContrastRole {
+    /// Human label, e.g. `"fg.primary on bg.app"`.
+    pub pair: String,
+    /// The WCAG 2.x contrast ratio (`1.0..=21.0`).
+    pub wcag: f32,
+    /// The signed APCA `Lc`.
+    pub apca: f32,
+    /// The floor this pair is held to: `"body"` (WCAG 4.5 / APCA 60) or
+    /// `"large"` (WCAG 3.0 / APCA 45).
+    pub usage: String,
+    /// The WCAG ratio clears its AA floor.
+    pub wcag_pass: bool,
+    /// The APCA magnitude clears its bronze floor.
+    pub apca_pass: bool,
+}
+
+/// Audit the active appearance's key foreground/background pairs against the
+/// WCAG 2.2 AA and APCA bronze floors, so the Accessibility page can surface any
+/// illegible pair (WCAG 2.x is the legal floor for EN 301 549, APCA the
+/// perceptual read). The compute lives in `sdk/theme`; this resolves the live
+/// theme and serializes the findings for the frontend to render.
+#[tauri::command]
+pub fn theme_contrast_report() -> Result<Vec<ContrastRole>, String> {
+    use arlen_theme::color::{contrast_report, ContrastUse};
+    let theme = resolve_active_theme()?;
+    Ok(contrast_report(&theme.color)
+        .into_iter()
+        .map(|f| ContrastRole {
+            pair: f.pair.to_string(),
+            wcag: f.wcag,
+            apca: f.apca,
+            usage: match f.usage {
+                ContrastUse::Body => "body".to_string(),
+                ContrastUse::Large => "large".to_string(),
+            },
+            wcag_pass: f.wcag_pass,
+            apca_pass: f.apca_pass,
+        })
+        .collect())
+}
+
 /// The resolved terminal colours for the Appearance terminal-colour editor:
 /// foreground, background, cursor, and the 16 ANSI slots (0-7 normal, 8-15
 /// bright) of the active appearance, as hex. The editor writes slot edits back

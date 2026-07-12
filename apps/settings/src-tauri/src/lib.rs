@@ -101,6 +101,7 @@ pub fn run() {
             commands::config::config_get_default,
             commands::theme::theme_get,
             commands::theme::theme_resolved_palette,
+            commands::theme::theme_contrast_report,
             commands::theme::theme_resolved_terminal,
             commands::theme::theme_resolved_metrics,
             commands::theme::theme_export,
