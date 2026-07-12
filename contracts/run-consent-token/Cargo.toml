@@ -10,6 +10,7 @@ path = "src/lib.rs"
 
 [dependencies]
 biscuit-auth = "6.0.0"
+getrandom = "0.2"
 sha2 = "0.10"
 thiserror = "1"
 
