@@ -13,6 +13,7 @@
 
 use crate::consent::{ConsentDriver, DeniedConsent};
 use crate::session::{SessionGrant, SessionStore, SessionToken};
+use arlen_run_consent_token::RUN_COMMAND_TOOL;
 use ai_engine_contract::{
     Authorize, AuthorizeDecision, Call, ConfirmAnswer, ContractCall, ContractError, Execute,
     ExecuteOutcome, Report, ReportAck, Reply, ScreenVerdict, SessionInit,
@@ -41,6 +42,45 @@ pub trait Reporter: Send + Sync {
     async fn report(&self, req: &Report, grant: &SessionGrant) -> ReportAck;
 }
 
+/// Mints the per-action consent token for `run_command` when its `Confirm` is
+/// approved. `run_command` runs in a SEPARATE process (the terminal-run MCP
+/// server), so the daemon's in-memory execution proof cannot be verified there; a
+/// public-key-verifiable biscuit bound to the exact command + args crosses that
+/// boundary instead. The daemon binary wires the real, keypair-backed minter; the
+/// dispatch stays decoupled from key custody. A `None` return fails closed (no
+/// credential -> the MCP server refuses to run).
+pub trait ConsentMinter: Send + Sync {
+    /// Mint a consent token binding exactly `command` + `args`, or `None` if
+    /// minting is unavailable (then the run cannot be authorized at the MCP
+    /// boundary).
+    fn mint_run(&self, command: &str, args: &[String]) -> Option<String>;
+}
+
+/// Extract `(command, args)` from a `run_command` tool input, matching the
+/// terminal-run MCP server's own parse EXACTLY so the daemon's minted digest and
+/// the server's verified digest agree: a non-empty string `command`, and `args`
+/// absent (empty) or an array of strings. Any deviation returns `None` (no token
+/// is minted; the MCP server, parsing the same input, also refuses).
+fn extract_run_argv(tool_input: &serde_json::Value) -> Option<(String, Vec<String>)> {
+    let command = tool_input
+        .get("command")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())?
+        .to_string();
+    let args = match tool_input.get("args") {
+        None => Vec::new(),
+        Some(v) => {
+            let arr = v.as_array()?;
+            let mut out = Vec::with_capacity(arr.len());
+            for a in arr {
+                out.push(a.as_str()?.to_string());
+            }
+            out
+        }
+    };
+    Some((command, args))
+}
+
 /// Routes the contract verbs through the session bound and the seams. All
 /// methods take `&self` (so it is shared as an `Arc` across per-connection
 /// tasks); the session store is behind a `Mutex` whose guard is always dropped
@@ -51,6 +91,10 @@ pub struct Dispatcher<G, E, R> {
     executor: E,
     reporter: R,
     consent: Arc<dyn ConsentDriver>,
+    /// Mints the `run_command` consent biscuit on an approved Confirm. `None` when
+    /// no keypair is wired (then a `run_command` Allow carries no credential and the
+    /// MCP server fails closed).
+    consent_minter: Option<Arc<dyn ConsentMinter>>,
     sessions: std::sync::Mutex<SessionStore>,
     /// Live one-time execution proofs (HIGH-1): Authorize mints, Execute consumes.
     proofs: std::sync::Mutex<crate::execution_proof::ProofStore>,
@@ -72,6 +116,7 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
             executor,
             reporter,
             consent: Arc::new(DeniedConsent),
+            consent_minter: None,
             sessions: std::sync::Mutex::new(SessionStore::new()),
             proofs: std::sync::Mutex::new(crate::execution_proof::ProofStore::new()),
             proof_epoch: std::time::Instant::now(),
@@ -116,6 +161,34 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
     pub fn with_consent(mut self, consent: Arc<dyn ConsentDriver>) -> Self {
         self.consent = consent;
         self
+    }
+
+    /// Wire the `run_command` consent-token minter. Without it, an approved
+    /// `run_command` Confirm carries no consent credential, so the terminal-run MCP
+    /// server (which verifies the biscuit at its boundary) fails closed.
+    pub fn with_consent_minter(mut self, minter: Arc<dyn ConsentMinter>) -> Self {
+        self.consent_minter = Some(minter);
+        self
+    }
+
+    /// The credential an admitted call carries in its `Allow`/`Modify` proof.
+    /// `run_command` is a proxy tool run by the SEPARATE terminal-run MCP server,
+    /// which the daemon's in-memory proof cannot reach, so its credential is the
+    /// consent biscuit bound to the exact `(command, args)`; an unparseable argv or
+    /// an unwired minter yields `None` (the MCP server then fails closed). Every
+    /// other tool keeps the daemon-side one-time execution proof.
+    fn proof_for_allow(
+        &self,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+        session: &str,
+    ) -> Option<String> {
+        if tool_name == RUN_COMMAND_TOOL {
+            let minter = self.consent_minter.as_ref()?;
+            let (command, args) = extract_run_argv(tool_input)?;
+            return minter.mint_run(&command, &args);
+        }
+        self.mint_proof(tool_name, tool_input, session)
     }
 
     /// Mint a session for an authenticated engine process (pid is the
@@ -202,10 +275,10 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
         // Execute; Modify binds the daemon-substituted args that will actually run.
         match decision {
             AuthorizeDecision::Allow { .. } => AuthorizeDecision::Allow {
-                proof: self.mint_proof(&req.tool_name, &req.tool_input, token.as_str()),
+                proof: self.proof_for_allow(&req.tool_name, &req.tool_input, token.as_str()),
             },
             AuthorizeDecision::Modify { args, .. } => {
-                let proof = self.mint_proof(&req.tool_name, &args, token.as_str());
+                let proof = self.proof_for_allow(&req.tool_name, &args, token.as_str());
                 AuthorizeDecision::Modify { args, proof }
             }
             other => other,
@@ -534,6 +607,76 @@ mod tests {
             matches!(d.authorize(&token, 100, &authz()).await, AuthorizeDecision::Deny { .. }),
             "the default consent surface denies a confirm"
         );
+    }
+
+    /// A minter that records the argv it was asked to bind and returns a fixed
+    /// token, so a test can prove the biscuit is minted over the exact command+args.
+    struct MockMinter {
+        seen: Arc<StdMutex<Option<(String, Vec<String>)>>>,
+        token: String,
+    }
+    impl ConsentMinter for MockMinter {
+        fn mint_run(&self, command: &str, args: &[String]) -> Option<String> {
+            *self.seen.lock().unwrap() = Some((command.to_string(), args.to_vec()));
+            Some(self.token.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_run_command_allow_carries_the_minted_consent_token() {
+        let seen = Arc::new(StdMutex::new(None));
+        let d = Dispatcher::new(
+            SpyGate { calls: Arc::new(AtomicUsize::new(0)), decision: AuthorizeDecision::Allow { proof: None } },
+            SpyExecutor { calls: Arc::new(AtomicUsize::new(0)) },
+            SpyReporter { calls: Arc::new(AtomicUsize::new(0)) },
+        )
+        .with_consent_minter(Arc::new(MockMinter { seen: seen.clone(), token: "biscuit-xyz".into() }));
+        let token = d.init_session(&init(), 100).unwrap();
+        let dec = d.authorize(&token, 100, &Authorize {
+            tool_name: "run_command".into(),
+            tool_input: serde_json::json!({"command": "ls", "args": ["-la", "/work"]}),
+            external_triggered: false,
+        }).await;
+        // The run_command Allow carries the biscuit, NOT a daemon in-memory proof
+        // handle (the MCP server, a separate process, verifies the biscuit).
+        assert_eq!(dec, AuthorizeDecision::Allow { proof: Some("biscuit-xyz".into()) });
+        // The token was minted over the exact command + args the caller proposed.
+        assert_eq!(
+            *seen.lock().unwrap(),
+            Some(("ls".to_string(), vec!["-la".to_string(), "/work".to_string()]))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_run_command_allow_without_a_minter_carries_no_credential() {
+        let (d, _g, _e, _r) = dispatcher(); // no minter wired
+        let token = d.init_session(&init(), 100).unwrap();
+        let dec = d.authorize(&token, 100, &Authorize {
+            tool_name: "run_command".into(),
+            tool_input: serde_json::json!({"command": "ls"}),
+            external_triggered: false,
+        }).await;
+        // No minter -> no consent credential -> the MCP server fails closed.
+        assert_eq!(dec, AuthorizeDecision::Allow { proof: None });
+    }
+
+    #[test]
+    fn extract_run_argv_matches_the_mcp_parse() {
+        assert_eq!(
+            extract_run_argv(&serde_json::json!({"command":"ls","args":["-la"]})),
+            Some(("ls".to_string(), vec!["-la".to_string()]))
+        );
+        // args absent -> empty (the MCP server defaults the same way).
+        assert_eq!(
+            extract_run_argv(&serde_json::json!({"command":"ls"})),
+            Some(("ls".to_string(), vec![]))
+        );
+        // Fail-closed cases the MCP server also refuses: empty / missing command,
+        // a non-string arg, a non-array args.
+        assert_eq!(extract_run_argv(&serde_json::json!({"command":""})), None);
+        assert_eq!(extract_run_argv(&serde_json::json!({"args":["x"]})), None);
+        assert_eq!(extract_run_argv(&serde_json::json!({"command":"ls","args":[1]})), None);
+        assert_eq!(extract_run_argv(&serde_json::json!({"command":"ls","args":"x"})), None);
     }
 
     // Helpers building throwaway requests.

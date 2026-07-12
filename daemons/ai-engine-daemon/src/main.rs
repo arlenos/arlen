@@ -18,7 +18,8 @@ use arlen_ai_core::screen::Screener;
 use arlen_ai_engine_daemon::capability_map::CapabilityGate;
 use arlen_ai_engine_daemon::compensation::CompensationStore;
 use arlen_ai_engine_daemon::consent_client::ConsentBrokerClient;
-use arlen_ai_engine_daemon::dispatch::Dispatcher;
+use arlen_ai_engine_daemon::consent_root;
+use arlen_ai_engine_daemon::dispatch::{ConsentMinter, Dispatcher};
 use arlen_ai_engine_daemon::dispatch::Executor;
 use arlen_ai_engine_daemon::file_executor::FileSystemExecutor;
 use arlen_ai_engine_daemon::settings_executor::SettingsExecutor;
@@ -68,6 +69,29 @@ fn consent_intake_socket() -> PathBuf {
         Some(dir) => PathBuf::from(dir).join("arlen").join("consent-intake.sock"),
         None => PathBuf::from("/run/arlen/consent-intake.sock"),
     }
+}
+
+/// Build the `run_command` consent-token minter: load (or first-run create) the
+/// persistent biscuit root keypair and publish its public half for the terminal-run
+/// MCP server to verify against. Best-effort and fail-closed: any custody failure
+/// returns `None`, so an approved `run_command` carries no consent credential and
+/// the MCP server refuses to run. A publish failure only warns (the keypair is
+/// stable across restarts, so a previously-published key stays valid).
+fn build_consent_minter() -> Option<Arc<dyn ConsentMinter>> {
+    let key_path = consent_root::root_key_path()?;
+    let root = match consent_root::ConsentRoot::load_or_create(&key_path) {
+        Ok(r) => Arc::new(r),
+        Err(e) => {
+            warn!(error = %e, "run_command consent-root custody failed; run_command will be refused");
+            return None;
+        }
+    };
+    if let Some(pub_path) = consent_root::public_key_path() {
+        if let Err(e) = root.publish_public_key(&pub_path) {
+            warn!(error = %e, "publishing the consent-root public key failed; the MCP server may be unable to verify run_command consent");
+        }
+    }
+    Some(Arc::new(consent_root::BiscuitConsentMinter::new(root)))
 }
 
 /// The Phase-2-A drive socket: `$XDG_RUNTIME_DIR/arlen/ai-engine-drive.sock`
@@ -441,13 +465,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // The settings forward act (ai-act-layer-plan.md §⟳): a reversible scalar
         // config write, RestoreValue inverse write-ahead, ai.toml protected.
         .register("settings.set", settings_executor);
+    // The run_command consent biscuit: load (or first-run create) the persistent
+    // root keypair and publish its public half for the terminal-run MCP server to
+    // verify against. Best-effort and fail-closed: if custody or publication fails
+    // (no state dir, an unsafe key file), the minter is simply not wired, so an
+    // approved run_command carries no credential and the MCP server refuses to run.
+    let consent_minter = build_consent_minter();
+
     // A gate Confirm is resolved daemon-side by driving the consent-broker over
     // its intake socket (the trusted-path dialog). An unreachable broker fails
     // closed to a denial, so wiring the real client is safe even headless.
-    let dispatcher = Arc::new(
-        Dispatcher::new(CapabilityGate::new(), executor, reporter)
-            .with_consent(Arc::new(ConsentBrokerClient::new(consent_intake_socket()))),
-    );
+    let dispatcher = Arc::new({
+        let mut d = Dispatcher::new(CapabilityGate::new(), executor, reporter)
+            .with_consent(Arc::new(ConsentBrokerClient::new(consent_intake_socket())));
+        if let Some(minter) = consent_minter {
+            d = d.with_consent_minter(minter);
+        }
+        d
+    });
 
     // Spawn + supervise the pi sidecar only when AI is enabled (the §D master
     // switch; default off). The supervisor shares this dispatcher's session
