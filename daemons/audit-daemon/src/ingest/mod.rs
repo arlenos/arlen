@@ -76,6 +76,12 @@ const ADMITTED: &[&str] = &[
     // fail-closed (audit-before-release), so without admission every credential
     // handout is refused with AuditUnavailable.
     "connections",
+    // NOTE for the next producer: `config-broker` (the separate-uid AI-switch daemon)
+    // also submits to this ledger (a fail-closed `switch_change_event`) but has no
+    // systemd unit / canonical install path yet, so it is NOT admitted here. The
+    // moment it gets a `/usr/lib/arlen/libexec/` path, add BOTH a
+    // `path_to_app_id` entry AND its id here, or every switch change fails closed -
+    // the recurring gap the portal / capsuled / connections fixes all shared.
 ];
 
 /// Resolve the ingest socket path:
