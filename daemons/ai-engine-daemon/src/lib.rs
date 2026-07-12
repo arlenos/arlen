@@ -29,6 +29,9 @@ pub mod consent;
 /// The real consent-broker client implementing the consent seam.
 pub mod consent_client;
 
+/// The `run_command` consent-biscuit root keypair custody + public-key publication.
+pub mod consent_root;
+
 /// The Phase-2-A drive-channel relay: a faithful JSONL bridge shell <-> pi RPC.
 pub mod rpc_proxy;
 
