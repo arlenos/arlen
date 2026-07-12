@@ -288,6 +288,12 @@ pub fn inverse_of_move(from: &str, to: &str) -> Option<InverseReceipt> {
 /// to the content it holds NOW. Call AFTER the create so the fingerprint witnesses
 /// the created bytes. `Err` if the file is unreadable (nothing to bind to) or the
 /// path is not canonical-absolute.
+///
+/// NB the identity is a CONTENT fingerprint, not the inode: undo deletes whatever
+/// currently sits at `path` if its bytes still hash to the commit-time fingerprint.
+/// Under the single-uid model that is the user's own file, and a byte-identical
+/// replacement at the same path is near-impossible in practice; a future
+/// multi-writer model would want inode/dev identity here.
 pub fn capture_created(path: &str) -> Result<InverseReceipt, EnactError> {
     let fingerprint = fingerprint_file(Path::new(path))
         .ok_or_else(|| EnactError::Io(format!("created file unreadable: {path}")))?;
