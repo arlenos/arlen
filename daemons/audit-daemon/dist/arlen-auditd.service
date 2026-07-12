@@ -18,22 +18,20 @@ ExecStart=/usr/lib/arlen/libexec/arlen-auditd
 Restart=on-failure
 RestartSec=2
 
-# The audit daemon holds the ledger's HMAC key — the one secret that
-# makes the hash chain unforgeable. Hardening is correspondingly
-# tight: it writes only the per-user ledger directory and binds only
-# Unix sockets under the runtime dir, and it never touches the
-# network, so the address-family restriction both hardens it and
-# documents that property.
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=%h/.local/share/arlen
-ReadWritePaths=/run/user/%U/arlen
+# The audit daemon authenticates each ingest peer by resolving its
+# /proc/<pid>/exe against the producer allowlist (SO_PEERCRED gives the PID;
+# the exe is the identity). A mount-namespace sandbox (ProtectSystem,
+# ProtectHome, PrivateTmp, PrivateDevices, ProtectControlGroups,
+# ProtectKernel*) makes /proc/<other-pid>/exe unreadable to a same-uid reader,
+# so those options break peer auth outright (the daemon then resets every
+# ingest and the AI layer's fail-closed audit refuses every query). They are
+# therefore intentionally OMITTED, the same as the consent broker and the AI
+# engine omit them for the identical reason. The hardening that does NOT create
+# a mount namespace is kept; the ledger's integrity rests on its HMAC key +
+# hash chain, not on filesystem isolation. Without ProtectSystem there is no
+# ReadWritePaths to mismatch; the daemon create_dir_all's its own per-user
+# ledger dir on first run.
 RestrictAddressFamilies=AF_UNIX
-PrivateTmp=yes
-PrivateDevices=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
 RestrictNamespaces=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
