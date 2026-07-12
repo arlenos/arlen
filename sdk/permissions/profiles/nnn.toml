@@ -1,0 +1,8 @@
+# Starting permission profile for a fast terminal file manager (nnn). It browses and manages the user's files,
+# so it gets Home; no network of its own and no Knowledge Graph.
+[info]
+app_id = "nnn"
+tier = "third-party"
+
+[filesystem]
+home = true
