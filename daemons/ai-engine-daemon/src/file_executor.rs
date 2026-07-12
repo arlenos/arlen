@@ -62,6 +62,9 @@ const FS_MOVE_TOOL: &str = "fs.move";
 /// The reversible-delete act (freedesktop home trash).
 const FS_TRASH_TOOL: &str = "fs.trash";
 
+/// The create act: write a NEW file with content; undo deletes exactly that file.
+const FS_CREATE_TOOL: &str = "fs.create";
+
 /// The forward producer for the reversible filesystem acts (`fs.move`, `fs.trash`).
 /// Audit + undo-signer are optional (tests that exercise only the mechanics omit
 /// them); the daemon always wires both. The same instance registers under both tool
@@ -129,6 +132,7 @@ impl Executor for FileSystemExecutor {
         match req.tool_name.as_str() {
             FS_MOVE_TOOL => self.execute_move(req).await,
             FS_TRASH_TOOL => self.execute_trash(req).await,
+            FS_CREATE_TOOL => self.execute_create(req).await,
             other => ExecuteOutcome::Error {
                 code: ContractError::UnknownTool,
                 message: format!("{other} is not a filesystem tool this daemon runs"),
@@ -364,6 +368,116 @@ impl FileSystemExecutor {
         }
         ExecuteOutcome::Ok {
             result: serde_json::json!({ "op_id": op_id, "path": path, "trashed": trashed_display }),
+        }
+    }
+
+    /// Create a NEW file at `path` with `content`, reversibly. The undo is a
+    /// [`InverseReceipt::DeleteCreated`] (identity-bound: it deletes the file only
+    /// while it still holds these bytes, never a later replacement).
+    ///
+    /// The create is NO-CLOBBER by construction (`O_EXCL`): it refuses if the path
+    /// already exists, so it can never overwrite a file the `DeleteCreated` inverse
+    /// could not restore. `content` is UTF-8 text (a binary create is a follow-up).
+    ///
+    /// `fs.create` is gate-classified `Confirm` (a create can be a persistence /
+    /// code-execution vector - a new `~/.bashrc`, autostart entry or systemd-user
+    /// unit - and "reversible" does not bound that at-write harm), so the user
+    /// approves each create through the consent flow BEFORE this runs; the executor
+    /// itself needs no path denylist (the confirm is the control). Same single-uid
+    /// posture as `fs.move`: it may create at any canonical-absolute path this uid
+    /// can write, bounded by the confirm + executor_live.
+    async fn execute_create(&self, req: &Execute) -> ExecuteOutcome {
+        if !(self.executor_live)() {
+            return exec_err(
+                ContractError::ExecutionFailed,
+                "fs.create is not permitted: the executor is not live",
+            );
+        }
+        let field = |k: &str| req.tool_input.get(k).and_then(|v| v.as_str()).map(str::to_string);
+        let (Some(path), Some(content)) = (field("path"), field("content")) else {
+            return exec_err(
+                ContractError::InvalidArguments,
+                "fs.create needs a string path (canonical-absolute) + content in the tool input",
+            );
+        };
+        // The DeleteCreated inverse relies on a canonical-absolute path; refuse a
+        // relative / `..` path fail-closed.
+        if CanonicalPath::new(&path).is_none() {
+            return exec_err(
+                ContractError::InvalidArguments,
+                "fs.create path must be canonical-absolute",
+            );
+        }
+        let op_id = match crate::write_executor::mint_op_id() {
+            Ok(id) => id,
+            Err(e) => {
+                return exec_err(
+                    ContractError::ExecutionFailed,
+                    format!("could not mint an op id: {e}"),
+                )
+            }
+        };
+        // S13 audit-before-act: record the create intent content-free BEFORE the
+        // file is written, correlated by the op id. Fail closed.
+        if let Some(audit) = &self.audit {
+            let event = behaviour_action_event(FS_CREATE_TOOL, "fs-create", &op_id);
+            if audit.submit(event).await.is_err() {
+                return exec_err(
+                    ContractError::ExecutionFailed,
+                    "audit ledger unavailable; fs.create refused",
+                );
+            }
+        }
+        // Create NEW (O_EXCL): refuse if the path exists (an overwrite is not what
+        // DeleteCreated bounds), so the create can never destroy existing data.
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut f) => {
+                use std::io::Write;
+                if let Err(e) = f.write_all(content.as_bytes()).and_then(|()| f.sync_all()) {
+                    // Remove the partial file we created so a failed create leaves
+                    // nothing behind.
+                    let _ = std::fs::remove_file(&path);
+                    return exec_err(
+                        ContractError::ExecutionFailed,
+                        format!("fs.create failed writing content: {e}"),
+                    );
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                return exec_err(
+                    ContractError::ExecutionFailed,
+                    "fs.create refused: the path already exists (a create must not overwrite)",
+                )
+            }
+            Err(e) => {
+                return exec_err(ContractError::ExecutionFailed, format!("fs.create failed: {e}"))
+            }
+        }
+        // Capture the DeleteCreated inverse AFTER the write (it fingerprints the
+        // created bytes), then register it to the durable undo signer. A capture
+        // failure never fails the committed create (the file is a new, user-
+        // deletable file); it just leaves this create without an engine-undo record.
+        match crate::undo_enact::capture_created(&path) {
+            Ok(inverse) => {
+                if let Some(signer) = &self.undo_signer {
+                    if signer.exists() {
+                        let entry = UndoEntry {
+                            op_id: op_id.clone(),
+                            correlation_id: op_id.clone(),
+                            inverse,
+                        };
+                        if let Err(e) = crate::undo_signer::submit_created(signer, &entry).await {
+                            tracing::debug!("undo signer submit failed for fs.create: {e}");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::debug!("fs.create: could not capture the delete inverse for {path}: {e}");
+            }
+        }
+        ExecuteOutcome::Ok {
+            result: serde_json::json!({ "op_id": op_id, "path": path }),
         }
     }
 }
@@ -635,6 +749,84 @@ mod tests {
             tool_name: FS_TRASH_TOOL.to_string(),
             tool_input: serde_json::json!({ "path": path }),
             proof: None,
+        }
+    }
+
+    fn create_req(path: &str, content: &str) -> Execute {
+        Execute {
+            tool_name: FS_CREATE_TOOL.to_string(),
+            tool_input: serde_json::json!({ "path": path, "content": content }),
+            proof: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_live_create_writes_the_new_file() {
+        let dir = tmp();
+        let target = dir.join("made.txt");
+        let out = live().execute(&create_req(target.to_str().unwrap(), "agent output"), &grant()).await;
+        match out {
+            ExecuteOutcome::Ok { result } => {
+                assert_eq!(result["path"], target.to_str().unwrap());
+                assert!(result["op_id"].as_str().is_some_and(|s| !s.is_empty()));
+            }
+            other => panic!("expected Ok, got {other:?}"),
+        }
+        assert_eq!(std::fs::read(&target).unwrap(), b"agent output", "the file was created with its content");
+    }
+
+    #[tokio::test]
+    async fn a_create_round_trips_through_its_captured_delete_inverse() {
+        let dir = tmp();
+        let target = dir.join("note.txt");
+        live().execute(&create_req(target.to_str().unwrap(), "content"), &grant()).await;
+        assert!(target.exists());
+        // The DeleteCreated inverse the executor captures deletes exactly this file.
+        let inverse = crate::undo_enact::capture_created(target.to_str().unwrap()).unwrap();
+        crate::undo_enact::enact_inverse(&inverse).unwrap();
+        assert!(!target.exists(), "undo deleted the created file");
+    }
+
+    #[tokio::test]
+    async fn a_create_over_an_existing_file_is_refused_no_clobber() {
+        // A create must never overwrite (DeleteCreated can't restore the clobbered
+        // original); refuse if the path exists, leaving it untouched.
+        let dir = tmp();
+        let target = dir.join("existing.txt");
+        std::fs::write(&target, b"do not clobber").unwrap();
+        let out = live().execute(&create_req(target.to_str().unwrap(), "new"), &grant()).await;
+        assert!(matches!(out, ExecuteOutcome::Error { .. }));
+        assert_eq!(std::fs::read(&target).unwrap(), b"do not clobber", "the existing file is untouched");
+    }
+
+    #[tokio::test]
+    async fn a_create_is_refused_when_the_executor_is_not_live() {
+        let dir = tmp();
+        let target = dir.join("nope.txt");
+        let exec = FileSystemExecutor::new().with_executor_live_gate(|| false);
+        let out = exec.execute(&create_req(target.to_str().unwrap(), "x"), &grant()).await;
+        assert!(matches!(out, ExecuteOutcome::Error { .. }));
+        assert!(!target.exists(), "nothing created when the executor is off");
+    }
+
+    #[tokio::test]
+    async fn a_relative_create_path_is_refused() {
+        match live().execute(&create_req("relative/x.txt", "x"), &grant()).await {
+            ExecuteOutcome::Error { code, .. } => assert_eq!(code, ContractError::InvalidArguments),
+            other => panic!("expected InvalidArguments, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_create_missing_content_is_a_malformed_request() {
+        let req = Execute {
+            tool_name: FS_CREATE_TOOL.to_string(),
+            tool_input: serde_json::json!({ "path": "/tmp/x.txt" }),
+            proof: None,
+        };
+        match live().execute(&req, &grant()).await {
+            ExecuteOutcome::Error { code, .. } => assert_eq!(code, ContractError::InvalidArguments),
+            other => panic!("expected InvalidArguments, got {other:?}"),
         }
     }
 
