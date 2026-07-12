@@ -25,6 +25,7 @@
   import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
   import {
     Activity,
+    Compass,
     Copy,
     Download,
     MoreHorizontal,
@@ -54,9 +55,9 @@
   import { downloadText } from "$lib/download";
 
   const path = $derived($page.url.pathname);
-  // The only non-chat surface reachable with the sidebar mounted is the
-  // Activity deep list (/agent), opened from the transparency drawer.
-  const onChat = $derived(!path.startsWith("/agent"));
+  // The chat surface is active unless a secondary surface (the Activity deep
+  // list, or the prep-for-this pull view) is open.
+  const onChat = $derived(!path.startsWith("/agent") && !path.startsWith("/prep"));
 
   let query = $state("");
   // The conversation being renamed inline, and the draft title. `null` when no
@@ -187,9 +188,20 @@
       </SidebarMenuItem>
       <SidebarMenuItem>
         <SidebarMenuButton
+          id="harness-prep"
+          title={$t("h.sidebar.prepTitle")}
+          isActive={path.startsWith("/prep")}
+          onclick={() => goto("/prep")}
+        >
+          <Compass strokeWidth={2} />
+          <span>{$t("h.sidebar.prep")}</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      <SidebarMenuItem>
+        <SidebarMenuButton
           id="harness-activity"
           title={$t("h.sidebar.activityTitle")}
-          isActive={!onChat}
+          isActive={path.startsWith("/agent")}
           onclick={() => goto("/agent")}
         >
           <Activity strokeWidth={2} />
