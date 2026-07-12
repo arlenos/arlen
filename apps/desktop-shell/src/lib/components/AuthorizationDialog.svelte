@@ -13,6 +13,7 @@
   /// file-management, per the 11-Jul ruling) waits on a remember seam (a
   /// `remember` flag + a revocable Grant node), flagged to the coder.
   import { onMount, onDestroy } from "svelte";
+  import { get } from "svelte/store";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import ConsentCard from "$lib/components/ConsentCard.svelte";
@@ -25,6 +26,15 @@
   onDestroy(() => {
     dispose();
   });
+
+  // A pending prompt must always be deniable by Escape. `open` is controlled
+  // (static true; the prompt clears via the store), which does not reliably fire
+  // the primitive's escape-close, so deny explicitly here.
+  function onWindowKeydown(e: KeyboardEvent): void {
+    if (e.key !== "Escape") return;
+    const p = get(current);
+    if (p) respond(p.promptId, false);
+  }
 
   /// Phrase a scope as a plain-language capability. Unknown scopes fall back to
   /// the raw scope string rather than guessing.
@@ -44,6 +54,8 @@
     return scope === "terminal" || scope === "email" ? "caution" : "neutral";
   }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 {#if $current}
   {@const prompt = $current}
