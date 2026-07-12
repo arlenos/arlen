@@ -22,8 +22,11 @@ Documentation=https://github.com/arlenos/arlen
 After=arlen-auditd.service
 
 [Service]
-# Type=dbus: the service is "started" once it owns its bus name, which also lets
-# the session bus D-Bus-activate it on first use (see dist/dbus/).
+# Type=dbus: the service is "started" once it owns its bus name. It runs eagerly
+# on boot (WantedBy=default.target) because it must aggregate UPower and publish
+# power.state continuously, so clients reach the already-owned name; there is no
+# D-Bus activation file (lazy start-on-first-use would defeat the continuous
+# publish).
 Type=dbus
 BusName=org.arlen.Power1
 # Production binary path (system-wide install). Dev runs invoke the debug binary
