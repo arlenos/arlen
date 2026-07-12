@@ -1,0 +1,8 @@
+# Starting permission profile for a conversational-AI client (Bavarder). It sends
+# prompts to online AI providers, so it gets network; it needs no file access.
+[info]
+app_id = "bavarder"
+tier = "third-party"
+
+[network]
+allow_all = true
