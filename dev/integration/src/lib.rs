@@ -240,6 +240,20 @@ impl EphemeralStack {
         self.runtime.path().join("arlen").join("audit-ingest.sock")
     }
 
+    /// The consent broker's intake socket path
+    /// (`$XDG_RUNTIME_DIR/arlen/consent-intake.sock`), where an app raises a
+    /// consent request and blocks for the decision.
+    pub fn consent_intake_socket(&self) -> PathBuf {
+        self.runtime.path().join("arlen").join("consent-intake.sock")
+    }
+
+    /// The consent broker's control socket path
+    /// (`$XDG_RUNTIME_DIR/arlen/consent-control.sock`), the trusted-shell side that
+    /// fetches the front pending request and resolves it.
+    pub fn consent_control_socket(&self) -> PathBuf {
+        self.runtime.path().join("arlen").join("consent-control.sock")
+    }
+
     /// The private config home (`XDG_CONFIG_HOME` stand-in); a daemon's config
     /// (e.g. `arlen/graph.toml`, `arlen/ai.toml`) is read from here.
     pub fn config_home(&self) -> PathBuf {

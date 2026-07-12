@@ -2062,3 +2062,42 @@ async fn file_info_relations(client: &UnixGraphClient, file: &str) -> Vec<String
     );
     id_column(client.query_rows(&cypher).await.expect("files_info relations query"))
 }
+
+/// IT-1 consent broker: the broker binds its intake + control sockets hermetically.
+/// The broker audits each resolved decision to the audit daemon (best-effort,
+/// fail-closed per-resolve), so the audit daemon is spawned first for a realistic
+/// assembled context; the broker serves whether or not it is up. Same `#[ignore]`
+/// rationale (needs the built daemon binaries + a per-user runtime dir).
+#[tokio::test]
+#[ignore = "needs audit-daemon + consent-broker binaries built and a per-user runtime dir"]
+async fn the_consent_broker_comes_up_hermetically() {
+    if !arlen_integration::binary_built("daemons/consent-broker", "arlen-consent-broker") {
+        eprintln!(
+            "SKIP the_consent_broker_comes_up_hermetically: arlen-consent-broker not built (run `just integration-nightly`)"
+        );
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    if arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd") {
+        stack
+            .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+            .expect("spawn audit-daemon");
+        stack
+            .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+            .expect("audit ingest socket appears");
+    }
+
+    stack
+        .spawn("daemons/consent-broker", "arlen-consent-broker", &[])
+        .expect("spawn consent-broker");
+    // The broker binds both sockets under the `arlen/` subdir of the runtime root;
+    // it creates that dir when it binds.
+    stack
+        .wait_socket("arlen/consent-intake.sock", Duration::from_secs(20))
+        .expect("consent intake socket appears");
+    stack
+        .wait_socket("arlen/consent-control.sock", Duration::from_secs(20))
+        .expect("consent control socket appears");
+    // Both sockets bound: the broker is up + serving. Dropping `stack` tears it
+    // down and removes the root.
+}
