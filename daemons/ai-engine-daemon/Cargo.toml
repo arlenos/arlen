@@ -39,6 +39,15 @@ arlen-config-format = { path = "../../sdk/config-format" }
 prost = "0.13"
 # CSPRNG for the unguessable session token + execution-proof handle.
 getrandom = "0.2"
+# The run_command per-action consent biscuit: the daemon mints one when a
+# run_command Confirm is approved, and the separate terminal-run MCP server (a
+# distinct process the daemon's in-memory proof cannot reach) verifies it.
+arlen-run-consent-token = { path = "../../contracts/run-consent-token" }
+# The persistent Ed25519 root keypair custody for the consent biscuit (the same
+# reviewed BuilderKey the Connections daemon uses; fail-closed generate-or-load).
+arlen-forage-signing = { path = "../../forage/signing" }
+biscuit-auth = "6.0.0"
+thiserror = "1"
 # Args-hash for the Authorize->Execute one-time proof (binds the exact tool_input).
 sha2 = "0.10"
 async-trait = "0.1"
@@ -80,5 +89,6 @@ ai-engine-contract = { path = "../../contracts/ai-engine-contract" }
 async-trait = "0.1"
 libc = "0.2"
 serde_json = "1"
+tempfile = "3"
 
 [workspace]
