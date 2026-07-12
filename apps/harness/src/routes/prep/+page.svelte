@@ -100,10 +100,8 @@
 
 {#snippet card(it: PrepItem)}
   <li class="card">
-    <div class="card-main">
-      <span class="card-label">{it.label}</span>
-      <Badge variant="secondary">{it.kind}</Badge>
-    </div>
+    <span class="card-label">{it.label}</span>
+    <Badge variant="secondary">{it.kind}</Badge>
     <span class="card-relation">{it.relation}</span>
     <span class="score" aria-hidden="true"><span class="score-fill" style="width:{Math.round(it.score * 100)}%"></span></span>
   </li>
@@ -264,22 +262,19 @@
     flex-direction: column;
     gap: 0.4rem;
   }
+  /* One baseline: label, kind, the relation phrase, and the score cue all sit on
+     a single row so nothing floats. The relation takes the middle and truncates. */
   .card {
-    display: grid;
-    grid-template-columns: 1fr auto;
+    display: flex;
     align-items: center;
-    gap: 0.15rem 0.75rem;
+    gap: 0.6rem;
     padding: 0.6rem 0.75rem;
     border: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
     border-radius: var(--radius-input);
   }
-  .card-main {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    min-width: 0;
-  }
   .card-label {
+    flex-shrink: 0;
+    max-width: 45%;
     font-size: var(--text-sm);
     font-weight: 500;
     overflow: hidden;
@@ -287,13 +282,16 @@
     white-space: nowrap;
   }
   .card-relation {
-    grid-column: 1;
+    flex: 1;
+    min-width: 0;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .score {
-    grid-column: 2;
-    grid-row: 1 / span 2;
+    flex-shrink: 0;
     width: 48px;
     height: 4px;
     border-radius: var(--radius-full);
