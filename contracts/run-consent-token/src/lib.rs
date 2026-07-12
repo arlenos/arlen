@@ -34,8 +34,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use biscuit_auth::builder::{AuthorizerBuilder, BiscuitBuilder, Term};
-use biscuit_auth::{Algorithm, Biscuit, KeyPair, PublicKey};
+use biscuit_auth::{Algorithm, Biscuit, KeyPair};
 use sha2::{Digest, Sha256};
+
+/// Re-exported so a verify-side consumer (the terminal-run MCP server) can name the
+/// key type without depending on `biscuit-auth` directly - this crate is the whole
+/// contract between the mint side and the verify side.
+pub use biscuit_auth::PublicKey;
 
 /// The fixed tool this token authorizes. `run_command` is the only per-action
 /// consent-token act today; a future act would carry its own tool string.
@@ -276,9 +281,8 @@ mod tests {
         let root = KeyPair::new();
         let token = mint_run_consent(&root, "ls", &args(&["-la", "/work"]), 10_000).unwrap();
         // Same command + args + a time before expiry -> authorized.
-        assert_eq!(
-            verify_run_consent(&token, &root.public(), "ls", &args(&["-la", "/work"]), 5_000).unwrap(),
-            true
+        assert!(
+            verify_run_consent(&token, &root.public(), "ls", &args(&["-la", "/work"]), 5_000).unwrap()
         );
     }
 
@@ -287,9 +291,9 @@ mod tests {
         let root = KeyPair::new();
         let token = mint_run_consent(&root, "ls", &args(&["-la"]), 10_000).unwrap();
         // A different command / different args -> the digest mismatches -> denied.
-        assert_eq!(verify_run_consent(&token, &root.public(), "rm", &args(&["-rf", "/"]), 5_000).unwrap(), false);
-        assert_eq!(verify_run_consent(&token, &root.public(), "ls", &args(&["-la", "/etc"]), 5_000).unwrap(), false);
-        assert_eq!(verify_run_consent(&token, &root.public(), "ls", &args(&[]), 5_000).unwrap(), false);
+        assert!(!verify_run_consent(&token, &root.public(), "rm", &args(&["-rf", "/"]), 5_000).unwrap());
+        assert!(!verify_run_consent(&token, &root.public(), "ls", &args(&["-la", "/etc"]), 5_000).unwrap());
+        assert!(!verify_run_consent(&token, &root.public(), "ls", &args(&[]), 5_000).unwrap());
     }
 
     #[test]
@@ -297,7 +301,7 @@ mod tests {
         let root = KeyPair::new();
         let token = mint_run_consent(&root, "ls", &args(&["-la"]), 1_000).unwrap();
         // now (2000) is past the expiry (1000) -> the TTL check fails -> denied.
-        assert_eq!(verify_run_consent(&token, &root.public(), "ls", &args(&["-la"]), 2_000).unwrap(), false);
+        assert!(!verify_run_consent(&token, &root.public(), "ls", &args(&["-la"]), 2_000).unwrap());
     }
 
     #[test]
