@@ -177,13 +177,26 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
     /// consent biscuit bound to the exact `(command, args)`; an unparseable argv or
     /// an unwired minter yields `None` (the MCP server then fails closed). Every
     /// other tool keeps the daemon-side one-time execution proof.
+    ///
+    /// `confirmed` is whether this authorization was resolved through a user
+    /// Confirm. The `run_command` biscuit is minted ONLY when `confirmed` is true:
+    /// the gate always classifies `run_command` as Confirm, so this holds today, and
+    /// the guard makes the consent boundary unbypassable even if a future gate ever
+    /// returns Allow directly for it. (`timeout_ms`, present in the tool input, is
+    /// deliberately NOT part of the consent digest - consent binds the command and
+    /// its arguments; the timeout only bounds runtime and is capped at the MCP
+    /// boundary.)
     fn proof_for_allow(
         &self,
         tool_name: &str,
         tool_input: &serde_json::Value,
         session: &str,
+        confirmed: bool,
     ) -> Option<String> {
         if tool_name == RUN_COMMAND_TOOL {
+            if !confirmed {
+                return None;
+            }
             let minter = self.consent_minter.as_ref()?;
             let (command, args) = extract_run_argv(tool_input)?;
             return minter.mint_run(&command, &args);
@@ -250,7 +263,14 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
         // because external content triggered this") or down-classify the dialog.
         let externally_triggered = grant.externally_triggered || req.external_triggered;
         // Resolve the gate decision (driving the consent broker for a Confirm).
-        let decision = match self.gate.authorize(req, &grant).await {
+        let gate_decision = self.gate.authorize(req, &grant).await;
+        // Whether this authorization was resolved through a user Confirm. The
+        // run_command consent biscuit is minted ONLY on this path (defense in depth:
+        // even if a future gate ever returns Allow directly for run_command - the
+        // path-discriminated downgrade the capability map anticipates - the mint is
+        // refused, so the consent boundary for the sharp-edge tool is unbypassable).
+        let confirmed = matches!(gate_decision, AuthorizeDecision::Confirm { .. });
+        let decision = match gate_decision {
             AuthorizeDecision::Confirm { prompt } => {
                 match self
                     .consent
@@ -275,10 +295,10 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
         // Execute; Modify binds the daemon-substituted args that will actually run.
         match decision {
             AuthorizeDecision::Allow { .. } => AuthorizeDecision::Allow {
-                proof: self.proof_for_allow(&req.tool_name, &req.tool_input, token.as_str()),
+                proof: self.proof_for_allow(&req.tool_name, &req.tool_input, token.as_str(), confirmed),
             },
             AuthorizeDecision::Modify { args, .. } => {
-                let proof = self.proof_for_allow(&req.tool_name, &args, token.as_str());
+                let proof = self.proof_for_allow(&req.tool_name, &args, token.as_str(), confirmed);
                 AuthorizeDecision::Modify { args, proof }
             }
             other => other,
@@ -622,23 +642,40 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn a_run_command_allow_carries_the_minted_consent_token() {
-        let seen = Arc::new(StdMutex::new(None));
-        let d = Dispatcher::new(
-            SpyGate { calls: Arc::new(AtomicUsize::new(0)), decision: AuthorizeDecision::Allow { proof: None } },
+    /// Build a dispatcher whose gate returns Confirm (the real run_command class),
+    /// an approving consent surface, and the given minter - the production path a
+    /// run_command travels: gate Confirm -> broker Approved -> Allow -> mint.
+    fn confirmed_run_dispatcher(
+        minter: Option<Arc<dyn ConsentMinter>>,
+    ) -> Dispatcher<SpyGate, SpyExecutor, SpyReporter> {
+        let mut d = Dispatcher::new(
+            SpyGate { calls: Arc::new(AtomicUsize::new(0)), decision: AuthorizeDecision::Confirm { prompt: "run ls?".into() } },
             SpyExecutor { calls: Arc::new(AtomicUsize::new(0)) },
             SpyReporter { calls: Arc::new(AtomicUsize::new(0)) },
         )
-        .with_consent_minter(Arc::new(MockMinter { seen: seen.clone(), token: "biscuit-xyz".into() }));
+        .with_consent(Arc::new(MockConsent { approve: true, seen: Arc::new(StdMutex::new(None)) }));
+        if let Some(m) = minter {
+            d = d.with_consent_minter(m);
+        }
+        d
+    }
+
+    #[tokio::test]
+    async fn an_approved_run_command_confirm_mints_the_consent_token() {
+        let seen = Arc::new(StdMutex::new(None));
+        let d = confirmed_run_dispatcher(Some(Arc::new(MockMinter {
+            seen: seen.clone(),
+            token: "biscuit-xyz".into(),
+        })));
         let token = d.init_session(&init(), 100).unwrap();
         let dec = d.authorize(&token, 100, &Authorize {
             tool_name: "run_command".into(),
             tool_input: serde_json::json!({"command": "ls", "args": ["-la", "/work"]}),
             external_triggered: false,
         }).await;
-        // The run_command Allow carries the biscuit, NOT a daemon in-memory proof
-        // handle (the MCP server, a separate process, verifies the biscuit).
+        // After the user approved, the run_command Allow carries the biscuit, NOT a
+        // daemon in-memory proof handle (the MCP server, a separate process, verifies
+        // the biscuit).
         assert_eq!(dec, AuthorizeDecision::Allow { proof: Some("biscuit-xyz".into()) });
         // The token was minted over the exact command + args the caller proposed.
         assert_eq!(
@@ -649,15 +686,43 @@ mod tests {
 
     #[tokio::test]
     async fn a_run_command_allow_without_a_minter_carries_no_credential() {
-        let (d, _g, _e, _r) = dispatcher(); // no minter wired
+        // Confirmed by the user, but no minter wired -> no consent credential -> the
+        // MCP server fails closed.
+        let d = confirmed_run_dispatcher(None);
         let token = d.init_session(&init(), 100).unwrap();
         let dec = d.authorize(&token, 100, &Authorize {
             tool_name: "run_command".into(),
             tool_input: serde_json::json!({"command": "ls"}),
             external_triggered: false,
         }).await;
-        // No minter -> no consent credential -> the MCP server fails closed.
         assert_eq!(dec, AuthorizeDecision::Allow { proof: None });
+    }
+
+    #[tokio::test]
+    async fn a_run_command_allow_direct_from_the_gate_mints_nothing() {
+        // Defense in depth: even a gate that WRONGLY returns Allow directly for
+        // run_command (bypassing the consent broker) mints no biscuit, so the MCP
+        // server fails closed - the consent boundary for the sharp-edge tool is not
+        // bypassable by a future gate misclassification.
+        let seen = Arc::new(StdMutex::new(None));
+        let d = Dispatcher::new(
+            SpyGate { calls: Arc::new(AtomicUsize::new(0)), decision: AuthorizeDecision::Allow { proof: None } },
+            SpyExecutor { calls: Arc::new(AtomicUsize::new(0)) },
+            SpyReporter { calls: Arc::new(AtomicUsize::new(0)) },
+        )
+        .with_consent_minter(Arc::new(MockMinter { seen: seen.clone(), token: "biscuit-xyz".into() }));
+        let token = d.init_session(&init(), 100).unwrap();
+        let dec = d.authorize(&token, 100, &Authorize {
+            tool_name: "run_command".into(),
+            tool_input: serde_json::json!({"command": "ls"}),
+            external_triggered: false,
+        }).await;
+        assert_eq!(dec, AuthorizeDecision::Allow { proof: None });
+        assert_eq!(
+            *seen.lock().unwrap(),
+            None,
+            "the minter is never consulted for an unconfirmed run_command"
+        );
     }
 
     #[test]
