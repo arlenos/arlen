@@ -31,13 +31,63 @@
 
 use std::collections::HashMap;
 
+use std::path::PathBuf;
+
 use biscuit_auth::builder::{AuthorizerBuilder, BiscuitBuilder, Term};
-use biscuit_auth::{Biscuit, KeyPair, PublicKey};
+use biscuit_auth::{Algorithm, Biscuit, KeyPair, PublicKey};
 use sha2::{Digest, Sha256};
 
 /// The fixed tool this token authorizes. `run_command` is the only per-action
 /// consent-token act today; a future act would carry its own tool string.
 pub const RUN_COMMAND_TOOL: &str = "run_command";
+
+/// The rendezvous file where the AI-engine daemon publishes its consent-token root
+/// PUBLIC key (hex) and the terminal-run MCP server reads it:
+/// `$XDG_STATE_HOME|$HOME/.local/state` + `arlen/ai-engine/run-consent-root.pub`, or
+/// `None` when neither env var is set. This ONE resolver is the single source of
+/// truth for both sides, so the publish path and the read path cannot drift; a
+/// mismatch anyway fails closed (the reader finds no key and refuses). A public key
+/// is not a secret, so the file is world-readable.
+pub fn published_public_key_path() -> Option<PathBuf> {
+    let base = std::env::var("XDG_STATE_HOME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(|h| PathBuf::from(h).join(".local/state"))
+        })?;
+    Some(base.join("arlen/ai-engine/run-consent-root.pub"))
+}
+
+/// Parse a published hex public key back into a Biscuit [`PublicKey`]. The verify
+/// side (the MCP server) reads the rendezvous file and calls this; it lives here so
+/// the mint and verify sides share one encoding. A malformed hex string or a
+/// non-Ed25519 key is a hard error - the verifier must refuse, never fall back to an
+/// unverified run.
+pub fn public_key_from_hex(hex: &str) -> Result<PublicKey, ConsentTokenError> {
+    let hex = hex.trim();
+    if !hex.len().is_multiple_of(2) {
+        return Err(ConsentTokenError::InvalidInput("odd-length public-key hex"));
+    }
+    let mut bytes = Vec::with_capacity(hex.len() / 2);
+    let raw = hex.as_bytes();
+    let mut i = 0;
+    while i < raw.len() {
+        let hi = (raw[i] as char)
+            .to_digit(16)
+            .ok_or(ConsentTokenError::InvalidInput("non-hex byte in public key"))?;
+        let lo = (raw[i + 1] as char)
+            .to_digit(16)
+            .ok_or(ConsentTokenError::InvalidInput("non-hex byte in public key"))?;
+        bytes.push(((hi << 4) | lo) as u8);
+        i += 2;
+    }
+    PublicKey::from_bytes(&bytes, Algorithm::Ed25519)
+        .map_err(|e| ConsentTokenError::Biscuit(e.to_string()))
+}
 
 /// The longest accepted command (the executable name or path).
 const MAX_COMMAND_LEN: usize = 4096;
@@ -333,6 +383,29 @@ mod tests {
             mint_run_consent(&root, "ls", &args(&[&big]), 10_000),
             Err(ConsentTokenError::InvalidInput(_))
         ));
+    }
+
+    #[test]
+    fn a_public_key_hex_round_trips_and_verifies() {
+        let root = KeyPair::new();
+        let bytes = root.public().to_bytes();
+        let mut hex = String::with_capacity(bytes.len() * 2);
+        for b in &bytes {
+            hex.push_str(&format!("{b:02x}"));
+        }
+        let parsed = public_key_from_hex(&hex).unwrap();
+        assert_eq!(parsed.to_bytes(), bytes);
+        // A token minted by the daemon verifies under the hex-parsed public key the
+        // MCP server would read from the rendezvous file.
+        let token = mint_run_consent(&root, "ls", &args(&["-la"]), 10_000).unwrap();
+        assert!(verify_run_consent(&token, &parsed, "ls", &args(&["-la"]), 5_000).unwrap());
+    }
+
+    #[test]
+    fn a_malformed_public_key_hex_is_rejected() {
+        assert!(public_key_from_hex("not-hex").is_err()); // non-hex
+        assert!(public_key_from_hex("abc").is_err()); // odd length
+        assert!(public_key_from_hex("").is_err()); // wrong length for Ed25519
     }
 
     #[test]
