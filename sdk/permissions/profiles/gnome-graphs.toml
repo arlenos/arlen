@@ -1,0 +1,8 @@
+# Starting permission profile for a data-plotting app (Graphs). It opens data files
+# and saves/exports figures, so it gets home filesystem access; it uses no network.
+[info]
+app_id = "gnome-graphs"
+tier = "third-party"
+
+[filesystem]
+home = true

@@ -1,0 +1,9 @@
+# Starting permission profile for a QR-code scanner/generator (Decoder). Camera
+# capture is granted through the portal, not a profile category; it saves generated
+# codes, so it gets home filesystem access. It uses no network.
+[info]
+app_id = "gnome-decoder"
+tier = "third-party"
+
+[filesystem]
+home = true

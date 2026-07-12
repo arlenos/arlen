@@ -1,0 +1,6 @@
+# Starting permission profile for an audio visualizer (Cavalier). It renders the
+# system audio spectrum; audio capture is granted through the session/portal, not
+# a profile category. It reads no user files and uses no network.
+[info]
+app_id = "cavalier"
+tier = "third-party"
