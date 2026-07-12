@@ -68,6 +68,14 @@ const ADMITTED: &[&str] = &[
     // no-silent-capture screenshot audit (SC-R6). Resolves to this id via the
     // canonical libexec path in `arlen_permissions::identity::path_to_app_id`.
     "xdg-desktop-portal",
+    // The Context-Capsule daemon (`capsuled`): its capsule-serve audit is
+    // fail-closed, so without admission every capsule read returns "audit
+    // unavailable".
+    "capsuled",
+    // The Connections credential-governance daemon: its credential-release audit is
+    // fail-closed (audit-before-release), so without admission every credential
+    // handout is refused with AuditUnavailable.
+    "connections",
 ];
 
 /// Resolve the ingest socket path:
@@ -343,6 +351,8 @@ mod tests {
             "notifyd",
             "installd",
             "xdg-desktop-portal",
+            "capsuled",
+            "connections",
         ] {
             assert!(
                 ADMITTED.contains(&producer),
