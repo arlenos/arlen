@@ -258,6 +258,22 @@ impl Gate for CapabilityGate {
                 ),
             };
         }
+        // fs.create is path-discriminated (ai-act-layer-plan.md §SHARPENED
+        // PRINCIPLE): a create at a persistence / config / executable path is a
+        // persistence vector that `DeleteCreated` does not bound, so it stays
+        // `Confirm`; a create at a PROVABLY-safe data location is reversible curation
+        // that may run autonomously. The default is `Confirm` (the fall-through
+        // below via the SystemConfigChange kind); only a provably-safe path takes
+        // this autonomous fast path, so a shaped `tool_input` can never turn a
+        // sensitive create autonomous (the class stays Confirm for every other view
+        // of fs.create; this is the single, documented arg-inspecting exception).
+        if req.tool_name == crate::file_executor::FS_CREATE_TOOL
+            && !fs_create_target_is_sensitive(&req.tool_input)
+        {
+            let capability = grant_to_capability(grant, (self.executor_live)());
+            let decision = capability.decide(ENGINE_APP_ID, ActionKind::Ordinary, external_triggered);
+            return decision_to_authorize(decision, &req.tool_name);
+        }
         // Every other tool: the existing capability path decides (the always-confirm
         // + external-trigger overrides, then the action mode). The fine-grained
         // reversible -> autonomous `Allow` lift and the unknown -> fail-closed `Deny`
@@ -345,12 +361,14 @@ pub fn gate_class_for_tool(tool: &str) -> GateClass {
         "graph.assert_edge" | "graph.retract_edge" | "fs.move" | "fs.trash"
         | "settings.set" => GateClass::ReversibleAction,
         // Irreversible graph + fs actions: Confirm.
-        // fs.create defaults to Confirm: a create can be a persistence / code-
+        // fs.create's NAME class is Confirm: a create can be a persistence / code-
         // execution vector (a new ~/.bashrc, an autostart .desktop, a systemd-user
         // unit), and "reversible" DeleteCreated does NOT bound that at-write harm
-        // (ai-act-layer-plan.md §SHARPENED PRINCIPLE). The path-discriminated
-        // downgrade (a create in a SAFE dir -> autonomous) lands in the executor with
-        // the run_command consent flow; this is the fail-closed name-only default.
+        // (ai-act-layer-plan.md §SHARPENED PRINCIPLE). This name-only class is the
+        // fail-closed default; the gate's `authorize` adds a path-discriminated
+        // autonomous fast path for a PROVABLY-safe target (see
+        // `fs_create_target_is_sensitive`), the one documented arg-inspecting
+        // exception - the class here stays Confirm so every other view is fail-closed.
         "graph.set_field" | "graph.retract_node" | "fs.delete" | "fs.create" => {
             GateClass::Confirm
         }
@@ -361,6 +379,61 @@ pub fn gate_class_for_tool(tool: &str) -> GateClass {
         // Anything not in the registry: fail-closed Deny (possession of an entry is
         // the trust proof).
         _ => GateClass::Deny,
+    }
+}
+
+/// The first path components that mark a create as touching a system or
+/// executable root (config, init, package, kernel). A create under any of these is
+/// a persistence / privilege surface and stays `Confirm`.
+const FS_CREATE_SENSITIVE_ROOTS: &[&str] = &[
+    "etc", "usr", "bin", "sbin", "lib", "lib32", "lib64", "libx32", "boot", "opt",
+    "root", "srv", "sys", "proc", "dev", "run", "var",
+];
+
+/// Whether an `fs.create` target path is SENSITIVE (a persistence / config /
+/// executable location that must be user-confirmed) rather than a safe data
+/// location that may be created autonomously (`ai-act-layer-plan.md` §SHARPENED
+/// PRINCIPLE: a create at `~/.bashrc` / `~/.config/autostart/*.desktop` /
+/// `~/.config/systemd/user/*.service` is a persistence vector that `DeleteCreated`
+/// does not bound).
+///
+/// FAIL-CLOSED by construction: it returns `true` (sensitive) for anything not
+/// PROVABLY a plain data path. A path is safe ONLY when it is absolute, has no
+/// component beginning with `.` (so every dotfile and dotdir - `.config`, `.local`
+/// [bin / share/applications / systemd/user], `.ssh`, `.bashrc`, `.profile` - is
+/// sensitive), and does not sit under a system/executable root. So a shaped
+/// `tool_input` can never turn a sensitive create autonomous: the attacker can only
+/// reach the autonomous fast path with a genuinely safe data path (where autonomous
+/// creation is the intended reversible curation), never with a persistence path.
+pub(crate) fn fs_create_path_is_sensitive(path: &str) -> bool {
+    // A relative, empty or `~`-prefixed (un-expanded) path is ambiguous -> sensitive.
+    if !path.starts_with('/') {
+        return true;
+    }
+    let mut first: Option<&str> = None;
+    let mut saw_component = false;
+    for c in path.split('/').filter(|c| !c.is_empty()) {
+        saw_component = true;
+        // Any dot-component (`.`, `..`, `.hidden`) marks a dotfile/dotdir path.
+        if c.starts_with('.') {
+            return true;
+        }
+        if first.is_none() {
+            first = Some(c);
+        }
+    }
+    if !saw_component {
+        return true; // "/" alone
+    }
+    matches!(first, Some(f) if FS_CREATE_SENSITIVE_ROOTS.contains(&f))
+}
+
+/// Whether the `fs.create` request in `tool_input` targets a sensitive path.
+/// Fail-closed: a missing or non-string `path` is treated as sensitive (`Confirm`).
+pub(crate) fn fs_create_target_is_sensitive(tool_input: &serde_json::Value) -> bool {
+    match tool_input.get("path").and_then(|v| v.as_str()) {
+        Some(p) => fs_create_path_is_sensitive(p),
+        None => true,
     }
 }
 
@@ -652,6 +725,86 @@ mod tests {
         assert_eq!(action_kind_for_tool("fs.move"), ActionKind::Ordinary);
         assert_eq!(action_kind_for_tool("fs.trash"), ActionKind::Ordinary);
         assert_eq!(action_kind_for_tool("settings.set"), ActionKind::Ordinary);
+    }
+
+    #[test]
+    fn fs_create_path_discrimination_is_fail_closed() {
+        // Safe data locations: absolute, no dot-component, not a system root.
+        for p in [
+            "/home/u/Documents/notes.txt",
+            "/home/u/projects/foo/bar.rs",
+            "/tmp/scratch/out.log",
+            "/mnt/data/report.csv",
+        ] {
+            assert!(!fs_create_path_is_sensitive(p), "{p} should be safe");
+        }
+        // Sensitive: any dot-component (dotfile/dotdir catches .config, .local,
+        // .ssh, .bashrc), a system/executable root, or an ambiguous path.
+        for p in [
+            "/home/u/.bashrc",
+            "/home/u/.profile",
+            "/home/u/.config/autostart/x.desktop",
+            "/home/u/.config/systemd/user/x.service",
+            "/home/u/.local/bin/tool",
+            "/home/u/.local/share/applications/x.desktop",
+            "/home/u/.ssh/authorized_keys",
+            "/etc/cron.d/job",
+            "/usr/local/bin/tool",
+            "/var/spool/cron/u",
+            "/home/u/projects/../.bashrc", // `..` is a dot-component
+            "relative/path.txt",           // not absolute
+            "",                             // empty
+            "/",                            // root only
+            "~/notes.txt",                  // un-expanded ~
+        ] {
+            assert!(fs_create_path_is_sensitive(p), "{p} should be sensitive");
+        }
+        // A missing/non-string path in the request fails closed to sensitive.
+        assert!(fs_create_target_is_sensitive(&serde_json::json!({})));
+        assert!(fs_create_target_is_sensitive(&serde_json::json!({ "path": 5 })));
+        assert!(!fs_create_target_is_sensitive(
+            &serde_json::json!({ "path": "/home/u/Documents/x.txt" })
+        ));
+    }
+
+    fn fs_create(path: &str) -> Authorize {
+        Authorize {
+            tool_name: "fs.create".into(),
+            tool_input: serde_json::json!({ "path": path, "content": "x" }),
+            external_triggered: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_safe_fs_create_runs_autonomously_under_executor_live() {
+        // Under the live executor a create at a plain data location is reversible
+        // curation: it Allows without a confirm.
+        let d = CapabilityGate::with_executor_live(|| true)
+            .authorize(&fs_create("/home/u/Documents/notes.txt"), &grant(ReadTier::Standard))
+            .await;
+        assert!(matches!(d, AuthorizeDecision::Allow { .. }), "safe create should be autonomous, got {d:?}");
+    }
+
+    #[tokio::test]
+    async fn a_sensitive_fs_create_confirms_even_under_executor_live() {
+        // A create at a persistence path always confirms, even live - DeleteCreated
+        // does not bound the at-write harm.
+        for path in ["/home/u/.bashrc", "/home/u/.config/autostart/x.desktop", "/etc/x"] {
+            let d = CapabilityGate::with_executor_live(|| true)
+                .authorize(&fs_create(path), &grant(ReadTier::Standard))
+                .await;
+            assert!(matches!(d, AuthorizeDecision::Confirm { .. }), "{path} should confirm, got {d:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_safe_fs_create_is_a_proposal_under_suggest() {
+        // Suggest baseline: even a safe create is a proposal (Deny to the engine),
+        // never auto-run - the autonomy is gated on the live executor.
+        let d = CapabilityGate::with_executor_live(|| false)
+            .authorize(&fs_create("/home/u/Documents/notes.txt"), &grant(ReadTier::Standard))
+            .await;
+        assert!(matches!(d, AuthorizeDecision::Deny { .. }), "got {d:?}");
     }
 
     #[test]
