@@ -24,24 +24,21 @@ ExecStart=/usr/lib/arlen/libexec/arlen-capsuled
 Restart=on-failure
 RestartSec=2
 
-# capsuled holds the persisted Ed25519 capsule signing key, the content-addressed
-# frozen-slice store and the durable revoke/op-count ledger, all under the per-user
-# state directory, and binds only a Unix socket under the runtime dir; it never
-# touches the network (it connects only to the AF_UNIX audit ingest socket), so the
-# hardening is tight and the address-family restriction documents that property.
-ProtectSystem=strict
-ProtectHome=read-only
-# The capsule key, slice store and revoke ledger live under $XDG_STATE_HOME
-# (~/.local/state/arlen/capsule).
-ReadWritePaths=%h/.local/state/arlen
-# The serve socket lives under $XDG_RUNTIME_DIR.
-ReadWritePaths=/run/user/%U/arlen
+# capsuled authenticates every reader (server) and mint/list/revoke caller
+# (control_server) by resolving the peer's /proc/<pid>/exe against the app-id chain
+# (SO_PEERCRED gives the pid; ConnectionAuth::extract_from -> app_id_from_pid reads
+# the exe; mint is then gated to the human UIs harness/settings). A mount namespace
+# on this daemon (from ANY of ProtectSystem, ProtectHome, PrivateTmp, PrivateDevices,
+# ProtectKernel*) makes /proc/<other-pid>/exe unreadable to a same-uid reader, so it
+# would reject EVERY connection - the harness + settings capsule UIs dead in
+# deployment. Proven on this host: readlink /proc/<pid>/exe under any single one of
+# those options fails EACCES for a same-uid target. They are therefore OMITTED,
+# exactly as the audit daemon, the consent broker and the AI engine omit them for
+# the identical peer-auth reason. The daemon's integrity rests on SO_PEERCRED
+# attestation + the signed grant + the fail-closed audit, not on filesystem
+# isolation; it writes its key/store/ledger only under ~/.local/state/arlen/capsule
+# by its own code. The hardening that does NOT create a mount namespace is kept.
 RestrictAddressFamilies=AF_UNIX
-PrivateTmp=yes
-PrivateDevices=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
 RestrictNamespaces=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes

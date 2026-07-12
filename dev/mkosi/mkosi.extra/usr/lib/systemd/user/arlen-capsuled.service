@@ -1,0 +1,49 @@
+[Unit]
+Description=Arlen Context Capsule daemon (user service)
+Documentation=https://github.com/arlenos/arlen
+# capsuled serves same-machine capsule reads: a reader presents a signed grant
+# and gets the frozen slice from capsuled's own content-addressed store. It audits
+# each read through the audit daemon FAIL-CLOSED (a down audit fails the read
+# closed, not the daemon). `After=` orders startup without `Requires=` blocking it:
+# the daemon binds and serves whether or not the audit daemon is up yet, but
+# ordering after the Type=notify audit daemon shrinks the window in which a read
+# would fail closed (same convention as the consent broker and the AI engine).
+After=arlen-auditd.service
+
+[Service]
+# Type=simple: capsuled does not call sd_notify. A reader connects lazily and a
+# not-yet-bound socket is simply a failed connect, so no readiness barrier is
+# needed before dependents start.
+Type=simple
+# Production binary path (system-wide install). Dev runs invoke the debug binary
+# directly; this file is the canonical production unit.
+ExecStart=/usr/lib/arlen/libexec/arlen-capsuled
+# A tampered or unverifiable capsule key, store or revoke ledger makes the daemon
+# exit non-zero (the fail-closed posture); restart with back-off so a persistent
+# fault surfaces rather than crash-looping fast.
+Restart=on-failure
+RestartSec=2
+
+# capsuled authenticates every reader (server) and mint/list/revoke caller
+# (control_server) by resolving the peer's /proc/<pid>/exe against the app-id chain
+# (SO_PEERCRED gives the pid; ConnectionAuth::extract_from -> app_id_from_pid reads
+# the exe; mint is then gated to the human UIs harness/settings). A mount namespace
+# on this daemon (from ANY of ProtectSystem, ProtectHome, PrivateTmp, PrivateDevices,
+# ProtectKernel*) makes /proc/<other-pid>/exe unreadable to a same-uid reader, so it
+# would reject EVERY connection - the harness + settings capsule UIs dead in
+# deployment. Proven on this host: readlink /proc/<pid>/exe under any single one of
+# those options fails EACCES for a same-uid target. They are therefore OMITTED,
+# exactly as the audit daemon, the consent broker and the AI engine omit them for
+# the identical peer-auth reason. The daemon's integrity rests on SO_PEERCRED
+# attestation + the signed grant + the fail-closed audit, not on filesystem
+# isolation; it writes its key/store/ledger only under ~/.local/state/arlen/capsule
+# by its own code. The hardening that does NOT create a mount namespace is kept.
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target

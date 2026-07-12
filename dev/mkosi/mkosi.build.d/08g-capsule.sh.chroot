@@ -1,0 +1,33 @@
+#!/bin/sh
+# Phase 8g (CHROOT): the context-capsule daemon (arlen-capsuled). It serves
+# same-machine capsule reads (a reader presents a signed grant, gets the frozen
+# slice) and a control socket for mint/list/revoke that the harness AND settings
+# connect to via CapsuleControlClient (apps/harness/src-tauri/src/capsule.rs,
+# apps/settings/src-tauri/src/commands/capsules.rs). Without it those capsule UIs
+# have no socket to reach - the "backend built, not deployed" class as the consent
+# broker. Packaged like the other libexec daemons.
+#
+# capsuled resolves as a standalone package (cargo build --manifest-path) -> its
+# own target dir in the persistent cache. Pure Rust, no C/C++.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-capsule"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the context-capsule daemon (arlen-capsuled) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/capsuled/Cargo.toml
+
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-capsuled" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-capsuled"
+echo ">> staged arlen-capsuled into the image"
