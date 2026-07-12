@@ -44,9 +44,10 @@ pub fn root_key_path() -> Option<PathBuf> {
 }
 
 /// The published public-key file the terminal-run MCP server reads to verify a
-/// consent biscuit: `run-consent-root.pub` (hex) in the state dir.
+/// consent biscuit. Delegates to the shared token crate so the publish path here
+/// and the read path in the MCP server are one source of truth and cannot drift.
 pub fn public_key_path() -> Option<PathBuf> {
-    state_dir().map(|d| d.join("run-consent-root.pub"))
+    arlen_run_consent_token::published_public_key_path()
 }
 
 /// A failure building or publishing the consent-root keypair.
@@ -177,32 +178,6 @@ impl crate::dispatch::ConsentMinter for BiscuitConsentMinter {
     }
 }
 
-/// Parse a published hex public key back into a Biscuit [`PublicKey`]. This is the
-/// verify-side reader the MCP server uses; it lives here so the mint side and the
-/// verify side share one encoding. A malformed hex string or a non-Ed25519 key is a
-/// hard error (the verifier must refuse, never fall back to an unverified run).
-pub fn public_key_from_hex(hex: &str) -> Result<PublicKey, ConsentRootError> {
-    let hex = hex.trim();
-    if !hex.len().is_multiple_of(2) {
-        return Err(ConsentRootError::Reconstruct("odd-length hex".to_string()));
-    }
-    let mut bytes = Vec::with_capacity(hex.len() / 2);
-    let raw = hex.as_bytes();
-    let mut i = 0;
-    while i < raw.len() {
-        let hi = (raw[i] as char)
-            .to_digit(16)
-            .ok_or_else(|| ConsentRootError::Reconstruct("non-hex byte".to_string()))?;
-        let lo = (raw[i + 1] as char)
-            .to_digit(16)
-            .ok_or_else(|| ConsentRootError::Reconstruct("non-hex byte".to_string()))?;
-        bytes.push(((hi << 4) | lo) as u8);
-        i += 2;
-    }
-    PublicKey::from_bytes(&bytes, Algorithm::Ed25519)
-        .map_err(|e| ConsentRootError::Reconstruct(e.to_string()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,7 +212,7 @@ mod tests {
         .unwrap();
 
         let published = std::fs::read_to_string(&pub_path).unwrap();
-        let verify_key = public_key_from_hex(&published).unwrap();
+        let verify_key = arlen_run_consent_token::public_key_from_hex(&published).unwrap();
         assert!(
             arlen_run_consent_token::verify_run_consent(
                 &token,
@@ -259,16 +234,11 @@ mod tests {
         root.publish_public_key(&pub_path).unwrap();
         let on_disk = std::fs::read_to_string(&pub_path).unwrap();
         assert_eq!(on_disk, root.public_key_hex());
-        // And the round-trip reconstructs the exact same key bytes.
+        // And the round-trip (through the shared crate's reader) reconstructs the
+        // exact same key bytes.
         assert_eq!(
-            public_key_from_hex(&on_disk).unwrap().to_bytes(),
+            arlen_run_consent_token::public_key_from_hex(&on_disk).unwrap().to_bytes(),
             root.public().to_bytes()
         );
-    }
-
-    #[test]
-    fn malformed_hex_is_a_hard_error() {
-        assert!(public_key_from_hex("not-hex").is_err());
-        assert!(public_key_from_hex("abc").is_err()); // odd length
     }
 }
