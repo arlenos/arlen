@@ -106,6 +106,47 @@ pub(crate) fn exe_path_openat(pid: u32) -> Result<PathBuf, IdentityError> {
     Ok(PathBuf::from(s))
 }
 
+/// The `(ino, dev)` of a process's exe binary, read via `fstatat` on the process's
+/// own `/proc/{pid}` directory fd (following the `exe` magic symlink to the real
+/// binary), NOT a re-stat of the exe PATH string. Because it never re-resolves the
+/// user-controllable exe path, a same-uid attacker cannot swap a path component
+/// between a readlink and this stat to forge an inode match (the TOCTOU an
+/// inode-registry attestation must not admit). `None` on any failure — the caller
+/// treats absence as not-inode-attested (fail-safe). MUST be called while the
+/// peer's pidfd is held, so the pid names the pinned process and cannot be recycled.
+pub(crate) fn exe_ino_dev(pid: u32) -> Option<(u64, u64)> {
+    use std::ffi::CString;
+    let dir_cstr = CString::new(format!("/proc/{pid}")).ok()?;
+    // SAFETY: dir_cstr is a valid C string; we own the returned fd.
+    let dir_fd = unsafe {
+        libc::open(
+            dir_cstr.as_ptr(),
+            libc::O_PATH | libc::O_DIRECTORY | libc::O_NOFOLLOW,
+        )
+    };
+    if dir_fd < 0 {
+        return None;
+    }
+    let dir = unsafe { OwnedFd::from_raw_fd(dir_fd) };
+    let exe_cstr = CString::new("exe").ok()?;
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    // No AT_SYMLINK_NOFOLLOW: follow the `exe` magic link to the real binary and
+    // stat IT (its ino/dev), relative to the pinned /proc/{pid} fd.
+    // SAFETY: dir.as_raw_fd() is valid for the call; exe_cstr + st live for it.
+    let r = unsafe {
+        libc::fstatat(
+            dir.as_raw_fd(),
+            exe_cstr.as_ptr(),
+            &mut st as *mut libc::stat,
+            0,
+        )
+    };
+    if r != 0 {
+        return None;
+    }
+    Some((st.st_ino as u64, st.st_dev as u64))
+}
+
 /// Read the process start time (column 22 of `/proc/{pid}/stat`,
 /// in clock ticks since boot). Used together with the pid as a
 /// guard against PID recycling: store `(pid, start_time)` at

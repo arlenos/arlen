@@ -1,16 +1,20 @@
-//! Race-free connection-identity resolution (the stamped-identity strand, slice 1).
+//! Recycle-proof connection-identity resolution (the stamped-identity strand).
 //!
 //! [`crate::connection_auth::ConnectionAuth`] today resolves the peer app_id from a
 //! racy `SO_PEERCRED` pid plus a `/proc/{pid}/stat` start-time re-check: the pid can
 //! be recycled between the `getsockopt` and the `/proc` read, and the start-time
 //! guard only *detects* the recycle after the fact. [`app_id_from_connection`]
 //! replaces that with [`crate::peer_pidfd::PeerPidfd`]: `SO_PEERPIDFD` hands back a
-//! pidfd that PINS the peer process, so the pid cannot be recycled and every
-//! `/proc/{pid}/exe` read below refers to exactly the process that connected. The
-//! resolved app_id is the same one [`crate::identity::path_to_app_id`] produces
-//! (including its F3 rule-4 inode gate), now obtained race-free and carrying an
-//! explicit [`IdentitySource`] label for the shadow-mode divergence audit that wires
-//! this in next.
+//! pidfd that PINS the peer process, reserving its pid for as long as the pidfd is
+//! held. The `/proc/{pid}` reads below still resolve BY PID NUMBER, but under that
+//! pin the pid names exactly the pinned process and cannot be recycled to a
+//! different one (recycle-proof while held, not a fully pidfd-relative open — the
+//! kernel exposes no `readlinkat`-via-pidfd, so path resolution stays by-number, and
+//! the inode attestation below is done via `fstatat` on the pinned `/proc/{pid}` fd
+//! rather than a re-stat of the exe path string). The resolved app_id is the same
+//! one [`crate::identity::path_to_app_id`] produces (including its F3 rule-4 inode
+//! gate), carrying an explicit [`IdentitySource`] label for the shadow-mode
+//! divergence audit that wires this in.
 //!
 //! Fail-closed is the whole contract (the polkit CVE-2021-3560 anti-pattern: a
 //! mid-check disconnect must never authorise). Every pidfd/registry/exe error maps to
@@ -21,11 +25,9 @@
 //! fallback ([`IdentitySource::LegacyProc`]); the launcher-stamped Tier-1
 //! ([`IdentitySource::Stamped`]) lands with the broker.
 
-use std::path::Path;
-
 use crate::connection_auth::AuthError;
-use crate::identity::{exe_path_openat, path_to_app_id};
-use crate::identity_registry::{verify_binary, IdentityRegistry};
+use crate::identity::{exe_ino_dev, exe_path_openat, path_to_app_id};
+use crate::identity_registry::IdentityRegistry;
 use crate::peer_pidfd::{PeerPidfd, PidfdError};
 
 /// How the app_id in a [`StampedIdentity`] was resolved, strongest to weakest.
@@ -112,9 +114,10 @@ pub fn app_id_from_connection<F: std::os::fd::AsRawFd>(
     //    rejected as UnknownBinary, never mis-resolved to the enrolled identity.
     let app_id = path_to_app_id(&exe)?;
 
-    // 4. Label the attestation source from the SAME exe, so the label is self-evident
-    //    rather than inferred from step 3's internal behavior.
-    let source = classify_source(caller_uid, &app_id, &exe);
+    // 4. Label the attestation source. The inode comes from the pinned /proc/{pid}
+    //    fd (following the exe magic-link), never a re-stat of the exe path string,
+    //    so the InodeRegistry label cannot be forged by a same-uid path swap.
+    let source = classify_source(caller_uid, &app_id, peer.pid());
 
     Ok(StampedIdentity {
         app_id,
@@ -130,20 +133,44 @@ pub fn app_id_from_connection<F: std::os::fd::AsRawFd>(
 /// `path_to_app_id`, whose rule-4 treats a corrupt registry as root-caused and
 /// cooperative, so the honest label here is the weakest (not inode-attested), never a
 /// hard error that would deny an otherwise-valid connection.
-fn classify_source(uid: u32, app_id: &str, exe: &Path) -> IdentitySource {
-    let registry = IdentityRegistry::load(uid).ok();
-    classify_source_with(registry.as_ref(), app_id, exe)
+fn classify_source(uid: u32, app_id: &str, pid: u32) -> IdentitySource {
+    // The pinned exe inode (following the exe magic-link under /proc/{pid}); None on
+    // any stat failure -> not inode-attested.
+    let ino_dev = exe_ino_dev(pid);
+    // A corrupt (not merely absent) registry is the trust root failing to load. It
+    // is root-owned, so corruption is root-caused, not a same-uid attack; the app
+    // still resolves cooperatively and is labeled LegacyProc. But surface it as a
+    // distinct audit event so the shadow rollout can tell a corrupt trust-root apart
+    // from a genuinely-unenrolled app (both otherwise read as LegacyProc).
+    let registry = match IdentityRegistry::load(uid) {
+        Ok(r) => Some(r),
+        Err(_) => {
+            tracing::warn!(
+                target: "audit",
+                event = "identity.registry_unloadable",
+                uid,
+                app_id,
+                "inode registry could not be loaded; treating as not inode-attested"
+            );
+            None
+        }
+    };
+    classify_source_with(registry.as_ref(), app_id, ino_dev)
 }
 
-/// Pure core of [`classify_source`] over an already-loaded registry, so the labeling
-/// is unit-testable without the on-disk file or an env override.
+/// Pure core of [`classify_source`]: [`IdentitySource::InodeRegistry`] iff the app is
+/// enrolled AND the pinned exe's `(ino, dev)` matches the record; else
+/// [`IdentitySource::LegacyProc`]. Takes the inode as data (from the pinned fd, not a
+/// path re-stat) so the labeling is unit-testable without the filesystem.
 fn classify_source_with(
     registry: Option<&IdentityRegistry>,
     app_id: &str,
-    exe: &Path,
+    ino_dev: Option<(u64, u64)>,
 ) -> IdentitySource {
-    match registry.and_then(|r| r.lookup(app_id)) {
-        Some(record) if verify_binary(record, exe) => IdentitySource::InodeRegistry,
+    match (registry.and_then(|r| r.lookup(app_id)), ino_dev) {
+        (Some(record), Some((ino, dev))) if record.ino == ino && record.dev == dev => {
+            IdentitySource::InodeRegistry
+        }
         _ => IdentitySource::LegacyProc,
     }
 }
@@ -166,18 +193,23 @@ fn auth_error_from_pidfd(e: PidfdError) -> AuthError {
 mod tests {
     use super::*;
     use crate::identity_registry::{IdentityRecord, IdentityRegistry};
-    use std::io::Write;
     use std::os::unix::net::UnixStream;
     use std::path::PathBuf;
 
-    fn write_bin(dir: &Path, name: &str) -> PathBuf {
-        let p = dir.join(name);
-        let mut f = std::fs::File::create(&p).unwrap();
-        f.write_all(b"binary").unwrap();
-        p
+    fn enrolled(app_id: &str, ino: u64, dev: u64) -> IdentityRegistry {
+        let mut reg = IdentityRegistry::default();
+        reg.record(
+            app_id.into(),
+            IdentityRecord {
+                install_path: PathBuf::from("/usr/lib/arlen/apps/x/bin"),
+                ino,
+                dev,
+            },
+        );
+        reg
     }
 
-    /// A socketpair's peer is this very process: it resolves race-free to our own
+    /// A socketpair's peer is this very process: it resolves recycle-proof to our own
     /// pid/uid, reports alive, and (the cargo-test binary is unenrolled) is labeled
     /// LegacyProc.
     #[test]
@@ -206,48 +238,50 @@ mod tests {
         }
     }
 
-    /// An enrolled app whose binary inode matches its record is InodeRegistry-attested.
+    /// An enrolled app whose pinned exe inode matches its record is InodeRegistry.
     #[test]
-    fn labels_a_matching_enrolled_binary_as_inode_registry() {
-        let tmp = tempfile::tempdir().unwrap();
-        let bin = write_bin(tmp.path(), "app");
-        let mut reg = IdentityRegistry::default();
-        reg.record("com.example.app".into(), IdentityRecord::for_path(&bin).unwrap());
+    fn labels_a_matching_enrolled_inode_as_inode_registry() {
+        let reg = enrolled("com.example.app", 42, 7);
         assert_eq!(
-            classify_source_with(Some(&reg), "com.example.app", &bin),
+            classify_source_with(Some(&reg), "com.example.app", Some((42, 7))),
             IdentitySource::InodeRegistry
         );
     }
 
-    /// A copy of an enrolled binary at a different path has a new inode: the spoof is
-    /// labeled LegacyProc, not attested (belt-and-braces; path_to_app_id would have
-    /// already rejected it as UnknownBinary).
+    /// A mismatching inode (a copy/spoof: different ino or dev) is LegacyProc, never
+    /// attested - the inode comes from the pinned fd, so a path swap cannot forge it.
     #[test]
-    fn labels_a_spoof_copy_as_legacy_proc() {
-        let tmp = tempfile::tempdir().unwrap();
-        let bin = write_bin(tmp.path(), "app");
-        let mut reg = IdentityRegistry::default();
-        reg.record("com.example.app".into(), IdentityRecord::for_path(&bin).unwrap());
-        let copy = tmp.path().join("evil-copy");
-        std::fs::copy(&bin, &copy).unwrap();
+    fn labels_a_mismatching_inode_as_legacy_proc() {
+        let reg = enrolled("com.example.app", 42, 7);
+        // Different inode (a copy).
         assert_eq!(
-            classify_source_with(Some(&reg), "com.example.app", &copy),
+            classify_source_with(Some(&reg), "com.example.app", Some((99, 7))),
+            IdentitySource::LegacyProc
+        );
+        // Different device (same ino number on another fs).
+        assert_eq!(
+            classify_source_with(Some(&reg), "com.example.app", Some((42, 8))),
             IdentitySource::LegacyProc
         );
     }
 
-    /// An unenrolled app, and an absent/unloadable registry, both label LegacyProc.
+    /// Unenrolled app, absent registry, and a failed inode stat all label LegacyProc.
     #[test]
-    fn labels_unenrolled_and_no_registry_as_legacy_proc() {
-        let tmp = tempfile::tempdir().unwrap();
-        let bin = write_bin(tmp.path(), "app");
-        let reg = IdentityRegistry::default();
+    fn labels_unenrolled_absent_and_no_inode_as_legacy_proc() {
+        let reg = enrolled("com.example.app", 42, 7);
+        // Enrolled registry but a different app id.
         assert_eq!(
-            classify_source_with(Some(&reg), "not.enrolled", &bin),
+            classify_source_with(Some(&reg), "not.enrolled", Some((42, 7))),
             IdentitySource::LegacyProc
         );
+        // No registry at all.
         assert_eq!(
-            classify_source_with(None, "com.example.app", &bin),
+            classify_source_with(None, "com.example.app", Some((42, 7))),
+            IdentitySource::LegacyProc
+        );
+        // Registry + app match, but the pinned inode stat failed (None) -> fail-safe.
+        assert_eq!(
+            classify_source_with(Some(&reg), "com.example.app", None),
             IdentitySource::LegacyProc
         );
     }

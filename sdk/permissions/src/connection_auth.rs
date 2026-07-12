@@ -97,10 +97,13 @@ impl ConnectionAuth {
         let (pid, app_id, start_time) = match mode {
             // No behavior change: legacy pid + app_id + start_time.
             StampedMode::Shadow => (peer_pid, legacy_app_id, pid_start_time(peer_pid)?),
-            // Fail closed: the stronger primitive MUST have resolved. The pinned pid
-            // is race-free; the pidfd itself is not retained on ConnectionAuth yet
-            // (verify_alive still uses the start_time recheck), the deferred
-            // pidfd-native refactor.
+            // Fail closed: the stronger primitive MUST have resolved. Enforce
+            // hardens the ACCEPT-TIME identity resolution (the app_id + pid are read
+            // under the pidfd pin, recycle-proof); it is NOT yet stronger for the
+            // life of the connection, because the pidfd is dropped at the end of this
+            // arm and per-request verify_alive still uses the /proc start_time
+            // recheck. Retaining the PeerPidfd on ConnectionAuth (so verify_alive is
+            // peer.is_alive()) is the deferred pidfd-native refactor.
             StampedMode::Enforce => {
                 let s = stamped?;
                 let spid = s.pid();
