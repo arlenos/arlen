@@ -275,6 +275,24 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/xdg-desktop-portal-arlen" => {
             return Ok("xdg-desktop-portal".to_string());
         }
+        // The Context-Capsule daemon. Its capsule serve audits the read BEFORE
+        // returning the slice and FAILS CLOSED on a down/refused ledger, so without
+        // this entry it resolves to UnknownBinary, the audit is refused, and EVERY
+        // capsule read returns "audit unavailable". Resolves to the stable id
+        // `capsuled` the audit daemon's ADMITTED allowlist keys on; root-owned
+        // canonical path attested.
+        "/usr/lib/arlen/libexec/arlen-capsuled" => {
+            return Ok("capsuled".to_string());
+        }
+        // The Connections credential-governance daemon. A credential release audits
+        // BEFORE handing the credential over and FAILS CLOSED on a down/refused
+        // ledger, so without this entry it resolves to UnknownBinary, the audit is
+        // refused, and EVERY credential handout is refused with AuditUnavailable.
+        // Resolves to the stable id `connections` the audit daemon's ADMITTED
+        // allowlist keys on; root-owned canonical path attested.
+        "/usr/lib/arlen/libexec/arlen-connectionsd" => {
+            return Ok("connections".to_string());
+        }
         // The Settings app, pinned canonically so it resolves to the stable
         // app_id `settings` (not the spoofable basename). The Living Capability
         // Graph revoke socket op admits only this app id (living-capability-graph.md
@@ -732,6 +750,32 @@ mod tests {
             assert!(
                 path_to_app_id(&PathBuf::from(spoofed)).is_err(),
                 "spoofed portal path {spoofed} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_app_id_from_path_capsuled_and_connections_canonical_libexec() {
+        // Both daemons audit fail-closed BEFORE their action (capsule serve /
+        // credential release), so a wrong id means the audit is refused and the
+        // action is refused. They must resolve to the stable ids the audit daemon's
+        // ADMITTED allowlist keys on.
+        assert_eq!(
+            path_to_app_id(&PathBuf::from("/usr/lib/arlen/libexec/arlen-capsuled")).unwrap(),
+            "capsuled"
+        );
+        assert_eq!(
+            path_to_app_id(&PathBuf::from("/usr/lib/arlen/libexec/arlen-connectionsd")).unwrap(),
+            "connections"
+        );
+        // Same-basename binaries in writable locations must not impersonate them.
+        for spoofed in [
+            "/tmp/arlen-capsuled",
+            "/home/attacker/arlen-connectionsd",
+        ] {
+            assert!(
+                path_to_app_id(&PathBuf::from(spoofed)).is_err(),
+                "spoofed path {spoofed} must be rejected"
             );
         }
     }
