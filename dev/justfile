@@ -185,6 +185,14 @@ lint-licenses:
     echo "== reuse lint =="
     reuse lint
 
+# A hardening directive added to a daemon's dist/*.service but not the packaged
+# mkosi.extra copy (or the reverse) deploys a unit that differs from the reviewed
+# one. This compares directive lines only (comment reflow is fine); run on demand
+# today, a CI wiring can flip it blocking later.
+# Check packaged mkosi.extra units against their dist/ canonical for directive drift.
+check-units:
+    cd "{{ROOT}}" && bash dev/scripts/check-packaged-units.sh
+
 # Generate the THIRD-PARTY-NOTICES dependency-license artifact (gitignored).
 notices:
     #!/usr/bin/env bash
