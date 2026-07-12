@@ -471,11 +471,25 @@ pub fn install_modules(
         if module_manifest_path.exists() {
             match arlen_modules::load_manifest(&module_manifest_path) {
                 Ok(module_manifest) => {
-                    let profile = crate::module_permissions::profile_from_manifest(&module_manifest);
-                    if let Err(err) = crate::module_permissions::write_profile(&profile) {
+                    // The manifest id becomes a filesystem path in
+                    // `permission_profile_path` (`~/.config/permissions/{id}.toml`) and the
+                    // manifest ships inside the untrusted package, so a `..`/separator id
+                    // would let write_profile escape the permissions dir. Validate it (the
+                    // same guard the package id already gets at install entry) before it
+                    // becomes a path, and skip the profile on a malformed id like an
+                    // unparsable manifest.
+                    if let Err(err) = validate_app_id(&module_manifest.module.id) {
                         tracing::warn!(
-                            "installd: failed to write permission profile for {module_id}: {err}"
+                            "installd: skipping permission profile for {module_id}: invalid module id: {err}"
                         );
+                    } else {
+                        let profile =
+                            crate::module_permissions::profile_from_manifest(&module_manifest);
+                        if let Err(err) = crate::module_permissions::write_profile(&profile) {
+                            tracing::warn!(
+                                "installd: failed to write permission profile for {module_id}: {err}"
+                            );
+                        }
                     }
                 }
                 Err(err) => {
