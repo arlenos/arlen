@@ -2101,3 +2101,119 @@ async fn the_consent_broker_comes_up_hermetically() {
     // Both sockets bound: the broker is up + serving. Dropping `stack` tears it
     // down and removes the root.
 }
+
+/// IT-1 consent/act loop end-to-end (the queue's highest-value boot-verify item):
+/// a requester raises a Confirm over the intake socket and BLOCKS; the (dev-admitted)
+/// shell fetches the front pending via the control socket and resolves it; the
+/// requester's blocked submit returns the decision. Exercises the whole assembled
+/// consent loop over real sockets (no display). Same `#[ignore]` rationale.
+#[tokio::test]
+#[ignore = "needs audit-daemon + consent-broker binaries built and a per-user runtime dir"]
+async fn a_confirm_round_trips_through_the_consent_loop() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    if !arlen_integration::binary_built("daemons/consent-broker", "arlen-consent-broker") {
+        eprintln!(
+            "SKIP a_confirm_round_trips_through_the_consent_loop: arlen-consent-broker not built (run `just integration-nightly`)"
+        );
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    if arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd") {
+        stack
+            .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+            .expect("spawn audit-daemon");
+        stack
+            .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+            .expect("audit ingest socket appears");
+    }
+    stack
+        .spawn("daemons/consent-broker", "arlen-consent-broker", &[])
+        .expect("spawn consent-broker");
+    stack
+        .wait_socket("arlen/consent-intake.sock", Duration::from_secs(20))
+        .expect("consent intake socket appears");
+    stack
+        .wait_socket("arlen/consent-control.sock", Duration::from_secs(20))
+        .expect("consent control socket appears");
+
+    let intake = stack.consent_intake_socket();
+    let control = stack.consent_control_socket();
+
+    // The requester: connect to the intake socket, submit a Destructive /
+    // PermanentDelete confirmation (classified HighStakes -> a dialog is required,
+    // never a silent grant), and BLOCK reading back the single IntakeResult frame.
+    let requester = tokio::spawn(async move {
+        let body = arlen_consent_contract::RequestBody {
+            class: arlen_consent_contract::ConsentClass::Destructive,
+            kind: arlen_ai_core::capability::ActionKind::PermanentDelete,
+            triggered_by_external_content: false,
+            summary: "permanently delete an important file".into(),
+            scope: Some("/work/it/doomed.txt".into()),
+            recipient: None,
+            preview: None,
+            targets: Vec::new(),
+            total: None,
+        };
+        let bytes = serde_json::to_vec(&body).expect("serialise request");
+        let mut stream = tokio::net::UnixStream::connect(&intake)
+            .await
+            .expect("connect intake");
+        stream
+            .write_all(&(bytes.len() as u32).to_le_bytes())
+            .await
+            .expect("write len");
+        stream.write_all(&bytes).await.expect("write body");
+        stream.flush().await.expect("flush");
+        let mut len_buf = [0u8; 4];
+        stream.read_exact(&mut len_buf).await.expect("read result len");
+        let len = u32::from_le_bytes(len_buf) as usize;
+        let mut rbody = vec![0u8; len];
+        stream.read_exact(&mut rbody).await.expect("read result body");
+        serde_json::from_slice::<arlen_consent_contract::IntakeResult>(&rbody)
+            .expect("parse IntakeResult")
+    });
+
+    // The shell: poll the control socket until the pending request appears (the
+    // requester's submit has to reach the queue first), then resolve it. The test
+    // binary resolves to a `dev.` app id, which the control socket admits in a debug
+    // build. ControlClient is synchronous, so drive it on a blocking thread.
+    let mut request_id = None;
+    for _ in 0..100 {
+        let path = control.clone();
+        let pending = tokio::task::spawn_blocking(move || {
+            arlen_consent_broker::ControlClient::new(path).fetch()
+        })
+        .await
+        .expect("join fetch")
+        .expect("fetch pending");
+        if let Some(view) = pending {
+            request_id = Some(view.id);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let id = request_id.expect("a pending consent request appeared on the control socket");
+
+    let path = control.clone();
+    let resolved = tokio::task::spawn_blocking(move || {
+        arlen_consent_broker::ControlClient::new(path)
+            .resolve(id, arlen_consent_contract::ConsentOutcome::AllowedOnce)
+    })
+    .await
+    .expect("join resolve")
+    .expect("resolve");
+    assert!(resolved, "the front pending id resolved");
+
+    // The requester's blocked submit now returns the user's decision.
+    let result = tokio::time::timeout(Duration::from_secs(10), requester)
+        .await
+        .expect("requester returned in time")
+        .expect("requester task");
+    assert_eq!(
+        result,
+        arlen_consent_contract::IntakeResult::Decided {
+            outcome: arlen_consent_contract::ConsentOutcome::AllowedOnce
+        },
+        "the requester received the AllowedOnce decision end-to-end"
+    );
+}
