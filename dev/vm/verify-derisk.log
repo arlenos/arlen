@@ -1,0 +1,5 @@
++ qemu-system-x86_64 -machine q35,accel=kvm:tcg -m 4096 -smp 4 -cpu host -drive if=pflash,unit=0,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd -drive if=pflash,unit=1,format=raw,file=/tmp/arlen-verify-1y3u8gw1/OVMF_VARS.fd -drive if=virtio,format=qcow2,file=/tmp/arlen-verify-1y3u8gw1/overlay.qcow2 -vga none -device virtio-gpu-pci -display none -qmp unix:/tmp/arlen-verify-1y3u8gw1/qmp.sock,server,nowait -serial file:/tmp/arlen-verify-1y3u8gw1/serial.log -no-reboot
+QMP connected; letting the session come up (45s)...
+screenshot: /home/tim/Repositories/arlen/dev/vm/shot-derisk.png (1280x800, 250 distinct colours, 12.3% non-black)
+top bar: present (bar row (5, 5, 5), desktop row (0, 0, 0))
+VERIFY OK: the full desktop rendered (compositor + shell bar)
