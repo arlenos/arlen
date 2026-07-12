@@ -87,12 +87,13 @@ const ADMITTED: &[&str] = &[
 /// Resolve the ingest socket path:
 /// `$XDG_RUNTIME_DIR/arlen/audit-ingest.sock`, falling back to
 /// `/run/arlen/audit-ingest.sock`.
+///
+/// Delegates to [`audit_proto::ingest_socket_path`] so the daemon binds EXACTLY
+/// where every producer's `LedgerAuditSink::at_default_socket()` connects - one
+/// source of truth for the path, so a future change cannot make the bind and the
+/// connect diverge (which would silently drop or fail-close every audit).
 pub fn ingest_socket_path() -> PathBuf {
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/run"));
-    base.join("arlen").join("audit-ingest.sock")
+    audit_proto::ingest_socket_path()
 }
 
 /// The ingest server: shares the single [`Ledger`] writer across
