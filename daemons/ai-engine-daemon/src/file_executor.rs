@@ -63,7 +63,7 @@ const FS_MOVE_TOOL: &str = "fs.move";
 const FS_TRASH_TOOL: &str = "fs.trash";
 
 /// The create act: write a NEW file with content; undo deletes exactly that file.
-const FS_CREATE_TOOL: &str = "fs.create";
+pub(crate) const FS_CREATE_TOOL: &str = "fs.create";
 
 /// The forward producer for the reversible filesystem acts (`fs.move`, `fs.trash`).
 /// Audit + undo-signer are optional (tests that exercise only the mechanics omit
