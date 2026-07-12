@@ -20,10 +20,13 @@ Environment=ARLEN_APP_ID=journald-parser
 Restart=on-failure
 RestartSec=2
 
-# Reading the SYSTEM journal needs membership in systemd-journal; without it
-# journalctl yields nothing and the daemon idles (no crash). The user-session
-# instance is granted the group here.
-SupplementaryGroups=systemd-journal
+# Reading the SYSTEM journal needs membership in systemd-journal. That membership
+# is INHERITED FROM THE LOGIN SESSION (arlen is added to systemd-journal at user
+# creation, see mkosi.postinst), NOT granted by this unit: a user-manager service
+# cannot call setgroups (no CAP_SETGID), so SupplementaryGroups= here fails the
+# unit at step GROUP ("Changing group credentials failed: Operation not
+# permitted") and must not be used. Without journal access the daemon idles (no
+# crash); with the login-inherited group it reads the system journal.
 
 # It writes nothing under the home and serves no socket of its own; it only reads
 # the journal (a subprocess) and emits over the AF_UNIX producer socket.

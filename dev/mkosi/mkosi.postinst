@@ -13,5 +13,10 @@ set -eu
 # chown-on-home "Invalid argument" warning is benign (mkosi remaps the uid on the
 # final image). Login is only ever the unattended [initial_session].
 if ! id arlen >/dev/null 2>&1; then
-    useradd --create-home --shell /bin/bash --groups video,input,render arlen
+    # systemd-journal: arlen-journald-parser (a USER service) reads the SYSTEM
+    # journal. A user-manager service cannot gain a supplementary group itself
+    # (no CAP_SETGID -> "Changing group credentials failed"), so membership must
+    # come from the login session: adding arlen to systemd-journal here makes its
+    # user session (and every user service it spawns) inherit journal read access.
+    useradd --create-home --shell /bin/bash --groups video,input,render,systemd-journal arlen
 fi
