@@ -39,28 +39,26 @@ Environment=ARLEN_PI_NODE_RUNTIME=/usr/lib/arlen/node-runtime
 Environment=ARLEN_PI_INSTALL=/usr/lib/arlen/pi
 Environment=ARLEN_PI_EXTENSION=/usr/lib/arlen/pi-plugins/dist/extension.js
 
-# Reads ai.toml + the baked behaviours (read-only); writes the durable
-# compensation/undo store under ~/.local/state/arlen and binds its contract +
-# drive sockets under /run/user/%U/arlen. Unix sockets + the session bus only
-# (model traffic transits the proxy; the sidecar itself is --unshare-net).
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=%h/.local/state/arlen
-ReadWritePaths=/run/user/%U/arlen
+# The daemon authenticates every engine-socket + rpc-proxy peer, and every
+# compensate/undo D-Bus caller, by resolving the caller's /proc/<pid>/exe against
+# the F3 app-id chain (SO_PEERCRED gives the pid; ConnectionAuth::extract_from ->
+# app_id_from_pid reads the exe). A mount namespace on THIS daemon (created by ANY
+# of ProtectSystem, ProtectHome, PrivateTmp, PrivateDevices, ProtectKernel*) makes
+# /proc/<other-pid>/exe unreadable to a same-uid reader, so it would reject EVERY
+# connection and refuse EVERY undo - the whole engine IPC surface (AI requests from
+# the shell, undo from the harness) dead in deployment. Proven on this host: a
+# readlink of /proc/<pid>/exe under any single one of those options fails EACCES
+# for a same-uid target. They are therefore OMITTED, exactly as the audit daemon
+# and the consent broker omit them for the identical peer-auth reason. This does
+# NOT weaken the real security boundary: the untrusted pi/node sidecar is confined
+# by bwrap, which creates its OWN user + mount + pid + ipc + uts + net + cgroup
+# namespaces (--unshare-*) that a non-sandboxed parent only makes freer, not
+# weaker; the daemon itself is trusted first-party code whose integrity rests on
+# SO_PEERCRED attestation + the gate + the audit ledger, not on its own filesystem
+# isolation. RestrictNamespaces stays wide enough for bwrap's --unshare-* set. The
+# hardening that does NOT create a mount namespace is kept.
 RestrictAddressFamilies=AF_UNIX
-PrivateTmp=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
 LockPersonality=yes
-# NB (needs image-boot verification): unlike the retired ai-agent unit, this
-# daemon SPAWNS a bwrap sidecar, which creates user + mount + pid + ipc + uts +
-# net + cgroup namespaces (bwrap --unshare-*). A blanket RestrictNamespaces=yes
-# (the agent unit's setting) would deny those and the sidecar could not start, so
-# the namespace set bwrap needs is explicitly allowed here instead. ProtectControl
-# Groups is likewise left off so the sidecar's cgroup namespace is not blocked.
-# The confinement of the untrusted pi/node is bwrap's job; this unit's hardening
-# is defense-in-depth on the trusted daemon and must not neuter the jail. Verify
-# on a real image boot that the sidecar spawns under these settings.
 RestrictNamespaces=user mnt pid ipc uts net cgroup
 NoNewPrivileges=yes
 
