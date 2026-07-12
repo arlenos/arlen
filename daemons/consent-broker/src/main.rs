@@ -304,7 +304,18 @@ fn peer_diag(stream: &UnixStream) -> String {
     let comm = std::fs::read_to_string(format!("/proc/{}/comm", cred.pid))
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| "?".to_string());
-    format!("pid={} uid={} comm={}", cred.pid, cred.uid, comm)
+    // The owner uid of /proc/<pid> reveals the dumpable state: a non-dumpable
+    // process (its exe unreadable by a same-uid non-root reader) has /proc/<pid>
+    // owned by root (0); a dumpable one is owned by the process uid. So
+    // procowner=0 here = the caller is non-dumpable (the cause of the exe EACCES).
+    use std::os::unix::fs::MetadataExt;
+    let procowner = std::fs::metadata(format!("/proc/{}", cred.pid))
+        .map(|m| m.uid().to_string())
+        .unwrap_or_else(|_| "?".to_string());
+    format!(
+        "pid={} uid={} comm={} procowner={}",
+        cred.pid, cred.uid, comm, procowner
+    )
 }
 
 async fn handle_control_conn(state: Arc<SharedState>, mut stream: UnixStream, uid: u32) {
