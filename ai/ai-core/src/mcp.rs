@@ -658,7 +658,7 @@ impl AlwaysConfirm {
         let segments = name_segments(tool);
         for segment in &segments {
             let reason = match segment.as_str() {
-                "delete" | "remove" | "trash" | "rm" | "unlink" | "rmdir" => {
+                "delete" | "remove" | "rm" | "unlink" | "rmdir" => {
                     Some(AlwaysConfirmReason::FileDeletion)
                 }
                 "send" | "email" | "mail" | "message" | "post" | "publish" => {
@@ -685,6 +685,13 @@ impl AlwaysConfirm {
                 || has("edit") || has("system"))
         {
             return Some(AlwaysConfirmReason::SystemConfigWrite);
+        }
+        // EMPTYING the trash is a permanent, irreversible delete, so it confirms.
+        // MOVING a file to the trash (`fs.trash`) is NOT: its harm is at-state (the
+        // file's location, fully restorable), so it stays in the reversible/
+        // autonomous tier and must not be caught by a bare "trash" segment.
+        if has("empty") && has("trash") {
+            return Some(AlwaysConfirmReason::FileDeletion);
         }
         None
     }
@@ -931,6 +938,19 @@ mod tests {
         // distinct word, `configure` is not `config`.
         assert_eq!(AlwaysConfirm::classify("undelete"), None);
         assert_eq!(AlwaysConfirm::classify("configure_view"), None);
+        // Moving a file to the trash is reversible curation, NOT a permanent
+        // delete: it must not trip the confirm classifier (it stays autonomous).
+        assert_eq!(AlwaysConfirm::classify("fs.trash"), None);
+        assert_eq!(AlwaysConfirm::classify("trash_file"), None);
+        // Emptying the trash IS a permanent, irreversible delete: it confirms.
+        assert_eq!(
+            AlwaysConfirm::classify("empty_trash"),
+            Some(AlwaysConfirmReason::FileDeletion)
+        );
+        assert_eq!(
+            AlwaysConfirm::classify("trash.empty"),
+            Some(AlwaysConfirmReason::FileDeletion)
+        );
     }
 
     #[test]
