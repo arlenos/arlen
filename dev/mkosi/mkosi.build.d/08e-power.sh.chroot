@@ -1,0 +1,31 @@
+#!/bin/sh
+# Phase 8e (CHROOT): the power daemon (arlen-powerd). It owns `org.arlen.Power1`
+# on the session bus and publishes `power.state` (battery/AC/profile) which the
+# shell's power indicator + Quick Settings consume (SST-R2). Without it the shell's
+# power surface is dead in the image (the "backend built, not deployed" class).
+# Packaged like the other libexec daemons.
+#
+# Its own standalone cargo workspace (daemons/power-daemon) -> its own target dir
+# in the persistent cache. Pure Rust, no C/C++.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-power"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the power daemon (arlen-powerd) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/power-daemon/Cargo.toml
+
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-powerd" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-powerd"
+echo ">> staged arlen-powerd into the image"

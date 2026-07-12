@@ -1,0 +1,18 @@
+[Unit]
+Description=Arlen Notification Daemon
+Documentation=https://github.com/arlenos/notification-daemon
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.Notifications
+# Root-owned system path so the daemon's identity is attested (SO_PEERCRED →
+# `path_to_app_id` → `notifyd`) and admitted by the audit ledger (GAP-2). A
+# per-user $HOME path would be same-uid-spoofable and is not a trusted producer.
+ExecStart=/usr/lib/arlen/libexec/arlen-notifyd
+
+# Restart on crash.
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
