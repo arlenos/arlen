@@ -1,0 +1,35 @@
+[Unit]
+Description=Arlen code-graph indexer (user service)
+Documentation=https://github.com/arlenos/arlen
+# arlen-code-indexer is the Tier-2 code-graph ingestion daemon (code-graph-layer.md
+# CG-R1/CG-R3). It consumes file.opened from the event bus and, for each changed,
+# project-scoped source file (Rust, Python, TypeScript), re-parses ONLY that file
+# (tree-sitter, per-file isolation) and emits a code.indexed event the knowledge
+# daemon promotes into CodeSymbol + DEFINES. Per-user daemon: it reads the user's
+# own project source and emits onto the per-uid event bus. Cross-file resolution
+# is CG-R2.
+
+[Service]
+Type=notify
+ExecStart=/usr/lib/arlen/libexec/arlen-code-indexer
+Restart=on-failure
+RestartSec=2
+
+# It READS project source under the home and talks only over AF_UNIX (the
+# event-bus producer + the knowledge read socket); it writes nothing under the
+# home, so ProtectHome=read-only is sufficient.
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target

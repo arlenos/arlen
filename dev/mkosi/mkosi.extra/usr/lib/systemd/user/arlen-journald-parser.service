@@ -1,0 +1,44 @@
+[Unit]
+Description=Arlen journald Tier-2 ingestion (user service)
+Documentation=https://github.com/arlenos/arlen
+# arlen-journald-parser follows the system journal for NetworkManager, bluetoothd
+# and systemd-logind via `journalctl --follow --output=json` and emits a coarse,
+# non-sensitive system.service event per recognised transition onto the per-user
+# event-bus producer socket. It is the second of the three named ingestion tiers
+# (the eBPF kernel-layer is Tier-1). It carries no SSID and no credential, only
+# service-level lifecycle facts. Per-user daemon, mirroring arlen-powerd's
+# "per-user daemon over a system source" shape.
+
+[Service]
+Type=notify
+# Production binary path (system-wide install). Dev runs invoke the debug binary
+# directly; this file is the canonical production unit.
+ExecStart=/usr/lib/arlen/libexec/arlen-journald-parser
+# Source stamp on the emitted events (UnixEventEmitter reads ARLEN_APP_ID).
+Environment=ARLEN_APP_ID=journald-parser
+# A failure exits non-zero; restart with back-off so a persistent fault surfaces.
+Restart=on-failure
+RestartSec=2
+
+# Reading the SYSTEM journal needs membership in systemd-journal; without it
+# journalctl yields nothing and the daemon idles (no crash). The user-session
+# instance is granted the group here.
+SupplementaryGroups=systemd-journal
+
+# It writes nothing under the home and serves no socket of its own; it only reads
+# the journal (a subprocess) and emits over the AF_UNIX producer socket.
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_UNIX
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target

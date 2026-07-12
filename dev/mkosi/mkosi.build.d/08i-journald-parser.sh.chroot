@@ -1,0 +1,34 @@
+#!/bin/sh
+# Phase 8i (CHROOT): the journald parser (arlen-journald-parser), a Tier-2 KG
+# producer that reads the systemd journal and emits per-service events
+# (NetworkManager/bluetoothd/logind patterns) into the knowledge graph. Built +
+# intended as an always-on user service (Type=notify, WantedBy=default.target) but
+# never wired into the image - the "built, not deployed" class. Unlike the code
+# indexer it has real effect in the minimal image (the booted VM has a live
+# journal), so a boot enriches the KG from it. Packaged like the other libexec
+# daemons.
+#
+# Resolves as a standalone package (cargo build --manifest-path) -> its own target
+# dir in the persistent cache. Pure Rust, no C/C++.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-journald-parser"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the journald parser (arlen-journald-parser) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/journald-parser/Cargo.toml
+
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-journald-parser" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-journald-parser"
+echo ">> staged arlen-journald-parser into the image"
