@@ -1,0 +1,9 @@
+# Starting permission profile for a minimal PDF/document viewer (mupdf-gl, the
+# MuPDF OpenGL viewer). Reads documents from Documents; no network and no
+# Knowledge Graph.
+[info]
+app_id = "mupdf-gl"
+tier = "third-party"
+
+[filesystem]
+documents = true
