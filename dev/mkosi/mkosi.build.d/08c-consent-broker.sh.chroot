@@ -1,0 +1,39 @@
+#!/bin/sh
+# Phase 8c (CHROOT): the consent broker (arlen-consent-broker), the user-session
+# daemon that owns the Confirm/consent surface. The ai-engine gate classifies a
+# high-impact / irreversible / externally-triggered action as Confirm and enqueues
+# a prompt on the broker's intake socket; the shell fetches the front pending
+# request over the broker's CONTROL socket (admitted only for the resolved app id
+# `desktop-shell`) and submits the user's decision. Without this daemon the whole
+# consent/act loop is inert in the image - the shell's consent_fetch() has no
+# socket to connect to - so it is packaged like the other libexec daemons.
+#
+# Its own standalone cargo workspace (daemons/consent-broker) -> its own target
+# dir in the persistent cache. Pure Rust, no C/C++.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-consent-broker"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the consent broker (arlen-consent-broker) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/consent-broker/Cargo.toml
+
+# Install under /usr/lib/arlen/libexec (its unit's ExecStart): this is the
+# canonical path the security model resolves identity against - the broker
+# resolves the shell's app id from its bus-attested pid via path_to_app_id, and
+# it submits its resolved-decision audit entries under its own resolved id, so it
+# must live beside the other libexec daemons for path_to_app_id to map it.
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-consent-broker" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-consent-broker"
+echo ">> staged arlen-consent-broker into the image (libexec, the canonical identity path)"
