@@ -150,6 +150,19 @@ pub(crate) fn action_kind_for_tool(tool: &str) -> ActionKind {
         Some(AlwaysConfirmReason::SystemConfigWrite) => ActionKind::SystemConfigChange,
         Some(AlwaysConfirmReason::ElevatedCommand) => ActionKind::ElevatedPrivilege,
         Some(AlwaysConfirmReason::GenericExecution) => ActionKind::ElevatedPrivilege,
+        // Fail-closed reconciliation with the D1 gate-class table: a tool the table
+        // marks `Confirm` must NEVER resolve to `Ordinary` here, or `Capability::
+        // decide` would lift it to autonomous under executor_live. This closes the
+        // documented `action_kind_for_tool` vs `gate_class_for_tool` disagreement -
+        // `graph.set_field` / `graph.retract_node` / `fs.create` carry no
+        // always-confirm keyword, so without this they would fall through to
+        // `Ordinary` and become autonomous the moment they are registered. A
+        // Confirm-classed but name-unclassified tool gets a non-`Ordinary` kind so it
+        // always confirms; the specific variant is immaterial (every non-`Ordinary`
+        // kind requires confirmation). The finer path-discriminated downgrade for a
+        // create in a safe dir lands in the executor with the run_command consent
+        // flow (ai-act-layer-plan.md, the §SHARPENED PRINCIPLE).
+        None if gate_class_for_tool(tool) == GateClass::Confirm => ActionKind::SystemConfigChange,
         None => ActionKind::Ordinary,
     }
 }
@@ -332,7 +345,15 @@ pub fn gate_class_for_tool(tool: &str) -> GateClass {
         "graph.assert_edge" | "graph.retract_edge" | "fs.move" | "fs.trash"
         | "settings.set" => GateClass::ReversibleAction,
         // Irreversible graph + fs actions: Confirm.
-        "graph.set_field" | "graph.retract_node" | "fs.delete" => GateClass::Confirm,
+        // fs.create defaults to Confirm: a create can be a persistence / code-
+        // execution vector (a new ~/.bashrc, an autostart .desktop, a systemd-user
+        // unit), and "reversible" DeleteCreated does NOT bound that at-write harm
+        // (ai-act-layer-plan.md §SHARPENED PRINCIPLE). The path-discriminated
+        // downgrade (a create in a SAFE dir -> autonomous) lands in the executor with
+        // the run_command consent flow; this is the fail-closed name-only default.
+        "graph.set_field" | "graph.retract_node" | "fs.delete" | "fs.create" => {
+            GateClass::Confirm
+        }
         // Package / external-send / egress-reach / opaque-exec / elevated: Confirm
         // (standing autonomy for these comes only via the heavy consent surface).
         "install" | "uninstall" | "send" | "email" | "post" | "fetch" | "http"
@@ -361,6 +382,9 @@ mod tests {
         assert_eq!(gate_class_for_tool("graph.set_field"), GateClass::Confirm);
         assert_eq!(gate_class_for_tool("graph.retract_node"), GateClass::Confirm);
         assert_eq!(gate_class_for_tool("fs.delete"), GateClass::Confirm);
+        // fs.create is Confirm by default (persistence risk; path-discriminated
+        // downgrade lands with the consent flow).
+        assert_eq!(gate_class_for_tool("fs.create"), GateClass::Confirm);
         assert_eq!(gate_class_for_tool("run_command"), GateClass::Confirm);
         assert_eq!(gate_class_for_tool("fetch"), GateClass::Confirm);
         assert_eq!(gate_class_for_tool("sudo"), GateClass::Confirm);
@@ -604,8 +628,27 @@ mod tests {
         assert_eq!(action_kind_for_tool("install_pkg"), ActionKind::PackageChange);
         // A generic execution tool the name cannot judge always confirms.
         assert_eq!(action_kind_for_tool("run_shell"), ActionKind::ElevatedPrivilege);
-        // An unclassified tool is ordinary.
+        // An unclassified tool with no Confirm gate-class is ordinary.
         assert_eq!(action_kind_for_tool("note.append"), ActionKind::Ordinary);
+    }
+
+    #[test]
+    fn a_confirm_classed_tool_never_resolves_to_ordinary() {
+        // The fail-closed reconciliation: a tool the D1 table marks Confirm but that
+        // carries no always-confirm name keyword must NOT fall through to Ordinary
+        // (which would go autonomous under executor_live). fs.create + the
+        // graph mutators are the documented cases.
+        for tool in ["fs.create", "graph.set_field", "graph.retract_node"] {
+            assert_ne!(
+                action_kind_for_tool(tool),
+                ActionKind::Ordinary,
+                "{tool} is Confirm-classed; it must never resolve to Ordinary"
+            );
+        }
+        // The reversible autonomous acts stay Ordinary (they lift to autonomous by
+        // design), so the reconciliation does not over-confirm them.
+        assert_eq!(action_kind_for_tool("fs.move"), ActionKind::Ordinary);
+        assert_eq!(action_kind_for_tool("settings.set"), ActionKind::Ordinary);
     }
 
     #[test]
