@@ -14,8 +14,9 @@ Documentation=https://github.com/arlenos/arlen
 # USER daemon that brings that dir up (it create_dir_all's it before binding its
 # own sockets and only signals READY after). Ordering after arlen-event-bus does
 # NOT work: the event bus is a SYSTEM unit, so a user-manager After= on it is void
-# and powerd would race the dir, failing at the NAMESPACE step (ReadWritePaths
-# bind of a not-yet-existent dir) until it recovers on a restart. The event-bus
+# and powerd would race the dir, failing to bind its query socket under a
+# not-yet-existent dir (query_socket::bind does not create the parent) until it
+# recovers on a restart. The event-bus
 # producer socket powerd publishes to is a system service already up before the
 # user session, so no user-side ordering is needed for it.
 After=arlen-auditd.service
@@ -33,22 +34,21 @@ ExecStart=/usr/lib/arlen/libexec/arlen-powerd
 Restart=on-failure
 RestartSec=2
 
-# It only READS UPower and serves over the bus + publishes to the event bus; it
-# writes nothing under the home, so ProtectHome=read-only is sufficient. Power
-# actions (PWR-R2 suspend, PWR-R5 profiles) add no home writes either; they talk
-# to logind / power-profiles-daemon over the system bus.
-ProtectSystem=strict
-ProtectHome=read-only
-# The query socket binds under the shared per-user runtime dir; ProtectSystem=
-# strict makes the whole tree read-only, so this dir must be granted back (the
-# same line every socket-binding arlen daemon carries, e.g. auditd, capsuled).
-ReadWritePaths=/run/user/%U/arlen
+# powerd authenticates each privileged D-Bus caller (PWR-R5 profile-set, PWR-R2
+# power actions) by resolving /proc/<caller-pid>/exe against the app-id allowlist
+# (resolve_caller_app_id -> app_id_from_pid). A mount-namespace sandbox
+# (ProtectSystem, ProtectHome, PrivateTmp, PrivateDevices, ProtectControlGroups,
+# ProtectKernel*) makes /proc/<other-pid>/exe unreadable to a same-uid reader, so
+# those options break that peer auth outright: the shell's power actions would be
+# denied. This is the identical trap the audit daemon and consent broker document
+# and omit for the same reason; they are therefore intentionally OMITTED here too.
+# powerd's integrity rests on the bus-attested caller PID + the fail-closed app-id
+# resolve, not on filesystem isolation, and it holds no persistent state (it only
+# reads UPower and talks to logind / power-profiles-daemon over the system bus).
+# Without ProtectSystem there is no read-only tree, so no ReadWritePaths is needed
+# (arlen-auditd create_dir_all's the shared /run/user/%U/arlen the query socket
+# binds under). The hardening that does NOT create a mount namespace is kept.
 RestrictAddressFamilies=AF_UNIX
-PrivateTmp=yes
-PrivateDevices=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
 RestrictNamespaces=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
