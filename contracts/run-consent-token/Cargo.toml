@@ -1,0 +1,16 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-run-consent-token"
+version = "0.1.0"
+edition = "2021"
+description = "The per-action consent token for run_command: a public-key-verifiable Biscuit the AI-engine daemon mints when a run_command Confirm is approved, and the terminal-run MCP server verifies at its boundary before running the command"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+biscuit-auth = "6.0.0"
+sha2 = "0.10"
+thiserror = "1"
+
+[workspace]
