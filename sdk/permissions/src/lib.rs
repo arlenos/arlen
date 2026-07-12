@@ -36,6 +36,8 @@ pub enum PermissionError {
     NotFound { app_id: String },
     #[error("home directory not found")]
     NoHomeDir,
+    #[error("invalid app id: {app_id}")]
+    InvalidAppId { app_id: String },
     #[error("IO: {0}")]
     Io(#[from] std::io::Error),
     #[error("parse: {0}")]
@@ -754,6 +756,18 @@ impl McpPermissions {
 /// override is for tests and dev sandboxes only — never set in
 /// production.
 pub fn profile_path(app_id: &str) -> Result<PathBuf, PermissionError> {
+    // The id is interpolated into a filesystem path, so it MUST be a single safe
+    // path component - the same guard `system_profile_path` applies. Validating
+    // here makes the function fail-safe for EVERY caller: an id like `/etc/x`
+    // (absolute, discards the base) or `../../etc/x` (lexical escape) can never
+    // produce a path outside the permissions directory, even if a caller forgot to
+    // pre-check it. Callers that resolve the id from a kernel-attested peer, or
+    // charset-check it first, are unaffected (every real app id passes).
+    if !is_valid_app_id(app_id) {
+        return Err(PermissionError::InvalidAppId {
+            app_id: app_id.to_string(),
+        });
+    }
     if let Ok(p) = std::env::var("ARLEN_PERMISSIONS_DIR") {
         return Ok(PathBuf::from(p).join(format!("{app_id}.toml")));
     }
@@ -1044,6 +1058,24 @@ always_confirm_overrides = ["empty_trash"]
         for bad in ["..", "a/b", "../etc/x", "", "Upper", ".hidden", "trailing."] {
             assert!(system_profile_path(bad).is_none(), "{bad:?} must be rejected");
         }
+    }
+
+    #[test]
+    fn profile_path_rejects_a_traversal_id() {
+        // The user-config path is fail-safe too: a traversal id can never build a
+        // path outside the permissions dir, even without a caller-side pre-check.
+        for bad in ["..", "a/b", "../etc/x", "/etc/x", "", "Upper", ".hidden", "trailing."] {
+            assert!(
+                matches!(profile_path(bad), Err(PermissionError::InvalidAppId { .. })),
+                "{bad:?} must be rejected as an invalid app id"
+            );
+        }
+        // A real app id is never rejected as invalid (it resolves, or fails only
+        // for want of a home dir - never InvalidAppId).
+        assert!(!matches!(
+            profile_path("com.example.notes"),
+            Err(PermissionError::InvalidAppId { .. })
+        ));
     }
 
     #[test]
