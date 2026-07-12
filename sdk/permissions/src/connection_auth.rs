@@ -81,9 +81,32 @@ impl ConnectionAuth {
             });
         }
 
-        let pid = peer_pid;
-        let app_id = app_id_from_pid(pid)?;
-        let start_time = pid_start_time(pid)?;
+        // Legacy resolution: the racy SO_PEERCRED pid -> /proc/exe app_id. Kept
+        // authoritative in shadow mode so the rollout changes no behavior.
+        let legacy_app_id = app_id_from_pid(peer_pid)?;
+
+        // Stamped-identity resolver (pidfd-pinned, race-free). In shadow mode it is
+        // observed for divergence only; in enforce mode it is authoritative and
+        // fail-closed. Default is shadow (any ARLEN_STAMPED_IDENTITY != "enforce").
+        // NB: this is the same-uid extract_from path; the knowledge daemon's
+        // cross-uid AI-daemon resolver is separate and is NOT touched here.
+        let mode = stamped_mode();
+        let stamped = crate::stamped_identity::app_id_from_connection(stream, caller_uid);
+        observe_stamped_divergence(peer_pid, &legacy_app_id, &stamped, mode);
+
+        let (pid, app_id, start_time) = match mode {
+            // No behavior change: legacy pid + app_id + start_time.
+            StampedMode::Shadow => (peer_pid, legacy_app_id, pid_start_time(peer_pid)?),
+            // Fail closed: the stronger primitive MUST have resolved. The pinned pid
+            // is race-free; the pidfd itself is not retained on ConnectionAuth yet
+            // (verify_alive still uses the start_time recheck), the deferred
+            // pidfd-native refactor.
+            StampedMode::Enforce => {
+                let s = stamped?;
+                let spid = s.pid();
+                (spid, s.app_id().to_string(), pid_start_time(spid)?)
+            }
+        };
         let profile = match load_profile(&app_id) {
             Ok(p) => p,
             Err(PermissionError::NotFound { .. }) => {
@@ -186,6 +209,64 @@ impl ConnectionAuth {
     }
 }
 
+/// Whether the pidfd-stamped identity resolver runs observe-only (shadow, the
+/// default) or is authoritative + fail-closed (enforce). Selected per process by
+/// `ARLEN_STAMPED_IDENTITY`; any value other than `enforce` (including unset) is
+/// shadow, the no-behavior-change default, so a typo never silently enforces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StampedMode {
+    Shadow,
+    Enforce,
+}
+
+/// Pure parse of the mode env value, so the default-safe semantics are testable
+/// without touching the process environment.
+fn parse_stamped_mode(value: Option<&str>) -> StampedMode {
+    match value {
+        Some("enforce") => StampedMode::Enforce,
+        _ => StampedMode::Shadow,
+    }
+}
+
+fn stamped_mode() -> StampedMode {
+    parse_stamped_mode(std::env::var("ARLEN_STAMPED_IDENTITY").ok().as_deref())
+}
+
+/// Emit an audit log line when the pidfd-stamped resolver disagrees with the legacy
+/// `/proc` resolution, or when it could not run at all. Observation only (in both
+/// modes): the shadow rollout confirms zero divergence over a dogfood session before
+/// any socket is flipped to enforce. Routed to the `audit` tracing target so a
+/// daemon's journald pipeline captures it.
+fn observe_stamped_divergence(
+    pid: u32,
+    legacy: &str,
+    stamped: &Result<crate::stamped_identity::StampedIdentity, AuthError>,
+    mode: StampedMode,
+) {
+    match stamped {
+        Ok(s) if s.app_id() != legacy => tracing::warn!(
+            target: "audit",
+            event = "identity.divergence",
+            pid,
+            legacy,
+            stamped = s.app_id(),
+            source = ?s.source(),
+            mode = ?mode,
+            "stamped identity diverges from the legacy /proc resolution"
+        ),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(
+            target: "audit",
+            event = "identity.stamped_unavailable",
+            pid,
+            legacy,
+            mode = ?mode,
+            error = %e,
+            "stamped identity resolver could not run"
+        ),
+    }
+}
+
 /// `SO_PEERCRED` getsockopt wrapper. Returns `(pid, uid)`. We
 /// use libc directly because `std::os::unix::net::UnixStream::
 /// peer_cred()` is unstable as of Rust 1.90 (issue #42839).
@@ -261,4 +342,32 @@ mod tests {
     // pair; leave full integration tests for the broker side
     // (clipboard_ipc tests in desktop-shell, which spin up a
     // UnixListener and connect-pair).
+
+    /// The mode env parses default-safe: only the exact `enforce` enforces;
+    /// unset, `shadow`, and any typo all stay shadow (no silent enforcement).
+    #[test]
+    fn stamped_mode_defaults_to_shadow() {
+        assert_eq!(parse_stamped_mode(None), StampedMode::Shadow);
+        assert_eq!(parse_stamped_mode(Some("shadow")), StampedMode::Shadow);
+        assert_eq!(parse_stamped_mode(Some("Enforce")), StampedMode::Shadow);
+        assert_eq!(parse_stamped_mode(Some("")), StampedMode::Shadow);
+        assert_eq!(parse_stamped_mode(Some("enforce")), StampedMode::Enforce);
+    }
+
+    /// In shadow mode (the default) extract_from over a real socketpair still
+    /// returns the legacy /proc resolution unchanged: the stamped resolver runs
+    /// only for observation. The peer is this process, so both resolvers agree.
+    #[test]
+    fn shadow_extract_from_returns_the_legacy_identity() {
+        use std::os::unix::net::UnixStream;
+        let (a, _b) = UnixStream::pair().expect("socketpair");
+        // SAFETY: getuid never fails.
+        let uid = unsafe { libc::getuid() };
+        let auth = ConnectionAuth::extract_from(&a, uid).expect("auth");
+        assert_eq!(auth.uid(), uid);
+        assert_eq!(auth.pid(), std::process::id());
+        // Shadow keeps the legacy app_id; for this process it equals the stamped one.
+        let legacy = app_id_from_pid(std::process::id()).expect("legacy app id");
+        assert_eq!(auth.app_id(), legacy);
+    }
 }
