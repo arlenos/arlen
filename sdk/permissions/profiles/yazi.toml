@@ -1,0 +1,8 @@
+# Starting permission profile for a modern terminal file manager (Yazi). It browses and manages the user's files,
+# so it gets Home; no network of its own and no Knowledge Graph.
+[info]
+app_id = "yazi"
+tier = "third-party"
+
+[filesystem]
+home = true
