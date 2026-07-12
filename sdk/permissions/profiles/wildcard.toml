@@ -1,0 +1,5 @@
+# Starting permission profile for a regular-expression tester (Wildcard). It runs
+# entirely locally on text the user types; it needs no file access and no network.
+[info]
+app_id = "wildcard"
+tier = "third-party"

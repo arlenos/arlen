@@ -1,0 +1,9 @@
+# Starting permission profile for an image redaction tool (Obfuscate). It opens an
+# image and saves the censored copy, so it gets home filesystem access; it uses no
+# network.
+[info]
+app_id = "gnome-obfuscate"
+tier = "third-party"
+
+[filesystem]
+home = true

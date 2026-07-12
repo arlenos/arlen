@@ -1,0 +1,8 @@
+# Starting permission profile for an app-icon generator (Emblem). It exports the
+# generated icon to disk, so it gets home filesystem access; it uses no network.
+[info]
+app_id = "emblem"
+tier = "third-party"
+
+[filesystem]
+home = true

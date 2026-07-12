@@ -1,0 +1,5 @@
+# Starting permission profile for a drum-machine sequencer. It plays built-in
+# samples locally; it needs no file access and no network.
+[info]
+app_id = "drum-machine"
+tier = "third-party"
