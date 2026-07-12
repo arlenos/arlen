@@ -3,9 +3,12 @@ Description=Arlen Context Capsule daemon (user service)
 Documentation=https://github.com/arlenos/arlen
 # capsuled serves same-machine capsule reads: a reader presents a signed grant
 # and gets the frozen slice from capsuled's own content-addressed store. It audits
-# each read through the audit daemon, but tolerates it being absent (a down audit
-# fails the read closed, not the daemon), so there is no startup ordering
-# requirement here.
+# each read through the audit daemon FAIL-CLOSED (a down audit fails the read
+# closed, not the daemon). `After=` orders startup without `Requires=` blocking it:
+# the daemon binds and serves whether or not the audit daemon is up yet, but
+# ordering after the Type=notify audit daemon shrinks the window in which a read
+# would fail closed (same convention as the consent broker and the AI engine).
+After=arlen-auditd.service
 
 [Service]
 # Type=simple: capsuled does not call sd_notify. A reader connects lazily and a
