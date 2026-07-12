@@ -18,6 +18,15 @@ ExecStart=/usr/lib/arlen/libexec/arlen-consent-broker
 Restart=on-failure
 RestartSec=2
 
+# Stamped-identity ENFORCE. The consent surface gates whether an action reaches
+# the user, so its CONTROL peer (the shell, admitted as desktop-shell) and its
+# intake requesters are worth pinning to the pidfd-stamped resolver rather than
+# the racy SO_PEERCRED pid. Shadow-confirmed: the shell's CONTROL auth resolved
+# with zero divergence and SO_PEERPIDFD is available; the intake requesters are
+# canonical-path system daemons, so the stamped app_id equals the legacy one by
+# construction. Enforce fails closed (an unresolvable pidfd denies the caller).
+Environment=ARLEN_STAMPED_IDENTITY=enforce
+
 # The broker authenticates every CONTROL/intake peer by resolving its
 # /proc/<pid>/exe against the app-id allowlist (SO_PEERCRED gives the PID, the
 # exe is the identity, via arlen_permissions path_to_app_id). A mount-namespace
