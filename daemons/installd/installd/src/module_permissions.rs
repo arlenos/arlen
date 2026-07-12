@@ -43,8 +43,14 @@ pub fn permissions_dir() -> PathBuf {
         .join("permissions")
 }
 
-pub fn permission_profile_path(module_id: &str) -> PathBuf {
-    permissions_dir().join(format!("{module_id}.toml"))
+pub fn permission_profile_path(module_id: &str) -> Result<PathBuf, InstallError> {
+    // The id is interpolated into `~/.config/permissions/{id}.toml`, so it MUST be
+    // a single safe path component. Validating here (the same guard the package +
+    // module ids get at their call sites) makes the function fail-safe: a `..`/
+    // separator id can never build a path outside the permissions dir, even if a
+    // future caller forgets to pre-check it. Every real reverse-DNS module id passes.
+    crate::install::validate_app_id(module_id)?;
+    Ok(permissions_dir().join(format!("{module_id}.toml")))
 }
 
 /// Convert manifest capabilities into a runtime permission profile.
@@ -134,7 +140,7 @@ fn clipboard_from(caps: &ModuleCapabilities) -> ClipboardPermissions {
 pub fn write_profile(profile: &PermissionProfile) -> Result<(), InstallError> {
     let dir = permissions_dir();
     fs::create_dir_all(&dir)?;
-    let path = permission_profile_path(&profile.info.app_id);
+    let path = permission_profile_path(&profile.info.app_id)?;
     let toml = toml::to_string(profile).map_err(|e| {
         InstallError::InvalidManifest(format!("permission profile serialise: {e}"))
     })?;
@@ -147,7 +153,7 @@ pub fn write_profile(profile: &PermissionProfile) -> Result<(), InstallError> {
 
 /// Remove a module's permission profile. Called from `remove_modules`.
 pub fn remove_profile(module_id: &str) -> Result<(), InstallError> {
-    let path = permission_profile_path(module_id);
+    let path = permission_profile_path(module_id)?;
     if path.exists() {
         fs::remove_file(&path)?;
     }
@@ -232,12 +238,25 @@ mod tests {
 
         let p = profile_from_manifest(&manifest_with(ModuleCapabilities::default()));
         write_profile(&p).unwrap();
-        let path = permission_profile_path("com.example.test");
+        let path = permission_profile_path("com.example.test").unwrap();
         assert!(path.exists());
 
         remove_profile("com.example.test").unwrap();
         assert!(!path.exists());
 
         std::env::remove_var("ARLEN_PERMISSIONS_DIR");
+    }
+
+    #[test]
+    fn permission_profile_path_rejects_a_traversal_id() {
+        // A `..`/separator id can never build a path outside the permissions dir,
+        // and write/remove_profile propagate the rejection instead of touching disk.
+        for bad in ["../evil", "../../etc/x", "/etc/x", "a/b", "", "nodots"] {
+            assert!(
+                permission_profile_path(bad).is_err(),
+                "{bad:?} must be rejected as an invalid module id"
+            );
+        }
+        assert!(permission_profile_path("com.example.test").is_ok());
     }
 }
