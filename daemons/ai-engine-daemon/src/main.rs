@@ -433,7 +433,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // write-ahead (RestorePath / RestoreFromTrash) and persists it to the undo
         // signer. One instance runs both.
         .register("fs.move", fs_executor.clone())
-        .register("fs.trash", fs_executor)
+        .register("fs.trash", fs_executor.clone())
+        // fs.create is gate-classified Confirm (a create is a persistence vector),
+        // so it executes only after the consent flow approves; the arm captures a
+        // DeleteCreated inverse so the create is undoable.
+        .register("fs.create", fs_executor)
         // The settings forward act (ai-act-layer-plan.md §⟳): a reversible scalar
         // config write, RestoreValue inverse write-ahead, ai.toml protected.
         .register("settings.set", settings_executor);
