@@ -90,6 +90,13 @@ impl StampedIdentity {
     pub fn is_alive(&self) -> bool {
         self.peer.is_alive()
     }
+
+    /// Consume this identity and yield the pinned [`PeerPidfd`], so a caller can
+    /// retain the pin for the life of a connection and get race-free liveness
+    /// (`PeerPidfd::is_alive`) instead of a `/proc` start-time recheck.
+    pub fn into_peer(self) -> PeerPidfd {
+        self.peer
+    }
 }
 
 /// Resolve the identity of a freshly-accepted Unix socket's peer, race-free and

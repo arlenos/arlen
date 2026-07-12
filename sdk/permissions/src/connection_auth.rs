@@ -56,6 +56,11 @@ pub struct ConnectionAuth {
     start_time: u64,
     app_id: String,
     profile: PermissionProfile,
+    /// The pinned peer pidfd, retained ONLY on the enforce path so `verify_alive`
+    /// is race-free (`PeerPidfd::is_alive`) for the life of the connection. `None`
+    /// on the shadow/legacy path, which falls back to the `/proc` start_time
+    /// recheck.
+    pidfd: Option<crate::peer_pidfd::PeerPidfd>,
 }
 
 impl ConnectionAuth {
@@ -94,20 +99,23 @@ impl ConnectionAuth {
         let stamped = crate::stamped_identity::app_id_from_connection(stream, caller_uid);
         observe_stamped_divergence(peer_pid, &legacy_app_id, &stamped, mode);
 
-        let (pid, app_id, start_time) = match mode {
-            // No behavior change: legacy pid + app_id + start_time.
-            StampedMode::Shadow => (peer_pid, legacy_app_id, pid_start_time(peer_pid)?),
-            // Fail closed: the stronger primitive MUST have resolved. Enforce
-            // hardens the ACCEPT-TIME identity resolution (the app_id + pid are read
-            // under the pidfd pin, recycle-proof); it is NOT yet stronger for the
-            // life of the connection, because the pidfd is dropped at the end of this
-            // arm and per-request verify_alive still uses the /proc start_time
-            // recheck. Retaining the PeerPidfd on ConnectionAuth (so verify_alive is
-            // peer.is_alive()) is the deferred pidfd-native refactor.
+        let (pid, app_id, start_time, pidfd) = match mode {
+            // No behavior change: legacy pid + app_id + start_time; no pidfd retained
+            // (verify_alive uses the /proc start_time recheck).
+            StampedMode::Shadow => {
+                (peer_pid, legacy_app_id, pid_start_time(peer_pid)?, None)
+            }
+            // Fail closed: the stronger primitive MUST have resolved. Enforce reads
+            // the app_id + pid under the pidfd pin (recycle-proof) AND retains the
+            // pidfd, so verify_alive is race-free (PeerPidfd::is_alive) for the life
+            // of the connection, not just at accept.
             StampedMode::Enforce => {
                 let s = stamped?;
-                let spid = s.pid();
-                (spid, s.app_id().to_string(), pid_start_time(spid)?)
+                let app_id = s.app_id().to_string();
+                let peer = s.into_peer();
+                let spid = peer.pid();
+                let start_time = pid_start_time(spid)?;
+                (spid, app_id, start_time, Some(peer))
             }
         };
         let profile = match load_profile(&app_id) {
@@ -128,6 +136,7 @@ impl ConnectionAuth {
             start_time,
             app_id,
             profile,
+            pidfd,
         })
     }
 
@@ -136,6 +145,18 @@ impl ConnectionAuth {
     /// Brokers call this before honoring each request; on
     /// failure the connection should be dropped.
     pub fn verify_alive(&self) -> Result<(), AuthError> {
+        // Enforce path: the retained pidfd gives race-free liveness. The pin refers
+        // to exactly the process that connected, so a recycled pid cannot
+        // masquerade as alive (no start_time comparison to win).
+        if let Some(pidfd) = &self.pidfd {
+            return if pidfd.is_alive() {
+                Ok(())
+            } else {
+                Err(AuthError::PeerNotAlive)
+            };
+        }
+        // Legacy/shadow path: the /proc start_time recheck (detects recycling
+        // after the fact, the pre-pidfd guard).
         let now_start = match pid_start_time(self.pid) {
             Ok(t) => t,
             Err(IdentityError::ProcessNotFound(_)) => {
@@ -194,6 +215,8 @@ impl ConnectionAuth {
             start_time,
             app_id: app_id.into(),
             profile,
+            // Tests use the start_time recheck path (no pinned pidfd).
+            pidfd: None,
         }
     }
 
