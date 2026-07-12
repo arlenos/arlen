@@ -495,9 +495,18 @@ fn any_ancestor_is_symlink(path: &str) -> bool {
 /// documented, and the agent cannot itself create the symlink - fs.create is
 /// regular-file-only, O_EXCL.)
 pub(crate) fn fs_create_path_is_sensitive(path: &str) -> bool {
-    fs_create_path_is_sensitive_lexical(path)
-        || is_under_any(path, &sensitive_env_roots())
-        || any_ancestor_is_symlink(path)
+    if fs_create_path_is_sensitive_lexical(path) {
+        return true;
+    }
+    let roots = sensitive_env_roots();
+    // Without any resolvable config/exec roots (HOME unset AND no XDG overrides) we
+    // cannot prove the path avoids a persistence surface like `~/bin`, so fail
+    // closed. Unreachable under the shipped systemd `--user` service (HOME is always
+    // set); belt-and-suspenders so the safe verdict never rests on an empty env.
+    if roots.is_empty() {
+        return true;
+    }
+    is_under_any(path, &roots) || any_ancestor_is_symlink(path)
 }
 
 /// Whether the `fs.create` request in `tool_input` targets a sensitive path.
