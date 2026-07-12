@@ -646,8 +646,11 @@ mod tests {
             );
         }
         // The reversible autonomous acts stay Ordinary (they lift to autonomous by
-        // design), so the reconciliation does not over-confirm them.
+        // design), so the reconciliation does not over-confirm them. fs.trash is one:
+        // move-to-trash is reversible curation (the "trash" name-keyword is scoped to
+        // permanent-delete/empty-trash), so it must NOT confirm.
         assert_eq!(action_kind_for_tool("fs.move"), ActionKind::Ordinary);
+        assert_eq!(action_kind_for_tool("fs.trash"), ActionKind::Ordinary);
         assert_eq!(action_kind_for_tool("settings.set"), ActionKind::Ordinary);
     }
 
