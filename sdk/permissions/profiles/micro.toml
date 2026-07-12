@@ -1,0 +1,8 @@
+# Starting permission profile for a terminal text editor (micro). It edits the
+# user's files, so it gets Home; no network of its own and no Knowledge Graph.
+[info]
+app_id = "micro"
+tier = "third-party"
+
+[filesystem]
+home = true
