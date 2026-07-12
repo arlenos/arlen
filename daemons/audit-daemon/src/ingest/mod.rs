@@ -64,6 +64,10 @@ const ADMITTED: &[&str] = &[
     "installd",
     "knowledge",
     "consent-broker",
+    // The xdg-desktop-portal impl backend submits the coarse print audit and the
+    // no-silent-capture screenshot audit (SC-R6). Resolves to this id via the
+    // canonical libexec path in `arlen_permissions::identity::path_to_app_id`.
+    "xdg-desktop-portal",
 ];
 
 /// Resolve the ingest socket path:
@@ -338,6 +342,7 @@ mod tests {
             "online-accounts",
             "notifyd",
             "installd",
+            "xdg-desktop-portal",
         ] {
             assert!(
                 ADMITTED.contains(&producer),

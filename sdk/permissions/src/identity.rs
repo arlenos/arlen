@@ -265,6 +265,16 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-consent-broker" => {
             return Ok("consent-broker".to_string());
         }
+        // The xdg-desktop-portal impl backend. It submits the coarse print audit
+        // and the no-silent-capture screenshot audit (SC-R6) to the ledger, so it
+        // must resolve to the stable id `xdg-desktop-portal` the audit daemon's
+        // ADMITTED allowlist keys on. Same GAP-2 rationale as the other libexec
+        // daemons: rule (2) covers only /usr/bin/arlen-*, so without this entry the
+        // portal resolves to UnknownBinary and every print/capture audit is silently
+        // refused; the root-owned system path is attested.
+        "/usr/lib/arlen/libexec/xdg-desktop-portal-arlen" => {
+            return Ok("xdg-desktop-portal".to_string());
+        }
         // The Settings app, pinned canonically so it resolves to the stable
         // app_id `settings` (not the spoofable basename). The Living Capability
         // Graph revoke socket op admits only this app id (living-capability-graph.md
@@ -700,6 +710,28 @@ mod tests {
             assert!(
                 path_to_app_id(&PathBuf::from(spoofed)).is_err(),
                 "spoofed consent-broker path {spoofed} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_app_id_from_path_xdg_portal_canonical_libexec() {
+        // The xdg-desktop-portal impl backend's canonical binary must resolve to
+        // `xdg-desktop-portal`, the id the audit daemon's ADMITTED allowlist keys on
+        // for the print + no-silent-capture screenshot audits. Without this it
+        // resolves to UnknownBinary and every capture/print audit is silently
+        // refused.
+        let path = PathBuf::from("/usr/lib/arlen/libexec/xdg-desktop-portal-arlen");
+        assert_eq!(path_to_app_id(&path).unwrap(), "xdg-desktop-portal");
+
+        // A same-basename binary in a writable location must not impersonate it.
+        for spoofed in [
+            "/tmp/xdg-desktop-portal-arlen",
+            "/home/attacker/xdg-desktop-portal-arlen",
+        ] {
+            assert!(
+                path_to_app_id(&PathBuf::from(spoofed)).is_err(),
+                "spoofed portal path {spoofed} must be rejected"
             );
         }
     }
