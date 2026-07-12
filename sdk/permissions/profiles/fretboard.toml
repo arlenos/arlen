@@ -1,0 +1,6 @@
+# Starting permission profile for a guitar-chord reference (Fretboard). It works
+# entirely offline from a built-in chord library; it needs no file access and no
+# network.
+[info]
+app_id = "fretboard"
+tier = "third-party"

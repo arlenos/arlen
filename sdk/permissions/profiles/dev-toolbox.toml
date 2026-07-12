@@ -1,0 +1,6 @@
+# Starting permission profile for a developer-utilities app (Dev Toolbox): JSON/
+# base64/hash and similar text transforms run locally on typed or pasted input. It
+# needs no file access and no network.
+[info]
+app_id = "dev-toolbox"
+tier = "third-party"

@@ -1,0 +1,9 @@
+# Starting permission profile for a song-recognition app (Mousai). It records a
+# short audio clip (through the portal) and queries an online recognition service,
+# so it gets network; it needs no file access.
+[info]
+app_id = "mousai"
+tier = "third-party"
+
+[network]
+allow_all = true

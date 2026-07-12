@@ -1,0 +1,5 @@
+# Starting permission profile for a metronome. It plays a click locally; it needs
+# no file access and no network.
+[info]
+app_id = "gnome-metronome"
+tier = "third-party"

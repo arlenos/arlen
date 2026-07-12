@@ -1,0 +1,12 @@
+# Starting permission profile for a download manager (Varia). It downloads files
+# from the network and writes them to disk, so it gets both network and home
+# filesystem access.
+[info]
+app_id = "varia"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true

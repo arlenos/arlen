@@ -1,0 +1,9 @@
+# Starting permission profile for a webfont-kit generator. It reads font files and
+# writes the generated web-font kit, so it gets home filesystem access; it does the
+# conversion locally and needs no network.
+[info]
+app_id = "webfont-kit-generator"
+tier = "third-party"
+
+[filesystem]
+home = true
