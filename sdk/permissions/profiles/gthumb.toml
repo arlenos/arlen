@@ -1,0 +1,8 @@
+# Starting permission profile for an image viewer and organizer (gThumb). Works
+# with Pictures; no network and no Knowledge Graph.
+[info]
+app_id = "gthumb"
+tier = "third-party"
+
+[filesystem]
+pictures = true
