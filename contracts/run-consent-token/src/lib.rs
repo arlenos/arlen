@@ -18,6 +18,16 @@
 //! caller string is ever interpolated into datalog source), a `trusting authority`-
 //! scoped allow policy (so a holder cannot append a block to re-broaden), and a
 //! fail-closed TTL check (a verifier that supplies no `time` fact denies).
+//!
+//! Two properties the digest binding alone does not give, seeded here so the
+//! follow-up verify slice can rely on them without a token-shape change:
+//!  - Every mint carries a fresh random `nonce(...)` authority fact. It is not
+//!    checked today (the same approved command re-runs within its TTL, bounded by
+//!    a short expiry), but a future single-use verifier can key a seen-set on it.
+//!  - `command` and `args` are length- and count-capped, and an interior NUL is
+//!    refused: `execve` truncates an argv string at NUL, so a NUL past the first
+//!    byte would make the executed command differ from the digested one. Refusing
+//!    it keeps the mint digest and the exec-time digest identical.
 
 use std::collections::HashMap;
 
@@ -28,6 +38,18 @@ use sha2::{Digest, Sha256};
 /// The fixed tool this token authorizes. `run_command` is the only per-action
 /// consent-token act today; a future act would carry its own tool string.
 pub const RUN_COMMAND_TOOL: &str = "run_command";
+
+/// The longest accepted command (the executable name or path).
+const MAX_COMMAND_LEN: usize = 4096;
+
+/// The longest accepted single argument. Args can legitimately be large (an
+/// inline payload), so the per-arg cap is generous; it exists only to bound the
+/// token the daemon signs and the MCP server parses, not to constrain content.
+const MAX_ARG_LEN: usize = 128 * 1024;
+
+/// The most arguments a token may bind. Args come from a model proposal upstream,
+/// so the count is capped at the mint boundary rather than trusted.
+const MAX_ARGS: usize = 1024;
 
 /// A failure minting or verifying a consent token.
 #[derive(Debug, thiserror::Error)]
@@ -44,6 +66,36 @@ impl From<biscuit_auth::error::Token> for ConsentTokenError {
     fn from(e: biscuit_auth::error::Token) -> Self {
         ConsentTokenError::Biscuit(e.to_string())
     }
+}
+
+/// Validate a `(command, args)` pair at the mint boundary: the command must be
+/// non-empty, control-free (a control byte in an executable name is never
+/// legitimate) and within [`MAX_COMMAND_LEN`]; every argument must be free of an
+/// interior NUL (which `execve` would truncate at, skewing the exec-time digest)
+/// and within [`MAX_ARG_LEN`]; the arg count must be within [`MAX_ARGS`]. Args are
+/// otherwise opaque data bound by the digest, so no charset is imposed on them.
+fn validate_run(command: &str, args: &[String]) -> Result<(), ConsentTokenError> {
+    if command.is_empty() {
+        return Err(ConsentTokenError::InvalidInput("empty command"));
+    }
+    if command.len() > MAX_COMMAND_LEN {
+        return Err(ConsentTokenError::InvalidInput("command too long"));
+    }
+    if command.bytes().any(|b| b.is_ascii_control()) {
+        return Err(ConsentTokenError::InvalidInput("command has a control byte"));
+    }
+    if args.len() > MAX_ARGS {
+        return Err(ConsentTokenError::InvalidInput("too many arguments"));
+    }
+    for a in args {
+        if a.len() > MAX_ARG_LEN {
+            return Err(ConsentTokenError::InvalidInput("argument too long"));
+        }
+        if a.bytes().any(|b| b == 0) {
+            return Err(ConsentTokenError::InvalidInput("argument has a NUL byte"));
+        }
+    }
+    Ok(())
 }
 
 /// The sha256 hex digest binding the exact command + its args. Lengths are mixed in
@@ -80,15 +132,27 @@ pub fn mint_run_consent(
     if expiry_unix <= 0 {
         return Err(ConsentTokenError::InvalidInput("expiry not positive"));
     }
+    validate_run(command, args)?;
     let digest = run_digest(command, args);
+
+    // A fresh 128-bit random uniqueness tag. Not checked at verify today; seeded so
+    // a future single-use verifier can key a seen-set on it without a shape change.
+    let mut raw = [0u8; 16];
+    getrandom::getrandom(&mut raw)
+        .map_err(|_| ConsentTokenError::InvalidInput("nonce entropy unavailable"))?;
+    let mut nonce = String::with_capacity(raw.len() * 2);
+    for b in raw {
+        nonce.push_str(&format!("{b:02x}"));
+    }
 
     let mut builder: BiscuitBuilder = Biscuit::builder();
     // Authority facts, parameterized (never interpolated into datalog source).
     let mut params: HashMap<String, Term> = HashMap::new();
     params.insert("tool".to_string(), Term::Str(RUN_COMMAND_TOOL.to_string()));
     params.insert("digest".to_string(), Term::Str(digest));
+    params.insert("nonce".to_string(), Term::Str(nonce));
     builder = builder.code_with_params(
-        "tool({tool}); run_digest({digest});",
+        "tool({tool}); run_digest({digest}); nonce({nonce});",
         params,
         HashMap::new(),
     )?;
@@ -207,6 +271,66 @@ mod tests {
         let root = KeyPair::new();
         assert!(matches!(
             mint_run_consent(&root, "ls", &args(&[]), 0),
+            Err(ConsentTokenError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn two_mints_of_the_same_command_differ_but_both_authorize() {
+        let root = KeyPair::new();
+        let a = mint_run_consent(&root, "ls", &args(&["-la"]), 10_000).unwrap();
+        let b = mint_run_consent(&root, "ls", &args(&["-la"]), 10_000).unwrap();
+        // Distinct tokens: the random nonce makes each mint unique (future single-use).
+        assert_ne!(a, b);
+        // The nonce is not part of the digest, so both still authorize the command.
+        assert!(verify_run_consent(&a, &root.public(), "ls", &args(&["-la"]), 5_000).unwrap());
+        assert!(verify_run_consent(&b, &root.public(), "ls", &args(&["-la"]), 5_000).unwrap());
+    }
+
+    #[test]
+    fn mint_rejects_an_empty_command() {
+        let root = KeyPair::new();
+        assert!(matches!(
+            mint_run_consent(&root, "", &args(&["-la"]), 10_000),
+            Err(ConsentTokenError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn mint_rejects_a_control_byte_in_the_command() {
+        let root = KeyPair::new();
+        assert!(matches!(
+            mint_run_consent(&root, "ls\n", &args(&[]), 10_000),
+            Err(ConsentTokenError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn mint_rejects_an_interior_nul_in_an_argument() {
+        let root = KeyPair::new();
+        // execve would truncate "foo\0bar" to "foo", skewing the exec-time digest.
+        assert!(matches!(
+            mint_run_consent(&root, "ls", &args(&["foo\0bar"]), 10_000),
+            Err(ConsentTokenError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn mint_rejects_too_many_arguments() {
+        let root = KeyPair::new();
+        let many: Vec<String> = (0..MAX_ARGS + 1).map(|i| i.to_string()).collect();
+        assert!(matches!(
+            mint_run_consent(&root, "ls", &many, 10_000),
+            Err(ConsentTokenError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn mint_rejects_an_over_long_argument() {
+        let root = KeyPair::new();
+        let big = "x".repeat(MAX_ARG_LEN + 1);
+        assert!(matches!(
+            mint_run_consent(&root, "ls", &args(&[&big]), 10_000),
             Err(ConsentTokenError::InvalidInput(_))
         ));
     }
