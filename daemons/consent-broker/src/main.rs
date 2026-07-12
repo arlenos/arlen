@@ -312,9 +312,29 @@ fn peer_diag(stream: &UnixStream) -> String {
     let procowner = std::fs::metadata(format!("/proc/{}", cred.pid))
         .map(|m| m.uid().to_string())
         .unwrap_or_else(|_| "?".to_string());
+    // /proc/<pid>/status is readable even when exe is not, so grab the fields that
+    // discriminate the remaining EACCES hypotheses when the peer is dumpable
+    // (procowner=uid) yet the exe readlink still fails: a WebKit seccomp filter
+    // (Seccomp), a capability the reader must dominate (CapEff), or a nested pid
+    // namespace making /proc/<pid> a different task cross-ns (NSpid).
+    let status = std::fs::read_to_string(format!("/proc/{}/status", cred.pid)).unwrap_or_default();
+    let field = |name: &str| {
+        status
+            .lines()
+            .find(|l| l.starts_with(name))
+            .map(|l| l.split_whitespace().skip(1).collect::<Vec<_>>().join(","))
+            .unwrap_or_else(|| "?".to_string())
+    };
     format!(
-        "pid={} uid={} comm={} procowner={}",
-        cred.pid, cred.uid, comm, procowner
+        "pid={} uid={} comm={} procowner={} seccomp={} capeff={} nspid={} tracerpid={}",
+        cred.pid,
+        cred.uid,
+        comm,
+        procowner,
+        field("Seccomp:"),
+        field("CapEff:"),
+        field("NSpid:"),
+        field("TracerPid:")
     )
 }
 
