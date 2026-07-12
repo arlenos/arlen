@@ -1,0 +1,5 @@
+# Starting permission profile for a focus/Pomodoro timer (Flowtime). It runs
+# entirely locally; it needs no file access and no network.
+[info]
+app_id = "flowtime"
+tier = "third-party"

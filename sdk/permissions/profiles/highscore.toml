@@ -1,0 +1,9 @@
+# Starting permission profile for a game-emulator frontend (Highscore). It loads
+# game ROMs from disk, so it gets home filesystem access; it plays them locally and
+# needs no network.
+[info]
+app_id = "highscore"
+tier = "third-party"
+
+[filesystem]
+home = true
