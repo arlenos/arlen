@@ -91,9 +91,14 @@ const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// App ids permitted to drive EVERY control op, including rendering and resolving
 /// consent prompts (`Fetch` / `Resolve`). Only the trusted shell renders the
-/// consent surface. In debug builds a `dev.`-prefixed id is also admitted (the
-/// dev / test convention, mirroring the other daemons).
-const CONTROL_ADMITTED: &[&str] = &["arlen-shell", "org.arlen.shell"];
+/// consent surface. The control caller is resolved by `ConnectionAuth` from the
+/// SO_PEERCRED-attested pid via `path_to_app_id`, so this is the shell's RESOLVED
+/// app id: `/usr/bin/arlen-desktop-shell` -> `desktop-shell` (rule 2). The former
+/// `arlen-shell` / `org.arlen.shell` entries were the pre-rename binary name and a
+/// D-Bus-style name - NEITHER can be a `path_to_app_id` result, so the shell (which
+/// resolves to `desktop-shell`) was refused in release and could not drive the
+/// consent dialog at all. In debug builds a `dev.`-prefixed id is also admitted.
+const CONTROL_ADMITTED: &[&str] = &["desktop-shell"];
 
 /// App ids permitted ONLY the grant-management ops (`ListGrants` / `RevokeGrant`)
 /// - the App-access panel's "what you allowed" + release-a-grant surface.
@@ -455,9 +460,14 @@ mod tests {
     fn settings_may_manage_grants_but_not_answer_prompts() {
         use arlen_consent_contract::ConsentOutcome;
         let revoke = ControlRequest::RevokeGrant { handle: "h".into() };
-        // The trusted shell drives every control op.
-        assert!(control_op_admitted("arlen-shell", &ControlRequest::Fetch));
-        assert!(control_op_admitted("arlen-shell", &revoke));
+        // The trusted shell drives every control op, under its SO_PEERCRED-resolved
+        // app id `desktop-shell` (the id `path_to_app_id` returns for the shell's
+        // canonical /usr/bin/arlen-desktop-shell binary).
+        assert!(control_op_admitted("desktop-shell", &ControlRequest::Fetch));
+        assert!(control_op_admitted("desktop-shell", &revoke));
+        // The pre-rename `arlen-shell` name is NOT a resolvable app id, so it is
+        // (correctly) no longer admitted - the shell resolves to `desktop-shell`.
+        assert!(!control_caller_admitted("arlen-shell"));
         // settings may list + release remembered grants (the App-access surface)...
         assert!(control_op_admitted("settings", &ControlRequest::ListGrants));
         assert!(control_op_admitted("settings", &revoke));
