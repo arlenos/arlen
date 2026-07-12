@@ -30,6 +30,19 @@ export interface ActionItem {
   text: string;
   /// The person it was assigned to, when the model identified one.
   owner?: string;
+  /// The transcript segment index this item was plainly derived from, for
+  /// click-to-transcript. Set only on a strong deterministic match, else absent
+  /// (no fabricated citation).
+  source_segment?: number;
+}
+
+/// One sentence of the prose summary paired with the transcript segment it was
+/// derived from (`contracts/meeting-note::SummaryClaim`) - the Granola grounded-
+/// summary overlay. `source_segment` is absent when the claim grounds to no
+/// single segment.
+export interface SummaryClaim {
+  text: string;
+  source_segment?: number;
 }
 
 /// The produced meeting note (`contracts/meeting-note::MeetingNote`). The summary +
@@ -37,7 +50,12 @@ export interface ActionItem {
 export interface MeetingNote {
   title: string;
   participants: string[];
+  /// The rendered/stored prose summary.
   summary: string;
+  /// The summary split into sentence-claims, each grounded to a transcript
+  /// segment for click-to-transcript. The interactive overlay over `summary`;
+  /// absent/empty on older notes.
+  summary_claims?: SummaryClaim[];
   action_items: ActionItem[];
   transcript: Transcript;
 }

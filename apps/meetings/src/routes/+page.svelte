@@ -56,7 +56,20 @@
 
         <section class="sec">
           <p class="sec-label">{$t("mt.summary")} <span class="from">{$t("mt.summary.from")}</span></p>
-          <p class="summary">{n.summary}</p>
+          {#if n.summary_claims && n.summary_claims.length}
+            <p class="summary">
+              {#each n.summary_claims as claim, i (i)}
+                {#if claim.source_segment !== undefined && n.transcript.segments[claim.source_segment]}
+                  {@const start = n.transcript.segments[claim.source_segment].start_ms}
+                  <button type="button" class="claim linked" onclick={() => (activeStart = start)}>{claim.text}</button>
+                {:else}
+                  <span class="claim">{claim.text}</span>
+                {/if}{" "}
+              {/each}
+            </p>
+          {:else}
+            <p class="summary">{n.summary}</p>
+          {/if}
           <p class="grounded">{$t("mt.grounded")}</p>
         </section>
 
@@ -69,7 +82,12 @@
               {#each n.action_items as item, i (i)}
                 <li class="item">
                   <span class="box" aria-hidden="true"><Square size={14} strokeWidth={2} /></span>
-                  <span class="item-text">{item.text}</span>
+                  {#if item.source_segment !== undefined && n.transcript.segments[item.source_segment]}
+                    {@const start = n.transcript.segments[item.source_segment].start_ms}
+                    <button type="button" class="item-text linked" onclick={() => (activeStart = start)}>{item.text}</button>
+                  {:else}
+                    <span class="item-text">{item.text}</span>
+                  {/if}
                   {#if item.owner}<Badge variant="secondary">@{item.owner}</Badge>{/if}
                   <Button variant="ghost" size="sm" class="ms-auto" title={$t("mt.add.title")}>
                     <CalendarPlus size={13} strokeWidth={2} /> {$t("mt.add")}
@@ -188,5 +206,41 @@
   }
   .item-text {
     color: var(--color-fg-primary);
+  }
+
+  /* A summary claim / action item grounded to a transcript segment: an inline,
+     button-reset span that jumps to + highlights its source. Ungrounded claims
+     stay plain (no affordance, no fabricated citation). */
+  .claim {
+    font: inherit;
+    color: inherit;
+  }
+  .claim.linked,
+  .item-text.linked {
+    border: none;
+    background: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    line-height: inherit;
+    text-align: start;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--color-fg-primary) 22%, transparent);
+    text-underline-offset: 3px;
+    transition: text-decoration-color var(--duration-fast, 150ms) ease, color var(--duration-fast, 150ms) ease;
+  }
+  .claim.linked {
+    color: inherit;
+  }
+  .item-text.linked {
+    color: var(--color-fg-primary);
+  }
+  .claim.linked:hover,
+  .item-text.linked:hover {
+    text-decoration-color: currentColor;
+  }
+  .claim.linked:hover {
+    color: color-mix(in srgb, var(--color-fg-primary) 85%, transparent);
   }
 </style>

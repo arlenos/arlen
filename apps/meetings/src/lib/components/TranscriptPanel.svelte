@@ -18,17 +18,29 @@
   } = $props();
 
   const utterances = $derived(mergeAdjacent(transcript.segments));
+
+  // The active segment (a source_segment's start_ms) may sit inside a merged
+  // utterance rather than at its start, so match by time containment, and scroll
+  // the highlighted utterance into view when a claim/item jumps here.
+  let bodyEl = $state<HTMLElement | undefined>();
+  function isActive(u: { start_ms: number; end_ms: number }): boolean {
+    return activeStart !== null && activeStart >= u.start_ms && activeStart < u.end_ms;
+  }
+  $effect(() => {
+    if (activeStart === null) return;
+    bodyEl?.querySelector<HTMLElement>(".utt.active")?.scrollIntoView({ block: "nearest" });
+  });
 </script>
 
 <aside class="tp">
   <div class="tp-head">{$t("mt.transcript")}</div>
-  <div class="tp-body">
+  <div class="tp-body" bind:this={bodyEl}>
     {#each utterances as u (u.start_ms)}
       {@const num = speakerNum(u.speaker)}
       <button
         type="button"
         class="utt"
-        class:active={activeStart === u.start_ms}
+        class:active={isActive(u)}
         onclick={() => onseek?.(u.start_ms)}
       >
         <span class="utt-meta">
