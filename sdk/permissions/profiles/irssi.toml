@@ -1,0 +1,8 @@
+# Starting permission profile for an IRC client (irssi). It connects to chat servers over the
+# network; no local file access and no Knowledge Graph by default.
+[info]
+app_id = "irssi"
+tier = "third-party"
+
+[network]
+allow_all = true

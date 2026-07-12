@@ -1,0 +1,8 @@
+# Starting permission profile for a TLS-only IRC client (catgirl). It connects to chat servers over the
+# network; no local file access and no Knowledge Graph by default.
+[info]
+app_id = "catgirl"
+tier = "third-party"
+
+[network]
+allow_all = true
