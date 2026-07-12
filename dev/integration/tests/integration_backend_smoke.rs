@@ -2324,3 +2324,129 @@ async fn a_denied_confirm_relays_the_refusal() {
         "the requester received the Denied decision end-to-end"
     );
 }
+
+/// A stable AppData/Ordinary request (classified Standard under the daemon's default
+/// Suggest baseline: Ordinary is the only kind that does not always-confirm, and a
+/// Standard request is the only tier the remembered-grant store is consulted for).
+fn consent_app_data_body() -> arlen_consent_contract::RequestBody {
+    arlen_consent_contract::RequestBody {
+        class: arlen_consent_contract::ConsentClass::AppData,
+        kind: arlen_ai_core::capability::ActionKind::Ordinary,
+        triggered_by_external_content: false,
+        summary: "read the app's saved data".into(),
+        scope: Some("com.example.thing/data".into()),
+        recipient: None,
+        preview: None,
+        targets: Vec::new(),
+        total: None,
+    }
+}
+
+/// Submit a request over the intake socket and block for the single IntakeResult.
+async fn consent_submit(
+    intake: &std::path::Path,
+    body: &arlen_consent_contract::RequestBody,
+) -> arlen_consent_contract::IntakeResult {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let bytes = serde_json::to_vec(body).expect("serialise request");
+    let mut stream = tokio::net::UnixStream::connect(intake)
+        .await
+        .expect("connect intake");
+    stream
+        .write_all(&(bytes.len() as u32).to_le_bytes())
+        .await
+        .expect("write len");
+    stream.write_all(&bytes).await.expect("write body");
+    stream.flush().await.expect("flush");
+    let mut len_buf = [0u8; 4];
+    stream.read_exact(&mut len_buf).await.expect("read result len");
+    let len = u32::from_le_bytes(len_buf) as usize;
+    let mut rbody = vec![0u8; len];
+    stream.read_exact(&mut rbody).await.expect("read result body");
+    serde_json::from_slice(&rbody).expect("parse IntakeResult")
+}
+
+/// IT-1 remembered consent: a Standard request resolved AllowedRemembered mints a
+/// grant, so a SECOND identical request is SILENTLY admitted (no dialog) - the
+/// remembered-consent path. Same `#[ignore]` rationale.
+#[tokio::test]
+#[ignore = "needs audit-daemon + consent-broker binaries built and a per-user runtime dir"]
+async fn a_remembered_grant_silently_admits_a_repeat_request() {
+    if !arlen_integration::binary_built("daemons/consent-broker", "arlen-consent-broker") {
+        eprintln!(
+            "SKIP a_remembered_grant_silently_admits_a_repeat_request: arlen-consent-broker not built (run `just integration-nightly`)"
+        );
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    if arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd") {
+        stack
+            .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+            .expect("spawn audit-daemon");
+        stack
+            .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+            .expect("audit ingest socket appears");
+    }
+    stack
+        .spawn("daemons/consent-broker", "arlen-consent-broker", &[])
+        .expect("spawn consent-broker");
+    stack
+        .wait_socket("arlen/consent-intake.sock", Duration::from_secs(20))
+        .expect("consent intake socket appears");
+    stack
+        .wait_socket("arlen/consent-control.sock", Duration::from_secs(20))
+        .expect("consent control socket appears");
+
+    let intake = stack.consent_intake_socket();
+    let control = stack.consent_control_socket();
+
+    // First request: submit + block; the shell resolves AllowedRemembered (mints a
+    // grant for the recipient/class/scope).
+    let intake1 = intake.clone();
+    let first = tokio::spawn(async move { consent_submit(&intake1, &consent_app_data_body()).await });
+
+    let mut request_id = None;
+    for _ in 0..100 {
+        let path = control.clone();
+        let pending = tokio::task::spawn_blocking(move || {
+            arlen_consent_broker::ControlClient::new(path).fetch()
+        })
+        .await
+        .expect("join fetch")
+        .expect("fetch pending");
+        if let Some(view) = pending {
+            request_id = Some(view.id);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let id = request_id.expect("a pending Standard consent request appeared");
+    let path = control.clone();
+    tokio::task::spawn_blocking(move || {
+        arlen_consent_broker::ControlClient::new(path)
+            .resolve(id, arlen_consent_contract::ConsentOutcome::AllowedRemembered)
+    })
+    .await
+    .expect("join resolve")
+    .expect("resolve");
+    let r1 = tokio::time::timeout(Duration::from_secs(10), first)
+        .await
+        .expect("first returned")
+        .expect("first task");
+    assert_eq!(
+        r1,
+        arlen_consent_contract::IntakeResult::Decided {
+            outcome: arlen_consent_contract::ConsentOutcome::AllowedRemembered
+        }
+    );
+
+    // Second identical request: the remembered grant admits it silently, no dialog.
+    let r2 = tokio::time::timeout(Duration::from_secs(10), consent_submit(&intake, &consent_app_data_body()))
+        .await
+        .expect("second returned");
+    assert_eq!(
+        r2,
+        arlen_consent_contract::IntakeResult::SilentGranted,
+        "the remembered grant silently admits the repeat request"
+    );
+}
