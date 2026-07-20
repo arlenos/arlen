@@ -13,7 +13,8 @@
 //! unbounded allocation - the renderer keeps the previous frame (or the flat
 //! fallback) rather than crashing the desktop background on a bad asset.
 
-use crate::manifest::Scale;
+use crate::manifest::{Scale, WallpaperKind, WallpaperManifest};
+use crate::schedule::{source_for_monitor, TimeContext};
 use thiserror::Error;
 
 /// The pixel-count ceiling (width * height). At 4 bytes/pixel this bounds the
@@ -112,9 +113,44 @@ pub fn compose_to_output(
     out
 }
 
+/// Produce the composed RGBA frame for one output, or `None` when this static-
+/// image renderer should paint nothing: a `Video`/`Shader` wallpaper is the
+/// sandboxed live-renderer's job, and a decode failure leaves the client on its
+/// previous frame / the flat fallback rather than crashing the background. Ties
+/// the manifest + [`crate::schedule`] source selection + [`load_image_rgba`] +
+/// [`compose_to_output`] together; the Wayland client copies the returned buffer
+/// into its `wl_shm` buffer. Pure, so the whole pipeline is tested without a
+/// compositor.
+pub fn frame_for_output(
+    manifest: &WallpaperManifest,
+    connector: &str,
+    ctx: &TimeContext,
+    out_w: u32,
+    out_h: u32,
+    letterbox: [u8; 4],
+) -> Option<Vec<u8>> {
+    if matches!(manifest.kind, WallpaperKind::Video | WallpaperKind::Shader) {
+        return None;
+    }
+    let source = source_for_monitor(manifest, connector, ctx);
+    let decoded = load_image_rgba(&source.asset).ok()?;
+    Some(compose_to_output(&decoded, out_w, out_h, source.scale, letterbox))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::manifest::Source;
+
+    fn image_manifest(kind: WallpaperKind, asset: &str) -> WallpaperManifest {
+        WallpaperManifest {
+            kind,
+            default: Source { asset: asset.to_string(), scale: Scale::Fill, loop_playback: false },
+            per_monitor: Default::default(),
+            variants: Vec::new(),
+            transition_ms: 0,
+        }
+    }
 
     fn solid(w: u32, h: u32, px: [u8; 4]) -> DecodedImage {
         DecodedImage { width: w, height: h, rgba: px.repeat((w * h) as usize) }
@@ -158,6 +194,28 @@ mod tests {
     #[test]
     fn a_zero_output_is_an_empty_buffer() {
         assert!(compose_to_output(&solid(2, 2, [1, 2, 3, 4]), 0, 4, Scale::Fill, [0; 4]).is_empty());
+    }
+
+    #[test]
+    fn frame_for_output_renders_an_image_manifest_and_skips_live_kinds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = fixture_png(dir.path(), 2, 2);
+        let ctx = TimeContext::at_minute(600);
+
+        // Image kind + a decodable asset -> a full output frame.
+        let m = image_manifest(WallpaperKind::Image, &path);
+        let frame = frame_for_output(&m, "DP-1", &ctx, 8, 4, [0; 4]).unwrap();
+        assert_eq!(frame.len(), 8 * 4 * 4);
+
+        // Video/Shader are the live-renderer's job: this static client paints
+        // nothing (None), never a wrong frame.
+        for live in [WallpaperKind::Video, WallpaperKind::Shader] {
+            assert!(frame_for_output(&image_manifest(live, &path), "DP-1", &ctx, 8, 4, [0; 4]).is_none());
+        }
+
+        // A missing asset -> None (keep the previous frame / flat fallback).
+        let bad = image_manifest(WallpaperKind::Image, "/nonexistent/wp.png");
+        assert!(frame_for_output(&bad, "DP-1", &ctx, 8, 4, [0; 4]).is_none());
     }
 
     #[test]
