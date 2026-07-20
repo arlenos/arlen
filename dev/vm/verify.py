@@ -78,22 +78,24 @@ def qmp_click(f, px, py, w, h):
     would be a dangerous default for a security dialog)."""
     ax = max(0, min(0x7fff, round(px * 0x7fff / w)))
     ay = max(0, min(0x7fff, round(py * 0x7fff / h)))
-    move = [
+    abs_ev = [
         {"type": "abs", "data": {"axis": "x", "value": ax}},
         {"type": "abs", "data": {"axis": "y", "value": ay}}]
-    # Establish the absolute position and let libinput/the compositor settle the
-    # pointer over the target surface BEFORE the button edge. A single move-then-
-    # click in the same instant can land the press at the pre-move position (the
-    # compositor has not warped yet), so move, settle, move again, settle, then
-    # click with a hold between the down and up edges.
-    qmp(f, "input-send-event", events=move)
+    # Establish + settle the pointer over the target surface (a bare move lets the
+    # compositor warp the cursor and the webview run its hover hit-test), THEN send
+    # each button edge with the abs position IN THE SAME event, so the press and
+    # release are both pinned to the exact pixel rather than relying on a separately
+    # buffered position - a btn edge with no co-sent position can land the click at
+    # a stale spot and register as hover-only (pointerdown/up must hit the same
+    # element for a click to fire).
+    qmp(f, "input-send-event", events=abs_ev)
     time.sleep(0.4)
-    qmp(f, "input-send-event", events=move)
+    qmp(f, "input-send-event", events=abs_ev)
     time.sleep(0.4)
-    qmp(f, "input-send-event", events=[
+    qmp(f, "input-send-event", events=abs_ev + [
         {"type": "btn", "data": {"down": True, "button": "left"}}])
     time.sleep(0.15)
-    qmp(f, "input-send-event", events=[
+    qmp(f, "input-send-event", events=abs_ev + [
         {"type": "btn", "data": {"down": False, "button": "left"}}])
 
 
@@ -147,6 +149,27 @@ def has_top_bar(png):
 
     bar, desk = modal_row(8), modal_row(h // 2)
     return bar != desk, bar, desk
+
+
+def consent_dialog_present(png):
+    """True if the consent card is on screen, detected by its amber severity bar -
+    a distinctive bright-amber strip across the top of the centered card that
+    nothing else on the dark desktop paints. Used to confirm a real DISMISSAL after
+    a decision click (a raw frame-diff is fooled by the backdrop dimming and the
+    cursor appearing, so it cannot tell "resolved" from "still up")."""
+    from PIL import Image
+    img = Image.open(png).convert("RGB")
+    w, h = img.size
+    # The card is centered; its top strip sits a little above mid-height. Scan a
+    # band there for an amber pixel (high R, mid G, low B).
+    y0, y1 = int(h * 0.32), int(h * 0.38)
+    x0, x1 = int(w * 0.32), int(w * 0.68)
+    for y in range(y0, y1):
+        for x in range(x0, x1, 3):
+            r, g, b = img.getpixel((x, y))
+            if r > 170 and 90 < g < 210 and b < 90 and r > b + 80:
+                return True
+    return False
 
 
 def frame_change(a, b):
@@ -471,16 +494,21 @@ def main():
             if not (os.path.exists(approved) and os.path.getsize(approved) > 0):
                 print("VERIFY FAIL: --approve-consent captured no after-click frame")
                 return 1
-            # The dialog is a large centered modal; clicking "Allow once" resolves
-            # it against the broker and the shell's poll hides it, so a real
-            # dismissal changes a big fraction of the frame. A stuck dialog (the
-            # click missed, or the resolve leg is dead) leaves the frame unchanged.
+            # Clicking "Allow once" must actually DISMISS the dialog: the click
+            # fires allowOnce -> resolve -> the broker removes the request -> the
+            # shell's poll clears it. Assert on the dialog's amber bar being GONE,
+            # not on a raw frame-diff (the backdrop dimming + the cursor appearing
+            # change most of the frame even when the dialog is still up, so a diff
+            # threshold false-passes).
+            still_up = consent_dialog_present(approved)
             frac = frame_change(out, approved)
-            print(f"consent resolve: click 'Allow once' -> {frac*100:.1f}% of pixels "
-                  f"changed -> {approved}")
-            if frac <= 0.02:
+            print(f"consent resolve: click 'Allow once' -> dialog "
+                  f"{'STILL UP' if still_up else 'dismissed'} "
+                  f"({frac*100:.1f}% of pixels changed) -> {approved}")
+            if still_up:
                 print("VERIFY FAIL: the consent dialog did not dismiss after "
-                      "'Allow once' (shell -> broker Resolve leg not exercised)")
+                      "'Allow once' (the click did not resolve the request - the "
+                      "shell -> broker Resolve leg, or the click landing, is off)")
                 print(f"  serial log: {serial}")
                 return 1
     print("VERIFY OK: " + ("the full desktop rendered (compositor + shell bar)"
