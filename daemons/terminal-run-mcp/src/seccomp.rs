@@ -290,6 +290,27 @@ fn command_allowlist() -> Vec<libc::c_long> {
 /// resolving a file handle back to a path outside the sandbox). They are denied by
 /// omission, not by a deny entry; this list exists so a test can assert the allowlist
 /// never accidentally grows to include one.
+///
+/// NAMESPACE CAVEAT, stated precisely so it is not mistaken for more than it is.
+/// `unshare` and `setns` are denied here, but `clone`/`clone3` are ALLOWED with no
+/// argument filter, so `clone(CLONE_NEWUSER|CLONE_NEWNS)` still creates namespaces.
+/// That asymmetry is not closable by this filter: `clone3` passes its flags in a
+/// `struct clone_args` in MEMORY, and seccomp can only inspect register arguments,
+/// so filtering `clone`'s flag word alone would buy nothing (a caller just uses
+/// `clone3`) while risking glibc's threading path. Denying `clone3` outright is also
+/// not viable here: glibc falls back to `clone` only on `ENOSYS`, and this filter has
+/// one global mismatch action (`EPERM`).
+///
+/// It is contained rather than prevented, by two mechanisms verified empirically:
+/// * a seccomp filter is INHERITED by every descendant and cannot be dropped, so the
+///   operations that make a fresh mount namespace useful - `mount`, `umount2`,
+///   `pivot_root`, `chroot`, `setns` - stay `EPERM` inside it;
+/// * the outer read-only binds are `MNT_LOCKED`, so a nested user+mount namespace
+///   cannot re-bind them writable. Measured: a nested `bwrap` that explicitly asks
+///   for a read-WRITE `--bind /usr /usr` still gets `EROFS` on a write.
+///
+/// So a nested namespace is inert. Do NOT read the `unshare` entry below as "this
+/// sandbox cannot create namespaces" - it cannot USE one.
 #[cfg(test)]
 fn forbidden_syscalls() -> Vec<libc::c_long> {
     vec![
@@ -506,6 +527,18 @@ mod tests {
             if !(x32_r == -1 && x32_errno == libc::EPERM) {
                 unsafe { libc::_exit(93) };
             }
+            // The containment half of the namespace caveat on `forbidden_syscalls`:
+            // `clone` can still create a namespace, so what must hold is that a
+            // namespace is USELESS. `mount` is the operation that would make a fresh
+            // mount namespace worth having, and the filter is inherited by every
+            // descendant, so its denial holds inside any nested namespace too.
+            let mnt = unsafe {
+                libc::syscall(libc::SYS_mount, c"none".as_ptr(), c"/".as_ptr(), c"tmpfs".as_ptr(), 0, 0)
+            };
+            let mnt_errno = unsafe { *libc::__errno_location() };
+            if !(mnt == -1 && mnt_errno == libc::EPERM) {
+                unsafe { libc::_exit(94) };
+            }
             unsafe { libc::_exit(0) };
         }
 
@@ -523,6 +556,7 @@ mod tests {
             91 => panic!("an allowed syscall (getpid) was denied by the filter"),
             92 => panic!("a catastrophic syscall (unshare) was NOT denied at runtime"),
             93 => panic!("the x32 alias of an allowed syscall was NOT denied (blocklist bypass open)"),
+            94 => panic!("mount was NOT denied: a nested namespace would become usable"),
             other => panic!("unexpected child exit code {other}"),
         }
     }
