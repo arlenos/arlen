@@ -175,10 +175,69 @@ struct Session {
     name: String,
 }
 
-/// The profiles greetd offers. Stub: fails until wired to greetd.
+/// The default human-login UID window (Debian `login.defs` UID_MIN/UID_MAX). A
+/// service/system account sits below this; `nobody` sits above it.
+const UID_MIN: u32 = 1000;
+const UID_MAX: u32 = 60000;
+
+/// A shell that means "this account cannot log in interactively", so it is not a
+/// human profile even if its UID falls in the login window.
+fn is_login_shell(shell: &str) -> bool {
+    !matches!(
+        shell,
+        "" | "/usr/sbin/nologin"
+            | "/sbin/nologin"
+            | "/usr/bin/nologin"
+            | "/bin/false"
+            | "/usr/bin/false"
+            | "/bin/sync"
+    )
+}
+
+/// Parse the human-login accounts out of `/etc/passwd` contents: the `name:x:uid:
+/// gid:gecos:home:shell` records whose uid is in `[min_uid, max_uid]` and whose
+/// shell is a real login shell. The display name is the GECOS full-name field (up
+/// to the first comma) when set, else the username. Every profile is `standard`
+/// with the password factor; hardware-factor enrolment (fido2/tpm2) and the
+/// last-used pre-selection are later refinements, not derivable from passwd.
+/// Sorted by display name for a stable picker. Pure, so it is unit-tested.
+fn parse_login_accounts(passwd: &str, min_uid: u32, max_uid: u32) -> Vec<Profile> {
+    let mut out: Vec<Profile> = passwd
+        .lines()
+        .filter_map(|line| {
+            let f: Vec<&str> = line.split(':').collect();
+            if f.len() < 7 {
+                return None;
+            }
+            let (name, uid_s, gecos, shell) = (f[0], f[2], f[4], f[6]);
+            let uid: u32 = uid_s.parse().ok()?;
+            if uid < min_uid || uid > max_uid || !is_login_shell(shell) || name.is_empty() {
+                return None;
+            }
+            let display = gecos.split(',').next().filter(|s| !s.is_empty()).unwrap_or(name);
+            Some(Profile {
+                id: name.to_string(),
+                name: display.to_string(),
+                avatar_url: None,
+                kind: "standard".to_string(),
+                last_used: false,
+                factors: vec!["password".to_string()],
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+/// The human login profiles the greeter offers, read from `/etc/passwd` (a file
+/// the greeter is allowed even before a session). Fails closed if the file cannot
+/// be read, which the UI renders as "login is not reachable" rather than a
+/// fake-empty list.
 #[tauri::command]
 fn greeter_profiles() -> Result<Vec<Profile>, String> {
-    Err("greeter backend not connected".to_string())
+    let passwd = std::fs::read_to_string("/etc/passwd")
+        .map_err(|e| format!("cannot read the account list: {e}"))?;
+    Ok(parse_login_accounts(&passwd, UID_MIN, UID_MAX))
 }
 
 /// The launchable Wayland sessions, discovered from the XDG
@@ -486,6 +545,35 @@ mod tests {
         assert!(out.unwrap_err().contains("wrong password"));
         assert_eq!(secret.as_deref(), Some("bad")); // greetd still received the attempt
         assert_eq!(cmd, None); // no session started
+    }
+
+    #[test]
+    fn parse_login_accounts_keeps_only_human_logins() {
+        let passwd = "\
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+alice:x:1000:1000:Alice Example,,,:/home/alice:/bin/bash
+bob:x:1001:1001::/home/bob:/usr/bin/zsh
+svc:x:1002:1002:service:/var/lib/svc:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+";
+        let out = parse_login_accounts(passwd, UID_MIN, UID_MAX);
+        // root (uid 0) + the two nologin service accounts + nobody are excluded;
+        // alice (GECOS name) and bob (no GECOS -> username) remain, name-sorted.
+        assert_eq!(
+            out.iter().map(|p| (p.id.as_str(), p.name.as_str())).collect::<Vec<_>>(),
+            vec![("alice", "Alice Example"), ("bob", "bob")]
+        );
+        assert!(out.iter().all(|p| p.kind == "standard" && p.factors == vec!["password"]));
+    }
+
+    #[test]
+    fn is_login_shell_excludes_the_nologin_family() {
+        assert!(is_login_shell("/bin/bash"));
+        assert!(is_login_shell("/usr/bin/fish"));
+        assert!(!is_login_shell("/usr/sbin/nologin"));
+        assert!(!is_login_shell("/bin/false"));
+        assert!(!is_login_shell(""));
     }
 
     #[test]
