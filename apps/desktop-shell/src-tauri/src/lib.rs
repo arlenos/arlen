@@ -1,4 +1,3 @@
-mod ai_authz;
 mod app_history;
 mod app_index;
 mod app_state;
@@ -292,9 +291,6 @@ pub fn run() {
             }
             network::start_monitor(app.handle().clone());
             battery::start_monitor(app.handle().clone());
-            // Relay AI authorization prompts from the AI daemon to
-            // the shell UI. No-op if the daemon is not running.
-            ai_authz::spawn(app.handle().clone());
             audio::start_monitor(app.handle().clone());
             gtk_menu_bridge::start(app.handle().clone(), menu_store_for_bridge);
 
@@ -331,7 +327,6 @@ pub fn run() {
             log_frontend,
             dispatch_app_action,
             app_shortcut_invoke,
-            ai_authz::ai_respond_authorization,
             consent::consent_fetch,
             consent::consent_resolve,
             modulesd_commands::modulesd_list_modules,
