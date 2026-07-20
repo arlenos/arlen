@@ -184,6 +184,44 @@ fn authorize_run_with_key(
     }
 }
 
+/// The system directories a confined command may READ: enough to resolve and run
+/// a binary (interpreter, shared libraries, `ld.so.cache`, `/etc/passwd`), and
+/// nothing else.
+///
+/// This is deliberately NOT the host root. Binding `/` read-only looks harmless -
+/// the command still cannot write, reach the network or gain privilege - but a
+/// read-only bind is not an isolation boundary for two surfaces that matter:
+///
+/// * **IPC.** A read-only bind does not stop `connect()`: the kernel returns
+///   `-EROFS` for `MAY_WRITE` only on regular files, directories and symlinks, so
+///   a pathname AF_UNIX socket stays connectable. `--unshare-net` isolates only
+///   ABSTRACT sockets; pathname sockets are filesystem objects and are not
+///   namespaced by a netns. With `/run` visible, a confined command reaches
+///   `/run/user/$UID/bus` - and the session bus authenticates any same-uid peer -
+///   so `StartTransientUnit` would spawn an UNCONFINED process on the host,
+///   defeating confined + always-Confirm + never-autonomous in one step. Every
+///   arlen daemon socket under `$XDG_RUNTIME_DIR/arlen/` is reachable the same way.
+/// * **Secrets.** `$HOME` holds the AI engine's own run-consent root key, the
+///   capsule and undo signing keys, the audit HMAC key, `~/.ssh`, browser cookie
+///   stores. Reading the consent root alone would let an attacker mint valid
+///   consent for ARBITRARY argv, making every future confirmation meaningless -
+///   and the captured stdout returns straight into the model's context.
+///
+/// Excluding `/home`, `/root`, `/run`, `/var` and `/tmp` (a fresh tmpfs) closes
+/// both. A command that legitimately needs a user path should get it passed
+/// explicitly and covered by the consent digest, never by a blanket root bind.
+///
+/// Missing entries are filtered out because `bwrap` fails the whole launch on a
+/// bind source that does not exist (on a merged-`/usr` system `/bin`, `/sbin`,
+/// `/lib` and `/lib64` are symlinks into `/usr` and may legitimately be absent).
+fn system_read_roots() -> Vec<PathBuf> {
+    ["/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64"]
+        .iter()
+        .map(PathBuf::from)
+        .filter(|p| p.exists())
+        .collect()
+}
+
 /// A per-call writable scratch dir, UNIQUE per call and removed on drop. Two
 /// concurrent runs must not share a workdir (one command's scratch must never be
 /// visible to another), and each command gets a fresh empty dir; `Drop` cleans it
@@ -248,7 +286,8 @@ impl ServerHandler for TerminalRunMcp {
 
         // Reached only once consent is wired: run the confined command in a fresh,
         // isolated, per-call scratch dir (cleaned up when `scratch` drops) + return
-        // the captured output.
+        // the captured output. The read surface is the curated system set, NOT the
+        // host root - see `system_read_roots`.
         let scratch = match ScratchDir::create() {
             Ok(s) => s,
             Err(e) => {
@@ -260,7 +299,7 @@ impl ServerHandler for TerminalRunMcp {
         let req = RunRequest {
             command: args.command,
             args: args.args,
-            read_only_roots: vec![PathBuf::from("/")],
+            read_only_roots: system_read_roots(),
             workdir: scratch.path.clone(),
             network: NetworkPolicy::None,
             timeout: args.timeout,
@@ -282,6 +321,30 @@ impl ServerHandler for TerminalRunMcp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The read surface must never expose the host root or any directory holding a
+    /// connectable socket or a secret: `/run` (the session bus + every arlen daemon
+    /// socket - a read-only bind does not stop `connect()`, and a netns does not
+    /// bound pathname AF_UNIX) or `$HOME` (the consent root key, whose disclosure
+    /// would let an attacker mint consent for arbitrary argv). Pins the invariant
+    /// the seccomp socket entries rely on.
+    #[test]
+    fn the_read_surface_excludes_ipc_and_secret_directories() {
+        let roots = system_read_roots();
+        assert!(!roots.is_empty(), "a command needs some system dirs to run");
+        for r in &roots {
+            let p = r.to_string_lossy();
+            assert_ne!(p, "/", "the host root is never the read surface");
+            for forbidden in ["/run", "/var", "/home", "/root", "/tmp", "/proc", "/sys"] {
+                assert!(
+                    !p.starts_with(forbidden),
+                    "{p} exposes {forbidden}, which holds sockets or secrets"
+                );
+            }
+        }
+        // The set must still be usable: a binary and its loader have to resolve.
+        assert!(roots.iter().any(|r| r.ends_with("usr")), "no /usr: nothing could exec");
+    }
 
     fn args(command: &str) -> JsonObject {
         serde_json::from_value(
