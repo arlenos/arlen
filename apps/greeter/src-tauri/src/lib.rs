@@ -142,11 +142,33 @@ fn greeter_factor_begin(_profile_id: String, _factor: String) -> Result<serde_js
     Err("greeter backend not connected".to_string())
 }
 
-/// A power action from the login screen. Stub: the coder calls
-/// `org.arlen.Power1` (or the same systemctl/loginctl the shell uses).
+/// Map a frontend power action (the TypeScript `PowerAction`) to its `systemctl`
+/// verb. Fail-closed: an unrecognised action returns `None` so nothing runs (the
+/// greeter must never turn an unknown string into an arbitrary systemctl call).
+fn power_verb(action: &str) -> Option<&'static str> {
+    match action {
+        "suspend" => Some("suspend"),
+        "reboot" => Some("reboot"),
+        "power-off" => Some("poweroff"),
+        _ => None,
+    }
+}
+
+/// A power action from the login screen. Runs `systemctl <verb>` (logind grants
+/// the greetd greeter these without a session). Only the three known actions map
+/// to a verb; anything else is refused rather than passed through.
 #[tauri::command]
-fn greeter_power(_action: String) -> Result<(), String> {
-    Err("greeter backend not connected".to_string())
+fn greeter_power(action: String) -> Result<(), String> {
+    let verb = power_verb(&action).ok_or_else(|| format!("unknown power action: {action}"))?;
+    let status = std::process::Command::new("systemctl")
+        .arg(verb)
+        .status()
+        .map_err(|e| format!("failed to run systemctl {verb}: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("systemctl {verb} exited with {status}"))
+    }
 }
 
 /// Tauri application entry point invoked from `main.rs`.
@@ -223,5 +245,16 @@ mod tests {
     #[test]
     fn missing_dirs_yield_nothing() {
         assert!(discover_sessions(&[PathBuf::from("/nonexistent/xyz")]).is_empty());
+    }
+
+    #[test]
+    fn power_verb_maps_only_the_known_actions() {
+        assert_eq!(power_verb("suspend"), Some("suspend"));
+        assert_eq!(power_verb("reboot"), Some("reboot"));
+        assert_eq!(power_verb("power-off"), Some("poweroff"));
+        // Fail-closed: no passthrough of an arbitrary string to systemctl.
+        assert_eq!(power_verb("poweroff"), None);
+        assert_eq!(power_verb("--now; rm -rf /"), None);
+        assert_eq!(power_verb(""), None);
     }
 }
