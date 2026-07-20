@@ -1,0 +1,18 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-system-monitor-core"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen system monitor: the pure task-manager core (/proc process model + rate mapping, raw-signal process actions) the Tauri host wraps as commands."
+authors = ["Arlen"]
+
+[lib]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# The /proc reader + rate sampler shared with the MCP server.
+arlen-system-monitor-mcp = { path = "../../../daemons/system-monitor-mcp" }
+# The kill/stop/freeze process actions go through raw signals.
+libc = "0.2"
+
+[workspace]
