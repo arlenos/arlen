@@ -13,6 +13,7 @@
 //! unbounded allocation - the renderer keeps the previous frame (or the flat
 //! fallback) rather than crashing the desktop background on a bad asset.
 
+use crate::manifest::Scale;
 use thiserror::Error;
 
 /// The pixel-count ceiling (width * height). At 4 bytes/pixel this bounds the
@@ -60,9 +61,69 @@ pub fn load_image_rgba(path: &str) -> Result<DecodedImage, DecodeError> {
     Ok(DecodedImage { width, height, rgba: img.to_rgba8().into_raw() })
 }
 
+/// Compose a decoded image into an `out_w * out_h` RGBA8 buffer (the shm buffer
+/// size) per the [`Scale`] mode, aspect-preserving, nearest-neighbour sampled:
+///   - [`Scale::Fill`] scales the image to COVER the output (largest scale) and
+///     centre-crops the overflow, so the output is fully painted.
+///   - [`Scale::Zoom`] scales the image to FIT inside the output (smallest scale),
+///     centres it, and fills the letterbox margins with `letterbox`.
+/// Pure (no I/O, no Wayland), so it is unit-tested; the renderer calls it once per
+/// output/source change and copies the result into its `wl_shm` buffer. `out_w`/
+/// `out_h` of 0 yield an empty buffer.
+pub fn compose_to_output(
+    img: &DecodedImage,
+    out_w: u32,
+    out_h: u32,
+    scale: Scale,
+    letterbox: [u8; 4],
+) -> Vec<u8> {
+    let (ow, oh) = (out_w as usize, out_h as usize);
+    let mut out = Vec::with_capacity(ow * oh * 4);
+    if ow == 0 || oh == 0 || img.width == 0 || img.height == 0 {
+        return out;
+    }
+    let (iw, ih) = (img.width as f64, img.height as f64);
+    let (fw, fh) = (out_w as f64, out_h as f64);
+    // Fill covers (max scale); Zoom fits (min scale). Both preserve aspect.
+    let s = match scale {
+        Scale::Fill => (fw / iw).max(fh / ih),
+        Scale::Zoom => (fw / iw).min(fh / ih),
+    };
+    let scaled_w = iw * s;
+    let scaled_h = ih * s;
+    // Top-left of the scaled image in output space (negative for Fill's crop,
+    // positive for Zoom's letterbox).
+    let off_x = (fw - scaled_w) / 2.0;
+    let off_y = (fh - scaled_h) / 2.0;
+    for oy in 0..oh {
+        for ox in 0..ow {
+            // Map the output pixel back to a source pixel.
+            let sx = ((ox as f64 + 0.5 - off_x) / s).floor() as i64;
+            let sy = ((oy as f64 + 0.5 - off_y) / s).floor() as i64;
+            if sx >= 0 && sy >= 0 && sx < img.width as i64 && sy < img.height as i64 {
+                let i = ((sy as usize * img.width as usize) + sx as usize) * 4;
+                out.extend_from_slice(&img.rgba[i..i + 4]);
+            } else {
+                // Outside the source (Zoom's letterbox margin).
+                out.extend_from_slice(&letterbox);
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn solid(w: u32, h: u32, px: [u8; 4]) -> DecodedImage {
+        DecodedImage { width: w, height: h, rgba: px.repeat((w * h) as usize) }
+    }
+
+    fn pixel(buf: &[u8], w: u32, x: u32, y: u32) -> [u8; 4] {
+        let i = ((y * w + x) * 4) as usize;
+        [buf[i], buf[i + 1], buf[i + 2], buf[i + 3]]
+    }
 
     /// Write a small solid-colour PNG to a temp file and return its path.
     fn fixture_png(dir: &std::path::Path, w: u32, h: u32) -> String {
@@ -70,6 +131,33 @@ mod tests {
         let buf = image::RgbaImage::from_pixel(w, h, image::Rgba([10, 20, 30, 255]));
         buf.save(&path).unwrap();
         path.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn fill_paints_the_whole_output_with_no_letterbox() {
+        let red = [200, 0, 0, 255];
+        let out = compose_to_output(&solid(1, 1, red), 4, 4, Scale::Fill, [0, 0, 255, 255]);
+        assert_eq!(out.len(), 4 * 4 * 4);
+        // Every pixel is the source colour: Fill covers, so no letterbox shows.
+        assert!(out.chunks_exact(4).all(|p| p == red));
+    }
+
+    #[test]
+    fn zoom_letterboxes_a_mismatched_aspect() {
+        let red = [200, 0, 0, 255];
+        let blue = [0, 0, 255, 255];
+        // A 4x1 source into a 4x4 output fits to width (scale 1), centred vertically
+        // -> only the middle row carries the image, the rest is letterbox.
+        let out = compose_to_output(&solid(4, 1, red), 4, 4, Scale::Zoom, blue);
+        assert_eq!(out.len(), 4 * 4 * 4);
+        assert_eq!(pixel(&out, 4, 0, 0), blue); // top margin
+        assert_eq!(pixel(&out, 4, 0, 3), blue); // bottom margin
+        assert_eq!(pixel(&out, 4, 0, 1), red); // the image row
+    }
+
+    #[test]
+    fn a_zero_output_is_an_empty_buffer() {
+        assert!(compose_to_output(&solid(2, 2, [1, 2, 3, 4]), 0, 4, Scale::Fill, [0; 4]).is_empty());
     }
 
     #[test]
