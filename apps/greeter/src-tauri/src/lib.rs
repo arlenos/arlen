@@ -9,8 +9,16 @@
 //! read fails closed, which the UI renders as "login is not reachable",
 //! never as a fake-empty profile list.
 
+use arlen_lock_auth::{AuthStep, GreetdClient, GREETD_SOCK_ENV};
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::io::{Read, Write};
+use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
+
+/// A hard ceiling on the greetd auth exchange, so a misbehaving or hostile PAM
+/// conversation (endless prompts) fails closed instead of spinning. A password
+/// login is one secret prompt; the slack covers an info message or two.
+const MAX_AUTH_STEPS: usize = 8;
 
 /// The XDG directories a Wayland session `.desktop` entry may live in, highest
 /// precedence first (a local override shadows the system copy of the same id).
@@ -90,6 +98,65 @@ fn fallback_session() -> Session {
     Session { id: "arlen".to_string(), name: "Arlen".to_string() }
 }
 
+/// The launch command for the plain Arlen fallback session (matches the id
+/// [`fallback_session`] offers), so a minimal system with no `.desktop` sessions
+/// installed still logs in.
+fn fallback_command() -> Vec<String> {
+    vec!["arlen-session".to_string()]
+}
+
+/// Extract the `Exec=` launch command from a `.desktop` file's `[Desktop Entry]`,
+/// split into an argv vector. This is what greetd's `StartSession` runs. The split
+/// is on ASCII whitespace: session entries carry a plain command (no `.desktop`
+/// field codes like `%f`, which apply to file-opening app launchers, not sessions),
+/// so a shell-style tokeniser would be over-engineering. Returns `None` when there
+/// is no non-empty `Exec` in the group.
+fn session_exec_from_desktop(contents: &str) -> Option<Vec<String>> {
+    let mut in_entry = false;
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            in_entry = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_entry {
+            continue;
+        }
+        if let Some(exec) = line.strip_prefix("Exec=") {
+            let argv: Vec<String> = exec.split_whitespace().map(str::to_string).collect();
+            if !argv.is_empty() {
+                return Some(argv);
+            }
+        }
+    }
+    None
+}
+
+/// Resolve a session id to the argv greetd should `StartSession`. Searches `dirs`
+/// (highest precedence first) for `<id>.desktop` and returns its `Exec` argv; the
+/// fallback id resolves to [`fallback_command`] even with nothing installed. `None`
+/// when the id is neither the fallback nor a discoverable session, so the caller
+/// refuses to launch an unknown id rather than guessing.
+fn session_command(dirs: &[PathBuf], id: &str) -> Option<Vec<String>> {
+    // Guard the interpolation into a path: an id with a separator or traversal
+    // must never escape the session dirs.
+    if id.is_empty() || id.contains('/') || id.contains("..") {
+        return None;
+    }
+    for dir in dirs {
+        let path = dir.join(format!("{id}.desktop"));
+        if let Ok(contents) = std::fs::read_to_string(&path) {
+            if let Some(argv) = session_exec_from_desktop(&contents) {
+                return Some(argv);
+            }
+        }
+    }
+    if id == fallback_session().id {
+        return Some(fallback_command());
+    }
+    None
+}
+
 /// One profile offered at login. Mirrors the TypeScript `Profile`.
 #[derive(Serialize)]
 struct Profile {
@@ -128,11 +195,87 @@ fn greeter_sessions() -> Result<Vec<Session>, String> {
     Ok(sessions)
 }
 
-/// Password authentication for a profile. Stub: the coder routes this to
-/// PAM via `daemons/lock-auth`, releasing the systemd-homed key on success.
+/// The environment greetd should add when starting the session. greetd + pam_
+/// systemd populate most of it; this pins the session-type hints so a Wayland
+/// compositor comes up correctly and the session is tagged with its id.
+fn session_env(session_id: &str) -> Vec<String> {
+    vec![
+        "XDG_SESSION_TYPE=wayland".to_string(),
+        format!("XDG_SESSION_DESKTOP={session_id}"),
+        format!("XDG_CURRENT_DESKTOP={session_id}"),
+    ]
+}
+
+/// Drive the greetd auth conversation to completion over `stream` and, on success,
+/// start `cmd`. Generic over the stream so it is tested against an in-process mock
+/// greetd. The policy: answer the first hidden prompt with `secret`, acknowledge
+/// info/error messages and any further prompt with an empty response (the greeter
+/// holds no other credential), stop on `Authenticated` (then `StartSession`) or
+/// `Failed`, and cap the exchange at [`MAX_AUTH_STEPS`] so it always terminates.
+/// The secret is never logged and never leaves this function.
+fn run_login<S: Read + Write>(
+    stream: S,
+    username: &str,
+    secret: &str,
+    cmd: Vec<String>,
+    env: Vec<String>,
+) -> Result<(), String> {
+    let mut client = GreetdClient::new(stream);
+    let mut step = client
+        .create_session(username)
+        .map_err(|e| format!("greetd create_session failed: {e}"))?;
+    let mut answered_secret = false;
+    for _ in 0..MAX_AUTH_STEPS {
+        match step {
+            AuthStep::Authenticated => {
+                return client
+                    .start_session(cmd, env)
+                    .map_err(|e| format!("greetd start_session failed: {e}"));
+            }
+            AuthStep::Failed { description } => {
+                let _ = client.cancel();
+                return Err(description);
+            }
+            AuthStep::Prompt { secret: true, .. } if !answered_secret => {
+                answered_secret = true;
+                step = client
+                    .post_response(Some(secret.to_string()))
+                    .map_err(|e| format!("greetd auth failed: {e}"))?;
+            }
+            // A further prompt (or a message) the greeter cannot answer: acknowledge
+            // with an empty response and let greetd decide. A second secret prompt
+            // means the credential was not accepted as the answer.
+            AuthStep::Prompt { .. } | AuthStep::Message { .. } => {
+                step = client
+                    .post_response(None)
+                    .map_err(|e| format!("greetd auth failed: {e}"))?;
+            }
+        }
+    }
+    let _ = client.cancel();
+    Err("authentication did not complete".to_string())
+}
+
+/// Password authentication: run the greetd conversation for `profile_id` with
+/// `secret`, and on success start the chosen `session_id`. The session id is
+/// resolved to its launch command locally (a filesystem read the greeter is
+/// allowed) and an unknown id is refused before touching greetd. Returns an
+/// `AuthResult`-shaped `{ ok: true }` on success; a wrong credential or any greetd
+/// error surfaces as `Err`, which the frontend renders as a failed login.
 #[tauri::command]
-fn greeter_authenticate(_profile_id: String, _secret: String) -> Result<serde_json::Value, String> {
-    Err("greeter backend not connected".to_string())
+fn greeter_authenticate(
+    profile_id: String,
+    secret: String,
+    session_id: String,
+) -> Result<serde_json::Value, String> {
+    let cmd = session_command(&wayland_session_dirs(), &session_id)
+        .ok_or_else(|| format!("unknown session: {session_id}"))?;
+    let sock = std::env::var(GREETD_SOCK_ENV)
+        .map_err(|_| "login is not reachable (greetd socket unavailable)".to_string())?;
+    let stream =
+        UnixStream::connect(&sock).map_err(|e| format!("cannot reach greetd: {e}"))?;
+    run_login(stream, &profile_id, &secret, cmd, session_env(&session_id))?;
+    Ok(serde_json::json!({ "ok": true }))
 }
 
 /// Begin a hardware-factor login (FIDO2 / TPM2). Stub: wired to the
@@ -192,7 +335,7 @@ pub fn run() {
 mod tests {
     use super::*;
 
-    fn write(dir: &Path, file: &str, body: &str) {
+    fn write(dir: &std::path::Path, file: &str, body: &str) {
         std::fs::write(dir.join(file), body).unwrap();
     }
 
@@ -245,6 +388,104 @@ mod tests {
     #[test]
     fn missing_dirs_yield_nothing() {
         assert!(discover_sessions(&[PathBuf::from("/nonexistent/xyz")]).is_empty());
+    }
+
+    #[test]
+    fn session_command_resolves_exec_and_guards_the_id() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "sway.desktop", "[Desktop Entry]\nName=Sway\nExec=/usr/bin/sway --unsupported\n");
+        let dirs = [dir.path().to_path_buf()];
+
+        assert_eq!(
+            session_command(&dirs, "sway"),
+            Some(vec!["/usr/bin/sway".to_string(), "--unsupported".to_string()])
+        );
+        // The fallback id resolves even with nothing on disk for it.
+        assert_eq!(session_command(&dirs, "arlen"), Some(fallback_command()));
+        // Unknown id -> None (refuse to launch a guess).
+        assert_eq!(session_command(&dirs, "ghost"), None);
+        // Path-escape guards: a separator or traversal never reaches the fs join.
+        assert_eq!(session_command(&dirs, "../etc/passwd"), None);
+        assert_eq!(session_command(&dirs, "a/b"), None);
+        assert_eq!(session_command(&dirs, ""), None);
+    }
+
+    /// A one-shot mock greetd on `srv`: expect CreateSession, send a Secret
+    /// prompt, expect the posted secret, then answer `auth_ok` (Success) or a
+    /// Failed(AuthError). On success also expect + accept StartSession. Runs on a
+    /// thread so the blocking client conversation on the other end does not
+    /// deadlock. Returns the secret greetd received and the StartSession cmd.
+    fn mock_greetd(
+        srv: UnixStream,
+        auth_ok: bool,
+    ) -> std::thread::JoinHandle<(Option<String>, Option<Vec<String>>)> {
+        use greetd_ipc::{codec::SyncCodec, AuthMessageType, ErrorType, Request, Response};
+        std::thread::spawn(move || {
+            let mut s = srv;
+            let mut got_secret = None;
+            let mut got_cmd = None;
+            match Request::read_from(&mut s).unwrap() {
+                Request::CreateSession { .. } => {}
+                other => panic!("expected CreateSession, got {other:?}"),
+            }
+            Response::AuthMessage {
+                auth_message_type: AuthMessageType::Secret,
+                auth_message: "Password:".to_string(),
+            }
+            .write_to(&mut s)
+            .unwrap();
+            match Request::read_from(&mut s).unwrap() {
+                Request::PostAuthMessageResponse { response } => got_secret = response,
+                other => panic!("expected PostAuthMessageResponse, got {other:?}"),
+            }
+            if auth_ok {
+                Response::Success.write_to(&mut s).unwrap();
+                match Request::read_from(&mut s).unwrap() {
+                    Request::StartSession { cmd, .. } => got_cmd = Some(cmd),
+                    other => panic!("expected StartSession, got {other:?}"),
+                }
+                Response::Success.write_to(&mut s).unwrap();
+            } else {
+                Response::Error {
+                    error_type: ErrorType::AuthError,
+                    description: "wrong password".to_string(),
+                }
+                .write_to(&mut s)
+                .unwrap();
+                // The client cancels a failed session; accept it if it arrives.
+                let _ = Request::read_from(&mut s);
+            }
+            (got_secret, got_cmd)
+        })
+    }
+
+    #[test]
+    fn run_login_answers_the_secret_and_starts_the_session_on_success() {
+        let (client, server) = UnixStream::pair().unwrap();
+        let greetd = mock_greetd(server, true);
+        let out = run_login(
+            client,
+            "alice",
+            "hunter2",
+            vec!["arlen-session".to_string()],
+            vec!["XDG_SESSION_TYPE=wayland".to_string()],
+        );
+        let (secret, cmd) = greetd.join().unwrap();
+        assert!(out.is_ok(), "{out:?}");
+        assert_eq!(secret.as_deref(), Some("hunter2"));
+        assert_eq!(cmd, Some(vec!["arlen-session".to_string()]));
+    }
+
+    #[test]
+    fn run_login_surfaces_a_wrong_credential_as_an_error() {
+        let (client, server) = UnixStream::pair().unwrap();
+        let greetd = mock_greetd(server, false);
+        let out = run_login(client, "alice", "bad", vec!["arlen-session".to_string()], vec![]);
+        let (secret, cmd) = greetd.join().unwrap();
+        assert!(out.is_err());
+        assert!(out.unwrap_err().contains("wrong password"));
+        assert_eq!(secret.as_deref(), Some("bad")); // greetd still received the attempt
+        assert_eq!(cmd, None); // no session started
     }
 
     #[test]
