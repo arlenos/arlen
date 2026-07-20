@@ -17,16 +17,11 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-base64 = "0.22"
 log = "0.4"
 env_logger = "0.11"
-# The greeter's greetd auth conversation reuses the tested GreetdClient; the
-# `greetd` feature pulls only greetd_ipc (not PAM/fprintd), so the login screen
-# links nothing it does not need to reach the greetd socket.
+# The pure login logic (unit-tested in CI).
+arlen-greeter-core = { path = "../core" }
+# GREETD_SOCK_ENV for dialing the greetd socket (the run_login conversation lives
+# in the core crate).
 arlen-lock-auth = { path = "../../../daemons/lock-auth", default-features = false, features = ["greetd"] }
 
-[dev-dependencies]
-tempfile = "3"
-# For the mock greetd server the run_login test drives (write canned Responses,
-# read the client's Requests) - the same protocol crate GreetdClient speaks.
-greetd_ipc = { version = "0.10", default-features = false, features = ["sync-codec"] }
