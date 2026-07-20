@@ -100,36 +100,45 @@ fn fallback_session() -> Session {
 
 /// The launch command for the plain Arlen fallback session (matches the id
 /// [`fallback_session`] offers), so a minimal system with no `.desktop` sessions
-/// installed still logs in.
+/// installed still logs in. An absolute path, so it does not depend on greetd's
+/// PATH.
 fn fallback_command() -> Vec<String> {
-    vec!["arlen-session".to_string()]
+    vec!["/usr/bin/arlen-session".to_string()]
 }
 
 /// Extract the `Exec=` launch command from a `.desktop` file's `[Desktop Entry]`,
-/// split into an argv vector. This is what greetd's `StartSession` runs. The split
-/// is on ASCII whitespace: session entries carry a plain command (no `.desktop`
-/// field codes like `%f`, which apply to file-opening app launchers, not sessions),
-/// so a shell-style tokeniser would be over-engineering. Returns `None` when there
-/// is no non-empty `Exec` in the group.
+/// split into an argv vector. This is what greetd's `StartSession` runs. Uses the
+/// SAME tolerant `key = value` split + group handling as [`session_name_from_desktop`]
+/// (so a session the picker lists is one that actually launches), and returns
+/// `None` for a `NoDisplay`/`Hidden` entry so a hidden session is not launched by
+/// id either. The argv split is on ASCII whitespace: session entries carry a plain
+/// command (no `.desktop` field codes like `%f`, which are for file-opening app
+/// launchers, not sessions). `None` when there is no non-empty `Exec`.
 fn session_exec_from_desktop(contents: &str) -> Option<Vec<String>> {
     let mut in_entry = false;
+    let mut exec: Option<Vec<String>> = None;
     for line in contents.lines() {
         let line = line.trim();
         if line.starts_with('[') && line.ends_with(']') {
             in_entry = line == "[Desktop Entry]";
             continue;
         }
-        if !in_entry {
+        if !in_entry || line.is_empty() || line.starts_with('#') {
             continue;
         }
-        if let Some(exec) = line.strip_prefix("Exec=") {
-            let argv: Vec<String> = exec.split_whitespace().map(str::to_string).collect();
-            if !argv.is_empty() {
-                return Some(argv);
+        let Some((key, value)) = line.split_once('=') else { continue };
+        match (key.trim(), value.trim()) {
+            ("Exec", v) if exec.is_none() => {
+                let argv: Vec<String> = v.split_whitespace().map(str::to_string).collect();
+                if !argv.is_empty() {
+                    exec = Some(argv);
+                }
             }
+            ("NoDisplay", "true") | ("Hidden", "true") => return None,
+            _ => {}
         }
     }
-    None
+    exec
 }
 
 /// Resolve a session id to the argv greetd should `StartSession`. Searches `dirs`
@@ -181,11 +190,13 @@ const UID_MIN: u32 = 1000;
 const UID_MAX: u32 = 60000;
 
 /// A shell that means "this account cannot log in interactively", so it is not a
-/// human profile even if its UID falls in the login window.
+/// human profile even if its UID falls in the login window. An EMPTY shell field
+/// is NOT excluded: by passwd convention an empty shell defaults to `/bin/sh`, a
+/// real interactive login, so such an account is a human profile.
 fn is_login_shell(shell: &str) -> bool {
     !matches!(
         shell,
-        "" | "/usr/sbin/nologin"
+        "/usr/sbin/nologin"
             | "/sbin/nologin"
             | "/usr/bin/nologin"
             | "/bin/false"
@@ -214,10 +225,15 @@ fn parse_login_accounts(passwd: &str, min_uid: u32, max_uid: u32) -> Vec<Profile
             if uid < min_uid || uid > max_uid || !is_login_shell(shell) || name.is_empty() {
                 return None;
             }
-            let display = gecos.split(',').next().filter(|s| !s.is_empty()).unwrap_or(name);
+            // The GECOS full-name is user-settable via `chfn`; strip control chars
+            // before it reaches the webview (defense-in-depth beside Svelte's HTML
+            // escaping). An all-stripped/empty name falls back to the username.
+            let raw = gecos.split(',').next().filter(|s| !s.is_empty()).unwrap_or(name);
+            let display: String = raw.chars().filter(|c| !c.is_control()).collect();
+            let display = if display.is_empty() { name.to_string() } else { display };
             Some(Profile {
                 id: name.to_string(),
-                name: display.to_string(),
+                name: display,
                 avatar_url: None,
                 kind: "standard".to_string(),
                 last_used: false,
@@ -245,14 +261,26 @@ const MAX_AVATAR_BYTES: u64 = 2 * 1024 * 1024;
 /// skipped. Pure over the dir, so it is unit-tested with a fixture.
 fn resolve_avatar(icons_dir: &Path, username: &str) -> Option<String> {
     use base64::Engine;
+    use std::io::Read;
     if username.is_empty() || username.contains('/') || username.contains("..") {
         return None;
     }
     let path = icons_dir.join(username);
-    if std::fs::metadata(&path).ok()?.len() > MAX_AVATAR_BYTES {
+    // symlink_metadata does NOT follow a final symlink, and is_file() rejects a
+    // symlink / fifo / device / dir - so a planted symlink cannot redirect the read
+    // to an arbitrary root-readable file (disclosure) or an endless special file
+    // (DoS). The size is then bounded by the READ itself (`.take`), not by trusting
+    // a metadata length that a growing or special file could lie about.
+    let meta = std::fs::symlink_metadata(&path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_AVATAR_BYTES {
         return None;
     }
-    let bytes = std::fs::read(&path).ok()?;
+    let file = std::fs::File::open(&path).ok()?;
+    let mut bytes = Vec::new();
+    file.take(MAX_AVATAR_BYTES + 1).read_to_end(&mut bytes).ok()?;
+    if bytes.len() as u64 > MAX_AVATAR_BYTES {
+        return None;
+    }
     let mime = if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
         "image/png"
     } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
@@ -334,7 +362,11 @@ fn run_login<S: Read + Write>(
             }
             AuthStep::Failed { description } => {
                 let _ = client.cancel();
-                return Err(description);
+                // Generic on purpose: greetd/PAM's description can differentiate
+                // "no such user" from "wrong password", which is a username-
+                // enumeration oracle. The greeter surfaces one failure to the UI.
+                log::debug!("greetd auth failed: {description}");
+                return Err("authentication failed".to_string());
             }
             AuthStep::Prompt { secret: true, .. } if !answered_secret => {
                 answered_secret = true;
@@ -368,6 +400,16 @@ fn greeter_authenticate(
     secret: String,
     session_id: String,
 ) -> Result<serde_json::Value, String> {
+    // The UID/shell account filter is an AUTHORIZATION boundary, not just what the
+    // picker shows: a caller of this IPC command must not drive a PAM auth for an
+    // account the greeter would never offer (root, a service account, a uid outside
+    // the login window). PAM still gates the credential, but the greeter enforces
+    // its own account policy here rather than trusting the frontend.
+    let passwd = std::fs::read_to_string("/etc/passwd")
+        .map_err(|_| "login is not reachable (account list unavailable)".to_string())?;
+    if !parse_login_accounts(&passwd, UID_MIN, UID_MAX).iter().any(|p| p.id == profile_id) {
+        return Err("unknown profile".to_string());
+    }
     let cmd = session_command(&wayland_session_dirs(), &session_id)
         .ok_or_else(|| format!("unknown session: {session_id}"))?;
     let sock = std::env::var(GREETD_SOCK_ENV)
@@ -582,7 +624,8 @@ mod tests {
         let out = run_login(client, "alice", "bad", vec!["arlen-session".to_string()], vec![]);
         let (secret, cmd) = greetd.join().unwrap();
         assert!(out.is_err());
-        assert!(out.unwrap_err().contains("wrong password"));
+        // Generic message (no PAM-text enumeration oracle).
+        assert_eq!(out.unwrap_err(), "authentication failed");
         assert_eq!(secret.as_deref(), Some("bad")); // greetd still received the attempt
         assert_eq!(cmd, None); // no session started
     }
@@ -624,15 +667,25 @@ nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
         // Path-escape guards.
         assert_eq!(resolve_avatar(dir.path(), "../etc/shadow"), None);
         assert_eq!(resolve_avatar(dir.path(), ""), None);
+        // A symlink (even to a valid image) is rejected: no redirect to an
+        // arbitrary root-readable file, no unbounded special-file read.
+        #[cfg(unix)]
+        {
+            let target = dir.path().join("real.png");
+            std::fs::write(&target, [0x89, b'P', b'N', b'G', 0x09]).unwrap();
+            std::os::unix::fs::symlink(&target, dir.path().join("link")).unwrap();
+            assert_eq!(resolve_avatar(dir.path(), "link"), None);
+        }
     }
 
     #[test]
     fn is_login_shell_excludes_the_nologin_family() {
         assert!(is_login_shell("/bin/bash"));
         assert!(is_login_shell("/usr/bin/fish"));
+        // Empty shell => /bin/sh by convention => a real login.
+        assert!(is_login_shell(""));
         assert!(!is_login_shell("/usr/sbin/nologin"));
         assert!(!is_login_shell("/bin/false"));
-        assert!(!is_login_shell(""));
     }
 
     #[test]
