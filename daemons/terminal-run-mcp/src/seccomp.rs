@@ -211,9 +211,15 @@ fn command_allowlist() -> Vec<libc::c_long> {
         libc::SYS_timerfd_create,
         libc::SYS_timerfd_settime,
         libc::SYS_timerfd_gettime,
-        // Sockets: exfiltration is prevented by the network namespace / egress filter,
-        // NOT this filter, so a command may speak the local sockets it legitimately
-        // needs (e.g. a compiler talking to a local build server over AF_UNIX).
+        // Sockets. IP exfiltration is prevented by the network namespace, NOT this
+        // filter, so a command may speak the local sockets it legitimately needs
+        // (e.g. a compiler talking to a local build server over AF_UNIX).
+        // NB the netns does NOT bound AF_UNIX by pathname: it isolates only ABSTRACT
+        // sockets, and a read-only bind still permits connect(). So these entries are
+        // only safe because the command's read surface excludes every directory
+        // holding a socket that matters - `/run` (the session bus, every arlen daemon)
+        // and `$HOME`. See `server.rs::system_read_roots`: the two mechanisms compose
+        // only while that curated set holds, so widening it re-opens this.
         libc::SYS_socket,
         libc::SYS_socketpair,
         libc::SYS_connect,
