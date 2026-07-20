@@ -16,12 +16,14 @@
 
 use arlen_ai_core::screen::Screener;
 use arlen_ai_engine_daemon::capability_map::CapabilityGate;
+use arlen_ai_engine_daemon::command_executor::CommandExecutor;
 use arlen_ai_engine_daemon::compensation::CompensationStore;
 use arlen_ai_engine_daemon::consent_client::ConsentBrokerClient;
 use arlen_ai_engine_daemon::consent_root;
 use arlen_ai_engine_daemon::dispatch::{ConsentMinter, Dispatcher};
 use arlen_ai_engine_daemon::dispatch::Executor;
 use arlen_ai_engine_daemon::file_executor::FileSystemExecutor;
+use arlen_run_consent_token::RUN_COMMAND_TOOL;
 use arlen_ai_engine_daemon::settings_executor::SettingsExecutor;
 use arlen_ai_engine_daemon::proxy_executor::ProxyExecutor;
 use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
@@ -428,6 +430,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_audit(audit.clone())
             .with_undo_signer(arlen_ai_undo_proto::socket_path()),
     );
+    // The run_command courier. It registers no compensation and no undo signer on
+    // purpose: an executed command is `OpaqueCommand`-irreversible, so there is no
+    // inverse to capture and pretending otherwise would be worse than admitting it.
+    // Its containment is upstream (always-Confirm + the consent biscuit bound to the
+    // exact argv) and downstream (the server's bwrap + seccomp confinement), not an
+    // undo. The audit sink is required, not optional: the MCP client refuses to
+    // dispatch without one, so audit-before-action holds for this tool by
+    // construction.
+    let command_executor: Arc<dyn Executor> =
+        Arc::new(CommandExecutor::new(audit.clone()));
     // GATE-CLASSIFIER PRE-CONDITION (review MEDIUM): only tools registered here are
     // executable, and the gate's `action_kind_for_tool` classifies by NAME segment.
     // The irreversible graph mutators `graph.set_field` / `graph.retract_node`
@@ -464,7 +476,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register("fs.create", fs_executor)
         // The settings forward act (ai-act-layer-plan.md §⟳): a reversible scalar
         // config write, RestoreValue inverse write-ahead, ai.toml protected.
-        .register("settings.set", settings_executor);
+        .register("settings.set", settings_executor)
+        // run_command, the sharp edge. Unlike the acts above, this daemon does NOT
+        // perform it: the courier forwards the already-confirmed command to the
+        // separate terminal-run MCP server, which verifies the consent biscuit
+        // against the root public key published above and runs it under bwrap + a
+        // seccomp allowlist. Registering it is what makes the tool reachable at all
+        // (an unregistered name fail-closes with UnknownTool), so it lands together
+        // with the pi-side tool spec and only after the courier's adversarial
+        // review: the sandbox read surface, the audit sink, the call bound and the
+        // namespace containment are all settled first.
+        .register(RUN_COMMAND_TOOL, command_executor);
     // The run_command consent biscuit: load (or first-run create) the persistent
     // root keypair and publish its public half for the terminal-run MCP server to
     // verify against. Best-effort and fail-closed: if custody or publication fails
