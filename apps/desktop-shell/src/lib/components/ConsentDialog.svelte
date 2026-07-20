@@ -21,8 +21,25 @@
   import ConsentCard from "$lib/components/ConsentCard.svelte";
   import { current, resolve, pollConsent, type PendingView } from "$lib/stores/consent";
 
+  /// How often to ask the broker for a pending request. A Confirm blocks the
+  /// assistant until answered, so the user should see it promptly; the fetch is a
+  /// one-shot round trip that returns None on an empty queue, so a second is
+  /// cheap. Replace with the broker signal when the control protocol grows one.
+  const POLL_MS = 1000;
+
+  // The broker has no push channel, so the dialog has to ask. Fetching only once
+  // on mount made the whole surface inert in practice: a Confirm arrives when the
+  // assistant proposes something, which is always AFTER the shell started, so the
+  // single startup fetch always saw an empty queue and nothing was ever shown to
+  // the user again. The store's doc names a "broker-signal listener that drives the
+  // fetch" as the intended design; that needs a subscribe op the broker's control
+  // protocol does not have yet, and polling is the honest stand-in until it does -
+  // a fetch on an empty queue is a cheap one-shot round trip that returns None, and
+  // when the signal lands it replaces this interval without the dialog changing.
   onMount(() => {
     void pollConsent();
+    const timer = setInterval(() => void pollConsent(), POLL_MS);
+    return () => clearInterval(timer);
   });
 
   // A pending request must always be deniable by Escape. The dialog's `open` is
