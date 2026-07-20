@@ -80,6 +80,12 @@ pub mod write_executor;
 /// confined to `~/.config/arlen` and refusing the protected AI master-switch file.
 pub mod settings_executor;
 
+/// The run_command courier: forwards a consent-bearing command to the separate
+/// terminal-run MCP server. Not registered in the router yet - it lands with the
+/// pi-side tool spec that makes it reachable, so the sharp edge is reviewed before
+/// it is exposed.
+pub mod command_executor;
+
 /// Report-side compensation: op-id-keyed retract receipts for committed writes.
 pub mod compensation;
 pub mod undo_enact;
