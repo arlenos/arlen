@@ -13,7 +13,7 @@ use arlen_lock_auth::{AuthStep, GreetdClient, GREETD_SOCK_ENV};
 use serde::Serialize;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// A hard ceiling on the greetd auth exchange, so a misbehaving or hostile PAM
 /// conversation (endless prompts) fails closed instead of spinning. A password
@@ -229,15 +229,56 @@ fn parse_login_accounts(passwd: &str, min_uid: u32, max_uid: u32) -> Vec<Profile
     out
 }
 
+/// The AccountsService avatar directory: one image per username, the standard
+/// place a display/login manager reads a user's picture from (it is root-owned +
+/// world-readable, so the greeter can read it before any session).
+const ACCOUNTS_ICONS_DIR: &str = "/var/lib/AccountsService/icons";
+
+/// Cap on an avatar image (a login avatar is small; a larger file is skipped
+/// rather than base64'd into the reply).
+const MAX_AVATAR_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Resolve a user's avatar to a `data:` URL the webview can render inline, or
+/// `None` for the initials fallback. Reads `<icons_dir>/<username>`, sniffs PNG vs
+/// JPEG by magic bytes (an unknown type is skipped, not mislabelled), and base64s
+/// it. The username is guarded against a path escape, and an oversized file is
+/// skipped. Pure over the dir, so it is unit-tested with a fixture.
+fn resolve_avatar(icons_dir: &Path, username: &str) -> Option<String> {
+    use base64::Engine;
+    if username.is_empty() || username.contains('/') || username.contains("..") {
+        return None;
+    }
+    let path = icons_dir.join(username);
+    if std::fs::metadata(&path).ok()?.len() > MAX_AVATAR_BYTES {
+        return None;
+    }
+    let bytes = std::fs::read(&path).ok()?;
+    let mime = if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        "image/png"
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        "image/jpeg"
+    } else {
+        return None;
+    };
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Some(format!("data:{mime};base64,{b64}"))
+}
+
 /// The human login profiles the greeter offers, read from `/etc/passwd` (a file
-/// the greeter is allowed even before a session). Fails closed if the file cannot
+/// the greeter is allowed even before a session), each enriched with its
+/// AccountsService avatar when one exists. Fails closed if the account list cannot
 /// be read, which the UI renders as "login is not reachable" rather than a
 /// fake-empty list.
 #[tauri::command]
 fn greeter_profiles() -> Result<Vec<Profile>, String> {
     let passwd = std::fs::read_to_string("/etc/passwd")
         .map_err(|e| format!("cannot read the account list: {e}"))?;
-    Ok(parse_login_accounts(&passwd, UID_MIN, UID_MAX))
+    let mut profiles = parse_login_accounts(&passwd, UID_MIN, UID_MAX);
+    let icons = Path::new(ACCOUNTS_ICONS_DIR);
+    for p in &mut profiles {
+        p.avatar_url = resolve_avatar(icons, &p.id);
+    }
+    Ok(profiles)
 }
 
 /// The launchable Wayland sessions, discovered from the XDG
@@ -481,7 +522,6 @@ mod tests {
         use greetd_ipc::{codec::SyncCodec, AuthMessageType, ErrorType, Request, Response};
         std::thread::spawn(move || {
             let mut s = srv;
-            let mut got_secret = None;
             let mut got_cmd = None;
             match Request::read_from(&mut s).unwrap() {
                 Request::CreateSession { .. } => {}
@@ -493,10 +533,10 @@ mod tests {
             }
             .write_to(&mut s)
             .unwrap();
-            match Request::read_from(&mut s).unwrap() {
-                Request::PostAuthMessageResponse { response } => got_secret = response,
+            let got_secret = match Request::read_from(&mut s).unwrap() {
+                Request::PostAuthMessageResponse { response } => response,
                 other => panic!("expected PostAuthMessageResponse, got {other:?}"),
-            }
+            };
             if auth_ok {
                 Response::Success.write_to(&mut s).unwrap();
                 match Request::read_from(&mut s).unwrap() {
@@ -565,6 +605,25 @@ nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
             vec![("alice", "Alice Example"), ("bob", "bob")]
         );
         assert!(out.iter().all(|p| p.kind == "standard" && p.factors == vec!["password"]));
+    }
+
+    #[test]
+    fn resolve_avatar_encodes_a_known_image_and_guards_the_name() {
+        let dir = tempfile::tempdir().unwrap();
+        // A minimal "PNG" (magic bytes + a byte) and a "JPEG".
+        std::fs::write(dir.path().join("alice"), [0x89, b'P', b'N', b'G', 0x01]).unwrap();
+        std::fs::write(dir.path().join("bob"), [0xFF, 0xD8, 0xFF, 0x02]).unwrap();
+        std::fs::write(dir.path().join("carol"), b"not an image").unwrap();
+
+        assert!(resolve_avatar(dir.path(), "alice").unwrap().starts_with("data:image/png;base64,"));
+        assert!(resolve_avatar(dir.path(), "bob").unwrap().starts_with("data:image/jpeg;base64,"));
+        // Unknown magic -> skipped (initials fallback), not mislabelled.
+        assert_eq!(resolve_avatar(dir.path(), "carol"), None);
+        // No file -> None.
+        assert_eq!(resolve_avatar(dir.path(), "ghost"), None);
+        // Path-escape guards.
+        assert_eq!(resolve_avatar(dir.path(), "../etc/shadow"), None);
+        assert_eq!(resolve_avatar(dir.path(), ""), None);
     }
 
     #[test]
