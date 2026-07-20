@@ -10,10 +10,8 @@
 
 use tauri::Manager;
 
-mod actions;
-mod procmon;
-
-use procmon::{Monitor, Process};
+use arlen_system_monitor_core::actions;
+use arlen_system_monitor_core::procmon::{Monitor, Process};
 
 /// A structured log line from the frontend into the app's stdout (the shell has no
 /// devtools console the operator can open).
