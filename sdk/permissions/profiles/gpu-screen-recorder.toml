@@ -1,0 +1,11 @@
+# Starting permission profile for GPU Screen Recorder (a lightweight, GPU-
+# accelerated screen/game recorder and replay tool). It writes recordings and
+# replay clips to Videos; screen capture itself is portal-mediated, not a
+# filesystem scope. No network by default (there is no streaming/upload feature to
+# refine yet). No graph access.
+[info]
+app_id = "gpu-screen-recorder"
+tier = "third-party"
+
+[filesystem]
+videos = true
