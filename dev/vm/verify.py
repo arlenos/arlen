@@ -69,6 +69,34 @@ def qmp_key(f, qcode):
                                      "key": {"type": "qcode", "data": qcode}}}])
 
 
+def qmp_click(f, px, py, w, h):
+    """Left-click at pixel (px, py) on a w x h frame via the absolute pointing
+    device (virtio-tablet). QEMU's abs axis is 0..0x7fff mapped to the display, so
+    a pixel maps to px * 0x7fff / w. Drives the real kernel evdev -> libinput ->
+    compositor -> focused surface path, exactly as a user click does (needed to
+    resolve a consent dialog headlessly - keyboard cannot, and Enter-to-approve
+    would be a dangerous default for a security dialog)."""
+    ax = max(0, min(0x7fff, round(px * 0x7fff / w)))
+    ay = max(0, min(0x7fff, round(py * 0x7fff / h)))
+    move = [
+        {"type": "abs", "data": {"axis": "x", "value": ax}},
+        {"type": "abs", "data": {"axis": "y", "value": ay}}]
+    # Establish the absolute position and let libinput/the compositor settle the
+    # pointer over the target surface BEFORE the button edge. A single move-then-
+    # click in the same instant can land the press at the pre-move position (the
+    # compositor has not warped yet), so move, settle, move again, settle, then
+    # click with a hold between the down and up edges.
+    qmp(f, "input-send-event", events=move)
+    time.sleep(0.4)
+    qmp(f, "input-send-event", events=move)
+    time.sleep(0.4)
+    qmp(f, "input-send-event", events=[
+        {"type": "btn", "data": {"down": True, "button": "left"}}])
+    time.sleep(0.15)
+    qmp(f, "input-send-event", events=[
+        {"type": "btn", "data": {"down": False, "button": "left"}}])
+
+
 def inspect(png):
     """Return (rendered, summary) for the captured frame."""
     from PIL import Image
@@ -167,7 +195,13 @@ def main():
                          "it in a RELEASE image, past the debug-only dev.* admission). "
                          "Also reports, best-effort, whether the shell rendered the "
                          "dialog (OCR of the frame). Implies the dogfood is present")
+    ap.add_argument("--approve-consent", action="store_true",
+                    help="with the consent dialog up, click 'Allow once' via the "
+                         "absolute pointer and confirm the dialog dismisses (the "
+                         "shell -> broker Resolve leg). Implies --require-consent")
     args = ap.parse_args()
+    if args.approve_consent:
+        args.require_consent = True
 
     image = os.path.abspath(args.image)
     if not os.path.exists(image):
@@ -216,6 +250,10 @@ def main():
         # render node + GBM, and screendump captures that scanout. No gl=on, so the
         # framebuffer is CPU-readable (llvmpipe does the GL).
         "-vga", "none", "-device", "virtio-gpu-pci",
+        # An absolute pointing device so QMP input-send-event abs clicks land
+        # (the default q35 mouse is PS/2 relative, which has no fixed origin to
+        # click a known pixel). Harmless when no click is driven.
+        "-device", "virtio-tablet-pci",
         "-display", "none",
         "-qmp", f"unix:{qmp_path},server,nowait",
         "-serial", f"file:{serial}",
@@ -254,6 +292,20 @@ def main():
             qmp(f, "screendump", filename=after, format="png")
             for _ in range(50):
                 if os.path.exists(after) and os.path.getsize(after) > 0:
+                    break
+                time.sleep(0.1)
+        if args.approve_consent:
+            # Click "Allow once" (lower-right of the centered consent card, fixed
+            # 1280x800 layout), then capture an after-shot so the dialog-dismissed
+            # check can confirm the shell resolved the request against the broker.
+            approved = out + ".approved.png"
+            from PIL import Image
+            fw, fh = Image.open(out).size
+            qmp_click(f, round(fw * 797 / 1280), round(fh * 489 / 800), fw, fh)
+            time.sleep(3)                  # let the shell poll + hide the resolved dialog
+            qmp(f, "screendump", filename=approved, format="png")
+            for _ in range(50):
+                if os.path.exists(approved) and os.path.getsize(approved) > 0:
                     break
                 time.sleep(0.1)
         qmp(f, "quit")
@@ -414,6 +466,23 @@ def main():
                   "intake request in the release image)")
             print(f"  serial log: {serial}")
             return 1
+        if args.approve_consent:
+            approved = out + ".approved.png"
+            if not (os.path.exists(approved) and os.path.getsize(approved) > 0):
+                print("VERIFY FAIL: --approve-consent captured no after-click frame")
+                return 1
+            # The dialog is a large centered modal; clicking "Allow once" resolves
+            # it against the broker and the shell's poll hides it, so a real
+            # dismissal changes a big fraction of the frame. A stuck dialog (the
+            # click missed, or the resolve leg is dead) leaves the frame unchanged.
+            frac = frame_change(out, approved)
+            print(f"consent resolve: click 'Allow once' -> {frac*100:.1f}% of pixels "
+                  f"changed -> {approved}")
+            if frac <= 0.02:
+                print("VERIFY FAIL: the consent dialog did not dismiss after "
+                      "'Allow once' (shell -> broker Resolve leg not exercised)")
+                print(f"  serial log: {serial}")
+                return 1
     print("VERIFY OK: " + ("the full desktop rendered (compositor + shell bar)"
                            if bar_present else "the compositor rendered a frame"))
     return 0
