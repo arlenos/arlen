@@ -53,18 +53,29 @@ use tokio::net::UnixListener;
 /// Resolved `app_id` of the canonically-installed AI daemon, the
 /// sole MCP client in Phase 9. `arlen-permissions` maps the
 /// daemon's install path to this id; see `identity::path_to_app_id`.
-const AI_DAEMON_APP_ID: &str = "ai-daemon";
+/// The one admitted MCP client: the AI engine daemon.
+///
+/// This is `ai-agent`, not `ai-engine-daemon`, because an app id names a ROLE and
+/// not a binary: `identity::path_to_app_id` maps the engine's canonical install
+/// path (`/usr/lib/arlen/libexec/arlen-ai-engine-daemon`) onto the `ai-agent`
+/// principal, so it reuses the retired agent's go-live profile and audit ADMITTED
+/// entry. It was `ai-daemon` until the pi cutover retired that daemon; since
+/// nothing resolves to `ai-daemon` any more (no crate, no packaged binary), keeping
+/// it here would have admitted a principal that cannot exist while refusing the one
+/// that does - in RELEASE only, because the `dev.*` branch below masks it in every
+/// debug build.
+const AI_ENGINE_APP_ID: &str = "ai-agent";
 
 /// Whether a peer that resolved to `app_id` may open MCP connections
 /// to a first-party app's server.
 ///
-/// Phase 9 has one MCP client, the AI daemon, so only it is
+/// There is one MCP client, the AI engine daemon, so only it is
 /// admitted. In debug builds every component runs straight from a
-/// cargo target directory and resolves to a `dev.*` id (the daemon
+/// cargo target directory and resolves to a `dev.*` id (the engine
 /// included), so those are admitted too for local development; the
 /// branch compiles out of release builds.
 fn caller_is_admitted(app_id: &str) -> bool {
-    if app_id == AI_DAEMON_APP_ID {
+    if app_id == AI_ENGINE_APP_ID {
         return true;
     }
     cfg!(debug_assertions) && app_id.starts_with("dev.")
@@ -394,16 +405,38 @@ mod tests {
     }
 
     #[test]
-    fn caller_admission_is_restricted_to_the_ai_daemon() {
-        // The canonical AI daemon id is always admitted.
-        assert!(caller_is_admitted("ai-daemon"));
+    fn caller_admission_is_restricted_to_the_ai_engine() {
+        // The AI engine daemon's principal is always admitted.
+        assert!(caller_is_admitted("ai-agent"));
+        // The retired pre-pi daemon is NOT: nothing resolves to it any more.
+        assert!(!caller_is_admitted("ai-daemon"));
         // Arbitrary same-UID apps are not, regardless of name.
         assert!(!caller_is_admitted("com.example.files"));
         assert!(!caller_is_admitted("notification-daemon"));
         assert!(!caller_is_admitted(""));
         // Debug builds additionally admit cargo-run `dev.*` ids so a
         // local dev session works; release builds admit none of them.
-        assert_eq!(caller_is_admitted("dev.arlen-ai-daemon"), cfg!(debug_assertions));
+        assert_eq!(caller_is_admitted("dev.arlen-ai-engine-daemon"), cfg!(debug_assertions));
+    }
+
+    /// The admission id and the identity resolver must name the SAME principal.
+    /// They are separate constants in separate crates, so a rename on either side
+    /// silently refuses every MCP connection - and ONLY in release, because the
+    /// `dev.*` branch masks it in every debug build and test run. That is exactly
+    /// how this broke: the engine's canonical path resolves to `ai-agent` while the
+    /// admission list still named the retired `ai-daemon`. Pin the pair.
+    #[test]
+    fn the_admitted_id_matches_what_the_resolver_gives_the_engine_binary() {
+        let engine = std::path::PathBuf::from("/usr/lib/arlen/libexec/arlen-ai-engine-daemon");
+        let resolved = arlen_permissions::identity::path_to_app_id(&engine)
+            .expect("the engine's canonical install path resolves");
+        assert_eq!(
+            resolved, AI_ENGINE_APP_ID,
+            "the MCP admission id and the identity resolver disagree: the engine \
+             resolves to '{resolved}' but only '{AI_ENGINE_APP_ID}' is admitted, so \
+             every MCP connection would be refused in a release build"
+        );
+        assert!(caller_is_admitted(&resolved));
     }
 
     /// A unique, non-existent socket path under a fresh temp dir.
