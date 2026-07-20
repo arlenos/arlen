@@ -160,6 +160,13 @@ def main():
                          "journal must show 'DOGFOOD OK' (event injected + AI completion). "
                          "Implies the AI layer; use a longer --wait (the loop waits a "
                          "promotion pass then asks, with retry for model-load latency)")
+    ap.add_argument("--require-consent", action="store_true",
+                    help="fail unless the release consent path is live: the serial "
+                         "journal must show 'DOGFOOD CONSENT ok' (an attested app "
+                         "raised a run_command-shaped request AND the broker accepted "
+                         "it in a RELEASE image, past the debug-only dev.* admission). "
+                         "Also reports, best-effort, whether the shell rendered the "
+                         "dialog (OCR of the frame). Implies the dogfood is present")
     args = ap.parse_args()
 
     image = os.path.abspath(args.image)
@@ -375,6 +382,36 @@ def main():
                               if "DOGFOOD FAIL" in ln), None)
             print("VERIFY FAIL: the in-VM KG-AI dogfood did not complete"
                   + (f" ({fail_line})" if fail_line else " (no DOGFOOD OK marker)"))
+            print(f"  serial log: {serial}")
+            return 1
+    if args.require_consent:
+        try:
+            with open(serial, "r", errors="replace") as fh:
+                journal = fh.read()
+        except OSError:
+            journal = ""
+        # The hard gate: the dogfood (a normal attested user app) raised a
+        # run_command-shaped ExecConfined request and the broker ACCEPTED it in a
+        # RELEASE image. This is the systematic catch for the "works in debug via
+        # dev.*, dead in release" admission-bug class - a release boot that refuses
+        # the intake never prints this marker.
+        raised = "DOGFOOD CONSENT ok" in journal
+        skipped = "DOGFOOD CONSENT skipped" in journal
+        # The queued-a-dialog broker log (its one-shot intake info line) is the
+        # second, independent signal that the request reached the queue.
+        queued = "intake: queued for a dialog" in journal
+        # Best-effort: did the shell actually RENDER the dialog? OCR of the frame
+        # for the request copy. llvmpipe UI-font OCR is unreliable, so this is
+        # reported, never gated (the serial markers are the gate).
+        dialog_shown = any(s in lower for s in ("sandbox", "run a shell", "uname"))
+        print(f"consent: raised={'ok' if raised else 'absent'}, "
+              f"queued={'ok' if queued else 'absent'}, "
+              f"dialog-ocr={'present' if dialog_shown else 'absent'}"
+              + (" (dogfood skipped it)" if skipped else ""))
+        if not raised:
+            print("VERIFY FAIL: the release consent path is not live "
+                  "(no 'DOGFOOD CONSENT ok' - an attested app could not raise an "
+                  "intake request in the release image)")
             print(f"  serial log: {serial}")
             return 1
     print("VERIFY OK: " + ("the full desktop rendered (compositor + shell bar)"

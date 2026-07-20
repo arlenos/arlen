@@ -16,8 +16,17 @@
 //! The conversational explain call is best-effort inspection only (a small local
 //! model's grounding quality is not a boolean).
 //!
+//! It also raises a real `run_command`-shaped consent request on the broker intake
+//! socket, as any legitimate attested app would, and holds the connection open so
+//! the pending dialog persists for the rest of the boot. This exercises the RELEASE
+//! consent path the debug-only `dev.*` admission masks: intake peer-auth in a
+//! release image, the broker queue, and the shell's post-mount consent poll. The
+//! shell's dialog then surfaces the request; verify.py can screenshot it. It is
+//! best-effort and never gates the dogfood.
+//!
 //! Markers (grepped by dev/vm/verify.py): `DOGFOOD EMIT ok`, `DOGFOOD WRITE ok`,
-//! `DOGFOOD UNDO ok`, `DOGFOOD ASK ok`, `DOGFOOD OK` / `DOGFOOD FAIL <reason>`.
+//! `DOGFOOD UNDO ok`, `DOGFOOD ASK ok`, `DOGFOOD CONSENT ok`, `DOGFOOD OK` /
+//! `DOGFOOD FAIL <reason>`.
 
 use std::time::Duration;
 
@@ -100,6 +109,24 @@ async fn main() {
         fail("emit: every file.opened attempt failed");
     }
     println!("DOGFOOD EMIT ok path={path}");
+
+    // Raise a real run_command-shaped consent request as a legitimate attested app,
+    // early, and HOLD the connection open for the rest of the boot so the pending
+    // dialog persists. The shell's ConsentDialog poll then surfaces it and verify.py
+    // can screenshot the rendered dialog. Best-effort: it never gates the dogfood.
+    // The `_consent` binding keeps the intake connection alive to the end of main;
+    // the broker queues the request regardless, but holding it removes any reliance
+    // on queue-survives-disconnect behaviour.
+    let _consent = match raise_consent() {
+        Some(conn) => {
+            println!("DOGFOOD CONSENT ok (exec_confined queued on the intake socket)");
+            Some(conn)
+        }
+        None => {
+            println!("DOGFOOD CONSENT skipped (best-effort: intake socket unavailable)");
+            None
+        }
+    };
 
     // Let a promotion pass turn the raw event into a File node (UNLINKED - no
     // project signal exists yet).
@@ -226,6 +253,40 @@ async fn first_completed_action(agent: &Proxy<'_>) -> Option<String> {
         .iter()
         .find_map(|v| v.get("id").and_then(Value::as_str))
         .map(str::to_string)
+}
+
+/// Raise a `run_command`-shaped consent request on the broker intake socket and
+/// return the held connection (so the pending dialog persists). The request body
+/// is the `ExecConfined` / `Irreversible` shape a real `run_command` confirmation
+/// carries; it is framed as raw JSON (matching the `arlen-consent-contract` wire
+/// form) rather than pulling that crate + `arlen-ai-core` into this dev binary. A
+/// wire-shape drift makes the broker reject the frame, so this fails SAFE (it skips,
+/// never falsely reports a queued dialog). The broker fills the requester identity
+/// from the SO_PEERCRED-attested peer, so nothing here can spoof another app.
+///
+/// Best-effort: returns None (the caller logs a skip) when `XDG_RUNTIME_DIR` is
+/// unset, the socket is absent, or the framed send fails.
+fn raise_consent() -> Option<std::os::unix::net::UnixStream> {
+    use std::io::Write;
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")?;
+    let socket = std::path::Path::new(&dir)
+        .join("arlen")
+        .join("consent-intake.sock");
+    let body = serde_json::json!({
+        "class": "exec_confined",
+        "kind": "irreversible",
+        "triggered_by_external_content": false,
+        "summary": "Run a shell command in a locked-down sandbox and return its output",
+        "scope": "uname -a",
+    });
+    let bytes = serde_json::to_vec(&body).ok()?;
+    let mut stream = std::os::unix::net::UnixStream::connect(&socket).ok()?;
+    // Frame: a 4-byte little-endian length prefix then the JSON body, matching the
+    // broker's socket transport (consent-broker socket.rs `write_frame`).
+    stream.write_all(&(bytes.len() as u32).to_le_bytes()).ok()?;
+    stream.write_all(&bytes).ok()?;
+    stream.flush().ok()?;
+    Some(stream)
 }
 
 /// Emit a `file.opened` onto the event-bus producer socket.
