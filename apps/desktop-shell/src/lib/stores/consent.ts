@@ -83,6 +83,21 @@ const MOCK_PENDING: PendingView[] = [
 /// The request on screen now, or null when nothing is pending.
 export const current = writable<PendingView | null>(null);
 
+// Keep the shell's input region in sync with the dialog. The consent card is a
+// centered modal in the main shell window, whose default region is the top bar
+// only, so without expanding it the dialog is visible but click-through (a mouse
+// click on Allow/Deny falls to the desktop). Expand to full-surface while a
+// request is on screen, restore when it clears - exactly how the popover surfaces
+// drive set_popover_input_region. Only fire on the show/hide transition; the
+// invoke is swallowed under vite (no Tauri host).
+let regionShown = false;
+current.subscribe((pending) => {
+  const shown = pending !== null;
+  if (shown === regionShown) return;
+  regionShown = shown;
+  invoke("set_consent_input_region", { active: shown }).catch(() => {});
+});
+
 let mockIndex = 0;
 
 /// Fetch the front pending request. Live: `consent_fetch`. When no broker

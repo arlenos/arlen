@@ -192,13 +192,24 @@ pub fn update_window_header_regions(
 static MENU_ACTIVE: AtomicBool = AtomicBool::new(false);
 static NOTIFICATIONS_ACTIVE: AtomicBool = AtomicBool::new(false);
 static POPOVER_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// A unified consent request is on screen. The consent dialog is a centered modal
+/// with a full-screen dimming backdrop rendered in the main shell window, whose
+/// default region is the top bar only; without expanding the region the dialog is
+/// visually present but click-through (a mouse click on Allow/Deny falls to the
+/// desktop below), which makes the Confirm path unusable with a pointer. While a
+/// request is pending the region is FullScreen, so the decision captures all input
+/// (and the desktop behind cannot be driven mid-decision).
+static CONSENT_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Recomputes and applies the correct input region from current state.
 fn update_input_region(app: &tauri::AppHandle) {
+    let consent = CONSENT_ACTIVE.load(Ordering::SeqCst);
     let menu = MENU_ACTIVE.load(Ordering::SeqCst);
     let notif = NOTIFICATIONS_ACTIVE.load(Ordering::SeqCst);
     let popover = POPOVER_ACTIVE.load(Ordering::SeqCst);
-    let mode = if menu {
+    // Consent is a modal decision, so it takes the whole surface ahead of every
+    // other overlay.
+    let mode = if consent || menu {
         InputRegionMode::FullScreen
     } else if popover {
         InputRegionMode::WithPopover
@@ -208,8 +219,8 @@ fn update_input_region(app: &tauri::AppHandle) {
         InputRegionMode::BarOnly
     };
     log::info!(
-        "update_input_region: menu={} popover={} notif={} -> {:?}",
-        menu, popover, notif, mode,
+        "update_input_region: consent={} menu={} popover={} notif={} -> {:?}",
+        consent, menu, popover, notif, mode,
     );
     set_input_region(app, mode);
 }
@@ -1058,6 +1069,20 @@ pub fn set_popover_input_region(app: tauri::AppHandle, expanded: bool) {
         "set_popover_input_region: expanded={} (was {})",
         expanded, was,
     );
+    update_input_region(&app);
+}
+
+/// Capture or release full-surface input for the unified consent dialog. Called by
+/// the consent store when a request appears or is resolved, so the centered modal
+/// is actually clickable (its default top-bar-only region would let clicks on
+/// Allow/Deny fall through to the desktop).
+#[tauri::command]
+pub fn set_consent_input_region(app: tauri::AppHandle, active: bool) {
+    let was = CONSENT_ACTIVE.swap(active, Ordering::SeqCst);
+    if was == active {
+        return;
+    }
+    log::info!("set_consent_input_region: active={} (was {})", active, was);
     update_input_region(&app);
 }
 

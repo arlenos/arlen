@@ -352,6 +352,7 @@ pub fn run() {
             shell_overlay_client::window_header_action,
             shell_overlay_client::set_notification_input_region,
             shell_overlay_client::set_popover_input_region,
+            shell_overlay_client::set_consent_input_region,
             shell_overlay_client::resolve_app_icon,
             shell_overlay_client::debug_workspace_update,
             menu_store::register_menu,
