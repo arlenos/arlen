@@ -39,7 +39,6 @@
   import ZoomToolbar from "$lib/components/ZoomToolbar.svelte";
   import WindowHeader from "$lib/components/WindowHeader.svelte";
   import BluetoothPairingDialog from "$lib/components/BluetoothPairingDialog.svelte";
-  import AuthorizationDialog from "$lib/components/AuthorizationDialog.svelte";
   import ConsentDialog from "$lib/components/ConsentDialog.svelte";
   import SourcePicker from "$lib/components/SourcePicker.svelte";
   import WindowsFileDialog from "$lib/components/WindowsFileDialog.svelte";
@@ -171,7 +170,6 @@
 <ZoomToolbar />
 <WindowHeader />
 <BluetoothPairingDialog />
-<AuthorizationDialog />
 <ConsentDialog />
 <SourcePicker />
 <WindowsFileDialog />
