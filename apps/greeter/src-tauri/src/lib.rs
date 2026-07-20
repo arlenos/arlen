@@ -10,6 +10,85 @@
 //! never as a fake-empty profile list.
 
 use serde::Serialize;
+use std::path::{Path, PathBuf};
+
+/// The XDG directories a Wayland session `.desktop` entry may live in, highest
+/// precedence first (a local override shadows the system copy of the same id).
+/// greetd greeters read these to offer the launchable sessions.
+fn wayland_session_dirs() -> Vec<PathBuf> {
+    ["/usr/local/share/wayland-sessions", "/usr/share/wayland-sessions"]
+        .iter()
+        .map(PathBuf::from)
+        .collect()
+}
+
+/// Extract the `Name=` value from a `.desktop` file, honouring only the
+/// `[Desktop Entry]` group and skipping an entry marked `NoDisplay=true`,
+/// `Hidden=true`, or lacking an `Exec=` (nothing to launch). Returns `None` when
+/// the entry should not be offered. A deliberately small hand parser: the format
+/// is a simple INI subset and pulling a full freedesktop crate into the greeter
+/// (which may reach nothing but the greetd socket) is not worth it.
+fn session_name_from_desktop(contents: &str) -> Option<String> {
+    let mut in_entry = false;
+    let mut name: Option<String> = None;
+    let mut has_exec = false;
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            in_entry = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_entry || line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else { continue };
+        match (key.trim(), value.trim()) {
+            // Localised names (Name[de]=) are ignored; the unqualified Name wins.
+            ("Name", v) if name.is_none() => name = Some(v.to_string()),
+            ("Exec", v) if !v.is_empty() => has_exec = true,
+            ("NoDisplay", "true") | ("Hidden", "true") => return None,
+            _ => {}
+        }
+    }
+    name.filter(|_| has_exec)
+}
+
+/// Discover the launchable Wayland sessions across `dirs` (highest precedence
+/// first). The id is the `.desktop` basename (the session key greetd launches by);
+/// the first directory to define an id wins, so a local session shadows a system
+/// one. Non-`.desktop` files, unreadable files and hidden/no-exec entries are
+/// skipped. Result is sorted by display name for a stable UI order. Pure over an
+/// explicit dir list so it is unit-tested without touching the real system dirs.
+fn discover_sessions(dirs: &[PathBuf]) -> Vec<Session> {
+    let mut seen: Vec<Session> = Vec::new();
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("desktop") {
+                continue;
+            }
+            let Some(id) = path.file_stem().and_then(|s| s.to_str()).map(str::to_string) else {
+                continue;
+            };
+            if seen.iter().any(|s| s.id == id) {
+                continue; // a higher-precedence dir already defined this id
+            }
+            let Ok(contents) = std::fs::read_to_string(&path) else { continue };
+            if let Some(name) = session_name_from_desktop(&contents) {
+                seen.push(Session { id, name });
+            }
+        }
+    }
+    seen.sort_by(|a, b| a.name.cmp(&b.name));
+    seen
+}
+
+/// The single fallback session offered when discovery finds nothing installed, so
+/// the picker is never empty on a minimal system: the plain Arlen compositor.
+fn fallback_session() -> Session {
+    Session { id: "arlen".to_string(), name: "Arlen".to_string() }
+}
 
 /// One profile offered at login. Mirrors the TypeScript `Profile`.
 #[derive(Serialize)]
@@ -35,10 +114,18 @@ fn greeter_profiles() -> Result<Vec<Profile>, String> {
     Err("greeter backend not connected".to_string())
 }
 
-/// The launchable sessions. Stub: fails until wired to greetd.
+/// The launchable Wayland sessions, discovered from the XDG
+/// `wayland-sessions` directories (the standard greetd greeter source). Always
+/// returns at least the plain Arlen fallback so the picker is never empty. This
+/// is a pure filesystem read the greeter is allowed even before a session exists;
+/// launching the chosen id is greetd's `StartSession`, wired with authenticate.
 #[tauri::command]
 fn greeter_sessions() -> Result<Vec<Session>, String> {
-    Err("greeter backend not connected".to_string())
+    let mut sessions = discover_sessions(&wayland_session_dirs());
+    if sessions.is_empty() {
+        sessions.push(fallback_session());
+    }
+    Ok(sessions)
 }
 
 /// Password authentication for a profile. Stub: the coder routes this to
@@ -77,4 +164,64 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-greeter");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write(dir: &Path, file: &str, body: &str) {
+        std::fs::write(dir.join(file), body).unwrap();
+    }
+
+    #[test]
+    fn parses_name_and_requires_exec() {
+        assert_eq!(
+            session_name_from_desktop("[Desktop Entry]\nName=Sway\nExec=/usr/bin/sway\n").as_deref(),
+            Some("Sway")
+        );
+        // No Exec -> nothing to launch -> not offered.
+        assert_eq!(session_name_from_desktop("[Desktop Entry]\nName=Broken\n"), None);
+        // Hidden / NoDisplay are skipped.
+        assert_eq!(
+            session_name_from_desktop("[Desktop Entry]\nName=X\nExec=/x\nNoDisplay=true\n"),
+            None
+        );
+        // A key outside [Desktop Entry] does not leak in.
+        assert_eq!(
+            session_name_from_desktop("[Other]\nName=Wrong\nExec=/x\n[Desktop Entry]\nExec=/y\n"),
+            None
+        );
+        // The first unqualified Name wins; a localised Name[de] is ignored.
+        assert_eq!(
+            session_name_from_desktop("[Desktop Entry]\nName[de]=Sitzung\nName=Session\nExec=/s\n")
+                .as_deref(),
+            Some("Session")
+        );
+    }
+
+    #[test]
+    fn discovers_sorted_deduped_across_precedence() {
+        let hi = tempfile::tempdir().unwrap();
+        let lo = tempfile::tempdir().unwrap();
+        // Same id in both dirs: the high-precedence one wins.
+        write(hi.path(), "arlen.desktop", "[Desktop Entry]\nName=Arlen (local)\nExec=/a\n");
+        write(lo.path(), "arlen.desktop", "[Desktop Entry]\nName=Arlen (system)\nExec=/a\n");
+        write(lo.path(), "sway.desktop", "[Desktop Entry]\nName=Sway\nExec=/s\n");
+        write(lo.path(), "notes.txt", "ignore me");
+        write(lo.path(), "hidden.desktop", "[Desktop Entry]\nName=H\nExec=/h\nHidden=true\n");
+
+        let out = discover_sessions(&[hi.path().to_path_buf(), lo.path().to_path_buf()]);
+        // Sorted by name: "Arlen (local)" before "Sway"; the system arlen + the
+        // hidden + the .txt are all excluded.
+        assert_eq!(
+            out.iter().map(|s| (s.id.as_str(), s.name.as_str())).collect::<Vec<_>>(),
+            vec![("arlen", "Arlen (local)"), ("sway", "Sway")]
+        );
+    }
+
+    #[test]
+    fn missing_dirs_yield_nothing() {
+        assert!(discover_sessions(&[PathBuf::from("/nonexistent/xyz")]).is_empty());
+    }
 }
