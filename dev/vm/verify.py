@@ -222,8 +222,13 @@ def main():
                     help="with the consent dialog up, click 'Allow once' via the "
                          "absolute pointer and confirm the dialog dismisses (the "
                          "shell -> broker Resolve leg). Implies --require-consent")
+    ap.add_argument("--deny-consent", action="store_true",
+                    help="with the consent dialog up, press Escape (the always-"
+                         "available deny) and confirm the dialog dismisses - "
+                         "exercises the keyboard path + the shell -> broker Resolve "
+                         "leg via Deny. Implies --require-consent")
     args = ap.parse_args()
-    if args.approve_consent:
+    if args.approve_consent or args.deny_consent:
         args.require_consent = True
 
     image = os.path.abspath(args.image)
@@ -315,6 +320,19 @@ def main():
             qmp(f, "screendump", filename=after, format="png")
             for _ in range(50):
                 if os.path.exists(after) and os.path.getsize(after) > 0:
+                    break
+                time.sleep(0.1)
+        if args.deny_consent:
+            # Press Escape (the dialog's always-available deny) and capture an
+            # after-shot, so the dismissal check confirms the keyboard path reaches
+            # the dialog (the main window must grab the keyboard while a request is
+            # up) and the shell resolved it against the broker.
+            denied = out + ".denied.png"
+            qmp_key(f, "esc")
+            time.sleep(3)
+            qmp(f, "screendump", filename=denied, format="png")
+            for _ in range(50):
+                if os.path.exists(denied) and os.path.getsize(denied) > 0:
                     break
                 time.sleep(0.1)
         if args.approve_consent:
@@ -489,6 +507,20 @@ def main():
                   "intake request in the release image)")
             print(f"  serial log: {serial}")
             return 1
+        if args.deny_consent:
+            denied = out + ".denied.png"
+            if not (os.path.exists(denied) and os.path.getsize(denied) > 0):
+                print("VERIFY FAIL: --deny-consent captured no after-Escape frame")
+                return 1
+            still_up = consent_dialog_present(denied)
+            print(f"consent deny: press Escape -> dialog "
+                  f"{'STILL UP' if still_up else 'dismissed'} -> {denied}")
+            if still_up:
+                print("VERIFY FAIL: Escape did not dismiss the consent dialog (the "
+                      "main shell window is not grabbing the keyboard while a "
+                      "request is up, so Escape-to-deny never reaches it)")
+                print(f"  serial log: {serial}")
+                return 1
         if args.approve_consent:
             approved = out + ".approved.png"
             if not (os.path.exists(approved) and os.path.getsize(approved) > 0):
