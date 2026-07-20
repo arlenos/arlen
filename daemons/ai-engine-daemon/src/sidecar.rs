@@ -9,10 +9,13 @@
 //! slice), so the security-relevant sandbox SHAPE is testable without spawning.
 //!
 //! Confinement: read-only base (`/usr` + the node runtime + the pi install), no
-//! network (pi reaches the model only over the ai-proxy Unix socket, bound in;
-//! all real egress is the proxy's), a writable tmpfs `/tmp` + the pi state dir,
-//! and the contract + ai-proxy sockets bound read-write at fixed in-sandbox
-//! paths the plugins connect to. The exact base bind set (node also needs its
+//! network at all, a writable tmpfs `/tmp` + the pi state dir, and the daemon's
+//! CONTRACT socket bound read-write at a fixed in-sandbox path the plugins
+//! connect to. That contract socket is pi's only channel out: the plugins ask
+//! this daemon (Authorize/Report/Execute) and the DAEMON makes the model call
+//! through `ProxiedProvider`. The ai-proxy socket is bound only if it exists -
+//! the proxy serves D-Bus and binds no socket today, and bwrap refuses to start
+//! on a missing bind source, so an unconditional bind killed every spawn. The exact base bind set (node also needs its
 //! dynamic loader) is confirmed and tightened by the `run_once` `#[ignore]d`
 //! spawn test against a real node, the way arlen-run validates its own argv.
 
@@ -174,7 +177,9 @@ pub fn pi_sidecar_confinement(
     }
 
     // /usr read-only gives node its shared libraries; the pi state dir is the
-    // app's writable dir; no network (pi's only egress is the proxy socket).
+    // app's writable dir; no network at all. pi's only channel out of the sandbox
+    // is the CONTRACT socket to this daemon (the plugins' Authorize/Report/Execute
+    // round trip); the daemon, not pi, makes the model call.
     let skeleton = app_runtime_profile(
         Path::new("/usr"),
         &[Path::new(&paths.pi_state)],
@@ -201,8 +206,21 @@ pub fn pi_sidecar_confinement(
         Bind::ReadOnly(require_abs(&paths.pi_install)?, require_abs(&paths.pi_install)?),
         Bind::ReadOnly(ext_dir.clone(), ext_dir),
         Bind::ReadWrite(require_abs(&paths.contract_socket)?, SANDBOX_CONTRACT_SOCKET.to_string()),
-        Bind::ReadWrite(require_abs(&paths.proxy_socket)?, SANDBOX_PROXY_SOCKET.to_string()),
     ];
+    // The ai-proxy socket is bound ONLY when it exists. Today it never does: the
+    // proxy serves D-Bus (`org.arlen.AIProxy1`) and binds no Unix socket, and
+    // nothing in the sandbox reads `ARLEN_AI_PROXY_SOCKET` - pi's plugins talk to
+    // the daemon over the CONTRACT socket, and the daemon makes the model call
+    // itself through `ProxiedProvider`. An unconditional bind is therefore not a
+    // stricter boundary, it is a fatal one: bwrap refuses to start when a bind
+    // SOURCE is missing, so this killed the sidecar on every spawn
+    // ("bwrap: Can't find source path .../ai-proxy.sock") and pi never ran in the
+    // image at all. Kept conditional rather than deleted so a future proxy that
+    // does bind a socket is plumbed in without re-deriving this.
+    let proxy_socket = require_abs(&paths.proxy_socket)?;
+    if Path::new(&proxy_socket).exists() {
+        plumbing.push(Bind::ReadWrite(proxy_socket, SANDBOX_PROXY_SOCKET.to_string()));
+    }
     // node's ELF interpreter is /lib64/ld-linux-x86-64.so.2 (a symlink resolving
     // into /usr on the host). /usr is bound, but the kernel resolves the
     // interpreter via the /lib64 (or /lib) path, which the sandbox root otherwise
@@ -518,14 +536,38 @@ mod tests {
     }
 
     #[test]
-    fn the_contract_and_proxy_sockets_are_bound_read_write() {
+    fn the_contract_socket_is_bound_read_write() {
         let a = args();
         assert_eq!(
             dest_of(&a, "--bind", "/run/user/1000/arlen/ai-engine.sock"),
             Some(SANDBOX_CONTRACT_SOCKET.to_string()),
         );
+    }
+
+    /// bwrap refuses to start when a bind SOURCE is missing, so binding the
+    /// ai-proxy socket unconditionally killed the sidecar on every spawn - the
+    /// proxy serves D-Bus and binds no socket, so the path never exists. The bind
+    /// must therefore appear only when the source is really there. `args()` uses
+    /// fixture paths under /run/user/1000 that do not exist in the test
+    /// environment, which is exactly the absent case.
+    #[test]
+    fn the_proxy_socket_is_bound_only_when_it_exists() {
+        let a = args();
         assert_eq!(
             dest_of(&a, "--bind", "/run/user/1000/arlen/ai-proxy.sock"),
+            None,
+            "an absent proxy socket must not be bound: bwrap would refuse to start"
+        );
+
+        // And when it does exist, it IS bound at the fixed sandbox path.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let sock = dir.path().join("ai-proxy.sock");
+        std::fs::write(&sock, b"").expect("create the stand-in socket path");
+        let mut paths = paths();
+        paths.proxy_socket = sock.to_string_lossy().into_owned();
+        let c = pi_sidecar_confinement(&paths, None).expect("confinement");
+        assert_eq!(
+            dest_of(&c.bwrap_args(), "--bind", &paths.proxy_socket),
             Some(SANDBOX_PROXY_SOCKET.to_string()),
         );
     }
