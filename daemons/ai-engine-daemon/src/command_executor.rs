@@ -60,8 +60,10 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(150);
 /// Routes an approved `run_command` to the terminal-run MCP server.
 pub struct CommandExecutor {
     /// Re-read per call so a runtime `executor_live` flip takes effect
-    /// immediately, matching the filesystem and settings executors.
-    executor_live: Box<dyn Fn() -> bool + Send + Sync>,
+    /// immediately. Same source and same shape as the filesystem and settings
+    /// executors, so all three acts answer to one switch rather than to three
+    /// independently-drifting reads.
+    executor_live: fn() -> bool,
     /// The ledger the MCP dispatch is recorded to BEFORE the call reaches the
     /// server. [`McpClient`] refuses to dispatch without one
     /// (`McpError::AuditUnavailable`), so this is not optional decoration: it is
@@ -75,25 +77,25 @@ pub struct CommandExecutor {
 
 impl CommandExecutor {
     /// An executor dialing the well-known terminal-run socket under the per-user
-    /// MCP runtime dir.
-    pub fn new(
-        executor_live: Box<dyn Fn() -> bool + Send + Sync>,
-        audit: Arc<dyn AuditSink>,
-    ) -> Self {
+    /// MCP runtime dir, gated by the live `[agent] executor_live`.
+    pub fn new(audit: Arc<dyn AuditSink>) -> Self {
         let socket_path = os_sdk::mcp::mcp_socket_path(TERMINAL_RUN_SERVER)
             .to_string_lossy()
             .into_owned();
-        Self { executor_live, audit, socket_path }
+        Self { executor_live: crate::engine_config::executor_live, audit, socket_path }
     }
 
-    /// An executor dialing an explicit socket path (tests, and a future
-    /// per-profile instance path).
-    pub fn with_socket(
-        executor_live: Box<dyn Fn() -> bool + Send + Sync>,
-        audit: Arc<dyn AuditSink>,
-        socket_path: impl Into<String>,
-    ) -> Self {
-        Self { executor_live, audit, socket_path: socket_path.into() }
+    /// Dial an explicit socket path (tests, and a future per-profile instance).
+    pub fn with_socket(mut self, socket_path: impl Into<String>) -> Self {
+        self.socket_path = socket_path.into();
+        self
+    }
+
+    /// Override the executor-live gate with a fixed source, so a test does not
+    /// depend on the developer's `ai.toml` (the sibling executors' pattern).
+    pub fn with_executor_live_gate(mut self, executor_live: fn() -> bool) -> Self {
+        self.executor_live = executor_live;
+        self
     }
 }
 
@@ -204,11 +206,11 @@ mod tests {
         }
     }
 
-    fn live() -> Box<dyn Fn() -> bool + Send + Sync> {
-        Box::new(|| true)
+    fn live() -> bool {
+        true
     }
-    fn not_live() -> Box<dyn Fn() -> bool + Send + Sync> {
-        Box::new(|| false)
+    fn not_live() -> bool {
+        false
     }
 
     fn req(input: serde_json::Value) -> Execute {
@@ -221,17 +223,15 @@ mod tests {
 
     /// The socket is never dialed on a refusal, so an unroutable path is safe in
     /// the tests that assert a pre-dial refusal.
-    fn exec(live: Box<dyn Fn() -> bool + Send + Sync>) -> CommandExecutor {
-        CommandExecutor::with_socket(
-            live,
-            Arc::new(MockAuditSink::accepting()),
-            "/nonexistent/terminal-run.sock",
-        )
+    fn exec(gate: fn() -> bool) -> CommandExecutor {
+        CommandExecutor::new(Arc::new(MockAuditSink::accepting()))
+            .with_socket("/nonexistent/terminal-run.sock")
+            .with_executor_live_gate(gate)
     }
 
     #[tokio::test]
     async fn a_foreign_tool_is_refused() {
-        let e = exec(live());
+        let e = exec(live);
         let mut r = req(serde_json::json!({"command": "ls", "consent": "tok"}));
         r.tool_name = "fs.move".into();
         let out = e.execute(&r, &grant()).await;
@@ -243,7 +243,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_non_live_executor_runs_nothing() {
-        let e = exec(not_live());
+        let e = exec(not_live);
         let out = e
             .execute(
                 &req(serde_json::json!({"command": "ls", "consent": "tok"})),
@@ -263,7 +263,7 @@ mod tests {
     /// reach the server.
     #[tokio::test]
     async fn a_call_without_consent_is_refused_before_dialing() {
-        let e = exec(live());
+        let e = exec(live);
         for input in [
             serde_json::json!({"command": "ls"}),
             serde_json::json!({"command": "ls", "consent": ""}),
@@ -281,7 +281,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_call_without_a_command_is_refused() {
-        let e = exec(live());
+        let e = exec(live);
         let out = e
             .execute(&req(serde_json::json!({"consent": "tok"})), &grant())
             .await;
@@ -294,7 +294,7 @@ mod tests {
     /// An unreachable server fails closed rather than reporting success.
     #[tokio::test]
     async fn an_unreachable_server_fails_closed() {
-        let e = exec(live());
+        let e = exec(live);
         let out = e
             .execute(
                 &req(serde_json::json!({"command": "ls", "consent": "tok"})),

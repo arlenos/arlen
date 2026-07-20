@@ -120,6 +120,23 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
       "the daemon can re-assert it. The daemon gates and audits the write; pi never " +
       "touches the graph directly.",
   },
+  {
+    // The sharp edge. The description says plainly that it always asks and that it
+    // cannot be undone, because the model chooses whether to reach for this at all:
+    // an over-sold tool gets proposed for things a graph read would answer, and each
+    // proposal spends a user confirmation. The daemon does not trust the wording -
+    // the gate classifies this name Confirm unconditionally, the consent biscuit is
+    // minted only after a real user approval and is bound to the exact command and
+    // arguments, and the terminal-run server re-verifies it before spawning. Nothing
+    // here is a security control; it is honest advertising.
+    name: "run_command",
+    label: "Run a shell command",
+    description:
+      "Run a single shell command in a locked-down sandbox (no network, no writes " +
+      "outside a scratch directory, only system directories readable) and return " +
+      "its output. ALWAYS asks the user first, every time, and CANNOT be undone " +
+      "once it runs. Prefer a read-only tool when one would answer the question.",
+  },
 ];
 
 /** Search `specs` for `query`: a case-insensitive substring match over each
