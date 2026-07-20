@@ -34,6 +34,9 @@ use ai_engine_contract::{ContractError, Execute, ExecuteOutcome};
 use arlen_ai_core::mcp::{CallChain, McpClient, ServerClass, ServerId};
 use arlen_run_consent_token::RUN_COMMAND_TOOL;
 use async_trait::async_trait;
+use audit_proto::sink::AuditSink;
+use std::sync::Arc;
+use std::time::Duration;
 
 /// The well-known app id (and MCP server id) of the terminal-run server. Matches
 /// `arlen_terminal_run_mcp::server::SERVER_ID`; duplicated rather than depended on
@@ -41,21 +44,30 @@ use async_trait::async_trait;
 /// purpose - the server is the namespace-creating half).
 const TERMINAL_RUN_SERVER: &str = "system.terminal-run";
 
-/// The tool the terminal-run server exposes. Matches
-/// `arlen_terminal_run_mcp::server::RUN_TOOL`.
-const TERMINAL_RUN_TOOL: &str = "run_command";
-
 /// The key the gate shim writes the minted consent biscuit into on an `Allow`
 /// (`pi-plugins/src/gate.ts`): it overwrites any model-supplied value and deletes
 /// the key outright when no proof was minted, so a present value here always came
 /// from the daemon's own minter.
 const CONSENT_KEY: &str = "consent";
 
+/// Upper bound on the whole tool call. The server caps the COMMAND at 120s
+/// (`MAX_TIMEOUT`); this bounds a server that accepts the connection and then
+/// never replies, which would otherwise park the dispatch task forever. The slack
+/// over the server's own cap keeps a legitimately slow command from being cut off
+/// here rather than there.
+const CALL_TIMEOUT: Duration = Duration::from_secs(150);
+
 /// Routes an approved `run_command` to the terminal-run MCP server.
 pub struct CommandExecutor {
     /// Re-read per call so a runtime `executor_live` flip takes effect
     /// immediately, matching the filesystem and settings executors.
     executor_live: Box<dyn Fn() -> bool + Send + Sync>,
+    /// The ledger the MCP dispatch is recorded to BEFORE the call reaches the
+    /// server. [`McpClient`] refuses to dispatch without one
+    /// (`McpError::AuditUnavailable`), so this is not optional decoration: it is
+    /// audit-before-action for the sharpest tool in the system, and omitting it
+    /// would make every call fail closed.
+    audit: Arc<dyn AuditSink>,
     /// The terminal-run server's Unix socket. Injectable so the round trip is
     /// testable against a stub server without a live daemon.
     socket_path: String,
@@ -64,20 +76,24 @@ pub struct CommandExecutor {
 impl CommandExecutor {
     /// An executor dialing the well-known terminal-run socket under the per-user
     /// MCP runtime dir.
-    pub fn new(executor_live: Box<dyn Fn() -> bool + Send + Sync>) -> Self {
+    pub fn new(
+        executor_live: Box<dyn Fn() -> bool + Send + Sync>,
+        audit: Arc<dyn AuditSink>,
+    ) -> Self {
         let socket_path = os_sdk::mcp::mcp_socket_path(TERMINAL_RUN_SERVER)
             .to_string_lossy()
             .into_owned();
-        Self { executor_live, socket_path }
+        Self { executor_live, audit, socket_path }
     }
 
     /// An executor dialing an explicit socket path (tests, and a future
     /// per-profile instance path).
     pub fn with_socket(
         executor_live: Box<dyn Fn() -> bool + Send + Sync>,
+        audit: Arc<dyn AuditSink>,
         socket_path: impl Into<String>,
     ) -> Self {
-        Self { executor_live, socket_path: socket_path.into() }
+        Self { executor_live, audit, socket_path: socket_path.into() }
     }
 }
 
@@ -135,30 +151,36 @@ impl Executor for CommandExecutor {
         }
 
         let id = ServerId(TERMINAL_RUN_SERVER.to_string());
-        let mut client = McpClient::new();
+        let mut client = McpClient::new().with_audit(self.audit.clone());
         // The terminal-run server mutates the world, so it is an Action server: the
         // registry holds it to the action-server rules, never the read-only default.
         if let Err(err) = client
             .connect(id.clone(), &self.socket_path, ServerClass::Action)
             .await
         {
+            // The error text carries the socket path (and so the uid); log it,
+            // return a fixed string to the model.
+            tracing::warn!(error = %err, "terminal-run connect failed");
             return ExecuteOutcome::Error {
                 code: ContractError::ExecutionFailed,
-                message: format!("the terminal-run server is unavailable: {err}"),
+                message: "the terminal-run server is unavailable".to_string(),
             };
         }
 
         // Forward the input verbatim (command, args, consent, timeout_ms).
-        match client
-            .call_tool(&id, TERMINAL_RUN_TOOL, req.tool_input.clone(), &CallChain::root())
-            .await
-        {
-            Ok(text) => ExecuteOutcome::Ok {
+        let chain = CallChain::root();
+        let call = client.call_tool(&id, RUN_COMMAND_TOOL, req.tool_input.clone(), &chain);
+        match tokio::time::timeout(CALL_TIMEOUT, call).await {
+            Ok(Ok(text)) => ExecuteOutcome::Ok {
                 result: serde_json::Value::String(text),
             },
-            Err(err) => ExecuteOutcome::Error {
+            Ok(Err(err)) => ExecuteOutcome::Error {
                 code: ContractError::ExecutionFailed,
                 message: format!("run_command failed at the terminal-run server: {err}"),
+            },
+            Err(_elapsed) => ExecuteOutcome::Error {
+                code: ContractError::ExecutionFailed,
+                message: "the terminal-run server did not answer in time".to_string(),
             },
         }
     }
@@ -168,6 +190,7 @@ impl Executor for CommandExecutor {
 mod tests {
     use super::*;
     use ai_engine_contract::{CapabilityContext, ReadTier};
+    use audit_proto::sink::MockAuditSink;
 
     /// The courier never reads the grant (the consent biscuit is the authority), so
     /// the tests pass a minimal one.
@@ -199,7 +222,11 @@ mod tests {
     /// The socket is never dialed on a refusal, so an unroutable path is safe in
     /// the tests that assert a pre-dial refusal.
     fn exec(live: Box<dyn Fn() -> bool + Send + Sync>) -> CommandExecutor {
-        CommandExecutor::with_socket(live, "/nonexistent/terminal-run.sock")
+        CommandExecutor::with_socket(
+            live,
+            Arc::new(MockAuditSink::accepting()),
+            "/nonexistent/terminal-run.sock",
+        )
     }
 
     #[tokio::test]
