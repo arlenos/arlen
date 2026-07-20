@@ -15,6 +15,7 @@
 //! (WP-R4) and the renderer client build on it.
 
 pub mod manifest;
+pub mod decode;
 pub mod schedule;
 
 pub use manifest::{
