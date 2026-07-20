@@ -41,10 +41,20 @@ Environment=RUST_LOG=info
 # no read-only tree, so no ReadWritePaths is needed. The hardening that does NOT
 # create a mount namespace is kept.
 #
-# DEPLOYMENT CAVEAT: the bwrap-under-systemd interaction (unprivileged-userns
-# availability, and whether the image ships a setuid bwrap - which NoNewPrivileges
-# would break) must be verified on the target image at go-live.
-RestrictAddressFamilies=AF_UNIX
+# The bwrap-under-systemd interaction is now boot-verified on the image, not
+# assumed: bwrap is present (it arrives transitively - see the note in
+# mkosi.build.d), unprivileged user namespaces work, and NoNewPrivileges does not
+# block it (the image ships a non-setuid bwrap). The one thing that DID break was
+# the address-family filter below.
+# AF_NETLINK is required, not optional: this service spawns bwrap with
+# --unshare-net, and bwrap brings up loopback in the new netns through a
+# NETLINK_ROUTE socket. RestrictAddressFamilies is inherited by children, so
+# AF_UNIX alone makes that socket() fail EAFNOSUPPORT and bwrap dies BEFORE it
+# execs the payload. Boot-proven: with AF_UNIX only, the journal shows
+# "bwrap: loopback: Failed to create NETLINK_ROUTE socket" on every spawn and
+# the sandboxed process never starts. Netlink here configures the sandbox's own
+# empty network namespace; it grants no route out of it.
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
 RestrictNamespaces=user mnt pid net ipc uts cgroup
 LockPersonality=yes
 NoNewPrivileges=yes

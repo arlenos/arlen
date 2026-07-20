@@ -57,7 +57,15 @@ Environment=ARLEN_PI_EXTENSION=/usr/lib/arlen/pi-plugins/dist/extension.js
 # SO_PEERCRED attestation + the gate + the audit ledger, not on its own filesystem
 # isolation. RestrictNamespaces stays wide enough for bwrap's --unshare-* set. The
 # hardening that does NOT create a mount namespace is kept.
-RestrictAddressFamilies=AF_UNIX
+# AF_NETLINK is required, not optional: this service spawns bwrap with
+# --unshare-net, and bwrap brings up loopback in the new netns through a
+# NETLINK_ROUTE socket. RestrictAddressFamilies is inherited by children, so
+# AF_UNIX alone makes that socket() fail EAFNOSUPPORT and bwrap dies BEFORE it
+# execs the payload. Boot-proven: with AF_UNIX only, the journal shows
+# "bwrap: loopback: Failed to create NETLINK_ROUTE socket" on every spawn and
+# the sandboxed process never starts. Netlink here configures the sandbox's own
+# empty network namespace; it grants no route out of it.
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
 LockPersonality=yes
 RestrictNamespaces=user mnt pid ipc uts net cgroup
 NoNewPrivileges=yes
