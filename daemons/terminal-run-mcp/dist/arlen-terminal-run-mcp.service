@@ -25,17 +25,27 @@ Environment=RUST_LOG=info
 #   - MemoryDenyWriteExecute is NOT set: a confined command may legitimately JIT
 #     (node, a python JIT), and a W^X filter is inherited by children.
 # The confinement of the RUN command is bwrap's job (no host write, no network);
-# this unit hardens the SERVER process. DEPLOYMENT CAVEAT: the bwrap-under-systemd
-# interaction (PrivateDevices vs bwrap's --dev, unprivileged-userns availability)
-# must be verified on the target image at go-live; run_command is fail-closed on
-# consent until then, so nothing spawns yet.
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=/run/user/%U/arlen
+# this unit hardens the SERVER process.
+#
+# Every MOUNT-NAMESPACE option is intentionally OMITTED, for the reason the audit
+# daemon, the consent broker and the power daemon omit them. `serve_mcp`
+# authenticates each MCP client with `ConnectionAuth::extract_from`, which resolves
+# the peer's app id by reading /proc/<caller-pid>/exe. A mount-namespace sandbox
+# (ProtectSystem, ProtectHome, PrivateTmp, PrivateDevices, ProtectControlGroups,
+# ProtectKernel*) makes that link unreadable to a same-uid reader - ANY single one
+# of them is enough - so the admission check fails and the server drops EVERY
+# connection, including the AI engine's. It would look hardened and serve nobody.
+# Its integrity rests on the kernel-attested peer credential plus the fail-closed
+# app-id resolve, not on filesystem isolation; it holds no persistent state (a
+# per-call scratch dir under /tmp, removed on drop). Without ProtectSystem there is
+# no read-only tree, so no ReadWritePaths is needed. The hardening that does NOT
+# create a mount namespace is kept.
+#
+# DEPLOYMENT CAVEAT: the bwrap-under-systemd interaction (unprivileged-userns
+# availability, and whether the image ships a setuid bwrap - which NoNewPrivileges
+# would break) must be verified on the target image at go-live.
 RestrictAddressFamilies=AF_UNIX
 RestrictNamespaces=user mnt pid net ipc uts cgroup
-ProtectKernelModules=yes
-ProtectControlGroups=yes
 LockPersonality=yes
 NoNewPrivileges=yes
 

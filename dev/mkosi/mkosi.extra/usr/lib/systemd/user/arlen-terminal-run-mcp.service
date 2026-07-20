@@ -1,0 +1,53 @@
+[Unit]
+Description=Arlen Terminal-run MCP Server (user service)
+Documentation=https://github.com/arlenos/arlen
+# Serves the `run_command` tool on an MCP socket the AI daemon connects to. Each
+# call runs a single previously-confirmed command inside a bwrap sandbox (no host
+# write, no network, no privilege) and returns its captured output. It depends on
+# nothing: it binds its own socket and spawns the confinement directly.
+
+[Service]
+Type=simple
+# Installed at /usr/bin/arlen-terminal-run-mcp on purpose: the AI daemon resolves
+# a server's binary path to its app id (arlen-permissions maps /usr/bin/arlen-<name>
+# to <name>), so a different install path would change the id and be refused.
+ExecStart=/usr/bin/arlen-terminal-run-mcp
+Restart=on-failure
+RestartSec=2
+
+Environment=RUST_LOG=info
+
+# NB this server is a NAMESPACE-CREATING process, unlike the pure-reader MCP
+# servers: it spawns bwrap, which unshares user/mount/pid/ipc/uts/cgroup/net to
+# build the command sandbox. So the hardening deliberately differs:
+#   - RestrictNamespaces allows exactly the sandbox namespace types (a blanket
+#     RestrictNamespaces=yes would break bwrap).
+#   - MemoryDenyWriteExecute is NOT set: a confined command may legitimately JIT
+#     (node, a python JIT), and a W^X filter is inherited by children.
+# The confinement of the RUN command is bwrap's job (no host write, no network);
+# this unit hardens the SERVER process.
+#
+# Every MOUNT-NAMESPACE option is intentionally OMITTED, for the reason the audit
+# daemon, the consent broker and the power daemon omit them. `serve_mcp`
+# authenticates each MCP client with `ConnectionAuth::extract_from`, which resolves
+# the peer's app id by reading /proc/<caller-pid>/exe. A mount-namespace sandbox
+# (ProtectSystem, ProtectHome, PrivateTmp, PrivateDevices, ProtectControlGroups,
+# ProtectKernel*) makes that link unreadable to a same-uid reader - ANY single one
+# of them is enough - so the admission check fails and the server drops EVERY
+# connection, including the AI engine's. It would look hardened and serve nobody.
+# Its integrity rests on the kernel-attested peer credential plus the fail-closed
+# app-id resolve, not on filesystem isolation; it holds no persistent state (a
+# per-call scratch dir under /tmp, removed on drop). Without ProtectSystem there is
+# no read-only tree, so no ReadWritePaths is needed. The hardening that does NOT
+# create a mount namespace is kept.
+#
+# DEPLOYMENT CAVEAT: the bwrap-under-systemd interaction (unprivileged-userns
+# availability, and whether the image ships a setuid bwrap - which NoNewPrivileges
+# would break) must be verified on the target image at go-live.
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=user mnt pid net ipc uts cgroup
+LockPersonality=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

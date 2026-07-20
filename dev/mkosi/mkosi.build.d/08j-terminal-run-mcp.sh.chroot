@@ -1,0 +1,43 @@
+#!/bin/sh
+# Phase 8j (CHROOT): the terminal-run MCP server (arlen-terminal-run-mcp), the
+# process that actually runs a user-confirmed `run_command` inside a bwrap sandbox
+# (curated read-only system dirs, a fresh per-call scratch, no network, a
+# deny-by-default seccomp allowlist) and returns its captured output.
+#
+# It is a SEPARATE process from the AI engine on purpose: the namespace-creating,
+# command-spawning half is isolated from the daemon that decides. The engine's
+# courier (`command_executor.rs`) connects to this server's MCP socket and forwards
+# a consent biscuit the dispatch minted only after a user Confirm; this server
+# verifies that biscuit against the consent root's public key before it spawns
+# anything. Without this binary in the image the run_command path is inert - the
+# courier fail-closes with "the terminal-run server is unavailable".
+#
+# Its own standalone cargo workspace (daemons/terminal-run-mcp) -> its own target
+# dir in the persistent cache. Pure Rust, no C/C++.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-terminal-run-mcp"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the terminal-run MCP server - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/terminal-run-mcp/Cargo.toml
+
+# Install at /usr/bin/arlen-terminal-run-mcp, NOT libexec: arlen-permissions maps
+# /usr/bin/arlen-<name> to the app id <name> (rule 2), so this path is what gives
+# the server the stable identity `terminal-run-mcp`. A libexec install would need
+# its own canonical entry in the resolver first, and would otherwise resolve to
+# UnknownBinary. The unit's ExecStart matches this path.
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-terminal-run-mcp" \
+    "$DESTDIR/usr/bin/arlen-terminal-run-mcp"
+echo ">> staged arlen-terminal-run-mcp into the image (/usr/bin, the identity path)"
