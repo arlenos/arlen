@@ -66,7 +66,7 @@
 
   async function onsubmit(secret: string): Promise<AuthResult> {
     if (!pickedProfile) return { ok: false, error: "No profile selected." };
-    return authenticate(pickedProfile.id, secret);
+    return authenticate(pickedProfile.id, secret, sessionId);
   }
   async function onfactor(): Promise<AuthResult> {
     if (!pickedProfile) return { ok: false, error: "No profile selected." };

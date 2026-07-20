@@ -72,9 +72,13 @@ export async function listSessions(): Promise<Session[] | null> {
 
 /// Attempt a password login for a profile. The backend runs PAM and, on
 /// success, releases the homed key and starts the session.
-export async function authenticate(profileId: string, secret: string): Promise<AuthResult> {
+export async function authenticate(
+  profileId: string,
+  secret: string,
+  sessionId: string,
+): Promise<AuthResult> {
   try {
-    return await invoke<AuthResult>("greeter_authenticate", { profileId, secret });
+    return await invoke<AuthResult>("greeter_authenticate", { profileId, secret, sessionId });
   } catch (e) {
     return { ok: false, error: String(e) };
   }
