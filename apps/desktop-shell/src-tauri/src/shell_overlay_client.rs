@@ -1072,10 +1072,33 @@ pub fn set_popover_input_region(app: tauri::AppHandle, expanded: bool) {
     update_input_region(&app);
 }
 
+/// Grab or release the keyboard on the main shell window. The window is a top bar
+/// and normally takes no keyboard (default `KeyboardMode::None`), so a dialog it
+/// hosts never sees key events. A consent decision must be keyboard-operable - most
+/// importantly Escape-to-deny, the always-available safe out - so while a request
+/// is up the window grabs the keyboard (Exclusive, as the waypointer does), and
+/// releases it when the request clears.
+fn set_main_keyboard_grab(app: &tauri::AppHandle, grab: bool) {
+    let Some(w) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = w.with_webview(move |webview| {
+        use gtk::prelude::{Cast, WidgetExt};
+        use gtk_layer_shell::{KeyboardMode, LayerShell};
+
+        let Some(toplevel) = webview.inner().toplevel() else { return };
+        let Ok(gtk_window) = toplevel.downcast::<gtk::Window>() else { return };
+        let mode = if grab { KeyboardMode::Exclusive } else { KeyboardMode::None };
+        gtk_window.set_keyboard_mode(mode);
+        log::info!("set_main_keyboard_grab: grab={} -> {:?}", grab, mode);
+    });
+}
+
 /// Capture or release full-surface input for the unified consent dialog. Called by
 /// the consent store when a request appears or is resolved, so the centered modal
-/// is actually clickable (its default top-bar-only region would let clicks on
-/// Allow/Deny fall through to the desktop).
+/// is actually usable: pointer clicks reach it (its default top-bar-only region
+/// would let clicks on Allow/Deny fall through to the desktop) AND the keyboard
+/// reaches it (Escape-to-deny, Tab/Enter on the buttons).
 #[tauri::command]
 pub fn set_consent_input_region(app: tauri::AppHandle, active: bool) {
     let was = CONSENT_ACTIVE.swap(active, Ordering::SeqCst);
@@ -1084,6 +1107,7 @@ pub fn set_consent_input_region(app: tauri::AppHandle, active: bool) {
     }
     log::info!("set_consent_input_region: active={} (was {})", active, was);
     update_input_region(&app);
+    set_main_keyboard_grab(&app, active);
 }
 
 /// Resolves a freedesktop app icon and returns it as a base64 data URL.
