@@ -529,10 +529,19 @@ impl AsRawFd for OwnedFd {
 /// the canonical AI-daemon units are mapped: this is the cross-uid identity
 /// fallback for when `/proc/<pid>/exe` is unreadable (a hardened, non-dumpable
 /// peer), and it must grant no identity a successful exe-path resolve would not.
+///
+/// The mapped unit is the pi-era engine's, `arlen-ai-engine-daemon.service`, and it
+/// resolves to the `ai-agent` ROLE - the same principal
+/// [`path_to_app_id`] gives that daemon's binary, so the two resolvers agree
+/// whichever path the caller is identified through. The retired
+/// `arlen-ai-agent.service` and `arlen-ai-daemon.service` are gone rather than kept
+/// alongside: neither crate nor unit ships any more, so mapping them would have
+/// left this fallback naming only units that cannot exist while missing the one
+/// that does - and the consequence is not a clean failure, it is the AI layer being
+/// served as `unknown` on exactly the cross-uid read path this fallback exists for.
 fn unit_to_app_id(unit: &str) -> Option<&'static str> {
     match unit {
-        "arlen-ai-agent.service" => Some("ai-agent"),
-        "arlen-ai-daemon.service" => Some("ai-daemon"),
+        "arlen-ai-engine-daemon.service" => Some("ai-agent"),
         _ => None,
     }
 }
@@ -569,19 +578,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cgroup_unit_resolves_the_ai_daemons() {
+    fn cgroup_unit_resolves_the_ai_engine_daemon() {
+        const ENGINE_UNIT: &str = "arlen-ai-engine-daemon.service";
         // cgroup v2: one `0::<path>` line.
-        let v2 = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/arlen-ai-agent.service";
-        assert_eq!(unit_from_cgroup(v2).as_deref(), Some("arlen-ai-agent.service"));
-        assert_eq!(unit_to_app_id("arlen-ai-agent.service"), Some("ai-agent"));
-        assert_eq!(unit_to_app_id("arlen-ai-daemon.service"), Some("ai-daemon"));
+        let v2 = format!(
+            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/{ENGINE_UNIT}"
+        );
+        assert_eq!(unit_from_cgroup(&v2).as_deref(), Some(ENGINE_UNIT));
+        assert_eq!(unit_to_app_id(ENGINE_UNIT), Some("ai-agent"));
+        // The retired pre-pi units map to nothing: neither ships any more.
+        assert_eq!(unit_to_app_id("arlen-ai-agent.service"), None);
+        assert_eq!(unit_to_app_id("arlen-ai-daemon.service"), None);
         // A non-AI unit maps to nothing (no identity widening).
         assert_eq!(unit_to_app_id("some-other.service"), None);
         // cgroup v1: `<n>:<controllers>:<path>` lines; the path is after the last colon.
-        let v1 = "1:name=systemd:/user.slice/user@1000.service/app.slice/arlen-ai-daemon.service\n0::/";
-        assert_eq!(unit_from_cgroup(v1).as_deref(), Some("arlen-ai-daemon.service"));
+        let v1 = format!("1:name=systemd:/user.slice/user@1000.service/app.slice/{ENGINE_UNIT}\n0::/");
+        assert_eq!(unit_from_cgroup(&v1).as_deref(), Some(ENGINE_UNIT));
         // No service cgroup -> None.
         assert_eq!(unit_from_cgroup("0::/user.slice/user-1000.slice"), None);
+    }
+
+    /// The cgroup fallback and the exe-path resolver must name the SAME principal
+    /// for the engine daemon. They are two independent maps over two different
+    /// inputs (a unit name vs an install path), and the cgroup one is only reached
+    /// when /proc/<pid>/exe is unreadable - a cross-uid, hardened peer - so a
+    /// disagreement is invisible until exactly the case the fallback exists for.
+    #[test]
+    fn the_cgroup_fallback_agrees_with_the_exe_resolver_for_the_engine() {
+        let by_unit = unit_to_app_id("arlen-ai-engine-daemon.service")
+            .expect("the shipping engine unit resolves");
+        let by_path =
+            path_to_app_id(&PathBuf::from("/usr/lib/arlen/libexec/arlen-ai-engine-daemon"))
+                .expect("the engine's canonical install path resolves");
+        assert_eq!(
+            by_unit, by_path,
+            "the cgroup fallback gives '{by_unit}' but the exe resolver gives '{by_path}': \
+             the engine would get a different identity depending on which path resolved it"
+        );
     }
     use crate::identity_registry::{IdentityRecord, IdentityRegistry};
     use std::io::Write;
