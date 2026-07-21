@@ -1,0 +1,9 @@
+# Starting permission profile for gLabels (a label and business-card designer).
+# Opens and saves label documents and merge sources from Documents; no network and
+# no Knowledge Graph access.
+[info]
+app_id = "glabels"
+tier = "third-party"
+
+[filesystem]
+documents = true
