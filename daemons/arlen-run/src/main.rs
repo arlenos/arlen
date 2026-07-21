@@ -27,6 +27,7 @@ mod cgroup;
 mod egress;
 #[cfg(target_os = "linux")]
 mod landlock_apply;
+mod netns;
 mod profile;
 // The app seccomp filter (GAP-6): the deny-by-default allowlist, compiled to
 // cBPF and handed to bwrap via --seccomp in `spawn`.
