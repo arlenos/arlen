@@ -18,7 +18,11 @@
 //! exercised by the unit tests below.
 #![allow(dead_code)]
 
-use std::path::Path;
+use std::io;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::path::{Path, PathBuf};
+
+use serde::Serialize;
 
 use crate::config::FilesBackend;
 use crate::connection::ConnectionBackend;
@@ -93,10 +97,76 @@ pub fn confined_rclone_argv(profile_root: &Path, rc_socket: &Path) -> Vec<String
     ]
 }
 
+/// The minimal `arlen-run` profile for the confined rclone: its `[info] app_id`,
+/// the `[network] allowed_domains` FilteredHosts egress, and the `[filesystem]
+/// custom` read-write set. Every other permission section defaults (denied), and
+/// `arlen-run`'s loader fills them with `#[serde(default)]` - so this fixed shape
+/// is a complete, minimal, least-privilege profile.
+#[derive(Serialize)]
+struct RcloneProfile {
+    info: ProfileInfoOut,
+    network: NetworkOut,
+    filesystem: FilesystemOut,
+}
+
+#[derive(Serialize)]
+struct ProfileInfoOut {
+    app_id: String,
+}
+
+#[derive(Serialize)]
+struct NetworkOut {
+    allowed_domains: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct FilesystemOut {
+    custom: Vec<String>,
+}
+
+/// Render the per-mount profile TOML: FilteredHosts egress to `hosts`, `writable`
+/// the read-write filesystem set (the rc socket dir, the mount point, rclone's
+/// config dir). The caller supplies a non-empty `hosts` (a host-less backend is
+/// refused upstream); nothing else is granted.
+pub fn render_rclone_profile(hosts: &[String], writable: &[PathBuf]) -> String {
+    let profile = RcloneProfile {
+        info: ProfileInfoOut { app_id: RCLONE_APP_ID.to_string() },
+        network: NetworkOut { allowed_domains: hosts.to_vec() },
+        filesystem: FilesystemOut {
+            custom: writable.iter().map(|p| p.to_string_lossy().into_owned()).collect(),
+        },
+    };
+    // A fixed-shape struct of strings cannot fail to serialize to TOML.
+    toml::to_string(&profile).expect("serialize the fixed-shape rclone profile")
+}
+
+/// Write the per-mount profile to `<profile_root>/{RCLONE_APP_ID}.toml` (the path
+/// `arlen-run --profile-root <profile_root> --app-id {RCLONE_APP_ID}` reads),
+/// creating `profile_root` `0700` and the file `0600` atomically (temp + rename).
+/// Returns the written path.
+pub fn write_rclone_profile(
+    profile_root: &Path,
+    hosts: &[String],
+    writable: &[PathBuf],
+) -> io::Result<PathBuf> {
+    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(profile_root)?;
+    let toml = render_rclone_profile(hosts, writable);
+    let path = profile_root.join(format!("{RCLONE_APP_ID}.toml"));
+    let tmp = profile_root.join(format!(".{RCLONE_APP_ID}.toml.tmp"));
+    {
+        use io::Write;
+        let mut f =
+            std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp)?;
+        f.write_all(toml.as_bytes())?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&tmp, &path)?;
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     fn sftp(host: Option<&str>, port: Option<u16>) -> FilesBackend {
         FilesBackend {
@@ -150,6 +220,30 @@ mod tests {
         assert!(egress_hosts(&webdav(Some("ftp://x/y"))).is_empty());
         assert!(egress_hosts(&webdav(Some("not a url"))).is_empty());
         assert!(egress_hosts(&webdav(None)).is_empty());
+    }
+
+    #[test]
+    fn the_rendered_profile_loads_through_arlen_runs_own_resolver() {
+        let dir = tempfile::tempdir().unwrap();
+        let hosts = vec!["nas.example.org:22".to_string()];
+        let writable = vec![
+            PathBuf::from("/run/user/1000/arlen/accounts/nas"),
+            PathBuf::from("/home/u/.cache/rclone"),
+        ];
+        let path = write_rclone_profile(dir.path(), &hosts, &writable).unwrap();
+        assert_eq!(path, dir.path().join(format!("{RCLONE_APP_ID}.toml")));
+        // Load the exact file arlen-run reads (it joins `{app_id}.toml` onto the
+        // profile root), so the format is validated against the real parser.
+        let profile = arlen_permissions::load_profile_from(&path, RCLONE_APP_ID)
+            .expect("arlen-run must parse the rendered profile");
+        assert_eq!(profile.network.allowed_domains, hosts);
+        assert_eq!(
+            profile.filesystem.custom, writable,
+            "the writable set must round-trip as the [filesystem] custom paths"
+        );
+        // Least privilege: no blanket network, no home grant.
+        assert!(!profile.network.allow_all);
+        assert!(!profile.filesystem.home);
     }
 
     #[test]
