@@ -1,0 +1,8 @@
+# Starting permission profile for Xreader (the X-Apps document viewer); the app id for the apt `xreader`. Opens its documents from Documents; no
+# network and no Knowledge Graph access.
+[info]
+app_id = "org.x.reader"
+tier = "third-party"
+
+[filesystem]
+documents = true
