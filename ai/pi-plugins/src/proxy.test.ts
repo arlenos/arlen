@@ -56,9 +56,21 @@ test("registers the default privileged tools (graph read + write)", () => {
     required: ["query"],
     additionalProperties: false,
   });
-  // graph.write keeps the permissive schema (its structured args land with its own
-  // executor); only graph.read needed the argument hint for this path.
-  assert.deepEqual(tools.get("graph.write")!.parameters, { type: "object", additionalProperties: true });
+  // graph.write declares its five relation fields so the model provides them (the
+  // executor requires from_type/from_id/to_type/to_id/relation_type; a permissive
+  // schema had the model call it with `{}`, which the daemon refuses).
+  assert.deepEqual(tools.get("graph.write")!.parameters, {
+    type: "object",
+    properties: {
+      from_type: { type: "string", description: 'the source node\'s entity type, e.g. "File"' },
+      from_id: { type: "string", description: "the source node's id" },
+      to_type: { type: "string", description: 'the target node\'s entity type, e.g. "Project"' },
+      to_id: { type: "string", description: "the target node's id" },
+      relation_type: { type: "string", description: 'the relationship to create, e.g. "FILE_PART_OF"' },
+    },
+    required: ["from_type", "from_id", "to_type", "to_id", "relation_type"],
+    additionalProperties: false,
+  });
 });
 
 test("an Ok execute outcome surfaces the daemon result and forwards the args", async () => {

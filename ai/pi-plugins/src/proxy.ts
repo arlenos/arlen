@@ -122,8 +122,26 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
     name: "graph.write",
     label: "Knowledge graph write",
     description:
-      "Propose a knowledge-graph write. The daemon validates, gates, audits, and " +
+      "Create a relationship between two EXISTING knowledge-graph nodes, e.g. link " +
+      "a File to the Project it belongs to. Give the two nodes' entity types and " +
+      "ids and the relation type (e.g. from_type \"File\", to_type \"Project\", " +
+      "relation_type \"FILE_PART_OF\"). The daemon validates, gates, audits and " +
       "(when permitted) applies it, registering an undo; pi never writes directly.",
+    parameters: {
+      type: "object",
+      properties: {
+        from_type: { type: "string", description: "the source node's entity type, e.g. \"File\"" },
+        from_id: { type: "string", description: "the source node's id" },
+        to_type: { type: "string", description: "the target node's entity type, e.g. \"Project\"" },
+        to_id: { type: "string", description: "the target node's id" },
+        relation_type: {
+          type: "string",
+          description: "the relationship to create, e.g. \"FILE_PART_OF\"",
+        },
+      },
+      required: ["from_type", "from_id", "to_type", "to_id", "relation_type"],
+      additionalProperties: false,
+    },
   },
   {
     name: "graph.assert_edge",
