@@ -295,6 +295,19 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-anomalyd" => {
             return Ok("anomalyd".to_string());
         }
+        // The foreign-app bridge ingestion daemon (foreign-app-bridges.md §4). It
+        // installs under /usr/lib/arlen/libexec/ and writes the KG under its
+        // delegated namespace (the Obsidian floor's `md.obsidian.*` entity
+        // upserts), so it must resolve to the stable id `bridge-ingest` its
+        // delegated write profile is keyed under + the `first_party_apps` tiering
+        // grants. Rule (2) covers only /usr/bin/arlen-*, so without this entry the
+        // deployed daemon resolves to UnknownBinary and its writes are refused at
+        // the write-tier gate (a debug build resolves the cargo-run binary to
+        // `dev.arlen-bridge-ingest` first). The scoped macaroon + one-time install
+        // consent are the layered deployment grants above this attested identity.
+        "/usr/lib/arlen/libexec/arlen-bridge-ingest" => {
+            return Ok("bridge-ingest".to_string());
+        }
         // The consent broker (the one trusted-path consent surface every system
         // prompt routes through, system-dialog-plan.md). It installs under
         // /usr/lib/arlen/libexec/ and audits each resolved decision (granted /
@@ -864,6 +877,24 @@ mod tests {
             assert!(
                 path_to_app_id(&PathBuf::from(spoofed)).is_err(),
                 "spoofed consent-broker path {spoofed} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_app_id_from_path_bridge_ingest_canonical_libexec() {
+        // The foreign-app bridge daemon's canonical binary must resolve to
+        // `bridge-ingest`, the id its delegated md.obsidian.* write profile is keyed
+        // under + the first_party_apps tiering grants. Without this a DEPLOYED bridge
+        // resolves to UnknownBinary and its KG writes are refused at the write gate.
+        let path = PathBuf::from("/usr/lib/arlen/libexec/arlen-bridge-ingest");
+        assert_eq!(path_to_app_id(&path).unwrap(), "bridge-ingest");
+
+        // A same-basename binary in a writable location must not impersonate it.
+        for spoofed in ["/tmp/arlen-bridge-ingest", "/home/attacker/arlen-bridge-ingest"] {
+            assert!(
+                path_to_app_id(&PathBuf::from(spoofed)).is_err(),
+                "spoofed bridge-ingest path {spoofed} must be rejected"
             );
         }
     }
