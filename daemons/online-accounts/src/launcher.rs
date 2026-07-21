@@ -97,6 +97,47 @@ pub fn confined_rclone_argv(profile_root: &Path, rc_socket: &Path) -> Vec<String
     ]
 }
 
+/// The per-mount filesystem layout for one confined rclone: the runtime dir that
+/// holds its profile + rc socket, the socket path, and the read-write set its
+/// profile grants. All three writable paths must EXIST before the launch (a
+/// missing writable path is dropped from the Landlock grant), so the caller
+/// creates them.
+pub struct MountPaths {
+    /// The per-mount runtime dir (`<runtime_dir>/arlen/accounts/{id}`) holding the
+    /// profile and the rc socket; the `--profile-root` arlen-run reads.
+    pub profile_root: PathBuf,
+    /// The AF_UNIX rc-API socket rclone serves on (inside `profile_root`); the
+    /// daemon's `RcClient` drives it.
+    pub rc_socket: PathBuf,
+    /// The confined rclone's read-write set: its runtime dir (to create the
+    /// socket), the mount point (the FUSE target), and its cache dir.
+    pub writable: Vec<PathBuf>,
+}
+
+/// Derive the per-mount paths for `account_id`'s confined rclone. `None` when
+/// `account_id` is not a safe single path component (empty, `.`/`..`, or with a
+/// separator/NUL), so a malformed id can never escape the runtime tree - defence
+/// in depth over the config loader's own file-stem pinning.
+pub fn mount_paths(
+    runtime_dir: &Path,
+    account_id: &str,
+    mount_point: &Path,
+    cache_dir: &Path,
+) -> Option<MountPaths> {
+    if account_id.is_empty()
+        || account_id == "."
+        || account_id == ".."
+        || account_id.contains(['/', '\0'])
+    {
+        return None;
+    }
+    let profile_root = runtime_dir.join("arlen").join("accounts").join(account_id);
+    let rc_socket = profile_root.join("rcd.sock");
+    let writable =
+        vec![profile_root.clone(), mount_point.to_path_buf(), cache_dir.to_path_buf()];
+    Some(MountPaths { profile_root, rc_socket, writable })
+}
+
 /// The minimal `arlen-run` profile for the confined rclone: its `[info] app_id`,
 /// the `[network] allowed_domains` FilteredHosts egress, and the `[filesystem]
 /// custom` read-write set. Every other permission section defaults (denied), and
@@ -220,6 +261,31 @@ mod tests {
         assert!(egress_hosts(&webdav(Some("ftp://x/y"))).is_empty());
         assert!(egress_hosts(&webdav(Some("not a url"))).is_empty());
         assert!(egress_hosts(&webdav(None)).is_empty());
+    }
+
+    #[test]
+    fn mount_paths_place_the_socket_and_writable_set_under_the_account_runtime_dir() {
+        let rt = PathBuf::from("/run/user/1000");
+        let mp = PathBuf::from("/run/user/1000/arlen/mounts/nas");
+        let cache = PathBuf::from("/home/u/.cache/arlen/rclone/nas");
+        let p = mount_paths(&rt, "nas", &mp, &cache).unwrap();
+        assert_eq!(p.profile_root, PathBuf::from("/run/user/1000/arlen/accounts/nas"));
+        assert_eq!(p.rc_socket, p.profile_root.join("rcd.sock"));
+        // The socket dir, the mount point and the cache dir are all writable so
+        // rclone can bind the socket, attach the FUSE mount, and cache.
+        assert!(p.writable.contains(&p.profile_root));
+        assert!(p.writable.contains(&mp));
+        assert!(p.writable.contains(&cache));
+    }
+
+    #[test]
+    fn a_malformed_account_id_yields_no_mount_paths() {
+        let rt = PathBuf::from("/run/user/1000");
+        let mp = PathBuf::from("/mp");
+        let cache = PathBuf::from("/cache");
+        for bad in ["", ".", "..", "a/b", "a\0b"] {
+            assert!(mount_paths(&rt, bad, &mp, &cache).is_none(), "must refuse {bad:?}");
+        }
     }
 
     #[test]
