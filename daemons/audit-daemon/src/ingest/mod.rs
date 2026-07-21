@@ -318,6 +318,55 @@ mod tests {
     use super::*;
     use crate::ledger::{AuditKind, StructuralRecord};
 
+    /// Guard the whole "works in dev via dev.*, DEAD in release" class: each
+    /// admitted producer's canonical DEPLOYED binary path (its systemd-unit
+    /// ExecStart) must resolve, via the release `path_to_app_id`, to the exact
+    /// ADMITTED id. Several producers audit FAIL-CLOSED (config-broker switch
+    /// changes, knowledge app-tier bridge writes, consent/capsule/connections
+    /// releases), so an id that resolves to something un-admitted silently refuses
+    /// every one of their writes in a release image while passing in dev (where the
+    /// `dev.<bin>` cargo id is admitted). A unit whose ExecStart moves off these
+    /// paths, or a producer added to ADMITTED without a resolving path, breaks this.
+    #[test]
+    fn every_admitted_producer_resolves_from_its_deployed_path() {
+        use arlen_permissions::identity::path_to_app_id;
+        use std::path::Path;
+        let deployed: &[(&str, &str)] = &[
+            ("/usr/lib/arlen/libexec/arlen-ai-daemon", "ai-daemon"),
+            ("/usr/lib/arlen/libexec/arlen-ai-proxy", "ai-proxy"),
+            ("/usr/lib/arlen/libexec/arlen-ai-engine-daemon", "ai-agent"),
+            ("/usr/lib/arlen/libexec/arlen-accountsd", "online-accounts"),
+            ("/usr/lib/arlen/libexec/arlen-notifyd", "notifyd"),
+            ("/usr/lib/arlen/libexec/arlen-installd", "installd"),
+            ("/usr/bin/arlen-graph-daemon", "knowledge"),
+            ("/usr/lib/arlen/libexec/arlen-consent-broker", "consent-broker"),
+            ("/usr/lib/arlen/libexec/xdg-desktop-portal-arlen", "xdg-desktop-portal"),
+            ("/usr/lib/arlen/libexec/arlen-capsuled", "capsuled"),
+            ("/usr/lib/arlen/libexec/arlen-connectionsd", "connections"),
+            ("/usr/lib/arlen/libexec/arlen-config-broker", "config-broker"),
+        ];
+        for &(path, id) in deployed {
+            assert_eq!(
+                path_to_app_id(Path::new(path)).unwrap().as_str(),
+                id,
+                "deployed path {path} must resolve to the ADMITTED id {id}"
+            );
+            assert!(
+                caller_is_admitted(id),
+                "{id} must be in ADMITTED (its release audit is fail-closed)"
+            );
+        }
+        // Every release ADMITTED id must have a deployment-path mapping above, so a
+        // new producer cannot be admitted without a path that resolves to it.
+        for id in ADMITTED {
+            assert!(
+                deployed.iter().any(|&(_, mapped)| mapped == *id),
+                "ADMITTED id {id} has no deployed-path mapping in this guard - add \
+                 its systemd ExecStart path or its fail-closed audits die in release"
+            );
+        }
+    }
+
     #[test]
     fn admission_is_restricted_to_the_ai_layer() {
         assert!(caller_is_admitted("ai-daemon"));
