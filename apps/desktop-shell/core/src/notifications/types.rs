@@ -1,7 +1,7 @@
-/// Notification types for the Tauri frontend.
-///
-/// These are serialized as JSON to the Svelte frontend via Tauri events
-/// and command responses.
+//! Notification types for the Tauri frontend.
+//!
+//! These are serialized as JSON to the Svelte frontend via Tauri events
+//! and command responses.
 
 use notification_proto::proto;
 use serde::{Deserialize, Serialize};
