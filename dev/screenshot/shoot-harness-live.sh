@@ -33,19 +33,19 @@ if [ -z "$WD" ]; then echo "no headless sway socket - refusing to grab" >&2; exi
 # a leading Tab/click is unnecessary for the chat input, but type slowly so the
 # webview keystroke handler keeps up.
 sleep 3
-# On a CLEARED (empty) session the harness shows suggestion chips at fixed
-# positions and the composer is not auto-focused, so a fixed-position ydotool
-# click on a chip is the most reliable trigger (no typing/focus dependency): the
-# chip sends its prompt straight to pi. ydotoold binds the REAL runtime dir, so
-# point ydotool at it (the shoot's XDG is a temp dir for sway isolation).
-export YDOTOOL_SOCKET="${YDOTOOL_SOCKET:-$REALXDG/.ydotool_socket}"
-# CHIP_XY overrides the chip position; default = the first suggestion chip
-# ("What did I work on yesterday?") at ~766,402 in the 1280x800 render.
-CX="${CHIP_X:-766}"; CY="${CHIP_Y:-402}"
+# Submit with wtype (a wayland VIRTUAL KEYBOARD - works under WLR_LIBINPUT_NO_DEVICES=1,
+# unlike ydotool/uinput which sway then ignores). Focus the composer first with a
+# couple of Shift+Tabs from the app's initial focus (the composer is the last
+# focusable), type, settle, then Enter (repeated - the growing-textarea handler can
+# swallow the first). Needs a POPULATED conversation so the composer is present.
 sleep 1
-ydotool mousemove -a "$CX" "$CY" >/tmp/arlen-live-type.log 2>&1
+WAYLAND_DISPLAY="$WD" wtype -M shift -k Tab -m shift -k Tab >/tmp/arlen-live-type.log 2>&1
 sleep 1
-ydotool click 0xC0 >>/tmp/arlen-live-type.log 2>&1
+WAYLAND_DISPLAY="$WD" wtype -s 30 "$PROMPT" >>/tmp/arlen-live-type.log 2>&1
+sleep 2
+WAYLAND_DISPLAY="$WD" wtype -k Return >>/tmp/arlen-live-type.log 2>&1
+sleep 1
+WAYLAND_DISPLAY="$WD" wtype -k Return >>/tmp/arlen-live-type.log 2>&1
 # Wait for pi -> Ollama/qwen to stream the answer onto the A7 components.
 sleep "$WAIT"
 WAYLAND_DISPLAY="$WD" grim "$OUT"; rc=$?
