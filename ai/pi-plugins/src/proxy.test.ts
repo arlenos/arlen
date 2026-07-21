@@ -40,8 +40,25 @@ test("registers the default privileged tools (graph read + write)", () => {
   const tools = collect(async () => ({ call: async (): Promise<Reply> => ({ reply: "ack" }) }));
   assert.ok(tools.has("graph.read"));
   assert.ok(tools.has("graph.write"));
-  // The model-facing parameters are a permissive object (the daemon re-validates).
-  assert.deepEqual(tools.get("graph.read")!.parameters, { type: "object", additionalProperties: true });
+  // graph.read declares its `query` argument so the model provides it (a permissive
+  // schema had the model call it with `{}`, which the daemon refuses, looping the
+  // turn). The daemon still re-validates; the schema is a model-facing hint only.
+  assert.deepEqual(tools.get("graph.read")!.parameters, {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description:
+          "A natural-language description of what to read from the user's " +
+          "knowledge graph. Not Cypher: the daemon generates the query.",
+      },
+    },
+    required: ["query"],
+    additionalProperties: false,
+  });
+  // graph.write keeps the permissive schema (its structured args land with its own
+  // executor); only graph.read needed the argument hint for this path.
+  assert.deepEqual(tools.get("graph.write")!.parameters, { type: "object", additionalProperties: true });
 });
 
 test("an Ok execute outcome surfaces the daemon result and forwards the args", async () => {
