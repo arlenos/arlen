@@ -15,6 +15,13 @@ REALXDG="${REALXDG:-/run/user/1000}"
 export XDG_RUNTIME_DIR="$(mktemp -d "${TMPDIR:-/tmp}/arlen-live-rt.XXXXXX")"
 chmod 700 "$XDG_RUNTIME_DIR"
 mkdir -p "$XDG_RUNTIME_DIR/arlen"
+# A sandbox data dir so the harness starts with an EMPTY session store instead of
+# restoring the dev's real ~/.local/share/arlen/harness/sessions.json (which
+# accumulates prior shoots' conversations and would render a stale turn over the
+# fresh auto-driven one). The harness resolves its store via dirs::data_dir(),
+# which honours XDG_DATA_HOME.
+DATA_HOME="$XDG_RUNTIME_DIR/data"
+mkdir -p "$DATA_HOME"
 # Bridge the live engine drive socket into the sandbox XDG so the harness's
 # drive.rs (which resolves $XDG_RUNTIME_DIR/arlen/ai-engine-drive.sock) reaches it.
 ln -sf "$REALXDG/arlen/ai-engine-drive.sock" "$XDG_RUNTIME_DIR/arlen/ai-engine-drive.sock"
@@ -22,7 +29,7 @@ cleanup() { kill "${sway_pid:-0}" 2>/dev/null; rm -rf "$XDG_RUNTIME_DIR" 2>/dev/
 trap cleanup EXIT
 
 cfg="$(mktemp)"
-printf 'output HEADLESS-1 resolution 1280x800\nexec env GDK_BACKEND=wayland ARLEN_HARNESS_AUTODRIVE=%q %q >/tmp/arlen-live-app.log 2>&1\n' "$PROMPT" "$BIN" > "$cfg"
+printf 'output HEADLESS-1 resolution 1280x800\nexec env GDK_BACKEND=wayland XDG_DATA_HOME=%q ARLEN_HARNESS_AUTODRIVE=%q %q >/tmp/arlen-live-app.log 2>&1\n' "$DATA_HOME" "$PROMPT" "$BIN" > "$cfg"
 WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 sway -c "$cfg" >/tmp/arlen-live-sway.log 2>&1 &
 sway_pid=$!
 sleep 24
