@@ -325,6 +325,18 @@ fn observe_stamped_divergence(
     }
 }
 
+/// Read the peer's `(pid, uid)` from `SO_PEERCRED` WITHOUT resolving its binary
+/// identity. For endpoints whose authentication is a presented credential (e.g. a
+/// session token bound to the attested pid) rather than the peer's executable: a
+/// peer running a generic interpreter (node, python) - which [`ConnectionAuth::
+/// extract_from`]'s binary resolution rejects as `UnknownBinary` - is still
+/// admissible under same-uid plus its own credential check. The CALLER must
+/// enforce same-uid (`uid` == the daemon's) and verify the credential itself; this
+/// only reads the kernel-attested pid/uid.
+pub fn peer_credentials<F: AsRawFd>(stream: &F) -> std::io::Result<(u32, u32)> {
+    so_peercred(stream.as_raw_fd())
+}
+
 /// `SO_PEERCRED` getsockopt wrapper. Returns `(pid, uid)`. We
 /// use libc directly because `std::os::unix::net::UnixStream::
 /// peer_cred()` is unstable as of Rust 1.90 (issue #42839).
