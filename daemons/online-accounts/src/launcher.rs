@@ -21,11 +21,19 @@
 use std::io;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use serde::Serialize;
+use tokio::process::{Child, Command};
 
 use crate::config::FilesBackend;
 use crate::connection::ConnectionBackend;
+use crate::mount::MountPlan;
+use crate::rc::{RcClient, RcError, UnixRcTransport};
+
+/// How long to wait for the confined rclone to open its rc socket before giving
+/// up (fail-closed: a launch that never serves is not silently left running).
+const SOCKET_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The reverse-DNS app id the confined rclone runs under; `arlen-run` resolves
 /// its profile at `<profile-root>/{RCLONE_APP_ID}.toml`. One mount identity for
@@ -205,6 +213,114 @@ pub fn write_rclone_profile(
     Ok(path)
 }
 
+/// A failure launching or driving the confined rclone mount. The caller maps it
+/// to a D-Bus error; every variant leaves nothing half-mounted (the child is
+/// killed on drop, `kill_on_drop`).
+#[derive(Debug, thiserror::Error)]
+pub enum MountLaunchError {
+    /// A per-mount runtime/mount/cache dir could not be created.
+    #[error("creating a mount dir: {0}")]
+    Dir(io::Error),
+    /// The confined rclone's permission profile could not be written.
+    #[error("writing the rclone profile: {0}")]
+    Profile(io::Error),
+    /// `arlen-run` (the confiner) could not be spawned.
+    #[error("spawning the confined rclone: {0}")]
+    Spawn(io::Error),
+    /// The confined rclone never opened its rc socket within [`SOCKET_TIMEOUT`].
+    #[error("the confined rclone did not open its rc socket in time")]
+    SocketTimeout,
+    /// The rc API (mount/unmount) failed.
+    #[error("driving rclone over the rc api: {0}")]
+    Rc(#[from] RcError),
+}
+
+/// A live confined rclone mount: the `arlen-run` child (killed on drop), its rc
+/// socket, and the FUSE mount point. Held for the mount's lifetime; [`unmount`]
+/// tears it down.
+pub struct RcloneMount {
+    child: Child,
+    rc_socket: PathBuf,
+    mount_point: PathBuf,
+}
+
+impl RcloneMount {
+    /// Where the drive is mounted.
+    pub fn mount_point(&self) -> &Path {
+        &self.mount_point
+    }
+
+    /// Unmount the drive and stop the confined rclone. Best-effort teardown: the
+    /// child is killed even if the rc `unmount` call fails, so a mount is never
+    /// left with a live process.
+    pub async fn unmount(mut self) -> Result<(), MountLaunchError> {
+        let rc = RcClient::new(UnixRcTransport::new(&self.rc_socket));
+        let mp = self.mount_point.to_string_lossy();
+        let unmounted = rc.unmount(&mp).await;
+        let _ = self.child.kill().await;
+        unmounted.map_err(MountLaunchError::Rc)
+    }
+}
+
+/// Poll for `path` to appear, up to `timeout`. The confined rclone creates its rc
+/// socket a moment after it starts, so the daemon waits for it before driving the
+/// rc API. Returns whether it appeared.
+async fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    while tokio::time::Instant::now() < deadline {
+        if path.exists() {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    path.exists()
+}
+
+/// Launch `rclone` confined under `arlen-run` and mount `plan.fs` at
+/// `plan.mount_point`: create the writable dirs (a missing one would be dropped
+/// from the Landlock grant), write the per-mount profile with the `hosts`
+/// FilteredHosts egress, spawn the confined rclone, wait for its rc socket, then
+/// drive `RcClient::mount`. Fail-closed at every step; on any error nothing is
+/// left mounted (the child dies on the dropped `Command`/handle).
+pub async fn spawn_confined_mount(
+    paths: &MountPaths,
+    plan: &MountPlan,
+    hosts: &[String],
+) -> Result<RcloneMount, MountLaunchError> {
+    // Landlock only grants a writable path that already exists, so create the
+    // whole writable set (the runtime dir, the mount point, the cache dir).
+    for dir in &paths.writable {
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)
+            .map_err(MountLaunchError::Dir)?;
+    }
+    write_rclone_profile(&paths.profile_root, hosts, &paths.writable)
+        .map_err(MountLaunchError::Profile)?;
+
+    let argv = confined_rclone_argv(&paths.profile_root, &paths.rc_socket);
+    let child = Command::new(&argv[0])
+        .args(&argv[1..])
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(MountLaunchError::Spawn)?;
+
+    if !wait_for_socket(&paths.rc_socket, SOCKET_TIMEOUT).await {
+        return Err(MountLaunchError::SocketTimeout);
+    }
+
+    let rc = RcClient::new(UnixRcTransport::new(&paths.rc_socket));
+    let mount_point = plan.mount_point.to_string_lossy();
+    rc.mount(&plan.fs, &mount_point).await?;
+
+    Ok(RcloneMount {
+        child,
+        rc_socket: paths.rc_socket.clone(),
+        mount_point: plan.mount_point.clone(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,6 +377,17 @@ mod tests {
         assert!(egress_hosts(&webdav(Some("ftp://x/y"))).is_empty());
         assert!(egress_hosts(&webdav(Some("not a url"))).is_empty());
         assert!(egress_hosts(&webdav(None)).is_empty());
+    }
+
+    #[tokio::test]
+    async fn wait_for_socket_returns_when_it_appears_and_times_out_when_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("rcd.sock");
+        // Absent within the window: the launch is treated as failed (fail-closed).
+        assert!(!wait_for_socket(&sock, Duration::from_millis(120)).await);
+        // Present: the daemon proceeds to drive the rc API.
+        std::fs::write(&sock, b"").unwrap();
+        assert!(wait_for_socket(&sock, Duration::from_millis(120)).await);
     }
 
     #[test]

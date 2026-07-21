@@ -26,7 +26,7 @@ audit-proto = { path = "../../contracts/audit-proto" }
 zbus = { version = "5", default-features = false, features = ["tokio"] }
 notify = "7"
 futures-util = { version = "0.3", default-features = false }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "net", "io-util", "process"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Token vault crypto: each account's tokens are AEAD-encrypted at rest under a
