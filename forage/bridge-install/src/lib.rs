@@ -336,6 +336,67 @@ fn copy_into(
     Ok(())
 }
 
+/// The outcome of a single bridge install: the files placed and whether the shared
+/// bridge-ingest profile gained the namespace (false if it already had it).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BridgeInstallResult {
+    /// The Arlen-side + foreign-side files written.
+    pub installed: InstalledBridge,
+    /// Whether the bridge-ingest profile changed (a new delegated namespace).
+    pub namespace_granted: bool,
+}
+
+/// A one-bridge install failure. Both variants name what was already placed so the
+/// caller can roll the whole bridge (and any sibling bridges in the same
+/// transaction) back.
+#[derive(Debug, thiserror::Error)]
+pub enum InstallBridgeError {
+    /// The two-halves copy failed; nothing that matters was placed (the copy
+    /// self-reports partial writes inside its own error) and no namespace was added.
+    #[error(transparent)]
+    Copy(#[from] BridgeInstallError),
+    /// The copy succeeded but provisioning the profile failed; `installed` is the
+    /// placed files, to be rolled back (the namespace was NOT added).
+    #[error("provisioned failed after copy: {source}")]
+    Provision {
+        /// The provisioning error.
+        source: ProvisionError,
+        /// The files placed by the (successful) copy, for rollback.
+        installed: InstalledBridge,
+    },
+}
+
+/// Install ONE bridge as a unit: copy both halves, then grant the namespace in the
+/// bridge-ingest profile. The order matters - files first, profile second - so a
+/// profile failure leaves only files (reported for rollback), never a namespace
+/// grant with no bridge behind it. The caller (the forage CLI) owns the ONE user
+/// consent (gated upstream) and the source fetch + dest/namespace resolution (via
+/// [`resolve_foreign_dest`] / [`bridge_namespace`]); this is the transactional
+/// mechanism, not the gate.
+pub fn install_bridge(
+    source_dir: &Path,
+    install: &Install,
+    arlen_bridge_dir: &Path,
+    foreign_dest: &Path,
+    namespace: &str,
+) -> Result<BridgeInstallResult, InstallBridgeError> {
+    let installed = install_bridge_halves(source_dir, install, arlen_bridge_dir, foreign_dest)?;
+    match provision_bridge_namespace(namespace) {
+        Ok(namespace_granted) => Ok(BridgeInstallResult { installed, namespace_granted }),
+        Err(source) => Err(InstallBridgeError::Provision { source, installed }),
+    }
+}
+
+/// Roll back an installed bridge's placed files (best-effort: a file already gone is
+/// not an error). Used by the caller when a later step - a sibling bridge, the
+/// profile, the daemon launch - fails and the transaction must unwind. The namespace
+/// grant is a separate concern (the profile is only touched on the happy path).
+pub fn rollback_bridge(installed: &InstalledBridge) {
+    for f in installed.arlen_files.iter().chain(installed.foreign_files.iter()) {
+        let _ = std::fs::remove_file(f);
+    }
+}
+
 /// Install both halves of a bridge from a fetched recipe source.
 ///
 /// `source_dir` is the verified recipe checkout, `install` its `[install]` manifest,
@@ -381,6 +442,12 @@ mod tests {
     use super::*;
     use arlen_forage_recipe::{ForeignSide, Install};
     use std::fs;
+    use std::sync::Mutex;
+
+    /// Serializes the tests that mutate PROCESS env (`ARLEN_PERMISSIONS_DIR` /
+    /// `XDG_DATA_HOME`): those vars are global, so a parallel run would let one
+    /// test's value leak into another. Each such test holds this for its duration.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn install_manifest(arlen: &[&str], foreign: &[&str]) -> Install {
         Install {
@@ -466,6 +533,35 @@ mod tests {
     }
 
     #[test]
+    fn install_bridge_copies_then_provisions_then_rolls_back() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let src = tempfile::tempdir().unwrap();
+        seed(src.path(), "entities.toml", "namespace = \"md.obsidian\"\n");
+        seed(src.path(), "bridge.toml", "b");
+        seed(src.path(), "main.js", "js");
+        let arlen = tempfile::tempdir().unwrap();
+        let foreign = tempfile::tempdir().unwrap();
+        let perms = tempfile::tempdir().unwrap();
+        std::env::set_var("ARLEN_PERMISSIONS_DIR", perms.path());
+        let manifest = install_manifest(&["entities.toml", "bridge.toml"], &["main.js"]);
+
+        let res = install_bridge(src.path(), &manifest, arlen.path(), foreign.path(), "md.obsidian").unwrap();
+        assert!(res.namespace_granted);
+        assert_eq!(res.installed.arlen_files.len(), 2);
+        assert_eq!(res.installed.foreign_files.len(), 1);
+        assert!(arlen.path().join("bridge.toml").exists());
+        assert!(foreign.path().join("main.js").exists());
+        assert!(perms.path().join("bridge-ingest.toml").exists());
+
+        // Rollback removes the placed files (the profile grant is left; a real
+        // transaction would revoke it separately, but the files unwind cleanly).
+        rollback_bridge(&res.installed);
+        assert!(!arlen.path().join("bridge.toml").exists());
+        assert!(!foreign.path().join("main.js").exists());
+        std::env::remove_var("ARLEN_PERMISSIONS_DIR");
+    }
+
+    #[test]
     fn add_delegated_namespace_is_idempotent() {
         let mut profile: arlen_permissions::PermissionProfile =
             toml::from_str("[info]\napp_id = \"bridge-ingest\"\ntier = \"first-party\"\n").unwrap();
@@ -477,6 +573,7 @@ mod tests {
 
     #[test]
     fn provision_creates_then_accumulates_the_profile() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("ARLEN_PERMISSIONS_DIR", dir.path());
 
@@ -577,6 +674,7 @@ type = "Note"
 
     #[test]
     fn the_arlen_bridge_dir_is_recipe_scoped_under_xdg() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // With XDG_DATA_HOME set, the dir is <xdg>/arlen/bridges/<id>.
         std::env::set_var("XDG_DATA_HOME", "/tmp/xdg-test-data");
         let dir = arlen_bridge_dir("md.obsidian.bridge").unwrap();
