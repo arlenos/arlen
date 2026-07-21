@@ -119,9 +119,18 @@ async fn run_driver<E: Executor, R: Reporter>(
     executor: E,
     reporter: R,
     driver_args: &[&str],
+    bind_mismatch: bool,
 ) -> serde_json::Value {
-    let dir = std::env::temp_dir()
-        .join(format!("arlen-pi-e2e-{}-{}", std::process::id(), driver_args.join("-")));
+    // The temp dir + socket are keyed by (pid, args, bind_mismatch) so two tests
+    // sharing the same driver args (e.g. the gate-denied and the pid-mismatch proofs
+    // both drive "gate note.append") get distinct paths and do not race under the
+    // parallel test runner.
+    let dir = std::env::temp_dir().join(format!(
+        "arlen-pi-e2e-{}-{}-{}",
+        std::process::id(),
+        driver_args.join("-"),
+        bind_mismatch as u8,
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     let socket = dir.join("ai-engine.sock");
     let token_file = dir.join("token");
@@ -164,8 +173,12 @@ async fn run_driver<E: Executor, R: Reporter>(
         read_tier: ReadTier::Minimal,
         externally_triggered: false,
     };
-    let pid = child.id();
-    let token = dispatcher.init_session(&init, pid).unwrap();
+    // Bind the session to the child's pid (the happy path) or, for the auth-
+    // rejection proof, to a DIFFERENT pid so the connecting child (whose real pid
+    // SO_PEERCRED surfaces) does not match the bound session.
+    let child_pid = child.id();
+    let bind_pid = if bind_mismatch { child_pid.wrapping_add(1) } else { child_pid };
+    let token = dispatcher.init_session(&init, bind_pid).unwrap();
     std::fs::write(&token_file, token.as_str()).unwrap();
     std::fs::set_permissions(&token_file, std::fs::Permissions::from_mode(0o600)).unwrap();
 
@@ -178,7 +191,7 @@ async fn run_driver<E: Executor, R: Reporter>(
     let serve = async {
         let stream = listener.accept().await.unwrap().0;
         let peer = peer_pid(&stream);
-        assert_eq!(peer, pid, "the connecting peer is the spawned child");
+        assert_eq!(peer, child_pid, "the connecting peer is the spawned child");
         let mut stream = stream;
         serve_connection(&mut stream, &dispatcher, peer).await.unwrap();
     };
@@ -204,7 +217,7 @@ async fn the_real_gate_plugin_is_denied_a_suggest_mode_tool_call_end_to_end() {
         return;
     }
     // The gate proof reaches neither the executor nor the reporter (Authorize only).
-    let v = run_driver(UnusedExecutor, UnusedReporter, &["gate", "note.append"]).await;
+    let v = run_driver(UnusedExecutor, UnusedReporter, &["gate", "note.append"], false).await;
     assert_eq!(
         v["result"]["block"],
         serde_json::json!(true),
@@ -214,6 +227,30 @@ async fn the_real_gate_plugin_is_denied_a_suggest_mode_tool_call_end_to_end() {
     assert!(
         reason.contains("proposal"),
         "the REAL gate decided (suggest -> propose -> deny), not the no-session fallback: {reason:?}",
+    );
+}
+
+#[tokio::test]
+async fn a_real_peer_whose_pid_is_not_the_bound_session_is_refused_end_to_end() {
+    if !driver_available() {
+        eprintln!("SKIP: pi-plugins dist not built (npm --prefix ai/pi-plugins run build)");
+        return;
+    }
+    // The session is bound to a DIFFERENT pid than the real child that connects
+    // (SO_PEERCRED surfaces the child's true pid), so the dispatcher must refuse the
+    // verb via the no-session fallback, NOT the real gate - proving the session's
+    // pid binding rejects a mismatched real peer over the actual socket (the wire
+    // half of the recycle-proofing the session.rs unit tests cover synthetically).
+    let v = run_driver(UnusedExecutor, UnusedReporter, &["gate", "note.append"], true).await;
+    assert_eq!(
+        v["result"]["block"],
+        serde_json::json!(true),
+        "a pid-mismatched real peer is blocked end to end: {v}",
+    );
+    let reason = v["result"]["reason"].as_str().unwrap_or("");
+    assert!(
+        reason.contains("session") && !reason.contains("proposal"),
+        "the NO-SESSION fallback denied it (not the real gate's suggest->propose): {reason:?}",
     );
 }
 
@@ -228,7 +265,7 @@ async fn the_real_audit_shim_reports_a_tool_result_and_clean_content_passes_end_
     // REAL reporter was reached - a no-session Report fails closed to Block ->
     // WITHHELD content, so an empty result only happens when the session bound and
     // the reporter both resolved over the actual socket.
-    let v = run_driver(UnusedExecutor, CleanReporter, &["audit", "graph.read"]).await;
+    let v = run_driver(UnusedExecutor, CleanReporter, &["audit", "graph.read"], false).await;
     let result = &v["result"];
     assert!(
         result.get("content").is_none(),
@@ -260,7 +297,7 @@ async fn the_real_proxy_tool_forwards_execute_and_fails_closed_end_to_end() {
         .register("graph.read", read_executor)
         .register("graph.write", write_executor);
 
-    let v = run_driver(executor, UnusedReporter, &["execute", "graph.read"]).await;
+    let v = run_driver(executor, UnusedReporter, &["execute", "graph.read"], false).await;
     let result = &v["result"];
     assert_eq!(
         result["isError"],
