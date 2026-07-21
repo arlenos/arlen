@@ -38,11 +38,12 @@ sleep 3
 # couple of Shift+Tabs from the app's initial focus (the composer is the last
 # focusable), type, settle, then Enter (repeated - the growing-textarea handler can
 # swallow the first). Needs a POPULATED conversation so the composer is present.
+# The composer auto-focuses on load, so type straight in (no Tab dance - Shift+Tab
+# mangled the text + the stray '@' opened the mention picker). Type slowly, settle,
+# then Enter (twice - the growing-textarea handler can swallow the first).
 sleep 1
-WAYLAND_DISPLAY="$WD" wtype -M shift -k Tab -m shift -k Tab >/tmp/arlen-live-type.log 2>&1
-sleep 1
-WAYLAND_DISPLAY="$WD" wtype -s 30 "$PROMPT" >>/tmp/arlen-live-type.log 2>&1
-sleep 2
+WAYLAND_DISPLAY="$WD" wtype -s 45 "$PROMPT" >/tmp/arlen-live-type.log 2>&1
+sleep 3
 WAYLAND_DISPLAY="$WD" wtype -k Return >>/tmp/arlen-live-type.log 2>&1
 sleep 1
 WAYLAND_DISPLAY="$WD" wtype -k Return >>/tmp/arlen-live-type.log 2>&1
