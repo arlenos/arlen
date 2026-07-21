@@ -26,6 +26,48 @@ pub struct ArlenThemeFile {
     pub icons:      Option<IconsSection>,
     pub wallpaper:  Option<WallpaperSection>,
     pub sounds:     Option<SoundsSection>,
+    /// Per-toolkit sparse overrides, applied ahead of a single toolkit's
+    /// generator so one target can diverge without a full theme fork (the
+    /// `[override.gtk]` / `[override.qt]` / `[override.terminal]` tables).
+    /// A resolve that does not target a toolkit ignores this field
+    /// entirely, so the shared theme is unaffected.
+    #[serde(rename = "override")]
+    pub toolkit_override: Option<ToolkitOverrides>,
+}
+
+/// Per-toolkit sparse overrides, each a partial theme file layered over the
+/// resolved theme just before ONE toolkit's generator runs. Example:
+/// `[override.gtk.color.semantic] accent = "#..."` diverges only the GTK
+/// stylesheet; the Arlen, Qt and terminal outputs keep the theme value. Each
+/// override reuses the same section schema; `Box` breaks the type recursion,
+/// and a nested `override` inside one is never applied (single level only).
+#[derive(Debug, Default, Deserialize)]
+pub struct ToolkitOverrides {
+    pub gtk:      Option<Box<ArlenThemeFile>>,
+    pub qt:       Option<Box<ArlenThemeFile>>,
+    pub terminal: Option<Box<ArlenThemeFile>>,
+}
+
+/// A rendering toolkit a per-toolkit override can target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Toolkit {
+    /// GTK / libadwaita apps (`gtk.css`).
+    Gtk,
+    /// Qt apps (`qt*ct` colour scheme).
+    Qt,
+    /// Terminal emulators (Alacritty / kitty / foot colours).
+    Terminal,
+}
+
+impl ToolkitOverrides {
+    /// Take the sparse override for `toolkit`, if the theme declared one.
+    pub fn into_toolkit(self, toolkit: Toolkit) -> Option<Box<ArlenThemeFile>> {
+        match toolkit {
+            Toolkit::Gtk => self.gtk,
+            Toolkit::Qt => self.qt,
+            Toolkit::Terminal => self.terminal,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

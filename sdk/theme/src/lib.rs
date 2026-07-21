@@ -62,8 +62,8 @@ pub use file::{
     BorderColors, ColorBgFile, ColorFgFile, ColorSection, ColorSemanticFile,
     CursorSection, DepthSection, ArlenThemeFile, IconsSection, MetaSection,
     MotionSection, RadiusSection, SoundsSection, SpacingSection,
-    TerminalAnsiSection, TerminalSection, TypographySection,
-    WallpaperSection, WmSection,
+    TerminalAnsiSection, TerminalSection, Toolkit, ToolkitOverrides,
+    TypographySection, WallpaperSection, WmSection,
 };
 pub use watcher::ThemeWatcher;
 
@@ -465,28 +465,37 @@ impl ArlenTheme {
         user_theme: Option<&str>,
         customization: Option<&str>,
     ) -> Result<Self, ResolveError> {
-        let bundled_file: ArlenThemeFile = toml::from_str(bundled)?;
-        let user_file: Option<ArlenThemeFile> = user_theme
-            .map(toml::from_str)
-            .transpose()?;
-        let custom_file: Option<ArlenThemeFile> = customization
-            .map(toml::from_str)
-            .transpose()?;
+        // Project the merged file to the resolved struct. Required fields error
+        // if missing; optional fields use sensible defaults. The per-toolkit
+        // override (if any) is ignored here - the shared theme is unaffected.
+        from_file(merge_theme_files(bundled, user_theme, customization)?)
+    }
 
-        // Merge user_file on top of bundled (field-by-field, all
-        // optional in user_file so missing fields fall through).
-        let merged = match user_file {
-            None => bundled_file,
-            Some(u) => merge_files(bundled_file, u),
-        };
-        let merged = match custom_file {
-            None => merged,
-            Some(c) => merge_files(merged, c),
-        };
-
-        // Project to the resolved struct. Required fields error if
-        // missing; optional fields use sensible defaults.
-        from_file(merged)
+    /// Resolve the theme AS SEEN BY one toolkit's generator: the shared theme
+    /// plus that toolkit's sparse `[override.<toolkit>]` layered on top. A
+    /// theme with no override for `toolkit` resolves identically to
+    /// [`resolve`](Self::resolve), so this is safe to call for every generator.
+    ///
+    /// The override lets a single target diverge (e.g. a GTK-only accent) with
+    /// a sparse per-target table instead of a full theme fork; the Arlen, Qt
+    /// and terminal outputs keep the theme value unless they declare their own.
+    pub fn resolve_toolkit(
+        bundled: &str,
+        user_theme: Option<&str>,
+        customization: Option<&str>,
+        toolkit: Toolkit,
+    ) -> Result<Self, ResolveError> {
+        let mut merged = merge_theme_files(bundled, user_theme, customization)?;
+        // Take the toolkit's override out of the merged file, then layer it
+        // over the shared dims. A nested `override` inside it is not applied.
+        match merged
+            .toolkit_override
+            .take()
+            .and_then(|o| o.into_toolkit(toolkit))
+        {
+            Some(over) => from_file(merge_files(merged, *over)),
+            None => from_file(merged),
+        }
     }
 
     /// Convenience: parse a single bundled-theme file with no
@@ -820,6 +829,28 @@ fn resolve_terminal(c: &ColorTokens, section: Option<TerminalSection>) -> Termin
 /// Field-by-field merge — every Optional in `over` that is `Some`
 /// replaces the corresponding field in `under`. Used to layer
 /// user themes / customization over the bundled defaults.
+/// Parse and merge the theme-file layers - bundled base, optional user theme,
+/// optional customization overlay - into one file (field-by-field, all sections
+/// optional so missing fields fall through). Shared by [`ArlenTheme::resolve`]
+/// and [`ArlenTheme::resolve_toolkit`].
+fn merge_theme_files(
+    bundled: &str,
+    user_theme: Option<&str>,
+    customization: Option<&str>,
+) -> Result<ArlenThemeFile, ResolveError> {
+    let bundled_file: ArlenThemeFile = toml::from_str(bundled)?;
+    let user_file: Option<ArlenThemeFile> = user_theme.map(toml::from_str).transpose()?;
+    let custom_file: Option<ArlenThemeFile> = customization.map(toml::from_str).transpose()?;
+    let merged = match user_file {
+        None => bundled_file,
+        Some(u) => merge_files(bundled_file, u),
+    };
+    Ok(match custom_file {
+        None => merged,
+        Some(c) => merge_files(merged, c),
+    })
+}
+
 fn merge_files(under: ArlenThemeFile, over: ArlenThemeFile) -> ArlenThemeFile {
     ArlenThemeFile {
         meta: over.meta.or(under.meta),
@@ -835,6 +866,11 @@ fn merge_files(under: ArlenThemeFile, over: ArlenThemeFile) -> ArlenThemeFile {
         icons: merge_icons(under.icons, over.icons),
         wallpaper: over.wallpaper.or(under.wallpaper),
         sounds: merge_sounds(under.sounds, over.sounds),
+        // The topmost file's per-toolkit overrides win wholesale (like meta):
+        // a user theme or customization declaring `[override.gtk]` replaces any
+        // bundled one rather than sub-merging, which keeps the "sparse targeted
+        // divergence" model predictable.
+        toolkit_override: over.toolkit_override.or(under.toolkit_override),
     }
 }
 
@@ -1242,6 +1278,43 @@ accent = "#ff00ff"
         assert!((t.color.accent[0] - 1.0).abs() < 0.01);
         assert!((t.color.accent[1] - 0.0).abs() < 0.01);
         assert!((t.color.accent[2] - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn per_toolkit_override_diverges_only_that_toolkit() {
+        // A GTK-only accent override to green (#00ff00).
+        let custom = r##"
+[override.gtk.color.semantic]
+accent = "#00ff00"
+"##;
+        // The GTK generator's theme sees the green accent.
+        let gtk = ArlenTheme::resolve_toolkit(SAMPLE_BUNDLED, None, Some(custom), Toolkit::Gtk)
+            .expect("resolve gtk");
+        assert!((gtk.color.accent[0] - 0.0).abs() < 0.01);
+        assert!((gtk.color.accent[1] - 1.0).abs() < 0.01);
+        assert!((gtk.color.accent[2] - 0.0).abs() < 0.01);
+        // The base resolve and the Qt/terminal toolkits keep the bundled accent -
+        // the override is scoped to GTK only, so nothing else diverges.
+        let base = ArlenTheme::resolve(SAMPLE_BUNDLED, None, Some(custom)).expect("base");
+        let qt = ArlenTheme::resolve_toolkit(SAMPLE_BUNDLED, None, Some(custom), Toolkit::Qt)
+            .expect("resolve qt");
+        assert_eq!(base.color.accent, qt.color.accent, "qt must match the base");
+        assert!(
+            (qt.color.accent[1] - 1.0).abs() > 0.01,
+            "qt must NOT get the GTK-only green accent"
+        );
+    }
+
+    #[test]
+    fn resolve_toolkit_with_no_override_equals_resolve() {
+        // With no [override.*], every toolkit resolves identically to the base -
+        // so a generator can call resolve_toolkit unconditionally.
+        let base = ArlenTheme::resolve(SAMPLE_BUNDLED, None, None).expect("base");
+        for tk in [Toolkit::Gtk, Toolkit::Qt, Toolkit::Terminal] {
+            let t = ArlenTheme::resolve_toolkit(SAMPLE_BUNDLED, None, None, tk).expect("toolkit");
+            assert_eq!(base.color.accent, t.color.accent);
+            assert!((base.radius.intensity - t.radius.intensity).abs() < 0.001);
+        }
     }
 
     #[test]
