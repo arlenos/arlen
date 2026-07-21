@@ -1,0 +1,9 @@
+# Starting permission profile for PCB (the gEDA printed-circuit-board layout
+# editor). Opens and saves board files from Documents; no network and no
+# Knowledge Graph access.
+[info]
+app_id = "pcb"
+tier = "third-party"
+
+[filesystem]
+documents = true

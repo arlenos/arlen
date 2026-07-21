@@ -1,0 +1,9 @@
+# Starting permission profile for GRASS GIS (a geospatial analysis system). Works
+# with GIS datasets under Documents; no network and no Knowledge Graph access by
+# default.
+[info]
+app_id = "grass"
+tier = "third-party"
+
+[filesystem]
+documents = true

@@ -1,0 +1,9 @@
+# Starting permission profile for Ghemical (a computational-chemistry workbench).
+# Opens and saves molecule and calculation files from Documents; no network and
+# no Knowledge Graph access.
+[info]
+app_id = "ghemical"
+tier = "third-party"
+
+[filesystem]
+documents = true
