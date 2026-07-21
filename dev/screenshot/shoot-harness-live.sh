@@ -11,6 +11,9 @@ OUT="${1:?usage: shoot-harness-live.sh <out.png> [prompt] [wait]}"
 PROMPT="${2:-Summarize what I was working on recently.}"
 WAIT="${3:-70}"
 REALXDG="${REALXDG:-/run/user/1000}"
+# Optional: a route to navigate to after the driven turn (e.g. /agent), so a
+# non-default surface can be captured. Empty = stay on the chat route.
+ROUTE="${ARLEN_HARNESS_ROUTE:-}"
 
 export XDG_RUNTIME_DIR="$(mktemp -d "${TMPDIR:-/tmp}/arlen-live-rt.XXXXXX")"
 chmod 700 "$XDG_RUNTIME_DIR"
@@ -25,11 +28,15 @@ mkdir -p "$DATA_HOME"
 # Bridge the live engine drive socket into the sandbox XDG so the harness's
 # drive.rs (which resolves $XDG_RUNTIME_DIR/arlen/ai-engine-drive.sock) reaches it.
 ln -sf "$REALXDG/arlen/ai-engine-drive.sock" "$XDG_RUNTIME_DIR/arlen/ai-engine-drive.sock"
+# Also bridge the audit read socket so the /agent Activity timeline
+# (ai_activity_recent -> ReadClient over $XDG_RUNTIME_DIR/arlen/audit-read.sock)
+# can read the real ledger, not fall to its "can't read the record" state.
+ln -sf "$REALXDG/arlen/audit-read.sock" "$XDG_RUNTIME_DIR/arlen/audit-read.sock"
 cleanup() { kill "${sway_pid:-0}" 2>/dev/null; rm -rf "$XDG_RUNTIME_DIR" 2>/dev/null; }
 trap cleanup EXIT
 
 cfg="$(mktemp)"
-printf 'output HEADLESS-1 resolution 1280x800\nexec env GDK_BACKEND=wayland XDG_DATA_HOME=%q ARLEN_HARNESS_AUTODRIVE=%q %q >/tmp/arlen-live-app.log 2>&1\n' "$DATA_HOME" "$PROMPT" "$BIN" > "$cfg"
+printf 'output HEADLESS-1 resolution 1280x800\nexec env GDK_BACKEND=wayland XDG_DATA_HOME=%q ARLEN_HARNESS_AUTODRIVE=%q ARLEN_HARNESS_ROUTE=%q %q >/tmp/arlen-live-app.log 2>&1\n' "$DATA_HOME" "$PROMPT" "$ROUTE" "$BIN" > "$cfg"
 WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 sway -c "$cfg" >/tmp/arlen-live-sway.log 2>&1 &
 sway_pid=$!
 sleep 24
