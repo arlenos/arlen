@@ -12,8 +12,8 @@ use tokio::io::WriteHalf;
 use tokio::net::UnixStream;
 use tokio::sync::Mutex;
 
-use super::protocol::{read_message, write_message};
-use super::types::{DndState, Notification, SyncPayload};
+use arlen_desktop_shell_core::notifications::protocol::{read_message, write_message};
+use arlen_desktop_shell_core::notifications::types::{DndState, Notification, SyncPayload};
 
 /// Resolve icon name to base64 data URL via the shared icon resolver.
 ///
@@ -182,7 +182,7 @@ async fn try_connect(app: &AppHandle, writer: &SocketWriter) -> Result<(), Strin
             }
             proto::server_message::Msg::DndChanged(dc) => {
                 let _ = app.emit("notification:dnd_changed", DndState {
-                    mode: super::types::dnd_mode_str(dc.mode),
+                    mode: arlen_desktop_shell_core::notifications::types::dnd_mode_str(dc.mode),
                 });
             }
             proto::server_message::Msg::Sync(sync) => {

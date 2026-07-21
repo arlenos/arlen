@@ -1,6 +1,6 @@
-/// Length-prefixed protobuf framing for the notification socket.
-///
-/// Wire format: 4-byte big-endian length + protobuf body.
+//! Length-prefixed protobuf framing for the notification socket.
+//!
+//! Wire format: 4-byte big-endian length + protobuf body.
 
 use bytes::BufMut;
 use prost::Message;
