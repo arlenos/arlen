@@ -1,0 +1,10 @@
+# Starting permission profile for ScanTailor Advanced (post-processing of scanned
+# pages). Reads and writes scanned images from Pictures and projects from
+# Documents; no network and no Knowledge Graph access.
+[info]
+app_id = "scantailor-advanced"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+documents = true

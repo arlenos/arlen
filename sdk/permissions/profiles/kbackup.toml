@@ -1,0 +1,9 @@
+# Starting permission profile for KBackup (a KDE backup tool). Reads the user's
+# files from Home to archive them; no network by default (remote destinations
+# need an explicit grant) and no Knowledge Graph access.
+[info]
+app_id = "kbackup"
+tier = "third-party"
+
+[filesystem]
+home = true

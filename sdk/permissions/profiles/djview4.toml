@@ -1,0 +1,8 @@
+# Starting permission profile for DjView4 (a DjVu document viewer). Opens its documents from Documents; no
+# network and no Knowledge Graph access.
+[info]
+app_id = "djview4"
+tier = "third-party"
+
+[filesystem]
+documents = true

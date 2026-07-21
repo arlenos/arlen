@@ -1,0 +1,9 @@
+# Starting permission profile for Skanlite (the KDE lightweight scanner). Saves
+# scanned images to Pictures; no network and no Knowledge Graph access. Mirrors
+# the org.kde.skanlite profile.
+[info]
+app_id = "skanlite"
+tier = "third-party"
+
+[filesystem]
+pictures = true

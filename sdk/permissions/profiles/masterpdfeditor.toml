@@ -1,0 +1,8 @@
+# Starting permission profile for Master PDF Editor. Opens its documents from Documents; no
+# network and no Knowledge Graph access.
+[info]
+app_id = "masterpdfeditor"
+tier = "third-party"
+
+[filesystem]
+documents = true
