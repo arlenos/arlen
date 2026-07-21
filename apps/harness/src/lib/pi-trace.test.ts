@@ -1,5 +1,35 @@
 import { describe, it, expect } from "vitest";
-import { applyToolEvent, toolCallsOf, type TracedCall } from "./pi-trace";
+import { applyToolEvent, assistantTextOf, toolCallsOf, type TracedCall } from "./pi-trace";
+
+describe("assistantTextOf", () => {
+  it("returns the string content of an assistant message_update", () => {
+    expect(
+      assistantTextOf({ type: "message_update", message: { role: "assistant", content: "hello" } }),
+    ).toBe("hello");
+  });
+
+  it("joins the text blocks of an array content, ignoring non-text blocks", () => {
+    const ev = {
+      type: "message_update",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "the file " },
+          { type: "image", url: "x" },
+          { type: "text", text: "is here" },
+        ],
+      },
+    };
+    expect(assistantTextOf(ev)).toBe("the file is here");
+  });
+
+  it("returns null for non-message_update events and non-assistant messages", () => {
+    expect(assistantTextOf({ type: "tool_execution_start", toolCallId: "c1" })).toBeNull();
+    expect(assistantTextOf({ type: "message_update", message: { role: "user", content: "hi" } })).toBeNull();
+    expect(assistantTextOf({ type: "agent_end" })).toBeNull();
+    expect(assistantTextOf(null)).toBeNull();
+  });
+});
 
 describe("applyToolEvent", () => {
   it("appends a running call for a tool_execution_start event, splitting the namespaced name", () => {

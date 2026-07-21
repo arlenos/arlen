@@ -14,7 +14,7 @@
 import { writable, derived, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { applyToolEvent, toolCallsOf, type TracedCall } from "$lib/pi-trace";
+import { applyToolEvent, assistantTextOf, toolCallsOf, type TracedCall } from "$lib/pi-trace";
 import { planRegenerate } from "$lib/regenerate";
 import { planEdit } from "$lib/edit";
 import { planDelete } from "$lib/delete";
@@ -411,7 +411,13 @@ function updateSession(id: string, fn: (msgs: Message[]) => Message[]): void {
 /// answer is returned directly; the tool-call + transparency trace arrives on the
 /// `pi://event` stream (a listener renders it, the next increment), so those are
 /// collected from the `pi://event` stream during the turn.
-async function piTurn(prompt: string): Promise<{
+/// `onText`, when given, is called with the assistant text SO FAR on each
+/// `message_update`, so the caller can stream the answer into the pending message
+/// instead of showing a blank wait until the turn settles.
+async function piTurn(
+  prompt: string,
+  onText?: (text: string) => void,
+): Promise<{
   answer: string;
   toolCalls: ToolCall[];
   traceUnavailable: boolean;
@@ -420,6 +426,10 @@ async function piTurn(prompt: string): Promise<{
   let trace: TracedCall[] = [];
   const unlisten = await listen<unknown>("pi://event", (e) => {
     trace = applyToolEvent(trace, e.payload);
+    if (onText) {
+      const streamed = assistantTextOf(e.payload);
+      if (streamed !== null) onText(streamed);
+    }
   });
   try {
     const answer = await invoke<string>("pi_prompt", { prompt });
@@ -451,7 +461,13 @@ export async function send(prompt: string, mentions: MentionContent[] = []): Pro
   busy.set(true);
 
   try {
-    const reply = await piTurn(buildPrompt(text, mentions));
+    // Stream the answer into the pending message as it generates (feedback during a
+    // slow model turn), then settle it with the final answer + trace below.
+    const reply = await piTurn(buildPrompt(text, mentions), (streamed) => {
+      updateSession(id, (m) =>
+        m.map((msg) => (msg.id === pendingId ? { ...msg, text: streamed } : msg)),
+      );
+    });
     updateSession(id, (m) =>
       m.map((msg) =>
         msg.id === pendingId
