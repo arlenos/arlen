@@ -13,10 +13,8 @@
 //! daemon's `RcClient` drives; the socket is a filesystem path (unaffected by the
 //! egress netns), reachable only by the daemon (the trust boundary).
 //!
-//! The `Files.Mount` method that provisions the profile, spawns this and calls
-//! `RcClient::mount` lands in the next slice; until then these builders are
-//! exercised by the unit tests below.
-#![allow(dead_code)]
+//! The `Files.Mount`/`Unmount` D-Bus methods (dbus.rs) drive these: `resolve_mount`
+//! then `spawn_confined_mount`, and `RcloneMount::unmount` to tear down.
 
 use std::io;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
