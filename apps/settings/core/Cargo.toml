@@ -20,5 +20,6 @@ toml = "0.8"
 [dev-dependencies]
 # The dir-size walk test builds a real temp tree.
 tempfile = "3"
+ron = "0.8"
 
 [workspace]
