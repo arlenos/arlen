@@ -54,6 +54,13 @@ pub fn proxy_env_url(proxy_port: u16) -> String {
     format!("http://{PROXY_NETNS_ADDR}:{proxy_port}")
 }
 
+/// The file descriptor the seccomp wrapper opens the app filter on, inside the
+/// namespace. `bwrap --seccomp` reads its cBPF from this fd; the caller puts
+/// `--seccomp <SECCOMP_WRAPPER_FD>` in the app argv. It is opened INSIDE the
+/// wrapper (not inherited from the launcher) because `pasta` does not pass the
+/// launcher's fds through to its child - an inherited memfd would be gone.
+pub const SECCOMP_WRAPPER_FD: i32 = 3;
+
 /// The shell wrapper run inside the namespace, before the app: drop the default
 /// route so no public IP is routable (leaving only the private link to the
 /// proxy), then exec the app. `CAP_NET_ADMIN` is held inside the userns netns,
@@ -61,13 +68,24 @@ pub fn proxy_env_url(proxy_port: u16) -> String {
 /// route, so it is `exec`-gated - the app runs only after the route is gone.
 const ROUTE_ABSENCE_WRAPPER: &str = "ip route del default && exec \"$@\"";
 
+/// The route-absence wrapper plus seccomp delivery: open the app filter file
+/// (passed as `$1`) on fd 3, drop it from the args, then drop the route and exec
+/// the app (whose argv carries `--seccomp 3`). Every step is `&&`-gated, so a
+/// missing/unreadable filter or a failed route delete refuses the launch (the
+/// app never execs) - fail-closed, never a layer short.
+const SECCOMP_ROUTE_WRAPPER: &str =
+    "exec 3<\"$1\" && shift && ip route del default && exec \"$@\"";
+
 /// Build the full `pasta` argv that runs `app_argv` in a route-absent namespace
 /// whose only reachable destination is the host-bound proxy. The returned vector
 /// is `[program, args...]`; the caller spawns `program` with `args`.
 ///
 /// `app_argv` is the confined launch (e.g. the `bwrap …` argv), run WITHOUT its
 /// own `--unshare-net`: the network namespace is `pasta`'s, the app inherits it.
-pub fn pasta_argv(app_argv: &[String]) -> Vec<String> {
+/// `seccomp_file`, when given, is the app's compiled cBPF filter: the wrapper
+/// opens it on [`SECCOMP_WRAPPER_FD`] inside the namespace (since `pasta` drops
+/// the launcher's fds), so `bwrap --seccomp 3` in `app_argv` installs it.
+pub fn pasta_argv(app_argv: &[String], seccomp_file: Option<&str>) -> Vec<String> {
     let mut argv = vec![
         "pasta".to_string(),
         // Configure the namespace's interface, address and routes from the
@@ -84,13 +102,21 @@ pub fn pasta_argv(app_argv: &[String]) -> Vec<String> {
         "--map-host-loopback".to_string(),
         PROXY_NETNS_ADDR.to_string(),
         "--".to_string(),
-        // The route-absence wrapper: drop the default route, then exec the app.
         "sh".to_string(),
         "-c".to_string(),
-        ROUTE_ABSENCE_WRAPPER.to_string(),
-        // $0 (a label; the app argv follows as $1..).
-        "arlen-run-netns".to_string(),
     ];
+    match seccomp_file {
+        Some(file) => {
+            argv.push(SECCOMP_ROUTE_WRAPPER.to_string());
+            // $0 label, then $1 = the seccomp file the wrapper opens + shifts off.
+            argv.push("arlen-run-netns".to_string());
+            argv.push(file.to_string());
+        }
+        None => {
+            argv.push(ROUTE_ABSENCE_WRAPPER.to_string());
+            argv.push("arlen-run-netns".to_string());
+        }
+    }
     argv.extend(app_argv.iter().cloned());
     argv
 }
@@ -113,7 +139,7 @@ mod tests {
 
     #[test]
     fn pasta_argv_carries_the_private_link_and_wraps_the_app() {
-        let argv = pasta_argv(&["bwrap".to_string(), "--".to_string(), "app".to_string()]);
+        let argv = pasta_argv(&["bwrap".to_string(), "--".to_string(), "app".to_string()], None);
         assert_eq!(argv[0], "pasta");
         // The private link + mapped loopback are present.
         assert!(argv.windows(2).any(|w| w[0] == "--address" && w[1] == NETNS_ADDR));
@@ -127,6 +153,21 @@ mod tests {
         // The app argv is appended after the wrapper's $0 label.
         let tail: Vec<&String> = argv.iter().rev().take(3).collect();
         assert_eq!(tail, vec![&"app".to_string(), &"--".to_string(), &"bwrap".to_string()]);
+    }
+
+    #[test]
+    fn pasta_argv_with_a_seccomp_file_opens_it_before_the_app() {
+        let argv = pasta_argv(&["bwrap".to_string(), "app".to_string()], Some("/run/seccomp.bpf"));
+        // The seccomp wrapper opens fd 3 from $1 and drops it before the app.
+        assert!(argv.iter().any(|a| a == SECCOMP_ROUTE_WRAPPER));
+        assert!(SECCOMP_ROUTE_WRAPPER.contains(&format!("exec {SECCOMP_WRAPPER_FD}<")));
+        assert!(SECCOMP_ROUTE_WRAPPER.contains("ip route del default"));
+        // The filter path is the wrapper's $1 (right after the $0 label), then
+        // the app argv follows.
+        let label = argv.iter().position(|a| a == "arlen-run-netns").unwrap();
+        assert_eq!(argv[label + 1], "/run/seccomp.bpf");
+        assert_eq!(argv[label + 2], "bwrap");
+        assert_eq!(argv.last().unwrap(), "app");
     }
 
     #[test]
@@ -188,7 +229,7 @@ mod tests {
         .iter()
         .map(|s| s.to_string())
         .collect();
-        let argv = pasta_argv(&app_argv);
+        let argv = pasta_argv(&app_argv, None);
 
         let out = Command::new(&argv[0]).args(&argv[1..]).output().unwrap();
         let _ = accepted.join();
@@ -197,6 +238,59 @@ mod tests {
         assert!(
             stdout.contains("PUBLIC_BLOCKED") && !stdout.contains("PUBLIC_OK"),
             "route-absence failed: a public IP was reachable from the bwrapped app: {stdout}"
+        );
+    }
+
+    /// On-kernel proof that the app's real seccomp filter reaches `bwrap` through
+    /// `pasta` via the FILE the wrapper opens (the memfd path breaks because
+    /// `pasta` drops inherited fds). The wrapper opens the compiled cBPF on fd 3,
+    /// `bwrap --seccomp 3` installs it, and the app runs - so the app runs with
+    /// the seccomp layer, not a layer short. If the fd delivery failed, `bwrap`
+    /// would error on the bad `--seccomp` fd and the marker would be absent.
+    #[test]
+    #[ignore = "needs pasta + bwrap + unprivileged user namespaces (on-kernel)"]
+    fn the_seccomp_filter_reaches_bwrap_through_the_wrapper_file() {
+        use std::io::Write;
+        use std::process::Command;
+
+        // The real app filter, written where the wrapper can open it.
+        let bpf = crate::seccomp::app_filter_bytes().expect("compile the app seccomp filter");
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(&bpf).unwrap();
+        let path = f.path().to_str().unwrap().to_string();
+
+        // bwrap installs the filter from fd 3 (the wrapper opens it), then runs a
+        // trivial allowlisted app (echo) - if the filter installed, the marker
+        // prints; a bad fd makes bwrap fail before the app runs.
+        let app_argv: Vec<String> = [
+            "bwrap",
+            "--seccomp",
+            &SECCOMP_WRAPPER_FD.to_string(),
+            "--unshare-user",
+            "--unshare-pid",
+            "--ro-bind",
+            "/",
+            "/",
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--",
+            "echo",
+            "SECCOMP_INSTALLED",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let argv = pasta_argv(&app_argv, Some(&path));
+
+        let out = Command::new(&argv[0]).args(&argv[1..]).output().unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("SECCOMP_INSTALLED"),
+            "the app did not run - bwrap likely rejected the seccomp fd delivered through pasta: \
+             stdout={stdout} stderr={}",
+            String::from_utf8_lossy(&out.stderr)
         );
     }
 }
