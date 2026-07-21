@@ -17,7 +17,7 @@ use arlen_transcript::Transcript;
 use os_sdk::{MeetingActionItemInput, UnixGraphClient};
 use zbus::Connection;
 
-use crate::note_store::{self, StoredMeeting};
+use arlen_meetings_core::note_store::{self, StoredMeeting};
 
 /// Distinct non-empty speaker labels from the transcript, in first-seen order: the
 /// note's participants (not derived from the transcript text, only from who spoke).
