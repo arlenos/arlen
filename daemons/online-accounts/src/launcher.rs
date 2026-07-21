@@ -26,9 +26,9 @@ use std::time::Duration;
 use serde::Serialize;
 use tokio::process::{Child, Command};
 
-use crate::config::FilesBackend;
+use crate::config::{AccountConfig, FilesBackend};
 use crate::connection::ConnectionBackend;
-use crate::mount::MountPlan;
+use crate::mount::{plan_mount, MountError, MountPlan};
 use crate::rc::{RcClient, RcError, UnixRcTransport};
 
 /// How long to wait for the confined rclone to open its rc socket before giving
@@ -213,6 +213,52 @@ pub fn write_rclone_profile(
     Ok(path)
 }
 
+/// A mount resolved and ready to launch: the rclone `fs` + mount point (from the
+/// caller-gated [`plan_mount`]), the provider egress allowlist, and the per-mount
+/// filesystem layout. The pure decision the D-Bus `Mount` method runs before
+/// spawning the confined rclone.
+pub struct ResolvedMount {
+    /// The rclone connection string + mount point.
+    pub plan: MountPlan,
+    /// The provider `host:port` set for the FilteredHosts egress profile.
+    pub hosts: Vec<String>,
+    /// The per-mount runtime paths + writable set.
+    pub paths: MountPaths,
+}
+
+/// Resolve a mount for `account_id` requested by `caller_app_id`: the caller-auth
+/// grant check + the rclone descriptor ([`plan_mount`], refuses an ungranted
+/// caller or an account with no `[files]` backend), the provider egress allowlist
+/// ([`egress_hosts`], refuses a host-less backend so rclone is never confined to
+/// nothing), and the runtime paths ([`mount_paths`]). Fail-closed: any missing
+/// piece is a [`MountError`], never a partial mount.
+pub fn resolve_mount(
+    accounts: &[AccountConfig],
+    caller_app_id: &str,
+    account_id: &str,
+    runtime_dir: &Path,
+    cache_dir: &Path,
+    secret: Option<&str>,
+) -> Result<ResolvedMount, MountError> {
+    let plan = plan_mount(accounts, caller_app_id, account_id, runtime_dir, secret)?;
+    // plan_mount already verified the grant + a `[files]` backend; take the raw
+    // backend for the egress allowlist.
+    let backend = accounts
+        .iter()
+        .find(|a| a.id == account_id)
+        .and_then(|a| a.files.as_ref())
+        .ok_or(MountError::NoBackend)?;
+    let hosts = egress_hosts(backend);
+    if hosts.is_empty() {
+        // A `[files]` backend that declares no dialable host cannot be scoped to a
+        // provider - refuse rather than confine rclone to an empty egress set.
+        return Err(MountError::NoBackend);
+    }
+    let paths =
+        mount_paths(runtime_dir, account_id, &plan.mount_point, cache_dir).ok_or(MountError::Refused)?;
+    Ok(ResolvedMount { plan, hosts, paths })
+}
+
 /// A failure launching or driving the confined rclone mount. The caller maps it
 /// to a D-Bus error; every variant leaves nothing half-mounted (the child is
 /// killed on drop, `kill_on_drop`).
@@ -377,6 +423,50 @@ mod tests {
         assert!(egress_hosts(&webdav(Some("ftp://x/y"))).is_empty());
         assert!(egress_hosts(&webdav(Some("not a url"))).is_empty());
         assert!(egress_hosts(&webdav(None)).is_empty());
+    }
+
+    const NAS: &str = r#"
+        id = "nas"
+        provider = "nextcloud"
+        identity = "me@nas"
+        services = ["files"]
+
+        [[grant]]
+        app_id = "org.arlen.files"
+        services = ["files"]
+
+        [files]
+        backend = "sftp"
+        host = "nas.local"
+        port = 2222
+        user = "me"
+    "#;
+
+    fn nas_accounts() -> Vec<AccountConfig> {
+        vec![crate::config::parse_account(Path::new("/x/nas.toml"), NAS).unwrap()]
+    }
+
+    #[test]
+    fn resolve_mount_yields_the_plan_egress_and_paths_for_a_granted_account() {
+        let accounts = nas_accounts();
+        let rt = PathBuf::from("/run/user/1000");
+        let cache = PathBuf::from("/home/u/.cache/arlen/rclone/nas");
+        let r = resolve_mount(&accounts, "org.arlen.files", "nas", &rt, &cache, None).unwrap();
+        assert_eq!(r.hosts, vec!["nas.local:2222"]);
+        assert_eq!(r.plan.mount_point, rt.join("arlen/mounts/nas"));
+        assert_eq!(r.paths.profile_root, rt.join("arlen/accounts/nas"));
+        assert_eq!(r.paths.rc_socket, r.paths.profile_root.join("rcd.sock"));
+    }
+
+    #[test]
+    fn resolve_mount_refuses_an_ungranted_caller_before_building_anything() {
+        let accounts = nas_accounts();
+        let rt = PathBuf::from("/run/user/1000");
+        let cache = PathBuf::from("/cache");
+        assert!(matches!(
+            resolve_mount(&accounts, "other.app", "nas", &rt, &cache, None),
+            Err(MountError::Refused)
+        ));
     }
 
     #[tokio::test]
