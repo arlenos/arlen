@@ -6,7 +6,6 @@
 mod commands;
 mod config_watcher;
 mod displays;
-mod toml_writer;
 
 /// Tauri application entry point invoked from `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

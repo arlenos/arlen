@@ -411,12 +411,15 @@ function updateSession(id: string, fn: (msgs: Message[]) => Message[]): void {
 /// answer is returned directly; the tool-call + transparency trace arrives on the
 /// `pi://event` stream (a listener renders it, the next increment), so those are
 /// collected from the `pi://event` stream during the turn.
-/// `onText`, when given, is called with the assistant text SO FAR on each
-/// `message_update`, so the caller can stream the answer into the pending message
-/// instead of showing a blank wait until the turn settles.
+/// `onProgress`, when given, is called with the live partial turn (the assistant
+/// text SO FAR plus the tool-call trace SO FAR) on each stream event, so the caller
+/// can render the answer forming AND the tools running while the turn is in flight,
+/// instead of a blank wait until it settles. pi sends the FULL message so far on
+/// each `message_update`, so `text` is set (not appended); `toolCalls` grows as
+/// `tool_execution_*` events arrive.
 async function piTurn(
   prompt: string,
-  onText?: (text: string) => void,
+  onProgress?: (partial: { text: string; toolCalls: ToolCall[] }) => void,
 ): Promise<{
   answer: string;
   toolCalls: ToolCall[];
@@ -424,11 +427,16 @@ async function piTurn(
   artifacts?: Artifact[];
 }> {
   let trace: TracedCall[] = [];
+  let streamedText = "";
   const unlisten = await listen<unknown>("pi://event", (e) => {
+    const before = trace;
     trace = applyToolEvent(trace, e.payload);
-    if (onText) {
-      const streamed = assistantTextOf(e.payload);
-      if (streamed !== null) onText(streamed);
+    const streamed = assistantTextOf(e.payload);
+    if (streamed !== null) streamedText = streamed;
+    // Emit on any change (a new/updated tool call, or fresh streamed text), so the
+    // pending message reflects the tools running + the answer forming live.
+    if (onProgress && (trace !== before || streamed !== null)) {
+      onProgress({ text: streamedText, toolCalls: toolCallsOf(trace) });
     }
   });
   try {
@@ -461,11 +469,16 @@ export async function send(prompt: string, mentions: MentionContent[] = []): Pro
   busy.set(true);
 
   try {
-    // Stream the answer into the pending message as it generates (feedback during a
-    // slow model turn), then settle it with the final answer + trace below.
-    const reply = await piTurn(buildPrompt(text, mentions), (streamed) => {
+    // Stream the answer AND the tool calls into the pending message as the turn
+    // runs (feedback during a slow model turn: the tools run, the answer forms),
+    // then settle it with the final answer + trace below.
+    const reply = await piTurn(buildPrompt(text, mentions), (partial) => {
       updateSession(id, (m) =>
-        m.map((msg) => (msg.id === pendingId ? { ...msg, text: streamed } : msg)),
+        m.map((msg) =>
+          msg.id === pendingId
+            ? { ...msg, text: partial.text, toolCalls: partial.toolCalls }
+            : msg,
+        ),
       );
     });
     updateSession(id, (m) =>

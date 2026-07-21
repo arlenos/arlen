@@ -128,9 +128,9 @@ fn with_tmp_extension(path: &Path) -> PathBuf {
 mod tests {
     use super::*;
 
-    /// Tests in this module redirect file paths into temp files
-    /// directly, so the WRITE_LOCK is the only piece of process-
-    /// global state we touch and it's already a Mutex.
+    // Tests in this module redirect file paths into temp files
+    // directly, so the WRITE_LOCK is the only piece of process-
+    // global state we touch and it's already a Mutex.
 
     fn temp_file(name: &str) -> PathBuf {
         let mut p = std::env::temp_dir();

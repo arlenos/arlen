@@ -109,7 +109,23 @@
   <p class="role">{message.role === "user" ? $t("h.msg.you") : $t("h.msg.assistant")}</p>
 
   {#if message.pending}
-    <div class="block tinted">
+    <!-- Live turn: show the tools running and the answer forming as pi streams
+         them, with the dots as the trailing "still working" indicator, instead of
+         a blank wait until the turn settles. When nothing has arrived yet, only
+         the dots show (the same first-token affordance as before). -->
+    {#if message.toolCalls && message.toolCalls.length > 0}
+      <div class="tools">
+        {#each message.toolCalls as call, i (i)}
+          <ToolCallCard {call} />
+        {/each}
+      </div>
+    {/if}
+    {#if message.role === "assistant" && message.text}
+      <div class="block prose markdown tinted" use:externalLinks use:fileRefs={message.text}>
+        {@html renderMarkdown(message.text)}
+      </div>
+    {/if}
+    <div class="block tinted thinking">
       <span class="dots" aria-label={$t("h.msg.thinking")}>
         <span></span><span></span><span></span>
       </span>
@@ -280,6 +296,12 @@
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
     border-radius: var(--radius-card);
     padding: 0.75rem var(--space-card, 1rem);
+  }
+  /* The trailing "still working" dots below any streamed content: a compact,
+     untinted strip so it reads as a live indicator, not a second block. */
+  .thinking {
+    background: transparent;
+    padding-block: 0.25rem;
   }
   .error-block {
     display: flex;
