@@ -15,7 +15,11 @@ set -u
 N="${1:-10}"
 # WAIT: seconds to let the session come up (raise it under load so a slow-but-not-
 # hung boot still renders - only a true socket-publish hang then counts as black).
-WAIT="${WAIT:-40}"
+# With verify.py's poll-until-bar probe, WAIT is a DEADLINE (a rendered boot
+# returns as soon as its bar appears), so a generous ceiling costs nothing for
+# fast boots but tolerates a load-delayed boot whose bar renders past ~45s -
+# eliminating the single-shot false-"black" that a tight wait produced.
+WAIT="${WAIT:-90}"
 # LOAD: N background `yes` CPU hogs to starve the VM's software-GL init, mimicking
 # the host-build contention under which the black-screen was first traced. 0 = idle.
 LOAD="${LOAD:-0}"
