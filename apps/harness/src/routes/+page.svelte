@@ -13,7 +13,8 @@
   import AgentActions from "$lib/components/chat/AgentActions.svelte";
   import ArtifactPanel from "$lib/components/ArtifactPanel.svelte";
   import { readCapability, type Capability } from "$lib/capability";
-  import { messages } from "$lib/stores/conversation";
+  import { messages, send } from "$lib/stores/conversation";
+  import { invoke } from "@tauri-apps/api/core";
   import { openArtifact, closePane } from "$lib/stores/artifact";
   import { startPoll } from "$lib/stores/agentActions";
 
@@ -28,6 +29,15 @@
   // Poll the agent's pending proposals + completed-action receipts while the chat
   // is open, so the gate/act/undo loop is visible in the conversation.
   onMount(() => startPoll());
+
+  // Debug/verification hook (inert unless ARLEN_HARNESS_AUTODRIVE is set): drive
+  // one real pi turn on load so the headless screenshot pipeline can capture a
+  // LIVE answer without synthetic keyboard/mouse input, which is unreliable under
+  // a headless compositor. A normal run sets no such env var, so this is a no-op.
+  onMount(async () => {
+    const auto = await invoke<string | null>("pi_autodrive_prompt");
+    if (auto) await send(auto);
+  });
 
   // The three capability states the surface designs for: usable, switched
   // off, and unreachable (the read failed, distinct from off).

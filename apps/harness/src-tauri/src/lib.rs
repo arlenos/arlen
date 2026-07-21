@@ -45,6 +45,7 @@ pub fn run() {
             frontend_log,
             ai_client::ai_query,
             drive::pi_prompt,
+            drive::pi_autodrive_prompt,
             ai_client::ai_explain,
             activity::ai_activity_recent,
             activity::ai_reads_recent,
