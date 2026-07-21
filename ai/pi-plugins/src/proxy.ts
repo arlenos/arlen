@@ -123,20 +123,29 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
     label: "Knowledge graph write",
     description:
       "Create a relationship between two EXISTING knowledge-graph nodes, e.g. link " +
-      "a File to the Project it belongs to. Give the two nodes' entity types and " +
-      "ids and the relation type (e.g. from_type \"File\", to_type \"Project\", " +
-      "relation_type \"FILE_PART_OF\"). The daemon validates, gates, audits and " +
-      "(when permitted) applies it, registering an undo; pi never writes directly.",
+      "a file to the project it belongs to. Entity types are NAMESPACED as " +
+      "system.<Type> - use that exact form (from_type \"system.File\", to_type " +
+      "\"system.Project\", relation_type \"FILE_PART_OF\"), not the bare label. The " +
+      "ids are the concrete node ids you got from graph.read (a File's id is its " +
+      "path). Both nodes must already exist. The daemon validates, gates, audits " +
+      "and (when permitted) applies it, registering an undo; pi never writes " +
+      "directly.",
     parameters: {
       type: "object",
       properties: {
-        from_type: { type: "string", description: "the source node's entity type, e.g. \"File\"" },
-        from_id: { type: "string", description: "the source node's id" },
-        to_type: { type: "string", description: "the target node's entity type, e.g. \"Project\"" },
+        from_type: {
+          type: "string",
+          description: 'the source node\'s namespaced entity type, e.g. "system.File"',
+        },
+        from_id: { type: "string", description: "the source node's id (a File's id is its path)" },
+        to_type: {
+          type: "string",
+          description: 'the target node\'s namespaced entity type, e.g. "system.Project"',
+        },
         to_id: { type: "string", description: "the target node's id" },
         relation_type: {
           type: "string",
-          description: "the relationship to create, e.g. \"FILE_PART_OF\"",
+          description: 'the relationship to create, e.g. "FILE_PART_OF"',
         },
       },
       required: ["from_type", "from_id", "to_type", "to_id", "relation_type"],
