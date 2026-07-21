@@ -173,17 +173,49 @@ fn current_uid() -> u32 {
     unsafe { libc::getuid() }
 }
 
+/// The system prompt for the shell-driven engine: Arlen's local, KG-grounded
+/// assistant, NOT a coding agent. It steers the model to the `graph.read` tool for
+/// the user's own files/projects/activity and tells it plainly that there is no
+/// shell here, so it stops reaching for `bash` (which fails `spawn sh ENOENT` in
+/// the `--unshare-net` sandbox and loops the turn). `--system-prompt` REPLACES pi's
+/// default coding-assistant prompt; tool schemas are passed to the model
+/// independently, so the model still sees `graph.read` and chooses it.
+const SHELL_ENGINE_SYSTEM_PROMPT: &str = "You are the assistant built into Arlen, a \
+local desktop operating system. You help the user understand their own files, \
+projects and recent activity, which live in Arlen's knowledge graph on this machine.\n\
+\n\
+When the user asks about their files, projects, recent activity or what they were \
+working on, call the graph.read tool to query the knowledge graph, and ground your \
+answer in the rows it returns. Do not invent files or projects.\n\
+\n\
+You cannot run shell commands: there is no shell in this environment, so never call \
+bash and never try to run ls, find, cat or similar. If the knowledge graph does not \
+hold what the user asked for, say so plainly instead of guessing. Keep answers \
+concise and directly useful.";
+
 /// The session grant for the daemon-spawned engine: the safe default. No tools
 /// granted (so the gate denies every Authorize) and the narrowest read tier, so
 /// a freshly-supervised engine is inert until a real per-session grant policy
 /// lands. The supervise loop binds this to the sandboxed engine's pid.
 fn default_engine_session() -> SessionInit {
     SessionInit {
-        system_prompt: String::new(),
+        system_prompt: SHELL_ENGINE_SYSTEM_PROMPT.to_string(),
         behaviour: None,
         capability_context: CapabilityContext { generic_tools: vec![], proxy_tools: vec![] },
         project_anchor: None,
-        read_tier: ReadTier::Minimal,
+        // The generous default read scope (settled generous-AI-defaults principle,
+        // Tim-approved): the shell-driven assistant reads the user's own observation
+        // graph so it answers "what was I working on / list my files and projects"
+        // out of the box. Full maps to the whole `knowledge_graph()` schema, which is
+        // observation-only (File/App/Session/Event/Project/Directory/activity edges) -
+        // it carries NO authority or secret labels (LCG Grant/CapabilityUse live only
+        // in the knowledge daemon, not this shared schema), so Full here is the user's
+        // own files+activity, not a privileged view. A narrower tier (Extended) omits
+        // Project/FILE_PART_OF, so "files AND projects" fails query generation.
+        // Restriction is opt-out; the audit + revoke path is the net. NOTE this is
+        // the user's OWN interactive session (externally_triggered stays false); an
+        // event-triggered run must still derive its origin bit before executor_live.
+        read_tier: ReadTier::Full,
         // The trustworthy session-origin bit. It is false here because the daemon
         // spawns ONE inert supervisor session with no external trigger, so false is
         // correct today. HARD PRE-FLIP GATE (review HIGH-1): before ANY external-
