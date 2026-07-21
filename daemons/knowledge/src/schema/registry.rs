@@ -1,7 +1,8 @@
 /// Schema Registry: loads, stores, and queries entity schemas.
 ///
-/// Schemas are loaded from `/var/lib/arlen/schemas/` at startup and
-/// reloaded when `schema.registered` events arrive from the Event Bus.
+/// Schemas are loaded from `/var/lib/arlen/schemas/` (overridable via
+/// `ARLEN_SCHEMA_DIR`) at startup and reloaded when `schema.registered`
+/// events arrive from the Event Bus.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -43,9 +44,21 @@ pub struct SchemaRegistry {
 }
 
 impl SchemaRegistry {
-    /// Create a new registry with the given first-party apps and schema dir.
+    /// Create a new registry with the given first-party apps.
+    ///
+    /// The schema directory defaults to `/var/lib/arlen/schemas/` (where the
+    /// install daemon writes), overridable via `ARLEN_SCHEMA_DIR` - the analog
+    /// of the profile dir's `ARLEN_PERMISSIONS_DIR` and the daemon's
+    /// `ARLEN_DB_PATH`/`ARLEN_GRAPH_PATH`. Without an override a hermetic
+    /// dev/integration run (which cannot write the root-owned system dir) could
+    /// never register an app's entity schema, so a bridge's upserts would be
+    /// refused as an unregistered type - the one daemon path that was not yet
+    /// dev-overridable.
     pub fn new(first_party_apps: Vec<String>) -> Self {
-        Self::with_dir(first_party_apps, PathBuf::from(DEFAULT_SCHEMA_DIR))
+        let schema_dir = std::env::var("ARLEN_SCHEMA_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(DEFAULT_SCHEMA_DIR));
+        Self::with_dir(first_party_apps, schema_dir)
     }
 
     /// Create a registry with a custom schema directory (for testing).
