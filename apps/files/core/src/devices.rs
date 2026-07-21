@@ -144,7 +144,7 @@ mod tests {
         assert!(mps.contains(&"/mnt/data"));
         assert!(!mps.contains(&"/"));
         assert!(!mps.contains(&"/boot/efi"));
-        assert!(!mps.iter().any(|m| *m == "[SWAP]"));
+        assert!(!mps.contains(&"[SWAP]"));
         assert_eq!(v.len(), 2);
     }
 

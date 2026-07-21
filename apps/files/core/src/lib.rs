@@ -25,6 +25,10 @@ pub mod search;
 pub mod undo;
 pub mod selection;
 pub mod thumbnail_cache;
+pub mod archive;
+pub mod ask;
+pub mod devices;
+pub mod facet_query;
 
 use std::cmp::Ordering;
 use std::io;

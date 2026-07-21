@@ -7,11 +7,7 @@
 //! with the operations UI.
 
 mod ai_gate;
-mod archive;
-mod ask;
 mod capability;
-mod devices;
-mod facet_query;
 mod thumbnail;
 
 use std::path::{Path, PathBuf};
@@ -350,12 +346,12 @@ async fn project_members_as_of(id: &str, as_of_micros: Option<i64>) -> Vec<FileE
 /// rows like `project_members`. Best-effort: an empty selection or a daemon
 /// error lists nothing rather than erroring the navigation.
 async fn facet_members(location: &str) -> Vec<FileEntry> {
-    let sel = facet_query::parse_facet_location(location);
+    let sel = arlen_file_browser_core::facet_query::parse_facet_location(location);
     let now_micros = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_micros() as i64)
         .unwrap_or(0);
-    let Some(cypher) = facet_query::facet_cypher(&sel, now_micros) else {
+    let Some(cypher) = arlen_file_browser_core::facet_query::facet_cypher(&sel, now_micros) else {
         return Vec::new();
     };
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
@@ -506,7 +502,7 @@ async fn kg_name_pairs(
 /// caller and audited daemon-side, and the counts of what was read are returned so
 /// the surface can show them. Drafts only: nothing is filtered until the user acts.
 #[tauri::command]
-async fn files_ask(folder: String, query: String) -> Result<ask::AskResult, String> {
+async fn files_ask(folder: String, query: String) -> Result<arlen_file_browser_core::ask::AskResult, String> {
     if !ai_gate::files_ai_enabled() {
         return Err("the AI assistant is disabled".to_string());
     }
@@ -540,12 +536,12 @@ async fn files_ask(folder: String, query: String) -> Result<ask::AskResult, Stri
             })
             .collect();
 
-    let facets = ask::infer_facets(&query, &projects, &touched);
-    let reads = ask::AskReads {
+    let facets = arlen_file_browser_core::ask::infer_facets(&query, &projects, &touched);
+    let reads = arlen_file_browser_core::ask::AskReads {
         files,
         tags: projects.len() + touched.len(),
     };
-    Ok(ask::AskResult { facets, reads })
+    Ok(arlen_file_browser_core::ask::AskResult { facets, reads })
 }
 
 /// The home trash contents (paired `files/` + `info/` entries) for the Trash
@@ -830,17 +826,17 @@ async fn files_extract(archive: String, dest: String) -> Result<(), String> {
             .and_then(|n| n.to_str())
             .ok_or_else(|| "archive has no name".to_string())?
             .to_string();
-        if !archive::is_extractable(&name) {
+        if !arlen_file_browser_core::archive::is_extractable(&name) {
             return Err(format!("unsupported archive format: {name}"));
         }
         let r = root()?;
         let file = r.open(rel(&archive)).map_err(|e| e.to_string())?;
         r.create_dir_all(rel(&dest)).map_err(|e| e.to_string())?;
         let dest_dir = r.open_dir(rel(&dest)).map_err(|e| e.to_string())?;
-        if archive::is_zip(&name) {
-            archive::zip_extract(file, &dest_dir)
+        if arlen_file_browser_core::archive::is_zip(&name) {
+            arlen_file_browser_core::archive::zip_extract(file, &dest_dir)
         } else {
-            archive::extract_named(&name, file, &dest_dir)
+            arlen_file_browser_core::archive::extract_named(&name, file, &dest_dir)
         }
     })
     .await
@@ -864,16 +860,16 @@ async fn files_compress(sources: Vec<String>, dest: String) -> Result<(), String
             .and_then(|n| n.to_str())
             .ok_or_else(|| "destination has no name".to_string())?
             .to_string();
-        if !archive::is_extractable(&name) {
+        if !arlen_file_browser_core::archive::is_extractable(&name) {
             return Err(format!("unsupported archive format: {name}"));
         }
         let r = root()?;
         let rels: Vec<String> = sources.iter().map(|s| rel(s)).collect();
         let out = r.create(rel(&dest)).map_err(|e| e.to_string())?;
-        if archive::is_zip(&name) {
-            archive::zip_compress(&r, &rels, out)
+        if arlen_file_browser_core::archive::is_zip(&name) {
+            arlen_file_browser_core::archive::zip_compress(&r, &rels, out)
         } else {
-            archive::compress(&r, &rels, out, archive::is_gzip_tar(&name))
+            arlen_file_browser_core::archive::compress(&r, &rels, out, arlen_file_browser_core::archive::is_gzip_tar(&name))
         }
     })
     .await
@@ -885,22 +881,22 @@ async fn files_compress(sources: Vec<String>, dest: String) -> Result<(), String
 /// capability and only entry metadata is returned, so the UI can navigate into a
 /// `.tar`/`.tar.gz`/`.tgz` as a read-scoped folder.
 #[tauri::command]
-async fn files_archive_list(archive: String) -> Result<Vec<archive::ArchiveEntry>, String> {
+async fn files_archive_list(archive: String) -> Result<Vec<arlen_file_browser_core::archive::ArchiveEntry>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let name = Path::new(&archive)
             .file_name()
             .and_then(|n| n.to_str())
             .ok_or_else(|| "archive has no name".to_string())?
             .to_string();
-        if !archive::is_extractable(&name) {
+        if !arlen_file_browser_core::archive::is_extractable(&name) {
             return Err(format!("unsupported archive format: {name}"));
         }
         let r = root()?;
         let file = r.open(rel(&archive)).map_err(|e| e.to_string())?;
-        if archive::is_zip(&name) {
-            archive::zip_list(file)
+        if arlen_file_browser_core::archive::is_zip(&name) {
+            arlen_file_browser_core::archive::zip_list(file)
         } else {
-            archive::list_named(&name, file)
+            arlen_file_browser_core::archive::list_named(&name, file)
         }
     })
     .await
@@ -1057,13 +1053,13 @@ async fn files_open_with(path: String, exec: String) -> Result<(), String> {
 /// extra data mounts), from `lsblk --json`. An absent/failing lsblk yields an
 /// empty list rather than an error - the sidebar just shows no devices.
 #[tauri::command]
-fn files_devices() -> Vec<devices::MountedDevice> {
+fn files_devices() -> Vec<arlen_file_browser_core::devices::MountedDevice> {
     match std::process::Command::new("lsblk")
         .args(["--json", "-o", "NAME,LABEL,MOUNTPOINT,RM,TYPE,FSTYPE"])
         .output()
     {
         Ok(o) if o.status.success() => {
-            devices::mounted_volumes(&String::from_utf8_lossy(&o.stdout))
+            arlen_file_browser_core::devices::mounted_volumes(&String::from_utf8_lossy(&o.stdout))
         }
         _ => Vec::new(),
     }
