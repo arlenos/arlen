@@ -71,6 +71,13 @@ pub struct Confinement {
     post_mask_binds: Vec<Bind>,
     env: BTreeMap<String, String>,
     chdir: Option<String>,
+    /// Run the command AS pid 1 in the new pid namespace (`--as-pid-1`), rather
+    /// than under bwrap's reaper init. Then the command process is bwrap's DIRECT
+    /// child, so `--info-fd child-pid` (what a supervisor binds a session to) is
+    /// the command's own pid - matching the pid the command presents on its socket
+    /// connections (`SO_PEERCRED`). Only for a single-process command that reaps
+    /// its own children (e.g. the node-based pi sidecar); default off.
+    as_pid_1: bool,
 }
 
 /// A failure building a confinement.
@@ -121,6 +128,13 @@ impl Confinement {
         }
         if self.network == NetworkPolicy::None {
             a.push("--unshare-net".into());
+        }
+        // Run the command as pid 1 (no reaper init) so bwrap's `--info-fd`
+        // child-pid is the command's own pid - the pid it presents on socket
+        // connections - not an intermediate init. Only set for single-process
+        // commands (see the `as_pid_1` field).
+        if self.as_pid_1 {
+            a.push("--as-pid-1".into());
         }
         // Binds first (the spec puts the read-only root first), so the root is
         // established before anything is layered onto it.
@@ -189,6 +203,14 @@ impl Confinement {
         self.chdir = Some(dir.into());
         self
     }
+
+    /// Run the command as pid 1 (`--as-pid-1`), so bwrap's `--info-fd` child-pid
+    /// is the command's own pid. Set only for a single-process command that reaps
+    /// its own children (the node-based pi sidecar); see the `as_pid_1` field.
+    pub fn with_as_pid_1(mut self) -> Self {
+        self.as_pid_1 = true;
+        self
+    }
 }
 
 /// Environment keys the build profile owns; a recipe-supplied value for any of
@@ -241,6 +263,7 @@ pub fn build_profile(
         post_mask_binds: vec![],
         env,
         chdir: Some(BUILD_MOUNT.into()),
+        as_pid_1: false,
     })
 }
 
@@ -285,6 +308,7 @@ pub fn ephemeral_profile(
         post_mask_binds: vec![Bind::ReadOnly(file, EPHEMERAL_FILE.into())],
         env,
         chdir: None,
+        as_pid_1: false,
     })
 }
 
@@ -343,6 +367,7 @@ pub fn command_profile(
         post_mask_binds: vec![Bind::ReadWrite(work, WORK_MOUNT.into())],
         env,
         chdir: Some(WORK_MOUNT.into()),
+        as_pid_1: false,
     })
 }
 
@@ -425,6 +450,7 @@ pub fn app_runtime_profile(
             post_mask_binds,
             env,
             chdir: None,
+            as_pid_1: false,
         },
     })
 }
