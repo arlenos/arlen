@@ -1,0 +1,24 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-desktop-shell-core"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen desktop shell: the pure, CI-tested shell core the Tauri host wraps. Holds the theme system (token schema, resolution from built-in TOML + user overrides + accessibility, and CSS-variable generation) the shell's Tauri command layer drives."
+authors = ["Arlen"]
+
+[lib]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+# Built-in-theme TOML parsing + the config-dir lookup for user overrides.
+toml = "0.8"
+dirs = "5"
+# The canonical theme token types the shell resolves + emits.
+arlen-theme = { path = "../../../sdk/theme" }
+
+[dev-dependencies]
+# The loader resolution tests stage TOML fixtures in a temp dir.
+tempfile = "3"
+
+[workspace]
