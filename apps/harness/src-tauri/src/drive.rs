@@ -81,6 +81,19 @@ async fn write_command(
 /// `agent_end`; (2) fetch `get_last_assistant_text` and return it as the answer
 /// (matching the old poll path's answer-returning shape, so the store swap is
 /// trivial). A malformed line is skipped rather than aborting the turn.
+/// A debug/verification hook: the prompt to auto-drive once on load, from
+/// `ARLEN_HARNESS_AUTODRIVE` (unset or empty = none). This lets the headless
+/// screenshot pipeline drive a real pi turn WITHOUT synthetic keyboard/mouse
+/// input, which is unreliable under a headless compositor. Off by default - a
+/// normal run sets no such env var, so this returns `None`.
+#[tauri::command]
+pub fn pi_autodrive_prompt() -> Option<String> {
+    std::env::var("ARLEN_HARNESS_AUTODRIVE")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 #[tauri::command]
 pub async fn pi_prompt(app: AppHandle, prompt: String) -> Result<String, String> {
     let stream = UnixStream::connect(drive_socket_path())
@@ -89,12 +102,17 @@ pub async fn pi_prompt(app: AppHandle, prompt: String) -> Result<String, String>
     let (read, mut write) = stream.into_split();
     let mut lines = BufReader::new(read).lines();
 
-    // Phase 1: submit + stream events until the turn ends.
+    // Phase 1: submit + stream events until the turn ends. A per-turn event count
+    // is logged (WebView DevTools are not always reachable, so drive diagnostics go
+    // through the Rust logger): a turn that ends before `agent_end` reports how many
+    // events arrived, which distinguishes a dropped relay from pi ending its own run.
     write_command(&mut write, &prompt_command(&prompt)).await?;
+    let mut seen = 0usize;
     loop {
         let Some(text) =
             lines.next_line().await.map_err(|e| format!("engine read failed: {e}"))?
         else {
+            log::warn!("pi drive: engine closed after {seen} events, before the turn finished");
             return Err("the AI engine closed before the turn finished".to_string());
         };
         let trimmed = text.trim();
@@ -104,9 +122,11 @@ pub async fn pi_prompt(app: AppHandle, prompt: String) -> Result<String, String>
         let Ok(event) = serde_json::from_str::<serde_json::Value>(trimmed) else {
             continue;
         };
+        seen += 1;
         let is_end = event.get("type").and_then(|t| t.as_str()) == Some(TURN_END_EVENT);
         let _ = app.emit("pi://event", &event);
         if is_end {
+            log::info!("pi drive: turn finished after {seen} events");
             break;
         }
     }
