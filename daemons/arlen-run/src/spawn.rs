@@ -142,7 +142,7 @@ pub fn spawn_and_wait(
     // ruleset allocations safe; the syscalls (close_range, fcntl, setpgid, the
     // Landlock setup) only narrow the child's own capabilities.
     unsafe {
-        cmd.pre_exec(move || child_pre_exec(&writable, &cgroup_procs, seccomp_fd));
+        cmd.pre_exec(move || child_pre_exec(Some(&writable), &cgroup_procs, seccomp_fd));
     }
 
     let spawned = cmd.spawn();
@@ -169,7 +169,7 @@ pub fn spawn_and_wait(
 /// every syscall only narrows the child's own capabilities.
 #[cfg(target_os = "linux")]
 unsafe fn child_pre_exec(
-    writable: &[PathBuf],
+    landlock_writable: Option<&[PathBuf]>,
     cgroup_procs: &Option<PathBuf>,
     keep_fd: Option<libc::c_int>,
 ) -> std::io::Result<()> {
@@ -205,8 +205,14 @@ unsafe fn child_pre_exec(
     }
     // Filesystem confinement, inherited by the whole tree. The app seccomp filter
     // (installed by bwrap after this, on the app only) may drop path-open, so
-    // Landlock's path opens must happen first.
-    crate::landlock_apply::apply_landlock(writable)?;
+    // Landlock's path opens must happen first. Skipped (`None`) on the filtered
+    // path: Landlock applied to the pasta parent is incompatible with pasta's tap
+    // setup AND the nested bwrap userns it wraps (both need writes Landlock's
+    // read-only `/` denies); that launch's fs confinement is bwrap's own mount
+    // namespace instead. See `spawn_filtered_and_wait`.
+    if let Some(writable) = landlock_writable {
+        crate::landlock_apply::apply_landlock(writable)?;
+    }
     Ok(())
 }
 
@@ -214,11 +220,17 @@ unsafe fn child_pre_exec(
 /// INSIDE a `pasta` route-absent network namespace whose only reachable peer is
 /// the forwarding egress proxy (see [`crate::netns`]). The app's mandatory
 /// seccomp filter is delivered to `bwrap` through a temp FILE the pasta wrapper
-/// opens (a memfd would be dropped by `pasta`), so the filtered launch keeps the
-/// FULL confinement, never a layer short. The direct child is `pasta`, which
-/// runs [`child_pre_exec`] (cgroup + Landlock, no memfd) and hosts the whole
-/// `bwrap` tree; `bwrap` does not `--unshare-net`, so it inherits pasta's
-/// namespace. Returns the app's propagated exit code.
+/// opens (a memfd would be dropped by `pasta`). The direct child is `pasta`,
+/// which runs [`child_pre_exec`] (close_range + setpgid + cgroup-join) and hosts
+/// the whole `bwrap` tree; `bwrap` does not `--unshare-net`, so it inherits
+/// pasta's namespace. Returns the app's propagated exit code.
+///
+/// Landlock is NOT applied on this path: applied to the pasta parent it breaks
+/// both pasta's tap setup and the nested `bwrap` userns (see `child_pre_exec`).
+/// The app's filesystem confinement is `bwrap`'s own mount namespace (`--ro-bind`
+/// plus the writable binds); the app still gets seccomp, the netns egress
+/// boundary and the cgroup. Restoring Landlock's extra fs layer here is a
+/// follow-up that must apply it to the app AFTER pasta (a re-exec confine step).
 #[cfg(target_os = "linux")]
 pub fn spawn_filtered_and_wait(
     bwrap_argv: &[String],
@@ -252,13 +264,13 @@ pub fn spawn_filtered_and_wait(
     app_argv.extend_from_slice(bwrap_argv);
     let argv = crate::netns::pasta_argv(&app_argv, Some(&seccomp_path));
 
-    let writable = writable.to_vec();
+    let _ = writable; // Landlock is skipped on this path (see child_pre_exec).
     let mut cmd = Command::new(&argv[0]);
     cmd.args(&argv[1..]);
-    // SAFETY: single-threaded post-fork child (see child_pre_exec). No memfd on
-    // this path - the wrapper opens the seccomp file - so no fd is kept open.
+    // SAFETY: single-threaded post-fork child (see child_pre_exec). No memfd (the
+    // wrapper opens the seccomp file) and no Landlock (`None`) on this path.
     unsafe {
-        cmd.pre_exec(move || child_pre_exec(&writable, &cgroup_procs, None));
+        cmd.pre_exec(move || child_pre_exec(None, &cgroup_procs, None));
     }
     let status = cmd.spawn()?.wait()?;
     drop(seccomp_file); // remove the temp filter now the launch has ended
@@ -442,5 +454,68 @@ mod tests {
         let bpf = crate::seccomp::app_filter_bytes().expect("filter compiles");
         let code = spawn_and_wait(&argv, &[], None, Some(bpf)).expect("bwrap spawns");
         assert_eq!(code, 0, "the allowlist must permit a basic confined exec");
+    }
+
+    /// The whole §0 filtered-launch composition, end to end: bind the real
+    /// forwarding proxy with an allowlist, run a confined app through
+    /// `spawn_filtered_and_wait` (bwrap inside the route-absent pasta namespace,
+    /// seccomp via the wrapper file), and prove the app reaches ONLY the proxy,
+    /// which refuses a non-allowlisted CONNECT (403). The probe reports the
+    /// verdict as its exit code, propagated up through bwrap and pasta. The
+    /// allowlisted-reachable half needs a real external host (the SSRF floor
+    /// blocks loopback mocks), so this asserts the refusal, the security-relevant
+    /// direction. Metal-only (pasta + bwrap + userns).
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "needs pasta + bwrap + unprivileged userns on the host kernel"]
+    fn a_filtered_launch_reaches_the_proxy_which_refuses_a_non_allowlisted_host() {
+        use crate::egress::{EgressEnforcer, ProxyEgressEnforcer};
+        // The real forwarding proxy, allowlisting a host the probe will NOT ask
+        // for. Held for the whole launch (its Drop stops the proxy).
+        let guard = ProxyEgressEnforcer
+            .install(&["allowed.invalid:443".to_string()])
+            .expect("bind the egress proxy");
+        let port = guard.proxy_port().expect("a filtered guard exposes its proxy port");
+
+        // The confined probe: dial the proxy at the mapped gateway and CONNECT to
+        // a NON-allowlisted host; the proxy refuses it (403) before dialing out.
+        // Exit 0 on the refusal, distinct non-zeros otherwise, so the launch's
+        // propagated exit code carries the verdict.
+        let probe = format!(
+            "exec 3<>/dev/tcp/{addr}/{port} 2>/dev/null || exit 20; \
+             printf 'CONNECT blocked.invalid:443 HTTP/1.1\\r\\nHost: blocked.invalid:443\\r\\n\\r\\n' >&3; \
+             resp=$(head -c 16 <&3 2>/dev/null); \
+             case \"$resp\" in *403*) exit 0 ;; *) exit 30 ;; esac",
+            addr = crate::netns::PROXY_NETNS_ADDR,
+        );
+        // A minimal bwrap binding all of `/` so bash's dynamic linker resolves;
+        // this test exercises the netns + proxy + seccomp composition, not the
+        // confinement's bind set. NB no `--unshare-net` - the app inherits pasta's
+        // namespace.
+        let argv: Vec<String> = [
+            "--unshare-user",
+            "--unshare-pid",
+            "--ro-bind",
+            "/",
+            "/",
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--",
+            "/usr/bin/bash",
+            "-c",
+            &probe,
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let bpf = crate::seccomp::app_filter_bytes().expect("filter compiles");
+        let code = spawn_filtered_and_wait(&argv, &[], None, bpf).expect("the filtered launch spawns");
+        assert_eq!(
+            code, 0,
+            "the proxy must refuse the non-allowlisted CONNECT (403) through the full \
+             netns+proxy composition; exit {code} (20=proxy unreachable, 30=unexpected reply)"
+        );
     }
 }
