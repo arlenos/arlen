@@ -19,7 +19,7 @@ use std::sync::Arc;
 use modulesd_proto::{HostCall, HostReply, ModuleSummary, Request, Response};
 use serde::Serialize;
 
-use crate::modulesd_client::ModulesdClient;
+use arlen_desktop_shell_core::modulesd_client::ModulesdClient;
 
 /// Frontend-facing module summary. Mirrors `modulesd_proto::ModuleSummary`
 /// but with camelCase field names so the JSON sits naturally in

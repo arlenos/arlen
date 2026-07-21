@@ -1,14 +1,14 @@
-/// Async client to `arlen-modulesd`.
-///
-/// Speaks the JSON-over-UnixSocket protocol defined in
-/// `modulesd-proto`. Multiple in-flight requests are correlated by
-/// the `id` field; the client demuxes responses to per-request
-/// oneshot channels so callers can `await` a typed reply.
-///
-/// Auto-reconnect: if the connection drops the next call attempts to
-/// re-establish before failing. Subscription events are republished
-/// through a Tokio broadcast channel so the shell stays decoupled
-/// from the wire.
+//! Async client to `arlen-modulesd`.
+//!
+//! Speaks the JSON-over-UnixSocket protocol defined in
+//! `modulesd-proto`. Multiple in-flight requests are correlated by
+//! the `id` field; the client demuxes responses to per-request
+//! oneshot channels so callers can `await` a typed reply.
+//!
+//! Auto-reconnect: if the connection drops the next call attempts to
+//! re-establish before failing. Subscription events are republished
+//! through a Tokio broadcast channel so the shell stays decoupled
+//! from the wire.
 
 use std::collections::HashMap;
 use std::path::PathBuf;

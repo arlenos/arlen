@@ -16,7 +16,6 @@ mod layout;
 mod menu_store;
 mod minimized_windows;
 mod module_scheme;
-mod modulesd_client;
 mod modulesd_commands;
 mod bluetooth;
 mod bluetooth_agent;
@@ -151,8 +150,8 @@ pub fn run() {
     // in setup() so the shell still launches if `arlen-modulesd` is
     // not running yet (e.g. on first boot before the user has any
     // third-party modules).
-    let modulesd_client = modulesd_client::ModulesdClient::new(
-        modulesd_client::ModulesdClient::default_path(),
+    let modulesd_client = arlen_desktop_shell_core::modulesd_client::ModulesdClient::new(
+        arlen_desktop_shell_core::modulesd_client::ModulesdClient::default_path(),
     );
     let modulesd_for_scheme = Arc::clone(&modulesd_client);
     let modulesd_for_setup = Arc::clone(&modulesd_client);
