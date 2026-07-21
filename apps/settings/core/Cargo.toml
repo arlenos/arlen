@@ -13,9 +13,7 @@ authors = ["Arlen"]
 toml_edit = "0.22"
 # The config-set path converts frontend JSON into toml_edit shapes.
 serde_json = "1"
-
-[dev-dependencies]
-# The array-of-objects round-trip tests re-parse the written TOML.
+# The dot-path get/set/remove + json<->toml conversion operate on toml::Value.
 toml = "0.8"
 
 [workspace]
