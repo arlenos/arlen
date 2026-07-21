@@ -118,6 +118,7 @@ impl QuotaConfig {
                 "ai-daemon".to_string(),
                 "ai-agent".to_string(),
                 "code-indexer".to_string(),
+                "bridge-ingest".to_string(),
             ],
             overrides: HashMap::new(),
         }
@@ -239,6 +240,11 @@ mod tests {
         // sensor the assembled-stack run surfaced.
         let c = QuotaConfig::arlen_default();
         assert_eq!(c.tier_for_app("code-indexer"), AppTier::FirstParty);
+        // The Obsidian bridge floor's canonical (release) id must tier FirstParty in
+        // the shipped default too, or a DEPLOYED bridge-ingest daemon (resolving via
+        // identity.rs to `bridge-ingest`) has its md.obsidian.* writes refused at the
+        // write-tier gate - the deployment analog of the dev-id admission.
+        assert_eq!(c.tier_for_app("bridge-ingest"), AppTier::FirstParty);
     }
 
     #[test]
