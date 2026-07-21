@@ -1,0 +1,9 @@
+# Starting permission profile for Scribus (desktop publishing). Works with
+# Documents; no network and no Knowledge Graph by default. The Flathub app id;
+# the apt `scribus` profile mirrors it.
+[info]
+app_id = "org.scribus.Scribus"
+tier = "third-party"
+
+[filesystem]
+documents = true
