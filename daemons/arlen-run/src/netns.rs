@@ -134,14 +134,17 @@ mod tests {
         assert_eq!(proxy_bind_addr(9000).to_string(), "127.0.0.1:9000");
     }
 
-    /// On-kernel proof of the route-absence property: run a probe inside the
-    /// pasta namespace and assert it reaches the host-bound proxy but NOT a
-    /// public IP. Needs `pasta` + unprivileged userns (the dev machine); run
-    /// with `--ignored`. This is the raw-IP-bypass defense the whole enforcer
-    /// rests on, verified end to end at the namespace level.
+    /// On-kernel proof of the route-absence property in the PRODUCTION layering:
+    /// the probe runs inside a real `bwrap` confinement (as the app will), itself
+    /// inside the pasta namespace, and must reach the host-bound proxy but NOT a
+    /// public IP. This proves the whole composition - `pasta` (private link +
+    /// route drop in the wrapper's own userns, which owns the namespace) wrapping
+    /// `bwrap` (its own userns/mount setup) - achieves the raw-IP-bypass defense.
+    /// Needs `pasta` + `bwrap` + unprivileged userns (the dev machine); run with
+    /// `--ignored`.
     #[test]
-    #[ignore = "needs pasta + unprivileged user namespaces (on-kernel)"]
-    fn the_namespace_reaches_only_the_proxy_not_a_public_ip() {
+    #[ignore = "needs pasta + bwrap + unprivileged user namespaces (on-kernel)"]
+    fn a_bwrapped_app_in_the_namespace_reaches_only_the_proxy() {
         use std::io::Read;
         use std::net::TcpListener;
         use std::process::Command;
@@ -156,23 +159,44 @@ mod tests {
             }
         });
 
-        // The probe (the "app"): reach the proxy at the mapped gateway (must
-        // succeed) and a public IP (must fail - route absence). bash's /dev/tcp
-        // is a pure-shell connect, no extra tools.
+        // The probe: reach the proxy at the mapped gateway (must succeed) and a
+        // public IP (must fail - route absence). bash's /dev/tcp is a pure-shell
+        // connect, no extra tools. NB the route drop is NOT here: it belongs to
+        // the pasta wrapper (which owns the namespace's userns); inside bwrap's
+        // fresh userns it would silently fail (no CAP_NET_ADMIN over that netns).
         let probe = format!(
             "if : </dev/tcp/{PROXY_NETNS_ADDR}/{port}; then echo PROXY_OK; else echo PROXY_FAIL; fi; \
              if : </dev/tcp/1.1.1.1/80; then echo PUBLIC_OK; else echo PUBLIC_BLOCKED; fi"
         );
-        let app_argv = vec!["bash".to_string(), "-c".to_string(), probe];
+        // The confined "app": bwrap (as the launcher spawns it) running the probe.
+        let app_argv: Vec<String> = [
+            "bwrap",
+            "--unshare-user",
+            "--unshare-pid",
+            "--ro-bind",
+            "/",
+            "/",
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--",
+            "bash",
+            "-c",
+            &probe,
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         let argv = pasta_argv(&app_argv);
 
         let out = Command::new(&argv[0]).args(&argv[1..]).output().unwrap();
         let _ = accepted.join();
         let stdout = String::from_utf8_lossy(&out.stdout);
-        assert!(stdout.contains("PROXY_OK"), "proxy unreachable in the netns: {stdout}");
+        assert!(stdout.contains("PROXY_OK"), "proxy unreachable from the bwrapped app: {stdout}");
         assert!(
             stdout.contains("PUBLIC_BLOCKED") && !stdout.contains("PUBLIC_OK"),
-            "route-absence failed: a public IP was reachable: {stdout}"
+            "route-absence failed: a public IP was reachable from the bwrapped app: {stdout}"
         );
     }
 }
