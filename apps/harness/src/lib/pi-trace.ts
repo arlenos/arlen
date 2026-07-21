@@ -12,21 +12,24 @@ export interface TracedCall {
   call: ToolCall;
 }
 
-/// Fold one pi rpc event into the running tool-call trace. Recognises `tool_call`
-/// (a new running call) and `tool_execution_end` (completes it by id); every other
-/// event passes the trace through unchanged, so pi's richer stream is
-/// forward-compatible.
+/// Fold one pi rpc event into the running tool-call trace. Recognises
+/// `tool_execution_start` (a new running call) and `tool_execution_end` (completes
+/// it by id); every other event passes the trace through unchanged, so pi's richer
+/// stream is forward-compatible. NB `tool_call` is NOT a stream event - it is pi's
+/// internal `beforeToolCall` gate hook (agent-session.ts), consumed by the Arlen
+/// extension, never forwarded to `--mode rpc` stdout; the stream carries only the
+/// `tool_execution_*` events, so the card keys off those.
 export function applyToolEvent(trace: TracedCall[], event: unknown): TracedCall[] {
   if (!event || typeof event !== "object") return trace;
   const e = event as Record<string, unknown>;
 
-  if (e.type === "tool_call") {
+  if (e.type === "tool_execution_start") {
     const id = typeof e.toolCallId === "string" ? e.toolCallId : "";
     const [server, tool] = splitToolName(typeof e.toolName === "string" ? e.toolName : "");
     const call: ToolCall = {
       server,
       tool,
-      arguments: stringify(e.input ?? {}),
+      arguments: stringify(e.args ?? {}),
       result: "",
       status: "running",
     };
