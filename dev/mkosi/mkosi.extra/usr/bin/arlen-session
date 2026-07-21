@@ -43,7 +43,14 @@ export WEBKIT_DISABLE_DMABUF_RENDERER=1
 
 # Launch the compositor in the background so we can start the user session once it
 # is up. It imports WAYLAND_DISPLAY/DISPLAY itself; we add the Arlen env below.
-systemd-cat -t cosmic-comp cosmic-comp &
+#
+# RUST_LOG surfaces the compositor's init sequence at info (the rest stays warn):
+# "Cosmic starting up!", the init_egl stage markers, "Listening on <socket>", and
+# the session launch. This makes the intermittent software-GL socket-publish hang
+# diagnosable - on a black boot the serial stops at the stage that hung, instead
+# of going silent with no marker. Scoped to cosmic-comp only (inline env), so the
+# daemons + shell keep their own levels; bounded (init logs, not per-frame debug).
+RUST_LOG=warn,cosmic_comp=info systemd-cat -t cosmic-comp cosmic-comp &
 compositor_pid=$!
 
 # Wait for the compositor to publish its Wayland socket and capture its name into
