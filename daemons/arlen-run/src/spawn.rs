@@ -142,53 +142,7 @@ pub fn spawn_and_wait(
     // ruleset allocations safe; the syscalls (close_range, fcntl, setpgid, the
     // Landlock setup) only narrow the child's own capabilities.
     unsafe {
-        cmd.pre_exec(move || {
-            // Mark every fd above stderr close-on-exec so no launcher fd (daemon
-            // sockets, the profile file) leaks into the confined app, while
-            // leaving them open through pre_exec and execve. Using
-            // CLOSE_RANGE_CLOEXEC instead of an immediate close is deliberate:
-            // std::process reports a pre_exec OR execve failure to the parent
-            // over a CLOEXEC pipe (an fd >= 3), so closing fds outright would
-            // make a setpgid / cgroup-join / Landlock / exec failure
-            // unreportable (the child still _exits before exec, so it is never
-            // fail-open, but the parent would misread the cause). Marking
-            // CLOEXEC closes every launcher fd atomically on a successful exec
-            // and keeps the error pipe alive until then. Needs kernel >= 5.11,
-            // below the Landlock >= 5.13 floor this launcher already requires.
-            let rc =
-                libc::close_range(3, libc::c_uint::MAX, libc::CLOSE_RANGE_CLOEXEC as libc::c_int);
-            if rc != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            // The seccomp memfd must reach bwrap (it reads `--seccomp <fd>`), so
-            // re-clear the CLOEXEC bit close_range just set on it. Done right
-            // after close_range so nothing re-marks it; the error pipe stays
-            // CLOEXEC, only this one fd is kept open across the exec.
-            if let Some(fd) = seccomp_fd {
-                let flags = libc::fcntl(fd, libc::F_GETFD);
-                if flags < 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                if libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC) != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-            }
-            // Put the child in its own process group so a stray signal to the
-            // launcher's group does not race the cgroup-based reaping.
-            if libc::setpgid(0, 0) != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            // Join the per-launch cgroup BEFORE Landlock: a read-only `/`
-            // ruleset would deny the write to cgroup.procs.
-            if let Some(procs) = &cgroup_procs {
-                crate::cgroup::join_current(procs)?;
-            }
-            // Filesystem confinement, inherited by bwrap and the app. The app
-            // seccomp filter (which bwrap installs after this, on the app only)
-            // may drop path-open, so Landlock's path opens must happen first.
-            crate::landlock_apply::apply_landlock(&writable)?;
-            Ok(())
-        });
+        cmd.pre_exec(move || child_pre_exec(&writable, &cgroup_procs, seccomp_fd));
     }
 
     let spawned = cmd.spawn();
@@ -198,6 +152,116 @@ pub fn spawn_and_wait(
         unsafe { libc::close(fd) };
     }
     let status = spawned?.wait()?;
+    Ok(exit_code(status.code(), status.signal()))
+}
+
+/// The shared post-fork, pre-exec child confinement, run in order: mark every
+/// inherited fd above stderr close-on-exec (so no launcher fd leaks into the
+/// app, while std's error pipe survives to report a failure), keep `keep_fd`
+/// (the seccomp memfd, direct-bwrap path only) open across the exec, start a new
+/// process group, join the per-launch cgroup, then apply Landlock. Both spawn
+/// paths - direct `bwrap` and the `pasta`-wrapped filtered launch - run this
+/// identical body on their direct child.
+///
+/// # Safety
+/// Must run in the post-fork child before exec, single-threaded (the launcher is
+/// single-threaded at spawn time), so the Landlock ruleset allocations are safe;
+/// every syscall only narrows the child's own capabilities.
+#[cfg(target_os = "linux")]
+unsafe fn child_pre_exec(
+    writable: &[PathBuf],
+    cgroup_procs: &Option<PathBuf>,
+    keep_fd: Option<libc::c_int>,
+) -> std::io::Result<()> {
+    // CLOSE_RANGE_CLOEXEC (not an immediate close) so std's pre_exec/execve error
+    // pipe (an fd >= 3) survives to report a failure, while every launcher fd is
+    // closed atomically on a successful exec. Needs kernel >= 5.11, below the
+    // Landlock >= 5.13 floor this launcher already requires.
+    let rc = libc::close_range(3, libc::c_uint::MAX, libc::CLOSE_RANGE_CLOEXEC as libc::c_int);
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // Re-clear CLOEXEC on the seccomp memfd so it reaches bwrap across the exec
+    // (the direct-bwrap path); the filtered path passes `None` and its wrapper
+    // opens the filter from a file instead.
+    if let Some(fd) = keep_fd {
+        let flags = libc::fcntl(fd, libc::F_GETFD);
+        if flags < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        if libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC) != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    // A new process group so a stray signal to the launcher's group does not race
+    // the cgroup-based reaping.
+    if libc::setpgid(0, 0) != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // Join the per-launch cgroup BEFORE Landlock: a read-only `/` ruleset would
+    // deny the write to cgroup.procs.
+    if let Some(procs) = cgroup_procs {
+        crate::cgroup::join_current(procs)?;
+    }
+    // Filesystem confinement, inherited by the whole tree. The app seccomp filter
+    // (installed by bwrap after this, on the app only) may drop path-open, so
+    // Landlock's path opens must happen first.
+    crate::landlock_apply::apply_landlock(writable)?;
+    Ok(())
+}
+
+/// Spawn a `FilteredHosts` launch: `bwrap` (the identical confinement) running
+/// INSIDE a `pasta` route-absent network namespace whose only reachable peer is
+/// the forwarding egress proxy (see [`crate::netns`]). The app's mandatory
+/// seccomp filter is delivered to `bwrap` through a temp FILE the pasta wrapper
+/// opens (a memfd would be dropped by `pasta`), so the filtered launch keeps the
+/// FULL confinement, never a layer short. The direct child is `pasta`, which
+/// runs [`child_pre_exec`] (cgroup + Landlock, no memfd) and hosts the whole
+/// `bwrap` tree; `bwrap` does not `--unshare-net`, so it inherits pasta's
+/// namespace. Returns the app's propagated exit code.
+#[cfg(target_os = "linux")]
+pub fn spawn_filtered_and_wait(
+    bwrap_argv: &[String],
+    writable: &[PathBuf],
+    cgroup_procs: Option<PathBuf>,
+    seccomp_bpf: Vec<u8>,
+) -> std::io::Result<u8> {
+    use std::io::Write;
+    use std::os::unix::process::{CommandExt, ExitStatusExt};
+
+    // The compiled seccomp on disk, where the pasta wrapper opens it inside the
+    // namespace. Held until after the wait, then removed when it drops.
+    let mut seccomp_file = tempfile::NamedTempFile::new()?;
+    seccomp_file.write_all(&seccomp_bpf)?;
+    seccomp_file.flush()?;
+    let seccomp_path = seccomp_file
+        .path()
+        .to_str()
+        .ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "non-utf8 seccomp temp path")
+        })?
+        .to_string();
+
+    // The confined app is `bwrap --seccomp <fd> <confinement> -- program`; wrap
+    // the whole invocation in pasta's namespace, which opens the filter file.
+    let mut app_argv = vec![
+        "bwrap".to_string(),
+        "--seccomp".to_string(),
+        crate::netns::SECCOMP_WRAPPER_FD.to_string(),
+    ];
+    app_argv.extend_from_slice(bwrap_argv);
+    let argv = crate::netns::pasta_argv(&app_argv, Some(&seccomp_path));
+
+    let writable = writable.to_vec();
+    let mut cmd = Command::new(&argv[0]);
+    cmd.args(&argv[1..]);
+    // SAFETY: single-threaded post-fork child (see child_pre_exec). No memfd on
+    // this path - the wrapper opens the seccomp file - so no fd is kept open.
+    unsafe {
+        cmd.pre_exec(move || child_pre_exec(&writable, &cgroup_procs, None));
+    }
+    let status = cmd.spawn()?.wait()?;
+    drop(seccomp_file); // remove the temp filter now the launch has ended
     Ok(exit_code(status.code(), status.signal()))
 }
 

@@ -1,16 +1,14 @@
 //! The egress-enforcer seam.
 //!
 //! A profile that declared `NetworkPolicy::FilteredHosts` must have its egress
-//! held to that host set. The real enforcement (Strand 2's `EgressProxy` in a
-//! launcher-owned network namespace whose only route is the forwarding proxy)
-//! is on-kernel machinery; this module is the seam the launcher calls at one
-//! site so the two strands compose without a hard ordering dependency.
-//!
-//! Until the real enforcer is wired, the launcher uses [`DenyUnlessEmpty`]: a
-//! non-empty host set cannot be honoured, so the launch is **refused** rather
-//! than run with unfiltered network. This is the house rule made concrete: no
-//! half-open default. `NetworkPolicy::None` (no network) and `Unrestricted` (no
-//! filter by design) never reach the enforcer at all; only `FilteredHosts` does.
+//! held to that host set. [`ProxyEgressEnforcer`] binds Strand 2's `EgressProxy`
+//! on host loopback and serves it for the launch; the launcher runs the app in a
+//! route-absent network namespace (see [`crate::netns`]) whose only reachable
+//! peer is that proxy, so the allowlist is the app's whole egress. A parse or
+//! bind failure is a fail-closed [`EgressError`] the launcher maps to a refused
+//! launch - no half-open default. `NetworkPolicy::None` (no network) and
+//! `Unrestricted` (no filter by design) never reach the enforcer; only
+//! `FilteredHosts` does.
 
 use std::error::Error;
 use std::fmt;
@@ -53,7 +51,6 @@ impl EgressGuard {
     /// The host-loopback port the forwarding proxy bound, or `None` for a
     /// restriction-less guard. The launcher points `http_proxy`/`https_proxy` at
     /// the mapped-loopback gateway on this port.
-    #[allow(dead_code)] // read by `main` when the enforcer is wired (next slice)
     pub fn proxy_port(&self) -> Option<u16> {
         self.proxy.as_ref().map(|p| p.port)
     }
@@ -80,9 +77,6 @@ impl fmt::Debug for EgressGuard {
 /// must never run with unfiltered network).
 #[derive(Debug, PartialEq, Eq)]
 pub enum EgressError {
-    /// No real enforcer is wired, so a non-empty host allowlist cannot be
-    /// enforced. Refuse rather than run unfiltered.
-    NoEnforcer,
     /// The declared host set is not a valid allowlist (bad `host:port` syntax).
     Allowlist(String),
     /// The proxy runtime or its listener could not be set up. Refuse rather than
@@ -93,9 +87,6 @@ pub enum EgressError {
 impl fmt::Display for EgressError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EgressError::NoEnforcer => {
-                write!(f, "the egress filter is not yet wired; refusing a filtered-host launch")
-            }
             EgressError::Allowlist(e) => write!(f, "invalid egress allowlist: {e}"),
             EgressError::Setup(e) => write!(f, "could not install the egress proxy: {e}"),
         }
@@ -110,7 +101,6 @@ impl Error for EgressError {}
 /// (see [`crate::netns`]) whose only reachable peer is this proxy, so the
 /// allowlist is the app's whole egress. An empty host set restricts nothing (a
 /// noop guard); any parse/bind failure is a fail-closed [`EgressError`].
-#[allow(dead_code)] // swapped in for `DenyUnlessEmpty` at the `main` site next slice
 pub struct ProxyEgressEnforcer;
 
 impl EgressEnforcer for ProxyEgressEnforcer {
@@ -157,35 +147,9 @@ pub trait EgressEnforcer {
     fn install(&self, hosts: &[String]) -> Result<EgressGuard, EgressError>;
 }
 
-/// The fail-closed stand-in used until Strand 2's real enforcer is wired. A
-/// non-empty host set cannot be honoured, so the launch is refused; an empty set
-/// (nothing to restrict) passes.
-pub struct DenyUnlessEmpty;
-
-impl EgressEnforcer for DenyUnlessEmpty {
-    fn install(&self, hosts: &[String]) -> Result<EgressGuard, EgressError> {
-        if hosts.is_empty() {
-            Ok(EgressGuard::noop())
-        } else {
-            Err(EgressError::NoEnforcer)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn stand_in_refuses_a_non_empty_host_set() {
-        let r = DenyUnlessEmpty.install(&["api.example.org:443".to_string()]);
-        assert_eq!(r.unwrap_err(), EgressError::NoEnforcer);
-    }
-
-    #[test]
-    fn stand_in_passes_an_empty_host_set() {
-        assert!(DenyUnlessEmpty.install(&[]).is_ok());
-    }
 
     #[test]
     fn proxy_enforcer_binds_reports_a_port_and_tears_down() {
