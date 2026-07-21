@@ -355,6 +355,29 @@ fn generation_prompt(schema: &GraphSchema, nl_prompt: &str, retry_error: Option<
          contains/starts-with only on text fields; \
          at most 5 traverse steps; limit is required.\n\n",
     );
+    // Edge direction is where a small model most often fails: the schema writes
+    // each edge as "A -> B", and the DSL's `direction` must match the node the
+    // traversal STARTS from. Spell out the mapping and show one worked example so
+    // the model emits `outgoing`/`incoming` correctly rather than guessing (the
+    // validator rejects a reversed edge, burning an attempt).
+    prompt.push_str(
+        "Edge direction: an edge written \"A -> B\" in the schema is traversed with \
+         direction \"outgoing\" when you START from an A node (going A to B), and \
+         \"incoming\" when you start from a B node (going B to A). Match the direction \
+         to the node the `from`/`to` chain starts at, not to the reading order of the \
+         question.\n\n\
+         Example, for \"list my recent files and their projects\" given the edge \
+         \"FILE_PART_OF: File -> Project\" (start from File, so outgoing):\n\
+         {\n\
+         \x20 \"from\": { \"bind\": \"f\", \"label\": \"File\" },\n\
+         \x20 \"traverse\": [ { \"edge\": \"FILE_PART_OF\", \"direction\": \"outgoing\",\n\
+         \x20                  \"to\": { \"bind\": \"p\", \"label\": \"Project\" } } ],\n\
+         \x20 \"select\": [ { \"bind\": \"f\", \"field\": \"path\" },\n\
+         \x20              { \"bind\": \"p\", \"field\": \"name\" } ],\n\
+         \x20 \"order_by\": { \"bind\": \"f\", \"field\": \"last_accessed\", \"descending\": true },\n\
+         \x20 \"limit\": 20\n\
+         }\n\n",
+    );
     // The user question, and on a retry the previous rejection reason
     // (which echoes model-controlled label/field/edge strings), are
     // both data, not instructions: tag them so an injection inside
