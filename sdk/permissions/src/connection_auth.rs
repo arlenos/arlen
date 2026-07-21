@@ -76,10 +76,41 @@ impl ConnectionAuth {
         stream: &F,
         caller_uid: u32,
     ) -> Result<Self, AuthError> {
+        Self::extract_from_inner(stream, caller_uid, false)
+    }
+
+    /// Like [`extract_from`](Self::extract_from) but ALSO accepts a peer
+    /// running as root (uid 0), a principal strictly more-privileged than
+    /// `caller_uid`. Used by the user auditd's ingest socket so a trusted
+    /// ROOT system daemon (the config-broker, which must run as a separate
+    /// more-privileged uid so the user's own uid cannot write the AI
+    /// master-switch store) can record to the owner's single ledger.
+    ///
+    /// Sound because root grants itself no new capability by connecting
+    /// here: it can already read/tamper the owner's ledger file directly.
+    /// The admitted-writer allowlist + the attested identity resolution
+    /// still gate the caller, and a same-uid non-root peer is unaffected
+    /// (still rejected unless its uid matches). NB this is shadow-mode
+    /// correct: the legacy `/proc/exe` resolver ignores uid, so a root
+    /// peer resolves normally; the stamped resolver (`PeerPidfd`) still
+    /// rejects cross-uid, so a future ENFORCE cutover of this socket must
+    /// add a matching root-accepting stamped variant.
+    pub fn extract_from_trusting_root<F: AsRawFd>(
+        stream: &F,
+        caller_uid: u32,
+    ) -> Result<Self, AuthError> {
+        Self::extract_from_inner(stream, caller_uid, true)
+    }
+
+    fn extract_from_inner<F: AsRawFd>(
+        stream: &F,
+        caller_uid: u32,
+        allow_root: bool,
+    ) -> Result<Self, AuthError> {
         let (peer_pid, peer_uid) =
             so_peercred(stream.as_raw_fd()).map_err(AuthError::PeerCred)?;
 
-        if peer_uid != caller_uid {
+        if peer_uid != caller_uid && !(allow_root && peer_uid == 0) {
             return Err(AuthError::CrossUid {
                 caller: caller_uid,
                 peer: peer_uid,
@@ -183,8 +214,9 @@ impl ConnectionAuth {
         self.pid
     }
 
-    /// Peer uid (always equals `caller_uid` from extract_from
-    /// — cross-uid is rejected).
+    /// Peer uid. Equals `caller_uid` on the [`extract_from`](Self::extract_from)
+    /// path (cross-uid rejected); on [`extract_from_trusting_root`](Self::extract_from_trusting_root)
+    /// it is `caller_uid` or 0 (a more-privileged root producer).
     pub fn uid(&self) -> u32 {
         self.uid
     }
