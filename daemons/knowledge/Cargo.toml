@@ -3,6 +3,10 @@ license = "AGPL-3.0-only"
 name = "knowledge"
 version = "0.1.0"
 edition = "2021"
+# Two bins (the arlen-graph-daemon KG daemon + the arlen-timeline FUSE tool), so a
+# bare `cargo run` (e.g. the process-compose `just dev` stack) is otherwise
+# ambiguous and never starts the daemon. Pin the daemon as the default.
+default-run = "arlen-graph-daemon"
 
 [[bin]]
 # The installed daemon binary. Named arlen-graph-daemon to match the
