@@ -71,40 +71,78 @@ impl ApplyReport {
 /// file under `config_dir/arlen/`. Returns an [`ApplyReport`] of what was
 /// written, skipped, or failed.
 pub fn write_foreign_toolkit_configs(theme: &ArlenTheme, config_dir: &Path) -> ApplyReport {
+    // No per-toolkit divergence: every target sees the same resolved theme.
+    write_toolkit_configs(theme, theme, theme, theme, config_dir)
+}
+
+/// Override-aware apply: resolve each toolkit's theme (the shared theme plus
+/// that toolkit's sparse `[override.<toolkit>]`) and write. A theme with no
+/// `[override.*]` produces byte-identical output to
+/// [`write_foreign_toolkit_configs`], so this is always safe to prefer.
+///
+/// Takes the source strings (not a resolved theme) because the per-toolkit
+/// override is applied during resolution ([`ArlenTheme::resolve_toolkit`]); the
+/// CLI colour tools ride the Terminal override (they share the terminal
+/// palette), and the sound-name map rides the base theme (sounds are not a
+/// rendering toolkit).
+pub fn write_foreign_toolkit_configs_with_overrides(
+    bundled: &str,
+    user_theme: Option<&str>,
+    customization: Option<&str>,
+    config_dir: &Path,
+) -> Result<ApplyReport, crate::ResolveError> {
+    use crate::Toolkit;
+    let base = ArlenTheme::resolve(bundled, user_theme, customization)?;
+    let gtk = ArlenTheme::resolve_toolkit(bundled, user_theme, customization, Toolkit::Gtk)?;
+    let qt = ArlenTheme::resolve_toolkit(bundled, user_theme, customization, Toolkit::Qt)?;
+    let term = ArlenTheme::resolve_toolkit(bundled, user_theme, customization, Toolkit::Terminal)?;
+    Ok(write_toolkit_configs(&base, &gtk, &qt, &term, config_dir))
+}
+
+/// Write every foreign-toolkit theme file, each section from its own resolved
+/// theme so a per-toolkit override diverges only that target. `base_theme` backs
+/// the non-toolkit outputs (the sound-name map).
+fn write_toolkit_configs(
+    base_theme: &ArlenTheme,
+    gtk_theme: &ArlenTheme,
+    qt_theme: &ArlenTheme,
+    term_theme: &ArlenTheme,
+    config_dir: &Path,
+) -> ApplyReport {
     let mut report = ApplyReport::default();
     let config = config_dir;
 
     // GTK 3 + 4: gtk.css is the direct override file (fixed name), guarded
     // against clobbering a foreign file. The libadwaita/adw-gtk3
     // named-colour block is identical for both versions.
-    let gtk_css = format!("{GTK_HEADER}{}", crate::gtk::generate_gtk_css(theme));
+    let gtk_css = format!("{GTK_HEADER}{}", crate::gtk::generate_gtk_css(gtk_theme));
     write_guarded_gtk(&config.join("gtk-3.0/gtk.css"), &gtk_css, &mut report);
     write_guarded_gtk(&config.join("gtk-4.0/gtk.css"), &gtk_css, &mut report);
 
     // Qt: the colour scheme, Arlen-named, for qt6ct and qt5ct.
-    let qt_conf = crate::qt::generate_qt_conf(theme);
+    let qt_conf = crate::qt::generate_qt_conf(qt_theme);
     write_owned(&config.join("qt6ct/colors/arlen.conf"), &qt_conf, &mut report);
     write_owned(&config.join("qt5ct/colors/arlen.conf"), &qt_conf, &mut report);
 
     // Terminals: Arlen-named colour files the user's config imports.
     write_owned(
         &config.join("alacritty/arlen-colors.toml"),
-        &crate::terminal::generate_alacritty_toml(theme),
+        &crate::terminal::generate_alacritty_toml(term_theme),
         &mut report,
     );
     write_owned(
         &config.join("kitty/arlen-colors.conf"),
-        &crate::terminal::generate_kitty_conf(theme),
+        &crate::terminal::generate_kitty_conf(term_theme),
         &mut report,
     );
     write_owned(
         &config.join("foot/arlen-colors.ini"),
-        &crate::terminal::generate_foot_ini(theme),
+        &crate::terminal::generate_foot_ini(term_theme),
         &mut report,
     );
     write_owned(
         &config.join("arlen/colors.Xresources"),
-        &crate::terminal::generate_xresources(theme),
+        &crate::terminal::generate_xresources(term_theme),
         &mut report,
     );
 
@@ -113,7 +151,7 @@ pub fn write_foreign_toolkit_configs(theme: &ArlenTheme, config_dir: &Path) -> A
     // overrides still win). Arlen-owned, overwritten freely.
     write_owned(
         &config.join("arlen/sounds.toml"),
-        &crate::sounds::generate_sound_overrides(theme),
+        &crate::sounds::generate_sound_overrides(base_theme),
         &mut report,
     );
 
@@ -121,22 +159,22 @@ pub fn write_foreign_toolkit_configs(theme: &ArlenTheme, config_dir: &Path) -> A
     // reads its palette from `FZF_DEFAULT_OPTS`, so the finder matches the theme.
     write_owned(
         &config.join("arlen/fzf-colors.sh"),
-        &crate::cli::generate_fzf_colors(theme),
+        &crate::cli::generate_fzf_colors(term_theme),
         &mut report,
     );
     write_owned(
         &config.join("arlen/git-colors.gitconfig"),
-        &crate::cli::generate_git_colors(theme),
+        &crate::cli::generate_git_colors(term_theme),
         &mut report,
     );
     write_owned(
         &config.join("arlen/delta.gitconfig"),
-        &crate::cli::generate_delta_config(theme),
+        &crate::cli::generate_delta_config(term_theme),
         &mut report,
     );
     write_owned(
         &config.join("arlen/base16-arlen.yaml"),
-        &crate::cli::generate_nvim_base16(theme),
+        &crate::cli::generate_nvim_base16(term_theme),
         &mut report,
     );
 
@@ -183,6 +221,46 @@ mod tests {
 
     fn theme() -> ArlenTheme {
         ArlenTheme::from_bundled(DARK_TOML).expect("bundled dark resolves")
+    }
+
+    #[test]
+    fn per_toolkit_override_diverges_only_the_gtk_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // A GTK-only accent override to a distinctive green.
+        let custom = r##"
+[override.gtk.color.semantic]
+accent = "#00ff00"
+"##;
+        let report =
+            write_foreign_toolkit_configs_with_overrides(DARK_TOML, None, Some(custom), tmp.path())
+                .expect("apply with overrides");
+        assert!(report.is_clean(), "errors: {:?}", report.errors);
+        let gtk = std::fs::read_to_string(tmp.path().join("gtk-4.0/gtk.css")).unwrap();
+        let qt = std::fs::read_to_string(tmp.path().join("qt6ct/colors/arlen.conf")).unwrap();
+        // The GTK stylesheet carries the override accent; the Qt scheme keeps the
+        // bundled accent, so the override diverges only the GTK target.
+        assert!(
+            gtk.contains("00ff00"),
+            "gtk.css must carry the GTK-only override accent"
+        );
+        assert!(
+            !qt.contains("00ff00"),
+            "qt scheme must keep the base accent, not the GTK override"
+        );
+    }
+
+    #[test]
+    fn overrides_apply_matches_plain_apply_when_no_override() {
+        // With no [override.*], the override-aware path writes byte-identical
+        // files to the plain path.
+        let a = tempfile::TempDir::new().unwrap();
+        let b = tempfile::TempDir::new().unwrap();
+        write_foreign_toolkit_configs(&theme(), a.path());
+        write_foreign_toolkit_configs_with_overrides(DARK_TOML, None, None, b.path())
+            .expect("apply");
+        let gtk_a = std::fs::read_to_string(a.path().join("gtk-4.0/gtk.css")).unwrap();
+        let gtk_b = std::fs::read_to_string(b.path().join("gtk-4.0/gtk.css")).unwrap();
+        assert_eq!(gtk_a, gtk_b);
     }
 
     #[test]
