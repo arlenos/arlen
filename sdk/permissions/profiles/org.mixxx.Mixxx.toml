@@ -1,0 +1,11 @@
+# Starting permission profile for Mixxx (DJ software). Reads and records music
+# under Music and imports from Downloads; no network by default (streaming sources
+# and broadcasting need an explicit grant) and no Knowledge Graph. The Flathub app
+# id; the apt `mixxx` profile mirrors it.
+[info]
+app_id = "org.mixxx.Mixxx"
+tier = "third-party"
+
+[filesystem]
+music = true
+downloads = true

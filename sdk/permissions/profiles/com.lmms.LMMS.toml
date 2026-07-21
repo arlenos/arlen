@@ -1,0 +1,10 @@
+# Starting permission profile for LMMS (a music-creation DAW). Works with Music
+# (audio) and Documents (projects); no network and no Knowledge Graph. The Flathub
+# app id; the apt `lmms` profile mirrors it.
+[info]
+app_id = "com.lmms.LMMS"
+tier = "third-party"
+
+[filesystem]
+music = true
+documents = true
