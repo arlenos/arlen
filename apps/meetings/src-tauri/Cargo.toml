@@ -26,6 +26,8 @@ os-sdk = { path = "../../../sdk/os-sdk" }
 # The note contract: the full produced note (summary + action items + transcript)
 # persisted as the app-owned document a note is loaded from.
 arlen-meeting-note = { path = "../../../contracts/meeting-note" }
+# The pure, CI-tested meetings core (the on-disk note store).
+arlen-meetings-core = { path = "../core" }
 # The transcript contract: the captured transcript carried in the note document
 # and handed to the summary engine.
 arlen-transcript = { path = "../../../contracts/transcript" }

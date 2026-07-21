@@ -19,7 +19,6 @@ use arlen_meeting_note::MeetingNote;
 use arlen_transcript::Transcript;
 use os_sdk::UnixGraphClient;
 
-mod note_store;
 mod summarize;
 
 /// The knowledge daemon's query socket: the app's own bind override, the daemon's
@@ -104,7 +103,7 @@ async fn meeting_note(id: Option<String>) -> Result<MeetingNote, String> {
     let Some(id) = id else {
         return Err("no meeting id (the active meeting is held by the app)".to_string());
     };
-    match note_store::load(&id)? {
+    match arlen_meetings_core::note_store::load(&id)? {
         Some(stored) => Ok(stored.note),
         None => Err(format!("no meeting note for id {id}")),
     }
@@ -119,7 +118,7 @@ async fn meeting_human_notes(id: Option<String>) -> Result<String, String> {
     let Some(id) = id else {
         return Ok(String::new());
     };
-    Ok(note_store::load(&id)?
+    Ok(arlen_meetings_core::note_store::load(&id)?
         .map(|s| s.human_notes)
         .unwrap_or_default())
 }
