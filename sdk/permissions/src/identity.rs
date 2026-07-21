@@ -338,6 +338,19 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-config-broker" => {
             return Ok("config-broker".to_string());
         }
+        // The knowledge (graph) daemon. Its binary ships as `arlen-graph-daemon`
+        // (the systemd unit + crate `[[bin]]` name), but its stable audit id - the
+        // one the audit daemon's ADMITTED allowlist keys on, and the id its own
+        // `audit.rs` names as the submitter - is `knowledge`. Rule (2) would strip
+        // the /usr/bin path to `graph-daemon`, which is NOT admitted, so the
+        // app-tier entity-write (foreign-app-bridges) audit - which is FAIL-CLOSED
+        // before the write persists - would be refused and every bridge write would
+        // fail in a release image (masked in dev, where the `dev.arlen-graph-daemon`
+        // cargo id is admitted). This explicit override pins the deployed path to
+        // `knowledge`; the /usr/bin path is root-owned and attested.
+        "/usr/bin/arlen-graph-daemon" => {
+            return Ok("knowledge".to_string());
+        }
         // The Connections credential-governance daemon. A credential release audits
         // BEFORE handing the credential over and FAILS CLOSED on a down/refused
         // ledger, so without this entry it resolves to UnknownBinary, the audit is
@@ -797,6 +810,24 @@ mod tests {
             assert!(
                 path_to_app_id(&PathBuf::from(spoofed)).is_err(),
                 "spoofed notifyd path {spoofed} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_app_id_from_path_graph_daemon_resolves_to_knowledge() {
+        // The knowledge daemon ships as `arlen-graph-daemon` but its stable audit id
+        // is `knowledge` (what the audit ADMITTED allowlist + its own audit.rs use).
+        // Rule (2) would strip /usr/bin/arlen-graph-daemon to `graph-daemon`, which
+        // is NOT admitted, so the fail-closed app-tier-write audit would be refused
+        // in a release image; the explicit override must pin it to `knowledge`.
+        let path = PathBuf::from("/usr/bin/arlen-graph-daemon");
+        assert_eq!(path_to_app_id(&path).unwrap(), "knowledge");
+        // A same-basename binary in a writable location must not impersonate it.
+        for spoofed in ["/tmp/arlen-graph-daemon", "/home/attacker/arlen-graph-daemon"] {
+            assert!(
+                path_to_app_id(&PathBuf::from(spoofed)).is_err(),
+                "spoofed graph-daemon path {spoofed} must be rejected"
             );
         }
     }
