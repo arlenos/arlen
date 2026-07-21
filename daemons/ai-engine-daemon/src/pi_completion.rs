@@ -27,7 +27,7 @@
 use std::sync::Arc;
 
 use arlen_ai_core::proxied::ProxyAIClient;
-use arlen_permissions::connection_auth::ConnectionAuth;
+use arlen_permissions::connection_auth::peer_credentials;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tracing::{debug, warn};
@@ -217,14 +217,22 @@ pub async fn serve_completion(
     loop {
         match listener.accept().await {
             Ok((mut stream, _)) => {
-                let auth = match ConnectionAuth::extract_from(&stream, uid) {
-                    Ok(a) => a,
+                // Read the kernel-attested (pid, uid) WITHOUT resolving the peer's
+                // binary: pi is a generic `node` interpreter, which the binary-
+                // resolving `ConnectionAuth::extract_from` rejects as UnknownBinary.
+                // The authentication here is the session token bound to this pid
+                // (checked per request); this only enforces same-uid + the pid.
+                let (pid, peer_uid) = match peer_credentials(&stream) {
+                    Ok(v) => v,
                     Err(e) => {
-                        warn!(error = %e, "rejecting unauthenticated completion connection");
+                        warn!(error = %e, "completion connection: could not read peer credentials");
                         continue;
                     }
                 };
-                let pid = auth.pid();
+                if peer_uid != uid {
+                    warn!(peer_uid, "rejecting cross-uid completion connection");
+                    continue;
+                }
                 let verifier = Arc::clone(&verifier);
                 let proxy = Arc::clone(&proxy);
                 let audit_token = Arc::clone(&audit_token);
