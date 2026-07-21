@@ -31,6 +31,7 @@ pub mod connection;
 pub mod dbus;
 pub mod gate;
 pub mod master;
+pub mod launcher;
 pub mod mount;
 pub mod objects;
 pub mod presence;
