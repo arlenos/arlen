@@ -25,11 +25,13 @@
 //! request-shape translation happens here.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use arlen_ai_core::proxied::ProxyAIClient;
 use arlen_permissions::connection_auth::peer_credentials;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
+use tokio::sync::Semaphore;
 use tracing::{debug, warn};
 
 use crate::dispatch::SessionVerifier;
@@ -47,6 +49,15 @@ const MAX_HEAD: usize = 16 * 1024;
 /// Cap on the request body. LLM chat requests are small; a larger body is a
 /// misbehaving or hostile client, refused before any egress.
 const MAX_BODY: usize = 4 * 1024 * 1024;
+
+/// Max time to read a full request (head + body) before the connection is
+/// dropped. A same-uid client that connects and dribbles bytes, or never
+/// terminates the head, is reaped rather than parking a task and fd indefinitely.
+const READ_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Max concurrent completion connections served at once. Bounds a same-uid client
+/// that opens many slow connections; further connections wait for a permit.
+const MAX_CONNECTIONS: usize = 16;
 
 /// What a parsed request head yields: the bearer token (the session token pi
 /// presents as its API key) and the declared body length.
@@ -159,12 +170,19 @@ async fn handle_connection(
     audit_token: &str,
     pid: u32,
 ) {
-    let (head, body) = match read_request(stream).await {
-        Ok(v) => v,
-        Err(e) => {
+    let (head, body) = match tokio::time::timeout(READ_TIMEOUT, read_request(stream)).await {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => {
             debug!(error = %e, "completion request read failed");
             let _ = stream
                 .write_all(&http_response(400, "Bad Request", b"{\"error\":\"malformed request\"}"))
+                .await;
+            return;
+        }
+        Err(_) => {
+            debug!("completion request read timed out");
+            let _ = stream
+                .write_all(&http_response(408, "Request Timeout", b"{\"error\":\"request timeout\"}"))
                 .await;
             return;
         }
@@ -214,6 +232,9 @@ pub async fn serve_completion(
     audit_token: Arc<str>,
     uid: u32,
 ) {
+    // Bound the number of completion handlers running at once, so a same-uid client
+    // that opens many slow connections cannot exhaust tasks and fds.
+    let limiter = Arc::new(Semaphore::new(MAX_CONNECTIONS));
     loop {
         match listener.accept().await {
             Ok((mut stream, _)) => {
@@ -233,10 +254,21 @@ pub async fn serve_completion(
                     warn!(peer_uid, "rejecting cross-uid completion connection");
                     continue;
                 }
+                // Acquire a connection permit before serving; at capacity this waits,
+                // bounding concurrent handlers. The permit is held for the handler's
+                // lifetime and released when its task completes.
+                let permit = match Arc::clone(&limiter).acquire_owned().await {
+                    Ok(p) => p,
+                    Err(_) => {
+                        warn!("completion connection limiter closed");
+                        return;
+                    }
+                };
                 let verifier = Arc::clone(&verifier);
                 let proxy = Arc::clone(&proxy);
                 let audit_token = Arc::clone(&audit_token);
                 tokio::spawn(async move {
+                    let _permit = permit;
                     handle_connection(&mut stream, &verifier, &proxy, &audit_token, pid).await;
                 });
             }
