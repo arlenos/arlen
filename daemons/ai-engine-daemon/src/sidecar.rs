@@ -45,6 +45,16 @@ pub const SANDBOX_PROXY_SOCKET: &str = "/run/arlen/ai-proxy.sock";
 /// same-uid `/proc/<pid>/cmdline` reader would see it).
 pub const SESSION_TOKEN_FILENAME: &str = ".arlen-session-token";
 
+/// The models.json provider id the daemon seeds + selects on the pi argv (the
+/// undici dispatcher routes its requests to the daemon completion socket, which
+/// govern-forwards to the catalogued upstream).
+pub const PI_PROVIDER_ID: &str = "arlen";
+
+/// The model id under [`PI_PROVIDER_ID`]; matches the ai.toml provider model and
+/// the catalogued `ollama-default` upstream. Hardcoded for the first cut (the
+/// model is fixed for the dogfood); config-driven selection is a follow-up.
+pub const PI_MODEL_ID: &str = "qwen2.5:7b";
+
 /// The host paths the sidecar spawn needs, resolved by the caller from config/
 /// env (fail-closed, no invented defaults). All must be absolute.
 #[derive(Debug, Clone)]
@@ -249,6 +259,14 @@ pub fn pi_sidecar_argv(confinement: &Confinement, paths: &SidecarPaths, system_p
     // Load the Arlen security extension (the gate + audit shims) into pi.
     argv.push("--extension".to_string());
     argv.push(paths.arlen_extension.clone());
+    // Select the daemon-seeded provider/model (the models.json `run_once` writes):
+    // pi forms an OpenAI request for this provider, the undici dispatcher routes it
+    // to the daemon completion socket regardless of the seeded baseUrl, and the
+    // daemon forwards to the catalogued upstream. The names must match models.json.
+    argv.push("--provider".to_string());
+    argv.push(PI_PROVIDER_ID.to_string());
+    argv.push("--model".to_string());
+    argv.push(PI_MODEL_ID.to_string());
     // The session system prompt the daemon composed (SessionInit's behaviour-inject
     // half) is delivered at spawn: SessionInit is daemon-driven, not an engine-
     // fetchable contract call, so the prompt reaches pi here, not over the socket.
@@ -308,6 +326,43 @@ fn write_token_file(state_dir: &str, token: &str) -> std::io::Result<(PathBuf, T
     Ok((path.clone(), TokenFileGuard { path }))
 }
 
+/// Seed pi's provider config so it can reach the model through the daemon. Writes
+/// `<state_dir>/.pi/agent/models.json` with the [`PI_PROVIDER_ID`] custom
+/// OpenAI-compatible provider whose `apiKey` IS this run's session token - so pi
+/// sends that token as the `Authorization: Bearer`, which the daemon's completion
+/// endpoint verifies against the attested pid. The `baseUrl` is cosmetic: pi's
+/// undici dispatcher (with `ARLEN_AI_PROXY_SOCKET` set) routes every request to the
+/// daemon socket regardless, and the daemon govern-forwards to the catalogued
+/// upstream. Written 0600 under a 0700 dir; overwritten each spawn (the token is
+/// per-run). A failure is a spawn fault (propagated -> the run maps to Crashed).
+fn write_models_json(state_dir: &str, token: &str) -> std::io::Result<()> {
+    let dir = Path::new(state_dir).join(".pi").join("agent");
+    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&dir)?;
+    let provider = serde_json::json!({
+        "baseUrl": "http://localhost:11434/v1",
+        "api": "openai-completions",
+        "apiKey": token,
+        // The local OpenAI-compat servers (Ollama and kin) reject the `developer`
+        // role and `reasoning_effort`; send a plain system message instead.
+        "compat": { "supportsDeveloperRole": false, "supportsReasoningEffort": false },
+        "models": [ { "id": PI_MODEL_ID } ],
+    });
+    let mut providers = serde_json::Map::new();
+    providers.insert(PI_PROVIDER_ID.to_string(), provider);
+    let models = serde_json::json!({ "providers": providers });
+    let path = dir.join("models.json");
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&path)?;
+    use std::io::Write;
+    f.write_all(serde_json::to_string_pretty(&models)?.as_bytes())?;
+    f.flush()?;
+    Ok(())
+}
+
 /// Parse bwrap's `--info-fd` JSON for `child-pid` (the sandboxed process's pid in
 /// the daemon's namespace). bwrap may write more than one JSON object; the first
 /// carrying `child-pid` wins. Returns None if absent/unparseable (fail-closed:
@@ -347,6 +402,12 @@ impl PiSidecar {
         // The token reaches pi via a 0600 file in the rw state dir, not the argv.
         let (token_path, _guard) = write_token_file(&self.paths.pi_state, session_token)?;
         let token_path = token_path.to_string_lossy().into_owned();
+
+        // Seed pi's provider config (models.json) with this run's session token as
+        // the apiKey, so pi selects `--provider arlen` + sends the token as Bearer;
+        // the daemon completion endpoint verifies it and govern-forwards the model
+        // call. Written per-run alongside the token.
+        write_models_json(&self.paths.pi_state, session_token)?;
 
         let confinement = pi_sidecar_confinement(&self.paths, Some(&token_path))
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?;
@@ -606,6 +667,10 @@ mod tests {
                 "rpc".to_string(),
                 "--extension".to_string(),
                 "/opt/arlen/pi-plugins/dist/index.js".to_string(),
+                "--provider".to_string(),
+                "arlen".to_string(),
+                "--model".to_string(),
+                "qwen2.5:7b".to_string(),
             ],
         );
     }
