@@ -82,15 +82,31 @@ fn webdav_host_port(url: Option<&str>) -> Option<String> {
     }
 }
 
-/// The `arlen-run` argv that runs `rclone rcd` confined. `arlen-run` reads the
-/// per-mount profile at `<profile_root>/{RCLONE_APP_ID}.toml` (Landlock + seccomp
-/// + cgroup + the FilteredHosts egress netns), then execs rclone, which serves
-/// its rc API on the AF_UNIX `rc_socket`. `--rc-no-auth` is safe: the socket is a
-/// private path in the per-mount runtime dir, reachable only by the daemon.
-/// Returned as `[program, args...]`; the caller spawns `program` with `args`.
-pub fn confined_rclone_argv(profile_root: &Path, rc_socket: &Path) -> Vec<String> {
+/// Resolve the `arlen-run` confiner binary: the `ARLEN_RUN_BIN` override (a
+/// non-standard install or a test), else the canonical libexec path, else bare
+/// `arlen-run` on `PATH`. `arlen-run` has no daemon unit - it is invoked here, so
+/// the daemon must locate it.
+pub fn arlen_run_binary() -> PathBuf {
+    if let Some(p) = std::env::var_os("ARLEN_RUN_BIN") {
+        return PathBuf::from(p);
+    }
+    let libexec = PathBuf::from("/usr/lib/arlen/libexec/arlen-run");
+    if libexec.exists() {
+        return libexec;
+    }
+    PathBuf::from("arlen-run")
+}
+
+/// The `arlen-run` argv that runs `rclone rcd` confined. `arlen-run` (the
+/// `arlen_run` binary) reads the per-mount profile at
+/// `<profile_root>/{RCLONE_APP_ID}.toml` (Landlock + seccomp + cgroup + the
+/// FilteredHosts egress netns), then execs rclone, which serves its rc API on the
+/// AF_UNIX `rc_socket`. `--rc-no-auth` is safe: the socket is a private path in
+/// the per-mount runtime dir, reachable only by the daemon. Returned as
+/// `[program, args...]`; the caller spawns `program` with `args`.
+pub fn confined_rclone_argv(arlen_run: &Path, profile_root: &Path, rc_socket: &Path) -> Vec<String> {
     vec![
-        "arlen-run".to_string(),
+        arlen_run.to_string_lossy().into_owned(),
         "--app-id".to_string(),
         RCLONE_APP_ID.to_string(),
         "--profile-root".to_string(),
@@ -343,7 +359,7 @@ pub async fn spawn_confined_mount(
     write_rclone_profile(&paths.profile_root, hosts, &paths.writable)
         .map_err(MountLaunchError::Profile)?;
 
-    let argv = confined_rclone_argv(&paths.profile_root, &paths.rc_socket);
+    let argv = confined_rclone_argv(&arlen_run_binary(), &paths.profile_root, &paths.rc_socket);
     let child = Command::new(&argv[0])
         .args(&argv[1..])
         .kill_on_drop(true)
@@ -529,8 +545,12 @@ mod tests {
 
     #[test]
     fn the_confined_argv_wraps_rclone_rcd_in_arlen_run_on_the_rc_socket() {
-        let argv = confined_rclone_argv(&PathBuf::from("/run/x/prof"), &PathBuf::from("/run/x/rcd.sock"));
-        assert_eq!(argv[0], "arlen-run");
+        let argv = confined_rclone_argv(
+            &PathBuf::from("/usr/lib/arlen/libexec/arlen-run"),
+            &PathBuf::from("/run/x/prof"),
+            &PathBuf::from("/run/x/rcd.sock"),
+        );
+        assert_eq!(argv[0], "/usr/lib/arlen/libexec/arlen-run");
         assert!(argv.windows(2).any(|w| w[0] == "--app-id" && w[1] == RCLONE_APP_ID));
         assert!(argv.windows(2).any(|w| w[0] == "--profile-root" && w[1] == "/run/x/prof"));
         // The confined program is `rclone rcd` on the AF_UNIX rc socket.
