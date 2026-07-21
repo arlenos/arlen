@@ -63,6 +63,11 @@ export interface ProxyToolSpec {
   name: string;
   label: string;
   description: string;
+  /** The tool's JSON-schema parameters. When omitted the tool registers with the
+   *  permissive schema; declare it so the model knows the required arguments (e.g.
+   *  graph.read's `query`), otherwise the model calls the tool with `{}` and the
+   *  daemon refuses it for a missing argument, looping the turn. */
+  parameters?: unknown;
 }
 
 /** Proxy-tools configuration (injectable for tests). */
@@ -93,9 +98,25 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
     name: "graph.read",
     label: "Knowledge graph read",
     description:
-      "Read the knowledge graph with a scoped query. The daemon runs the query " +
-      "bounded by this session's read scope and project anchor; pi never touches " +
-      "the graph directly.",
+      "Read the user's knowledge graph to answer questions about their files, " +
+      "projects and recent activity. Pass a plain natural-language `query` of what " +
+      "you want to know (e.g. \"the user's most recently accessed files\" or " +
+      "\"the user's active projects\"); the daemon translates it into a scoped " +
+      "graph query, runs it bounded by this session's read scope and project " +
+      "anchor, and returns the answer. pi never touches the graph directly.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "A natural-language description of what to read from the user's " +
+            "knowledge graph. Not Cypher: the daemon generates the query.",
+        },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
   },
   {
     name: "graph.write",
@@ -215,7 +236,7 @@ export function makeProxyTools(opts: ProxyOptions = {}): (pi: ProxyExtensionAPI)
           name: spec.name,
           label: spec.label,
           description: spec.description,
-          parameters: PERMISSIVE_PARAMETERS,
+          parameters: spec.parameters ?? PERMISSIVE_PARAMETERS,
           execute: (_toolCallId, params) => forward(spec.name, params),
         });
       }
