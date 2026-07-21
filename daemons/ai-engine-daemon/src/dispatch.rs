@@ -374,6 +374,23 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
     }
 }
 
+/// Verifies a `(session token, pid)` pair for the completion egress. Object-safe
+/// (no `G`/`E`/`R`) so the pi completion listener can hold an
+/// `Arc<dyn SessionVerifier>` without the dispatcher's Gate/Executor/Reporter type
+/// parameters.
+pub trait SessionVerifier: Send + Sync {
+    /// True iff `token` is a live session bound to `pid` - the same check the
+    /// contract socket's tool verbs use, so the completion egress admits exactly
+    /// the attested, session-bound engine.
+    fn verify_session(&self, token: &SessionToken, pid: u32) -> bool;
+}
+
+impl<G: Gate, E: Executor, R: Reporter> SessionVerifier for Dispatcher<G, E, R> {
+    fn verify_session(&self, token: &SessionToken, pid: u32) -> bool {
+        self.resolve(token, pid).is_some()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
