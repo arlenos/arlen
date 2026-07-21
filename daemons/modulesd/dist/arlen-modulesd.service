@@ -39,6 +39,16 @@ RestartSec=2
 ProtectSystem=strict
 ProtectHome=read-only
 CacheDirectory=wasmtime
+# modulesd binds its request socket at $XDG_RUNTIME_DIR/arlen/modulesd.sock
+# (socket/server.rs). Under ProtectSystem=strict the whole tree is read-only
+# except the systemd-managed dirs, so creating that socket file needs an
+# explicit write grant for the shared arlen runtime dir - the same line every
+# socket-binding arlen user daemon carries (knowledge-mcp, anomalyd, transferd,
+# system-monitor-mcp, file-manager-mcp). Without it the bind fails EROFS and the
+# Type=notify readiness never fires. A ReadWritePaths grant (not RuntimeDirectory)
+# because the dir is SHARED across the arlen daemons - a RuntimeDirectory would
+# remove it on stop and clobber the siblings' sockets.
+ReadWritePaths=/run/user/%U/arlen
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectKernelTunables=yes
