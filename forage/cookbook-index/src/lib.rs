@@ -35,6 +35,12 @@ pub struct RecipeEntry {
     /// recipe's own declaration stands).
     #[serde(default)]
     pub capability_cap: Option<Capabilities>,
+    /// For a BRIDGE recipe (foreign-app-bridges.md §4): the foreign app whose
+    /// installation triggers this bridge's auto-install (e.g. `obsidian`). `forage
+    /// install <foreign_app>` enumerates the cookbook's targets and installs every
+    /// bridge tagged for it. Omitted for a normal (non-bridge) recipe.
+    #[serde(default)]
+    pub foreign_app: Option<String>,
 }
 
 /// A cookbook manifest (`cookbook.toml`): the recipes this cookbook indexes.
