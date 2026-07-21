@@ -16,4 +16,8 @@ serde_json = "1"
 # The dot-path get/set/remove + json<->toml conversion operate on toml::Value.
 toml = "0.8"
 
+[dev-dependencies]
+# The dir-size walk test builds a real temp tree.
+tempfile = "3"
+
 [workspace]
