@@ -13,19 +13,34 @@
 # black / console / no-bar) + --serial-out to persist the guest serial.
 set -u
 N="${1:-10}"
+# WAIT: seconds to let the session come up (raise it under load so a slow-but-not-
+# hung boot still renders - only a true socket-publish hang then counts as black).
+WAIT="${WAIT:-40}"
+# LOAD: N background `yes` CPU hogs to starve the VM's software-GL init, mimicking
+# the host-build contention under which the black-screen was first traced. 0 = idle.
+LOAD="${LOAD:-0}"
 here="$(cd "$(dirname "$0")" && pwd)"
 img="${IMAGE:-$here/../mkosi/arlen.raw}"
 [ -f "$img" ] || { echo "image not found: $img (build it first)"; exit 2; }
 outdir="$(mktemp -d /tmp/arlen-blackscreen.XXXXXX)"
 black=0
 rendered=0
-echo "== black-screen rate: $N boots, image=$img"
+
+load_pids=()
+cleanup() { for p in "${load_pids[@]:-}"; do kill "$p" 2>/dev/null; done; }
+trap cleanup EXIT
+if [ "$LOAD" -gt 0 ]; then
+    echo "== inducing CPU load: $LOAD background hogs (host $(nproc) cores)"
+    for _ in $(seq 1 "$LOAD"); do yes >/dev/null & load_pids+=("$!"); done
+fi
+
+echo "== black-screen rate: $N boots, wait=${WAIT}s, load=$LOAD, image=$img"
 echo "== per-boot artefacts in $outdir"
 for i in $(seq 1 "$N"); do
     shot="$outdir/boot-$i.png"
     ser="$outdir/boot-$i.serial.log"
     log="$outdir/boot-$i.log"
-    if python3 "$here/verify.py" --image "$img" --require-bar \
+    if python3 "$here/verify.py" --image "$img" --require-bar --wait "$WAIT" \
             --out "$shot" --serial-out "$ser" >"$log" 2>&1; then
         rendered=$((rendered + 1))
         echo "boot $i: RENDERED"
