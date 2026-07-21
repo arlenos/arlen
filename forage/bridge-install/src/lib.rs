@@ -63,6 +63,72 @@ pub enum BridgeInstallError {
     },
 }
 
+/// Namespaces a bridge may never claim: a delegated grant for one of these would
+/// let a community bridge write the OS's own or the cross-app shared graph. Mirrors
+/// the knowledge daemon's `RESERVED_NAMESPACES`; that daemon's `NamespaceGrant::new`
+/// is the AUTHORITATIVE gate (it re-checks every write), so this is a fail-fast
+/// defense-in-depth reject at install time, not the security boundary.
+const RESERVED_NAMESPACES: &[&str] = &["system", "shared"];
+
+/// A failure reading or validating a bridge's declared namespace.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum NamespaceError {
+    /// The `entities.toml` could not be parsed.
+    #[error("entities.toml parse error: {0}")]
+    Parse(String),
+    /// No top-level `namespace` field.
+    #[error("entities.toml has no `namespace`")]
+    Missing,
+    /// The namespace is empty, reserved (`system`/`shared`), or malformed.
+    #[error("invalid bridge namespace: {0}")]
+    Invalid(String),
+}
+
+/// The minimal shape of a bridge `entities.toml`: only the top-level `namespace` is
+/// read here (the entity type definitions are the ingest daemon's concern).
+#[derive(Debug, serde::Deserialize)]
+struct EntitiesHeader {
+    #[serde(default)]
+    namespace: Option<String>,
+}
+
+/// Read and validate a bridge's delegated namespace from its `entities.toml`. The
+/// namespace (e.g. `md.obsidian`) is what the install grants in the bridge-ingest
+/// profile's `delegated_namespaces`. Validation is intentionally light and
+/// fail-closed - the knowledge daemon's `NamespaceGrant` is the real gate; here we
+/// only reject an obviously-bad namespace before provisioning a profile from it: a
+/// reserved prefix (`system`/`shared`), an empty value, or a non-`[a-z0-9.-]` id.
+pub fn bridge_namespace(entities_toml: &str) -> Result<String, NamespaceError> {
+    let header: EntitiesHeader =
+        toml::from_str(entities_toml).map_err(|e| NamespaceError::Parse(e.to_string()))?;
+    let ns = header.namespace.ok_or(NamespaceError::Missing)?;
+    if !is_valid_delegated_namespace(&ns) {
+        return Err(NamespaceError::Invalid(ns));
+    }
+    Ok(ns)
+}
+
+/// Whether `ns` is a well-formed, non-reserved delegated namespace.
+fn is_valid_delegated_namespace(ns: &str) -> bool {
+    if ns.is_empty() {
+        return false;
+    }
+    // Charset: lowercase reverse-DNS-ish, no path or wildcard characters.
+    if !ns
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-')
+    {
+        return false;
+    }
+    // No empty dot-segments (e.g. `md..obsidian`, a leading/trailing dot).
+    if ns.split('.').any(|seg| seg.is_empty()) {
+        return false;
+    }
+    // Reserved: the exact root or any sub-namespace of it (`system`, `system.x`).
+    let first = ns.split('.').next().unwrap_or(ns);
+    !RESERVED_NAMESPACES.contains(&first)
+}
+
 /// A failure resolving a `foreign_side.into` template.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum TemplateError {
@@ -297,6 +363,38 @@ mod tests {
 
         install_bridge_halves(src.path(), &manifest, arlen.path(), foreign.path()).unwrap();
         assert_eq!(fs::read_to_string(foreign.path().join("dist/main.js")).unwrap(), "nested");
+    }
+
+    #[test]
+    fn reads_and_validates_the_bridge_namespace() {
+        let entities = r#"
+namespace = "md.obsidian"
+
+[[entity]]
+type = "Note"
+"#;
+        assert_eq!(bridge_namespace(entities).unwrap(), "md.obsidian");
+    }
+
+    #[test]
+    fn a_missing_or_reserved_or_malformed_namespace_is_refused() {
+        assert!(matches!(bridge_namespace("[[entity]]\ntype='x'").unwrap_err(), NamespaceError::Missing));
+        // Reserved root and any sub-namespace of it.
+        for ns in ["system", "system.core", "shared", "shared.person"] {
+            let toml = format!("namespace = \"{ns}\"");
+            assert!(
+                matches!(bridge_namespace(&toml).unwrap_err(), NamespaceError::Invalid(_)),
+                "{ns} must be reserved"
+            );
+        }
+        // Malformed: wildcard, uppercase, empty segment.
+        for ns in ["md.obsidian.*", "MD.Obsidian", "md..obsidian", ".md", ""] {
+            let toml = format!("namespace = \"{ns}\"");
+            assert!(
+                matches!(bridge_namespace(&toml).unwrap_err(), NamespaceError::Invalid(_)),
+                "{ns:?} must be invalid"
+            );
+        }
     }
 
     #[test]
