@@ -108,6 +108,25 @@ processes:
     availability:
       restart: "on_failure"
 
+  # The AI egress proxy: the governed LLM/tool egress. It serves org.arlen.AIProxy1
+  # on the session bus; the ai-engine-daemon forwards pi's model completions through
+  # it (forward_completion), so the AI answer path needs it up. In dev the daemon
+  # runs from target/debug, which is NOT in ai-proxy's canonical PeerAuthMap, so
+  # ARLEN_AI_PROXY_EXTRA_BINS admits the dev binary as the org.arlen.AI1 caller
+  # (debug-only override; production trusts only the /usr/lib/arlen/libexec path).
+  ai-proxy:
+    command: "cargo run --manifest-path ai/ai-proxy/Cargo.toml"
+    environment:
+      - "ARLEN_AI_PROXY_EXTRA_BINS=${HOME}/Repositories/arlen/target/debug/arlen-ai-engine-daemon=org.arlen.AI1"
+    readiness_probe:
+      exec:
+        command: "bash -c 'busctl --user list | grep -q org.arlen.AIProxy1'"
+      initial_delay_seconds: 3
+      period_seconds: 2
+      failure_threshold: 60
+    availability:
+      restart: "on_failure"
+
   # The pi-backed AI engine daemon. It ALWAYS binds its contract socket (the gate
   # serves fail-closed) and spawns the confined pi sidecar ONLY when `[ai] enabled`
   # in ai.toml (default off), so it boots INERT here until AI is turned on. The
@@ -119,6 +138,7 @@ processes:
     depends_on:
       runtime-dir: { condition: process_completed_successfully }
       knowledge: { condition: process_healthy }
+      ai-proxy: { condition: process_healthy }
     environment:
       - "ARLEN_PI_NODE_RUNTIME=${HOME}/.local/share/arlen-node22"
       - "ARLEN_PI_INSTALL=${HOME}/Repositories/pi"
