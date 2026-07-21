@@ -1,0 +1,7 @@
+# Starting permission profile for GNOME Color Manager (display colour calibration
+# and ICC profile management). It works with system colour devices through the
+# session services, not the user's media dirs; the maximally fail-closed baseline
+# grants only identity, no filesystem, no network and no Knowledge Graph.
+[info]
+app_id = "gnome-color-manager"
+tier = "third-party"

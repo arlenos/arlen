@@ -1,0 +1,11 @@
+# Starting permission profile for Frogr (a Flickr photo uploader). Reads images
+# from Pictures and uploads them over the network; no Knowledge Graph access.
+[info]
+app_id = "frogr"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+
+[network]
+allow_all = true
