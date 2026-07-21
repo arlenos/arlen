@@ -53,6 +53,40 @@ export function toolCallsOf(trace: TracedCall[]): ToolCall[] {
   return trace.map((t) => t.call);
 }
 
+/// The assistant text carried by a pi `message_update` event, for STREAMING the
+/// answer into the pending message as it generates (feedback during a slow model
+/// turn, instead of a blank wait then the whole answer). pi sends the FULL message
+/// so far on each update, so the caller SETS the text, it does not append. Returns
+/// `null` for any non-`message_update` event or a non-assistant message, so the
+/// caller only streams assistant text. pi's message `content` is a string or an
+/// array of typed blocks (`messages.ts`); only the `text` blocks are streamed.
+export function assistantTextOf(event: unknown): string | null {
+  if (!event || typeof event !== "object") return null;
+  const e = event as Record<string, unknown>;
+  if (e.type !== "message_update") return null;
+  const message = e.message;
+  if (!message || typeof message !== "object") return null;
+  const m = message as Record<string, unknown>;
+  // Only stream the assistant's own text (skip a user/tool echo); a missing role
+  // during a turn is the assistant's streaming message, so it is not excluded.
+  if (typeof m.role === "string" && m.role !== "assistant") return null;
+  const content = m.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter(
+        (c): c is { type: string; text: string } =>
+          !!c &&
+          typeof c === "object" &&
+          (c as Record<string, unknown>).type === "text" &&
+          typeof (c as Record<string, unknown>).text === "string",
+      )
+      .map((c) => c.text)
+      .join("");
+  }
+  return null;
+}
+
 /// Split a pi tool name into `(server, tool)`: the first dotted segment is the
 /// server (Arlen proxy tools are namespaced `graph.`/`fs.`/`os.`), the rest the
 /// tool. A name with no dot is its own tool under an empty server.
