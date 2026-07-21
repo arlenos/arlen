@@ -33,13 +33,19 @@ if [ -z "$WD" ]; then echo "no headless sway socket - refusing to grab" >&2; exi
 # a leading Tab/click is unnecessary for the chat input, but type slowly so the
 # webview keystroke handler keeps up.
 sleep 3
-# Type the prompt, let the webview's growing-textarea handler settle, then submit
-# with Enter in the SAME invocation so focus/order is guaranteed.
+# Type the prompt, then SUBMIT by clicking the composer's send button (arrow-up at
+# ~1105,761 in the 1280x800 render) via ydotool - robust vs a flaky Enter keypress
+# under headless sway (ydotoold must be running; the /dev/uinput ACL grants the
+# session user). A trailing Enter is the fallback if the click misses.
 WAYLAND_DISPLAY="$WD" wtype -s 30 "$PROMPT" >/tmp/arlen-live-type.log 2>&1
 sleep 2
-WAYLAND_DISPLAY="$WD" wtype -k Return >>/tmp/arlen-live-type.log 2>&1
+# ydotoold binds the REAL runtime dir; point ydotool at it (the shoot's XDG is a
+# temp dir for sway isolation, where ydotoold does not listen).
+export YDOTOOL_SOCKET="${YDOTOOL_SOCKET:-$REALXDG/.ydotool_socket}"
+ydotool mousemove -a 1105 761 >>/tmp/arlen-live-type.log 2>&1
 sleep 1
-# Belt-and-suspenders: if Enter did not submit (picker/focus edge), Enter again.
+ydotool click 0xC0 >>/tmp/arlen-live-type.log 2>&1
+sleep 1
 WAYLAND_DISPLAY="$WD" wtype -k Return >>/tmp/arlen-live-type.log 2>&1
 # Wait for pi -> Ollama/qwen to stream the answer onto the A7 components.
 sleep "$WAIT"
