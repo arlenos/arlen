@@ -1,0 +1,5 @@
+# Starting permission profile for TIPP10 (a touch-typing tutor). A self-contained app: no file access, no
+# network and no Knowledge Graph - its data lives in its own app directory.
+[info]
+app_id = "tipp10"
+tier = "third-party"

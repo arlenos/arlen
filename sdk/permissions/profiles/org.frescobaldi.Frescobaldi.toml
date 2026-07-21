@@ -1,0 +1,8 @@
+# Starting permission profile for Frescobaldi (a LilyPond sheet-music editor); the Flathub id mirroring the apt `frescobaldi`. Opens and saves its documents from
+# Documents; no network and no Knowledge Graph access.
+[info]
+app_id = "org.frescobaldi.Frescobaldi"
+tier = "third-party"
+
+[filesystem]
+documents = true

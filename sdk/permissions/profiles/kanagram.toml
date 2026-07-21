@@ -1,0 +1,5 @@
+# Starting permission profile for Kanagram (the KDE letter-order word game). A self-contained app: no file access, no
+# network and no Knowledge Graph - its data lives in its own app directory.
+[info]
+app_id = "kanagram"
+tier = "third-party"
