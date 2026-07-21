@@ -158,6 +158,61 @@ async fn resolve_against(
     Err(format!("no tracked cookbook provides '{recipe_name}'"))
 }
 
+/// Enumerate every bridge tagged for `foreign_app` across the tracked cookbooks
+/// (foreign-app-bridges.md §4: `forage install <app>` finds the bridges to install
+/// when the app is installed). Loads the registry and collects from every signed,
+/// pinned cookbook. The consumer is the `forage install <app>` bridge-install flow
+/// (its consent gate is the remaining piece), so this is wired there, not exposed
+/// as its own command (the design auto-installs, it does not add a query verb).
+#[allow(dead_code)]
+pub async fn bridges_in_cookbooks(
+    foreign_app: &str,
+) -> Result<Vec<arlen_cookbook_resolve::ResolvedRecipe>, String> {
+    let registry = Registry::load()?;
+    bridges_against(&registry.cookbook, foreign_app).await
+}
+
+/// The bridge-discovery core over an explicit cookbook list (testable without the
+/// global registry path). Unlike [`resolve_against`] (first-match single recipe),
+/// this COLLECTS: a foreign app may be bridged by more than one cookbook. Layered
+/// by precedence, deduped by recipe name (the first cookbook to carry a name wins).
+/// A pinned-root mismatch fails closed (tamper); an unsigned or root-less cookbook
+/// is skipped; a malformed matching target propagates the error (fail-closed).
+async fn bridges_against(
+    cookbooks: &[Cookbook],
+    foreign_app: &str,
+) -> Result<Vec<arlen_cookbook_resolve::ResolvedRecipe>, String> {
+    let mut out: Vec<arlen_cookbook_resolve::ResolvedRecipe> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for c in cookbooks {
+        // Unsigned cookbooks never resolve (fail-closed), like resolve_against.
+        let Some(pin) = &c.pinned_root_sha256 else {
+            continue;
+        };
+        let metadata_dir = cookbook_metadata_dir(c);
+        let root_bytes = match std::fs::read(metadata_dir.join("root.json")) {
+            Ok(b) => b,
+            Err(_) => continue, // incomplete/removed clone; skip
+        };
+        if sha256_hex(&root_bytes) != *pin {
+            return Err(format!(
+                "cookbook '{}' root.json no longer matches its pinned hash; refusing (re-add it if the change is expected)",
+                c.name
+            ));
+        }
+        let bridges =
+            arlen_cookbook_resolve::enumerate_bridges_for(&root_bytes, &metadata_dir, foreign_app)
+                .await
+                .map_err(|e| format!("cookbook '{}': {e}", c.name))?;
+        for b in bridges {
+            if seen.insert(b.name.clone()) {
+                out.push(b);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Compute the trust pin for a cookbook: the sha256 (lowercase hex) of its
 /// `metadata/root.json`. Returns `None` if the cookbook has no such root (it is
 /// unsigned), reading via `symlink_metadata` discipline left to the caller's
@@ -418,6 +473,64 @@ mod tests {
             source: cookbook_dir.to_string_lossy().into_owned(),
             pinned_root_sha256: Some(pin),
         }
+    }
+
+    /// Like [`signed_cookbook_fixture`] but the recipe carries a `foreign_app` tag,
+    /// so it is a BRIDGE `enumerate_bridges_for` returns.
+    async fn signed_bridge_fixture(
+        cookbook_dir: &Path,
+        recipe_name: &str,
+        foreign_app: &str,
+    ) -> Cookbook {
+        use arlen_cookbook_sign::{generate_signing_key, sign_cookbook, Expiries, SignParams};
+        let md = cookbook_dir.join("metadata");
+        std::fs::create_dir_all(&md).unwrap();
+        let key = cookbook_dir.join("key.der");
+        generate_signing_key(&key).unwrap();
+        let recipe_bytes = format!("name = \"{recipe_name}\"\n").into_bytes();
+        let hash = sha256_hex(&recipe_bytes);
+        let toml = format!(
+            "[[recipe]]\nname = \"{recipe_name}\"\ngit_url = \"github.com/o/r\"\ncommit = \"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\"\nrecipe_hash = \"{hash}\"\nforeign_app = \"{foreign_app}\"\n"
+        );
+        let manifest = arlen_cookbook_index::parse(&toml).unwrap();
+        let mut recipes = std::collections::HashMap::new();
+        recipes.insert(recipe_name.to_string(), recipe_bytes);
+        sign_cookbook(SignParams {
+            manifest: &manifest,
+            recipes: &recipes,
+            key_path: &key,
+            out_dir: &md,
+            expiries: Expiries::defaults_from(chrono::Utc::now()),
+        })
+        .await
+        .unwrap();
+        let pin = root_pin(&md).unwrap();
+        Cookbook {
+            name: cookbook_dir.file_name().unwrap().to_string_lossy().into_owned(),
+            source: cookbook_dir.to_string_lossy().into_owned(),
+            pinned_root_sha256: Some(pin),
+        }
+    }
+
+    #[tokio::test]
+    async fn bridges_against_finds_the_matching_foreign_app() {
+        let dir = tempfile::tempdir().unwrap();
+        let cb = signed_bridge_fixture(&dir.path().join("taps"), "md.obsidian.bridge", "obsidian").await;
+        let found = bridges_against(&[cb.clone()], "obsidian").await.unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "md.obsidian.bridge");
+        // A different app has no bridge here.
+        assert!(bridges_against(&[cb], "vscode").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn bridges_against_dedups_by_recipe_name_across_cookbooks() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = signed_bridge_fixture(&dir.path().join("a"), "md.obsidian.bridge", "obsidian").await;
+        let b = signed_bridge_fixture(&dir.path().join("b"), "md.obsidian.bridge", "obsidian").await;
+        // Same recipe name in two cookbooks -> one result (first-precedence wins).
+        let found = bridges_against(&[a, b], "obsidian").await.unwrap();
+        assert_eq!(found.len(), 1);
     }
 
     #[tokio::test]
