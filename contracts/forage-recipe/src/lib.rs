@@ -84,6 +84,53 @@ pub struct Recipe {
     /// Reproducibility status (`[reproducible]`).
     #[serde(default)]
     pub reproducible: Option<Reproducible>,
+    /// Which foreign app this recipe bridges (`[bridge]`), when it is a bridge.
+    /// `forage install <foreign_app>` finds every cookbook recipe carrying this id
+    /// and installs its bridge alongside the app (foreign-app-bridges.md §4).
+    #[serde(default)]
+    pub bridge: Option<Bridge>,
+    /// The two-halves install manifest (`[install]`), required for a bridge: the
+    /// Arlen-side schema/mapping files and the foreign-side plugin drop.
+    #[serde(default)]
+    pub install: Option<Install>,
+}
+
+/// Which foreign app a bridge serves (`[bridge]`).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Bridge {
+    /// The foreign app's short id (e.g. `"obsidian"`): a lowercase identifier, NOT
+    /// reverse-DNS. It is matched against `forage install <name>` and against the
+    /// installed-app set, so it names the foreign app, not the bridge package.
+    pub foreign_app: String,
+}
+
+/// The two-halves install manifest for a bridge (`[install]`).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Install {
+    /// Files installed into Arlen's own bridge dir (e.g. `entities.toml`,
+    /// `bridge.toml`): relative paths taken from the fetched recipe source. They
+    /// register the schema and load the mapping on the Arlen side.
+    #[serde(default)]
+    pub arlen_side: Vec<PathBuf>,
+    /// The foreign-side plugin drop (into the foreign app's own config dir).
+    pub foreign_side: ForeignSide,
+}
+
+/// Where and what to install on the foreign app's side (`[install.foreign_side]`).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ForeignSide {
+    /// Destination directory TEMPLATE inside the foreign app's config, e.g.
+    /// `"$VAULT/.obsidian/plugins/md-obsidian-bridge/"`. The install command
+    /// resolves the template and enforces path safety at install time; the schema
+    /// records the declared form and rejects a literal `..` traversal.
+    pub into: String,
+    /// Plugin files to copy there (e.g. `main.js`, `manifest.json`): relative paths
+    /// from the fetched recipe source.
+    #[serde(default)]
+    pub files: Vec<PathBuf>,
 }
 
 /// Identity and metadata (`[recipe]`).
@@ -501,7 +548,56 @@ pub fn validate(recipe: &Recipe) -> Vec<ValidationError> {
         validate_build(build, &mut errors);
     }
 
+    validate_bridge(recipe, &mut errors);
+
     errors
+}
+
+/// Validate the `[bridge]` + `[install]` pair. A bridge (foreign-app-bridges.md §4)
+/// must name a valid foreign app and carry an install manifest; every listed file
+/// must be a safe relative path (no absolute, no `..`), because the install command
+/// copies them out of the fetched recipe source into Arlen's and the foreign app's
+/// dirs, and a traversal path would escape both.
+fn validate_bridge(recipe: &Recipe, errors: &mut Vec<ValidationError>) {
+    if let Some(bridge) = &recipe.bridge {
+        if !is_valid_foreign_app(&bridge.foreign_app) {
+            errors.push(err(
+                "bridge.foreign_app",
+                "must be a non-empty lowercase id ([a-z0-9._-])",
+            ));
+        }
+        // A bridge with no install manifest can register nothing; the two are a
+        // pair (the `[bridge]` tag says WHICH app, `[install]` says WHAT to place).
+        if recipe.install.is_none() {
+            errors.push(err("install", "a [bridge] recipe requires an [install] section"));
+        }
+    }
+
+    if let Some(install) = &recipe.install {
+        for (i, p) in install.arlen_side.iter().enumerate() {
+            if !is_safe_relative_path(p) {
+                errors.push(err(
+                    &format!("install.arlen_side[{i}]"),
+                    "must be a safe relative path (no absolute, no '..')",
+                ));
+            }
+        }
+        if install.foreign_side.into.trim().is_empty() {
+            errors.push(err("install.foreign_side.into", "must not be empty"));
+        } else if path_has_parent_traversal(&install.foreign_side.into) {
+            // Deep template resolution + confinement is the install command's job;
+            // a literal `..` in the declared destination is rejected up front.
+            errors.push(err("install.foreign_side.into", "must not contain a '..' component"));
+        }
+        for (i, p) in install.foreign_side.files.iter().enumerate() {
+            if !is_safe_relative_path(p) {
+                errors.push(err(
+                    &format!("install.foreign_side.files[{i}]"),
+                    "must be a safe relative path (no absolute, no '..')",
+                ));
+            }
+        }
+    }
 }
 
 fn validate_source(source: &Source, i: usize, errors: &mut Vec<ValidationError>) {
@@ -749,6 +845,38 @@ fn is_null_oid(s: &str) -> bool {
 /// deriving filesystem paths from it.
 pub fn is_valid_id(id: &str) -> bool {
     is_reverse_domain(id)
+}
+
+/// Whether `s` is a valid foreign-app id: a non-empty lowercase identifier of
+/// `[a-z0-9._-]`. Unlike a recipe id it is NOT reverse-DNS - it names the foreign
+/// app itself (e.g. `obsidian`, `vscode`), matched against `forage install <name>`.
+pub fn is_valid_foreign_app(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-' || c == '_')
+}
+
+/// Whether `p` is a safe relative path to copy out of a fetched recipe source:
+/// non-empty, not absolute, and with no `..` component (which would escape the
+/// source or the install destination).
+fn is_safe_relative_path(p: &Path) -> bool {
+    use std::path::Component;
+    let mut any = false;
+    for c in p.components() {
+        any = true;
+        match c {
+            Component::Normal(_) | Component::CurDir => {}
+            // RootDir/Prefix = absolute; ParentDir = traversal.
+            _ => return false,
+        }
+    }
+    any
+}
+
+/// Whether a destination template string contains a literal `..` path component
+/// (checked before template resolution as a cheap up-front reject).
+fn path_has_parent_traversal(s: &str) -> bool {
+    s.split(['/', '\\']).any(|seg| seg == "..")
 }
 
 /// Whether a string looks like reverse-DNS notation (at least two
@@ -1077,6 +1205,101 @@ maintainer = "key:abc"
 bogus = "x"
 "#;
         assert!(matches!(parse(toml), Err(RecipeError::Parse(_))));
+    }
+
+    /// A recipe.toml for a bridge, mirroring foreign-app-bridges.md §4.
+    fn bridge_toml(bridge_and_install: &str) -> String {
+        format!(
+            r#"
+[recipe]
+id = "md.obsidian.bridge"
+name = "Obsidian -> Arlen"
+maintainer = "key:abc"
+
+[[source]]
+type = "git"
+url = "https://github.com/example/obsidian-bridge"
+commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+{bridge_and_install}
+"#
+        )
+    }
+
+    #[test]
+    fn a_valid_bridge_recipe_parses_and_validates() {
+        let toml = bridge_toml(
+            r#"[bridge]
+foreign_app = "obsidian"
+
+[install]
+arlen_side = ["entities.toml", "bridge.toml"]
+
+[install.foreign_side]
+into = "$VAULT/.obsidian/plugins/md-obsidian-bridge/"
+files = ["main.js", "manifest.json"]"#,
+        );
+        let recipe = parse(&toml).expect("parses");
+        assert_eq!(recipe.bridge.as_ref().unwrap().foreign_app, "obsidian");
+        assert_eq!(recipe.install.as_ref().unwrap().arlen_side.len(), 2);
+        assert_eq!(recipe.install.as_ref().unwrap().foreign_side.files.len(), 2);
+        assert!(validate(&recipe).is_empty(), "{:?}", validate(&recipe));
+    }
+
+    #[test]
+    fn a_bridge_without_an_install_section_is_fatal() {
+        let toml = bridge_toml(
+            r#"[bridge]
+foreign_app = "obsidian""#,
+        );
+        let errors = validate(&parse(&toml).expect("parses"));
+        assert!(errors.iter().any(|e| e.field == "install"), "{errors:?}");
+    }
+
+    #[test]
+    fn an_invalid_foreign_app_id_is_fatal() {
+        let toml = bridge_toml(
+            r#"[bridge]
+foreign_app = "Obsidian App"
+
+[install]
+[install.foreign_side]
+into = "x/"
+files = ["main.js"]"#,
+        );
+        let errors = validate(&parse(&toml).expect("parses"));
+        assert!(errors.iter().any(|e| e.field == "bridge.foreign_app"), "{errors:?}");
+    }
+
+    #[test]
+    fn a_traversal_or_absolute_install_path_is_fatal() {
+        let toml = bridge_toml(
+            r#"[bridge]
+foreign_app = "obsidian"
+
+[install]
+arlen_side = ["../../etc/passwd"]
+
+[install.foreign_side]
+into = "../escape/"
+files = ["/abs/main.js"]"#,
+        );
+        let errors = validate(&parse(&toml).expect("parses"));
+        assert!(errors.iter().any(|e| e.field == "install.arlen_side[0]"), "{errors:?}");
+        assert!(errors.iter().any(|e| e.field == "install.foreign_side.into"), "{errors:?}");
+        assert!(errors.iter().any(|e| e.field == "install.foreign_side.files[0]"), "{errors:?}");
+    }
+
+    #[test]
+    fn foreign_app_and_safe_path_helpers() {
+        assert!(is_valid_foreign_app("obsidian"));
+        assert!(is_valid_foreign_app("md.obsidian"));
+        assert!(!is_valid_foreign_app("Obsidian"));
+        assert!(!is_valid_foreign_app(""));
+        assert!(is_safe_relative_path(Path::new("a/b.js")));
+        assert!(!is_safe_relative_path(Path::new("../a")));
+        assert!(!is_safe_relative_path(Path::new("/a")));
+        assert!(!is_safe_relative_path(Path::new("")));
     }
 
     #[test]
