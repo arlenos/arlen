@@ -360,6 +360,16 @@ fn target_for(entry: &RecipeEntry, bytes: &[u8]) -> Result<Target, SignError> {
     );
     let cap = serde_json::to_value(&entry.capability_cap).map_err(|e| SignError::Tuf(e.to_string()))?;
     custom.insert("capability_cap".to_string(), cap);
+    // A bridge recipe carries its foreign-app trigger in the signed target so
+    // `forage install <foreign_app>` can enumerate + auto-install it without
+    // fetching each recipe (foreign-app-bridges.md §4). Only emitted for bridge
+    // recipes; a normal recipe omits it entirely.
+    if let Some(foreign_app) = &entry.foreign_app {
+        custom.insert(
+            "foreign_app".to_string(),
+            serde_json::Value::String(foreign_app.clone()),
+        );
+    }
     Ok(Target {
         length: bytes.len() as u64,
         hashes: Hashes {
