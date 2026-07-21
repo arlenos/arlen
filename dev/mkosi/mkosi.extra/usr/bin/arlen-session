@@ -58,7 +58,17 @@ while [ "$i" -lt 100 ]; do
     i=$((i + 1))
     sleep 0.1
 done
-[ -n "$wl" ] && export WAYLAND_DISPLAY="$wl"
+if [ -n "$wl" ]; then
+    export WAYLAND_DISPLAY="$wl"
+else
+    # The compositor never published its Wayland socket in the budget above, so
+    # nothing graphical can start (the shell + verify-app launches below are both
+    # gated on $wl). On this headless appliance the serial is the only channel, so
+    # say so plainly - a silent black screen otherwise reads as a mystery. The
+    # cause is upstream (cosmic-comp init: check its journal lines above for an
+    # EGL/xkb/DRM failure), not this script.
+    echo "arlen-session: cosmic-comp published no Wayland socket within 10s; the shell and any verify app will NOT start (compositor init failed - see the cosmic-comp journal above)" | systemd-cat -t arlen-session
+fi
 
 # Make the env visible to any systemd --user services too (best-effort).
 systemctl --user import-environment \
