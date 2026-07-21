@@ -1,0 +1,16 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-forage-bridge-install"
+version = "0.1.0"
+edition = "2021"
+description = "Install the two halves of a foreign-app bridge from a fetched recipe source (path-safe copy into Arlen's and the foreign app's dirs)"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
