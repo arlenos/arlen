@@ -190,6 +190,11 @@ def main():
     ap.add_argument("--image", default=os.path.join(here, "..", "mkosi", "arlen.raw"))
     ap.add_argument("--wait", type=int, default=40, help="seconds to let the session come up")
     ap.add_argument("--out", default=os.path.join(here, "shot.png"))
+    ap.add_argument("--serial-out", default=None, metavar="PATH",
+                    help="persist the guest serial log to PATH (else it is discarded "
+                         "with the temp dir). Used by the black-screen multi-boot "
+                         "characterisation to read which init_egl stage marker was "
+                         "last before a black boot.")
     ap.add_argument("--require-bar", action="store_true",
                     help="fail unless the shell's top bar is present (full-desktop gate)")
     ap.add_argument("--super", dest="press_super", action="store_true",
@@ -355,6 +360,13 @@ def main():
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
+
+    # Persist the serial BEFORE the screendump-failure exit, so a black or failed
+    # boot still saves its log - that is exactly the run whose last init_egl stage
+    # marker pins the software-GL hang.
+    if args.serial_out and os.path.exists(serial):
+        shutil.copyfile(serial, os.path.abspath(args.serial_out))
+        print(f"serial: {os.path.abspath(args.serial_out)}")
 
     if not (os.path.exists(out) and os.path.getsize(out) > 0):
         sys.exit("no screenshot captured")
