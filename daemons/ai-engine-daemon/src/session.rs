@@ -11,6 +11,7 @@
 //! exactly its granted authority, no more.
 
 use ai_engine_contract::{CapabilityContext, ReadTier, SessionInit};
+use arlen_permissions::identity::pid_start_time;
 use std::collections::HashMap;
 
 /// Bytes of CSPRNG entropy in a session token (256 bits, hex-encoded).
@@ -73,6 +74,14 @@ pub enum SessionError {
 #[derive(Default)]
 pub struct SessionStore {
     sessions: HashMap<String, SessionGrant>,
+    /// Per-token start-time of the bound pid (recycle-proofing). Kept parallel to
+    /// `sessions` so a session's authority grant stays a pure value, while binding
+    /// integrity (is this pid still the process it was bound to?) lives in the
+    /// store. A bare pid compare admits a same-uid process that reuses the bound
+    /// pid after the engine exits; comparing the pid's start-time as well rejects
+    /// it, since a recycled pid belongs to a different process with a different
+    /// start-time.
+    start_times: HashMap<String, u64>,
 }
 
 impl SessionStore {
@@ -94,6 +103,20 @@ impl SessionStore {
     /// mints the token before spawning the engine (so it can pass it in the
     /// child's env) and binds it here once the spawned pid is known.
     pub fn bind(&mut self, token: SessionToken, init: &SessionInit, pid: u32) {
+        // Capture the bound pid's start-time so a later verb from a recycled pid
+        // (a different process that reused this pid after the engine exited) is
+        // rejected even with a valid token. A read failure here (the just-spawned
+        // pid already gone) stores a sentinel that no live pid's start-time can
+        // match, so the session is dead-on-arrival - fail-closed, never fail-open.
+        let start_time = pid_start_time(pid).unwrap_or(u64::MAX);
+        self.bind_checked(token, init, pid, start_time);
+    }
+
+    /// Bind with an explicit start-time (the pure core; [`bind`] reads the live
+    /// start-time and delegates here). Separated so the recycle-proofing is
+    /// unit-testable without a live pid.
+    fn bind_checked(&mut self, token: SessionToken, init: &SessionInit, pid: u32, start_time: u64) {
+        self.start_times.insert(token.0.clone(), start_time);
         self.sessions.insert(
             token.0,
             SessionGrant {
@@ -111,8 +134,33 @@ impl SessionStore {
     /// the server-side authority bound - a stolen token from another process
     /// (different pid) is refused.
     pub fn grant_for(&self, token: &SessionToken, pid: u32) -> Result<&SessionGrant, SessionError> {
+        // Re-read the calling pid's start-time now; a pid recycled to a different
+        // process has a different start-time. A read failure (the pid already gone)
+        // is fail-closed: no live process is presenting, so nothing is authorized.
+        let now_start = pid_start_time(pid).map_err(|_| SessionError::PidMismatch)?;
+        self.grant_for_checked(token, pid, now_start)
+    }
+
+    /// Resolve with an explicit current start-time (the pure core; [`grant_for`]
+    /// reads the live start-time and delegates here). Fail-closed: the token must
+    /// exist, the calling pid must match, AND that pid's start-time must equal the
+    /// one bound at creation, else the pid was reused by another process after the
+    /// engine exited. Separated so the recycle-proofing is unit-testable.
+    fn grant_for_checked(
+        &self,
+        token: &SessionToken,
+        pid: u32,
+        now_start: u64,
+    ) -> Result<&SessionGrant, SessionError> {
         let grant = self.sessions.get(&token.0).ok_or(SessionError::UnknownToken)?;
         if grant.pid != pid {
+            return Err(SessionError::PidMismatch);
+        }
+        // A missing start-time entry cannot happen while `sessions` holds the token
+        // (bind writes both); a sentinel that no live start-time matches keeps it
+        // fail-closed if it ever did.
+        let bound_start = self.start_times.get(&token.0).copied().unwrap_or(u64::MAX);
+        if now_start != bound_start {
             return Err(SessionError::PidMismatch);
         }
         Ok(grant)
@@ -122,6 +170,7 @@ impl SessionStore {
     /// `UnknownToken`.
     pub fn end(&mut self, token: &SessionToken) {
         self.sessions.remove(&token.0);
+        self.start_times.remove(&token.0);
     }
 
     /// The number of live sessions.
@@ -183,35 +232,53 @@ mod tests {
     }
 
     #[test]
-    fn a_session_resolves_only_for_its_bound_pid() {
+    fn a_session_resolves_only_for_its_bound_pid_and_start_time() {
         let mut store = SessionStore::new();
-        let token = store.create(&init(), 4242).unwrap();
+        let token = SessionToken::mint().unwrap();
+        // Bind to pid 4242 with start-time 100 (explicit, no live pid needed).
+        store.bind_checked(token.clone(), &init(), 4242, 100);
 
-        // Right token + right pid: the bound grant.
-        let grant = store.grant_for(&token, 4242).unwrap();
+        // Right token + right pid + right start-time: the bound grant.
+        let grant = store.grant_for_checked(&token, 4242, 100).unwrap();
         assert_eq!(grant.project_anchor.as_deref(), Some("proj-1"));
         assert_eq!(grant.read_tier, ReadTier::Standard);
         assert_eq!(grant.capability_context.proxy_tools, vec!["graph.read".to_string()]);
 
         // Right token, WRONG pid (a stolen token from another process): refused.
-        assert_eq!(store.grant_for(&token, 9999), Err(SessionError::PidMismatch));
+        assert_eq!(store.grant_for_checked(&token, 9999, 100), Err(SessionError::PidMismatch));
+    }
+
+    #[test]
+    fn a_recycled_pid_with_a_different_start_time_is_refused() {
+        // The recycle-proofing: after the engine exits, a same-uid process reuses
+        // the bound pid number. Even holding a valid token AND matching the pid
+        // number, a different process (different start-time) is rejected.
+        let mut store = SessionStore::new();
+        let token = SessionToken::mint().unwrap();
+        store.bind_checked(token.clone(), &init(), 4242, 100);
+        // Same token, same pid number, but the pid now has a different start-time.
+        assert_eq!(store.grant_for_checked(&token, 4242, 200), Err(SessionError::PidMismatch));
+        // The genuine engine (matching start-time) still resolves.
+        assert!(store.grant_for_checked(&token, 4242, 100).is_ok());
     }
 
     #[test]
     fn an_unknown_token_is_refused() {
         let store = SessionStore::new();
         let fake = SessionToken("deadbeef".into());
-        assert_eq!(store.grant_for(&fake, 4242), Err(SessionError::UnknownToken));
+        assert_eq!(store.grant_for_checked(&fake, 4242, 100), Err(SessionError::UnknownToken));
     }
 
     #[test]
-    fn ending_a_session_revokes_the_token() {
+    fn ending_a_session_revokes_the_token_and_its_start_time() {
         let mut store = SessionStore::new();
-        let token = store.create(&init(), 1).unwrap();
-        assert!(store.grant_for(&token, 1).is_ok());
+        let token = SessionToken::mint().unwrap();
+        store.bind_checked(token.clone(), &init(), 1, 50);
+        assert!(store.grant_for_checked(&token, 1, 50).is_ok());
         store.end(&token);
-        assert_eq!(store.grant_for(&token, 1), Err(SessionError::UnknownToken));
+        assert_eq!(store.grant_for_checked(&token, 1, 50), Err(SessionError::UnknownToken));
         assert!(store.is_empty());
+        assert!(store.start_times.is_empty(), "the start-time entry is cleared too");
         // End is idempotent.
         store.end(&token);
     }
@@ -219,11 +286,25 @@ mod tests {
     #[test]
     fn tokens_are_distinct_and_long() {
         let mut store = SessionStore::new();
-        let a = store.create(&init(), 1).unwrap();
-        let b = store.create(&init(), 1).unwrap();
+        let a = SessionToken::mint().unwrap();
+        let b = SessionToken::mint().unwrap();
+        store.bind_checked(a.clone(), &init(), 1, 10);
+        store.bind_checked(b.clone(), &init(), 1, 10);
         assert_ne!(a, b, "each session gets a fresh token");
         assert_eq!(a.as_str().len(), TOKEN_BYTES * 2, "256-bit hex token");
         assert!(a.as_str().chars().all(|c| c.is_ascii_hexdigit()));
         assert_eq!(store.len(), 2);
+    }
+
+    #[test]
+    fn create_and_resolve_over_the_live_pid_path() {
+        // Exercises the real I/O path (bind + grant_for read /proc start-time) using
+        // the test process's own live pid, so the start-time read succeeds and the
+        // round-trip resolves. A pid whose number differs is refused.
+        let mut store = SessionStore::new();
+        let me = std::process::id();
+        let token = store.create(&init(), me).unwrap();
+        assert!(store.grant_for(&token, me).is_ok());
+        assert!(store.grant_for(&token, me.wrapping_add(1)).is_err());
     }
 }

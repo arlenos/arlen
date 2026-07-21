@@ -468,9 +468,9 @@ mod tests {
     #[tokio::test]
     async fn a_valid_session_reaches_each_seam() {
         let (d, g, e, r) = dispatcher();
-        let token = d.init_session(&init(), 100).unwrap();
+        let token = d.init_session(&init(), std::process::id()).unwrap();
 
-        let dec = d.authorize(&token, 100, &Authorize {
+        let dec = d.authorize(&token, std::process::id(), &Authorize {
             tool_name: "bash".into(),
             tool_input: serde_json::json!({}),
             external_triggered: false,
@@ -484,7 +484,7 @@ mod tests {
         assert_eq!(g.load(Ordering::SeqCst), 1);
 
         // Execute presents the proof for the SAME tool + args; the executor runs.
-        let out = d.execute(&token, 100, &Execute {
+        let out = d.execute(&token, std::process::id(), &Execute {
             tool_name: "bash".into(),
             tool_input: serde_json::json!({}),
             proof: proof.clone(),
@@ -494,7 +494,7 @@ mod tests {
 
         // The proof is single-use: a replay is refused and the executor is NOT
         // called again (HIGH-1 enforcement).
-        let replay = d.execute(&token, 100, &Execute {
+        let replay = d.execute(&token, std::process::id(), &Execute {
             tool_name: "bash".into(),
             tool_input: serde_json::json!({}),
             proof,
@@ -502,7 +502,7 @@ mod tests {
         assert!(matches!(replay, ExecuteOutcome::Error { code: ContractError::PermissionDenied, .. }));
         assert_eq!(e.load(Ordering::SeqCst), 1, "a consumed proof does not reach the executor");
 
-        let ack = d.report(&token, 100, &Report {
+        let ack = d.report(&token, std::process::id(), &Report {
             tool_name: "graph.read".into(),
             tool_call_id: "c1".into(),
             result: serde_json::json!({}),
@@ -520,8 +520,8 @@ mod tests {
             SpyExecutor { calls: Arc::new(AtomicUsize::new(0)) },
             SpyReporter { calls: Arc::new(AtomicUsize::new(0)) },
         );
-        let token = d.init_session(&init(), 100).unwrap();
-        let dec = d.authorize(&token, 100, &Authorize {
+        let token = d.init_session(&init(), std::process::id()).unwrap();
+        let dec = d.authorize(&token, std::process::id(), &Authorize {
             tool_name: "bash".into(),
             tool_input: serde_json::json!({}),
             external_triggered: false,
@@ -533,15 +533,15 @@ mod tests {
     #[tokio::test]
     async fn no_valid_session_fails_closed_without_touching_seams() {
         let (d, g, e, r) = dispatcher();
-        let token = d.init_session(&init(), 100).unwrap();
+        let token = d.init_session(&init(), std::process::id()).unwrap();
         let bad = SessionToken_for_test();
 
         // Unknown token -> Deny / Error / Block, seams untouched.
-        let dec = d.authorize(&bad, 100, &authz()).await;
+        let dec = d.authorize(&bad, std::process::id(), &authz()).await;
         assert!(matches!(dec, AuthorizeDecision::Deny { .. }));
-        let out = d.execute(&bad, 100, &exec()).await;
+        let out = d.execute(&bad, std::process::id(), &exec()).await;
         assert!(matches!(out, ExecuteOutcome::Error { code: ContractError::PermissionDenied, .. }));
-        let ack = d.report(&bad, 100, &report()).await;
+        let ack = d.report(&bad, std::process::id(), &report()).await;
         assert_eq!(ack.screen, ScreenVerdict::Block);
 
         // A real token from the WRONG pid is likewise refused at every verb.
@@ -560,9 +560,9 @@ mod tests {
     #[tokio::test]
     async fn ending_a_session_fails_subsequent_verbs_closed() {
         let (d, _g, _e, _r) = dispatcher();
-        let token = d.init_session(&init(), 100).unwrap();
+        let token = d.init_session(&init(), std::process::id()).unwrap();
         d.end_session(&token);
-        assert!(matches!(d.authorize(&token, 100, &authz()).await, AuthorizeDecision::Deny { .. }));
+        assert!(matches!(d.authorize(&token, std::process::id(), &authz()).await, AuthorizeDecision::Deny { .. }));
     }
 
     /// A consent surface that records the confirmation it was asked and returns a
@@ -597,9 +597,9 @@ mod tests {
     async fn a_gate_confirm_with_approved_consent_becomes_allow() {
         let seen = Arc::new(StdMutex::new(None));
         let d = confirm_dispatcher(Arc::new(MockConsent { approve: true, seen: seen.clone() }));
-        let token = d.init_session(&init(), 100).unwrap();
+        let token = d.init_session(&init(), std::process::id()).unwrap();
         let dec = d
-            .authorize(&token, 100, &Authorize {
+            .authorize(&token, std::process::id(), &Authorize {
                 tool_name: "graph.write".into(),
                 tool_input: serde_json::json!({}),
                 external_triggered: true,
@@ -617,8 +617,8 @@ mod tests {
             approve: false,
             seen: Arc::new(StdMutex::new(None)),
         }));
-        let token = d.init_session(&init(), 100).unwrap();
-        match d.authorize(&token, 100, &authz()).await {
+        let token = d.init_session(&init(), std::process::id()).unwrap();
+        match d.authorize(&token, std::process::id(), &authz()).await {
             AuthorizeDecision::Deny { reason } => {
                 assert!(reason.contains("not confirmed"), "deny reason: {reason}")
             }
@@ -639,9 +639,9 @@ mod tests {
             SpyExecutor { calls: Arc::new(AtomicUsize::new(0)) },
             SpyReporter { calls: Arc::new(AtomicUsize::new(0)) },
         );
-        let token = d.init_session(&init(), 100).unwrap();
+        let token = d.init_session(&init(), std::process::id()).unwrap();
         assert!(
-            matches!(d.authorize(&token, 100, &authz()).await, AuthorizeDecision::Deny { .. }),
+            matches!(d.authorize(&token, std::process::id(), &authz()).await, AuthorizeDecision::Deny { .. }),
             "the default consent surface denies a confirm"
         );
     }
@@ -684,8 +684,8 @@ mod tests {
             seen: seen.clone(),
             token: "biscuit-xyz".into(),
         })));
-        let token = d.init_session(&init(), 100).unwrap();
-        let dec = d.authorize(&token, 100, &Authorize {
+        let token = d.init_session(&init(), std::process::id()).unwrap();
+        let dec = d.authorize(&token, std::process::id(), &Authorize {
             tool_name: "run_command".into(),
             tool_input: serde_json::json!({"command": "ls", "args": ["-la", "/work"]}),
             external_triggered: false,
@@ -706,8 +706,8 @@ mod tests {
         // Confirmed by the user, but no minter wired -> no consent credential -> the
         // MCP server fails closed.
         let d = confirmed_run_dispatcher(None);
-        let token = d.init_session(&init(), 100).unwrap();
-        let dec = d.authorize(&token, 100, &Authorize {
+        let token = d.init_session(&init(), std::process::id()).unwrap();
+        let dec = d.authorize(&token, std::process::id(), &Authorize {
             tool_name: "run_command".into(),
             tool_input: serde_json::json!({"command": "ls"}),
             external_triggered: false,
@@ -728,8 +728,8 @@ mod tests {
             SpyReporter { calls: Arc::new(AtomicUsize::new(0)) },
         )
         .with_consent_minter(Arc::new(MockMinter { seen: seen.clone(), token: "biscuit-xyz".into() }));
-        let token = d.init_session(&init(), 100).unwrap();
-        let dec = d.authorize(&token, 100, &Authorize {
+        let token = d.init_session(&init(), std::process::id()).unwrap();
+        let dec = d.authorize(&token, std::process::id(), &Authorize {
             tool_name: "run_command".into(),
             tool_input: serde_json::json!({"command": "ls"}),
             external_triggered: false,
