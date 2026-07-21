@@ -34,7 +34,9 @@ use crate::attenuate::{attenuate, AttenuationError};
 use crate::audit::credential_handout_event;
 use crate::config::{self, AccountConfig, Service};
 use crate::gate::{Access, AccessGate};
+use crate::launcher::{self, RcloneMount};
 use crate::vault::Vault;
+use std::collections::HashMap;
 
 /// The accounts daemon's served object: the account-config directory (re-read
 /// per call so grant changes take effect immediately, see [`current_accounts`])
@@ -48,6 +50,10 @@ pub struct AccountsDaemon {
     /// Live caller presence (bus name -> app id), recorded on each admitted call,
     /// so an account-change signal is unicast only to granted apps' connections.
     peers: Arc<Mutex<PeerRegistry>>,
+    /// Live confined rclone mounts, keyed by account id (one drive per account,
+    /// shared by every granted caller). `Mount` inserts here, `Unmount` removes +
+    /// tears down. Held only across the quick insert/remove, never an await.
+    mounts: Arc<Mutex<HashMap<String, RcloneMount>>>,
 }
 
 impl AccountsDaemon {
@@ -60,6 +66,7 @@ impl AccountsDaemon {
             vault,
             audit: LedgerAuditSink::at_default_socket(),
             peers,
+            mounts: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -216,6 +223,113 @@ impl AccountsDaemon {
         }
         Ok((token, scope))
     }
+
+    /// Mount the account's `Files` drive: a confined rclone under `arlen-run`
+    /// (the §0 egress netns + Landlock + seccomp + cgroup), scoped to the
+    /// provider host. Refused for an ungranted caller or an account with no
+    /// dialable `[files]` backend. Idempotent - an already-mounted account
+    /// returns its mount point. S13-audited before the confined subprocess is
+    /// spawned (a ledger failure refuses rather than mounting unrecorded).
+    /// Returns the mount point path.
+    async fn mount(
+        &self,
+        account_id: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
+        let Ok(caller) = resolve_caller_app_id_guarded(&header, connection).await else {
+            return Err(zbus::fdo::Error::AccessDenied("unresolved caller".into()));
+        };
+        self.record_peer(&header, &caller);
+        let accounts = self.current_accounts();
+        // The files backend's password from the vault (a key_file sftp has none).
+        // Fail-closed to None on any vault error; rclone then fails at connect
+        // (surfaced), never the daemon guessing a credential.
+        let secret = self
+            .vault
+            .load(&account_id)
+            .ok()
+            .flatten()
+            .and_then(|b| String::from_utf8(b).ok());
+        let Some((runtime_dir, cache_dir)) = mount_dirs(&account_id) else {
+            return Err(zbus::fdo::Error::Failed("no runtime directory".into()));
+        };
+        let resolved = launcher::resolve_mount(
+            &accounts,
+            &caller,
+            &account_id,
+            &runtime_dir,
+            &cache_dir,
+            secret.as_deref(),
+        )
+        .map_err(|_| zbus::fdo::Error::AccessDenied("mount refused".into()))?;
+        let mount_point = resolved.plan.mount_point.to_string_lossy().into_owned();
+        // Idempotent: an already-mounted account returns its point (the grant was
+        // re-verified by resolve_mount above). The lock is held only for the check.
+        if self.mounts.lock().map(|m| m.contains_key(&account_id)).unwrap_or(false) {
+            return Ok(mount_point);
+        }
+        // S13: a mount launches a credential-bearing confined subprocess; audit it
+        // before spawning, and refuse if the ledger cannot record it.
+        if self
+            .audit
+            .submit(credential_handout_event(&caller, "files", "mount"))
+            .await
+            .is_err()
+        {
+            return Err(zbus::fdo::Error::Failed("mount unavailable".into()));
+        }
+        let mount = launcher::spawn_confined_mount(&resolved.paths, &resolved.plan, &resolved.hosts)
+            .await
+            .map_err(|_| zbus::fdo::Error::Failed("mount failed".into()))?;
+        if let Ok(mut mounts) = self.mounts.lock() {
+            mounts.insert(account_id, mount);
+        }
+        Ok(mount_point)
+    }
+
+    /// Unmount the account's `Files` drive and stop its confined rclone. Requires
+    /// the same `Files` grant, so one app cannot tear down another's drive.
+    /// Idempotent - unmounting a not-mounted account succeeds.
+    async fn unmount(
+        &self,
+        account_id: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        let Ok(caller) = resolve_caller_app_id_guarded(&header, connection).await else {
+            return Err(zbus::fdo::Error::AccessDenied("unresolved caller".into()));
+        };
+        self.record_peer(&header, &caller);
+        let accounts = self.current_accounts();
+        if !matches!(
+            AccessGate::new(&accounts).access(&caller, &account_id, Service::Files),
+            Access::Granted { .. }
+        ) {
+            return Err(zbus::fdo::Error::AccessDenied("no grant for this account".into()));
+        }
+        // Take the handle out under the lock, then tear it down off-lock.
+        let mount = self.mounts.lock().ok().and_then(|mut m| m.remove(&account_id));
+        match mount {
+            Some(m) => m
+                .unmount()
+                .await
+                .map_err(|_| zbus::fdo::Error::Failed("unmount failed".into())),
+            None => Ok(()),
+        }
+    }
+}
+
+/// The per-account runtime dir (`XDG_RUNTIME_DIR`) and rclone cache dir
+/// (`XDG_CACHE_HOME`, else `~/.cache`, under `arlen/rclone/{id}`) for a confined
+/// mount. `None` when neither base is set - the daemon cannot place the mount.
+fn mount_dirs(account_id: &str) -> Option<(PathBuf, PathBuf)> {
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from)?;
+    let cache_base = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
+    let cache = cache_base.join("arlen").join("rclone").join(account_id);
+    Some((runtime, cache))
 }
 
 /// The management ObjectManager surface (online-accounts-plan.md §3.1), a separate
