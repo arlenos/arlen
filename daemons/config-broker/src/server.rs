@@ -16,8 +16,12 @@ use arlen_permissions::identity::app_id_from_pid;
 use arlen_permissions::peer_pidfd::PeerPidfd;
 use audit_proto::sink::AuditSink;
 
-use crate::protocol::{handle_request, read_frame_async, write_frame_async, Request};
-use crate::state::{changed_security_keys, switch_change_event, StateStore};
+use crate::protocol::{
+    handle_request, is_admitted_writer, read_frame_async, write_frame_async, Request, Response,
+};
+use crate::state::{
+    changed_security_keys, escalates, switch_change_event, AiMasterSwitches, StateStore,
+};
 
 /// The broker socket path: the `ARLEN_CONFIG_BROKER_SOCKET` override,
 /// else `$XDG_RUNTIME_DIR/arlen/config-broker.sock`, else
@@ -52,6 +56,25 @@ pub fn owner_uid() -> u32 {
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or_else(current_uid)
+}
+
+/// The ingest socket of the OWNER's user auditd -
+/// `/run/user/<owner_uid>/arlen/audit-ingest.sock`. There is ONE ledger,
+/// the owner's: the broker runs as a distinct (more-privileged) service
+/// uid, so its own `$XDG_RUNTIME_DIR` points at a different runtime dir
+/// than the user's, and the default resolver's `/run/arlen` fallback is
+/// bound by nothing. A trusted root/service daemon writing the user's
+/// ledger is fine - the user auditd admits the canonical config-broker
+/// binary by inode. In dev (single-uid) `owner_uid` is the developer's
+/// own uid, so this resolves to exactly the user's live auditd socket.
+pub fn owner_audit_socket() -> PathBuf {
+    if let Some(p) = std::env::var_os("ARLEN_CONFIG_BROKER_AUDIT_SOCKET") {
+        return PathBuf::from(p);
+    }
+    PathBuf::from(format!(
+        "/run/user/{}/arlen/audit-ingest.sock",
+        owner_uid()
+    ))
 }
 
 /// Bind the broker socket 0666 after a stale-socket probe: a path a
@@ -92,6 +115,70 @@ pub fn bind_socket(path: &Path) -> std::io::Result<UnixListener> {
     Ok(listener)
 }
 
+/// Apply a `Set` under the asymmetric audit policy and return the
+/// response. An ESCALATING change (any authority-adding flip -
+/// [`escalates`]) is audited BEFORE it is applied and REFUSED if it
+/// cannot be recorded: the tamper-evident trail is a precondition for
+/// widening the AI's authority, so an attacker who takes down the audit
+/// daemon cannot silently enable the AI, open the executor gate, widen
+/// the read scope, grant autonomy, or repoint the provider. A
+/// non-escalating change (the off-switch direction) is applied
+/// UNCONDITIONALLY with a best-effort audit after, so a down audit daemon
+/// can never block turning the AI off, narrowing its scope, or revoking
+/// autonomy (the removability invariant). A non-admitted writer is
+/// refused first, with no audit and no write.
+async fn apply_set_audited(
+    store: &StateStore,
+    app_id: &str,
+    new: AiMasterSwitches,
+    sink: &dyn AuditSink,
+) -> Response {
+    // A non-admitted writer is refused with no audit + no write; the
+    // pure dispatch produces the canonical refusal message.
+    if !is_admitted_writer(app_id) {
+        return handle_request(store, app_id, Request::Set(new));
+    }
+    // A corrupt/unreadable store classifies against the fail-closed floor:
+    // any authority in `new` then reads as an escalation-from-floor
+    // (gated), while a Set to the pure floor stays unconditional - the
+    // off-switch still works over a corrupt store, repairing it.
+    let old = store.load().unwrap_or_default();
+    let new_sanitised = new.clone().sanitised();
+    let changed = changed_security_keys(&old, &new_sanitised);
+    if changed.is_empty() {
+        // Nothing security-relevant changed - apply (idempotent), no audit.
+        return handle_request(store, app_id, Request::Set(new));
+    }
+    if escalates(&old, &new_sanitised) {
+        // Fail-closed: the trail is a precondition for the escalation.
+        // Audit the intended change first; refuse it if unrecordable.
+        if let Err(e) = sink.submit(switch_change_event(app_id, &changed)).await {
+            tracing::warn!(
+                app_id = %app_id,
+                error = %e,
+                "config-broker: refused an escalating AI master-switch change - not auditable"
+            );
+            return Response::Error(format!(
+                "escalating change refused: the audit ledger is unavailable ({e})"
+            ));
+        }
+        return handle_request(store, app_id, Request::Set(new));
+    }
+    // Non-escalating (the off-switch direction): apply unconditionally,
+    // best-effort audit after. A down ledger never blocks removing authority.
+    let response = handle_request(store, app_id, Request::Set(new));
+    if matches!(response, Response::Committed) {
+        if let Err(e) = sink.submit(switch_change_event(app_id, &changed)).await {
+            tracing::warn!(
+                app_id = %app_id,
+                error = %e,
+                "config-broker: could not audit an off-direction switch change (applied anyway)"
+            );
+        }
+    }
+    response
+}
+
 /// Serve one connection. Authenticates (SO_PEERPIDFD + uid), resolves
 /// the caller app id from the pinned pid, then fields requests until
 /// the peer closes or stops being alive. Drops silently on any auth
@@ -129,35 +216,15 @@ pub async fn serve_connection(
             // A closed connection or framing error ends the session.
             Err(_) => return,
         };
-        // Audit-on-change: snapshot the pre-state for a Set so a flip of a
-        // security-relevant switch is recorded even though the change itself is
-        // gated by `is_admitted_writer`. The audit is accountability, not the
-        // primary defence, so it is fail-open-after: a change still applies (and is
-        // written) even if the ledger is down - a down audit daemon must never block
-        // a caller turning `executor_live` back off.
-        let pre = match &request {
-            Request::Set(_) => store.load().ok(),
-            _ => None,
+        // A Set runs the asymmetric audit policy: an authority-ADDING
+        // change is audited before it applies and refused if unrecordable
+        // (fail-closed); the off-switch direction always applies with a
+        // best-effort audit (the removability invariant). Every other
+        // request is the pure read dispatch.
+        let response = match request {
+            Request::Set(new) => apply_set_audited(&store, &app_id, new, sink.as_ref()).await,
+            other => handle_request(&store, &app_id, other),
         };
-        let new_switches = match &request {
-            Request::Set(s) => Some(s.clone()),
-            _ => None,
-        };
-        let response = handle_request(&store, &app_id, request);
-        if let (Some(old), Some(new)) = (pre, new_switches) {
-            if matches!(response, crate::protocol::Response::Committed) {
-                let changed = changed_security_keys(&old, &new.sanitised());
-                if !changed.is_empty() {
-                    if let Err(e) = sink.submit(switch_change_event(&app_id, &changed)).await {
-                        tracing::warn!(
-                            app_id = %app_id,
-                            error = %e,
-                            "config-broker: failed to audit an AI master-switch change"
-                        );
-                    }
-                }
-            }
-        }
         if write_frame_async(&mut stream, &response).await.is_err() {
             return;
         }
@@ -195,6 +262,96 @@ mod tests {
     /// `switch_change_event` + `changed_security_keys` unit tests in `state`).
     fn mock_sink() -> Arc<audit_proto::sink::MockAuditSink> {
         Arc::new(audit_proto::sink::MockAuditSink::accepting())
+    }
+
+    /// An ESCALATING change over a DOWN audit ledger is REFUSED and NOT
+    /// applied - the tamper-evident trail is a precondition for widening
+    /// the AI's authority, so a down audit daemon cannot be exploited to
+    /// silently open the executor gate.
+    #[tokio::test]
+    async fn an_escalating_change_is_refused_when_the_ledger_is_down() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = StateStore::open(dir.path()).unwrap();
+        let sink = audit_proto::sink::MockAuditSink::failing();
+        // opening the executor gate is escalating
+        let want = AiMasterSwitches { executor_live: true, ..Default::default() };
+        let resp = apply_set_audited(&store, "settings", want, &sink).await;
+        assert!(
+            matches!(resp, Response::Error(_)),
+            "escalation must be refused when unrecordable, got {resp:?}"
+        );
+        // the store stayed at the floor - the escalation never landed
+        assert_eq!(store.load().unwrap(), AiMasterSwitches::default());
+    }
+
+    /// The OFF direction (the removability invariant) is applied
+    /// UNCONDITIONALLY even when the audit ledger is down - an attacker
+    /// taking down auditd must never be able to keep the AI ON.
+    #[tokio::test]
+    async fn the_off_switch_applies_even_when_the_ledger_is_down() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = StateStore::open(dir.path()).unwrap();
+        // start fully enabled
+        let on = AiMasterSwitches {
+            enabled: true,
+            access_level: 4,
+            executor_live: true,
+            ..Default::default()
+        };
+        store.store(&on).unwrap();
+        let sink = audit_proto::sink::MockAuditSink::failing();
+        // turn everything off - a pure de-escalation
+        let resp =
+            apply_set_audited(&store, "settings", AiMasterSwitches::default(), &sink).await;
+        assert_eq!(resp, Response::Committed, "the off-switch must always apply");
+        assert_eq!(
+            store.load().unwrap(),
+            AiMasterSwitches::default(),
+            "the AI was turned off despite the down ledger"
+        );
+    }
+
+    /// An escalation over a HEALTHY ledger applies AND is recorded first.
+    #[tokio::test]
+    async fn an_escalation_over_a_healthy_ledger_applies_and_is_audited() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = StateStore::open(dir.path()).unwrap();
+        let sink = audit_proto::sink::MockAuditSink::accepting();
+        let want = AiMasterSwitches { enabled: true, access_level: 4, ..Default::default() };
+        let resp = apply_set_audited(&store, "ai-daemon", want.clone(), &sink).await;
+        assert_eq!(resp, Response::Committed);
+        assert_eq!(store.load().unwrap(), want);
+        // exactly one audit event, naming the caller + the escalation
+        let recorded = sink.recorded().await;
+        assert_eq!(recorded.len(), 1);
+        assert!(recorded[0].structural.outcome.contains("ai-daemon"));
+        assert!(recorded[0].structural.outcome.contains("enabled=true"));
+    }
+
+    /// A non-admitted writer is refused with NO audit and NO write, even
+    /// for an escalating payload - admission is checked before the policy.
+    #[tokio::test]
+    async fn a_non_admitted_escalation_is_refused_without_auditing() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = StateStore::open(dir.path()).unwrap();
+        let sink = audit_proto::sink::MockAuditSink::accepting();
+        let hostile = AiMasterSwitches { executor_live: true, ..Default::default() };
+        let resp = apply_set_audited(&store, "org.evil.app", hostile, &sink).await;
+        assert!(matches!(resp, Response::Refused(_)));
+        assert_eq!(store.load().unwrap(), AiMasterSwitches::default());
+        assert_eq!(sink.count().await, 0, "a refused writer must not be audited");
+    }
+
+    /// The owner audit socket resolves under the owner's user runtime dir
+    /// (the ONE ledger, the owner's), honoring the explicit override seam.
+    #[test]
+    fn owner_audit_socket_targets_the_owner_runtime_dir() {
+        // Default form is under /run/user/<owner_uid>/arlen.
+        std::env::remove_var("ARLEN_CONFIG_BROKER_AUDIT_SOCKET");
+        let p = owner_audit_socket();
+        let s = p.to_string_lossy();
+        assert!(s.starts_with("/run/user/"), "got {s}");
+        assert!(s.ends_with("/arlen/audit-ingest.sock"), "got {s}");
     }
 
     /// Drive a real socket end-to-end: bind, connect, `Get`, and
