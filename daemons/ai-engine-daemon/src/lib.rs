@@ -99,3 +99,8 @@ pub mod sidecar;
 
 /// The daemon's minimal `ai.toml` read: the `[ai] enabled` master switch.
 pub mod engine_config;
+
+/// The pi model-completion egress: an HTTP-over-Unix endpoint the confined pi
+/// sidecar's undici dispatcher dials for provider (LLM) calls, auth'd by
+/// SO_PEERCRED + the session token and forwarded through the governed ai-proxy.
+pub mod pi_completion;
