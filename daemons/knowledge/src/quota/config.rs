@@ -124,15 +124,17 @@ impl QuotaConfig {
     }
 
     // (debug only) cargo-run id of a first-party daemon. A locally-built
-    // `ai-agent`/`ai-daemon`/`code-indexer` resolves via `path_to_app_id` rule (5)
-    // to `dev.arlen-{name}`, not the canonical `ai-agent`/`code-indexer`, so it
-    // would otherwise tier as ThirdParty: the dev agent's graph writes would be
-    // refused, and the dev code-indexer's `MATCH (p:Project)` read denied (leaving
-    // it inert) in `just dev` and the integration harness. This admits exactly
-    // those ids as FirstParty in debug builds — the analog of the audit daemon's
-    // `dev.*` ADMITTED allowance — so the assembled stack can be exercised against
-    // a dev/test graph. Compiled out of release (`debug_assertions`), where only
-    // the canonical attested ids tier FirstParty.
+    // `ai-agent`/`ai-daemon`/`code-indexer`/`bridge-ingest` resolves via
+    // `path_to_app_id` rule (5) to `dev.arlen-{name}`, not the canonical
+    // `ai-agent`/`code-indexer`, so it would otherwise tier as ThirdParty: the
+    // dev agent's graph writes would be refused, the dev code-indexer's
+    // `MATCH (p:Project)` read denied, and the dev bridge-ingest's entity
+    // upserts (the Obsidian floor's `md.obsidian.*` writes) rejected at the
+    // write-tier gate - leaving each inert in `just dev` and the integration
+    // harness. This admits exactly those ids as FirstParty in debug builds - the
+    // analog of the audit daemon's `dev.*` ADMITTED allowance - so the assembled
+    // stack can be exercised against a dev/test graph. Compiled out of release
+    // (`debug_assertions`), where only the canonical attested ids tier FirstParty.
     #[cfg(debug_assertions)]
     fn is_dev_first_party_id_impl(app_id: &str) -> bool {
         if matches!(
@@ -141,6 +143,7 @@ impl QuotaConfig {
                 | "dev.arlen-ai-engine-daemon"
                 | "dev.arlen-ai-daemon"
                 | "dev.arlen-code-indexer"
+                | "dev.arlen-bridge-ingest"
         ) {
             return true;
         }
@@ -260,6 +263,13 @@ mod tests {
         );
         assert_eq!(c.tier_for_app("dev.arlen-ai-daemon"), AppTier::FirstParty);
         assert_eq!(c.tier_for_app("dev.arlen-code-indexer"), AppTier::FirstParty);
+        // The Obsidian bridge floor's dev id: its md.obsidian.* entity upserts
+        // hit the write-tier gate, so without this it tiers ThirdParty and the
+        // floor never feeds the KG in dev / the integration harness.
+        assert_eq!(
+            c.tier_for_app("dev.arlen-bridge-ingest"),
+            AppTier::FirstParty
+        );
         assert_eq!(c.tier_for_app("dev.arlen-knowledge"), AppTier::ThirdParty);
         assert_eq!(c.tier_for_app("dev.evil"), AppTier::ThirdParty);
     }
