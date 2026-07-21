@@ -15,6 +15,7 @@
 //! the caller to roll back.
 
 use arlen_forage_recipe::Install;
+use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
 /// The canonical Arlen-side directory for an installed bridge's registration files,
@@ -60,6 +61,60 @@ pub enum BridgeInstallError {
         /// What was written before the error, for rollback.
         wrote: InstalledBridge,
     },
+}
+
+/// A failure resolving a `foreign_side.into` template.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum TemplateError {
+    /// The template does not start with a `$TOKEN` anchor.
+    #[error("template must start with a $TOKEN anchor: {0}")]
+    NoAnchor(String),
+    /// The anchor token has no value in the resolved token set.
+    #[error("unknown template token: ${0}")]
+    UnknownToken(String),
+    /// The anchor token resolved to a relative path (the anchor must be absolute so
+    /// the foreign side lands somewhere the app owns).
+    #[error("template anchor ${0} is not an absolute path")]
+    AnchorNotAbsolute(String),
+    /// A segment after the anchor is unsafe (empty, `.`, `..` or contains `$`).
+    #[error("unsafe template segment: {0}")]
+    UnsafeSegment(String),
+}
+
+/// Resolve a `foreign_side.into` template (e.g. `"$VAULT/.obsidian/plugins/x/"`) to
+/// a concrete absolute destination, given the token values discovered for the
+/// foreign app (e.g. `VAULT` -> the user's Obsidian vault path). The template MUST
+/// begin with a `$TOKEN` anchor that resolves to an absolute path; every remaining
+/// segment must be safe (non-empty, not `.`/`..`, no further `$`). The result is
+/// therefore always UNDER the anchor - the confinement that keeps a bridge's
+/// foreign side inside a directory the app itself owns, never an arbitrary path.
+pub fn resolve_foreign_dest(
+    template: &str,
+    tokens: &HashMap<String, PathBuf>,
+) -> Result<PathBuf, TemplateError> {
+    let trimmed = template.trim().trim_end_matches('/');
+    let mut segments = trimmed.split('/');
+    let anchor_seg = segments.next().unwrap_or("");
+    let name = anchor_seg
+        .strip_prefix('$')
+        .ok_or_else(|| TemplateError::NoAnchor(template.to_string()))?;
+    if name.is_empty() {
+        return Err(TemplateError::NoAnchor(template.to_string()));
+    }
+    let anchor = tokens
+        .get(name)
+        .ok_or_else(|| TemplateError::UnknownToken(name.to_string()))?;
+    if !anchor.is_absolute() {
+        return Err(TemplateError::AnchorNotAbsolute(name.to_string()));
+    }
+    let mut out = anchor.clone();
+    for seg in segments {
+        if seg.is_empty() || seg == "." || seg == ".." || seg.contains('$') {
+            return Err(TemplateError::UnsafeSegment(seg.to_string()));
+        }
+        out.push(seg);
+    }
+    Ok(out)
 }
 
 /// Whether `p` is a safe relative path: non-empty, not absolute, no `..` component.
@@ -242,6 +297,44 @@ mod tests {
 
         install_bridge_halves(src.path(), &manifest, arlen.path(), foreign.path()).unwrap();
         assert_eq!(fs::read_to_string(foreign.path().join("dist/main.js")).unwrap(), "nested");
+    }
+
+    #[test]
+    fn resolves_a_vault_anchored_template_under_the_anchor() {
+        let mut tokens = HashMap::new();
+        tokens.insert("VAULT".to_string(), PathBuf::from("/home/u/MyVault"));
+        let got = resolve_foreign_dest("$VAULT/.obsidian/plugins/md-obsidian-bridge/", &tokens).unwrap();
+        assert_eq!(got, PathBuf::from("/home/u/MyVault/.obsidian/plugins/md-obsidian-bridge"));
+        // The result is always under the anchor.
+        assert!(got.starts_with("/home/u/MyVault"));
+    }
+
+    #[test]
+    fn template_resolution_is_confined_and_fails_closed() {
+        let mut tokens = HashMap::new();
+        tokens.insert("VAULT".to_string(), PathBuf::from("/home/u/MyVault"));
+        // No anchor.
+        assert_eq!(
+            resolve_foreign_dest("/etc/passwd", &tokens),
+            Err(TemplateError::NoAnchor("/etc/passwd".to_string()))
+        );
+        // Unknown token.
+        assert!(matches!(
+            resolve_foreign_dest("$HOME/x", &tokens),
+            Err(TemplateError::UnknownToken(_))
+        ));
+        // Traversal after the anchor cannot escape.
+        assert!(matches!(
+            resolve_foreign_dest("$VAULT/../../etc/x", &tokens),
+            Err(TemplateError::UnsafeSegment(_))
+        ));
+        // A relative anchor value is refused.
+        let mut rel = HashMap::new();
+        rel.insert("VAULT".to_string(), PathBuf::from("relative/vault"));
+        assert!(matches!(
+            resolve_foreign_dest("$VAULT/x", &rel),
+            Err(TemplateError::AnchorNotAbsolute(_))
+        ));
     }
 
     #[test]
