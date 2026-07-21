@@ -76,12 +76,15 @@ const ADMITTED: &[&str] = &[
     // fail-closed (audit-before-release), so without admission every credential
     // handout is refused with AuditUnavailable.
     "connections",
-    // NOTE for the next producer: `config-broker` (the separate-uid AI-switch daemon)
-    // also submits to this ledger (a fail-closed `switch_change_event`) but has no
-    // systemd unit / canonical install path yet, so it is NOT admitted here. The
-    // moment it gets a `/usr/lib/arlen/libexec/` path, add BOTH a
-    // `path_to_app_id` entry AND its id here, or every switch change fails closed -
-    // the recurring gap the portal / capsuled / connections fixes all shared.
+    // The config-broker (the separate-uid owner of the AI master switches): every
+    // privileged switch change is recorded here fail-closed on the escalating
+    // direction (`switch_change_event`), so without admission an escalation could
+    // never be recorded and would be refused. Unlike every other producer it runs
+    // as ROOT (a strictly more-privileged uid, so the user's own uid cannot write
+    // the switch store), so this ingest accepts it via
+    // `ConnectionAuth::extract_from_trusting_root` (below); it resolves to this id
+    // via its canonical `/usr/lib/arlen/libexec/arlen-config-broker` path entry.
+    "config-broker",
 ];
 
 /// Resolve the ingest socket path:
@@ -147,7 +150,14 @@ impl IngestServer {
     /// Handle one connection: authenticate the peer, then field
     /// ingest requests until it closes.
     async fn handle(&self, stream: UnixStream, caller_uid: u32) -> Result<()> {
-        let auth = match ConnectionAuth::extract_from(&stream, caller_uid) {
+        // `_trusting_root` because this is the OWNER's ledger: most producers are
+        // --user services (same uid as this auditd), but the config-broker runs as
+        // root (a more-privileged uid) to keep the AI switch store off the user's
+        // own uid, and must still record its switch changes here. Root grants
+        // itself no new power by connecting - it can already tamper the ledger file
+        // directly - and every caller is still gated by `caller_is_admitted` + the
+        // attested identity, so a same-uid non-root peer is unaffected.
+        let auth = match ConnectionAuth::extract_from_trusting_root(&stream, caller_uid) {
             Ok(auth) => auth,
             Err(e) => {
                 tracing::warn!("ingest connection rejected: peer identity: {e}");
@@ -315,6 +325,9 @@ mod tests {
         assert!(caller_is_admitted("ai-agent"));
         // The graph daemon audits app-tier entity upserts (bridges write path).
         assert!(caller_is_admitted("knowledge"));
+        // The config-broker records AI master-switch changes (it runs as root and
+        // is accepted via extract_from_trusting_root; admission is keyed on the id).
+        assert!(caller_is_admitted("config-broker"));
         assert!(!caller_is_admitted("com.example.app"));
         assert!(!caller_is_admitted(""));
         // Debug builds admit the listed cargo-run `dev.*` producer

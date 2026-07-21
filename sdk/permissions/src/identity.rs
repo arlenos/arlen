@@ -325,6 +325,19 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-capsuled" => {
             return Ok("capsuled".to_string());
         }
+        // The config-broker (the separate-uid owner of the AI master switches).
+        // It records every privileged switch change to the OWNER's audit ledger
+        // (an escalation is refused if it cannot be recorded), so it must resolve
+        // to the stable id `config-broker` the audit daemon's ADMITTED allowlist
+        // keys on; without this entry rule (2) misses the libexec path, it resolves
+        // to UnknownBinary, and every master-switch-change audit is silently
+        // refused. It runs as root (a strictly more-privileged uid, so the user's
+        // own uid cannot write the switch store); the root-owned canonical path is
+        // attested. The auditd accepts this root producer via
+        // `ConnectionAuth::extract_from_trusting_root`.
+        "/usr/lib/arlen/libexec/arlen-config-broker" => {
+            return Ok("config-broker".to_string());
+        }
         // The Connections credential-governance daemon. A credential release audits
         // BEFORE handing the credential over and FAILS CLOSED on a down/refused
         // ledger, so without this entry it resolves to UnknownBinary, the audit is
@@ -784,6 +797,24 @@ mod tests {
             assert!(
                 path_to_app_id(&PathBuf::from(spoofed)).is_err(),
                 "spoofed notifyd path {spoofed} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_app_id_from_path_config_broker_canonical_libexec() {
+        // The config-broker's canonical binary must resolve to `config-broker`,
+        // the id the audit daemon's ADMITTED allowlist keys on for the AI
+        // master-switch-change audit. Without this it resolves to UnknownBinary and
+        // every switch change fails closed (an escalation can never be recorded).
+        let path = PathBuf::from("/usr/lib/arlen/libexec/arlen-config-broker");
+        assert_eq!(path_to_app_id(&path).unwrap(), "config-broker");
+
+        // A same-basename binary in a writable location must not impersonate it.
+        for spoofed in ["/tmp/arlen-config-broker", "/home/attacker/arlen-config-broker"] {
+            assert!(
+                path_to_app_id(&PathBuf::from(spoofed)).is_err(),
+                "spoofed config-broker path {spoofed} must be rejected"
             );
         }
     }
