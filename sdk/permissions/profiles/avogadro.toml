@@ -1,0 +1,9 @@
+# Starting permission profile for Avogadro (a molecular editor and visualiser).
+# Opens and saves molecule files from Documents; no network and no Knowledge
+# Graph access.
+[info]
+app_id = "avogadro"
+tier = "third-party"
+
+[filesystem]
+documents = true

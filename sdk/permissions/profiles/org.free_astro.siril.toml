@@ -1,0 +1,11 @@
+# Starting permission profile for Siril (astronomical image processing). Reads
+# and writes image stacks from Pictures and projects from Documents; no network
+# and no Knowledge Graph access. The Flathub app id; the apt `siril` profile
+# mirrors it.
+[info]
+app_id = "org.free_astro.siril"
+tier = "third-party"
+
+[filesystem]
+pictures = true
+documents = true
