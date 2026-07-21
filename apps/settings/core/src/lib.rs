@@ -9,4 +9,5 @@ pub mod accessibility;
 pub mod brightness;
 pub mod config;
 pub mod knowledge;
+pub mod notifications;
 pub mod toml_writer;
