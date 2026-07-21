@@ -165,10 +165,10 @@ mod tests {
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let disp = dispatcher();
         // The daemon would mint this at session start, bound to the engine pid.
-        let token = disp.init_session(&init(), 555).unwrap();
+        let token = disp.init_session(&init(), std::process::id()).unwrap();
 
         let server_task = tokio::spawn(async move {
-            serve_connection(&mut server, &disp, 555).await.unwrap();
+            serve_connection(&mut server, &disp, std::process::id()).await.unwrap();
         });
 
         // The engine sends an Authorize call carrying its token.
@@ -196,7 +196,7 @@ mod tests {
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let disp = dispatcher();
         let server_task = tokio::spawn(async move {
-            serve_connection(&mut server, &disp, 555).await.unwrap();
+            serve_connection(&mut server, &disp, std::process::id()).await.unwrap();
         });
 
         write_frame(&mut client, "{not valid json").await.unwrap();
