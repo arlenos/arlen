@@ -6,4 +6,5 @@
 //! user changed in a hand-authored config file, keeping every comment and blank
 //! line, and writes atomically at 0600 (tmp + rename).
 pub mod config;
+pub mod knowledge;
 pub mod toml_writer;
