@@ -152,6 +152,33 @@ pub fn changed_security_keys(old: &AiMasterSwitches, new: &AiMasterSwitches) -> 
     changed
 }
 
+/// True iff the transition `old` -> `new` ADDS authority in any
+/// dimension - the dangerous direction that warrants the tamper-evident
+/// trail and is gated fail-closed (the escalation is refused if it
+/// cannot be recorded). A change that only REMOVES authority - the AI
+/// turned off, the executor gate closed, the read scope narrowed,
+/// autonomy revoked, the action mode dropped back to suggest, the
+/// provider cleared to the configured default - is NOT escalating: it
+/// rides the unconditional off-switch path (always applied, best-effort
+/// audit), so an attacker who takes down the audit daemon can never trap
+/// the AI in the ON / wide-open state (the removability invariant). A
+/// provider REPOINT to a concrete endpoint counts as escalating: it
+/// redirects where the AI's prompts and data egress, the dangerous
+/// direction; only clearing it to empty (revert to the daemon's default)
+/// is safe.
+pub fn escalates(old: &AiMasterSwitches, new: &AiMasterSwitches) -> bool {
+    (!old.enabled && new.enabled)
+        || (!old.executor_live && new.executor_live)
+        || (new.access_level > old.access_level)
+        || (old.action_mode == ActionMode::Suggest && new.action_mode == ActionMode::Supervised)
+        || new
+            .autonomous_apps
+            .difference(&old.autonomous_apps)
+            .next()
+            .is_some()
+        || (new.provider != old.provider && !new.provider.is_empty())
+}
+
 /// The audit event for a change to the AI master switches: kind
 /// [`AuditKind::CapabilityChange`], a content-free subject, and an outcome naming
 /// the caller and which switches changed. The audit daemon sets the ACTOR from the
@@ -364,6 +391,45 @@ mod tests {
         let changed2 = changed_security_keys(&base, &new2);
         assert!(changed2.iter().any(|c| c.starts_with("provider=")));
         assert!(changed2.iter().any(|c| c.starts_with("autonomous_apps=")));
+    }
+
+    #[test]
+    fn escalates_flags_only_authority_adding_changes() {
+        let floor = AiMasterSwitches::default();
+        // no change -> not escalating
+        assert!(!escalates(&floor, &floor));
+        // turning the AI on / opening the executor gate -> escalating
+        assert!(escalates(&floor, &AiMasterSwitches { enabled: true, ..floor.clone() }));
+        assert!(escalates(&floor, &AiMasterSwitches { executor_live: true, ..floor.clone() }));
+        // widening the read scope escalates; narrowing it does not
+        let lvl3 = AiMasterSwitches { access_level: 3, ..floor.clone() };
+        assert!(escalates(&floor, &lvl3));
+        assert!(!escalates(&lvl3, &floor));
+        // suggest -> supervised escalates; the reverse does not
+        let sup = AiMasterSwitches { action_mode: ActionMode::Supervised, ..floor.clone() };
+        assert!(escalates(&floor, &sup));
+        assert!(!escalates(&sup, &floor));
+        // granting autonomy escalates; revoking it does not
+        let mut grant = floor.clone();
+        grant.autonomous_apps.insert("com.foo".to_string());
+        assert!(escalates(&floor, &grant));
+        assert!(!escalates(&grant, &floor));
+        // a provider repoint to a concrete endpoint escalates; clearing it does not
+        let p1 = AiMasterSwitches { provider: "ollama-default".to_string(), ..floor.clone() };
+        let p2 = AiMasterSwitches { provider: "http://evil".to_string(), ..floor.clone() };
+        assert!(escalates(&p1, &p2));
+        assert!(!escalates(&p2, &AiMasterSwitches { provider: String::new(), ..floor.clone() }));
+        // a whole-state drop from fully-open to the floor is the pure
+        // off-switch: never escalating, even bundled.
+        let open = AiMasterSwitches {
+            enabled: true,
+            access_level: 4,
+            executor_live: true,
+            action_mode: ActionMode::Supervised,
+            provider: "x".to_string(),
+            autonomous_apps: BTreeSet::from(["a".to_string()]),
+        };
+        assert!(!escalates(&open, &floor));
     }
 
     #[test]

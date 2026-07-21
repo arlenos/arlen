@@ -41,6 +41,14 @@ RestartSec=1
 # The intended dedicated `arlen-config` uid refinement (see User= note) must also
 # make /run/arlen writable by that uid (a tmpfiles.d entry or a supplementary
 # group) so its own create_dir_all + socket-dir grant still succeed.
+#
+# Audit trail: a change to a security-relevant AI master switch is recorded to
+# the OWNER's user auditd - the ONE ledger - at /run/user/<OWNER_UID>/arlen/
+# audit-ingest.sock (owner_audit_socket resolves it from OWNER_UID above). The
+# broker runs as root, so it reaches the user's runtime dir; when the fence
+# above is actually built, its read/traverse-everywhere grant must keep that
+# path reachable so escalation audits still land. Override with
+# ARLEN_CONFIG_BROKER_AUDIT_SOCKET if the deployment moves it.
 Environment=ARLEN_CONFIG_BROKER_DIR=/var/lib/arlen/config-broker
 Environment=ARLEN_CONFIG_BROKER_SOCKET=/run/arlen/config-broker.sock
 Environment=ARLEN_CONFIG_BROKER_OWNER_UID=1000

@@ -43,11 +43,19 @@ async fn main() {
 
     let socket = server::socket_path();
 
-    // The audit ledger sink: a change to a security-relevant AI master switch is
-    // recorded to the HMAC ledger (fail-open, so a down ledger never blocks a
-    // change). Connects lazily per submit.
-    let sink: Arc<dyn audit_proto::sink::AuditSink> =
-        Arc::new(audit_proto::sink::LedgerAuditSink::at_default_socket());
+    // The audit ledger sink: a change to a security-relevant AI master
+    // switch is recorded to the OWNER's user auditd (there is ONE ledger,
+    // the owner's - the broker runs as a distinct uid, so the default
+    // resolver's own-runtime-dir / `/run/arlen` path is bound by nothing;
+    // `owner_audit_socket` targets `/run/user/<owner_uid>/arlen`). The
+    // audit policy is asymmetric fail-closed ([`server::apply_set_audited`]):
+    // an authority-adding flip is refused if it cannot be recorded, while
+    // the off-switch direction always applies. Connects lazily per submit.
+    let audit_socket = server::owner_audit_socket();
+    tracing::info!(audit_socket = %audit_socket.display(), "audit sink target");
+    let sink: Arc<dyn audit_proto::sink::AuditSink> = Arc::new(
+        audit_proto::sink::LedgerAuditSink::new(audit_proto::client::AuditClient::new(audit_socket)),
+    );
 
     tokio::select! {
         r = server::run(Arc::clone(&store), &socket, Arc::clone(&sink)) => {
