@@ -1,0 +1,21 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-settings-core"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen settings: the pure, CI-tested settings core the Tauri host wraps. Holds the format-preserving TOML writer (surgical toml_edit updates + atomic 0600 tmp+rename) that guards hand-edited config files from a naive full-file round-trip."
+authors = ["Arlen"]
+
+[lib]
+
+[dependencies]
+# Surgical, comment-preserving edits of hand-authored config TOML.
+toml_edit = "0.22"
+# The config-set path converts frontend JSON into toml_edit shapes.
+serde_json = "1"
+
+[dev-dependencies]
+# The array-of-objects round-trip tests re-parse the written TOML.
+toml = "0.8"
+
+[workspace]
