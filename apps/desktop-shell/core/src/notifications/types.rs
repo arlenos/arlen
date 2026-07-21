@@ -76,7 +76,7 @@ impl From<proto::Notification> for Notification {
 /// Convert a wire `DndMode` value into the lowercase string the
 /// frontend stores. Legacy `DndOn` from older builds is normalised
 /// to `"priority"`, matching the daemon's serde alias.
-pub(crate) fn dnd_mode_str(mode: i32) -> String {
+pub fn dnd_mode_str(mode: i32) -> String {
     match mode {
         x if x == proto::DndMode::DndPriority as i32 => "priority",
         x if x == proto::DndMode::DndAlarms as i32 => "alarms",
