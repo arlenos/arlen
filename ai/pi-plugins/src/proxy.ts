@@ -143,22 +143,13 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
       additionalProperties: false,
     },
   },
-  {
-    name: "graph.assert_edge",
-    label: "Knowledge graph: add a relationship",
-    description:
-      "Add a relationship (edge) between two knowledge-graph nodes. Reversible: " +
-      "the daemon registers an undo that retracts it. The daemon gates and audits " +
-      "the write; pi never touches the graph directly.",
-  },
-  {
-    name: "graph.retract_edge",
-    label: "Knowledge graph: remove a relationship",
-    description:
-      "Retract a relationship (edge) the assistant previously added. Reversible: " +
-      "the daemon can re-assert it. The daemon gates and audits the write; pi never " +
-      "touches the graph directly.",
-  },
+  // graph.assert_edge / graph.retract_edge are the D2 typed proxy tools. Until D2
+  // lands their executor handling they are NOT offered: the daemon's write executor
+  // accepts only `graph.write` (write_executor.rs, `tool_name != GRAPH_WRITE_TOOL`),
+  // so offering them would let the model reach for `assert_edge` (which reads like
+  // the right tool for "add a relationship") and get a refusal, looping the turn.
+  // `graph.write` already creates a relation, so no capability is lost meanwhile;
+  // re-add these WITH the D2 executor handling.
   {
     // The sharp edge. The description says plainly that it always asks and that it
     // cannot be undone, because the model chooses whether to reach for this at all:
