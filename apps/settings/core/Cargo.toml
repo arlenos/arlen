@@ -12,6 +12,7 @@ authors = ["Arlen"]
 # Surgical, comment-preserving edits of hand-authored config TOML.
 toml_edit = "0.22"
 # The config-set path converts frontend JSON into toml_edit shapes.
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The dot-path get/set/remove + json<->toml conversion operate on toml::Value.
 toml = "0.8"

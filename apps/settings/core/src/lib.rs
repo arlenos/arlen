@@ -5,6 +5,7 @@
 //! Today this is the format-preserving TOML writer. It updates only the keys the
 //! user changed in a hand-authored config file, keeping every comment and blank
 //! line, and writes atomically at 0600 (tmp + rename).
+pub mod brightness;
 pub mod config;
 pub mod knowledge;
 pub mod toml_writer;
