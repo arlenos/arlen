@@ -22,31 +22,16 @@ cleanup() { kill "${sway_pid:-0}" 2>/dev/null; rm -rf "$XDG_RUNTIME_DIR" 2>/dev/
 trap cleanup EXIT
 
 cfg="$(mktemp)"
-printf 'output HEADLESS-1 resolution 1280x800\nexec env GDK_BACKEND=wayland %q >/tmp/arlen-live-app.log 2>&1\n' "$BIN" > "$cfg"
+printf 'output HEADLESS-1 resolution 1280x800\nexec env GDK_BACKEND=wayland ARLEN_HARNESS_AUTODRIVE=%q %q >/tmp/arlen-live-app.log 2>&1\n' "$PROMPT" "$BIN" > "$cfg"
 WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 sway -c "$cfg" >/tmp/arlen-live-sway.log 2>&1 &
 sway_pid=$!
 sleep 24
 WD="$(ls "$XDG_RUNTIME_DIR" 2>/dev/null | grep -E '^wayland-[0-9]+$' | head -1)"
 if [ -z "$WD" ]; then echo "no headless sway socket - refusing to grab" >&2; exit 1; fi
 
-# Focus the composer + type the prompt + submit. The composer input auto-focuses;
-# a leading Tab/click is unnecessary for the chat input, but type slowly so the
-# webview keystroke handler keeps up.
-sleep 3
-# Submit with wtype (a wayland VIRTUAL KEYBOARD - works under WLR_LIBINPUT_NO_DEVICES=1,
-# unlike ydotool/uinput which sway then ignores). Focus the composer first with a
-# couple of Shift+Tabs from the app's initial focus (the composer is the last
-# focusable), type, settle, then Enter (repeated - the growing-textarea handler can
-# swallow the first). Needs a POPULATED conversation so the composer is present.
-# The composer auto-focuses on load, so type straight in (no Tab dance - Shift+Tab
-# mangled the text + the stray '@' opened the mention picker). Type slowly, settle,
-# then Enter (twice - the growing-textarea handler can swallow the first).
-sleep 1
-WAYLAND_DISPLAY="$WD" wtype -s 45 "$PROMPT" >/tmp/arlen-live-type.log 2>&1
-sleep 3
-WAYLAND_DISPLAY="$WD" wtype -k Return >>/tmp/arlen-live-type.log 2>&1
-sleep 1
-WAYLAND_DISPLAY="$WD" wtype -k Return >>/tmp/arlen-live-type.log 2>&1
+# No synthetic input: the harness auto-drives $PROMPT on load via its
+# ARLEN_HARNESS_AUTODRIVE debug hook (set in the sway exec above), which is
+# reliable under headless sway where keyboard/mouse injection is not.
 # Wait for pi -> Ollama/qwen to stream the answer onto the A7 components.
 sleep "$WAIT"
 WAYLAND_DISPLAY="$WD" grim "$OUT"; rc=$?
