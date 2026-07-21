@@ -62,9 +62,9 @@ test("registers the default privileged tools (graph read + write)", () => {
   assert.deepEqual(tools.get("graph.write")!.parameters, {
     type: "object",
     properties: {
-      from_type: { type: "string", description: 'the source node\'s entity type, e.g. "File"' },
-      from_id: { type: "string", description: "the source node's id" },
-      to_type: { type: "string", description: 'the target node\'s entity type, e.g. "Project"' },
+      from_type: { type: "string", description: 'the source node\'s namespaced entity type, e.g. "system.File"' },
+      from_id: { type: "string", description: "the source node's id (a File's id is its path)" },
+      to_type: { type: "string", description: 'the target node\'s namespaced entity type, e.g. "system.Project"' },
       to_id: { type: "string", description: "the target node's id" },
       relation_type: { type: "string", description: 'the relationship to create, e.g. "FILE_PART_OF"' },
     },
