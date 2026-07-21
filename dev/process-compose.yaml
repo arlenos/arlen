@@ -144,8 +144,16 @@ processes:
       - "ARLEN_PI_INSTALL=${HOME}/Repositories/pi"
       - "ARLEN_PI_EXTENSION=${HOME}/Repositories/arlen/ai/pi-plugins/dist/extension.js"
     readiness_probe:
+      # Probe the path the daemon actually binds (socket_path() = $XDG_RUNTIME_DIR/
+      # arlen/ai-engine.sock). Use XDG_RUNTIME_DIR, not the yaml `environment:` var
+      # ARLEN_RUNTIME_DIR: a `process-compose process restart` re-execs the process
+      # with the caller's shell env, which carries XDG_RUNTIME_DIR but NOT the
+      # configured ARLEN_* block, so an ARLEN_RUNTIME_DIR probe fails on every
+      # restart and SIGTERMs the daemon at the failure_threshold window - even though
+      # the socket is bound. XDG_RUNTIME_DIR is always inherited, so the probe tracks
+      # the real socket across restarts.
       exec:
-        command: "test -S ${ARLEN_RUNTIME_DIR}/ai-engine.sock"
+        command: "test -S ${XDG_RUNTIME_DIR}/arlen/ai-engine.sock"
       initial_delay_seconds: 3
       period_seconds: 2
       failure_threshold: 60
