@@ -19,6 +19,9 @@ arlen-net-guard = { path = "../../sdk/net-guard" }
 # app wait; tokio-util's CancellationToken tears the proxy down on guard drop.
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "io-util", "time", "sync"] }
 tokio-util = "0.7"
+# The compiled seccomp filter is written to a temp file the pasta wrapper opens
+# inside the netns (a memfd would be dropped by pasta) on the filtered launch.
+tempfile = "3"
 dirs = "5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -28,8 +31,5 @@ landlock = "0.4"
 # cBPF and handed to bwrap via --seccomp (the ai-sandbox idiom). 0.5 matches the
 # ai-sandbox pin so the workspace shares one build.
 seccompiler = "0.5"
-
-[dev-dependencies]
-tempfile = "3"
 
 [workspace]

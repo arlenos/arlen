@@ -25,10 +25,8 @@
 //! module builds the exact `pasta` invocation; the launcher binds the proxy,
 //! spawns this, and holds the teardown guard.
 //!
-//! The enforcer that binds the proxy and spawns this invocation lands in the
-//! next slice (it needs an async runtime for `EgressProxy`); until then the
-//! builders are exercised by the unit + on-kernel tests below.
-#![allow(dead_code)]
+//! The launcher binds the proxy (see [`crate::egress`]) and spawns this
+//! invocation (see `spawn::spawn_filtered_and_wait`), holding the teardown guard.
 
 use std::net::SocketAddr;
 

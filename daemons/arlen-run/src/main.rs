@@ -188,8 +188,13 @@ fn main() -> ExitCode {
     // `None` (no network) and `Unrestricted` (no filter by design) never reach
     // the enforcer.
     use egress::EgressEnforcer;
-    let _egress_guard = if let arlen_confiner::NetworkPolicy::FilteredHosts(hosts) = &inputs.network {
-        match egress::DenyUnlessEmpty.install(hosts) {
+    // A FilteredHosts profile runs in a route-absent netns behind the forwarding
+    // proxy the enforcer binds. Capture the flag before `inputs.network` moves
+    // into the confinement, and hold the guard for the whole launch - its Drop
+    // stops the proxy. None/Unrestricted never reach the enforcer.
+    let filtered = matches!(&inputs.network, arlen_confiner::NetworkPolicy::FilteredHosts(_));
+    let egress_guard = if let arlen_confiner::NetworkPolicy::FilteredHosts(hosts) = &inputs.network {
+        match egress::ProxyEgressEnforcer.install(hosts) {
             Ok(guard) => Some(guard),
             Err(e) => {
                 eprintln!("arlen-run: {}: {e}", args.app_id);
@@ -199,6 +204,7 @@ fn main() -> ExitCode {
     } else {
         None
     };
+    let proxy_port = egress_guard.as_ref().and_then(|g| g.proxy_port());
 
     let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
     let wayland_display = std::env::var("WAYLAND_DISPLAY").ok();
@@ -206,7 +212,16 @@ fn main() -> ExitCode {
         Some(rt) => spawn::plumbing_binds(rt, wayland_display.as_deref(), |p| p.exists()),
         None => Vec::new(),
     };
-    let env = launch_env(&home, runtime_dir.as_deref(), wayland_display.as_deref());
+    let mut env = launch_env(&home, runtime_dir.as_deref(), wayland_display.as_deref());
+    // Point the confined app's HTTP client at the egress proxy (reached at the
+    // netns's mapped-loopback gateway). A raw dial that ignores these still hits
+    // route-absence, so this is the cooperative path, not the boundary.
+    if let Some(port) = proxy_port {
+        let url = netns::proxy_env_url(port);
+        for key in ["http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"] {
+            env.insert(key.to_string(), url.clone());
+        }
+    }
 
     let confinement = match spawn::build_confinement(
         std::path::Path::new("/usr"),
@@ -266,7 +281,14 @@ fn main() -> ExitCode {
     };
 
     let argv = spawn::bwrap_argv(&confinement, &args.program);
-    let result = spawn::spawn_and_wait(&argv, &inputs.app_dirs, cgroup_procs, Some(seccomp_bpf));
+    let result = if filtered {
+        // The filtered launch wraps bwrap in the route-absent pasta namespace and
+        // delivers the seccomp through the wrapper file; the proxy env above is
+        // already set. The egress guard (held above) keeps the proxy serving.
+        spawn::spawn_filtered_and_wait(&argv, &inputs.app_dirs, cgroup_procs, seccomp_bpf)
+    } else {
+        spawn::spawn_and_wait(&argv, &inputs.app_dirs, cgroup_procs, Some(seccomp_bpf))
+    };
 
     // Reap the subtree (kills any process the app left behind), then the leaf is
     // removed when `cgroup` drops.
