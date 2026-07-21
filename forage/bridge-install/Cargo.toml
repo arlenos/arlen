@@ -10,6 +10,7 @@ path = "src/lib.rs"
 
 [dependencies]
 arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
+arlen-permissions = { path = "../../sdk/permissions" }
 thiserror = "2"
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
