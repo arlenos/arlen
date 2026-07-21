@@ -22,7 +22,7 @@ use std::sync::Arc;
 use modulesd_proto::{Request, Response};
 use tauri::http::{Request as HttpRequest, Response as HttpResponse, StatusCode};
 
-use crate::modulesd_client::ModulesdClient;
+use arlen_desktop_shell_core::modulesd_client::ModulesdClient;
 
 /// Strip the `?nonce=` query parameter and return `(asset_path, nonce)`.
 fn parse_uri(uri: &str) -> Option<(String, String, String)> {
