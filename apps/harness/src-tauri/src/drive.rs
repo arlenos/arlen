@@ -94,6 +94,19 @@ pub fn pi_autodrive_prompt() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// A debug/verification hook: a route to navigate to once on load, AFTER any
+/// auto-driven prompt has run, from `ARLEN_HARNESS_ROUTE` (unset or empty =
+/// none). This lets the headless screenshot pipeline capture a non-default
+/// route - e.g. the `/agent` activity timeline showing the just-driven turn's
+/// audited actions - without synthetic keyboard/mouse input. Off by default.
+#[tauri::command]
+pub fn pi_autodrive_route() -> Option<String> {
+    std::env::var("ARLEN_HARNESS_ROUTE")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 #[tauri::command]
 pub async fn pi_prompt(app: AppHandle, prompt: String) -> Result<String, String> {
     let stream = UnixStream::connect(drive_socket_path())

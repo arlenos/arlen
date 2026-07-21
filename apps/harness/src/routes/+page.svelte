@@ -15,6 +15,7 @@
   import { readCapability, type Capability } from "$lib/capability";
   import { messages, send } from "$lib/stores/conversation";
   import { invoke } from "@tauri-apps/api/core";
+  import { goto } from "$app/navigation";
   import { openArtifact, closePane } from "$lib/stores/artifact";
   import { startPoll } from "$lib/stores/agentActions";
 
@@ -37,6 +38,10 @@
   onMount(async () => {
     const auto = await invoke<string | null>("pi_autodrive_prompt");
     if (auto) await send(auto);
+    // After any driven turn, optionally navigate to a route to capture (e.g.
+    // /agent) so the screenshot pipeline can verify a non-default surface.
+    const route = await invoke<string | null>("pi_autodrive_route");
+    if (route) await goto(route);
   });
 
   // The three capability states the surface designs for: usable, switched
