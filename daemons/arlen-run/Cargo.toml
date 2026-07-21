@@ -12,6 +12,13 @@ path = "src/main.rs"
 [dependencies]
 arlen-confiner = { path = "../../sdk/confiner" }
 arlen-permissions = { path = "../../sdk/permissions" }
+# Strand 2's forwarding egress proxy: the launcher binds it on host loopback and
+# runs the confined app in a route-absent netns whose only reachable peer is it.
+arlen-net-guard = { path = "../../sdk/net-guard" }
+# A small runtime to drive the async EgressProxy concurrently with the blocking
+# app wait; tokio-util's CancellationToken tears the proxy down on guard drop.
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "io-util", "time", "sync"] }
+tokio-util = "0.7"
 dirs = "5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
