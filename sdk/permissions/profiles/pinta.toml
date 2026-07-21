@@ -1,0 +1,8 @@
+# Starting permission profile for Pinta (a bitmap image editor). Opens and saves
+# images from Pictures; no network, no Knowledge Graph access.
+[info]
+app_id = "pinta"
+tier = "third-party"
+
+[filesystem]
+pictures = true
