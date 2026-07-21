@@ -20,8 +20,9 @@ use arlen_ai_engine_daemon::command_executor::CommandExecutor;
 use arlen_ai_engine_daemon::compensation::CompensationStore;
 use arlen_ai_engine_daemon::consent_client::ConsentBrokerClient;
 use arlen_ai_engine_daemon::consent_root;
-use arlen_ai_engine_daemon::dispatch::{ConsentMinter, Dispatcher};
+use arlen_ai_engine_daemon::dispatch::{ConsentMinter, Dispatcher, SessionVerifier};
 use arlen_ai_engine_daemon::dispatch::Executor;
+use arlen_ai_engine_daemon::pi_completion;
 use arlen_ai_engine_daemon::file_executor::FileSystemExecutor;
 use arlen_run_consent_token::RUN_COMMAND_TOOL;
 use arlen_ai_engine_daemon::settings_executor::SettingsExecutor;
@@ -30,7 +31,7 @@ use arlen_ai_engine_daemon::read_executor::{DeniedRunner, GraphReadExecutor};
 use arlen_ai_core::pipeline::{CypherPipeline, GraphQuerier, QueryRunner};
 use arlen_ai_core::provider::AIProvider;
 use arlen_ai_engine_daemon::graph_adapter::OsSdkGraphQuerier;
-use arlen_ai_core::proxied::{ProxiedConfig, ProxiedProvider};
+use arlen_ai_core::proxied::{ProxiedConfig, ProxiedProvider, ProxyAIClient};
 use arlen_ai_engine_daemon::engine_config;
 use arlen_ai_engine_daemon::reporter::ScreeningReporter;
 use arlen_ai_engine_daemon::curation::GraphProjectReader;
@@ -136,6 +137,33 @@ fn bind_drive_socket() -> std::io::Result<UnixListener> {
     }
     let listener = UnixListener::bind(&path)?;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    Ok(listener)
+}
+
+/// Bind the pi model-completion socket (0600 under a 0700 runtime dir), clearing
+/// only a stale socket. Mirrors [`bind_drive_socket`]. `path` is the sidecar's
+/// proxy-socket host path, which the sidecar conditionally binds into pi's sandbox
+/// so pi's undici dispatcher reaches this endpoint.
+fn bind_completion_socket(path: &std::path::Path) -> std::io::Result<UnixListener> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+    }
+    if path.exists() {
+        match std::os::unix::net::UnixStream::connect(path) {
+            Ok(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AddrInUse,
+                    "completion socket already served by a live daemon",
+                ))
+            }
+            Err(_) => {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+    let listener = UnixListener::bind(path)?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     Ok(listener)
 }
 
@@ -539,6 +567,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     None => warn!("explain skill not found; System Explanation Mode unavailable"),
+                }
+
+                // pi model-completion egress (Option B, daemon-mediated): serve an
+                // HTTP-over-Unix completion endpoint at the sidecar's proxy-socket
+                // host path, which the sidecar conditionally binds into pi's sandbox.
+                // pi's undici dispatcher dials it; the daemon SO_PEERCRED + session-
+                // token auths the caller and forwards the raw body through the
+                // governed ai-proxy (the daemon is the trusted egress caller, so the
+                // egress trust boundary is unchanged). Bound BEFORE the sidecar spawn
+                // so the bind source exists; any failure leaves pi without model
+                // egress, fail-safe (the contract + gate paths are unaffected).
+                if let Some(conn) = ai_connection.as_ref() {
+                    match ProxyAIClient::with_connection(conn).await {
+                        Ok(client) => {
+                            match bind_completion_socket(std::path::Path::new(&paths.proxy_socket)) {
+                                Ok(listener) => {
+                                    let verifier =
+                                        Arc::clone(&dispatcher) as Arc<dyn SessionVerifier>;
+                                    let audit_token: Arc<str> =
+                                        Arc::from(engine_config::provider_settings().audit_token);
+                                    tokio::spawn(pi_completion::serve_completion(
+                                        listener,
+                                        verifier,
+                                        Arc::new(client),
+                                        audit_token,
+                                        uid,
+                                    ));
+                                    info!(socket = %paths.proxy_socket, "pi model-completion egress serving");
+                                }
+                                Err(e) => warn!(error = %e, "could not bind the completion socket; pi has no model egress"),
+                            }
+                        }
+                        Err(e) => warn!(error = %e, "could not build the completion proxy client; pi has no model egress"),
+                    }
                 }
 
                 // A second confined pi engine for the curator's ephemeral runs
