@@ -304,7 +304,39 @@ def main():
     try:
         sock, f = qmp_connect(qmp_path, time.monotonic() + 30)
         print(f"QMP connected; letting the session come up ({args.wait}s)...")
-        time.sleep(args.wait)
+        # For the pure top-bar gate (the black-screen rate measurement), POLL for the
+        # bar rather than a single wait-then-shot. Under heavy load the shell's WebKit
+        # render can finish just after a fixed wait, which one shot mis-reports as
+        # black; polling reports "did the bar render WITHIN N seconds" and the elapsed
+        # time is the true time-to-render. The app/consent/super modes keep the fixed
+        # wait their after-steps depend on.
+        bar_gate_only = args.require_bar and not (
+            args.app or args.press_super or args.deny_consent or args.approve_consent
+        )
+        if bar_gate_only:
+            deadline = time.monotonic() + args.wait
+            appeared_at = None
+            while time.monotonic() < deadline:
+                shot = qmp(f, "screendump", filename=out, format="png")
+                if "error" not in shot:
+                    for _ in range(50):
+                        if os.path.exists(out) and os.path.getsize(out) > 0:
+                            break
+                        time.sleep(0.1)
+                    try:
+                        if (os.path.exists(out) and os.path.getsize(out) > 0
+                                and has_top_bar(out)[0]):
+                            appeared_at = args.wait - (deadline - time.monotonic())
+                            break
+                    except Exception:
+                        pass  # a truncated/mid-write PNG: poll again
+                time.sleep(3)
+            if appeared_at is not None:
+                print(f"top bar appeared after {appeared_at:.0f}s (polled)")
+            else:
+                print(f"top bar did not appear within {args.wait}s (polled)")
+        else:
+            time.sleep(args.wait)
         if args.app:
             # The shell may show a modal (e.g. its consent fixture) over the desktop;
             # press Escape so a launched app window is not hidden behind it.
