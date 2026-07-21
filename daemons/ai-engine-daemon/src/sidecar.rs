@@ -242,7 +242,11 @@ pub fn pi_sidecar_confinement(
             plumbing.push(Bind::ReadOnly(loader.to_string(), loader.to_string()));
         }
     }
-    Ok(skeleton.complete(plumbing, vec![]))
+    // Run pi as pid 1 in its sandbox so bwrap's `--info-fd` child-pid is pi's OWN
+    // pid (not an intermediate init) - the pid pi presents on the contract and
+    // completion sockets, which the session token is bound to. pi is a single node
+    // process that reaps its own children, so it needs no separate reaper init.
+    Ok(skeleton.complete(plumbing, vec![]).with_as_pid_1())
 }
 
 /// The full confined spawn argv: the bwrap flags then `-- <node> <pi_cli> --mode
@@ -483,7 +487,10 @@ impl PiSidecar {
         .unwrap_or_default();
 
         match parse_child_pid(&info) {
-            Some(pid) => on_spawned(pid),
+            Some(pid) => {
+                tracing::info!(child_pid = pid, "pi sidecar spawned; session bound to this pid");
+                on_spawned(pid)
+            }
             None => {
                 warn!("bwrap did not report a child-pid on --info-fd; killing the sidecar");
                 let _ = child.kill().await;
