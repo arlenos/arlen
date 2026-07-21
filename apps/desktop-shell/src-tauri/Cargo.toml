@@ -59,6 +59,8 @@ modulesd-proto = { path = "../../../contracts/modulesd-proto" }
 arlen-consent-broker = { path = "../../../daemons/consent-broker" }
 arlen-permissions = { path = "../../../sdk/permissions" }
 arlen-theme = { path = "../../../sdk/theme" }
+# The pure, CI-tested shell core (the theme resolution pipeline).
+arlen-desktop-shell-core = { path = "../core" }
 bytes = "1"
 wordnet-db = "0.1"
 wordnet-morphy = "0.1"

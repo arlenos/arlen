@@ -1,15 +1,10 @@
-/// Theme system for Arlen.
-///
-/// `schema` defines the full token hierarchy. `loader` handles resolution
-/// from built-in TOML files, user overrides, and accessibility settings.
-/// `commands` provides Tauri commands and the `start_appearance_watcher`.
-/// `css` generates injectable CSS variable strings.
-///
-/// The legacy `SurfaceTokens` / `load_tokens` / `start_watcher` API was
-/// removed -- all theme data flows through `ThemeState` + `CssVariables`
-/// now. The single event is `arlen://theme-v2-changed`.
-
+//! Theme system for Arlen (host side).
+//!
+//! The pure resolution pipeline (`schema`, `loader`, `css`) lives in the shell
+//! core crate (`arlen_desktop_shell_core::theme`), unit-tested in CI. This module
+//! holds the Tauri command layer + `start_appearance_watcher` that drive it.
+//!
+//! The legacy `SurfaceTokens` / `load_tokens` / `start_watcher` API was removed --
+//! all theme data flows through `ThemeState` + `CssVariables` now. The single
+//! event is `arlen://theme-v2-changed`.
 pub mod commands;
-pub mod css;
-pub mod loader;
-pub mod schema;

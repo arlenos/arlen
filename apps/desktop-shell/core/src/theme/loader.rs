@@ -18,7 +18,7 @@
 
 use std::path::PathBuf;
 
-use arlen_theme::{ArlenTheme, ThemeVariant};
+use arlen_theme::ArlenTheme;
 use thiserror::Error;
 
 use super::schema::{
@@ -345,6 +345,7 @@ fn parse_hex_rgb(hex: &str) -> Option<(u8, u8, u8)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arlen_theme::ThemeVariant;
 
     #[test]
     fn bundled_themes_resolve() {

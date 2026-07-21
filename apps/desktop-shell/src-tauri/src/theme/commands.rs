@@ -14,9 +14,9 @@ use notify::{Event, EventKind, RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::css::{to_css_string, to_css_variables, CssVariables};
-use super::loader::{resolve_theme, ThemeError, ThemeLoader};
-use super::schema::{AppearanceConfig, ThemeInfo};
+use arlen_desktop_shell_core::theme::css::{to_css_string, to_css_variables, CssVariables};
+use arlen_desktop_shell_core::theme::loader::{resolve_theme, ThemeError, ThemeLoader};
+use arlen_desktop_shell_core::theme::schema::{AppearanceConfig, ThemeInfo};
 
 // ---------------------------------------------------------------------------
 // State
