@@ -108,6 +108,106 @@ pub fn bridge_namespace(entities_toml: &str) -> Result<String, NamespaceError> {
     Ok(ns)
 }
 
+/// The canonical bridge-ingest identity: one shared FirstParty daemon identity that
+/// every installed bridge writes under, its profile accumulating each bridge's
+/// delegated namespace. Matches `sdk/permissions/identity.rs` + the FirstParty
+/// tier entry, so a written `bridge-ingest.toml` is the profile the daemon loads.
+pub const BRIDGE_INGEST_APP_ID: &str = "bridge-ingest";
+
+/// A failure provisioning the bridge-ingest profile.
+#[derive(Debug, thiserror::Error)]
+pub enum ProvisionError {
+    /// The namespace is empty, reserved, or malformed.
+    #[error("invalid bridge namespace: {0}")]
+    InvalidNamespace(String),
+    /// The profile path could not be resolved.
+    #[error("profile path: {0}")]
+    Path(String),
+    /// The existing profile could not be parsed.
+    #[error("existing bridge-ingest profile parse error: {0}")]
+    Parse(String),
+    /// An I/O error reading or writing the profile.
+    #[error("profile I/O error at {path}: {source}")]
+    Io {
+        /// The path being read or written.
+        path: String,
+        /// The underlying error.
+        source: std::io::Error,
+    },
+}
+
+/// Add `namespace` to a profile's `graph.delegated_namespaces`, idempotently.
+/// Returns `true` if it was added, `false` if already present. Pure - the caller
+/// persists. The namespace must already be validated ([`bridge_namespace`] /
+/// [`is_valid_delegated_namespace`]); this only mutates.
+pub fn add_delegated_namespace(
+    profile: &mut arlen_permissions::PermissionProfile,
+    namespace: &str,
+) -> bool {
+    if profile.graph.delegated_namespaces.iter().any(|n| n == namespace) {
+        return false;
+    }
+    profile.graph.delegated_namespaces.push(namespace.to_string());
+    true
+}
+
+/// A fresh bridge-ingest profile (FirstParty, no scope but the one namespace we add
+/// next). Built by deserializing the minimal `[info]` so all other sections take
+/// their serde defaults.
+fn fresh_bridge_ingest_profile() -> arlen_permissions::PermissionProfile {
+    toml::from_str("[info]\napp_id = \"bridge-ingest\"\ntier = \"first-party\"\n")
+        .expect("the minimal bridge-ingest profile is valid")
+}
+
+/// Provision the shared bridge-ingest permission profile with a bridge's delegated
+/// namespace: load the existing `bridge-ingest.toml` (or start a fresh FirstParty
+/// one), add `namespace` to `graph.delegated_namespaces` idempotently, and write it
+/// back atomically. The knowledge write path re-validates each namespace through
+/// `NamespaceGrant::new`, and the permission watcher reloads on the file change.
+/// Returns `true` if the profile changed (a new namespace was granted).
+///
+/// Writes the USER-tier profile (`~/.config/permissions/bridge-ingest.toml`, or
+/// `$ARLEN_PERMISSIONS_DIR`), which is what a user-installed bridge grants: the user
+/// authorising a bridge to write their own graph, revocable via the same file.
+pub fn provision_bridge_namespace(namespace: &str) -> Result<bool, ProvisionError> {
+    if !is_valid_delegated_namespace(namespace) {
+        return Err(ProvisionError::InvalidNamespace(namespace.to_string()));
+    }
+    let path = arlen_permissions::profile_path(BRIDGE_INGEST_APP_ID)
+        .map_err(|e| ProvisionError::Path(e.to_string()))?;
+
+    let mut profile = match std::fs::read_to_string(&path) {
+        Ok(text) => toml::from_str(&text).map_err(|e| ProvisionError::Parse(e.to_string()))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => fresh_bridge_ingest_profile(),
+        Err(source) => {
+            return Err(ProvisionError::Io { path: path.display().to_string(), source })
+        }
+    };
+
+    if !add_delegated_namespace(&mut profile, namespace) {
+        return Ok(false); // already granted; nothing to write
+    }
+
+    let text = toml::to_string(&profile).expect("a PermissionProfile serializes to TOML");
+    write_atomic(&path, text.as_bytes())?;
+    Ok(true)
+}
+
+/// Write `bytes` to `path` atomically (sibling temp + rename), creating the parent
+/// directory. Atomic so a concurrent daemon read never sees a half-written profile.
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ProvisionError> {
+    let io = |p: &Path, source: std::io::Error| ProvisionError::Io {
+        path: p.display().to_string(),
+        source,
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| io(parent, e))?;
+    }
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, bytes).map_err(|e| io(&tmp, e))?;
+    std::fs::rename(&tmp, path).map_err(|e| io(path, e))
+}
+
 /// Whether `ns` is a well-formed, non-reserved delegated namespace.
 fn is_valid_delegated_namespace(ns: &str) -> bool {
     if ns.is_empty() {
@@ -363,6 +463,46 @@ mod tests {
 
         install_bridge_halves(src.path(), &manifest, arlen.path(), foreign.path()).unwrap();
         assert_eq!(fs::read_to_string(foreign.path().join("dist/main.js")).unwrap(), "nested");
+    }
+
+    #[test]
+    fn add_delegated_namespace_is_idempotent() {
+        let mut profile: arlen_permissions::PermissionProfile =
+            toml::from_str("[info]\napp_id = \"bridge-ingest\"\ntier = \"first-party\"\n").unwrap();
+        assert!(add_delegated_namespace(&mut profile, "md.obsidian"));
+        assert!(!add_delegated_namespace(&mut profile, "md.obsidian")); // already present
+        assert!(add_delegated_namespace(&mut profile, "com.zotero"));
+        assert_eq!(profile.graph.delegated_namespaces, vec!["md.obsidian", "com.zotero"]);
+    }
+
+    #[test]
+    fn provision_creates_then_accumulates_the_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("ARLEN_PERMISSIONS_DIR", dir.path());
+
+        // First bridge: creates the profile.
+        assert!(provision_bridge_namespace("md.obsidian").unwrap());
+        let path = dir.path().join("bridge-ingest.toml");
+        let p1: arlen_permissions::PermissionProfile =
+            toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(p1.info.app_id, "bridge-ingest");
+        assert_eq!(p1.graph.delegated_namespaces, vec!["md.obsidian"]);
+
+        // Second bridge: accumulates (shared identity).
+        assert!(provision_bridge_namespace("com.zotero").unwrap());
+        let p2: arlen_permissions::PermissionProfile =
+            toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(p2.graph.delegated_namespaces, vec!["md.obsidian", "com.zotero"]);
+
+        // Re-provisioning the same namespace is a no-op (no change).
+        assert!(!provision_bridge_namespace("md.obsidian").unwrap());
+
+        // A reserved namespace is refused before any write.
+        assert!(matches!(
+            provision_bridge_namespace("system.core"),
+            Err(ProvisionError::InvalidNamespace(_))
+        ));
+        std::env::remove_var("ARLEN_PERMISSIONS_DIR");
     }
 
     #[test]
