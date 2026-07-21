@@ -46,7 +46,7 @@ use arlen_ai_engine_daemon::write_executor::{
 };
 use arlen_ai_engine_daemon::wire::serve_connection;
 use ai_engine_contract::{CapabilityContext, ReadTier, SessionInit};
-use arlen_permissions::connection_auth::ConnectionAuth;
+use arlen_permissions::connection_auth::peer_credentials;
 use audit_proto::sink::{AuditSink, LedgerAuditSink};
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -686,17 +686,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
-                    // Authenticate the peer from the kernel (SO_PEERCRED), never
-                    // a wire value; cross-uid is rejected, and the attested pid
-                    // is what binds every verb to its session.
-                    let auth = match ConnectionAuth::extract_from(&stream, uid) {
-                        Ok(a) => a,
+                    // Read the kernel-attested (pid, uid) from SO_PEERCRED, never a
+                    // wire value. The peer's BINARY is deliberately NOT resolved: pi
+                    // is a generic `node` interpreter, which the binary-resolving
+                    // `ConnectionAuth::extract_from` rejects as UnknownBinary. Same-
+                    // uid is enforced here; every verb is then bound to the attested
+                    // pid AND the session token the peer presents (the authentication
+                    // - the token is a per-run secret only the spawned pi holds).
+                    let (pid, peer_uid) = match peer_credentials(&stream) {
+                        Ok(v) => v,
                         Err(e) => {
-                            warn!(error = %e, "rejecting unauthenticated engine connection");
+                            warn!(error = %e, "engine connection: could not read peer credentials");
                             continue;
                         }
                     };
-                    let pid = auth.pid();
+                    if peer_uid != uid {
+                        warn!(peer_uid, "rejecting cross-uid engine connection");
+                        continue;
+                    }
                     let disp = Arc::clone(&dispatcher);
                     tokio::spawn(async move {
                         let mut stream = stream;
