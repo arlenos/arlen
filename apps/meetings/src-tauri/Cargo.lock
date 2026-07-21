@@ -166,6 +166,7 @@ dependencies = [
  "arlen-ai-core",
  "arlen-ai-meeting-notes",
  "arlen-meeting-note",
+ "arlen-meetings-core",
  "arlen-transcript",
  "env_logger",
  "log",
@@ -180,6 +181,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-meetings-core"
+version = "0.1.0"
+dependencies = [
+ "arlen-meeting-note",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "arlen-permissions"
 version = "0.1.0"
 dependencies = [
@@ -190,6 +200,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "toml 0.8.23",
+ "tracing",
 ]
 
 [[package]]

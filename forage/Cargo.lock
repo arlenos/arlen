@@ -260,6 +260,7 @@ version = "0.1.0"
 dependencies = [
  "thiserror 2.0.18",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -270,8 +271,10 @@ dependencies = [
  "libc",
  "notify",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "toml",
+ "tracing",
 ]
 
 [[package]]

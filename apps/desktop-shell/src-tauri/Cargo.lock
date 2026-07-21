@@ -165,6 +165,7 @@ name = "arlen-desktop-shell"
 version = "0.1.0"
 dependencies = [
  "arlen-consent-broker",
+ "arlen-desktop-shell-core",
  "arlen-modules",
  "arlen-permissions",
  "arlen-theme",
@@ -213,6 +214,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-desktop-shell-core"
+version = "0.1.0"
+dependencies = [
+ "arlen-theme",
+ "bytes",
+ "dirs 5.0.1",
+ "libc",
+ "log",
+ "modulesd-proto",
+ "notification-proto",
+ "prost",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.2",
+]
+
+[[package]]
 name = "arlen-graph-schema"
 version = "0.1.0"
 
@@ -236,6 +256,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "toml 0.8.2",
+ "tracing",
 ]
 
 [[package]]
