@@ -2,12 +2,12 @@ import { describe, it, expect } from "vitest";
 import { applyToolEvent, toolCallsOf, type TracedCall } from "./pi-trace";
 
 describe("applyToolEvent", () => {
-  it("appends a running call for a tool_call event, splitting the namespaced name", () => {
+  it("appends a running call for a tool_execution_start event, splitting the namespaced name", () => {
     const trace = applyToolEvent([], {
-      type: "tool_call",
+      type: "tool_execution_start",
       toolName: "graph.query",
       toolCallId: "c1",
-      input: { cypher: "MATCH (n) RETURN n" },
+      args: { cypher: "MATCH (n) RETURN n" },
     });
     expect(trace).toHaveLength(1);
     expect(trace[0].id).toBe("c1");
@@ -19,7 +19,7 @@ describe("applyToolEvent", () => {
   });
 
   it("completes the matching call on tool_execution_end", () => {
-    let trace = applyToolEvent([], { type: "tool_call", toolName: "fs.read", toolCallId: "c2" });
+    let trace = applyToolEvent([], { type: "tool_execution_start", toolName: "fs.read", toolCallId: "c2" });
     trace = applyToolEvent(trace, {
       type: "tool_execution_end",
       toolCallId: "c2",
@@ -31,7 +31,7 @@ describe("applyToolEvent", () => {
   });
 
   it("marks a failed execution", () => {
-    let trace = applyToolEvent([], { type: "tool_call", toolName: "os.run", toolCallId: "c3" });
+    let trace = applyToolEvent([], { type: "tool_execution_start", toolName: "os.run", toolCallId: "c3" });
     trace = applyToolEvent(trace, {
       type: "tool_execution_end",
       toolCallId: "c3",
@@ -43,15 +43,15 @@ describe("applyToolEvent", () => {
 
   it("completes only the call whose id matches", () => {
     let trace: TracedCall[] = [];
-    trace = applyToolEvent(trace, { type: "tool_call", toolName: "a.x", toolCallId: "c1" });
-    trace = applyToolEvent(trace, { type: "tool_call", toolName: "b.y", toolCallId: "c2" });
+    trace = applyToolEvent(trace, { type: "tool_execution_start", toolName: "a.x", toolCallId: "c1" });
+    trace = applyToolEvent(trace, { type: "tool_execution_start", toolName: "b.y", toolCallId: "c2" });
     trace = applyToolEvent(trace, { type: "tool_execution_end", toolCallId: "c2", result: "ok" });
     expect(trace[0].call.status).toBe("running");
     expect(trace[1].call.status).toBe("done");
   });
 
   it("splits a name with no dot into an empty server", () => {
-    const trace = applyToolEvent([], { type: "tool_call", toolName: "search", toolCallId: "c4" });
+    const trace = applyToolEvent([], { type: "tool_execution_start", toolName: "search", toolCallId: "c4" });
     expect(trace[0].call.server).toBe("");
     expect(trace[0].call.tool).toBe("search");
   });
