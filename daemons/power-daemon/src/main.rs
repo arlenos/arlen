@@ -177,6 +177,18 @@ async fn main() {
                                 }
                             }
 
+                            // Coarse lid movement: publish power.lid_closed /
+                            // power.lid_opened, the other half of the transition
+                            // set the proto specifies. Observation only - acting
+                            // on the lid is PWR-R4 and stays unwired.
+                            if let Some(prev) = last.as_ref() {
+                                if let Some(evt) =
+                                    arlen_powerd::lid::lid_transition_event(prev.lid, state.lid)
+                                {
+                                    emit_transition(&emitter, evt, String::new()).await;
+                                }
+                            }
+
                             // PWR-R6 critical-battery auto-action (off by
                             // default). Reset the latch once off the floor (on AC
                             // or risen above it), then fire the configured action
