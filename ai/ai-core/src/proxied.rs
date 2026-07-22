@@ -88,20 +88,39 @@ impl ProxyAIClient {
     }
 
     /// Invoke `forward_completion` on the proxy.
+    ///
+    /// Retries ONCE against a freshly-resolved proxy when the first attempt says
+    /// the destination does not exist. A long-lived daemon builds this client at
+    /// startup; if `ai-proxy` was not on the bus then, the cached destination
+    /// never re-resolves and EVERY later forward keeps failing with
+    /// `ServiceUnknown` - observed live: `ai-proxy` was restarted and owned
+    /// `org.arlen.AIProxy1` (a fresh caller reached it and got a normal
+    /// authorisation error), while the daemon kept failing and `ai-proxy` logged
+    /// no incoming call at all. The retry is the same recovery the agent's bus
+    /// re-registration does. It changes no authorisation: the rebuilt proxy uses
+    /// the SAME connection, so the proxy still checks that caller owns
+    /// `org.arlen.AI1`.
     pub async fn forward(
         &self,
         provider_name: &str,
         body_json: &str,
         audit_token: &str,
     ) -> Result<ProxyForwardResponse, ProviderError> {
-        let reply: String = self
-            .proxy
-            .call(
-                "forward_completion",
-                &(provider_name, body_json, audit_token),
-            )
-            .await
-            .map_err(map_zbus_error)?;
+        let args = (provider_name, body_json, audit_token);
+        let reply: String = match self.proxy.call("forward_completion", &args).await {
+            Ok(reply) => reply,
+            Err(err) if is_destination_missing(&err) => {
+                // Re-resolve on the same connection, then try once more. A still
+                // -absent ai-proxy fails exactly as before.
+                let fresh = Self::with_connection(self.proxy.connection()).await?;
+                fresh
+                    .proxy
+                    .call("forward_completion", &args)
+                    .await
+                    .map_err(map_zbus_error)?
+            }
+            Err(err) => return Err(map_zbus_error(err)),
+        };
         serde_json::from_str(&reply)
             .map_err(|err| ProviderError::Internal(format!("proxy reply not json: {err}")))
     }
@@ -234,6 +253,21 @@ fn chat_body_json(
     };
     serde_json::to_string(&body)
         .map_err(|err| ProviderError::Internal(format!("body serialise: {err}")))
+}
+
+/// Whether a call failed because the destination name has no owner - i.e. the
+/// service was not on the bus for THIS attempt. Distinguished from every other
+/// failure because it is the one an immediate re-resolve can fix; a denial, bad
+/// args or an upstream error are all real answers and must not be retried.
+fn is_destination_missing(err: &zbus::Error) -> bool {
+    matches!(
+        err,
+        zbus::Error::FDO(fdo)
+            if matches!(
+                fdo.as_ref(),
+                zbus::fdo::Error::ServiceUnknown(_) | zbus::fdo::Error::NameHasNoOwner(_)
+            )
+    )
 }
 
 fn map_zbus_error(err: zbus::Error) -> ProviderError {
