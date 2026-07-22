@@ -40,6 +40,11 @@ export interface ProvenanceChain {
   steps: ProvenanceStep[];
   /// Whether the trail is complete, or deeper history is gated (never faked).
   horizon: "complete" | "deeper_gated";
+  /// True when this chain is a SAMPLE, not this file's real lineage - set when
+  /// the `provenance_of` backend is absent and the fixture stands in. The halo
+  /// must say so: the fixtures include an `attested` C2PA step, and rendering
+  /// invented lineage unlabelled is exactly the overclaim this module forbids.
+  mocked?: boolean;
 }
 
 const FIXTURES: Record<string, ProvenanceChain> = {
@@ -81,7 +86,10 @@ export async function loadProvenance(ref: string): Promise<ProvenanceChain> {
     return await invoke<ProvenanceChain>("provenance_of", { ref });
   } catch {
     const key = Object.keys(FIXTURES).find((k) => ref.includes(k)) ?? "default";
-    return FIXTURES[key];
+    // Flagged, never silent: without the backend this is a sample chain about a
+    // different file, and an unlabelled origin claim reads as this file's real
+    // (sometimes attested) lineage.
+    return { ...FIXTURES[key], mocked: true };
   }
 }
 

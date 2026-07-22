@@ -9,6 +9,7 @@
   import { onMount } from "svelte";
   import { tauriAvailable } from "$lib/tauri";
   import FmInfoPanel from "$lib/components/FmInfoPanel.svelte";
+  import ProvenanceHalo from "$lib/components/ProvenanceHalo.svelte";
   import type { FileEntry } from "@arlen/ui-kit/components/browser";
 
   const FILE = "/demo/thesis-draft.md";
@@ -106,6 +107,13 @@
     <div class="host">
       <h2>Symlink</h2>
       <FmInfoPanel path={SYMLINK} entry={entry("shortcut", "symlink")} onnavigate={() => {}} />
+    </div>
+    <div class="host">
+      <h2>Provenance halo (no backend)</h2>
+      <!-- `provenance_of` is deliberately NOT mocked above, so the store takes
+           its fixture fallback - the exact state a real session is in until the
+           backend lands. The halo must declare it as sample data. -->
+      <ProvenanceHalo fileRef={FILE} />
     </div>
   {/if}
 </div>

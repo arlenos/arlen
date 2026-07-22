@@ -208,6 +208,7 @@ const messages: Catalogs = {
     // Provenance halo
     "f.prov.trigger": "Where's this from?",
     "f.prov.loading": "Looking up where this came from…",
+    "f.prov.sample": "Sample history - not this file's real origin.",
 
     // Search results
     "f.results.name": "Name",
@@ -420,6 +421,7 @@ const messages: Catalogs = {
 
     "f.prov.trigger": "Woher stammt das?",
     "f.prov.loading": "Wird nachgeschlagen, woher das stammt…",
+    "f.prov.sample": "Beispielverlauf - nicht die echte Herkunft dieser Datei.",
 
     "f.results.name": "Name",
     "f.results.folder": "Ordner",
