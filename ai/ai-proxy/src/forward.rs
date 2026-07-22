@@ -74,11 +74,35 @@ fn retain_safe(addrs: impl Iterator<Item = std::net::SocketAddr>) -> Vec<std::ne
         .collect()
 }
 
-/// A reqwest DNS resolver that refuses any host resolving - or DNS-rebinding -
-/// into a blocked range, so the forwarder can never dial an SSRF target even when
-/// the ai-proxy runs unconfined in the host netns (review EG-1). Reqwest applies
-/// the request URL's port to the addresses this returns, so the port-0 lookup here
-/// is only used for its IP set.
+/// Whether `host` explicitly names the loopback interface: a loopback IP literal
+/// (`127.0.0.1`, `::1`) or `localhost`.
+///
+/// This is what separates a LOCAL PROVIDER from a DNS-rebind attack. The SSRF
+/// guard blocks loopback because a REMOTE hostname resolving INTO loopback is a
+/// rebind - the host looks external but reaches an internal service. A host that
+/// is ITSELF loopback is the opposite: the operator deliberately configured a
+/// local model server (Ollama, llama.cpp - the default, key-less provider
+/// category), which by definition lives on loopback. The allowlist already
+/// permits `http://127.0.0.1:11434` / `http://localhost:11434` for exactly this,
+/// so refusing it at the resolver was a self-contradiction that broke local-first
+/// AI entirely. A remote name is never treated as local, so the rebind defense is
+/// untouched.
+fn host_is_explicit_loopback(host: &str) -> bool {
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .map(|ip| ip.is_loopback())
+            .unwrap_or(false)
+}
+
+/// A reqwest DNS resolver that refuses any REMOTE host resolving - or DNS-
+/// rebinding - into a blocked range, so the forwarder can never dial an SSRF
+/// target even when the ai-proxy runs unconfined in the host netns (review EG-1).
+/// A host that explicitly names loopback ([`host_is_explicit_loopback`]) is a
+/// local provider and keeps its loopback address; every other host is filtered,
+/// so a remote name cannot rebind into loopback. Reqwest applies the request
+/// URL's port to the addresses this returns, so the port-0 lookup here is only
+/// used for its IP set.
 struct GuardedResolver;
 
 impl reqwest::dns::Resolve for GuardedResolver {
@@ -86,13 +110,20 @@ impl reqwest::dns::Resolve for GuardedResolver {
         Box::pin(async move {
             let host = name.as_str().to_owned();
             let resolved = tokio::net::lookup_host((host.as_str(), 0)).await?;
-            let safe = retain_safe(resolved);
-            if safe.is_empty() {
+            // A deliberately-local provider (loopback literal or `localhost`)
+            // keeps its loopback address; the rebind defense only ever needs to
+            // fire on a REMOTE name that resolves into a blocked range.
+            let addrs: Vec<std::net::SocketAddr> = if host_is_explicit_loopback(&host) {
+                resolved.collect()
+            } else {
+                retain_safe(resolved)
+            };
+            if addrs.is_empty() {
                 return Err(Box::<dyn std::error::Error + Send + Sync>::from(
                     "all resolved addresses are in a blocked range (SSRF guard)",
                 ));
             }
-            Ok(Box::new(safe.into_iter()) as Box<dyn Iterator<Item = std::net::SocketAddr> + Send>)
+            Ok(Box::new(addrs.into_iter()) as Box<dyn Iterator<Item = std::net::SocketAddr> + Send>)
         })
     }
 }
@@ -296,6 +327,27 @@ mod tests {
     use super::*;
     use wiremock::matchers::method;
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn only_an_explicit_loopback_host_is_treated_as_a_local_provider() {
+        // A local model server (Ollama, the default) is configured as a loopback
+        // literal or `localhost`; the SSRF guard must let it through, or the whole
+        // local-first AI loop is dead - which is exactly the regression this
+        // closed (every model call 502'd because the resolver dropped 127.0.0.1).
+        assert!(host_is_explicit_loopback("127.0.0.1"));
+        assert!(host_is_explicit_loopback("::1"));
+        assert!(host_is_explicit_loopback("localhost"));
+        assert!(host_is_explicit_loopback("LocalHost")); // case-insensitive
+        // A REMOTE name is never local, so it stays subject to retain_safe - the
+        // DNS-rebind defense (evil.com -> 127.0.0.1) is untouched.
+        assert!(!host_is_explicit_loopback("api.openai.com"));
+        assert!(!host_is_explicit_loopback("evil.example.com"));
+        // A non-loopback IP literal (a public or metadata address) is not local
+        // either; only loopback literals qualify.
+        assert!(!host_is_explicit_loopback("169.254.169.254"));
+        assert!(!host_is_explicit_loopback("1.1.1.1"));
+        assert!(!host_is_explicit_loopback("192.168.1.5"));
+    }
 
     #[test]
     fn retain_safe_drops_blocked_ranges_keeps_public() {
