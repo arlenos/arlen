@@ -19,6 +19,8 @@
     scopeOptions,
     preview,
     mintResult,
+    mintMocked,
+    mintError,
     closeMint,
     loadPreview,
     mint,
@@ -85,6 +87,15 @@
     </header>
 
     <div class="mint-body">
+      {#if $mintError}
+        <!-- A refused mint must never reach the "is now shared" screen. -->
+        <p class="mint-note err" role="alert">{$mintError}</p>
+      {/if}
+      {#if $mintMocked && !$mintResult}
+        <!-- The scope menu and its reach numbers are invented, so the user would
+             be choosing what to share out of data that is not theirs. -->
+        <p class="mint-note">Example data - these are not your real notes and projects.</p>
+      {/if}
       {#if $mintResult}
         <div class="mint-result">
           <span class="mint-result-icon"><ShieldCheck size={20} strokeWidth={1.75} /></span>
@@ -316,6 +327,15 @@
     font-weight: 600;
   }
 
+  .mint-note {
+    margin: 0 0 0.6rem;
+    font-size: var(--text-2xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  .mint-note.err {
+    color: var(--color-fg-danger, #f87171);
+  }
   .mint-result {
     display: flex;
     flex-direction: column;
