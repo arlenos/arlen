@@ -12,6 +12,7 @@
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 import type { DiffLine } from "@arlen/ui-kit/components/diff";
 
 /// The gate class of a hunk: reversible-autonomous / applied-with-undo / held-for-
@@ -79,12 +80,23 @@ const FIXTURE: AiEditProposal = {
 /// The proposal on screen, or null.
 export const proposal = writable<AiEditProposal | null>(null);
 
+/// True while the proposal on screen is the FIXTURE rather than a real one from
+/// the assistant. It names a principal, a scope and concrete diff hunks against
+/// the open file, so unlabelled it reads as a real pending edit to accept.
+export const mocked = writable(false);
+
+/// The last action failure, for the review to show. Empty when all is well.
+export const lastError = writable("");
+
 /// Ask the assistant to edit. Live: `ai_edit`; fixture under vite.
 export async function proposeEdit(prompt: string): Promise<void> {
+  lastError.set("");
   try {
     proposal.set(await invoke<AiEditProposal>("ai_edit", { prompt }));
+    mocked.set(false);
   } catch {
     proposal.set({ ...FIXTURE, prompt: prompt || FIXTURE_PROMPT });
+    mocked.set(true);
   }
 }
 
@@ -94,20 +106,47 @@ function setStatus(index: number, status: HunkStatus): void {
   );
 }
 
+/// Drive one hunk action optimistically, then reconcile with the backend.
+///
+/// A REAL refusal restores the previous status and says so. Swallowing it (as
+/// this did) makes the review lie about the file: an "applied" hunk that was
+/// never written, a "rejected" one the backend never held back, or - worst - an
+/// "undone" one whose edit is still in the file, which would falsify the
+/// reversibility the whole gated-edit model rests on. Without the Tauri runtime
+/// there is no backend to refuse, so the optimistic mock stands.
+async function driveHunk(
+  index: number,
+  next: HunkStatus,
+  cmd: string,
+  failure: string,
+): Promise<void> {
+  let previous: HunkStatus | undefined;
+  proposal.update((p) => {
+    previous = p?.hunks[index]?.status;
+    return p;
+  });
+  setStatus(index, next);
+  try {
+    await invoke(cmd, { index });
+  } catch (e) {
+    if (tauriAvailable) {
+      if (previous) setStatus(index, previous);
+      lastError.set(`${failure}: ${String(e)}`);
+    }
+  }
+}
+
 /// Confirm a held (confirm-class) hunk. Live: `ai_edit_accept`.
-export function acceptHunk(index: number): void {
-  setStatus(index, "applied");
-  invoke("ai_edit_accept", { index }).catch(() => {});
+export async function acceptHunk(index: number): Promise<void> {
+  await driveHunk(index, "applied", "ai_edit_accept", "Could not apply that change");
 }
 /// Reject a held hunk. Live: `ai_edit_reject`.
-export function rejectHunk(index: number): void {
-  setStatus(index, "rejected");
-  invoke("ai_edit_reject", { index }).catch(() => {});
+export async function rejectHunk(index: number): Promise<void> {
+  await driveHunk(index, "rejected", "ai_edit_reject", "Could not reject that change");
 }
 /// Undo an applied hunk (the compensation). Live: `ai_edit_undo`.
-export function undoHunk(index: number): void {
-  setStatus(index, "undone");
-  invoke("ai_edit_undo", { index }).catch(() => {});
+export async function undoHunk(index: number): Promise<void> {
+  await driveHunk(index, "undone", "ai_edit_undo", "Could not undo that change - it is still in the file");
 }
 /// Dismiss the whole review.
 export function dismiss(): void {

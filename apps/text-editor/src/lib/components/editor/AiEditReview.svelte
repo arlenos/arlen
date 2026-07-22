@@ -5,6 +5,8 @@
   /// confirm (irreversible/external). The opposite of a silent apply.
   import {
     proposal,
+    mocked,
+    lastError,
     acceptHunk,
     rejectHunk,
     undoHunk,
@@ -35,6 +37,17 @@
         <X size={15} strokeWidth={2} />
       </button>
     </header>
+
+    {#if $mocked}
+      <!-- A named principal, a scope and concrete hunks against the open file:
+           unlabelled this reads as a real pending edit to accept. -->
+      <p class="sample">{$t("te.review.sample")}</p>
+    {/if}
+    {#if $lastError}
+      <!-- A refused action already restored the hunk's status; this says why, so
+           a failed undo never passes as a reverted edit. -->
+      <p class="sample error" role="alert">{$lastError}</p>
+    {/if}
 
     <p class="prompt">{$t("te.review.youAsked", { prompt: p.prompt })}</p>
 
@@ -119,6 +132,15 @@
   }
   .close:hover {
     color: var(--color-fg-primary);
+  }
+  .sample {
+    margin: 0 0 0.5rem;
+    font-size: var(--text-2xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+  }
+  .sample.error {
+    color: var(--color-fg-danger, #f87171);
   }
   .prompt {
     margin: 0 0 1rem;
