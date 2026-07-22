@@ -23,6 +23,8 @@ use arlen_forage_bridge_install::{
     is_safe_relative_path, resolve_foreign_dest, BridgeInstallResult, InstallBridgeError,
     InstalledBridge, NamespaceError,
 };
+use arlen_cookbook_resolve::ResolvedRecipe;
+use arlen_forage_fetch::{GitFetcher, DEFAULT_RECIPE_REPO_BYTES};
 use arlen_forage_recipe::{Install, Recipe};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -124,6 +126,77 @@ pub fn bridge_from_source(source_dir: &Path, recipe: &Recipe) -> Result<Prepared
         install,
         namespace,
     })
+}
+
+/// A failure fetching and verifying a bridge recipe from its resolved pointer.
+#[derive(Debug, thiserror::Error)]
+pub enum FetchBridgeError {
+    /// The cookbook's `git_url` is not a usable https url.
+    #[error("bridge git_url: {0}")]
+    Url(String),
+    /// A scratch checkout dir could not be created.
+    #[error("scratch dir: {0}")]
+    Scratch(std::io::Error),
+    /// The pinned-commit clone failed (or the checkout did not match the commit).
+    #[error("fetching {commit}: {source}")]
+    Fetch {
+        /// The pinned commit that was requested.
+        commit: String,
+        /// The underlying fetch error.
+        source: arlen_forage_fetch::FetchError,
+    },
+    /// No `recipe.toml` in the checkout.
+    #[error("no recipe.toml in the bridge checkout")]
+    NoRecipe,
+    /// Reading the checked-out `recipe.toml` failed.
+    #[error("reading recipe: {0}")]
+    ReadRecipe(std::io::Error),
+    /// The recipe at the pinned commit does not match the cookbook's signed hash.
+    #[error("the bridge recipe at the pinned commit does not match the cookbook's signed hash; refusing")]
+    HashMismatch,
+    /// The recipe did not parse or validate.
+    #[error("parsing recipe: {0}")]
+    Parse(String),
+    /// The parsed recipe is not a usable bridge (no `[bridge]`/`[install]`, etc.).
+    #[error(transparent)]
+    Prepare(#[from] PrepareError),
+}
+
+/// Fetch and verify one bridge recipe from its resolved cookbook pointer, then
+/// prepare it for install. Clones the pinned commit through `fetcher` (the host is
+/// pinned by the cookbook signature, the content by the commit), checks the
+/// checked-out `recipe.toml` against the cookbook's signed sha256 - a repo serving
+/// content the cookbook did not vet is refused here - parses+validates it, and pulls
+/// the `[install]` manifest + namespace via [`bridge_from_source`].
+///
+/// Returns the checkout's `TempDir` alongside the [`PreparedBridge`]: the prepared
+/// bridge's `source_dir` points inside it, so the caller must keep the `TempDir`
+/// alive until [`install_prepared_bridges`] has copied the files out. The `fetcher`
+/// seam keeps this testable without a real git clone.
+pub fn prepare_bridge<F: GitFetcher>(
+    fetcher: &F,
+    resolved: &ResolvedRecipe,
+) -> Result<(tempfile::TempDir, PreparedBridge), FetchBridgeError> {
+    let url = crate::clone_url(&resolved.git_url).map_err(FetchBridgeError::Url)?;
+    let clone = tempfile::tempdir().map_err(FetchBridgeError::Scratch)?;
+    fetcher
+        .fetch_commit(&url, &resolved.commit, clone.path(), DEFAULT_RECIPE_REPO_BYTES)
+        .map_err(|source| FetchBridgeError::Fetch { commit: resolved.commit.clone(), source })?;
+
+    let recipe_path =
+        super::recipe::resolve_recipe_path(clone.path()).ok_or(FetchBridgeError::NoRecipe)?;
+    let recipe_bytes = std::fs::read(&recipe_path).map_err(FetchBridgeError::ReadRecipe)?;
+    if crate::sha256_hex(&recipe_bytes) != resolved.recipe_hash {
+        return Err(FetchBridgeError::HashMismatch);
+    }
+    let recipe = arlen_forage_recipe::parse(&String::from_utf8_lossy(&recipe_bytes))
+        .map_err(|e| FetchBridgeError::Parse(e.to_string()))?;
+
+    // The install files are relative to the recipe.toml's dir, not the checkout root
+    // (which may nest the recipe under `.forage/`).
+    let recipe_dir = recipe_path.parent().unwrap_or_else(|| clone.path());
+    let prepared = bridge_from_source(recipe_dir, &recipe)?;
+    Ok((clone, prepared))
 }
 
 /// A bridge batch-install failure. Every variant means the whole batch was unwound
@@ -353,6 +426,83 @@ mod tests {
         assert!(matches!(
             bridge_from_source(src.path(), &recipe),
             Err(PrepareError::Namespace { .. })
+        ));
+    }
+
+    /// A valid, source-bearing bridge recipe (parses + validates).
+    const BRIDGE_RECIPE_TOML: &str = r#"
+[recipe]
+id = "md.obsidian.bridge"
+name = "Obsidian -> Arlen"
+maintainer = "key:abc"
+
+[[source]]
+type = "git"
+url = "https://github.com/example/obsidian-bridge"
+commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+[bridge]
+foreign_app = "obsidian"
+
+[install]
+arlen_side = ["entities.toml", "bridge.toml"]
+
+[install.foreign_side]
+into = "$VAULT/.obsidian/plugins/b/"
+files = ["main.js"]
+"#;
+
+    /// A git fetcher that drops a fixed bridge checkout into the dest dir.
+    struct FakeFetcher {
+        recipe_toml: String,
+    }
+
+    impl arlen_forage_fetch::GitFetcher for FakeFetcher {
+        fn fetch_commit(
+            &self,
+            _url: &str,
+            _commit: &str,
+            dest: &Path,
+            _max: u64,
+        ) -> Result<Vec<u8>, arlen_forage_fetch::FetchError> {
+            fs::write(dest.join("recipe.toml"), &self.recipe_toml).unwrap();
+            fs::write(dest.join("entities.toml"), "namespace = \"md.obsidian\"\n").unwrap();
+            fs::write(dest.join("bridge.toml"), "b").unwrap();
+            fs::write(dest.join("main.js"), "js").unwrap();
+            Ok(Vec::new())
+        }
+    }
+
+    fn resolved(hash: &str) -> ResolvedRecipe {
+        ResolvedRecipe {
+            name: "md.obsidian.bridge".to_string(),
+            git_url: "github.com/example/obsidian-bridge".to_string(),
+            commit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef".to_string(),
+            recipe_hash: hash.to_string(),
+            capability_cap: None,
+        }
+    }
+
+    #[test]
+    fn prepare_bridge_fetches_verifies_and_prepares() {
+        let fetcher = FakeFetcher { recipe_toml: BRIDGE_RECIPE_TOML.to_string() };
+        let hash = crate::sha256_hex(BRIDGE_RECIPE_TOML.as_bytes());
+        let r = resolved(&hash);
+
+        let (_clone, pb) = prepare_bridge(&fetcher, &r).unwrap();
+        assert_eq!(pb.recipe_id, "md.obsidian.bridge");
+        assert_eq!(pb.namespace, "md.obsidian");
+        assert_eq!(pb.install.arlen_side.len(), 2);
+    }
+
+    #[test]
+    fn prepare_bridge_refuses_a_recipe_that_does_not_match_the_signed_hash() {
+        let fetcher = FakeFetcher { recipe_toml: BRIDGE_RECIPE_TOML.to_string() };
+        // The cookbook signed a different hash than the fetched recipe produces.
+        let r = resolved(&"0".repeat(64));
+        assert!(matches!(
+            prepare_bridge(&fetcher, &r),
+            Err(FetchBridgeError::HashMismatch)
         ));
     }
 
