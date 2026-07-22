@@ -191,6 +191,10 @@ fn app_allowlist() -> Vec<libc::c_long> {
         libc::SYS_sendto,
         libc::SYS_recvfrom,
         libc::SYS_shutdown,
+        // The process file-mode-creation mask: apps read it via `umask()` (Go's
+        // runtime does, for rclone's VFS); a blocked call returns EPERM, which
+        // reads back as a garbage mask.
+        libc::SYS_umask,
         // Signals.
         libc::SYS_rt_sigaction,
         libc::SYS_rt_sigprocmask,
