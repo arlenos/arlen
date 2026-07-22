@@ -56,7 +56,7 @@ impl ConfigBrokerClient {
     /// A client for the default broker socket
     /// ([`crate::server::socket_path`]).
     pub fn default_socket() -> Self {
-        Self::new(crate::server::socket_path())
+        Self::new(crate::server::connect_path())
     }
 
     async fn connect(&self) -> Result<UnixStream, ClientError> {
