@@ -318,13 +318,13 @@ mod tests {
         let store = StateStore::open(dir.path()).unwrap();
         let sink = audit_proto::sink::MockAuditSink::accepting();
         let want = AiMasterSwitches { enabled: true, access_level: 4, ..Default::default() };
-        let resp = apply_set_audited(&store, "ai-daemon", want.clone(), &sink).await;
+        let resp = apply_set_audited(&store, "settings", want.clone(), &sink).await;
         assert_eq!(resp, Response::Committed);
         assert_eq!(store.load().unwrap(), want);
         // exactly one audit event, naming the caller + the escalation
         let recorded = sink.recorded().await;
         assert_eq!(recorded.len(), 1);
-        assert!(recorded[0].structural.outcome.contains("ai-daemon"));
+        assert!(recorded[0].structural.outcome.contains("settings"));
         assert!(recorded[0].structural.outcome.contains("enabled=true"));
     }
 

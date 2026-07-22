@@ -2,8 +2,8 @@
 //!
 //! A caller reads the current AI master switches ([`Request::Get`])
 //! or replaces them ([`Request::Set`]). `Set` is the privileged op:
-//! only an ADMITTED writer (the apps that legitimately own these
-//! settings - `settings`, `ai-daemon`, `ai-agent`) may mutate the
+//! only an ADMITTED writer (the app that legitimately owns these
+//! settings - `settings` today) may mutate the
 //! canonical state. The caller's app id is resolved by the socket
 //! layer from the `SO_PEERPIDFD`-pinned pid
 //! ([`arlen_permissions::peer_pidfd`]); this dispatch is pure over
@@ -24,32 +24,31 @@ use crate::state::{AiMasterSwitches, StateStore};
 /// declared length is refused before allocating.
 pub const MAX_FRAME: usize = 64 * 1024;
 
-/// The apps allowed to mutate the AI master switches. `settings`
-/// writes the user-facing defaults (`enabled` / `access_level` /
-/// `provider`); the AI daemon + agent write the live selection +
-/// autonomy (`action_mode` / `autonomous_apps` / `executor_live` /
-/// the provider live-switch). Every other same-uid caller may read
-/// but not write.
+/// The apps allowed to mutate the AI master switches. Today `settings`
+/// is the only live writer (it owns the user-facing switches). The
+/// `ai-daemon` + `ai-agent` writers that used to write the live
+/// selection + autonomy (`action_mode` / `autonomous_apps` /
+/// `executor_live` / the provider live-switch) were removed in the pi
+/// cutover; when a re-homed writer (the engine daemon or the harness)
+/// has its master-switch write path wired through the broker, its
+/// resolved id is added here. Every other same-uid caller may read but
+/// not write.
 ///
 /// app-id binding is by the resolved binary path (the `SO_PEERPIDFD`
 /// pid -> `/proc/<pid>/exe`); a fully same-uid attacker that re-execs
 /// an admitted binary is the documented residual that only the
 /// SO_PEERSEC/MAC label tier (`same-uid-isolation-plan.md` Tier-A #4)
 /// closes - this allowlist is the structure that tier slots into.
-const ADMITTED_WRITERS: &[&str] = &["settings", "ai-daemon", "ai-agent"];
+const ADMITTED_WRITERS: &[&str] = &["settings"];
 
 /// True iff `app_id` may mutate the master switches. In a debug
-/// build the `dev.arlen-*` cargo-run ids of the admitted apps also
-/// pass (the resolver yields `dev.<bin>` for an unpackaged binary),
+/// build the `dev.arlen-*` cargo-run id of an admitted app also
+/// passes (the resolver yields `dev.<bin>` for an unpackaged binary),
 /// matching the knowledge daemon's revoke-admit convention; in a
 /// release build only the canonical ids.
 pub fn is_admitted_writer(app_id: &str) -> bool {
     ADMITTED_WRITERS.contains(&app_id)
-        || (cfg!(debug_assertions)
-            && matches!(
-                app_id,
-                "dev.arlen-settings" | "dev.arlen-ai-daemon" | "dev.arlen-ai-agent"
-            ))
+        || (cfg!(debug_assertions) && app_id == "dev.arlen-settings")
 }
 
 /// A request to the broker.
@@ -255,7 +254,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            handle_request(&s, "ai-daemon", Request::Set(bad)),
+            handle_request(&s, "settings", Request::Set(bad)),
             Response::Committed
         );
         assert_eq!(s.load().unwrap().access_level, 0);
@@ -285,8 +284,12 @@ mod tests {
     #[test]
     fn debug_dev_ids_are_admitted_only_in_debug() {
         assert!(is_admitted_writer("settings"));
-        assert!(is_admitted_writer("ai-agent"));
+        // ai-daemon/ai-agent were removed in the pi cutover; they no longer write.
+        assert!(!is_admitted_writer("ai-agent"));
+        assert!(!is_admitted_writer("ai-daemon"));
         assert!(!is_admitted_writer("org.evil.app"));
         assert_eq!(is_admitted_writer("dev.arlen-settings"), cfg!(debug_assertions));
+        // the removed writers' dev ids no longer pass either
+        assert!(!is_admitted_writer("dev.arlen-ai-agent"));
     }
 }
