@@ -28,6 +28,7 @@
     hardware,
     download,
     modelsLoaded,
+    modelsMocked,
     roles,
     hfSearch,
     installedModels,
@@ -119,6 +120,12 @@
   description={$t("s.mdl.desc")}
 >
   <SectionGrid>
+    {#if $modelsMocked}
+      <!-- Above the hardware line, because the summary below it is an invented
+           claim about THIS machine and the catalogue marks models installed
+           that are not. Both drive a multi-gigabyte download decision. -->
+      <p class="sample span-full">{$t("s.mdl.sample")}</p>
+    {/if}
     {#if $hardware}
       <div class="hw span-full">
         <HardDrive size={15} strokeWidth={1.75} />
@@ -328,6 +335,12 @@
 />
 
 <style>
+  .sample {
+    margin: 0;
+    font-size: var(--text-2xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
   .hw {
     display: flex;
     align-items: center;
