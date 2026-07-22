@@ -109,6 +109,43 @@ impl AiMasterSwitches {
         }
     }
 
+    /// Build the first-run seed from an existing user `ai.toml`, so the cutover to
+    /// the broker PRESERVES the user's current settings rather than resetting them
+    /// to the shipped defaults. Starts from [`shipped_default`](Self::shipped_default)
+    /// and overrides each master switch the file actually declares
+    /// (`[ai] enabled/access_level/provider`, `[agent] executor_live`); a field the
+    /// file omits keeps the shipped value. `action_mode`/`autonomous_apps` never
+    /// lived in `ai.toml`, so they always keep the shipped default. An unparseable
+    /// file yields the plain shipped default - the migration must never fail the
+    /// seed, and the sanitiser still clamps an out-of-range `access_level`.
+    pub fn from_ai_toml(ai_toml: &str) -> Self {
+        let mut s = Self::shipped_default();
+        let Ok(value) = toml::from_str::<toml::Value>(ai_toml) else {
+            return s.sanitised();
+        };
+        if let Some(ai) = value.get("ai").and_then(|t| t.as_table()) {
+            if let Some(b) = ai.get("enabled").and_then(|x| x.as_bool()) {
+                s.enabled = b;
+            }
+            if let Some(n) = ai.get("access_level").and_then(|x| x.as_integer()) {
+                if (0..=i64::from(u8::MAX)).contains(&n) {
+                    s.access_level = n as u8;
+                }
+            }
+            if let Some(p) = ai.get("provider").and_then(|x| x.as_str()) {
+                if !p.is_empty() {
+                    s.provider = p.to_string();
+                }
+            }
+        }
+        if let Some(agent) = value.get("agent").and_then(|t| t.as_table()) {
+            if let Some(b) = agent.get("executor_live").and_then(|x| x.as_bool()) {
+                s.executor_live = b;
+            }
+        }
+        s.sanitised()
+    }
+
     /// Clamp any structurally-invalid field to its fail-closed value.
     /// An `access_level` above the ceiling is malformed input, so it
     /// drops to 0 (minimal) - never to the ceiling, which would let a
@@ -240,6 +277,29 @@ pub fn state_dir() -> Result<PathBuf, StateError> {
     Err(StateError::NoStateDir)
 }
 
+/// Resolve the user's `ai.toml` path, matching the engine daemon's resolution so
+/// the broker migrates from the SAME file the engine reads today: the
+/// `ARLEN_AI_CONFIG` override (the seam the dev stack + tests pin), else
+/// `$HOME/.config/arlen/ai.toml`.
+pub fn ai_toml_path() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("ARLEN_AI_CONFIG") {
+        return Some(PathBuf::from(p));
+    }
+    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/arlen/ai.toml"))
+}
+
+/// The first-run seed for the broker: the user's existing `ai.toml` master
+/// switches when that file exists ([`AiMasterSwitches::from_ai_toml`], so the
+/// cutover preserves their settings), else the plain shipped default. A missing or
+/// unreadable file is not an error - the migration falls back to the shipped
+/// default, which is what a fresh install gets anyway.
+pub fn seed_from_ai_toml() -> AiMasterSwitches {
+    match ai_toml_path().and_then(|p| std::fs::read_to_string(p).ok()) {
+        Some(text) => AiMasterSwitches::from_ai_toml(&text),
+        None => AiMasterSwitches::shipped_default(),
+    }
+}
+
 /// The broker's durable store: a 0700 directory holding the 0600
 /// `state.toml`.
 #[derive(Debug, Clone)]
@@ -365,6 +425,44 @@ fn write_atomic_0600(tmp: &Path, target: &Path, bytes: &[u8]) -> Result<(), Stat
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn from_ai_toml_preserves_the_users_declared_switches() {
+        let ai = "[ai]\nenabled = true\naccess_level = 2\nprovider = \"custom\"\n[agent]\nexecutor_live = true\n";
+        let s = AiMasterSwitches::from_ai_toml(ai);
+        assert!(s.enabled, "a user's enabled=true must carry over, not reset to shipped false");
+        assert_eq!(s.access_level, 2);
+        assert_eq!(s.provider, "custom");
+        assert!(s.executor_live, "a user's executor_live must carry over");
+    }
+
+    #[test]
+    fn from_ai_toml_keeps_shipped_defaults_for_omitted_fields() {
+        // Only `enabled` declared; every other switch keeps the shipped default.
+        let s = AiMasterSwitches::from_ai_toml("[ai]\nenabled = true\n");
+        let shipped = AiMasterSwitches::shipped_default();
+        assert!(s.enabled);
+        assert_eq!(s.access_level, shipped.access_level); // 3
+        assert_eq!(s.provider, shipped.provider); // ollama-default
+        assert_eq!(s.executor_live, shipped.executor_live); // false
+        assert_eq!(s.action_mode, shipped.action_mode); // never in ai.toml
+        assert!(s.autonomous_apps.is_empty());
+    }
+
+    #[test]
+    fn from_ai_toml_falls_back_to_shipped_on_garbage() {
+        assert_eq!(
+            AiMasterSwitches::from_ai_toml("{{{ not toml"),
+            AiMasterSwitches::shipped_default()
+        );
+    }
+
+    #[test]
+    fn from_ai_toml_clamps_an_out_of_range_access_level_closed() {
+        // A malformed access_level must never silently grant the widest scope.
+        let s = AiMasterSwitches::from_ai_toml("[ai]\naccess_level = 9\n");
+        assert_eq!(s.access_level, 0);
+    }
 
     fn store_in(dir: &Path) -> StateStore {
         StateStore::open(dir).expect("open")
