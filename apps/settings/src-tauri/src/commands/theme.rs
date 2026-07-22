@@ -175,6 +175,46 @@ pub fn theme_resolved_terminal() -> Result<TerminalPalette, String> {
     })
 }
 
+/// One resolved sound binding for the Appearance sound page: a system event, a
+/// human label, and the freedesktop XDG sound name the Notification Daemon plays.
+#[derive(Debug, Clone, Serialize)]
+pub struct SoundBinding {
+    /// The event key (`notification` / `error` / `warning` / `action`).
+    pub event: String,
+    /// A human label for the page.
+    pub label: String,
+    /// The resolved freedesktop XDG sound name.
+    pub sound: String,
+}
+
+/// The four default-on sound events mapped to their resolved names. Pure over the
+/// resolved [`arlen_theme::SoundTokens`] so it is testable without config I/O.
+fn sound_bindings(s: &arlen_theme::SoundTokens) -> Vec<SoundBinding> {
+    vec![
+        SoundBinding {
+            event: "notification".into(),
+            label: "Notification".into(),
+            sound: s.notification.clone(),
+        },
+        SoundBinding { event: "error".into(), label: "Error".into(), sound: s.error.clone() },
+        SoundBinding { event: "warning".into(), label: "Warning".into(), sound: s.warning.clone() },
+        SoundBinding {
+            event: "action".into(),
+            label: "Action completion".into(),
+            sound: s.action.clone(),
+        },
+    ]
+}
+
+/// The active appearance's resolved event-to-sound map (the four default-on
+/// events), so the Appearance sound page shows the real bindings instead of a
+/// fixture. Resolved through `sdk/theme` - the same `SoundTokens` the Notification
+/// Daemon plays - so the page and playback agree.
+#[tauri::command]
+pub fn theme_resolved_sounds() -> Result<Vec<SoundBinding>, String> {
+    Ok(sound_bindings(&resolve_active_theme()?.sounds))
+}
+
 /// Recursively merge `over` onto `base`: tables merge key-by-key, and `over`
 /// wins on any leaf. Used to overlay the customization onto a base theme so the
 /// export carries both.
@@ -643,6 +683,16 @@ pub async fn theme_import_scheme(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sound_bindings_map_the_four_events_from_the_resolved_theme() {
+        let theme = arlen_theme::ArlenTheme::from_bundled(arlen_theme::DARK_TOML).unwrap();
+        let bindings = sound_bindings(&theme.sounds);
+        let events: Vec<&str> = bindings.iter().map(|b| b.event.as_str()).collect();
+        assert_eq!(events, ["notification", "error", "warning", "action"]);
+        // Every binding carries a non-empty resolved freedesktop sound name.
+        assert!(bindings.iter().all(|b| !b.sound.is_empty() && !b.label.is_empty()));
+    }
 
     #[test]
     fn adw_gtk3_is_detected_only_when_a_theme_dir_exists() {
