@@ -264,7 +264,7 @@ async fn install_by_name(name: String) {
 /// Build a clonable https URL from a cookbook's signed `git_url`. The host is
 /// pinned by the cookbook signature and the content by the commit; this only
 /// rejects an insecure transport and supplies https for a scheme-less host.
-fn clone_url(git_url: &str) -> Result<String, String> {
+pub(crate) fn clone_url(git_url: &str) -> Result<String, String> {
     if let Some(rest) = git_url.strip_prefix("https://") {
         if rest.is_empty() {
             return Err(format!("git_url '{git_url}' has no host"));
@@ -278,7 +278,7 @@ fn clone_url(git_url: &str) -> Result<String, String> {
 }
 
 /// Lowercase-hex sha256 of `bytes`.
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     h.update(bytes);
