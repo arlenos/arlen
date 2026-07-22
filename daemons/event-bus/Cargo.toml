@@ -22,5 +22,10 @@ anyhow = "1"
 bytes = "1"
 libc = "0.2"
 
+# Parses the fixture profile in the peer-scope test, so the test exercises
+# the same TOML shape a real profile file has.
+[dev-dependencies]
+toml = "0.8"
+
 [build-dependencies]
 prost-build = "0.13"

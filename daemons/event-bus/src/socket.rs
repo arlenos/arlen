@@ -94,18 +94,66 @@ fn peer_is_system_producer(stream: &UnixStream) -> bool {
     peer_tier(stream) == Some(arlen_permissions::AppTier::System)
 }
 
-/// Resolve the connected peer's `app_id` and permission profile from its
-/// kernel-attested pid. `None` on any failure (unresolvable identity, missing or
-/// unparseable profile). The caller reads this as "no declared event-bus scope":
-/// in shadow mode a would-deny is logged; in enforce mode it fails closed.
-fn peer_app_profile(
-    stream: &UnixStream,
-) -> Option<(String, arlen_permissions::PermissionProfile)> {
-    let cred = stream.peer_cred().ok()?;
-    let pid = u32::try_from(cred.pid()?).ok()?;
-    let app_id = arlen_permissions::identity::app_id_from_pid(pid).ok()?;
-    let profile = arlen_permissions::load_profile(&app_id).ok()?;
-    Some((app_id, profile))
+/// What the bus could learn about a connected peer.
+///
+/// The two failure shapes are kept apart on purpose. Shadow mode exists to say
+/// what to write BEFORE enforce starts rejecting, and "no scope" alone does not
+/// say that: a peer we cannot name needs an identity fix, while a peer we CAN
+/// name needs a profile with that exact filename. Collapsing both into one
+/// unresolved-looking log made every would-deny point at the wrong repair.
+enum PeerScope {
+    /// Named, with a profile whose `[event_bus]` scope decides the verdict.
+    Profiled(String, Box<arlen_permissions::PermissionProfile>),
+    /// Named, but no profile loaded - so no declared scope. The name is the
+    /// filename the operator has to create.
+    NoProfile(String),
+    /// Not attributable to any app id.
+    Unresolved,
+}
+
+impl PeerScope {
+    /// The declared event-bus scope, if any. Both failure shapes are "none
+    /// declared", which is what the publish/subscribe checks act on.
+    fn event_bus(&self) -> Option<&arlen_permissions::EventBusPermissions> {
+        match self {
+            Self::Profiled(_, p) => Some(&p.event_bus),
+            _ => None,
+        }
+    }
+
+    /// The app id for logs, or a marker naming which failure it was.
+    fn app_id(&self) -> &str {
+        match self {
+            Self::Profiled(id, _) | Self::NoProfile(id) => id,
+            Self::Unresolved => "<unresolved>",
+        }
+    }
+
+    /// What an operator has to do about a would-deny from this peer.
+    fn remedy(&self) -> &'static str {
+        match self {
+            Self::Profiled(..) => "declared scope does not cover it",
+            Self::NoProfile(_) => "no profile for this app id",
+            Self::Unresolved => "peer identity unresolved",
+        }
+    }
+}
+
+/// Resolve the connected peer from its kernel-attested pid.
+fn peer_app_profile(stream: &UnixStream) -> PeerScope {
+    let Some(app_id) = stream
+        .peer_cred()
+        .ok()
+        .and_then(|c| c.pid())
+        .and_then(|pid| u32::try_from(pid).ok())
+        .and_then(|pid| arlen_permissions::identity::app_id_from_pid(pid).ok())
+    else {
+        return PeerScope::Unresolved;
+    };
+    match arlen_permissions::load_profile(&app_id) {
+        Ok(profile) => PeerScope::Profiled(app_id, Box::new(profile)),
+        Err(_) => PeerScope::NoProfile(app_id),
+    }
 }
 
 /// Whether the bus REJECTS an unauthorised publish/subscribe (enforce) or only
@@ -167,7 +215,7 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
     // are exempt, mirroring the uid-restamp exemption: they emit machine-wide
     // events by design.
     let publish_scope = if is_system_producer {
-        None
+        PeerScope::Unresolved
     } else {
         peer_app_profile(&stream)
     };
@@ -218,22 +266,18 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
                 // Shadow mode logs a would-deny and still dispatches; enforce
                 // mode drops the event. System producers skipped (exempt above).
                 if !is_system_producer
-                    && !publish_allowed(
-                        publish_scope.as_ref().map(|(_, p)| &p.event_bus),
-                        &event.r#type,
-                    )
+                    && !publish_allowed(publish_scope.event_bus(), &event.r#type)
                 {
-                    let app = publish_scope
-                        .as_ref()
-                        .map_or("<unresolved>", |(a, _)| a.as_str());
+                    let app = publish_scope.app_id();
+                    let remedy = publish_scope.remedy();
                     if enforce {
-                        warn!(app_id = app, event_type = %event.r#type, "event-bus: publish denied, dropping event");
+                        warn!(app_id = app, event_type = %event.r#type, remedy, "event-bus: publish denied, dropping event");
                         continue;
                     }
                     // Shadow is advisory - debug so a dev stack whose daemons run
                     // from target/ paths (no wired profile yet) does not flood the
                     // live logs. Turn on debug to audit would-denies before enforce.
-                    debug!(app_id = app, event_type = %event.r#type, "event-bus: publish would be denied (shadow mode)");
+                    debug!(app_id = app, event_type = %event.r#type, remedy, "event-bus: publish would be denied (shadow mode)");
                 }
 
                 match validation::validate(&event) {
@@ -282,17 +326,16 @@ async fn handle_consumer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
         subscribed_types
     } else {
         let scope = peer_app_profile(&stream);
-        let ebus = scope.as_ref().map(|(_, p)| &p.event_bus);
-        let app = scope
-            .as_ref()
-            .map_or("<unresolved>", |(a, _)| a.as_str());
+        let ebus = scope.event_bus();
+        let app = scope.app_id();
+        let remedy = scope.remedy();
         let enforce = enforce_pubsub();
         for t in &subscribed_types {
             if !ebus.is_some_and(|s| s.can_subscribe(t)) {
                 if enforce {
-                    warn!(app_id = app, pattern = %t, "event-bus: subscribe denied, filtering pattern");
+                    warn!(app_id = app, pattern = %t, remedy, "event-bus: subscribe denied, filtering pattern");
                 } else {
-                    debug!(app_id = app, pattern = %t, "event-bus: subscribe would be denied (shadow mode)");
+                    debug!(app_id = app, pattern = %t, remedy, "event-bus: subscribe would be denied (shadow mode)");
                 }
             }
         }
@@ -409,6 +452,36 @@ mod tests {
             publish: publish.iter().copied().map(String::from).collect(),
             subscribe: subscribe.iter().copied().map(String::from).collect(),
         }
+    }
+
+    #[test]
+    fn a_would_deny_names_the_repair_not_just_the_refusal() {
+        use arlen_permissions::PermissionProfile;
+        // Shadow mode's whole job is to say what to write before enforce starts
+        // rejecting. Measured against the live stack, the knowledge daemon's two
+        // consumers logged as "<unresolved>" though their identity resolved
+        // fine - what they lacked was a profile file named for that id. Pointing
+        // at an identity bug instead of a missing file sends the operator to the
+        // wrong place, so the three states stay distinguishable.
+        let named_no_profile = PeerScope::NoProfile("dev.arlen-graph-daemon".to_string());
+        assert_eq!(named_no_profile.app_id(), "dev.arlen-graph-daemon");
+        assert_eq!(named_no_profile.remedy(), "no profile for this app id");
+
+        assert_eq!(PeerScope::Unresolved.app_id(), "<unresolved>");
+        assert_eq!(PeerScope::Unresolved.remedy(), "peer identity unresolved");
+
+        let profile: PermissionProfile = toml::from_str(
+            "[info]\napp_id = \"app\"\ntier = \"first-party\"\n\n[event_bus]\npublish = [\"file.opened\"]\n",
+        )
+        .expect("fixture profile parses");
+        let profiled = PeerScope::Profiled("app".to_string(), Box::new(profile));
+        assert_eq!(profiled.remedy(), "declared scope does not cover it");
+
+        // Only a loaded profile carries a scope; both failure shapes decide the
+        // same way (nothing declared) even though they read differently.
+        assert!(profiled.event_bus().is_some());
+        assert!(named_no_profile.event_bus().is_none());
+        assert!(PeerScope::Unresolved.event_bus().is_none());
     }
 
     #[test]
