@@ -83,13 +83,52 @@ export const mocked = writable(false);
 export const lastError = writable("");
 
 /// Load the process list. Live: `list_processes`; fixture under vite.
+///
+/// Merged, not replaced. The backend reports neither `limited` (a cgroup
+/// `cpu.max` leash it has no field for) nor `paused`, so a blind `set` would drop
+/// both on every poll and show a throttled process as unthrottled. `paused` is
+/// re-derived from the backend's own status instead of being carried, so it
+/// self-corrects when a process is frozen or thawed outside this app.
 export async function load(): Promise<void> {
   try {
-    processes.set(await invoke<Process[]>("list_processes"));
+    const next = await invoke<Process[]>("list_processes");
+    processes.update((prev) => {
+      const wasLimited = new Set(prev.filter((p) => p.limited).map((p) => p.id));
+      return next.map((p) => ({
+        ...p,
+        paused: p.status === "suspended",
+        limited: wasLimited.has(p.id),
+      }));
+    });
     mocked.set(false);
   } catch {
     processes.set(FIXTURE);
     mocked.set(true);
+  }
+}
+
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+/// Poll the process list while the Processes tab is visible.
+///
+/// Without this the list was loaded exactly once at mount, and since the backend
+/// computes CPU% and disk rates as a DELTA against the previous sample - its own
+/// doc: "The first call (no previous) reports 0 for the rates" - every row showed
+/// 0.0% CPU and 0 KB/s forever. A task manager that never updates is the one
+/// thing it must not be.
+///
+/// Only polls with a real backend: under vite each tick would re-set the fixture
+/// and wipe the optimistic Stop/Pause the mock relies on to stay reviewable.
+export function startProcessPolling(intervalMs = 2000): void {
+  if (pollTimer || !tauriAvailable) return;
+  pollTimer = setInterval(() => void load(), intervalMs);
+}
+
+/// Stop polling (tab hidden or view destroyed).
+export function stopProcessPolling(): void {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
   }
 }
 
