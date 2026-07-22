@@ -217,14 +217,23 @@ export function modelById(list: Model[], id: string): Model | undefined {
 
 /// Load the catalogue + hardware. Prefers the real bridge; falls back to the
 /// fixture while the Settings-side commands are unwired.
+/// True while the hardware probe and catalogue are FIXTURES. Not cosmetic: the
+/// mock asserts a specific machine ("61 GB RAM ... up to about 8B at a good
+/// speed") and marks particular models `installed`, so a user can pick a
+/// multi-gigabyte download against invented specs, or believe a local model is
+/// ready to run when none is.
+export const modelsMocked = writable(false);
+
 export async function loadModels(): Promise<void> {
   try {
     hardware.set(await invoke<Hardware>("ai_hardware_probe"));
     models.set(await invoke<Model[]>("ai_models_catalog"));
     roles.set(await invoke<Record<Role, string>>("ai_defaults_get_roles"));
+    modelsMocked.set(false);
   } catch {
     hardware.set(MOCK_HARDWARE);
     models.set(MOCK_MODELS);
+    modelsMocked.set(true);
   } finally {
     modelsLoaded.set(true);
   }
