@@ -7,7 +7,7 @@
   import PerformanceTab from "$lib/components/tm/PerformanceTab.svelte";
   import DetailPane from "$lib/components/tm/DetailPane.svelte";
   import RowMenu from "$lib/components/tm/RowMenu.svelte";
-  import { processes, load, stop, pause, resume, limit, unlimit, type Process } from "$lib/stores/processes";
+  import { processes, mocked, lastError, load, stop, pause, resume, limit, unlimit, type Process } from "$lib/stores/processes";
   import { startPerf, stopPerf } from "$lib/stores/perf";
   import { t, dir } from "$lib/i18n/messages";
   import { Rows3, Layers, Search } from "lucide-svelte";
@@ -46,6 +46,16 @@
   </nav>
 
   {#if tab === "Processes"}
+    {#if $mocked}
+      <!-- Every row here offers a Stop; unlabelled, the fixture reads as this
+           machine's real processes. -->
+      <p class="note">{$t("tm.sample")}</p>
+    {/if}
+    {#if $lastError}
+      <!-- A refused action must be visible: the row already reverted, and this
+           says why, so a failed Stop never passes as a killed process. -->
+      <p class="note error" role="alert">{$lastError}</p>
+    {/if}
     <div class="toolbar">
       <span class="filter">
         <Search size={14} strokeWidth={2} class="filter-icon" />
@@ -174,6 +184,19 @@
     bottom: -1px;
     height: 2px;
     background: var(--color-fg-primary);
+  }
+  /* Calm caveat above the table - it qualifies every row below it. */
+  .note {
+    margin: 0;
+    padding: 0.6rem 1rem 0;
+    font-size: var(--text-2xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+    flex-shrink: 0;
+  }
+  /* A refused action is the one thing here worth a colour. */
+  .note.error {
+    color: var(--color-fg-danger, #f87171);
   }
   .toolbar {
     display: flex;
