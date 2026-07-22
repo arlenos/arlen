@@ -713,6 +713,16 @@ const MOCK_GRANTS: GrantView[] = [
   g({ id: "0192-0017", app_id: "com.example.notes", consent_class: "intents", consent_scope: "the open-note action" }),
 ];
 
+/// True while the list is the FIXTURE, not this machine's real grants.
+///
+/// This is the surface a user opens to answer "what can reach my data", so an
+/// unlabelled fixture is the worst kind of wrong in both directions: it invents
+/// alarming grants that do not exist (the mock shows the assistant reading ALL
+/// files and projects and reaching api.openai.com), and it implies the real
+/// grants are absent because they are not listed. Distinct from `grantsError`:
+/// that means "could not read", this means "read nothing real, showing samples".
+export const grantsMocked = writable(false);
+
 /// Load the whole-system grant list. Prefers the real bridge; falls back to the
 /// fixture while the Settings-side command is unwired so the surface still
 /// renders. A real failure once the bridge exists sets `grantsError`.
@@ -720,9 +730,11 @@ export async function loadGrants(): Promise<void> {
   try {
     grants.set(await invoke<GrantView[]>("access_grants"));
     grantsError.set(false);
+    grantsMocked.set(false);
   } catch {
     grants.set(MOCK_GRANTS);
     grantsError.set(false);
+    grantsMocked.set(true);
   } finally {
     grantsLoaded.set(true);
   }
