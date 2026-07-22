@@ -29,6 +29,41 @@ use arlen_auditd::{audit_data_dir, key, AuditError};
 use os_sdk::{EventEmitter, UnixEventEmitter};
 use tokio::sync::Mutex;
 
+/// Whether a checkpoint MUST carry a TPM attestation.
+///
+/// False while no real anchor ships: a ledger written before the anchor existed
+/// carries none, and reading that as tampering would freeze ingest on the first
+/// anchored start. It flips to true once every checkpoint is expected to be
+/// attested, at which point stripping the attestation stops being a way to turn
+/// the check off.
+const ANCHOR_REQUIRED: bool = false;
+
+/// Lowercase hex encoding, for storing an attestation as text in the JSON
+/// checkpoint.
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
+
+/// Decode a hex string back to bytes, tolerating the empty (no attestation)
+/// case. A malformed value decodes to empty, which reads as "no attestation" -
+/// and under `ANCHOR_REQUIRED` that is itself tampering, so a corrupted
+/// attestation never passes as a valid one.
+fn hex_to_bytes(s: &str) -> Vec<u8> {
+    if !s.len().is_multiple_of(2) {
+        return Vec::new();
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
+        .collect::<std::result::Result<Vec<u8>, _>>()
+        .unwrap_or_default()
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -54,12 +89,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = key::load_or_create(&key::key_path()?, has_entries)?;
 
     let ledger = Ledger::open(&ledger_path, key).await?;
-    // The TPM anchor stays `None` until the real `tss-esapi` NV-counter impl is
-    // verified on metal; `None` preserves the pre-anchor behaviour (the checkpoint
-    // counter is 0 and the anchor check is inert). When a real anchor is installed
-    // here it is shared between the ledger (which advances it at each append seal)
-    // and this startup path (which reads it to detect a rollback + records it in
-    // the reseed).
+    // The TPM anchor stays `None` until a real `tss-esapi` implementation is
+    // verified on metal; `None` preserves the pre-anchor behaviour (the
+    // checkpoint carries no attestation and the anchor check is inert). When a
+    // real anchor is installed here it is shared between the ledger (which
+    // attests each head it seals) and this startup path (which asks the TPM to
+    // confirm the attestation the checkpoint carried).
     let anchor: Option<Arc<dyn TpmAnchor>> = None;
     let ledger = match &anchor {
         Some(a) => ledger.with_anchor(a.clone()),
@@ -115,21 +150,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(Some(cp)) => ledger.entry_hash_hex_at(cp.index).await?,
             _ => None,
         };
-        // The checkpoint's recorded TPM counter (captured before `assess_startup`
-        // consumes `stored`) and the live hardware counter, read once and reused
-        // for both the anchor check and the reseed below.
-        let stored_counter = match &stored {
-            Ok(Some(cp)) => Some(cp.counter),
+        // The head the checkpoint witnesses, plus the attestation it carried,
+        // captured before `assess_startup` consumes `stored`.
+        let witnessed = match &stored {
+            Ok(Some(cp)) => Some((
+                cp.index,
+                cp.entry_hash_hex.clone(),
+                hex_to_bytes(&cp.attestation_hex),
+            )),
             _ => None,
         };
-        let hardware_counter = anchor.as_ref().and_then(|a| a.read_counter().ok());
         let check = checkpoint::assess_startup(stored, head.is_none(), entry_hash_at_cp);
-        // An otherwise-`Consistent` check is escalated to `Tampered` when the
-        // hardware counter shows the recorded value was rolled back or forged. A
-        // read failure (or no anchor) leaves the software verdict unchanged.
-        let check = match (stored_counter, hardware_counter) {
-            (Some(recorded), Some(hardware)) => {
-                tpm_anchor::assess_with_anchor(check, recorded, hardware)
+        // With an anchor attached, an otherwise-`Consistent` check is escalated
+        // to `Tampered` unless the TPM confirms it attested exactly this head.
+        // An attestation is bound to `(index, hash)`, so an attacker who
+        // truncated the log cannot present one for the head they truncated to -
+        // the gap a bare monotonic counter left open, since they could simply
+        // copy the live counter value into a forged checkpoint.
+        let check = match (&anchor, witnessed) {
+            (Some(a), Some((index, hash, attestation))) => {
+                let verdict = tpm_anchor::check_attestation(a.as_ref(), index, &hash, &attestation);
+                // Migration: a ledger written before the anchor was enabled has
+                // no attestation, which must not read as a rollback on the first
+                // anchored run. The next seal writes one.
+                tpm_anchor::assess_with_attestation(check, verdict, ANCHOR_REQUIRED)
             }
             _ => check,
         };
@@ -145,18 +189,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // cannot keep its witness current, so it must not
                 // accept new entries.
                 if let Some((index, entry_hash_hex)) = head {
-                    // Record the current hardware counter (a read, not an
-                    // increment: the reseed re-witnesses the same head, it is not a
-                    // new append). A read failure preserves the stored counter
-                    // rather than resetting it to 0, which would falsely read as a
-                    // rollback next restart.
-                    let counter = hardware_counter.or(stored_counter).unwrap_or(0);
+                    // Attest the head being written. The reseed may advance past
+                    // a clean crash-ahead entry, so this is a DIFFERENT head than
+                    // the checkpoint witnessed and needs its own attestation -
+                    // carrying the old one over would leave a witness the TPM
+                    // never vouched for, which the next start reads as tampering.
+                    // An anchor that cannot attest freezes ingest, like a failed
+                    // checkpoint write: the daemon cannot witness what it serves.
+                    let attestation_hex = match &anchor {
+                        Some(a) => a.attest(index, &entry_hash_hex).map(|s| bytes_to_hex(&s)),
+                        None => Ok(String::new()),
+                    };
+                    let Ok(attestation_hex) = attestation_hex else {
+                        let e = attestation_hex.unwrap_err();
+                        tracing::error!(
+                            "head attestation failed during startup reseed ({e}); the \
+                             witness cannot be anchored, freezing ingest"
+                        );
+                        tampered.store(true, Ordering::SeqCst);
+                        emit_tampered(
+                            &emitter,
+                            &format!("head attestation failed at reseed: {e}"),
+                        )
+                        .await;
+                        return Ok(());
+                    };
                     if let Err(e) = checkpoint::write(
                         &cp_path,
                         &Checkpoint {
                             index,
                             entry_hash_hex,
-                            counter,
+                            attestation_hex,
                         },
                     ) {
                         tracing::error!(

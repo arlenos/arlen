@@ -42,8 +42,8 @@ pub struct Ledger {
     /// startup detect truncation the hash chain cannot (see
     /// [`crate::checkpoint`]).
     checkpoint_path: PathBuf,
-    /// Optional TPM NV monotonic-counter anchor. When present, each seal advances
-    /// the counter and records its value in the checkpoint so a same-uid rollback
+    /// Optional TPM anchor. When present, each seal attests the head it is
+    /// writing and records that attestation in the checkpoint so a same-uid rollback
     /// of the log + checkpoint is detectable at restart (`crate::tpm_anchor`).
     /// `None` (the default) is the pre-anchor behaviour: the counter stays 0 and
     /// the anchor check is inert.
@@ -268,30 +268,34 @@ impl Ledger {
         // could erase silently. The row stays committed (harmless: its
         // caller failed closed and abandoned the action), and the next
         // successful append rewrites the checkpoint to the live head.
-        // Advance the TPM anchor (if attached) and record its counter in the
-        // checkpoint, so a same-uid rollback of the log + checkpoint is detectable
-        // at restart. A counter-advance failure fails the append closed, exactly
-        // like a checkpoint-write failure: an entry must not be acknowledged with
-        // a stale or missing anchor value.
-        let counter = match &self.anchor {
-            Some(a) => match a.increment_counter() {
-                Ok(c) => c,
+        // Attest THIS head (if an anchor is attached) and store the attestation
+        // in the checkpoint, so a same-uid rollback of the log + checkpoint is
+        // detectable at restart. Attesting the head being sealed - rather than
+        // advancing a separate counter - is what makes the two writes one act:
+        // there is no window in which the anchor has moved but the checkpoint
+        // has not, so a crash here cannot leave a false tampering verdict behind.
+        // An attestation failure fails the append closed, exactly like a
+        // checkpoint-write failure: an entry must not be acknowledged unanchored.
+        let entry_hash_hex = hex(&entry_hash);
+        let attestation_hex = match &self.anchor {
+            Some(a) => match a.attest(index, &entry_hash_hex) {
+                Ok(sig) => hex(&sig),
                 Err(e) => {
                     tracing::error!(
-                        "audit TPM anchor advance failed (entry {index} committed \
+                        "audit TPM attestation failed (entry {index} committed \
                          but unanchored); failing the append closed: {e}"
                     );
                     return Err(AuditError::Storage(format!(
-                        "TPM anchor counter advance failed: {e}"
+                        "TPM head attestation failed: {e}"
                     )));
                 }
             },
-            None => 0,
+            None => String::new(),
         };
         let cp = Checkpoint {
             index,
-            entry_hash_hex: hex(&entry_hash),
-            counter,
+            entry_hash_hex,
+            attestation_hex,
         };
         if let Err(e) = checkpoint::write(&self.checkpoint_path, &cp) {
             tracing::error!(
@@ -659,10 +663,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn append_advances_and_records_the_tpm_counter() {
+    async fn each_seal_attests_the_head_it_writes() {
+        use crate::tpm_anchor::TpmAnchor;
         let dir = tempfile::tempdir().unwrap();
-        let anchor = std::sync::Arc::new(crate::tpm_anchor::MockTpmAnchor::new(0));
-        let mut ledger = open_temp(dir.path(), key()).await.with_anchor(anchor);
+        let anchor = std::sync::Arc::new(crate::tpm_anchor::MockTpmAnchor::new(7));
+        let mut ledger = open_temp(dir.path(), key()).await.with_anchor(anchor.clone());
         ledger
             .append(AuditKind::Query, "ai-daemon", &structural("ok"), None, None, None)
             .await
@@ -670,7 +675,19 @@ mod tests {
         let cp = checkpoint::read(ledger.checkpoint_path())
             .unwrap()
             .unwrap();
-        assert_eq!(cp.counter, 1, "the first seal advances the counter 0 -> 1");
+        assert!(
+            !cp.attestation_hex.is_empty(),
+            "the seal must record an attestation, or the head is unanchored"
+        );
+        // The attestation is over THIS head, which is what a bare counter could
+        // not express: verifying it against the head the checkpoint names must
+        // succeed, and against any other head must not.
+        let sig = hex_to_bytes(&cp.attestation_hex);
+        assert!(anchor
+            .verify(cp.index, &cp.entry_hash_hex, &sig)
+            .unwrap());
+        assert!(!anchor.verify(cp.index + 1, &cp.entry_hash_hex, &sig).unwrap());
+
         ledger
             .append(AuditKind::ToolCall, "ai-daemon", &structural("ok"), None, None, None)
             .await
@@ -678,7 +695,22 @@ mod tests {
         let cp2 = checkpoint::read(ledger.checkpoint_path())
             .unwrap()
             .unwrap();
-        assert_eq!(cp2.counter, 2, "the second seal advances 1 -> 2");
+        assert_ne!(
+            cp.attestation_hex, cp2.attestation_hex,
+            "a new head must get its own attestation, not carry the previous one over"
+        );
+        assert!(anchor
+            .verify(cp2.index, &cp2.entry_hash_hex, &hex_to_bytes(&cp2.attestation_hex))
+            .unwrap());
+        assert_eq!(anchor.sealed_count(), 2);
+    }
+
+    /// Local hex decode for the test, mirroring the daemon's.
+    fn hex_to_bytes(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
     }
 
     #[tokio::test]
