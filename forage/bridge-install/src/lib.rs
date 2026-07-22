@@ -326,7 +326,10 @@ pub fn resolve_foreign_dest(
 }
 
 /// Whether `p` is a safe relative path: non-empty, not absolute, no `..` component.
-fn is_safe_relative(p: &Path) -> bool {
+/// Public so a caller reading a declared recipe file (e.g. the arlen-side
+/// `entities.toml`, to pull the namespace before install) can apply the same
+/// confinement the install itself does, rather than duplicating the rule.
+pub fn is_safe_relative_path(p: &Path) -> bool {
     let mut any = false;
     for c in p.components() {
         any = true;
@@ -342,7 +345,7 @@ fn is_safe_relative(p: &Path) -> bool {
 /// (not a symlink), before any write happens.
 fn preflight(source_dir: &Path, files: &[PathBuf]) -> Result<(), BridgeInstallError> {
     for f in files {
-        if !is_safe_relative(f) {
+        if !is_safe_relative_path(f) {
             return Err(BridgeInstallError::UnsafePath(f.display().to_string()));
         }
         let src = source_dir.join(f);
