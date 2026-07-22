@@ -219,6 +219,193 @@ fn provenance_to_woher(view: &os_sdk::graph::ProvenanceView) -> Vec<ProvenanceEn
     out
 }
 
+// --- Provenance halo (PH-R2): the typed lineage chain the "Where's this from?"
+// popover renders. Distinct from the info panel's flat `woher` lines: the halo is
+// a stitched, honesty-disciplined chain. Only the File/graph branch is graph-
+// backed; the user/external/model/agent origins need the S18-A content-origin
+// store + the shell broker (gated), so this stitches what the graph actually
+// knows and leaves the horizon `deeper_gated` rather than inventing an origin.
+
+/// How Arlen came to record a step. Mirrors `daemons/knowledge` provenance and the
+/// frontend `Provenance` union. Only `Graph` is produced here today.
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "snake_case")]
+enum HaloOrigin {
+    User,
+    Graph,
+    External,
+    Model,
+    Agent,
+}
+
+/// How confident the actor resolution is, never rendered as more than it is.
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "snake_case")]
+enum Fidelity {
+    Resolved,
+    Pid,
+    Proxy,
+}
+
+/// Whether the trail is complete or deeper history is gated, never faked.
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "snake_case")]
+enum Horizon {
+    Complete,
+    DeeperGated,
+}
+
+/// One hop of lineage. Field names match the frontend `ProvenanceStep`.
+#[derive(Serialize, Clone, PartialEq, Eq, Debug)]
+struct ProvenanceStep {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    relation: Option<String>,
+    actor: String,
+    origin: HaloOrigin,
+    when: String,
+    fidelity: Fidelity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attested: Option<bool>,
+}
+
+/// The lineage of a file. Field names match the frontend `ProvenanceChain`.
+#[derive(Serialize, Clone, PartialEq, Eq, Debug)]
+struct ProvenanceChain {
+    subject: String,
+    steps: Vec<ProvenanceStep>,
+    horizon: Horizon,
+    /// Always false here: this is real, graph-backed lineage. The frontend's
+    /// fixture path sets it true; the live backend must never claim a sample.
+    mocked: bool,
+}
+
+/// A coarse, human "when" from an epoch-micros timestamp, never finer than the
+/// honesty contract wants (no false precision on an unsigned DB fact). `0` (the
+/// no-timestamp sentinel) and a future stamp both read as "recently" rather than
+/// an invented past. Pure, so the buckets are testable without a clock.
+fn coarse_when(micros: i64, now_micros: i64) -> String {
+    let secs = (now_micros - micros) / 1_000_000;
+    match secs {
+        s if s < 0 => "recently".to_string(),
+        s if s < 90 => "just now".to_string(),
+        s if s < 3_600 => format!("{} minutes ago", (s / 60).max(1)),
+        s if s < 86_400 => format!("{} hours ago", s / 3_600),
+        s if s < 172_800 => "yesterday".to_string(),
+        s if s < 604_800 => format!("{} days ago", s / 86_400),
+        s if s < 2_592_000 => "last week".to_string(),
+        s if s < 31_536_000 => format!("{} months ago", (s / 2_592_000).max(1)),
+        s => format!("{} years ago", (s / 31_536_000).max(1)),
+    }
+}
+
+/// Stitch a file's provenance chain from what the graph knows: its project
+/// membership (`FILE_PART_OF`) and the caller-scoped access view (0x04). Pure, so
+/// the honesty rules are tested without a live daemon.
+///
+/// Honesty discipline (provenance-halo.md §6): every step is `Graph` origin
+/// (unsigned, trust-on-assertion) with no `attested` flag - C2PA attestation is
+/// reserved for the external branch, which is not stitched here. The access actor
+/// is `pid` fidelity because the underlying attribution is pid->app, never a
+/// signed identity. A foreign co-tenant is summarised, never named, preserving the
+/// daemon's no-leak. The horizon is always `DeeperGated`: the user/external/model
+/// origins live in the content-origin store this does not yet read, so the trail
+/// is never claimed complete.
+fn stitch_file_provenance(
+    subject: &str,
+    projects: &[Relation],
+    view: Option<&os_sdk::graph::ProvenanceView>,
+    last_accessed_micros: i64,
+    now_micros: i64,
+) -> ProvenanceChain {
+    let mut steps = Vec::new();
+    for p in projects {
+        steps.push(ProvenanceStep {
+            relation: Some("Part of".to_string()),
+            actor: p.target.clone(),
+            origin: HaloOrigin::Graph,
+            // The membership edge's own time is not fetched; the file's last-access
+            // is the coarsest honest "when" available for the graph view.
+            when: coarse_when(last_accessed_micros, now_micros),
+            fidelity: Fidelity::Resolved,
+            attested: None,
+        });
+    }
+    if let Some(view) = view {
+        for actor in &view.actors {
+            steps.push(ProvenanceStep {
+                relation: Some("Last opened by".to_string()),
+                actor: actor.clone(),
+                origin: HaloOrigin::Graph,
+                when: coarse_when(last_accessed_micros, now_micros),
+                // pid->app attribution, not a signed identity.
+                fidelity: Fidelity::Pid,
+                attested: None,
+            });
+        }
+        if view.accessed_by_others {
+            steps.push(ProvenanceStep {
+                relation: Some("Also opened by".to_string()),
+                // Never named: the daemon summarises a foreign co-tenant.
+                actor: "another app".to_string(),
+                origin: HaloOrigin::Graph,
+                when: coarse_when(last_accessed_micros, now_micros),
+                fidelity: Fidelity::Proxy,
+                attested: None,
+            });
+        }
+    }
+    ProvenanceChain {
+        subject: subject.to_string(),
+        steps,
+        // Never `Complete`: the origin/external branches are gated, so deeper
+        // history genuinely exists that this backend cannot yet show.
+        horizon: Horizon::DeeperGated,
+        mocked: false,
+    }
+}
+
+/// Read a file's `last_accessed` (epoch micros) from the File node. `0` when the
+/// node is absent or out of scope, which `coarse_when` reads as "recently".
+async fn read_last_accessed(client: &os_sdk::graph::UnixGraphClient, path: &str) -> i64 {
+    let cypher = format!(
+        "MATCH (f:File {{id: '{}'}}) RETURN f.last_accessed AS t LIMIT 1",
+        escape_cypher_literal(&abs(path))
+    );
+    match client.query_rows(&cypher).await {
+        Ok(rows) => rows
+            .first()
+            .and_then(|r| r.get("t"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0),
+        Err(_) => 0,
+    }
+}
+
+/// The provenance halo command (PH-R2): stitch and return a file's lineage chain.
+///
+/// Best-effort like the info panel: an out-of-scope object or an absent daemon
+/// yields an empty-step chain (still `mocked: false`, still `DeeperGated`), so the
+/// halo honestly shows "no recorded lineage" rather than falling to the fixture -
+/// the fixture path is for a missing BACKEND, not a file the graph has nothing on.
+#[tauri::command]
+async fn provenance_of(r#ref: String) -> ProvenanceChain {
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    let projects = read_verwandt(&r#ref).await;
+    let view = client.read_provenance(&abs(&r#ref)).await.ok().flatten();
+    let last_accessed = read_last_accessed(&client, &r#ref).await;
+    let now_micros = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0);
+    let subject = Path::new(&r#ref)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&r#ref)
+        .to_string();
+    stitch_file_provenance(&subject, &projects, view.as_ref(), last_accessed, now_micros)
+}
+
 /// Read a file's provenance from the knowledge graph (the caller-scoped 0x04
 /// op). Best-effort: an out-of-scope object, an absent daemon or any error yields
 /// no lines, so the info panel still shows the conventional metadata.
@@ -1743,6 +1930,7 @@ pub fn run() {
             files_breadcrumb,
             files_places,
             files_info,
+            provenance_of,
             files_search,
             files_find_duplicates,
             files_bulk_rename,
@@ -1788,9 +1976,10 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        abs, escape_cypher_literal, file_part_of_as_of, members_from_rows, ops, projects_from_rows,
-        provenance_to_woher, recent_from_rows, recent_to_entry, touched_apps_from_rows,
-        trash_to_entry, verwandt_from_rows, EntryKind, FilesConfig, RecentFile, SmartFolder,
+        abs, coarse_when, escape_cypher_literal, file_part_of_as_of, members_from_rows, ops,
+        projects_from_rows, provenance_to_woher, recent_from_rows, recent_to_entry,
+        stitch_file_provenance, touched_apps_from_rows, trash_to_entry, verwandt_from_rows,
+        EntryKind, Fidelity, FilesConfig, HaloOrigin, Horizon, RecentFile, Relation, SmartFolder,
     };
     use std::collections::HashMap;
 
@@ -2026,6 +2215,63 @@ mod tests {
         assert!(lines.iter().any(|l| l.detail == "com.acme.editor"));
         assert!(lines.iter().any(|l| l.detail == "another app"));
         assert!(!lines.iter().any(|l| l.detail.contains("co-tenant")));
+    }
+
+    #[test]
+    fn coarse_when_buckets_without_false_precision() {
+        let now = 1_000_000_000_000_000i64; // arbitrary epoch-micros "now"
+        let ago = |secs: i64| now - secs * 1_000_000;
+        assert_eq!(coarse_when(ago(10), now), "just now");
+        assert_eq!(coarse_when(ago(120), now), "2 minutes ago");
+        assert_eq!(coarse_when(ago(7200), now), "2 hours ago");
+        assert_eq!(coarse_when(ago(90_000), now), "yesterday");
+        assert_eq!(coarse_when(ago(300_000), now), "3 days ago");
+        assert_eq!(coarse_when(ago(1_000_000), now), "last week");
+        // A future or zero stamp must not become an invented past.
+        assert_eq!(coarse_when(now + 5_000_000, now), "recently");
+        assert_eq!(coarse_when(0, now), format!("{} years ago", 0i64.max(now / 1_000_000 / 31_536_000)));
+    }
+
+    #[test]
+    fn a_stitched_chain_is_never_attested_and_never_complete() {
+        // Honesty §6: every graph step is unsigned trust-on-assertion. C2PA
+        // attestation is the external branch's alone and is not stitched here, so
+        // no step may carry `attested`, and the horizon is never `Complete` while
+        // the origin branches are gated.
+        let view = os_sdk::graph::ProvenanceView {
+            actors: vec!["you".to_string()],
+            accessed_by_others: true,
+        };
+        let projects = vec![Relation {
+            label: "Part of project".to_string(),
+            target: "Atlas".to_string(),
+            target_id: "p1".to_string(),
+        }];
+        let now = 1_000_000_000_000_000i64;
+        let chain = stitch_file_provenance("budget.xlsx", &projects, Some(&view), now - 7200 * 1_000_000, now);
+
+        assert!(!chain.mocked, "live lineage must never claim to be a sample");
+        assert_eq!(chain.horizon, Horizon::DeeperGated);
+        assert!(chain.steps.iter().all(|s| s.origin == HaloOrigin::Graph));
+        assert!(chain.steps.iter().all(|s| s.attested.is_none()), "no graph step may claim attestation");
+        // The project step is resolved; the access step is pid (attribution is
+        // pid->app, not a signed identity); the co-tenant is proxy and unnamed.
+        let opened = chain.steps.iter().find(|s| s.relation.as_deref() == Some("Last opened by")).unwrap();
+        assert_eq!(opened.fidelity, Fidelity::Pid);
+        let others = chain.steps.iter().find(|s| s.relation.as_deref() == Some("Also opened by")).unwrap();
+        assert_eq!(others.fidelity, Fidelity::Proxy);
+        assert_eq!(others.actor, "another app", "a foreign co-tenant is summarised, never named");
+    }
+
+    #[test]
+    fn an_empty_graph_view_is_honest_lineage_not_a_fixture() {
+        // A file the graph has nothing on returns an empty-step REAL chain, so the
+        // halo shows "no recorded lineage" - it must not read as a sample (which is
+        // reserved for a missing backend, the frontend's concern).
+        let chain = stitch_file_provenance("new.txt", &[], None, 0, 1_000_000_000_000_000);
+        assert!(chain.steps.is_empty());
+        assert!(!chain.mocked);
+        assert_eq!(chain.horizon, Horizon::DeeperGated);
     }
 
     #[test]
