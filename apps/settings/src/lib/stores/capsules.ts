@@ -14,6 +14,7 @@
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 
 /// A capsule's lifecycle state as the list presents it.
 export type CapsuleState = "active" | "expired" | "exhausted";
@@ -88,11 +89,18 @@ export const capsulesLoaded = writable(false);
 export const capsuleNotice = writable<string | null>(null);
 
 /// Load the active capsules. Live: `list_capsules`; fixture under vite.
+/// True while the list is the FIXTURE, not shares you actually made. This answers
+/// "what data have I sent out and who can still read it", so an unlabelled sample
+/// both invents shares that do not exist and implies real ones are absent.
+export const capsulesMocked = writable(false);
+
 export async function loadCapsules(): Promise<void> {
   try {
     capsules.set(await invoke<Capsule[]>("list_capsules"));
+    capsulesMocked.set(false);
   } catch {
     capsules.set(MOCK_CAPSULES);
+    capsulesMocked.set(true);
   }
   capsulesLoaded.set(true);
 }
@@ -102,13 +110,22 @@ export async function loadCapsules(): Promise<void> {
 /// under vite counts as applied, like grants.ts.
 export async function revokeCapsule(id: string): Promise<void> {
   let handle = "";
+  let previous: Capsule[] = [];
   capsules.update((list) => {
+    previous = list;
     handle = list.find((x) => x.id === id)?.handle ?? "";
     return list.filter((x) => x.id !== id);
   });
   try {
     await invoke("revoke_capsule", { handle });
-  } catch {
-    // No daemon under vite: the optimistic drop stands.
+  } catch (e) {
+    // With a real daemon a refused revoke must NOT read as a stopped share: the
+    // row goes back and says why. Silently dropping it would tell the user they
+    // had cut off access that is still live. Without the runtime there is no
+    // daemon to refuse, so the optimistic drop stands.
+    if (tauriAvailable) {
+      capsules.set(previous);
+      capsuleNotice.set(`Could not revoke that share: ${String(e)}`);
+    }
   }
 }
