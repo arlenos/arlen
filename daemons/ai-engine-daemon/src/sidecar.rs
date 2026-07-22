@@ -620,22 +620,32 @@ mod tests {
     /// environment, which is exactly the absent case.
     #[test]
     fn the_proxy_socket_is_bound_only_when_it_exists() {
-        let a = args();
+        // Both cases use temp paths so the test is DETERMINISTIC regardless of the
+        // host runtime dir - the previous version pointed the "absent" case at the
+        // real `/run/user/1000/arlen/ai-proxy.sock`, which exists (and this test then
+        // failed) whenever the AI stack is running on the dev box.
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        // Absent: a path that is never created -> not bound (bwrap would else refuse
+        // to start on a missing bind source).
+        let absent = dir.path().join("absent-ai-proxy.sock");
+        let mut paths_absent = paths();
+        paths_absent.proxy_socket = absent.to_string_lossy().into_owned();
+        let ca = pi_sidecar_confinement(&paths_absent, None).expect("confinement");
         assert_eq!(
-            dest_of(&a, "--bind", "/run/user/1000/arlen/ai-proxy.sock"),
+            dest_of(&ca.bwrap_args(), "--bind", &paths_absent.proxy_socket),
             None,
             "an absent proxy socket must not be bound: bwrap would refuse to start"
         );
 
-        // And when it does exist, it IS bound at the fixed sandbox path.
-        let dir = tempfile::tempdir().expect("tempdir");
-        let sock = dir.path().join("ai-proxy.sock");
+        // Present: create the socket path -> it IS bound at the fixed sandbox path.
+        let sock = dir.path().join("present-ai-proxy.sock");
         std::fs::write(&sock, b"").expect("create the stand-in socket path");
-        let mut paths = paths();
-        paths.proxy_socket = sock.to_string_lossy().into_owned();
-        let c = pi_sidecar_confinement(&paths, None).expect("confinement");
+        let mut paths_present = paths();
+        paths_present.proxy_socket = sock.to_string_lossy().into_owned();
+        let cp = pi_sidecar_confinement(&paths_present, None).expect("confinement");
         assert_eq!(
-            dest_of(&c.bwrap_args(), "--bind", &paths.proxy_socket),
+            dest_of(&cp.bwrap_args(), "--bind", &paths_present.proxy_socket),
             Some(SANDBOX_PROXY_SOCKET.to_string()),
         );
     }
