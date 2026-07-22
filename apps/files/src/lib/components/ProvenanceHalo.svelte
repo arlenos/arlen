@@ -32,6 +32,12 @@
   <Popover.Trigger class="ph-trigger">{$t("f.prov.trigger")}</Popover.Trigger>
   <Popover.Content align="start" sideOffset={6} class="ph-pop">
     {#if $chain}
+      {#if $chain.mocked}
+        <!-- Sample data, said plainly. The chain below describes a different
+             file and can carry an `attested` step, so leaving it unlabelled
+             would present invented lineage as this file's verified origin. -->
+        <p class="ph-sample">{$t("f.prov.sample")}</p>
+      {/if}
       <div class="ph-subject">{$chain.subject}</div>
       <div class="ph-steps">
         {#each $chain.steps as s, i (i)}
@@ -91,6 +97,16 @@
      trust-on-assertion prose. */
   .ph-step.attested {
     color: var(--foreground);
+  }
+  /* The sample caveat sits ABOVE the chain: it qualifies everything below it,
+     so it must be read first, not discovered after the origin claims. */
+  .ph-sample {
+    margin: 0;
+    font-size: var(--text-2xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+    padding-bottom: 0.15rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
   }
   .ph-horizon {
     margin: 0;
