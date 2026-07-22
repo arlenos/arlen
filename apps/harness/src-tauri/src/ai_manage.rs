@@ -15,6 +15,11 @@ const AI_PATH: &str = "/org/arlen/AI1";
 /// The AI agent: the autonomy-dial state.
 const AGENT_BUS: &str = "org.arlen.AIAgent1";
 const AGENT_PATH: &str = "/org/arlen/AIAgent1";
+/// The egress proxy: the measured token usage lives here (the ledger that meters
+/// every forward), exposed un-gated as read-only display data for exactly this
+/// transparency feed.
+const PROXY_BUS: &str = "org.arlen.AIProxy1";
+const PROXY_PATH: &str = "/org/arlen/AIProxy1";
 
 /// Call a String-returning member on `(bus, path, bus)`, returning `fallback`
 /// on any connection or call failure (the read commands are advisory).
@@ -57,17 +62,53 @@ pub async fn ai_active() -> String {
     call_string(AI_BUS, AI_PATH, "ai_active", "{}").await
 }
 
+/// Sum ai-proxy's per-provider usage report into the Cost feed's shape.
+///
+/// The proxy meters every forward per provider over the current window; the Cost
+/// section wants one cumulative `{ inputTokens, outputTokens, totalTokens }`, so
+/// this folds the providers together. `None` on any parse failure, which the
+/// caller maps to `null` - the honest "not measured", never a fabricated zero.
+/// Genuinely-zero usage (the ledger is reachable but nothing has been spent) is a
+/// real measured value and returns `{...: 0}`, distinct from `None`.
+fn sum_usage(report_json: &str) -> Option<String> {
+    let report: serde_json::Value = serde_json::from_str(report_json).ok()?;
+    let providers = report.get("providers")?.as_array()?;
+    let (mut input, mut output, mut total) = (0u64, 0u64, 0u64);
+    for p in providers {
+        let usage = p.get("usage")?;
+        input += usage.get("promptTokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        output += usage.get("completionTokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        total += usage.get("totalTokens").and_then(|v| v.as_u64()).unwrap_or(0);
+    }
+    Some(
+        serde_json::json!({
+            "inputTokens": input,
+            "outputTokens": output,
+            "totalTokens": total,
+        })
+        .to_string(),
+    )
+}
+
 /// Cumulative token usage (`ai_usage`): `{ inputTokens, outputTokens,
 /// totalTokens }` for the transparency-drawer Cost feed.
 ///
-/// Unreachable yields `null`, NOT zeros. This is the transparency surface, so
-/// "0 tokens used so far" must mean measured-and-zero; reporting zeros for an
-/// unreadable daemon states as fact that the assistant cost nothing. The drawer
-/// already renders a "not measured" tag for a null usage - fabricating zeros here
-/// is what made that branch unreachable.
+/// Reads the MEASURED usage from ai-proxy's `list_provider_usage` (the ledger
+/// that meters every forward) and folds the providers into one total. Nothing
+/// serves this on `org.arlen.AI1`, which is why the feed read "not measured"
+/// despite the data existing one hop away on the proxy.
+///
+/// Unreachable or unparseable yields `null`, NOT zeros. This is the transparency
+/// surface, so "0 tokens used so far" must mean measured-and-zero; reporting zeros
+/// for an unreadable proxy states as fact that the assistant cost nothing. The
+/// drawer already renders a "not measured" tag for a null usage - fabricating
+/// zeros here is what made that branch unreachable.
 #[tauri::command]
 pub async fn ai_usage() -> String {
-    call_string(AI_BUS, AI_PATH, "ai_usage", "null").await
+    match try_call_string(PROXY_BUS, PROXY_PATH, "list_provider_usage").await {
+        Some(report) => sum_usage(&report).unwrap_or_else(|| "null".to_string()),
+        None => "null".to_string(),
+    }
 }
 
 /// The catalogued providers for the manager surface (`ai_providers_list`): a JSON
@@ -326,4 +367,47 @@ pub fn open_ai_settings() -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("launch settings: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sum_usage;
+
+    #[test]
+    fn folds_providers_into_one_total() {
+        // The proxy meters per provider over a window; the Cost feed wants one
+        // cumulative figure, so two providers sum.
+        let report = r#"{
+            "windowResetsInSecs": 3600,
+            "providers": [
+                {"id":"ollama","usage":{"promptTokens":100,"completionTokens":40,"totalTokens":140,"requests":3},"cap":null},
+                {"id":"openai","usage":{"promptTokens":10,"completionTokens":5,"totalTokens":15,"requests":1},"cap":1000}
+            ]
+        }"#;
+        let out: serde_json::Value = serde_json::from_str(&sum_usage(report).unwrap()).unwrap();
+        assert_eq!(out["inputTokens"], 110);
+        assert_eq!(out["outputTokens"], 45);
+        assert_eq!(out["totalTokens"], 155);
+    }
+
+    #[test]
+    fn measured_zero_is_a_real_value_not_none() {
+        // A reachable ledger with no spend is measured-and-zero - distinct from an
+        // unreadable proxy (None -> the caller's null -> "not measured"). Reporting
+        // this as null would hide that the assistant genuinely cost nothing yet.
+        let report = r#"{"windowResetsInSecs":3600,"providers":[]}"#;
+        let out: serde_json::Value = serde_json::from_str(&sum_usage(report).unwrap()).unwrap();
+        assert_eq!(out["totalTokens"], 0);
+        assert_eq!(out["inputTokens"], 0);
+    }
+
+    #[test]
+    fn malformed_report_is_none_so_the_feed_says_not_measured() {
+        // The honesty rule: an unparseable report must not become a fabricated
+        // zero. None flows to the caller's null, which the drawer renders as "not
+        // measured" rather than "0 tokens used so far".
+        assert!(sum_usage("not json").is_none());
+        assert!(sum_usage("{}").is_none()); // no providers array
+        assert!(sum_usage(r#"{"providers":"x"}"#).is_none());
+    }
 }
