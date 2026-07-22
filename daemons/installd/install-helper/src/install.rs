@@ -238,6 +238,7 @@ mod tests {
 
     #[test]
     fn test_install_and_uninstall() {
+        let _env = crate::env_lock();
         let base = tempfile::TempDir::new().unwrap();
         let src = tempfile::TempDir::new().unwrap();
 
@@ -269,6 +270,7 @@ mod tests {
 
     #[test]
     fn test_create_desktop_entry() {
+        let _env = crate::env_lock();
         let dir = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_SYSTEM_DESKTOP_DIR", dir.path());
 
@@ -285,6 +287,7 @@ mod tests {
 
     #[test]
     fn test_create_desktop_entry_invalid() {
+        let _env = crate::env_lock();
         let dir = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_SYSTEM_DESKTOP_DIR", dir.path());
 

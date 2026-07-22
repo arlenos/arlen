@@ -10,6 +10,21 @@
 ///
 /// See `docs/architecture/install-daemon.md`.
 
+/// Serialises tests that override the `ARLEN_*_DIR` path env vars.
+///
+/// Those overrides are PROCESS-global, so under `cargo test`'s parallel runner
+/// one test's `remove_var` tears down the directory another test is mid-way
+/// through using. `test_create_desktop_entry` and
+/// `test_create_desktop_entry_invalid` both drive `ARLEN_SYSTEM_DESKTOP_DIR`,
+/// and either could fail depending on interleaving - which is exactly what a
+/// full-workspace run showed, a different test failing each time. Mirrors the
+/// same lock in installd.
+#[cfg(test)]
+pub(crate) fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 mod dbus;
 mod install;
 
