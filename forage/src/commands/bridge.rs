@@ -19,12 +19,13 @@
 #![allow(dead_code)]
 
 use arlen_forage_bridge_install::{
-    arlen_bridge_dir, deprovision_bridge_namespace, install_bridge, resolve_foreign_dest,
-    BridgeInstallResult, InstallBridgeError, InstalledBridge,
+    arlen_bridge_dir, bridge_namespace, deprovision_bridge_namespace, install_bridge,
+    is_safe_relative_path, resolve_foreign_dest, BridgeInstallResult, InstallBridgeError,
+    InstalledBridge, NamespaceError,
 };
-use arlen_forage_recipe::Install;
+use arlen_forage_recipe::{Install, Recipe};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// A bridge that has been fetched, verified and parsed, ready for the transactional
 /// install: its recipe id (scopes the Arlen-side dir), its verified source checkout,
@@ -39,6 +40,90 @@ pub struct PreparedBridge {
     pub install: Install,
     /// The validated delegated namespace (from the bridge's `entities.toml`).
     pub namespace: String,
+}
+
+/// A failure turning a fetched bridge recipe into a [`PreparedBridge`].
+#[derive(Debug, thiserror::Error)]
+pub enum PrepareError {
+    /// The recipe has no `[bridge]` section (not a bridge recipe).
+    #[error("recipe '{0}' is not a bridge (no [bridge] section)")]
+    NotABridge(String),
+    /// The recipe has no `[install]` manifest (a bridge requires one).
+    #[error("bridge '{0}' has no [install] manifest")]
+    NoInstall(String),
+    /// No `entities.toml` in the arlen-side files (nowhere to read the namespace).
+    #[error("bridge '{0}' declares no entities.toml in its arlen_side")]
+    NoEntities(String),
+    /// The arlen-side entities path is unsafe (absolute or `..`), so reading it
+    /// could escape the recipe source; refused before any read.
+    #[error("bridge '{recipe_id}': unsafe entities path: {path}")]
+    UnsafeEntitiesPath {
+        /// The bridge recipe id.
+        recipe_id: String,
+        /// The offending declared path.
+        path: String,
+    },
+    /// Reading the entities.toml from the source checkout failed.
+    #[error("bridge '{recipe_id}' entities.toml: {source}")]
+    Io {
+        /// The bridge recipe id.
+        recipe_id: String,
+        /// The underlying I/O error.
+        source: std::io::Error,
+    },
+    /// The declared namespace is missing, reserved, or malformed.
+    #[error("bridge '{recipe_id}' namespace: {source}")]
+    Namespace {
+        /// The bridge recipe id.
+        recipe_id: String,
+        /// The namespace validation error.
+        source: NamespaceError,
+    },
+}
+
+/// Turn a fetched, verified bridge recipe checkout into a [`PreparedBridge`]: pull
+/// the `[install]` manifest and read the delegated namespace from the arlen-side
+/// `entities.toml` (the schema-registration file that carries the top-level
+/// `namespace`). Pure over an already-fetched source dir + parsed recipe - the
+/// network fetch and pinned-commit + hash verification are the caller's job, so this
+/// is fully testable without a network.
+///
+/// The entities path is confined to the source tree (safe-relative, no `..`) before
+/// it is read, so a recipe cannot point the namespace read at `/etc/passwd`; the
+/// namespace itself is validated (non-reserved, well-formed) via [`bridge_namespace`].
+pub fn bridge_from_source(source_dir: &Path, recipe: &Recipe) -> Result<PreparedBridge, PrepareError> {
+    let recipe_id = recipe.recipe.id.clone();
+    if recipe.bridge.is_none() {
+        return Err(PrepareError::NotABridge(recipe_id));
+    }
+    let install = recipe
+        .install
+        .clone()
+        .ok_or_else(|| PrepareError::NoInstall(recipe_id.clone()))?;
+
+    // The namespace lives in the arlen-side entities.toml (schema registration).
+    let entities_rel = install
+        .arlen_side
+        .iter()
+        .find(|p| p.file_name().and_then(|n| n.to_str()) == Some("entities.toml"))
+        .ok_or_else(|| PrepareError::NoEntities(recipe_id.clone()))?;
+    if !is_safe_relative_path(entities_rel) {
+        return Err(PrepareError::UnsafeEntitiesPath {
+            recipe_id,
+            path: entities_rel.display().to_string(),
+        });
+    }
+    let contents = std::fs::read_to_string(source_dir.join(entities_rel))
+        .map_err(|source| PrepareError::Io { recipe_id: recipe_id.clone(), source })?;
+    let namespace = bridge_namespace(&contents)
+        .map_err(|source| PrepareError::Namespace { recipe_id: recipe_id.clone(), source })?;
+
+    Ok(PreparedBridge {
+        recipe_id,
+        source_dir: source_dir.to_path_buf(),
+        install,
+        namespace,
+    })
 }
 
 /// A bridge batch-install failure. Every variant means the whole batch was unwound
@@ -192,6 +277,83 @@ mod tests {
         let mut t = HashMap::new();
         t.insert("VAULT".to_string(), vault.to_path_buf());
         t
+    }
+
+    /// A minimal bridge recipe (deserialized, NOT validated - we exercise
+    /// `bridge_from_source`, not recipe validation, so `toml::from_str` suffices).
+    fn bridge_recipe(id: &str, arlen_side: &[&str]) -> Recipe {
+        let files = arlen_side
+            .iter()
+            .map(|f| format!("\"{f}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let toml = format!(
+            "[recipe]\nid = \"{id}\"\nname = \"B\"\nmaintainer = \"k1\"\n\
+             [bridge]\nforeign_app = \"obsidian\"\n\
+             [install]\narlen_side = [{files}]\n\
+             [install.foreign_side]\ninto = \"$VAULT/.obsidian/plugins/b/\"\nfiles = [\"main.js\"]\n"
+        );
+        toml::from_str(&toml).unwrap()
+    }
+
+    #[test]
+    fn bridge_from_source_extracts_the_install_and_namespace() {
+        let src = tempfile::tempdir().unwrap();
+        seed(src.path(), "entities.toml", "namespace = \"md.obsidian\"\n");
+        seed(src.path(), "bridge.toml", "x");
+        let recipe = bridge_recipe("md.obsidian.bridge", &["entities.toml", "bridge.toml"]);
+
+        let pb = bridge_from_source(src.path(), &recipe).unwrap();
+        assert_eq!(pb.recipe_id, "md.obsidian.bridge");
+        assert_eq!(pb.namespace, "md.obsidian");
+        assert_eq!(pb.install.arlen_side.len(), 2);
+        assert_eq!(pb.source_dir, src.path());
+    }
+
+    #[test]
+    fn a_non_bridge_recipe_is_refused() {
+        // A recipe with no [bridge] section is not a bridge.
+        let recipe: Recipe =
+            toml::from_str("[recipe]\nid = \"x\"\nname = \"X\"\nmaintainer = \"k\"\n").unwrap();
+        let src = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            bridge_from_source(src.path(), &recipe),
+            Err(PrepareError::NotABridge(_))
+        ));
+    }
+
+    #[test]
+    fn a_bridge_with_no_entities_toml_is_refused() {
+        let src = tempfile::tempdir().unwrap();
+        seed(src.path(), "bridge.toml", "x");
+        let recipe = bridge_recipe("md.obsidian.bridge", &["bridge.toml"]);
+        assert!(matches!(
+            bridge_from_source(src.path(), &recipe),
+            Err(PrepareError::NoEntities(_))
+        ));
+    }
+
+    #[test]
+    fn an_unsafe_entities_path_is_refused_before_reading() {
+        let src = tempfile::tempdir().unwrap();
+        // A recipe naming a traversing entities path must be refused before the read,
+        // so it cannot point the namespace read outside its own source tree.
+        let recipe = bridge_recipe("md.obsidian.bridge", &["../secret/entities.toml"]);
+        assert!(matches!(
+            bridge_from_source(src.path(), &recipe),
+            Err(PrepareError::UnsafeEntitiesPath { .. })
+        ));
+    }
+
+    #[test]
+    fn a_reserved_namespace_is_refused() {
+        let src = tempfile::tempdir().unwrap();
+        seed(src.path(), "entities.toml", "namespace = \"system.core\"\n");
+        let recipe = bridge_recipe("evil.bridge", &["entities.toml"]);
+        assert!(matches!(
+            bridge_from_source(src.path(), &recipe),
+            Err(PrepareError::Namespace { .. })
+        ));
     }
 
     #[test]
