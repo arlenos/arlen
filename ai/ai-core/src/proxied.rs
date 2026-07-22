@@ -356,4 +356,40 @@ mod tests {
         let body = chat_body_json("m", "p", &huge).unwrap();
         assert!(serde_json::from_str::<serde_json::Value>(&body).unwrap().get("max_tokens").is_none());
     }
+
+    /// The retry in `forward` must fire for a missing destination and for NOTHING
+    /// else. Retrying a denial or an upstream error would re-send a request the
+    /// proxy already answered - at best noise, at worst a duplicated forward.
+    #[test]
+    fn only_a_missing_destination_is_retryable() {
+        use zbus::fdo::Error as Fdo;
+
+        let missing = [
+            Fdo::ServiceUnknown("no owner".into()),
+            Fdo::NameHasNoOwner("no owner".into()),
+        ];
+        for e in missing {
+            assert!(
+                is_destination_missing(&zbus::Error::FDO(Box::new(e.clone()))),
+                "{e:?} must be retryable: an immediate re-resolve can fix it"
+            );
+        }
+
+        // Real answers from a reachable proxy - never retried.
+        let answered = [
+            Fdo::AccessDenied("caller does not own org.arlen.AI1".into()),
+            Fdo::InvalidArgs("bad body".into()),
+            Fdo::Failed("upstream 500".into()),
+            Fdo::UnknownMethod("no such method".into()),
+        ];
+        for e in answered {
+            assert!(
+                !is_destination_missing(&zbus::Error::FDO(Box::new(e.clone()))),
+                "{e:?} is an answer, not an absence - retrying it would re-send the request"
+            );
+        }
+
+        // A non-FDO transport error is not a missing destination either.
+        assert!(!is_destination_missing(&zbus::Error::InvalidReply));
+    }
 }
