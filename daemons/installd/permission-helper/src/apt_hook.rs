@@ -170,18 +170,11 @@ pub fn match_enrollments(
     Ok(matched)
 }
 
-/// NOT YET WIRED: the profile-writing half of the enrolment runs (see
-/// `apt_enroll`), but nothing yet shells out to `dpkg -L` and rewrites the
-/// `.desktop` entries, so an enrolled package has a profile and still launches
-/// unconfined. Kept and tested here because it is the next stage of the same
-/// hook, not speculative surface.
-///
 /// The installable artifacts of a `.deb`, classified from `dpkg -L <pkg>` output:
 /// the executables (which the enrollment confines) and the `.desktop` entries
 /// (whose `Exec=` the enrollment rewrites to launch through `arlen-run`).
 /// Best-effort: `dpkg -L` lists only packaged files, so it misses files created
 /// by maintainer scripts or `update-alternatives`.
-#[allow(dead_code)] // the .desktop-rewrite stage; see the note above
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PackageFiles {
     /// Executables shipped directly in a system bin directory.
@@ -203,7 +196,6 @@ const BIN_DIRS: &[&str] = &[
 /// Classify the files a package ships, from `dpkg -L <pkg>` output (one absolute
 /// path per line, files and directories intermixed). A binary is a file directly
 /// in a system bin directory; a `.desktop` entry is under the applications dir.
-#[allow(dead_code)] // the .desktop-rewrite stage; see PackageFiles
 pub fn classify_package_files(dpkg_l: &str) -> PackageFiles {
     let mut files = PackageFiles::default();
     for raw in dpkg_l.lines() {
@@ -240,7 +232,6 @@ pub fn classify_package_files(dpkg_l: &str) -> PackageFiles {
 ///
 /// `app_id` must be a validated package/app id (no whitespace) - it is the `.deb`
 /// bare name the enrollment resolved, so it cannot break the `Exec` line.
-#[allow(dead_code)] // the .desktop-rewrite stage; see PackageFiles
 pub fn rewrite_desktop_exec(content: &str, app_id: &str) -> String {
     let mut out = String::with_capacity(content.len() + 48);
     for line in content.lines() {
