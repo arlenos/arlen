@@ -343,6 +343,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
+    // Keep the AI master switches (enabled / executor_live) sourced from the
+    // separate-uid config-broker: a background task polls it and publishes into the
+    // cache the sync accessors read, so a switch change reaches the engine within a
+    // few seconds. On a broker error the cache clears and the accessors fall back
+    // to ai.toml, so a deployment without the broker keeps working unchanged.
+    tokio::spawn(engine_config::refresh_broker_switches(
+        std::time::Duration::from_secs(5),
+    ));
+
     let path = socket_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;

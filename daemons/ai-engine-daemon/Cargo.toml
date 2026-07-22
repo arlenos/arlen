@@ -19,6 +19,9 @@ ai-engine-contract = { path = "../../contracts/ai-engine-contract" }
 # The consent-broker wire contract: the ConsentBrokerClient frames a RequestBody
 # and reads the IntakeResult to resolve a gate Confirm via the trusted-path dialog.
 arlen-consent-contract = { path = "../../contracts/consent-contract" }
+# The AI master-switch owner: the engine reads enabled/executor_live from the
+# separate-uid config-broker (cached, background-refreshed) instead of ai.toml.
+arlen-config-broker = { path = "../config-broker" }
 # The existing Arlen capability model the gate seam re-points to (Phase 1
 # glue: Authorize -> Capability::decide). The daemon is the glue layer that
 # couples to ai-core; the contract crate stays engine-neutral.

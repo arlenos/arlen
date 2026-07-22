@@ -109,9 +109,55 @@ pub fn ai_enabled_from_text(text: &str) -> bool {
     toml::from_str::<RawConfig>(text).map(|c| c.ai.enabled).unwrap_or(false)
 }
 
-/// Whether AI is enabled per the on-disk `ai.toml`. A missing/unreadable file is
-/// disabled (fail-closed).
+/// The config-broker's master switches, cached so the daemon's sync accessors
+/// (`ai_enabled`/`executor_live`, invoked as `fn() -> bool` from the executor
+/// gates) read the authoritative switches without blocking on the broker's async
+/// socket. `None` means the broker has not been reached (not yet fetched, or
+/// currently unavailable); the accessors then fall back to reading `ai.toml`, so a
+/// deployment where the config-broker is not (yet) running keeps working unchanged.
+/// [`refresh_broker_switches`] keeps this current.
+static BROKER_SWITCHES: std::sync::RwLock<Option<arlen_config_broker::AiMasterSwitches>> =
+    std::sync::RwLock::new(None);
+
+/// Publish the broker's switches (or `None` when it is unreachable) into the cache
+/// the sync accessors read. Called by [`refresh_broker_switches`]; also the test
+/// seam.
+pub fn publish_broker_switches(switches: Option<arlen_config_broker::AiMasterSwitches>) {
+    if let Ok(mut w) = BROKER_SWITCHES.write() {
+        *w = switches;
+    }
+}
+
+/// Read one field from the cached broker switches, if the broker has been reached.
+fn from_broker<T>(pick: impl FnOnce(&arlen_config_broker::AiMasterSwitches) -> T) -> Option<T> {
+    BROKER_SWITCHES.read().ok().and_then(|g| g.as_ref().map(pick))
+}
+
+/// Poll the config-broker and publish its switches into the cache, so the sync
+/// accessors see an authoritative change within `interval`. On ANY broker error
+/// (down, corrupt, unauthorised) publish `None`, so the accessors fall back to
+/// `ai.toml` rather than serving a stale broker value. Runs until the process
+/// exits; spawned once at daemon startup.
+pub async fn refresh_broker_switches(interval: std::time::Duration) {
+    let client = arlen_config_broker::ConfigBrokerClient::default_socket();
+    loop {
+        match client.get().await {
+            Ok(switches) => publish_broker_switches(Some(switches)),
+            Err(_) => publish_broker_switches(None),
+        }
+        tokio::time::sleep(interval).await;
+    }
+}
+
+/// Whether AI is enabled: the config-broker (the authoritative owner of the master
+/// switch) when reached, else the on-disk `ai.toml` (missing/unreadable = disabled,
+/// fail-closed). Preferring the broker is what moves the switch off the ambient
+/// `ai.toml`; the ai.toml fallback keeps a broker-less deployment working during
+/// the transition.
 pub fn ai_enabled() -> bool {
+    if let Some(v) = from_broker(|s| s.enabled) {
+        return v;
+    }
     std::fs::read_to_string(ai_config_path()).map(|t| ai_enabled_from_text(&t)).unwrap_or(false)
 }
 
@@ -145,9 +191,15 @@ pub fn executor_live_from_text(text: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Whether the executor is live per the on-disk `ai.toml` (missing/unreadable =
-/// false, fail-closed).
+/// Whether the executor is live: the config-broker (the authoritative owner of the
+/// executor "human gate") when reached, else the on-disk `ai.toml`
+/// (missing/unreadable = false, fail-closed). The broker read is what moves the
+/// security-critical gate off the ambient `ai.toml`; the fallback keeps a
+/// broker-less deployment working during the transition.
 pub fn executor_live() -> bool {
+    if let Some(v) = from_broker(|s| s.executor_live) {
+        return v;
+    }
     std::fs::read_to_string(ai_config_path())
         .map(|t| executor_live_from_text(&t))
         .unwrap_or(false)
@@ -173,6 +225,38 @@ pub fn enabled_behaviour_names() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Serializes the cache tests: `BROKER_SWITCHES` is a process-global, and these
+    /// also set `ARLEN_AI_CONFIG` (process env), so they must not run concurrently.
+    static CACHE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn the_accessors_prefer_the_broker_cache_over_ai_toml() {
+        let _g = CACHE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Point ai.toml at a temp file that says DISABLED + executor-off.
+        let ai = std::env::temp_dir().join(format!("arlen-engcfg-{}.toml", std::process::id()));
+        std::fs::write(&ai, "[ai]\nenabled = false\n[agent]\nexecutor_live = false\n").unwrap();
+        std::env::set_var("ARLEN_AI_CONFIG", &ai);
+
+        // No broker cache -> the accessors read ai.toml (disabled / off).
+        publish_broker_switches(None);
+        assert!(!ai_enabled(), "with no broker cache, ai.toml governs");
+        assert!(!executor_live());
+
+        // Broker reached + enabled/live -> the cache WINS over ai.toml's disabled.
+        publish_broker_switches(Some(arlen_config_broker::AiMasterSwitches {
+            enabled: true,
+            executor_live: true,
+            ..Default::default()
+        }));
+        assert!(ai_enabled(), "the broker cache must override ai.toml's disabled");
+        assert!(executor_live(), "the broker cache must override ai.toml's executor-off");
+
+        // Reset the global cache + env so nothing leaks into other tests.
+        publish_broker_switches(None);
+        std::env::remove_var("ARLEN_AI_CONFIG");
+        let _ = std::fs::remove_file(&ai);
+    }
 
     #[test]
     fn enabled_true_only_when_set() {
