@@ -78,7 +78,27 @@ pub fn build_confinement(
     let dir_refs: Vec<&Path> = app_dirs.iter().map(PathBuf::as_path).collect();
     let masked_refs: Vec<&Path> = masked.iter().map(PathBuf::as_path).collect();
     let skeleton = app_runtime_profile(usr, &dir_refs, &masked_refs, env, net)?;
+    // Binding only `/usr` leaves a merged-`/usr` system's root-level compat paths
+    // (`/lib64` etc.) absent, so a dynamically-linked app cannot find its ELF
+    // interpreter and `execvp` fails ENOENT ("no such file"). Add them read-only.
+    let mut plumbing = plumbing;
+    plumbing.extend(merged_usr_compat_binds());
     Ok(skeleton.complete(plumbing, Vec::new()))
+}
+
+/// The merged-`/usr` compatibility binds - `/lib64`, `/lib`, `/bin`, `/sbin`, the
+/// ones present - bound read-only so a dynamically-linked app finds its ELF
+/// interpreter (`/lib64/ld-linux-*`) and the tools on the default PATH. On a
+/// merged system each is a symlink into `/usr`, so binding it exposes the `/usr`
+/// content at the root path the interpreter reference uses; a non-merged system's
+/// real dirs bind directly. Absent paths are skipped (bwrap rejects a missing
+/// bind source), so this is safe on any layout.
+fn merged_usr_compat_binds() -> Vec<Bind> {
+    ["/lib64", "/lib", "/bin", "/sbin"]
+        .into_iter()
+        .filter(|p| Path::new(p).exists())
+        .map(|p| Bind::ReadOnly(p.into(), p.into()))
+        .collect()
 }
 
 /// Assemble the full `bwrap` argument vector: the confinement's flags followed
