@@ -308,6 +308,8 @@ mod tests {
 
     #[test]
     fn test_verify_valid_signature() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let pkg = tempfile::TempDir::new().unwrap();
         let keys = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_USER_KEYS_DIR", keys.path());
@@ -322,6 +324,8 @@ mod tests {
 
     #[test]
     fn test_verify_tampered_content() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let pkg = tempfile::TempDir::new().unwrap();
         let keys = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_USER_KEYS_DIR", keys.path());
@@ -358,6 +362,8 @@ mod tests {
 
     #[test]
     fn test_verify_wrong_key() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let pkg = tempfile::TempDir::new().unwrap();
         let keys = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_USER_KEYS_DIR", keys.path());
@@ -380,6 +386,8 @@ mod tests {
 
     #[test]
     fn test_verify_no_trusted_keys() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let pkg = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_USER_KEYS_DIR", "/nonexistent-user");
         std::env::set_var("ARLEN_SYSTEM_KEYS_DIR", "/nonexistent-system");
@@ -438,6 +446,8 @@ mod tests {
 
     #[test]
     fn test_base64_key_loading() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let pkg = tempfile::TempDir::new().unwrap();
         let keys = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_USER_KEYS_DIR", keys.path());
