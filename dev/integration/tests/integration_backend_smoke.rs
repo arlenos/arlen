@@ -2555,3 +2555,117 @@ async fn a_resolved_decision_lands_in_the_audit_ledger() {
         "the resolved consent decision was audited (Permission, subject={me}) in the tamper-evident ledger"
     );
 }
+
+/// event-bus pub/sub enforcement: under `ARLEN_EVENT_BUS_ENFORCE=1` a consumer
+/// receives the event types its `[event_bus].subscribe` scope declares and NOT
+/// the ones it does not.
+///
+/// Asserts DELIVERY rather than the daemon's log. A filter that silently kept
+/// everything and one that silently dropped everything both look plausible from
+/// the outside, so the scenario asks for two event types, declares only one, and
+/// pins both directions at once: the granted type must arrive (otherwise the
+/// check is refusing everyone, which a deny-only test cannot tell apart from
+/// working) and the undeclared type must never arrive.
+///
+/// The test process is the third-party stand-in: it runs from `target/debug`, so
+/// `detect_tier` classifies it ThirdParty and the bus holds it to its profile,
+/// exactly as it would a real app. A deployed first-party daemon is System-tier
+/// and exempt, which is why this cannot be observed by flipping enforce on a
+/// normal stack.
+#[tokio::test]
+#[ignore = "needs the event-bus binary built"]
+async fn an_enforcing_bus_delivers_only_the_subscribed_event_type() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    // Publish covers BOTH types: the bus scopes producers too, so declaring only
+    // the subscribe side would starve the consumer at the publish step and the
+    // assertion would pass for the wrong reason.
+    stack
+        .seed_event_bus_profile(&["file.opened", "window.focused"], &["file.*"])
+        .expect("seed the event-bus scope for this test process");
+
+    stack
+        .spawn(
+            "daemons/event-bus",
+            "event-bus",
+            &[("ARLEN_EVENT_BUS_ENFORCE", "1")],
+        )
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("event-bus producer socket appears");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("event-bus consumer socket appears");
+
+    // Consumer registration is three newline-terminated lines: id, the
+    // comma-separated patterns, then the uid filter.
+    let mut consumer = tokio::net::UnixStream::connect(stack.consumer_socket())
+        .await
+        .expect("connect the consumer socket");
+    consumer
+        .write_all(b"it-enforce\nfile.*,window.focused\n*\n")
+        .await
+        .expect("register as a consumer");
+    consumer.flush().await.expect("flush the registration");
+
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+
+    // The bus drops events that have no consumer at emit time and registration
+    // races the first emit, so emit repeatedly and read until the deadline
+    // rather than sleeping once and hoping.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut seen: Vec<String> = Vec::new();
+    let mut saw_granted = false;
+    while Instant::now() < deadline && !saw_granted {
+        // Undeclared type first: if the filter were inert this is what arrives.
+        let focus = proto::WindowFocusedPayload {
+            app_id: "integration-test".to_string(),
+            window_title: "denied".to_string(),
+            prev_app_id: String::new(),
+        }
+        .encode_to_vec();
+        let _ = emitter.emit("window.focused", focus).await;
+        let opened = proto::FileOpenedPayload {
+            path: "/tmp/it/enforce.rs".to_string(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        let _ = emitter.emit("file.opened", opened).await;
+
+        // Drain whatever the bus decided to deliver in this round.
+        while let Ok(Ok(len)) = tokio::time::timeout(
+            Duration::from_millis(700),
+            consumer.read_u32(),
+        )
+        .await
+        {
+            let mut buf = vec![0u8; len as usize];
+            if tokio::time::timeout(
+                Duration::from_millis(700),
+                consumer.read_exact(&mut buf),
+            )
+            .await
+            .is_err()
+            {
+                break;
+            }
+            let event = proto::Event::decode(&buf[..]).expect("decode a delivered event");
+            saw_granted |= event.r#type == "file.opened";
+            seen.push(event.r#type);
+        }
+    }
+
+    assert!(
+        saw_granted,
+        "the granted type never arrived, so the filter is refusing everything \
+         rather than enforcing the scope (delivered: {seen:?})"
+    );
+    assert!(
+        !seen.iter().any(|t| t == "window.focused"),
+        "an undeclared event type was delivered, so the subscribe scope is not \
+         enforced (delivered: {seen:?})"
+    );
+}

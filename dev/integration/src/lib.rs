@@ -376,6 +376,44 @@ impl EphemeralStack {
         std::fs::write(self.permissions_dir().join(format!("{app_id}.toml")), toml)
     }
 
+    /// Seed an `[event_bus]` publish/subscribe scope for this process's own app
+    /// id, so a scenario can exercise the bus under
+    /// `ARLEN_EVENT_BUS_ENFORCE=1`. Returns the resolved app id.
+    ///
+    /// Both axes are needed even to test subscribe filtering: the bus scopes
+    /// producers too, so a test that declared only `subscribe` would have its
+    /// events dropped at publish and the consumer would see nothing for the
+    /// wrong reason.
+    ///
+    /// Only System-tier peers (`/usr/bin/arlen-*`, `/usr/lib/arlen/*`) are exempt
+    /// from these checks, and a test binary runs from `target/debug`, so it is
+    /// held to this profile exactly like a third-party app - which is what makes
+    /// it a faithful stand-in for one.
+    pub fn seed_event_bus_profile(
+        &self,
+        publish: &[&str],
+        subscribe: &[&str],
+    ) -> std::io::Result<String> {
+        let app_id = own_app_id()
+            .ok_or_else(|| std::io::Error::other("could not resolve own app id"))?;
+        let list = |v: &[&str]| {
+            v.iter()
+                .map(|p| format!("\"{p}\""))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let toml = format!(
+            "[info]\napp_id = \"{app_id}\"\n\n[event_bus]\npublish = [{}]\nsubscribe = [{}]\n",
+            list(publish),
+            list(subscribe),
+        );
+        std::fs::write(
+            self.permissions_dir().join(format!("{app_id}.toml")),
+            toml,
+        )?;
+        Ok(app_id)
+    }
+
     /// Spawn a daemon binary (`<repo>/target/debug/<bin>`) with the base
     /// environment plus `extra_env`, its stdio nulled. The child is tracked and
     /// killed on drop. Does not wait for readiness; call
