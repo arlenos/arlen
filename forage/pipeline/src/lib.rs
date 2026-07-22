@@ -354,6 +354,10 @@ mod tests {
             provides: None,
             depends: None,
             reproducible: None,
+            // Not a bridge recipe: no foreign app to attach to, and so no
+            // two-halves install manifest either.
+            bridge: None,
+            install: None,
         }
     }
 
