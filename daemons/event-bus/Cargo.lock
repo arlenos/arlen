@@ -130,6 +130,7 @@ dependencies = [
  "prost",
  "prost-build",
  "tokio",
+ "toml",
  "tracing",
  "tracing-subscriber",
  "uuid",
