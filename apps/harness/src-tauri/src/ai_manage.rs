@@ -47,16 +47,16 @@ pub async fn ai_active() -> String {
 }
 
 /// Cumulative token usage (`ai_usage`): `{ inputTokens, outputTokens,
-/// totalTokens }` for the transparency-drawer Cost feed. Zeros if unreachable.
+/// totalTokens }` for the transparency-drawer Cost feed.
+///
+/// Unreachable yields `null`, NOT zeros. This is the transparency surface, so
+/// "0 tokens used so far" must mean measured-and-zero; reporting zeros for an
+/// unreadable daemon states as fact that the assistant cost nothing. The drawer
+/// already renders a "not measured" tag for a null usage - fabricating zeros here
+/// is what made that branch unreachable.
 #[tauri::command]
 pub async fn ai_usage() -> String {
-    call_string(
-        AI_BUS,
-        AI_PATH,
-        "ai_usage",
-        r#"{"inputTokens":0,"outputTokens":0,"totalTokens":0}"#,
-    )
-    .await
+    call_string(AI_BUS, AI_PATH, "ai_usage", "null").await
 }
 
 /// The catalogued providers for the manager surface (`ai_providers_list`): a JSON
