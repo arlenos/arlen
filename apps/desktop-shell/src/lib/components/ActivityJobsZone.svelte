@@ -9,6 +9,8 @@
   import { Pause, Play, X, RotateCw, ChevronRight, Check } from "lucide-svelte";
   import {
     jobs,
+    mocked,
+    lastError,
     pollJobs,
     cancelJob,
     pauseJob,
@@ -44,6 +46,16 @@
       <span class="jobs-title">Activity</span>
       <span class="jobs-count">{ordered.length}</span>
     </div>
+    {#if $mocked}
+      <!-- These carry titles, per-file names, an ETA and a Cancel button: without
+           this they read as work actually in flight on this machine. -->
+      <p class="jobs-sample">Example activity - no background work is actually running.</p>
+    {/if}
+    {#if $lastError}
+      <!-- A refused action already restored the feed; this says why, so a failed
+           cancel never passes as a cancelled job. -->
+      <p class="jobs-sample err" role="alert">{$lastError}</p>
+    {/if}
 
     {#each ordered as j (j.id)}
       <div class="job" class:paused={j.state === "paused"} class:err={isError(j)} class:done={j.state === "done"}>
@@ -121,6 +133,15 @@
     flex-direction: column;
     gap: 0.5rem;
     margin-bottom: 0.5rem;
+  }
+  .jobs-sample {
+    margin: 0 0 0.4rem;
+    font-size: var(--text-2xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--color-fg-shell, var(--foreground)) 55%, transparent);
+  }
+  .jobs-sample.err {
+    color: var(--color-fg-danger, #f87171);
   }
   .jobs-head {
     display: flex;
