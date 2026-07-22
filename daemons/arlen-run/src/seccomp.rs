@@ -77,6 +77,11 @@ fn app_allowlist() -> Vec<libc::c_long> {
         libc::SYS_fallocate,
         libc::SYS_getdents64,
         libc::SYS_getcwd,
+        // Working-directory navigation. A confined CLI tool or file manager
+        // `chdir`s; it grants no capability (a chdir target must already exist in
+        // the app's bwrap mount namespace), so it belongs in the generous baseline.
+        libc::SYS_chdir,
+        libc::SYS_fchdir,
         libc::SYS_readlink,
         libc::SYS_readlinkat,
         libc::SYS_unlink,
