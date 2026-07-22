@@ -227,7 +227,11 @@ fn provenance_to_woher(view: &os_sdk::graph::ProvenanceView) -> Vec<ProvenanceEn
 // knows and leaves the horizon `deeper_gated` rather than inventing an origin.
 
 /// How Arlen came to record a step. Mirrors `daemons/knowledge` provenance and the
-/// frontend `Provenance` union. Only `Graph` is produced here today.
+/// frontend `Provenance` union. Only `Graph` is produced here today; the others
+/// are the gated branches (user/external/model/agent origins need the S18-A
+/// content-origin store this backend does not yet read), kept so the serde
+/// contract matches the frontend union one-to-one.
+#[allow(dead_code)] // non-Graph variants land with the content-origin store
 #[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[serde(rename_all = "snake_case")]
 enum HaloOrigin {
@@ -248,6 +252,10 @@ enum Fidelity {
 }
 
 /// Whether the trail is complete or deeper history is gated, never faked.
+/// `Complete` is unused while the origin/external branches are gated - the
+/// graph-only trail is always `DeeperGated` - but kept to match the frontend
+/// union and for when a fully-attested chain becomes expressible.
+#[allow(dead_code)] // `Complete` lands with the attested external branch
 #[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[serde(rename_all = "snake_case")]
 enum Horizon {
@@ -310,9 +318,18 @@ fn coarse_when(micros: i64, now_micros: i64) -> String {
 /// daemon's no-leak. The horizon is always `DeeperGated`: the user/external/model
 /// origins live in the content-origin store this does not yet read, so the trail
 /// is never claimed complete.
+/// A live project membership for the halo: the project name and WHEN the file
+/// was added to it (the `FILE_PART_OF` edge's `created_at`), not when the file
+/// was last touched. The distinction is the honesty point - "Part of Atlas, 3
+/// days ago" must mean the membership is 3 days old, not the file's last access.
+struct ProjectMembership {
+    name: String,
+    since_micros: i64,
+}
+
 fn stitch_file_provenance(
     subject: &str,
-    projects: &[Relation],
+    projects: &[ProjectMembership],
     view: Option<&os_sdk::graph::ProvenanceView>,
     last_accessed_micros: i64,
     now_micros: i64,
@@ -321,11 +338,11 @@ fn stitch_file_provenance(
     for p in projects {
         steps.push(ProvenanceStep {
             relation: Some("Part of".to_string()),
-            actor: p.target.clone(),
+            actor: p.name.clone(),
             origin: HaloOrigin::Graph,
-            // The membership edge's own time is not fetched; the file's last-access
-            // is the coarsest honest "when" available for the graph view.
-            when: coarse_when(last_accessed_micros, now_micros),
+            // The membership edge's own `created_at`: when the file joined the
+            // project, which is what "Part of ..." is dated by.
+            when: coarse_when(p.since_micros, now_micros),
             fidelity: Fidelity::Resolved,
             attested: None,
         });
@@ -364,6 +381,39 @@ fn stitch_file_provenance(
     }
 }
 
+/// Read a file's LIVE project memberships with the time it joined each - the
+/// `FILE_PART_OF` edge's `created_at`, filtered to open (not closed) edges. This
+/// is the halo's own read (distinct from `read_verwandt`, which feeds the info
+/// panel with names only and does not filter to live edges), so the "Part of"
+/// step is dated by the membership, not the file's last access.
+async fn read_project_memberships(
+    client: &os_sdk::graph::UnixGraphClient,
+    path: &str,
+) -> Vec<ProjectMembership> {
+    let cypher = format!(
+        "MATCH (f:File {{id: '{}'}})-[r:FILE_PART_OF]->(p:Project) \
+         WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
+         RETURN p.name AS name, r.created_at AS since LIMIT 16",
+        escape_cypher_literal(&abs(path))
+    );
+    match client.query_rows(&cypher).await {
+        Ok(rows) => rows
+            .iter()
+            .filter_map(|r| {
+                let name = r.get("name").and_then(|v| v.as_str())?.to_string();
+                // A membership with no recorded time reads "recently" via
+                // `coarse_when(0, ...)`, never an invented past.
+                let since = r.get("since").and_then(|v| v.as_i64()).unwrap_or(0);
+                Some(ProjectMembership {
+                    name,
+                    since_micros: since,
+                })
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
 /// Read a file's `last_accessed` (epoch micros) from the File node. `0` when the
 /// node is absent or out of scope, which `coarse_when` reads as "recently".
 async fn read_last_accessed(client: &os_sdk::graph::UnixGraphClient, path: &str) -> i64 {
@@ -391,7 +441,7 @@ async fn read_last_accessed(client: &os_sdk::graph::UnixGraphClient, path: &str)
 async fn provenance_of(r#ref: String) -> ProvenanceChain {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
-    let projects = read_verwandt(&r#ref).await;
+    let projects = read_project_memberships(&client, &r#ref).await;
     let view = client.read_provenance(&abs(&r#ref)).await.ok().flatten();
     let last_accessed = read_last_accessed(&client, &r#ref).await;
     let now_micros = std::time::SystemTime::now()
@@ -1979,7 +2029,8 @@ mod tests {
         abs, coarse_when, escape_cypher_literal, file_part_of_as_of, members_from_rows, ops,
         projects_from_rows, provenance_to_woher, recent_from_rows, recent_to_entry,
         stitch_file_provenance, touched_apps_from_rows, trash_to_entry, verwandt_from_rows,
-        EntryKind, Fidelity, FilesConfig, HaloOrigin, Horizon, RecentFile, Relation, SmartFolder,
+        EntryKind, Fidelity, FilesConfig, HaloOrigin, Horizon, ProjectMembership, RecentFile,
+        SmartFolder,
     };
     use std::collections::HashMap;
 
@@ -2242,13 +2293,16 @@ mod tests {
             actors: vec!["you".to_string()],
             accessed_by_others: true,
         };
-        let projects = vec![Relation {
-            label: "Part of project".to_string(),
-            target: "Atlas".to_string(),
-            target_id: "p1".to_string(),
-        }];
         let now = 1_000_000_000_000_000i64;
+        // The file joined Atlas 3 days ago but was last opened 2 hours ago; the
+        // "Part of" step must be dated by the membership, not the access.
+        let projects = vec![ProjectMembership {
+            name: "Atlas".to_string(),
+            since_micros: now - 3 * 86_400 * 1_000_000,
+        }];
         let chain = stitch_file_provenance("budget.xlsx", &projects, Some(&view), now - 7200 * 1_000_000, now);
+        let part_of = chain.steps.iter().find(|s| s.relation.as_deref() == Some("Part of")).unwrap();
+        assert_eq!(part_of.when, "3 days ago", "the membership step is dated by when the file joined the project");
 
         assert!(!chain.mocked, "live lineage must never claim to be a sample");
         assert_eq!(chain.horizon, Horizon::DeeperGated);
