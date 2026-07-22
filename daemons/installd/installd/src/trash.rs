@@ -8,13 +8,13 @@
 /// `restore_app` moves a trashed app back and recreates the desktop entry.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::install::{self, InstallError, Manifest};
+use crate::install::{self, InstallError};
 
 /// Grace period before permanent deletion.
 const GRACE_PERIOD_DAYS: u64 = 30;
