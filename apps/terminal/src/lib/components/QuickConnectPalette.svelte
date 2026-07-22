@@ -15,6 +15,7 @@
   import {
     savedHosts,
     recentHosts,
+    remotesMocked,
     paletteOpen,
     query,
     closeQuickConnect,
@@ -85,6 +86,11 @@
     <div class="qc-card" role="dialog" aria-modal="true" aria-label={$t("term.qc.aria")} tabindex="-1">
       <Command shouldFilter={false}>
         <CommandInput placeholder={$t("term.qc.placeholder")} autofocus bind:value={$query} />
+        {#if $remotesMocked}
+          <!-- These read as saved SSH connections; unlabelled a user will try to
+               connect to hosts they never configured. -->
+          <p class="qc-sample">{$t("term.qc.sample")}</p>
+        {/if}
         <CommandList class="qc-list">
           {#if savedGroups.length === 0 && recentMatched.length === 0 && !freeText}
             <div class="qc-empty">{$t("term.qc.empty")}</div>
@@ -156,6 +162,14 @@
     max-height: 340px;
     padding: 4px;
     scrollbar-width: none;
+  }
+  /* Directly under the input, above every host row it qualifies. */
+  .qc-sample {
+    margin: 0;
+    padding: 8px 10px 0;
+    font-size: var(--text-2xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .qc-group {
     display: flex;
