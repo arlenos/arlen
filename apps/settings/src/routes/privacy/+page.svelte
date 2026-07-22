@@ -61,6 +61,7 @@
   import {
     capsules,
     capsulesLoaded,
+    capsulesMocked,
     loadCapsules,
     revokeCapsule,
     type Capsule,
@@ -332,6 +333,10 @@
               {/if}
             {/each}
           </div>
+          {#if $capsulesMocked}
+            <!-- Invented shares read as data actually sent out and still readable. -->
+            <p class="note">{$t("s.priv.sampleShares")}</p>
+          {/if}
           <p class="note">
             {$t("s.priv.shareNote")}
           </p>
