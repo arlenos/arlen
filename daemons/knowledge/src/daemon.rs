@@ -2655,13 +2655,19 @@ async fn handle_client(
             continue;
         }
 
-        // Code-analysis mode: a leading 0x09 byte selects the CG-R5 whole-codebase
+        // Code-analysis mode: a leading 0x0D byte selects the CG-R5 whole-codebase
         // analysis (god-symbols + surprises over the CodeSymbol/CALLS graph,
         // token-free). The handler gates it to system-anchored callers (the
         // aggregate exceeds a ThirdParty's per-label read scope); query-rate-
-        // limited and 500 ms-bounded like the other read ops. NB 0x09 is the next
-        // free byte after 0x08 (typed read).
-        if buf.first() == Some(&0x09) {
+        // limited and 500 ms-bounded like the other read ops.
+        //
+        // This op previously claimed 0x09, which the prep-for-this read ALREADY
+        // held further up this chain - so every code-analysis request was
+        // swallowed by prep (which then failed parsing the absent
+        // `{subject_id, limit}` body) and CG-R5 could never run at all, including
+        // through its knowledge-mcp tool. 0x0D is the first genuinely free byte:
+        // 0x01-0x0C are taken. See `mode_bytes_are_uniquely_assigned`.
+        if buf.first() == Some(&0x0D) {
             let violation = {
                 let mut rs = rate.lock().await;
                 rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
@@ -2689,11 +2695,11 @@ async fn handle_client(
             continue;
         }
 
-        // Code-symbol-context mode: a leading 0x0A byte selects the CG-R6 fusion
+        // Code-symbol-context mode: a leading 0x0E byte selects the CG-R6 fusion
         // read — a symbol's defining file, its project (bitemporal, optionally
         // as-of), and its accessing apps. The body is a JSON CodeSymbolRequest.
         // Same system-anchored gate + rate-limit + 500 ms bound as 0x09.
-        if buf.first() == Some(&0x0A) {
+        if buf.first() == Some(&0x0E) {
             let violation = {
                 let mut rs = rate.lock().await;
                 rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
@@ -3320,6 +3326,47 @@ async fn filter_ids_to_readable_labels(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every socket op must own its mode byte.
+    ///
+    /// The ops are dispatched by a long `if buf.first() == Some(&0xNN)` chain,
+    /// so a duplicate byte does not conflict - the FIRST arm simply wins and the
+    /// later op becomes unreachable, silently. That happened: code-analysis
+    /// (CG-R5) was given 0x09 with a comment calling it "the next free byte",
+    /// but prep-for-this already held 0x09 higher up, so every code-analysis
+    /// request was swallowed by prep and the op could never run - including
+    /// through the knowledge-mcp tool that exposes it to the AI.
+    ///
+    /// Scanning the source is deliberate: the dispatch is an if-chain, not a
+    /// table, so there is no runtime value to assert over. This catches the
+    /// duplicate at the only place it is expressible.
+    #[test]
+    fn mode_bytes_are_uniquely_assigned() {
+        use std::collections::BTreeMap;
+        let src = include_str!("daemon.rs");
+        let mut seen: BTreeMap<String, usize> = BTreeMap::new();
+        for line in src.lines() {
+            let Some(rest) = line.split_once("buf.first() == Some(&0x") else {
+                continue;
+            };
+            let byte: String = rest
+                .1
+                .chars()
+                .take_while(|c| c.is_ascii_hexdigit())
+                .collect::<String>()
+                .to_uppercase();
+            if !byte.is_empty() {
+                *seen.entry(byte).or_default() += 1;
+            }
+        }
+        assert!(!seen.is_empty(), "the scan found no dispatch arms at all");
+        let dupes: Vec<_> = seen.iter().filter(|(_, n)| **n > 1).collect();
+        assert!(
+            dupes.is_empty(),
+            "these mode bytes are claimed by more than one op, so the later one is \
+             unreachable: {dupes:?}"
+        );
+    }
 
     #[test]
     fn cross_uid_admits_only_first_party_and_system() {
