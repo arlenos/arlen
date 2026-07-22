@@ -268,6 +268,7 @@ mod tests {
 
     #[test]
     fn test_commit_prevents_rollback() {
+        let _env = crate::env_lock();
         let apps = tempfile::TempDir::new().unwrap();
         let desktop = tempfile::TempDir::new().unwrap();
         let temp = tempfile::TempDir::new().unwrap();
@@ -301,6 +302,7 @@ mod tests {
 
     #[test]
     fn test_drop_triggers_rollback() {
+        let _env = crate::env_lock();
         let apps = tempfile::TempDir::new().unwrap();
         let desktop = tempfile::TempDir::new().unwrap();
         let temp = tempfile::TempDir::new().unwrap();
@@ -339,6 +341,7 @@ mod tests {
 
     #[test]
     fn test_disk_space_check_passes() {
+        let _env = crate::env_lock();
         let temp = tempfile::TempDir::new().unwrap();
         fs::write(temp.path().join("small.txt"), "hello").unwrap();
 

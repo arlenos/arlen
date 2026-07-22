@@ -233,6 +233,7 @@ mod tests {
 
     #[test]
     fn write_and_remove_profile_round_trip() {
+        let _env = crate::env_lock();
         let tmp = tempfile::tempdir().unwrap();
         std::env::set_var("ARLEN_PERMISSIONS_DIR", tmp.path());
 
