@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use arlen_config_broker::server;
-use arlen_config_broker::state::{AiMasterSwitches, StateStore};
+use arlen_config_broker::state::{seed_from_ai_toml, StateStore};
 
 #[tokio::main]
 async fn main() {
@@ -31,14 +31,16 @@ async fn main() {
         }
     };
 
-    // Seed the generous shipped defaults on first run (a fresh store
-    // only); never clobber an existing one. A seed failure is
-    // non-fatal: a read then resolves to the fail-closed floor, which
-    // is safe.
-    match store.seed_if_absent(&AiMasterSwitches::shipped_default()) {
-        Ok(true) => tracing::info!("seeded the shipped AI defaults into a fresh store"),
+    // Seed on first run only (a fresh store); never clobber an existing one. The
+    // seed MIGRATES the user's current `ai.toml` master switches so the cutover to
+    // the broker preserves their settings (a customized `enabled`/`provider`/
+    // `executor_live` carries over) rather than resetting them to the shipped
+    // defaults; a missing/unreadable ai.toml falls back to the shipped default. A
+    // seed failure is non-fatal: a read then resolves to the fail-closed floor.
+    match store.seed_if_absent(&seed_from_ai_toml()) {
+        Ok(true) => tracing::info!("seeded the AI master switches from ai.toml (or shipped defaults) into a fresh store"),
         Ok(false) => {}
-        Err(e) => tracing::warn!("could not seed defaults: {e}"),
+        Err(e) => tracing::warn!("could not seed the store: {e}"),
     }
 
     let socket = server::socket_path();
