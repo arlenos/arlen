@@ -343,18 +343,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    // Once the config-broker cutover is enabled (ARLEN_ENGINE_CONFIG_BROKER=1, set
-    // by the deployment when the broker is the current source), keep the AI master
-    // switches (enabled / executor_live) sourced from it: a background task polls the
-    // broker and publishes into the cache the sync accessors read, so a switch change
-    // reaches the engine within a few seconds; a broker error clears the cache and
-    // the accessors fall back to ai.toml. Until the cutover the task is not even
-    // spawned - the accessors read ai.toml exactly as before.
-    if engine_config::config_broker_enabled() {
-        tokio::spawn(engine_config::refresh_broker_switches(
-            std::time::Duration::from_secs(5),
-        ));
-    }
+    // Keep the AI master switches (enabled / executor_live) sourced from the
+    // separate-uid config-broker, MIRRORING Settings' write side (which routes an
+    // AI master-switch write to the broker when reachable, else ai.toml): a
+    // background task polls the broker and publishes into the cache the sync
+    // accessors read, so a switch the user changes via Settings reaches the engine
+    // within a few seconds. On a broker error the cache clears and the accessors
+    // fall back to ai.toml, so a deployment without the broker keeps working
+    // unchanged - and stays coherent, since Settings then also writes ai.toml.
+    tokio::spawn(engine_config::refresh_broker_switches(
+        std::time::Duration::from_secs(5),
+    ));
 
     let path = socket_path();
     if let Some(parent) = path.parent() {
