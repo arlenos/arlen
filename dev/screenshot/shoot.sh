@@ -29,6 +29,21 @@ export SHOOT_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # All inputs travel as environment variables (not string-interpolated into the
 # inner command) so a URL with spaces/quotes - e.g. a data: URL - is safe.
+# Xvfb is the one non-obvious dependency of the whole screenshot loop, and
+# without it these scripts died with a bare "xvfb-run: command not found" that
+# says nothing about what to install. The screenshot loop is mandatory for any
+# UI change, so failing to run it must be actionable, never cryptic.
+require_xvfb() {
+  local bin="$1"
+  command -v "$bin" >/dev/null 2>&1 && return 0
+  echo "error: '$bin' not found - the headless screenshot loop needs Xvfb." >&2
+  echo "  Arch/EndeavourOS: sudo pacman -S xorg-server-xvfb" >&2
+  echo "  Debian/Ubuntu:    sudo apt install xvfb" >&2
+  echo "  Fedora:           sudo dnf install xorg-x11-server-Xvfb" >&2
+  exit 127
+}
+require_xvfb xvfb-run
+
 xvfb-run -a bash -c '
   set -euo pipefail
   WebKitWebDriver --port="$SHOOT_PORT" >/tmp/arlen-wkwd.log 2>&1 &
