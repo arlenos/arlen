@@ -15,6 +15,12 @@
 </script>
 
 <aside class="lens">
+  {#if $lens.mocked}
+    <!-- Sample data, said first. Everything below - lineage, backlinks, project
+         membership - is invented until the graph queries land, and unlabelled it
+         reads as this file's real neighbourhood. -->
+    <p class="sample">{$t("te.lens.sample")}</p>
+  {/if}
   <section class="sec">
     <h2 class="sec-title">{$t("te.lens.provenance")}</h2>
     <div class="prov">
@@ -69,6 +75,15 @@
   }
   .sec {
     margin-bottom: 1.75rem;
+  }
+  /* Calm, not an alert - it qualifies the panel, it does not warn about it. */
+  .sample {
+    margin: 0 0 0.9rem;
+    font-size: var(--text-2xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
   }
   .sec-title {
     margin: 0 0 0.7rem;
