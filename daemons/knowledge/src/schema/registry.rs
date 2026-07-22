@@ -14,6 +14,12 @@ use super::{SchemaError, SchemaFile, SchemaValidator};
 /// Default schema directory.
 const DEFAULT_SCHEMA_DIR: &str = "/var/lib/arlen/schemas";
 
+/// The cross-app shared-entity namespace, seeded compiled-in (never from disk).
+const SHARED_NAMESPACE: &str = "shared";
+
+/// The `shared.` full-type prefix (`shared_schemas()` is keyed by full type).
+const SHARED_PREFIX: &str = "shared.";
+
 /// System entity types compiled into the Graph Daemon. These must match the
 /// node tables `graph.rs` creates, so a relation between them validates.
 /// (Single-sourcing this list and the relation allowlist with `graph.rs`'s
@@ -63,9 +69,42 @@ impl SchemaRegistry {
 
     /// Create a registry with a custom schema directory (for testing).
     pub fn with_dir(first_party_apps: Vec<String>, schema_dir: PathBuf) -> Self {
-        let validator = SchemaValidator::new(system_entity_types(), first_party_apps);
+        let mut validator = SchemaValidator::new(system_entity_types(), first_party_apps);
+        let mut schemas = HashMap::new();
+
+        // Seed the compiled-in `shared` namespace (SHARED-ENTITIES.md): Person,
+        // Organization, Event, Location, Tag. These are cross-app types that
+        // CANNOT come from disk - the validator deliberately refuses a schema
+        // file in the `shared` namespace - so they only exist if compiled in
+        // here. Without this seed `get_entity("shared.Person")` is None, and the
+        // entity write path (`write::entity`) refuses every shared-entity upsert
+        // as an unregistered type, leaving the whole shared-entity library
+        // unreachable. Registering the TYPE grants no access: reads still go
+        // through the read-scope label gate and writes still need a write scope.
+        let shared = SchemaFile {
+            meta: super::parser::SchemaMeta {
+                schema_version: 1,
+                namespace: SHARED_NAMESPACE.to_string(),
+                description: "Cross-app shared entity types".to_string(),
+            },
+            // `shared_schemas()` is keyed by FULL type ("shared.Person") while a
+            // SchemaFile is keyed by local name ("Person").
+            entities: crate::shared::shared_schemas()
+                .into_iter()
+                .filter_map(|(full, def)| {
+                    full.strip_prefix(SHARED_PREFIX)
+                        .map(|local| (local.to_string(), def))
+                })
+                .collect(),
+            relations: HashMap::new(),
+        };
+        for name in shared.entities.keys() {
+            validator.register_type(shared.full_type(name));
+        }
+        schemas.insert(SHARED_NAMESPACE.to_string(), shared);
+
         Self {
-            schemas: HashMap::new(),
+            schemas,
             validator,
             schema_dir,
         }
@@ -192,6 +231,40 @@ mod tests {
     use std::io::Write;
     use tempfile::TempDir;
 
+    /// Namespaces every registry carries before any disk load: the compiled-in
+    /// `shared` one. The `len()` assertions below count DISK-loaded schemas on
+    /// top of this, so they stay honest if another built-in is ever added.
+    const BUILTIN_NAMESPACES: usize = 1;
+
+    #[test]
+    fn the_shared_namespace_is_compiled_in_and_writable_as_a_type() {
+        // SHARED-ENTITIES: the shared types cannot be loaded from disk (the
+        // validator refuses a `shared` schema file), so if they are not seeded
+        // at construction the entity write path refuses every shared upsert as
+        // an unregistered type. Pin that a fresh registry - no disk, no load -
+        // already resolves them.
+        let reg = SchemaRegistry::with_dir(vec![], PathBuf::from("/tmp/nonexistent-schema-dir-xyz"));
+        for t in [
+            "shared.Person",
+            "shared.Organization",
+            "shared.Event",
+            "shared.Location",
+            "shared.Tag",
+        ] {
+            assert!(
+                reg.get_entity(t).is_some(),
+                "{t} must resolve without any disk schema"
+            );
+            assert!(reg.entity_exists(t), "{t} must count as an existing type");
+        }
+        // And the definitions are the real ones, not empty placeholders.
+        let person = reg.get_entity("shared.Person").expect("shared.Person");
+        assert!(
+            person.fields.contains_key("name"),
+            "the seeded shared.Person must carry its real field set"
+        );
+    }
+
     fn sample_schema() -> &'static str {
         r#"
 [meta]
@@ -231,7 +304,7 @@ to = "Deck"
         let mut reg = SchemaRegistry::new(vec![]);
         let ns = reg.load_from_str(sample_schema()).unwrap();
         assert_eq!(ns, "com.anki");
-        assert_eq!(reg.len(), 1);
+        assert_eq!(reg.len(), BUILTIN_NAMESPACES + 1);
     }
 
     #[test]
@@ -273,7 +346,7 @@ to = "Deck"
         let mut reg = SchemaRegistry::with_dir(vec![], dir.path().to_path_buf());
         reg.load_all().unwrap();
 
-        assert_eq!(reg.len(), 1);
+        assert_eq!(reg.len(), BUILTIN_NAMESPACES + 1);
         assert!(reg.entity_exists("com.anki.Card"));
     }
 
@@ -282,7 +355,7 @@ to = "Deck"
         let dir = TempDir::new().unwrap();
         let mut reg = SchemaRegistry::with_dir(vec![], dir.path().to_path_buf());
         reg.load_all().unwrap();
-        assert_eq!(reg.len(), 0);
+        assert_eq!(reg.len(), BUILTIN_NAMESPACES);
     }
 
     #[test]
@@ -290,7 +363,7 @@ to = "Deck"
         let mut reg =
             SchemaRegistry::with_dir(vec![], PathBuf::from("/tmp/nonexistent-schema-dir-xyz"));
         assert!(reg.load_all().is_ok());
-        assert_eq!(reg.len(), 0);
+        assert_eq!(reg.len(), BUILTIN_NAMESPACES);
     }
 
     #[test]
@@ -310,7 +383,7 @@ to = "Deck"
 
         reg.on_schema_removed("com.anki");
         assert!(!reg.entity_exists("com.anki.Card"));
-        assert_eq!(reg.len(), 0);
+        assert_eq!(reg.len(), BUILTIN_NAMESPACES);
     }
 
     #[test]
@@ -339,7 +412,7 @@ type = "string"
         )
         .unwrap();
 
-        assert_eq!(reg.len(), 2);
+        assert_eq!(reg.len(), BUILTIN_NAMESPACES + 2);
         assert!(reg.entity_exists("com.anki.Card"));
         assert!(reg.entity_exists("com.notes.Note"));
     }
