@@ -48,6 +48,24 @@ async fn main() {
     // retry on each poll, so a late dbus/UPower start recovers without a crash.
     let mut sysbus = connect_system_bus().await;
 
+    // Publish the sleep transitions the proto specifies (`power.suspend` /
+    // `power.resume`) by watching logind's PrepareForSleep broadcast. Spawned
+    // rather than polled: it is signal-driven, and a sleep must be recorded even
+    // between UPower polls. Purely observational - it never asks logind to sleep.
+    if let Some(conn) = sysbus.clone() {
+        let sleep_emitter = emitter.clone();
+        tokio::spawn(async move {
+            if let Err(e) = arlen_powerd::sleep::watch(&conn, |event_type| {
+                let emitter = sleep_emitter.clone();
+                async move { emit_transition(&emitter, event_type, String::new()).await }
+            })
+            .await
+            {
+                warn!("PrepareForSleep watch ended: {e}");
+            }
+        });
+    }
+
     // The shared snapshot the org.arlen.Power1 interface serves. The poll loop
     // writes the latest reading; pull consumers (shell, apps, SDK) read it
     // without forking UPower. Served on the SESSION bus (this is a per-user
