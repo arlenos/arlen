@@ -30,10 +30,51 @@ pub fn socket_path() -> PathBuf {
     if let Some(p) = std::env::var_os("ARLEN_CONFIG_BROKER_SOCKET") {
         return PathBuf::from(p);
     }
+    per_user_socket()
+}
+
+/// The per-user socket path (`$XDG_RUNTIME_DIR/arlen/config-broker.sock`).
+fn per_user_socket() -> PathBuf {
     let base = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/run"));
     base.join("arlen").join("config-broker.sock")
+}
+
+/// The system-wide socket path a SEPARATE-UID broker binds.
+///
+/// A broker running as its own service uid cannot bind inside the session
+/// user's `/run/user/<uid>` (mode 0700, owned by that user), so the separate-uid
+/// deployment puts the socket in a directory the broker owns and everyone can
+/// traverse.
+pub const SYSTEM_SOCKET: &str = "/run/arlen/config-broker.sock";
+
+/// Where a CLIENT should connect.
+///
+/// The env pin wins. Otherwise prefer whichever socket actually EXISTS -
+/// per-user first, then the system one - because the two deployments put it in
+/// different places and a client should not need to know which is running:
+/// a dev/session broker binds the per-user path, while the separate-uid broker
+/// binds [`SYSTEM_SOCKET`] (it cannot write the user's 0700 runtime dir). Falls
+/// back to the per-user path so an error names the expected location rather
+/// than a path nobody uses.
+///
+/// Deliberately distinct from [`socket_path`], which is the BIND path: existence
+/// is the right test for connecting and the wrong one for binding, where the
+/// socket does not exist yet by definition.
+pub fn connect_path() -> PathBuf {
+    if let Some(p) = std::env::var_os("ARLEN_CONFIG_BROKER_SOCKET") {
+        return PathBuf::from(p);
+    }
+    let per_user = per_user_socket();
+    if per_user.exists() {
+        return per_user;
+    }
+    let system = PathBuf::from(SYSTEM_SOCKET);
+    if system.exists() {
+        return system;
+    }
+    per_user
 }
 
 /// The uid the broker process runs as (the deployment's dedicated
@@ -252,6 +293,37 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
+
+    /// Connecting and binding resolve differently ON PURPOSE.
+    ///
+    /// The separate-uid broker cannot bind in the session user's 0700 runtime
+    /// dir, so it binds the system path; a dev/session broker binds the per-user
+    /// one. A client must find whichever is actually running WITHOUT every
+    /// caller carrying an env var, so it prefers an existing socket - while the
+    /// server must never test existence, since its socket does not exist yet.
+    #[test]
+    fn connect_prefers_an_existing_socket_while_bind_does_not() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::env::remove_var("ARLEN_CONFIG_BROKER_SOCKET");
+        std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+
+        // Nothing exists yet: connect falls back to the per-user path, which is
+        // also what the server binds - so an error names a useful location.
+        let per_user = dir.path().join("arlen").join("config-broker.sock");
+        assert_eq!(connect_path(), per_user);
+        assert_eq!(socket_path(), per_user);
+
+        // Once the per-user socket exists, the client uses it.
+        std::fs::create_dir_all(per_user.parent().unwrap()).unwrap();
+        std::fs::write(&per_user, b"").unwrap();
+        assert_eq!(connect_path(), per_user);
+
+        // The env pin always wins, for the dev stack and the tests.
+        std::env::set_var("ARLEN_CONFIG_BROKER_SOCKET", "/tmp/pinned.sock");
+        assert_eq!(connect_path(), std::path::Path::new("/tmp/pinned.sock"));
+        assert_eq!(socket_path(), std::path::Path::new("/tmp/pinned.sock"));
+        std::env::remove_var("ARLEN_CONFIG_BROKER_SOCKET");
+    }
     use super::*;
     use crate::protocol::{Request, Response};
     use crate::state::AiMasterSwitches;

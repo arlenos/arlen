@@ -1,0 +1,75 @@
+[Unit]
+Description=Arlen Config Broker (separate-uid owner of the AI master switches)
+Documentation=https://github.com/arlenos/arlen
+# No ordering dependency: the broker owns its own durable state and serves a
+# socket. Its callers (Settings, the AI engine) fail closed to the shipped
+# floor when it is absent, so nothing must wait on it.
+
+[Service]
+Type=simple
+
+# THE POINT OF THIS UNIT: the broker runs as its OWN uid, not the session
+# user's. The AI master switches (enabled, access_level, executor_live,
+# provider, action_mode, autonomous_apps) decide what the assistant may do, so
+# a same-uid process being able to rewrite them with one open() is exactly the
+# ambient authority `same-uid-isolation-plan.md` exists to remove. The user's
+# uid can TALK to the broker over the socket; it cannot write the state.
+User=arlen-config
+Group=arlen-config
+
+ExecStart=/usr/lib/arlen/libexec/arlen-config-broker
+Restart=on-failure
+RestartSec=2
+
+# State: /var/lib/arlen/config-broker, owned by this service uid, 0700 - the
+# session user cannot read or write it. StateDirectory creates it with the
+# right owner on first start.
+StateDirectory=arlen/config-broker
+StateDirectoryMode=0700
+Environment=ARLEN_CONFIG_BROKER_DIR=/var/lib/arlen/config-broker
+
+# Socket: /run/arlen/config-broker.sock. NOT the per-user runtime dir - a
+# service uid cannot bind inside /run/user/<session-uid> (0700, owned by the
+# user). RuntimeDirectory gives us /run/arlen owned by this uid, mode 0755 so
+# any local user can traverse it and connect; the socket itself is world-
+# connectable by design and the boundary is the peer check, not the mode.
+# Clients find it without configuration: `server::connect_path` prefers
+# whichever socket exists (per-user for a dev broker, this one otherwise).
+RuntimeDirectory=arlen
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+Environment=ARLEN_CONFIG_BROKER_SOCKET=/run/arlen/config-broker.sock
+
+# The uid whose callers this broker serves, and whose audit ledger it writes.
+# The installer sets this to the desktop user's uid; there is no sane default,
+# and guessing 1000 would silently serve the wrong account on a multi-user or
+# non-standard install - so it is an EnvironmentFile the installer writes.
+EnvironmentFile=/etc/arlen/config-broker.env
+
+# Hardening: the broker needs its state dir, its runtime dir and the session
+# bus for the audit hand-off. Nothing else.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
