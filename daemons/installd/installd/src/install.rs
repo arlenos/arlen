@@ -895,6 +895,8 @@ mod tests {
 
     #[test]
     fn test_install_and_uninstall_user() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let base = tempfile::TempDir::new().unwrap();
         let extracted = tempfile::TempDir::new().unwrap();
 
@@ -938,6 +940,8 @@ path = "bin/testapp"
 
     #[test]
     fn test_list_empty() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let base = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_USER_APPS_DIR", base.path());
         let apps = list_installed();
@@ -961,6 +965,8 @@ path = "bin/testapp"
 
     #[test]
     fn test_install_schemas() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let schemas_dir = tempfile::TempDir::new().unwrap();
         let extracted = tempfile::TempDir::new().unwrap();
 
@@ -996,6 +1002,8 @@ path = "bin/testapp"
 
     #[test]
     fn test_install_schemas_path_traversal() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let schemas_dir = tempfile::TempDir::new().unwrap();
         let extracted = tempfile::TempDir::new().unwrap();
 
@@ -1011,6 +1019,8 @@ path = "bin/testapp"
 
     #[test]
     fn test_install_modules() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let modules_dir = tempfile::TempDir::new().unwrap();
         let extracted = tempfile::TempDir::new().unwrap();
 
@@ -1055,6 +1065,8 @@ path = "bin/testapp"
 
     #[test]
     fn test_install_modules_path_traversal() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let modules_dir = tempfile::TempDir::new().unwrap();
         let extracted = tempfile::TempDir::new().unwrap();
 
@@ -1134,6 +1146,8 @@ default_binding = "Super+O"
 
     #[test]
     fn write_keybindings_fragment_writes_and_can_be_removed() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let dir = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_USER_KEYBINDINGS_DIR", dir.path());
 
@@ -1163,6 +1177,8 @@ default_binding = "Super+O"
 
     #[test]
     fn write_keybindings_fragment_skips_global_without_permission() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let dir = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_USER_KEYBINDINGS_DIR", dir.path());
 
@@ -1199,6 +1215,8 @@ default_binding = "Super+O"
 
     #[test]
     fn write_keybindings_fragment_no_bindings_is_noop() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let dir = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_USER_KEYBINDINGS_DIR", dir.path());
 
@@ -1211,6 +1229,8 @@ default_binding = "Super+O"
 
     #[test]
     fn write_keybindings_fragment_all_filtered_is_noop() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let dir = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_USER_KEYBINDINGS_DIR", dir.path());
 
@@ -1234,6 +1254,8 @@ default_binding = "Super+O"
 
     #[test]
     fn remove_keybindings_fragment_missing_is_ok() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let dir = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_USER_KEYBINDINGS_DIR", dir.path());
         remove_keybindings_fragment("com.does-not-exist").unwrap();

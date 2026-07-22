@@ -336,6 +336,8 @@ mod tests {
 
     #[test]
     fn test_stage_and_restore() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let apps = tempfile::TempDir::new().unwrap();
         let trash = tempfile::TempDir::new().unwrap();
         let desktop = tempfile::TempDir::new().unwrap();
@@ -384,6 +386,8 @@ mod tests {
 
     #[test]
     fn test_restore_not_in_trash() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let trash = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_TRASH_DIR", trash.path());
 
@@ -394,6 +398,8 @@ mod tests {
 
     #[test]
     fn test_cleanup_expired() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let trash = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_TRASH_DIR", trash.path());
 
@@ -444,6 +450,8 @@ mod tests {
 
     #[test]
     fn test_cleanup_orphaned_entry() {
+        // Serialised: this test overrides process-global env vars.
+        let _env = crate::env_lock();
         let trash = tempfile::TempDir::new().unwrap();
         std::env::set_var("ARLEN_TRASH_DIR", trash.path());
 
