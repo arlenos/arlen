@@ -68,6 +68,14 @@ const FIXTURE_RECENT: RecentHost[] = [
 export const savedHosts = writable<SavedHost[]>(FIXTURE_SAVED);
 export const recentHosts = writable<RecentHost[]>(FIXTURE_RECENT);
 
+/// True while the lists above are the FIXTURE rather than the user's own hosts.
+/// There is no load seam yet - the stores are assigned the fixture directly - so
+/// this is currently always true; the connections bridge flips it to false when
+/// it lands. It is NOT cosmetic: the fixture reads as saved SSH connections
+/// (`deploy@prod-db.atlas.internal`), and a user who believes they saved those
+/// will try to connect to hosts they never configured.
+export const remotesMocked = writable(true);
+
 /// The quick-connect palette open state + query.
 export const paletteOpen = writable(false);
 export const query = writable("");
