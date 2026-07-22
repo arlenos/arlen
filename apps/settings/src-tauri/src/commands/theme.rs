@@ -368,6 +368,65 @@ pub fn theme_list_cursor_themes() -> Vec<String> {
     themes.into_iter().collect()
 }
 
+/// The XDG GTK-theme search directories: `/usr/share/themes`, the user data
+/// dir's `themes/`, and legacy `~/.themes`. A missing directory is skipped.
+fn gtk_theme_dirs() -> Vec<std::path::PathBuf> {
+    let mut dirs = vec![std::path::PathBuf::from("/usr/share/themes")];
+    if let Some(data) = dirs::data_dir() {
+        dirs.push(data.join("themes"));
+    }
+    if let Some(home) = dirs::home_dir() {
+        dirs.push(home.join(".themes"));
+    }
+    dirs
+}
+
+/// Whether the `adw-gtk3` GTK theme is installed - the prerequisite the Toolkits
+/// page names for full GTK3 shape. An `adw-gtk3` or `adw-gtk3-dark` directory
+/// under any GTK-theme dir counts. Pure over the search dirs so it is testable.
+fn adw_gtk3_present(gtk_theme_dirs: &[std::path::PathBuf]) -> bool {
+    gtk_theme_dirs
+        .iter()
+        .any(|d| d.join("adw-gtk3").is_dir() || d.join("adw-gtk3-dark").is_dir())
+}
+
+/// Whether qt6ct is the configured Qt platform theme - the prerequisite for the
+/// Fusion-shaped Qt colours the generator targets. Met when
+/// `QT_QPA_PLATFORMTHEME=qt6ct` or a `qt6ct.conf` is present. Pure over its two
+/// inputs so it is testable.
+fn qt6ct_configured(platform_theme: Option<&str>, conf_present: bool) -> bool {
+    platform_theme == Some("qt6ct") || conf_present
+}
+
+/// The DETECTABLE toolkit prerequisites keyed by toolkit id (matching the
+/// Toolkits page's `Toolkit.id`): `gtk3` needs `adw-gtk3` installed, `qt` needs
+/// `qt6ct` configured. The other toolkits (arlen/gtk4/terminal/wine) carry only
+/// informational notes, not a detectable prerequisite, so they are not reported.
+/// Pure over its inputs.
+fn detect_toolkit_prereqs(
+    gtk_theme_dirs: &[std::path::PathBuf],
+    qt6ct_ready: bool,
+) -> std::collections::BTreeMap<String, bool> {
+    let mut prereqs = std::collections::BTreeMap::new();
+    prereqs.insert("gtk3".to_string(), adw_gtk3_present(gtk_theme_dirs));
+    prereqs.insert("qt".to_string(), qt6ct_ready);
+    prereqs
+}
+
+/// Whether each detectable toolkit prerequisite is met on this system, so the
+/// Toolkits page shows an HONEST status instead of the fixture: `{ "gtk3": bool,
+/// "qt": bool }` (adw-gtk3 installed, qt6ct configured). The other toolkits carry
+/// only informational notes and are not reported.
+#[tauri::command]
+pub fn theme_toolkit_prereqs() -> std::collections::BTreeMap<String, bool> {
+    let conf_present = dirs::config_dir()
+        .map(|c| c.join("qt6ct").join("qt6ct.conf").is_file())
+        .unwrap_or(false);
+    let platform_theme = std::env::var("QT_QPA_PLATFORMTHEME").ok();
+    let qt6ct_ready = qt6ct_configured(platform_theme.as_deref(), conf_present);
+    detect_toolkit_prereqs(&gtk_theme_dirs(), qt6ct_ready)
+}
+
 /// Set the accent color (hex string like `#3b82f6`).
 #[tauri::command]
 pub async fn theme_set_accent(color: String) -> Result<(), String> {
@@ -584,6 +643,34 @@ pub async fn theme_import_scheme(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn adw_gtk3_is_detected_only_when_a_theme_dir_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = vec![tmp.path().to_path_buf()];
+        assert!(!adw_gtk3_present(&dirs), "absent by default");
+        std::fs::create_dir(tmp.path().join("adw-gtk3-dark")).unwrap();
+        assert!(adw_gtk3_present(&dirs), "the -dark variant counts");
+    }
+
+    #[test]
+    fn qt6ct_is_configured_by_env_or_a_conf_file() {
+        assert!(qt6ct_configured(Some("qt6ct"), false), "env platform theme");
+        assert!(qt6ct_configured(None, true), "a present qt6ct.conf");
+        assert!(!qt6ct_configured(Some("gtk3"), false), "neither");
+        assert!(!qt6ct_configured(None, false), "neither");
+    }
+
+    #[test]
+    fn toolkit_prereqs_reports_the_two_detectable_toolkits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let got = detect_toolkit_prereqs(&[tmp.path().to_path_buf()], true);
+        assert_eq!(got.get("gtk3"), Some(&false));
+        assert_eq!(got.get("qt"), Some(&true));
+        // The informational-only toolkits are not reported.
+        assert!(!got.contains_key("terminal"));
+        assert!(!got.contains_key("wine"));
+    }
 
     #[test]
     fn palette_has_all_roles_with_valid_hex() {
