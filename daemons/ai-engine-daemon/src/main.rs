@@ -570,7 +570,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // its intake socket (the trusted-path dialog). An unreachable broker fails
     // closed to a denial, so wiring the real client is safe even headless.
     let dispatcher = Arc::new({
-        let mut d = Dispatcher::new(CapabilityGate::new(), executor, reporter)
+        let mut d = Dispatcher::new(CapabilityGate::new().with_audit(audit.clone()), executor, reporter)
             .with_consent(Arc::new(ConsentBrokerClient::new(consent_intake_socket())));
         if let Some(minter) = consent_minter {
             d = d.with_consent_minter(minter);

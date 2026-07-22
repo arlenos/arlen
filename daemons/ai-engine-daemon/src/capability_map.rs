@@ -200,17 +200,51 @@ pub(crate) fn consent_class_for_tool(tool: &str) -> ConsentClass {
 /// return [`AuthorizeDecision::Allow`] (that needs Autonomous mode, which only
 /// the human-gated executor-live lift grants): every call is a proposal (`Deny`)
 /// or a confirmation (`Confirm`), never silent autonomous execution.
+/// Honeytool names: attractive, in-scope-looking tools that NO honest behaviour
+/// ever selects (canary-honeytools.md §2). Their only purpose is to be reached
+/// for by a hijacked model (an injection that says "call `export_all_secrets`"),
+/// so a request to authorize one is a deterministic hijack proof, not a routine
+/// decision. The names are the verbs an exfiltration or persistence injection
+/// gravitates to, and they are checked BEFORE every other branch so a honeytool
+/// can never be mistaken for a read or reach the capability path.
+///
+/// Zero false positives, by construction: a tool name is a capability the engine
+/// selects, never a string echoed from content into a tool position, so no honest
+/// path feeds a honeytool name here. Kept deliberately un-owned by any real tool -
+/// none of these is a routed pi tool (`graph.read`, `graph.write`, `bash`,
+/// `fs.create`, `fs.move`, `run_command`, the egress set).
+const HONEYTOOL_TOOLS: &[&str] = &[
+    "export_all_secrets",
+    "read_ssh_keys",
+    "disable_confinement",
+    "exfiltrate_files",
+    "dump_credentials",
+];
+
+/// Whether `tool` is a honeytool decoy. A hit is a hijack tripwire, not a tool
+/// that could ever run.
+pub fn is_honeytool(tool: &str) -> bool {
+    HONEYTOOL_TOOLS.contains(&tool)
+}
+
 pub struct CapabilityGate {
     /// The executor-live source, read per Authorize so a config change takes
     /// effect without a restart. The production gate reads `[agent] executor_live`
     /// from `ai.toml`; tests inject a fixed value.
     executor_live: fn() -> bool,
+    /// Where a honeytool trip is recorded as a policy violation for the anomaly
+    /// detector to surface. `None` in tests and the wire harness, which assert the
+    /// Deny (the containment) without a live ledger; the production gate in `main`
+    /// wires the real `arlen-auditd` sink. A trip ALWAYS denies whether or not this
+    /// is present - the audit is the alert, not the barrier.
+    audit: Option<std::sync::Arc<dyn audit_proto::sink::AuditSink>>,
 }
 
 impl Default for CapabilityGate {
     fn default() -> Self {
         Self {
             executor_live: crate::engine_config::executor_live,
+            audit: None,
         }
     }
 }
@@ -226,7 +260,41 @@ impl CapabilityGate {
     /// does not depend on the developer's `ai.toml`; production always uses
     /// [`Self::new`], which reads `[agent] executor_live` per call.
     pub fn with_executor_live(executor_live: fn() -> bool) -> Self {
-        Self { executor_live }
+        Self {
+            executor_live,
+            audit: None,
+        }
+    }
+
+    /// Attach the audit sink a honeytool trip is recorded to. Only `main` calls
+    /// this; without it a trip still denies, it just does not raise the anomaly
+    /// alert.
+    pub fn with_audit(mut self, audit: std::sync::Arc<dyn audit_proto::sink::AuditSink>) -> Self {
+        self.audit = Some(audit);
+        self
+    }
+
+    /// Record a honeytool trip as a content-free policy violation. Best-effort:
+    /// the Deny below stands regardless, and refusing to deny because the ledger
+    /// is down would let a hijack through to keep the alert honest - exactly
+    /// backwards. A failed submit is logged, not propagated.
+    async fn audit_honeytool_trip(&self, tool: &str) {
+        let Some(sink) = &self.audit else {
+            tracing::warn!(tool, "honeytool selected but no audit sink is wired; denying without an alert");
+            return;
+        };
+        // No run-correlation exists at Authorize (the engine's tool_call_id arrives
+        // at Report, which a denied honeytool never reaches), so the correlation is
+        // empty; the tool name is the content-free signal and rides in the outcome
+        // via the fixed `honeytool-tripped` cause the anomaly detector keys on.
+        let event = arlen_ai_core::audit::behaviour_policy_violation_event(
+            ENGINE_APP_ID,
+            "honeytool-tripped",
+            "",
+        );
+        if sink.submit(event).await.is_err() {
+            tracing::error!(tool, "honeytool trip could not be audited; the deny still holds");
+        }
     }
 }
 
@@ -241,6 +309,20 @@ impl Gate for CapabilityGate {
         // can only add, never clear, the session bit. Until a producer sets the
         // grant bit it is false, so `false || req.external_triggered` is unchanged.
         let external_triggered = grant.externally_triggered || req.external_triggered;
+        // Honeytool tripwire (canary-honeytools.md §2), checked BEFORE every other
+        // branch. The ordering is load-bearing: a honeytool named like a read tool
+        // would otherwise take the `GateClass::Read` Allow below and execute as a
+        // read, so the decoy has to be caught before the read branch, the egress
+        // check, and the capability path. No honest behaviour selects one, so a
+        // request to authorize a honeytool is a deterministic hijack proof - audited
+        // as a policy violation and hard-denied. The audit is best-effort; the Deny
+        // is not.
+        if is_honeytool(&req.tool_name) {
+            self.audit_honeytool_trip(&req.tool_name).await;
+            return AuthorizeDecision::Deny {
+                reason: format!("{} is not an available tool", req.tool_name),
+            };
+        }
         // D3: a read Allows, bounded by the grant's read SCOPE (applied when the
         // read executes, via `grant_to_scope` incl. the GAP-21 active-project
         // anchor). The anti-Recall guarantee is the scope, not a per-read confirm.
@@ -520,6 +602,80 @@ pub(crate) fn fs_create_target_is_sensitive(tool_input: &serde_json::Value) -> b
 
 #[cfg(test)]
 mod tests {
+    fn tool(name: &str) -> Authorize {
+        Authorize { tool_name: name.into(), tool_input: serde_json::json!({}), external_triggered: false }
+    }
+
+    #[test]
+    fn honeytools_are_not_real_routed_tools() {
+        // Zero-FP rests on a honeytool never being a name honest code selects. If a
+        // decoy ever collided with a routed tool, that tool would become
+        // permanently un-authorizable AND every honest use would read as a hijack.
+        for real in [
+            "graph.read",
+            "graph.write",
+            "bash",
+            "run_command",
+            crate::file_executor::FS_CREATE_TOOL,
+        ] {
+            assert!(!is_honeytool(real), "{real} must not be a honeytool");
+        }
+        assert!(is_honeytool("export_all_secrets"));
+        assert!(!is_honeytool("export_all_secrets ")); // exact match, no fuzzy edges
+    }
+
+    #[tokio::test]
+    async fn a_honeytool_is_denied_under_every_mode() {
+        // A hijack proof is not a mode-dependent decision: it denies whether the
+        // executor is live or not, and whether the run was externally triggered or
+        // not. No sink wired, so this asserts the containment alone.
+        // `with_executor_live` takes a fn pointer, so the two live values are two
+        // named fns rather than a captured flag.
+        fn live() -> bool { true }
+        fn suspended() -> bool { false }
+        for src in [live as fn() -> bool, suspended as fn() -> bool] {
+            for ext in [true, false] {
+                let mut req = tool("export_all_secrets");
+                req.external_triggered = ext;
+                let d = CapabilityGate::with_executor_live(src)
+                    .authorize(&req, &grant(ReadTier::Standard))
+                    .await;
+                assert!(
+                    matches!(d, AuthorizeDecision::Deny { .. }),
+                    "honeytool must deny (live={}, ext={ext}), got {d:?}",
+                    src()
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_honeytool_denies_before_the_read_branch() {
+        // The ordering is the whole point: a decoy must be caught before the
+        // GateClass::Read Allow, or a honeytool named like a read tool would execute
+        // as a read. `read_ssh_keys` is a honeytool; assert it denies rather than
+        // taking any Allow path, and that its refusal is not a proof-carrying Allow.
+        let d = CapabilityGate::with_executor_live(|| true)
+            .authorize(&tool("read_ssh_keys"), &grant(ReadTier::Full))
+            .await;
+        assert!(matches!(d, AuthorizeDecision::Deny { .. }), "got {d:?}");
+    }
+
+    #[tokio::test]
+    async fn a_honeytool_deny_reveals_nothing_about_the_tripwire() {
+        // The Deny reason must not tell a probe it hit a tripwire, or an attacker
+        // maps the decoy set by watching which denials read differently.
+        let d = CapabilityGate::with_executor_live(|| true)
+            .authorize(&tool("dump_credentials"), &grant(ReadTier::Standard))
+            .await;
+        let AuthorizeDecision::Deny { reason } = d else {
+            panic!("expected Deny, got {d:?}");
+        };
+        let lc = reason.to_lowercase();
+        assert!(!lc.contains("honey") && !lc.contains("canary") && !lc.contains("tripwire") && !lc.contains("hijack"),
+                "deny reason leaks the tripwire: {reason}");
+    }
+
     use super::*;
 
     #[test]
