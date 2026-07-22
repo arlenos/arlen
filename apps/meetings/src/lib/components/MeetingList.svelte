@@ -2,7 +2,7 @@
   /// The Meetings home: your recent meetings + the start action. Each row opens its
   /// note (a KG node); Start begins an on-device capture. The whole lifecycle -
   /// home -> capture -> note, home -> open a past meeting - lives off this landing.
-  import { meetings, startCapture, openMeeting, fmtDate } from "$lib/stores/meeting";
+  import { meetings, meetingsMocked, startCapture, openMeeting, fmtDate } from "$lib/stores/meeting";
   import { t, dir } from "$lib/i18n/messages";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Mic } from "lucide-svelte";
@@ -15,6 +15,12 @@
       <Mic size={14} strokeWidth={2} /> {$t("mt.start")}
     </Button>
   </header>
+
+  {#if $meetingsMocked}
+    <!-- Titles, dates and named participants: unlabelled this reads as a real
+         history. The footer below already says these are kept on this device. -->
+    <p class="sample">{$t("mt.sample.list")}</p>
+  {/if}
 
   {#if $meetings.length === 0}
     <p class="empty">{$t("mt.empty")}</p>
@@ -58,6 +64,16 @@
     margin: 0;
     font-size: var(--text-xl);
     font-weight: 600;
+  }
+  /* Sits where the list starts, on the list's own width, so it reads as a
+     caption for the rows rather than a page-level banner. */
+  .sample {
+    max-width: 44rem;
+    margin: 0 auto;
+    padding-bottom: 0.6rem;
+    font-size: var(--text-2xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .empty {
     max-width: 44rem;

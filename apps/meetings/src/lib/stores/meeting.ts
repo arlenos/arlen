@@ -35,6 +35,11 @@ export interface MeetingSummary {
 
 export const meetings = writable<MeetingSummary[]>([]);
 
+/// True while the home list is the FIXTURE, not your real meetings. The rows
+/// carry titles, dates and named participants, so unlabelled they read as a
+/// history of conversations that never happened.
+export const meetingsMocked = writable(false);
+
 /// The app lifecycle: nothing yet, a meeting recording, or the produced note.
 export type Phase = "idle" | "capturing" | "note";
 export const phase = writable<Phase>("idle");
@@ -117,8 +122,10 @@ const MEETINGS_FIXTURE: MeetingSummary[] = [
 export async function loadMeetings(): Promise<void> {
   try {
     meetings.set(await invoke<MeetingSummary[]>("meetings_list"));
+    meetingsMocked.set(false);
   } catch {
     meetings.set(MEETINGS_FIXTURE);
+    meetingsMocked.set(true);
   }
 }
 

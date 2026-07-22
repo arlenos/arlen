@@ -33,6 +33,12 @@
 {:else if $meeting}
   {@const n = $meeting.note}
   <div class="app" dir={$dir}>
+    {#if $meeting.mocked}
+      <!-- This fixture is a whole meeting RECORD: a title, named participants
+           and quotes attributed to them. Unlabelled it reads as minutes of a
+           conversation that never happened. -->
+      <p class="sample">{$t("mt.sample")}</p>
+    {/if}
     <header class="head">
       <div class="head-main">
         <h1 class="title">{n.title}</h1>
@@ -111,6 +117,15 @@
     height: 100vh;
     background: var(--color-bg-app, #0f0f0f);
     color: var(--color-fg-primary, #fafafa);
+  }
+  /* Above the title, because it qualifies the title, the participants and every
+     quote below them. */
+  .sample {
+    margin: 0;
+    padding: 0.8rem 1.5rem 0;
+    font-size: var(--text-2xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .head {
     display: flex;
