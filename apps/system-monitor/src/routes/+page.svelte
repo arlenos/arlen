@@ -7,7 +7,7 @@
   import PerformanceTab from "$lib/components/tm/PerformanceTab.svelte";
   import DetailPane from "$lib/components/tm/DetailPane.svelte";
   import RowMenu from "$lib/components/tm/RowMenu.svelte";
-  import { processes, mocked, lastError, load, stop, pause, resume, limit, unlimit, type Process } from "$lib/stores/processes";
+  import { processes, mocked, lastError, load, startProcessPolling, stopProcessPolling, stop, pause, resume, limit, unlimit, type Process } from "$lib/stores/processes";
   import { startPerf, stopPerf } from "$lib/stores/perf";
   import { t, dir } from "$lib/i18n/messages";
   import { Rows3, Layers, Search } from "lucide-svelte";
@@ -29,6 +29,15 @@
     if (tab === "Performance") startPerf();
     else stopPerf();
     return stopPerf;
+  });
+
+  // Keep the process list refreshing while it is on screen. The backend derives
+  // CPU% and disk rates from the delta against the previous sample, so a single
+  // load at mount left every row reading 0.0% forever.
+  $effect(() => {
+    if (tab === "Processes") startProcessPolling();
+    else stopProcessPolling();
+    return stopProcessPolling;
   });
 </script>
 
