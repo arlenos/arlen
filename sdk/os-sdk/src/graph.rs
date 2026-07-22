@@ -493,7 +493,7 @@ impl UnixGraphClient {
     /// analysis op: god-symbols (degree-centrality hubs) and surprises (sole
     /// cross-module call bridges) over the whole `CodeSymbol`/`CALLS` graph.
     ///
-    /// A leading `0x09` byte selects the op and takes no request body. The daemon
+    /// A leading `0x0D` byte selects the op and takes no request body. The daemon
     /// gates it to system-anchored callers (the aggregate exceeds a ThirdParty's
     /// per-label read scope) and returns the analysis as JSON; a daemon `ERROR:`
     /// (not permitted, rate-limited) maps to [`QueryError`]. The result is parsed
@@ -503,7 +503,9 @@ impl UnixGraphClient {
     /// agent, the Knowledge app) navigates it; making it a shared typed result is
     /// a contracts-crate follow-on. No LLM call is made.
     pub async fn code_analysis(&self) -> Result<serde_json::Value, QueryError> {
-        let body = [0x09u8];
+        // 0x0D, not 0x09: the prep-for-this read holds 0x09 and matched first in
+        // the daemon's dispatch chain, so this op was unreachable.
+        let body = [0x0Du8];
         let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
         if bytes.starts_with(b"ERROR:") {
             Self::check_error(&String::from_utf8_lossy(&bytes))?;
@@ -517,7 +519,7 @@ impl UnixGraphClient {
     /// `None` is now, `Some(t)` the membership valid at `t` µs), and the apps
     /// that accessed it.
     ///
-    /// A leading `0x0A` byte selects the op; the body is a JSON
+    /// A leading `0x0E` byte selects the op; the body is a JSON
     /// `{symbol_id, as_of_micros?}`. Gated to system-anchored callers like
     /// [`code_analysis`](Self::code_analysis); a daemon `ERROR:` maps to
     /// [`QueryError`]. Parsed as a `serde_json::Value` (shape `{symbol_id,
@@ -535,7 +537,9 @@ impl UnixGraphClient {
         let json = serde_json::to_vec(&request)
             .map_err(|e| QueryError::InvalidQuery(format!("encode code_symbol_context: {e}")))?;
         let mut body = Vec::with_capacity(1 + json.len());
-        body.push(0x0Au8);
+        // 0x0E, not 0x0A: the live-working-set read holds 0x0A and matched first
+        // in the daemon's dispatch chain, so this op was unreachable.
+        body.push(0x0Eu8);
         body.extend_from_slice(&json);
         let bytes = self.round_trip(&body, MAX_TYPED_RESPONSE_BYTES).await?;
         if bytes.starts_with(b"ERROR:") {
@@ -1757,8 +1761,10 @@ mod tests {
             let req_len = u32::from_be_bytes(len_buf) as usize;
             let mut req = vec![0u8; req_len];
             conn.read_exact(&mut req).await.unwrap();
-            // The op is selected by the single 0x09 prefix byte, no body.
-            assert_eq!(req, vec![0x09], "code_analysis is a bare 0x09 prefix");
+            // The op is selected by the single 0x0D prefix byte, no body. It was
+            // 0x09, which prep-for-this already held daemon-side, so the request
+            // was swallowed by prep and this op never ran.
+            assert_eq!(req, vec![0x0D], "code_analysis is a bare 0x0D prefix");
 
             let resp = br#"{"god_symbols":[{"id":"a.rs#fn:hub@1","in_degree":3,"out_degree":1}],"surprises":[{"from":"a.rs#fn:hub@1","to":"b.rs#fn:y@5","from_module":"a.rs","to_module":"b.rs"}]}"#;
             conn.write_all(&(resp.len() as u32).to_be_bytes()).await.unwrap();
@@ -1791,8 +1797,8 @@ mod tests {
             let req_len = u32::from_be_bytes(len_buf) as usize;
             let mut req = vec![0u8; req_len];
             conn.read_exact(&mut req).await.unwrap();
-            // 0x0A prefix + a JSON body carrying the symbol id + as-of.
-            assert_eq!(req[0], 0x0A, "code_symbol_context is selected by 0x0A");
+            // 0x0E prefix + a JSON body carrying the symbol id + as-of.
+            assert_eq!(req[0], 0x0E, "code_symbol_context is selected by 0x0E");
             let parsed: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
             assert_eq!(parsed["symbol_id"], "/p/lib.rs#fn:helper@1");
             assert_eq!(parsed["as_of_micros"], 150);
