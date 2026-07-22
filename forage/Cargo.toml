@@ -20,6 +20,7 @@ arlen-forage-store = { path = "store" }
 arlen-forage-signing = { path = "signing" }
 arlen-cookbook-resolve = { path = "cookbook-resolve" }
 arlen-forage-capabilities = { path = "capabilities" }
+arlen-forage-bridge-install = { path = "bridge-install" }
 colored = "2"
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }
@@ -34,6 +35,9 @@ tempfile = "3"
 
 [dev-dependencies]
 tempfile = "3"
+# The bridge-flow tests assert the provisioned bridge-ingest profile's granted
+# namespaces; the profile type lives here (a transitive dep of bridge-install).
+arlen-permissions = { path = "../sdk/permissions" }
 arlen-cookbook-sign = { path = "cookbook-sign" }
 arlen-cookbook-index = { path = "cookbook-index" }
 chrono = { version = "0.4", features = ["clock"] }
