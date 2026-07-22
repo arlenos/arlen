@@ -17,6 +17,7 @@ export default defineConfig(async () => ({
       // this app dir), so the dev server must be allowed to serve the monorepo
       // root; without this Vite rejects those files ("outside serving allow list")
       // and the ui-kit sidebar/button/separator never render in dev.
+      // @ts-expect-error process is a nodejs global
       allow: [searchForWorkspaceRoot(process.cwd()), "../../.."],
     },
     host: host || false,
