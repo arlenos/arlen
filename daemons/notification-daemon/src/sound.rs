@@ -41,6 +41,16 @@ const FALLBACK_THEME: &str = "freedesktop";
 /// [`SoundResolution::NotFound`] when neither exists anywhere in the chain.
 /// Cycle-safe (a theme is searched at most once).
 pub fn resolve_sound(roots: &[PathBuf], theme: &str, name: &str) -> SoundResolution {
+    // A freedesktop sound name is a flat identifier (`message-new-instant`),
+    // never a path. The name can originate from a theme's `[sounds]` override,
+    // which passes the theme inert floor (that floor allows `/` and `.`), so a
+    // hostile theme could otherwise set `notification = "../../etc/foo"` and make
+    // `base.join(name)` escape the sound roots to play an arbitrary file. Reject
+    // any name carrying a path separator here, at the join site, so every caller
+    // is covered regardless of where the name came from.
+    if name.is_empty() || name.contains('/') || name.contains('\\') {
+        return SoundResolution::NotFound;
+    }
     let mut visited: HashSet<String> = HashSet::new();
     let mut queue: VecDeque<String> = VecDeque::new();
     queue.push_back(theme.to_string());
@@ -503,6 +513,27 @@ mod tests {
         put(&root, "freedesktop", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", Some("complete.oga"));
         let r = resolve_sound(&[root.clone()], "arlen", "complete");
         assert_eq!(r, SoundResolution::File(root.join("freedesktop/stereo/complete.oga")));
+    }
+
+    #[test]
+    fn a_traversing_sound_name_cannot_escape_the_roots() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("sounds");
+        put(&root, "arlen", Some("[Sound Theme]\nDirectories=stereo\n"), "stereo", None);
+        // A real target OUTSIDE the sound root that a `../` name would reach:
+        // sounds/arlen/stereo/ + "../../../outside/evil" + ".oga" = <tmp>/outside/evil.oga.
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("evil.oga"), b"x").unwrap();
+        // The guard refuses the traversing name, so the existing outside file is
+        // never resolved (without the guard this would return File(evil.oga)).
+        assert_eq!(
+            resolve_sound(&[root.clone()], "arlen", "../../../outside/evil"),
+            SoundResolution::NotFound
+        );
+        // Any separator-bearing or empty name is not a valid flat sound name.
+        assert_eq!(resolve_sound(&[root.clone()], "arlen", "a/b"), SoundResolution::NotFound);
+        assert_eq!(resolve_sound(&[root], "arlen", ""), SoundResolution::NotFound);
     }
 
     #[test]
