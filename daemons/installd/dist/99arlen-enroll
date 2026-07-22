@@ -1,0 +1,19 @@
+// Arlen app-enrollment apt hook (app-enrollment §E4).
+//
+// Install as /etc/apt/apt.conf.d/99arlen-enroll.
+//
+// apt streams the pending package changes to this hook on stdin before
+// unpacking, so a package that has a curated starting profile is confined from
+// its first launch rather than after someone notices it running unconfined.
+//
+// Pre-Install-Pkgs, not Post-Invoke: the profile must exist before the binary
+// does. The hook runs as root inside apt, which is why it is the permission
+// helper (the root component that owns /var/lib/arlen/permissions) rather than
+// installd, a per-user session service that cannot write there.
+//
+// Version 3 is the stream format the parser was captured against. It always
+// exits 0 - a failed enrolment must never abort a package operation, since
+// leaving one package unconfined is recoverable and a broken `apt install` is
+// not.
+DPkg::Pre-Install-Pkgs { "/usr/lib/arlen/permission-helper --apt-hook"; };
+DPkg::Tools::Options::"/usr/lib/arlen/permission-helper --apt-hook"::Version "3";

@@ -26,7 +26,7 @@ pub enum ProfileError {
 /// `/var/lib` location, so the two root writers (this and the identity writer)
 /// share one release-pins-the-path rule and a release env-misconfiguration cannot
 /// relocate the authoritative profiles (review F3-3).
-fn base_dir() -> PathBuf {
+pub(crate) fn base_dir() -> PathBuf {
     #[cfg(debug_assertions)]
     if let Ok(dir) = std::env::var("ARLEN_PERMISSIONS_DIR") {
         return PathBuf::from(dir);
