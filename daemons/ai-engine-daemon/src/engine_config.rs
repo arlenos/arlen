@@ -128,8 +128,26 @@ pub fn publish_broker_switches(switches: Option<arlen_config_broker::AiMasterSwi
     }
 }
 
-/// Read one field from the cached broker switches, if the broker has been reached.
+/// Whether the engine sources its master switches from the config-broker. OFF by
+/// default: the broker read is only correct once the broker is the CURRENT source
+/// (Settings writes it + it is always deployed), otherwise the engine would read a
+/// broker that was seeded once and then went stale as the user edited `ai.toml`.
+/// The deployment sets `ARLEN_ENGINE_CONFIG_BROKER=1` to complete the cutover; until
+/// then the accessors read `ai.toml` exactly as before (no behaviour change). This
+/// is the executor_live-style go-live gate for the config-broker cutover.
+pub fn config_broker_enabled() -> bool {
+    std::env::var("ARLEN_ENGINE_CONFIG_BROKER")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// Read one field from the cached broker switches, if the cutover is enabled AND
+/// the broker has been reached. Returns `None` (so the accessor falls back to
+/// `ai.toml`) when the cutover flag is off or the broker is unreachable.
 fn from_broker<T>(pick: impl FnOnce(&arlen_config_broker::AiMasterSwitches) -> T) -> Option<T> {
+    if !config_broker_enabled() {
+        return None;
+    }
     BROKER_SWITCHES.read().ok().and_then(|g| g.as_ref().map(pick))
 }
 
@@ -231,29 +249,32 @@ mod tests {
     static CACHE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
-    fn the_accessors_prefer_the_broker_cache_over_ai_toml() {
+    fn the_broker_read_is_off_by_default_and_wins_only_when_the_cutover_is_enabled() {
         let _g = CACHE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // Point ai.toml at a temp file that says DISABLED + executor-off.
         let ai = std::env::temp_dir().join(format!("arlen-engcfg-{}.toml", std::process::id()));
         std::fs::write(&ai, "[ai]\nenabled = false\n[agent]\nexecutor_live = false\n").unwrap();
         std::env::set_var("ARLEN_AI_CONFIG", &ai);
-
-        // No broker cache -> the accessors read ai.toml (disabled / off).
-        publish_broker_switches(None);
-        assert!(!ai_enabled(), "with no broker cache, ai.toml governs");
-        assert!(!executor_live());
-
-        // Broker reached + enabled/live -> the cache WINS over ai.toml's disabled.
         publish_broker_switches(Some(arlen_config_broker::AiMasterSwitches {
             enabled: true,
             executor_live: true,
             ..Default::default()
         }));
-        assert!(ai_enabled(), "the broker cache must override ai.toml's disabled");
-        assert!(executor_live(), "the broker cache must override ai.toml's executor-off");
+
+        // Cutover OFF (default): the broker cache is IGNORED, ai.toml governs - so a
+        // seeded-then-stale broker never overrides the user's live ai.toml.
+        std::env::remove_var("ARLEN_ENGINE_CONFIG_BROKER");
+        assert!(!ai_enabled(), "with the cutover off, the broker cache must not win");
+        assert!(!executor_live());
+
+        // Cutover ON: the broker cache WINS over ai.toml.
+        std::env::set_var("ARLEN_ENGINE_CONFIG_BROKER", "1");
+        assert!(ai_enabled(), "with the cutover on, the broker cache overrides ai.toml");
+        assert!(executor_live());
 
         // Reset the global cache + env so nothing leaks into other tests.
         publish_broker_switches(None);
+        std::env::remove_var("ARLEN_ENGINE_CONFIG_BROKER");
         std::env::remove_var("ARLEN_AI_CONFIG");
         let _ = std::fs::remove_file(&ai);
     }
