@@ -50,7 +50,9 @@ struct ConsumerEntry {
     id: String,
     /// Event type prefixes this consumer subscribed to.
     /// "file.opened" matches only that type.
-    /// "file." matches all file events (prefix match).
+    /// "file." and "file.*" both match all file events (prefix match); the
+    /// second is the spelling a permission profile's `[event_bus]` scope uses,
+    /// accepted here so a consumer can register the patterns it declared.
     /// "*" matches everything.
     subscribed_types: Vec<String>,
     /// UID filter: which user's events this consumer receives.
@@ -64,6 +66,17 @@ impl ConsumerEntry {
         self.subscribed_types.iter().any(|sub| {
             if sub == "*" {
                 true
+            } else if let Some(prefix) = sub.strip_suffix(".*") {
+                // "file.*" is how a permission profile spells the same
+                // wildcard (`pattern_matches` in sdk/permissions strips
+                // exactly this suffix). The two surfaces used INVERTED
+                // spellings: a profile's only wildcard form was a dead
+                // literal here, matching no event type, so a consumer
+                // registered from its own declared scope silently received
+                // nothing. Accepting it costs nothing - no event type is
+                // literally named "file.*" - and removes a trap that fails
+                // quietly in the direction of no delivery.
+                event_type.starts_with(prefix) && event_type[prefix.len()..].starts_with('.')
             } else if let Some(prefix) = sub.strip_suffix('.') {
                 // "file." matches "file.opened", "file.closed", etc.
                 event_type.starts_with(prefix)
@@ -157,6 +170,35 @@ impl ConsumerRegistry {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn both_wildcard_spellings_select_the_same_events() {
+        // The registry and sdk/permissions historically disagreed about how a
+        // wildcard is written: "file." here, "file.*" in a profile. Each was a
+        // dead literal in the other, so a consumer that registered the patterns
+        // its own `[event_bus].subscribe` scope declared matched nothing and got
+        // no events, with no error anywhere. Both spellings must select the same
+        // set, or that silence comes back.
+        let (tx, _rx) = mpsc::channel(1);
+        let entry = |subs: Vec<&str>| ConsumerEntry {
+            id: "c".to_string(),
+            subscribed_types: subs.into_iter().map(String::from).collect(),
+            uid_filter: UidFilter::All,
+            sender: tx.clone(),
+        };
+        for spelling in ["file.", "file.*"] {
+            let e = entry(vec![spelling]);
+            assert!(e.matches("file.opened"), "{spelling} must match file.opened");
+            assert!(e.matches("file.written"), "{spelling} must match file.written");
+            assert!(!e.matches("window.focused"), "{spelling} must not match another namespace");
+        }
+        // A neighbouring namespace sharing the prefix is not swept in: "file.*"
+        // must not match "filesystem.mounted".
+        assert!(!entry(vec!["file.*"]).matches("filesystem.mounted"));
+        // Exact types stay exact.
+        assert!(entry(vec!["file.opened"]).matches("file.opened"));
+        assert!(!entry(vec!["file.opened"]).matches("file.written"));
+    }
+
     use super::*;
 
     fn make_event(event_type: &str, uid: u32) -> Event {
