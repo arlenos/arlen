@@ -64,7 +64,7 @@ type AuthorizeDecision =
 Turn this on and every paragraph but the one you are in fades away, so the writing is all that is left. The markdown you see is the real \`bytes\` on disk, never hidden.`;
 
   const CODE_DOC = `// The Arlen gate: every AI tool call is authorized before it runs.
-import { invoke } from "@arlen/os-sdk";
+import { invoke } from "@tauri-apps/api/core";
 
 export type AuthorizeDecision =
   | { decision: "allow"; proof?: string }
