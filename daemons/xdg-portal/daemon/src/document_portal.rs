@@ -18,7 +18,7 @@
 //! fail the request with a clear error instead of silently returning
 //! the raw `file://` paths a sandboxed caller cannot open.
 
-use std::os::fd::OwnedFd;
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
@@ -96,6 +96,55 @@ trait Documents {
     ) -> zbus::Result<(String, std::collections::HashMap<String, zbus::zvariant::OwnedValue>)>;
 }
 
+/// Open one picked path for export and PROVE the descriptor still refers to
+/// what that path resolved to.
+///
+/// Handing the Document Portal a descriptor grants the calling app access to
+/// whatever inode it points at, and the filename the app sees comes from the
+/// path the user picked - so if a path component is swapped between the pick
+/// and this open, the app receives a handle to a file the user never approved,
+/// under the name they did approve. `O_PATH` follows symlinks (it must: picking
+/// a symlink is legitimate), so the open alone cannot tell the two apart.
+///
+/// Closed by resolving FIRST and checking the opened descriptor afterwards: the
+/// fd pins an inode, and `/proc/self/fd/<n>` reports where that inode actually
+/// lives. If it disagrees with the pre-resolved target, a component moved during
+/// the window and the export is refused rather than silently retargeted.
+/// A stable symlink resolves identically both times and is unaffected.
+fn open_verified(path: &Path) -> Result<(OwnedFd, String)> {
+    let expected = std::fs::canonicalize(path)
+        .with_context(|| format!("resolve {} for portal export", path.display()))?;
+
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_PATH)
+        .open(path)
+        .with_context(|| format!("open {} for portal export", path.display()))?;
+
+    let opened = std::fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))
+        .with_context(|| format!("verify the descriptor for {}", path.display()))?;
+    if opened != expected {
+        anyhow::bail!(
+            "refusing to export {}: it resolved to {} but the descriptor refers to {} \
+             (a path component changed while exporting)",
+            path.display(),
+            expected.display(),
+            opened.display()
+        );
+    }
+
+    // The name the app sees. Taken from the picked path, which - now that the
+    // descriptor is proven to match - is the file the user chose.
+    let filename = path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if filename.is_empty() {
+        anyhow::bail!("path has no filename: {}", path.display());
+    }
+    Ok((file.into(), filename))
+}
+
 /// Exports the given paths via the Document Portal for `app_id` and
 /// returns the corresponding `file://` URIs that point into the
 /// per-app FUSE mount.
@@ -138,19 +187,8 @@ pub async fn export_for_caller(
     let mut owned_fds: Vec<OwnedFd> = Vec::with_capacity(paths.len());
     let mut filenames: Vec<String> = Vec::with_capacity(paths.len());
     for path in paths {
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_PATH)
-            .open(path)
-            .with_context(|| format!("open {} for portal export", path.display()))?;
-        owned_fds.push(file.into());
-        let filename = path
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default();
-        if filename.is_empty() {
-            anyhow::bail!("path has no filename: {}", path.display());
-        }
+        let (fd, filename) = open_verified(path)?;
+        owned_fds.push(fd);
         filenames.push(filename);
     }
 
@@ -294,6 +332,58 @@ fn bytes_to_pathbuf(bytes: &[u8]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A plain file exports, and the descriptor check does not reject it.
+    #[test]
+    fn a_regular_file_opens_and_verifies() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let f = dir.path().join("budget.xlsx");
+        std::fs::write(&f, b"x").unwrap();
+        let (_fd, name) = super::open_verified(&f).expect("a regular file exports");
+        assert_eq!(name, "budget.xlsx");
+    }
+
+    /// Picking a SYMLINK is legitimate and must still work - the check compares
+    /// the descriptor against the RESOLVED target, not against the literal path,
+    /// so a stable symlink agrees with itself. This is the regression the
+    /// verification could easily have introduced.
+    #[test]
+    fn a_stable_symlink_is_still_exportable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("real.txt");
+        std::fs::write(&target, b"x").unwrap();
+        let link = dir.path().join("link.txt");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let (_fd, name) = super::open_verified(&link).expect("a symlink pick exports");
+        // The app sees the name the user picked, not the target's.
+        assert_eq!(name, "link.txt");
+    }
+
+    /// A dangling symlink cannot resolve, so it is refused before any descriptor
+    /// reaches the Document Portal.
+    #[test]
+    fn an_unresolvable_path_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let link = dir.path().join("dangling");
+        std::os::unix::fs::symlink(dir.path().join("gone"), &link).unwrap();
+        assert!(super::open_verified(&link).is_err());
+        assert!(super::open_verified(&dir.path().join("missing")).is_err());
+    }
+
+    /// A directory has a filename and resolves, so the guard alone does not stop
+    /// it; this pins that the export still yields the picked name rather than
+    /// silently exporting something unnamed.
+    #[test]
+    fn the_exported_name_comes_from_the_picked_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let nested = dir.path().join("sub");
+        std::fs::create_dir(&nested).unwrap();
+        let f = nested.join("notes.md");
+        std::fs::write(&f, b"x").unwrap();
+        let (_fd, name) = super::open_verified(&f).unwrap();
+        assert_eq!(name, "notes.md");
+    }
     use super::*;
 
     /// URI assembly: mount + doc_id + filename → file://-URI with
