@@ -50,7 +50,7 @@ fn executor_live(doc: &toml::Table) -> bool {
 /// Extract the provider name (`ai.provider`) and model (`[provider].model`)
 /// from the parsed config. Either may be absent; both are display-only.
 /// Pure, so the lookup is unit-tested without a config file.
-fn provider_and_model(doc: &toml::Table) -> (Option<String>, Option<String>) {
+pub(crate) fn provider_and_model(doc: &toml::Table) -> (Option<String>, Option<String>) {
     let provider = doc
         .get("ai")
         .and_then(toml::Value::as_table)
@@ -92,7 +92,7 @@ fn mode_label(mode: Option<&str>) -> String {
 /// Resolve the path to `ai.toml`: `$XDG_CONFIG_HOME/arlen/ai.toml`
 /// (via `dirs::config_dir`), falling back to a bare relative path if no
 /// config dir is resolvable (then the read simply misses → defaults).
-fn ai_config_path() -> std::path::PathBuf {
+pub(crate) fn ai_config_path() -> std::path::PathBuf {
     dirs::config_dir()
         .unwrap_or_default()
         .join("arlen")
