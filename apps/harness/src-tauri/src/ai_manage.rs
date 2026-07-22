@@ -18,6 +18,17 @@ const AGENT_PATH: &str = "/org/arlen/AIAgent1";
 
 /// Call a String-returning member on `(bus, path, bus)`, returning `fallback`
 /// on any connection or call failure (the read commands are advisory).
+/// Like [`call_string`] but SIGNALS failure instead of substituting a value.
+///
+/// Needed wherever an empty result would be read as a fact about the system
+/// rather than as "could not read" - a grant list being the clear case, since an
+/// empty one states "nothing has access".
+async fn try_call_string(bus: &str, path: &str, member: &str) -> Option<String> {
+    let connection = Connection::session().await.ok()?;
+    let proxy = Proxy::new(&connection, bus, path, bus).await.ok()?;
+    proxy.call(member, &()).await.ok()
+}
+
 async fn call_string(bus: &str, path: &str, member: &str, fallback: &str) -> String {
     let Ok(connection) = Connection::session().await else {
         return fallback.to_string();
@@ -175,14 +186,23 @@ pub async fn ai_working_set() -> String {
 /// frontend invokes it as `GrantView[]`); empty when neither principal answers.
 #[tauri::command]
 pub async fn ai_access_grants() -> serde_json::Value {
+    // Null - NOT an empty array - if EITHER principal cannot be read. The reader
+    // (`transparency.ts::readGrants`) documents that a failed read must render
+    // honestly and "never as 'no access'", but an `[]` fallback per principal
+    // defeated that: an unreachable daemon contributed nothing and the merged
+    // result came back as a successful empty list, i.e. "nothing has access".
+    // A PARTIAL merge is wrong for the same reason - it under-reports reach while
+    // looking complete - so any failure yields unknown rather than a short list.
     let mut grants: Vec<serde_json::Value> = Vec::new();
     for (bus, path) in [(AGENT_BUS, AGENT_PATH), (AI_BUS, AI_PATH)] {
-        let json = call_string(bus, path, "access_grants", "[]").await;
-        if let Ok(serde_json::Value::Array(items)) =
-            serde_json::from_str::<serde_json::Value>(&json)
-        {
-            grants.extend(items);
-        }
+        let Some(json) = try_call_string(bus, path, "access_grants").await else {
+            return serde_json::Value::Null;
+        };
+        let Ok(serde_json::Value::Array(items)) = serde_json::from_str::<serde_json::Value>(&json)
+        else {
+            return serde_json::Value::Null;
+        };
+        grants.extend(items);
     }
     serde_json::Value::Array(grants)
 }
