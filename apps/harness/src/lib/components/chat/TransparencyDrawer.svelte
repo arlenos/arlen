@@ -65,8 +65,11 @@
     invoke<string>("ai_usage")
       .then((json) => {
         try {
-          const u = JSON.parse(json) as { totalTokens?: number };
-          usage = { totalTokens: u.totalTokens ?? 0 };
+          // `null` (or any non-numeric count) means NOT MEASURED, not zero: the
+          // daemon was unreadable. Coercing it to 0 would report "0 tokens used
+          // so far" as a fact on the one surface whose job is honesty.
+          const u = JSON.parse(json) as { totalTokens?: number } | null;
+          usage = typeof u?.totalTokens === "number" ? { totalTokens: u.totalTokens } : null;
         } catch {
           usage = null;
         }
