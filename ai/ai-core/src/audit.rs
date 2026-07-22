@@ -196,6 +196,21 @@ pub fn behaviour_policy_violation_event(
     behaviour_event(AuditKind::PolicyViolation, behaviour, outcome, correlation_id)
 }
 
+/// A behaviour audit entry classified as [`AuditKind::GraphAccess`], for the AI
+/// reading the graph. Same content-free subject + correlation as
+/// [`behaviour_action_event`]; only the kind differs, so the transparency
+/// drawer's anti-Recall "what the AI read" view (which filters the ledger to
+/// `GraphAccess`) captures the read. A read audited as `Permission` - the
+/// generic action kind - is invisible to that view, which is why the reads feed
+/// was empty despite the AI reading: the emit was under the wrong kind.
+pub fn behaviour_graph_access_event(
+    behaviour: &str,
+    outcome: impl Into<String>,
+    correlation_id: &str,
+) -> IngestRequest {
+    behaviour_event(AuditKind::GraphAccess, behaviour, outcome, correlation_id)
+}
+
 /// A content-free audit entry for a change to a security-bearing `ai.toml` key
 /// (`enabled` / `access_level` / `executor_live` / `provider` / `autonomous_apps`
 /// / `action_mode`), so a silent flip of an AI master switch becomes visible in
