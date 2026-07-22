@@ -347,6 +347,25 @@ pub async fn spawn_confined_mount(
     plan: &MountPlan,
     hosts: &[String],
 ) -> Result<RcloneMount, MountLaunchError> {
+    let child = launch_confined_rclone(paths, hosts).await?;
+    let rc = RcClient::new(UnixRcTransport::new(&paths.rc_socket));
+    let mount_point = plan.mount_point.to_string_lossy();
+    rc.mount(&plan.fs, &mount_point).await?;
+    Ok(RcloneMount {
+        child,
+        rc_socket: paths.rc_socket.clone(),
+        mount_point: plan.mount_point.clone(),
+    })
+}
+
+/// Provision the profile and launch `rclone rcd` confined under `arlen-run`,
+/// returning the child once its rc socket is serving. Shared by
+/// [`spawn_confined_mount`] and its on-kernel test (which drives the rc API
+/// without a real backend to mount).
+async fn launch_confined_rclone(
+    paths: &MountPaths,
+    hosts: &[String],
+) -> Result<Child, MountLaunchError> {
     // Landlock only grants a writable path that already exists, so create the
     // whole writable set (the runtime dir, the mount point, the cache dir).
     for dir in &paths.writable {
@@ -369,16 +388,7 @@ pub async fn spawn_confined_mount(
     if !wait_for_socket(&paths.rc_socket, SOCKET_TIMEOUT).await {
         return Err(MountLaunchError::SocketTimeout);
     }
-
-    let rc = RcClient::new(UnixRcTransport::new(&paths.rc_socket));
-    let mount_point = plan.mount_point.to_string_lossy();
-    rc.mount(&plan.fs, &mount_point).await?;
-
-    Ok(RcloneMount {
-        child,
-        rc_socket: paths.rc_socket.clone(),
-        mount_point: plan.mount_point.clone(),
-    })
+    Ok(child)
 }
 
 #[cfg(test)]
@@ -481,6 +491,42 @@ mod tests {
             resolve_mount(&accounts, "other.app", "nas", &rt, &cache, None),
             Err(MountError::Refused)
         ));
+    }
+
+    /// On-kernel: launch a real `rclone rcd` confined under the built `arlen-run`
+    /// (Landlock + seccomp + cgroup + the §0 egress netns) and drive its rc API
+    /// across the confinement - proving the whole OA-R3 launch path, end to end,
+    /// without needing a real backend to mount. Skips if `arlen-run` is unbuilt.
+    #[tokio::test]
+    #[ignore = "needs rclone + arlen-run + pasta + unprivileged userns (on-kernel)"]
+    async fn a_confined_rclone_launches_under_arlen_run_and_serves_its_rc_api() {
+        // arlen-run builds into the shared repo-root target dir.
+        let arlen_run =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/arlen-run");
+        if !arlen_run.exists() {
+            eprintln!("skipping: {} is not built", arlen_run.display());
+            return;
+        }
+        std::env::set_var("ARLEN_RUN_BIN", &arlen_run);
+
+        // Place the runtime dir under XDG_RUNTIME_DIR like production, NOT /tmp:
+        // the confinement masks /tmp with a fresh tmpfs, which would shadow a
+        // /tmp-based rc socket dir (rclone's bind would then fail).
+        let rt_base = std::env::var_os("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .expect("XDG_RUNTIME_DIR for the runtime dir");
+        let dir = tempfile::Builder::new().prefix("oa-itest-").tempdir_in(&rt_base).unwrap();
+        let paths =
+            mount_paths(dir.path(), "itest", &dir.path().join("mp"), &dir.path().join("cache"))
+                .unwrap();
+        // A harmless allowlist; the test drives only the local rc socket.
+        let hosts = vec!["example.org:443".to_string()];
+        let mut child =
+            launch_confined_rclone(&paths, &hosts).await.expect("the confined rclone launches");
+        let rc = RcClient::new(UnixRcTransport::new(&paths.rc_socket));
+        let version = rc.version().await;
+        let _ = child.kill().await;
+        assert!(version.is_ok(), "the confined rclone's rc api must serve: {version:?}");
     }
 
     #[tokio::test]
