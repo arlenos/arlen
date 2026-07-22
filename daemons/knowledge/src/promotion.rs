@@ -235,8 +235,7 @@ async fn run_pass(
             // Coarse power transitions become timeline Event nodes (§3f). The
             // high-frequency `power.state` snapshot is deliberately NOT listed,
             // so battery-% churn is never promoted.
-            "power.low" | "power.critical" | "power.recovered" | "power.profile_changed"
-            | "power.suspend" | "power.resume" | "power.lid_closed" => {
+            t if is_power_transition(t) => {
                 promote_power_transition(graph, id, event_type, timestamp, source).await
             }
             // Coarse system-service transitions (journald Tier-2) become timeline
@@ -714,6 +713,32 @@ async fn promote_window_focused(
 
     debug!(event_id, app_id = %app_id, "promoted window.focused");
     Ok(())
+}
+
+/// Whether an event type is a coarse power transition that promotes to the
+/// timeline.
+///
+/// A LIST, not a `power.` prefix match: the high-frequency `power.state`
+/// snapshot must never promote (battery-% churn is live-read only), so
+/// membership is explicit and additions are deliberate.
+///
+/// Extracted from `run_pass`'s match so the set is testable. It was inline, and
+/// had drifted from its own contract: `power.lid_opened` was missing while
+/// `power.lid_closed` was present, so a lid OPEN fell through to the catch-all
+/// and vanished - even though `promote_power_transition`'s doc says it promotes
+/// `lid_*` and the proto enumerates both.
+fn is_power_transition(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "power.low"
+            | "power.critical"
+            | "power.recovered"
+            | "power.profile_changed"
+            | "power.suspend"
+            | "power.resume"
+            | "power.lid_closed"
+            | "power.lid_opened"
+    )
 }
 
 /// Promote a coarse power transition into a generic `Event` node on the timeline
@@ -1642,6 +1667,33 @@ mod shell_event_tests {
         // Re-indexing the same file does not duplicate it.
         index_file_fact_text(&pool, "/home/tim/proj/main.rs").await.unwrap();
         assert_eq!(crate::fts::search_fact_text(&pool, "main.rs", 10).await.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn every_specified_power_transition_promotes_and_the_snapshot_never_does() {
+        // The six coarse transitions `contracts/event/proto/event.proto`
+        // enumerates on PowerTransitionPayload, plus the two battery-level
+        // crossings the daemon emits. This list drifting from the proto is not
+        // hypothetical: `power.lid_opened` was missing while `lid_closed` was
+        // present, so a lid OPEN was published and silently dropped here.
+        for t in [
+            "power.suspend",
+            "power.resume",
+            "power.lid_closed",
+            "power.lid_opened",
+            "power.profile_changed",
+            "power.critical",
+            "power.low",
+            "power.recovered",
+        ] {
+            assert!(is_power_transition(t), "{t} must promote to the timeline");
+        }
+
+        // The high-frequency snapshot must NEVER promote - that is the whole
+        // reason this is an explicit list rather than a `power.` prefix test.
+        assert!(!is_power_transition("power.state"));
+        assert!(!is_power_transition("power."));
+        assert!(!is_power_transition("window.focused"));
     }
 
     #[tokio::test]
