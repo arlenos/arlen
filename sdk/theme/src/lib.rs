@@ -203,6 +203,19 @@ fn inert_or(value: Option<String>, default: &str) -> String {
         .unwrap_or_else(|| default.to_string())
 }
 
+/// Like [`inert_or`] but for a freedesktop sound NAME - a flat identifier, never a
+/// path. Beyond the inert floor it also rejects a value carrying a path separator:
+/// the CSS-inert floor allows `/` (legal in a font list), so a theme could
+/// otherwise set `notification = "../../etc/foo"` and, once that name is emitted
+/// into the sound-theme index the Notification Daemon reads, escape the sound
+/// roots. Defence in depth over the daemon's own resolve-time separator guard - a
+/// hostile name never leaves this resolve in the first place.
+fn sound_name_or(value: Option<String>, default: &str) -> String {
+    value
+        .filter(|v| is_inert_css_token(v) && !v.contains('/') && !v.contains('\\'))
+        .unwrap_or_else(|| default.to_string())
+}
+
 // ---------------------------------------------------------------------------
 // Resolved theme — the post-merge struct both crates consume
 // ---------------------------------------------------------------------------
@@ -724,13 +737,14 @@ fn from_file(f: ArlenThemeFile) -> Result<ArlenTheme, ResolveError> {
 
     // The sound-theme event map (sound-system-plan.md). Defaults are freedesktop
     // Sound Naming-spec standard names; each theme-supplied name is routed through
-    // the inert floor so it cannot carry syntax into the emitted sound-theme index.
+    // the sound-name floor (inert + no path separator) so it cannot carry syntax
+    // into the emitted sound-theme index nor a `../` that escapes the sound roots.
     let snd = f.sounds.unwrap_or_default();
     let sounds = SoundTokens {
-        notification: inert_or(snd.notification, "message-new-instant"),
-        error: inert_or(snd.error, "dialog-error"),
-        warning: inert_or(snd.warning, "dialog-warning"),
-        action: inert_or(snd.action, "complete"),
+        notification: sound_name_or(snd.notification, "message-new-instant"),
+        error: sound_name_or(snd.error, "dialog-error"),
+        warning: sound_name_or(snd.warning, "dialog-warning"),
+        action: sound_name_or(snd.action, "complete"),
     };
 
     let variant = match meta.variant.as_str() {
@@ -1180,6 +1194,20 @@ size  = 24
         // An unset event keeps the spec default.
         assert_eq!(t.sounds.error, "dialog-error");
         assert_eq!(t.sounds.warning, "dialog-warning");
+    }
+
+    #[test]
+    fn a_traversing_sound_name_falls_back_to_the_default() {
+        // A path-separator name (a `../` traversal the CSS-inert floor allows,
+        // since `/` is legal in a font list) is not a valid flat sound name: it
+        // must fall back to the default so the emitted sound index and the daemon's
+        // name lookup can never escape the sound roots.
+        let toml = format!(
+            "{SAMPLE_BUNDLED}\n[sounds]\nnotification = \"../../../etc/foo\"\nerror = \"a/b\"\n"
+        );
+        let t = ArlenTheme::from_bundled(&toml).expect("resolve");
+        assert_eq!(t.sounds.notification, "message-new-instant", "the traversal falls back");
+        assert_eq!(t.sounds.error, "dialog-error", "a separator-bearing name falls back too");
     }
 
     #[test]
