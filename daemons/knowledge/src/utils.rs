@@ -178,3 +178,36 @@ mod socket_path_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod escape_cypher_tests {
+    use super::escape_cypher;
+
+    #[test]
+    fn a_quote_is_escaped_so_a_literal_cannot_be_broken_out_of() {
+        // A hostile path/app_id from a producer event lands inside a '...' Cypher
+        // literal (promotion.rs); the quote must be escaped so it cannot terminate
+        // the literal and inject.
+        assert_eq!(escape_cypher("a'b"), "a\\'b");
+        assert_eq!(
+            escape_cypher("'; MATCH (n) DETACH DELETE n; //"),
+            "\\'; MATCH (n) DETACH DELETE n; //"
+        );
+    }
+
+    #[test]
+    fn a_backslash_is_escaped_first_so_it_cannot_smuggle_an_escape() {
+        // Backslash-first is the load-bearing order: a literal backslash becomes
+        // `\\` before the quote pass, so `\'` in the input cannot become an
+        // escaped-quote that swallows the closing quote, and a `\u`/`\n` cannot be
+        // smuggled (the backslash is already doubled).
+        assert_eq!(escape_cypher("a\\b"), "a\\\\b");
+        assert_eq!(escape_cypher("\\'"), "\\\\\\'");
+        assert_eq!(escape_cypher("\\u0041"), "\\\\u0041");
+    }
+
+    #[test]
+    fn a_plain_path_is_unchanged() {
+        assert_eq!(escape_cypher("/home/u/file.rs"), "/home/u/file.rs");
+    }
+}
