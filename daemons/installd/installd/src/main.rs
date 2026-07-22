@@ -7,7 +7,6 @@
 ///
 /// See `docs/architecture/install-daemon.md`.
 
-mod apt_hook;
 mod audit;
 mod consent;
 mod dbus;
