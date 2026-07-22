@@ -10,6 +10,7 @@
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 
 /// Which group a process lives in.
 export type ProcGroup = "app" | "background" | "system";
@@ -72,26 +73,49 @@ const FIXTURE: Process[] = [
 
 export const processes = writable<Process[]>([]);
 
+/// True while the list is the FIXTURE, not this machine's real processes. The
+/// rows carry names ("Firefox", "systemd") and live-looking CPU/RAM figures, so
+/// unlabelled they read as real - and every row offers a Stop.
+export const mocked = writable(false);
+
+/// The last action failure, for the surface to show. Empty when all is well.
+/// Set only when a real backend refused - see `stop`/`setFlagChecked`.
+export const lastError = writable("");
+
 /// Load the process list. Live: `list_processes`; fixture under vite.
 export async function load(): Promise<void> {
   try {
     processes.set(await invoke<Process[]>("list_processes"));
+    mocked.set(false);
   } catch {
     processes.set(FIXTURE);
+    mocked.set(true);
   }
 }
 
 /// Gracefully stop a process (SIGTERM ladder), then drop it. Live: `stop_process`.
+///
+/// Optimistic, but NEVER silently: with a real backend a refused stop is put
+/// BACK in the list. Dropping the row and swallowing the error would tell the
+/// user they killed a process that is still running - a false confirmation of a
+/// destructive action, the one thing this surface must not do.
 export async function stop(id: number): Promise<void> {
-  processes.update((list) =>
-    list.filter((p) => p.id !== id).map((p) =>
+  let previous: Process[] = [];
+  processes.update((list) => {
+    previous = list;
+    return list.filter((p) => p.id !== id).map((p) =>
       p.children ? { ...p, children: p.children.filter((c) => c.id !== id) } : p,
-    ),
-  );
+    );
+  });
   try {
     await invoke("stop_process", { id });
-  } catch {
-    // optimistic under vite
+  } catch (e) {
+    if (tauriAvailable) {
+      processes.set(previous);
+      lastError.set(`Could not stop that process: ${String(e)}`);
+    }
+    // Without the runtime there is no backend to refuse: keep the optimistic
+    // mock so the surface stays reviewable under vite.
   }
 }
 
@@ -99,39 +123,54 @@ function setFlag(id: number, patch: Partial<Process>): void {
   processes.update((list) => list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
 }
 
+/// Apply a flag optimistically, then reconcile with the backend: a REAL refusal
+/// puts the flag back and says so, rather than leaving the row claiming a state
+/// (paused, limited) the kernel never applied. Without the Tauri runtime there is
+/// no backend to refuse, so the optimistic mock stands.
+async function setFlagChecked(
+  id: number,
+  patch: Partial<Process>,
+  revert: Partial<Process>,
+  cmd: string,
+  args: Record<string, unknown>,
+  failure: string,
+): Promise<void> {
+  setFlag(id, patch);
+  try {
+    await invoke(cmd, args);
+  } catch (e) {
+    if (tauriAvailable) {
+      setFlag(id, revert);
+      lastError.set(`${failure}: ${String(e)}`);
+    }
+  }
+}
+
 /// Freeze a process (cgroup.freeze) - the non-destructive pause. Live: `freeze_process`.
 export async function pause(id: number): Promise<void> {
-  setFlag(id, { paused: true });
-  try {
-    await invoke("freeze_process", { id, paused: true });
-  } catch {
-    // optimistic
-  }
+  await setFlagChecked(
+    id, { paused: true }, { paused: false },
+    "freeze_process", { id, paused: true }, "Could not pause that process",
+  );
 }
 /// Unfreeze it. Live: `freeze_process`.
 export async function resume(id: number): Promise<void> {
-  setFlag(id, { paused: false });
-  try {
-    await invoke("freeze_process", { id, paused: false });
-  } catch {
-    // optimistic
-  }
+  await setFlagChecked(
+    id, { paused: false }, { paused: true },
+    "freeze_process", { id, paused: false }, "Could not resume that process",
+  );
 }
 /// Soft-throttle a process (cgroup memory.high + cpu.max). Live: `limit_process`.
 export async function limit(id: number): Promise<void> {
-  setFlag(id, { limited: true });
-  try {
-    await invoke("limit_process", { id, limited: true });
-  } catch {
-    // optimistic
-  }
+  await setFlagChecked(
+    id, { limited: true }, { limited: false },
+    "limit_process", { id, limited: true }, "Could not limit that process",
+  );
 }
 /// Remove the throttle. Live: `limit_process`.
 export async function unlimit(id: number): Promise<void> {
-  setFlag(id, { limited: false });
-  try {
-    await invoke("limit_process", { id, limited: false });
-  } catch {
-    // optimistic
-  }
+  await setFlagChecked(
+    id, { limited: false }, { limited: true },
+    "limit_process", { id, limited: false }, "Could not remove that limit",
+  );
 }
