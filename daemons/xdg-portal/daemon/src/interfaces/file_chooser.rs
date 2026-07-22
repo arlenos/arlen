@@ -19,6 +19,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+use tracing::warn;
 use zbus::interface;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 use xdg_portal_arlen_protocol::{FileFilter, PickerRequest, PickerResponse};
@@ -262,6 +263,9 @@ async fn build_uris_for_caller(
 /// the user-session scope (not the app's bubblewrap scope), so the
 /// detection silently classifies real Flatpak callers as Unconfined.
 /// The frontend's `app_id` argument sidesteps the proxy entirely.
+///
+/// Trusting that verdict is only sound while the sender IS the
+/// frontend, which [`sender_is_frontend`] establishes before this runs.
 fn caller_identity(method_app_id: &str) -> CallerIdentity {
     if !method_app_id.is_empty() {
         return CallerIdentity::Flatpak {
@@ -269,6 +273,74 @@ fn caller_identity(method_app_id: &str) -> CallerIdentity {
         };
     }
     CallerIdentity::Unconfined
+}
+
+/// The public frontend whose `app_id` verdict this backend consumes.
+const FRONTEND_NAME: &str = "org.freedesktop.portal.Desktop";
+
+/// Whether this call came from the `xdg-desktop-portal` frontend.
+///
+/// `caller_identity` trusts the `app_id` ARGUMENT because the frontend
+/// authenticated the app before re-dispatching to us. That reasoning
+/// only holds for the frontend. A process that reaches our impl name
+/// directly supplies the argument itself, and BOTH shapes of that claim
+/// grant more than they should: a non-empty one names any grantee it
+/// likes (the Document Portal permission lands on another app's id), and
+/// an empty one is read as "unconfined" and answered with raw host
+/// `file://` paths for whatever the user picks. Absence of evidence was
+/// granting the widest access, so the check is positive: verified
+/// frontend, or refuse.
+///
+/// The comparison is unique-name to unique-name — `GetNameOwner` returns
+/// the owner's `:1.x`, which is exactly what the message header carries.
+/// `arlen.portal` registers us for the frontend alone, so nothing else
+/// is a legitimate caller and no supported flow is refused here.
+async fn sender_is_frontend(connection: &zbus::Connection, sender: Option<&str>) -> bool {
+    let owner = match zbus::fdo::DBusProxy::new(connection).await {
+        Ok(proxy) => match proxy.get_name_owner(FRONTEND_NAME.try_into().unwrap()).await {
+            Ok(owner) => Some(owner.as_str().to_string()),
+            Err(e) => {
+                // Unowned means the frontend is not running, so
+                // whoever called us is not it.
+                warn!("cannot resolve the {FRONTEND_NAME} owner: {e}");
+                None
+            }
+        },
+        Err(e) => {
+            warn!("cannot reach the bus daemon to attest the sender: {e}");
+            None
+        }
+    };
+    let attested = sender_matches_owner(sender, owner.as_deref());
+    // Both names are bus-assigned unique names, not caller text, so
+    // logging them is safe and is the only way to tell a mismatch
+    // apart from a sender the header never carried.
+    tracing::debug!(?sender, ?owner, attested, "sender attestation");
+    attested
+}
+
+/// The verdict itself, split out from the bus round-trip so every
+/// branch is checkable without a broker. Both unknowns — a message
+/// carrying no sender, an owner we could not resolve — are answers of
+/// "not attested", never "close enough".
+fn sender_matches_owner(sender: Option<&str>, owner: Option<&str>) -> bool {
+    match (sender, owner) {
+        (Some(sender), Some(owner)) => sender == owner,
+        _ => false,
+    }
+}
+
+/// The answer to a caller we could not attest as the frontend.
+///
+/// `OTHER` rather than `CANCELLED`: nothing was cancelled, the backend
+/// declined to act. The message names the reason without echoing the
+/// sender, which is attacker-controlled text.
+fn refuse_unattested_sender() -> (u32, HashMap<String, OwnedValue>) {
+    warn!("refusing a FileChooser call from a sender that is not the portal frontend");
+    (
+        response::OTHER,
+        error_results("caller is not the xdg-desktop-portal frontend"),
+    )
 }
 
 fn success_results(
@@ -389,7 +461,11 @@ impl FileChooser {
         title: &str,
         opts: HashMap<&str, OwnedValue>,
         #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] hdr: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
+        if !sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await {
+            return refuse_unattested_sender();
+        }
         let identity = caller_identity(app_id);
         let request = PickerRequest::OpenFile {
             handle: handle.to_string(),
@@ -415,7 +491,11 @@ impl FileChooser {
         title: &str,
         opts: HashMap<&str, OwnedValue>,
         #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] hdr: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
+        if !sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await {
+            return refuse_unattested_sender();
+        }
         let identity = caller_identity(app_id);
         let request = PickerRequest::SaveFile {
             handle: handle.to_string(),
@@ -440,7 +520,11 @@ impl FileChooser {
         title: &str,
         opts: HashMap<&str, OwnedValue>,
         #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] hdr: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
+        if !sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await {
+            return refuse_unattested_sender();
+        }
         let identity = caller_identity(app_id);
         let request = PickerRequest::SaveFiles {
             handle: handle.to_string(),
@@ -457,6 +541,41 @@ impl FileChooser {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_the_resolved_frontend_owner_is_attested() {
+        use super::sender_matches_owner;
+        // The one admitted shape: the message's sender IS the unique
+        // name currently owning org.freedesktop.portal.Desktop.
+        assert!(sender_matches_owner(Some(":1.42"), Some(":1.42")));
+        // Any other peer on the bus is not the frontend, however
+        // plausible the app_id it supplies.
+        assert!(!sender_matches_owner(Some(":1.99"), Some(":1.42")));
+    }
+
+    #[test]
+    fn an_unresolvable_sender_or_owner_is_refused_not_assumed() {
+        use super::sender_matches_owner;
+        // Neither unknown may resolve toward "let it through": a
+        // senderless message and an unowned frontend name are exactly
+        // the states a direct caller produces, and the old code path
+        // answered an unattested caller with raw host file:// URIs.
+        assert!(!sender_matches_owner(None, Some(":1.42")));
+        assert!(!sender_matches_owner(Some(":1.42"), None));
+        assert!(!sender_matches_owner(None, None));
+    }
+
+    #[test]
+    fn refusing_an_unattested_sender_is_a_backend_error_not_a_cancel() {
+        use super::{refuse_unattested_sender, response};
+        let (code, results) = refuse_unattested_sender();
+        // CANCELLED would tell the frontend the user declined, which
+        // is a lie and hides the refusal from anyone reading logs.
+        assert_eq!(code, response::OTHER);
+        assert_ne!(code, response::CANCELLED);
+        // No URIs may ride along with a refusal.
+        assert!(!results.contains_key(super::RESULT_URIS));
+    }
+
     use super::*;
     use std::ffi::OsString;
     use std::path::PathBuf;
