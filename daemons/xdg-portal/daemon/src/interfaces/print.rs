@@ -24,7 +24,7 @@ const MAX_DOCUMENT_BYTES: u64 = 512 * 1024 * 1024;
 /// Read a string setting from the portal's `a{sv}` settings map. GTK print
 /// settings carry their values as strings (e.g. `n-copies = "2"`).
 fn setting_str(settings: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
-    match Value::try_from(settings.get(key)?.clone()).ok()? {
+    match Value::from(settings.get(key)?.clone()) {
         Value::Str(s) => Some(s.to_string()),
         _ => None,
     }
@@ -73,8 +73,8 @@ struct Prepared {
 
 /// The `org.freedesktop.impl.portal.Print` backend state: the arlen-print service
 /// over the CUPS print system (recording submits to the audit ledger - the printer
-/// + destination, never the document) plus the `PreparePrint` -> `Print` token
-/// staging.
+/// and destination, never the document) plus the `PreparePrint` -> `Print`
+/// token staging.
 pub struct Print {
     service: PrintService<CupsBackend>,
     prepared: Mutex<Prepared>,
