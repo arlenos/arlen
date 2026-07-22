@@ -83,17 +83,71 @@ fn peer_uid(stream: &UnixStream) -> Option<u32> {
 /// resolution failure (no peercred, unreadable `/proc`) returns `false`
 /// (non-system), the fail-safe: a producer that cannot prove a system identity
 /// has its uid restamped from peercred.
+fn peer_tier(stream: &UnixStream) -> Option<arlen_permissions::AppTier> {
+    let cred = stream.peer_cred().ok()?;
+    let pid = cred.pid()?;
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
+    Some(arlen_permissions::detect_tier(&exe))
+}
+
 fn peer_is_system_producer(stream: &UnixStream) -> bool {
-    let Ok(cred) = stream.peer_cred() else {
-        return false;
-    };
-    let Some(pid) = cred.pid() else {
-        return false;
-    };
-    let Ok(exe) = std::fs::read_link(format!("/proc/{pid}/exe")) else {
-        return false;
-    };
-    arlen_permissions::detect_tier(&exe) == arlen_permissions::AppTier::System
+    peer_tier(stream) == Some(arlen_permissions::AppTier::System)
+}
+
+/// Resolve the connected peer's `app_id` and permission profile from its
+/// kernel-attested pid. `None` on any failure (unresolvable identity, missing or
+/// unparseable profile). The caller reads this as "no declared event-bus scope":
+/// in shadow mode a would-deny is logged; in enforce mode it fails closed.
+fn peer_app_profile(
+    stream: &UnixStream,
+) -> Option<(String, arlen_permissions::PermissionProfile)> {
+    let cred = stream.peer_cred().ok()?;
+    let pid = u32::try_from(cred.pid()?).ok()?;
+    let app_id = arlen_permissions::identity::app_id_from_pid(pid).ok()?;
+    let profile = arlen_permissions::load_profile(&app_id).ok()?;
+    Some((app_id, profile))
+}
+
+/// Whether the bus REJECTS an unauthorised publish/subscribe (enforce) or only
+/// LOGS it (shadow). Defaults to shadow so the first-party `[event_bus]` scopes
+/// can be verified against real traffic before the reject flip - the same
+/// shadow/enforce cutover the stamped-identity strand uses. Set
+/// `ARLEN_EVENT_BUS_ENFORCE=1` (or `true`) to reject.
+fn enforce_pubsub() -> bool {
+    matches!(
+        std::env::var("ARLEN_EVENT_BUS_ENFORCE").ok().as_deref(),
+        Some("1" | "true")
+    )
+}
+
+/// Whether `event_type` is within the peer's declared `[event_bus].publish`
+/// scope. A `None` scope (unresolved caller / no declared scope) is not
+/// permitted.
+fn publish_allowed(
+    scope: Option<&arlen_permissions::EventBusPermissions>,
+    event_type: &str,
+) -> bool {
+    scope.is_some_and(|s| s.can_publish(event_type))
+}
+
+/// Apply a consumer's declared `[event_bus].subscribe` scope to its requested
+/// patterns. Shadow mode (`enforce == false`) keeps every pattern verbatim so
+/// delivery is unchanged while denied patterns are only logged; enforce mode
+/// keeps only permitted patterns. A `None` scope is no declared scope: shadow
+/// keeps everything, enforce keeps nothing.
+fn permitted_subscriptions(
+    requested: &[String],
+    scope: Option<&arlen_permissions::EventBusPermissions>,
+    enforce: bool,
+) -> Vec<String> {
+    if !enforce {
+        return requested.to_vec();
+    }
+    requested
+        .iter()
+        .filter(|t| scope.is_some_and(|s| s.can_subscribe(t)))
+        .cloned()
+        .collect()
 }
 
 /// Handle a single producer connection.
@@ -107,6 +161,17 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
     // Resolved once at connect: peercred is fixed for the connection's life, so
     // the tier never changes mid-stream. Drives the EBK-2 uid-restamp exemption.
     let is_system_producer = peer_is_system_producer(&stream);
+    // Non-system producers are held to their declared `[event_bus].publish`
+    // scope. Resolved once (peercred is fixed for the connection). System-tier
+    // producers - the eBPF kernel-layer, the compositor, first-party daemons -
+    // are exempt, mirroring the uid-restamp exemption: they emit machine-wide
+    // events by design.
+    let publish_scope = if is_system_producer {
+        None
+    } else {
+        peer_app_profile(&stream)
+    };
+    let enforce = enforce_pubsub();
     debug!(
         uid = producer_uid,
         system = is_system_producer,
@@ -149,6 +214,28 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
                     event.uid = producer_uid;
                 }
 
+                // Hold a non-system producer to its declared publish scope.
+                // Shadow mode logs a would-deny and still dispatches; enforce
+                // mode drops the event. System producers skipped (exempt above).
+                if !is_system_producer
+                    && !publish_allowed(
+                        publish_scope.as_ref().map(|(_, p)| &p.event_bus),
+                        &event.r#type,
+                    )
+                {
+                    let app = publish_scope
+                        .as_ref()
+                        .map_or("<unresolved>", |(a, _)| a.as_str());
+                    if enforce {
+                        warn!(app_id = app, event_type = %event.r#type, "event-bus: publish denied, dropping event");
+                        continue;
+                    }
+                    // Shadow is advisory - debug so a dev stack whose daemons run
+                    // from target/ paths (no wired profile yet) does not flood the
+                    // live logs. Turn on debug to audit would-denies before enforce.
+                    debug!(app_id = app, event_type = %event.r#type, "event-bus: publish would be denied (shadow mode)");
+                }
+
                 match validation::validate(&event) {
                     Ok(()) => {
                         debug!(id = %event.id, event_type = %event.r#type, uid = event.uid, "received event");
@@ -186,6 +273,31 @@ async fn handle_consumer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
         .collect();
 
     let uid_filter = UidFilter::parse(&uid_line).map_err(|e| anyhow::anyhow!(e))?;
+
+    // Hold a non-system consumer to its declared `[event_bus].subscribe` scope.
+    // System-tier consumers (the knowledge daemon, the shell) observe the machine
+    // by design and are exempt, mirroring the producer exemption. Shadow mode
+    // logs each would-deny and keeps the pattern; enforce mode filters it out.
+    let subscribed_types = if peer_tier(&stream) == Some(arlen_permissions::AppTier::System) {
+        subscribed_types
+    } else {
+        let scope = peer_app_profile(&stream);
+        let ebus = scope.as_ref().map(|(_, p)| &p.event_bus);
+        let app = scope
+            .as_ref()
+            .map_or("<unresolved>", |(a, _)| a.as_str());
+        let enforce = enforce_pubsub();
+        for t in &subscribed_types {
+            if !ebus.is_some_and(|s| s.can_subscribe(t)) {
+                if enforce {
+                    warn!(app_id = app, pattern = %t, "event-bus: subscribe denied, filtering pattern");
+                } else {
+                    debug!(app_id = app, pattern = %t, "event-bus: subscribe would be denied (shadow mode)");
+                }
+            }
+        }
+        permitted_subscriptions(&subscribed_types, ebus, enforce)
+    };
 
     debug!(
         consumer_id = %consumer_id,
@@ -290,5 +402,52 @@ mod tests {
             !peer_is_system_producer(&sock_a),
             "a non-system-path peer must not be treated as a system producer"
         );
+    }
+
+    fn ebus(publish: &[&str], subscribe: &[&str]) -> arlen_permissions::EventBusPermissions {
+        arlen_permissions::EventBusPermissions {
+            publish: publish.iter().copied().map(String::from).collect(),
+            subscribe: subscribe.iter().copied().map(String::from).collect(),
+        }
+    }
+
+    #[test]
+    fn publish_allowed_matches_the_declared_scope() {
+        let scope = ebus(&["file.*"], &[]);
+        assert!(publish_allowed(Some(&scope), "file.opened"));
+        assert!(!publish_allowed(Some(&scope), "window.focused"));
+        // No resolved scope is never permitted (fail-closed for enforce, the
+        // shadow logger's would-deny signal).
+        assert!(!publish_allowed(None, "file.opened"));
+    }
+
+    #[test]
+    fn shadow_mode_keeps_every_subscription_verbatim() {
+        let scope = ebus(&[], &["file.*"]);
+        let requested = vec!["file.opened".to_string(), "window.focused".to_string()];
+        // enforce == false: delivery is unchanged even for out-of-scope patterns.
+        let kept = permitted_subscriptions(&requested, Some(&scope), false);
+        assert_eq!(kept, requested);
+        // And with no resolved scope at all.
+        let kept = permitted_subscriptions(&requested, None, false);
+        assert_eq!(kept, requested);
+    }
+
+    #[test]
+    fn enforce_mode_filters_out_of_scope_subscriptions() {
+        let scope = ebus(&[], &["file.*"]);
+        let requested = vec!["file.opened".to_string(), "window.focused".to_string()];
+        let kept = permitted_subscriptions(&requested, Some(&scope), true);
+        assert_eq!(kept, vec!["file.opened".to_string()]);
+        // No resolved scope under enforce keeps nothing (fail-closed).
+        assert!(permitted_subscriptions(&requested, None, true).is_empty());
+    }
+
+    #[test]
+    fn enforcement_defaults_to_shadow() {
+        // The default (env unset) must be shadow so the reject flip is an
+        // explicit opt-in and cannot silently break the live stack.
+        std::env::remove_var("ARLEN_EVENT_BUS_ENFORCE");
+        assert!(!enforce_pubsub(), "the bus must default to shadow (log-only)");
     }
 }
