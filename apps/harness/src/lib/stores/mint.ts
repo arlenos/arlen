@@ -14,6 +14,7 @@
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { tauriAvailable } from "$lib/tauri";
 
 /// A named thing the user can share (a project, a saved view, a selection).
 export interface ScopeOption {
@@ -100,11 +101,22 @@ export function closeMint(): void {
 }
 
 /// The named things the user can share. Live: `capsule_scope_options`.
+/// True while the scope menu and preview are FIXTURES, not your real data. The
+/// options read as things you actually saved ("Reading list - 12 notes you saved
+/// to read"), so unlabelled the user is choosing what to share out of an invented
+/// menu, against invented reach numbers.
+export const mintMocked = writable(false);
+
+/// Set when a real mint was refused. Empty otherwise.
+export const mintError = writable("");
+
 export async function loadScopeOptions(): Promise<void> {
   try {
     scopeOptions.set(await invoke<ScopeOption[]>("capsule_scope_options"));
+    mintMocked.set(false);
   } catch {
     scopeOptions.set(MOCK_SCOPE_OPTIONS);
+    mintMocked.set(true);
   }
 }
 
@@ -121,6 +133,7 @@ export async function loadPreview(scopeId: string): Promise<void> {
 /// Mint the capsule. Live: `capsule_mint` (materialize + sign + store). Records the
 /// scope label for the result screen either way.
 export async function mint(form: MintForm, scopeLabel: string): Promise<void> {
+  mintError.set("");
   try {
     await invoke("capsule_mint", {
       scopeId: form.scopeId,
@@ -130,8 +143,17 @@ export async function mint(form: MintForm, scopeLabel: string): Promise<void> {
       dropped: form.dropped,
       includeSensitive: form.includeSensitive,
     });
-  } catch {
-    // No daemon under vite: the flow still confirms against the fixture.
+  } catch (e) {
+    // A REAL refusal must not reach the success screen. `mintResult` used to be
+    // set unconditionally, so a mint the daemon rejected (bad audience, expiry,
+    // no signing key) still confirmed - telling the user a signed capsule of
+    // their data exists and was shared when none was made. Without the runtime
+    // there is no daemon to refuse, so the flow still confirms against the
+    // fixture and stays reviewable.
+    if (tauriAvailable) {
+      mintError.set(`Could not create that capsule: ${String(e)}`);
+      return;
+    }
   }
   mintResult.set(scopeLabel);
 }
