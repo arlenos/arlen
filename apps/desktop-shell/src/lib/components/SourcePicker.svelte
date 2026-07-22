@@ -6,7 +6,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
-  import { current, sources, share, cancel } from "$lib/stores/sourcePicker";
+  import { current, sources, sourcesMocked, share, cancel } from "$lib/stores/sourcePicker";
 
   let selected = $state<{ kind: "monitor" | "window" | "region"; id: string } | null>(null);
   let showCursor = $state(true);
@@ -33,6 +33,11 @@
         </header>
 
         <div class="sp-scroll">
+          {#if $sourcesMocked}
+            <!-- Picking one of these is a privacy decision; they must not pass
+                 as this machine's real screens and windows. -->
+            <p class="sp-sample">Example screens and windows - not the real ones on this machine.</p>
+          {/if}
           {#if $sources.monitors.length > 0}
             <div class="sp-group">Screens</div>
             <div class="sp-monitors">
@@ -117,6 +122,12 @@
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
+  }
+  .sp-sample {
+    margin: 0 0 0.6rem;
+    font-size: var(--text-2xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .sp-group {
     margin-top: 0.5rem;

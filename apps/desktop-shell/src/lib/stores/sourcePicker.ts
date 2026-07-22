@@ -72,15 +72,37 @@ export const current = writable<SourceRequest | null>(null);
 /// The sources to choose from.
 export const sources = writable<Sources>({ monitors: [], windows: [] });
 
+/// True while the source list is the FIXTURE (named displays, real-looking window
+/// titles) rather than this machine's actual capturable surfaces. Picking one to
+/// share is a privacy decision, so the list must not pass as real.
+export const sourcesMocked = writable(false);
+
 /// Open the picker for a request + load the sources. Live: driven by the portal
-/// event + `list_capture_sources`; fixture under vite.
-export async function openSourcePicker(): Promise<void> {
-  current.set(FIXTURE_REQUEST);
+/// event + `list_capture_sources`; fixture sources under vite.
+///
+/// `request` is REQUIRED and carries the real requesting app. It used to be
+/// unconditionally `FIXTURE_REQUEST` (`com.example.meet`, "Meet") with no way to
+/// pass the caller in - so once the portal wired this up, the consent dialog
+/// would have named "Meet" no matter which app actually asked. In a screen-capture
+/// prompt the requester IS the fact the user decides on, so a wrong name there
+/// grants capture to the wrong app. There are no callers yet; the portal wiring
+/// must supply the attested requester, and the demo helper below passes the
+/// fixture EXPLICITLY so the live path can never fall back to it.
+export async function openSourcePicker(request: SourceRequest): Promise<void> {
+  current.set(request);
   try {
     sources.set(await invoke<Sources>("list_capture_sources"));
+    sourcesMocked.set(false);
   } catch {
     sources.set(FIXTURE_SOURCES);
+    sourcesMocked.set(true);
   }
+}
+
+/// Open the picker against the fixture requester - dev/demo only, never a live
+/// portal path (which must pass its own attested `SourceRequest`).
+export async function openSourcePickerDemo(): Promise<void> {
+  await openSourcePicker(FIXTURE_REQUEST);
 }
 
 /// Share the picked source. Live: `start_screencast` binds the source + cursor +
