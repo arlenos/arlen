@@ -55,11 +55,34 @@ pub async fn ai_models_list() -> String {
     call_string(AI_BUS, AI_PATH, "ai_models_list", "[]").await
 }
 
-/// The current live selection (`ai_active`): `{ provider, model }`. Empty object
-/// if the daemon is unreachable.
+/// The current live selection (`ai_active`): `{ provider, model }`.
+///
+/// The active selection IS the config: the engine reads `ai.toml`'s `[ai].provider`
+/// and `[provider].model` per epoch, so that file is the source of truth, not a
+/// daemon (nothing serves `ai_active` on `org.arlen.AI1`). Reuses the same
+/// extraction the capability indicator uses, so the picker and the indicator can
+/// never disagree about what is active. Empty object if the config is unreadable
+/// or names neither - the picker renders "loading/none" rather than a wrong model.
 #[tauri::command]
 pub async fn ai_active() -> String {
-    call_string(AI_BUS, AI_PATH, "ai_active", "{}").await
+    let Ok(text) = std::fs::read_to_string(crate::capability::ai_config_path()) else {
+        return "{}".to_string();
+    };
+    let Ok(doc) = text.parse::<toml::Table>() else {
+        return "{}".to_string();
+    };
+    active_selection_json(&doc)
+}
+
+/// Format the active `{ provider, model }` from a parsed `ai.toml`. `{}` unless
+/// BOTH are present: a half-configured selection (one key) is not a usable active
+/// model, so the picker reads none rather than a partial it cannot act on. Pure,
+/// so the both-vs-partial branching is tested without touching the filesystem.
+fn active_selection_json(doc: &toml::Table) -> String {
+    match crate::capability::provider_and_model(doc) {
+        (Some(p), Some(m)) => serde_json::json!({ "provider": p, "model": m }).to_string(),
+        _ => "{}".to_string(),
+    }
 }
 
 /// Sum ai-proxy's per-provider usage report into the Cost feed's shape.
@@ -371,7 +394,7 @@ pub fn open_ai_settings() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::sum_usage;
+    use super::{active_selection_json, sum_usage};
 
     #[test]
     fn folds_providers_into_one_total() {
@@ -401,6 +424,30 @@ mod tests {
         assert_eq!(out["inputTokens"], 0);
     }
 
+    #[test]
+    fn active_selection_needs_both_provider_and_model() {
+        // The live ai.toml shape: [ai].provider + [provider].model.
+        let doc = "[ai]\nprovider = \"ollama-default\"\n[provider]\nmodel = \"qwen2.5:7b\"\n"
+            .parse::<toml::Table>()
+            .unwrap();
+        let out: serde_json::Value = serde_json::from_str(&active_selection_json(&doc)).unwrap();
+        assert_eq!(out["provider"], "ollama-default");
+        assert_eq!(out["model"], "qwen2.5:7b");
+    }
+
+    #[test]
+    fn a_half_configured_selection_reads_as_none() {
+        // Provider set but no model (or vice versa) is not something the picker can
+        // act on, so it is {} - never a partial the UI would show as active.
+        let provider_only = "[ai]\nprovider = \"ollama-default\"\n".parse::<toml::Table>().unwrap();
+        assert_eq!(active_selection_json(&provider_only), "{}");
+        let model_only = "[provider]\nmodel = \"qwen2.5:7b\"\n".parse::<toml::Table>().unwrap();
+        assert_eq!(active_selection_json(&model_only), "{}");
+        let empty = "[ai]\nenabled = true\n".parse::<toml::Table>().unwrap();
+        assert_eq!(active_selection_json(&empty), "{}");
+    }
+
+    #[test]
     #[test]
     fn malformed_report_is_none_so_the_feed_says_not_measured() {
         // The honesty rule: an unparseable report must not become a fabricated
