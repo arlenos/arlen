@@ -132,6 +132,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-forage-bridge-install"
+version = "0.1.0"
+dependencies = [
+ "arlen-forage-recipe",
+ "arlen-permissions",
+ "serde",
+ "thiserror 2.0.18",
+ "toml",
+]
+
+[[package]]
 name = "arlen-forage-build"
 version = "0.1.0"
 dependencies = [
@@ -828,6 +839,7 @@ dependencies = [
  "arlen-cookbook-index",
  "arlen-cookbook-resolve",
  "arlen-cookbook-sign",
+ "arlen-forage-bridge-install",
  "arlen-forage-build",
  "arlen-forage-capabilities",
  "arlen-forage-fetch",
@@ -836,6 +848,7 @@ dependencies = [
  "arlen-forage-signing",
  "arlen-forage-store",
  "arlen-modules",
+ "arlen-permissions",
  "chrono",
  "clap",
  "colored",

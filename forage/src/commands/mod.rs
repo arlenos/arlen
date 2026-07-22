@@ -1,3 +1,4 @@
+pub mod bridge;
 pub mod build;
 pub mod build_config;
 pub mod challenge;

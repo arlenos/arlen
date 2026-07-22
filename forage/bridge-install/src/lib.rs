@@ -151,6 +151,20 @@ pub fn add_delegated_namespace(
     true
 }
 
+/// Remove `namespace` from a profile's `graph.delegated_namespaces`, idempotently.
+/// Returns `true` if it was removed, `false` if it was already absent. Pure - the
+/// caller persists. The rollback complement of [`add_delegated_namespace`]: when a
+/// batch install fails after a bridge granted its namespace, the transaction undoes
+/// the grant so no namespace is left behind with no bridge behind it.
+pub fn remove_delegated_namespace(
+    profile: &mut arlen_permissions::PermissionProfile,
+    namespace: &str,
+) -> bool {
+    let before = profile.graph.delegated_namespaces.len();
+    profile.graph.delegated_namespaces.retain(|n| n != namespace);
+    profile.graph.delegated_namespaces.len() != before
+}
+
 /// A fresh bridge-ingest profile (FirstParty, no scope but the one namespace we add
 /// next). Built by deserializing the minimal `[info]` so all other sections take
 /// their serde defaults.
@@ -186,6 +200,34 @@ pub fn provision_bridge_namespace(namespace: &str) -> Result<bool, ProvisionErro
 
     if !add_delegated_namespace(&mut profile, namespace) {
         return Ok(false); // already granted; nothing to write
+    }
+
+    let text = toml::to_string(&profile).expect("a PermissionProfile serializes to TOML");
+    write_atomic(&path, text.as_bytes())?;
+    Ok(true)
+}
+
+/// Remove a bridge's delegated namespace from the shared bridge-ingest profile: the
+/// rollback complement of [`provision_bridge_namespace`]. Load the profile, drop
+/// `namespace` idempotently, and write it back atomically. Returns `true` if the
+/// profile changed (the namespace was present and removed), `false` if it was absent
+/// (or there is no profile). Used when a batch install unwinds a bridge whose grant
+/// this same transaction just added, so a failed install never leaves a live grant.
+/// A missing profile is a no-op (nothing to revoke), not an error.
+pub fn deprovision_bridge_namespace(namespace: &str) -> Result<bool, ProvisionError> {
+    let path = arlen_permissions::profile_path(BRIDGE_INGEST_APP_ID)
+        .map_err(|e| ProvisionError::Path(e.to_string()))?;
+
+    let mut profile: arlen_permissions::PermissionProfile = match std::fs::read_to_string(&path) {
+        Ok(text) => toml::from_str(&text).map_err(|e| ProvisionError::Parse(e.to_string()))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(source) => {
+            return Err(ProvisionError::Io { path: path.display().to_string(), source })
+        }
+    };
+
+    if !remove_delegated_namespace(&mut profile, namespace) {
+        return Ok(false); // already absent; nothing to write
     }
 
     let text = toml::to_string(&profile).expect("a PermissionProfile serializes to TOML");
@@ -599,6 +641,30 @@ mod tests {
             provision_bridge_namespace("system.core"),
             Err(ProvisionError::InvalidNamespace(_))
         ));
+        std::env::remove_var("ARLEN_PERMISSIONS_DIR");
+    }
+
+    #[test]
+    fn deprovision_removes_only_the_named_namespace() {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("ARLEN_PERMISSIONS_DIR", dir.path());
+
+        provision_bridge_namespace("md.obsidian").unwrap();
+        provision_bridge_namespace("com.zotero").unwrap();
+
+        // Removing one leaves the other (a shared-identity partial rollback).
+        assert!(deprovision_bridge_namespace("md.obsidian").unwrap());
+        let path = dir.path().join("bridge-ingest.toml");
+        let p: arlen_permissions::PermissionProfile =
+            toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(p.graph.delegated_namespaces, vec!["com.zotero"]);
+
+        // Removing an absent namespace is a no-op, not an error.
+        assert!(!deprovision_bridge_namespace("md.obsidian").unwrap());
+        // No profile at all: also a clean no-op.
+        std::fs::remove_file(&path).unwrap();
+        assert!(!deprovision_bridge_namespace("com.zotero").unwrap());
         std::env::remove_var("ARLEN_PERMISSIONS_DIR");
     }
 
