@@ -102,6 +102,96 @@ pub fn enroll_matched(
         .collect()
 }
 
+/// Where the pre-install stage leaves the packages the post-install stage has to
+/// finish confining.
+///
+/// The two stages cannot be one hook. `DPkg::Pre-Install-Pkgs` runs BEFORE dpkg
+/// unpacks - the stream hands over `/var/cache/apt/archives/*.deb`, the archive,
+/// precisely because the files are not installed yet - so the `.desktop` entries
+/// it would have to rewrite do not exist during it. The profile write has to be
+/// there (it must precede the first launch); the launcher rewrite has to be
+/// after. `DPkg::Post-Invoke` runs after, but is handed no package list, so the
+/// first stage writes one down for the second.
+pub const PENDING_FILE: &str = "apt-enroll.pending";
+
+/// Record the packages whose launchers still need rewriting. Overwrites rather
+/// than appends: a stale list from an apt run that died between the stages would
+/// otherwise make every later run redo old packages forever.
+pub fn record_pending(dir: &Path, packages: &[String]) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    std::fs::write(dir.join(PENDING_FILE), packages.join("\n"))
+}
+
+/// Read the pending packages and clear the file, so a crash mid-rewrite loses at
+/// most one apt run's launchers rather than repeating them indefinitely. The
+/// next upgrade of the same package enrolls it again.
+pub fn take_pending(dir: &Path) -> Vec<String> {
+    let path = dir.join(PENDING_FILE);
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    let _ = std::fs::remove_file(&path);
+    content
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// The directory holding launcher overrides.
+///
+/// `/usr/local/share/applications` comes before `/usr/share/applications` in the
+/// default `XDG_DATA_DIRS`, so a `.desktop` file placed here shadows the
+/// packaged one of the same name.
+pub const OVERRIDE_DIR: &str = "/usr/local/share/applications";
+
+/// Where the override for a packaged `.desktop` entry goes: same file name, in
+/// the higher-precedence directory.
+///
+/// Editing the packaged file in place was the other option and is worse in the
+/// way that matters most here: dpkg replaces its own files on upgrade, so the
+/// confinement would silently disappear the next time the package is updated -
+/// a security property vanishing with no error and no trace. An override is not
+/// dpkg's to overwrite. It also keeps `dpkg --verify` honest.
+pub fn override_path_for(entry: &Path, override_dir: &Path) -> Option<PathBuf> {
+    entry.file_name().map(|n| override_dir.join(n))
+}
+
+/// Write launcher overrides for one package's `.desktop` entries, reading each
+/// packaged entry and rewriting its `Exec=` to go through `arlen-run`.
+///
+/// `entries` comes from `apt_hook::classify_package_files` over `dpkg -L` output.
+/// Refreshed on every enrolment (an upgrade re-unpacks, so it is an install
+/// action too), which keeps an override from going stale against a package that
+/// changed its own `Exec`.
+pub fn write_launcher_overrides(
+    app_id: &str,
+    entries: &[PathBuf],
+    override_dir: &Path,
+) -> Result<Vec<PathBuf>, String> {
+    if entries.is_empty() {
+        return Ok(Vec::new());
+    }
+    std::fs::create_dir_all(override_dir)
+        .map_err(|e| format!("cannot create {}: {e}", override_dir.display()))?;
+    let mut written = Vec::new();
+    for entry in entries {
+        let Some(dest) = override_path_for(entry, override_dir) else {
+            continue;
+        };
+        let content = std::fs::read_to_string(entry)
+            .map_err(|e| format!("cannot read {}: {e}", entry.display()))?;
+        let rewritten = crate::apt_hook::rewrite_desktop_exec(&content, app_id);
+        // Atomic, so a launcher is never half-written and unparseable.
+        let tmp = dest.with_extension("desktop.tmp");
+        std::fs::write(&tmp, &rewritten)
+            .map_err(|e| format!("cannot write {}: {e}", tmp.display()))?;
+        std::fs::rename(&tmp, &dest)
+            .map_err(|e| format!("cannot install {}: {e}", dest.display()))?;
+        written.push(dest);
+    }
+    Ok(written)
+}
+
 /// The human uids a machine-wide package enrolment fans out to: every account in
 /// `/etc/passwd` inside the conventional login-uid range with a real shell.
 ///
@@ -153,6 +243,95 @@ mod tests {
         )
         .unwrap();
         p
+    }
+
+    #[test]
+    fn the_pending_list_round_trips_and_is_cleared_by_reading() {
+        let tmp = tempfile::tempdir().unwrap();
+        record_pending(tmp.path(), &["hello".into(), "vlc".into()]).unwrap();
+        assert_eq!(take_pending(tmp.path()), vec!["hello", "vlc"]);
+        // Cleared: a crash between the stages must lose one run's launchers, not
+        // make every later apt run redo the same packages forever.
+        assert!(take_pending(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn a_missing_pending_file_is_empty_not_an_error() {
+        // Post-Invoke fires on every apt run, including ones that enrolled
+        // nothing at all.
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(take_pending(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn recording_replaces_rather_than_appends() {
+        let tmp = tempfile::tempdir().unwrap();
+        record_pending(tmp.path(), &["old".into()]).unwrap();
+        record_pending(tmp.path(), &["new".into()]).unwrap();
+        assert_eq!(take_pending(tmp.path()), vec!["new"]);
+    }
+
+    #[test]
+    fn an_override_shadows_the_packaged_launcher_by_name() {
+        // XDG resolves a desktop id by file name across XDG_DATA_DIRS in order,
+        // so the override must keep the packaged name to win.
+        let dir = Path::new("/usr/local/share/applications");
+        assert_eq!(
+            override_path_for(Path::new("/usr/share/applications/hello.desktop"), dir),
+            Some(dir.join("hello.desktop"))
+        );
+    }
+
+    #[test]
+    fn the_override_launches_through_arlen_run_and_leaves_the_package_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let packaged_dir = tmp.path().join("usr/share/applications");
+        std::fs::create_dir_all(&packaged_dir).unwrap();
+        let packaged = packaged_dir.join("hello.desktop");
+        let original = "[Desktop Entry]\nType=Application\nName=Hello\nExec=/usr/bin/hello %U\n";
+        std::fs::write(&packaged, original).unwrap();
+        let overrides = tmp.path().join("usr/local/share/applications");
+
+        let written =
+            write_launcher_overrides("hello", &[packaged.clone()], &overrides).unwrap();
+        assert_eq!(written.len(), 1);
+        let body = std::fs::read_to_string(&written[0]).unwrap();
+        assert!(
+            body.contains("Exec=arlen-run --app-id hello -- /usr/bin/hello %U"),
+            "the override must launch through the confiner, got: {body}"
+        );
+        assert!(body.contains("Name=Hello"), "other keys must survive");
+        // dpkg replaces its own files on upgrade, so an in-place edit would drop
+        // the confinement silently. The packaged entry stays untouched.
+        assert_eq!(std::fs::read_to_string(&packaged).unwrap(), original);
+    }
+
+    #[test]
+    fn rewriting_the_same_package_again_is_stable() {
+        // An upgrade re-unpacks and so re-enrolls; the refresh must not stack
+        // another arlen-run in front of the previous one.
+        let tmp = tempfile::tempdir().unwrap();
+        let packaged = tmp.path().join("hello.desktop");
+        std::fs::write(&packaged, "[Desktop Entry]\nExec=/usr/bin/hello\n").unwrap();
+        let overrides = tmp.path().join("over");
+        write_launcher_overrides("hello", &[packaged.clone()], &overrides).unwrap();
+        let once = std::fs::read_to_string(overrides.join("hello.desktop")).unwrap();
+        // Second pass reads the PACKAGED entry again, so it is idempotent by
+        // construction; assert it rather than assume it.
+        write_launcher_overrides("hello", &[packaged], &overrides).unwrap();
+        let twice = std::fs::read_to_string(overrides.join("hello.desktop")).unwrap();
+        assert_eq!(once, twice);
+        assert_eq!(twice.matches("arlen-run").count(), 1);
+    }
+
+    #[test]
+    fn a_package_shipping_no_launcher_writes_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let overrides = tmp.path().join("over");
+        assert!(write_launcher_overrides("cli-tool", &[], &overrides)
+            .unwrap()
+            .is_empty());
+        assert!(!overrides.exists(), "no launcher, no override directory");
     }
 
     #[test]

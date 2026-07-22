@@ -17,3 +17,10 @@
 // not.
 DPkg::Pre-Install-Pkgs { "/usr/lib/arlen/permission-helper --apt-hook"; };
 DPkg::Tools::Options::"/usr/lib/arlen/permission-helper --apt-hook"::Version "3";
+
+// Second stage, after dpkg has unpacked. It cannot be folded into the first:
+// Pre-Install-Pkgs runs before the files exist, so the .desktop entries whose
+// Exec= has to point at arlen-run are not there yet. Post-Invoke is handed no
+// package list, so the first stage writes one to /var/lib/arlen for this one to
+// consume. Fires on every apt run and does nothing when that list is empty.
+DPkg::Post-Invoke { "/usr/lib/arlen/permission-helper --apt-post-install"; };

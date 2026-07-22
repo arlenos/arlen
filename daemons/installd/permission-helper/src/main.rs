@@ -64,6 +64,12 @@ fn run_apt_hook() {
         tracing::warn!("apt-enroll: no human accounts to enroll for");
         return;
     }
+    // Hand the launcher rewrite to the post-install stage: the .desktop files
+    // do not exist yet during Pre-Install-Pkgs.
+    let enrolled: Vec<String> = matched.iter().map(|(p, _)| p.clone()).collect();
+    if let Err(e) = apt_enroll::record_pending(&state_dir(), &enrolled) {
+        tracing::warn!("apt-enroll: cannot record pending launchers: {e}");
+    }
     for outcome in apt_enroll::enroll_matched(&matched, &uids, &profile::base_dir()) {
         match outcome {
             apt_enroll::Enrolled::Written { package, paths } => {
@@ -73,6 +79,67 @@ fn run_apt_hook() {
                 // Loud, because the package installed and is running unconfined.
                 tracing::warn!("apt-enroll: {package} left unconfined: {reason}");
             }
+        }
+    }
+}
+
+/// Where the two apt stages hand off. Under the helper's own state root, so it
+/// is root-owned like everything else it writes.
+fn state_dir() -> std::path::PathBuf {
+    #[cfg(debug_assertions)]
+    if let Ok(dir) = std::env::var("ARLEN_ENROLL_STATE_DIR") {
+        return std::path::PathBuf::from(dir);
+    }
+    std::path::PathBuf::from("/var/lib/arlen")
+}
+
+/// The launcher-override directory, with the same debug-only override the other
+/// paths carry so the stage is testable without writing system directories.
+fn override_dir() -> std::path::PathBuf {
+    #[cfg(debug_assertions)]
+    if let Ok(dir) = std::env::var("ARLEN_OVERRIDE_APPLICATIONS_DIR") {
+        return std::path::PathBuf::from(dir);
+    }
+    std::path::PathBuf::from(apt_enroll::OVERRIDE_DIR)
+}
+
+/// Run the post-install stage: rewrite the launchers of everything the
+/// pre-install stage enrolled, now that dpkg has unpacked them.
+///
+/// Also always exits 0. This runs from `DPkg::Post-Invoke`, which fires on every
+/// apt run including ones that enrolled nothing.
+fn run_apt_post_install() {
+    let packages = apt_enroll::take_pending(&state_dir());
+    if packages.is_empty() {
+        return;
+    }
+    let dir = override_dir();
+    for package in packages {
+        let listing = match std::process::Command::new("dpkg").arg("-L").arg(&package).output() {
+            Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).into_owned(),
+            Ok(out) => {
+                tracing::warn!(
+                    "apt-enroll: dpkg -L {package} failed ({}); launcher not confined",
+                    out.status
+                );
+                continue;
+            }
+            Err(e) => {
+                tracing::warn!("apt-enroll: cannot run dpkg -L {package}: {e}");
+                continue;
+            }
+        };
+        let files = apt_hook::classify_package_files(&listing);
+        match apt_enroll::write_launcher_overrides(&package, &files.desktop_entries, &dir) {
+            Ok(written) if written.is_empty() => {
+                tracing::info!("apt-enroll: {package} ships no launcher; profile only");
+            }
+            Ok(written) => {
+                tracing::info!("apt-enroll: {package} launches confined ({} entries)", written.len());
+            }
+            // Loud: the package is installed with a profile but still launches
+            // unconfined, which is the state most likely to be mistaken for done.
+            Err(e) => tracing::warn!("apt-enroll: {package} launcher not confined: {e}"),
         }
     }
 }
@@ -89,6 +156,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // apt invokes this binary as a hook, not as the bus service.
     if std::env::args().any(|a| a == "--apt-hook") {
         run_apt_hook();
+        return Ok(());
+    }
+    if std::env::args().any(|a| a == "--apt-post-install") {
+        run_apt_post_install();
         return Ok(());
     }
 
