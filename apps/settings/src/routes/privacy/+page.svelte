@@ -43,6 +43,7 @@
     grants,
     grantsLoaded,
     grantsError,
+    grantsMocked,
     removed,
     byApp,
     byCapability,
@@ -235,6 +236,13 @@
         onchange={(v) => (pivot = v as "app" | "capability")}
       />
     </div>
+
+    {#if $grantsMocked}
+      <!-- Said before any grant is read: this list invents access that does not
+           exist AND omits access that does, and it is the surface a user trusts
+           to answer "what can reach my data". -->
+      <p class="note span-full">{$t("s.priv.sample")}</p>
+    {/if}
 
     {#if $grantsError}
       <Group label={$t("s.priv.title")} class="span-full">
