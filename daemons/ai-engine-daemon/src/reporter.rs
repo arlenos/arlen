@@ -21,7 +21,8 @@
 use crate::dispatch::Reporter;
 use crate::session::SessionGrant;
 use ai_engine_contract::{Report, ReportAck, ScreenVerdict};
-use arlen_ai_core::audit::behaviour_action_event;
+use crate::capability_map::{gate_class_for_tool, GateClass};
+use arlen_ai_core::audit::{behaviour_action_event, behaviour_graph_access_event};
 use arlen_ai_core::screen::{Screener, Verdict};
 use async_trait::async_trait;
 use audit_proto::sink::AuditSink;
@@ -68,7 +69,17 @@ impl Reporter for ScreeningReporter {
         // subject so no free text reaches the Structural tier. If the ledger
         // cannot record it, the content must not pass - fail closed to Block.
         let outcome = if req.is_error { "tool-result:error" } else { "tool-result" };
-        let event = behaviour_action_event(&req.tool_name, outcome, &req.tool_call_id);
+        // A read tool's result is a GRAPH ACCESS, audited under that kind so the
+        // transparency drawer's anti-Recall "what the AI read" view (which filters
+        // the ledger to `GraphAccess`) actually sees it. Every other tool is a
+        // routine action (`Permission`). Without this split a `graph.read` was
+        // audited as `Permission` and the reads feed stayed empty despite the AI
+        // reading - the read was in the ledger under a kind that view ignores.
+        let event = if gate_class_for_tool(&req.tool_name) == GateClass::Read {
+            behaviour_graph_access_event(&req.tool_name, outcome, &req.tool_call_id)
+        } else {
+            behaviour_action_event(&req.tool_name, outcome, &req.tool_call_id)
+        };
         if self.audit.submit(event).await.is_err() {
             return ReportAck { screen: ScreenVerdict::Block };
         }
@@ -132,6 +143,39 @@ mod tests {
         let ack = reporter.report(&report(serde_json::json!("hello"), false), &grant()).await;
         assert_eq!(ack.screen, ScreenVerdict::Clean);
         assert_eq!(audit.recorded().await.len(), 1, "the result was audited before passing");
+    }
+
+    #[tokio::test]
+    async fn a_read_is_audited_as_graph_access_for_the_anti_recall_feed() {
+        // The reads feed filters the ledger to GraphAccess; a graph.read must be
+        // recorded under that kind or "what the AI read" stays empty despite the
+        // AI reading.
+        use audit_proto::AuditKind;
+        let audit = Arc::new(MockAuditSink::accepting());
+        let reporter = ScreeningReporter::new(audit.clone(), Screener::off());
+        // `report()` uses tool_name "graph.read" (GateClass::Read).
+        reporter.report(&report(serde_json::json!({"rows": []}), false), &grant()).await;
+        let recorded = audit.recorded().await;
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0].kind, AuditKind::GraphAccess, "a read must audit as GraphAccess");
+    }
+
+    #[tokio::test]
+    async fn a_non_read_tool_stays_a_permission_action() {
+        // Only reads become GraphAccess; a write/action stays the generic action
+        // kind so the reads feed does not mistake it for a read.
+        use audit_proto::AuditKind;
+        let audit = Arc::new(MockAuditSink::accepting());
+        let reporter = ScreeningReporter::new(audit.clone(), Screener::off());
+        let write = Report {
+            tool_name: "graph.write".into(),
+            tool_call_id: "c".into(),
+            result: serde_json::json!("ok"),
+            is_error: false,
+        };
+        reporter.report(&write, &grant()).await;
+        let recorded = audit.recorded().await;
+        assert_eq!(recorded[0].kind, AuditKind::Permission, "a write must not audit as a read");
     }
 
     #[tokio::test]
