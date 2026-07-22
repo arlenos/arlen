@@ -61,7 +61,10 @@ const FIXTURE = {
   project: { name: "Arlen editor", members: ["roadmap.md", "provenance.md", "lens-design.md"] },
 };
 
-export const lens = writable<LensState>({ ...FIXTURE, mocked: false });
+// `mocked: true` because this IS the fixture. The panel renders before (and
+// without) any `loadLens`, so flagging the initial value as live claimed invented
+// provenance, backlinks and a project as the open file's real graph neighbourhood.
+export const lens = writable<LensState>({ ...FIXTURE, mocked: true });
 
 /// Load the lens for a file. Live: the three graph queries; fixture under vite.
 export async function loadLens(ref: string): Promise<void> {
