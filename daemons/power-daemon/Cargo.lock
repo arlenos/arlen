@@ -53,6 +53,7 @@ name = "arlen-powerd"
 version = "0.1.0"
 dependencies = [
  "arlen-permissions",
+ "futures-util",
  "os-sdk",
  "prost",
  "sd-notify",
