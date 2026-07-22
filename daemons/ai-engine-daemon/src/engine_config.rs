@@ -181,12 +181,22 @@ pub fn provider_settings_from_text(text: &str) -> ProviderSettings {
     }
 }
 
-/// Resolve the [`ProviderSettings`] from the on-disk `ai.toml` (safe defaults +
-/// empty name if missing/unreadable).
+/// Resolve the [`ProviderSettings`]: the `[provider]` model/window/token come from
+/// `ai.toml` (not broker-owned), but the provider NAME (`ai.provider`) is a master
+/// switch, so it is taken from the config-broker when reachable - matching Settings'
+/// write side, which routes an `ai.provider` change to the broker. A broker that is
+/// unreachable or whose provider is unset leaves the ai.toml name in place (the
+/// coherent fallback). Safe defaults + empty name if `ai.toml` is missing/unreadable.
 pub fn provider_settings() -> ProviderSettings {
-    std::fs::read_to_string(ai_config_path())
+    let mut settings = std::fs::read_to_string(ai_config_path())
         .map(|t| provider_settings_from_text(&t))
-        .unwrap_or_else(|_| provider_settings_from_text(""))
+        .unwrap_or_else(|_| provider_settings_from_text(""));
+    if let Some(name) = from_broker(|s| s.provider.clone()) {
+        if !name.is_empty() {
+            settings.name = name;
+        }
+    }
+    settings
 }
 
 /// Whether `[agent] executor_live` is true in the given `ai.toml` text. A
@@ -262,6 +272,40 @@ mod tests {
         assert!(executor_live(), "the reached broker must override ai.toml's executor-off");
 
         // Reset the global cache + env so nothing leaks into other tests.
+        publish_broker_switches(None);
+        std::env::remove_var("ARLEN_AI_CONFIG");
+        let _ = std::fs::remove_file(&ai);
+    }
+
+    #[test]
+    fn provider_settings_takes_the_name_from_the_broker_but_the_model_from_ai_toml() {
+        let _g = CACHE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let ai = std::env::temp_dir().join(format!("arlen-engcfg-prov-{}.toml", std::process::id()));
+        std::fs::write(
+            &ai,
+            "[ai]\nprovider = \"ai-toml-prov\"\n[provider]\nmodel = \"llama3:8b\"\n",
+        )
+        .unwrap();
+        std::env::set_var("ARLEN_AI_CONFIG", &ai);
+
+        // Broker unreachable -> the name comes from ai.toml.
+        publish_broker_switches(None);
+        assert_eq!(provider_settings().name, "ai-toml-prov");
+
+        // Broker reached with a provider -> the NAME is the broker's (matching the
+        // Settings write), but the model stays from ai.toml (not broker-owned).
+        publish_broker_switches(Some(arlen_config_broker::AiMasterSwitches {
+            provider: "broker-prov".to_string(),
+            ..Default::default()
+        }));
+        let s = provider_settings();
+        assert_eq!(s.name, "broker-prov", "the provider name is the broker's");
+        assert_eq!(s.model, "llama3:8b", "the model stays from ai.toml");
+
+        // An empty broker provider does not blank the ai.toml name.
+        publish_broker_switches(Some(arlen_config_broker::AiMasterSwitches::default()));
+        assert_eq!(provider_settings().name, "ai-toml-prov");
+
         publish_broker_switches(None);
         std::env::remove_var("ARLEN_AI_CONFIG");
         let _ = std::fs::remove_file(&ai);
