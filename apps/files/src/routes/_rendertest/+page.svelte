@@ -16,6 +16,7 @@
   const IMAGE = "/demo/inn-sunset.jpg";
   const FOLDER = "/demo/Projects";
   const SYMLINK = "/demo/shortcut";
+  const REALFILE = "/demo/thesis-live.md"; // provenance_of IS mocked for this one
 
   // A stand-in thumbnail data URI (the real `files_thumbnail` returns one).
   const thumbSvg =
@@ -65,6 +66,22 @@
           if (a.path === SYMLINK) return symlinkInfo;
           return fileInfo;
         }
+        // The live shape the Rust `provenance_of` (PH-R2) emits: a real,
+        // graph-backed chain (mocked:false), every step `graph` origin, the access
+        // step `pid` fidelity, a foreign co-tenant summarised at `proxy`, horizon
+        // deeper_gated. Renders the NON-sample state so the serde contract and the
+        // "no sample banner" branch are both exercised.
+        if (cmd === "provenance_of" && a.ref === REALFILE)
+          return {
+            subject: "thesis-draft.md",
+            steps: [
+              { relation: "Part of", actor: "Thesis writeup", origin: "graph", when: "3 days ago", fidelity: "resolved" },
+              { relation: "Last opened by", actor: "Files", origin: "graph", when: "2 hours ago", fidelity: "pid" },
+              { relation: "Also opened by", actor: "another app", origin: "graph", when: "2 hours ago", fidelity: "proxy" },
+            ],
+            horizon: "deeper_gated",
+            mocked: false,
+          };
         if (cmd === "files_verwandt_as_of") return a.path === FILE ? pastRel : [];
         if (cmd === "files_get_exif_tags")
           return { description: "Sunset over the Inn", artist: "Tim", copyright: null };
@@ -110,10 +127,16 @@
     </div>
     <div class="host">
       <h2>Provenance halo (no backend)</h2>
-      <!-- `provenance_of` is deliberately NOT mocked above, so the store takes
-           its fixture fallback - the exact state a real session is in until the
-           backend lands. The halo must declare it as sample data. -->
+      <!-- `provenance_of` is deliberately NOT mocked for this ref, so the store
+           takes its fixture fallback - the state a session is in when the backend
+           is absent. The halo must declare it as sample data. -->
       <ProvenanceHalo fileRef={FILE} />
+    </div>
+    <div class="host">
+      <h2>Provenance halo (live shape, PH-R2)</h2>
+      <!-- `provenance_of` IS mocked for REALFILE with the exact shape the Rust
+           backend emits: a real graph-backed chain, no sample banner. -->
+      <ProvenanceHalo fileRef={REALFILE} />
     </div>
   {/if}
 </div>
