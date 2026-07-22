@@ -226,6 +226,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_empty_subscription_list_receives_nothing() {
+        // LOAD-BEARING for the `[event_bus].subscribe` enforce path: when a
+        // consumer's every requested pattern is outside its declared scope, the
+        // socket layer registers it with an EMPTY pattern list. `matches` is an
+        // `any()` over that list, so empty matches nothing - deny-all is
+        // fail-CLOSED. A refactor that ever treats an empty list as a wildcard
+        // would silently turn a fully-denied consumer into one that hears
+        // everything, so pin the invariant here.
+        let registry = ConsumerRegistry::new();
+        let mut receiver = registry
+            .register("denied-consumer".to_string(), vec![], UidFilter::All)
+            .await;
+
+        registry.dispatch(&make_event("file.opened", 1000)).await;
+        registry.dispatch(&make_event("window.focused", 1000)).await;
+
+        assert!(
+            receiver.try_recv().is_err(),
+            "a consumer with no permitted patterns must receive nothing"
+        );
+    }
+
+    #[tokio::test]
     async fn dispatch_skips_non_matching_consumer() {
         let registry = ConsumerRegistry::new();
         let mut receiver = registry
