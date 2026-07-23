@@ -48,6 +48,9 @@ export interface Model {
   imported: boolean;
   /// Uncurated community model (hidden behind the browse "Advanced" filter).
   advanced: boolean;
+  /// Refusal behaviour removed (abliterated) or trained out (uncensored fine-tune).
+  /// Lives only in the opt-in Uncensored section, never the default catalogue.
+  uncensored?: boolean;
   /// A curated result surfaced only by an explicit Hugging Face search.
   fromSearch?: boolean;
 }
@@ -141,7 +144,8 @@ const MOCK_MODELS: Model[] = [
   local("gemma-2-9b", "Gemma 2 9B", 9.24, ["general"], "may-be-slow", 3.2, 5.4),
   local("qwen2.5-14b", "Qwen2.5 14B", 14.7, ["general", "reasoning"], "may-be-slow", 1.8, 9.0),
   local("llama-3.3-70b", "Llama 3.3 70B", 70.6, ["general", "reasoning"], "wont-fit", 0.4, 40.0),
-  local("qwen3-8b-abliterated", "Qwen3 8B (unfiltered)", 8.19, ["general"], "may-be-slow", 3.4, 5.1, { advanced: true }),
+  local("qwen3-8b-abliterated", "Qwen3 8B (abliterated)", 8.19, ["general"], "may-be-slow", 3.4, 5.1, { uncensored: true }),
+  local("dolphin-mistral-7b", "Dolphin Mistral 7B", 7.25, ["general"], "fits", 10, 4.1, { uncensored: true }),
   cloud("anthropic/claude-3.5-sonnet", "Claude 3.5 Sonnet", "anthropic", ["general", "reasoning"]),
   cloud("mistral/mistral-large", "Mistral Large", "mistral", ["general"]),
 ];
@@ -155,7 +159,7 @@ function local(
   fit: Fit,
   tokensPerSec: number,
   sizeGb: number,
-  opts: { installed?: boolean; baked?: boolean; advanced?: boolean } = {},
+  opts: { installed?: boolean; baked?: boolean; advanced?: boolean; uncensored?: boolean } = {},
 ): Model {
   return {
     id: `local/${slug}`,
@@ -171,6 +175,7 @@ function local(
     baked: opts.baked ?? false,
     imported: false,
     advanced: opts.advanced ?? false,
+    uncensored: opts.uncensored ?? false,
   };
 }
 
@@ -224,11 +229,21 @@ export function modelById(list: Model[], id: string): Model | undefined {
 /// ready to run when none is.
 export const modelsMocked = writable(false);
 
+/// Whether the user has opted into uncensored / abliterated models. Off by
+/// default (the default catalogue is guardrailed); flipping it reveals the
+/// Uncensored section. Persisted server-side (`ai.toml`).
+export const uncensoredEnabled = writable(false);
+
+/// The uncensored models, shown only in their opt-in section (never the default
+/// catalogue or the browse list).
+export const uncensoredModels = derived(models, ($m) => $m.filter((m) => m.uncensored));
+
 export async function loadModels(): Promise<void> {
   try {
     hardware.set(await invoke<Hardware>("ai_hardware_probe"));
     models.set(await invoke<Model[]>("ai_models_catalog"));
     roles.set(await invoke<Record<Role, string>>("ai_defaults_get_roles"));
+    uncensoredEnabled.set(await invoke<boolean>("ai_uncensored_enabled"));
     modelsMocked.set(false);
   } catch {
     hardware.set(MOCK_HARDWARE);
@@ -236,6 +251,17 @@ export async function loadModels(): Promise<void> {
     modelsMocked.set(true);
   } finally {
     modelsLoaded.set(true);
+  }
+}
+
+/// Opt into (or out of) uncensored models. Persisted server-side; the local view
+/// reflects it immediately.
+export async function setUncensoredEnabled(v: boolean): Promise<void> {
+  uncensoredEnabled.set(v);
+  try {
+    await invoke("ai_uncensored_set_enabled", { enabled: v });
+  } catch {
+    // Bridge unwired: the local view already reflects the choice.
   }
 }
 

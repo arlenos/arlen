@@ -65,7 +65,30 @@ message ServerMessage {
         HistoryResponse history = 8;
         CountUpdate count_update = 9;
         KnownAppsResponse known_apps = 10;
+        JobUpdate job_update = 11;
     }
+}
+
+// A change to one long-running job (job-progress-surface.md). The same daemon
+// that serves notifications hosts the JobViewServer; a producer's register /
+// update / finish is pushed to the shell here so the Activity/Jobs zone renders
+// it live, without a second socket.
+message JobUpdate {
+    uint64 id = 1;              // stable job id
+    string app_id = 2;         // producing app
+    string title = 3;          // "Copying 240 photos to USB"
+    string state = 4;          // running/paused/impeded/error-recoverable/error-fatal/done
+    string state_message = 5;  // why, for non-running states; empty for running
+    string unit = 6;           // bytes/files/directories/items
+    uint64 processed = 7;      // amount done, in unit
+    bool determinate = 8;      // whether total is known (the bar can be drawn)
+    uint64 total = 9;          // total, meaningful only when determinate
+    double fraction = 10;      // the monotonic 0..1 bar (never regresses)
+    bool killable = 11;        // the shell may offer Cancel/Stop
+    bool suspendable = 12;     // the shell may offer Pause/Resume
+    uint64 started_at = 13;    // epoch micros, for the elapsed line
+    string egress_host = 14;   // the host this job reaches; empty = no egress
+    bool removed = 15;         // true = the job is gone; clear it from the live set
 }
 
 message NotificationAdded {
