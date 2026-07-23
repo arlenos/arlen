@@ -99,12 +99,11 @@ impl IdentityStore {
         app_id: String,
     ) -> Result<(), IdentityStoreError> {
         let pid = pidfd_pid(pidfd.as_raw_fd()).ok_or(IdentityStoreError::DeadPidfd)?;
-        // Drop dead records and any live record that shares this pid (the
-        // same process re-registering, or a recycled pid whose prior
-        // holder is now gone). A live same-pid record can only be the
-        // same process, so replacing it is correct.
-        self.records
-            .retain(|r| r.is_live() && !(r.pid == pid && pidfd_pid(r.pidfd.as_raw_fd()) == Some(pid)));
+        // Keep only live records for a DIFFERENT pid: this drops every
+        // dead record and the (at most one) live record sharing this pid.
+        // A live same-pid record can only be the same process (two live
+        // processes cannot share a pid), so replacing it is correct.
+        self.records.retain(|r| r.is_live() && r.pid != pid);
         self.records.push(Record { pidfd, pid, app_id });
         Ok(())
     }
