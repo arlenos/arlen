@@ -113,10 +113,12 @@ pub fn bwrap_argv(confinement: &Confinement, program: &[String]) -> Vec<String> 
 
 /// Spawn `bwrap` with the assembled argument vector, then wait and return the
 /// propagated exit code. In the child, before exec, in order: close every
-/// inherited fd above stderr, start a new process group, and apply Landlock
-/// over `writable` (so bwrap and the app both inherit the filesystem
-/// confinement). The order matters: Landlock opens path fds, so it must precede
-/// the seccomp filter (a later commit) that removes `openat`.
+/// inherited fd above stderr, start a new process group, and join the per-launch
+/// cgroup. Landlock is deliberately NOT applied to bwrap (it would break bwrap's
+/// own user-namespace + newroot setup, see `child_pre_exec`); the filesystem
+/// confinement is bwrap's `--ro-bind` mount namespace, and the app seccomp filter
+/// is installed by bwrap itself via `--seccomp <fd>` after its setup, just before
+/// exec.
 ///
 /// `bwrap` propagates the app's own exit code, so the returned `u8` is the
 /// app's exit status (or `128 + signal` if the app was killed by a signal). A
@@ -135,7 +137,15 @@ pub fn spawn_and_wait(
 ) -> std::io::Result<u8> {
     use std::os::unix::process::{CommandExt, ExitStatusExt};
 
-    let writable: Vec<PathBuf> = writable.to_vec();
+    // Landlock is NOT applied here (see `child_pre_exec`): a ruleset installed on
+    // the launcher's child before `execve("bwrap")` also confines bwrap's OWN
+    // setup, which writes `/proc/self/{setgroups,uid_map,gid_map}` for the user
+    // namespace and its private newroot tmpfs - none of which any app-writable set
+    // covers - so a read-only-`/` ruleset makes bwrap fail before the app ever
+    // runs. bwrap's `--ro-bind` mount namespace IS the filesystem confinement (the
+    // filtered path relies on exactly this), and a proper Landlock layer belongs
+    // INSIDE the sandbox, applied to the app after bwrap's setup, not to bwrap.
+    let _ = writable;
 
     // The app seccomp allowlist is delivered to bwrap as `--seccomp <fd>`: the
     // compiled cBPF lives in a memfd the child inherits, and bwrap installs it on
@@ -162,7 +172,7 @@ pub fn spawn_and_wait(
     // ruleset allocations safe; the syscalls (close_range, fcntl, setpgid, the
     // Landlock setup) only narrow the child's own capabilities.
     unsafe {
-        cmd.pre_exec(move || child_pre_exec(Some(&writable), &cgroup_procs, seccomp_fd));
+        cmd.pre_exec(move || child_pre_exec(None, &cgroup_procs, seccomp_fd));
     }
 
     let spawned = cmd.spawn();
@@ -179,9 +189,16 @@ pub fn spawn_and_wait(
 /// inherited fd above stderr close-on-exec (so no launcher fd leaks into the
 /// app, while std's error pipe survives to report a failure), keep `keep_fd`
 /// (the seccomp memfd, direct-bwrap path only) open across the exec, start a new
-/// process group, join the per-launch cgroup, then apply Landlock. Both spawn
-/// paths - direct `bwrap` and the `pasta`-wrapped filtered launch - run this
-/// identical body on their direct child.
+/// process group, join the per-launch cgroup, then apply Landlock if a writable
+/// set is given. Both production spawn paths - direct `bwrap` and the
+/// `pasta`-wrapped filtered launch - pass `None`, so Landlock is NOT applied to
+/// bwrap: a ruleset installed here confines bwrap's own user-namespace + newroot
+/// setup (which writes `/proc/self/*` and a private tmpfs no app-writable set
+/// covers), so it makes bwrap fail before the app runs. The `Some` arm is retained
+/// for the follow-up that applies Landlock INSIDE the sandbox to the app after
+/// bwrap's setup (an in-sandbox wrapper, like the seccomp/route wrappers), where
+/// the writable set is the app's real filesystem confinement; `apply_landlock` is
+/// the building block for it.
 ///
 /// # Safety
 /// Must run in the post-fork child before exec, single-threaded (the launcher is
@@ -449,6 +466,10 @@ mod tests {
         )
         .unwrap();
         let argv = bwrap_argv(&conf, &["/usr/bin/echo".into(), "hi".into()]);
+        // A basic confined exec must SUCCEED: bwrap sets up its user namespace and
+        // mount view and runs echo. This regressed when Landlock was applied to
+        // bwrap here (it denied bwrap's own `/proc/self/*` setup writes); the fix
+        // was to leave the fs confinement to bwrap's mount namespace.
         let code = spawn_and_wait(&argv, &[], None, None).expect("bwrap spawns");
         assert_eq!(code, 0);
     }
