@@ -6,6 +6,14 @@
 //! render it live. Behind the `client` feature so wire-type-only consumers (the
 //! shell decoding `ServerMessage`) stay zbus-free.
 //!
+//! The `#[proxy]` macro generates two clients, so a producer picks by its
+//! context: the async [`JobViewServerProxy`] (report fire-and-forget from an
+//! async task so a report never blocks the operation - the right shape for an
+//! interactive producer like the file manager, where the shell owns the
+//! visibility threshold and instant ops must not pay a D-Bus round trip), or the
+//! blocking `JobViewServerProxyBlocking` for a synchronous producer with no
+//! async runtime (a CLI step, where a brief block is acceptable).
+//!
 //! ```no_run
 //! # async fn ex(conn: &zbus::Connection) -> zbus::Result<()> {
 //! use notification_proto::client::JobViewServerProxy;
