@@ -163,11 +163,31 @@ fn peer_uid(fd: libc::c_int) -> std::io::Result<u32> {
     Ok(cred.uid)
 }
 
+/// Open a pidfd for `pid` via `pidfd_open(2)`. Returns `None` if the
+/// process is already gone or the syscall is unavailable (fail-closed);
+/// the returned fd pins the process just like `SO_PEERPIDFD`'s, so a pid
+/// read from it afterwards is race-free.
+///
+/// Currently test-only. It graduates to production with the identity
+/// broker's Tier-3 D-Bus path, which authenticates a pid by other means
+/// (a bus-attested caller) and synthesises the pinning handle here.
+#[cfg(test)]
+pub(crate) fn pidfd_open(pid: u32) -> Option<OwnedFd> {
+    // SAFETY: pidfd_open takes a pid and flags and returns a new fd or
+    // -1; no memory is shared with the kernel.
+    let raw = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0) };
+    if raw < 0 {
+        return None;
+    }
+    // SAFETY: the kernel handed us a fresh owned fd we now own.
+    Some(unsafe { OwnedFd::from_raw_fd(raw as libc::c_int) })
+}
+
 /// Read the peer pid from a pidfd's `/proc/self/fdinfo` entry. The
 /// pidfd pins the process, so this pid is race-free; a dead process
 /// reports `Pid: -1` and a missing/garbled entry both yield `None`
 /// (fail-closed).
-fn pidfd_pid(pidfd: libc::c_int) -> Option<u32> {
+pub(crate) fn pidfd_pid(pidfd: libc::c_int) -> Option<u32> {
     let info = std::fs::read_to_string(format!("/proc/self/fdinfo/{pidfd}")).ok()?;
     for line in info.lines() {
         if let Some(rest) = line.strip_prefix("Pid:") {
