@@ -50,14 +50,18 @@ const HWM_KEY: &str = "promotion_hwm";
 /// promoted to Ladybug and creates the corresponding graph nodes.
 /// It tracks progress via a high-water mark (the timestamp of the last
 /// promoted event) so each run only processes new events.
-pub async fn run(pool: SqlitePool, graph: GraphHandle) -> Result<()> {
+pub async fn run(
+    pool: SqlitePool,
+    graph: GraphHandle,
+    clock: std::sync::Arc<crate::drift::DeviceClock>,
+) -> Result<()> {
     // Ensure the metadata table exists for high-water mark tracking.
     ensure_metadata_table(&pool).await?;
     // The FTS5 keyword index for LLM-free retrieval (§7.1) lives beside `events`
     // and is populated here as nodes are promoted.
     crate::fts::create_fact_text_index(&pool).await?;
 
-    let project_store = ProjectStore::new(graph.clone());
+    let project_store = ProjectStore::new(graph.clone()).with_clock(clock);
 
     // Read once at startup. graph.toml hot-reload is a separate
     // sprint item — for now, threshold changes need a daemon

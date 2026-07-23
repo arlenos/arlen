@@ -153,6 +153,19 @@ async fn run(
     let graph = graph::spawn(&graph_path)?;
     info!(path = graph_path, "ladybug query store ready");
 
+    // The device-wide merge clock (graph-drift.md §2): one stable device id per
+    // KG replica (persisted beside the graph store) fused with the monotonic
+    // HLC, shared across the writers so their FILE_PART_OF stamps are
+    // cross-device comparable. An id-load failure degrades to an ephemeral id
+    // (fresh per restart); the merge is future/gated so this never blocks boot.
+    let merge_clock = {
+        let device_id_path = std::path::Path::new(&graph_path).with_file_name("arlen-device-id");
+        let device_id =
+            drift::device_id_at(&device_id_path).unwrap_or_else(|_| uuid::Uuid::now_v7().to_string());
+        info!(device = %device_id, "device merge identity ready");
+        std::sync::Arc::new(drift::DeviceClock::new(device_id))
+    };
+
     // Validate-on-startup pass: any project whose root_path vanished
     // since the last run gets pruned (inferred) or archived (explicit).
     // Per docs/architecture/project-system.md §Validation on Access we
@@ -193,7 +206,7 @@ async fn run(
             Ok(()) => bail!("writer task exited unexpectedly"),
             Err(e) => bail!("writer ({consumer_socket}): {e}"),
         },
-        r = promotion::run(pool.clone(), graph.clone()) => match r {
+        r = promotion::run(pool.clone(), graph.clone(), merge_clock.clone()) => match r {
             Ok(()) => bail!("promotion task exited unexpectedly"),
             Err(e) => bail!("promotion: {e}"),
         },
