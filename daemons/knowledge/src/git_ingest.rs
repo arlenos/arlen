@@ -138,11 +138,59 @@ pub async fn ingest_commits(graph: &GraphHandle, commits: &[CommitRow]) -> Resul
     Ok(commits.len())
 }
 
-/// Ingest a repository's commits into `Commit` nodes: read, then MERGE. Returns
-/// the number of commits ingested.
+/// The id of the `Project` whose `root_path` is this repository, if the daemon's
+/// project detection has one. A git repo is a project (the `.git` signal), so the
+/// grouping reuses the Project node the daemon already maintains rather than
+/// minting a git-specific one. Matches the stored `root_path` against the repo's
+/// canonical path so a trailing slash or a symlink does not miss it; an
+/// uncanonicalizable path falls back to the literal form.
+pub async fn project_id_for_repo(graph: &GraphHandle, repo: &Path) -> Result<Option<String>> {
+    let canonical = std::fs::canonicalize(repo).unwrap_or_else(|_| repo.to_path_buf());
+    let path = escape_cypher(&canonical.to_string_lossy());
+    let rows = graph
+        .query_rows(format!(
+            "MATCH (p:Project {{root_path: '{path}'}}) RETURN p.id AS id LIMIT 1"
+        ))
+        .await?;
+    Ok(rows
+        .rows
+        .first()
+        .and_then(|r| r.first())
+        .map(|c| c.as_str().to_string())
+        .filter(|s| !s.is_empty()))
+}
+
+/// Link each commit to its repository's `Project` via `COMMITTED_IN`. MATCH both
+/// endpoints so the edge is created only when the Project node exists (no dangling
+/// edge); MERGE keeps re-linking idempotent.
+pub async fn link_commits_to_project(
+    graph: &GraphHandle,
+    commit_ids: &[String],
+    project_id: &str,
+) -> Result<()> {
+    let project = escape_cypher(project_id);
+    for id in commit_ids {
+        let id = escape_cypher(id);
+        graph
+            .write(format!(
+                "MATCH (c:Commit {{id: '{id}'}}), (p:Project {{id: '{project}'}}) \
+                 MERGE (c)-[:COMMITTED_IN]->(p)"
+            ))
+            .await?;
+    }
+    Ok(())
+}
+
+/// Ingest a repository's commits into `Commit` nodes: read, MERGE the nodes and
+/// their DAG, then group them under the repository's `Project` (when the daemon
+/// has detected one). Returns the number of commits ingested.
 pub async fn ingest_repo(graph: &GraphHandle, repo: &Path, max: usize) -> Result<usize> {
     let commits = read_commits(repo, max);
     ingest_commits(graph, &commits).await?;
+    if let Some(project_id) = project_id_for_repo(graph, repo).await? {
+        let ids: Vec<String> = commits.iter().map(|c| c.id.clone()).collect();
+        link_commits_to_project(graph, &ids, &project_id).await?;
+    }
     Ok(commits.len())
 }
 
@@ -247,5 +295,49 @@ mod tests {
         assert_eq!(after.rows.len(), 1, "exactly one edge, child -> parent, not duplicated");
         assert_eq!(after.rows[0][0].as_str(), "child");
         assert_eq!(after.rows[0][1].as_str(), "parent");
+    }
+
+    #[tokio::test]
+    async fn commits_group_under_the_repos_project() {
+        // The grouping: a commit COMMITTED_IN the Project whose root_path is the
+        // repo, but only when that Project node exists (no dangling edge to a
+        // repo the daemon has not detected).
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        ingest_commits(&graph, &[CommitRow {
+            id: "sha-9".into(),
+            message: "m".into(),
+            author: "A".into(),
+            author_email: "a@x".into(),
+            committed_at: 1,
+            parents: vec![],
+        }])
+        .await
+        .unwrap();
+
+        // No Project yet: linking to a missing project makes no edge.
+        link_commits_to_project(&graph, &["sha-9".into()], "proj-1").await.unwrap();
+        let none = graph
+            .query_rows("MATCH (:Commit)-[:COMMITTED_IN]->(:Project) RETURN 1 AS x".into())
+            .await
+            .unwrap();
+        assert_eq!(none.rows.len(), 0, "no edge to a project that does not exist");
+
+        // Create the Project, then re-link twice: exactly one edge, idempotent.
+        graph
+            .write("CREATE (p:Project {id: 'proj-1', root_path: '/repo'})".into())
+            .await
+            .unwrap();
+        link_commits_to_project(&graph, &["sha-9".into()], "proj-1").await.unwrap();
+        link_commits_to_project(&graph, &["sha-9".into()], "proj-1").await.unwrap();
+        let linked = graph
+            .query_rows(
+                "MATCH (c:Commit)-[:COMMITTED_IN]->(p:Project) RETURN c.id AS c, p.id AS p".into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(linked.rows.len(), 1, "exactly one grouping edge, not duplicated");
+        assert_eq!(linked.rows[0][0].as_str(), "sha-9");
+        assert_eq!(linked.rows[0][1].as_str(), "proj-1");
     }
 }

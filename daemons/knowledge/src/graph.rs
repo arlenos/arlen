@@ -731,6 +731,15 @@ fn create_schema(conn: &Connection) -> Result<()> {
     conn.query("ALTER TABLE Project ADD IF NOT EXISTS expired_at INT64")
         .map_err(|e| anyhow!("ensure Project.expired_at column: {e}"))?;
 
+    // The repo=project grouping edge: a commit belongs to the Project whose
+    // root_path is its repository. A git repo is a project (the `.git` signal
+    // detects it), so git-ingestion (git_ingest.rs) links each ingested commit to
+    // the Project the daemon already knows. Declared after the Project table since
+    // it references it. The edge is created only when the Project node exists, so
+    // a repo with no detected project simply carries no grouping.
+    conn.query("CREATE REL TABLE IF NOT EXISTS COMMITTED_IN(FROM Commit TO Project)")
+        .map_err(|e| anyhow!("create COMMITTED_IN rel: {e}"))?;
+
     // The window/event title carried on a promoted Event (e.g. window.focused
     // records the focused window's title). Without this column the window.focused
     // promotion's `SET e.title` is a binder error that stalls the whole promotion
