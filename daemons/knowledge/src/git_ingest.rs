@@ -11,16 +11,25 @@
 //! ingest, from the project watch dirs) and the commit-parent DAG edges + `Branch`
 //! heads are follow-ups; the commit nodes are the foundation they attach to.
 
-// No live caller yet: the daemon's repo-discovery + scheduling wire `ingest_repo`
-// in a follow-up. Built as the mechanism first (the canary / typed-read precedent).
-#![allow(dead_code)]
-
+use std::collections::HashMap;
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::Result;
+use tokio::time;
+use tracing::{info, warn};
 
 use crate::graph::GraphHandle;
 use crate::utils::escape_cypher;
+
+/// How often the git-ingestion pass runs. Git history changes far slower than the
+/// file/window event stream, so a coarse interval keeps the `git` shell-outs off
+/// the hot path while still picking up new commits within minutes.
+const GIT_INGEST_INTERVAL: Duration = Duration::from_secs(300);
+
+/// How many recent commits to ingest per repository each pass. Bounds the `git log`
+/// cost on a large history; deep-history backfill (a wider window) is a follow-up.
+const MAX_COMMITS_PER_REPO: usize = 500;
 
 /// A commit as its reserved `Commit` node stores it: the SHA id plus the four
 /// conventional columns (`message`, `author`, `author_email`, `committed_at`).
@@ -284,6 +293,99 @@ pub async fn ingest_repo(graph: &GraphHandle, repo: &Path, max: usize) -> Result
     Ok(commits.len())
 }
 
+/// The `root_path` of every live (non-expired) project. A git repo is a project
+/// (the `.git` detection signal), so the daemon's own project set is the repo
+/// discovery source; no separate git-repo scan is needed.
+async fn live_project_roots(graph: &GraphHandle) -> Result<Vec<String>> {
+    let rows = graph
+        .query_rows("MATCH (p:Project) WHERE p.expired_at IS NULL RETURN p.root_path AS r".into())
+        .await?;
+    Ok(rows
+        .rows
+        .iter()
+        .filter_map(|r| r.first())
+        .map(|c| c.as_str().to_string())
+        .filter(|s| !s.is_empty())
+        .collect())
+}
+
+/// The current HEAD commit SHA of a repository, or `None` for a non-repo. Cheap
+/// (`git rev-parse`), so a pass reads it for every project to decide whether the
+/// repo has moved since last time. Doubles as the git-repo gate: a non-repo (no
+/// HEAD) is skipped entirely, sparing it the ingest queries and shell-outs.
+fn repo_head(repo: &Path) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .arg("rev-parse")
+        .arg("HEAD")
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let head = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!head.is_empty()).then_some(head)
+}
+
+/// Ingest every live project's git state in one pass. Returns `(repos, commits)`:
+/// the number of git repos ingested this pass and the total commits. `seen` caches
+/// each repo's last-ingested HEAD, so a repo whose HEAD has not moved is skipped
+/// (no graph writes) - the steady-state cost is one `git rev-parse` per project. A
+/// non-git project is skipped; a failure on one repo is logged, not fatal, and its
+/// HEAD is not cached so the next pass retries.
+async fn ingest_all_projects(
+    graph: &GraphHandle,
+    seen: &mut HashMap<String, String>,
+) -> Result<(usize, usize)> {
+    let roots = live_project_roots(graph).await?;
+    let mut repos = 0;
+    let mut commits = 0;
+    for root in roots {
+        let Some(head) = repo_head(Path::new(&root)) else {
+            continue; // not a git repo
+        };
+        if seen.get(&root).is_some_and(|h| h == &head) {
+            continue; // HEAD unchanged since the last pass
+        }
+        match ingest_repo(graph, Path::new(&root), MAX_COMMITS_PER_REPO).await {
+            Ok(n) => {
+                seen.insert(root.clone(), head);
+                if n > 0 {
+                    repos += 1;
+                    commits += n;
+                }
+            }
+            Err(e) => warn!(root = %root, error = %e, "git ingestion for a project failed"),
+        }
+    }
+    Ok((repos, commits))
+}
+
+/// Run the git-ingestion pass forever, waking every [`GIT_INGEST_INTERVAL`]. Each
+/// pass discovers the live projects and ingests each one's recent commits, DAG,
+/// branch heads, and project grouping. This is the live caller for the ingestion
+/// mechanism; it never returns under normal operation. The per-repo HEAD cache is
+/// in-memory, so a restart triggers one full pass and then settles to skip-if-
+/// unchanged.
+pub async fn run(graph: GraphHandle) -> Result<()> {
+    let mut seen: HashMap<String, String> = HashMap::new();
+    let mut interval = time::interval(GIT_INGEST_INTERVAL);
+    // Skip the first immediate tick so the project watcher has a chance to detect
+    // projects before the first pass runs.
+    interval.tick().await;
+    loop {
+        interval.tick().await;
+        match ingest_all_projects(&graph, &mut seen).await {
+            Ok((repos, commits)) if repos > 0 => {
+                info!(repos, commits, "git ingestion pass complete");
+            }
+            Ok(_) => {}
+            Err(e) => warn!(error = %e, "git ingestion pass failed"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -489,5 +591,76 @@ mod tests {
         assert_eq!(edge.rows.len(), 1, "exactly one head edge, not duplicated");
         assert_eq!(edge.rows[0][0].as_str(), "/repo::main");
         assert_eq!(edge.rows[0][1].as_str(), "sha-h");
+    }
+
+    /// Run git in `repo`, isolated from the developer's global config so the test
+    /// is hermetic. Returns stdout trimmed.
+    fn git(repo: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(args)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_AUTHOR_NAME", "T")
+            .env("GIT_AUTHOR_EMAIL", "t@x")
+            .env("GIT_COMMITTER_NAME", "T")
+            .env("GIT_COMMITTER_EMAIL", "t@x")
+            .output()
+            .expect("git runs");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    #[tokio::test]
+    async fn a_pass_ingests_then_skips_an_unchanged_head_then_reingests() {
+        // End-to-end: a real repo, discovered as a Project, ingested by the pass;
+        // a second pass with an unmoved HEAD does no work; a new commit re-ingests.
+        let repo = tempfile::TempDir::new().unwrap();
+        git(repo.path(), &["init", "-q", "-b", "main"]);
+        std::fs::write(repo.path().join("a.txt"), "1").unwrap();
+        git(repo.path(), &["add", "."]);
+        git(repo.path(), &["commit", "-q", "-m", "first"]);
+        let root = std::fs::canonicalize(repo.path())
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+
+        let gtmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(gtmp.path().join("g").to_str().unwrap()).unwrap();
+        // The daemon detected this repo as a project.
+        graph
+            .write(format!(
+                "CREATE (p:Project {{id: 'proj', root_path: '{}'}})",
+                escape_cypher(&root)
+            ))
+            .await
+            .unwrap();
+
+        let mut seen = HashMap::new();
+        // First pass: one repo, one commit, grouped under the project.
+        let (repos, commits) = ingest_all_projects(&graph, &mut seen).await.unwrap();
+        assert_eq!((repos, commits), (1, 1), "the repo is ingested on the first pass");
+        let grouped = graph
+            .query_rows("MATCH (:Commit)-[:COMMITTED_IN]->(:Project) RETURN 1 AS x".into())
+            .await
+            .unwrap();
+        assert_eq!(grouped.rows.len(), 1, "the commit is grouped under its project");
+
+        // Second pass, HEAD unmoved: skipped, no work reported.
+        let again = ingest_all_projects(&graph, &mut seen).await.unwrap();
+        assert_eq!(again, (0, 0), "an unchanged HEAD is skipped");
+
+        // A new commit moves HEAD: the next pass re-ingests.
+        std::fs::write(repo.path().join("b.txt"), "2").unwrap();
+        git(repo.path(), &["add", "."]);
+        git(repo.path(), &["commit", "-q", "-m", "second"]);
+        let (repos3, commits3) = ingest_all_projects(&graph, &mut seen).await.unwrap();
+        assert_eq!(repos3, 1, "the moved HEAD is re-ingested");
+        assert_eq!(commits3, 2, "both commits are read in the re-ingest window");
+        let n = graph
+            .query_rows("MATCH (c:Commit) RETURN c.id AS id".into())
+            .await
+            .unwrap();
+        assert_eq!(n.rows.len(), 2, "two commit nodes total, deduplicated");
     }
 }

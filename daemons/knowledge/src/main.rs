@@ -203,6 +203,10 @@ async fn run(
             Ok(()) => bail!("project inference task exited unexpectedly"),
             Err(e) => bail!("project inference: {e}"),
         },
+        r = git_ingest::run(graph.clone()) => match r {
+            Ok(()) => bail!("git ingestion task exited unexpectedly"),
+            Err(e) => bail!("git ingestion: {e}"),
+        },
         r = daemon::listen(&daemon_socket, graph, pool) => match r {
             Ok(()) => bail!("daemon listener exited unexpectedly"),
             Err(e) => bail!("daemon listen ({daemon_socket}): {e}"),
