@@ -98,7 +98,7 @@
     position: relative;
     aspect-ratio: 16 / 10;
     border: 1px solid color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
-    border-radius: var(--radius-card);
+    border-radius: var(--radius-card, 12px);
     padding: 0;
     cursor: pointer;
     overflow: hidden;
@@ -120,7 +120,7 @@
     justify-content: center;
     width: 1.25rem;
     height: 1.25rem;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-full, 9999px);
     background: var(--color-accent);
     color: var(--color-accent-foreground, #fff);
   }
