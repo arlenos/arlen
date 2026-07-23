@@ -98,12 +98,19 @@ export const DEFAULT_PROXY_TOOLS: ProxyToolSpec[] = [
     name: "graph.read",
     label: "Knowledge graph read",
     description:
-      "Read the user's knowledge graph to answer questions about their files, " +
-      "projects and recent activity. Pass a plain natural-language `query` of what " +
-      "you want to know (e.g. \"the user's most recently accessed files\" or " +
-      "\"the user's active projects\"); the daemon translates it into a scoped " +
-      "graph query, runs it bounded by this session's read scope and project " +
-      "anchor, and returns the answer. pi never touches the graph directly.",
+      "Read the user's knowledge graph to answer ANY question about THEIR OWN " +
+      "files, projects, or activity. ALWAYS prefer this tool over shelling out " +
+      "(do NOT run `bash ls`/`find`/`stat` for these): the knowledge graph is the " +
+      "authoritative, permission-scoped, cross-session record of the user's " +
+      "activity, whereas a raw `ls` only sees one directory's mtimes and misses " +
+      "the access history, project structure, and scope the graph tracks. For " +
+      "\"what did I work on\", \"my recent files\", \"which files did I open\", " +
+      "\"my active projects\" and the like, reach for graph.read, never the shell. " +
+      "Pass a plain natural-language `query` of what you want to know (e.g. \"the " +
+      "user's most recently accessed files\" or \"the user's active projects\"); " +
+      "the daemon translates it into a scoped graph query, runs it bounded by this " +
+      "session's read scope and project anchor, and returns the answer. pi never " +
+      "touches the graph directly.",
     parameters: {
       type: "object",
       properties: {
