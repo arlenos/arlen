@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::duplicate::DuplicateCandidate;
+use super::duplicate::{check_duplicate, DuplicateCandidate, DuplicateConfig};
 
 /// A suggestion to merge two entities that appear to be duplicates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +64,36 @@ pub enum MergeAction {
     KeepBoth {
         mark_not_duplicate: bool,
     },
+}
+
+/// Detect whether a newly-written shared entity duplicates an existing one and, if
+/// so, build the pending [`MergeSuggestion`] for it. Applies the entity type's
+/// [`DuplicateConfig`] via [`check_duplicate`] against each supplied existing entity
+/// of the same type (never against the new one itself), and returns a suggestion for
+/// the highest-scoring match above the type's `min_score`, or `None` if nothing is
+/// close enough. Pure over the supplied `existing` set - the caller fetches the
+/// same-type entities from the graph and persists the returned suggestion - so the
+/// detection logic is unit-tested without the graph. This is the core the write-path
+/// producer calls; a `min_score` of `1.0` for a type with no unique fields never
+/// matches, so those types produce no suggestions.
+pub fn detect_duplicate(
+    entity_type: &str,
+    new_id: &str,
+    new_data: &serde_json::Map<String, serde_json::Value>,
+    existing: &[(String, serde_json::Map<String, serde_json::Value>)],
+    created_by: &str,
+) -> Option<MergeSuggestion> {
+    let config = DuplicateConfig::for_type(entity_type);
+    let best = existing
+        .iter()
+        .filter(|(id, _)| id != new_id)
+        .filter_map(|(id, data)| check_duplicate(&config, new_data, id, data))
+        .max_by(|a, b| {
+            a.match_score
+                .partial_cmp(&b.match_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })?;
+    Some(MergeSuggestion::new(entity_type, new_id, &best, created_by))
 }
 
 /// Build the action for accepting a merge suggestion.
@@ -143,6 +173,37 @@ mod tests {
             }
             _ => panic!("expected KeepBoth"),
         }
+    }
+
+    fn person(email: &str) -> serde_json::Map<String, serde_json::Value> {
+        let mut m = serde_json::Map::new();
+        m.insert("email".into(), serde_json::Value::String(email.into()));
+        m
+    }
+
+    #[test]
+    fn detect_duplicate_flags_the_matching_existing_person() {
+        // A new Person with the same email as an existing one -> a pending merge
+        // suggestion targeting that existing id.
+        let existing = vec![
+            ("p-other".to_string(), person("someone@else.org")),
+            ("p-dup".to_string(), person("tim@x.org")),
+        ];
+        let s = detect_duplicate("shared.Person", "p-new", &person("tim@x.org"), &existing, "com.test")
+            .expect("a duplicate is detected");
+        assert_eq!(s.source_id, "p-new");
+        assert_eq!(s.target_id, "p-dup", "the matching existing id, not the other");
+        assert_eq!(s.status, SuggestionStatus::Pending);
+    }
+
+    #[test]
+    fn detect_duplicate_returns_none_without_a_match_and_ignores_self() {
+        // No existing person shares the email -> no suggestion.
+        let existing = vec![("p-other".to_string(), person("someone@else.org"))];
+        assert!(detect_duplicate("shared.Person", "p-new", &person("tim@x.org"), &existing, "c").is_none());
+        // An entity is never a duplicate of ITSELF even with identical data.
+        let same = vec![("p-new".to_string(), person("tim@x.org"))];
+        assert!(detect_duplicate("shared.Person", "p-new", &person("tim@x.org"), &same, "c").is_none());
     }
 
     #[test]
