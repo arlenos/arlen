@@ -14,6 +14,7 @@ mod backup;
 mod capsule;
 mod entity_precision;
 mod code_analysis;
+mod git_ingest;
 mod cypher;
 mod daemon;
 mod db;
