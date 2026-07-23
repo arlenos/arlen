@@ -26,6 +26,7 @@ use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use zbus::interface;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 
+use crate::interfaces::sender_is_frontend;
 use crate::request::{response, RequestHandle};
 use crate::state::DaemonState;
 
@@ -131,7 +132,21 @@ impl Screenshot {
         app_id: &str,
         parent_window: &str,
         options: HashMap<&str, OwnedValue>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] hdr: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
+        // §2 caller-identity chain: this impl name sits behind the
+        // xdg-desktop-portal frontend, which authenticates the app and
+        // re-dispatches. A process that reaches us directly would capture
+        // the screen unauthenticated (and forge `app_id` in the audit
+        // record). Verified frontend, or refuse before any capture.
+        if !sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await {
+            tracing::warn!("refusing a Screenshot call from a sender that is not the portal frontend");
+            return (
+                response::OTHER,
+                error_results("caller is not the xdg-desktop-portal frontend"),
+            );
+        }
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(handle.into());
         let interactive = options
@@ -234,7 +249,17 @@ impl Screenshot {
         app_id: &str,
         _parent_window: &str,
         _options: HashMap<&str, OwnedValue>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] hdr: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
+        // PickColor reads a screen pixel; same frontend-only gate as capture.
+        if !sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await {
+            tracing::warn!("refusing a PickColor call from a sender that is not the portal frontend");
+            return (
+                response::OTHER,
+                error_results("caller is not the xdg-desktop-portal frontend"),
+            );
+        }
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(handle.into());
         tracing::info!(request = %req.path, app_id, "PickColor requested (not implemented)");
