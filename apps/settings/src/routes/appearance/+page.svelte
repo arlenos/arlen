@@ -20,6 +20,7 @@
     Zap,
     Terminal,
     LayoutGrid,
+    Image,
     RotateCcw,
   } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
@@ -65,6 +66,7 @@
   onMount(loadThemes);
 
   const CUSTOMISE = [
+    { href: "/appearance/wallpaper", title: "Wallpaper", desc: "The desktop background", icon: Image },
     { href: "/appearance/colors", title: "Colours", desc: "The full palette, per role", icon: Palette },
     { href: "/appearance/geometry", title: "Geometry", desc: "Radii, corners, spacing, gaps", icon: Frame },
     { href: "/appearance/typography", title: "Typography", desc: "Fonts, size, weight", icon: Type },
