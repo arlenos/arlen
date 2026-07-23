@@ -78,11 +78,15 @@ pub fn decode_event(ev: Event) -> TriggerEvent {
         _ => {}
     }
     TriggerEvent {
-        // Fail-safe. `Event.source` is producer-supplied and spoofable (the bus
-        // authenticates uid via SO_PEERCRED but not the origin), so it is NOT
-        // trusted for the external-content gate: until the bus stamps an
-        // authenticated origin class + S18-A tagging lands, every bus event is
-        // treated as external, so any action it triggers requires confirmation.
+        // Hardcoded true, fail-safe. NB this flag feeds ONLY the coalescer's
+        // burst-dedup digest (see `decide` -> `coalescer.admit`), NOT the confirm
+        // gate: an event-triggered action's confirm-escalation is the SESSION
+        // grant's `externally_triggered` (hardcoded true in curation/pi_run),
+        // independent of this flag. The event bus now stamps a kernel-attested
+        // `authenticated_origin` on every event, but it is deliberately NOT consumed
+        // here: routing it into this flag would only change the dedup key, never a
+        // gate decision, so it would be inert. The stamp's real consumer is GAP-17 /
+        // audit-provenance, not this trigger flag.
         external_content: true,
         event_type: ev.r#type,
         fields,
