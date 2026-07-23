@@ -208,6 +208,51 @@ pub fn device_id_at(path: &std::path::Path) -> std::io::Result<String> {
     Ok(id)
 }
 
+/// The device-wide merge clock: one per KG replica, shared by every writer so
+/// their HLCs are comparable. It fuses the monotonic HLC with the stable device
+/// id - the two fields a merged edge carries (cross-device ordering + the
+/// same-instant tiebreak).
+///
+/// Held behind a mutex so a `stamp` is atomic across the promotion and the agent
+/// write paths (a single device must advance one clock, not two). Shared as
+/// `Arc<DeviceClock>` created ONCE at daemon startup and passed by reference -
+/// deliberately NOT a module `static`, which would compile to a separate
+/// instance in each of the lib and bin crates (this module's `project`/`daemon`
+/// writers live in the bin tree while `drift` is lib-only) and silently break
+/// monotonicity with two clocks. Unwired until the write paths stamp with it.
+pub struct DeviceClock {
+    hlc: std::sync::Mutex<Hlc>,
+    device_id: String,
+}
+
+impl DeviceClock {
+    /// Build a fresh device clock over an already-loaded stable device id
+    /// (see [`device_id_at`]). The HLC starts at [`Hlc::ZERO`]; the first
+    /// `stamp` adopts the supplied physical time.
+    pub fn new(device_id: String) -> Self {
+        Self {
+            hlc: std::sync::Mutex::new(Hlc::ZERO),
+            device_id,
+        }
+    }
+
+    /// The stable device id (the merge same-HLC tiebreak).
+    pub fn device_id(&self) -> &str {
+        &self.device_id
+    }
+
+    /// Advance the clock for a local write at physical time `now` (micros) and
+    /// return the stamp. Monotonic: every stamp strictly follows the previous,
+    /// even under a backwards wall clock, so this device never issues a
+    /// non-increasing HLC. Atomic under the mutex, so concurrent writers on the
+    /// two paths still get a strict total order.
+    pub fn stamp(&self, now: u64) -> Hlc {
+        let mut c = self.hlc.lock().expect("device clock mutex poisoned");
+        *c = c.tick(now);
+        *c
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,5 +448,29 @@ mod tests {
         assert!(is_valid_device_id(&id), "a junk file regenerates a valid id");
         // And it now persists the valid id, so it is stable henceforth.
         assert_eq!(id, device_id_at(&path).unwrap());
+    }
+
+    #[test]
+    fn device_clock_stamps_strictly_increase() {
+        let clock = DeviceClock::new("dev-1".to_string());
+        assert_eq!(clock.device_id(), "dev-1");
+        // Same physical micro twice: the logical counter advances.
+        let a = clock.stamp(100);
+        let b = clock.stamp(100);
+        assert!(b > a, "a same-micro second stamp still strictly follows");
+        // A later physical time advances physical and resets logical.
+        let c = clock.stamp(200);
+        assert!(c > b);
+        assert_eq!(c, Hlc::new(200, 0));
+    }
+
+    #[test]
+    fn device_clock_is_monotonic_under_a_backwards_clock() {
+        let clock = DeviceClock::new("dev-1".to_string());
+        let a = clock.stamp(500);
+        // The wall clock jumps back: the stamp must still advance.
+        let b = clock.stamp(100);
+        assert!(b > a);
+        assert_eq!(b, Hlc::new(500, 1));
     }
 }
