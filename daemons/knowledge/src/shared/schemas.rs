@@ -26,6 +26,25 @@ pub fn shared_schemas() -> HashMap<String, EntityDefinition> {
     m
 }
 
+/// The first-party app that OWNS each built-in shared entity type
+/// (SHARED-ENTITIES.md §2 ownership registry). The owner is the ONLY caller that
+/// may CREATE/write instances of the type over the entity-upsert op; every other
+/// app contributes via suggestions (owner-confirmed, `suggestion.rs`) - the
+/// cross-tenant boundary of §4's ownership model. Compiled-in like the schemas
+/// themselves (the doc's "read-only, managed by the install daemon" registry is
+/// the deployment form; the five built-in types' owners are fixed first-party
+/// apps). Returns `None` for a non-owned or unknown shared type, so such a write
+/// is refused fail-closed by the caller.
+pub fn shared_owner(qualified_type: &str) -> Option<&'static str> {
+    match qualified_type {
+        "shared.Person" | "shared.Organization" => Some("org.arlen.contacts"),
+        "shared.Event" => Some("org.arlen.calendar"),
+        "shared.Location" => Some("org.arlen.places"),
+        "shared.Tag" => Some("org.arlen.core"),
+        _ => None,
+    }
+}
+
 fn field(ft: FieldType) -> FieldDefinition {
     FieldDefinition { field_type: ft, ..Default::default() }
 }

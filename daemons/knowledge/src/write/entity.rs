@@ -247,28 +247,50 @@ pub fn plan_entity_upsert(
     if external_key.trim().is_empty() {
         return Err("upsert requires a non-empty external_key".into());
     }
-    if qualified_type.starts_with("system.") || qualified_type.starts_with("shared.") {
-        return Err(format!(
-            "namespace not writable by a third party: {qualified_type}"
-        ));
+    // `system.*` is daemon-produced observation data, structurally unwritable over
+    // this op by ANY caller. `shared.*` is writable ONLY by the type's declared
+    // OWNER app (SHARED-ENTITIES.md §4: the owner creates instances; every other
+    // app contributes via owner-confirmed suggestions, never a direct write). Both
+    // are the cross-tenant boundary.
+    if qualified_type.starts_with("system.") {
+        return Err(format!("namespace not writable: {qualified_type}"));
     }
+    let is_shared_owner_write = if qualified_type.starts_with("shared.") {
+        match crate::shared::shared_owner(qualified_type) {
+            // The attested owner app: allowed (its can_write scope is still
+            // required below, defense-in-depth).
+            Some(owner) if owner == token.app_id => true,
+            // A non-owner (or an unknown/unowned shared type): refused. Suggestions
+            // are the only cross-tenant path into a shared type.
+            _ => {
+                return Err(format!(
+                    "shared entity {qualified_type} is writable only by its owner app; \
+                     other apps must use suggestions"
+                ))
+            }
+        }
+    } else {
+        false
+    };
     if !token.can_write(qualified_type) {
         return Err(format!("permission denied for {qualified_type}"));
     }
-    // The caller may write its own namespace (the type prefix is the attested
-    // app_id) OR a namespace it was DELEGATED (a foreign-app bridge writing e.g.
-    // `md.obsidian.*`, foreign-app-bridges.md §2). The `system.*`/`shared.*` gate
-    // above already refused those structurally, and `permits_any` validates each
-    // delegated namespace through `NamespaceGrant::new` (reserved-deny, fail-
-    // closed), so a delegation can never reach a system/shared type either. This is
-    // the cross-tenant boundary.
-    let own = qualified_type.starts_with(&format!("{}.", token.app_id));
-    let delegated = super::permits_any(&token.delegated_namespaces, qualified_type);
-    if !own && !delegated {
-        return Err(format!(
-            "namespace violation: {} cannot write {qualified_type}",
-            token.app_id
-        ));
+    // A non-shared write must land in the caller's OWN namespace (the type prefix
+    // is the attested app_id) OR a namespace it was DELEGATED (a foreign-app bridge
+    // writing e.g. `md.obsidian.*`, foreign-app-bridges.md §2); `permits_any`
+    // validates each delegated namespace through `NamespaceGrant::new` (reserved-
+    // deny, fail-closed), so a delegation can never reach system/shared. A shared-
+    // owner write is authorised by the owner match above and skips this check (its
+    // type prefix is `shared`, never the owner app's own app-id prefix).
+    if !is_shared_owner_write {
+        let own = qualified_type.starts_with(&format!("{}.", token.app_id));
+        let delegated = super::permits_any(&token.delegated_namespaces, qualified_type);
+        if !own && !delegated {
+            return Err(format!(
+                "namespace violation: {} cannot write {qualified_type}",
+                token.app_id
+            ));
+        }
     }
     let def = registry
         .get_entity(qualified_type)
@@ -655,6 +677,76 @@ mod tests {
         let mut bad = HashMap::new();
         bad.insert("nope".to_string(), serde_json::json!("x"));
         assert!(plan_entity_upsert(&reg, &token, "md.obsidian.Note", "k1", bad).is_err());
+    }
+
+    #[test]
+    fn test_shared_entity_write_first_party() {
+        use crate::token::{CapabilityToken, EntityScope, InstanceScope};
+        // The registry seeds the compiled-in shared schemas (shared.Person et al).
+        let reg = SchemaRegistry::new(vec![]);
+        let scope = |t: &str| EntityScope {
+            entity_type: t.to_string(),
+            fields: None,
+            exclude_fields: vec![],
+        };
+        // The declared OWNER of shared.Person is org.arlen.contacts (SHARED-
+        // ENTITIES.md §2). The owner app may create a shared.Person instance.
+        let owner = CapabilityToken::new(
+            "org.arlen.contacts".into(),
+            1234,
+            vec![],
+            vec![scope("shared.Person")],
+            vec![],
+            InstanceScope::Own,
+        );
+        let mut fields = HashMap::new();
+        fields.insert("name".to_string(), serde_json::json!("Alice"));
+        assert!(
+            plan_entity_upsert(&reg, &owner, "shared.Person", "alice@example.com", fields).is_ok(),
+            "the owner app writes its own shared entity"
+        );
+    }
+
+    #[test]
+    fn test_shared_entity_write_third_party_denied() {
+        use crate::token::{CapabilityToken, EntityScope, InstanceScope};
+        let reg = SchemaRegistry::new(vec![]);
+        let scope = |t: &str| EntityScope {
+            entity_type: t.to_string(),
+            fields: None,
+            exclude_fields: vec![],
+        };
+        let mut fields = HashMap::new();
+        fields.insert("name".to_string(), serde_json::json!("Bob"));
+
+        // A non-owner app, even holding a matching write scope, cannot write
+        // shared.Person - the owner match, not the scope, is the boundary.
+        let other = CapabilityToken::new(
+            "com.other.app".into(),
+            1234,
+            vec![],
+            vec![scope("shared.Person")],
+            vec![],
+            InstanceScope::Own,
+        );
+        let r = plan_entity_upsert(&reg, &other, "shared.Person", "bob@x", fields.clone());
+        assert!(r.is_err(), "a non-owner shared write is refused");
+        assert!(r.unwrap_err().contains("owner"), "the error names the owner-only rule");
+
+        // The owner of a DIFFERENT shared type (calendar owns shared.Event, not
+        // Person) cannot cross over and write shared.Person.
+        let calendar = CapabilityToken::new(
+            "org.arlen.calendar".into(),
+            1234,
+            vec![],
+            vec![scope("shared.Person")],
+            vec![],
+            InstanceScope::Own,
+        );
+        assert!(
+            plan_entity_upsert(&reg, &calendar, "shared.Person", "x", fields).is_err(),
+            "the owner of a different shared type cannot write this one"
+        );
     }
 
     #[test]
