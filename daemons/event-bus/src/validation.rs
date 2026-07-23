@@ -50,6 +50,7 @@ mod tests {
             payload: vec![],
             uid: 1000,
             project_id: String::new(),
+            authenticated_origin: String::new(),
         }
     }
 

@@ -129,6 +129,18 @@ impl PeerScope {
         }
     }
 
+    /// The kernel-attested app id to stamp as the event's authenticated origin,
+    /// or empty when the peer could not be attributed. Unlike [`app_id`](Self::app_id)
+    /// this never returns a diagnostic sentinel: an unresolved peer stamps empty,
+    /// so a consumer's origin classifier treats it as un-attested (external),
+    /// fail-closed.
+    fn authenticated_origin(&self) -> &str {
+        match self {
+            Self::Profiled(id, _) | Self::NoProfile(id) => id,
+            Self::Unresolved => "",
+        }
+    }
+
     /// What an operator has to do about a would-deny from this peer.
     fn remedy(&self) -> &'static str {
         match self {
@@ -261,6 +273,16 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
                 if !is_system_producer {
                     event.uid = producer_uid;
                 }
+
+                // Stamp the bus-resolved kernel-attested producer identity as the
+                // authenticated origin, ALWAYS overwriting any producer-supplied
+                // value (the bus is the trust anchor; `source` stays spoofable and
+                // untrusted). Empty when the peer is unattributable, so a consumer's
+                // origin classifier treats it as external, fail-closed. This is what
+                // the AI engine reads to distinguish an internal first-party event
+                // from external content, instead of confirming on every event.
+                event.authenticated_origin =
+                    publish_scope.authenticated_origin().to_string();
 
                 // Hold a non-system producer to its declared publish scope.
                 // Shadow mode logs a would-deny and still dispatches; enforce
@@ -482,6 +504,29 @@ mod tests {
         assert!(profiled.event_bus().is_some());
         assert!(named_no_profile.event_bus().is_none());
         assert!(PeerScope::Unresolved.event_bus().is_none());
+    }
+
+    #[test]
+    fn authenticated_origin_is_the_resolved_id_or_empty_never_a_sentinel() {
+        use arlen_permissions::PermissionProfile;
+        // The stamp carries the real kernel-attested id for an attributable peer,
+        // and EMPTY (not the "<unresolved>" diagnostic sentinel) for one that is
+        // not - so the consumer's origin classifier reads empty as un-attested and
+        // treats it as external, fail-closed.
+        let profile: PermissionProfile = toml::from_str(
+            "[info]\napp_id = \"app\"\ntier = \"first-party\"\n",
+        )
+        .expect("fixture profile parses");
+        assert_eq!(
+            PeerScope::Profiled("com.example.app".to_string(), Box::new(profile))
+                .authenticated_origin(),
+            "com.example.app"
+        );
+        assert_eq!(
+            PeerScope::NoProfile("dev.arlen-graph-daemon".to_string()).authenticated_origin(),
+            "dev.arlen-graph-daemon"
+        );
+        assert_eq!(PeerScope::Unresolved.authenticated_origin(), "");
     }
 
     #[test]

@@ -603,6 +603,7 @@ mod tests {
             payload: payload.encode_to_vec(),
             uid: 1000,
             project_id: String::new(),
+            authenticated_origin: String::new(),
         }
     }
 
@@ -628,6 +629,7 @@ mod tests {
             payload: payload.encode_to_vec(),
             uid: 1000,
             project_id: String::new(),
+            authenticated_origin: String::new(),
         }
     }
 
