@@ -90,6 +90,25 @@ pub enum Commands {
         /// App ID or recipe id to challenge.
         target: String,
     },
+    /// Install community bridges for a foreign app (foreign-app-bridges.md section 4).
+    Bridge {
+        #[command(subcommand)]
+        action: BridgeAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum BridgeAction {
+    /// Install every cookbook bridge tagged for a foreign app, granting each a
+    /// revocable KG write scope.
+    Install {
+        /// The foreign app's short id (e.g. `obsidian`), matched against each
+        /// bridge recipe's `[bridge] foreign_app`.
+        foreign_app: String,
+        /// Skip the interactive consent prompt (for scripted installs).
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]

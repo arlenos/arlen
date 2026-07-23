@@ -199,6 +199,47 @@ pub fn prepare_bridge<F: GitFetcher>(
     Ok((clone, prepared))
 }
 
+/// The single template anchor token a `foreign_side.into` references (its first
+/// `$NAME` segment), or `None` if it does not begin with a `$` anchor. Mirrors
+/// [`resolve_foreign_dest`]'s rule that only the leading segment is a token, so the
+/// caller resolves exactly the token the install will look up.
+pub fn anchor_token(template: &str) -> Option<String> {
+    template
+        .trim()
+        .trim_end_matches('/')
+        .split('/')
+        .next()
+        .and_then(|s| s.strip_prefix('$'))
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+/// Build the foreign-side token map for a batch of prepared bridges from the
+/// process environment: each bridge's `foreign_side.into` anchor `$NAME` resolves
+/// from the environment variable `NAME`. Returns the resolved map plus the
+/// sorted-unique token names that had no (non-empty) environment value, so the
+/// caller can tell the user exactly what to set (e.g. `$VAULT` -> the Obsidian
+/// vault). Environment expansion is the sovereign, non-guessing source for a
+/// foreign app's data location - the user or the GUI installer sets it, forage
+/// never autodetects a path.
+pub fn tokens_from_env(prepared: &[PreparedBridge]) -> (HashMap<String, PathBuf>, Vec<String>) {
+    let mut tokens = HashMap::new();
+    let mut missing = std::collections::BTreeSet::new();
+    for pb in prepared {
+        if let Some(name) = anchor_token(&pb.install.foreign_side.into) {
+            match std::env::var(&name) {
+                Ok(val) if !val.is_empty() => {
+                    tokens.insert(name, PathBuf::from(val));
+                }
+                _ => {
+                    missing.insert(name);
+                }
+            }
+        }
+    }
+    (tokens, missing.into_iter().collect())
+}
+
 /// A bridge batch-install failure. Every variant means the whole batch was unwound
 /// (files removed, this-batch namespace grants revoked) before it was returned, so
 /// the caller sees a clean state.
@@ -598,5 +639,54 @@ files = ["main.js"]
 
         std::env::remove_var("ARLEN_PERMISSIONS_DIR");
         std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    #[test]
+    fn anchor_token_is_the_leading_dollar_segment_only() {
+        assert_eq!(anchor_token("$VAULT/.obsidian/plugins/b/"), Some("VAULT".to_string()));
+        assert_eq!(anchor_token("  $HOME/x  "), Some("HOME".to_string()));
+        // No leading `$` anchor, an empty name, or a `$` only in a later segment
+        // are all "no token" (a later `$` is an unsafe segment the installer rejects).
+        assert_eq!(anchor_token("/abs/path"), None);
+        assert_eq!(anchor_token("$/x"), None);
+        assert_eq!(anchor_token("relative/$LATER"), None);
+    }
+
+    fn prepared_with_into(into: &str) -> PreparedBridge {
+        PreparedBridge {
+            recipe_id: "md.obsidian.bridge".to_string(),
+            source_dir: PathBuf::from("/nonexistent"),
+            install: Install {
+                arlen_side: vec![],
+                foreign_side: ForeignSide { into: into.to_string(), files: vec![] },
+            },
+            namespace: "md.obsidian".to_string(),
+        }
+    }
+
+    #[test]
+    fn tokens_from_env_resolves_set_tokens_and_reports_missing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("VAULT", "/home/u/vault");
+        std::env::remove_var("STEAM");
+        let bridges = [
+            prepared_with_into("$VAULT/.obsidian/plugins/b/"),
+            prepared_with_into("$STEAM/userdata/"),
+        ];
+        let (tokens, missing) = tokens_from_env(&bridges);
+        assert_eq!(tokens.get("VAULT"), Some(&PathBuf::from("/home/u/vault")));
+        assert!(!tokens.contains_key("STEAM"), "an unset token is not in the map");
+        assert_eq!(missing, vec!["STEAM".to_string()], "the unset token is reported by name");
+        std::env::remove_var("VAULT");
+    }
+
+    #[test]
+    fn tokens_from_env_treats_an_empty_env_value_as_missing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("VAULT", "");
+        let (tokens, missing) = tokens_from_env(&[prepared_with_into("$VAULT/x/")]);
+        assert!(tokens.is_empty(), "an empty value is not a usable path");
+        assert_eq!(missing, vec!["VAULT".to_string()]);
+        std::env::remove_var("VAULT");
     }
 }

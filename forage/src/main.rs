@@ -7,7 +7,7 @@ mod cli;
 mod commands;
 
 use clap::Parser;
-use cli::{Cli, Commands, CookbookAction, ModuleAction, RecipeAction, TrashAction};
+use cli::{BridgeAction, Cli, Commands, CookbookAction, ModuleAction, RecipeAction, TrashAction};
 use colored::Colorize;
 
 fn main() {
@@ -59,6 +59,11 @@ fn main() {
             CookbookAction::Update => commands::cookbook::update(),
         },
         Commands::Challenge { target } => commands::challenge::challenge(&target),
+        Commands::Bridge { action } => match action {
+            BridgeAction::Install { foreign_app, yes } => {
+                run_async(cmd_bridge_install(foreign_app, yes))
+            }
+        },
     }
 }
 
@@ -259,6 +264,108 @@ async fn install_by_name(name: String) {
         Err(()) => std::process::exit(1),
     };
     Box::pin(cmd_install(lunpkg.to_string_lossy().into_owned())).await;
+}
+
+/// Install every cookbook bridge tagged for a foreign app (foreign-app-bridges.md
+/// section 4): enumerate the tracked cookbooks for bridges whose `[bridge]
+/// foreign_app` matches, take ONE install-time consent for the batch, fetch and
+/// verify each against its signed pointer, then install both halves atomically
+/// (Arlen-side schema/mapping + foreign-side plugin) and grant each a revocable KG
+/// write scope. A failing batch is rolled back whole.
+///
+/// The foreign-side destination (e.g. `$VAULT` for Obsidian) resolves from the
+/// environment; a missing token is reported by name rather than guessed.
+async fn cmd_bridge_install(foreign_app: String, assume_yes: bool) {
+    use arlen_forage_fetch::ProcessGitFetcher;
+
+    let resolved = match commands::cookbook::bridges_in_cookbooks(&foreign_app).await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("{} {e}", "error:".red().bold());
+            std::process::exit(1);
+        }
+    };
+    if resolved.is_empty() {
+        println!("No bridges found for '{foreign_app}' in the tracked cookbooks.");
+        return;
+    }
+
+    println!("{} bridge(s) for {foreign_app}:", resolved.len());
+    for r in &resolved {
+        println!("  - {} ({})", r.name, r.git_url);
+    }
+    // The one install-time consent for the whole batch (section 4). Fail-closed: a
+    // non-interactive or empty answer never installs without an explicit yes.
+    if !assume_yes
+        && !confirm(&format!(
+            "Bridge {foreign_app} into your knowledge graph? \
+             It installs the plugin and gets a revocable write scope. [y/N] "
+        ))
+    {
+        println!("Skipped.");
+        return;
+    }
+
+    // Fetch + verify + prepare each bridge; hold the checkouts alive until install
+    // has copied the files out. A prepare failure aborts before anything is placed.
+    let fetcher = ProcessGitFetcher;
+    let mut checkouts = Vec::new();
+    let mut prepared = Vec::new();
+    for r in &resolved {
+        match commands::bridge::prepare_bridge(&fetcher, r) {
+            Ok((checkout, pb)) => {
+                checkouts.push(checkout);
+                prepared.push(pb);
+            }
+            Err(e) => {
+                eprintln!("{} preparing bridge '{}': {e}", "error:".red().bold(), r.name);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Foreign-side destinations resolve from the environment (e.g. $VAULT -> the
+    // user's vault). Report any unset token rather than installing halfway.
+    let (tokens, missing) = commands::bridge::tokens_from_env(&prepared);
+    if !missing.is_empty() {
+        let names = missing
+            .iter()
+            .map(|n| format!("${n}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        eprintln!(
+            "{} set {names} to the foreign app's data location, then re-run",
+            "error:".red().bold()
+        );
+        std::process::exit(1);
+    }
+
+    match commands::bridge::install_prepared_bridges(&prepared, &tokens) {
+        Ok(results) => println!(
+            "{} installed {} bridge(s) for {foreign_app}",
+            "ok:".green().bold(),
+            results.len()
+        ),
+        Err(e) => {
+            eprintln!("{} {e} (rolled back)", "error:".red().bold());
+            std::process::exit(1);
+        }
+    }
+    drop(checkouts);
+}
+
+/// Prompt for a yes/no confirmation on the terminal, defaulting to no. A read
+/// error or any answer other than `y`/`yes` is a no, so a non-interactive run
+/// never proceeds without an explicit yes.
+fn confirm(prompt: &str) -> bool {
+    use std::io::Write;
+    print!("{prompt}");
+    let _ = std::io::stdout().flush();
+    let mut line = String::new();
+    if std::io::stdin().read_line(&mut line).is_err() {
+        return false;
+    }
+    matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
 
 /// Build a clonable https URL from a cookbook's signed `git_url`. The host is
