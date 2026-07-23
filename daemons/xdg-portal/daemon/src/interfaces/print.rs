@@ -160,7 +160,15 @@ impl Print {
         settings: HashMap<String, OwnedValue>,
         _page_setup: HashMap<String, OwnedValue>,
         _options: HashMap<&str, OwnedValue>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] hdr: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
+        // §2: only the authenticated frontend may reach this impl name.
+        if !crate::interfaces::sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await
+        {
+            tracing::warn!("refusing a PreparePrint call from a sender that is not the portal frontend");
+            return (2, HashMap::new());
+        }
         let token = self.stage(settings);
         tracing::info!(app_id, token, "portal Print: prepared");
         let mut results = HashMap::new();
@@ -181,7 +189,16 @@ impl Print {
         title: &str,
         fd: zbus::zvariant::OwnedFd,
         options: HashMap<&str, OwnedValue>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] hdr: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
+        // §2: frontend-only; a direct caller could print a handed fd under a
+        // forged app_id, bypassing the frontend's authentication.
+        if !crate::interfaces::sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await
+        {
+            tracing::warn!("refusing a Print call from a sender that is not the portal frontend");
+            return (2, HashMap::new());
+        }
         let settings = options
             .get("token")
             .and_then(|v| u32::try_from(v.clone()).ok())
