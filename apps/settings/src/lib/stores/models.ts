@@ -369,12 +369,12 @@ export async function importModel(): Promise<void> {
   models.update((list) => [...list, imported]);
 }
 
-/// Opt in to a Hugging Face search: the deliberate reach that broadens browse
-/// beyond the curated list. The mock appends a couple de-jargonized results and
-/// records that the reach succeeded; the curated list is the offline fallback.
-export async function searchHuggingFace(): Promise<void> {
+/// Escalate the browse search to Hugging Face: the deliberate reach for the typed
+/// term, beyond the curated list. The mock appends a couple de-jargonized results
+/// and records that the reach succeeded; the curated list is the offline fallback.
+export async function searchHuggingFace(query: string): Promise<void> {
   try {
-    const found = await invoke<Model[]>("ai_models_search_hf");
+    const found = await invoke<Model[]>("ai_models_search_hf", { query });
     models.update((list) => [...list, ...found]);
     hfSearch.set({ reachable: true });
     return;

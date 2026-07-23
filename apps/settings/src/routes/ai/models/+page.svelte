@@ -31,7 +31,6 @@
     modelsLoaded,
     modelsMocked,
     roles,
-    hfSearch,
     installedModels,
     availableModels,
     uncensoredEnabled,
@@ -230,21 +229,24 @@
           width="11rem"
           onchange={(v) => (taskFilter = v)}
         />
-        <Button variant="outline" size="sm" onclick={() => searchHuggingFace()}>
-          {$t("s.mdl.searchHf")}
-          <ExternalLink size={13} strokeWidth={2} />
-        </Button>
       </div>
-
-      {#if $hfSearch}
-        <p class="muted-line browse-note">{$t("s.mdl.hfNote")}</p>
-      {/if}
 
       {#each browseList as m (m.id)}
         <div class="browse-row">{@render modelBody(m)}</div>
       {:else}
         <p class="muted-line browse-note">{$t("s.mdl.noMatch")}</p>
       {/each}
+
+      {#if query.trim()}
+        <Button
+          variant="ghost"
+          class="w-full justify-start gap-2 px-4 font-normal text-muted-foreground hover:text-foreground"
+          onclick={() => searchHuggingFace(query)}
+        >
+          <ExternalLink size={15} strokeWidth={1.75} />
+          {$t("s.mdl.searchHfFor", { q: query })}
+        </Button>
+      {/if}
 
       <label class="adv-check">
         <Checkbox
