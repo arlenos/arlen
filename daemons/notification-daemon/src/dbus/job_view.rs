@@ -87,3 +87,69 @@ fn now_micros() -> u64 {
         .map(|d| u64::try_from(d.as_micros()).unwrap_or(u64::MAX))
         .unwrap_or(0)
 }
+
+/// Convert a [`crate::job::JobView`] to the wire message the shell renders in
+/// its Activity/Jobs zone. `removed = true` tells the shell to drop the job from
+/// its live set (a finish/terminal prune). The enums go over the wire as their
+/// stable tokens; the absent `Option`s become empty strings / zero, matching the
+/// no-Option D-Bus convention the producer already speaks.
+pub fn to_job_update(view: &crate::job::JobView, removed: bool) -> crate::socket::protocol::proto::JobUpdate {
+    crate::socket::protocol::proto::JobUpdate {
+        id: view.id,
+        app_id: view.app_id.clone(),
+        title: view.title.clone(),
+        state: view.state.as_str().to_string(),
+        state_message: view.state_message.clone().unwrap_or_default(),
+        unit: view.progress.unit().as_str().to_string(),
+        processed: view.progress.processed(),
+        determinate: view.progress.is_determinate(),
+        total: view.progress.total().unwrap_or(0),
+        fraction: view.progress.fraction(),
+        killable: view.capabilities.killable,
+        suspendable: view.capabilities.suspendable,
+        started_at: view.started_at,
+        egress_host: view.egress_host.clone().unwrap_or_default(),
+        removed,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::to_job_update;
+    use crate::job::{JobRegistry, JobViewServer};
+
+    #[test]
+    fn to_job_update_maps_the_whole_view() {
+        let s = JobViewServer::new(std::sync::Arc::new(std::sync::Mutex::new(JobRegistry::new())));
+        let id = s.register(
+            "files".into(),
+            "Copy 200 files".into(),
+            "files",
+            Some(200),
+            true,
+            true,
+            Some("api.example.com".into()),
+            42,
+        );
+        s.update(id, 50, None);
+        let view = s.snapshot().into_iter().next().unwrap();
+
+        let msg = to_job_update(&view, false);
+        assert_eq!(msg.id, id);
+        assert_eq!(msg.app_id, "files");
+        assert_eq!(msg.title, "Copy 200 files");
+        assert_eq!(msg.state, "running");
+        assert_eq!(msg.unit, "files");
+        assert_eq!(msg.processed, 50);
+        assert!(msg.determinate);
+        assert_eq!(msg.total, 200);
+        assert!((msg.fraction - 0.25).abs() < 1e-9);
+        assert!(msg.killable && msg.suspendable);
+        assert_eq!(msg.started_at, 42);
+        assert_eq!(msg.egress_host, "api.example.com");
+        assert!(!msg.removed);
+
+        // The prune form flips only the removed flag.
+        assert!(to_job_update(&view, true).removed);
+    }
+}
