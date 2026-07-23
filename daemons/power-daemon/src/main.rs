@@ -66,6 +66,36 @@ async fn main() {
         });
     }
 
+    // PWR-R4: take over the lid switch from logind so Arlen can be dock-aware
+    // (logind cannot skip lid-close suspend just because an external display is
+    // attached). A BLOCK inhibitor on `handle-lid-switch` makes logind defer to
+    // us; we then perform the configured action ourselves in the poll loop below,
+    // skipping it while docked. Held for the daemon's lifetime; if logind is
+    // unreachable we simply do not take over (logind keeps its default), which is
+    // safe - a non-dock-aware lid suspend is worse than no takeover, not unsafe.
+    let _lid_inhibitor = match sysbus.clone() {
+        Some(conn) => {
+            match arlen_powerd::logind::take_block_inhibitor(
+                &conn,
+                "handle-lid-switch",
+                "arlen-power-daemon",
+                "dock-aware lid handling",
+            )
+            .await
+            {
+                Ok(fd) => Some(fd),
+                Err(e) => {
+                    warn!("could not inhibit logind lid handling; leaving it to logind: {e}");
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+    // The dock-aware lid policy. The default suspends on lid-close but not while
+    // docked; a machine with no lid never triggers it.
+    let lid_config = arlen_powerd::lid::LidConfig::default();
+
     // The shared snapshot the org.arlen.Power1 interface serves. The poll loop
     // writes the latest reading; pull consumers (shell, apps, SDK) read it
     // without forking UPower. Served on the SESSION bus (this is a per-user
@@ -179,13 +209,36 @@ async fn main() {
 
                             // Coarse lid movement: publish power.lid_closed /
                             // power.lid_opened, the other half of the transition
-                            // set the proto specifies. Observation only - acting
-                            // on the lid is PWR-R4 and stays unwired.
+                            // set the proto specifies.
                             if let Some(prev) = last.as_ref() {
                                 if let Some(evt) =
                                     arlen_powerd::lid::lid_transition_event(prev.lid, state.lid)
                                 {
                                     emit_transition(&emitter, evt, String::new()).await;
+                                    // PWR-R4: act on a lid CLOSE, dock-aware. We
+                                    // own the switch via the block inhibitor above,
+                                    // so logind will not also act. Docked (an
+                                    // external display attached) skips the action so
+                                    // the session keeps running on that display.
+                                    if evt == "power.lid_closed" {
+                                        let docked = arlen_powerd::lid::detect_docked();
+                                        if let Some(action) =
+                                            arlen_powerd::lid::lid_close_action(&lid_config, docked)
+                                        {
+                                            if let Some(conn) = sysbus.as_ref() {
+                                                info!(
+                                                    action = action.as_str(),
+                                                    docked,
+                                                    "lid closed: performing the configured action"
+                                                );
+                                                if let Err(e) =
+                                                    arlen_powerd::logind::perform(conn, action).await
+                                                {
+                                                    warn!("lid-close action {} failed: {e}", action.as_str());
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
 

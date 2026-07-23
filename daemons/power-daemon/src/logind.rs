@@ -167,6 +167,23 @@ pub async fn take_delay_inhibitor(
     proxy.call("Inhibit", &(what, who, why, "delay")).await
 }
 
+/// Take a **block** inhibitor on the given lock classes (e.g.
+/// `"handle-lid-switch"`). Unlike a delay inhibitor, a block inhibitor stops
+/// logind from taking its OWN action for those events entirely, so Arlen can own
+/// the policy (dock-aware lid handling). The returned fd holds it for its
+/// lifetime; dropping it hands the class back to logind. A block on
+/// `handle-lid-switch` does NOT block an explicit `Suspend()` - only a `sleep`
+/// block would - so the daemon can still perform its chosen lid action.
+pub async fn take_block_inhibitor(
+    conn: &zbus::Connection,
+    what: &str,
+    who: &str,
+    why: &str,
+) -> zbus::Result<OwnedFd> {
+    let proxy = manager(conn).await?;
+    proxy.call("Inhibit", &(what, who, why, "block")).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
