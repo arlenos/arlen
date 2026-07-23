@@ -36,6 +36,9 @@ pub struct CommitRow {
     pub author_email: String,
     /// The commit time, Unix seconds.
     pub committed_at: i64,
+    /// The parent commit SHAs (empty for the root, two for a merge). Written as
+    /// `PARENT_OF` edges when both endpoints are ingested nodes.
+    pub parents: Vec<String>,
 }
 
 /// The unit separator git writes between `--format` fields. It never appears in a
@@ -45,7 +48,7 @@ const FIELD_SEP: char = '\u{1f}';
 
 /// The `git log --format` spec matching [`CommitRow`]: SHA, subject, author name,
 /// author email, committer Unix time, unit-separated.
-pub const LOG_FORMAT: &str = "%H%x1f%s%x1f%an%x1f%ae%x1f%ct";
+pub const LOG_FORMAT: &str = "%H%x1f%s%x1f%an%x1f%ae%x1f%ct%x1f%P";
 
 /// Parse `git log --format` output (one commit per line, [`FIELD_SEP`]-separated
 /// fields) into commit rows. A line with too few fields, an empty SHA, or a
@@ -62,6 +65,14 @@ fn parse_line(line: &str) -> Option<CommitRow> {
     let author = f.next()?.to_string();
     let author_email = f.next()?.to_string();
     let committed_at = f.next()?.trim().parse::<i64>().ok()?;
+    // `%P` is a space-separated parent list, empty for the root commit. A missing
+    // field (an older format) is treated as no parents rather than a parse error.
+    let parents = f
+        .next()
+        .unwrap_or("")
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
     if id.is_empty() {
         return None;
     }
@@ -71,6 +82,7 @@ fn parse_line(line: &str) -> Option<CommitRow> {
         author,
         author_email,
         committed_at,
+        parents,
     })
 }
 
@@ -110,6 +122,18 @@ pub async fn ingest_commits(graph: &GraphHandle, commits: &[CommitRow]) -> Resul
                 c.committed_at
             ))
             .await?;
+        // The DAG edge to each parent. MATCH both commits so an edge is created
+        // only when the parent is also an ingested node (no dangling edge); it
+        // fills in as more history ingests. MERGE keeps re-ingestion idempotent.
+        for parent in &c.parents {
+            let parent = escape_cypher(parent);
+            graph
+                .write(format!(
+                    "MATCH (c:Commit {{id: '{id}'}}), (p:Commit {{id: '{parent}'}}) \
+                     MERGE (c)-[:PARENT_OF]->(p)"
+                ))
+                .await?;
+        }
     }
     Ok(commits.len())
 }
@@ -131,8 +155,8 @@ mod tests {
         // A real `git log --format=%H%x1f%s%x1f%an%x1f%ae%x1f%ct` line, unit-
         // separated. A subject with a comma and a quote must survive intact,
         // which the separator (never in commit text) guarantees.
-        let out = "abc123\u{1f}fix: the bug, \"finally\"\u{1f}Tim\u{1f}tim@x.org\u{1f}1700000000\n\
-                   def456\u{1f}initial commit\u{1f}Ada\u{1f}ada@x.org\u{1f}1699999999\n";
+        let out = "abc123\u{1f}fix: the bug, \"finally\"\u{1f}Tim\u{1f}tim@x.org\u{1f}1700000000\u{1f}def456 aaa111\n\
+                   def456\u{1f}initial commit\u{1f}Ada\u{1f}ada@x.org\u{1f}1699999999\u{1f}\n";
         let rows = parse_git_log(out);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].id, "abc123");
@@ -140,7 +164,10 @@ mod tests {
         assert_eq!(rows[0].author, "Tim");
         assert_eq!(rows[0].author_email, "tim@x.org");
         assert_eq!(rows[0].committed_at, 1700000000);
+        // A merge commit has two parents; the root has none.
+        assert_eq!(rows[0].parents, vec!["def456".to_string(), "aaa111".to_string()]);
         assert_eq!(rows[1].id, "def456");
+        assert!(rows[1].parents.is_empty(), "the root commit has no parent");
     }
 
     #[test]
@@ -148,9 +175,9 @@ mod tests {
         // Too few fields, an empty SHA, and a non-numeric time each drop the line
         // rather than fabricate a partial commit.
         let out = "just-a-hash\u{1f}only two\n\
-                   \u{1f}empty sha\u{1f}A\u{1f}a@x\u{1f}1\n\
-                   ok123\u{1f}good\u{1f}A\u{1f}a@x\u{1f}notanumber\n\
-                   real\u{1f}good\u{1f}A\u{1f}a@x\u{1f}5\n";
+                   \u{1f}empty sha\u{1f}A\u{1f}a@x\u{1f}1\u{1f}\n\
+                   ok123\u{1f}good\u{1f}A\u{1f}a@x\u{1f}notanumber\u{1f}\n\
+                   real\u{1f}good\u{1f}A\u{1f}a@x\u{1f}5\u{1f}\n";
         let rows = parse_git_log(out);
         assert_eq!(rows.len(), 1, "only the well-formed line survives");
         assert_eq!(rows[0].id, "real");
@@ -175,6 +202,7 @@ mod tests {
             author: "Tim".into(),
             author_email: "tim@x.org".into(),
             committed_at: 42,
+            parents: vec![],
         }];
         ingest_commits(&graph, &commits).await.unwrap();
         // Re-ingest: MERGE must not duplicate.
@@ -186,5 +214,38 @@ mod tests {
             .unwrap();
         assert_eq!(rows.rows.len(), 1, "one commit node, not two");
         assert_eq!(rows.rows[0][0].as_str(), "hello", "the message round-trips");
+    }
+
+    #[tokio::test]
+    async fn a_parent_edge_links_two_ingested_commits() {
+        // The DAG: a child PARENT_OF its parent, but only once BOTH are nodes.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        let row = |id: &str, parents: Vec<String>| CommitRow {
+            id: id.into(),
+            message: "m".into(),
+            author: "A".into(),
+            author_email: "a@x".into(),
+            committed_at: 1,
+            parents,
+        };
+        // Ingest the child FIRST, whose parent is not yet a node: no edge is made.
+        ingest_commits(&graph, &[row("child", vec!["parent".into()])]).await.unwrap();
+        let before = graph
+            .query_rows("MATCH (:Commit)-[:PARENT_OF]->(:Commit) RETURN 1 AS x".into())
+            .await
+            .unwrap();
+        assert_eq!(before.rows.len(), 0, "no dangling edge to a missing parent");
+        // Now ingest the parent AND re-ingest the child: the edge fills in, once.
+        ingest_commits(&graph, &[row("parent", vec![])]).await.unwrap();
+        ingest_commits(&graph, &[row("child", vec!["parent".into()])]).await.unwrap();
+        ingest_commits(&graph, &[row("child", vec!["parent".into()])]).await.unwrap();
+        let after = graph
+            .query_rows("MATCH (c:Commit)-[:PARENT_OF]->(p:Commit) RETURN c.id AS c, p.id AS p".into())
+            .await
+            .unwrap();
+        assert_eq!(after.rows.len(), 1, "exactly one edge, child -> parent, not duplicated");
+        assert_eq!(after.rows[0][0].as_str(), "child");
+        assert_eq!(after.rows[0][1].as_str(), "parent");
     }
 }
