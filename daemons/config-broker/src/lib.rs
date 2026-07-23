@@ -18,6 +18,7 @@
 
 pub mod client;
 pub mod identity_op;
+pub mod identity_server;
 pub mod protocol;
 pub mod server;
 pub mod state;
