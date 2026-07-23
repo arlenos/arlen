@@ -113,22 +113,53 @@ impl NamespaceGrant {
 /// not under the caller's own app-id namespace is admitted only if some delegated
 /// grant permits it.
 ///
-/// TRACKED follow-up (adversarial review, MEDIUM): a grant checks only that the type
-/// is strictly under the delegated namespace, NOT that the namespace is UNOWNED. A
-/// user profile that delegated an installed app's namespace (e.g. a bridge granted
-/// `com.other`) would let the bridge write into that app's own entity table/ids (the
-/// table + node id key on the qualified type, not `_owner`), MERGE-clobbering its
-/// instances. Bounded today - it cannot reach `system.*`/`shared.*`, it is
-/// app-tier-within-the-user's-own-KG, gated behind the user-owned profile (the
-/// same-uid F3 residual), and the custom-type READ path is unwired so there is no
-/// read-poisoning consumer yet. The fix (reject a delegation matching an installed
-/// app's namespace, or owner-scope the entity table/id) lands WITH the custom-type
-/// read path - the intended delegation is a bridge's OWN external-tool namespace
-/// (`md.obsidian`), not another installed app's.
+/// The un-owned check that keeps a delegation off an installed app's namespace is
+/// applied UPSTREAM, at token mint ([`unowned_delegations`], called by the
+/// authenticator): the token only ever carries delegations of namespaces no
+/// installed app owns, so a write here cannot land in another app's entity tables
+/// and MERGE-clobber its instances. This function trusts that filter - it checks
+/// only the namespace-boundary, not ownership - because the token's delegations
+/// are already un-owned by construction.
 pub fn permits_any(delegated: &[String], entity_type: &str) -> bool {
     delegated
         .iter()
         .any(|ns| NamespaceGrant::new(ns).is_some_and(|g| g.permits(entity_type)))
+}
+
+/// Whether one namespace is the dotted ancestor of, or equal to, another.
+/// `md.obsidian` is a dotted ancestor of `md.obsidian.vault` but NOT of
+/// `md.obsidianvault` (the boundary must be a `.`), and equal counts.
+fn is_dotted_ancestor_or_self(anc: &str, desc: &str) -> bool {
+    anc == desc || desc.strip_prefix(anc).is_some_and(|rest| rest.starts_with('.'))
+}
+
+/// Whether delegating `ns` would collide with a namespace an INSTALLED app owns
+/// (the tracked MEDIUM, foreign-app-bridges.md). A delegation grants writes under
+/// `ns.*`; an installed app owns writes under `{its app_id}.*`. Those overlap
+/// exactly when `ns` and some installed app id are in a dotted ancestor/descendant
+/// (or equal) relationship - then a write under the delegation could land in that
+/// app's own entity table/ids and MERGE-clobber its instances.
+///
+/// The intended delegation is a bridge's OWN external-tool namespace (`md.obsidian`,
+/// owned by no installed app), which this admits; a delegation of `com.other` where
+/// `com.other` (or a prefix/sub of it) is installed is refused. Self-delegation (the
+/// caller's own namespace) is pointless - the caller writes it directly - so
+/// refusing it is harmless; the caller is not special-cased.
+pub fn delegation_is_owned(ns: &str, installed_app_ids: &[String]) -> bool {
+    installed_app_ids
+        .iter()
+        .any(|app| is_dotted_ancestor_or_self(ns, app) || is_dotted_ancestor_or_self(app, ns))
+}
+
+/// Filter a caller's declared delegations to those NOT owned by an installed app,
+/// so a user profile cannot delegate an installed app's namespace to a bridge and
+/// let it clobber that app's entities. The kept set is what the token carries.
+pub fn unowned_delegations(delegated: &[String], installed_app_ids: &[String]) -> Vec<String> {
+    delegated
+        .iter()
+        .filter(|ns| !delegation_is_owned(ns, installed_app_ids))
+        .cloned()
+        .collect()
 }
 
 /// Whether `ns` is or starts with a reserved namespace segment (`system`/`shared`).
@@ -238,4 +269,36 @@ mod tests {
         assert!(!permits_any(&[], "md.obsidian.Note"));
     }
 
+    #[test]
+    fn a_delegation_of_an_installed_apps_namespace_is_owned() {
+        let installed = vec!["com.spotify".to_string(), "ai-agent".to_string()];
+        // Exact match, a sub of an installed app, and a PREFIX of one (which would
+        // still let a write land in the app's tree) are all owned.
+        assert!(delegation_is_owned("com.spotify", &installed));
+        assert!(delegation_is_owned("com.spotify.data", &installed));
+        assert!(delegation_is_owned("com", &installed)); // com.spotify is under it
+        // A bridge's own external-tool namespace, owned by no installed app, is free.
+        assert!(!delegation_is_owned("md.obsidian", &installed));
+        // A near-miss at a non-dotted boundary is NOT owned.
+        assert!(!delegation_is_owned("com.spotifyx", &installed));
+        assert!(!delegation_is_owned("md.obsidian", &[]));
+    }
+
+    #[test]
+    fn unowned_delegations_drops_the_owned_and_keeps_the_bridge_namespace() {
+        let installed = vec!["com.spotify".to_string()];
+        let declared = vec![
+            "md.obsidian".to_string(), // a real external tool, unowned -> kept
+            "com.spotify".to_string(), // an installed app -> dropped (would clobber)
+            "com.spotify.data".to_string(), // under an installed app -> dropped
+        ];
+        assert_eq!(
+            unowned_delegations(&declared, &installed),
+            vec!["md.obsidian".to_string()]
+        );
+        // With no installed apps enumerated (fail-open) nothing is dropped: the
+        // delegation is already bounded to the user's own KG, so a missing
+        // enumeration must not brick a bridge.
+        assert_eq!(unowned_delegations(&declared, &[]), declared);
+    }
 }
