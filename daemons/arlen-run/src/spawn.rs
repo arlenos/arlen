@@ -611,4 +611,65 @@ mod tests {
              exit {code} (30=the raw IP was reachable = a bypass of the proxy)"
         );
     }
+
+    /// The in-sandbox Landlock fence composes with the FILTERED path (pasta netns +
+    /// the seccomp-wrapper file). To isolate the FENCE's contribution from bwrap's
+    /// mount namespace, bwrap binds TWO dirs read-write but the fence grants only
+    /// one: a write to the granted dir must succeed, a write to the ungranted-but-
+    /// mount-writable dir must be DENIED by the fence (not the mount), and /dev/null
+    /// must still be writable. Runs the real arlen-run binary as the `--landlock-exec`
+    /// wrapper. Metal-only (pasta + bwrap + userns + Landlock).
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "needs pasta + bwrap + unprivileged userns + Landlock on the host kernel"]
+    fn the_filtered_launch_fences_the_app_beyond_the_mount_namespace() {
+        // The arlen-run binary sits beside the test binary's target/debug/deps dir.
+        let exe = std::env::current_exe().unwrap();
+        let arlen_run = exe.parent().unwrap().parent().unwrap().join("arlen-run");
+        assert!(arlen_run.exists(), "arlen-run built at {}", arlen_run.display());
+
+        // A host dir under /var/tmp (an existing path NOT in the fence's standard-
+        // writable list, unlike /tmp), with granted/ + ungranted/ subdirs, bound
+        // read-WRITE at its own path so both subdirs are mount-writable. The fence
+        // grants only the granted subdir, so a denial of the ungranted one isolates
+        // the fence's effect from the mount namespace.
+        let base = tempfile::Builder::new()
+            .prefix("arlen-flt-fence-")
+            .tempdir_in("/var/tmp")
+            .expect("temp dir under /var/tmp");
+        let base_path = base.path().to_string_lossy().into_owned();
+        std::fs::create_dir(base.path().join("granted")).unwrap();
+        std::fs::create_dir(base.path().join("ungranted")).unwrap();
+        let granted = format!("{base_path}/granted");
+        let ungranted = format!("{base_path}/ungranted");
+        // granted write ok, /dev/null ok, ungranted (mount-rw but fence-denied) must
+        // fail -> exit 0 only if the fence is genuinely applied over the mount.
+        let script = format!(
+            "echo a > '{granted}/f' || exit 10; echo n > /dev/null || exit 11; \
+             if echo b > '{ungranted}/f' 2>/dev/null; then exit 20; fi; exit 0"
+        );
+        // The fence grants ONLY the granted subdir; bwrap binds the base rw.
+        let program = crate::landlock_exec::landlock_exec_program(
+            &arlen_run.to_string_lossy(),
+            &[std::path::PathBuf::from(&granted)],
+            &["/bin/sh".to_string(), "-c".to_string(), script],
+        );
+        let mut argv: Vec<String> = [
+            "--unshare-user", "--unshare-pid", "--ro-bind", "/", "/", "--proc", "/proc",
+            "--dev", "/dev", "--bind", &base_path, &base_path, "--",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        argv.extend(program);
+        let bpf = crate::seccomp::app_filter_bytes().expect("filter compiles");
+        let code = spawn_filtered_and_wait(&argv, &[], None, bpf).expect("filtered launch spawns");
+        assert_eq!(
+            code, 0,
+            "through pasta+seccomp+landlock the fence must permit the granted dir + \
+             /dev/null and DENY the ungranted (mount-writable) dir; exit {code} \
+             (10=granted failed, 11=/dev/null denied, 20=ungranted write ALLOWED = \
+             fence not applied over the mount)"
+        );
+    }
 }

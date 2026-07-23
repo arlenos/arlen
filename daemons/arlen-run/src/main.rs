@@ -322,48 +322,45 @@ fn main() -> ExitCode {
         }
     };
 
+    // Run the app under the in-sandbox Landlock fence on BOTH paths: bwrap execs
+    // `arlen-run --landlock-exec <app writable dirs> -- <app>`, which fences the app
+    // to its own dirs (plus the standard writable devices) after bwrap's mount +
+    // userns setup, then execs it - a filesystem defense-in-depth layer independent
+    // of bwrap's mount namespace. If arlen-run's own path is unknown, the app runs
+    // directly and bwrap's mount namespace remains the filesystem confinement
+    // (fail-safe). The wrapper uses a literal `--` to separate the writable dirs
+    // from the program, so no writable dir may itself be `--`; `build_confinement`
+    // above already rejected any non-absolute app_dir, so this holds by
+    // construction (asserted against a future refactor).
+    debug_assert!(
+        !inputs.app_dirs.iter().any(|d| d.as_os_str() == "--"),
+        "an app writable dir must never be the wrapper delimiter"
+    );
+    let program = match &arlen_run {
+        Some(exe) => landlock_exec::landlock_exec_program(
+            &exe.to_string_lossy(),
+            &inputs.app_dirs,
+            &args.program,
+        ),
+        None => {
+            eprintln!(
+                "arlen-run: {}: could not resolve arlen-run's own path; the \
+                 in-sandbox Landlock layer is not applied (bwrap mount namespace \
+                 + seccomp still confine the app)",
+                args.app_id
+            );
+            args.program.clone()
+        }
+    };
+    let argv = spawn::bwrap_argv(&confinement, &program);
     let result = if filtered {
-        // The filtered launch wraps bwrap in the route-absent pasta namespace and
-        // delivers the seccomp through the wrapper file; the proxy env above is
-        // already set. The egress guard (held above) keeps the proxy serving. The
-        // in-sandbox Landlock fence is not applied here (this path keeps its own
-        // model: bwrap's mount namespace + seccomp); folding the fence in is a
-        // follow-up.
-        let argv = spawn::bwrap_argv(&confinement, &args.program);
+        // The filtered launch additionally wraps bwrap in the route-absent pasta
+        // namespace and delivers the seccomp through the wrapper file; the proxy env
+        // above is already set, and the egress guard (held above) keeps the proxy
+        // serving. The fence composes: the seccomp allowlist admits the landlock
+        // syscalls, and pasta's netns is orthogonal to the filesystem fence.
         spawn::spawn_filtered_and_wait(&argv, &inputs.app_dirs, cgroup_procs, seccomp_bpf)
     } else {
-        // The direct launch runs the app under the in-sandbox Landlock fence: bwrap
-        // execs `arlen-run --landlock-exec <app writable dirs> -- <app>`, which
-        // fences the app to its own dirs (read the pruned bwrap view, write only
-        // those dirs) then execs it - so the fence confines the app after bwrap's
-        // setup. If arlen-run's own path is unknown, the app runs directly and
-        // bwrap's mount namespace remains the filesystem confinement (fail-safe).
-        // The `--landlock-exec` wrapper protocol uses a literal `--` to separate the
-        // writable dirs from the program, so no writable dir may itself be `--`.
-        // `build_confinement` (above) already rejected any non-absolute app_dir, so
-        // this holds by construction; assert it so a future refactor cannot silently
-        // re-open a delimiter-confusion gap.
-        debug_assert!(
-            !inputs.app_dirs.iter().any(|d| d.as_os_str() == "--"),
-            "an app writable dir must never be the wrapper delimiter"
-        );
-        let program = match &arlen_run {
-            Some(exe) => landlock_exec::landlock_exec_program(
-                &exe.to_string_lossy(),
-                &inputs.app_dirs,
-                &args.program,
-            ),
-            None => {
-                eprintln!(
-                    "arlen-run: {}: could not resolve arlen-run's own path; \
-                     the in-sandbox Landlock layer is not applied (bwrap mount \
-                     namespace + seccomp still confine the app)",
-                    args.app_id
-                );
-                args.program.clone()
-            }
-        };
-        let argv = spawn::bwrap_argv(&confinement, &program);
         spawn::spawn_and_wait(&argv, &inputs.app_dirs, cgroup_procs, Some(seccomp_bpf))
     };
 
