@@ -128,8 +128,19 @@ export function reachLabel(type: string): string {
 const LOCAL_PROVIDERS = new Set(["ollama", "llama.cpp", "llamacpp", "local", "localai"]);
 
 /// Whether the configured provider is local (no usage cost).
+///
+/// Matches the provider FAMILY, not an exact id: the configured provider is a
+/// catalog id like `ollama-default`, not the bare kind `ollama`, so an exact-set
+/// lookup missed it and rendered a local model as "a cloud service" with a cost -
+/// a falsehood on the surface whose whole job is honesty. The family is the id's
+/// leading segment before the first `-` (so `ollama-default` -> `ollama`), which
+/// also matches a bare `ollama` and any future `ollama-<name>` local catalog id.
 export function isLocalProvider(provider: string | null | undefined): boolean {
-  return provider != null && LOCAL_PROVIDERS.has(provider.toLowerCase());
+  if (provider == null) return false;
+  const id = provider.toLowerCase();
+  if (LOCAL_PROVIDERS.has(id)) return true;
+  const family = id.split("-", 1)[0];
+  return LOCAL_PROVIDERS.has(family);
 }
 
 /// Nicely cased display names for known providers; an unknown id gets its
