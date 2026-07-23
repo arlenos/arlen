@@ -7,6 +7,13 @@ description = "Shared protobuf definitions for the Arlen notification system"
 
 [dependencies]
 prost = "0.13"
+zbus = { version = "5", default-features = false, features = ["tokio"], optional = true }
+
+[features]
+# The producer-side D-Bus client for the job server (job-progress-surface.md).
+# Opt-in so wire-type-only consumers (the shell decoding ServerMessage) stay
+# zbus-free.
+client = ["dep:zbus"]
 
 [build-dependencies]
 prost-build = "0.13"
