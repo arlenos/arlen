@@ -4,7 +4,6 @@
 pub mod auth;
 pub mod backup;
 pub mod code_analysis;
-mod git_ingest;
 pub mod cypher;
 pub mod db;
 pub mod derivation;
