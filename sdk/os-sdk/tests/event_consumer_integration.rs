@@ -179,6 +179,7 @@ fn make_event(id: &str, event_type: &str, payload: Vec<u8>) -> proto::Event {
         payload,
         uid: 0,
         project_id: String::new(),
+        authenticated_origin: String::new(),
     }
 }
 

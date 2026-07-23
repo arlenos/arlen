@@ -114,6 +114,10 @@ impl EventEmitter for UnixEventEmitter {
                 // themselves — focus events propagate context.
                 uid: 0,
                 project_id: String::new(),
+                // Bus-stamped from the producer's SO_PEERCRED-attested identity
+                // (like uid); sending empty is the "let the bus fill it in" path.
+                // A producer-supplied value would be overwritten anyway.
+                authenticated_origin: String::new(),
             };
 
             let encoded = event.encode_to_vec();

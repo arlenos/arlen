@@ -212,6 +212,7 @@ mod tests {
             payload: vec![],
             uid,
             project_id: String::new(),
+            authenticated_origin: String::new(),
         }
     }
 

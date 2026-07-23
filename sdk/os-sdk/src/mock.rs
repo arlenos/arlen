@@ -325,6 +325,7 @@ mod tests {
             payload: vec![],
             uid: 0,
             project_id: String::new(),
+            authenticated_origin: String::new(),
         });
         bus.push(crate::proto::Event {
             id: "e2".into(),
@@ -336,6 +337,7 @@ mod tests {
             payload: vec![],
             uid: 0,
             project_id: String::new(),
+            authenticated_origin: String::new(),
         });
 
         let received = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
