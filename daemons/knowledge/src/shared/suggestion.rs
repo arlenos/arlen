@@ -77,6 +77,127 @@ fn status_str(status: SuggestionStatus) -> &'static str {
     }
 }
 
+/// Parse a graph-stored status string back to the enum (inverse of [`status_str`]);
+/// an unrecognised value is treated as `Expired` (fail-closed to a non-actionable
+/// state, so a corrupt status can never be acted on as pending).
+fn status_from_str(s: &str) -> SuggestionStatus {
+    match s {
+        "pending" => SuggestionStatus::Pending,
+        "accepted" => SuggestionStatus::Accepted,
+        "rejected" => SuggestionStatus::Rejected,
+        _ => SuggestionStatus::Expired,
+    }
+}
+
+/// The stored fields the accept/reject path needs: the duplicate PAIR + the type
+/// (for owner-gating + table resolution) + the current status (only a `Pending`
+/// suggestion may be acted on). The merge targets come from HERE, never from the
+/// caller's request, so a caller can only name a suggestion id, not an arbitrary
+/// pair to merge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SuggestionCore {
+    /// The qualified shared type (e.g. `shared.Person`).
+    pub entity_type: String,
+    /// The duplicate to fold away (deleted on merge).
+    pub source_id: String,
+    /// The canonical entity kept on merge.
+    pub target_id: String,
+    /// Current lifecycle status.
+    pub status: SuggestionStatus,
+}
+
+/// Fetch a stored [`MergeSuggestion`]'s core fields by id, or `None` if absent.
+/// Read-only. The pair + type it returns are the daemon-authored values persisted
+/// when the suggestion was detected, never caller input.
+pub async fn fetch_suggestion(
+    graph: &crate::graph::GraphHandle,
+    suggestion_id: &str,
+) -> anyhow::Result<Option<SuggestionCore>> {
+    use crate::utils::escape_cypher;
+    let id = escape_cypher(suggestion_id);
+    let cypher = format!(
+        "MATCH (s:MergeSuggestion {{id: '{id}'}}) \
+         RETURN s.entity_type AS entity_type, s.source_id AS source_id, \
+         s.target_id AS target_id, s.status AS status LIMIT 1"
+    );
+    let json = graph.query_rows_json(cypher).await?;
+    let v: serde_json::Value = serde_json::from_str(&json)?;
+    let row = match v.get("rows").and_then(|r| r.as_array()).and_then(|r| r.first()) {
+        Some(row) => row,
+        None => return Ok(None),
+    };
+    let cell = |i: usize| row.get(i).and_then(|c| c.as_str()).unwrap_or_default().to_string();
+    let entity_type = cell(0);
+    let source_id = cell(1);
+    let target_id = cell(2);
+    // A stored suggestion missing its pair or type is corrupt; treat as absent.
+    if entity_type.is_empty() || source_id.is_empty() || target_id.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(SuggestionCore {
+        entity_type,
+        source_id,
+        target_id,
+        status: status_from_str(&cell(3)),
+    }))
+}
+
+/// Re-validate that a suggestion's stored pair is STILL a live duplicate, just
+/// before the destructive merge. Entity ids are natural-key-derived and REUSABLE
+/// after deletion, and multiple pending suggestions for one source can accumulate,
+/// so a stale suggestion could otherwise fold an unrelated (reused-id) or edited
+/// entity. This re-fetches both entities' CURRENT scorer fields and re-runs
+/// [`detect_duplicate`]; it returns `true` only if both are still present AND still
+/// score as duplicates. Read-only. `false` => refuse the merge (stale / one gone /
+/// no longer matching).
+pub async fn suggestion_still_valid(
+    graph: &crate::graph::GraphHandle,
+    entity_type: &str,
+    source_id: &str,
+    target_id: &str,
+) -> anyhow::Result<bool> {
+    use crate::utils::escape_cypher;
+    let config = DuplicateConfig::for_type(entity_type);
+    // The fields the scorer compares (unique + fuzzy). No scorer fields => the type
+    // has no duplicate model, so there is nothing to re-validate => refuse.
+    let mut fields: Vec<String> = config.unique_fields.clone();
+    for (f, _) in &config.fuzzy_fields {
+        if !fields.contains(f) {
+            fields.push(f.clone());
+        }
+    }
+    if fields.is_empty() {
+        return Ok(false);
+    }
+    let projection: Vec<String> = fields.iter().map(|f| format!("n.{f} AS {f}")).collect();
+    let table = crate::write::entity_table_name(entity_type);
+    let cypher = format!(
+        "MATCH (n:{table}) WHERE n.id IN ['{}', '{}'] RETURN n.id AS id, {} LIMIT 2",
+        escape_cypher(source_id),
+        escape_cypher(target_id),
+        projection.join(", "),
+    );
+    let json = graph.query_rows_json(cypher).await?;
+    let found = parse_candidate_rows(&json);
+    let src = found.iter().find(|(id, _)| id == source_id);
+    let tgt = found.iter().find(|(id, _)| id == target_id);
+    let (Some((_, src_data)), Some((_, tgt_data))) = (src, tgt) else {
+        // One (or both) of the pair no longer exists at that id.
+        return Ok(false);
+    };
+    // Re-run detection with the target as the reference and the source as the sole
+    // candidate; a still-matching pair yields a suggestion, a no-longer-matching one
+    // (reused/edited id) yields None.
+    Ok(detect_duplicate(
+        entity_type,
+        target_id,
+        tgt_data,
+        &[(source_id.to_string(), src_data.clone())],
+        "revalidate",
+    )
+    .is_some())
+}
+
 /// Persist a merge suggestion as a `MergeSuggestion` graph node, idempotent on the
 /// suggestion id (MERGE). `match_fields` is stored as a JSON array string and
 /// `created_at` as RFC3339 (lexically sortable for the pending query's ORDER BY),
@@ -394,6 +515,94 @@ mod tests {
         assert_eq!(rows.rows[0][0].as_str(), "p-new");
         assert_eq!(rows.rows[0][1].as_str(), "p-dup");
         assert_eq!(rows.rows[0][2].as_str(), "shared.Person");
+    }
+
+    #[tokio::test]
+    async fn fetch_suggestion_reads_back_the_pair_type_and_status() {
+        // The merge-accept op (0x10) reads the pair + type + status from HERE, never
+        // from the caller. A persisted suggestion fetches back its stored core; an
+        // absent id is None.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        let s = detect_duplicate(
+            "shared.Person",
+            "p-new",
+            &person("tim@x.org"),
+            &[("p-dup".to_string(), person("tim@x.org"))],
+            "com.test",
+        )
+        .expect("a duplicate");
+        persist_suggestion(&graph, &s).await.unwrap();
+
+        let core = fetch_suggestion(&graph, &s.id).await.unwrap().expect("the suggestion");
+        assert_eq!(core.entity_type, "shared.Person");
+        assert_eq!(core.source_id, "p-new");
+        assert_eq!(core.target_id, "p-dup");
+        assert_eq!(core.status, SuggestionStatus::Pending);
+
+        assert!(
+            fetch_suggestion(&graph, "no-such-id").await.unwrap().is_none(),
+            "an absent suggestion id is None"
+        );
+    }
+
+    #[tokio::test]
+    async fn suggestion_still_valid_guards_a_stale_or_reused_pair() {
+        // The merge-accept re-validation: a merge only proceeds while the stored
+        // pair is STILL a live duplicate, so a stale suggestion cannot fold an
+        // absent or reused-id entity.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        let table = crate::write::entity_table_name("shared.Person");
+        graph
+            .write(format!(
+                "CREATE NODE TABLE {table}(id STRING, email STRING, \
+                 normalized_name STRING, PRIMARY KEY(id))"
+            ))
+            .await
+            .unwrap();
+        graph
+            .write(format!(
+                "CREATE (:{table} {{id:'shared.Person:a', email:'tim@x.org', normalized_name:'tim'}})"
+            ))
+            .await
+            .unwrap();
+        graph
+            .write(format!(
+                "CREATE (:{table} {{id:'shared.Person:b', email:'tim@x.org', normalized_name:'tim'}})"
+            ))
+            .await
+            .unwrap();
+
+        // Both present + same email -> a live duplicate, mergeable.
+        assert!(
+            suggestion_still_valid(&graph, "shared.Person", "shared.Person:a", "shared.Person:b")
+                .await
+                .unwrap(),
+            "a live matching pair is valid"
+        );
+        // Target absent -> not valid (a stale suggestion for a gone entity).
+        assert!(
+            !suggestion_still_valid(&graph, "shared.Person", "shared.Person:a", "shared.Person:gone")
+                .await
+                .unwrap(),
+            "an absent pair member refuses the merge"
+        );
+        // The id is reused by a DIFFERENT entity (email changed) -> no longer a
+        // duplicate -> refuse (the stale-mis-merge guard).
+        graph
+            .write(format!(
+                "MATCH (n:{table} {{id:'shared.Person:b'}}) \
+                 SET n.email='other@x.org', n.normalized_name='someone-else'"
+            ))
+            .await
+            .unwrap();
+        assert!(
+            !suggestion_still_valid(&graph, "shared.Person", "shared.Person:a", "shared.Person:b")
+                .await
+                .unwrap(),
+            "a reused/edited id that no longer matches refuses the merge"
+        );
     }
 
     #[tokio::test]

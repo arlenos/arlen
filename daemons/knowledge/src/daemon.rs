@@ -2182,6 +2182,141 @@ fn cross_uid_admitted(peer_uid: u32, owner_uid: Option<u32>, tier: AppTier) -> b
 }
 
 /// Handle a single client connection.
+/// Request to decide a pending merge suggestion (0x10). The caller names ONLY the
+/// suggestion id and the decision; the merged pair (source/target) comes from the
+/// stored suggestion, never the request, so a caller cannot direct a merge of an
+/// arbitrary pair.
+#[derive(serde::Deserialize)]
+struct MergeDecisionRequest {
+    suggestion_id: String,
+    /// `true` = accept (merge: fold source into target); `false` = reject (keep both).
+    accept: bool,
+}
+
+/// Decide a merge suggestion (0x10, SHARED-ENTITIES.md §4 "owner confirms"). Only
+/// the OWNER app of the suggestion's entity type may act, and only on a `Pending`
+/// suggestion. An accept runs `merge_node` (delete the duplicate source, keep the
+/// canonical target, re-point the source's edges across the dynamic rel tables)
+/// then marks it Accepted; a reject marks it Rejected and touches no entity. The
+/// merged pair is read from the stored suggestion, not the request. Audited before
+/// any mutation, fail-closed.
+async fn handle_merge_accept(
+    graph: &GraphHandle,
+    audit: &Arc<dyn AuditSink>,
+    token: Option<&crate::token::CapabilityToken>,
+    app_id: &str,
+    body: &[u8],
+) -> String {
+    let req: MergeDecisionRequest = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(e) => return format!("ERROR: invalid request: {e}"),
+    };
+    let core = match crate::shared::fetch_suggestion(graph, &req.suggestion_id).await {
+        Ok(Some(c)) => c,
+        Ok(None) => return "ERROR: no such suggestion".to_string(),
+        Err(e) => return format!("ERROR: {e}"),
+    };
+    // Owner-confirms: only the declared owner app of this shared type may decide
+    // (the same peer-attested owner gate the shared-entity write uses).
+    match crate::shared::shared_owner(&core.entity_type) {
+        Some(owner) if owner == app_id => {}
+        _ => {
+            return "ERROR: only the owner app may decide a suggestion for this entity type"
+                .to_string()
+        }
+    }
+    // Bind the destructive decision to the owner's LIVE capability, not only its
+    // compiled-in identity: a freshly minted token must resolve to the SAME owner
+    // identity AND grant write to the type. So a revoked / profile-less owner (or a
+    // pid-reuse race between connect and now) cannot drive a merge - the same
+    // defense-in-depth the entity-write path applies via `can_write`.
+    if !token.is_some_and(|t| t.app_id == app_id && t.can_write(&core.entity_type)) {
+        return format!("ERROR: permission denied for {}", core.entity_type);
+    }
+    // Only a Pending suggestion is actionable; a terminal one is a no-op refusal
+    // (so a merge is never re-applied through a stale suggestion id).
+    if core.status != crate::shared::SuggestionStatus::Pending {
+        return "ERROR: suggestion is not pending".to_string();
+    }
+    if req.accept {
+        // Re-validate the stored pair is STILL a live duplicate before the
+        // destructive fold. Entity ids are natural-key-derived and reusable after
+        // deletion, so a stale suggestion could otherwise fold an unrelated
+        // reused-id entity; refuse if either is gone or they no longer match.
+        match crate::shared::suggestion_still_valid(
+            graph,
+            &core.entity_type,
+            &core.source_id,
+            &core.target_id,
+        )
+        .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                return "ERROR: suggestion is stale; the entities no longer match, not merging"
+                    .to_string()
+            }
+            Err(e) => return format!("ERROR: {e}"),
+        }
+        // Audit-before-act, fail-closed (S13): content-free (app id + type + the
+        // decision, never the ids or field bodies).
+        if let Err(e) = audit
+            .submit(crate::audit::entity_upsert_event(
+                app_id,
+                &core.entity_type,
+                "merge-accepted",
+            ))
+            .await
+        {
+            warn!("merge-decision audit failed, refusing: {e}");
+            return "ERROR: audit unavailable".to_string();
+        }
+        let table = crate::write::entity_table_name(&core.entity_type);
+        if let Err(e) =
+            crate::shared::merge_node(graph, &table, &core.source_id, &core.target_id).await
+        {
+            return format!("ERROR: merge: {e}");
+        }
+        // The merge is applied; mark accepted best-effort (a status-write hiccup
+        // only leaves the suggestion listable, and a re-accept is now re-validated
+        // and either re-runs the idempotent merge_node harmlessly or is refused as
+        // stale).
+        if let Err(e) = crate::shared::update_suggestion_status(
+            graph,
+            &req.suggestion_id,
+            crate::shared::SuggestionStatus::Accepted,
+        )
+        .await
+        {
+            warn!("merge accepted but status update failed (advisory): {e}");
+        }
+        "OK: merged".to_string()
+    } else {
+        // Reject: audit, then mark Rejected. No entity is touched.
+        if let Err(e) = audit
+            .submit(crate::audit::entity_upsert_event(
+                app_id,
+                &core.entity_type,
+                "merge-rejected",
+            ))
+            .await
+        {
+            warn!("merge-decision audit failed, refusing: {e}");
+            return "ERROR: audit unavailable".to_string();
+        }
+        if let Err(e) = crate::shared::update_suggestion_status(
+            graph,
+            &req.suggestion_id,
+            crate::shared::SuggestionStatus::Rejected,
+        )
+        .await
+        {
+            return format!("ERROR: {e}");
+        }
+        "OK: rejected".to_string()
+    }
+}
+
 ///
 /// Phase 3.2 adds token awareness, but for backward compatibility the
 /// daemon still accepts raw Cypher queries. Full token enforcement
@@ -2559,6 +2694,39 @@ async fn handle_client(
                     }
                     Err(e) => format!("ERROR: invalid list-suggestions request: {e}"),
                 }
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
+        // Merge-decision mode: a leading 0x10 byte confirms/dismisses a pending
+        // merge suggestion (SHARED-ENTITIES.md §4 owner-confirms). The body is a
+        // JSON `{suggestion_id, accept}`. It MUTATES the graph on accept (folds a
+        // duplicate + deletes it), gated to the entity type's owner app; query-
+        // rate-limited (user-initiated, infrequent).
+        if buf.first() == Some(&0x10) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                // Mint the caller's live token from the kernel-attested peer pid so
+                // the merge is bound to the owner's CURRENT capability (revocation-
+                // honouring), the same way the entity-write path mints it.
+                let token = if let Some(p) = &peer {
+                    auth.lock().await.issue_token_for_pid(p.pid).ok()
+                } else {
+                    None
+                };
+                handle_merge_accept(&graph, &audit, token.as_ref(), &app_id, &buf[1..]).await
             };
             timing_noise().await;
             let response_bytes = response.as_bytes();
