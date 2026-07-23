@@ -1480,9 +1480,18 @@ async fn handle_write_request(
             external_key,
             fields,
         } => {
+            // For a shared-entity write, keep a copy of the fields so duplicate
+            // detection can run AFTER the write (plan_entity_upsert consumes the
+            // map). Only shared types carry a DuplicateConfig, so the capture is
+            // gated on `shared.` - a non-shared app write skips it entirely.
+            let dedup_data: Option<serde_json::Map<String, serde_json::Value>> =
+                qualified_type
+                    .starts_with("shared.")
+                    .then(|| fields.clone().into_iter().collect());
             // Authorise + validate against the registered schema and build the
             // (ensure-table, upsert) plan; all fail-closed in `plan_entity_upsert`
-            // (namespace bound, system.*/shared.* refused, fields type-checked).
+            // (namespace bound, system.* refused, shared.* owner-gated, fields
+            // type-checked).
             let (ddl, cypher) = match crate::write::plan_entity_upsert(
                 registry,
                 &token,
@@ -1518,7 +1527,29 @@ async fn handle_write_request(
                 return format!("ERROR: ensure entity table: {e}");
             }
             match graph.query_rows(cypher).await {
-                Ok(_) => "OK: upserted".to_string(),
+                Ok(_) => {
+                    // Advisory (SHARED-ENTITIES.md write-path producer): after the
+                    // owner writes a shared entity, detect whether it duplicates an
+                    // existing one and record a pending merge suggestion for the
+                    // owner to confirm. Best-effort - it only ever WRITES a
+                    // MergeSuggestion node (never mutates the entity), so a dedup
+                    // hiccup is logged but never fails the successful write.
+                    if let Some(data) = dedup_data {
+                        let new_id = crate::write::entity_node_id(&qualified_type, &external_key);
+                        if let Err(e) = crate::shared::dedup_shared_entity_on_write(
+                            graph,
+                            &qualified_type,
+                            &new_id,
+                            &data,
+                            &token.app_id,
+                        )
+                        .await
+                        {
+                            warn!("shared-entity dedup after upsert failed (advisory): {e}");
+                        }
+                    }
+                    "OK: upserted".to_string()
+                }
                 Err(e) => format!("ERROR: {e}"),
             }
         }
