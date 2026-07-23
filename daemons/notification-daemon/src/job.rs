@@ -181,9 +181,186 @@ pub struct JobView {
     pub egress_host: Option<String>,
 }
 
+/// The fields a producer supplies to register a new job. The registry assigns
+/// the stable `id` and starts it in [`JobState::Running`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewJob {
+    /// The producing app's attested identity.
+    pub app_id: String,
+    /// The human title.
+    pub title: String,
+    /// The initial progress (determinate or indeterminate).
+    pub progress: Progress,
+    /// What the shell may request back.
+    pub capabilities: JobCapabilities,
+    /// The host this job reaches, when it egresses.
+    pub egress_host: Option<String>,
+    /// Start time, epoch micros.
+    pub started_at: u64,
+}
+
+/// The in-memory store of active jobs (job-progress-surface.md). The D-Bus
+/// JobView object and the shell client operate over this: a producer registers,
+/// updates, and finishes a job; the shell reads a [`snapshot`](JobRegistry::snapshot).
+/// Ids are stable for the registry's lifetime and never reused, so a client can
+/// never confuse a fresh job for a finished one that shared a slot.
+#[derive(Debug, Default)]
+pub struct JobRegistry {
+    jobs: std::collections::BTreeMap<u64, JobView>,
+    next_id: u64,
+}
+
+impl JobRegistry {
+    /// A fresh, empty registry. The first registered job gets id 1.
+    pub fn new() -> Self {
+        JobRegistry {
+            jobs: std::collections::BTreeMap::new(),
+            next_id: 1,
+        }
+    }
+
+    /// Register a new job and return its stable id. Starts `Running` with no
+    /// message.
+    pub fn register(&mut self, spec: NewJob) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.jobs.insert(
+            id,
+            JobView {
+                id,
+                app_id: spec.app_id,
+                title: spec.title,
+                progress: spec.progress,
+                state: JobState::Running,
+                state_message: None,
+                capabilities: spec.capabilities,
+                started_at: spec.started_at,
+                egress_host: spec.egress_host,
+            },
+        );
+        id
+    }
+
+    /// The job with `id`, if it is still registered.
+    pub fn get(&self, id: u64) -> Option<&JobView> {
+        self.jobs.get(&id)
+    }
+
+    /// Advance a job's progress amounts. Returns `false` for an unknown id (a
+    /// late update after removal is a no-op, never a panic).
+    pub fn update_progress(&mut self, id: u64, processed: u64, total: Option<u64>) -> bool {
+        match self.jobs.get_mut(&id) {
+            Some(job) => {
+                job.progress.update(processed, total);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Set a job's state and its explanatory message (supply one for every
+    /// non-running state; `None` for `Running`). Returns `false` for an unknown
+    /// id. A terminal state does NOT auto-remove the job - the server prunes it
+    /// after the shell's min-dwell so a `Done` flash is still seen.
+    pub fn set_state(&mut self, id: u64, state: JobState, message: Option<String>) -> bool {
+        match self.jobs.get_mut(&id) {
+            Some(job) => {
+                job.state = state;
+                job.state_message = message;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Remove a finished job. Returns whether it existed. The id is not reused.
+    pub fn remove(&mut self, id: u64) -> bool {
+        self.jobs.remove(&id).is_some()
+    }
+
+    /// A snapshot of every active job, ordered by id (stable for the shell's
+    /// list rendering). Cloned so the caller holds no lock on the registry.
+    pub fn snapshot(&self) -> Vec<JobView> {
+        self.jobs.values().cloned().collect()
+    }
+
+    /// The number of active jobs.
+    pub fn len(&self) -> usize {
+        self.jobs.len()
+    }
+
+    /// Whether no job is active.
+    pub fn is_empty(&self) -> bool {
+        self.jobs.is_empty()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn spec(app: &str, title: &str) -> NewJob {
+        NewJob {
+            app_id: app.to_string(),
+            title: title.to_string(),
+            progress: Progress::determinate(Unit::Files, 10),
+            capabilities: JobCapabilities {
+                killable: true,
+                suspendable: false,
+            },
+            egress_host: None,
+            started_at: 1,
+        }
+    }
+
+    #[test]
+    fn register_assigns_stable_increasing_ids() {
+        let mut r = JobRegistry::new();
+        let a = r.register(spec("files", "Copy A"));
+        let b = r.register(spec("files", "Copy B"));
+        assert_eq!(a, 1);
+        assert_eq!(b, 2);
+        assert_eq!(r.get(a).unwrap().title, "Copy A");
+        assert_eq!(r.len(), 2);
+    }
+
+    #[test]
+    fn update_and_set_state_mutate_the_job_and_reject_unknown_ids() {
+        let mut r = JobRegistry::new();
+        let id = r.register(spec("files", "Copy"));
+        assert!(r.update_progress(id, 5, None));
+        assert!((r.get(id).unwrap().progress.fraction() - 0.5).abs() < 1e-9);
+        assert!(r.set_state(id, JobState::Impeded, Some("disk full".into())));
+        assert_eq!(r.get(id).unwrap().state, JobState::Impeded);
+        assert_eq!(r.get(id).unwrap().state_message.as_deref(), Some("disk full"));
+        // Unknown id: a no-op, not a panic.
+        assert!(!r.update_progress(999, 1, None));
+        assert!(!r.set_state(999, JobState::Done, None));
+    }
+
+    #[test]
+    fn remove_drops_the_job_and_the_id_is_never_reused() {
+        let mut r = JobRegistry::new();
+        let a = r.register(spec("files", "A"));
+        assert!(r.remove(a));
+        assert!(!r.remove(a), "a second remove is a no-op");
+        assert!(r.get(a).is_none());
+        // The next registration does NOT reuse the freed id.
+        let b = r.register(spec("files", "B"));
+        assert_eq!(b, 2, "ids are never reused");
+        assert!(r.is_empty() || r.len() == 1);
+    }
+
+    #[test]
+    fn snapshot_lists_active_jobs_ordered_by_id() {
+        let mut r = JobRegistry::new();
+        r.register(spec("files", "A"));
+        r.register(spec("forage", "B"));
+        r.register(spec("model", "C"));
+        let snap = r.snapshot();
+        let titles: Vec<&str> = snap.iter().map(|j| j.title.as_str()).collect();
+        assert_eq!(titles, ["A", "B", "C"], "ordered by ascending id");
+    }
 
     #[test]
     fn the_bar_fraction_advances_with_processed() {
