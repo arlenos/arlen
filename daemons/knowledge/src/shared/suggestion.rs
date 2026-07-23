@@ -66,6 +66,48 @@ pub enum MergeAction {
     },
 }
 
+/// The graph-stored string for a suggestion status (matches the serde lowercase
+/// rename, so a persisted status round-trips with the pending-list query's filter).
+fn status_str(status: SuggestionStatus) -> &'static str {
+    match status {
+        SuggestionStatus::Pending => "pending",
+        SuggestionStatus::Accepted => "accepted",
+        SuggestionStatus::Rejected => "rejected",
+        SuggestionStatus::Expired => "expired",
+    }
+}
+
+/// Persist a merge suggestion as a `MergeSuggestion` graph node, idempotent on the
+/// suggestion id (MERGE). `match_fields` is stored as a JSON array string and
+/// `created_at` as RFC3339 (lexically sortable for the pending query's ORDER BY),
+/// matching what [`pending_suggestions_query`] reads back. The producer calls this
+/// after [`detect_duplicate`]; the accept/reject op updates `status`.
+pub async fn persist_suggestion(
+    graph: &crate::graph::GraphHandle,
+    s: &MergeSuggestion,
+) -> anyhow::Result<()> {
+    use crate::utils::escape_cypher;
+    let id = escape_cypher(&s.id);
+    let entity_type = escape_cypher(&s.entity_type);
+    let source_id = escape_cypher(&s.source_id);
+    let target_id = escape_cypher(&s.target_id);
+    let match_fields = escape_cypher(&serde_json::to_string(&s.match_fields).unwrap_or_default());
+    let status = escape_cypher(status_str(s.status));
+    let created_at = escape_cypher(&s.created_at.to_rfc3339());
+    let created_by = escape_cypher(&s.created_by);
+    graph
+        .write(format!(
+            "MERGE (s:MergeSuggestion {{id: '{id}'}}) \
+             SET s.entity_type = '{entity_type}', s.source_id = '{source_id}', \
+             s.target_id = '{target_id}', s.match_score = {}, \
+             s.match_fields = '{match_fields}', s.status = '{status}', \
+             s.created_at = '{created_at}', s.created_by = '{created_by}'",
+            s.match_score
+        ))
+        .await?;
+    Ok(())
+}
+
 /// Detect whether a newly-written shared entity duplicates an existing one and, if
 /// so, build the pending [`MergeSuggestion`] for it. Applies the entity type's
 /// [`DuplicateConfig`] via [`check_duplicate`] against each supplied existing entity
@@ -204,6 +246,37 @@ mod tests {
         // An entity is never a duplicate of ITSELF even with identical data.
         let same = vec![("p-new".to_string(), person("tim@x.org"))];
         assert!(detect_duplicate("shared.Person", "p-new", &person("tim@x.org"), &same, "c").is_none());
+    }
+
+    #[tokio::test]
+    async fn persist_suggestion_writes_a_pending_merge_node() {
+        // Real graph: a detected suggestion persists as a MergeSuggestion node the
+        // pending-list query reads back, idempotent on re-persist.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        let s = detect_duplicate(
+            "shared.Person",
+            "p-new",
+            &person("tim@x.org"),
+            &[("p-dup".to_string(), person("tim@x.org"))],
+            "com.test",
+        )
+        .expect("a duplicate");
+        persist_suggestion(&graph, &s).await.unwrap();
+        persist_suggestion(&graph, &s).await.unwrap(); // idempotent
+
+        let rows = graph
+            .query_rows(
+                "MATCH (s:MergeSuggestion) WHERE s.status = 'pending' \
+                 RETURN s.source_id AS src, s.target_id AS tgt, s.entity_type AS ty"
+                    .into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rows.rows.len(), 1, "one pending suggestion node, not duplicated");
+        assert_eq!(rows.rows[0][0].as_str(), "p-new");
+        assert_eq!(rows.rows[0][1].as_str(), "p-dup");
+        assert_eq!(rows.rows[0][2].as_str(), "shared.Person");
     }
 
     #[test]
