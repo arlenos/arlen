@@ -9,10 +9,11 @@
 //! caller app id, a malformed request, or a missing pidfd all end the
 //! connection without stamping or resolving anything.
 
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use tokio::io::Interest;
-use tokio::net::UnixStream;
+use tokio::net::{UnixListener, UnixStream};
 
 use arlen_permissions::fd_passing::{recv_fd_msg, MAX_FD_MSG};
 use arlen_permissions::identity::app_id_from_pid;
@@ -93,6 +94,39 @@ pub async fn serve_identity_connection(
 /// Write one framed response, then let the connection close.
 async fn reply(mut stream: UnixStream, response: IdentityResponse) -> std::io::Result<()> {
     write_frame_async(&mut stream, &response).await
+}
+
+/// Accept identity-broker connections, serving each as a one-shot
+/// register/lookup exchange against the shared [`IdentityStore`]. The
+/// store is `Arc<Mutex<..>>` because it holds OS resources (the
+/// registered pidfds) mutated across connections. `caller_uid` is the uid
+/// the broker accepts as legitimate (the master-switch socket's
+/// [`crate::server::owner_uid`]); a peer of a different uid is rejected.
+pub async fn run(
+    store: Arc<Mutex<IdentityStore>>,
+    socket: &Path,
+    caller_uid: u32,
+) -> std::io::Result<()> {
+    let listener = bind_identity_socket(socket)?;
+    tracing::info!(
+        socket = %socket.display(),
+        owner_uid = caller_uid,
+        "config-broker identity listening"
+    );
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let store = Arc::clone(&store);
+        tokio::spawn(async move {
+            serve_identity_connection(stream, store, caller_uid).await;
+        });
+    }
+}
+
+/// Bind the identity socket, reusing the master-switch socket's
+/// stale-probe + 0666 policy (a live server is not clobbered; the peer
+/// credential, not the socket mode, is the access boundary).
+fn bind_identity_socket(socket: &Path) -> std::io::Result<UnixListener> {
+    crate::server::bind_socket(socket)
 }
 
 #[cfg(test)]

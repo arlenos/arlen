@@ -6,10 +6,11 @@
 //! `executor_live`, widen `access_level`, repoint `provider`, or
 //! grant itself autonomy. (`same-uid-isolation-plan.md` Tier-A #1.)
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use arlen_config_broker::server;
 use arlen_config_broker::state::{seed_from_ai_toml, StateStore};
+use arlen_config_broker::{identity_server, server};
+use arlen_permissions::identity_store::IdentityStore;
 
 #[tokio::main]
 async fn main() {
@@ -45,6 +46,16 @@ async fn main() {
 
     let socket = server::socket_path();
 
+    // The identity broker's live set (launcher-stamped pidfd -> app_id),
+    // served on its own SCM_RIGHTS socket on this same daemon (the
+    // separate-uid trust root the stamped-identity plan requires). Empty
+    // at start; the launcher registers each confined child, daemons look
+    // up their peers. In-memory: a broker restart forgets the set, and the
+    // launcher re-registers live children (records key on held pidfds,
+    // which do not survive the process anyway).
+    let id_store = Arc::new(Mutex::new(IdentityStore::new()));
+    let id_socket = server::identity_socket_path();
+
     // The audit ledger sink: a change to a security-relevant AI master
     // switch is recorded to the OWNER's user auditd (there is ONE ledger,
     // the owner's - the broker runs as a distinct uid, so the default
@@ -65,11 +76,17 @@ async fn main() {
                 tracing::error!("serve loop ended: {e}");
             }
         }
+        r = identity_server::run(Arc::clone(&id_store), &id_socket, server::owner_uid()) => {
+            if let Err(e) = r {
+                tracing::error!("identity serve loop ended: {e}");
+            }
+        }
         _ = shutdown_signal() => {
             tracing::info!("shutting down");
         }
     }
     let _ = std::fs::remove_file(&socket);
+    let _ = std::fs::remove_file(&id_socket);
 }
 
 /// Resolve on SIGTERM (systemd stop) or SIGINT (Ctrl-C).

@@ -35,10 +35,29 @@ pub fn socket_path() -> PathBuf {
 
 /// The per-user socket path (`$XDG_RUNTIME_DIR/arlen/config-broker.sock`).
 fn per_user_socket() -> PathBuf {
+    per_user_named("config-broker.sock")
+}
+
+/// A per-user runtime path (`$XDG_RUNTIME_DIR/arlen/<name>`, else
+/// `/run/arlen/<name>`).
+fn per_user_named(name: &str) -> PathBuf {
     let base = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/run"));
-    base.join("arlen").join("config-broker.sock")
+    base.join("arlen").join(name)
+}
+
+/// The identity-broker socket path. The identity ops speak an
+/// `SCM_RIGHTS` fd-passing protocol, so they get their OWN socket on the
+/// same daemon (same uid, same trust root) rather than multiplexing onto
+/// the framed master-switch stream. Same override / per-user resolution
+/// shape as [`socket_path`]; `ARLEN_CONFIG_BROKER_IDENTITY_SOCKET`
+/// overrides.
+pub fn identity_socket_path() -> PathBuf {
+    if let Some(p) = std::env::var_os("ARLEN_CONFIG_BROKER_IDENTITY_SOCKET") {
+        return PathBuf::from(p);
+    }
+    per_user_named("config-broker-identity.sock")
 }
 
 /// The system-wide socket path a SEPARATE-UID broker binds.
