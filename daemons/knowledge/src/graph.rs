@@ -555,6 +555,27 @@ fn create_schema(conn: &Connection) -> Result<()> {
     conn.query("CREATE REL TABLE IF NOT EXISTS PARENT_OF(FROM Commit TO Commit)")
         .map_err(|e| anyhow!("create PARENT_OF rel: {e}"))?;
 
+    // Shared-entity merge suggestions (SHARED-ENTITIES.md): when a written shared
+    // entity looks like a duplicate of an existing one, a pending suggestion is
+    // recorded here for a user to accept (merge) or reject (keep both). `match_fields`
+    // is a JSON array string; `created_at` an RFC3339 string (lexically sortable for
+    // the pending-list ORDER BY); `status` is pending/accepted/rejected.
+    conn.query(
+        "CREATE NODE TABLE IF NOT EXISTS MergeSuggestion(
+            id           STRING,
+            entity_type  STRING,
+            source_id    STRING,
+            target_id    STRING,
+            match_score  DOUBLE,
+            match_fields STRING,
+            status       STRING,
+            created_at   STRING,
+            created_by   STRING,
+            PRIMARY KEY(id)
+        )",
+    )
+    .map_err(|e| anyhow!("create MergeSuggestion table: {e}"))?;
+
     // Reserved terminal command-history node. A finished terminal block (the
     // `apps/terminal` `Block`, documented as "the projection of a future KG
     // command node") persists here so `⌃R` history search spans sessions and
