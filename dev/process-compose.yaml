@@ -143,6 +143,12 @@ processes:
       - "ARLEN_PI_NODE_RUNTIME=${HOME}/.local/share/arlen-node22"
       - "ARLEN_PI_INSTALL=${HOME}/Repositories/pi"
       - "ARLEN_PI_EXTENSION=${HOME}/Repositories/arlen/ai/pi-plugins/dist/extension.js"
+      # The behaviour loader looks in /usr/share + ~/.local/share/arlen/agent/
+      # behaviours; point it at the repo set so `just dev` discovers auto-tag-by-
+      # project. Without it the loader finds nothing and the curator logs "no
+      # enabled event-triggered behaviours; does not subscribe" - the autonomous
+      # curation never runs even with executor_live=true.
+      - "ARLEN_AGENT_BEHAVIOURS=${HOME}/Repositories/arlen/ai/ai-skills/behaviours"
     readiness_probe:
       # Probe the path the daemon actually binds (socket_path() = $XDG_RUNTIME_DIR/
       # arlen/ai-engine.sock). Use XDG_RUNTIME_DIR, not the yaml `environment:` var
