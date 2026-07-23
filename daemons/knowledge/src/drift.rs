@@ -15,6 +15,8 @@
 //! like the executor/compensation/canary cores.
 #![allow(dead_code)]
 
+use crate::provenance::Provenance;
+
 /// A hybrid logical clock timestamp (Kulkarni et al.): physical wall-clock
 /// micros fused with a logical counter.
 ///
@@ -83,6 +85,90 @@ impl Hlc {
         };
         Hlc { physical, logical }
     }
+}
+
+/// A membership edge in a (possibly cross-device unioned) set: `from` is a
+/// member of `to` under relation `rel`, asserted with `origin` at `hlc`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MembershipEdge {
+    pub from: String,
+    pub rel: String,
+    pub to: String,
+    pub origin: Provenance,
+    pub hlc: Hlc,
+}
+
+impl MembershipEdge {
+    /// The total-order key deciding the winner of a `(from, rel)` slot: the
+    /// §5.6 trust rank first (a higher rank wins; an unranked `Graph`/unknown
+    /// origin - `None` - sorts below EVERY ranked origin because `Option`
+    /// orders `None < Some(_)`, so it never out-ranks a user/agent/model
+    /// assertion on a later clock), then the HLC (the later write wins a trust
+    /// tie), then a deterministic content tiebreak (`to`, `from`, origin key) so
+    /// the winner is total even when trust and HLC coincide. The intended
+    /// semantic breaker for a genuine same-HLC cross-device clash is a per-device
+    /// id (a net-new column, section 4); until it lands the content tiebreak
+    /// keeps the merge deterministic and convergent.
+    fn winner_key(&self) -> (Option<u8>, Hlc, &str, &str, &'static str) {
+        (
+            self.origin.trust_rank(),
+            self.hlc,
+            self.to.as_str(),
+            self.from.as_str(),
+            self.origin.as_key(),
+        )
+    }
+}
+
+/// The resolution of one `(from, rel)` slot: the single surviving edge and the
+/// edges the merge must close to restore single-membership.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlotResolution {
+    /// The edge that stays live for this `(from, rel)`.
+    pub winner: MembershipEdge,
+    /// Every other edge in the slot; the caller closes each (append a close
+    /// stamp, never delete - close-never-delete).
+    pub closed: Vec<MembershipEdge>,
+}
+
+/// Resolve single-membership over a unioned edge set (graph-drift.md §2 / GD-R6).
+///
+/// The built single-writer close-then-append enforces "one live membership per
+/// `(from, rel)`" only because it runs on the serial graph thread with one
+/// writer. Union two devices' histories and each closed only what it could see,
+/// so two live edges to different targets coexist. This pass restores the
+/// invariant globally: it groups by `(from, rel)`, picks the deterministic
+/// winner (trust rank, then HLC, then a content tiebreak) and returns every
+/// other edge in the slot as `closed`. Slots are returned in sorted
+/// `(from, rel)` order so the result is reproducible across devices.
+///
+/// Pure and total (an empty input yields no slots; a single edge is its own
+/// winner with nothing closed). The caller applies the closes on the serial
+/// thread. Unwired until the executor-live-gated merge consumes it.
+pub fn resolve_membership(edges: Vec<MembershipEdge>) -> Vec<SlotResolution> {
+    use std::collections::BTreeMap;
+    let mut slots: BTreeMap<(String, String), Vec<MembershipEdge>> = BTreeMap::new();
+    for e in edges {
+        slots
+            .entry((e.from.clone(), e.rel.clone()))
+            .or_default()
+            .push(e);
+    }
+    let mut out = Vec::with_capacity(slots.len());
+    for (_slot, mut group) in slots {
+        let win_idx = group
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.winner_key().cmp(&b.winner_key()))
+            .map(|(i, _)| i)
+            .expect("a grouped slot is never empty");
+        let winner = group.remove(win_idx);
+        out.push(SlotResolution {
+            winner,
+            closed: group,
+        });
+    }
+    out
 }
 
 #[cfg(test)]
@@ -164,5 +250,98 @@ mod tests {
         let merged = local.merge(remote, 400);
         assert_eq!(merged, Hlc::new(400, 0));
         assert!(merged > local);
+    }
+
+    fn edge(from: &str, to: &str, origin: Provenance, hlc: Hlc) -> MembershipEdge {
+        MembershipEdge {
+            from: from.to_string(),
+            rel: "FILE_PART_OF".to_string(),
+            to: to.to_string(),
+            origin,
+            hlc,
+        }
+    }
+
+    #[test]
+    fn empty_input_resolves_to_no_slots() {
+        assert!(resolve_membership(vec![]).is_empty());
+    }
+
+    #[test]
+    fn a_single_edge_is_its_own_winner_with_nothing_closed() {
+        let r = resolve_membership(vec![edge("f", "p1", Provenance::Agent, Hlc::new(10, 0))]);
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].winner.to, "p1");
+        assert!(r[0].closed.is_empty());
+    }
+
+    #[test]
+    fn a_higher_trust_origin_wins_the_slot() {
+        // f is linked to p1 by the user and to p2 by the agent: the user wins.
+        let r = resolve_membership(vec![
+            edge("f", "p2", Provenance::Agent, Hlc::new(50, 0)),
+            edge("f", "p1", Provenance::User, Hlc::new(10, 0)),
+        ]);
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].winner.to, "p1", "user membership survives");
+        assert_eq!(r[0].closed.len(), 1);
+        assert_eq!(r[0].closed[0].to, "p2");
+    }
+
+    #[test]
+    fn trust_beats_a_later_clock() {
+        // The agent edge is newer (HLC 900 > 10) but the user's older edge wins:
+        // trust is the primary axis, the clock only breaks a trust tie.
+        let r = resolve_membership(vec![
+            edge("f", "p2", Provenance::Agent, Hlc::new(900, 0)),
+            edge("f", "p1", Provenance::User, Hlc::new(10, 0)),
+        ]);
+        assert_eq!(r[0].winner.to, "p1");
+    }
+
+    #[test]
+    fn the_later_clock_breaks_a_trust_tie() {
+        // Two agent assertions to different projects: the later HLC wins.
+        let r = resolve_membership(vec![
+            edge("f", "p1", Provenance::Agent, Hlc::new(10, 0)),
+            edge("f", "p2", Provenance::Agent, Hlc::new(10, 5)),
+        ]);
+        assert_eq!(r[0].winner.to, "p2");
+        assert_eq!(r[0].winner.hlc, Hlc::new(10, 5));
+    }
+
+    #[test]
+    fn an_unranked_graph_origin_never_out_ranks_a_ranked_one() {
+        // Graph is unranked (None). Even with a far later clock it loses to a
+        // ranked origin, because None sorts below every Some on the trust axis.
+        let r = resolve_membership(vec![
+            edge("f", "p1", Provenance::External, Hlc::new(10, 0)),
+            edge("f", "p2", Provenance::Graph, Hlc::new(9999, 0)),
+        ]);
+        assert_eq!(r[0].winner.to, "p1", "even External (rank 0) beats unranked Graph");
+        assert_eq!(r[0].closed[0].origin, Provenance::Graph);
+    }
+
+    #[test]
+    fn distinct_slots_resolve_independently_in_sorted_order() {
+        let r = resolve_membership(vec![
+            edge("b", "p9", Provenance::Agent, Hlc::new(1, 0)),
+            edge("a", "p1", Provenance::Agent, Hlc::new(1, 0)),
+        ]);
+        assert_eq!(r.len(), 2);
+        // Sorted by (from, rel): "a" before "b".
+        assert_eq!(r[0].winner.from, "a");
+        assert_eq!(r[1].winner.from, "b");
+        assert!(r[0].closed.is_empty() && r[1].closed.is_empty());
+    }
+
+    #[test]
+    fn resolution_is_deterministic_regardless_of_input_order() {
+        let a = edge("f", "p1", Provenance::User, Hlc::new(10, 0));
+        let b = edge("f", "p2", Provenance::Agent, Hlc::new(50, 0));
+        let one = resolve_membership(vec![a.clone(), b.clone()]);
+        let two = resolve_membership(vec![b, a]);
+        assert_eq!(one[0].winner.to, two[0].winner.to);
+        assert_eq!(one[0].winner.to, "p1");
     }
 }
