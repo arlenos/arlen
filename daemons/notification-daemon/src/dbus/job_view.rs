@@ -10,6 +10,7 @@
 
 use tokio::sync::broadcast;
 use zbus::interface;
+use zbus::object_server::SignalEmitter;
 
 use crate::dbus::server::NotifyEvent;
 use crate::job::JobViewServer;
@@ -103,6 +104,32 @@ impl JobViewDbus {
         self.emit(id, true);
         self.server.remove(id)
     }
+
+    /// The shell requests cancellation of a killable job (the user hit Cancel).
+    /// Emits `CancelRequested` so the producer that registered the job can abort
+    /// it - the producer owns the actual cancel mechanism (a stream cancel flag,
+    /// a killed subprocess), the server only relays the intent. Returns whether
+    /// the job exists and declared itself killable (the shell only offers cancel
+    /// for such a job, so a false here is a race, not normal).
+    async fn request_cancel(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        id: u64,
+    ) -> bool {
+        match self.server.get(id) {
+            Some(view) if view.capabilities.killable => {
+                let _ = Self::cancel_requested(&emitter, id).await;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Signal to the producer of job `id`: the user asked to cancel it. Every
+    /// producer receives it and acts only on its own id; the daemon holds no
+    /// cancel mechanism of its own.
+    #[zbus(signal)]
+    async fn cancel_requested(emitter: &SignalEmitter<'_>, id: u64) -> zbus::Result<()>;
 }
 
 /// The current wall-clock in epoch micros, for a job's start timestamp.
