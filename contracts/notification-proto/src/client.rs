@@ -72,4 +72,17 @@ pub trait JobViewServer {
 
     /// Remove a finished job from the live set.
     async fn finish(&self, id: u64) -> zbus::Result<bool>;
+
+    /// Ask the server to cancel a killable job (the shell calls this when the
+    /// user hits Cancel on a job's entry). The server relays it as
+    /// [`cancel_requested`](JobViewServerProxy::receive_cancel_requested).
+    /// Returns whether the job exists and is killable.
+    async fn request_cancel(&self, id: u64) -> zbus::Result<bool>;
+
+    /// Signal: the user asked to cancel job `id`. A producer subscribes via the
+    /// generated `receive_cancel_requested()` stream and acts only on its OWN
+    /// registered id (every producer receives every signal), triggering its own
+    /// cancel mechanism (a stream cancel flag, a killed subprocess).
+    #[zbus(signal)]
+    async fn cancel_requested(&self, id: u64) -> zbus::Result<()>;
 }
