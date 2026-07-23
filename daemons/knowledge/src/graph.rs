@@ -48,6 +48,22 @@ pub struct RowSet {
     pub rows: Vec<Vec<CellValue>>,
 }
 
+/// A relationship table in the catalog, with its endpoint node tables. Read from
+/// Kuzu's `show_tables` + `show_connection` catalog procedures. This is the
+/// enumeration a shared-entity merge needs: entity edges live in DYNAMIC rel
+/// tables (`r_<edge>_<hash>`, one per `(edge, from, to)` triple) whose names hash
+/// their endpoints, so the only way to find every edge table touching an entity
+/// type is to ask the catalog which tables have that node table as an endpoint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelTable {
+    /// The rel table's catalog name.
+    pub name: String,
+    /// The FROM (source) node table.
+    pub source: String,
+    /// The TO (destination) node table.
+    pub dest: String,
+}
+
 /// Convert a Ladybug [`Value`] directly to a JSON value for the typed query
 /// response, faithfully or not at all. Returns `None` for anything JSON
 /// cannot represent without loss — a non-finite float, or a complex/temporal/
@@ -249,6 +265,53 @@ impl GraphHandle {
         reply_rx
             .blocking_recv()
             .map_err(|_| anyhow!("ladybug thread dropped reply sender"))?
+    }
+
+    /// Enumerate every relationship table with `node_table` as an endpoint
+    /// (source or destination), reading the catalog via `show_tables` and
+    /// `show_connection`. Read-only. The result is the set of edge tables a merge
+    /// of two nodes in `node_table` must walk to re-point their edges; a table
+    /// that touches neither endpoint cannot hold an edge for those nodes and is
+    /// excluded. `node_table` is a trusted catalog identifier (an entity node
+    /// table name), not caller input.
+    pub async fn rel_tables_involving(&self, node_table: &str) -> Result<Vec<RelTable>> {
+        let tables = self
+            .query_rows("CALL show_tables() RETURN name, type".into())
+            .await?;
+        let mut out = Vec::new();
+        for row in &tables.rows {
+            // Columns are (name, type); a REL table is the only edge carrier.
+            if row.len() < 2 || row[1].as_str() != "REL" {
+                continue;
+            }
+            let rel_name = row[0].as_str();
+            if rel_name.is_empty() {
+                continue;
+            }
+            let conn = self
+                .query_rows(format!(
+                    "CALL show_connection('{}') RETURN *",
+                    crate::utils::escape_cypher(rel_name)
+                ))
+                .await?;
+            // show_connection columns: source, destination, and the two primary
+            // keys; we only need the first two.
+            for c in &conn.rows {
+                if c.len() < 2 {
+                    continue;
+                }
+                let source = c[0].as_str();
+                let dest = c[1].as_str();
+                if source == node_table || dest == node_table {
+                    out.push(RelTable {
+                        name: rel_name.to_string(),
+                        source: source.to_string(),
+                        dest: dest.to_string(),
+                    });
+                }
+            }
+        }
+        Ok(out)
     }
 }
 
@@ -1556,5 +1619,28 @@ mod tests {
             .by_ref()
             .count();
         assert_eq!(live, 1, "the live annotation version is reachable");
+    }
+
+    #[tokio::test]
+    async fn rel_tables_involving_finds_only_the_connected_edge_tables() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        graph.write("CREATE NODE TABLE A(id STRING, PRIMARY KEY(id))".into()).await.unwrap();
+        graph.write("CREATE NODE TABLE B(id STRING, PRIMARY KEY(id))".into()).await.unwrap();
+        graph.write("CREATE NODE TABLE C(id STRING, PRIMARY KEY(id))".into()).await.unwrap();
+        graph.write("CREATE REL TABLE R_AB(FROM A TO B)".into()).await.unwrap();
+        graph.write("CREATE REL TABLE R_BA(FROM B TO A)".into()).await.unwrap();
+        graph.write("CREATE REL TABLE R_BC(FROM B TO C)".into()).await.unwrap();
+
+        let mut involving = graph.rel_tables_involving("A").await.unwrap();
+        involving.sort_by(|x, y| x.name.cmp(&y.name));
+        // A is an endpoint of R_AB (source) and R_BA (dest), never R_BC.
+        assert_eq!(involving.len(), 2, "only the edge tables touching A");
+        assert_eq!(involving[0].name, "R_AB");
+        assert_eq!(involving[0].source, "A");
+        assert_eq!(involving[0].dest, "B");
+        assert_eq!(involving[1].name, "R_BA");
+        assert_eq!(involving[1].source, "B");
+        assert_eq!(involving[1].dest, "A");
     }
 }
