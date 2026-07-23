@@ -9,6 +9,7 @@ pub mod dbus;
 pub mod dnd;
 pub mod error;
 pub mod events;
+pub mod job;
 pub mod manager;
 pub mod socket;
 pub mod sound;
