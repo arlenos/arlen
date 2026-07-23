@@ -129,6 +129,95 @@ pub async fn update_suggestion_status(
     Ok(())
 }
 
+/// Parse a `{columns, rows}` typed-JSON result into `(id, fields)` candidate
+/// entities for [`detect_duplicate`]: column 0 is the id, the rest become the field
+/// map keyed by column alias. Tolerant - a malformed shape yields no candidates.
+fn parse_candidate_rows(
+    json: &str,
+) -> Vec<(String, serde_json::Map<String, serde_json::Value>)> {
+    let v: serde_json::Value = match serde_json::from_str(json) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    let (Some(columns), Some(rows)) = (v["columns"].as_array(), v["rows"].as_array()) else {
+        return Vec::new();
+    };
+    let col_names: Vec<&str> = columns.iter().filter_map(|c| c.as_str()).collect();
+    rows.iter()
+        .filter_map(|row| {
+            let cells = row.as_array()?;
+            let id = cells.first()?.as_str()?.to_string();
+            let mut map = serde_json::Map::new();
+            for (i, name) in col_names.iter().enumerate().skip(1) {
+                if let Some(val) = cells.get(i) {
+                    map.insert((*name).to_string(), val.clone());
+                }
+            }
+            Some((id, map))
+        })
+        .collect()
+}
+
+/// The write-path producer (SHARED-ENTITIES.md): after a shared entity is written,
+/// find whether it duplicates an existing one and record a pending merge suggestion.
+/// Queries the existing same-type entities by the new one's unique-field VALUES
+/// (string exact-match, bounded, so it is scale-safe and correct regardless of the
+/// total count - NOT a fetch-all), scores them via [`detect_duplicate`], and
+/// [`persist_suggestion`]s the best match. Only ever WRITES a `MergeSuggestion` node
+/// (never mutates the entities), so it is safe to run on every shared-entity write.
+/// A type with no unique fields, or a new entity with no matchable unique-field
+/// value, yields no suggestion (no query). The entity table must already exist (it
+/// does, since the entity was just written).
+pub async fn dedup_shared_entity_on_write(
+    graph: &crate::graph::GraphHandle,
+    entity_type: &str,
+    new_id: &str,
+    new_data: &serde_json::Map<String, serde_json::Value>,
+    created_by: &str,
+) -> anyhow::Result<Option<MergeSuggestion>> {
+    use crate::utils::escape_cypher;
+    let config = DuplicateConfig::for_type(entity_type);
+
+    // Match on the unique-field VALUES the new entity carries (strings only, e.g.
+    // email/domain/place_id/name). No matchable value -> no dedup query.
+    let clauses: Vec<String> = config
+        .unique_fields
+        .iter()
+        .filter_map(|f| match new_data.get(f) {
+            Some(serde_json::Value::String(v)) if !v.is_empty() => {
+                Some(format!("n.{f} = '{}'", escape_cypher(v)))
+            }
+            _ => None,
+        })
+        .collect();
+    if clauses.is_empty() {
+        return Ok(None);
+    }
+
+    // Project the id + every field the scorer compares (unique + fuzzy).
+    let mut fields: Vec<String> = config.unique_fields.clone();
+    for (f, _) in &config.fuzzy_fields {
+        if !fields.contains(f) {
+            fields.push(f.clone());
+        }
+    }
+    let projection: Vec<String> = fields.iter().map(|f| format!("n.{f} AS {f}")).collect();
+    let table = crate::write::entity_table_name(entity_type);
+    let cypher = format!(
+        "MATCH (n:{table}) WHERE {} RETURN n.id AS id, {} LIMIT 100",
+        clauses.join(" OR "),
+        projection.join(", "),
+    );
+
+    let json = graph.query_rows_json(cypher).await?;
+    let existing = parse_candidate_rows(&json);
+    let suggestion = detect_duplicate(entity_type, new_id, new_data, &existing, created_by);
+    if let Some(s) = &suggestion {
+        persist_suggestion(graph, s).await?;
+    }
+    Ok(suggestion)
+}
+
 /// Detect whether a newly-written shared entity duplicates an existing one and, if
 /// so, build the pending [`MergeSuggestion`] for it. Applies the entity type's
 /// [`DuplicateConfig`] via [`check_duplicate`] against each supplied existing entity
@@ -377,6 +466,63 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(all.rows.len(), 1, "no suggestion resurrected by a missing-id update");
+    }
+
+    #[tokio::test]
+    async fn the_producer_detects_and_persists_a_duplicate_from_the_graph() {
+        // The write-path producer, end to end against a real graph: existing
+        // entities of the type live in the dynamic `e_` table; a new one sharing a
+        // unique field is detected + persisted; a unique new one is not.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        let table = crate::write::entity_table_name("shared.Person");
+        graph
+            .write(format!(
+                "CREATE NODE TABLE {table} \
+                 (id STRING, email STRING, normalized_name STRING, PRIMARY KEY(id))"
+            ))
+            .await
+            .unwrap();
+        graph
+            .write(format!("CREATE (:{table} {{id: 'p-existing', email: 'tim@x.org'}})"))
+            .await
+            .unwrap();
+        graph
+            .write(format!("CREATE (:{table} {{id: 'p-other', email: 'else@x.org'}})"))
+            .await
+            .unwrap();
+
+        // A newly-written person sharing p-existing's email -> a persisted suggestion.
+        let s = dedup_shared_entity_on_write(
+            &graph,
+            "shared.Person",
+            "p-new",
+            &person("tim@x.org"),
+            "com.test",
+        )
+        .await
+        .unwrap()
+        .expect("the email duplicate is detected");
+        assert_eq!(s.source_id, "p-new");
+        assert_eq!(s.target_id, "p-existing", "the matching existing person, not p-other");
+        let pending = graph
+            .query_rows_json(pending_suggestions_query(None, 10))
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&pending).unwrap();
+        assert_eq!(v["rows"].as_array().unwrap().len(), 1, "the suggestion persisted");
+
+        // A unique new email -> no candidate, no suggestion.
+        let none = dedup_shared_entity_on_write(
+            &graph,
+            "shared.Person",
+            "p-uniq",
+            &person("brand@new.org"),
+            "c",
+        )
+        .await
+        .unwrap();
+        assert!(none.is_none(), "a non-duplicate produces no suggestion");
     }
 
     #[test]
