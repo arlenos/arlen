@@ -644,10 +644,31 @@ async fn register_download_job(
 fn spawn_download_reporter(
     title: String,
     egress_host: String,
+    cancel_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> (tokio::sync::mpsc::Sender<JobMsg>, tokio::task::JoinHandle<()>) {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<JobMsg>(64);
     let handle = tokio::spawn(async move {
         let job = register_download_job(&title, &egress_host).await;
+        // If the shell cancels a KILLABLE job the daemon relays CancelRequested;
+        // an independent listener flips THIS download's cancel flag on its own id
+        // (the flag the streaming copy already checks per chunk). Best-effort.
+        if let Some((proxy, id)) = &job {
+            if let Ok(mut stream) = proxy.receive_cancel_requested().await {
+                let flag = cancel_flag.clone();
+                let our_id = *id;
+                tokio::spawn(async move {
+                    use futures_util::StreamExt;
+                    while let Some(signal) = stream.next().await {
+                        if let Ok(args) = signal.args() {
+                            if *args.id() == our_id {
+                                flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
+        }
         let mut last_update = std::time::Instant::now();
         let mut latest = (0u64, 0u64);
         while let Some(msg) = rx.recv().await {
@@ -749,7 +770,7 @@ pub async fn ai_local_models_download(
         .unwrap_or("huggingface.co")
         .to_string();
     let (reporter_tx, _reporter_task) =
-        spawn_download_reporter(format!("Downloading {}", model.name), egress_host);
+        spawn_download_reporter(format!("Downloading {}", model.name), egress_host, flag.clone());
     let job_tx = reporter_tx.clone();
 
     let progress_id = id.clone();
