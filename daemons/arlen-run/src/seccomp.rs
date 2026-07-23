@@ -153,6 +153,16 @@ fn app_allowlist() -> Vec<libc::c_long> {
         libc::SYS_sched_getscheduler,
         libc::SYS_arch_prctl,
         libc::SYS_prctl,
+        // The in-sandbox Landlock fence (the `--landlock-exec` wrapper mode): bwrap
+        // installs this seccomp filter on arlen-run BEFORE arlen-run installs the
+        // writable-set Landlock ruleset and execs the app, so these three syscalls
+        // run UNDER the filter and must be allowed or the fence fails closed.
+        // Landlock is restriction-only - `restrict_self` can only tighten the
+        // caller's own access, never escape - so admitting them widens nothing an
+        // attacker can abuse.
+        libc::SYS_landlock_create_ruleset,
+        libc::SYS_landlock_add_rule,
+        libc::SYS_landlock_restrict_self,
         // Subprocess (still confined by the inherited namespaces, Landlock, and
         // this same filter): exec a helper, reap it, exit.
         libc::SYS_execve,
