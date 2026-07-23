@@ -158,6 +158,32 @@ pub fn entity_upsert_event(app_id: &str, qualified_type: &str, outcome: &str) ->
     }
 }
 
+/// Build the content-free audit record for a shared-entity MERGE decision (0x10,
+/// SHARED-ENTITIES.md §4 owner-confirms). A merge folds a duplicate and DELETES a
+/// node, so it gets its own `entity.merge` subject rather than sharing the upsert
+/// one - an operator or the anomaly detector reviewing the ledger sees a
+/// destructive merge distinctly, not as a routine upsert. Content-free: the acting
+/// owner app + the entity type + the `merge-accepted`/`merge-rejected` outcome,
+/// never the merged ids or field bodies.
+pub fn merge_decision_event(app_id: &str, qualified_type: &str, outcome: &str) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::AppAction,
+        structural: StructuralRecord {
+            subject: "entity.merge".to_string(),
+            node_types: vec![app_id.to_string(), qualified_type.to_string()],
+            relations: Vec::new(),
+            result_count: None,
+            duration_ms: None,
+            outcome: outcome.to_string(),
+            depth: None,
+            capability_change: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
 /// Build the content-free audit record for a structural-canary trip
 /// (canary-honeytools.md §3): an attempt to create a node whose id bears the
 /// reserved canary namespace. No honest producer mints a canary id (promotion ids
