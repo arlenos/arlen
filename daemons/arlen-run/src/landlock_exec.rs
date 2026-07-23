@@ -61,6 +61,27 @@ pub fn parse_landlock_exec(args: &[String]) -> Result<(Vec<PathBuf>, Vec<String>
     Ok((writable, program_argv))
 }
 
+/// Build the program argv that has bwrap invoke the in-sandbox fence: the app is
+/// run as `<arlen_run> --landlock-exec <writable>... -- <program>...`, so bwrap
+/// execs arlen-run - which the caller must bind read-only into the sandbox at the
+/// `arlen_run` path - and arlen-run fences the writable set and execs the real
+/// program. The inverse of [`parse_landlock_exec`]. Pure.
+// No caller yet: the slice that re-points `bwrap_argv` through this wrapper (and
+// binds arlen-run into the sandbox + admits the landlock syscalls to the app
+// seccomp allowlist) is a separate, adversarially-reviewed step.
+#[allow(dead_code)]
+pub fn landlock_exec_program(
+    arlen_run: &str,
+    writable: &[PathBuf],
+    program: &[String],
+) -> Vec<String> {
+    let mut argv = vec![arlen_run.to_string(), "--landlock-exec".to_string()];
+    argv.extend(writable.iter().map(|p| p.to_string_lossy().into_owned()));
+    argv.push("--".to_string());
+    argv.extend(program.iter().cloned());
+    argv
+}
+
 /// Run the in-sandbox Landlock wrapper: parse the args, install the Landlock fence
 /// over `writable`, then `exec` the program (replacing this process, so the app
 /// runs under the fence). Only ever returns an `Err` - a successful `exec` never
@@ -122,5 +143,21 @@ mod tests {
             parse_landlock_exec(&args),
             Err(LandlockExecError::NoProgram)
         ));
+    }
+
+    #[test]
+    fn the_wrap_and_parse_round_trip() {
+        // What bwrap is handed (`landlock_exec_program`) is exactly what the mode
+        // parses back (`parse_landlock_exec`), so the writable set and program the
+        // fence applies match what the launcher intended.
+        let writable = vec![PathBuf::from("/home/u/.local/share/arlen/apps/a"), PathBuf::from("/x")];
+        let program = vec!["/app/bin".to_string(), "--flag".to_string(), "v".to_string()];
+        let argv = landlock_exec_program("/usr/lib/arlen/arlen-run", &writable, &program);
+        assert_eq!(argv[0], "/usr/lib/arlen/arlen-run");
+        assert_eq!(argv[1], "--landlock-exec");
+        // The mode re-parses the SAME writable set and program from the tail.
+        let (w, p) = parse_landlock_exec(&argv[2..]).unwrap();
+        assert_eq!(w, writable);
+        assert_eq!(p, program);
     }
 }
