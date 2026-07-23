@@ -62,6 +62,19 @@ pub fn handle_identity(
                     "caller '{caller_app_id}' may not register an identity"
                 ));
             }
+            // Defense in depth against a registrar-gate bypass (the documented
+            // LD_PRELOAD-on-the-real-arlen-run residual): even an admitted
+            // registrar may not stamp a RESERVED/privileged id (system, system.*,
+            // org.arlen.*, ai-daemon, ai-agent, settings) onto a pidfd it
+            // controls. The launcher only ever stamps real user app ids
+            // (reverse-DNS), so a reserved id from here is a bypass attempt. This
+            // keeps the stamped Tier-1 path no weaker than the rule-4 user path,
+            // which already refuses these via the same guard.
+            if arlen_permissions::identity::is_reserved_app_id(&app_id) {
+                return IdentityResponse::Refused(format!(
+                    "'{app_id}' is a reserved app id and may not be stamped"
+                ));
+            }
             let Some(fd) = received else {
                 return IdentityResponse::Error("register requires a pidfd".into());
             };
@@ -153,6 +166,31 @@ mod tests {
         // Nothing was stamped - a later lookup finds no record.
         let got = handle_identity(&s, "any-daemon", IdentityRequest::Lookup, Some(self_pidfd()));
         assert_eq!(got, IdentityResponse::NotFound);
+    }
+
+    /// Even the admitted registrar may not stamp a RESERVED/privileged id
+    /// (the LD_PRELOAD-registrar residual must not mint `settings` /
+    /// `system.*` / an AI principal onto a controlled pidfd).
+    #[test]
+    fn a_registrar_may_not_stamp_a_reserved_id() {
+        for reserved in ["settings", "system", "system.knowledge", "ai-agent", "org.arlen.x"] {
+            let s = store();
+            let reg = handle_identity(
+                &s,
+                "arlen-run",
+                IdentityRequest::Register {
+                    app_id: reserved.into(),
+                },
+                Some(self_pidfd()),
+            );
+            assert!(
+                matches!(reg, IdentityResponse::Refused(_)),
+                "reserved id {reserved} must be refused"
+            );
+            // Nothing was stamped.
+            let got = handle_identity(&s, "d", IdentityRequest::Lookup, Some(self_pidfd()));
+            assert_eq!(got, IdentityResponse::NotFound);
+        }
     }
 
     /// Both ops require a pidfd; the no-fd path errors, never fabricates.
