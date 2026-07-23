@@ -132,7 +132,10 @@ impl Authenticator {
             profile.to_relation_scopes(),
             profile.to_instance_scope(),
         )
-        .with_delegated_namespaces(profile.delegated_namespaces());
+        .with_delegated_namespaces(crate::write::unowned_delegations(
+            &profile.delegated_namespaces(),
+            &crate::permission::installed_app_ids(),
+        ));
 
         self.signer.sign(&mut token);
 

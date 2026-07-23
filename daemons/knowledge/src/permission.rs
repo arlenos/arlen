@@ -165,6 +165,36 @@ pub fn profile_mtime(
     Ok(meta.modified()?)
 }
 
+/// The app ids of every installed app, from the profile directory (each app has a
+/// `<app_id>.toml` there). Used to refuse a namespace delegation that would collide
+/// with an installed app's own namespace (the foreign-app-bridges MEDIUM). An
+/// unreadable directory yields an EMPTY list, which fails toward permitting the
+/// delegation - the delegation is already bounded to the user's own KG and cannot
+/// reach `system.*`/`shared.*`, so a missing enumeration must not brick a bridge;
+/// the check is a hardening layer over that existing boundary, not the boundary.
+pub fn installed_app_ids() -> Vec<String> {
+    // Any valid app id resolves the profile directory; the id itself is only used
+    // to locate the parent dir, then discarded.
+    let Some(dir) = arlen_permissions::profile_path("probe")
+        .ok()
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+    else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            e.file_name()
+                .to_str()
+                .and_then(|n| n.strip_suffix(".toml"))
+                .map(str::to_string)
+        })
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
