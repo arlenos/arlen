@@ -912,6 +912,17 @@ fn create_schema(conn: &Connection) -> Result<()> {
     // promoted (NULL) and an agent-created (stamped) edge for the SAME membership
     // would read as distinct facts, so that pass must either stamp promotion
     // edges with the same content key or special-case NULL.
+    // `hlc_physical`/`hlc_logical` are the hybrid logical clock and `device_id`
+    // the stable per-device id (graph-drift.md §2 / GD-R5 + the device-id
+    // tiebreak): the cross-device MERGE ORDER the four wall-clock stamps cannot
+    // give, since two devices' clocks disagree and same-instant writes need a
+    // deterministic breaker. The resolve pass (`drift::resolve_membership`) picks
+    // a slot's winner by the §5.6 trust rank, then the HLC, then the device id.
+    // NULL today: the columns land first (this change), the write-path stamp
+    // next. The device-wide clock that produces the stamps exists
+    // (`drift::DeviceClock`, shared as one `Arc` so both writers advance one
+    // clock) but is not yet threaded into `link_file` / `persist_file_part_of`.
+    // Same convergent `ADD IF NOT EXISTS` pattern as `merge_key`.
     for column in [
         "valid_at INT64",
         "invalid_at INT64",
@@ -921,6 +932,9 @@ fn create_schema(conn: &Connection) -> Result<()> {
         "prov_beh STRING",
         "superseded STRING",
         "merge_key STRING",
+        "hlc_physical INT64",
+        "hlc_logical INT64",
+        "device_id STRING",
     ] {
         conn.query(&format!(
             "ALTER TABLE FILE_PART_OF ADD IF NOT EXISTS {column}"
