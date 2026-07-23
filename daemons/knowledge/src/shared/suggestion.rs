@@ -108,6 +108,27 @@ pub async fn persist_suggestion(
     Ok(())
 }
 
+/// Transition an existing merge suggestion to a new status (accepted/rejected/
+/// expired) - what the accept/reject review ops record. A `MATCH ... SET` on the
+/// suggestion id (not a MERGE: it must not resurrect a deleted suggestion), so a
+/// missing id is a no-op. The accept op ALSO executes the graph merge (delete the
+/// duplicate, re-point its relations); this only records the review decision.
+pub async fn update_suggestion_status(
+    graph: &crate::graph::GraphHandle,
+    suggestion_id: &str,
+    status: SuggestionStatus,
+) -> anyhow::Result<()> {
+    use crate::utils::escape_cypher;
+    let id = escape_cypher(suggestion_id);
+    let status = escape_cypher(status_str(status));
+    graph
+        .write(format!(
+            "MATCH (s:MergeSuggestion {{id: '{id}'}}) SET s.status = '{status}'"
+        ))
+        .await?;
+    Ok(())
+}
+
 /// Detect whether a newly-written shared entity duplicates an existing one and, if
 /// so, build the pending [`MergeSuggestion`] for it. Applies the entity type's
 /// [`DuplicateConfig`] via [`check_duplicate`] against each supplied existing entity
@@ -321,6 +342,41 @@ mod tests {
             .unwrap();
         let nv: serde_json::Value = serde_json::from_str(&none).unwrap();
         assert_eq!(nv["rows"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn update_status_transitions_a_suggestion_out_of_pending() {
+        // Marking a suggestion rejected removes it from the pending list; a missing
+        // id is a harmless no-op (no resurrection).
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        let s = detect_duplicate(
+            "shared.Person",
+            "p-new",
+            &person("tim@x.org"),
+            &[("p-dup".to_string(), person("tim@x.org"))],
+            "c",
+        )
+        .unwrap();
+        persist_suggestion(&graph, &s).await.unwrap();
+
+        update_suggestion_status(&graph, &s.id, SuggestionStatus::Rejected).await.unwrap();
+        let pending = graph
+            .query_rows_json(pending_suggestions_query(None, 10))
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&pending).unwrap();
+        assert_eq!(v["rows"].as_array().unwrap().len(), 0, "rejected -> not pending");
+
+        // A no-op on an unknown id (no error, nothing created).
+        update_suggestion_status(&graph, "does-not-exist", SuggestionStatus::Accepted)
+            .await
+            .unwrap();
+        let all = graph
+            .query_rows("MATCH (s:MergeSuggestion) RETURN s.id AS id".into())
+            .await
+            .unwrap();
+        assert_eq!(all.rows.len(), 1, "no suggestion resurrected by a missing-id update");
     }
 
     #[test]
