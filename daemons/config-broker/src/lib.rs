@@ -17,6 +17,7 @@
 //! gate land on top of it.
 
 pub mod client;
+pub mod identity_op;
 pub mod protocol;
 pub mod server;
 pub mod state;
