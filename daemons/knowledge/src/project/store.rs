@@ -4,6 +4,9 @@ use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use std::sync::Arc;
+
+use crate::drift::DeviceClock;
 use crate::graph::{CellValue, GraphHandle, RowSet};
 use crate::time::{dt_to_micros, micros_to_dt};
 use crate::utils::{content_merge_key, escape_cypher};
@@ -190,12 +193,26 @@ const PROJECT_COLUMNS: &str = "p.id, p.name, p.description, p.root_path, \
 /// Store for Project CRUD and PART_OF edge operations.
 pub struct ProjectStore {
     graph: GraphHandle,
+    /// The device-wide merge clock. When set, `link_file` stamps the HLC and
+    /// device id on a new membership so a future cross-device merge can order
+    /// promoted edges (graph-drift.md §2). Left `None` in tests and non-writing
+    /// constructions, which then create unstamped edges (NULL merge columns,
+    /// consistent with the columns' no-backfill rule).
+    clock: Option<Arc<DeviceClock>>,
 }
 
 impl ProjectStore {
-    /// Create a new ProjectStore.
+    /// Create a new ProjectStore with no merge clock (unstamped writes).
     pub fn new(graph: GraphHandle) -> Self {
-        Self { graph }
+        Self { graph, clock: None }
+    }
+
+    /// Attach the device-wide merge clock so `link_file` stamps the ordering
+    /// columns. The production daemon builds one `Arc<DeviceClock>` and shares
+    /// it across every writer so their HLCs are comparable.
+    pub fn with_clock(mut self, clock: Arc<DeviceClock>) -> Self {
+        self.clock = Some(clock);
+        self
     }
 
     /// Insert a new project node.
@@ -492,10 +509,27 @@ impl ProjectStore {
         // CREATE SET` stamps only a newly-created edge (no backfill of an
         // existing one, consistent with the bitemporal stamps' no-backfill rule).
         let merge_key = content_merge_key("File", file_id, "FILE_PART_OF", "Project", &pid_str);
+        // The cross-device ordering stamp (GD-R5), only when a merge clock is
+        // attached. The device id is a UUID by construction (no quote or
+        // backslash), safe to interpolate like the hex `merge_key`.
+        let hlc_set = match &self.clock {
+            Some(clock) => {
+                // Epoch micros are always positive, so the i64 -> u64 is lossless;
+                // the value fits the INT64 column when read back.
+                let h = clock.stamp(crate::time::now().0 as u64);
+                format!(
+                    ", r.hlc_physical = {}, r.hlc_logical = {}, r.device_id = '{}'",
+                    h.physical,
+                    h.logical,
+                    clock.device_id()
+                )
+            }
+            None => String::new(),
+        };
         self.graph
             .write(format!(
                 "MATCH (f:File {{id: '{fid}'}}), (p:Project {{id: '{pid}'}})
-                 MERGE (f)-[r:FILE_PART_OF]->(p) ON CREATE SET r.merge_key = '{merge_key}'"
+                 MERGE (f)-[r:FILE_PART_OF]->(p) ON CREATE SET r.merge_key = '{merge_key}'{hlc_set}"
             ))
             .await?;
         Ok(())
@@ -848,6 +882,40 @@ mod tests {
             content_merge_key("File", file_path, "FILE_PART_OF", "Project", &p.id.to_string());
         assert_eq!(stamped, expected, "the promoted edge carries the content merge key");
         assert_eq!(stamped.len(), 64, "the merge key is the fixed-length hex digest");
+    }
+
+    #[tokio::test]
+    async fn link_file_stamps_the_hlc_when_a_merge_clock_is_attached() {
+        // GD-R5: with a merge clock attached, a promoted membership carries the
+        // HLC + device id so a future cross-device merge can order it. Without a
+        // clock (the default) the columns stay NULL.
+        let (store, _tmp) = setup().await;
+        let store = store.with_clock(Arc::new(DeviceClock::new("dev-test".into())));
+        let p = Project::new_inferred("test".into(), "/a".into(), 90);
+        store.create(&p).await.unwrap();
+        let path = "/a/main.rs";
+        store
+            .graph
+            .write(format!(
+                "CREATE (f:File {{id: '{path}', path: '{path}', app_id: 'test', last_accessed: 0}})"
+            ))
+            .await
+            .unwrap();
+        store.link_file(path, p.id).await.unwrap();
+        let row = store
+            .graph
+            .query_rows(format!(
+                "MATCH (:File {{id: '{path}'}})-[r:FILE_PART_OF]->(:Project {{id: '{}'}}) \
+                 RETURN r.device_id, r.hlc_physical",
+                p.id
+            ))
+            .await
+            .unwrap();
+        assert_eq!(row.rows[0][0].as_str(), "dev-test", "the device id is stamped");
+        assert!(
+            row.rows[0][1].as_i64() > 0,
+            "the hlc physical stamp is present (a positive micros value), not NULL"
+        );
     }
 
     #[tokio::test]
