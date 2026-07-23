@@ -138,6 +138,89 @@ pub async fn ingest_commits(graph: &GraphHandle, commits: &[CommitRow]) -> Resul
     Ok(commits.len())
 }
 
+/// A local branch as its reserved `Branch` node stores it: the short name and the
+/// head commit SHA. The node id is repo-scoped (`<repo>::<name>`) so a `main` in
+/// two repos are distinct nodes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BranchRow {
+    /// The short branch name, e.g. `main` or `feature/x`.
+    pub name: String,
+    /// The head commit SHA the branch points at.
+    pub head: String,
+}
+
+/// The `git for-each-ref --format` spec matching [`BranchRow`]: short name and the
+/// head object SHA, unit-separated. Restricted to `refs/heads/` (local branches),
+/// not remotes or tags.
+pub const BRANCH_FORMAT: &str = "%(refname:short)%x1f%(objectname)";
+
+/// Parse `git for-each-ref --format` output (one branch per line,
+/// [`FIELD_SEP`]-separated) into branch rows. A line missing a field or with an
+/// empty name/head is skipped rather than guessed at. Pure, tested without git.
+pub fn parse_branches(output: &str) -> Vec<BranchRow> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut f = line.split(FIELD_SEP);
+            let name = f.next()?.trim().to_string();
+            let head = f.next()?.trim().to_string();
+            (!name.is_empty() && !head.is_empty()).then_some(BranchRow { name, head })
+        })
+        .collect()
+}
+
+/// Read the repository's local branches. Shells out to `git for-each-ref
+/// refs/heads/`; a non-repo or missing `git` yields no branches rather than an
+/// error, matching [`read_commits`].
+pub fn read_branches(repo: &Path) -> Vec<BranchRow> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .arg("for-each-ref")
+        .arg(format!("--format={BRANCH_FORMAT}"))
+        .arg("refs/heads/")
+        .output();
+    match output {
+        Ok(o) if o.status.success() => parse_branches(&String::from_utf8_lossy(&o.stdout)),
+        _ => Vec::new(),
+    }
+}
+
+/// The repo-scoped `Branch` node id: `<repo_key>::<name>`, so a branch name is
+/// unique across repositories.
+fn branch_id(repo_key: &str, name: &str) -> String {
+    format!("{repo_key}::{name}")
+}
+
+/// MERGE each branch as a `Branch` node (repo-scoped id) and link it to its head
+/// commit via `HEAD_AT`. The head edge is `MATCH`-guarded on the commit, so it is
+/// created only when the head is an ingested node (no dangling edge); MERGE keeps
+/// re-ingestion idempotent. Returns the number of branches written.
+pub async fn ingest_branches(
+    graph: &GraphHandle,
+    repo_key: &str,
+    branches: &[BranchRow],
+) -> Result<usize> {
+    for b in branches {
+        let id = escape_cypher(&branch_id(repo_key, &b.name));
+        let name = escape_cypher(&b.name);
+        let head = escape_cypher(&b.head);
+        graph
+            .write(format!(
+                "MERGE (b:Branch {{id: '{id}'}}) \
+                 SET b.name = '{name}', b.head = '{head}'"
+            ))
+            .await?;
+        graph
+            .write(format!(
+                "MATCH (b:Branch {{id: '{id}'}}), (c:Commit {{id: '{head}'}}) \
+                 MERGE (b)-[:HEAD_AT]->(c)"
+            ))
+            .await?;
+    }
+    Ok(branches.len())
+}
+
 /// The id of the `Project` whose `root_path` is this repository, if the daemon's
 /// project detection has one. A git repo is a project (the `.git` signal), so the
 /// grouping reuses the Project node the daemon already maintains rather than
@@ -181,9 +264,11 @@ pub async fn link_commits_to_project(
     Ok(())
 }
 
-/// Ingest a repository's commits into `Commit` nodes: read, MERGE the nodes and
-/// their DAG, then group them under the repository's `Project` (when the daemon
-/// has detected one). Returns the number of commits ingested.
+/// Ingest a repository's git state: MERGE the recent commits and their DAG, group
+/// them under the repository's `Project` (when the daemon has detected one), and
+/// MERGE the local branch heads. The repo key for branch ids is the canonical repo
+/// path so branch nodes are stable and unique across repositories. Returns the
+/// number of commits ingested.
 pub async fn ingest_repo(graph: &GraphHandle, repo: &Path, max: usize) -> Result<usize> {
     let commits = read_commits(repo, max);
     ingest_commits(graph, &commits).await?;
@@ -191,6 +276,11 @@ pub async fn ingest_repo(graph: &GraphHandle, repo: &Path, max: usize) -> Result
         let ids: Vec<String> = commits.iter().map(|c| c.id.clone()).collect();
         link_commits_to_project(graph, &ids, &project_id).await?;
     }
+    let repo_key = std::fs::canonicalize(repo)
+        .unwrap_or_else(|_| repo.to_path_buf())
+        .to_string_lossy()
+        .into_owned();
+    ingest_branches(graph, &repo_key, &read_branches(repo)).await?;
     Ok(commits.len())
 }
 
@@ -339,5 +429,65 @@ mod tests {
         assert_eq!(linked.rows.len(), 1, "exactly one grouping edge, not duplicated");
         assert_eq!(linked.rows[0][0].as_str(), "sha-9");
         assert_eq!(linked.rows[0][1].as_str(), "proj-1");
+    }
+
+    #[test]
+    fn parses_branch_refs_field_by_field() {
+        let out = "main\u{1f}abc123\n\
+                   feature/x\u{1f}def456\n\
+                   \u{1f}headless\n\
+                   noname\u{1f}\n";
+        let rows = parse_branches(out);
+        // Only the two well-formed lines survive; an empty name or head drops.
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0], BranchRow { name: "main".into(), head: "abc123".into() });
+        assert_eq!(rows[1], BranchRow { name: "feature/x".into(), head: "def456".into() });
+    }
+
+    #[tokio::test]
+    async fn a_branch_links_to_its_head_commit_when_ingested() {
+        // The Branch node is repo-scoped and its HEAD_AT edge fills in only once
+        // the head commit is an ingested node.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        let branches = vec![BranchRow { name: "main".into(), head: "sha-h".into() }];
+
+        // Head commit not yet ingested: the Branch node exists but no HEAD_AT.
+        ingest_branches(&graph, "/repo", &branches).await.unwrap();
+        let node = graph
+            .query_rows("MATCH (b:Branch {id: '/repo::main'}) RETURN b.name AS n, b.head AS h".into())
+            .await
+            .unwrap();
+        assert_eq!(node.rows.len(), 1, "the repo-scoped branch node exists");
+        assert_eq!(node.rows[0][0].as_str(), "main");
+        assert_eq!(node.rows[0][1].as_str(), "sha-h");
+        let dangling = graph
+            .query_rows("MATCH (:Branch)-[:HEAD_AT]->(:Commit) RETURN 1 AS x".into())
+            .await
+            .unwrap();
+        assert_eq!(dangling.rows.len(), 0, "no HEAD_AT to a missing head commit");
+
+        // Ingest the head commit, re-ingest the branch twice: one HEAD_AT edge.
+        ingest_commits(&graph, &[CommitRow {
+            id: "sha-h".into(),
+            message: "m".into(),
+            author: "A".into(),
+            author_email: "a@x".into(),
+            committed_at: 1,
+            parents: vec![],
+        }])
+        .await
+        .unwrap();
+        ingest_branches(&graph, "/repo", &branches).await.unwrap();
+        ingest_branches(&graph, "/repo", &branches).await.unwrap();
+        let edge = graph
+            .query_rows(
+                "MATCH (b:Branch)-[:HEAD_AT]->(c:Commit) RETURN b.id AS b, c.id AS c".into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(edge.rows.len(), 1, "exactly one head edge, not duplicated");
+        assert_eq!(edge.rows[0][0].as_str(), "/repo::main");
+        assert_eq!(edge.rows[0][1].as_str(), "sha-h");
     }
 }

@@ -540,6 +540,14 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create Branch table: {e}"))?;
 
+    // The branch-head edge: a branch points at its head commit. Declared after
+    // both node tables (Commit above, Branch just now). git-ingestion writes it;
+    // the head commit may not be an ingested node yet (only the most recent N
+    // are ingested), so the edge is created only when both endpoints exist and
+    // fills in as more history ingests.
+    conn.query("CREATE REL TABLE IF NOT EXISTS HEAD_AT(FROM Branch TO Commit)")
+        .map_err(|e| anyhow!("create HEAD_AT rel: {e}"))?;
+
     // The commit DAG edge: a commit points to each of its parents (two for a
     // merge). The git-ingestion tier (git_ingest.rs) writes these; the parent may
     // not yet be an ingested node, so the edge is created only when both endpoints
