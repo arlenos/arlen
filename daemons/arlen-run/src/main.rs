@@ -27,6 +27,10 @@ mod cgroup;
 mod egress;
 #[cfg(target_os = "linux")]
 mod landlock_apply;
+// The in-sandbox Landlock wrapper mode: bwrap execs arlen-run in this mode as the
+// app's stand-in so Landlock confines the app, not bwrap's own setup.
+#[cfg(target_os = "linux")]
+mod landlock_exec;
 mod netns;
 mod profile;
 // The app seccomp filter (GAP-6): the deny-by-default allowlist, compiled to
@@ -125,6 +129,31 @@ fn parse_args(args: &[String]) -> Result<Args, u8> {
 #[cfg(target_os = "linux")]
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
+
+    // The in-sandbox Landlock wrapper mode. bwrap runs `arlen-run --landlock-exec
+    // <writable>... -- <program>...` as the app's stand-in: apply the fence, then
+    // exec the app, so Landlock confines the app rather than bwrap's own setup.
+    // Only returns on failure (a successful exec replaces this process).
+    #[cfg(target_os = "linux")]
+    if argv.first().map(String::as_str) == Some("--landlock-exec") {
+        return match landlock_exec::landlock_exec(&argv[1..]) {
+            Ok(never) => match never {},
+            Err(landlock_exec::LandlockExecError::NoSeparator)
+            | Err(landlock_exec::LandlockExecError::NoProgram) => {
+                eprintln!("arlen-run --landlock-exec: malformed arguments");
+                ExitCode::from(exit::BAD_ARGS)
+            }
+            Err(landlock_exec::LandlockExecError::Landlock(e)) => {
+                eprintln!("arlen-run --landlock-exec: landlock: {e}");
+                ExitCode::from(exit::CONFINE_SETUP)
+            }
+            Err(landlock_exec::LandlockExecError::Exec(e)) => {
+                eprintln!("arlen-run --landlock-exec: exec: {e}");
+                ExitCode::from(exit::SPAWN)
+            }
+        };
+    }
+
     let args = match parse_args(&argv) {
         Ok(a) => a,
         Err(code) => return ExitCode::from(code),
