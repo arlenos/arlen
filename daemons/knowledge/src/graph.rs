@@ -906,23 +906,23 @@ fn create_schema(conn: &Connection) -> Result<()> {
     // (GD-R2) keys on; on a single device it is hardening-only (set but not yet
     // merged on). Same convergent `ADD IF NOT EXISTS` pattern.
     //
-    // GD-R2 obligation: only the agent write path stamps this today; the
-    // promotion pipeline's own FILE_PART_OF creates leave it NULL (as they do
-    // `op_id`). When GD-R2's resolve pass starts deduping on `merge_key`, a
-    // promoted (NULL) and an agent-created (stamped) edge for the SAME membership
-    // would read as distinct facts, so that pass must either stamp promotion
-    // edges with the same content key or special-case NULL.
+    // BOTH write paths stamp `merge_key` with the SAME content key: the agent
+    // path in `persist_file_part_of`, the promotion pipeline in `link_file`, so a
+    // promoted and an agent-created edge for one membership already converge to a
+    // single identity (the resolve pass keys on it). `op_id` stays per-device
+    // (each path derives its own).
     // `hlc_physical`/`hlc_logical` are the hybrid logical clock and `device_id`
     // the stable per-device id (graph-drift.md §2 / GD-R5 + the device-id
     // tiebreak): the cross-device MERGE ORDER the four wall-clock stamps cannot
     // give, since two devices' clocks disagree and same-instant writes need a
     // deterministic breaker. The resolve pass (`drift::resolve_membership`) picks
     // a slot's winner by the §5.6 trust rank, then the HLC, then the device id.
-    // NULL today: the columns land first (this change), the write-path stamp
-    // next. The device-wide clock that produces the stamps exists
-    // (`drift::DeviceClock`, shared as one `Arc` so both writers advance one
-    // clock) but is not yet threaded into `link_file` / `persist_file_part_of`.
-    // Same convergent `ADD IF NOT EXISTS` pattern as `merge_key`.
+    // The promotion path (`link_file`) stamps these from the shared
+    // `drift::DeviceClock` (one `Arc` so every writer advances one clock); the
+    // agent path (`persist_file_part_of`) is a follow-up, so an agent-created or
+    // pre-wiring edge carries NULL here, which the resolve pass treats as the
+    // oldest (a stamped edge orders ahead of an unstamped one). Same convergent
+    // `ADD IF NOT EXISTS` pattern as `merge_key`.
     for column in [
         "valid_at INT64",
         "invalid_at INT64",
