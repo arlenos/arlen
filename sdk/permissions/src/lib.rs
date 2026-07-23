@@ -14,6 +14,7 @@ pub mod learning;
 pub mod lint;
 pub mod identity_registry;
 pub mod identity_store;
+pub mod identity_wire;
 pub mod peer_pidfd;
 pub mod stamped_identity;
 pub mod profile_watcher;

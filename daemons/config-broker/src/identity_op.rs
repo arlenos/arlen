@@ -14,9 +14,11 @@
 use std::os::fd::OwnedFd;
 use std::sync::Mutex;
 
-use serde::{Deserialize, Serialize};
-
 use arlen_permissions::identity_store::{IdentityStore, IdentityStoreError};
+// The wire contract lives in the low-level permissions crate so a daemon
+// can `lookup` without depending on this broker daemon crate; re-exported
+// here for the dispatch + the socket handler.
+pub use arlen_permissions::identity_wire::{IdentityRequest, IdentityResponse};
 
 /// The apps allowed to REGISTER an identity: only the trusted launcher
 /// `arlen-run`, which alone holds an authenticated `--app-id` (resolved
@@ -39,40 +41,6 @@ const IDENTITY_REGISTRARS: &[&str] = &["arlen-run"];
 pub fn is_admitted_registrar(app_id: &str) -> bool {
     IDENTITY_REGISTRARS.contains(&app_id)
         || (cfg!(debug_assertions) && app_id == "dev.arlen-run")
-}
-
-/// A request to the identity broker. The pidfd travels out of band (over
-/// `SCM_RIGHTS`), so it is not a field here.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum IdentityRequest {
-    /// Stamp `app_id` onto the process the accompanying pidfd pins.
-    /// Launcher-only ([`is_admitted_registrar`]).
-    Register {
-        /// The launcher-attested app id for the child.
-        app_id: String,
-    },
-    /// Resolve the app_id of the process the accompanying pidfd pins.
-    Lookup,
-}
-
-/// The identity broker's reply.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum IdentityResponse {
-    /// A `Register` was accepted (the pidfd is now held + stamped).
-    Registered,
-    /// A `Lookup` matched a live record.
-    Resolved {
-        /// The launcher-stamped app id of the looked-up process.
-        app_id: String,
-    },
-    /// A `Lookup` found no live record for the presented pidfd. The
-    /// caller falls to a weaker identity tier or denies, per its policy.
-    NotFound,
-    /// A `Register` from a non-launcher caller; nothing was stamped.
-    Refused(String),
-    /// The op could not be honoured (a dead/absent pidfd). The caller
-    /// must NOT proceed on a guessed identity.
-    Error(String),
 }
 
 /// Dispatch one identity request against the shared store for an
