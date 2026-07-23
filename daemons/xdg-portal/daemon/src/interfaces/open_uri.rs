@@ -251,7 +251,19 @@ impl OpenUri {
         parent_window: &str,
         uri: &str,
         _options: HashMap<&str, OwnedValue>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] hdr: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
+        // §2: only the authenticated frontend may reach this impl name; a
+        // direct caller would open an arbitrary URI under a forged app_id.
+        if !crate::interfaces::sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await
+        {
+            tracing::warn!("refusing an OpenURI call from a sender that is not the portal frontend");
+            return (
+                response::OTHER,
+                error_results("caller is not the xdg-desktop-portal frontend"),
+            );
+        }
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(handle.into());
         let identity = Self::caller_identity(app_id);
@@ -326,7 +338,19 @@ impl OpenUri {
         parent_window: &str,
         fd: Fd<'_>,
         _options: HashMap<&str, OwnedValue>,
+        #[zbus(connection)] connection: &zbus::Connection,
+        #[zbus(header)] hdr: zbus::message::Header<'_>,
     ) -> (u32, HashMap<String, OwnedValue>) {
+        // §2: frontend-only, as with OpenURI (a direct caller could open a
+        // handed fd under a forged app_id, bypassing the sandbox check).
+        if !crate::interfaces::sender_is_frontend(connection, hdr.sender().map(|s| s.as_str())).await
+        {
+            tracing::warn!("refusing an OpenFile call from a sender that is not the portal frontend");
+            return (
+                response::OTHER,
+                error_results("caller is not the xdg-desktop-portal frontend"),
+            );
+        }
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(handle.into());
         let identity = Self::caller_identity(app_id);
