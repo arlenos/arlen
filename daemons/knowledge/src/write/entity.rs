@@ -235,8 +235,8 @@ fn build_upsert_cypher(
 ///
 /// The scoping is the caller's peer-attested `app_id` + the namespace bound (the
 /// guarantee `foreign-app-bridges.md` requires: namespace-bounded, audited).
-/// A macaroon-format token (attenuate-only caveats) is the planned upgrade; the
-/// guarantee is what matters and is delivered here.
+/// The flat namespace-prefix check is the decided design (22 Jul), not a macaroon;
+/// the guarantee is what matters and is delivered here.
 pub fn plan_entity_upsert(
     registry: &SchemaRegistry,
     token: &CapabilityToken,
