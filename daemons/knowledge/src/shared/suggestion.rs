@@ -156,15 +156,22 @@ pub fn reject_merge(_suggestion: &MergeSuggestion) -> MergeAction {
 
 /// Cypher to list pending suggestions.
 pub fn pending_suggestions_query(entity_type: Option<&str>, limit: usize) -> String {
+    // Explicit RETURN fields (not `RETURN s`): the daemon's typed JSON read path has
+    // no whole-node cell, so each field is projected under its own alias.
+    const FIELDS: &str = "s.id AS id, s.entity_type AS entity_type, s.source_id AS source_id, \
+         s.target_id AS target_id, s.match_score AS match_score, \
+         s.match_fields AS match_fields, s.status AS status, \
+         s.created_at AS created_at, s.created_by AS created_by";
     match entity_type {
         Some(t) => format!(
             "MATCH (s:MergeSuggestion) WHERE s.status = 'pending' AND s.entity_type = '{}' \
-             RETURN s ORDER BY s.created_at DESC LIMIT {}",
-            t, limit,
+             RETURN {FIELDS} ORDER BY created_at DESC LIMIT {}",
+            crate::utils::escape_cypher(t),
+            limit,
         ),
         None => format!(
             "MATCH (s:MergeSuggestion) WHERE s.status = 'pending' \
-             RETURN s ORDER BY s.created_at DESC LIMIT {}",
+             RETURN {FIELDS} ORDER BY created_at DESC LIMIT {}",
             limit,
         ),
     }
@@ -279,6 +286,43 @@ mod tests {
         assert_eq!(rows.rows[0][2].as_str(), "shared.Person");
     }
 
+    #[tokio::test]
+    async fn the_list_query_returns_the_persisted_suggestion_as_json() {
+        // The 0x0F list op runs `pending_suggestions_query` through the typed JSON
+        // path, so its explicit-field RETURN must yield a usable object per row.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        let s = detect_duplicate(
+            "shared.Person",
+            "p-new",
+            &person("tim@x.org"),
+            &[("p-dup".to_string(), person("tim@x.org"))],
+            "com.test",
+        )
+        .expect("a duplicate");
+        persist_suggestion(&graph, &s).await.unwrap();
+
+        let json = graph
+            .query_rows_json(pending_suggestions_query(Some("shared.Person"), 10))
+            .await
+            .unwrap();
+        // The typed path returns `{columns, rows}` with positional rows; the RETURN
+        // order is id, entity_type, source_id, target_id, ..., status, ...
+        let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        let rows = v["rows"].as_array().expect("rows array");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0][2], "p-new", "source_id");
+        assert_eq!(rows[0][3], "p-dup", "target_id");
+        assert_eq!(rows[0][6], "pending", "status");
+        // A different type filter returns nothing.
+        let none = graph
+            .query_rows_json(pending_suggestions_query(Some("shared.Organization"), 10))
+            .await
+            .unwrap();
+        let nv: serde_json::Value = serde_json::from_str(&none).unwrap();
+        assert_eq!(nv["rows"].as_array().unwrap().len(), 0);
+    }
+
     #[test]
     fn test_pending_query_with_type() {
         let q = pending_suggestions_query(Some("shared.Person"), 10);
@@ -289,7 +333,9 @@ mod tests {
     #[test]
     fn test_pending_query_all() {
         let q = pending_suggestions_query(None, 50);
-        assert!(!q.contains("entity_type"));
+        // No entity_type FILTER when unfiltered (the field is still projected in
+        // RETURN, so check the WHERE clause specifically).
+        assert!(!q.contains("AND s.entity_type"));
         assert!(q.contains("LIMIT 50"));
     }
 }

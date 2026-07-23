@@ -647,6 +647,20 @@ struct WorkingSetRequest {
     limit: i64,
 }
 
+/// A request to list pending shared-entity merge suggestions, sent with a leading
+/// `0x0F` byte (SHARED-ENTITIES.md). An optional `entity_type` narrows to one
+/// shared type (e.g. `"shared.Person"`); `limit` is clamped to `[1, MAX_PREP_LIMIT]`.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ListSuggestionsRequest {
+    /// Narrow to one shared entity type, or all pending suggestions if absent.
+    #[serde(default)]
+    entity_type: Option<String>,
+    /// The maximum number of suggestions, clamped to `[1, MAX_PREP_LIMIT]`.
+    #[serde(default = "default_prep_limit")]
+    limit: i64,
+}
+
 /// The hard ceiling on a capsule scope's hop expansion, so a request cannot walk
 /// the whole graph from a high-degree root (the relation-type / count over-share
 /// controls are the CC-R6 mint preview; this is the coarse DoS bound). The manifest
@@ -2468,6 +2482,51 @@ async fn handle_client(
                         }
                     }
                     Err(e) => format!("ERROR: invalid working-set request: {e}"),
+                }
+            };
+            timing_noise().await;
+            let response_bytes = response.as_bytes();
+            let response_len = u32::try_from(response_bytes.len())
+                .expect("response too large")
+                .to_be_bytes();
+            stream.write_all(&response_len).await?;
+            stream.write_all(response_bytes).await?;
+            continue;
+        }
+
+        // List merge-suggestions mode: a leading 0x0F byte lists the pending
+        // shared-entity merge suggestions for review (SHARED-ENTITIES.md). It is
+        // system-internal review data (about first-party-managed shared entities),
+        // so only a system-anchored (non-ThirdParty) caller sees them; a ThirdParty
+        // caller gets an empty list, never a denial oracle. Query-rate-limited.
+        if buf.first() == Some(&0x0F) {
+            let violation = {
+                let mut rs = rate.lock().await;
+                rs.limiter.check_query(&app_id).err().map(|e| e.to_string())
+            };
+            let response = if let Some(reason) = violation {
+                format!("ERROR: RateLimited: {reason}")
+            } else {
+                match serde_json::from_slice::<ListSuggestionsRequest>(&buf[1..]) {
+                    Ok(req) => {
+                        let system_anchored = app_id != "unknown"
+                            && QuotaConfig::arlen_default().tier_for_app(&app_id)
+                                != AppTier::ThirdParty;
+                        if !system_anchored {
+                            "[]".to_string()
+                        } else {
+                            let limit = req.limit.clamp(1, MAX_PREP_LIMIT) as usize;
+                            let cypher = crate::shared::pending_suggestions_query(
+                                req.entity_type.as_deref(),
+                                limit,
+                            );
+                            match graph.query_rows_json(cypher).await {
+                                Ok(json) => json,
+                                Err(e) => format!("ERROR: {e}"),
+                            }
+                        }
+                    }
+                    Err(e) => format!("ERROR: invalid list-suggestions request: {e}"),
                 }
             };
             timing_noise().await;
