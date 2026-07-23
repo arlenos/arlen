@@ -72,8 +72,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // real notifications. Replacing a competing owner would be a policy change,
     // not this guard's job.
     use zbus::fdo::{RequestNameFlags, RequestNameReply};
+    // The job server (job-progress-surface.md): the same daemon hosts the
+    // JobViewServer alongside notifications (KDE's converged model - a job's
+    // terminal state often becomes a notification, and both share the DnD
+    // plumbing). Producers register/update jobs here; the shell reads the live
+    // set over the daemon's existing socket broadcast (a later wiring step).
+    let job_dbus = arlen_notification_daemon::dbus::job_view::JobViewDbus::new(arlen_notification_daemon::job::JobViewServer::new(
+        std::sync::Arc::new(std::sync::Mutex::new(arlen_notification_daemon::job::JobRegistry::new())),
+    ));
     let _conn = connection::Builder::session()?
         .serve_at("/org/freedesktop/Notifications", dbus_server)?
+        .serve_at("/org/arlen/JobViewServer", job_dbus)?
         .build()
         .await?;
     match _conn
@@ -100,6 +109,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
         Err(e) => return Err(e.into()),
+    }
+
+    // Own the job-server name with allow-replace, so a stale owner (a crashed
+    // prior instance still holding it) cannot strand jobs behind a dead name
+    // (KDE bug 408250). Non-fatal: a failure leaves notifications fully working,
+    // only the job surface unserved.
+    match _conn
+        .request_name_with_flags(
+            "org.arlen.JobViewServer1",
+            RequestNameFlags::AllowReplacement | RequestNameFlags::ReplaceExisting,
+        )
+        .await
+    {
+        Ok(_) => tracing::info!("job server ready (org.arlen.JobViewServer1)"),
+        Err(e) => {
+            tracing::warn!(?e, "org.arlen.JobViewServer1 not acquired; jobs will not be served");
+        }
     }
 
     // 5. Start socket server in background.
