@@ -7,11 +7,15 @@
 //! to `ignore` and applies this policy itself, acting through the logind client
 //! ([`crate::logind`]).
 //!
-//! This module is the **pure decision core**: given the configured action, the
-//! lid state and whether the machine is docked, it returns the action to take
-//! (or `None` to do nothing). Listening for the logind events and sourcing the
-//! docked signal (an external-output count from the compositor) is the wiring
-//! Tim verifies on metal; the policy itself is unit-tested here.
+//! This module holds the **decision core** (given the configured action, the lid
+//! state and whether docked, the action to take) plus the **docked signal**:
+//! [`detect_docked`] reads `/sys/class/drm` for a connected external display.
+//! `main` takes a BLOCK inhibitor on logind's `handle-lid-switch` (so logind
+//! defers to us), then performs [`lid_close_action`] on a lid-close transition.
+//! The pure rules are unit-tested here; that logind actually defers and the
+//! action fires is on-metal (Tim verifies suspend on real hardware, as with every
+//! [`crate::logind`] action call). Power-key handling still needs its own event
+//! source (the lid transition comes from the UPower poll; the power key does not).
 
 use crate::logind::PowerAction;
 use crate::power::LidState;
@@ -76,6 +80,45 @@ pub fn lid_transition_event(prev: LidState, next: LidState) -> Option<&'static s
     }
 }
 
+/// A DRM connector name identifies an INTERNAL panel (the laptop's own screen).
+/// The dock-aware rule keys on external displays, so the internal panel - always
+/// present, connected or not - must not count as a dock.
+fn is_internal_panel(connector: &str) -> bool {
+    let c = connector.to_ascii_uppercase();
+    ["EDP", "LVDS", "DSI"].iter().any(|k| c.contains(k))
+}
+
+/// Whether an external display is attached, from `(connector, status)` pairs as
+/// `/sys/class/drm/*/status` reports them (`"connected"` / `"disconnected"`).
+/// Docked = at least one CONNECTED connector that is not the internal panel.
+/// Pure, so the dock rule is tested without reading `/sys`.
+pub fn external_display_connected(connectors: &[(String, String)]) -> bool {
+    connectors
+        .iter()
+        .any(|(name, status)| status.trim() == "connected" && !is_internal_panel(name))
+}
+
+/// Whether the machine is docked (an external display attached), read from
+/// `/sys/class/drm`. Each `cardN-<connector>` directory carries a `status` file.
+/// An unreadable `/sys` reports NOT docked, which fails toward taking the
+/// lid-close action - the conservative default (a closed lid with no proven
+/// external display should suspend, not stay awake indefinitely).
+pub fn detect_docked() -> bool {
+    let Ok(entries) = std::fs::read_dir("/sys/class/drm") else {
+        return false;
+    };
+    let connectors: Vec<(String, String)> = entries
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let name = e.file_name().to_str()?.to_string();
+            // Only connector dirs (`cardN-HDMI-A-1`), which carry a `status`.
+            let status = std::fs::read_to_string(e.path().join("status")).ok()?;
+            Some((name, status.trim().to_string()))
+        })
+        .collect();
+    external_display_connected(&connectors)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,6 +136,29 @@ mod tests {
         assert_eq!(lid_transition_event(Open, Open), None);
         assert_eq!(lid_transition_event(NoLid, Closed), None);
         assert_eq!(lid_transition_event(Closed, NoLid), None);
+    }
+
+    #[test]
+    fn external_display_detection_ignores_the_internal_panel() {
+        // The internal panel (eDP/LVDS/DSI) is always present; only a connected
+        // EXTERNAL connector counts as a dock, or a laptop would read as docked
+        // whenever its own screen is on.
+        let internal_only = vec![("card0-eDP-1".into(), "connected".into())];
+        assert!(!external_display_connected(&internal_only));
+        // A connected external display -> docked.
+        let with_hdmi = vec![
+            ("card0-eDP-1".into(), "connected".into()),
+            ("card0-HDMI-A-1".into(), "connected".into()),
+        ];
+        assert!(external_display_connected(&with_hdmi));
+        // A disconnected external is not a dock; whitespace in the status is
+        // tolerated (the sysfs file has a trailing newline).
+        let hdmi_unplugged = vec![
+            ("card0-eDP-1".into(), "connected\n".into()),
+            ("card0-DP-2".into(), "disconnected\n".into()),
+        ];
+        assert!(!external_display_connected(&hdmi_unplugged));
+        assert!(!external_display_connected(&[]));
     }
 
     #[test]
