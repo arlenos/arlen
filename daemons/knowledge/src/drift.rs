@@ -171,6 +171,43 @@ pub fn resolve_membership(edges: Vec<MembershipEdge>) -> Vec<SlotResolution> {
     out
 }
 
+/// Whether a string is a well-formed device id (any canonical UUID). A
+/// malformed or empty file is treated as absent and regenerated, so a truncated
+/// or corrupt write never pins a junk id.
+fn is_valid_device_id(s: &str) -> bool {
+    uuid::Uuid::parse_str(s).is_ok()
+}
+
+/// Load the stable per-device id from `path`, generating and persisting a fresh
+/// v7 UUID when the file is absent or malformed (graph-drift.md §2, "a stable
+/// device id").
+///
+/// The id is the intended breaker for a genuine same-HLC cross-device clash:
+/// resolve_membership tie-breaks on a content field until an edge carries this
+/// id, at which point it slots in ahead of that content tiebreak. It is a
+/// per-replica identity (it lives beside the store, one per KG), stable across
+/// restarts and distinct per device. It is an identifier, not a secret, so it is
+/// a plain file; the write is atomic (temp + rename) so a crash mid-write leaves
+/// the old id or none, never a torn one. Single-writer by construction (one
+/// daemon per replica), so no inter-process race. Unwired until the merge
+/// consumes it.
+pub fn device_id_at(path: &std::path::Path) -> std::io::Result<String> {
+    if let Ok(existing) = std::fs::read_to_string(path) {
+        let existing = existing.trim();
+        if is_valid_device_id(existing) {
+            return Ok(existing.to_string());
+        }
+    }
+    let id = uuid::Uuid::now_v7().to_string();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, &id)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,5 +380,28 @@ mod tests {
         let two = resolve_membership(vec![b, a]);
         assert_eq!(one[0].winner.to, two[0].winner.to);
         assert_eq!(one[0].winner.to, "p1");
+    }
+
+    #[test]
+    fn device_id_generates_persists_and_is_stable_across_calls() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("sub").join("device-id");
+        let first = device_id_at(&path).unwrap();
+        assert!(is_valid_device_id(&first));
+        assert!(path.exists(), "the id is persisted");
+        // A second call returns the same id (stable across restarts).
+        let second = device_id_at(&path).unwrap();
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn a_corrupt_device_id_file_is_regenerated() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("device-id");
+        std::fs::write(&path, "not-a-uuid\n").unwrap();
+        let id = device_id_at(&path).unwrap();
+        assert!(is_valid_device_id(&id), "a junk file regenerates a valid id");
+        // And it now persists the valid id, so it is stable henceforth.
+        assert_eq!(id, device_id_at(&path).unwrap());
     }
 }
