@@ -15,11 +15,15 @@ fn the_fence_permits_a_granted_write_and_denies_one_outside() {
     let dir = tempfile::tempdir().expect("temp writable dir");
     let inside = dir.path().join("inside");
 
-    // The app: write INSIDE the granted dir (must succeed), then attempt a write
-    // OUTSIDE it (must be denied by the fence). The exit code carries the verdict.
+    // The app: write INSIDE the granted dir (must succeed), write to /dev/null (a
+    // standard writable pseudo-file the fence must still permit, else real apps
+    // break), then attempt a write to a NON-tmpfs host path outside the grant (must
+    // be denied by the fence). The exit code carries the verdict. (/tmp is a
+    // standard writable grant, so the out-of-grant probe targets a real host path.)
     let script = format!(
         "echo ok > '{inside}' || exit 10; \
-         if echo x > /tmp/arlen-landlock-exec-should-not-exist 2>/dev/null; then exit 20; fi; \
+         echo n > /dev/null || exit 11; \
+         if echo x > /etc/arlen-landlock-exec-should-not-exist 2>/dev/null; then exit 20; fi; \
          exit 0",
         inside = inside.display(),
     );
@@ -36,8 +40,10 @@ fn the_fence_permits_a_granted_write_and_denies_one_outside() {
     assert_eq!(
         status.code(),
         Some(0),
-        "the granted write must succeed and the out-of-grant write must be denied \
-         (10 = granted write failed, 20 = out-of-grant write ALLOWED = fence leak)"
+        "the granted + standard writes must succeed and the out-of-grant write must \
+         be denied (10 = granted app-dir write failed, 11 = /dev/null write denied \
+         = standard-writable regression, 20 = out-of-grant host write ALLOWED = \
+         fence leak)"
     );
     assert!(inside.exists(), "the granted write landed on disk");
 }

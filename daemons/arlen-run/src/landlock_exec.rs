@@ -18,6 +18,26 @@
 
 use std::path::PathBuf;
 
+/// The standard writable pseudo-files/dirs a normal app needs even under a
+/// read-only-root fence: the throwaway character devices and the sandbox's own
+/// tmpfs. Under Landlock a read-only root denies opening these `O_WRONLY`, which
+/// breaks ordinary apps (`2>/dev/null` redirects, toolkit shared memory,
+/// tempfiles), so the app fence grants write on them IN ADDITION to the app's own
+/// dirs. They are safe to grant: the devices are throwaway, and `/tmp` + `/dev/shm`
+/// are the sandbox's private tmpfs (bwrap's own mounts), not the app's data or the
+/// host filesystem. An entry absent from the sandbox is skipped fail-safe by
+/// [`crate::landlock_apply::apply_landlock`], so listing all of them is harmless.
+const STANDARD_WRITABLE: &[&str] = &[
+    "/dev/null",
+    "/dev/zero",
+    "/dev/full",
+    "/dev/random",
+    "/dev/urandom",
+    "/dev/tty",
+    "/dev/shm",
+    "/tmp",
+];
+
 /// A failure of the `--landlock-exec` wrapper mode. Each maps to a fail-closed exit
 /// code so the app never runs unconfined or with a half-installed fence.
 #[derive(Debug)]
@@ -66,10 +86,6 @@ pub fn parse_landlock_exec(args: &[String]) -> Result<(Vec<PathBuf>, Vec<String>
 /// execs arlen-run - which the caller must bind read-only into the sandbox at the
 /// `arlen_run` path - and arlen-run fences the writable set and execs the real
 /// program. The inverse of [`parse_landlock_exec`]. Pure.
-// No caller yet: the slice that re-points `bwrap_argv` through this wrapper (and
-// binds arlen-run into the sandbox + admits the landlock syscalls to the app
-// seccomp allowlist) is a separate, adversarially-reviewed step.
-#[allow(dead_code)]
 pub fn landlock_exec_program(
     arlen_run: &str,
     writable: &[PathBuf],
@@ -91,7 +107,12 @@ pub fn landlock_exec_program(
 pub fn landlock_exec(args: &[String]) -> Result<std::convert::Infallible, LandlockExecError> {
     use std::os::unix::process::CommandExt;
 
-    let (writable, program_argv) = parse_landlock_exec(args)?;
+    let (mut writable, program_argv) = parse_landlock_exec(args)?;
+    // Grant the standard writable pseudo-files/dirs alongside the app's own dirs so
+    // the read-only-root fence does not deny writes every app needs (`/dev/null`,
+    // the sandbox tmpfs). Narrow + safe (throwaway devices + the sandbox's private
+    // tmpfs), never a widening of the app's real data grant.
+    writable.extend(STANDARD_WRITABLE.iter().map(PathBuf::from));
     crate::landlock_apply::apply_landlock(&writable).map_err(LandlockExecError::Landlock)?;
 
     // Replace this process with the app, now inside the Landlock domain. `exec`
