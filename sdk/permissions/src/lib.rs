@@ -8,6 +8,7 @@
 //! See `docs/architecture/AUTH-CANONICAL.md`.
 
 pub mod connection_auth;
+pub mod fd_passing;
 pub mod identity;
 pub mod learning;
 pub mod lint;
