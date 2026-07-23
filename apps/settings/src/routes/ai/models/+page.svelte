@@ -22,6 +22,7 @@
   import { ProviderLogo } from "@arlen/ui-kit/components/ui/provider-logo";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
+  import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { t } from "$lib/i18n/messages";
   import {
     models,
@@ -82,10 +83,6 @@
       .filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase()))
       .sort((a, b) => (a.paramsB ?? 0) - (b.paramsB ?? 0)),
   );
-
-  // Opt-in gate for the uncensored section: enabling asks for an informed
-  // affirmation (reversible, so an informed confirm, not a typed one - §6.2).
-  let confirmEnable = $state(false);
 
   // The one consented egress: a clear affirmation before a download.
   let pending = $state<Model | null>(null);
@@ -195,13 +192,18 @@
         {#each $installedModels as m (m.id)}
           <Row label={m.name} description={meta(m)} id={`installed-${m.id}`}>
             {#snippet control()}
-              <IconAction
-                label={m.baked ? $t("s.mdl.bakedNoRemove") : $t("s.mdl.delete", { name: m.name })}
-                disabled={m.baked}
-                onclick={() => deleteModel(m.id)}
-              >
-                <Trash2 size={15} strokeWidth={1.75} />
-              </IconAction>
+              <span class="ym-control">
+                {#if m.uncensored}
+                  <Badge variant="outline"><ShieldOff strokeWidth={2} />{$t("s.mdl.unc.badge")}</Badge>
+                {/if}
+                <IconAction
+                  label={m.baked ? $t("s.mdl.bakedNoRemove") : $t("s.mdl.delete", { name: m.name })}
+                  disabled={m.baked}
+                  onclick={() => deleteModel(m.id)}
+                >
+                  <Trash2 size={15} strokeWidth={1.75} />
+                </IconAction>
+              </span>
             {/snippet}
           </Row>
         {/each}
@@ -256,30 +258,22 @@
 
     {#if $uncensoredModels.length > 0}
       <Group label={$t("s.mdl.unc.title")} class="span-full">
-        {#if !$uncensoredEnabled}
-          <div class="unc-intro">
-            <p class="unc-lead">{$t("s.mdl.unc.lead")}</p>
-            <p class="unc-resp">{$t("s.mdl.unc.resp")}</p>
-            <Button variant="outline" size="sm" onclick={() => (confirmEnable = true)}>
-              <ShieldOff size={14} strokeWidth={2} />
-              {$t("s.mdl.unc.enable")}
-            </Button>
-          </div>
-        {:else}
-          <p class="unc-note-top">{$t("s.mdl.unc.note")}</p>
+        <Row label={$t("s.mdl.unc.toggle")} id="uncensored-toggle">
+          {#snippet control()}
+            <Switch
+              value={$uncensoredEnabled}
+              ariaLabel={$t("s.mdl.unc.toggle")}
+              onchange={(v) => setUncensoredEnabled(v)}
+            />
+          {/snippet}
+        </Row>
+        {#if $uncensoredEnabled}
           {#each $uncensoredModels as m (m.id)}
             <div class="unc-row">
               {@render modelBody(m)}
               <Badge variant="outline" class="self-start"><ShieldOff strokeWidth={2} />{$t("s.mdl.unc.badge")}</Badge>
             </div>
           {/each}
-          <Button
-            variant="ghost"
-            class="w-full justify-start gap-2 px-4 font-normal text-muted-foreground hover:text-foreground"
-            onclick={() => setUncensoredEnabled(false)}
-          >
-            {$t("s.mdl.unc.turnOff")}
-          </Button>
         {/if}
       </Group>
     {/if}
@@ -373,18 +367,6 @@
   confirmLabel={$t("s.mdl.download")}
   onConfirm={confirmDownload}
   onCancel={() => (pending = null)}
-/>
-
-<ConfirmDialog
-  open={confirmEnable}
-  title={$t("s.mdl.unc.confirmTitle")}
-  message={$t("s.mdl.unc.confirmMsg")}
-  confirmLabel={$t("s.mdl.unc.enable")}
-  onConfirm={() => {
-    confirmEnable = false;
-    void setUncensoredEnabled(true);
-  }}
-  onCancel={() => (confirmEnable = false)}
 />
 
 <style>
@@ -536,37 +518,17 @@
     white-space: nowrap;
   }
 
-  /* Uncensored section: the off-state explainer, then the opt-in list. */
-  .unc-intro {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.6rem;
-    padding: 0.75rem 1rem 1rem;
-  }
-  .unc-lead {
-    margin: 0;
-    font-size: var(--text-sm);
-    line-height: 1.45;
-    color: color-mix(in srgb, var(--foreground) 78%, transparent);
-  }
-  .unc-resp {
-    margin: 0;
-    font-size: var(--text-xs);
-    line-height: 1.45;
-    color: color-mix(in srgb, var(--foreground) 52%, transparent);
-  }
-  .unc-note-top {
-    margin: 0;
-    padding: 0.75rem 1rem 0.35rem;
-    font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
+  /* Uncensored section: the opt-in model rows under the toggle. */
   .unc-row {
     display: flex;
     flex-direction: column;
     gap: 0.45rem;
     padding: 0.625rem 1rem;
     border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+  }
+  .ym-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 </style>
