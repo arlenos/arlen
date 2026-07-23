@@ -8,10 +8,12 @@
 
 mod access;
 mod duplicate;
+mod merge;
 mod schemas;
 mod suggestion;
 
 pub use access::*;
 pub use duplicate::*;
+pub use merge::*;
 pub use schemas::*;
 pub use suggestion::*;
