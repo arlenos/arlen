@@ -314,6 +314,133 @@ async fn the_write_socket_refuses_an_unprivileged_relation_write() {
     );
 }
 
+/// IT-2 executor go-live rehearsal (the write-ADMIT counterpart to the deny
+/// scenario): a GRANTED FirstParty caller's `create_relation` over the real write
+/// socket is admitted through the tier + relation-scope gates and lands a live,
+/// op-id-stamped FILE_PART_OF edge. This is the load-bearing write leg the
+/// autonomous curation executor makes under `executor_live` - the same os-sdk
+/// `UnixGraphClient::create_relation` call `curation.rs` makes - proven end-to-end
+/// against a real spawned knowledge daemon, without the ai-engine/pi layer, so the
+/// go-live flip rests on a green cross-daemon write rehearsal. The nodes are
+/// created UNLINKED (the Project from a watched `.git` dir, the File from a
+/// `file.opened` OUTSIDE it) so the edge is a fresh create, not a promotion edge or
+/// a supersession. Same `#[ignore]` rationale as the other backend scenarios.
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host (~30s)"]
+async fn a_granted_first_party_relation_write_lands_a_live_edge() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+
+    // A Project fixture from a `.git` signal, detected by the watcher independently
+    // of any file, so the File below is NOT auto-linked to it. Seeded before
+    // knowledge starts so the startup scan sees it.
+    let project_dir = stack.runtime_dir().join("rehearsal-proj");
+    std::fs::create_dir_all(project_dir.join(".git")).expect("create .git fixture");
+    stack
+        .seed_project_watch_dir(&project_dir)
+        .expect("point the watcher at the fixture");
+
+    // The caller's go-live grant: File/Project read + the single FILE_PART_OF
+    // relation at instance_scope=all (the shipped ai-agent.toml shape). The harness
+    // tiers this test's own id FirstParty by default
+    // (ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY), so the tier gate admits it.
+    let app_id = arlen_integration::own_app_id().expect("resolve own app id");
+    stack
+        .seed_executor_profile_for(&app_id, "first-party")
+        .expect("seed the executor grant profile");
+
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+
+    // The File lives OUTSIDE the project dir, so promotion creates it with no
+    // FILE_PART_OF edge; its node id is its path.
+    let file_path = "/work/rehearsal/unlinked.rs";
+
+    // Poll until BOTH the Project (from the watcher) and the File (from promotion)
+    // exist, re-emitting file.opened each round (idempotent on the path). Read the
+    // Project's id back - it is a UUID, not the path.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let project_id = loop {
+        let payload = proto::FileOpenedPayload {
+            path: file_path.to_string(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
+            .await
+            .expect("emit file.opened");
+
+        let project_id = client
+            .query_rows("MATCH (p:Project) RETURN p.id LIMIT 1")
+            .await
+            .ok()
+            .and_then(|rows| rows.into_iter().next())
+            .and_then(|row| row.get("p.id").and_then(|v| v.as_str()).map(str::to_string));
+        let file_ready = client
+            .query_rows(&format!("MATCH (f:File {{id: '{file_path}'}}) RETURN f.id LIMIT 1"))
+            .await
+            .map(|rows| !rows.is_empty())
+            .unwrap_or(false);
+        if let (Some(pid), true) = (project_id, file_ready) {
+            break pid;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the Project and File nodes were not both present within 60s"
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    };
+
+    // The write the executor makes under executor_live: a granted FirstParty
+    // create_relation of the op-id-stamped FILE_PART_OF edge.
+    let op_id = "rehearsal-op-1";
+    let written = client
+        .create_relation(
+            "system.File",
+            file_path,
+            "system.Project",
+            &project_id,
+            "FILE_PART_OF",
+            op_id,
+        )
+        .await;
+    assert!(
+        written.is_ok(),
+        "a granted FirstParty FILE_PART_OF write must be admitted and land, got {written:?}"
+    );
+
+    // The op-id-stamped edge is live in the graph (there is no promotion edge here,
+    // the File was unlinked), so this is the executor's own edge landing.
+    let edge = client
+        .query_rows(&format!(
+            "MATCH (f:File {{id: '{file_path}'}})-[r:FILE_PART_OF {{op_id: '{op_id}'}}]->\
+             (p:Project {{id: '{project_id}'}}) RETURN r.op_id LIMIT 1"
+        ))
+        .await
+        .expect("query the op-id edge");
+    assert!(
+        !edge.is_empty(),
+        "the granted write did not land a live op-id-stamped FILE_PART_OF edge"
+    );
+}
+
 /// IT-1 read-scope grant (the positive complement to the deny scenarios): a
 /// caller WITH a seeded read profile may read its granted label. We seed a
 /// `system.File` read grant for this test's own app id, then a `File` query is
