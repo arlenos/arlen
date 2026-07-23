@@ -82,6 +82,7 @@ libc = "0.2"
 zbus = { version = "5", default-features = false, features = ["tokio"] }
 tokio = { version = "1", features = ["rt", "macros", "sync"] }
 notification-proto = { path = "../../../contracts/notification-proto", features = ["client"] }
+futures-util = "0.3"
 
 # Output config types shared with the compositor. We reuse the
 # canonical OutputConfig + TOML schema (D0) so the apply path round-
