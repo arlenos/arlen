@@ -60,16 +60,6 @@ pub async fn serve_identity_connection(
             return;
         }
     };
-    // The caller's own app id gates Register (only arlen-run may). This
-    // still uses the Tier-2 path resolver for the CALLER; the value being
-    // stamped for the CHILD is the launcher-attested app_id in the request.
-    let caller_app_id = match app_id_from_pid(peer.pid()) {
-        Ok(id) => id,
-        Err(e) => {
-            tracing::warn!("identity: caller app-id unresolved, refusing: {e}");
-            return;
-        }
-    };
 
     let (bytes, fd) = match recv_fd_msg_async(&stream, MAX_FD_MSG).await {
         Ok(v) => v,
@@ -87,7 +77,26 @@ pub async fn serve_identity_connection(
         }
     };
 
-    let response = handle_identity(&store, &caller_app_id, request, fd);
+    // Register is registrar-gated, so it resolves the CALLER's app id (the
+    // one place the broker still reads /proc/exe, Tier-2, for the launcher
+    // only); a resolution failure fail-closed refuses the register. Lookup
+    // deliberately SKIPS caller resolution - it ignores the caller entirely
+    // (handle_identity's Lookup arm never reads it), so a hardened or
+    // cross-uid peer the broker cannot readlink can still resolve its own
+    // peer. This is the fix for the broker re-importing the /proc/exe
+    // fragility onto the open lookup path.
+    let response = if matches!(request, IdentityRequest::Register { .. }) {
+        match app_id_from_pid(peer.pid()) {
+            Ok(caller) => handle_identity(&store, &caller, request, fd),
+            Err(e) => {
+                tracing::warn!("identity: registrar app-id unresolved, refusing register: {e}");
+                IdentityResponse::Refused("registrar identity unresolved".into())
+            }
+        }
+    } else {
+        // Lookup ignores the caller identity; the empty id is inert here.
+        handle_identity(&store, "", request, fd)
+    };
     let _ = reply(stream, response).await;
 }
 
