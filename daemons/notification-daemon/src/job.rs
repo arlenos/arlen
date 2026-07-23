@@ -28,6 +28,29 @@ pub enum Unit {
     Items,
 }
 
+impl Unit {
+    /// The stable wire token (a producer names its unit as a string over D-Bus).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Unit::Bytes => "bytes",
+            Unit::Files => "files",
+            Unit::Directories => "directories",
+            Unit::Items => "items",
+        }
+    }
+
+    /// Parse a wire token. An unknown token maps to the generic `Items` (never a
+    /// failure: a producer's odd unit still counts, it just renders generically).
+    pub fn from_wire(token: &str) -> Unit {
+        match token {
+            "bytes" => Unit::Bytes,
+            "files" => Unit::Files,
+            "directories" => Unit::Directories,
+            _ => Unit::Items,
+        }
+    }
+}
+
 /// A job's lifecycle state (mirrors KDE's JobViewV3). Every non-running state
 /// carries an explanatory message on the [`JobView`] so the shell can say WHY a
 /// job is not progressing.
@@ -58,6 +81,33 @@ impl JobState {
     /// `Running` explains itself.
     pub fn needs_message(self) -> bool {
         !matches!(self, JobState::Running)
+    }
+
+    /// The stable wire token for D-Bus.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            JobState::Running => "running",
+            JobState::Paused => "paused",
+            JobState::Impeded => "impeded",
+            JobState::ErrorRecoverable => "error-recoverable",
+            JobState::ErrorFatal => "error-fatal",
+            JobState::Done => "done",
+        }
+    }
+
+    /// Parse a wire token. An unknown token yields `None` (fail-closed: an
+    /// unrecognised state is rejected rather than silently coerced, so a
+    /// producer typo cannot mislabel a job's lifecycle).
+    pub fn from_wire(token: &str) -> Option<JobState> {
+        match token {
+            "running" => Some(JobState::Running),
+            "paused" => Some(JobState::Paused),
+            "impeded" => Some(JobState::Impeded),
+            "error-recoverable" => Some(JobState::ErrorRecoverable),
+            "error-fatal" => Some(JobState::ErrorFatal),
+            "done" => Some(JobState::Done),
+            _ => None,
+        }
     }
 }
 
@@ -295,6 +345,85 @@ impl JobRegistry {
     }
 }
 
+/// The D-Bus-facing job server logic: the wire-value adapter over the shared
+/// [`JobRegistry`]. A producer names its unit and state as strings; this parses
+/// them (a bad unit falls back to `Items`, a bad state is rejected), builds the
+/// model, and delegates to the registry under the lock. The zbus `#[interface]`
+/// (a thin wrapper that owns the well-known name allow-replace) and the
+/// shell-notification broadcast are the plumbing layers above this.
+#[derive(Clone)]
+pub struct JobViewServer {
+    registry: std::sync::Arc<std::sync::Mutex<JobRegistry>>,
+}
+
+impl JobViewServer {
+    /// Build over a shared registry.
+    pub fn new(registry: std::sync::Arc<std::sync::Mutex<JobRegistry>>) -> Self {
+        JobViewServer { registry }
+    }
+
+    /// Register a job from wire values; `total = None` starts it indeterminate.
+    /// Returns the stable id.
+    #[allow(clippy::too_many_arguments)]
+    pub fn register(
+        &self,
+        app_id: String,
+        title: String,
+        unit: &str,
+        total: Option<u64>,
+        killable: bool,
+        suspendable: bool,
+        egress_host: Option<String>,
+        started_at: u64,
+    ) -> u64 {
+        let unit = Unit::from_wire(unit);
+        let progress = match total {
+            Some(t) => Progress::determinate(unit, t),
+            None => Progress::indeterminate(unit),
+        };
+        let spec = NewJob {
+            app_id,
+            title,
+            progress,
+            capabilities: JobCapabilities {
+                killable,
+                suspendable,
+            },
+            egress_host,
+            started_at,
+        };
+        self.lock().register(spec)
+    }
+
+    /// Advance a job's amounts (unknown id -> false).
+    pub fn update(&self, id: u64, processed: u64, total: Option<u64>) -> bool {
+        self.lock().update_progress(id, processed, total)
+    }
+
+    /// Set a job's state from a wire token + message. An unknown token or id ->
+    /// false (the caller reports the rejection; the job is untouched).
+    pub fn set_state(&self, id: u64, state: &str, message: Option<String>) -> bool {
+        match JobState::from_wire(state) {
+            Some(s) => self.lock().set_state(id, s, message),
+            None => false,
+        }
+    }
+
+    /// Remove a finished job (after the shell's dwell). Returns whether it existed.
+    pub fn remove(&self, id: u64) -> bool {
+        self.lock().remove(id)
+    }
+
+    /// A snapshot of every active job for the shell.
+    pub fn snapshot(&self) -> Vec<JobView> {
+        self.lock().snapshot()
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, JobRegistry> {
+        self.registry.lock().expect("job registry mutex poisoned")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -430,5 +559,62 @@ mod tests {
         assert!(!JobState::Running.needs_message());
         assert!(JobState::Impeded.needs_message());
         assert!(JobState::ErrorRecoverable.needs_message());
+    }
+
+    #[test]
+    fn wire_tokens_round_trip() {
+        for s in [
+            JobState::Running,
+            JobState::Paused,
+            JobState::Impeded,
+            JobState::ErrorRecoverable,
+            JobState::ErrorFatal,
+            JobState::Done,
+        ] {
+            assert_eq!(JobState::from_wire(s.as_str()), Some(s));
+        }
+        assert_eq!(JobState::from_wire("bogus"), None, "an unknown state is rejected");
+        for u in [Unit::Bytes, Unit::Files, Unit::Directories, Unit::Items] {
+            assert_eq!(Unit::from_wire(u.as_str()), u);
+        }
+        assert_eq!(
+            Unit::from_wire("widgets"),
+            Unit::Items,
+            "an unknown unit falls back to Items"
+        );
+    }
+
+    fn server() -> JobViewServer {
+        JobViewServer::new(std::sync::Arc::new(std::sync::Mutex::new(JobRegistry::new())))
+    }
+
+    #[test]
+    fn server_registers_from_wire_values() {
+        let s = server();
+        let id = s.register("files".into(), "Copy".into(), "bytes", Some(1000), true, false, None, 1);
+        let snap = s.snapshot();
+        assert_eq!(snap.len(), 1);
+        assert_eq!(snap[0].id, id);
+        assert_eq!(snap[0].progress.unit(), Unit::Bytes);
+        assert!(snap[0].progress.is_determinate());
+        assert!(snap[0].capabilities.killable);
+    }
+
+    #[test]
+    fn server_handles_indeterminate_bad_unit_and_bad_state() {
+        let s = server();
+        let id = s.register("app".into(), "Scan".into(), "widgets", None, false, false, None, 1);
+        {
+            let j = s.snapshot();
+            assert!(!j[0].progress.is_determinate(), "no total -> indeterminate");
+            assert_eq!(j[0].progress.unit(), Unit::Items, "unknown unit -> Items");
+        }
+        assert!(s.update(id, 3, Some(6)));
+        assert!(s.set_state(id, "impeded", Some("waiting".into())));
+        assert!(!s.set_state(id, "nonsense", None), "a bad state token is rejected");
+        assert_eq!(s.snapshot()[0].state, JobState::Impeded);
+        // update/state on an unknown id is a no-op.
+        assert!(!s.update(999, 1, None));
+        assert!(s.remove(id));
     }
 }
