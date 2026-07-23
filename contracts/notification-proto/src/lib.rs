@@ -9,3 +9,7 @@ pub mod proto {
 
 // Re-export commonly used types at the crate root.
 pub use proto::*;
+
+/// The producer-side D-Bus client for the job server (opt-in `client` feature).
+#[cfg(feature = "client")]
+pub mod client;
