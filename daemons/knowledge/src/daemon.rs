@@ -2261,7 +2261,7 @@ async fn handle_merge_accept(
         // Audit-before-act, fail-closed (S13): content-free (app id + type + the
         // decision, never the ids or field bodies).
         if let Err(e) = audit
-            .submit(crate::audit::entity_upsert_event(
+            .submit(crate::audit::merge_decision_event(
                 app_id,
                 &core.entity_type,
                 "merge-accepted",
@@ -2294,7 +2294,7 @@ async fn handle_merge_accept(
     } else {
         // Reject: audit, then mark Rejected. No entity is touched.
         if let Err(e) = audit
-            .submit(crate::audit::entity_upsert_event(
+            .submit(crate::audit::merge_decision_event(
                 app_id,
                 &core.entity_type,
                 "merge-rejected",
