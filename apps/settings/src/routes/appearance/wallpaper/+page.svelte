@@ -78,14 +78,18 @@
 </Page>
 
 <style>
-  /* Group has no inner padding; custom content needs its own inset. */
+  /* Group has no inner padding; custom content needs its own inset. Children take
+     natural width (left-aligned) so the Add button + the Fit control don't stretch
+     across the card; only the grid fills the row. */
   .wp-inset {
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     gap: 1rem;
     padding: 0 1rem 1rem;
   }
   .wp-grid {
+    width: 100%;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
     gap: 0.75rem;
