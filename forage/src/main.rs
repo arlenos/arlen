@@ -132,6 +132,25 @@ async fn cmd_install(target: String) {
         return;
     }
 
+    // A bare name that is not a package spec (flatpak:/.lunpkg/path/url) may be a
+    // foreign app with community bridges: `forage install obsidian` sets up the
+    // Obsidian bridge (foreign-app-bridges.md section 4). Check before requiring
+    // installd, so a bridge-only install works with installd stopped; a name that
+    // matches no bridge falls through to the normal resolution error below.
+    let is_package_spec = target.starts_with("flatpak:")
+        || target.ends_with(".lunpkg")
+        || std::path::Path::new(&target).exists()
+        || target.starts_with("http://")
+        || target.starts_with("https://");
+    if !is_package_spec {
+        if let Ok(bridges) = commands::cookbook::bridges_in_cookbooks(&target).await {
+            if !bridges.is_empty() {
+                install_resolved_bridges(&target, bridges, false).await;
+                return;
+            }
+        }
+    }
+
     let conn = match client::connect().await {
         Ok(c) => c,
         Err(e) => {
@@ -276,8 +295,6 @@ async fn install_by_name(name: String) {
 /// The foreign-side destination (e.g. `$VAULT` for Obsidian) resolves from the
 /// environment; a missing token is reported by name rather than guessed.
 async fn cmd_bridge_install(foreign_app: String, assume_yes: bool) {
-    use arlen_forage_fetch::ProcessGitFetcher;
-
     let resolved = match commands::cookbook::bridges_in_cookbooks(&foreign_app).await {
         Ok(r) => r,
         Err(e) => {
@@ -289,6 +306,19 @@ async fn cmd_bridge_install(foreign_app: String, assume_yes: bool) {
         println!("No bridges found for '{foreign_app}' in the tracked cookbooks.");
         return;
     }
+    install_resolved_bridges(&foreign_app, resolved, assume_yes).await;
+}
+
+/// Install a pre-enumerated batch of bridges for `foreign_app`: one consent, then
+/// fetch+verify+prepare each and install both halves atomically (shared by the
+/// explicit `bridge install` command and the `forage install <foreign_app>`
+/// fallback, so both take exactly the same consent + atomic path).
+async fn install_resolved_bridges(
+    foreign_app: &str,
+    resolved: Vec<arlen_cookbook_resolve::ResolvedRecipe>,
+    assume_yes: bool,
+) {
+    use arlen_forage_fetch::ProcessGitFetcher;
 
     println!("{} bridge(s) for {foreign_app}:", resolved.len());
     for r in &resolved {
