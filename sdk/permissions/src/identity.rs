@@ -251,6 +251,19 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-ai-proxy" => {
             return Ok("ai-proxy".to_string());
         }
+        // The confined-launch launcher, pinned canonically so it resolves to
+        // `arlen-run` - the sole id the identity broker admits as a REGISTRAR
+        // (`stamped-identity-plan.md`). arlen-run holds the authenticated
+        // --app-id it resolved from the root IdentityRegistry before the child
+        // ran, and registers the child's pidfd against it; every other same-uid
+        // caller may look up but never register. Without this canonical entry the
+        // launcher would resolve to UnknownBinary and the broker would refuse its
+        // registrations, leaving every confined app unstamped. In a dev build the
+        // debug rule resolves the cargo-run binary to `dev.arlen-run` first, which
+        // the registrar allowlist also admits.
+        "/usr/lib/arlen/libexec/arlen-run" => {
+            return Ok("arlen-run".to_string());
+        }
         // The online-accounts daemon, pinned canonically so its credential-handout
         // audit (GAP-2) submits under the stable id `online-accounts`, the id the
         // audit daemon's ADMITTED allowlist keys on. Rule (2) covers only
@@ -805,6 +818,25 @@ mod tests {
             assert!(
                 path_to_app_id(&PathBuf::from(spoofed)).is_err(),
                 "spoofed accountsd path {spoofed} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_app_id_from_path_arlen_run_canonical_libexec() {
+        // The confined-launch launcher's canonical binary must resolve to
+        // `arlen-run`, the sole registrar the identity broker admits. Without
+        // this it resolves to UnknownBinary and the broker refuses its
+        // registrations, leaving confined apps unstamped.
+        let path = PathBuf::from("/usr/lib/arlen/libexec/arlen-run");
+        assert_eq!(path_to_app_id(&path).unwrap(), "arlen-run");
+
+        // A same-basename binary in a writable location must not impersonate the
+        // launcher (which would let a same-uid process become a registrar).
+        for spoofed in ["/tmp/arlen-run", "/home/attacker/arlen-run"] {
+            assert!(
+                path_to_app_id(&PathBuf::from(spoofed)).is_err(),
+                "spoofed arlen-run path {spoofed} must be rejected"
             );
         }
     }
