@@ -42,6 +42,7 @@
   import ConsentDialog from "$lib/components/ConsentDialog.svelte";
   import SourcePicker from "$lib/components/SourcePicker.svelte";
   import WindowsFileDialog from "$lib/components/WindowsFileDialog.svelte";
+  import PrintDialog from "$lib/components/PrintDialog.svelte";
   import MenuPalette from "$lib/components/MenuPalette.svelte";
   import VoiceHud from "$lib/components/VoiceHud.svelte";
   import AmbientOverlay from "$lib/components/AmbientOverlay.svelte";
@@ -173,6 +174,7 @@
 <ConsentDialog />
 <SourcePicker />
 <WindowsFileDialog />
+<PrintDialog />
 <MenuPalette />
 <VoiceHud />
 <!-- Per-side offsets: the vertical offset tracks the open panel
