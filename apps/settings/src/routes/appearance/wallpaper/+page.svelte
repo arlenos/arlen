@@ -86,13 +86,13 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 1rem;
-    padding: 0 1rem 1rem;
+    padding: 0.75rem 1rem 1.1rem;
   }
   .wp-grid {
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
-    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+    gap: 0.6rem;
   }
   .wp-tile {
     position: relative;
