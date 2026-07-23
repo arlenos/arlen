@@ -40,11 +40,77 @@ fn store_root() -> PathBuf {
 /// Build the recipe at `path` into a signed `.lunpkg`, printing the path on
 /// success. Exits non-zero on any failure; a zero exit means a real package was
 /// produced.
+/// Reports a forage build as one composite job to the shell's Activity/Jobs
+/// zone (job-progress-surface.md step 2). Entirely best-effort: the daemon may
+/// be absent (a headless CI run or no desktop session), and a report failure
+/// must never affect the build, so every call swallows its error. The job is
+/// indeterminate - a build's true progress is not a clean count - so the shell
+/// draws an activity spinner with the title, not a filled bar.
+struct BuildJob {
+    proxy: notification_proto::client::JobViewServerProxy<'static>,
+    id: u64,
+}
+
+impl BuildJob {
+    /// Register the build job, or `None` when the job server is unreachable.
+    async fn start(title: &str) -> Option<BuildJob> {
+        let conn = zbus::Connection::session().await.ok()?;
+        let proxy = notification_proto::client::JobViewServerProxy::new(&conn)
+            .await
+            .ok()?;
+        // total=0/determinate=false -> indeterminate; not killable/suspendable
+        // (a cancel-back path is a later slice); no egress line at this layer.
+        let id = proxy
+            .register("forage", title, "items", 0, false, false, false, "")
+            .await
+            .ok()?;
+        Some(BuildJob { proxy, id })
+    }
+
+    /// Terminate the job: `done` on success, `error-fatal` otherwise, then prune.
+    async fn finish(self, success: bool) {
+        let (state, message) = if success {
+            ("done", "")
+        } else {
+            ("error-fatal", "build failed")
+        };
+        let _ = self.proxy.set_state(self.id, state, message).await;
+        let _ = self.proxy.finish(self.id).await;
+    }
+}
+
+/// A human title for the build job, derived from the recipe's directory (the
+/// project being built), falling back to a generic label.
+fn build_title(recipe_path: &Path) -> String {
+    let name = recipe_path
+        .parent()
+        .and_then(|p| {
+            // A `.forage/recipe.toml` layout: name after the project dir.
+            if p.file_name().map(|n| n == ".forage").unwrap_or(false) {
+                p.parent().and_then(|g| g.file_name())
+            } else {
+                p.file_name()
+            }
+        })
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|n| !n.is_empty());
+    match name {
+        Some(n) => format!("Building {n}"),
+        None => "Building package".to_string(),
+    }
+}
+
 pub async fn run(path: PathBuf, unsafe_no_sandbox: bool, install: bool) {
     let Some(recipe_path) = recipe::resolve_recipe_path(&path) else {
         exit(1);
     };
-    let lunpkg = match build_recipe_at(&recipe_path, unsafe_no_sandbox).await {
+    // Report the build as one composite job to the shell (best-effort).
+    let job = BuildJob::start(&build_title(&recipe_path)).await;
+    let result = build_recipe_at(&recipe_path, unsafe_no_sandbox).await;
+    if let Some(job) = job {
+        job.finish(result.is_ok()).await;
+    }
+    let lunpkg = match result {
         Ok(p) => p,
         Err(()) => exit(1),
     };

@@ -21,6 +21,7 @@ arlen-forage-signing = { path = "signing" }
 arlen-cookbook-resolve = { path = "cookbook-resolve" }
 arlen-forage-capabilities = { path = "capabilities" }
 arlen-forage-bridge-install = { path = "bridge-install" }
+notification-proto = { path = "../contracts/notification-proto", features = ["client"] }
 colored = "2"
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }
