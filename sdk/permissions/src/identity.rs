@@ -516,7 +516,7 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
 /// privileged ids are all reserved here). If `QuotaConfig::load` is ever
 /// wired into live tiering, this guard must be re-fenced against the
 /// configured allowlist or the rule-4 squat reopens for the added ids.
-fn is_reserved_app_id(app_id: &str) -> bool {
+pub fn is_reserved_app_id(app_id: &str) -> bool {
     app_id == "system"
         || app_id.starts_with("system.")
         || app_id.starts_with("org.arlen.")
