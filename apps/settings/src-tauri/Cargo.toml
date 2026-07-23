@@ -80,7 +80,8 @@ libc = "0.2"
 # desktop-shell's `brightness.rs`; the two processes can't share
 # Tauri commands so we keep a slim mirror in app-settings.
 zbus = { version = "5", default-features = false, features = ["tokio"] }
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1", features = ["rt", "macros", "sync"] }
+notification-proto = { path = "../../../contracts/notification-proto", features = ["client"] }
 
 # Output config types shared with the compositor. We reuse the
 # canonical OutputConfig + TOML schema (D0) so the apply path round-

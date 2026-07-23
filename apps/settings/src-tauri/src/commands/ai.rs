@@ -604,6 +604,83 @@ struct ModelDownloadProgress {
     total_bytes: u64,
 }
 
+/// A message from the download to its job reporter (job-progress-surface.md).
+enum JobMsg {
+    /// Bytes streamed so far and the total (0 = not yet known).
+    Progress { fetched: u64, total: u64 },
+    /// The download ended; `ok` is whether it succeeded.
+    Done { ok: bool },
+}
+
+/// Connect to the job server and register the model download as one job. The
+/// egress host is named so the shell can surface it at the consent moment (the
+/// sovereign showcase: a model pull IS an egress moment). `None` when the daemon
+/// is unreachable, so reporting is a silent no-op.
+async fn register_download_job(
+    title: &str,
+    egress_host: &str,
+) -> Option<(
+    notification_proto::client::JobViewServerProxy<'static>,
+    u64,
+)> {
+    let conn = zbus::Connection::session().await.ok()?;
+    let proxy = notification_proto::client::JobViewServerProxy::new(&conn)
+        .await
+        .ok()?;
+    // Indeterminate until the first byte-total arrives; killable (a cancel flag
+    // exists), not suspendable (pause/resume of the HTTP stream is a follow-up).
+    let id = proxy
+        .register("settings", title, "bytes", 0, false, true, false, egress_host)
+        .await
+        .ok()?;
+    Some((proxy, id))
+}
+
+/// Spawn the best-effort reporter task for a model download. It registers the
+/// job, applies each `Progress` (THROTTLED to at most one D-Bus update per
+/// 500ms so per-chunk streaming does not spam the bus), and finishes on `Done`.
+/// Entirely best-effort: an unreachable daemon drains the channel silently, and
+/// a report error never affects the download.
+fn spawn_download_reporter(
+    title: String,
+    egress_host: String,
+) -> (tokio::sync::mpsc::Sender<JobMsg>, tokio::task::JoinHandle<()>) {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<JobMsg>(64);
+    let handle = tokio::spawn(async move {
+        let job = register_download_job(&title, &egress_host).await;
+        let mut last_update = std::time::Instant::now();
+        let mut latest = (0u64, 0u64);
+        while let Some(msg) = rx.recv().await {
+            match msg {
+                JobMsg::Progress { fetched, total } => {
+                    latest = (fetched, total);
+                    if let Some((proxy, id)) = &job {
+                        if last_update.elapsed() >= std::time::Duration::from_millis(500) {
+                            let _ = proxy.update(*id, fetched, total, total > 0).await;
+                            last_update = std::time::Instant::now();
+                        }
+                    }
+                }
+                JobMsg::Done { ok } => {
+                    if let Some((proxy, id)) = &job {
+                        // A final update so a throttled last chunk still lands.
+                        let _ = proxy.update(*id, latest.0, latest.1, latest.1 > 0).await;
+                        let (state, message) = if ok {
+                            ("done", "")
+                        } else {
+                            ("error-fatal", "download failed")
+                        };
+                        let _ = proxy.set_state(*id, state, message).await;
+                        let _ = proxy.finish(*id).await;
+                    }
+                    break;
+                }
+            }
+        }
+    });
+    (tx, handle)
+}
+
 /// Download a curated catalog model into the user model store
 /// (`ai_local_models_download`). Resolves the entry's source repo + the
 /// best-fitting quant for this machine, resolves the file's sha256 from the HF
@@ -662,10 +739,26 @@ pub async fn ai_local_models_download(
         .expect("download-cancels lock")
         .insert(id.clone(), flag.clone());
 
+    // Report the download as one job to the shell's Activity zone (best-effort).
+    // The egress host is named - a model pull is the sovereign egress moment
+    // (job-progress-surface.md), so the shell can surface where the bytes go.
+    let egress_host = url
+        .split("://")
+        .nth(1)
+        .and_then(|rest| rest.split('/').next())
+        .unwrap_or("huggingface.co")
+        .to_string();
+    let (reporter_tx, _reporter_task) =
+        spawn_download_reporter(format!("Downloading {}", model.name), egress_host);
+    let job_tx = reporter_tx.clone();
+
     let progress_id = id.clone();
     let dl_flag = flag.clone();
     let result = tokio::task::spawn_blocking(move || {
         let on_progress = move |fetched: u64, total: u64| {
+            // Non-blocking: a full channel drops the sample (natural throttle),
+            // so streaming never waits on the reporter.
+            let _ = job_tx.try_send(JobMsg::Progress { fetched, total });
             let _ = app.emit(
                 "ai:model-download-progress",
                 ModelDownloadProgress {
@@ -682,6 +775,15 @@ pub async fn ai_local_models_download(
         mm::fetch::download_model(&url, &sha, &dest, Some(&observer))
     })
     .await;
+
+    // Finish the job now (before any early return below), so a failed or
+    // cancelled download never strands a live entry in the shell.
+    let ok = result
+        .as_ref()
+        .ok()
+        .map(|inner| inner.is_ok())
+        .unwrap_or(false);
+    let _ = reporter_tx.send(JobMsg::Done { ok }).await;
 
     // Drop the flag entry whether the download finished, failed, or was cancelled.
     cancels
