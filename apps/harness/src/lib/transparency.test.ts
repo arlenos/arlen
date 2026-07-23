@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isLocalProvider } from "./transparency";
+import { isLocalProvider, providerDisplay } from "./transparency";
 
 describe("isLocalProvider", () => {
   it("recognises a catalog id by its family, not just the bare kind", () => {
@@ -20,5 +20,21 @@ describe("isLocalProvider", () => {
     expect(isLocalProvider("openai-gpt4")).toBe(false);
     expect(isLocalProvider(null)).toBe(false);
     expect(isLocalProvider(undefined)).toBe(false);
+  });
+});
+
+describe("providerDisplay", () => {
+  it("names a known cloud provider by family, not the raw catalog id", () => {
+    // The catalog id carries a suffix (`openai-gpt4`); the exact-map miss showed
+    // "Openai-gpt4" instead of the brand.
+    expect(providerDisplay("openai")).toBe("OpenAI");
+    expect(providerDisplay("openai-gpt4")).toBe("OpenAI");
+    expect(providerDisplay("anthropic-claude")).toBe("Anthropic");
+  });
+
+  it("keeps an unknown provider's full id rather than truncating to the family", () => {
+    // A user's custom provider must not become "My" - it keeps its whole name.
+    expect(providerDisplay("my-local-llm")).toBe("My-local-llm");
+    expect(providerDisplay(null)).toBe(null);
   });
 });

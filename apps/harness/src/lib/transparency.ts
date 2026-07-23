@@ -154,9 +154,20 @@ const PROVIDER_NAMES: Record<string, string> = {
 };
 
 /// A presentable provider name, or null when none is configured.
+///
+/// Matches the provider FAMILY as well as the exact id (the same catalog-id-vs-
+/// bare-kind gap `isLocalProvider` had): a cloud id like `openai-gpt4` should
+/// read "OpenAI", not "Openai-gpt4". A genuinely unknown provider keeps its FULL
+/// id capitalised, so a user's custom `my-local-llm` is not truncated to "My".
 export function providerDisplay(provider: string | null | undefined): string | null {
   if (!provider) return null;
-  return PROVIDER_NAMES[provider.toLowerCase()] ?? provider.charAt(0).toUpperCase() + provider.slice(1);
+  const id = provider.toLowerCase();
+  const family = id.split("-", 1)[0];
+  return (
+    PROVIDER_NAMES[id] ??
+    PROVIDER_NAMES[family] ??
+    provider.charAt(0).toUpperCase() + provider.slice(1)
+  );
 }
 
 /// The plain phrase for what a tier of reads means, matching the wording
