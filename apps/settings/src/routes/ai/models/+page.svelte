@@ -8,7 +8,7 @@
   /// (per-role is new backend), cannot enumerate downloaded models, has no HF
   /// search and no import. The store reads the intended commands, then mocks.
   import { onMount } from "svelte";
-  import { HardDrive, Trash2, Upload, ExternalLink } from "lucide-svelte";
+  import { HardDrive, Trash2, Upload, ExternalLink, ShieldOff } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
@@ -33,6 +33,9 @@
     hfSearch,
     installedModels,
     availableModels,
+    uncensoredEnabled,
+    uncensoredModels,
+    setUncensoredEnabled,
     tierPicks,
     tierMeta,
     roleMeta,
@@ -73,11 +76,16 @@
   const browseList = $derived(
     $models
       .filter((m) => m.kind === "local")
+      .filter((m) => !m.uncensored)
       .filter((m) => showAdvanced || !m.advanced)
       .filter((m) => taskFilter === "all" || m.tasks.includes(taskFilter))
       .filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase()))
       .sort((a, b) => (a.paramsB ?? 0) - (b.paramsB ?? 0)),
   );
+
+  // Opt-in gate for the uncensored section: enabling asks for an informed
+  // affirmation (reversible, so an informed confirm, not a typed one - §6.2).
+  let confirmEnable = $state(false);
 
   // The one consented egress: a clear affirmation before a download.
   let pending = $state<Model | null>(null);
@@ -246,6 +254,36 @@
       </label>
     </Group>
 
+    {#if $uncensoredModels.length > 0}
+      <Group label={$t("s.mdl.unc.title")} class="span-full">
+        {#if !$uncensoredEnabled}
+          <div class="unc-intro">
+            <p class="unc-lead">{$t("s.mdl.unc.lead")}</p>
+            <p class="unc-resp">{$t("s.mdl.unc.resp")}</p>
+            <Button variant="outline" size="sm" onclick={() => (confirmEnable = true)}>
+              <ShieldOff size={14} strokeWidth={2} />
+              {$t("s.mdl.unc.enable")}
+            </Button>
+          </div>
+        {:else}
+          <p class="unc-note-top">{$t("s.mdl.unc.note")}</p>
+          {#each $uncensoredModels as m (m.id)}
+            <div class="unc-row">
+              {@render modelBody(m)}
+              <Badge variant="outline" class="self-start"><ShieldOff strokeWidth={2} />{$t("s.mdl.unc.badge")}</Badge>
+            </div>
+          {/each}
+          <Button
+            variant="ghost"
+            class="w-full justify-start gap-2 px-4 font-normal text-muted-foreground hover:text-foreground"
+            onclick={() => setUncensoredEnabled(false)}
+          >
+            {$t("s.mdl.unc.turnOff")}
+          </Button>
+        {/if}
+      </Group>
+    {/if}
+
     {#if $modelsLoaded && $models.length === 0}
       <Group label={$t("s.mdl.models")} class="span-full">
         <p class="muted-line">{$t("s.mdl.noneAvailable")}</p>
@@ -266,6 +304,9 @@
       <HardDrive size={16} strokeWidth={1.75} />
     {/if}
     <span class="opt-label">{opt.label}</span>
+    {#if m?.uncensored}
+      <Badge variant="outline" class="ms-auto shrink-0"><ShieldOff strokeWidth={2} />{$t("s.mdl.unc.badge")}</Badge>
+    {/if}
   </span>
 {/snippet}
 
@@ -332,6 +373,18 @@
   confirmLabel={$t("s.mdl.download")}
   onConfirm={confirmDownload}
   onCancel={() => (pending = null)}
+/>
+
+<ConfirmDialog
+  open={confirmEnable}
+  title={$t("s.mdl.unc.confirmTitle")}
+  message={$t("s.mdl.unc.confirmMsg")}
+  confirmLabel={$t("s.mdl.unc.enable")}
+  onConfirm={() => {
+    confirmEnable = false;
+    void setUncensoredEnabled(true);
+  }}
+  onCancel={() => (confirmEnable = false)}
 />
 
 <style>
@@ -481,5 +534,39 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Uncensored section: the off-state explainer, then the opt-in list. */
+  .unc-intro {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.75rem 1rem 1rem;
+  }
+  .unc-lead {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--foreground) 78%, transparent);
+  }
+  .unc-resp {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--foreground) 52%, transparent);
+  }
+  .unc-note-top {
+    margin: 0;
+    padding: 0.75rem 1rem 0.35rem;
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  .unc-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.625rem 1rem;
+    border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
   }
 </style>

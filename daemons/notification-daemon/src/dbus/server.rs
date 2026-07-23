@@ -94,6 +94,10 @@ pub enum NotifyEvent {
     AllCleared,
     /// DND mode changed.
     DndChanged { mode: crate::config::DndMode },
+    /// A long-running job changed (registered/updated/finished). Carries the
+    /// wire message ready for the shell's Activity/Jobs zone; reuses the
+    /// notification broadcast channel so jobs need no second socket.
+    Job(crate::socket::protocol::proto::JobUpdate),
 }
 
 // ---------------------------------------------------------------------------

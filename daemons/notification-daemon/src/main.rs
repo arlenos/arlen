@@ -77,9 +77,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // terminal state often becomes a notification, and both share the DnD
     // plumbing). Producers register/update jobs here; the shell reads the live
     // set over the daemon's existing socket broadcast (a later wiring step).
-    let job_dbus = arlen_notification_daemon::dbus::job_view::JobViewDbus::new(arlen_notification_daemon::job::JobViewServer::new(
-        std::sync::Arc::new(std::sync::Mutex::new(arlen_notification_daemon::job::JobRegistry::new())),
-    ));
+    let job_dbus = arlen_notification_daemon::dbus::job_view::JobViewDbus::new(
+        arlen_notification_daemon::job::JobViewServer::new(std::sync::Arc::new(
+            std::sync::Mutex::new(arlen_notification_daemon::job::JobRegistry::new()),
+        )),
+        event_tx.clone(),
+    );
     let _conn = connection::Builder::session()?
         .serve_at("/org/freedesktop/Notifications", dbus_server)?
         .serve_at("/org/arlen/JobViewServer", job_dbus)?

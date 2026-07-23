@@ -8,19 +8,32 @@
 //! has no `Option`, so a `determinate` flag stands in for a known total and an
 //! empty string stands in for an absent host/message) onto the model.
 
+use tokio::sync::broadcast;
 use zbus::interface;
 
+use crate::dbus::server::NotifyEvent;
 use crate::job::JobViewServer;
 
 /// The object served at `/org/arlen/JobViewServer` on the session bus.
 pub struct JobViewDbus {
     server: JobViewServer,
+    /// The notification daemon's broadcast channel, reused to push job changes
+    /// to the shell (no second socket). A send error (no subscriber) is ignored.
+    events: broadcast::Sender<NotifyEvent>,
 }
 
 impl JobViewDbus {
-    /// Build over the shared job server.
-    pub fn new(server: JobViewServer) -> Self {
-        JobViewDbus { server }
+    /// Build over the shared job server + the daemon's broadcast channel.
+    pub fn new(server: JobViewServer, events: broadcast::Sender<NotifyEvent>) -> Self {
+        JobViewDbus { server, events }
+    }
+
+    /// Push the current view of job `id` to the shell. `removed = true` prunes
+    /// it from the live set. A vanished id (a race with removal) sends nothing.
+    fn emit(&self, id: u64, removed: bool) {
+        if let Some(view) = self.server.get(id) {
+            let _ = self.events.send(NotifyEvent::Job(to_job_update(&view, removed)));
+        }
     }
 }
 
@@ -46,7 +59,7 @@ impl JobViewDbus {
     ) -> u64 {
         let total = determinate.then_some(total);
         let host = (!egress_host.is_empty()).then_some(egress_host);
-        self.server.register(
+        let id = self.server.register(
             app_id,
             title,
             &unit,
@@ -55,14 +68,20 @@ impl JobViewDbus {
             suspendable,
             host,
             now_micros(),
-        )
+        );
+        self.emit(id, false);
+        id
     }
 
     /// Advance a job's amounts in its real unit. `determinate=false` leaves the
     /// total unknown (an indeterminate stretch). Returns `false` for an unknown
     /// id - a late update after the job finished is a harmless no-op.
     async fn update(&self, id: u64, processed: u64, total: u64, determinate: bool) -> bool {
-        self.server.update(id, processed, determinate.then_some(total))
+        let ok = self.server.update(id, processed, determinate.then_some(total));
+        if ok {
+            self.emit(id, false);
+        }
+        ok
     }
 
     /// Set a job's lifecycle state and its explanatory message. `state` is one
@@ -71,11 +90,17 @@ impl JobViewDbus {
     /// for `running`, an explanation for every other state.
     async fn set_state(&self, id: u64, state: String, message: String) -> bool {
         let message = (!message.is_empty()).then_some(message);
-        self.server.set_state(id, &state, message)
+        let ok = self.server.set_state(id, &state, message);
+        if ok {
+            self.emit(id, false);
+        }
+        ok
     }
 
-    /// Remove a finished job from the live set. Returns whether it existed.
+    /// Remove a finished job from the live set. Returns whether it existed. The
+    /// shell is told to prune it (a final `removed` message) before it is dropped.
     async fn finish(&self, id: u64) -> bool {
+        self.emit(id, true);
         self.server.remove(id)
     }
 }
@@ -151,5 +176,34 @@ mod tests {
 
         // The prune form flips only the removed flag.
         assert!(to_job_update(&view, true).removed);
+    }
+
+    #[tokio::test]
+    async fn a_change_broadcasts_a_job_event_and_finish_prunes() {
+        use crate::dbus::server::NotifyEvent;
+        let (tx, mut rx) = tokio::sync::broadcast::channel(16);
+        let server = JobViewServer::new(std::sync::Arc::new(std::sync::Mutex::new(JobRegistry::new())));
+        let dbus = super::JobViewDbus::new(server, tx);
+
+        let id = dbus
+            .register("files".into(), "Copy".into(), "files".into(), 10, true, true, false, String::new())
+            .await;
+        match rx.try_recv() {
+            Ok(NotifyEvent::Job(u)) => {
+                assert_eq!(u.id, id);
+                assert!(!u.removed, "a register is a live job, not a prune");
+            }
+            other => panic!("expected a Job broadcast on register, got {other:?}"),
+        }
+
+        // finish emits a final removed event so the shell clears the entry.
+        assert!(dbus.finish(id).await);
+        match rx.try_recv() {
+            Ok(NotifyEvent::Job(u)) => {
+                assert_eq!(u.id, id);
+                assert!(u.removed, "finish tells the shell to prune");
+            }
+            other => panic!("expected a removed Job broadcast on finish, got {other:?}"),
+        }
     }
 }
