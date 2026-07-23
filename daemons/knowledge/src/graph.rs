@@ -540,6 +540,13 @@ fn create_schema(conn: &Connection) -> Result<()> {
     )
     .map_err(|e| anyhow!("create Branch table: {e}"))?;
 
+    // The commit DAG edge: a commit points to each of its parents (two for a
+    // merge). The git-ingestion tier (git_ingest.rs) writes these; the parent may
+    // not yet be an ingested node, so the edge is created only when both endpoints
+    // exist and fills in as more history ingests.
+    conn.query("CREATE REL TABLE IF NOT EXISTS PARENT_OF(FROM Commit TO Commit)")
+        .map_err(|e| anyhow!("create PARENT_OF rel: {e}"))?;
+
     // Reserved terminal command-history node. A finished terminal block (the
     // `apps/terminal` `Block`, documented as "the projection of a future KG
     // command node") persists here so `⌃R` history search spans sessions and
