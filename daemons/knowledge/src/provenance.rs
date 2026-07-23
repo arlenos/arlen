@@ -52,6 +52,31 @@ impl Provenance {
             _ => None,
         }
     }
+
+    /// The §5.6 protected-origin trust rank: a higher number is more trusted, so
+    /// when two devices assert the same membership fact the higher-ranked origin
+    /// wins the merge (graph-drift.md §5.6, `user > agent > model > external`).
+    /// A `None` means "the trust order does not place this origin", so a caller
+    /// must NOT silently rank it - it falls through to the HLC tiebreak or fails
+    /// closed rather than guessing.
+    ///
+    /// `Graph` (promotion-derived) is `None` on purpose: it is enum-defined but
+    /// is NOT set as an edge origin today (the agent path hard-codes `'agent'`,
+    /// promotion sets none), and §5.6 does not rank a system-observed origin
+    /// against the asserted ones. If a future promotion writes `origin = 'graph'`,
+    /// its rank must be decided and added HERE (the `None` forces that decision
+    /// instead of letting a system observation silently out- or under-rank a user
+    /// assertion). This is a pure comparison; it grants no authority until it is
+    /// wired into the (executor-live-gated) resolve-membership merge pass.
+    pub fn trust_rank(self) -> Option<u8> {
+        match self {
+            Provenance::User => Some(3),
+            Provenance::Agent => Some(2),
+            Provenance::Model => Some(1),
+            Provenance::External => Some(0),
+            Provenance::Graph => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -85,5 +110,28 @@ mod tests {
         assert_eq!(Provenance::from_key(""), None);
         assert_eq!(Provenance::from_key("USER-QUESTION"), None, "not the prompt label");
         assert_eq!(Provenance::from_key("admin"), None);
+    }
+
+    #[test]
+    fn trust_rank_orders_user_over_agent_over_model_over_external() {
+        // The §5.6 order: a higher rank wins the merge tiebreak.
+        let u = Provenance::User.trust_rank().unwrap();
+        let a = Provenance::Agent.trust_rank().unwrap();
+        let m = Provenance::Model.trust_rank().unwrap();
+        let e = Provenance::External.trust_rank().unwrap();
+        assert!(u > a, "user outranks agent");
+        assert!(a > m, "agent outranks model");
+        assert!(m > e, "model outranks external");
+        // External is the floor of the asserted origins: an untrusted document
+        // never wins against a user, agent or model assertion.
+        assert!(u > e && a > e && m > e);
+    }
+
+    #[test]
+    fn graph_origin_is_unranked_so_it_is_never_silently_ranked() {
+        // Graph is enum-defined but not an edge origin today; §5.6 does not
+        // place it. `None` forces an explicit decision rather than a silent
+        // guess if promotion ever stamps origin='graph'.
+        assert_eq!(Provenance::Graph.trust_rank(), None);
     }
 }
