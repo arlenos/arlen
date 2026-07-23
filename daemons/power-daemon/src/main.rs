@@ -92,9 +92,12 @@ async fn main() {
         }
         None => None,
     };
-    // The dock-aware lid policy. The default suspends on lid-close but not while
-    // docked; a machine with no lid never triggers it.
-    let lid_config = arlen_powerd::lid::LidConfig::default();
+    // The power daemon's config (critical-battery action + the PWR-R4 lid policy).
+    // Loaded once here so the lid takeover below and the poll loop share it.
+    let power_config = PowerConfig::load();
+    // The dock-aware lid policy. The `[lid]` defaults suspend on lid-close but not
+    // while docked; a machine with no lid never triggers it.
+    let lid_config = power_config.lid.resolve();
 
     // The shared snapshot the org.arlen.Power1 interface serves. The poll loop
     // writes the latest reading; pull consumers (shell, apps, SDK) read it
@@ -130,8 +133,6 @@ async fn main() {
 
     let _ = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]);
 
-    // The critical-battery auto-action config (off by default; PWR-R6).
-    let power_config = PowerConfig::load();
     info!(
         critical_action = ?power_config.critical_action.action,
         floor = power_config.critical_action.floor,
