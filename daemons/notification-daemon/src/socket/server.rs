@@ -39,6 +39,7 @@ impl SocketServer {
         event_tx: broadcast::Sender<NotifyEvent>,
         db: Arc<Database>,
         dnd_mode: Arc<Mutex<crate::config::DndMode>>,
+        jobs: crate::job::JobViewServer,
     ) -> Result<(), NotifyError> {
         if let Some(parent) = self.path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -141,9 +142,10 @@ impl SocketServer {
             let db = db.clone();
             let dnd = dnd_mode.clone();
             let tx = event_tx.clone();
+            let job_view = jobs.clone();
 
             tokio::spawn(async move {
-                if let Err(e) = handle_client(reader, writer, db, dnd, tx).await {
+                if let Err(e) = handle_client(reader, writer, db, dnd, tx, job_view).await {
                     tracing::debug!("client disconnected: {e}");
                 }
             });
@@ -158,6 +160,7 @@ async fn handle_client(
     db: Arc<Database>,
     dnd_mode: Arc<Mutex<crate::config::DndMode>>,
     event_tx: broadcast::Sender<NotifyEvent>,
+    jobs: crate::job::JobViewServer,
 ) -> Result<(), NotifyError> {
     loop {
         // Read from the reader half (does NOT hold the writer lock).
@@ -175,6 +178,21 @@ async fn handle_client(
                 let pending = db.get_pending().await.unwrap_or_default();
                 let unread = pending.iter().filter(|n| !n.read).count() as u32;
                 let mode = *dnd_mode.lock().await;
+                // Sync the live jobs so a shell reconnecting mid-operation sees
+                // the in-flight jobs, not only future broadcasts (a long model
+                // download must not vanish from the Activity zone on a restart).
+                let live_jobs = jobs.snapshot();
+                if !live_jobs.is_empty() {
+                    let mut w = writer.lock().await;
+                    for view in &live_jobs {
+                        let job_msg = proto::ServerMessage {
+                            msg: Some(proto::server_message::Msg::JobUpdate(
+                                crate::dbus::job_view::to_job_update(view, false),
+                            )),
+                        };
+                        let _ = write_message(&mut *w, &job_msg).await;
+                    }
+                }
                 Some(proto::ServerMessage {
                     msg: Some(proto::server_message::Msg::Sync(proto::SyncResponse {
                         pending: pending.iter().map(|n| n.into()).collect(),
@@ -300,5 +318,81 @@ mod tests {
         let path_str = path.to_string_lossy();
         assert!(path_str.contains("/run/user/"));
         assert!(path_str.ends_with("/arlen/notification.sock"));
+    }
+
+    // A job registered BEFORE a shell connects must reach it on the Hello sync,
+    // not only via a future broadcast (a long download must survive a shell
+    // restart in the Activity zone). Drives the real socket end to end.
+    #[tokio::test]
+    async fn hello_syncs_a_job_registered_before_connect() {
+        use crate::job::{JobRegistry, JobViewServer};
+        use tokio::io::AsyncWriteExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("notif.sock");
+
+        // A job exists before any client connects.
+        let jobs = JobViewServer::new(Arc::new(std::sync::Mutex::new(JobRegistry::new())));
+        let job_id = jobs.register(
+            "files".into(),
+            "Copy 200 files".into(),
+            "files",
+            Some(200),
+            true,
+            false,
+            None,
+            0,
+        );
+
+        let db = Arc::new(crate::storage::Database::open("sqlite::memory:").await.unwrap());
+        let dnd = Arc::new(Mutex::new(crate::config::DndMode::Off));
+        let (tx, rx) = broadcast::channel(16);
+
+        let server = SocketServer::new(sock.clone());
+        let jobs_for_server = jobs.clone();
+        tokio::spawn(async move {
+            let _ = server.start(rx, tx, db, dnd, jobs_for_server).await;
+        });
+
+        // Connect once the listener is up (poll, do not race a fixed sleep).
+        let mut stream = None;
+        for _ in 0..50 {
+            if let Ok(s) = UnixStream::connect(&sock).await {
+                stream = Some(s);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let stream = stream.expect("socket server never came up");
+        let (mut reader, mut writer) = tokio::io::split(stream);
+
+        // Say hello; the daemon must sync the live job(s) then the notifications.
+        let hello = proto::ClientMessage {
+            msg: Some(proto::client_message::Msg::Hello(proto::ClientHello {
+                client_name: "test-shell".into(),
+            })),
+        };
+        write_message(&mut writer, &hello).await.unwrap();
+
+        // Read until the job update (bounded, so a miss fails instead of hanging).
+        let mut saw_job = false;
+        for _ in 0..8 {
+            let msg: Option<proto::ServerMessage> =
+                tokio::time::timeout(std::time::Duration::from_secs(2), read_message(&mut reader))
+                    .await
+                    .expect("timed out waiting for the Hello reply")
+                    .unwrap();
+            let Some(msg) = msg else { break };
+            if let Some(proto::server_message::Msg::JobUpdate(u)) = msg.msg {
+                assert_eq!(u.id, job_id);
+                assert_eq!(u.title, "Copy 200 files");
+                assert_eq!(u.processed, 0);
+                assert_eq!(u.total, 200);
+                assert!(!u.removed, "a synced live job is not a prune");
+                saw_job = true;
+                break;
+            }
+        }
+        assert!(saw_job, "the pre-registered job was not synced on Hello");
     }
 }

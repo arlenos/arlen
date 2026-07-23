@@ -77,10 +77,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // terminal state often becomes a notification, and both share the DnD
     // plumbing). Producers register/update jobs here; the shell reads the live
     // set over the daemon's existing socket broadcast (a later wiring step).
+    // One shared job server: the D-Bus interface producers register through and
+    // the socket server both read from it (the D-Bus side broadcasts changes; the
+    // socket side syncs the live set to a connecting shell).
+    let job_server = arlen_notification_daemon::job::JobViewServer::new(std::sync::Arc::new(
+        std::sync::Mutex::new(arlen_notification_daemon::job::JobRegistry::new()),
+    ));
     let job_dbus = arlen_notification_daemon::dbus::job_view::JobViewDbus::new(
-        arlen_notification_daemon::job::JobViewServer::new(std::sync::Arc::new(
-            std::sync::Mutex::new(arlen_notification_daemon::job::JobRegistry::new()),
-        )),
+        job_server.clone(),
         event_tx.clone(),
     );
     let _conn = connection::Builder::session()?
@@ -136,7 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket_server = SocketServer::new(socket_path);
     let dnd_mode = manager.dnd_mode();
     tokio::spawn(async move {
-        if let Err(e) = socket_server.start(event_rx, event_tx, db.clone(), dnd_mode).await {
+        if let Err(e) = socket_server.start(event_rx, event_tx, db.clone(), dnd_mode, job_server).await {
             tracing::error!("socket server error: {e}");
         }
     });
