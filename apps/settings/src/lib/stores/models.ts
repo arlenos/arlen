@@ -145,7 +145,7 @@ const MOCK_MODELS: Model[] = [
   local("qwen2.5-14b", "Qwen2.5 14B", 14.7, ["general", "reasoning"], "may-be-slow", 1.8, 9.0),
   local("llama-3.3-70b", "Llama 3.3 70B", 70.6, ["general", "reasoning"], "wont-fit", 0.4, 40.0),
   local("qwen3-8b-abliterated", "Qwen3 8B (abliterated)", 8.19, ["general"], "may-be-slow", 3.4, 5.1, { uncensored: true }),
-  local("dolphin-mistral-7b", "Dolphin Mistral 7B", 7.25, ["general"], "fits", 10, 4.1, { uncensored: true }),
+  local("dolphin-mistral-7b", "Dolphin Mistral 7B", 7.25, ["general"], "fits", 10, 4.1, { uncensored: true, installed: true }),
   cloud("anthropic/claude-3.5-sonnet", "Claude 3.5 Sonnet", "anthropic", ["general", "reasoning"]),
   cloud("mistral/mistral-large", "Mistral Large", "mistral", ["general"]),
 ];

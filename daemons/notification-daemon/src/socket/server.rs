@@ -100,6 +100,9 @@ impl SocketServer {
                             },
                         )),
                     },
+                    NotifyEvent::Job(ref update) => proto::ServerMessage {
+                        msg: Some(proto::server_message::Msg::JobUpdate(update.clone())),
+                    },
                 };
 
                 let encoded = match crate::socket::protocol::encode_message(&server_msg) {

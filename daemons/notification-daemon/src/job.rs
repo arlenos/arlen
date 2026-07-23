@@ -419,6 +419,12 @@ impl JobViewServer {
         self.lock().snapshot()
     }
 
+    /// The current view of one job, if it is still registered (cloned, so the
+    /// caller holds no lock - used to build the broadcast message after a change).
+    pub fn get(&self, id: u64) -> Option<JobView> {
+        self.lock().get(id).cloned()
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, JobRegistry> {
         self.registry.lock().expect("job registry mutex poisoned")
     }
