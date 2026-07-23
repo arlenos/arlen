@@ -538,4 +538,56 @@ mod tests {
              netns+proxy composition; exit {code} (20=proxy unreachable, 30=unexpected reply)"
         );
     }
+
+    /// §0 acceptance leg 3: the raw-IP-BYPASS defense. The route-absence wrapper
+    /// (`ip route del default`) leaves the netns with only its private /24, whose
+    /// sole live peer is the proxy gateway, so a confined app that IGNORES the
+    /// `*_proxy` env and dials a raw EXTERNAL IP directly reaches NOTHING (no
+    /// route), not the host's real network. This is the boundary that makes the
+    /// proxy the WHOLE egress rather than a cooperative hint. Metal-only.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "needs pasta + bwrap + unprivileged userns on the host kernel"]
+    fn a_filtered_launch_cannot_reach_a_raw_external_ip_bypassing_the_proxy() {
+        use crate::egress::{EgressEnforcer, ProxyEgressEnforcer};
+        // A live proxy for the launch (the netns needs its gateway peer); the
+        // allowlist is irrelevant here - the probe never dials the proxy.
+        let guard = ProxyEgressEnforcer
+            .install(&["allowed.invalid:443".to_string()])
+            .expect("bind the egress proxy");
+        let _port = guard.proxy_port().expect("a filtered guard exposes its proxy port");
+
+        // The confined probe: dial a raw external IP DIRECTLY (not the proxy
+        // gateway), bypassing the `*_proxy` env. With the default route deleted the
+        // connect has no route and fails, so exit 0; a successful connect (a bypass)
+        // exits 30. 1.1.1.1 is a real routable address, so this proves route-absence
+        // blocks a would-otherwise-be-reachable host, not merely an unroutable one.
+        let probe =
+            "exec 3<>/dev/tcp/1.1.1.1/443 2>/dev/null || exit 0; exit 30".to_string();
+        let argv: Vec<String> = [
+            "--unshare-user",
+            "--unshare-pid",
+            "--ro-bind",
+            "/",
+            "/",
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--",
+            "/usr/bin/bash",
+            "-c",
+            &probe,
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let bpf = crate::seccomp::app_filter_bytes().expect("filter compiles");
+        let code = spawn_filtered_and_wait(&argv, &[], None, bpf).expect("the filtered launch spawns");
+        assert_eq!(
+            code, 0,
+            "a raw external-IP dial must find no route (route-absence); \
+             exit {code} (30=the raw IP was reachable = a bypass of the proxy)"
+        );
+    }
 }
