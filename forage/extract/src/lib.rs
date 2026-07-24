@@ -242,6 +242,21 @@ mod tests {
     }
 
     #[test]
+    fn a_gnu_long_filename_extracts_and_is_not_false_rejected() {
+        // A path well over the 100-byte ustar name field, forcing the tar writer to
+        // emit a GNU long-name extension. The reader must consume that extension and
+        // extract the file at its full path - not reject the archive as an
+        // "unsupported entry" (which would break every real package with long paths).
+        let long = format!("{}deep/file.rs", "nested/".repeat(20)); // ~150 bytes
+        assert!(long.len() > 100);
+        let tar = build_tar(&[(&long, tar::EntryType::Regular, b"x")]);
+        let dest = tempfile::tempdir().unwrap();
+        let r = extract_tar(&tar, dest.path(), &ExtractLimits::default()).unwrap();
+        assert_eq!(r.files, 1);
+        assert_eq!(std::fs::read(dest.path().join(&long)).unwrap(), b"x");
+    }
+
+    #[test]
     fn extracts_gzip_and_zstd() {
         let tar = build_tar(&[("f", tar::EntryType::Regular, b"data")]);
         for archive in [gzip(&tar), zstd::encode_all(&tar[..], 0).unwrap()] {
