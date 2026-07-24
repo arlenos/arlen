@@ -1,0 +1,47 @@
+[Unit]
+Description=Arlen wallpaper renderer (user service)
+Documentation=https://github.com/arlenos/arlen
+# A wlr-layer-shell client that paints the configured wallpaper on every output.
+# Part of the graphical session: it needs the compositor's Wayland socket
+# (WAYLAND_DISPLAY, imported into the user manager at session start) and stops
+# when the session ends.
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+# Type=simple: the renderer has no readiness protocol; it connects to the
+# compositor, paints, and stays. No display / no manifest is a clean early exit.
+Type=simple
+# Production binary path (system-wide install). Dev runs invoke the debug binary
+# directly; this file is the canonical production unit.
+ExecStart=/usr/lib/arlen/libexec/arlen-wallpaperd
+# If the compositor goes away the dispatch loop ends and the client exits;
+# restart with back-off so it re-attaches when the session's compositor returns.
+Restart=on-failure
+RestartSec=2
+
+# Unlike the peer-auth SERVER daemons (capsuled / consent-broker / audit) that
+# must omit the mount-namespace options so they can readlink /proc/<peer>/exe,
+# the wallpaper renderer is a pure CLIENT: it authenticates no peers, only READS
+# its manifest (~/.config/arlen/wallpaper.toml) + the image asset, connects to
+# the Wayland socket, and writes nothing. So it takes the full sandbox. It uses
+# wl_shm software buffers (no GPU), so it needs no /dev/dri; it reaches only
+# AF_UNIX (the Wayland socket) and has no network.
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0077
+
+[Install]
+WantedBy=graphical-session.target
