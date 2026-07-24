@@ -173,6 +173,9 @@ pub enum ConfigError {
         /// The file name stem the daemon resolved the account by.
         expected: String,
     },
+    /// The account id is not a safe single path component to write a config for.
+    #[error("unsafe account id: {0:?}")]
+    UnsafeId(String),
 }
 
 /// The account config directory: `$XDG_CONFIG_HOME/arlen/accounts`, else
@@ -263,6 +266,43 @@ fn slug(s: &str) -> String {
     out
 }
 
+/// Register a newly added OAuth account: render its token-less config and write it
+/// to `{accounts_dir}/{id}.toml` ATOMICALLY (a sibling temp file, fsync, rename),
+/// so `load_accounts` (and thus `list_accounts` + the grant system) sees the whole
+/// account or nothing - never a half-written file. The obtained tokens live in the
+/// vault; this config carries no credential. The accounts dir is created if absent.
+///
+/// `id` must be a safe single path component (as [`account_id_for`] produces); a
+/// traversal-shaped or separator-bearing id is refused ([`ConfigError::UnsafeId`])
+/// so a caller can never write outside `accounts_dir`.
+pub fn register_account(
+    accounts_dir: &Path,
+    id: &str,
+    provider: &str,
+    identity: &str,
+) -> Result<(), ConfigError> {
+    if id.is_empty()
+        || id.contains('/')
+        || id.contains('\\')
+        || id.contains("..")
+        || id.starts_with('.')
+    {
+        return Err(ConfigError::UnsafeId(id.to_string()));
+    }
+    let toml = render_account_config(id, provider, identity)?;
+    std::fs::create_dir_all(accounts_dir)?;
+    let path = accounts_dir.join(format!("{id}.toml"));
+    let tmp = accounts_dir.join(format!(".{id}.toml.tmp"));
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(toml.as_bytes())?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&tmp, &path)?;
+    Ok(())
+}
+
 /// Load every `{id}.toml` account config in `dir`. A file that fails to parse (or
 /// whose id mismatches) is SKIPPED with its error returned alongside, never
 /// silently granted: a malformed grant config yields no account, so it grants no
@@ -350,6 +390,41 @@ mod tests {
         assert_eq!(account.id, id);
         assert_eq!(account.provider, "google");
         assert_eq!(account.identity, "carol@example.com");
+    }
+
+    #[test]
+    fn register_account_writes_a_config_that_load_accounts_reads_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = super::account_id_for("google", "carol@example.com").unwrap();
+        register_account(dir.path(), &id, "google", "carol@example.com").unwrap();
+
+        // The whole account is visible via the normal load path, keyed by its id.
+        let (accounts, errors) = load_accounts(dir.path());
+        assert!(errors.is_empty(), "no parse errors: {errors:?}");
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].id, id);
+        assert_eq!(accounts[0].provider, "google");
+        assert_eq!(accounts[0].identity, "carol@example.com");
+        // No stray temp file left behind.
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "the temp file must be renamed away");
+    }
+
+    #[test]
+    fn register_account_refuses_a_traversal_id() {
+        let dir = tempfile::tempdir().unwrap();
+        for bad in ["../evil", "a/b", "..", ".hidden", ""] {
+            match register_account(dir.path(), bad, "google", "x") {
+                Err(ConfigError::UnsafeId(_)) => {}
+                other => panic!("id {bad:?} must be UnsafeId, got {other:?}"),
+            }
+        }
+        // Nothing was written anywhere.
+        assert!(load_accounts(dir.path()).0.is_empty());
     }
 
     #[test]
