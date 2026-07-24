@@ -134,6 +134,7 @@ pub fn spawn_and_wait(
     writable: &[PathBuf],
     cgroup_procs: Option<PathBuf>,
     seccomp_bpf: Option<Vec<u8>>,
+    app_id: &str,
 ) -> std::io::Result<u8> {
     use std::os::unix::process::{CommandExt, ExitStatusExt};
 
@@ -163,14 +164,38 @@ pub fn spawn_and_wait(
         }
         None => None,
     };
+    // The Tier-1 identity stamp: bwrap writes the sandboxed child's HOST pid to a
+    // json-status pipe (the app runs under --unshare-pid, so its host pid differs
+    // from bwrap's) and blocks on a second pipe until the launcher registers it at
+    // the identity broker. Skipped when `app_id` is empty (unit tests) or if the
+    // pipes cannot be made - BEST-EFFORT: a failed stamp launches unstamped and the
+    // app then resolves via /proc, never a broken launch. The handshake's args go
+    // among the bwrap flags (before the `--` in `argv`).
+    let stamp = if app_id.is_empty() {
+        None
+    } else {
+        match crate::stamp::StampHandshake::new() {
+            Ok(h) => {
+                full_argv.extend(h.bwrap_args());
+                Some(h)
+            }
+            Err(e) => {
+                eprintln!("arlen-run: identity stamp pipes unavailable, launching unstamped: {e}");
+                None
+            }
+        }
+    };
     full_argv.extend_from_slice(argv);
 
     let mut cmd = Command::new("bwrap");
     cmd.args(&full_argv);
     // The fds bwrap must inherit past the child's close_range: the seccomp memfd
-    // here (the stamp pipes are added by the stamping wrapper, which extends this
-    // set). Copied out so `seccomp_fd` stays usable for the parent-side close below.
-    let keep_fds: Vec<libc::c_int> = seccomp_fd.iter().copied().collect();
+    // plus the stamp pipes' child-side ends (json-status write + block read).
+    // Copied out so `seccomp_fd` stays usable for the parent-side close below.
+    let mut keep_fds: Vec<libc::c_int> = seccomp_fd.iter().copied().collect();
+    if let Some(h) = &stamp {
+        keep_fds.extend_from_slice(&h.child_keep_fds());
+    }
     // SAFETY: the closure runs in the child after fork, before exec. The
     // launcher is single-threaded so the post-fork child is too, making the
     // ruleset allocations safe; the syscalls (close_range, fcntl, setpgid, the
@@ -184,6 +209,18 @@ pub fn spawn_and_wait(
     // needed and is closed regardless of how the spawn went.
     if let Some(fd) = seccomp_fd {
         unsafe { libc::close(fd) };
+    }
+    // Run the stamp handshake now that bwrap is forked: read the child pid, register
+    // it, and unblock bwrap so it execs the app. Only when the spawn succeeded - a
+    // failed spawn has no bwrap waiting on the block pipe. `complete` always writes
+    // the unblock byte (even on stamp failure), so a live bwrap is never wedged.
+    if let Some(h) = stamp {
+        if spawned.is_ok() {
+            h.complete(
+                app_id,
+                &arlen_permissions::identity_wire::identity_broker_connect_path(),
+            );
+        }
     }
     let status = spawned?.wait()?;
     Ok(exit_code(status.code(), status.signal()))
@@ -475,7 +512,7 @@ mod tests {
         // mount view and runs echo. This regressed when Landlock was applied to
         // bwrap here (it denied bwrap's own `/proc/self/*` setup writes); the fix
         // was to leave the fs confinement to bwrap's mount namespace.
-        let code = spawn_and_wait(&argv, &[], None, None).expect("bwrap spawns");
+        let code = spawn_and_wait(&argv, &[], None, None, "").expect("bwrap spawns");
         assert_eq!(code, 0);
     }
 
@@ -498,7 +535,7 @@ mod tests {
         .unwrap();
         let argv = bwrap_argv(&conf, &["/usr/bin/echo".into(), "hi".into()]);
         let bpf = crate::seccomp::app_filter_bytes().expect("filter compiles");
-        let code = spawn_and_wait(&argv, &[], None, Some(bpf)).expect("bwrap spawns");
+        let code = spawn_and_wait(&argv, &[], None, Some(bpf), "").expect("bwrap spawns");
         assert_eq!(code, 0, "the allowlist must permit a basic confined exec");
     }
 

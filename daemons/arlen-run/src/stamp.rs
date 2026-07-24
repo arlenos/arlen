@@ -6,18 +6,17 @@
 //! to `Register` a stamp. The problem is WHICH pid to register: bwrap runs the app
 //! under `--unshare-pid`, so the app has its OWN pid namespace and its host-visible
 //! pid (the one a daemon reads via `SO_PEERPIDFD` at `accept`) differs from bwrap's
-//! pid. bwrap reports that host pid via `--json-status-fd`: the first JSON document
-//! it writes is `{ "child-pid": <host pid>, "mnt-namespace": ..., "pid-namespace":
-//! ... }`.
+//! pid. bwrap reports that host pid via `--info-fd`: it writes one JSON document
+//! `{ "child-pid": <host pid>, "mnt-namespace": ..., "pid-namespace": ... }`.
 //!
-//! The full stamp handshake (wired into the spawn path in a following slice) is:
-//!   1. Make two pipes: a json-status pipe and a block pipe.
-//!   2. Add [`stamp_bwrap_args`] to the bwrap argv: `--json-status-fd <w_status>`
-//!      (bwrap writes `child-pid` early, after the clone, before the app execs) and
+//! The stamp handshake ([`StampHandshake`], wired into `spawn::spawn_and_wait`) is:
+//!   1. Make two pipes: an info pipe and a block pipe.
+//!   2. Add [`stamp_bwrap_args`] to the bwrap argv: `--info-fd <w_info>` (bwrap
+//!      writes `child-pid` early, after the clone, before the app execs) and
 //!      `--block-fd <r_block>` (bwrap waits for a byte on it before exec'ing the
 //!      app).
-//!   3. Spawn bwrap; in the parent, read the first json document from the status
-//!      pipe and [`parse_child_pid`] it.
+//!   3. Spawn bwrap; in the parent, read the info document from the pipe and
+//!      [`parse_child_pid`] it.
 //!   4. `pidfd_open(child_pid)` -> register it at the broker with the app id
 //!      (BEST-EFFORT: a broker outage or a register failure must NOT abort the
 //!      launch; the app then simply resolves via /proc as `LegacyProc`, never a
@@ -25,9 +24,9 @@
 //!   5. Write one byte to the block pipe so bwrap unblocks and execs the app - so
 //!      the stamp is recorded BEFORE the app can make its first daemon connection.
 //!
-//! This module holds the two PURE, format-critical pieces (the `child-pid` parse
-//! and the bwrap arg assembly); the impure pipe/spawn/register wiring lands with
-//! its integration test.
+//! `--info-fd` (not `--json-status-fd`) because json-status writes a second
+//! document after the app exits, which would `SIGPIPE` bwrap once the launcher
+//! closes the read end; info-fd writes the child-pid document once and never again.
 
 use std::io::{self, Read, Write};
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
@@ -52,7 +51,7 @@ pub struct StampHandshake {
 }
 
 impl StampHandshake {
-    /// Make the two pipes (json-status + block).
+    /// Make the two pipes (info + block).
     pub fn new() -> io::Result<Self> {
         let (status_r, status_w) = make_pipe()?;
         let (block_r, block_w) = make_pipe()?;
@@ -65,7 +64,7 @@ impl StampHandshake {
     }
 
     /// The fds bwrap must inherit past the child's `close_range`: the
-    /// `--json-status-fd` write end and the `--block-fd` read end. Add these to the
+    /// `--info-fd` write end and the `--block-fd` read end. Add these to the
     /// `child_pre_exec` keep-set so their `CLOEXEC` is cleared for the exec.
     pub fn child_keep_fds(&self) -> [RawFd; 2] {
         [self.status_w.as_raw_fd(), self.block_r.as_raw_fd()]
@@ -115,7 +114,7 @@ fn complete_over(status: &mut impl Read, block: &mut impl Write, app_id: &str, b
     let _ = block.write_all(&[1u8]);
 }
 
-/// Read bwrap's first json-status document and extract the host child pid. bwrap
+/// Read bwrap's info document and extract the host child pid. bwrap
 /// writes the small `child-pid` document in one write, so a single read captures
 /// it; a read error or an unparseable document yields `None` (launch unstamped).
 fn read_child_pid(status: &mut impl Read) -> Option<u32> {
@@ -165,20 +164,26 @@ fn wait_readable(fd: RawFd, timeout_ms: libc::c_int) -> bool {
 }
 
 /// The bwrap flags that turn on the stamp handshake, for the given inherited fds:
-/// `--json-status-fd <status_fd>` (bwrap writes the container status, incl.
-/// `child-pid`, to it) and `--block-fd <block_fd>` (bwrap blocks reading it until
-/// the launcher has registered the stamp, then execs the app). Prepended to the
-/// confinement's own bwrap args.
+/// `--info-fd <status_fd>` (bwrap writes the container info, incl. `child-pid`, to
+/// it ONCE) and `--block-fd <block_fd>` (bwrap blocks reading it until the launcher
+/// has registered the stamp, then execs the app). Added among the confinement's
+/// own bwrap args.
+///
+/// `--info-fd` (not `--json-status-fd`): json-status writes a SECOND document
+/// (`{"exit-code":N}`) after the app exits, so a launcher that closes the read end
+/// once it has the child-pid would make bwrap take `SIGPIPE` on that late write.
+/// `--info-fd` writes the single child-pid document and never writes again, so the
+/// read end can be dropped right after parsing.
 pub fn stamp_bwrap_args(status_fd: RawFd, block_fd: RawFd) -> Vec<String> {
     vec![
-        "--json-status-fd".to_string(),
+        "--info-fd".to_string(),
         status_fd.to_string(),
         "--block-fd".to_string(),
         block_fd.to_string(),
     ]
 }
 
-/// Parse the host `child-pid` from bwrap's `--json-status-fd` output.
+/// Parse the host `child-pid` from bwrap's `--info-fd` output.
 ///
 /// bwrap writes one or more JSON documents to the status fd; the FIRST carries
 /// `"child-pid": <host pid>` (a later one carries `"exit-code"`). This scans for
@@ -282,13 +287,74 @@ mod tests {
         assert_eq!(block, vec![1u8], "a failed stamp still releases the launch");
     }
 
+    /// End-to-end against REAL bwrap: spawn a trivial confined process under
+    /// --unshare-pid with the stamp handshake wired, and assert bwrap's reported
+    /// sandboxed-child host pid round-trips through the pipe and lands as a real
+    /// Register (with the child pidfd over SCM_RIGHTS) at an in-process broker. This
+    /// is the one proof of the fd-inheritance + block handshake that unit tests of
+    /// the pure pieces cannot give. `#[ignore]`d: needs bwrap + unprivileged userns.
+    /// Run: `cargo test -p arlen-run --  --ignored real_bwrap`.
+    #[test]
+    #[ignore = "spawns real bwrap; needs bwrap + unprivileged user namespaces"]
+    fn real_bwrap_child_pid_round_trips_and_registers() {
+        use arlen_permissions::fd_passing::{recv_fd_msg, MAX_FD_MSG};
+        use arlen_permissions::identity_wire::{write_response, IdentityResponse};
+        use std::os::unix::net::UnixListener;
+        use std::os::unix::process::CommandExt;
+        use std::process::Command;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("id.sock");
+        let listener = UnixListener::bind(&sock).unwrap();
+        let srv = std::thread::spawn(move || {
+            let (mut conn, _) = listener.accept().unwrap();
+            let (bytes, fd) = recv_fd_msg(&conn, MAX_FD_MSG).unwrap();
+            let ok = fd.is_some() && String::from_utf8_lossy(&bytes).contains("com.example.confined");
+            write_response(&mut conn, &IdentityResponse::Registered).unwrap();
+            ok
+        });
+
+        let handshake = StampHandshake::new().unwrap();
+        let mut argv = handshake.bwrap_args();
+        argv.extend(
+            ["--ro-bind", "/", "/", "--unshare-pid", "--", "/bin/true"]
+                .iter()
+                .map(|s| s.to_string()),
+        );
+        let keep = handshake.child_keep_fds();
+        let mut cmd = Command::new("bwrap");
+        cmd.args(&argv);
+        // SAFETY: post-fork child, single-threaded; only clears CLOEXEC on the two
+        // stamp fds so bwrap inherits them (the whole point of the handshake).
+        unsafe {
+            cmd.pre_exec(move || {
+                for &fd in &keep {
+                    let flags = libc::fcntl(fd, libc::F_GETFD);
+                    if flags < 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    if libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC) != 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                }
+                Ok(())
+            });
+        }
+        let mut child = cmd.spawn().expect("bwrap spawns");
+        // Read the child pid, register it, unblock bwrap.
+        handshake.complete("com.example.confined", &sock);
+        let status = child.wait().expect("bwrap waits");
+        assert!(status.success(), "the confined /bin/true exits 0");
+        assert!(srv.join().unwrap(), "the broker received a Register with the child pidfd");
+    }
+
     /// The stamp args carry the two flags with the fds rendered as decimals.
     #[test]
     fn stamp_args_carry_the_two_bwrap_flags() {
         assert_eq!(
             stamp_bwrap_args(7, 9),
             vec![
-                "--json-status-fd".to_string(),
+                "--info-fd".to_string(),
                 "7".to_string(),
                 "--block-fd".to_string(),
                 "9".to_string(),
