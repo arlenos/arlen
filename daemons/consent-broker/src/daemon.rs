@@ -230,11 +230,19 @@ fn consent_decision_entry(decision: &ResolvedDecision) -> IngestRequest {
         ConsentOutcome::AllowedRemembered => "granted-remembered",
         ConsentOutcome::Denied => "denied",
     };
+    // A mediated grant (a trusted intermediary raised it on the recipient's
+    // behalf) records the mediator as a coarse label, so the ledger distinguishes
+    // "the portal mediated a capture grant for app X" from "app X asked directly".
+    // Content-free: a bare app id, never the summary/scope.
+    let node_types = match &decision.mediated_by {
+        Some(mediator) => vec![mediator.clone()],
+        None => Vec::new(),
+    };
     IngestRequest {
         kind: AuditKind::Permission,
         structural: StructuralRecord {
             subject: decision.recipient.clone(),
-            node_types: Vec::new(),
+            node_types,
             relations: Vec::new(),
             result_count: None,
             duration_ms: None,
@@ -452,6 +460,31 @@ impl SharedState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mediated_decision_records_the_mediator_content_free() {
+        let mediated = ResolvedDecision {
+            recipient: "com.example.recorder".to_string(),
+            reply: ConsentOutcome::AllowedRemembered,
+            mediated_by: Some("xdg-desktop-portal".to_string()),
+            grant: None,
+        };
+        let entry = consent_decision_entry(&mediated);
+        // The grantee is the subject; the mediator is a distinct coarse label.
+        assert_eq!(entry.structural.subject, "com.example.recorder");
+        assert_eq!(entry.structural.node_types, vec!["xdg-desktop-portal".to_string()]);
+
+        let direct = ResolvedDecision {
+            recipient: "com.example.recorder".to_string(),
+            reply: ConsentOutcome::AllowedOnce,
+            mediated_by: None,
+            grant: None,
+        };
+        assert!(
+            consent_decision_entry(&direct).structural.node_types.is_empty(),
+            "a direct request records no mediator"
+        );
+    }
     use crate::ConsentClass;
     use arlen_ai_core::capability::{
         AccessTier, ActionKind, ActionPermissions, BaselineMode,

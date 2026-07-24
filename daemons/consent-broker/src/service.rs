@@ -179,6 +179,20 @@ mod tests {
     }
 
     #[test]
+    fn every_trusted_intermediary_is_a_reserved_identity() {
+        // The trust anchor: an intermediary id must be one only a root-owned path
+        // (path_to_app_id rule 1) can mint, so a same-uid process cannot squat the
+        // name via a user-app directory (rule 4) and impersonate the intermediary
+        // to redirect a grant. Without this the allowlist is bypassable.
+        for id in TRUSTED_INTERMEDIARIES {
+            assert!(
+                arlen_permissions::identity::is_reserved_app_id(id),
+                "{id} must be a reserved id or the intermediary allowlist is bypassable"
+            );
+        }
+    }
+
+    #[test]
     fn a_trusted_intermediary_without_on_behalf_is_a_direct_request() {
         let r = resolve_requester("xdg-desktop-portal", None);
         assert_eq!(r.grant_recipient(), "xdg-desktop-portal");

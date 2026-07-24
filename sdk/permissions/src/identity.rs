@@ -520,7 +520,10 @@ pub fn is_reserved_app_id(app_id: &str) -> bool {
     app_id == "system"
         || app_id.starts_with("system.")
         || app_id.starts_with("org.arlen.")
-        || matches!(app_id, "ai-daemon" | "ai-agent" | "settings")
+        || matches!(
+            app_id,
+            "ai-daemon" | "ai-agent" | "settings" | "xdg-desktop-portal"
+        )
 }
 
 /// The F3 Rung B inode gate for a resolved user-app `app_id` at `path`. If the app

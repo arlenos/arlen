@@ -86,6 +86,11 @@ pub struct ResolvedDecision {
     pub recipient: String,
     /// The reply to send the waiting requester.
     pub reply: ConsentOutcome,
+    /// The trusted intermediary that raised this on the recipient's behalf, when
+    /// there was one (the portal). Audit-only: it makes a mediated grant
+    /// distinguishable in the ledger from the app requesting directly, and never
+    /// becomes the grantee.
+    pub mediated_by: Option<String>,
     /// The grant to persist (KG + audit), `Some` only for an always-allow.
     pub grant: Option<ConsentGrant>,
 }
@@ -118,6 +123,7 @@ pub fn resolve_decision(
     Some(ResolvedDecision {
         recipient: pending.request.requester.grant_recipient().to_string(),
         reply: outcome,
+        mediated_by: pending.request.requester.mediator().map(str::to_string),
         grant,
     })
 }
