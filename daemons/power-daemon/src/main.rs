@@ -99,6 +99,50 @@ async fn main() {
     // while docked; a machine with no lid never triggers it.
     let lid_config = power_config.lid.resolve();
 
+    // PWR-R3: drive the compositor idle policy. The ext-idle-notify client runs on
+    // its own thread and forwards idle/resume signals; this consumer runs the
+    // stage's action - Suspend via logind today, dim/blank/lock log until their
+    // backends land. A session with no compositor / no ext-idle-notify support
+    // simply gets no idle policy (the client logs its absence and exits).
+    let idle_stages = power_config.idle.resolve();
+    if !idle_stages.is_empty() {
+        let (idle_tx, mut idle_rx) =
+            tokio::sync::mpsc::channel::<arlen_powerd::idle_client::IdleSignal>(16);
+        let stages = idle_stages.clone();
+        let _idle_client = arlen_powerd::idle_client::spawn(idle_stages, idle_tx);
+        tokio::spawn(async move {
+            // A dedicated system-bus connection for idle actions, independent of
+            // the battery poll's cached bus.
+            let conn = zbus::Connection::system().await.ok();
+            while let Some(sig) = idle_rx.recv().await {
+                let Some(stage) = stages.get(sig.stage) else {
+                    continue;
+                };
+                if sig.resumed {
+                    if stage.action.reversible() {
+                        info!(stage = sig.stage, "idle resume: restore pending (backend not yet wired)");
+                    }
+                    continue;
+                }
+                match stage.action.as_power_action() {
+                    Some(pa) => match conn.as_ref() {
+                        Some(conn) => {
+                            info!(stage = sig.stage, "idle: performing {}", pa.as_str());
+                            if let Err(e) = logind::perform(conn, pa).await {
+                                warn!("idle action failed: {e}");
+                            }
+                        }
+                        None => warn!("idle action skipped: no system bus"),
+                    },
+                    None => info!(
+                        stage = sig.stage,
+                        "idle: {:?} not yet wired (needs its backend)", stage.action
+                    ),
+                }
+            }
+        });
+    }
+
     // The shared snapshot the org.arlen.Power1 interface serves. The poll loop
     // writes the latest reading; pull consumers (shell, apps, SDK) read it
     // without forking UPower. Served on the SESSION bus (this is a per-user
