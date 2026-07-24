@@ -21,6 +21,7 @@ use std::path::Path;
 use arlen_ai_undo_core::effect_model::{
     CanonicalPath, CreatedIdentity, InverseReceipt, SettingTarget,
 };
+use arlen_ai_undo_core::undo_log::UndoEntry;
 use arlen_config_format::{checked_remove, checked_set, handler_for, ConfigValue, Format};
 use sha2::{Digest, Sha256};
 
@@ -60,6 +61,43 @@ impl std::fmt::Display for EnactError {
 }
 
 impl std::error::Error for EnactError {}
+
+/// The result of a restart-time compensation-recovery pass over the entries a crash
+/// left mid-reversal ([`arlen_ai_undo_core::undo_log::UndoLog::compensating_entries`]).
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct RecoveryOutcome {
+    /// op ids whose interrupted compensation reached a DEFINITIVE enact result (the
+    /// entity moved back / was deleted, or a refusal the world has already settled
+    /// past). The caller records `Compensated` for these so they are never re-driven.
+    pub recovered: Vec<String>,
+    /// op ids whose enact hit a transient I/O error, paired with the message. Left
+    /// `Compensating` so the next restart retries them.
+    pub deferred: Vec<(String, String)>,
+}
+
+/// Drive the crash-interrupted compensations to completion on restart: replay each
+/// entry's inverse through `enact`. The inverse is idempotent, so a compensation the
+/// crash left half-applied finishes cleanly. A definitive enact result - the entity
+/// restored/deleted, OR a refusal the world has already moved past (an occupied
+/// prior, an identity mismatch that will never match again) - marks the op
+/// `recovered`, because re-driving it on every restart would repeat the same
+/// outcome forever. Only a transient I/O error `defer`s the op for the next restart.
+/// `enact` is injected (in production, [`enact_inverse`]) so the recovery POLICY is
+/// unit-tested without touching the filesystem. The caller owns the durable log, so
+/// it records the `Compensated` transitions for `recovered` after this returns.
+pub fn drive_compensation_recovery<F>(entries: &[&UndoEntry], mut enact: F) -> RecoveryOutcome
+where
+    F: FnMut(&InverseReceipt) -> Result<EnactOutcome, EnactError>,
+{
+    let mut outcome = RecoveryOutcome::default();
+    for entry in entries {
+        match enact(&entry.inverse) {
+            Ok(_) => outcome.recovered.push(entry.op_id.clone()),
+            Err(e) => outcome.deferred.push((entry.op_id.clone(), e.to_string())),
+        }
+    }
+    outcome
+}
 
 /// The content fingerprint of a file: the lowercase hex SHA-256 of its bytes. This
 /// is the identity a [`InverseReceipt::DeleteCreated`] undo checks against the
@@ -411,6 +449,39 @@ mod tests {
     fn canonical(p: &Path) -> CanonicalPath {
         // The receipt path is already canonical-absolute; the temp paths are.
         serde_json::from_value(serde_json::Value::String(p.to_string_lossy().into_owned())).unwrap()
+    }
+
+    #[test]
+    fn recovery_marks_definitive_enacts_recovered_and_defers_transient_io() {
+        let mk = |op: &str| UndoEntry {
+            op_id: op.to_string(),
+            correlation_id: "r".to_string(),
+            inverse: InverseReceipt::RestorePath {
+                now: canonical(Path::new("/a/now")),
+                prior: canonical(Path::new("/a/prior")),
+            },
+        };
+        let a = mk("done-restored");
+        let b = mk("settled-refusal");
+        let c = mk("transient");
+        let entries = [&a, &b, &c];
+        // Route by call order (entries are enacted in order): a definitive restore,
+        // a settled refusal, then a transient I/O failure.
+        let mut i = 0;
+        let outcome = drive_compensation_recovery(&entries, |_inv| {
+            i += 1;
+            match i {
+                1 => Ok(EnactOutcome::Restored),
+                2 => Ok(EnactOutcome::RefusedPriorOccupied),
+                _ => Err(EnactError::Io("disk gone".into())),
+            }
+        });
+        // Both the restore and the settled refusal are recovered (never re-driven);
+        // only the transient failure is deferred to the next restart.
+        assert_eq!(outcome.recovered, ["done-restored", "settled-refusal"]);
+        assert_eq!(outcome.deferred.len(), 1);
+        assert_eq!(outcome.deferred[0].0, "transient");
+        assert!(outcome.deferred[0].1.contains("disk gone"));
     }
 
     #[test]
