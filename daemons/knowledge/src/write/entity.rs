@@ -436,11 +436,19 @@ pub fn authorise_entity_merge(
                 ))
             }
         }
-    } else if !qualified_type.starts_with(&format!("{}.", token.app_id)) {
-        return Err(format!(
-            "namespace violation: {} cannot merge {qualified_type}",
-            token.app_id
-        ));
+    } else {
+        // A non-shared type merges within the caller's OWN namespace OR a
+        // namespace it was DELEGATED (a foreign-app bridge that upserts + links
+        // e.g. `md.obsidian.*` must be able to dedup them too), matching the
+        // upsert/link gates; `permits_any` fails closed on system/shared.
+        let own = qualified_type.starts_with(&format!("{}.", token.app_id));
+        let delegated = super::permits_any(&token.delegated_namespaces, qualified_type);
+        if !own && !delegated {
+            return Err(format!(
+                "namespace violation: {} cannot merge {qualified_type}",
+                token.app_id
+            ));
+        }
     }
     if !token.can_write(qualified_type) {
         return Err(format!("permission denied for {qualified_type}"));
@@ -496,9 +504,16 @@ pub fn plan_entity_merge(
             ));
         }
     }
-    // Remove the duplicate node; DETACH sweeps any edge a re-point missed
-    // (e.g. a self-loop) so the delete never fails on a dangling edge.
-    stmts.push(format!("MATCH (a:{table} {{id: '{dup}'}}) DETACH DELETE a"));
+    // Remove the duplicate - ANCHORED on the canonical also existing. If the
+    // canonical does not resolve (a mistyped or concurrently-deleted key), the
+    // re-point statements above bind nothing, so an unanchored delete would
+    // DETACH-sweep the duplicate's still-attached edges and destroy them while
+    // moving nothing. Requiring the canonical here makes a missing canonical a
+    // no-op instead of silent destruction; the handler additionally pre-checks
+    // both nodes and errors so the caller learns the merge did nothing.
+    stmts.push(format!(
+        "MATCH (a:{table} {{id: '{dup}'}}) MATCH (c:{table} {{id: '{canon}'}}) DETACH DELETE a"
+    ));
     Ok(stmts)
 }
 
@@ -1134,6 +1149,69 @@ mod tests {
             count(format!("MATCH (a:{table} {{id:'{dup}'}}) RETURN count(*)")),
             0,
             "duplicate deleted"
+        );
+    }
+
+    #[test]
+    fn merge_into_an_absent_canonical_preserves_the_duplicate() {
+        // Regression for the review's HIGH: with the canonical absent, the
+        // canonical-anchored delete must no-op, so the duplicate + its edges
+        // survive rather than being silently DETACH-destroyed.
+        use lbug::{Connection, Database, SystemConfig, Value};
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db =
+            Database::new(tmp.path().join("g").to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+
+        let ty = "md.obsidian.Note";
+        let table = entity_table_name(ty);
+        let d = def(&[("title", FieldType::String)]);
+        conn.query(&entity_table_ddl(ty, &d).unwrap()).unwrap();
+        for key in ["dup", "other"] {
+            let mut f = BTreeMap::new();
+            f.insert("title".to_string(), serde_json::json!(key));
+            conn.query(&build_upsert_cypher(ty, key, "md.obsidian", &f, "2026-01-01T00:00:00Z"))
+                .unwrap();
+        }
+        let rel = entity_rel_table_name("LINKS_TO", ty, ty);
+        conn.query(&format!("CREATE REL TABLE IF NOT EXISTS {rel}(FROM {table} TO {table})"))
+            .unwrap();
+        conn.query(&build_link_cypher(
+            &rel,
+            &table,
+            &table,
+            &entity_node_id(ty, "dup"),
+            &entity_node_id(ty, "other"),
+        ))
+        .unwrap();
+
+        let involved = vec![crate::graph::RelTable {
+            name: rel.clone(),
+            source: table.clone(),
+            dest: table.clone(),
+        }];
+        // The canonical key resolves to no node.
+        for stmt in plan_entity_merge(ty, "dup", "ghost-canonical", &involved).unwrap() {
+            conn.query(&stmt).unwrap();
+        }
+
+        let count = |cypher: String| -> i64 {
+            match conn.query(&cypher).unwrap().next().unwrap()[0] {
+                Value::Int64(n) => n,
+                _ => panic!("expected an Int64 count"),
+            }
+        };
+        let dup = entity_node_id(ty, "dup");
+        // The duplicate + its edge survive (NOT destroyed).
+        assert_eq!(
+            count(format!("MATCH (a:{table} {{id:'{dup}'}}) RETURN count(*)")),
+            1,
+            "duplicate preserved when the canonical is absent"
+        );
+        assert_eq!(
+            count(format!("MATCH (:{table} {{id:'{dup}'}})-[:{rel}]->(:{table}) RETURN count(*)")),
+            1,
+            "the duplicate's edge is not swept"
         );
     }
 }

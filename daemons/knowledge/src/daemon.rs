@@ -1659,6 +1659,32 @@ async fn handle_write_request(
                 Ok(s) => s,
                 Err(e) => return format!("ERROR: {e}"),
             };
+            // Both instances must exist before a destructive merge. The delete is
+            // canonical-anchored so a missing canonical no-ops rather than
+            // destroys, but a merge that would move nothing is a caller error
+            // (a mistyped key), so surface it plainly instead of a false OK.
+            let dup_id = crate::write::entity_node_id(&qualified_type, &duplicate_key);
+            let canon_id = crate::write::entity_node_id(&qualified_type, &canonical_key);
+            let exist_q = format!(
+                "MATCH (n:{table}) WHERE n.id IN ['{}', '{}'] RETURN count(*) AS c",
+                crate::utils::escape_cypher(&dup_id),
+                crate::utils::escape_cypher(&canon_id),
+            );
+            match graph.query_rows(exist_q).await {
+                Ok(rows) => {
+                    let present = rows
+                        .rows
+                        .first()
+                        .and_then(|r| r.first())
+                        .map(|v| v.as_i64())
+                        .unwrap_or(0);
+                    if present < 2 {
+                        return "ERROR: merge requires both the duplicate and the canonical to exist"
+                            .to_string();
+                    }
+                }
+                Err(e) => return format!("ERROR: check merge instances: {e}"),
+            }
             // Audit-before-persist, fail-closed (S13): content-free (app id + the
             // merged type, never the duplicate/canonical keys).
             let Some(sink) = audit else {
