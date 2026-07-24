@@ -1,0 +1,13 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-sentinel-detect"
+version = "0.1.0"
+edition = "2021"
+description = "Physical-World Privacy Sentinel: the pure, testable detector logic (BLE tracker classification, exposure posture) the sentinel daemon drives"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[workspace]
