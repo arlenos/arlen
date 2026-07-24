@@ -29,7 +29,140 @@
 //! and the bwrap arg assembly); the impure pipe/spawn/register wiring lands with
 //! its integration test.
 
-use std::os::fd::RawFd;
+use std::io::{self, Read, Write};
+use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::path::Path;
+
+/// How long the launcher waits for bwrap to write the sandboxed child's pid before
+/// giving up and launching unstamped. bwrap writes `child-pid` right after the
+/// clone, then blocks on `--block-fd`, so this only fires if bwrap wedged; on a
+/// timeout the app simply resolves via /proc (best-effort, never a hang).
+const STAMP_READ_TIMEOUT_MS: libc::c_int = 5000;
+
+/// The launcher's side of the bwrap identity-stamp handshake: two pipes. The
+/// child-inherited ends ([`Self::child_keep_fds`]) go to bwrap via
+/// [`Self::bwrap_args`]; the launcher-side ends read the child pid and release
+/// bwrap in [`Self::complete`]. Both ends of both pipes are `O_CLOEXEC`, so nothing
+/// leaks except the two the child pre-exec explicitly keeps.
+pub struct StampHandshake {
+    status_r: OwnedFd,
+    status_w: OwnedFd,
+    block_r: OwnedFd,
+    block_w: OwnedFd,
+}
+
+impl StampHandshake {
+    /// Make the two pipes (json-status + block).
+    pub fn new() -> io::Result<Self> {
+        let (status_r, status_w) = make_pipe()?;
+        let (block_r, block_w) = make_pipe()?;
+        Ok(Self {
+            status_r,
+            status_w,
+            block_r,
+            block_w,
+        })
+    }
+
+    /// The fds bwrap must inherit past the child's `close_range`: the
+    /// `--json-status-fd` write end and the `--block-fd` read end. Add these to the
+    /// `child_pre_exec` keep-set so their `CLOEXEC` is cleared for the exec.
+    pub fn child_keep_fds(&self) -> [RawFd; 2] {
+        [self.status_w.as_raw_fd(), self.block_r.as_raw_fd()]
+    }
+
+    /// The bwrap flags turning on the handshake, referencing the inherited fds.
+    pub fn bwrap_args(&self) -> Vec<String> {
+        stamp_bwrap_args(self.status_w.as_raw_fd(), self.block_r.as_raw_fd())
+    }
+
+    /// Parent side, AFTER the spawn: drop the child-inherited ends, learn the
+    /// child's host pid from bwrap (bounded wait), register it at the broker
+    /// (best-effort), then release bwrap so it execs the app. A failed stamp NEVER
+    /// wedges the launch - the release is unconditional; the app then resolves via
+    /// /proc as `LegacyProc`.
+    pub fn complete(self, app_id: &str, broker_socket: &Path) {
+        let Self {
+            status_r,
+            status_w,
+            block_r,
+            block_w,
+        } = self;
+        // The child holds its own inherited copies; drop the parent's so the status
+        // read is not blocked by our own writer and we do not pin bwrap's block end.
+        drop(status_w);
+        drop(block_r);
+        // `File` gives the OwnedFds Read/Write; the pidfd write end stays raw.
+        let mut block = std::fs::File::from(block_w);
+        if wait_readable(status_r.as_raw_fd(), STAMP_READ_TIMEOUT_MS) {
+            let mut status = std::fs::File::from(status_r);
+            complete_over(&mut status, &mut block, app_id, broker_socket);
+        } else {
+            // bwrap did not report a child pid in time: release it unstamped.
+            let _ = block.write_all(&[1u8]);
+        }
+    }
+}
+
+/// The post-spawn core, generic over reader/writer so it is unit-testable without
+/// a real pipe or bwrap: read the child pid from `status`, register it at the
+/// broker (best-effort), then write the unblock byte to `block` so bwrap execs the
+/// app. The release is UNCONDITIONAL - a failed stamp must not withhold the launch.
+fn complete_over(status: &mut impl Read, block: &mut impl Write, app_id: &str, broker_socket: &Path) {
+    if let Some(pid) = read_child_pid(status) {
+        register_child(pid, app_id, broker_socket);
+    }
+    let _ = block.write_all(&[1u8]);
+}
+
+/// Read bwrap's first json-status document and extract the host child pid. bwrap
+/// writes the small `child-pid` document in one write, so a single read captures
+/// it; a read error or an unparseable document yields `None` (launch unstamped).
+fn read_child_pid(status: &mut impl Read) -> Option<u32> {
+    let mut buf = [0u8; 4096];
+    let n = status.read(&mut buf).ok()?;
+    parse_child_pid(&String::from_utf8_lossy(&buf[..n]))
+}
+
+/// Open a pidfd for the sandboxed child and register its identity stamp at the
+/// broker. BEST-EFFORT: a vanished child, an unreachable/unauthenticated broker,
+/// or a refusal all just leave the app to resolve via /proc - never fatal, never a
+/// panic, so a broken broker cannot break app launching.
+fn register_child(pid: u32, app_id: &str, broker_socket: &Path) {
+    let Some(pidfd) = arlen_permissions::peer_pidfd::pidfd_open(pid) else {
+        return;
+    };
+    if let Err(e) =
+        arlen_permissions::identity_wire::register_identity(broker_socket, pidfd.as_fd(), app_id)
+    {
+        eprintln!("arlen-run: identity stamp not registered (app resolves via /proc): {e}");
+    }
+}
+
+/// An `O_CLOEXEC` pipe pair `(read, write)`.
+fn make_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
+    let mut fds = [0 as libc::c_int; 2];
+    // SAFETY: `fds` is a valid 2-element array; pipe2 fills it or returns -1.
+    let rc = unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) };
+    if rc != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the kernel handed us two fresh owned fds.
+    Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
+}
+
+/// Poll `fd` for readability up to `timeout_ms`. `true` iff data is ready (so a
+/// wedged bwrap cannot hang the launcher's wait for the child pid).
+fn wait_readable(fd: RawFd, timeout_ms: libc::c_int) -> bool {
+    let mut pfd = libc::pollfd {
+        fd,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    // SAFETY: one valid pollfd for the duration of the call.
+    let rc = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
+    rc > 0 && (pfd.revents & libc::POLLIN) != 0
+}
 
 /// The bwrap flags that turn on the stamp handshake, for the given inherited fds:
 /// `--json-status-fd <status_fd>` (bwrap writes the container status, incl.
@@ -94,6 +227,59 @@ mod tests {
     #[test]
     fn refuses_a_zero_child_pid() {
         assert_eq!(parse_child_pid("{ \"child-pid\": 0 }"), None);
+    }
+
+    /// The post-spawn core reads the child pid, registers it at the broker (a real
+    /// Register with the child pidfd over SCM_RIGHTS), and unconditionally releases
+    /// bwrap. Driven with an in-memory status doc (our own live pid, so pidfd_open
+    /// succeeds) + an in-process test broker; no real bwrap needed.
+    #[test]
+    fn complete_over_registers_the_child_and_releases_bwrap() {
+        use arlen_permissions::fd_passing::{recv_fd_msg, MAX_FD_MSG};
+        use arlen_permissions::identity_wire::{write_response, IdentityResponse};
+        use std::os::unix::net::UnixListener;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("id.sock");
+        let listener = UnixListener::bind(&sock).unwrap();
+        let srv = std::thread::spawn(move || {
+            let (mut conn, _) = listener.accept().unwrap();
+            let (bytes, fd) = recv_fd_msg(&conn, MAX_FD_MSG).unwrap();
+            // A Register naming our app, with the child pidfd attached.
+            assert!(fd.is_some(), "the child pidfd must arrive over SCM_RIGHTS");
+            let body = String::from_utf8_lossy(&bytes);
+            assert!(body.contains("Register"), "must be a Register: {body}");
+            assert!(body.contains("com.example.app"), "must name the app: {body}");
+            write_response(&mut conn, &IdentityResponse::Registered).unwrap();
+        });
+
+        // A status document carrying our own live pid so pidfd_open + register work.
+        let status_json = format!(
+            "{{ \"child-pid\": {}, \"pid-namespace\": 1 }}\n",
+            std::process::id()
+        );
+        let mut status = std::io::Cursor::new(status_json.into_bytes());
+        let mut block: Vec<u8> = Vec::new();
+        complete_over(&mut status, &mut block, "com.example.app", &sock);
+
+        assert_eq!(block, vec![1u8], "bwrap must be released with the unblock byte");
+        srv.join().unwrap();
+    }
+
+    /// Even when the broker is UNREACHABLE (no listener), the launch is released:
+    /// a failed stamp never withholds the unblock byte, so the app still runs.
+    #[test]
+    fn complete_over_releases_bwrap_even_when_the_stamp_fails() {
+        let status_json = format!("{{ \"child-pid\": {} }}", std::process::id());
+        let mut status = std::io::Cursor::new(status_json.into_bytes());
+        let mut block: Vec<u8> = Vec::new();
+        complete_over(
+            &mut status,
+            &mut block,
+            "com.example.app",
+            std::path::Path::new("/nonexistent/arlen/id.sock"),
+        );
+        assert_eq!(block, vec![1u8], "a failed stamp still releases the launch");
     }
 
     /// The stamp args carry the two flags with the fds rendered as decimals.
