@@ -103,13 +103,48 @@ impl StampedIdentity {
 /// fail-closed. `caller_uid` is whoever the daemon runs as (typically `getuid()`);
 /// a cross-uid peer is rejected. Every failure is an [`AuthError`] the caller MUST
 /// treat as DENY.
+///
+/// Tier 1 (launcher-stamped, unforgeable) is tried first: the identity broker on
+/// the separate-uid config daemon is asked for the peer's stamped app_id. A hit is
+/// authoritative and skips the `/proc` read entirely (the whole point - the stamp
+/// replaces reading `/proc/exe`). A miss (the peer was never launcher-stamped: a
+/// system daemon or a dev process) or an unreachable/wedged broker falls through to
+/// the `/proc`-based Tier-2 (inode registry) / Tier-3 (path-trust) resolution below.
 pub fn app_id_from_connection<F: std::os::fd::AsRawFd>(
     stream: &F,
     caller_uid: u32,
 ) -> Result<StampedIdentity, AuthError> {
+    app_id_from_connection_at(
+        stream,
+        caller_uid,
+        &crate::identity_wire::identity_broker_connect_path(),
+    )
+}
+
+/// [`app_id_from_connection`] with an explicit broker socket path, so the Tier-1
+/// broker path is unit-testable against an in-process broker without an env global.
+pub(crate) fn app_id_from_connection_at<F: std::os::fd::AsRawFd>(
+    stream: &F,
+    caller_uid: u32,
+    broker_socket: &std::path::Path,
+) -> Result<StampedIdentity, AuthError> {
     // 1. Pin the peer via SO_PEERPIDFD: a race-free pid and the cross-uid rejection.
     //    Any pidfd failure (kernel < 6.5, peer already exited, cross-uid) is a DENY.
     let peer = PeerPidfd::from_socket(stream, caller_uid).map_err(auth_error_from_pidfd)?;
+
+    // 1b. Tier 1: the launcher-stamped identity broker. A hit is authoritative - the
+    //     app_id was resolved from the root registry by `arlen-run` before the child
+    //     ran and can never be re-stamped by the client - so return it as `Stamped`
+    //     with NO `/proc` read. A miss or an unreachable broker falls through: the
+    //     broker is an ADDITIVE stronger tier, its absence must never deny an
+    //     admission the lower tiers resolve today (see `broker_lookup`).
+    if let Some(app_id) = broker_lookup(&peer, broker_socket) {
+        return Ok(StampedIdentity {
+            app_id,
+            peer,
+            source: IdentitySource::Stamped,
+        });
+    }
 
     // 2. Read the pinned pid's exe ONCE. The pidfd holds the process open, so the pid
     //    cannot be recycled and this exe (used for both the resolve and the source
@@ -179,6 +214,39 @@ fn classify_source_with(
             IdentitySource::InodeRegistry
         }
         _ => IdentitySource::LegacyProc,
+    }
+}
+
+/// Ask the launcher-stamped identity broker for the pinned peer's app_id.
+///
+/// `Some(app_id)` is an authoritative Tier-1 stamp (only `arlen-run` may register,
+/// and it stamps the root-registry-resolved app_id before the child runs, so the
+/// value is unforgeable). `None` means fall through to the `/proc` tiers, for one of
+/// two reasons that MUST be indistinguishable to the caller here:
+/// - the peer was never launcher-stamped (a system daemon, a dev process): it
+///   resolves through its canonical path below;
+/// - the broker is unreachable or wedged (down socket, timeout, op error): the
+///   `/proc` tiers still resolve, and a broker outage must NEVER deny an admission
+///   the lower tiers grant today.
+///
+/// This never fabricates or denies an identity: a pidfd error already denied one
+/// tier up (in [`app_id_from_connection_at`]), and whether a non-`Stamped` source is
+/// acceptable is an enforce-mode POLICY decision in `ConnectionAuth`, not this
+/// lookup's. A broker error is logged for the shadow-rollout audit, then dropped.
+fn broker_lookup(peer: &PeerPidfd, broker_socket: &std::path::Path) -> Option<String> {
+    match crate::identity_wire::lookup_identity(broker_socket, peer.pidfd()) {
+        Ok(Some(app_id)) => Some(app_id),
+        Ok(None) => None,
+        Err(e) => {
+            tracing::debug!(
+                target: "audit",
+                event = "identity.broker_lookup_failed",
+                pid = peer.pid(),
+                error = %e,
+                "identity broker unreachable; falling back to /proc-based tiers"
+            );
+            None
+        }
     }
 }
 
@@ -270,6 +338,79 @@ mod tests {
             classify_source_with(Some(&reg), "com.example.app", Some((42, 8))),
             IdentitySource::LegacyProc
         );
+    }
+
+    /// Spawn a one-shot in-process identity broker at `sock` that answers a single
+    /// `Lookup` with `reply` (asserting the peer pidfd arrived over `SCM_RIGHTS`).
+    fn spawn_test_broker(
+        sock: PathBuf,
+        reply: crate::identity_wire::IdentityResponse,
+    ) -> std::thread::JoinHandle<()> {
+        use crate::fd_passing::recv_fd_msg;
+        use crate::identity_wire::{write_response, MAX_IDENTITY_FRAME};
+        use std::os::unix::net::UnixListener;
+        let listener = UnixListener::bind(&sock).unwrap();
+        std::thread::spawn(move || {
+            let (mut conn, _) = listener.accept().unwrap();
+            let (_bytes, fd) = recv_fd_msg(&conn, MAX_IDENTITY_FRAME).unwrap();
+            assert!(fd.is_some(), "the resolver must pass the peer pidfd over SCM_RIGHTS");
+            write_response(&mut conn, &reply).unwrap();
+        })
+    }
+
+    /// A broker HIT is authoritative: the resolver returns the stamped app_id with
+    /// `IdentitySource::Stamped` and never reads `/proc` (the whole point).
+    #[test]
+    fn a_broker_hit_labels_the_peer_stamped() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("identity.sock");
+        let srv = spawn_test_broker(
+            sock.clone(),
+            crate::identity_wire::IdentityResponse::Resolved {
+                app_id: "com.example.stamped".into(),
+            },
+        );
+
+        let (a, _b) = UnixStream::pair().unwrap();
+        // SAFETY: getuid never fails.
+        let uid = unsafe { libc::getuid() };
+        let ident = app_id_from_connection_at(&a, uid, &sock).expect("resolve");
+        assert_eq!(ident.source(), IdentitySource::Stamped);
+        assert_eq!(ident.app_id(), "com.example.stamped");
+        assert!(ident.is_alive());
+        srv.join().unwrap();
+    }
+
+    /// A broker MISS (`NotFound`) falls through to the `/proc` tiers: the peer was
+    /// never launcher-stamped, so it resolves via its canonical path (the cargo-test
+    /// binary is unenrolled -> LegacyProc), never denied.
+    #[test]
+    fn a_broker_miss_falls_through_to_proc_tiers() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("identity.sock");
+        let srv = spawn_test_broker(sock.clone(), crate::identity_wire::IdentityResponse::NotFound);
+
+        let (a, _b) = UnixStream::pair().unwrap();
+        // SAFETY: getuid never fails.
+        let uid = unsafe { libc::getuid() };
+        let ident = app_id_from_connection_at(&a, uid, &sock).expect("resolve");
+        assert_eq!(ident.source(), IdentitySource::LegacyProc);
+        assert_eq!(ident.pid(), std::process::id());
+        srv.join().unwrap();
+    }
+
+    /// An UNREACHABLE broker (socket absent) must NOT deny: the resolver falls
+    /// through to the `/proc` tiers so a broker outage never breaks admission.
+    #[test]
+    fn an_unreachable_broker_falls_through_and_never_denies() {
+        let sock = std::path::Path::new("/nonexistent/arlen/config-broker-identity.sock");
+        let (a, _b) = UnixStream::pair().unwrap();
+        // SAFETY: getuid never fails.
+        let uid = unsafe { libc::getuid() };
+        let ident = app_id_from_connection_at(&a, uid, sock).expect("resolve despite no broker");
+        assert_eq!(ident.source(), IdentitySource::LegacyProc);
+        assert_eq!(ident.pid(), std::process::id());
+        assert!(!ident.app_id().is_empty());
     }
 
     /// Unenrolled app, absent registry, and a failed inode stat all label LegacyProc.
