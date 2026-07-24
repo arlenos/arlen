@@ -96,6 +96,10 @@ impl ConsentDriver for ConsentBrokerClient {
             preview: None,
             targets: Vec::new(),
             total: None,
+            // The daemon requests consent for its OWN agent action; it is not a
+            // trusted intermediary mediating for another app, so the grant is
+            // attributed to the attested peer (fail-safe, never a mediated subject).
+            on_behalf_of: None,
         };
         match self.request(&body).await {
             Ok(IntakeResult::SilentGranted) => ConfirmAnswer::Approved,
