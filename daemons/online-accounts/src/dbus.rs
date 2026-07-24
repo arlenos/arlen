@@ -376,6 +376,98 @@ impl AccountsObjectManager {
     }
 }
 
+/// The management method surface `org.arlen.AccountsManager1`, served at the same
+/// `/org/arlen/Accounts1` path (zbus needs one type per interface). Adding an
+/// account is a management/setup operation, so it is gated to the Settings
+/// management app exactly like the ObjectManager's `GetManagedObjects` - every
+/// other same-uid caller is refused. Holds the vault master + dir (not a `Vault`,
+/// which is not `Clone` and cannot cross the `spawn_blocking` boundary) so the
+/// blocking OAuth flow can build a vault view inside the blocking task.
+pub struct AccountsManager {
+    accounts_dir: PathBuf,
+    vault_master: [u8; 32],
+    vault_dir: PathBuf,
+}
+
+impl AccountsManager {
+    /// A manager over the account-config dir + the vault material for provisioning.
+    pub fn new(accounts_dir: PathBuf, vault_master: [u8; 32], vault_dir: PathBuf) -> Self {
+        Self {
+            accounts_dir,
+            vault_master,
+            vault_dir,
+        }
+    }
+}
+
+#[zbus::interface(name = "org.arlen.AccountsManager1")]
+impl AccountsManager {
+    /// Add an online account for `provider` with the login `identity`: run the
+    /// RFC-8252 browser OAuth flow, vault the obtained tokens, and register the
+    /// token-less account config (the directory watcher then unicasts
+    /// `AccountsChanged` to granted apps). Gated to the Settings management app -
+    /// every other caller is refused (this provisions a credential). Returns the
+    /// new account id. The flow blocks on the loopback redirect, so it runs on a
+    /// blocking task off the async executor. Errors collapse to a coarse category
+    /// (unknown provider / invalid identity / authorization failed / could not
+    /// save) so the OAuth exchange internals never reach the caller.
+    async fn add_account(
+        &self,
+        provider: String,
+        identity: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
+        let Ok(caller) = resolve_caller_app_id_guarded(&header, connection).await else {
+            return Err(zbus::fdo::Error::AccessDenied("unresolved caller".into()));
+        };
+        if caller != crate::objects::MANAGEMENT_APP_ID {
+            return Err(zbus::fdo::Error::AccessDenied(
+                "only the Settings management app may add accounts".into(),
+            ));
+        }
+        let providers = crate::providers::load_providers()
+            .map_err(|e| zbus::fdo::Error::Failed(format!("provider registry: {e}")))?;
+        let accounts_dir = self.accounts_dir.clone();
+        let vault_master = self.vault_master;
+        let vault_dir = self.vault_dir.clone();
+        let joined = tokio::task::spawn_blocking(move || {
+            let receiver = crate::loopback::LoopbackReceiver::bind()
+                .map_err(|e| format!("loopback bind: {e}"))?;
+            let exchanger = crate::flow::HttpExchanger::new()?;
+            let vault = Vault::new(vault_master, &vault_dir);
+            crate::provision::add_account(
+                &providers,
+                &accounts_dir,
+                &vault,
+                &receiver,
+                &crate::flow::SystemBrowser,
+                &exchanger,
+                &provider,
+                &identity,
+            )
+            .map_err(coarse_add_account_error)
+        })
+        .await
+        .map_err(|e| zbus::fdo::Error::Failed(format!("add-account task: {e}")))?;
+        joined.map_err(zbus::fdo::Error::Failed)
+    }
+}
+
+/// Collapse an [`crate::provision::AddAccountError`] to a coarse, non-leaky
+/// category for the caller: enough for the Settings UI to act on, but never the
+/// OAuth exchange internals (a token-endpoint error body could carry sensitive
+/// detail).
+fn coarse_add_account_error(e: crate::provision::AddAccountError) -> String {
+    use crate::provision::AddAccountError::*;
+    match e {
+        UnknownProvider(p) => format!("unknown provider: {p}"),
+        InvalidIdentity(_) => "invalid identity".to_string(),
+        Flow(_) => "authorization failed".to_string(),
+        Vault(_) | Config(_) => "could not save the account".to_string(),
+    }
+}
+
 /// Resolve the calling app's Arlen identity from the D-Bus connection.
 ///
 /// The session bus daemon attests the sender's PID (`GetConnectionUnixProcessID`,
