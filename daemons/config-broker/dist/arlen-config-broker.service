@@ -39,6 +39,12 @@ RuntimeDirectory=arlen
 RuntimeDirectoryMode=0755
 RuntimeDirectoryPreserve=yes
 Environment=ARLEN_CONFIG_BROKER_SOCKET=/run/arlen/config-broker.sock
+# Pin the identity-broker socket to the system path too, so the separate-uid
+# broker binds it there deterministically (not via the absent-XDG_RUNTIME_DIR
+# fallback). Consumers resolve the same path; leaving the session-user-owned
+# per-user path unbound is what closes the squatter surface the stamped-identity
+# resolver's uid check guards.
+Environment=ARLEN_CONFIG_BROKER_IDENTITY_SOCKET=/run/arlen/config-broker-identity.sock
 
 # The uid whose callers this broker serves, and whose audit ledger it writes.
 # The installer sets this to the desktop user's uid; there is no sane default,
