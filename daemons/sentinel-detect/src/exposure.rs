@@ -105,6 +105,28 @@ pub fn bluetooth_posture(discoverable: bool, _pairable: bool) -> Posture {
     }
 }
 
+/// The posture implied by BlueZ's LE privacy mode (`main.conf` `[General] Privacy`),
+/// which governs whether the adapter advertises with a rotating Resolvable Private
+/// Address or its static identity address. `off` broadcasts the identity address (an
+/// observer can track the device across places) -> `Exposed`; `device` / `network` /
+/// their `limited-` variants use an RPA -> `Protected`; an absent or unrecognized
+/// value is `Unknown` (the remediation writes a privacy mode and restarts bluetoothd).
+/// Case-insensitive.
+pub fn ble_privacy_posture(privacy: Option<&str>) -> Posture {
+    match privacy.map(str::trim) {
+        Some(p) if p.eq_ignore_ascii_case("off") => Posture::Exposed,
+        Some(p)
+            if p.eq_ignore_ascii_case("device")
+                || p.eq_ignore_ascii_case("network")
+                || p.eq_ignore_ascii_case("limited-device")
+                || p.eq_ignore_ascii_case("limited-network") =>
+        {
+            Posture::Protected
+        }
+        _ => Posture::Unknown,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,6 +167,16 @@ mod tests {
     fn sending_the_dhcp_hostname_exposes_a_stable_name() {
         assert_eq!(dhcp_hostname_posture(true), Posture::Exposed);
         assert_eq!(dhcp_hostname_posture(false), Posture::Protected);
+    }
+
+    #[test]
+    fn ble_privacy_off_exposes_the_identity_address() {
+        assert_eq!(ble_privacy_posture(Some("off")), Posture::Exposed);
+        assert_eq!(ble_privacy_posture(Some("device")), Posture::Protected);
+        assert_eq!(ble_privacy_posture(Some("Network")), Posture::Protected);
+        assert_eq!(ble_privacy_posture(Some("limited-device")), Posture::Protected);
+        assert_eq!(ble_privacy_posture(None), Posture::Unknown);
+        assert_eq!(ble_privacy_posture(Some("on")), Posture::Unknown);
     }
 
     #[test]
