@@ -124,11 +124,18 @@ fn open_argv(url: &str) -> [String; 2] {
 impl Browser for SystemBrowser {
     fn open(&self, url: &str) -> Result<(), String> {
         let argv = open_argv(url);
-        std::process::Command::new(&argv[0])
+        let child = std::process::Command::new(&argv[0])
             .arg(&argv[1])
             .spawn()
-            .map(|_| ())
-            .map_err(|e| format!("could not launch {}: {e}", argv[0]))
+            .map_err(|e| format!("could not launch {}: {e}", argv[0]))?;
+        // Reap the launcher off-thread so it does not linger as a zombie for the
+        // daemon's lifetime: the browser launch is fire-and-forget (we do not read
+        // its exit), but an unwaited child stays defunct until the daemon exits.
+        std::thread::spawn(move || {
+            let mut child = child;
+            let _ = child.wait();
+        });
+        Ok(())
     }
 }
 
