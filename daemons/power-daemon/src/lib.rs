@@ -13,6 +13,7 @@
 pub mod battery;
 pub mod config;
 pub mod dbus;
+pub mod idle;
 pub mod lid;
 pub mod logind;
 pub mod notify;
