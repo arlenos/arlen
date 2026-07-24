@@ -8,6 +8,7 @@ pub mod open_uri;
 pub mod options;
 pub mod print;
 pub mod screenshot;
+pub mod screencast;
 
 use tracing::warn;
 
