@@ -13,3 +13,6 @@ arlen-ai-core = { path = "../../ai/ai-core" }
 serde = { version = "1", features = ["derive"] }
 
 [workspace]
+
+[dev-dependencies]
+serde_json = "1"
