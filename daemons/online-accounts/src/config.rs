@@ -162,6 +162,9 @@ pub enum ConfigError {
     /// The TOML did not parse or carried an unknown (possibly secret) field.
     #[error("parse: {0}")]
     Parse(#[from] toml::de::Error),
+    /// Rendering a new account config to TOML failed.
+    #[error("serialize: {0}")]
+    Serialize(#[from] toml::ser::Error),
     /// The in-file `id` does not match the file name stem.
     #[error("id {found:?} does not match file name {expected:?}")]
     IdMismatch {
@@ -198,6 +201,23 @@ pub fn parse_account(path: &Path, contents: &str) -> Result<AccountConfig, Confi
     Ok(account)
 }
 
+/// Render the minimal account config for a newly added OAuth account: its id,
+/// provider and identity (the login). No token/secret is ever written here - the
+/// obtained tokens live in the vault (the config deliberately carries no
+/// credential). The `AddAccount` flow writes this to `{accounts_dir}/{id}.toml`
+/// so `load_accounts` (and thus `list_accounts` + the grant system) sees the
+/// account; services + grants are added later. The id must match the file stem,
+/// so the caller writes it as `{id}.toml`.
+pub fn render_account_config(id: &str, provider: &str, identity: &str) -> Result<String, ConfigError> {
+    #[derive(serde::Serialize)]
+    struct NewAccount<'a> {
+        id: &'a str,
+        provider: &'a str,
+        identity: &'a str,
+    }
+    toml::to_string(&NewAccount { id, provider, identity }).map_err(ConfigError::Serialize)
+}
+
 /// Load every `{id}.toml` account config in `dir`. A file that fails to parse (or
 /// whose id mismatches) is SKIPPED with its error returned alongside, never
 /// silently granted: a malformed grant config yields no account, so it grants no
@@ -227,6 +247,31 @@ pub fn load_accounts(dir: &Path) -> (Vec<AccountConfig>, Vec<(std::path::PathBuf
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_rendered_account_config_round_trips_and_carries_no_secret() {
+        let toml = render_account_config("google-carol", "google", "carol@example.com").unwrap();
+        // No credential is ever written to the config.
+        assert!(!toml.to_lowercase().contains("token"));
+        assert!(!toml.to_lowercase().contains("secret"));
+        // It parses back under the matching file stem (the id == stem rule).
+        let path = std::path::Path::new("google-carol.toml");
+        let account = parse_account(path, &toml).unwrap();
+        assert_eq!(account.id, "google-carol");
+        assert_eq!(account.provider, "google");
+        assert_eq!(account.identity, "carol@example.com");
+        assert!(account.services.is_empty(), "services are added later");
+        assert!(account.grants.is_empty(), "grants are added later");
+    }
+
+    #[test]
+    fn a_rendered_config_escapes_hostile_values() {
+        // A provider/identity with a quote cannot break out of the TOML string.
+        let toml = render_account_config("acct", "prov\"ider", "a\"b@x").unwrap();
+        let account = parse_account(std::path::Path::new("acct.toml"), &toml).unwrap();
+        assert_eq!(account.provider, "prov\"ider");
+        assert_eq!(account.identity, "a\"b@x");
+    }
+
     use super::*;
     use std::path::PathBuf;
 
