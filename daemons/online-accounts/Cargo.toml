@@ -38,6 +38,8 @@ sha2 = "0.10"
 zeroize = "1"
 arlen-secret-vault = { path = "../../sdk/secret-vault" }
 getrandom = "0.2"
+base64 = "0.22"
+percent-encoding = "2"
 # The vault master-secret custody: a persistent 32-byte secret at mode 0600,
 # generate-or-load, fail-closed (the reviewed forage-signing primitive; its
 # Ed25519 wrapper is incidental, the raw seed serves as the AEAD master).
