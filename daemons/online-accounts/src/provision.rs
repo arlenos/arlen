@@ -12,7 +12,8 @@
 //! refresh flow reads. So a handout still works unchanged and the refresh
 //! material is stored separately, never handed to a token consumer.
 
-use crate::flow::TokenExchanger;
+use crate::flow::{authorize, Browser, FlowError, ProviderConfig, TokenExchanger};
+use crate::loopback::LoopbackReceiver;
 use crate::oauth::{refresh_form, TokenResponse};
 use crate::vault::{Vault, VaultError};
 
@@ -99,6 +100,37 @@ fn carry_refresh_token(mut tokens: TokenResponse, used: String) -> TokenResponse
     tokens
 }
 
+/// An add-account failure.
+#[derive(Debug, thiserror::Error)]
+pub enum AddAccountError {
+    /// The browser authorization flow failed (browser, CSRF, or exchange).
+    #[error(transparent)]
+    Flow(#[from] FlowError),
+    /// Storing the obtained tokens failed.
+    #[error(transparent)]
+    Vault(#[from] VaultError),
+}
+
+/// Run the browser OAuth flow for `provider` and store the obtained tokens for
+/// `account_id`: compose [`authorize`] (open the browser, receive the redirect,
+/// exchange the code) with [`provision_tokens`] (write the vault). The D-Bus
+/// `AddAccount` method wraps this with caller-auth, the account-config
+/// registration, and a real `SystemBrowser` + `HttpExchanger`; the seams are
+/// injected here so the whole flow is testable end to end. Blocking (the
+/// receiver blocks on the redirect), so the daemon runs it on a blocking thread.
+pub fn add_account_flow(
+    vault: &Vault,
+    provider: &ProviderConfig,
+    receiver: &LoopbackReceiver,
+    browser: &dyn Browser,
+    exchanger: &dyn TokenExchanger,
+    account_id: &str,
+) -> Result<(), AddAccountError> {
+    let tokens = authorize(provider, receiver, browser, exchanger)?;
+    provision_tokens(vault, account_id, &tokens)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,6 +172,68 @@ mod tests {
             *self.seen_form.borrow_mut() = Some(form.to_string());
             self.response.clone()
         }
+    }
+
+    /// A browser that COMPLETES the redirect (parses the state from the auth URL
+    /// and posts the redirect to the loopback port), so the single-threaded flow
+    /// picks it up - the same pattern as flow.rs's own test.
+    struct CompletingBrowser {
+        port: u16,
+        code: String,
+    }
+    impl Browser for CompletingBrowser {
+        fn open(&self, url: &str) -> Result<(), String> {
+            use std::io::Write;
+            let q = url.split_once('?').ok_or("no query")?.1;
+            let state = q
+                .split('&')
+                .find_map(|p| p.strip_prefix("state="))
+                .ok_or("no state")?;
+            let mut c =
+                std::net::TcpStream::connect(("127.0.0.1", self.port)).map_err(|e| e.to_string())?;
+            write!(c, "GET /?code={}&state={} HTTP/1.1\r\n\r\n", self.code, state)
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_full_add_account_flow_stores_the_obtained_tokens() {
+        let (vault, _dir) = temp_vault();
+        let receiver = LoopbackReceiver::bind().unwrap();
+        let port = receiver.port().unwrap();
+        let provider = ProviderConfig {
+            authorization_endpoint: "https://accounts.example.com/authorize",
+            token_endpoint: "https://accounts.example.com/token",
+            client_id: "cid",
+            scope: "openid email",
+        };
+        let browser = CompletingBrowser {
+            port,
+            code: "the-code".into(),
+        };
+        let exchanger = CannedExchanger {
+            response: parse_token_response(
+                r#"{"access_token":"at-final","token_type":"Bearer","refresh_token":"rt-final"}"#,
+            )
+            .map_err(|e| e.to_string()),
+            seen_form: std::cell::RefCell::new(None),
+        };
+
+        add_account_flow(&vault, &provider, &receiver, &browser, &exchanger, "google-carol").unwrap();
+
+        // The browser flow ran, the code was exchanged, and BOTH tokens landed in
+        // the vault under the account id.
+        assert_eq!(
+            String::from_utf8(vault.load("google-carol").unwrap().unwrap()).unwrap(),
+            "at-final"
+        );
+        assert_eq!(
+            load_refresh_token(&vault, "google-carol").unwrap().as_deref(),
+            Some("rt-final")
+        );
+        // The exchange presented the authorization code from the redirect.
+        assert!(exchanger.seen_form.borrow().as_ref().unwrap().contains("&code=the-code"));
     }
 
     #[test]
