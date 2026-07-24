@@ -11,7 +11,7 @@
 //! recipe cannot inject elements or break the document. The output is a
 //! `desktop-application` component that `appstreamcli compose` accepts.
 
-use arlen_forage_recipe::RecipeMeta;
+use arlen_forage_recipe::{Artifacts, RecipeMeta};
 use std::path::{Path, PathBuf};
 
 /// The metadata_license of the GENERATED metainfo file itself (not the app's
@@ -57,15 +57,30 @@ fn push_elem(out: &mut String, tag: &str, value: &str) {
     out.push_str(">\n");
 }
 
-/// Build an AppStream MetaInfo XML document from `meta`. The `id` (reverse-DNS,
-/// validated at recipe parse) is the component id; `name` and `summary` are required
-/// by AppStream, the rest are emitted only when present. The plain recipe
-/// `description` is wrapped in a single `<p>` (AppStream descriptions are rich text;
-/// one paragraph is the honest representation of a one-field description). Pure.
-pub fn synthesize_metainfo(meta: &RecipeMeta) -> String {
+/// The AppStream component type for a package, from what it installs: a `.desktop`
+/// entry makes it a `desktop-application`; otherwise an installed binary makes it a
+/// `console-application`. A package with neither (a library/data-only package) falls
+/// back to `desktop-application`, the store's primary browse type. Pure.
+pub fn component_type(artifacts: Option<&Artifacts>) -> &'static str {
+    match artifacts {
+        Some(a) if a.desktop.is_some() => "desktop-application",
+        Some(a) if !a.bin.is_empty() => "console-application",
+        _ => "desktop-application",
+    }
+}
+
+/// Build an AppStream MetaInfo XML document from `meta`, typing the component from
+/// what the package installs (`artifacts`; see [`component_type`]). The `id`
+/// (reverse-DNS, validated at recipe parse) is the component id; `name` and `summary`
+/// are required by AppStream, the rest are emitted only when present. The plain
+/// recipe `description` is wrapped in a single `<p>` (AppStream descriptions are rich
+/// text; one paragraph is the honest representation of a one-field description). Pure.
+pub fn synthesize_metainfo(meta: &RecipeMeta, artifacts: Option<&Artifacts>) -> String {
     let mut out = String::new();
     out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-    out.push_str("<component type=\"desktop-application\">\n");
+    out.push_str("<component type=\"");
+    out.push_str(component_type(artifacts));
+    out.push_str("\">\n");
 
     push_elem(&mut out, "id", &meta.id);
     push_elem(&mut out, "name", &meta.name);
@@ -189,7 +204,7 @@ commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 
     #[test]
     fn synthesizes_a_full_component() {
-        let xml = synthesize_metainfo(&meta());
+        let xml = synthesize_metainfo(&meta(), None);
         assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<component type=\"desktop-application\">"));
         assert!(xml.contains("<id>org.example.hello</id>"));
         assert!(xml.contains("<name>Hello</name>"));
@@ -221,7 +236,7 @@ commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 "#,
         )
         .expect("parses");
-        let xml = synthesize_metainfo(&recipe.recipe);
+        let xml = synthesize_metainfo(&recipe.recipe, None);
         assert!(xml.contains("<id>org.example.bare</id>"));
         assert!(xml.contains("<name>Bare</name>"));
         // No summary/description/screenshots/categories/homepage when absent.
@@ -274,11 +289,44 @@ commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
         let mut m = meta();
         m.name = "Evil</name><release version=\"9\"/><name>".to_string();
         m.summary = Some("a & b < c > d".to_string());
-        let xml = synthesize_metainfo(&m);
+        let xml = synthesize_metainfo(&m, None);
         // The injected element is escaped, not emitted as markup.
         assert!(!xml.contains("<release"));
         assert!(xml.contains("Evil&lt;/name&gt;&lt;release version=&quot;9&quot;/&gt;&lt;name&gt;"));
         assert!(xml.contains("<summary>a &amp; b &lt; c &gt; d</summary>"));
+    }
+
+    #[test]
+    fn component_type_follows_what_the_package_installs() {
+        let with_artifacts = |block: &str| {
+            arlen_forage_recipe::parse(&format!(
+                r#"
+[recipe]
+id = "org.example.hello"
+name = "Hello"
+maintainer = "key:abc"
+
+[[source]]
+type = "git"
+url = "https://github.com/example/hello"
+commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+[artifacts]
+{block}
+"#
+            ))
+            .expect("parses")
+        };
+        let desktop = with_artifacts("bin = [\"hello\"]\ndesktop = \"hello.desktop\"");
+        assert_eq!(component_type(desktop.artifacts.as_ref()), "desktop-application");
+        let cli = with_artifacts("bin = [\"hello\"]");
+        assert_eq!(component_type(cli.artifacts.as_ref()), "console-application");
+        let lib = with_artifacts("lib = [\"libhello.so\"]");
+        assert_eq!(component_type(lib.artifacts.as_ref()), "desktop-application");
+        assert_eq!(component_type(None), "desktop-application");
+        // The synthesized document carries the derived type.
+        assert!(synthesize_metainfo(&meta(), cli.artifacts.as_ref())
+            .contains("<component type=\"console-application\">"));
     }
 
     #[test]
@@ -287,7 +335,7 @@ commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
         // A description with a NUL, a bell (0x07), and a form-feed (0x0C) - all
         // invalid in XML 1.0 - plus a legitimate newline and tab.
         m.description = Some("line1\n\tline2\u{0}\u{7}\u{c}end".to_string());
-        let xml = synthesize_metainfo(&m);
+        let xml = synthesize_metainfo(&m, None);
         assert!(xml.contains("<description><p>line1\n\tline2end</p></description>"));
         // No forbidden control byte survives into the document.
         assert!(!xml.contains('\u{0}') && !xml.contains('\u{7}') && !xml.contains('\u{c}'));
