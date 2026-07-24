@@ -716,7 +716,16 @@ pub struct TierPicks {
 /// speed axis is what separates the tiers (most models "fit", so leading on speed
 /// is the real signal the plan calls for). Pure.
 pub fn tier_picks(hw: &Hardware, catalog: &[ModelSpec]) -> TierPicks {
-    let fitting: Vec<Recommendation> = recommend(hw, catalog)
+    pick_tiers(recommend(hw, catalog))
+}
+
+/// Select the Fast / Balanced / Quality tiers from an already-scored recommendation
+/// list. Shared by the curated path ([`tier_picks`]) and the cached-index path
+/// ([`tier_picks_index`]), so both apply the same tier convention regardless of how
+/// the fit was scored (bpw estimate or measured GGUF size). Only fitting models
+/// (badge not `WontFit`) are considered. Pure.
+pub fn pick_tiers(recommendations: Vec<Recommendation>) -> TierPicks {
+    let fitting: Vec<Recommendation> = recommendations
         .into_iter()
         .filter(|r| r.badge != FitBadge::WontFit)
         .collect();
@@ -739,6 +748,64 @@ pub fn tier_picks(hw: &Hardware, catalog: &[ModelSpec]) -> TierPicks {
         balanced,
         quality,
     }
+}
+
+/// Score one cached-index entry into a [`Recommendation`]. When the refresh job
+/// resolved a real GGUF size, the fit + speed are computed from that measured size
+/// (the accurate path, so `quant` is `None` - the size is the ground truth, the
+/// specific quant unknown at the repo level). Otherwise it falls back to the
+/// params-only bpw estimate exactly as [`recommend`] does for a curated spec.
+fn index_recommendation(m: &crate::index::IndexedModel, hw: &Hardware) -> Recommendation {
+    if m.has_resolved_size() {
+        let weights = m.file_size_bytes as f64 / GIB;
+        let badge = fit_badge_from_size(m.file_size_bytes, hw);
+        let tokens_per_sec = match badge {
+            FitBadge::WontFit => 0.0,
+            _ => estimate_tokens_per_sec(weights, hw.mem_bandwidth_gbps),
+        };
+        Recommendation {
+            name: m.id.clone(),
+            params_b: m.params_b,
+            quant: None,
+            badge,
+            tokens_per_sec,
+        }
+    } else {
+        let quant = best_fitting_quant(m.params_b, hw);
+        let (badge, tokens_per_sec) = match quant {
+            Some(q) => (
+                fit_badge(m.params_b, q, hw),
+                estimate_tokens_per_sec(weights_gib(m.params_b, q), hw.mem_bandwidth_gbps),
+            ),
+            None => (FitBadge::WontFit, 0.0),
+        };
+        Recommendation {
+            name: m.id.clone(),
+            params_b: m.params_b,
+            quant,
+            badge,
+            tokens_per_sec,
+        }
+    }
+}
+
+/// Fit-rank every entry in a cached popular-GGUF index for `hw`, preferring each
+/// entry's measured GGUF size and falling back to the params-only estimate when a
+/// size was not resolved. Order preserved (the index's popularity order). Pure -
+/// the offline recommendation path (no HF pull), the whole-ecosystem analogue of
+/// [`recommend_catalog`].
+pub fn recommend_index(hw: &Hardware, index: &crate::index::CachedIndex) -> Vec<Recommendation> {
+    index
+        .models
+        .iter()
+        .map(|m| index_recommendation(m, hw))
+        .collect()
+}
+
+/// Pick the Fast / Balanced / Quality tiers from a cached popular-GGUF index for
+/// `hw`, the pre-computed picks the picker opens on. Pure.
+pub fn tier_picks_index(hw: &Hardware, index: &crate::index::CachedIndex) -> TierPicks {
+    pick_tiers(recommend_index(hw, index))
 }
 
 #[cfg(test)]
@@ -879,6 +946,37 @@ mod tests {
         let hw = apu_7840u();
         let picks = tier_picks(&hw, &[model("huge", 120.0)]);
         assert!(picks.fast.is_none() && picks.balanced.is_none() && picks.quality.is_none());
+    }
+
+    #[test]
+    fn cached_index_tier_picks_prefer_measured_size_and_fall_back_to_the_estimate() {
+        let hw = apu_7840u();
+        let idx = |id: &str, params: f64, size: u64| crate::index::IndexedModel {
+            id: id.into(),
+            params_b: params,
+            file_size_bytes: size,
+            downloads: 1000,
+            likes: 10,
+        };
+        let index = crate::index::CachedIndex {
+            captured_at_unix: 1,
+            models: vec![
+                // Measured size resolved -> size-aware, quant unknown at repo level.
+                idx("a/small-1B-GGUF", 1.0, 800_000_000),
+                idx("a/mid-7B-GGUF", 7.0, 4_700_000_000),
+                // No size -> params-only estimate fallback (quant filled in).
+                idx("a/big-13B-GGUF", 13.0, 0),
+            ],
+        };
+        let recs = recommend_index(&hw, &index);
+        assert_eq!(recs.len(), 3);
+        assert!(recs[0].quant.is_none(), "measured entry carries no repo-level quant");
+        assert!(recs[2].quant.is_some(), "estimated entry carries the applied quant");
+
+        let picks = tier_picks_index(&hw, &index);
+        // The 1B measured entry is the snappiest; the 13B is the largest that fits.
+        assert_eq!(picks.fast.as_ref().unwrap().params_b, 1.0);
+        assert_eq!(picks.quality.as_ref().unwrap().params_b, 13.0);
     }
 
     #[test]
