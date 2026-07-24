@@ -138,7 +138,7 @@ pub(crate) fn app_id_from_connection_at<F: std::os::fd::AsRawFd>(
     //     with NO `/proc` read. A miss or an unreachable broker falls through: the
     //     broker is an ADDITIVE stronger tier, its absence must never deny an
     //     admission the lower tiers resolve today (see `broker_lookup`).
-    if let Some(app_id) = broker_lookup(&peer, broker_socket) {
+    if let Some(app_id) = broker_lookup(&peer, broker_socket, caller_uid) {
         return Ok(StampedIdentity {
             app_id,
             peer,
@@ -233,8 +233,13 @@ fn classify_source_with(
 /// tier up (in [`app_id_from_connection_at`]), and whether a non-`Stamped` source is
 /// acceptable is an enforce-mode POLICY decision in `ConnectionAuth`, not this
 /// lookup's. A broker error is logged for the shadow-rollout audit, then dropped.
-fn broker_lookup(peer: &PeerPidfd, broker_socket: &std::path::Path) -> Option<String> {
-    match crate::identity_wire::lookup_identity(broker_socket, peer.pidfd()) {
+fn broker_lookup(peer: &PeerPidfd, broker_socket: &std::path::Path, caller_uid: u32) -> Option<String> {
+    // Authenticate the broker before trusting a reply: its SO_PEERCRED uid must be
+    // the expected service uid, so a same-uid squatter at the session-owned socket
+    // path cannot mint a stamp (an Unauthenticated result falls through, like any
+    // other broker error). See `broker_expected_uid` for the fail-safe default.
+    let expected = crate::identity_wire::broker_expected_uid(caller_uid);
+    match crate::identity_wire::lookup_identity_authenticated(broker_socket, peer.pidfd(), expected) {
         Ok(Some(app_id)) => {
             // Defense-in-depth: a `Stamped` result must be provably no weaker than
             // the /proc rule-4 path it replaces. The honest broker REFUSES to
