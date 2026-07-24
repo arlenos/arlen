@@ -11,9 +11,22 @@
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tokio::io::Interest;
 use tokio::net::{UnixListener, UnixStream};
+use tokio::sync::Semaphore;
+
+/// How long a connected peer has to send its (tiny) request before the
+/// connection is dropped. A legitimate client sends it at once.
+const READ_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The most identity connections served concurrently. Each holds a peer
+/// pidfd, so this bounds the trust-root daemon's fd/task use under a flood.
+const MAX_IDENTITY_CONNECTIONS: usize = 16;
+
+/// How often dead records + their held pidfds are pruned from the store.
+const PRUNE_INTERVAL: Duration = Duration::from_secs(60);
 
 use arlen_permissions::fd_passing::{recv_fd_msg, MAX_FD_MSG};
 use arlen_permissions::identity::app_id_from_pid;
@@ -61,10 +74,19 @@ pub async fn serve_identity_connection(
         }
     };
 
-    let (bytes, fd) = match recv_fd_msg_async(&stream, MAX_FD_MSG).await {
-        Ok(v) => v,
-        Err(e) => {
+    // Bound the request read: a same-uid peer that connects (over the 0666
+    // socket) and never sends must not pin this task and its held peer
+    // pidfd forever. A tiny request arrives at once, so a short deadline is
+    // ample; on timeout the connection is dropped (fail-closed).
+    let read = tokio::time::timeout(READ_TIMEOUT, recv_fd_msg_async(&stream, MAX_FD_MSG)).await;
+    let (bytes, fd) = match read {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => {
             tracing::warn!("identity: request read failed: {e}");
+            return;
+        }
+        Err(_) => {
+            tracing::warn!("identity: request read timed out");
             return;
         }
     };
@@ -122,13 +144,46 @@ pub async fn run(
         owner_uid = caller_uid,
         "config-broker identity listening"
     );
+
+    // Periodically drop dead records + their held pidfds. Correctness does
+    // not need this (lookup already skips dead records, and the next
+    // Register GCs them), but a session that launches a burst of short-
+    // lived confined apps then goes quiet would otherwise hold their dead
+    // pidfds until the next Register.
+    spawn_prune(Arc::clone(&store));
+
+    // Bound concurrent handlers: an owned permit acquired before accept
+    // caps how many connections (each holding a peer pidfd) can be in
+    // flight, so a flood over the 0666 socket cannot exhaust fds/tasks in
+    // this trust-root daemon (which would also break its co-hosted master-
+    // switch socket). With the per-connection read timeout above, a permit
+    // is always released promptly.
+    let sem = Arc::new(Semaphore::new(MAX_IDENTITY_CONNECTIONS));
     loop {
+        let permit = Arc::clone(&sem)
+            .acquire_owned()
+            .await
+            .expect("identity semaphore is never closed");
         let (stream, _) = listener.accept().await?;
         let store = Arc::clone(&store);
         tokio::spawn(async move {
+            let _permit = permit;
             serve_identity_connection(stream, store, caller_uid).await;
         });
     }
+}
+
+/// Spawn the periodic pruner for the identity store.
+fn spawn_prune(store: Arc<Mutex<IdentityStore>>) {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(PRUNE_INTERVAL);
+        // Skip the immediate first tick (the store is empty at startup).
+        tick.tick().await;
+        loop {
+            tick.tick().await;
+            store.lock().unwrap_or_else(|e| e.into_inner()).prune();
+        }
+    });
 }
 
 /// Bind the identity socket, reusing the master-switch socket's
@@ -190,6 +245,27 @@ mod tests {
             }
         );
         handler.await.unwrap();
+    }
+
+    /// A peer that connects but never sends is dropped after the read
+    /// timeout, so it cannot pin the task + its held pidfd forever.
+    #[tokio::test(start_paused = true)]
+    async fn a_silent_client_is_dropped_after_the_read_timeout() {
+        let store = Arc::new(Mutex::new(IdentityStore::new()));
+        let (client, server) = UnixStream::pair().unwrap();
+        // SAFETY: getuid never fails.
+        let uid = unsafe { libc::getuid() };
+        let handler = tokio::spawn(async move {
+            serve_identity_connection(server, store, uid).await;
+        });
+
+        // Let the handler run to its read-timeout await (registering the
+        // timer + parking on the silent socket), THEN advance past the
+        // deadline so the timeout fires and the handler returns.
+        tokio::task::yield_now().await;
+        tokio::time::advance(READ_TIMEOUT + std::time::Duration::from_secs(1)).await;
+        handler.await.expect("handler must finish after the read timeout");
+        drop(client);
     }
 
     /// A malformed request gets an Error reply, not a fabricated identity.
