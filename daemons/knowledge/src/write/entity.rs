@@ -1153,6 +1153,76 @@ mod tests {
     }
 
     #[test]
+    fn purge_by_owner_deletes_only_that_bridges_nodes_and_edges() {
+        // BR-6 probe: revoking a bridge means DETACH DELETE every node it wrote,
+        // keyed on the daemon-stamped _owner (BR-1: source_id = _owner). Confirm
+        // the purge is TENANT-ISOLATED - it removes exactly the target owner's
+        // nodes + their edges and leaves another owner's data intact.
+        use lbug::{Connection, Database, SystemConfig, Value};
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db =
+            Database::new(tmp.path().join("g").to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+
+        let ty = "md.obsidian.Note";
+        let table = entity_table_name(ty);
+        let d = def(&[("title", FieldType::String)]);
+        conn.query(&entity_table_ddl(ty, &d).unwrap()).unwrap();
+        // Two nodes written by bridge-a, one by bridge-b (the _owner is the caller).
+        for (key, owner) in [("a", "bridge-a"), ("c", "bridge-a"), ("b", "bridge-b")] {
+            let mut f = BTreeMap::new();
+            f.insert("title".to_string(), serde_json::json!(key));
+            conn.query(&build_upsert_cypher(ty, key, owner, &f, "2026-01-01T00:00:00Z"))
+                .unwrap();
+        }
+        let rel = entity_rel_table_name("LINKS_TO", ty, ty);
+        conn.query(&format!("CREATE REL TABLE IF NOT EXISTS {rel}(FROM {table} TO {table})"))
+            .unwrap();
+        // An edge between two bridge-a nodes + one from bridge-a to bridge-b.
+        for (from, to) in [("a", "c"), ("a", "b")] {
+            conn.query(&build_link_cypher(
+                &rel,
+                &table,
+                &table,
+                &entity_node_id(ty, from),
+                &entity_node_id(ty, to),
+            ))
+            .unwrap();
+        }
+
+        // The purge: every node this owner wrote, edges swept by DETACH.
+        conn.query(&format!(
+            "MATCH (n:{table}) WHERE n._owner = 'bridge-a' DETACH DELETE n"
+        ))
+        .unwrap();
+
+        let count = |cypher: String| -> i64 {
+            match conn.query(&cypher).unwrap().next().unwrap()[0] {
+                Value::Int64(n) => n,
+                _ => panic!("expected an Int64 count"),
+            }
+        };
+        // bridge-a's two nodes are gone; bridge-b's node survives.
+        assert_eq!(
+            count(format!("MATCH (n:{table}) WHERE n._owner='bridge-a' RETURN count(*)")),
+            0,
+            "the purged bridge's nodes are gone"
+        );
+        assert_eq!(
+            count(format!("MATCH (n:{table}) WHERE n._owner='bridge-b' RETURN count(*)")),
+            1,
+            "another bridge's node is untouched"
+        );
+        // Every edge incident to a purged node is gone (DETACH), including the
+        // cross-owner a->b edge; no dangling edge remains.
+        assert_eq!(
+            count(format!("MATCH (:{table})-[:{rel}]->(:{table}) RETURN count(*)")),
+            0,
+            "the purged nodes' edges are swept, none dangling"
+        );
+    }
+
+    #[test]
     fn merge_into_an_absent_canonical_preserves_the_duplicate() {
         // Regression for the review's HIGH: with the canonical absent, the
         // canonical-anchored delete must no-op, so the duplicate + its edges
