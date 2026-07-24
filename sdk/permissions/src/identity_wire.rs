@@ -134,6 +134,34 @@ pub enum IdentityClientError {
     /// The broker returned a reply of the wrong shape for the request.
     #[error("identity-broker unexpected reply")]
     Unexpected,
+    /// The process listening at the broker socket is NOT the trusted broker
+    /// (its `SO_PEERCRED` uid did not match the expected service uid). A
+    /// same-uid squatter at the session-owned per-user socket path is the
+    /// threat this closes: the reply is not trusted and the caller must fall
+    /// through to a weaker tier, never accept a stamp from it.
+    #[error("identity-broker not authenticated: {0}")]
+    Unauthenticated(String),
+}
+
+/// The environment variable naming the identity broker's expected service uid.
+/// The separate-uid deployment sets it (systemd unit / dev stack) to the uid the
+/// broker runs as, so a daemon can reject a squatter at the session-owned socket.
+pub const IDENTITY_BROKER_UID_ENV: &str = "ARLEN_CONFIG_BROKER_IDENTITY_UID";
+
+/// The uid a client should require the identity broker to run as.
+///
+/// [`IDENTITY_BROKER_UID_ENV`] wins when set to a valid uid (the separate-uid
+/// production deployment: the broker runs as its own service uid). Otherwise the
+/// caller's own uid (the dev single-uid deployment, where the broker is same-uid).
+/// FAIL-SAFE: in a separate-uid deployment that FORGETS to set the env, the
+/// expected uid falls back to the caller's own, which will NOT match the broker's
+/// service uid, so authentication fails and the resolver falls through to `/proc`
+/// (stamping is simply OFF) rather than trusting an unauthenticated broker.
+pub fn broker_expected_uid(caller_uid: u32) -> u32 {
+    std::env::var(IDENTITY_BROKER_UID_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .unwrap_or(caller_uid)
 }
 
 /// Send one request + its pidfd over a connected stream, then read the
@@ -219,6 +247,30 @@ pub fn lookup_identity(
     peer_pidfd: BorrowedFd<'_>,
 ) -> Result<Option<String>, IdentityClientError> {
     let mut stream = connect(socket)?;
+    lookup_over(&mut stream, peer_pidfd)
+}
+
+/// Like [`lookup_identity`], but AUTHENTICATE the broker first: after connecting,
+/// read the listener's `SO_PEERCRED` uid and require it to equal
+/// `expected_broker_uid` (see [`broker_expected_uid`]). A mismatch is an
+/// [`IdentityClientError::Unauthenticated`] and NO request is sent (the peer
+/// pidfd is never handed to an untrusted listener), so a same-uid squatter at the
+/// session-owned socket path cannot mint a stamp - the resolver treats the error
+/// as fall-through. This is the client-side half of the trust boundary the broker
+/// already enforces the other way (it authenticates its callers).
+pub fn lookup_identity_authenticated(
+    socket: &Path,
+    peer_pidfd: BorrowedFd<'_>,
+    expected_broker_uid: u32,
+) -> Result<Option<String>, IdentityClientError> {
+    let mut stream = connect(socket)?;
+    let broker_uid = crate::peer_pidfd::peer_uid(stream.as_raw_fd())
+        .map_err(|e| IdentityClientError::Unauthenticated(format!("peer uid unreadable: {e}")))?;
+    if broker_uid != expected_broker_uid {
+        return Err(IdentityClientError::Unauthenticated(format!(
+            "broker uid {broker_uid} != expected {expected_broker_uid}"
+        )));
+    }
     lookup_over(&mut stream, peer_pidfd)
 }
 
@@ -357,5 +409,70 @@ mod tests {
     fn identity_socket_contract_strings_are_pinned() {
         assert_eq!(IDENTITY_SOCKET_NAME, "config-broker-identity.sock");
         assert_eq!(IDENTITY_SOCKET_ENV, "ARLEN_CONFIG_BROKER_IDENTITY_SOCKET");
+    }
+
+    /// An authenticated lookup ACCEPTS a broker whose SO_PEERCRED uid matches the
+    /// expected uid, and returns its reply. The in-process listener is our own uid,
+    /// so expecting our uid authenticates it.
+    #[test]
+    fn authenticated_lookup_accepts_a_matching_broker_uid() {
+        use crate::identity_wire::write_response;
+        use std::os::unix::net::UnixListener;
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("id.sock");
+        let listener = UnixListener::bind(&sock).unwrap();
+        let srv = thread::spawn(move || {
+            let (mut conn, _) = listener.accept().unwrap();
+            let (_bytes, fd) = recv_fd_msg(&conn, MAX_IDENTITY_FRAME).unwrap();
+            assert!(fd.is_some());
+            write_response(
+                &mut conn,
+                &IdentityResponse::Resolved {
+                    app_id: "com.example.app".into(),
+                },
+            )
+            .unwrap();
+        });
+        // SAFETY: getuid never fails.
+        let me = unsafe { libc::getuid() };
+        let p = self_pidfd();
+        let got = lookup_identity_authenticated(&sock, p.as_fd(), me).unwrap();
+        assert_eq!(got, Some("com.example.app".to_string()));
+        srv.join().unwrap();
+    }
+
+    /// An authenticated lookup REJECTS a broker whose uid does not match the
+    /// expected uid, with `Unauthenticated`, and sends NO request (the listener
+    /// only accepts; it never receives a Lookup). This is the same-uid-squatter
+    /// defense: in the separate-uid deployment the expected uid is the broker's
+    /// service uid, so a session-uid squatter is rejected.
+    #[test]
+    fn authenticated_lookup_rejects_a_mismatched_broker_uid() {
+        use std::os::unix::net::UnixListener;
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("id.sock");
+        let listener = UnixListener::bind(&sock).unwrap();
+        let srv = thread::spawn(move || {
+            // Accept so the client's connect succeeds, then drop: a mismatched uid
+            // means the client bails BEFORE sending, so we must not block on recv.
+            let _ = listener.accept();
+        });
+        // SAFETY: getuid never fails.
+        let wrong = unsafe { libc::getuid() }.wrapping_add(1);
+        let p = self_pidfd();
+        match lookup_identity_authenticated(&sock, p.as_fd(), wrong) {
+            Err(IdentityClientError::Unauthenticated(_)) => {}
+            other => panic!("expected Unauthenticated, got {other:?}"),
+        }
+        srv.join().unwrap();
+    }
+
+    /// The expected broker uid defaults to the caller's own uid when the env is
+    /// unset (the dev single-uid deployment). Guarded so a set env does not fail it.
+    #[test]
+    fn broker_expected_uid_defaults_to_caller() {
+        if std::env::var_os(IDENTITY_BROKER_UID_ENV).is_none() {
+            assert_eq!(broker_expected_uid(4321), 4321);
+        }
     }
 }

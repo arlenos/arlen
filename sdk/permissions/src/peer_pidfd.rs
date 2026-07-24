@@ -146,7 +146,10 @@ fn peer_pidfd(fd: libc::c_int) -> std::io::Result<OwnedFd> {
 /// `getsockopt(SO_PEERCRED)` → peer uid. The pid from the same call
 /// is the *racy* one the caller deliberately ignores in favour of
 /// the pidfd's; only the uid (authentic at connect) is taken here.
-fn peer_uid(fd: libc::c_int) -> std::io::Result<u32> {
+///
+/// `pub(crate)` so a CLIENT can authenticate the peer it connected to (the
+/// identity resolver checks the broker's uid), not only a server its caller.
+pub(crate) fn peer_uid(fd: libc::c_int) -> std::io::Result<u32> {
     let mut cred = libc::ucred {
         pid: 0,
         uid: 0,
