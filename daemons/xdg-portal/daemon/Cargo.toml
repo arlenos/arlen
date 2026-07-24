@@ -29,6 +29,9 @@ arlen-screen-capture = { path = "../../../sdk/screen-capture" }
 # submit surface. audit-proto supplies the ledger sink the print submit records to.
 arlen-print = { path = "../../print", features = ["cups"] }
 audit-proto = { path = "../../../contracts/audit-proto" }
+# The consent-broker intake contract: the ScreenCast backend routes capture
+# consent through the broker (on behalf of the capturing app) before streaming.
+arlen-consent-contract = { path = "../../../contracts/consent-contract" }
 
 [dev-dependencies]
 tempfile = "3"

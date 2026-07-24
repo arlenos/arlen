@@ -11,6 +11,7 @@
 
 mod document_portal;
 mod interfaces;
+mod consent;
 mod picker_ipc;
 mod picker_lifecycle;
 mod request;
