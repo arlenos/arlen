@@ -413,6 +413,95 @@ pub fn plan_entity_link(
     Ok((ddl, cypher))
 }
 
+/// Authorise a merge of two instances of `qualified_type` (SHARED-ENTITIES.md
+/// §Merge Flow). Only a `shared.*` type's declared OWNER app may merge its
+/// instances - the same cross-tenant boundary as [`plan_entity_upsert`]: every
+/// other app contributes via owner-confirmed suggestions, never a direct
+/// structural change. A non-shared type merges within the caller's own
+/// namespace (token-writable + own prefix). Returns `Ok` when the caller may
+/// merge, else a denial.
+pub fn authorise_entity_merge(
+    token: &CapabilityToken,
+    qualified_type: &str,
+) -> Result<(), String> {
+    if qualified_type.starts_with("system.") {
+        return Err(format!("namespace not writable: {qualified_type}"));
+    }
+    if qualified_type.starts_with("shared.") {
+        match crate::shared::shared_owner(qualified_type) {
+            Some(owner) if owner == token.app_id => {}
+            _ => {
+                return Err(format!(
+                    "shared entity {qualified_type} is mergeable only by its owner app"
+                ))
+            }
+        }
+    } else if !qualified_type.starts_with(&format!("{}.", token.app_id)) {
+        return Err(format!(
+            "namespace violation: {} cannot merge {qualified_type}",
+            token.app_id
+        ));
+    }
+    if !token.can_write(qualified_type) {
+        return Err(format!("permission denied for {qualified_type}"));
+    }
+    Ok(())
+}
+
+/// Build the Cypher plan to merge the duplicate `dup_key` into the canonical
+/// `canonical_key` (both instances of `qualified_type`): re-point every edge of
+/// the duplicate onto the canonical across `involved` (the rel tables that touch
+/// this node table, from [`crate::graph::GraphHandle::rel_tables_involving`]),
+/// then delete the duplicate. SHARED-ENTITIES.md §Merge Flow steps 3-4; the
+/// field-data merge (step 1-2) is the owner's separate conflict resolution.
+///
+/// Entity edges are property-less (`MERGE (a)-[:T]->(b)`), so a re-point is a
+/// `MERGE` of the same edge from the canonical (idempotent if the canonical
+/// already links that node) then `DELETE` of the duplicate's edge - no property
+/// copy. The caller authorises via [`authorise_entity_merge`] first; the rel
+/// table names come from the catalog, not caller input.
+pub fn plan_entity_merge(
+    qualified_type: &str,
+    dup_key: &str,
+    canonical_key: &str,
+    involved: &[crate::graph::RelTable],
+) -> Result<Vec<String>, String> {
+    if dup_key.trim().is_empty() || canonical_key.trim().is_empty() {
+        return Err("merge requires non-empty keys".into());
+    }
+    if dup_key == canonical_key {
+        return Err("cannot merge an entity into itself".into());
+    }
+    let table = entity_table_name(qualified_type);
+    let dup = escape_cypher(&entity_node_id(qualified_type, dup_key));
+    let canon = escape_cypher(&entity_node_id(qualified_type, canonical_key));
+
+    let mut stmts = Vec::new();
+    for rel in involved {
+        let name = &rel.name;
+        // The duplicate as an edge SOURCE: (dup)-[r]->(x) becomes (canon)-[]->(x).
+        if rel.source == table {
+            stmts.push(format!(
+                "MATCH (a:{table} {{id: '{dup}'}})-[r:{name}]->(x) \
+                 MATCH (c:{table} {{id: '{canon}'}}) \
+                 MERGE (c)-[:{name}]->(x) DELETE r"
+            ));
+        }
+        // The duplicate as an edge DEST: (y)-[r]->(dup) becomes (y)-[]->(canon).
+        if rel.dest == table {
+            stmts.push(format!(
+                "MATCH (y)-[r:{name}]->(a:{table} {{id: '{dup}'}}) \
+                 MATCH (c:{table} {{id: '{canon}'}}) \
+                 MERGE (y)-[:{name}]->(c) DELETE r"
+            ));
+        }
+    }
+    // Remove the duplicate node; DETACH sweeps any edge a re-point missed
+    // (e.g. a self-loop) so the delete never fails on a dangling edge.
+    stmts.push(format!("MATCH (a:{table} {{id: '{dup}'}}) DETACH DELETE a"));
+    Ok(stmts)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -958,5 +1047,93 @@ mod tests {
         );
         let mut fc = conn.query(&fwd).unwrap();
         assert!(matches!(fc.next().unwrap()[0], Value::Int64(0)), "absent endpoint not linked");
+    }
+
+    #[test]
+    fn authorise_entity_merge_gates_owner_and_namespace() {
+        // md.obsidian, with write scopes for Note / com.other.Note / system.File.
+        let own = obsidian_token();
+        // Own namespace + writable: allowed.
+        assert!(authorise_entity_merge(&own, "md.obsidian.Note").is_ok());
+        // Another tenant's namespace: refused even though the scope would match.
+        assert!(authorise_entity_merge(&own, "com.other.Note").is_err());
+        // system.* is never mergeable.
+        assert!(authorise_entity_merge(&own, "system.File").is_err());
+    }
+
+    #[test]
+    fn merge_repoints_edges_onto_the_canonical_and_deletes_the_duplicate() {
+        use lbug::{Connection, Database, SystemConfig, Value};
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db =
+            Database::new(tmp.path().join("g").to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+
+        let ty = "md.obsidian.Note";
+        let table = entity_table_name(ty);
+        let d = def(&[("title", FieldType::String)]);
+        conn.query(&entity_table_ddl(ty, &d).unwrap()).unwrap();
+        for key in ["dup", "canon", "other"] {
+            let mut f = BTreeMap::new();
+            f.insert("title".to_string(), serde_json::json!(key));
+            conn.query(&build_upsert_cypher(ty, key, "md.obsidian", &f, "2026-01-01T00:00:00Z"))
+                .unwrap();
+        }
+        let rel = entity_rel_table_name("LINKS_TO", ty, ty);
+        conn.query(&format!("CREATE REL TABLE IF NOT EXISTS {rel}(FROM {table} TO {table})"))
+            .unwrap();
+
+        // The duplicate has an OUTGOING edge (dup -> other) and an INCOMING edge
+        // (other -> dup); the merge must re-point both onto the canonical.
+        for (a, b) in [("dup", "other"), ("other", "dup")] {
+            conn.query(&build_link_cypher(
+                &rel,
+                &table,
+                &table,
+                &entity_node_id(ty, a),
+                &entity_node_id(ty, b),
+            ))
+            .unwrap();
+        }
+
+        // A self-referential Note->Note table is both source and dest of `table`.
+        let involved = vec![crate::graph::RelTable {
+            name: rel.clone(),
+            source: table.clone(),
+            dest: table.clone(),
+        }];
+        for stmt in plan_entity_merge(ty, "dup", "canon", &involved).unwrap() {
+            conn.query(&stmt).unwrap();
+        }
+
+        let count = |cypher: String| -> i64 {
+            match conn.query(&cypher).unwrap().next().unwrap()[0] {
+                Value::Int64(n) => n,
+                _ => panic!("expected an Int64 count"),
+            }
+        };
+        let canon = entity_node_id(ty, "canon");
+        let dup = entity_node_id(ty, "dup");
+        // The canonical inherited both edges.
+        assert_eq!(
+            count(format!(
+                "MATCH (c:{table} {{id:'{canon}'}})-[:{rel}]->(:{table}) RETURN count(*)"
+            )),
+            1,
+            "outgoing edge re-pointed to canonical"
+        );
+        assert_eq!(
+            count(format!(
+                "MATCH (:{table})-[:{rel}]->(c:{table} {{id:'{canon}'}}) RETURN count(*)"
+            )),
+            1,
+            "incoming edge re-pointed to canonical"
+        );
+        // The duplicate node is gone.
+        assert_eq!(
+            count(format!("MATCH (a:{table} {{id:'{dup}'}}) RETURN count(*)")),
+            0,
+            "duplicate deleted"
+        );
     }
 }
