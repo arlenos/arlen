@@ -260,8 +260,14 @@ processes:
     depends_on:
       runtime-dir: { condition: process_completed_successfully }
     readiness_probe:
+      # Ready only once BOTH sockets bind: the master-switch stream and the
+      # identity broker (config-broker-identity.sock). The identity server runs on
+      # its own task, so gating readiness on it too means a daemon that resolves
+      # caller identity via the broker never starts before the socket exists -
+      # otherwise its early resolutions fall through to /proc (LegacyProc) until
+      # the socket binds, which muddies a stamped-identity enforce-cutover rehearsal.
       exec:
-        command: "test -S ${XDG_RUNTIME_DIR}/arlen/config-broker.sock"
+        command: "test -S ${XDG_RUNTIME_DIR}/arlen/config-broker.sock && test -S ${XDG_RUNTIME_DIR}/arlen/config-broker-identity.sock"
       initial_delay_seconds: 2
       period_seconds: 2
       failure_threshold: 30
