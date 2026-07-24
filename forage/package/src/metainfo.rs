@@ -173,6 +173,30 @@ pub fn find_upstream_metainfo(paths: &[PathBuf]) -> Option<PathBuf> {
         .map(|(_, p)| p.clone())
 }
 
+/// The in-package directory AppStream metadata is installed to. `appstreamcli
+/// compose` reads `<prefix>/share/metainfo/*.xml`, so a forage app that ships its
+/// metainfo here is composed into the same catalog as Flatpak and apt.
+const METAINFO_DIR: &str = "usr/share/metainfo";
+
+/// Write the synthesized metainfo for `meta` into the staging root at
+/// `usr/share/metainfo/<id>.metainfo.xml`, creating the directory, and return the
+/// written path. The forage pipeline calls this after collecting artifacts so the
+/// built package carries its own AppStream component (the inline fallback; a harvested
+/// upstream metainfo is preferred when one is found via [`find_upstream_metainfo`]).
+/// `id` is reverse-DNS (validated at recipe parse), so it is a safe bare filename
+/// with no path separators.
+pub fn write_metainfo(
+    staging_root: &Path,
+    meta: &RecipeMeta,
+    artifacts: Option<&Artifacts>,
+) -> std::io::Result<PathBuf> {
+    let dir = staging_root.join(METAINFO_DIR);
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{}.metainfo.xml", meta.id));
+    std::fs::write(&path, synthesize_metainfo(meta, artifacts))?;
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,6 +318,21 @@ commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
         assert!(!xml.contains("<release"));
         assert!(xml.contains("Evil&lt;/name&gt;&lt;release version=&quot;9&quot;/&gt;&lt;name&gt;"));
         assert!(xml.contains("<summary>a &amp; b &lt; c &gt; d</summary>"));
+    }
+
+    #[test]
+    fn write_metainfo_places_the_component_at_the_appstream_path() {
+        let staging = tempfile::tempdir().unwrap();
+        let path = write_metainfo(staging.path(), &meta(), None).expect("writes");
+        assert_eq!(
+            path,
+            staging
+                .path()
+                .join("usr/share/metainfo/org.example.hello.metainfo.xml")
+        );
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(written, synthesize_metainfo(&meta(), None));
+        assert!(written.contains("<id>org.example.hello</id>"));
     }
 
     #[test]
