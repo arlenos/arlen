@@ -215,6 +215,31 @@ impl UndoLog {
         }
         live
     }
+
+    /// Every created entry whose folded state is exactly [`UndoState::Compensating`]:
+    /// an undo that STARTED but was interrupted by a crash before it reached
+    /// [`UndoState::Compensated`]. A restarting undo consumer re-drives these through
+    /// the idempotent `enact_inverse` to finish the interrupted reversal, then records
+    /// the `Compensated` transition. Distinct from [`live_entries`](Self::live_entries)
+    /// (which also returns `InFlight`/`Committed` entries that are NOT mid-reversal):
+    /// only a `Compensating` entry has a partially-applied inverse to complete on
+    /// recovery. Ordered by creation, deduped by `op_id`; an illegal fold is skipped
+    /// fail-closed (never re-driven on a guess).
+    pub fn compensating_entries(&self) -> Vec<&UndoEntry> {
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for record in &self.records {
+            if let LogRecord::Created(entry) = record {
+                if !seen.insert(entry.op_id.as_str()) {
+                    continue;
+                }
+                if let Some(Ok(UndoState::Compensating)) = self.current_state(&entry.op_id) {
+                    out.push(entry);
+                }
+            }
+        }
+        out
+    }
 }
 
 /// One persisted line: a record paired with its HMAC chain hash over the running
@@ -383,6 +408,13 @@ impl FileUndoLog {
     pub fn live_entries(&self) -> Vec<&UndoEntry> {
         self.log.live_entries()
     }
+
+    /// The created entries stuck mid-reversal (see
+    /// [`UndoLog::compensating_entries`]) - a crash-interrupted compensation the
+    /// consumer re-drives to completion on restart through the idempotent enact.
+    pub fn compensating_entries(&self) -> Vec<&UndoEntry> {
+        self.log.compensating_entries()
+    }
 }
 
 /// The genesis previous-hash: 32 zero bytes, the chain's index-0 anchor (the same
@@ -521,6 +553,27 @@ mod tests {
         log.append_transition("illegal", Compensated); // InFlight->Compensated is illegal
         let live: Vec<&str> = log.live_entries().iter().map(|e| e.op_id.as_str()).collect();
         assert_eq!(live, ["committed", "inflight"], "only non-terminal, legal entries, in order");
+    }
+
+    #[test]
+    fn compensating_entries_are_only_the_crash_interrupted_reversals() {
+        let mut log = UndoLog::new();
+        log.append_created(entry("mid-undo")); // Committed->Compensating: crash-interrupted
+        log.append_created(entry("committed")); // Committed, not yet undoing: not returned
+        log.append_created(entry("inflight")); // still InFlight: not returned
+        log.append_created(entry("finished")); // Compensated: terminal, not returned
+        log.append_transition("mid-undo", Committed);
+        log.append_transition("mid-undo", Compensating);
+        log.append_transition("committed", Committed);
+        log.append_transition("finished", Committed);
+        log.append_transition("finished", Compensating);
+        log.append_transition("finished", Compensated);
+        let stuck: Vec<&str> = log
+            .compensating_entries()
+            .iter()
+            .map(|e| e.op_id.as_str())
+            .collect();
+        assert_eq!(stuck, ["mid-undo"], "only the entry stuck mid-reversal");
     }
 
     #[test]
