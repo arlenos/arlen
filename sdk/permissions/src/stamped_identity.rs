@@ -235,7 +235,30 @@ fn classify_source_with(
 /// lookup's. A broker error is logged for the shadow-rollout audit, then dropped.
 fn broker_lookup(peer: &PeerPidfd, broker_socket: &std::path::Path) -> Option<String> {
     match crate::identity_wire::lookup_identity(broker_socket, peer.pidfd()) {
-        Ok(Some(app_id)) => Some(app_id),
+        Ok(Some(app_id)) => {
+            // Defense-in-depth: a `Stamped` result must be provably no weaker than
+            // the /proc rule-4 path it replaces. The honest broker REFUSES to
+            // register a reserved id (config-broker `identity_op`), and no
+            // launcher-stamped app is ever a reserved/privileged principal (system
+            // daemons resolve via /proc, never the broker), so a `Resolved` reply
+            // naming a reserved OR malformed id is illegitimate - a buggy,
+            // compromised, or impersonated broker. Refuse it as a stamp and fall
+            // through to /proc. This mirrors the register-side guard exactly and
+            // caps an unauthenticated/fake broker: it can never mint a privileged
+            // principal (`system`, `system.*`, `org.arlen.*`, `ai-agent`,
+            // `settings`, ...), only a normal-looking user app id.
+            if crate::identity::is_reserved_app_id(&app_id) || !crate::is_valid_app_id(&app_id) {
+                tracing::warn!(
+                    target: "audit",
+                    event = "identity.broker_returned_reserved_or_invalid",
+                    pid = peer.pid(),
+                    app_id = %app_id,
+                    "identity broker returned a reserved or malformed app_id; refusing the stamp and falling through to /proc"
+                );
+                return None;
+            }
+            Some(app_id)
+        }
         Ok(None) => None,
         Err(e) => {
             tracing::debug!(
@@ -411,6 +434,49 @@ mod tests {
         assert_eq!(ident.source(), IdentitySource::LegacyProc);
         assert_eq!(ident.pid(), std::process::id());
         assert!(!ident.app_id().is_empty());
+    }
+
+    /// A broker that returns a RESERVED/privileged id (`system.knowledge`) is not
+    /// trusted: the resolver refuses the stamp and falls through to /proc. This
+    /// caps a fake/compromised broker - it can never mint a privileged principal.
+    #[test]
+    fn a_reserved_stamp_is_refused_and_falls_through() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("identity.sock");
+        let srv = spawn_test_broker(
+            sock.clone(),
+            crate::identity_wire::IdentityResponse::Resolved {
+                app_id: "system.knowledge".into(),
+            },
+        );
+        let (a, _b) = UnixStream::pair().unwrap();
+        // SAFETY: getuid never fails.
+        let uid = unsafe { libc::getuid() };
+        let ident = app_id_from_connection_at(&a, uid, &sock).expect("resolve");
+        assert_eq!(ident.source(), IdentitySource::LegacyProc);
+        assert_ne!(ident.app_id(), "system.knowledge");
+        srv.join().unwrap();
+    }
+
+    /// A broker that returns a MALFORMED id (path-traversal shaped) is refused and
+    /// falls through, so a bad stamp can never become a profile-path component.
+    #[test]
+    fn a_malformed_stamp_is_refused_and_falls_through() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("identity.sock");
+        let srv = spawn_test_broker(
+            sock.clone(),
+            crate::identity_wire::IdentityResponse::Resolved {
+                app_id: "../../etc/passwd".into(),
+            },
+        );
+        let (a, _b) = UnixStream::pair().unwrap();
+        // SAFETY: getuid never fails.
+        let uid = unsafe { libc::getuid() };
+        let ident = app_id_from_connection_at(&a, uid, &sock).expect("resolve");
+        assert_eq!(ident.source(), IdentitySource::LegacyProc);
+        assert!(!ident.app_id().contains(".."));
+        srv.join().unwrap();
     }
 
     /// Unenrolled app, absent registry, and a failed inode stat all label LegacyProc.
