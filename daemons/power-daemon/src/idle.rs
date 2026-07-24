@@ -32,6 +32,30 @@ pub enum IdleAction {
     Suspend,
 }
 
+impl IdleAction {
+    /// The logind power action this maps to, if any. Only [`Suspend`] is a
+    /// logind action (reusing the daemon's existing `logind` executor);
+    /// Dim and Blank need a brightness / DPMS backend and Lock needs the
+    /// lock screen, so they map to `None` and the idle executor dispatches
+    /// them via their own (not-yet-wired) backends.
+    ///
+    /// [`Suspend`]: IdleAction::Suspend
+    pub fn as_power_action(self) -> Option<crate::logind::PowerAction> {
+        match self {
+            IdleAction::Suspend => Some(crate::logind::PowerAction::Suspend),
+            IdleAction::Dim { .. } | IdleAction::Blank | IdleAction::Lock => None,
+        }
+    }
+
+    /// Whether resuming from idle should UNDO this action. Dim and Blank are
+    /// non-destructive presentation changes restored on the next input; Lock
+    /// and Suspend are terminal (the user re-authenticates, the machine
+    /// wakes), so there is nothing to undo on resume.
+    pub fn reversible(self) -> bool {
+        matches!(self, IdleAction::Dim { .. } | IdleAction::Blank)
+    }
+}
+
 /// One escalation stage: after `after_secs` of continuous idle, apply
 /// `action`. The daemon registers one `ext-idle-notify-v1` timer per stage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,6 +159,26 @@ mod tests {
     fn dim_percent_is_clamped() {
         let s = stages(300, 250, 0, 0, 0);
         assert_eq!(s[0].action, IdleAction::Dim { to_percent: 100 });
+    }
+
+    #[test]
+    fn only_suspend_maps_to_a_logind_power_action() {
+        use crate::logind::PowerAction;
+        assert_eq!(
+            IdleAction::Suspend.as_power_action(),
+            Some(PowerAction::Suspend)
+        );
+        assert_eq!(IdleAction::Dim { to_percent: 30 }.as_power_action(), None);
+        assert_eq!(IdleAction::Blank.as_power_action(), None);
+        assert_eq!(IdleAction::Lock.as_power_action(), None);
+    }
+
+    #[test]
+    fn dim_and_blank_are_reversible_lock_and_suspend_are_terminal() {
+        assert!(IdleAction::Dim { to_percent: 30 }.reversible());
+        assert!(IdleAction::Blank.reversible());
+        assert!(!IdleAction::Lock.reversible());
+        assert!(!IdleAction::Suspend.reversible());
     }
 
     #[test]
