@@ -17,6 +17,7 @@
 pub mod manifest;
 pub mod config;
 pub mod decode;
+pub mod render;
 pub mod schedule;
 
 pub use manifest::{

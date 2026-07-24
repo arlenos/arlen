@@ -16,6 +16,17 @@ thiserror = "1"
 # Static-wallpaper image decode for the renderer client (png + jpeg cover the
 # wallpaper asset formats; the full image crate's codecs are not needed).
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# The wlr-layer-shell background client (WP-R1): smithay-client-toolkit gives the
+# registry/output/layer-shell/shm boilerplate; the pixel pipeline (decode +
+# Fill/Zoom compose) is the pure `decode` module this feeds into a wl_shm buffer.
+smithay-client-toolkit = "0.19"
+wayland-client = "0.31"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[[bin]]
+name = "arlen-wallpaperd"
+path = "src/main.rs"
 
 [dev-dependencies]
 tempfile = "3"
