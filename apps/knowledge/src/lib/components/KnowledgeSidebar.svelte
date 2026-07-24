@@ -36,9 +36,7 @@
 </script>
 
 <nav class="kn-side" aria-label={$t("k.title")}>
-  <div class="kn-side-title">{$t("k.title")}</div>
-
-  <div class="kn-group">{$t("k.section.explore")}</div>
+  <div class="kn-group kn-group-first">{$t("k.section.explore")}</div>
   {#each PLACES as p (p.id)}
     {@const Icon = p.icon}
     <button
@@ -72,12 +70,6 @@
     border-right: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     overflow-y: auto;
   }
-  .kn-side-title {
-    padding: 0.25rem 0.5rem 0.6rem;
-    font-size: var(--text-base);
-    font-weight: 600;
-    color: var(--color-fg-primary);
-  }
   .kn-group {
     padding: 0.6rem 0.5rem 0.25rem;
     font-size: var(--text-2xs);
@@ -85,6 +77,9 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: color-mix(in srgb, var(--color-fg-primary) 42%, transparent);
+  }
+  .kn-group-first {
+    padding-top: 0.35rem;
   }
   .kn-place {
     display: flex;

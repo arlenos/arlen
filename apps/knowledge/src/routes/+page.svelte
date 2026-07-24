@@ -6,6 +6,7 @@
   /// adapter. Fixture-backed under vite; the scoped KG reads are coder seams.
   import { invoke } from "@tauri-apps/api/core";
   import { createBrowserState, FileBrowser, type FileEntry } from "@arlen/ui-kit/components/browser";
+  import KnowledgeHeader from "$lib/components/KnowledgeHeader.svelte";
   import KnowledgeSidebar from "$lib/components/KnowledgeSidebar.svelte";
   import KnowledgeDetail from "$lib/components/KnowledgeDetail.svelte";
   import { knowledgeAdapter, mocked } from "$lib/adapter";
@@ -39,10 +40,12 @@
   const now = Date.now();
 </script>
 
-<div class="kn">
-  <KnowledgeSidebar activeLocation={$path} onnavigate={navigate} oncapabilities={openCapabilities} />
+<div class="kn-app">
+  <KnowledgeHeader />
+  <div class="kn">
+    <KnowledgeSidebar activeLocation={$path} onnavigate={navigate} oncapabilities={openCapabilities} />
 
-  <main class="kn-main">
+    <main class="kn-main">
     <header class="kn-head">
       <h1 class="kn-h1">{$t(labelKeyFor($path))}</h1>
       {#if $mocked}<span class="kn-sample">{$t("k.sample")}</span>{/if}
@@ -59,17 +62,24 @@
     </div>
   </main>
 
-  {#if selected}
-    <KnowledgeDetail entry={selected} onclose={() => (selected = null)} />
-  {/if}
+    {#if selected}
+      <KnowledgeDetail entry={selected} onclose={() => (selected = null)} />
+    {/if}
+  </div>
 </div>
 
 <style>
-  .kn {
+  .kn-app {
     display: flex;
+    flex-direction: column;
     height: 100vh;
     background: var(--color-bg-app);
     color: var(--color-fg-primary);
+  }
+  .kn {
+    flex: 1;
+    min-height: 0;
+    display: flex;
   }
   .kn-main {
     flex: 1;
