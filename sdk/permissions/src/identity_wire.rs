@@ -16,9 +16,11 @@
 //! reply mirrors the broker's 4-byte-big-endian length prefix.
 
 use std::io::{Read, Write};
-use std::os::fd::{AsRawFd, BorrowedFd};
+use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -280,17 +282,116 @@ pub fn lookup_identity_authenticated(
 /// the hot admission path must not hang on a wedged broker (a timed-out lookup
 /// becomes a transport error the resolver treats as fall-through), and the
 /// launcher must not hang registering a child.
-const IDENTITY_IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+const IDENTITY_IO_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Bound on the CONNECT itself. A blocking `UnixStream::connect` to a listener
+/// whose backlog is full blocks until the server accepts, so a same-uid squatter
+/// that `listen(fd, 0)`s the session-owned socket and never accepts could hang the
+/// resolver's admission (or a launcher's register) indefinitely. This caps that.
+const IDENTITY_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Interval between connect retries while the listener's backlog is full.
+const CONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(20);
 
 fn connect(socket: &Path) -> Result<UnixStream, IdentityClientError> {
-    let stream = UnixStream::connect(socket)
-        .map_err(|e| IdentityClientError::Transport(format!("connect {}: {e}", socket.display())))?;
+    let stream = connect_bounded(socket, IDENTITY_CONNECT_TIMEOUT)?;
     // Best-effort: a failed setsockopt (effectively never on a live Unix socket)
     // must not abort an otherwise-valid connection; the round trip is still
     // bounded by the broker's own read timeout on its side.
     let _ = stream.set_read_timeout(Some(IDENTITY_IO_TIMEOUT));
     let _ = stream.set_write_timeout(Some(IDENTITY_IO_TIMEOUT));
     Ok(stream)
+}
+
+/// Connect to a UNIX socket, bounded by `timeout`.
+///
+/// A blocking connect to a listener with a full backlog blocks until the server
+/// accepts; a squatter that never accepts would hang the caller forever. So the
+/// socket is created non-blocking: a full backlog surfaces immediately as `EAGAIN`
+/// (AF_UNIX connect is synchronous, so there is no in-progress state to poll),
+/// which is retried until the deadline and then given up as a transport error the
+/// caller treats as fall-through / best-effort. A refused/absent socket errors at
+/// once. On success the socket is switched back to blocking for the framed
+/// exchange (bounded by the read/write timeouts).
+fn connect_bounded(socket: &Path, timeout: Duration) -> Result<UnixStream, IdentityClientError> {
+    let path = socket.as_os_str().as_bytes();
+    // SAFETY: sockaddr_un is plain-old-data; zeroed is a valid initial value.
+    let mut addr: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+    addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
+    if path.len() >= addr.sun_path.len() {
+        return Err(IdentityClientError::Transport(format!(
+            "socket path too long: {}",
+            socket.display()
+        )));
+    }
+    for (dst, &src) in addr.sun_path.iter_mut().zip(path) {
+        *dst = src as libc::c_char;
+    }
+    let addr_len =
+        (std::mem::size_of::<libc::sa_family_t>() + path.len() + 1) as libc::socklen_t;
+
+    // SAFETY: a fresh non-blocking, close-on-exec UNIX stream socket.
+    let fd = unsafe {
+        libc::socket(
+            libc::AF_UNIX,
+            libc::SOCK_STREAM | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
+            0,
+        )
+    };
+    if fd < 0 {
+        return Err(IdentityClientError::Transport(format!(
+            "socket: {}",
+            std::io::Error::last_os_error()
+        )));
+    }
+    // Own the fd so it is closed on every path below (early return or success).
+    // SAFETY: fd is a fresh owned socket fd.
+    let owned = unsafe { OwnedFd::from_raw_fd(fd) };
+
+    let deadline = Instant::now() + timeout;
+    loop {
+        // SAFETY: `addr` is initialized for `addr_len` bytes; fd is a valid socket.
+        let rc = unsafe {
+            libc::connect(
+                fd,
+                &addr as *const libc::sockaddr_un as *const libc::sockaddr,
+                addr_len,
+            )
+        };
+        if rc == 0 {
+            break;
+        }
+        let err = std::io::Error::last_os_error();
+        match err.raw_os_error() {
+            // Already connected (a retry raced a completing connect) - done.
+            Some(libc::EISCONN) => break,
+            // Backlog full / would-block: retry until the deadline, then give up.
+            Some(libc::EAGAIN) | Some(libc::EINPROGRESS) | Some(libc::EALREADY) => {
+                if Instant::now() >= deadline {
+                    return Err(IdentityClientError::Transport(format!(
+                        "connect {}: timed out (listener backlog full?)",
+                        socket.display()
+                    )));
+                }
+                std::thread::sleep(CONNECT_RETRY_INTERVAL);
+            }
+            // Refused, absent, permission - a real error, fail at once.
+            _ => {
+                return Err(IdentityClientError::Transport(format!(
+                    "connect {}: {err}",
+                    socket.display()
+                )));
+            }
+        }
+    }
+    // Back to blocking for the framed exchange.
+    // SAFETY: fd is a valid open socket.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags >= 0 {
+        // SAFETY: clearing O_NONBLOCK on our own socket.
+        unsafe { libc::fcntl(fd, libc::F_SETFL, flags & !libc::O_NONBLOCK) };
+    }
+    Ok(UnixStream::from(owned))
 }
 
 /// Write a framed [`IdentityResponse`] the sync way (the test-server
@@ -465,6 +566,24 @@ mod tests {
             other => panic!("expected Unauthenticated, got {other:?}"),
         }
         srv.join().unwrap();
+    }
+
+    /// A bounded connect to an ABSENT socket fails FAST (a real error, not the
+    /// backlog-retry path), well within the connect timeout - so a missing broker
+    /// never costs the caller the full deadline. The success path is covered by the
+    /// authenticated-lookup tests, which connect to a real listener.
+    #[test]
+    fn connect_bounded_fails_fast_on_an_absent_socket() {
+        let start = std::time::Instant::now();
+        let r = connect_bounded(
+            std::path::Path::new("/nonexistent/arlen/id.sock"),
+            IDENTITY_CONNECT_TIMEOUT,
+        );
+        assert!(matches!(r, Err(IdentityClientError::Transport(_))));
+        assert!(
+            start.elapsed() < Duration::from_millis(500),
+            "an absent socket must fail fast, not wait out the connect timeout"
+        );
     }
 
     /// The expected broker uid defaults to the caller's own uid when the env is
