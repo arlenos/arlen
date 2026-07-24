@@ -11,7 +11,8 @@
 
 use crate::loopback::{LoopbackReceiver, RecvError};
 use crate::oauth::{
-    authorization_code_form, random_state, AuthRequest, PkcePair, TokenResponse,
+    authorization_code_form, parse_token_response, random_state, AuthRequest, PkcePair,
+    TokenResponse,
 };
 
 /// Opens a URL in the user's system browser (the concrete impl spawns e.g.
@@ -131,12 +132,116 @@ impl Browser for SystemBrowser {
     }
 }
 
+/// The concrete [`TokenExchanger`]: POSTs the form to the provider's HTTPS token
+/// endpoint via a blocking reqwest client (the flow runs on a blocking thread,
+/// so a blocking client avoids a nested async runtime). The production client is
+/// HTTPS-only with a bounded timeout; a token exchange is a short, foreground
+/// request. Both the success and the RFC 6749 §5.2 error body are handled by
+/// [`parse_token_response`], so the HTTP status is not separately branched.
+pub struct HttpExchanger {
+    client: reqwest::blocking::Client,
+}
+
+impl HttpExchanger {
+    /// Build an HTTPS-only client for real token endpoints.
+    pub fn new() -> Result<Self, String> {
+        let client = reqwest::blocking::Client::builder()
+            .https_only(true)
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| e.to_string())?;
+        Ok(Self { client })
+    }
+
+    /// A client without the HTTPS-only guard, for a local plain-HTTP mock.
+    #[cfg(test)]
+    fn insecure_for_test() -> Self {
+        Self {
+            client: reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(10))
+                .build()
+                .unwrap(),
+        }
+    }
+}
+
+impl TokenExchanger for HttpExchanger {
+    fn exchange(&self, token_endpoint: &str, form_body: &str) -> Result<TokenResponse, String> {
+        let resp = self
+            .client
+            .post(token_endpoint)
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
+            .header(reqwest::header::ACCEPT, "application/json")
+            .body(form_body.to_string())
+            .send()
+            .map_err(|e| format!("token endpoint POST: {e}"))?;
+        let body = resp.text().map_err(|e| format!("read token response: {e}"))?;
+        parse_token_response(&body).map_err(|e| e.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::cell::RefCell;
     use std::io::Write;
     use std::net::TcpStream;
+
+    /// A one-shot mock token endpoint: reads the full request (headers + the
+    /// Content-Length body, so the socket closes cleanly), then replies with
+    /// `body` as JSON. Returns the bound port.
+    fn spawn_token_server(body: &'static str) -> u16 {
+        use std::io::Read;
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else {
+                return;
+            };
+            let mut head = Vec::new();
+            let mut byte = [0u8; 1];
+            while !head.ends_with(b"\r\n\r\n") && head.len() < 8192 {
+                if stream.read(&mut byte).unwrap_or(0) == 0 {
+                    return;
+                }
+                head.push(byte[0]);
+            }
+            let text = String::from_utf8_lossy(&head).to_ascii_lowercase();
+            let clen: usize = text
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length:"))
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
+            let mut b = vec![0u8; clen];
+            let _ = stream.read_exact(&mut b);
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(resp.as_bytes());
+        });
+        port
+    }
+
+    #[test]
+    fn the_http_exchanger_posts_the_form_and_parses_the_token() {
+        let port =
+            spawn_token_server(r#"{"access_token":"live-at","token_type":"Bearer","expires_in":3599}"#);
+        let ex = HttpExchanger::insecure_for_test();
+        let tokens = ex
+            .exchange(
+                &format!("http://127.0.0.1:{port}/token"),
+                "grant_type=authorization_code&code=x&client_id=c",
+            )
+            .unwrap();
+        assert_eq!(tokens.access_token, "live-at");
+        assert_eq!(tokens.expires_in, Some(3599));
+    }
 
     #[test]
     fn the_browser_opens_the_url_with_xdg_open() {

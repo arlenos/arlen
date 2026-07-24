@@ -14,6 +14,7 @@ name = "arlen-accountsd"
 path = "src/main.rs"
 
 [dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 thiserror = "1"
