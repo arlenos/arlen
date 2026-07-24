@@ -385,17 +385,42 @@ impl AccountsObjectManager {
 /// blocking OAuth flow can build a vault view inside the blocking task.
 pub struct AccountsManager {
     accounts_dir: PathBuf,
-    vault_master: [u8; 32],
+    /// The vault master, held `Zeroizing` (scrubbed on drop) like the rest of the
+    /// module's master custody - never a plain `[u8; 32]`, which would linger
+    /// unscrubbed in core dumps / swap.
+    vault_master: zeroize::Zeroizing<[u8; 32]>,
     vault_dir: PathBuf,
+    /// Count of in-flight add-account provisions, capped so abandoned/slow browser
+    /// flows cannot exhaust the (non-cancellable) blocking pool.
+    inflight: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+/// The most add-account provisions run at once. Each holds a blocking task bounded
+/// by the loopback accept deadline, so this caps the blocking-pool + master-copy
+/// exposure regardless of how a client hammers the method.
+const MAX_INFLIGHT_ADDS: usize = 4;
+
+/// Decrements the in-flight counter on drop, so every return path (success, error,
+/// panic, dropped future) releases its slot.
+struct InflightGuard(Arc<std::sync::atomic::AtomicUsize>);
+impl Drop for InflightGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 impl AccountsManager {
     /// A manager over the account-config dir + the vault material for provisioning.
-    pub fn new(accounts_dir: PathBuf, vault_master: [u8; 32], vault_dir: PathBuf) -> Self {
+    pub fn new(
+        accounts_dir: PathBuf,
+        vault_master: zeroize::Zeroizing<[u8; 32]>,
+        vault_dir: PathBuf,
+    ) -> Self {
         Self {
             accounts_dir,
             vault_master,
             vault_dir,
+            inflight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
 }
@@ -408,7 +433,10 @@ impl AccountsManager {
     /// `AccountsChanged` to granted apps). Gated to the Settings management app -
     /// every other caller is refused (this provisions a credential). Returns the
     /// new account id. The flow blocks on the loopback redirect, so it runs on a
-    /// blocking task off the async executor. Errors collapse to a coarse category
+    /// blocking task off the async executor - BOUNDED by the loopback accept
+    /// deadline (an abandoned sign-in frees the task, never pins it) and capped at
+    /// [`MAX_INFLIGHT_ADDS`] concurrent provisions so it cannot exhaust the blocking
+    /// pool. Errors collapse to a coarse category
     /// (unknown provider / invalid identity / authorization failed / could not
     /// save) so the OAuth exchange internals never reach the caller.
     async fn add_account(
@@ -426,16 +454,27 @@ impl AccountsManager {
                 "only the Settings management app may add accounts".into(),
             ));
         }
+        // Cap concurrent provisions: each spends a blocking task bounded by the
+        // loopback accept deadline, so without this a client could wedge the
+        // blocking pool with repeated abandoned sign-ins.
+        use std::sync::atomic::Ordering;
+        if self.inflight.fetch_add(1, Ordering::SeqCst) >= MAX_INFLIGHT_ADDS {
+            self.inflight.fetch_sub(1, Ordering::SeqCst);
+            return Err(zbus::fdo::Error::Failed(
+                "too many add-account requests in flight".into(),
+            ));
+        }
+        let _guard = InflightGuard(Arc::clone(&self.inflight));
         let providers = crate::providers::load_providers()
-            .map_err(|e| zbus::fdo::Error::Failed(format!("provider registry: {e}")))?;
+            .map_err(|_| zbus::fdo::Error::Failed("provider registry unavailable".into()))?;
         let accounts_dir = self.accounts_dir.clone();
-        let vault_master = self.vault_master;
+        let vault_master = self.vault_master.clone();
         let vault_dir = self.vault_dir.clone();
         let joined = tokio::task::spawn_blocking(move || {
             let receiver = crate::loopback::LoopbackReceiver::bind()
                 .map_err(|e| format!("loopback bind: {e}"))?;
             let exchanger = crate::flow::HttpExchanger::new()?;
-            let vault = Vault::new(vault_master, &vault_dir);
+            let vault = Vault::new(*vault_master, &vault_dir);
             crate::provision::add_account(
                 &providers,
                 &accounts_dir,

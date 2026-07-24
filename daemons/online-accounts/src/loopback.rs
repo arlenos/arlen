@@ -11,8 +11,15 @@
 //! by a real client in the module's own tests (no browser needed).
 
 use std::io::{Read, Write};
-use std::net::TcpListener;
-use std::time::Duration;
+use std::net::{TcpListener, TcpStream};
+use std::time::{Duration, Instant};
+
+/// How long the loopback receiver waits for the provider's redirect before giving
+/// up. Generous, because a real sign-in means the user opening the browser, logging
+/// in and approving; but bounded, so an abandoned sign-in frees the (non-cancellable)
+/// blocking task rather than pinning it - and a copy of the vault master with it -
+/// for the daemon's lifetime.
+const ACCEPT_DEADLINE: Duration = Duration::from_secs(120);
 
 use percent_encoding::percent_decode_str;
 
@@ -61,6 +68,11 @@ pub enum RecvError {
     /// The request was not a recognisable OAuth redirect.
     #[error("unrecognised redirect request")]
     Unrecognised,
+    /// No redirect arrived within the accept deadline (the user abandoned the
+    /// browser sign-in, or the provider never redirected). Bounds the wait so an
+    /// abandoned flow cannot pin the blocking task forever.
+    #[error("timed out waiting for the redirect")]
+    Timeout,
 }
 
 /// Extract the request target (`/path?query`) from an HTTP request line
@@ -138,7 +150,7 @@ impl LoopbackReceiver {
     /// and return the authorization code. Blocks on accept; the caller enforces
     /// any overall wall-clock deadline (dropping the receiver closes the port).
     pub fn recv(&self, expected_state: &str) -> Result<String, RecvError> {
-        let (mut stream, _) = self.listener.accept()?;
+        let mut stream = self.accept_bounded(ACCEPT_DEADLINE)?;
         stream.set_read_timeout(Some(Duration::from_secs(10)))?;
         let line = read_request_line(&mut stream)?;
         let (ok, result) = match parse_redirect_line(&line) {
@@ -150,6 +162,31 @@ impl LoopbackReceiver {
         let body = if ok { SUCCESS_BODY } else { FAILURE_BODY };
         let _ = write_response(&mut stream, body);
         result
+    }
+
+    /// Accept one connection, bounded by `timeout`, so an abandoned sign-in cannot
+    /// block forever. The listener is switched to non-blocking and polled (a short
+    /// sleep between tries) until a connection arrives or the deadline passes; the
+    /// accepted stream is returned in blocking mode for the framed read. A one-shot
+    /// per add, so the poll interval's latency on the redirect is imperceptible.
+    fn accept_bounded(&self, timeout: Duration) -> Result<TcpStream, RecvError> {
+        self.listener.set_nonblocking(true)?;
+        let deadline = Instant::now() + timeout;
+        loop {
+            match self.listener.accept() {
+                Ok((stream, _)) => {
+                    stream.set_nonblocking(false)?;
+                    return Ok(stream);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    if Instant::now() >= deadline {
+                        return Err(RecvError::Timeout);
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(e) => return Err(RecvError::Io(e)),
+            }
+        }
     }
 }
 
@@ -282,5 +319,18 @@ mod tests {
             Err(RecvError::Denied(e)) => assert_eq!(e, "access_denied"),
             other => panic!("expected Denied, got {other:?}"),
         }
+    }
+
+    /// An abandoned sign-in (no redirect ever arrives) times out within the
+    /// deadline instead of blocking forever - the fix for the leaked blocking task.
+    #[test]
+    fn accept_bounded_times_out_when_no_redirect_arrives() {
+        let r = LoopbackReceiver::bind().unwrap();
+        let start = Instant::now();
+        match r.accept_bounded(Duration::from_millis(120)) {
+            Err(RecvError::Timeout) => {}
+            other => panic!("expected Timeout, got {other:?}"),
+        }
+        assert!(start.elapsed() < Duration::from_secs(2), "must not hang");
     }
 }

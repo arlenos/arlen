@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?
         .serve_at(
             "/org/arlen/Accounts1",
-            AccountsManager::new(dir.clone(), *master.bytes(), vdir.clone()),
+            AccountsManager::new(dir.clone(), master.bytes(), vdir.clone()),
         )?
         .serve_at(
             "/org/arlen/Accounts1",
