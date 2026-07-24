@@ -107,12 +107,43 @@ pub fn authorize(
         .map_err(FlowError::Exchange)
 }
 
+/// The concrete [`Browser`]: opens the authorization URL in the user's default
+/// browser via `xdg-open`. No embedded web-view (RFC 8252 §8.12): the system
+/// browser is where the user's provider session + password manager live, and it
+/// keeps the app out of the credential exchange.
+pub struct SystemBrowser;
+
+/// The command + args to open `url` in the system browser. `xdg-open` is the
+/// desktop-agnostic launcher; pulled out so the argv is unit-tested (the spawn
+/// itself is I/O).
+fn open_argv(url: &str) -> [String; 2] {
+    ["xdg-open".to_string(), url.to_string()]
+}
+
+impl Browser for SystemBrowser {
+    fn open(&self, url: &str) -> Result<(), String> {
+        let argv = open_argv(url);
+        std::process::Command::new(&argv[0])
+            .arg(&argv[1])
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("could not launch {}: {e}", argv[0]))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::cell::RefCell;
     use std::io::Write;
     use std::net::TcpStream;
+
+    #[test]
+    fn the_browser_opens_the_url_with_xdg_open() {
+        let argv = open_argv("https://accounts.example.com/authorize?x=1");
+        assert_eq!(argv[0], "xdg-open");
+        assert_eq!(argv[1], "https://accounts.example.com/authorize?x=1");
+    }
 
     /// Extract a query-param value from `url` (`...&name=VALUE&...` or `?name=`).
     fn param<'a>(url: &'a str, name: &str) -> Option<&'a str> {
