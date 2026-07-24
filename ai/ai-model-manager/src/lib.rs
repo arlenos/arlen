@@ -363,6 +363,72 @@ pub fn best_fitting_quant(params_b: f64, hw: &Hardware) -> Option<Quant> {
         .find(|&quant| footprint_gib(params_b, quant) <= budget)
 }
 
+/// Parse the GGUF quantization from a model name or filename, e.g.
+/// `Qwen2.5-7B-Instruct-Q4_K_M` -> [`Quant::Q4KM`]. The name heuristic that lets a
+/// live HuggingFace result be fit-ranked without fetching GGUF metadata. Returns
+/// `None` when no SUPPORTED quant tag is present (an unsupported quant like `Q2_K`,
+/// or a name that omits it - the caller then falls back to the default quant).
+pub fn parse_quant_from_name(name: &str) -> Option<Quant> {
+    let upper = name.to_uppercase();
+    // The five supported tags are distinct substrings, so a simple contains-scan
+    // is unambiguous (no tag is a substring of another).
+    [Quant::Q3KM, Quant::Q4KM, Quant::Q5KM, Quant::Q6K, Quant::Q8_0]
+        .into_iter()
+        .find(|q| upper.contains(q.gguf_tag()))
+}
+
+/// Parse the parameter count (in billions) from a model name, e.g.
+/// `Qwen2.5-7B-Instruct` -> `7.0`, `Mixtral-8x7B` -> `56.0`. The name heuristic for
+/// fit-ranking a live HuggingFace result: it looks for a standalone `<num>B` (or an
+/// MoE `<num>x<num>B`, multiplied out because ALL experts are resident so the total
+/// params drive the memory footprint). A version like the `3.2` in `Llama-3.2` is
+/// NOT matched - it is not immediately followed by `B`, and a digit embedded in a
+/// word (`Qwen2.5`) is skipped because the number must start at a token boundary.
+/// Best-effort: `None` when no such token is present.
+pub fn parse_params_b_from_name(name: &str) -> Option<f64> {
+    let chars: Vec<char> = name.chars().collect();
+    let n = chars.len();
+    // A boundary is the string edge or a non-alphanumeric, non-`.` char.
+    let is_boundary = |c: Option<&char>| c.is_none_or(|c| !c.is_ascii_alphanumeric() && *c != '.');
+    let mut i = 0;
+    while i < n {
+        let preceded_by_boundary = is_boundary(i.checked_sub(1).map(|k| &chars[k]));
+        if chars[i].is_ascii_digit() && preceded_by_boundary {
+            let (num1, j1) = read_number(&chars, i);
+            let mut total = num1;
+            let mut j = j1;
+            // MoE: `<num>x<num>` - multiply the experts out.
+            if j < n && matches!(chars[j], 'x' | 'X') && j + 1 < n && chars[j + 1].is_ascii_digit() {
+                let (num2, k) = read_number(&chars, j + 1);
+                total = num1 * num2;
+                j = k;
+            }
+            // Must be immediately followed by `B`/`b` at a trailing boundary.
+            if total > 0.0
+                && j < n
+                && matches!(chars[j], 'B' | 'b')
+                && is_boundary(chars.get(j + 1))
+            {
+                return Some(total);
+            }
+            i = j.max(i + 1);
+        } else {
+            i += 1;
+        }
+    }
+    None
+}
+
+/// Read a decimal number starting at `start`, returning `(value, index-after)`.
+fn read_number(chars: &[char], start: usize) -> (f64, usize) {
+    let mut j = start;
+    while j < chars.len() && (chars[j].is_ascii_digit() || chars[j] == '.') {
+        j += 1;
+    }
+    let s: String = chars[start..j].iter().collect();
+    (s.parse().unwrap_or(0.0), j)
+}
+
 /// A recommendation for one model on the target hardware: the quant the manager
 /// would silently apply, the resulting fit badge, and the estimated generation
 /// rate. `quant` is `None` only when the model does not fit at any sane quant (the
@@ -938,5 +1004,32 @@ mod tests {
         assert!(!WeightFormat::Unknown.is_load_safe());
         assert!(!WeightFormat::Pickle.is_load_safe());
         assert_eq!(LicenseClarity::default(), LicenseClarity::Unknown);
+    }
+
+    #[test]
+    fn quant_parses_from_a_model_name_when_a_supported_tag_is_present() {
+        assert_eq!(parse_quant_from_name("Qwen2.5-7B-Instruct-Q4_K_M"), Some(Quant::Q4KM));
+        assert_eq!(parse_quant_from_name("mixtral-8x7b-q5_k_m.gguf"), Some(Quant::Q5KM));
+        assert_eq!(parse_quant_from_name("Model-Q3_K_M"), Some(Quant::Q3KM));
+        assert_eq!(parse_quant_from_name("Model-Q6_K"), Some(Quant::Q6K));
+        assert_eq!(parse_quant_from_name("Model-Q8_0"), Some(Quant::Q8_0));
+        // An unsupported quant or a name without one yields None so the caller
+        // falls back to the default quant.
+        assert_eq!(parse_quant_from_name("Model-Q2_K"), None);
+        assert_eq!(parse_quant_from_name("Qwen2.5-7B-Instruct"), None);
+    }
+
+    #[test]
+    fn params_parse_from_a_boundary_delimited_billions_token() {
+        assert_eq!(parse_params_b_from_name("Qwen2.5-7B-Instruct-Q4_K_M"), Some(7.0));
+        assert_eq!(parse_params_b_from_name("Llama-3.2-1B"), Some(1.0));
+        assert_eq!(parse_params_b_from_name("Phi-3.8B-mini"), Some(3.8));
+        // MoE: all experts are resident, so the total drives the footprint.
+        assert_eq!(parse_params_b_from_name("Mixtral-8x7B-Instruct-Q5_K_M"), Some(56.0));
+        // A version number that is not followed by B is not a param count.
+        assert_eq!(parse_params_b_from_name("Llama-3.2-Instruct"), None);
+        // A digit embedded in a word is not a boundary-delimited token.
+        assert_eq!(parse_params_b_from_name("Qwen2.5-Instruct"), None);
+        assert_eq!(parse_params_b_from_name("just-a-name"), None);
     }
 }
