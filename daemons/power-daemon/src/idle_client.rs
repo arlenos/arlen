@@ -175,3 +175,37 @@ fn run(stages: &[IdleStage], tx: Sender<IdleSignal>) -> Result<(), IdleClientErr
         queue.blocking_dispatch(&mut state)?;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::idle::{IdleAction, IdleStage};
+
+    /// Runtime verify against a LIVE compositor that implements
+    /// `ext-idle-notify-v1` (the dev/CI host runs one). Registers a 1-second
+    /// stage and asserts the `idled` signal arrives, exercising the whole
+    /// connect -> bind seat + notifier -> get_idle_notification -> dispatch
+    /// path that no unit test can reach. Read-only: the harness only receives
+    /// the signal (no executor runs), so it does not touch the live session.
+    ///
+    /// `#[ignore]d`: needs `$WAYLAND_DISPLAY`, an idle seat (no input during
+    /// the wait) and the protocol, so it is a manual / capable-host verify,
+    /// not part of the default suite.
+    #[tokio::test]
+    #[ignore = "needs a live ext-idle-notify-v1 compositor and an idle seat"]
+    async fn idled_fires_against_a_live_compositor() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let stages = vec![IdleStage {
+            after_secs: 1,
+            action: IdleAction::Blank,
+        }];
+        let _handle = spawn(stages, tx).expect("non-empty stages spawn a client");
+
+        let sig = tokio::time::timeout(std::time::Duration::from_secs(8), rx.recv())
+            .await
+            .expect("no idle signal within 8s (is the seat idle and the compositor ext-idle-notify-capable?)")
+            .expect("the client channel closed before firing");
+        assert_eq!(sig.stage, 0, "the single stage's index");
+        assert!(!sig.resumed, "expected an idled (not resumed) signal");
+    }
+}
