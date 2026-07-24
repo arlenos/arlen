@@ -109,6 +109,55 @@ pub enum AddAccountError {
     /// Storing the obtained tokens failed.
     #[error(transparent)]
     Vault(#[from] VaultError),
+    /// No provider by that name is registered (a typo, or the provider config is
+    /// missing the entry).
+    #[error("unknown provider: {0:?}")]
+    UnknownProvider(String),
+    /// The identity did not yield a valid account id (empty / all-punctuation).
+    #[error("invalid identity for provider {0:?}")]
+    InvalidIdentity(String),
+    /// Writing the registered account config failed.
+    #[error(transparent)]
+    Config(#[from] crate::config::ConfigError),
+}
+
+/// Add an account end to end: resolve `provider_name` in the registry, derive a
+/// stable account id from the provider + `identity`, run the browser OAuth flow to
+/// obtain and vault the tokens, and register the token-less account config so
+/// `list_accounts` + the grant system see it. Returns the account id.
+///
+/// The seams (`browser`, `exchanger`, `receiver`) are injected so the whole
+/// composition is testable end to end with mocks; the D-Bus `AddAccount` method
+/// supplies the real `SystemBrowser`/`HttpExchanger`, caller-auth, and the
+/// `AccountsChanged` signal on top. Ordering: the vault is written before the
+/// config, so a config-write failure leaves an orphaned vault record (harmless -
+/// no account config references it) rather than a config that names a
+/// tokenless account; a re-add overwrites both.
+#[allow(clippy::too_many_arguments)]
+pub fn add_account(
+    providers: &[crate::providers::OwnedProvider],
+    accounts_dir: &std::path::Path,
+    vault: &Vault,
+    receiver: &LoopbackReceiver,
+    browser: &dyn Browser,
+    exchanger: &dyn TokenExchanger,
+    provider_name: &str,
+    identity: &str,
+) -> Result<String, AddAccountError> {
+    let provider = crate::providers::find_provider(providers, provider_name)
+        .ok_or_else(|| AddAccountError::UnknownProvider(provider_name.to_string()))?;
+    let account_id = crate::config::account_id_for(provider_name, identity)
+        .ok_or_else(|| AddAccountError::InvalidIdentity(identity.to_string()))?;
+    add_account_flow(
+        vault,
+        &provider.as_config(),
+        receiver,
+        browser,
+        exchanger,
+        &account_id,
+    )?;
+    crate::config::register_account(accounts_dir, &account_id, provider_name, identity)?;
+    Ok(account_id)
 }
 
 /// Run the browser OAuth flow for `provider` and store the obtained tokens for
@@ -323,5 +372,78 @@ mod tests {
             "at-only"
         );
         assert_eq!(load_refresh_token(&vault, "webdav-bob").unwrap(), None);
+    }
+
+    /// The full add_account composition: resolve the provider, derive the id, run
+    /// the flow, and register the config - vault AND on-disk config both land, and
+    /// an unknown provider errors before touching anything.
+    #[test]
+    fn add_account_runs_the_flow_and_registers_the_config() {
+        let (vault, _vdir) = temp_vault();
+        let accounts_dir = tempfile::tempdir().unwrap();
+        let receiver = LoopbackReceiver::bind().unwrap();
+        let port = receiver.port().unwrap();
+        let providers = crate::providers::parse_providers(
+            r#"
+            [[provider]]
+            name = "google"
+            authorization_endpoint = "https://accounts.example.com/authorize"
+            token_endpoint = "https://accounts.example.com/token"
+            client_id = "cid"
+            scope = "openid email"
+        "#,
+        )
+        .unwrap();
+        let browser = CompletingBrowser {
+            port,
+            code: "the-code".into(),
+        };
+        let exchanger = CannedExchanger {
+            response: parse_token_response(
+                r#"{"access_token":"at-x","token_type":"Bearer","refresh_token":"rt-x"}"#,
+            )
+            .map_err(|e| e.to_string()),
+            seen_form: std::cell::RefCell::new(None),
+        };
+
+        // Unknown provider is refused BEFORE the flow (the receiver is untouched).
+        match add_account(
+            &providers,
+            accounts_dir.path(),
+            &vault,
+            &receiver,
+            &browser,
+            &exchanger,
+            "absent",
+            "x",
+        ) {
+            Err(AddAccountError::UnknownProvider(_)) => {}
+            other => panic!("expected UnknownProvider, got {other:?}"),
+        }
+        assert!(crate::config::load_accounts(accounts_dir.path()).0.is_empty());
+
+        // The real add: id derived, tokens vaulted, config registered.
+        let id = add_account(
+            &providers,
+            accounts_dir.path(),
+            &vault,
+            &receiver,
+            &browser,
+            &exchanger,
+            "google",
+            "carol@example.com",
+        )
+        .unwrap();
+        assert_eq!(id, "google-carol-example-com");
+        assert_eq!(
+            String::from_utf8(vault.load(&id).unwrap().unwrap()).unwrap(),
+            "at-x"
+        );
+        let (accounts, errs) = crate::config::load_accounts(accounts_dir.path());
+        assert!(errs.is_empty(), "no parse errors: {errs:?}");
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].id, id);
+        assert_eq!(accounts[0].provider, "google");
+        assert_eq!(accounts[0].identity, "carol@example.com");
     }
 }
