@@ -51,6 +51,49 @@ pub fn assemble(body: RequestBody, requester: AttestedRequester) -> ConsentReque
     }
 }
 
+/// The SO_PEERCRED-attested peers permitted to raise a request ON BEHALF OF an
+/// app they have authenticated. The xdg portal mediates ScreenCast/Camera/Mic
+/// for apps that reach the desktop-portal FRONTEND (which verifies the app via
+/// `.flatpak-info`, xdg-portal §2 Option-A) rather than this broker directly, so
+/// it must be able to attribute the capture grant to the app, not to itself. A
+/// peer NOT in this set that sets `on_behalf_of` is ignored (attributed to
+/// itself), so the field can never redirect a grant unless the peer is trusted.
+const TRUSTED_INTERMEDIARIES: &[&str] = &["xdg-desktop-portal"];
+
+/// Whether `peer` (an SO_PEERCRED-attested app id) may assert `on_behalf_of`.
+fn is_trusted_intermediary(peer: &str) -> bool {
+    TRUSTED_INTERMEDIARIES.contains(&peer)
+}
+
+/// A plausible reverse-DNS app id: the broker attributes a grant + keys a
+/// revocation handle on this, so a mediator-supplied subject is charset-bounded
+/// (defense-in-depth on top of the trusted mediator having resolved it itself).
+fn is_plausible_app_id(app: &str) -> bool {
+    !app.is_empty()
+        && app.len() <= 255
+        && app
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+}
+
+/// Resolve the attested requester. `on_behalf_of` is HONORED only when the
+/// attested peer is a trusted intermediary AND the named subject is a plausible
+/// app id distinct from the peer; in every other case the field is ignored and
+/// the requester is the attested peer itself (the load-bearing fail-safe). Used
+/// by BOTH intake paths (this dispatch and the daemon's stateful `intake`).
+pub(crate) fn resolve_requester(attested_peer: &str, on_behalf_of: Option<&str>) -> AttestedRequester {
+    match on_behalf_of {
+        Some(subject)
+            if is_trusted_intermediary(attested_peer)
+                && is_plausible_app_id(subject)
+                && subject != attested_peer =>
+        {
+            AttestedRequester::on_behalf_of(subject, attested_peer)
+        }
+        _ => AttestedRequester::new(attested_peer),
+    }
+}
+
 /// Handle one inbound request: build the request from the body + the attested
 /// peer app id, classify and enqueue it, and return the reply. `attested_app_id`
 /// MUST be the value the socket resolved from SO_PEERCRED (`path_to_app_id`),
@@ -61,7 +104,8 @@ pub fn handle_intake(
     capability: &Capability,
     queue: &mut ConsentQueue,
 ) -> IntakeReply {
-    let request = assemble(body, AttestedRequester::new(attested_app_id));
+    let requester = resolve_requester(attested_app_id, body.on_behalf_of.as_deref());
+    let request = assemble(body, requester);
     match queue.enqueue(request, capability) {
         Enqueued::Queued(id) => IntakeReply::Queued { id: RequestId::get(id) },
         Enqueued::SilentGrant => IntakeReply::SilentGranted,
@@ -97,6 +141,7 @@ mod tests {
             preview: None,
             targets: Vec::new(),
             total: None,
+            on_behalf_of: None,
             summary: "do a thing".to_string(),
             scope: Some("/x".to_string()),
         }
@@ -111,6 +156,44 @@ mod tests {
         let front = q.front().unwrap();
         assert_eq!(front.request.requester.grant_recipient(), "org.arlen.files");
         assert_eq!(front.request.requester.display_id(), "org.arlen.files");
+    }
+
+    #[test]
+    fn a_trusted_intermediary_grants_on_behalf_of_the_named_app() {
+        // The portal, an allowlisted intermediary, requests for an app it
+        // authenticated: the grant + the shown identity are the APP; the portal
+        // is recorded only as the mediator.
+        let r = resolve_requester("xdg-desktop-portal", Some("org.example.recorder"));
+        assert_eq!(r.grant_recipient(), "org.example.recorder");
+        assert_eq!(r.display_id(), "org.example.recorder");
+        assert_eq!(r.mediator(), Some("xdg-desktop-portal"));
+    }
+
+    #[test]
+    fn a_non_intermediary_cannot_redirect_a_grant() {
+        // The load-bearing fail-safe: a peer NOT on the intermediary allowlist
+        // that sets on_behalf_of is attributed to ITSELF, never the claimed app.
+        let r = resolve_requester("com.evil.app", Some("org.arlen.files"));
+        assert_eq!(r.grant_recipient(), "com.evil.app");
+        assert_eq!(r.mediator(), None);
+    }
+
+    #[test]
+    fn a_trusted_intermediary_without_on_behalf_is_a_direct_request() {
+        let r = resolve_requester("xdg-desktop-portal", None);
+        assert_eq!(r.grant_recipient(), "xdg-desktop-portal");
+        assert_eq!(r.mediator(), None);
+    }
+
+    #[test]
+    fn an_implausible_or_self_on_behalf_is_ignored() {
+        // Empty, bad-charset (path/space injection into the grant subject), or a
+        // subject equal to the peer all fall back to the attested peer.
+        for bad in ["", "has space", "../etc/x", "xdg-desktop-portal"] {
+            let r = resolve_requester("xdg-desktop-portal", Some(bad));
+            assert_eq!(r.grant_recipient(), "xdg-desktop-portal", "subject {bad:?} must be ignored");
+            assert_eq!(r.mediator(), None);
+        }
     }
 
     #[test]

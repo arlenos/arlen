@@ -138,6 +138,7 @@ mod tests {
             preview: None,
             targets: Vec::new(),
             total: None,
+            on_behalf_of: None,
             summary: "s".to_string(),
             scope: None,
         }
