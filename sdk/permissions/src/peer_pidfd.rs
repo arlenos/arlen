@@ -97,6 +97,13 @@ impl PeerPidfd {
         self.uid
     }
 
+    /// Borrow the pinned pidfd, e.g. to pass to the identity broker's
+    /// `Lookup` over `SCM_RIGHTS`. Borrowed, so the pin (and thus the
+    /// pid reservation) stays with this `PeerPidfd` for its lifetime.
+    pub fn pidfd(&self) -> std::os::fd::BorrowedFd<'_> {
+        std::os::fd::AsFd::as_fd(&self.pidfd)
+    }
+
     /// True iff the pinned peer process is still alive. Race-free:
     /// the held pidfd refers to exactly the original process, so a
     /// recycled pid cannot masquerade as alive. A dead process reads

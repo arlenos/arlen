@@ -222,9 +222,23 @@ pub fn lookup_identity(
     lookup_over(&mut stream, peer_pidfd)
 }
 
+/// Bound on a single identity round trip. A register/lookup is one short local
+/// exchange (sub-millisecond), so this only fires if the broker accepted the
+/// connection but stalled without replying. It caps BOTH ops: the resolver on
+/// the hot admission path must not hang on a wedged broker (a timed-out lookup
+/// becomes a transport error the resolver treats as fall-through), and the
+/// launcher must not hang registering a child.
+const IDENTITY_IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
 fn connect(socket: &Path) -> Result<UnixStream, IdentityClientError> {
-    UnixStream::connect(socket)
-        .map_err(|e| IdentityClientError::Transport(format!("connect {}: {e}", socket.display())))
+    let stream = UnixStream::connect(socket)
+        .map_err(|e| IdentityClientError::Transport(format!("connect {}: {e}", socket.display())))?;
+    // Best-effort: a failed setsockopt (effectively never on a live Unix socket)
+    // must not abort an otherwise-valid connection; the round trip is still
+    // bounded by the broker's own read timeout on its side.
+    let _ = stream.set_read_timeout(Some(IDENTITY_IO_TIMEOUT));
+    let _ = stream.set_write_timeout(Some(IDENTITY_IO_TIMEOUT));
+    Ok(stream)
 }
 
 /// Write a framed [`IdentityResponse`] the sync way (the test-server
