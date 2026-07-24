@@ -144,9 +144,21 @@ pub struct RecipeMeta {
     /// Semver version; omitted with `github-release` (which follows tags).
     #[serde(default)]
     pub version: Option<String>,
-    /// One-line summary.
+    /// One-line summary (the AppStream `<summary>`).
     #[serde(default)]
     pub summary: Option<String>,
+    /// Longer prose description (the AppStream `<description>`), used for the store
+    /// app page when the upstream ships no `metainfo.xml` to harvest. Store-app.md
+    /// ST-1: forage apps land in the same composed AppStream catalog as Flatpak/apt,
+    /// so they carry the same metadata a client renders.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Screenshot image URLs (the AppStream `<screenshots>`). Arlen hosts NO image
+    /// CDN (store-app.md), so these are upstream-hosted http(s) URLs the client
+    /// fetches directly; each is validated as http(s) so a `file:`/`data:` URL cannot
+    /// slip into the composed catalog.
+    #[serde(default)]
+    pub screenshots: Vec<String>,
     /// SPDX license expression.
     #[serde(default)]
     pub license: Option<String>,
@@ -536,6 +548,18 @@ pub fn validate(recipe: &Recipe) -> Vec<ValidationError> {
         errors.push(err("recipe.maintainer", "must not be empty"));
     }
 
+    // Store metadata: a screenshot must be an http(s) URL the client can fetch.
+    // Arlen hosts no CDN, so a non-http scheme (file:/data:) is a contract error,
+    // not a hint - it would otherwise ride into the composed AppStream catalog.
+    for (i, shot) in recipe.recipe.screenshots.iter().enumerate() {
+        if !is_http_url(shot) {
+            errors.push(err(
+                &format!("recipe.screenshots[{i}]"),
+                "screenshot must be an http(s) URL",
+            ));
+        }
+    }
+
     if recipe.source.is_empty() {
         errors.push(err("source", "at least one source is required"));
     }
@@ -815,6 +839,19 @@ fn is_sha256(s: &str) -> bool {
     is_hex_len(s, 64)
 }
 
+/// Whether `url` is an http(s) URL with a non-empty host part. A loose validate-time
+/// check (the store client re-resolves the host); it exists to keep a non-fetchable
+/// scheme (`file:`/`data:`) or an empty authority out of the composed catalog.
+fn is_http_url(url: &str) -> bool {
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"));
+    match rest {
+        Some(after) => !after.is_empty() && !after.starts_with('/'),
+        None => false,
+    }
+}
+
 /// Whether `url` is a `github.com/{owner}/{repo}` repository url (optionally
 /// scheme-prefixed), the form a `github-release` source requires (D7). A loose
 /// validate-time check; the fetch resolves and pins the same host.
@@ -937,6 +974,53 @@ commit = "{COMMIT}"
         assert_eq!(r.source.len(), 1);
         assert_eq!(r.source[0].source_type, SourceType::Git);
         assert!(validate(&r).is_empty(), "minimal recipe is valid: {:?}", validate(&r));
+    }
+
+    #[test]
+    fn store_metadata_parses_and_validates_screenshot_urls() {
+        let toml = format!(
+            r#"
+[recipe]
+id = "org.example.hello"
+name = "Hello"
+maintainer = "key:abc"
+summary = "a greeter"
+description = "A longer prose description for the store app page."
+screenshots = ["https://example.org/a.png", "http://example.org/b.png"]
+
+[[source]]
+type = "git"
+url = "https://github.com/example/hello"
+commit = "{COMMIT}"
+"#
+        );
+        let r = parse(&toml).expect("parses");
+        assert_eq!(r.recipe.description.as_deref(), Some("A longer prose description for the store app page."));
+        assert_eq!(r.recipe.screenshots.len(), 2);
+        assert!(validate(&r).is_empty(), "http(s) screenshots are valid: {:?}", validate(&r));
+
+        // A non-http screenshot scheme is a contract error (no CDN, must be fetchable).
+        let bad = git_recipe("").replace(
+            "[[source]]",
+            "screenshots = [\"file:///etc/passwd\"]\n\n[[source]]",
+        );
+        let rb = parse(&bad).expect("parses");
+        let errs = validate(&rb);
+        assert!(
+            errs.iter().any(|e| e.field.starts_with("recipe.screenshots")),
+            "a file: screenshot is rejected: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn is_http_url_accepts_only_fetchable_http_schemes() {
+        assert!(is_http_url("https://example.org/a.png"));
+        assert!(is_http_url("http://example.org/a.png"));
+        assert!(!is_http_url("file:///etc/passwd"));
+        assert!(!is_http_url("data:image/png;base64,AAAA"));
+        assert!(!is_http_url("https://"));
+        assert!(!is_http_url("ftp://example.org/x"));
+        assert!(!is_http_url(""));
     }
 
     #[test]
