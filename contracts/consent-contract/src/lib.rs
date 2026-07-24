@@ -13,8 +13,12 @@
 
 #![warn(missing_docs)]
 
-use arlen_ai_core::capability::ActionKind;
 use serde::{Deserialize, Serialize};
+
+/// The impact axis a [`RequestBody`] carries, re-exported so a consumer building
+/// or reading a request gets it from this contract crate rather than depending
+/// on the AI core directly.
+pub use arlen_ai_core::capability::ActionKind;
 
 /// The class of system request seeking consent. The broker is the ONE surface
 /// for all of these (system-dialog-plan.md): they share the trusted path, the

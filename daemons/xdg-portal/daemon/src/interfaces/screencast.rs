@@ -250,11 +250,27 @@ impl ScreenCast {
             return (response::OTHER, error_results(msg));
         }
 
-        tracing::info!(
-            request = %req.path, session = %key, app_id, types, cursor_mode, persist_mode,
-            "ScreenCast: sources selected (broker consent mint is the next slice)"
-        );
-        (response::SUCCESS, HashMap::new())
+        // Route consent through the broker ON BEHALF OF the capturing app: the
+        // grant + the dialog name app_id (the frontend-verified id), not the
+        // portal (the broker honors on_behalf_of only for the allowlisted
+        // portal). Fail-closed - a denial or an unreachable broker refuses the
+        // share. Blocks until the user resolves the trusted-path dialog.
+        let decision = crate::consent::request_screencast_consent(
+            &crate::consent::intake_socket_path(),
+            app_id,
+            "Share your screen contents",
+        )
+        .await;
+        match decision {
+            crate::consent::ConsentDecision::Allowed => {
+                tracing::info!(request = %req.path, session = %key, app_id, types, cursor_mode, persist_mode, "ScreenCast: sources selected, consent granted");
+                (response::SUCCESS, HashMap::new())
+            }
+            crate::consent::ConsentDecision::Denied => {
+                tracing::info!(request = %req.path, session = %key, app_id, "ScreenCast: consent denied");
+                (response::CANCELLED, HashMap::new())
+            }
+        }
     }
 
     /// Start the stream. The PipeWire producer that returns real node ids is the
