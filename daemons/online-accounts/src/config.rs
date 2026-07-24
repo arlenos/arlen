@@ -218,6 +218,51 @@ pub fn render_account_config(id: &str, provider: &str, identity: &str) -> Result
     toml::to_string(&NewAccount { id, provider, identity }).map_err(ConfigError::Serialize)
 }
 
+/// Derive a stable account id from a provider name and the account identity
+/// (`google` + `carol@example.com` -> `google-carol-example-com`). The id names
+/// BOTH the config file (`{id}.toml`, so it must be a safe, unambiguous file
+/// stem) and the vault record (the HKDF `info`, so it must be within the vault's
+/// `[a-z0-9._-]` charset). Folding to `[a-z0-9-]` satisfies both at once and, by
+/// construction, cannot path-traverse (`/` and `.` fold to `-`, so no `..`, no
+/// separator, no leading dot / hidden file). Returns `None` when either input
+/// folds to nothing - fail-closed, so `AddAccount` refuses to write an unnamed or
+/// ambiguous account rather than guessing.
+pub fn account_id_for(provider: &str, identity: &str) -> Option<String> {
+    let p = slug(provider);
+    let i = slug(identity);
+    if p.is_empty() || i.is_empty() {
+        return None;
+    }
+    Some(format!("{p}-{i}"))
+}
+
+/// Fold a string to `[a-z0-9-]`: ASCII-lowercase, every other byte (including
+/// `.` `/` `@` `:` and any non-ASCII) becomes `-`, consecutive `-` collapse, and
+/// leading/trailing `-` are trimmed. Capped at 64 chars so `{provider}-{id}.toml`
+/// stays a valid filename. The result is a safe file stem and a valid vault
+/// record component in one pass.
+fn slug(s: &str) -> String {
+    let mut out = String::with_capacity(s.len().min(64));
+    let mut last_dash = true; // seeded true so a leading run is trimmed
+    for ch in s.chars() {
+        if out.len() >= 64 {
+            break;
+        }
+        let c = ch.to_ascii_lowercase();
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+            last_dash = false;
+        } else if !last_dash {
+            out.push('-');
+            last_dash = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    out
+}
+
 /// Load every `{id}.toml` account config in `dir`. A file that fails to parse (or
 /// whose id mismatches) is SKIPPED with its error returned alongside, never
 /// silently granted: a malformed grant config yields no account, so it grants no
@@ -261,6 +306,50 @@ mod tests {
         assert_eq!(account.identity, "carol@example.com");
         assert!(account.services.is_empty(), "services are added later");
         assert!(account.grants.is_empty(), "grants are added later");
+    }
+
+    #[test]
+    fn account_id_folds_an_email_identity_to_a_safe_id() {
+        assert_eq!(
+            super::account_id_for("google", "carol@example.com").as_deref(),
+            Some("google-carol-example-com")
+        );
+        // Caps and spaces in the provider fold and collapse too.
+        assert_eq!(
+            super::account_id_for("Nextcloud Cloud", "bob").as_deref(),
+            Some("nextcloud-cloud-bob")
+        );
+    }
+
+    #[test]
+    fn account_id_cannot_path_traverse_or_hide() {
+        // A traversal-shaped input folds to plain segments: no `/`, no `.`, no leading dot.
+        let id = super::account_id_for("../../etc", "..\\evil").unwrap();
+        assert!(!id.contains('/'), "no separator: {id}");
+        assert!(!id.contains('.'), "no dot: {id}");
+        assert!(!id.contains(".."), "no traversal: {id}");
+        assert!(!id.starts_with('-') && !id.ends_with('-'), "trimmed: {id}");
+    }
+
+    #[test]
+    fn account_id_is_empty_input_fail_closed() {
+        assert_eq!(super::account_id_for("google", ""), None);
+        assert_eq!(super::account_id_for("", "carol"), None);
+        // An identity that is all punctuation folds to nothing -> refused.
+        assert_eq!(super::account_id_for("google", "@@@"), None);
+    }
+
+    #[test]
+    fn a_derived_id_round_trips_through_render_and_parse() {
+        // The keystone chain: derive the id, render the token-less config under it,
+        // parse it back. The id must match the `{id}.toml` file stem.
+        let id = super::account_id_for("google", "carol@example.com").unwrap();
+        let toml = render_account_config(&id, "google", "carol@example.com").unwrap();
+        let file = format!("{id}.toml");
+        let account = parse_account(std::path::Path::new(&file), &toml).unwrap();
+        assert_eq!(account.id, id);
+        assert_eq!(account.provider, "google");
+        assert_eq!(account.identity, "carol@example.com");
     }
 
     #[test]
