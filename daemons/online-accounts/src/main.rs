@@ -8,7 +8,7 @@
 //! interfaces are deferred for a security reason (a naive same-uid enumeration
 //! would regress per-caller visibility); see the crate docs.
 
-use online_accounts::dbus::{AccountsDaemon, AccountsObjectManager};
+use online_accounts::dbus::{AccountsDaemon, AccountsManager, AccountsObjectManager};
 use online_accounts::vault::{vault_dir, Vault};
 use online_accounts::{config, master};
 use zbus::connection;
@@ -52,6 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .serve_at(
             "/org/arlen/Accounts1",
             AccountsObjectManager::new(dir.clone()),
+        )?
+        .serve_at(
+            "/org/arlen/Accounts1",
+            AccountsManager::new(dir.clone(), *master.bytes(), vdir.clone()),
         )?
         .serve_at(
             "/org/arlen/Accounts1",
