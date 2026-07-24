@@ -90,6 +90,41 @@ impl CachedIndex {
     }
 }
 
+/// Assemble a cached index from HuggingFace search hits, stamping `captured_at_unix`
+/// and attaching each candidate's representative GGUF size via the injected
+/// `resolve_size`. This is the refresh job's PURE assembly core, kept free of egress
+/// and scheduling (the job's home) so it is unit-testable with a fake resolver; the
+/// real job wires `resolve_size` to fetch each repo's tree and pick the
+/// representative quant's size (`crate::hf::select_gguf_for_quant`).
+///
+/// A hit whose id states no parameter count is DROPPED (nothing to fit-rank on). A
+/// hit whose size cannot be resolved is KEPT with `file_size_bytes` 0, so the reader
+/// still ranks it by the params-only name-heuristic estimate rather than losing the
+/// candidate. Popularity order is preserved.
+pub fn build_cached_index(
+    hits: &[crate::hf::HfHit],
+    captured_at_unix: u64,
+    resolve_size: impl Fn(&crate::hf::HfHit) -> Option<u64>,
+) -> CachedIndex {
+    let models = hits
+        .iter()
+        .filter_map(|hit| {
+            let params_b = crate::parse_params_b_from_name(&hit.id)?;
+            Some(IndexedModel {
+                id: hit.id.clone(),
+                params_b,
+                file_size_bytes: resolve_size(hit).unwrap_or(0),
+                downloads: hit.downloads,
+                likes: hit.likes,
+            })
+        })
+        .collect();
+    CachedIndex {
+        captured_at_unix,
+        models,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,5 +190,36 @@ mod tests {
     fn a_resolved_entry_fits_on_the_apu() {
         let m = model("bartowski/Qwen2.5-7B-Instruct-GGUF", 7.0, 4_700_000_000);
         assert_eq!(m.fit(&apu()), Some(FitBadge::Fits));
+    }
+
+    #[test]
+    fn build_assembles_stamps_and_handles_params_and_size_resolution() {
+        use crate::hf::HfHit;
+        let hits = vec![
+            HfHit { id: "bartowski/Qwen2.5-7B-Instruct-GGUF".into(), downloads: 500, likes: 9 },
+            // Size unresolvable -> kept with 0 so the estimate path still ranks it.
+            HfHit { id: "a/Llama-3.2-1B-GGUF".into(), downloads: 300, likes: 5 },
+            // No params in the id -> dropped, not carried as an unrankable entry.
+            HfHit { id: "someone/mystery-GGUF".into(), downloads: 10, likes: 0 },
+        ];
+        let resolve = |h: &HfHit| {
+            if h.id.contains("7B") {
+                Some(4_700_000_000)
+            } else {
+                None
+            }
+        };
+        let index = build_cached_index(&hits, 1234, resolve);
+        assert_eq!(index.captured_at_unix, 1234);
+        // The mystery (params-less) hit is dropped; order + popularity preserved.
+        assert_eq!(index.models.len(), 2);
+        assert_eq!(index.models[0].id, "bartowski/Qwen2.5-7B-Instruct-GGUF");
+        assert_eq!(index.models[0].file_size_bytes, 4_700_000_000);
+        assert_eq!(index.models[0].downloads, 500);
+        assert!(index.models[0].has_resolved_size());
+        // The 1B hit is kept but with an unresolved size (estimate fallback).
+        assert_eq!(index.models[1].params_b, 1.0);
+        assert_eq!(index.models[1].file_size_bytes, 0);
+        assert!(!index.models[1].has_resolved_size());
     }
 }
