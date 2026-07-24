@@ -28,7 +28,7 @@ use thiserror::Error;
 mod metainfo;
 mod writer;
 
-pub use metainfo::{find_upstream_metainfo, synthesize_metainfo};
+pub use metainfo::{component_type, find_upstream_metainfo, synthesize_metainfo};
 
 pub use writer::{
     synthesize_manifest, write_lunpkg, ManifestError, WriteError, MANIFEST_FILE, SIGNATURE_FILE,
