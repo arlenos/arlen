@@ -111,33 +111,48 @@ async fn main() {
         let stages = idle_stages.clone();
         let _idle_client = arlen_powerd::idle_client::spawn(idle_stages, idle_tx);
         tokio::spawn(async move {
+            use arlen_powerd::brightness::Dimmer;
+            use arlen_powerd::idle::IdleAction;
             // A dedicated system-bus connection for idle actions, independent of
-            // the battery poll's cached bus.
+            // the battery poll's cached bus. The Dimmer holds the pre-dim
+            // brightness so a resume restores it.
             let conn = zbus::Connection::system().await.ok();
+            let mut dimmer = Dimmer::new();
             while let Some(sig) = idle_rx.recv().await {
                 let Some(stage) = stages.get(sig.stage) else {
                     continue;
                 };
-                if sig.resumed {
-                    if stage.action.reversible() {
-                        info!(stage = sig.stage, "idle resume: restore pending (backend not yet wired)");
-                    }
+                let Some(conn) = conn.as_ref() else {
+                    warn!("idle action skipped: no system bus");
                     continue;
-                }
-                match stage.action.as_power_action() {
-                    Some(pa) => match conn.as_ref() {
-                        Some(conn) => {
+                };
+                match stage.action {
+                    // Dim: lower the backlight on idle, restore it on resume.
+                    IdleAction::Dim { to_percent } => {
+                        if sig.resumed {
+                            info!(stage = sig.stage, "idle resume: restoring brightness");
+                            dimmer.restore(conn).await;
+                        } else {
+                            info!(stage = sig.stage, to_percent, "idle: dimming");
+                            dimmer.dim(conn, to_percent).await;
+                        }
+                    }
+                    // Suspend: the one logind-backed action. Terminal (no resume).
+                    other if !sig.resumed => match other.as_power_action() {
+                        Some(pa) => {
                             info!(stage = sig.stage, "idle: performing {}", pa.as_str());
                             if let Err(e) = logind::perform(conn, pa).await {
                                 warn!("idle action failed: {e}");
                             }
                         }
-                        None => warn!("idle action skipped: no system bus"),
+                        // Blank / Lock: backends not yet wired.
+                        None => info!(
+                            stage = sig.stage,
+                            "idle: {other:?} not yet wired (needs its backend)"
+                        ),
                     },
-                    None => info!(
-                        stage = sig.stage,
-                        "idle: {:?} not yet wired (needs its backend)", stage.action
-                    ),
+                    // Resume of a non-dim action: nothing to undo.
+                    _ => {}
                 }
             }
         });

@@ -35,3 +35,6 @@ os-sdk = { path = "../../sdk/os-sdk" }
 # Caller identity (SO_PEERCRED -> path_to_app_id) + the [system.power] capability
 # grant the PWR-R7 action gate reads.
 arlen-permissions = { path = "../../sdk/permissions" }
+
+[dev-dependencies]
+tempfile = "3"
