@@ -117,6 +117,51 @@ impl LidConfigToml {
     }
 }
 
+/// The `[idle]` config block (PWR-R3). The non-destructive dim/blank stages
+/// default ON (standard desktop idle behaviour, restored on any input); the
+/// higher-impact lock/suspend stages default OFF (`0`) and are opt-in - a
+/// user would not want an unexpected lock or suspend, the same conservative
+/// posture as `[critical-action]`. A threshold of `0` disables its stage.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, rename_all = "kebab-case")]
+pub struct IdleConfigToml {
+    /// Dim the screen after N seconds idle (`0` = off). Default 300 (5 min).
+    pub dim_after: u32,
+    /// Brightness percent while dimmed. Default 30.
+    pub dim_to: u8,
+    /// Turn the screen off after N seconds idle (`0` = off). Default 600 (10 min).
+    pub blank_after: u32,
+    /// Lock the screen after N seconds idle (`0` = off, opt-in).
+    pub lock_after: u32,
+    /// Suspend after N seconds idle (`0` = off, opt-in).
+    pub suspend_after: u32,
+}
+
+impl Default for IdleConfigToml {
+    fn default() -> Self {
+        Self {
+            dim_after: 300,
+            dim_to: 30,
+            blank_after: 600,
+            lock_after: 0,
+            suspend_after: 0,
+        }
+    }
+}
+
+impl IdleConfigToml {
+    /// The ordered idle-escalation stages the daemon acts on.
+    pub fn resolve(&self) -> Vec<crate::idle::IdleStage> {
+        crate::idle::stages(
+            self.dim_after,
+            self.dim_to,
+            self.blank_after,
+            self.lock_after,
+            self.suspend_after,
+        )
+    }
+}
+
 /// The power daemon's config (`~/.config/arlen/power.toml`).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -125,6 +170,8 @@ pub struct PowerConfig {
     pub critical_action: CriticalActionConfig,
     /// The lid / power-key policy (PWR-R4).
     pub lid: LidConfigToml,
+    /// The idle-escalation policy (PWR-R3).
+    pub idle: IdleConfigToml,
 }
 
 impl PowerConfig {
@@ -178,6 +225,31 @@ mod tests {
         assert_eq!(resolved.on_lid_close, Some(PowerAction::Suspend));
         assert!(resolved.ignore_lid_when_docked);
         assert_eq!(resolved.on_power_key, Some(PowerAction::PowerOff));
+    }
+
+    #[test]
+    fn the_idle_default_dims_then_blanks_and_never_auto_locks_or_suspends() {
+        use crate::idle::IdleAction;
+        // No [idle] block -> the non-destructive dim+blank stages, and NO
+        // lock/suspend (those stay opt-in).
+        let stages = IdleConfigToml::default().resolve();
+        let actions: Vec<IdleAction> = stages.iter().map(|s| s.action).collect();
+        assert_eq!(
+            actions,
+            vec![IdleAction::Dim { to_percent: 30 }, IdleAction::Blank]
+        );
+    }
+
+    #[test]
+    fn an_idle_block_parses_and_resolves() {
+        // A user opting into idle-suspend + disabling dim.
+        let cfg: PowerConfig = toml::from_str(
+            "[idle]\ndim-after = 0\nblank-after = 300\nsuspend-after = 1800\n",
+        )
+        .unwrap();
+        let stages = cfg.idle.resolve();
+        let seconds: Vec<u32> = stages.iter().map(|s| s.after_secs).collect();
+        assert_eq!(seconds, vec![300, 1800]); // dim disabled, blank then suspend
     }
 
     #[test]
