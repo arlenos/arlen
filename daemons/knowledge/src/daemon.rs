@@ -522,6 +522,20 @@ enum WriteRequest {
         /// The target node's external key.
         to_key: String,
     },
+    /// Merge a duplicate instance into a canonical one (SHARED-ENTITIES.md §Merge
+    /// Flow steps 3-4): re-point every edge of the duplicate onto the canonical,
+    /// then delete the duplicate. Only a `shared.*` type's declared owner app may
+    /// merge its instances (a non-shared type stays in the caller's namespace);
+    /// the field-data merge (steps 1-2) is the owner's separate write. Both keys
+    /// address instances of the same `qualified_type`.
+    MergeEntities {
+        /// The namespaced entity type of both instances.
+        qualified_type: String,
+        /// The external key of the duplicate to fold in and delete.
+        duplicate_key: String,
+        /// The external key of the canonical instance that survives.
+        canonical_key: String,
+    },
     /// Persist a consent grant into the shared LCG Grant node (system-dialog-
     /// plan.md, Option A): the durable half of the consent lifecycle, surfaced by
     /// the `access_grants` read in the same see+revoke place. Only the consent
@@ -1616,6 +1630,53 @@ async fn handle_write_request(
                     }
                 }
                 Err(e) => format!("ERROR: {e}"),
+            }
+        }
+        WriteRequest::MergeEntities {
+            qualified_type,
+            duplicate_key,
+            canonical_key,
+        } => {
+            // Owner-gated: only a shared.* type's declared owner may merge its
+            // instances; a non-shared type stays in the caller's namespace.
+            // Fail-closed in `authorise_entity_merge`.
+            if let Err(e) = crate::write::authorise_entity_merge(&token, &qualified_type) {
+                return format!("ERROR: {e}");
+            }
+            // The rel tables whose edges must be re-pointed (a catalog read).
+            let table = crate::write::entity_table_name(&qualified_type);
+            let involved = match graph.rel_tables_involving(&table).await {
+                Ok(t) => t,
+                Err(e) => return format!("ERROR: enumerate relations: {e}"),
+            };
+            // The re-point + delete plan (fail-closed: non-empty, distinct keys).
+            let stmts = match crate::write::plan_entity_merge(
+                &qualified_type,
+                &duplicate_key,
+                &canonical_key,
+                &involved,
+            ) {
+                Ok(s) => s,
+                Err(e) => return format!("ERROR: {e}"),
+            };
+            // Audit-before-persist, fail-closed (S13): content-free (app id + the
+            // merged type, never the duplicate/canonical keys).
+            let Some(sink) = audit else {
+                return "ERROR: audit unavailable".to_string();
+            };
+            if let Err(e) = sink
+                .submit(crate::audit::entity_merge_event(&token.app_id, &qualified_type, "ok"))
+                .await
+            {
+                warn!("entity merge audit failed, refusing write: {e}");
+                return "ERROR: audit unavailable".to_string();
+            }
+            // Re-point every edge then delete the duplicate ATOMICALLY: a partial
+            // merge (some edges moved, the duplicate left, or vice versa) would
+            // corrupt the graph, so the whole plan runs in one transaction.
+            match graph.transaction(stmts).await {
+                Ok(()) => "OK: merged".to_string(),
+                Err(e) => format!("ERROR: merge: {e}"),
             }
         }
         WriteRequest::PersistConsentGrant {
