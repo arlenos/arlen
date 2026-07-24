@@ -123,10 +123,15 @@ pub fn owner_uid() -> u32 {
 /// the owner's: the broker runs as a distinct (more-privileged) service
 /// uid, so its own `$XDG_RUNTIME_DIR` points at a different runtime dir
 /// than the user's, and the default resolver's `/run/arlen` fallback is
-/// bound by nothing. A trusted root/service daemon writing the user's
-/// ledger is fine - the user auditd admits the canonical config-broker
-/// binary by inode. In dev (single-uid) `owner_uid` is the developer's
-/// own uid, so this resolves to exactly the user's live auditd socket.
+/// bound by nothing. A trusted service daemon writing the user's ledger
+/// is admitted by its ATTESTED app_id: the auditd resolves the peer's
+/// canonical libexec path (`path_to_app_id` rule 1) to `config-broker`
+/// and checks it against its ADMITTED list - a path-string match, NOT an
+/// inode attestation (the inode gate only runs on rule-4 user-app paths,
+/// which the canonical libexec override never reaches), so admission rests
+/// on the same-uid-spoofable path resolver, the documented F3 residual. In
+/// dev (single-uid) `owner_uid` is the developer's own uid, so this
+/// resolves to exactly the user's live auditd socket.
 pub fn owner_audit_socket() -> PathBuf {
     if let Some(p) = std::env::var_os("ARLEN_CONFIG_BROKER_AUDIT_SOCKET") {
         return PathBuf::from(p);
