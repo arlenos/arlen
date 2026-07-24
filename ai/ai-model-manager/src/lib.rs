@@ -183,12 +183,21 @@ pub fn weights_gib(params_b: f64, quant: Quant) -> f64 {
     params_b * 1e9 * quant.bits_per_weight() / 8.0 / GIB
 }
 
+/// The resident memory footprint for a given weights size (GiB): the weights scaled
+/// by the runtime overhead plus the fixed OS/driver/KV reservation. Shared by the
+/// bpw-estimate path ([`footprint_gib`]) and the measured-size path
+/// ([`fit_badge_from_size`]), so both make the fit decision against the same honest
+/// resident-set formula.
+pub fn footprint_from_weights_gib(weights_gib: f64) -> f64 {
+    weights_gib * RUNTIME_OVERHEAD + FIXED_RESIDENT_GIB
+}
+
 /// The estimated resident memory footprint of running `params_b` at `quant`, in
 /// GiB: the weights scaled by the runtime overhead plus the fixed OS/driver/KV
 /// reservation. This is what a fit decision is made against, so it is the honest
 /// resident set, not the weights-only figure.
 pub fn footprint_gib(params_b: f64, quant: Quant) -> f64 {
-    weights_gib(params_b, quant) * RUNTIME_OVERHEAD + FIXED_RESIDENT_GIB
+    footprint_from_weights_gib(weights_gib(params_b, quant))
 }
 
 /// The memory budget available to a model on this hardware, in GiB: a discrete
@@ -343,6 +352,27 @@ pub fn fit_badge(params_b: f64, quant: Quant, hw: &Hardware) -> FitBadge {
     // Speed is bound by the per-token streamed bytes (the weights), not the full
     // resident footprint (the fixed OS/driver reservation is not re-read per token).
     let tok_s = estimate_tokens_per_sec(weights_gib(params_b, quant), hw.mem_bandwidth_gbps);
+    if tok_s < USABLE_TOKENS_PER_SEC {
+        FitBadge::MaySlow
+    } else {
+        FitBadge::Fits
+    }
+}
+
+/// The fit verdict for a GGUF file of a KNOWN on-disk size, the size-aware rank the
+/// cached popular-GGUF index enables (the refresh job resolves each candidate's real
+/// file size once, so ranking is a local computation over measured data, not the bpw
+/// estimate). The GGUF file IS the quantized weights, so its byte size is the
+/// weights figure directly; the footprint + speed then use the same overhead and
+/// bandwidth model as [`fit_badge`]. `WontFit` when the footprint exceeds the budget,
+/// `MaySlow` when the estimated rate is below the usable threshold, else `Fits`.
+pub fn fit_badge_from_size(file_size_bytes: u64, hw: &Hardware) -> FitBadge {
+    let weights_gib = file_size_bytes as f64 / GIB;
+    if footprint_from_weights_gib(weights_gib) > memory_budget_gib(hw) {
+        return FitBadge::WontFit;
+    }
+    // Speed is bound by the weights streamed per token, not the fixed reservation.
+    let tok_s = estimate_tokens_per_sec(weights_gib, hw.mem_bandwidth_gbps);
     if tok_s < USABLE_TOKENS_PER_SEC {
         FitBadge::MaySlow
     } else {
@@ -1087,5 +1117,36 @@ mod tests {
         // The single-hit bridge agrees and rejects a params-less id.
         assert_eq!(hf_hit_to_spec(&hits[1]).unwrap().params_b, 7.0);
         assert!(hf_hit_to_spec(&hits[2]).is_none());
+    }
+
+    #[test]
+    fn size_aware_fit_agrees_with_the_estimate_at_the_same_weights() {
+        let hw = apu_7840u();
+        // A resolved GGUF size equal to the bpw-estimated weights must give the same
+        // verdict as the estimate path, so the two rankers are consistent.
+        let weights = weights_gib(7.6, Quant::Q4KM);
+        let size_bytes = (weights * GIB) as u64;
+        assert_eq!(fit_badge_from_size(size_bytes, &hw), fit_badge(7.6, Quant::Q4KM, &hw));
+        assert_eq!(fit_badge_from_size(size_bytes, &hw), FitBadge::Fits);
+    }
+
+    #[test]
+    fn size_aware_fit_rejects_a_model_larger_than_the_budget() {
+        // A discrete 8 GB card cannot hold a 20 GiB GGUF file.
+        let hw = Hardware {
+            ram_gib: 32.0,
+            accelerator: Accelerator::Discrete { vram_gib: 8.0 },
+            mem_bandwidth_gbps: 448.0,
+        };
+        let twenty_gib = (20.0 * GIB) as u64;
+        assert_eq!(fit_badge_from_size(twenty_gib, &hw), FitBadge::WontFit);
+    }
+
+    #[test]
+    fn size_aware_fit_flags_a_bandwidth_bound_large_model_as_may_slow() {
+        let hw = apu_7840u();
+        // A ~30 GiB file fits the 45 GiB APU budget but streams slowly on 102 GB/s.
+        let thirty_gib = (30.0 * GIB) as u64;
+        assert_eq!(fit_badge_from_size(thirty_gib, &hw), FitBadge::MaySlow);
     }
 }
