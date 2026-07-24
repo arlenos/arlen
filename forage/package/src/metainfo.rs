@@ -173,10 +173,12 @@ pub fn find_upstream_metainfo(paths: &[PathBuf]) -> Option<PathBuf> {
         .map(|(_, p)| p.clone())
 }
 
-/// The in-package directory AppStream metadata is installed to. `appstreamcli
-/// compose` reads `<prefix>/share/metainfo/*.xml`, so a forage app that ships its
-/// metainfo here is composed into the same catalog as Flatpak and apt.
-const METAINFO_DIR: &str = "usr/share/metainfo";
+/// The in-package directory AppStream metadata lives in. A forage package uses the
+/// prefix-less `share/` layout installd installs (it copies top-level `bin/`/`lib/`/
+/// `share/`), and `appstreamcli compose` over the package prefix reads
+/// `<prefix>/share/metainfo/*.xml`, so the metainfo belongs at `share/metainfo/` -
+/// NOT `usr/share/metainfo/`, which would not match the package layout.
+const METAINFO_DIR: &str = "share/metainfo";
 
 /// Write the synthesized metainfo for `meta` into the staging root at
 /// `usr/share/metainfo/<id>.metainfo.xml`, creating the directory, and return the
@@ -328,7 +330,7 @@ commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
             path,
             staging
                 .path()
-                .join("usr/share/metainfo/org.example.hello.metainfo.xml")
+                .join("share/metainfo/org.example.hello.metainfo.xml")
         );
         let written = std::fs::read_to_string(&path).unwrap();
         assert_eq!(written, synthesize_metainfo(&meta(), None));
