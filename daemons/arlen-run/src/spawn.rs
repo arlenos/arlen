@@ -167,12 +167,16 @@ pub fn spawn_and_wait(
 
     let mut cmd = Command::new("bwrap");
     cmd.args(&full_argv);
+    // The fds bwrap must inherit past the child's close_range: the seccomp memfd
+    // here (the stamp pipes are added by the stamping wrapper, which extends this
+    // set). Copied out so `seccomp_fd` stays usable for the parent-side close below.
+    let keep_fds: Vec<libc::c_int> = seccomp_fd.iter().copied().collect();
     // SAFETY: the closure runs in the child after fork, before exec. The
     // launcher is single-threaded so the post-fork child is too, making the
     // ruleset allocations safe; the syscalls (close_range, fcntl, setpgid, the
     // Landlock setup) only narrow the child's own capabilities.
     unsafe {
-        cmd.pre_exec(move || child_pre_exec(None, &cgroup_procs, seccomp_fd));
+        cmd.pre_exec(move || child_pre_exec(None, &cgroup_procs, &keep_fds));
     }
 
     let spawned = cmd.spawn();
@@ -208,7 +212,7 @@ pub fn spawn_and_wait(
 unsafe fn child_pre_exec(
     landlock_writable: Option<&[PathBuf]>,
     cgroup_procs: &Option<PathBuf>,
-    keep_fd: Option<libc::c_int>,
+    keep_fds: &[libc::c_int],
 ) -> std::io::Result<()> {
     // CLOSE_RANGE_CLOEXEC (not an immediate close) so std's pre_exec/execve error
     // pipe (an fd >= 3) survives to report a failure, while every launcher fd is
@@ -218,10 +222,11 @@ unsafe fn child_pre_exec(
     if rc != 0 {
         return Err(std::io::Error::last_os_error());
     }
-    // Re-clear CLOEXEC on the seccomp memfd so it reaches bwrap across the exec
-    // (the direct-bwrap path); the filtered path passes `None` and its wrapper
-    // opens the filter from a file instead.
-    if let Some(fd) = keep_fd {
+    // Re-clear CLOEXEC on each fd bwrap must inherit across the exec: the seccomp
+    // memfd (`--seccomp`) on the direct path, plus the identity-stamp pipes
+    // (`--json-status-fd` write end + `--block-fd` read end) when stamping is on.
+    // The filtered path passes an empty set and opens its filter from a file.
+    for &fd in keep_fds {
         let flags = libc::fcntl(fd, libc::F_GETFD);
         if flags < 0 {
             return Err(std::io::Error::last_os_error());
@@ -307,7 +312,7 @@ pub fn spawn_filtered_and_wait(
     // SAFETY: single-threaded post-fork child (see child_pre_exec). No memfd (the
     // wrapper opens the seccomp file) and no Landlock (`None`) on this path.
     unsafe {
-        cmd.pre_exec(move || child_pre_exec(None, &cgroup_procs, None));
+        cmd.pre_exec(move || child_pre_exec(None, &cgroup_procs, &[]));
     }
     let status = cmd.spawn()?.wait()?;
     drop(seccomp_file); // remove the temp filter now the launch has ended
