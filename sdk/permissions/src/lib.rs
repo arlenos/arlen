@@ -788,8 +788,9 @@ pub fn profile_path(app_id: &str) -> Result<PathBuf, PermissionError> {
 /// `[a-z0-9._-]` with no traversal (`..`, leading/trailing dot, or any path
 /// separator — the charset already excludes `/`). A root-owned path must never be
 /// built from an unvalidated id, so [`system_profile_path`] returns `None` for an
-/// invalid one rather than touching `/var/lib`.
-fn is_valid_app_id(app_id: &str) -> bool {
+/// invalid one rather than touching `/var/lib`. `pub` so the identity broker can
+/// apply the same charset guard on the register side, symmetric with the resolver.
+pub fn is_valid_app_id(app_id: &str) -> bool {
     !app_id.is_empty()
         && app_id != ".."
         && !app_id.starts_with('.')
