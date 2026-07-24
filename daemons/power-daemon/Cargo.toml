@@ -29,6 +29,9 @@ prost = "0.13"
 # fires per-timeout notifications the daemon turns into escalating idle actions.
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+# The wlr-output-power-management-v1 client (PWR-R3 Blank): power outputs
+# off on deep idle and back on at resume.
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 
 # The event-bus producer emitter + the generated power.state payload type.
 os-sdk = { path = "../../sdk/os-sdk" }

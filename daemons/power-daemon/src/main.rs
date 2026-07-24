@@ -113,22 +113,25 @@ async fn main() {
         tokio::spawn(async move {
             use arlen_powerd::brightness::Dimmer;
             use arlen_powerd::idle::IdleAction;
-            // A dedicated system-bus connection for idle actions, independent of
-            // the battery poll's cached bus. The Dimmer holds the pre-dim
-            // brightness so a resume restores it.
+            use arlen_powerd::logind::PowerAction;
+            use arlen_powerd::blank::{self, PowerMode};
+            // A dedicated system-bus connection for the logind-backed actions
+            // (dim/suspend), independent of the battery poll's cached bus. Blank
+            // opens its own Wayland connection, so it needs no bus. The Dimmer
+            // holds the pre-dim brightness so a resume restores it.
             let conn = zbus::Connection::system().await.ok();
             let mut dimmer = Dimmer::new();
             while let Some(sig) = idle_rx.recv().await {
                 let Some(stage) = stages.get(sig.stage) else {
                     continue;
                 };
-                let Some(conn) = conn.as_ref() else {
-                    warn!("idle action skipped: no system bus");
-                    continue;
-                };
                 match stage.action {
                     // Dim: lower the backlight on idle, restore it on resume.
                     IdleAction::Dim { to_percent } => {
+                        let Some(conn) = conn.as_ref() else {
+                            warn!("idle dim skipped: no system bus");
+                            continue;
+                        };
                         if sig.resumed {
                             info!(stage = sig.stage, "idle resume: restoring brightness");
                             dimmer.restore(conn).await;
@@ -137,21 +140,34 @@ async fn main() {
                             dimmer.dim(conn, to_percent).await;
                         }
                     }
-                    // Suspend: the one logind-backed action. Terminal (no resume).
-                    other if !sig.resumed => match other.as_power_action() {
-                        Some(pa) => {
-                            info!(stage = sig.stage, "idle: performing {}", pa.as_str());
-                            if let Err(e) = logind::perform(conn, pa).await {
-                                warn!("idle action failed: {e}");
+                    // Blank: power the outputs off on idle, on at resume.
+                    IdleAction::Blank => {
+                        let mode = if sig.resumed { PowerMode::On } else { PowerMode::Off };
+                        match tokio::task::spawn_blocking(move || blank::set_all_outputs(mode)).await
+                        {
+                            Ok(Ok(n)) => {
+                                info!(stage = sig.stage, "idle blank: {n} output(s) -> {mode:?}")
                             }
+                            Ok(Err(e)) => info!(stage = sig.stage, "idle blank unavailable: {e}"),
+                            Err(e) => warn!("idle blank task failed: {e}"),
                         }
-                        // Blank / Lock: backends not yet wired.
-                        None => info!(
-                            stage = sig.stage,
-                            "idle: {other:?} not yet wired (needs its backend)"
-                        ),
-                    },
-                    // Resume of a non-dim action: nothing to undo.
+                    }
+                    // Suspend: the one logind power action. Terminal (no resume).
+                    IdleAction::Suspend if !sig.resumed => {
+                        let Some(conn) = conn.as_ref() else {
+                            warn!("idle suspend skipped: no system bus");
+                            continue;
+                        };
+                        info!(stage = sig.stage, "idle: suspending");
+                        if let Err(e) = logind::perform(conn, PowerAction::Suspend).await {
+                            warn!("idle suspend failed: {e}");
+                        }
+                    }
+                    // Lock: gated on the lock screen (LS-R2).
+                    IdleAction::Lock if !sig.resumed => {
+                        info!(stage = sig.stage, "idle: lock not yet wired (needs LS-R2)")
+                    }
+                    // Resume of a terminal action: nothing to undo.
                     _ => {}
                 }
             }
