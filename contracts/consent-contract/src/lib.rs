@@ -113,6 +113,16 @@ pub struct RequestBody {
     /// Destructive only: the total size affected, shown beside the targets.
     #[serde(default)]
     pub total: Option<String>,
+    /// Trusted-intermediary only: the app this request is made ON BEHALF OF.
+    /// A mediator daemon (e.g. the xdg portal handling a ScreenCast the app
+    /// cannot reach the broker for directly) sets this to the app it has already
+    /// authenticated. The broker HONORS it ONLY when the SO_PEERCRED-attested
+    /// peer is an allowlisted trusted intermediary; for any other peer it is
+    /// IGNORED and the grant is attributed to the attested peer (fail-safe). The
+    /// grant's subject then becomes the named app; the mediator is recorded in
+    /// audit but never shown as the grantee.
+    #[serde(default)]
+    pub on_behalf_of: Option<String>,
 }
 
 /// One named target of a destructive request, with a human-readable size (e.g.

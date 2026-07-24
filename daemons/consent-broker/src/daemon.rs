@@ -28,7 +28,7 @@ use crate::control::{front_view, resolve_decision, PendingView, ResolvedDecision
 use crate::grant::ConsentGrant;
 use crate::queue::{ConsentQueue, Enqueued, RequestId};
 use crate::service::RequestBody;
-use crate::{assemble, classify, AttestedRequester, ConsentOutcome, ConsentRequest, SeverityTier};
+use crate::{assemble, classify, ConsentOutcome, ConsentRequest, SeverityTier};
 
 /// The broker's in-memory store of remembered ("always allow") grants. A grant
 /// covers a future request with the same (recipient, class, scope), so a
@@ -306,7 +306,12 @@ impl SharedState {
     /// can never silently skip a confirmation the high-impact / injection-
     /// containment rules require.
     pub fn intake(&self, body: RequestBody, attested_app_id: &str) -> IntakeOutcome {
-        let request = assemble(body, AttestedRequester::new(attested_app_id));
+        // Same trusted-intermediary resolution as service::handle_intake: an
+        // allowlisted portal's on_behalf_of is honored, everything else is
+        // attributed to the attested peer (fail-safe).
+        let requester =
+            crate::service::resolve_requester(attested_app_id, body.on_behalf_of.as_deref());
+        let request = assemble(body, requester);
         let mut inner = self.inner.lock().expect("consent state mutex poisoned");
 
         // A remembered grant only covers a Standard, non-externally-triggered
@@ -486,6 +491,7 @@ mod tests {
             preview: None,
             targets: Vec::new(),
             total: None,
+            on_behalf_of: None,
             summary: "permanently delete 3 files".to_string(),
             scope: Some("/x".to_string()),
         }
@@ -501,6 +507,7 @@ mod tests {
             preview: None,
             targets: Vec::new(),
             total: None,
+            on_behalf_of: None,
             summary: "use a capability".to_string(),
             scope: scope.map(str::to_string),
         }
@@ -649,6 +656,7 @@ mod tests {
             preview: None,
             targets: Vec::new(),
             total: None,
+                on_behalf_of: None,
                 summary: "routine".to_string(),
                 scope: None,
             },
@@ -762,6 +770,7 @@ mod tests {
             preview: None,
             targets: Vec::new(),
             total: None,
+                on_behalf_of: None,
                 summary: "routine".to_string(),
                 scope: None,
             },

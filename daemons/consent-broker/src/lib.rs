@@ -48,29 +48,59 @@ pub use arlen_consent_contract::{ConsentClass, ConsentOutcome, ConsentTarget};
 /// value and exposes it under both roles - they are identical by construction.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AttestedRequester {
+    /// The app the grant is FOR - shown to the user AND recorded as the grant
+    /// recipient (the "one value, both roles" CVE-2025-31250 defense). For a
+    /// direct request this is the attested peer; for a trusted-intermediary
+    /// request it is the on-behalf-of app the mediator authenticated.
     app_id: String,
+    /// The trusted intermediary (e.g. the xdg portal) that raised this on the
+    /// app's behalf, when there was one. AUDIT-ONLY metadata: it is NEVER shown
+    /// as the grantee and never becomes the grant recipient - it records that
+    /// the request was mediated. `None` for a direct request.
+    #[serde(default)]
+    mediator: Option<String>,
 }
 
 impl AttestedRequester {
-    /// Wrap the kernel-attested app id. Callers MUST pass the value resolved
-    /// from SO_PEERCRED via `path_to_app_id`, never a self-declared name.
+    /// Wrap the kernel-attested app id for a DIRECT request. Callers MUST pass
+    /// the value resolved from SO_PEERCRED via `path_to_app_id`, never a
+    /// self-declared name.
     pub fn new(attested_app_id: impl Into<String>) -> Self {
         Self {
             app_id: attested_app_id.into(),
+            mediator: None,
         }
     }
 
-    /// The attested app id - the value SHOWN to the user in the dialog.
+    /// A request an allowlisted trusted intermediary (`mediator`, itself
+    /// SO_PEERCRED-attested) raised ON BEHALF OF `subject_app` (the app it has
+    /// already authenticated). The grant is for `subject_app` - it is both shown
+    /// and recorded (the CVE invariant still holds: one value, both roles); the
+    /// mediator is separate audit metadata, never the grantee. The broker only
+    /// calls this after checking the peer is an allowlisted intermediary.
+    pub fn on_behalf_of(subject_app: impl Into<String>, mediator: impl Into<String>) -> Self {
+        Self {
+            app_id: subject_app.into(),
+            mediator: Some(mediator.into()),
+        }
+    }
+
+    /// The app id SHOWN to the user in the dialog (the grant subject).
     pub fn display_id(&self) -> &str {
         &self.app_id
     }
 
-    /// The attested app id - the value the minted grant is RECORDED against.
-    /// Identical to [`AttestedRequester::display_id`] by construction; the two
-    /// methods exist to make the "one value, both roles" invariant explicit at
-    /// every call site rather than risk two separate fields.
+    /// The app id the minted grant is RECORDED against. Identical to
+    /// [`AttestedRequester::display_id`] by construction; the two methods make
+    /// the "one value, both roles" invariant explicit at every call site rather
+    /// than risk two separate fields.
     pub fn grant_recipient(&self) -> &str {
         &self.app_id
+    }
+
+    /// The trusted intermediary that mediated this request, if any (audit-only).
+    pub fn mediator(&self) -> Option<&str> {
+        self.mediator.as_deref()
     }
 }
 
