@@ -33,6 +33,11 @@ mod landlock_apply;
 mod landlock_exec;
 mod netns;
 mod profile;
+// The Tier-1 identity-stamp helpers. The pure format-critical pieces land first;
+// the spawn-path wiring that calls them is a following slice, so allow dead_code
+// until it does (mechanism before trigger).
+#[cfg_attr(not(test), allow(dead_code))]
+mod stamp;
 // The app seccomp filter (GAP-6): the deny-by-default allowlist, compiled to
 // cBPF and handed to bwrap via --seccomp in `spawn`.
 #[cfg(target_os = "linux")]
