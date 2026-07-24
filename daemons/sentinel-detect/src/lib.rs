@@ -6,6 +6,7 @@
 //! SEN-4's per-brand BLE finder-tag classification (`tracker`).
 
 pub mod exposure;
+pub mod movement;
 pub mod recording;
 pub mod tracker;
 pub mod trigger;
