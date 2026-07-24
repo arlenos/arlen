@@ -5,5 +5,6 @@
 //! detector cores it calls, so they are unit-testable without a radio. The first is
 //! SEN-4's per-brand BLE finder-tag classification (`tracker`).
 
+pub mod exposure;
 pub mod tracker;
 pub mod trigger;
