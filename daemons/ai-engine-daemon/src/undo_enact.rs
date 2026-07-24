@@ -111,14 +111,59 @@ pub fn enact_inverse(receipt: &InverseReceipt) -> Result<EnactOutcome, EnactErro
     }
 }
 
-/// Move a relocated entity from `now` back to `prior`, refusing to clobber an
-/// occupied prior path (a new file placed there since the action).
-fn enact_restore_path(now: &str, prior: &str) -> Result<EnactOutcome, EnactError> {
-    if Path::new(prior).exists() {
-        return Ok(EnactOutcome::RefusedPriorOccupied);
+/// Atomically move `from` to `to` WITHOUT clobbering an existing `to`, via
+/// `renameat2(RENAME_NOREPLACE)`. Returns `Ok(true)` when the move happened,
+/// `Ok(false)` when `to` was already occupied (the kernel refused, no clobber), and
+/// `Err` on any other I/O failure. This closes the check-then-rename TOCTOU: there is
+/// no window between a liveness check and the move for another process to place a
+/// file at `to`. On a filesystem or kernel that does not support the flag
+/// (`EINVAL`/`ENOSYS`) it falls back to an exists-check + rename, where the race
+/// window remains but only on that unusual target.
+fn rename_noreplace(from: &str, to: &str) -> std::io::Result<bool> {
+    use std::ffi::CString;
+    let invalid = |_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "path contains a nul byte");
+    let c_from = CString::new(from).map_err(invalid)?;
+    let c_to = CString::new(to).map_err(invalid)?;
+    // SAFETY: both pointers are valid C strings live for the call; AT_FDCWD resolves
+    // the relative-or-absolute paths against the cwd exactly as `std::fs::rename`.
+    let rc = unsafe {
+        libc::renameat2(
+            libc::AT_FDCWD,
+            c_from.as_ptr(),
+            libc::AT_FDCWD,
+            c_to.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    if rc == 0 {
+        return Ok(true);
     }
-    std::fs::rename(now, prior).map_err(|e| EnactError::Io(e.to_string()))?;
-    Ok(EnactOutcome::Restored)
+    let err = std::io::Error::last_os_error();
+    match err.raw_os_error() {
+        Some(libc::EEXIST) => Ok(false),
+        // The flag is unsupported here; fall back to the (racy) check-then-rename so
+        // undo still functions on an exotic target.
+        Some(libc::EINVAL) | Some(libc::ENOSYS) => {
+            if Path::new(to).exists() {
+                Ok(false)
+            } else {
+                std::fs::rename(from, to)?;
+                Ok(true)
+            }
+        }
+        _ => Err(err),
+    }
+}
+
+/// Move a relocated entity from `now` back to `prior`, refusing to clobber an
+/// occupied prior path (a new file placed there since the action). The move is a
+/// no-clobber atomic rename, so the occupied check and the move cannot race.
+fn enact_restore_path(now: &str, prior: &str) -> Result<EnactOutcome, EnactError> {
+    if rename_noreplace(now, prior).map_err(|e| EnactError::Io(e.to_string()))? {
+        Ok(EnactOutcome::Restored)
+    } else {
+        Ok(EnactOutcome::RefusedPriorOccupied)
+    }
 }
 
 /// Restore a trashed entity from `trashed` back to `original`, then remove the
@@ -132,10 +177,9 @@ fn enact_restore_from_trash(
     trashed: &str,
     trash_info: &str,
 ) -> Result<EnactOutcome, EnactError> {
-    if Path::new(original).exists() {
+    if !rename_noreplace(trashed, original).map_err(|e| EnactError::Io(e.to_string()))? {
         return Ok(EnactOutcome::RefusedPriorOccupied);
     }
-    std::fs::rename(trashed, original).map_err(|e| EnactError::Io(e.to_string()))?;
     // The file is back at its origin; clean the trash metadata best-effort.
     let _ = std::fs::remove_file(trash_info);
     Ok(EnactOutcome::Restored)
@@ -430,6 +474,23 @@ mod tests {
         assert_eq!(enact_inverse(&receipt).unwrap(), EnactOutcome::Restored);
         assert!(!now.exists());
         assert_eq!(std::fs::read(&prior).unwrap(), b"content");
+    }
+
+    #[test]
+    fn rename_noreplace_moves_into_a_free_slot_and_refuses_an_occupied_one() {
+        let d = tmp();
+        let src = d.join("src");
+        let free = d.join("free");
+        std::fs::write(&src, b"x").unwrap();
+        assert!(rename_noreplace(src.to_str().unwrap(), free.to_str().unwrap()).unwrap());
+        assert_eq!(std::fs::read(&free).unwrap(), b"x");
+        assert!(!src.exists());
+        // An occupied destination is refused atomically, clobbering nothing.
+        let src2 = d.join("src2");
+        std::fs::write(&src2, b"new").unwrap();
+        assert!(!rename_noreplace(src2.to_str().unwrap(), free.to_str().unwrap()).unwrap());
+        assert_eq!(std::fs::read(&free).unwrap(), b"x", "destination not clobbered");
+        assert_eq!(std::fs::read(&src2).unwrap(), b"new", "source left in place");
     }
 
     #[test]
