@@ -75,6 +75,16 @@ pub fn handle_identity(
                     "'{app_id}' is a reserved app id and may not be stamped"
                 ));
             }
+            // Validate the id's charset here too, symmetric with the resolver's
+            // lookup-side guard: a malformed (e.g. path-traversal-shaped) id must
+            // never be STORED, so no future lookup consumer that trusts a raw stamp
+            // can inherit one - defense in depth beyond the resolver already
+            // refusing an invalid stamp on read.
+            if !arlen_permissions::is_valid_app_id(&app_id) {
+                return IdentityResponse::Refused(format!(
+                    "'{app_id}' is not a valid app id and may not be stamped"
+                ));
+            }
             let Some(fd) = received else {
                 return IdentityResponse::Error("register requires a pidfd".into());
             };
@@ -188,6 +198,27 @@ mod tests {
                 "reserved id {reserved} must be refused"
             );
             // Nothing was stamped.
+            let got = handle_identity(&s, "d", IdentityRequest::Lookup, Some(self_pidfd()));
+            assert_eq!(got, IdentityResponse::NotFound);
+        }
+    }
+
+    /// A malformed (path-traversal-shaped or empty) id is refused at REGISTER, so
+    /// it can never be stored - symmetric with the resolver's lookup-side guard.
+    #[test]
+    fn a_registrar_may_not_stamp_a_malformed_id() {
+        for bad in ["../../etc/passwd", "", "Has Caps", "a/b"] {
+            let s = store();
+            let reg = handle_identity(
+                &s,
+                "arlen-run",
+                IdentityRequest::Register { app_id: bad.into() },
+                Some(self_pidfd()),
+            );
+            assert!(
+                matches!(reg, IdentityResponse::Refused(_)),
+                "malformed id {bad:?} must be refused"
+            );
             let got = handle_identity(&s, "d", IdentityRequest::Lookup, Some(self_pidfd()));
             assert_eq!(got, IdentityResponse::NotFound);
         }
