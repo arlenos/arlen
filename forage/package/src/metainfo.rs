@@ -19,7 +19,10 @@ use std::path::{Path, PathBuf};
 const METADATA_LICENSE: &str = "CC0-1.0";
 
 /// Escape the five XML entities so author-controlled recipe text cannot inject
-/// markup into the component document. Applied to every emitted value.
+/// markup into the component document. Applied to every emitted value. Characters
+/// that XML 1.0 forbids even when escaped (the C0 controls except tab/newline/CR) are
+/// DROPPED, so a stray control byte in author text cannot make the whole metainfo
+/// document unparseable (which would fail `appstreamcli compose`).
 fn xml_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -29,6 +32,9 @@ fn xml_escape(s: &str) -> String {
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&apos;"),
+            // XML 1.0 valid chars: tab, LF, CR, then >= 0x20. Drop every other
+            // control (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F) - unrepresentable in XML.
+            c if (c.is_control() && c != '\t' && c != '\n' && c != '\r') => {}
             _ => out.push(c),
         }
     }
@@ -273,5 +279,17 @@ commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
         assert!(!xml.contains("<release"));
         assert!(xml.contains("Evil&lt;/name&gt;&lt;release version=&quot;9&quot;/&gt;&lt;name&gt;"));
         assert!(xml.contains("<summary>a &amp; b &lt; c &gt; d</summary>"));
+    }
+
+    #[test]
+    fn xml_invalid_control_chars_are_dropped_but_whitespace_kept() {
+        let mut m = meta();
+        // A description with a NUL, a bell (0x07), and a form-feed (0x0C) - all
+        // invalid in XML 1.0 - plus a legitimate newline and tab.
+        m.description = Some("line1\n\tline2\u{0}\u{7}\u{c}end".to_string());
+        let xml = synthesize_metainfo(&m);
+        assert!(xml.contains("<description><p>line1\n\tline2end</p></description>"));
+        // No forbidden control byte survives into the document.
+        assert!(!xml.contains('\u{0}') && !xml.contains('\u{7}') && !xml.contains('\u{c}'));
     }
 }
