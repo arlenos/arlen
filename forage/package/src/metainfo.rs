@@ -12,6 +12,7 @@
 //! `desktop-application` component that `appstreamcli compose` accepts.
 
 use arlen_forage_recipe::RecipeMeta;
+use std::path::{Path, PathBuf};
 
 /// The metadata_license of the GENERATED metainfo file itself (not the app's
 /// license): CC0-1.0 is the AppStream convention for machine-generated metadata.
@@ -109,6 +110,48 @@ pub fn synthesize_metainfo(meta: &RecipeMeta) -> String {
     out
 }
 
+/// Whether `path` sits under a directory named `dir` (a path component match, so
+/// `share/metainfo/x.xml` matches `metainfo` but `metainfo-notes/x.xml` does not).
+fn under_dir(path: &Path, dir: &str) -> bool {
+    path.components()
+        .any(|c| c.as_os_str().to_str() == Some(dir))
+}
+
+/// Find the upstream AppStream metadata file among a fetched source's relative
+/// paths, per the freedesktop convention (ST-1 upstream-first: harvest the project's
+/// own metainfo when it ships one, and only [`synthesize_metainfo`] as the fallback).
+/// Preference, most-canonical first: a `*.metainfo.xml` under a `metainfo/` dir, then
+/// any `*.metainfo.xml`, then a legacy `*.appdata.xml` under an `appdata/`/`metainfo/`
+/// dir, then any `*.appdata.xml`. Within a tier the lexicographically smallest path
+/// wins, so the choice is deterministic. `None` when the source ships none. Pure -
+/// the directory walk that produces `paths` is the caller's thin I/O.
+pub fn find_upstream_metainfo(paths: &[PathBuf]) -> Option<PathBuf> {
+    let ends = |p: &Path, suffix: &str| {
+        p.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.ends_with(suffix))
+    };
+    // (tier, path) - lower tier is more canonical.
+    let tier = |p: &Path| -> Option<u8> {
+        if ends(p, ".metainfo.xml") {
+            Some(if under_dir(p, "metainfo") { 0 } else { 1 })
+        } else if ends(p, ".appdata.xml") {
+            Some(if under_dir(p, "appdata") || under_dir(p, "metainfo") {
+                2
+            } else {
+                3
+            })
+        } else {
+            None
+        }
+    };
+    paths
+        .iter()
+        .filter_map(|p| tier(p).map(|t| (t, p)))
+        .min_by(|(ta, pa), (tb, pb)| ta.cmp(tb).then_with(|| pa.cmp(pb)))
+        .map(|(_, p)| p.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,6 +226,41 @@ commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
         assert!(!xml.contains("<url"));
         // metadata_license is always present (the generated file's own license).
         assert!(xml.contains("<metadata_license>CC0-1.0</metadata_license>"));
+    }
+
+    #[test]
+    fn find_upstream_metainfo_prefers_the_canonical_location() {
+        let p = |s: &str| PathBuf::from(s);
+        // Canonical metainfo/ location wins over a stray top-level one.
+        let paths = vec![
+            p("README.md"),
+            p("stray.metainfo.xml"),
+            p("share/metainfo/org.example.hello.metainfo.xml"),
+        ];
+        assert_eq!(
+            find_upstream_metainfo(&paths),
+            Some(p("share/metainfo/org.example.hello.metainfo.xml"))
+        );
+        // metainfo.xml beats a legacy appdata.xml even when the appdata is canonical.
+        let mixed = vec![
+            p("data/appdata/org.example.hello.appdata.xml"),
+            p("x.metainfo.xml"),
+        ];
+        assert_eq!(find_upstream_metainfo(&mixed), Some(p("x.metainfo.xml")));
+        // Legacy appdata is harvested when no metainfo exists.
+        let legacy = vec![p("README.md"), p("data/org.example.hello.appdata.xml")];
+        assert_eq!(
+            find_upstream_metainfo(&legacy),
+            Some(p("data/org.example.hello.appdata.xml"))
+        );
+        // No AppStream file -> None (the caller synthesizes from the recipe).
+        assert_eq!(find_upstream_metainfo(&[p("README.md"), p("src/main.rs")]), None);
+        // `metainfo-notes/` is not a metainfo dir (component match, not substring).
+        let notlike = vec![p("metainfo-notes/x.metainfo.xml"), p("share/metainfo/y.metainfo.xml")];
+        assert_eq!(
+            find_upstream_metainfo(&notlike),
+            Some(p("share/metainfo/y.metainfo.xml"))
+        );
     }
 
     #[test]
