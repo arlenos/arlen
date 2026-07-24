@@ -366,7 +366,7 @@ fn main() -> ExitCode {
         // syscalls, and pasta's netns is orthogonal to the filesystem fence.
         spawn::spawn_filtered_and_wait(&argv, &inputs.app_dirs, cgroup_procs, seccomp_bpf)
     } else {
-        spawn::spawn_and_wait(&argv, &inputs.app_dirs, cgroup_procs, Some(seccomp_bpf))
+        spawn::spawn_and_wait(&argv, &inputs.app_dirs, cgroup_procs, Some(seccomp_bpf), &args.app_id)
     };
 
     // Reap the subtree (kills any process the app left behind), then the leaf is
