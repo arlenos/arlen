@@ -151,6 +151,37 @@ pub fn find_file_in_tree(bytes: &[u8], filename: &str) -> Result<Option<Resolved
     }))
 }
 
+/// Pure: pick the GGUF file matching `quant` from a parsed HF tree listing,
+/// returning its `(filename, resolved sha256 + size)`. A GGUF repo hosts one file
+/// per quantization, so the cached-index refresh job (and the ad-hoc lazy-fit on
+/// expand) must choose WHICH file to resolve a representative size for; this matches
+/// on the per-file quant tag via the name heuristic. Only `.gguf` LFS entries are
+/// considered (a non-LFS entry has no oid to verify, and a non-`.gguf` file is not a
+/// weights file). `None` when the repo hosts no file at that quant, so the caller
+/// can step down the quant ladder or skip the candidate.
+pub fn select_gguf_for_quant(
+    bytes: &[u8],
+    quant: crate::Quant,
+) -> Result<Option<(String, ResolvedFile)>, DownloadError> {
+    let entries: Vec<TreeEntry> = serde_json::from_slice(bytes)
+        .map_err(|e| DownloadError::Network(format!("parse hf tree: {e}")))?;
+    Ok(entries.into_iter().find_map(|e| {
+        let is_gguf = e.path.to_ascii_lowercase().ends_with(".gguf");
+        if !is_gguf || crate::parse_quant_from_name(&e.path) != Some(quant) {
+            return None;
+        }
+        e.lfs.map(|l| {
+            (
+                e.path,
+                ResolvedFile {
+                    sha256: l.oid,
+                    size: l.size,
+                },
+            )
+        })
+    }))
+}
+
 /// Resolve a GGUF file's sha256 + size from its repo's HF file tree (opt-in
 /// egress; run under `spawn_blocking`). Does one SSRF-pinned GET of
 /// `/api/models/{repo}/tree/main` and looks up `filename`. The sha256 lets the
@@ -219,5 +250,26 @@ mod tests {
         assert!(find_file_in_tree(body, "missing.gguf").unwrap().is_none());
         // A non-LFS entry has no verifiable oid, so it is not resolvable.
         assert!(find_file_in_tree(body, "README.md").unwrap().is_none());
+    }
+
+    #[test]
+    fn selects_the_gguf_file_matching_a_quant() {
+        let body = br#"[
+            {"path":"README.md","size":1234},
+            {"path":"Qwen2.5-7B-Instruct-Q4_K_M.gguf","size":1,"lfs":{"oid":"q4oid","size":4700000000}},
+            {"path":"Qwen2.5-7B-Instruct-Q8_0.gguf","size":1,"lfs":{"oid":"q8oid","size":8100000000}}
+        ]"#;
+        // The refresh job asks for the representative quant and gets that file.
+        let (name, f) = crate::hf::select_gguf_for_quant(body, crate::Quant::Q4KM)
+            .expect("parse")
+            .expect("matched");
+        assert_eq!(name, "Qwen2.5-7B-Instruct-Q4_K_M.gguf");
+        assert_eq!(f.sha256, "q4oid");
+        assert_eq!(f.size, 4_700_000_000);
+        // A quant the repo does not host -> None, so the caller steps down or skips.
+        assert!(select_gguf_for_quant(body, crate::Quant::Q5KM).unwrap().is_none());
+        // A non-.gguf or non-LFS entry is never selected even if it names the quant.
+        let no_gguf = br#"[{"path":"config-Q4_K_M.json","size":10}]"#;
+        assert!(select_gguf_for_quant(no_gguf, crate::Quant::Q4KM).unwrap().is_none());
     }
 }
