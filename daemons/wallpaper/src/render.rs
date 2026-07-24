@@ -140,32 +140,39 @@ impl Wallpaper {
                 }
             };
 
-        match frame_for_output(&self.manifest, &connector, &self.time, w, h, FALLBACK) {
-            // The composed frame is RGBA; wl_shm Argb8888 is little-endian, i.e.
-            // BGRA byte order. Reorder as we copy.
-            Some(rgba) if rgba.len() == canvas.len() => {
-                for (dst, src) in canvas.chunks_exact_mut(4).zip(rgba.chunks_exact(4)) {
-                    dst[0] = src[2];
-                    dst[1] = src[1];
-                    dst[2] = src[0];
-                    dst[3] = src[3];
-                }
-            }
-            // A Video/Shader wallpaper (WP-R2's job), a decode failure, or a size
-            // mismatch: paint the flat fallback rather than leave uninitialised.
-            _ => {
-                let fill = [FALLBACK[2], FALLBACK[1], FALLBACK[0], FALLBACK[3]];
-                for px in canvas.chunks_exact_mut(4) {
-                    px.copy_from_slice(&fill);
-                }
-            }
-        }
+        let frame = frame_for_output(&self.manifest, &connector, &self.time, w, h, FALLBACK);
+        paint(canvas, frame.as_deref());
 
         let bg = &self.backgrounds[index];
         let surface = bg.layer.wl_surface();
         surface.attach(Some(buffer.wl_buffer()), 0, 0);
         surface.damage_buffer(0, 0, w as i32, h as i32);
         bg.layer.commit();
+    }
+}
+
+/// Paint `frame` (RGBA, from [`frame_for_output`]) into the `wl_shm` `canvas`
+/// (`Argb8888`, little-endian = BGRA byte order), reordering as it copies. A
+/// `None` frame (a `Video`/`Shader` wallpaper or a decode failure) or a
+/// size mismatch paints the flat [`FALLBACK`] instead. Pure, so the pixel byte
+/// order - the one bit of new logic a compositor is needed to see - is
+/// unit-tested here.
+fn paint(canvas: &mut [u8], frame: Option<&[u8]>) {
+    match frame {
+        Some(rgba) if rgba.len() == canvas.len() => {
+            for (dst, src) in canvas.chunks_exact_mut(4).zip(rgba.chunks_exact(4)) {
+                dst[0] = src[2]; // B
+                dst[1] = src[1]; // G
+                dst[2] = src[0]; // R
+                dst[3] = src[3]; // A
+            }
+        }
+        _ => {
+            let fill = [FALLBACK[2], FALLBACK[1], FALLBACK[0], FALLBACK[3]];
+            for px in canvas.chunks_exact_mut(4) {
+                px.copy_from_slice(&fill);
+            }
+        }
     }
 }
 
@@ -269,3 +276,32 @@ delegate_output!(Wallpaper);
 delegate_layer!(Wallpaper);
 delegate_shm!(Wallpaper);
 delegate_registry!(Wallpaper);
+
+#[cfg(test)]
+mod tests {
+    use super::paint;
+
+    #[test]
+    fn paint_reorders_rgba_to_argb8888_bgra() {
+        // Two red RGBA pixels (255,0,0,255) -> Argb8888 little-endian = BGRA
+        // (0,0,255,255). A red source proves the R/B channels are not swapped.
+        let mut canvas = vec![0u8; 8];
+        let red = [255, 0, 0, 255, 255, 0, 0, 255];
+        paint(&mut canvas, Some(&red));
+        assert_eq!(canvas, vec![0, 0, 255, 255, 0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn paint_falls_back_on_none_or_size_mismatch() {
+        // Fallback is opaque black; in BGRA that is (0,0,0,255).
+        let mut none = vec![9u8; 8];
+        paint(&mut none, None);
+        assert_eq!(none, vec![0, 0, 0, 255, 0, 0, 0, 255]);
+
+        // A frame whose length does not match the canvas also falls back
+        // (never a partial/garbled copy).
+        let mut mismatch = vec![9u8; 8];
+        paint(&mut mismatch, Some(&[1, 2, 3, 4]));
+        assert_eq!(mismatch, vec![0, 0, 0, 255, 0, 0, 0, 255]);
+    }
+}
