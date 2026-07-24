@@ -40,8 +40,19 @@ pub enum ConsentClass {
     ExecConfined,
     /// An action requiring elevated privilege (polkit / sudo).
     ElevatedPrivilege,
-    /// An xdg desktop-portal access request routed to this backend.
+    /// An xdg desktop-portal access request routed to this backend that is not
+    /// one of the explicit capture classes below (file chooser, open uri).
     Portal,
+    /// A camera capture request (per-device designation, revocable).
+    Camera,
+    /// A microphone capture request (distinct indicator, revocable).
+    Microphone,
+    /// A screen capture / screencast request (source picker, revocable). The
+    /// wire form is pinned to the one-word `screencast` (the freedesktop portal
+    /// config key), matching `as_key` so the wire form and the revocation-handle
+    /// key never diverge (snake_case would otherwise give `screen_cast`).
+    #[serde(rename = "screencast")]
+    ScreenCast,
     /// A notification action surfaced as an explicit decision.
     NotificationAction,
     /// An AI-agent action awaiting confirmation.
@@ -63,6 +74,9 @@ impl ConsentClass {
             ConsentClass::ExecConfined => "exec_confined",
             ConsentClass::ElevatedPrivilege => "elevated_privilege",
             ConsentClass::Portal => "portal",
+            ConsentClass::Camera => "camera",
+            ConsentClass::Microphone => "microphone",
+            ConsentClass::ScreenCast => "screencast",
             ConsentClass::NotificationAction => "notification_action",
             ConsentClass::AgentAction => "agent_action",
         }
@@ -149,5 +163,37 @@ impl ConsentOutcome {
             self,
             ConsentOutcome::AllowedOnce | ConsentOutcome::AllowedRemembered
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capture_class_keys_are_stable() {
+        // The key is a load-bearing component of the deterministic revocation
+        // handle (grant.rs), so a per-class capture grant only stays revocable
+        // if these keys never drift. Locked here.
+        assert_eq!(ConsentClass::Camera.as_key(), "camera");
+        assert_eq!(ConsentClass::Microphone.as_key(), "microphone");
+        assert_eq!(ConsentClass::ScreenCast.as_key(), "screencast");
+        // The generic Portal class stays distinct from the explicit capture ones.
+        assert_eq!(ConsentClass::Portal.as_key(), "portal");
+    }
+
+    #[test]
+    fn capture_classes_round_trip_over_serde() {
+        for class in [
+            ConsentClass::Camera,
+            ConsentClass::Microphone,
+            ConsentClass::ScreenCast,
+        ] {
+            let wire = serde_json::to_string(&class).unwrap();
+            // snake_case derive: the wire form matches the stable key.
+            assert_eq!(wire, format!("\"{}\"", class.as_key()));
+            let back: ConsentClass = serde_json::from_str(&wire).unwrap();
+            assert_eq!(back, class);
+        }
     }
 }
