@@ -25,7 +25,10 @@ use std::path::{Component, Path, PathBuf};
 use arlen_forage_recipe::Artifacts;
 use thiserror::Error;
 
+mod metainfo;
 mod writer;
+
+pub use metainfo::synthesize_metainfo;
 
 pub use writer::{
     synthesize_manifest, write_lunpkg, ManifestError, WriteError, MANIFEST_FILE, SIGNATURE_FILE,
