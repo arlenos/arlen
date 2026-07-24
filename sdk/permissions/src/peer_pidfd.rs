@@ -178,11 +178,11 @@ pub(crate) fn peer_uid(fd: libc::c_int) -> std::io::Result<u32> {
 /// the returned fd pins the process just like `SO_PEERPIDFD`'s, so a pid
 /// read from it afterwards is race-free.
 ///
-/// Currently test-only. It graduates to production with the identity
-/// broker's Tier-3 D-Bus path, which authenticates a pid by other means
-/// (a bus-attested caller) and synthesises the pinning handle here.
-#[cfg(test)]
-pub(crate) fn pidfd_open(pid: u32) -> Option<OwnedFd> {
+/// Production callers synthesise a pinning handle from a pid they learned
+/// out of band: the launcher `arlen-run` opens one for the sandboxed child
+/// (whose host pid bwrap reports) to register its identity stamp, and the
+/// broker's Tier-3 D-Bus path does the same for a bus-attested caller.
+pub fn pidfd_open(pid: u32) -> Option<OwnedFd> {
     // SAFETY: pidfd_open takes a pid and flags and returns a new fd or
     // -1; no memory is shared with the kernel.
     let raw = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0) };
