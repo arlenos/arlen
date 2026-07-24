@@ -14,6 +14,7 @@ pub mod battery;
 pub mod config;
 pub mod dbus;
 pub mod idle;
+pub mod idle_client;
 pub mod lid;
 pub mod logind;
 pub mod notify;

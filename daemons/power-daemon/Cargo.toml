@@ -25,6 +25,10 @@ zbus = { version = "5", default-features = false, features = ["tokio"] }
 # Stream adapter for the logind PrepareForSleep signal watch (sleep.rs).
 futures-util = { version = "0.3", default-features = false }
 prost = "0.13"
+# The ext-idle-notify-v1 client (PWR-R3): the compositor tracks seat idle and
+# fires per-timeout notifications the daemon turns into escalating idle actions.
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 
 # The event-bus producer emitter + the generated power.state payload type.
 os-sdk = { path = "../../sdk/os-sdk" }
