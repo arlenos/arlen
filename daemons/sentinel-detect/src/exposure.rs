@@ -64,6 +64,34 @@ pub fn cloned_mac_policy_posture(policy: Option<&str>) -> Posture {
     }
 }
 
+/// A saved Wi-Fi connection marked hidden makes the device ACTIVELY probe for that
+/// SSID wherever it goes, broadcasting the network name in directed probe requests -
+/// a stable identifier an observer can log. `Exposed` when the connection is hidden,
+/// `Protected` otherwise. (A hidden network gains nothing security-wise and leaks
+/// the name; the remediation is to unhide it.) The caller passes the resolved
+/// `hidden` flag of the saved connection.
+pub fn hidden_ssid_posture(hidden: bool) -> Posture {
+    if hidden {
+        Posture::Exposed
+    } else {
+        Posture::Protected
+    }
+}
+
+/// Whether a saved connection leaks the machine's hostname over DHCP. When
+/// `dhcp-send-hostname` is on, the DHCP request carries a stable hostname that a
+/// network operator can log across visits; `Exposed` when it sends, `Protected`
+/// otherwise. NetworkManager defaults to SENDING, so the caller resolves the
+/// effective value (Arlen's default flips it to off); this takes that resolved
+/// boolean.
+pub fn dhcp_hostname_posture(send_hostname: bool) -> Posture {
+    if send_hostname {
+        Posture::Exposed
+    } else {
+        Posture::Protected
+    }
+}
+
 /// The Bluetooth adapter's exposure: `Exposed` while it is Discoverable (broadcasting
 /// its presence so anyone nearby can see + address it), else `Protected`. A pairable-
 /// but-not-discoverable adapter is not a broadcast leak (a device must already know
@@ -105,6 +133,18 @@ mod tests {
         assert_eq!(cloned_mac_policy_posture(Some("02:11:22:33:44:55")), Posture::Protected);
         assert_eq!(cloned_mac_policy_posture(None), Posture::Unknown);
         assert_eq!(cloned_mac_policy_posture(Some("preserve")), Posture::Unknown);
+    }
+
+    #[test]
+    fn a_hidden_saved_network_exposes_the_ssid() {
+        assert_eq!(hidden_ssid_posture(true), Posture::Exposed);
+        assert_eq!(hidden_ssid_posture(false), Posture::Protected);
+    }
+
+    #[test]
+    fn sending_the_dhcp_hostname_exposes_a_stable_name() {
+        assert_eq!(dhcp_hostname_posture(true), Posture::Exposed);
+        assert_eq!(dhcp_hostname_posture(false), Posture::Protected);
     }
 
     #[test]
