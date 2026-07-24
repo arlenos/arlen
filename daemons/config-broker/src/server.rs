@@ -47,17 +47,19 @@ fn per_user_named(name: &str) -> PathBuf {
     base.join("arlen").join(name)
 }
 
-/// The identity-broker socket path. The identity ops speak an
+/// The identity-broker socket BIND path. The identity ops speak an
 /// `SCM_RIGHTS` fd-passing protocol, so they get their OWN socket on the
 /// same daemon (same uid, same trust root) rather than multiplexing onto
 /// the framed master-switch stream. Same override / per-user resolution
-/// shape as [`socket_path`]; `ARLEN_CONFIG_BROKER_IDENTITY_SOCKET`
-/// overrides.
+/// shape as [`socket_path`], but the name + env are the shared consts in
+/// `arlen_permissions::identity_wire` so this bind path and every client's
+/// [`arlen_permissions::identity_wire::identity_broker_connect_path`] can
+/// never drift onto different sockets.
 pub fn identity_socket_path() -> PathBuf {
-    if let Some(p) = std::env::var_os("ARLEN_CONFIG_BROKER_IDENTITY_SOCKET") {
+    if let Some(p) = std::env::var_os(arlen_permissions::identity_wire::IDENTITY_SOCKET_ENV) {
         return PathBuf::from(p);
     }
-    per_user_named("config-broker-identity.sock")
+    per_user_named(arlen_permissions::identity_wire::IDENTITY_SOCKET_NAME)
 }
 
 /// The system-wide socket path a SEPARATE-UID broker binds.
@@ -347,6 +349,21 @@ mod tests {
         assert_eq!(connect_path(), std::path::Path::new("/tmp/pinned.sock"));
         assert_eq!(socket_path(), std::path::Path::new("/tmp/pinned.sock"));
         std::env::remove_var("ARLEN_CONFIG_BROKER_SOCKET");
+    }
+
+    /// The identity BIND path uses the shared name const, so the daemon binds the
+    /// exact socket a client's `identity_broker_connect_path` connects to. Guarded
+    /// on the env override being unset (an override replaces the name entirely).
+    #[test]
+    fn identity_bind_path_uses_the_shared_name() {
+        use arlen_permissions::identity_wire::{IDENTITY_SOCKET_ENV, IDENTITY_SOCKET_NAME};
+        if std::env::var_os(IDENTITY_SOCKET_ENV).is_some() {
+            return;
+        }
+        assert_eq!(
+            super::identity_socket_path().file_name().unwrap(),
+            std::ffi::OsStr::new(IDENTITY_SOCKET_NAME)
+        );
     }
     use super::*;
     use crate::protocol::{Request, Response};

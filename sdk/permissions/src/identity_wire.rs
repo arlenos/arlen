@@ -18,11 +18,68 @@
 use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, BorrowedFd};
 use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::fd_passing::send_fd_msg;
+
+/// The environment override for the identity-broker socket. Shared with the
+/// config-broker daemon's bind path, so setting it moves BOTH the daemon's bind
+/// and every client's connect to the same place (the dev/test seam).
+pub const IDENTITY_SOCKET_ENV: &str = "ARLEN_CONFIG_BROKER_IDENTITY_SOCKET";
+
+/// The identity-broker socket file name under the arlen runtime dir. The
+/// config-broker daemon binds it; the launcher (`arlen-run` registering a child)
+/// and a daemon's resolver (looking up its peer) connect to it. One shared name
+/// so producer, consumer and daemon can never drift onto different sockets.
+pub const IDENTITY_SOCKET_NAME: &str = "config-broker-identity.sock";
+
+/// Where a CLIENT connects to the identity broker.
+///
+/// The env override ([`IDENTITY_SOCKET_ENV`]) wins. Otherwise prefer whichever
+/// socket actually EXISTS - the per-user path (`$XDG_RUNTIME_DIR/arlen/<name>`)
+/// first, then the system path (`/run/arlen/<name>`) the separate-uid broker
+/// binds (it cannot write the session user's 0700 runtime dir) - falling back to
+/// the per-user path so an error names the expected location. Mirrors the
+/// master-switch `connect_path`: existence is the right test for connecting,
+/// since the dev (per-user) and separate-uid (system) deployments put the socket
+/// in different places and a client should not have to know which is running.
+pub fn identity_broker_connect_path() -> PathBuf {
+    if let Some(p) = std::env::var_os(IDENTITY_SOCKET_ENV) {
+        return PathBuf::from(p);
+    }
+    let per_user = per_user_identity_socket();
+    let system = PathBuf::from("/run/arlen").join(IDENTITY_SOCKET_NAME);
+    resolve_connect_path(per_user, system, |p| p.exists())
+}
+
+/// The per-user identity-broker socket (`$XDG_RUNTIME_DIR/arlen/<name>`, else
+/// `/run/arlen/<name>` when the runtime dir is unset).
+fn per_user_identity_socket() -> PathBuf {
+    let base = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/run"));
+    base.join("arlen").join(IDENTITY_SOCKET_NAME)
+}
+
+/// Pure prefer-existing resolution: `per_user` if it exists, else `system` if it
+/// exists, else `per_user` (so an error names the expected per-user location).
+/// `exists` is injected so the branch logic is unit-testable without the
+/// filesystem.
+fn resolve_connect_path(
+    per_user: PathBuf,
+    system: PathBuf,
+    exists: impl Fn(&Path) -> bool,
+) -> PathBuf {
+    if exists(&per_user) {
+        return per_user;
+    }
+    if exists(&system) {
+        return system;
+    }
+    per_user
+}
 
 /// The largest identity reply frame accepted before allocating. Replies
 /// are a discriminant plus a short app_id, so this is generous.
@@ -256,5 +313,35 @@ mod tests {
         let err = register_over(&mut client, p.as_fd(), "com.x").unwrap_err();
         assert!(matches!(err, IdentityClientError::Refused(_)));
         srv.join().unwrap();
+    }
+
+    /// The connect resolver prefers the per-user socket when it exists, falls to
+    /// the system socket when only that exists, and defaults to the per-user path
+    /// when neither exists (so an error names the expected per-user location).
+    #[test]
+    fn connect_path_prefers_the_existing_socket() {
+        let per_user = PathBuf::from("/run/user/1000/arlen/config-broker-identity.sock");
+        let system = PathBuf::from("/run/arlen/config-broker-identity.sock");
+
+        // Per-user present -> per-user, even if the system one also exists.
+        let got = resolve_connect_path(per_user.clone(), system.clone(), |_| true);
+        assert_eq!(got, per_user);
+
+        // Only the system socket exists -> the system path.
+        let got = resolve_connect_path(per_user.clone(), system.clone(), |p| p == system);
+        assert_eq!(got, system);
+
+        // Neither exists -> the per-user path (names the expected location).
+        let got = resolve_connect_path(per_user.clone(), system.clone(), |_| false);
+        assert_eq!(got, per_user);
+    }
+
+    /// The shared name + env consts are the exact strings the config-broker binds
+    /// against; a rename here without updating the daemon would silently split
+    /// producer and consumer onto different sockets, so pin them.
+    #[test]
+    fn identity_socket_contract_strings_are_pinned() {
+        assert_eq!(IDENTITY_SOCKET_NAME, "config-broker-identity.sock");
+        assert_eq!(IDENTITY_SOCKET_ENV, "ARLEN_CONFIG_BROKER_IDENTITY_SOCKET");
     }
 }
