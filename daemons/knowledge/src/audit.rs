@@ -272,6 +272,28 @@ pub fn entity_link_event(
     }
 }
 
+/// Content-free audit for a shared-entity merge (SHARED-ENTITIES.md §Merge Flow):
+/// the calling app id + the merged entity type, never the concrete keys of the
+/// duplicate or the canonical (those are the entity's own data, not the audit's).
+pub fn entity_merge_event(app_id: &str, qualified_type: &str, outcome: &str) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::AppAction,
+        structural: StructuralRecord {
+            subject: "entity.merge".to_string(),
+            node_types: vec![app_id.to_string(), qualified_type.to_string()],
+            relations: vec![],
+            result_count: None,
+            duration_ms: None,
+            outcome: outcome.to_string(),
+            depth: None,
+            capability_change: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
