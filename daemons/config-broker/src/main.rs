@@ -70,15 +70,24 @@ async fn main() {
         audit_proto::sink::LedgerAuditSink::new(audit_proto::client::AuditClient::new(audit_socket)),
     );
 
+    // The identity broker runs on its OWN task, not in the shutdown select!,
+    // so an identity-socket failure (a squatted/failed bind, an accept
+    // error) is logged but does NOT take down the master-switch broker - a
+    // failed identity surface must never deny the AI master switches. The
+    // task is torn down when the runtime drops on shutdown.
+    let id_uid = server::owner_uid();
+    let id_store_task = Arc::clone(&id_store);
+    let id_socket_task = id_socket.clone();
+    tokio::spawn(async move {
+        if let Err(e) = identity_server::run(id_store_task, &id_socket_task, id_uid).await {
+            tracing::error!("identity serve loop ended, master-switch broker continues: {e}");
+        }
+    });
+
     tokio::select! {
         r = server::run(Arc::clone(&store), &socket, Arc::clone(&sink)) => {
             if let Err(e) = r {
                 tracing::error!("serve loop ended: {e}");
-            }
-        }
-        r = identity_server::run(Arc::clone(&id_store), &id_socket, server::owner_uid()) => {
-            if let Err(e) = r {
-                tracing::error!("identity serve loop ended: {e}");
             }
         }
         _ = shutdown_signal() => {
