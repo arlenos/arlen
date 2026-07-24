@@ -429,6 +429,30 @@ fn read_number(chars: &[char], start: usize) -> (f64, usize) {
     (s.parse().unwrap_or(0.0), j)
 }
 
+/// Turn a live Hugging Face search hit into a fit-rankable [`ModelSpec`] using only
+/// its repo id, so the existing [`recommend`]/[`tier_picks`] machine can score it
+/// without a blocking per-row GGUF metadata fetch. Returns `None` when the id does
+/// not state a parameter count (nothing to fit-rank on; the UI then falls back to
+/// resolving the file's real size on expand). The repo hosts many quant files, so a
+/// quant named in the id is deliberately ignored here - the recommender applies its
+/// own best-fitting-quant ladder, matching how the curated catalog is scored.
+pub fn hf_hit_to_spec(hit: &crate::hf::HfHit) -> Option<ModelSpec> {
+    parse_params_b_from_name(&hit.id).map(|params_b| ModelSpec {
+        name: hit.id.clone(),
+        params_b,
+    })
+}
+
+/// Fit-rank a pool of Hugging Face search hits for `hw` locally, dropping any hit
+/// whose id does not state a parameter count. Order preserved. The whole-ecosystem
+/// analogue of [`recommend_catalog`]: the caller supplies the candidate pool (a live
+/// search, or the cached popular-GGUF index) and this scores every fittable hit with
+/// the same quant-ladder + speed math as the curated set. Pure.
+pub fn recommend_hf_hits(hw: &Hardware, hits: &[crate::hf::HfHit]) -> Vec<Recommendation> {
+    let specs: Vec<ModelSpec> = hits.iter().filter_map(hf_hit_to_spec).collect();
+    recommend(hw, &specs)
+}
+
 /// A recommendation for one model on the target hardware: the quant the manager
 /// would silently apply, the resulting fit badge, and the estimated generation
 /// rate. `quant` is `None` only when the model does not fit at any sane quant (the
@@ -1031,5 +1055,37 @@ mod tests {
         // A digit embedded in a word is not a boundary-delimited token.
         assert_eq!(parse_params_b_from_name("Qwen2.5-Instruct"), None);
         assert_eq!(parse_params_b_from_name("just-a-name"), None);
+    }
+
+    #[test]
+    fn hf_hits_fit_rank_through_the_curated_recommender() {
+        let hw = apu_7840u();
+        let hits = vec![
+            crate::hf::HfHit {
+                id: "bartowski/Llama-3.2-1B-Instruct-GGUF".into(),
+                downloads: 900_000,
+                likes: 100,
+            },
+            crate::hf::HfHit {
+                id: "bartowski/Qwen2.5-7B-Instruct-GGUF".into(),
+                downloads: 500_000,
+                likes: 80,
+            },
+            // No parameter count in the id -> dropped, not guessed.
+            crate::hf::HfHit {
+                id: "someone/mystery-model-GGUF".into(),
+                downloads: 10,
+                likes: 0,
+            },
+        ];
+        // The mystery hit is dropped; the two params-bearing hits are scored.
+        let recs = recommend_hf_hits(&hw, &hits);
+        assert_eq!(recs.len(), 2);
+        assert_eq!(recs[0].params_b, 1.0);
+        assert_eq!(recs[1].params_b, 7.0);
+        assert!(recs.iter().all(|r| r.badge != FitBadge::WontFit));
+        // The single-hit bridge agrees and rejects a params-less id.
+        assert_eq!(hf_hit_to_spec(&hits[1]).unwrap().params_b, 7.0);
+        assert!(hf_hit_to_spec(&hits[2]).is_none());
     }
 }
