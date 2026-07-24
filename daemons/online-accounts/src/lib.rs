@@ -28,6 +28,7 @@ pub mod flow;
 pub mod loopback;
 pub mod oauth;
 pub mod provision;
+pub mod providers;
 pub mod attenuate;
 pub mod audit;
 pub mod config;
