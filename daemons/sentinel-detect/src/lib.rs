@@ -9,3 +9,4 @@ pub mod exposure;
 pub mod recording;
 pub mod tracker;
 pub mod trigger;
+pub mod usb;
