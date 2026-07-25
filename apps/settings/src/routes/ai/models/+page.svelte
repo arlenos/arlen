@@ -26,6 +26,7 @@
     installedModels,
     availableModels,
     roleMeta,
+    taskLabel,
     modelById,
     loadModels,
     setRole,
@@ -94,20 +95,26 @@
     {#if $installedModels.length > 0}
       <Group label={$t("s.mdl.yourModels")} class="span-full">
         {#each $installedModels as m (m.id)}
-          <Row label={m.name} description={installedMeta(m)} id={`installed-${m.id}`}>
+          <Row label={m.name} id={`installed-${m.id}`}>
             {#snippet control()}
-              <span class="row-control">
-                {#if m.uncensored}
-                  <Badge variant="outline"><ShieldOff strokeWidth={2} />{$t("s.mdl.unc.badge")}</Badge>
-                {/if}
-                <IconAction
-                  label={m.baked ? $t("s.mdl.bakedNoRemove") : $t("s.mdl.delete", { name: m.name })}
-                  disabled={m.baked}
-                  onclick={() => deleteModel(m.id)}
-                >
-                  <Trash2 size={15} strokeWidth={1.75} />
-                </IconAction>
-              </span>
+              <IconAction
+                label={m.baked ? $t("s.mdl.bakedNoRemove") : $t("s.mdl.delete", { name: m.name })}
+                disabled={m.baked}
+                onclick={() => deleteModel(m.id)}
+              >
+                <Trash2 size={15} strokeWidth={1.75} />
+              </IconAction>
+            {/snippet}
+            {#snippet below()}
+              <div class="info">
+                <p class="meta">{installedMeta(m)}</p>
+                <span class="tags">
+                  {#each m.tasks as task (task)}<Badge variant="outline">{taskLabel(task)}</Badge>{/each}
+                  {#if m.uncensored}
+                    <Badge variant="outline"><ShieldOff strokeWidth={2} />{$t("s.mdl.unc.badge")}</Badge>
+                  {/if}
+                </span>
+              </div>
             {/snippet}
           </Row>
         {/each}
@@ -169,10 +176,23 @@
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
-  .row-control {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
+  /* The model's info block under the name (the same anatomy the get page uses). */
+  .info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-top: -0.3rem;
+  }
+  .meta {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
   }
   .opt {
     display: inline-flex;
