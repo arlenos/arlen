@@ -21,6 +21,7 @@ pub mod dedup;
 pub mod metadata;
 pub mod openwith;
 pub mod ops;
+pub mod receipt;
 pub mod search;
 pub mod undo;
 pub mod selection;

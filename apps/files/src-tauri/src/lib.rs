@@ -13,6 +13,9 @@ mod thumbnail;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use arlen_ai_undo_core::effect_model::InverseReceipt;
+use arlen_ai_undo_core::undo_log::UndoEntry;
+use arlen_file_browser_core::receipt;
 use arlen_file_browser_core::undo::{UndoStack, UndoableOp};
 use arlen_file_browser_core::{
     breadcrumb, bulk_rename, dedup, list_dir, ops, properties, search, sort_entries, Crumb,
@@ -967,10 +970,76 @@ fn files_op(
         }
         other => return Err(format!("unknown operation: {other}")),
     }
+    // Journal each op's durable inverse to the signed undo-log (CAH-3) BEFORE the
+    // in-memory record moves the batch, so an FM delete/create is undoable across
+    // sessions, not only through this session's Ctrl+Z stack.
+    journal_undo_ops(&undoable);
     if let Ok(mut stack) = undo.lock() {
         stack.record(undoable);
     }
     Ok(())
+}
+
+/// Best-effort: journal each undoable op's durable inverse to the signed undo-log.
+/// Fire-and-forget - a missing or failing signer never affects the FM op that has
+/// already succeeded. The FM roots at `/`, so its op paths are absolute-minus-slash.
+fn journal_undo_ops(ops: &[UndoableOp]) {
+    let Some(trash_abs) = dirs::data_local_dir().map(|d| d.join("Trash")) else {
+        return;
+    };
+    let root_abs = PathBuf::from("/");
+    let inverses: Vec<InverseReceipt> = ops
+        .iter()
+        .filter_map(|op| receipt::to_inverse(op, &root_abs, &trash_abs))
+        .collect();
+    if inverses.is_empty() {
+        return;
+    }
+    let socket = arlen_ai_undo_proto::socket_path();
+    if !socket.exists() {
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        for inverse in inverses {
+            if let Err(e) = submit_inverse(&socket, inverse).await {
+                eprintln!("files: could not journal undo: {e}");
+            }
+        }
+    });
+}
+
+/// Submit one captured inverse to the undo-signer as a fresh `SubmitCreated` entry.
+async fn submit_inverse(socket: &Path, inverse: InverseReceipt) -> Result<(), String> {
+    let op_id = random_op_id();
+    let entry = UndoEntry { op_id: op_id.clone(), correlation_id: op_id, inverse };
+    let mut stream =
+        tokio::net::UnixStream::connect(socket).await.map_err(|e| e.to_string())?;
+    arlen_ai_undo_proto::write_request(
+        &mut stream,
+        &arlen_ai_undo_proto::Request::SubmitCreated(entry),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    let _ = arlen_ai_undo_proto::read_response(&mut stream).await;
+    Ok(())
+}
+
+/// A fresh 128-bit op id as lowercase hex (fits the signer's key bound; unique per
+/// op so two entries never collide), with a time-derived fallback.
+fn random_op_id() -> String {
+    let mut bytes = [0u8; 16];
+    if getrandom::getrandom(&mut bytes).is_err() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        return format!("files-{}-{nanos}", std::process::id());
+    }
+    let mut s = String::with_capacity(32);
+    for b in bytes {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
 }
 
 /// Set the Unix permission bits of `path` to `mode` (the editable half of the
