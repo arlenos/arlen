@@ -15,4 +15,5 @@ pub use catalog::{
     merge_catalog, AppCard, CapabilityFootprint, CatalogEntry, ComponentId, DisplayMeta,
     SourceLayer, TrustSignals, Variant,
 };
+pub use compose::{compose_catalog, dep11_entries, flathub_entries, forage_entry, SourceInputs};
 pub use query::{answer, CapabilityFacet, Catalog, Request, Response};

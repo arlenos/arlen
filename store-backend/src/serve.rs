@@ -8,9 +8,11 @@
 //! tests the whole read -> [`answer`] -> write path without binding a real socket. The
 //! catalog is read-only and shared, so a connection never mutates store state.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::UnixListener;
 
 use crate::query::{answer, Catalog, Request, Response};
 
@@ -98,6 +100,34 @@ where
     Ok(())
 }
 
+/// Bind `socket` (creating its parent dir, replacing a stale socket, clamping it to
+/// owner-only 0600) and serve every connection against the shared read-only catalog.
+/// Runs until the listener errors; each connection is handled on its own task so a
+/// slow client never blocks the accept loop. The catalog is `Arc`-shared, never
+/// mutated by a connection.
+pub async fn run(catalog: Arc<Catalog>, socket: &Path) -> Result<(), ServeError> {
+    if let Some(parent) = socket.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| ServeError::Io(e.to_string()))?;
+    }
+    // A stale socket from a previous run would make bind fail with EADDRINUSE.
+    let _ = std::fs::remove_file(socket);
+    let listener = UnixListener::bind(socket).map_err(|e| ServeError::Io(e.to_string()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600));
+    }
+    loop {
+        let (mut stream, _addr) = listener.accept().await.map_err(|e| ServeError::Io(e.to_string()))?;
+        let catalog = Arc::clone(&catalog);
+        tokio::spawn(async move {
+            // A per-connection error (a malformed frame, a hangup) ends only that
+            // connection; the accept loop keeps serving.
+            let _ = serve_connection(&mut stream, &catalog).await;
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,6 +186,29 @@ mod tests {
         // Closing the client ends the serve loop cleanly.
         drop(client);
         assert!(handle.await.unwrap().is_ok());
+    }
+
+    #[tokio::test]
+    async fn the_accept_loop_serves_a_real_socket() {
+        let dir = std::env::temp_dir().join(format!("store-serve-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let socket = dir.join("store.sock");
+        let catalog = Arc::new(fixture_catalog());
+        let listener = {
+            let socket = socket.clone();
+            tokio::spawn(async move { run(catalog, &socket).await })
+        };
+        // Poll for the socket to appear, then connect and round-trip a request.
+        let mut client = loop {
+            if let Ok(s) = tokio::net::UnixStream::connect(&socket).await {
+                break s;
+            }
+            tokio::task::yield_now().await;
+        };
+        write_request(&mut client, &Request::Search { query: "".into(), facets: vec![] }).await;
+        assert!(matches!(read_response(&mut client).await, Response::Cards(c) if c.len() == 1));
+        listener.abort();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
