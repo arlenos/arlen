@@ -1,0 +1,22 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-screenshot-core"
+version = "0.1.0"
+edition = "2021"
+description = "Screenshot app command logic: PNG-for-webview encoding, annotated-capture save, source picker DTOs (over sdk/screen-capture)"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# Encode a captured PNG as a data URL for the webview canvas.
+base64 = "0.22"
+# The capture core: the source lists + the screenshots-dir/name convention this
+# command layer wraps for the Tauri backend.
+arlen-screen-capture = { path = "../../../sdk/screen-capture" }
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
