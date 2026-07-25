@@ -217,6 +217,29 @@ async fn try_connect(app: &AppHandle, writer: &SocketWriter) -> Result<(), Strin
                     "app_names": ka.app_names,
                 }));
             }
+            proto::server_message::Msg::JobUpdate(ju) => {
+                // The job-progress surface (job-progress-surface.md): the same
+                // daemon hosts the JobView server and pushes each register/
+                // update/finish here. Forward it verbatim to the Activity/Jobs
+                // zone; the shell owns the visibility threshold, not the daemon.
+                let _ = app.emit("notification:job", serde_json::json!({
+                    "id": ju.id,
+                    "appId": ju.app_id,
+                    "title": ju.title,
+                    "state": ju.state,
+                    "stateMessage": ju.state_message,
+                    "unit": ju.unit,
+                    "processed": ju.processed,
+                    "determinate": ju.determinate,
+                    "total": ju.total,
+                    "fraction": ju.fraction,
+                    "killable": ju.killable,
+                    "suspendable": ju.suspendable,
+                    "startedAt": ju.started_at,
+                    "egressHost": ju.egress_host,
+                    "removed": ju.removed,
+                }));
+            }
         }
     }
 }
