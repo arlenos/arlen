@@ -27,6 +27,7 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import FloatingThumbnail from "$lib/components/FloatingThumbnail.svelte";
   import { drawShape, rectOf, type Shape, type ShapeKind, type ToolKind, type Point } from "$lib/annotate";
+  import { isTauri, capturePrimary, saveScreenshot, copyPng, frontendLog, canvasPngBase64 } from "$lib/bridge";
 
   // The capture handoff: a fresh capture floats as a thumbnail (ignore -> auto-save,
   // click -> annotate); the annotate surface stays mounted so its canvas is ready.
@@ -72,16 +73,36 @@
 
   let seq = 0;
 
-  onMount(() => {
+  onMount(async () => {
     const cs = getComputedStyle(document.documentElement);
     swatches = SWATCH_TOKENS.map((t) => ({ token: t, hex: (cs.getPropertyValue(t).trim() || "#ffffff") }));
     color = swatches[0]?.hex ?? color;
-    base = buildFixture();
+    // Live: the coder's capture command hands back the primary output as a PNG data
+    // URL. Under vite (or when capture is unavailable) the synthetic fixture stands
+    // in so the surface still renders + verifies.
+    const captured = await capturePrimary();
+    base = captured ? await dataUrlToCanvas(captured) : buildFixture();
     ctx = canvas.getContext("2d");
     canvas.width = base.width;
     canvas.height = base.height;
     redraw();
   });
+
+  // Load a PNG data URL into an offscreen canvas (the untouched capture base).
+  function dataUrlToCanvas(dataUrl: string): Promise<HTMLCanvasElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        c.getContext("2d")!.drawImage(img, 0, 0);
+        resolve(c);
+      };
+      img.onerror = () => reject(new Error("capture image failed to load"));
+      img.src = dataUrl;
+    });
+  }
 
   function redraw() {
     if (!ctx || !base) return;
@@ -174,11 +195,19 @@
   // Copy / save operate on a given canvas - the annotate canvas for the surface,
   // the untouched base for the thumbnail's quick actions.
   async function copyCanvas(c: HTMLCanvasElement) {
+    if (isTauri()) {
+      // Live: the coder's clipboard command over the annotated PNG.
+      try {
+        await copyPng(canvasPngBase64(c));
+      } catch (e) {
+        frontendLog(`copy failed: ${e}`);
+      }
+      return;
+    }
+    // Fallback: the browser clipboard so the affordance works under vite.
     c.toBlob(async (blob) => {
       if (!blob) return;
       try {
-        // Live: the coder's clipboard command over the captured PNG. Fallback: the
-        // browser clipboard so the affordance works under vite.
         await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
       } catch {
         /* no clipboard permission in the harness */
@@ -186,8 +215,14 @@
     }, "image/png");
   }
   function saveCanvas(c: HTMLCanvasElement) {
-    // Live: invoke("save_to_file", ...) over the coder's write_png bridge. Under
-    // vite, download the composed PNG so the flow is verifiable.
+    if (isTauri()) {
+      // Live: write the annotated PNG to the screenshots dir via the coder's command.
+      saveScreenshot(canvasPngBase64(c))
+        .then((path) => frontendLog(`saved ${path}`))
+        .catch((e) => frontendLog(`save failed: ${e}`));
+      return;
+    }
+    // Under vite, download the composed PNG so the flow is verifiable.
     c.toBlob((blob) => {
       if (!blob) return;
       const url = URL.createObjectURL(blob);
