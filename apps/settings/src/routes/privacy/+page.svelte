@@ -37,6 +37,8 @@
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
+  import { Radar } from "lucide-svelte";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import {
@@ -244,6 +246,12 @@
            to answer "what can reach my data". -->
       <p class="note span-full">{$t("s.priv.sample")}</p>
     {/if}
+
+    <div class="span-full">
+      <LinkCard href="/privacy/physical" title={$t("s.sent.link")} description={$t("s.sent.linkDesc")}>
+        {#snippet icon()}<Radar size={20} strokeWidth={1.75} />{/snippet}
+      </LinkCard>
+    </div>
 
     {#if $grantsError}
       <Group label={$t("s.priv.title")} class="span-full">
