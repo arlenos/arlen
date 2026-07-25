@@ -107,6 +107,22 @@ fn read_catalog(path: &std::path::Path) -> Option<String> {
     }
 }
 
+/// Resolve on SIGTERM (systemd stop) or SIGINT (Ctrl-C).
+async fn shutdown_signal() {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut term = match signal(SignalKind::terminate()) {
+        Ok(s) => s,
+        Err(_) => {
+            let _ = tokio::signal::ctrl_c().await;
+            return;
+        }
+    };
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = term.recv() => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::read_catalog;
@@ -140,22 +156,5 @@ mod tests {
     #[test]
     fn a_missing_file_is_none() {
         assert!(read_catalog(std::path::Path::new("/nonexistent/store-x.xml")).is_none());
-    }
-}
-
-/// A one-line summary of the composed catalog for the startup log.
-/// Resolve on SIGTERM (systemd stop) or SIGINT (Ctrl-C).
-async fn shutdown_signal() {
-    use tokio::signal::unix::{signal, SignalKind};
-    let mut term = match signal(SignalKind::terminate()) {
-        Ok(s) => s,
-        Err(_) => {
-            let _ = tokio::signal::ctrl_c().await;
-            return;
-        }
-    };
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {}
-        _ = term.recv() => {}
     }
 }
