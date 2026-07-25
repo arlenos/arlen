@@ -205,7 +205,8 @@
         </span>
       </span>
     {:else if m.installed}
-      <Badge variant="success">{$t("s.mdl.installed")}</Badge>
+      <!-- Same box as the sm button so the right column lines up across rows. -->
+      <Badge variant="success" class="h-control px-2.5">{$t("s.mdl.installed")}</Badge>
     {:else}
       <Button
         variant="outline"
@@ -245,10 +246,13 @@
   .search {
     padding: 0 0.25rem;
   }
+  /* Pull the tag line toward its label block (the Row's main/below gap reads
+     looser than the title/description gap). */
   .tags {
     display: flex;
     flex-wrap: wrap;
     gap: 0.375rem;
+    margin-top: -0.25rem;
   }
   .offline-note {
     padding: 0.4rem 0.25rem 0;
