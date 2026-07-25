@@ -48,6 +48,9 @@ prost = "0.13"
 # Already in the tree via tauri; `sync` carries the semaphore bounding
 # concurrent sandboxed decodes.
 tokio = { version = "1", features = ["sync", "net", "io-util"] }
+# FM-R15: call the online-accounts daemon's org.arlen.Accounts1.ListAccounts over the
+# session bus for the Network/Remote places. Match the daemon's zbus (5, tokio).
+zbus = { version = "5", default-features = false, features = ["tokio"] }
 # Journal FM deletes/creates to the signed undo-log so they are undoable across
 # sessions (CAH-3): the inverse-receipt model + the undo-signer wire protocol.
 arlen-ai-undo-core = { path = "../../../ai/ai-undo-core" }
