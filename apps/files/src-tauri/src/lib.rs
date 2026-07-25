@@ -8,6 +8,7 @@
 
 mod ai_gate;
 mod capability;
+mod remote;
 mod thumbnail;
 
 use std::path::{Path, PathBuf};
@@ -2042,6 +2043,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             shell_present,
             frontend_log,
+            remote::network_places,
             files_list,
             files_list_location,
             files_list_location_as_of,
