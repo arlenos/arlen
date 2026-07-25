@@ -30,6 +30,14 @@
   } from "$lib/stores/settingsSearch.js";
   import WaypointerSettingInline from "./WaypointerSettingInline.svelte";
   import WaypointerResult from "./waypointer/WaypointerResult.svelte";
+  import WaypointerAskPane from "./waypointer/WaypointerAskPane.svelte";
+  import {
+    askMode,
+    ask as askAgent,
+    escalate,
+    resetAsk,
+    loadAskCapability,
+  } from "$lib/stores/waypointerAsk";
   import WaypointerInlinePreview, {
     type SpecialMode,
   } from "./waypointer/WaypointerInlinePreview.svelte";
@@ -295,6 +303,7 @@
   });
 
   function close() {
+    resetAsk();
     closeWaypointer();
   }
 
@@ -302,6 +311,43 @@
   let lastMouse = { x: 0, y: 0 };
 
   function handleKeydown(e: KeyboardEvent) {
+    // Ask mode (waypointer-ai-prompt.md): Tab flips the input into a prompt, the
+    // answer streams inline. First Esc drops back to search (the session
+    // persists server-side); the render + fixture are here, the real agent call
+    // is the coder's `waypointer_ask` seam.
+    let asking = false;
+    askMode.subscribe((v) => { asking = v; })();
+    if (e.key === "Tab" && !asking) {
+      e.preventDefault();
+      askMode.set(true);
+      void loadAskCapability();
+      return;
+    }
+    if (asking) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        resetAsk();
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        void askAgent(query);
+        query = "";
+        return;
+      }
+      if (e.key.toLowerCase() === "j" && e.ctrlKey) {
+        e.preventDefault();
+        void escalate();
+        close();
+        return;
+      }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        return;
+      }
+      return;
+    }
     if (e.key === "Escape") {
       e.preventDefault();
       close();
@@ -751,20 +797,29 @@
   <div class="wp-card shell-surface" onclick={(e) => e.stopPropagation()}>
     <Command class="wp-root" shouldFilter={false} bind:value={commandValue}>
       <CommandInput
-        placeholder="Search..."
+        placeholder={$askMode ? "Ask the agent..." : "Search..."}
         bind:value={query}
         bind:ref={inputRef}
         autofocus
       />
 
-      <WaypointerInlinePreview
-        {specialMode}
-        {inlineResult}
-        onActivate={activateInlinePreview}
-      />
+      {#if $askMode}
+        <WaypointerAskPane />
+      {/if}
+
+      <!-- The search machinery stays mounted while asking (the 150ms poll writes
+           into it by id and must not lose its targets); it is hidden with a
+           hard class instead. -->
+      <div class:wp-hidden={$askMode}>
+        <WaypointerInlinePreview
+          {specialMode}
+          {inlineResult}
+          onActivate={activateInlinePreview}
+        />
+      </div>
 
       <CommandList
-        class="wp-list {kbActive ? 'wp-kb-active' : ''}"
+        class="wp-list {kbActive ? 'wp-kb-active' : ''} {$askMode ? 'wp-hidden' : ''}"
         bind:ref={listRef}
       >
         <!-- CommandEmpty is unusable with shouldFilter={false} because
@@ -1118,7 +1173,9 @@
            heading as signal names); the empty landing shows the
            prefix cheatsheet so the blank state teaches instead of
            staring back. -->
-      {#if $specialMode === "kill"}
+      {#if $askMode}
+        <!-- The ask pane carries its own footer. -->
+      {:else if $specialMode === "kill"}
         <div class="wp-footer">
           <span>Enter quits the app</span>
           <span>Shift+Enter force-quits</span>
@@ -1129,6 +1186,7 @@
           <span># manual</span>
           <span>? web search</span>
           <span>p: projects</span>
+          <span>Tab ask the agent</span>
         </div>
       {/if}
     </Command>
@@ -1146,6 +1204,12 @@
     background: transparent;
     overflow: hidden;
     height: 100%;
+  }
+
+  /* Hard-hide the search machinery while Ask mode is up: the 150ms poll writes
+     inline display values by id, so only !important wins over it. */
+  :global(.wp-hidden) {
+    display: none !important;
   }
 
   .wp-backdrop {
