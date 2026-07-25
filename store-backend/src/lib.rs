@@ -7,6 +7,7 @@
 //! "one card, never N duplicates, never a silent pick" invariant is tested directly.
 
 pub mod catalog;
+pub mod client;
 pub mod compose;
 pub mod query;
 pub mod serve;
@@ -16,4 +17,5 @@ pub use catalog::{
     SourceLayer, TrustSignals, Variant,
 };
 pub use compose::{compose_catalog, dep11_entries, flathub_entries, forage_entry, SourceInputs};
+pub use client::{request as store_request, request_default, ClientError};
 pub use query::{answer, CapabilityFacet, Catalog, Request, Response};
