@@ -173,10 +173,9 @@ struct CompletedAction {
     to: String,
 }
 
-/// Render the completed-actions JSON array from the compensation store, oldest
-/// first. Pure and testable; the D-Bus method just locks the store and calls this.
-fn completed_actions_json(store: &CompensationStore) -> String {
-    let actions: Vec<CompletedAction> = store
+/// The graph completed-actions from the compensation store, oldest first.
+fn graph_completed_actions(store: &CompensationStore) -> Vec<CompletedAction> {
+    store
         .entries()
         .into_iter()
         .map(|(id, r)| CompletedAction {
@@ -186,8 +185,65 @@ fn completed_actions_json(store: &CompensationStore) -> String {
             from: format!("{}/{}", r.from_type, r.from_id),
             to: format!("{}/{}", r.to_type, r.to_id),
         })
-        .collect();
-    serde_json::to_string(&actions).unwrap_or_else(|_| "[]".to_string())
+        .collect()
+}
+
+/// One still-undoable NON-GRAPH action (a filesystem/settings inverse the FM, the
+/// trash-first rm or the settings executor journaled to the signed undo-log), for the
+/// `completed_actions` feed - so a filesystem undo is DISCOVERABLE there, not only a
+/// graph-edge one. `kind` names what the undo does; `target` is the path/setting it
+/// acts on (content-bounded, consistent with the graph entries' `from`/`to` node ids,
+/// which are already file paths for File nodes).
+#[derive(Debug, Serialize)]
+struct CompletedNonGraphAction {
+    /// The decision correlation id: the handle `compensate(id)` undoes by.
+    id: String,
+    /// The durable op id.
+    op_id: String,
+    /// What the undo does (`relocate` / `restore-from-trash` / `restore-setting` / ...).
+    kind: &'static str,
+    /// The path or setting the undo acts on.
+    target: String,
+}
+
+/// Render the still-undoable NON-GRAPH actions from the signer's live entries. A
+/// graph-edge inverse is skipped (the in-memory store surfaces it); a terminal entry
+/// is already absent from the signer's live set. Pure and testable.
+fn nongraph_completed_actions(
+    entries: &[arlen_ai_undo_core::undo_log::UndoEntry],
+) -> Vec<CompletedNonGraphAction> {
+    use arlen_ai_undo_core::effect_model::InverseReceipt;
+    entries
+        .iter()
+        .filter_map(|e| {
+            let (kind, target) = match &e.inverse {
+                InverseReceipt::RestorePath { prior, .. } => ("relocate", prior.as_str().to_string()),
+                InverseReceipt::RestoreFromTrash { original, .. } => {
+                    ("restore-from-trash", original.as_str().to_string())
+                }
+                InverseReceipt::RestoreValue { target, .. } => {
+                    ("restore-setting", format!("{}:{}", target.file(), target.key()))
+                }
+                InverseReceipt::DeleteCreated { created } => {
+                    ("delete-created", created.path().as_str().to_string())
+                }
+                InverseReceipt::TrashCreated { created } => {
+                    ("trash-created", created.path().as_str().to_string())
+                }
+                InverseReceipt::RestoreSnapshot { snapshot, .. } => {
+                    ("restore-snapshot", snapshot.as_str().to_string())
+                }
+                // A graph edge is the in-memory store's authoritative surface.
+                InverseReceipt::RetractGraphEdge { .. } => return None,
+            };
+            Some(CompletedNonGraphAction {
+                id: e.correlation_id.clone(),
+                op_id: e.op_id.clone(),
+                kind,
+                target,
+            })
+        })
+        .collect()
 }
 
 /// The app-ids allowed to invoke the destructive `compensate` verb: the harness
@@ -453,10 +509,26 @@ impl AgentAdminInterface {
 
     #[zbus(name = "completed_actions")]
     async fn completed_actions(&self) -> String {
-        self.compensation
+        // The graph actions from the in-memory store (fast, always present).
+        let graph = self
+            .compensation
             .lock()
-            .map(|store| completed_actions_json(&store))
-            .unwrap_or_else(|_| "[]".to_string())
+            .map(|store| graph_completed_actions(&store))
+            .unwrap_or_default();
+        // The non-graph (filesystem/settings) actions from the signed undo-log, so a
+        // filesystem undo is discoverable here too. Best-effort: an absent/unreachable
+        // signer just yields the graph actions, never an error.
+        let socket = arlen_ai_undo_proto::socket_path();
+        let nongraph = match crate::undo_signer::fetch_live(&socket).await {
+            Ok(entries) => nongraph_completed_actions(&entries),
+            Err(_) => Vec::new(),
+        };
+        // Combine into one heterogeneous array; the graph entries keep their shape
+        // (backward-compatible), the non-graph entries carry `kind`/`target`.
+        let mut items: Vec<serde_json::Value> =
+            graph.iter().filter_map(|a| serde_json::to_value(a).ok()).collect();
+        items.extend(nongraph.iter().filter_map(|a| serde_json::to_value(a).ok()));
+        serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string())
     }
 
     /// Undo a completed action: retract the graph write recorded under
@@ -507,7 +579,7 @@ mod tests {
         let mut store = CompensationStore::new(8);
         store.register("corr-1", receipt("op-1"));
         store.register("corr-2", receipt("op-2"));
-        let json = completed_actions_json(&store);
+        let json = serde_json::to_string(&graph_completed_actions(&store)).unwrap();
         let v: Value = serde_json::from_str(&json).unwrap();
         let arr = v.as_array().unwrap();
         assert_eq!(arr.len(), 2);
@@ -521,7 +593,8 @@ mod tests {
 
     #[test]
     fn an_empty_store_renders_an_empty_array() {
-        assert_eq!(completed_actions_json(&CompensationStore::new(8)), "[]");
+        let empty = serde_json::to_string(&graph_completed_actions(&CompensationStore::new(8))).unwrap();
+        assert_eq!(empty, "[]");
     }
 
     #[test]
@@ -639,6 +712,43 @@ mod tests {
         assert_eq!(enact_outcome_wire(RefusedPriorOccupied), "refused-prior-occupied");
         // A graph inverse reaching the fs enact is nothing this path can undo.
         assert_eq!(enact_outcome_wire(NotFilesystem), "no-such-receipt");
+    }
+
+    #[test]
+    fn nongraph_completed_actions_render_fs_inverses_and_skip_graph() {
+        use arlen_ai_undo_core::undo_log::UndoEntry;
+        let entry = |cid: &str, inverse| UndoEntry {
+            op_id: cid.to_string(),
+            correlation_id: cid.to_string(),
+            inverse,
+        };
+        let entries = vec![
+            entry(
+                "c1",
+                restore_path_inverse(
+                    std::path::Path::new("/a/now.txt"),
+                    std::path::Path::new("/a/prior.txt"),
+                ),
+            ),
+            entry(
+                "c2",
+                InverseReceipt::RetractGraphEdge {
+                    op_id: "c2".into(),
+                    from_type: "system.File".into(),
+                    from_id: "/x".into(),
+                    to_type: "system.Project".into(),
+                    to_id: "p".into(),
+                    relation_type: "FILE_PART_OF".into(),
+                },
+            ),
+        ];
+        let rendered = nongraph_completed_actions(&entries);
+        // The graph inverse is skipped (the in-memory store surfaces it); the
+        // filesystem one renders with its kind + restore target.
+        assert_eq!(rendered.len(), 1);
+        assert_eq!(rendered[0].id, "c1");
+        assert_eq!(rendered[0].kind, "relocate");
+        assert_eq!(rendered[0].target, "/a/prior.txt");
     }
 
     #[test]
