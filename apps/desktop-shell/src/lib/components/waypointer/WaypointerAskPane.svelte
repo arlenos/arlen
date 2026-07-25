@@ -24,11 +24,10 @@
 </script>
 
 <div class="ask">
-  {#if $askCapabilityLoaded}
-    <p class="ask-cap" class:off={!enabled}>
-      <span class="ask-glyph" class:off={!enabled} aria-hidden="true">◆</span>
-      {capabilitySentence($askCapability)}
-    </p>
+  <!-- The healthy state stays silent; a status line renders only when the agent
+       is off or unreachable. -->
+  {#if $askCapabilityLoaded && !enabled}
+    <p class="ask-cap">{capabilitySentence($askCapability)}</p>
   {/if}
 
   {#if enabled}
@@ -69,25 +68,12 @@
     min-height: 0;
   }
 
-  /* The capability line: the same one-sentence anchor the harness uses, compact. */
+  /* The status line, shown only when the agent is off or unreachable. */
   .ask-cap {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
     margin: 0;
     padding: 0.5rem 0.9rem 0.35rem;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .ask-glyph {
-    color: var(--color-success);
-    font-size: 0.55rem;
-  }
-  .ask-glyph.off {
-    color: color-mix(in srgb, var(--color-fg-shell) 35%, transparent);
   }
 
   /* The turns: a bounded scroller (never flex-grow - the layer-shell overlay
