@@ -263,6 +263,7 @@ async fn dispatch_nongraph_inverse(
     correlation_id: &str,
     inverse: arlen_ai_undo_core::effect_model::InverseReceipt,
     audit: &dyn AuditSink,
+    signer_socket: &std::path::Path,
 ) -> String {
     let event = behaviour_action_event(
         "compensate",
@@ -272,11 +273,38 @@ async fn dispatch_nongraph_inverse(
     if audit.submit(event).await.is_err() {
         return "error: audit unavailable".to_string();
     }
-    match tokio::task::spawn_blocking(move || crate::undo_enact::enact_inverse(&inverse)).await {
-        Ok(Ok(outcome)) => enact_outcome_wire(outcome).to_string(),
-        Ok(Err(e)) => format!("error: {e}"),
-        Err(_) => "error: enact task failed".to_string(),
+    let outcome = match tokio::task::spawn_blocking(move || crate::undo_enact::enact_inverse(&inverse)).await {
+        Ok(Ok(outcome)) => outcome,
+        Ok(Err(e)) => return format!("error: {e}"),
+        Err(_) => return "error: enact task failed".to_string(),
+    };
+    // Mark the entry terminal after an undo that ACTUALLY mutated, so a second
+    // `compensate(same-id)` is a no-op the state pre-gate catches rather than a
+    // re-enact (which for `RestoreValue` would revert a user's later change). A
+    // `Refused*`/`NotFilesystem` outcome did not act, so the entry stays live for a
+    // legitimate retry. `Superseded` is the one terminal state reachable from an
+    // `InFlight` entry (which is where the FM/rm producers leave their receipts).
+    // Best-effort: the undo already happened; a failed transition only leaves a
+    // re-enact possible, bounded + fail-safe for the destructive variants.
+    if outcome_marks_terminal(outcome) {
+        let _ = crate::undo_signer::transition(
+            signer_socket,
+            correlation_id,
+            arlen_ai_undo_core::undo_log::UndoState::Superseded,
+        )
+        .await;
     }
+    enact_outcome_wire(outcome).to_string()
+}
+
+/// Whether an enact outcome represents an undo that actually mutated the filesystem
+/// (so the entry should be marked terminal), as opposed to a fail-safe no-op.
+fn outcome_marks_terminal(outcome: crate::undo_enact::EnactOutcome) -> bool {
+    use crate::undo_enact::EnactOutcome;
+    matches!(
+        outcome,
+        EnactOutcome::Restored | EnactOutcome::Deleted | EnactOutcome::Trashed
+    )
 }
 
 /// Run one `compensate`: undo the executed write recorded under `correlation_id`.
@@ -310,14 +338,31 @@ async fn run_compensate(
         None => {
             // Fallthrough: the graph store is graph-only, but the durable signed
             // undo-log may hold a NON-GRAPH inverse (a filesystem/settings receipt).
-            // Look it up at the well-known signer rendezvous and enact it. The
-            // executor_live gate + caller-auth already passed; audit-before-act runs
-            // inside `dispatch_nongraph_inverse`. A lookup failure is fail-closed.
+            // The executor_live gate + caller-auth already passed; audit-before-act
+            // runs inside `dispatch_nongraph_inverse`. Every lookup failure is
+            // fail-closed.
             let socket = arlen_ai_undo_proto::socket_path();
+            // Idempotency + corruption pre-gate: an already-terminal entry is a no-op
+            // (do not re-enact), a corrupt chain is refused, an absent id is unknown.
+            match crate::undo_signer::lookup_state(&socket, correlation_id).await {
+                Ok(arlen_ai_undo_proto::StateReply::Absent) => {
+                    return "no-such-receipt".to_string()
+                }
+                Ok(arlen_ai_undo_proto::StateReply::Present(state)) if state.is_terminal() => {
+                    return "already-undone".to_string()
+                }
+                Ok(arlen_ai_undo_proto::StateReply::Present(_)) => {}
+                Ok(arlen_ai_undo_proto::StateReply::Corrupt) => {
+                    return "error: undo log corrupt".to_string()
+                }
+                Err(_) => return "error: undo log unavailable".to_string(),
+            }
             return match crate::undo_signer::lookup_entry(&socket, correlation_id).await {
                 Ok(Some(entry)) => {
-                    dispatch_nongraph_inverse(caller, correlation_id, entry.inverse, audit).await
+                    dispatch_nongraph_inverse(caller, correlation_id, entry.inverse, audit, &socket)
+                        .await
                 }
+                // Raced to terminal/removed between the two reads: nothing to undo.
                 Ok(None) => "no-such-receipt".to_string(),
                 Err(_) => "error: undo log unavailable".to_string(),
             };
@@ -578,6 +623,12 @@ mod tests {
         }
     }
 
+    /// A path with no signer listening, so the best-effort terminal-marking
+    /// transition fails silently in a unit test (the enact + wire still hold).
+    fn no_signer() -> &'static std::path::Path {
+        std::path::Path::new("/nonexistent/store-no-signer.sock")
+    }
+
     #[test]
     fn enact_wire_maps_the_variants() {
         use crate::undo_enact::EnactOutcome::*;
@@ -588,6 +639,19 @@ mod tests {
         assert_eq!(enact_outcome_wire(RefusedPriorOccupied), "refused-prior-occupied");
         // A graph inverse reaching the fs enact is nothing this path can undo.
         assert_eq!(enact_outcome_wire(NotFilesystem), "no-such-receipt");
+    }
+
+    #[test]
+    fn only_mutating_outcomes_mark_the_entry_terminal() {
+        use crate::undo_enact::EnactOutcome::*;
+        // A completed undo marks the entry terminal (no re-enact).
+        assert!(outcome_marks_terminal(Restored));
+        assert!(outcome_marks_terminal(Deleted));
+        assert!(outcome_marks_terminal(Trashed));
+        // A fail-safe no-op leaves the entry live for a legitimate retry.
+        assert!(!outcome_marks_terminal(RefusedIdentityMismatch));
+        assert!(!outcome_marks_terminal(RefusedPriorOccupied));
+        assert!(!outcome_marks_terminal(NotFilesystem));
     }
 
     #[tokio::test]
@@ -601,6 +665,7 @@ mod tests {
             "corr-1",
             restore_path_inverse(&now, &prior),
             &MockAuditSink::accepting(),
+            no_signer(),
         )
         .await;
         assert_eq!(out, "restored");
@@ -618,6 +683,7 @@ mod tests {
             "corr-1",
             restore_path_inverse(&now, &prior),
             &MockAuditSink::failing(),
+            no_signer(),
         )
         .await;
         assert_eq!(out, "error: audit unavailable");
@@ -635,7 +701,7 @@ mod tests {
             relation_type: "FILE_PART_OF".into(),
         };
         let out =
-            dispatch_nongraph_inverse("settings", "corr-1", inverse, &MockAuditSink::accepting())
+            dispatch_nongraph_inverse("settings", "corr-1", inverse, &MockAuditSink::accepting(), no_signer())
                 .await;
         assert_eq!(out, "no-such-receipt");
     }
