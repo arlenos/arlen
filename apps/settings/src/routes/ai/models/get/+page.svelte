@@ -118,12 +118,12 @@
         {#each TIERS as tier (tier)}
           {@const m = picks[tier]}
           {#if m}
-            <Row label={m.name} description={pickMeta(m, tier)} id={`pick-${tier}`}>
+            <Row label={m.name} id={`pick-${tier}`}>
               {#snippet control()}
                 {@render action(m)}
               {/snippet}
               {#snippet below()}
-                {@render tags(m)}
+                {@render info(m, pickMeta(m, tier))}
               {/snippet}
             </Row>
           {/if}
@@ -133,12 +133,12 @@
       {#if more.length > 0}
         <Group label={$t("s.mdl.more")} class="span-full">
           {#each more as m (m.id)}
-            <Row label={m.name} description={resultMeta(m)} id={`more-${m.id}`}>
+            <Row label={m.name} id={`more-${m.id}`}>
               {#snippet control()}
                 {@render action(m)}
               {/snippet}
               {#snippet below()}
-                {@render tags(m)}
+                {@render info(m, resultMeta(m))}
               {/snippet}
             </Row>
           {/each}
@@ -147,12 +147,12 @@
     {:else}
       <Group label={$t("s.mdl.results")} class="span-full">
         {#each results as m (m.id)}
-          <Row label={m.name} description={resultMeta(m)} id={`result-${m.id}`}>
+          <Row label={m.name} id={`result-${m.id}`}>
             {#snippet control()}
               {@render action(m)}
             {/snippet}
             {#snippet below()}
-              {@render tags(m)}
+              {@render info(m, resultMeta(m))}
             {/snippet}
           </Row>
         {:else}
@@ -174,16 +174,19 @@
   </SectionGrid>
 </Page>
 
-<!-- What the model is, as quiet marks under the row: the task tags, plus the
-     no-guardrails mark when it applies (kept out of the action column so every
-     row shares the same geometry). -->
-{#snippet tags(m: Model)}
-  <span class="tags">
-    {#each m.tasks as task (task)}<Badge variant="outline">{taskLabel(task)}</Badge>{/each}
-    {#if m.uncensored}
-      <Badge variant="outline"><ShieldOff strokeWidth={2} />{$t("s.mdl.unc.badge")}</Badge>
-    {/if}
-  </span>
+<!-- What the model is, under the name with page-owned breathing room: the
+     size/speed line, then the task tags plus the no-guardrails mark when it
+     applies (kept out of the action column so every row shares one geometry). -->
+{#snippet info(m: Model, meta: string)}
+  <div class="info">
+    <p class="meta">{meta}</p>
+    <span class="tags">
+      {#each m.tasks as task (task)}<Badge variant="outline">{taskLabel(task)}</Badge>{/each}
+      {#if m.uncensored}
+        <Badge variant="outline"><ShieldOff strokeWidth={2} />{$t("s.mdl.unc.badge")}</Badge>
+      {/if}
+    </span>
+  </div>
 {/snippet}
 
 <!-- The action column: one fixed box for every state (download / progress /
@@ -250,13 +253,25 @@
   .search {
     padding: 0 0.25rem;
   }
-  /* Pull the tag line toward its label block (the Row's main/below gap reads
-     looser than the title/description gap). */
+  /* The model's info block under the name: the size/speed line, then the tag
+     row. Pulled a touch toward the name so the block reads as one unit, with
+     real air between its own lines. */
+  .info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-top: -0.3rem;
+  }
+  .meta {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  }
   .tags {
     display: flex;
     flex-wrap: wrap;
     gap: 0.375rem;
-    margin-top: -0.25rem;
   }
   .offline-note {
     padding: 0.4rem 0.25rem 0;
