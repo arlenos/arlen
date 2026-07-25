@@ -12,6 +12,7 @@ mod permission_watcher;
 mod search_ipc;
 mod event_bus;
 mod gtk_menu_bridge;
+mod harness_launch;
 mod layer_shell;
 mod layout;
 mod menu_store;
@@ -328,6 +329,7 @@ pub fn run() {
             dispatch_app_action,
             app_shortcut_invoke,
             capability::ai_capability,
+            harness_launch::open_harness_session,
             consent::consent_fetch,
             consent::consent_resolve,
             modulesd_commands::modulesd_list_modules,
