@@ -132,6 +132,36 @@ impl CreatedIdentity {
     }
 }
 
+/// The content fingerprint of a file: the lowercase hex SHA-256 of its bytes. The
+/// identity a create-undo (`DeleteCreated`/`TrashCreated`) checks against the
+/// commit-time fingerprint, so EVERY capture side (the agent executor, the file
+/// manager) must fingerprint the same way; this single implementation is that
+/// guarantee. `None` if the path is unreadable (already gone, or a directory).
+pub fn fingerprint_file(path: &std::path::Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf).ok()?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Some(hex_lower(&hasher.finalize()))
+}
+
+/// Lowercase hex of a byte slice.
+fn hex_lower(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
+}
+
 /// An opaque handle to a filesystem snapshot (Snapper/Btrfs), the only
 /// crash-exact inverse witness (§9); gated on a snapshot-capable filesystem at
 /// capture time.
