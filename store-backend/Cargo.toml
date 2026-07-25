@@ -18,6 +18,8 @@ arlen-forage-recipe = { path = "../contracts/forage-recipe" }
 tokio = { version = "1", features = ["net", "io-util"] }
 # Read-only XML DOM for the Flathub composed-AppStream catalog reader (section 9.3).
 roxmltree = "0.20"
+# Multi-document YAML for the Debian DEP-11 catalog reader (section 9.3).
+serde_yaml = "0.9"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["net", "io-util", "macros", "rt"] }
