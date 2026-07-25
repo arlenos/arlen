@@ -42,13 +42,15 @@
 //! should a future scope gate be added it MUST be driven off a symlink-resolved
 //! path, or a symlinked parent would bypass it.
 
-use std::ffi::CString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ai_engine_contract::{ContractError, Execute, ExecuteOutcome};
 use arlen_ai_core::audit::behaviour_action_event;
 use arlen_ai_undo_core::effect_model::{CanonicalPath, InverseReceipt};
+pub(crate) use arlen_freedesktop_trash::{
+    home_trash_dir, rename_noreplace, trash_into, RenameError, TrashError,
+};
 use arlen_ai_undo_core::undo_log::UndoEntry;
 use async_trait::async_trait;
 use audit_proto::sink::AuditSink;
@@ -346,11 +348,12 @@ impl FileSystemExecutor {
                 return exec_err(ContractError::ExecutionFailed, format!("fs.trash failed: {m}"))
             }
         };
-        let trashed_display = slot.trashed.as_str().to_string();
+        let (trashed, trash_info) = slot.into_parts();
+        let trashed_display = trashed.as_str().to_string();
         let inverse = InverseReceipt::RestoreFromTrash {
             original,
-            trashed: slot.trashed,
-            trash_info: slot.trash_info,
+            trashed,
+            trash_info,
         };
         // Register the compensation to the durable, HMAC-chained undo signer.
         // Best-effort: an absent/failing signer never fails a committed trash.
@@ -485,224 +488,6 @@ impl FileSystemExecutor {
 /// A short constructor for an error outcome.
 fn exec_err(code: ContractError, message: impl Into<String>) -> ExecuteOutcome {
     ExecuteOutcome::Error { code, message: message.into() }
-}
-
-/// Why an atomic no-clobber rename could not complete.
-enum RenameError {
-    /// `to` already exists; the kernel refused to clobber it (`EEXIST`).
-    DestinationExists,
-    /// The kernel or filesystem does not support `RENAME_NOREPLACE`. Refuse the
-    /// move rather than fall back to a clobbering rename.
-    Unsupported,
-    /// Any other rename failure (`EXDEV`, permissions, a NUL in the path, ...).
-    Other(String),
-}
-
-/// Rename `from` to `to`, refusing to overwrite an existing `to`
-/// (`RENAME_NOREPLACE`). The kernel creates `to` only if it did not already
-/// exist, so this closes the check-then-rename TOCTOU: a racing same-uid process
-/// cannot make the move clobber (and thus irreversibly destroy) a file the
-/// reversible tier promised to be able to restore. Both paths are canonical-
-/// absolute, so `AT_FDCWD` is a placeholder the kernel ignores.
-fn rename_noreplace(from: &str, to: &str) -> Result<(), RenameError> {
-    let nul = |_| RenameError::Other("path contains an interior NUL byte".to_string());
-    let cfrom = CString::new(from).map_err(nul)?;
-    let cto = CString::new(to).map_err(nul)?;
-    // SAFETY: both pointers are valid NUL-terminated C strings that outlive the
-    // call; `renameat2` with `AT_FDCWD` and absolute paths ignores the dir fds.
-    let rc = unsafe {
-        libc::renameat2(
-            libc::AT_FDCWD,
-            cfrom.as_ptr(),
-            libc::AT_FDCWD,
-            cto.as_ptr(),
-            libc::RENAME_NOREPLACE,
-        )
-    };
-    if rc == 0 {
-        return Ok(());
-    }
-    let err = std::io::Error::last_os_error();
-    match err.raw_os_error() {
-        Some(libc::EEXIST) => Err(RenameError::DestinationExists),
-        // The flag or the syscall is unavailable (old kernel / exotic fs).
-        Some(libc::EINVAL | libc::ENOSYS | libc::EOPNOTSUPP) => Err(RenameError::Unsupported),
-        _ => Err(RenameError::Other(err.to_string())),
-    }
-}
-
-/// The canonical trashed + sidecar paths of a reserved trash slot, for the inverse.
-pub(crate) struct TrashSlot {
-    /// The entity's new location under `Trash/files/`.
-    trashed: CanonicalPath,
-    /// The companion `Trash/info/<name>.trashinfo` sidecar.
-    trash_info: CanonicalPath,
-}
-
-/// Why a trash operation could not complete.
-#[derive(Debug)]
-pub(crate) enum TrashError {
-    /// The source path does not exist.
-    NotFound,
-    /// The filesystem does not support an atomic no-clobber move.
-    Unsupported,
-    /// No free trash name was found within the dedup bound.
-    NoSlot,
-    /// A resolved trash path was not canonical-absolute (fail-closed; the inverse
-    /// relies on canonical paths).
-    NonCanonical,
-    /// Any other IO failure.
-    Io(String),
-}
-
-/// The most trash names to try before giving up (a name collides only with an
-/// existing trash entry of the same base name).
-const MAX_TRASH_DEDUP: u32 = 10_000;
-
-/// The user's home trash directory (`$XDG_DATA_HOME/Trash`, else
-/// `$HOME/.local/share/Trash`). `None` if neither yields an absolute base, so a
-/// trash never lands at a relative path.
-pub(crate) fn home_trash_dir() -> Option<PathBuf> {
-    let data_home = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .filter(|p| p.is_absolute())
-                .map(|h| h.join(".local/share"))
-        })?;
-    Some(data_home.join("Trash"))
-}
-
-/// Reserve a unique trash slot, write its `.trashinfo` sidecar, and move `source`
-/// into `files/<name>` atomically (no-clobber). The sidecar is created first
-/// (freedesktop info-first) and removed on a move failure, so a failed trash leaves
-/// no partial state. Each candidate's canonical paths are validated BEFORE its move,
-/// so a returned slot always yields a constructible inverse.
-pub(crate) fn trash_into(
-    files_dir: &Path,
-    info_dir: &Path,
-    base_name: &str,
-    source: &str,
-) -> Result<TrashSlot, TrashError> {
-    use std::io::Write;
-    for n in 0..MAX_TRASH_DEDUP {
-        let candidate = dedup_name(base_name, n);
-        let trashed_path = files_dir.join(&candidate);
-        let info_path = info_dir.join(format!("{candidate}.trashinfo"));
-        // Canonicity check BEFORE any side effect for this candidate.
-        let (Some(trashed_canon), Some(info_canon)) = (
-            trashed_path.to_str().and_then(CanonicalPath::new),
-            info_path.to_str().and_then(CanonicalPath::new),
-        ) else {
-            return Err(TrashError::NonCanonical);
-        };
-        // Atomically reserve the info slot (create-new); a taken name bumps n.
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(&info_path) {
-            Ok(mut f) => {
-                if let Err(e) = f
-                    .write_all(trashinfo_bytes(source).as_bytes())
-                    .and_then(|()| f.sync_all())
-                {
-                    let _ = std::fs::remove_file(&info_path);
-                    return Err(TrashError::Io(e.to_string()));
-                }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(e) => return Err(TrashError::Io(e.to_string())),
-        }
-        // Move the entity into files/<candidate> atomically, no-clobber.
-        match rename_noreplace(source, trashed_canon.as_str()) {
-            Ok(()) => return Ok(TrashSlot { trashed: trashed_canon, trash_info: info_canon }),
-            Err(RenameError::DestinationExists) => {
-                // An orphan file already occupies files/<candidate>; drop our sidecar
-                // and try the next name.
-                let _ = std::fs::remove_file(&info_path);
-                continue;
-            }
-            Err(RenameError::Unsupported) => {
-                let _ = std::fs::remove_file(&info_path);
-                return Err(TrashError::Unsupported);
-            }
-            Err(RenameError::Other(m)) => {
-                let _ = std::fs::remove_file(&info_path);
-                // A missing source gets a clearer error than a raw ENOENT.
-                if !Path::new(source).exists() {
-                    return Err(TrashError::NotFound);
-                }
-                return Err(TrashError::Io(m));
-            }
-        }
-    }
-    Err(TrashError::NoSlot)
-}
-
-/// The nth candidate trash name: the base for `n == 0`, else `<stem>.<n>.<ext>`
-/// (or `<base>.<n>` without an extension), so a collision picks a fresh but still
-/// recognizable name. A leading-dot file (`.bashrc`) is treated as extension-less.
-fn dedup_name(base: &str, n: u32) -> String {
-    if n == 0 {
-        return base.to_string();
-    }
-    match base.rsplit_once('.') {
-        Some((stem, ext)) if !stem.is_empty() => format!("{stem}.{n}.{ext}"),
-        _ => format!("{base}.{n}"),
-    }
-}
-
-/// The freedesktop `.trashinfo` body for a file trashed from `original_path`.
-fn trashinfo_bytes(original_path: &str) -> String {
-    format!(
-        "[Trash Info]\nPath={}\nDeletionDate={}\n",
-        percent_encode_path(original_path),
-        utc_iso8601_now(),
-    )
-}
-
-/// Percent-encode a path for the `.trashinfo` `Path` field: unreserved bytes
-/// (`A-Za-z0-9-._~`) and `/` pass through, every other byte becomes `%XX`.
-fn percent_encode_path(path: &str) -> String {
-    let mut out = String::with_capacity(path.len());
-    for &b in path.as_bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~' | b'/') {
-            out.push(b as char);
-        } else {
-            out.push('%');
-            out.push_str(&format!("{b:02X}"));
-        }
-    }
-    out
-}
-
-/// The current UTC time as `YYYY-MM-DDThh:mm:ss` (the `.trashinfo` DeletionDate
-/// shape). Freedesktop specifies local time; UTC without a zone suffix parses as a
-/// naive datetime that trash viewers tolerate, keeping this dependency-free.
-fn utc_iso8601_now() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let days = secs.div_euclid(86_400);
-    let rem = secs.rem_euclid(86_400);
-    let (h, mi, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
-    let (y, mo, d) = civil_from_days(days);
-    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}")
-}
-
-/// Convert days since the Unix epoch to a `(year, month, day)` civil date (Howard
-/// Hinnant's algorithm, pure integer arithmetic).
-fn civil_from_days(z: i64) -> (i64, i64, i64) {
-    let z = z + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
 #[cfg(test)]
@@ -924,26 +709,6 @@ mod tests {
             ExecuteOutcome::Error { code, .. } => assert_eq!(code, ContractError::InvalidArguments),
             other => panic!("expected InvalidArguments, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn dedup_name_inserts_a_counter_before_the_extension() {
-        assert_eq!(dedup_name("report.txt", 0), "report.txt");
-        assert_eq!(dedup_name("report.txt", 1), "report.1.txt");
-        assert_eq!(dedup_name("noext", 2), "noext.2");
-        assert_eq!(dedup_name(".bashrc", 1), ".bashrc.1");
-    }
-
-    #[test]
-    fn civil_from_days_matches_known_dates() {
-        assert_eq!(civil_from_days(0), (1970, 1, 1));
-        assert_eq!(civil_from_days(18_993), (2022, 1, 1));
-    }
-
-    #[test]
-    fn percent_encode_keeps_slashes_and_encodes_spaces() {
-        assert_eq!(percent_encode_path("/home/tim/a b.txt"), "/home/tim/a%20b.txt");
-        assert_eq!(percent_encode_path("/x/y-_.~z"), "/x/y-_.~z");
     }
 
     #[tokio::test]
