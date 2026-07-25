@@ -88,8 +88,10 @@ fn capability_labels(caps: &Capabilities) -> Vec<String> {
 /// Why a composed catalog could not be read.
 #[derive(Debug)]
 pub enum ComposeError {
-    /// The XML did not parse.
+    /// The XML did not parse (Flathub reader).
     Xml(String),
+    /// The YAML did not parse (DEP-11 reader).
+    Yaml(String),
 }
 
 /// Parse a Flathub composed-AppStream catalog (`<components>` of `<component>`) into
@@ -188,6 +190,105 @@ fn icon_ref(node: &roxmltree::Node) -> Option<String> {
         .or_else(|| icons.first())
         .and_then(|c| c.text())
         .map(str::to_string)
+}
+
+// --- Debian DEP-11 (AppStream-in-YAML) reader -----------------------------------
+
+/// A DEP-11 component document. Fields are optional so the leading header document
+/// (`File: DEP-11`, no `ID`) and any partial record parse without erroring; a record
+/// with no `ID` is skipped by [`dep11_entries`]. Localized fields are locale maps
+/// (`{C: ..., de: ...}`); only the `C` (unlocalized) value is rendered.
+#[derive(serde::Deserialize)]
+struct Dep11Component {
+    #[serde(rename = "ID")]
+    id: Option<String>,
+    #[serde(rename = "Name")]
+    name: Option<std::collections::BTreeMap<String, String>>,
+    #[serde(rename = "Summary")]
+    summary: Option<std::collections::BTreeMap<String, String>>,
+    #[serde(rename = "Description")]
+    description: Option<std::collections::BTreeMap<String, String>>,
+    #[serde(rename = "Icon")]
+    icon: Option<Dep11Icon>,
+    #[serde(rename = "Screenshots")]
+    screenshots: Option<Vec<Dep11Screenshot>>,
+}
+
+#[derive(serde::Deserialize)]
+struct Dep11Icon {
+    remote: Option<Vec<Dep11RemoteIcon>>,
+    cached: Option<Vec<Dep11CachedIcon>>,
+}
+
+#[derive(serde::Deserialize)]
+struct Dep11RemoteIcon {
+    url: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct Dep11CachedIcon {
+    name: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct Dep11Screenshot {
+    #[serde(rename = "source-image")]
+    source_image: Option<Dep11Image>,
+}
+
+#[derive(serde::Deserialize)]
+struct Dep11Image {
+    url: Option<String>,
+}
+
+/// Parse a Debian DEP-11 catalog (a multi-document YAML stream: a header document
+/// then one document per component) into one `CatalogEntry` per app (`layer = Apt`).
+/// Display comes from the `C` (unlocalized) locale value of each field; the capability
+/// footprint (the apt-enrolled profile, section 5) and the trust signals (Debian
+/// keyring / popcon / reproduce.debian.net) come from SEPARATE sources per section 9.2
+/// and stay empty here. A document with no `ID` (the header, a partial record) is
+/// skipped, not guessed; a malformed document returns `ComposeError::Yaml`.
+pub fn dep11_entries(yaml: &str) -> Result<Vec<CatalogEntry>, ComposeError> {
+    use serde::Deserialize;
+    let mut entries = Vec::new();
+    for doc in serde_yaml::Deserializer::from_str(yaml) {
+        let comp =
+            Dep11Component::deserialize(doc).map_err(|e| ComposeError::Yaml(e.to_string()))?;
+        let Some(id) = comp.id else {
+            continue; // The header document or a record with no id.
+        };
+        let c = |m: &Option<std::collections::BTreeMap<String, String>>| {
+            m.as_ref().and_then(|m| m.get("C").cloned())
+        };
+        let display = DisplayMeta {
+            name: c(&comp.name).unwrap_or_default(),
+            summary: c(&comp.summary),
+            description: c(&comp.description),
+            screenshots: comp
+                .screenshots
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|s| s.source_image.and_then(|i| i.url))
+                .collect(),
+            icon: comp.icon.and_then(dep11_icon_ref),
+        };
+        entries.push(CatalogEntry {
+            id: ComponentId(id),
+            layer: SourceLayer::Apt,
+            display,
+            capabilities: CapabilityFootprint::default(),
+            trust: TrustSignals::default(),
+        });
+    }
+    Ok(entries)
+}
+
+/// The best icon reference from a DEP-11 `Icon` block: a remote URL the store can
+/// fetch if present, else the first cached icon's name.
+fn dep11_icon_ref(icon: Dep11Icon) -> Option<String> {
+    icon.remote
+        .and_then(|r| r.into_iter().find_map(|i| i.url))
+        .or_else(|| icon.cached.and_then(|c| c.into_iter().find_map(|i| i.name)))
 }
 
 #[cfg(test)]
@@ -310,5 +411,62 @@ commit = "0000000000000000000000000000000000000000"
         let cards = merge_catalog(entries);
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].variants[0].layer, SourceLayer::Flatpak);
+    }
+
+    const DEP11_YAML: &str = r#"File: DEP-11
+Version: '0.8'
+Origin: debian-bookworm-main
+---
+Type: desktop-application
+ID: org.gnome.gedit
+Name:
+  C: Text Editor
+  de: Texteditor
+Summary:
+  C: Edit text files
+Description:
+  C: <p>A GNOME text editor.</p>
+Icon:
+  cached:
+    - name: org.gnome.gedit.png
+      width: 64
+  remote:
+    - url: https://debian.example/gedit.png
+Screenshots:
+  - default: true
+    source-image:
+      url: https://debian.example/shot.png
+---
+Type: desktop-application
+Name:
+  C: No Id App
+"#;
+
+    #[test]
+    fn dep11_reader_maps_the_c_locale_fields() {
+        let entries = dep11_entries(DEP11_YAML).unwrap();
+        // Header doc + the id-less record are both skipped.
+        assert_eq!(entries.len(), 1);
+        let e = &entries[0];
+        assert_eq!(e.id, ComponentId("org.gnome.gedit".into()));
+        assert_eq!(e.layer, SourceLayer::Apt);
+        assert_eq!(e.display.name, "Text Editor", "the C locale, not the de one");
+        assert_eq!(e.display.summary.as_deref(), Some("Edit text files"));
+        assert_eq!(e.display.description.as_deref(), Some("<p>A GNOME text editor.</p>"));
+        assert_eq!(e.display.screenshots, vec!["https://debian.example/shot.png"]);
+        // The remote icon URL wins over the cached name.
+        assert_eq!(e.display.icon.as_deref(), Some("https://debian.example/gedit.png"));
+    }
+
+    #[test]
+    fn dep11_reader_rejects_malformed_yaml() {
+        assert!(matches!(dep11_entries("ID: [unterminated"), Err(ComposeError::Yaml(_))));
+    }
+
+    #[test]
+    fn dep11_entries_flow_through_the_merge() {
+        let cards = merge_catalog(dep11_entries(DEP11_YAML).unwrap());
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].variants[0].layer, SourceLayer::Apt);
     }
 }
