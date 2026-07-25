@@ -1,0 +1,25 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-store"
+version = "0.1.0"
+description = "Arlen OS app store"
+authors = ["Arlen"]
+edition = "2021"
+
+[lib]
+name = "arlen_store_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"
+# The store-backend crate: its `org.arlen.Store1` client (the length-prefixed
+# socket roundtrip) plus the request/response and catalog types the proxy
+# commands hand back verbatim, so the wire model lives in one crate.
+arlen-store-backend = { path = "../../../store-backend" }
