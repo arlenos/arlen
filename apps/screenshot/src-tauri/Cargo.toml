@@ -23,6 +23,9 @@ env_logger = "0.11"
 base64 = "0.22"
 # Stamp the default screenshot filename backend-side.
 time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
-# The Wayland capture backend + the tested command logic (encode/save/DTOs).
+# The Wayland capture backend + the tested command logic (encode/save/decode/DTOs).
 arlen-screen-capture = { path = "../../../sdk/screen-capture" }
 arlen-screenshot-core = { path = "../core" }
+# Put the annotated capture on the system clipboard as an image (RGBA offer); the
+# wayland-data-control feature adds the wlr-data-control path for a Wayland session.
+arboard = { version = "3", features = ["wayland-data-control"] }

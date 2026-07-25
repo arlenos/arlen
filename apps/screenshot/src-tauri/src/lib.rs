@@ -82,6 +82,25 @@ fn save_screenshot(png_base64: String) -> Result<String, String> {
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// Copy the annotated capture (base64 PNG from the webview) to the system clipboard as
+/// an image. `arboard` wants raw RGBA, so the core decodes the PNG (expanding an opaque
+/// RGB encoding to RGBA) before the offer.
+#[tauri::command]
+fn copy_png(png_base64: String) -> Result<(), String> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(png_base64.as_bytes())
+        .map_err(|e| format!("bad PNG payload: {e}"))?;
+    let (rgba, w, h) = arlen_screenshot_core::decode_png_rgba(&bytes).map_err(|e| e.to_string())?;
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard
+        .set_image(arboard::ImageData {
+            width: w as usize,
+            height: h as usize,
+            bytes: std::borrow::Cow::Owned(rgba),
+        })
+        .map_err(|e| e.to_string())
+}
+
 /// A frontend log line surfaced on the app's stdout (the webview has no DevTools in
 /// the Arlen shell, so this is how the UI reports diagnostics).
 #[tauri::command]
@@ -112,6 +131,7 @@ pub fn run() {
             capture_window,
             capture_region,
             save_screenshot,
+            copy_png,
             frontend_log
         ])
         .run(tauri::generate_context!())
