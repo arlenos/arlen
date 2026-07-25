@@ -73,6 +73,33 @@ pub fn remote_places(accounts: &[RemoteAccount]) -> Vec<RemotePlace> {
     places
 }
 
+/// Map the raw `ListAccounts` reply tuples `(id, provider, identity, presentation)`
+/// (the online-accounts daemon's `org.arlen.Accounts1.ListAccounts` return type,
+/// capability-filtered to the caller's grant) straight to sidebar places, so the app's
+/// src-tauri only makes the D-Bus call and passes the reply here. The row label prefers
+/// the presentation name, falling back to the identity then the provider so a row is
+/// never blank.
+pub fn remote_places_from_listings(listings: &[(String, String, String, String)]) -> Vec<RemotePlace> {
+    let accounts: Vec<RemoteAccount> = listings
+        .iter()
+        .map(|(id, provider, identity, presentation)| RemoteAccount {
+            id: id.clone(),
+            provider: provider.clone(),
+            display_name: first_non_empty(&[presentation, identity, provider]).to_string(),
+        })
+        .collect();
+    remote_places(&accounts)
+}
+
+/// The first non-blank candidate (trimmed), else `""`.
+fn first_non_empty<'a>(candidates: &[&'a String]) -> &'a str {
+    candidates
+        .iter()
+        .map(|s| s.as_str())
+        .find(|s| !s.trim().is_empty())
+        .unwrap_or("")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,5 +154,29 @@ mod tests {
     #[test]
     fn no_accounts_is_no_places() {
         assert!(remote_places(&[]).is_empty());
+    }
+
+    fn listing(id: &str, provider: &str, identity: &str, presentation: &str) -> (String, String, String, String) {
+        (id.into(), provider.into(), identity.into(), presentation.into())
+    }
+
+    #[test]
+    fn listings_map_and_the_label_falls_back_presentation_identity_provider() {
+        let places = remote_places_from_listings(&[
+            listing("a", "google", "alice@x.com", "Alice's Drive"),
+            listing("b", "sftp", "bob@host", ""),
+            listing("c", "dropbox", "", ""),
+        ]);
+        // Presentation wins; else identity; else provider - never blank.
+        assert_eq!(places.iter().find(|p| p.id == "a").unwrap().name, "Alice's Drive");
+        assert_eq!(places.iter().find(|p| p.id == "b").unwrap().name, "bob@host");
+        assert_eq!(places.iter().find(|p| p.id == "c").unwrap().name, "dropbox");
+        // And the kinds still classify from the provider.
+        assert_eq!(places.iter().find(|p| p.id == "b").unwrap().kind, RemotePlaceKind::NetworkShare);
+    }
+
+    #[test]
+    fn empty_listings_is_no_places() {
+        assert!(remote_places_from_listings(&[]).is_empty());
     }
 }
