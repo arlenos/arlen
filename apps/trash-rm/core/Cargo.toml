@@ -1,0 +1,13 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-trash-rm-core"
+version = "0.1.0"
+edition = "2021"
+description = "Trash-first rm (CAH-2): the pure rm-flag parser and trash-vs-unlink routing the Arlen-native delete uses"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[workspace]
