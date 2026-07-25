@@ -91,6 +91,44 @@ pub async fn fetch_live(socket: &Path) -> Result<Vec<UndoEntry>, String> {
     }
 }
 
+/// Look up one entry by its op id over an already-connected `stream`. Returns the
+/// sealed [`UndoEntry`] (its captured inverse), `None` if the signer has no such
+/// entry, or an error on any transport/framing/non-`Entry` reply. This is the read
+/// the live undo path uses to recover a NON-GRAPH inverse (a filesystem/settings
+/// receipt the in-memory graph compensation store never held) so it can be enacted.
+pub async fn lookup_entry_on<S>(stream: &mut S, op_id: &str) -> Result<Option<UndoEntry>, String>
+where
+    S: AsyncReadExt + AsyncWriteExt + Unpin,
+{
+    write_request(stream, &Request::LookupEntry { op_id: op_id.to_string() })
+        .await
+        .map_err(|e| format!("write: {e}"))?;
+    match read_response(stream)
+        .await
+        .map_err(|e| format!("read: {e}"))?
+    {
+        Response::Entry(entry) => Ok(entry),
+        other => Err(format!("signer did not return an entry: {other:?}")),
+    }
+}
+
+/// Connect to the signer at `socket` and look up an entry by op id, bounded by
+/// [`SUBMIT_TIMEOUT`]. A connect/transport/timeout failure is returned for the
+/// caller to handle fail-closed (an unreachable signer must not let an undo proceed
+/// on stale assumptions); a successful lookup returns the entry or `None`.
+pub async fn lookup_entry(socket: &Path, op_id: &str) -> Result<Option<UndoEntry>, String> {
+    let lookup = async {
+        let mut stream = UnixStream::connect(socket)
+            .await
+            .map_err(|e| format!("connect {}: {e}", socket.display()))?;
+        lookup_entry_on(&mut stream, op_id).await
+    };
+    match tokio::time::timeout(SUBMIT_TIMEOUT, lookup).await {
+        Ok(result) => result,
+        Err(_) => Err(format!("signer lookup timed out after {SUBMIT_TIMEOUT:?}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,5 +207,46 @@ mod tests {
         let r = fetch_live_on(&mut client).await;
         signer.await.unwrap();
         assert!(r.is_err(), "a non-Entries reply must be an error");
+    }
+
+    #[tokio::test]
+    async fn lookup_entry_returns_the_entry_by_op_id() {
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let served = entry("op-look");
+        let expected = served.clone();
+        let signer = tokio::spawn(async move {
+            match read_request(&mut server).await.unwrap() {
+                Request::LookupEntry { op_id } => assert_eq!(op_id, "op-look"),
+                other => panic!("expected LookupEntry, got {other:?}"),
+            }
+            write_response(&mut server, &Response::Entry(Some(served))).await.unwrap();
+        });
+        let got = lookup_entry_on(&mut client, "op-look").await.expect("entry");
+        signer.await.unwrap();
+        assert_eq!(got.map(|e| e.op_id), Some(expected.op_id));
+    }
+
+    #[tokio::test]
+    async fn lookup_entry_maps_an_absent_entry_to_none() {
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let signer = tokio::spawn(async move {
+            let _ = read_request(&mut server).await.unwrap();
+            write_response(&mut server, &Response::Entry(None)).await.unwrap();
+        });
+        let got = lookup_entry_on(&mut client, "missing").await.expect("ok");
+        signer.await.unwrap();
+        assert!(got.is_none(), "an absent entry maps to None, not an error");
+    }
+
+    #[tokio::test]
+    async fn a_non_entry_reply_to_lookup_is_an_error() {
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let signer = tokio::spawn(async move {
+            let _ = read_request(&mut server).await.unwrap();
+            write_response(&mut server, &Response::Error("no".into())).await.unwrap();
+        });
+        let r = lookup_entry_on(&mut client, "x").await;
+        signer.await.unwrap();
+        assert!(r.is_err(), "a non-Entry reply must be an error");
     }
 }
