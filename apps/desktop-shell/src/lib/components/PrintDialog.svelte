@@ -95,7 +95,7 @@
           <PrinterIcon size={18} strokeWidth={2} aria-hidden="true" />
           <div class="pd-head-text">
             <h2 class="pd-title">Print</h2>
-            <p class="pd-sub">{req.title} · from {req.appName}</p>
+            <p class="pd-sub">{req.title}, from {req.appName}</p>
           </div>
         </header>
 
@@ -130,7 +130,7 @@
               <span class="pd-label">Printer</span>
               <PopoverSelect value={printer} options={printerOptions} width="100%" ariaLabel="Printer" onchange={(v) => (printer = v)} />
               {#if netHost}
-                <span class="pd-dest">Network · {netHost}</span>
+                <span class="pd-dest">Network, {netHost}</span>
               {/if}
             </div>
 
