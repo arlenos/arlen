@@ -14,7 +14,25 @@ use std::path::{Path, PathBuf};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 
-use arlen_screen_capture::{default_filename, screenshots_dir, OutputInfo, WindowInfo};
+use arlen_screen_capture::{default_filename, screenshots_dir, CapturedImage, OutputInfo, WindowInfo};
+
+/// Encode a captured image's RGBA pixels to in-memory PNG bytes. `sdk::write_png` only
+/// writes to a file, but the `capture_*` commands need the bytes in memory to return a
+/// data URL to the webview; this mirrors its encoder settings (RGBA8) over a `Vec`.
+pub fn to_png_bytes(image: &CapturedImage) -> Vec<u8> {
+    let mut out = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut out, image.width, image.height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        // The buffer is exactly `width*height*4` RGBA bytes (the capture invariant), so
+        // the header/pixel writes cannot fail on a well-formed image; a malformed one is
+        // a capture-side bug, surfaced loudly rather than returning a corrupt PNG.
+        let mut writer = encoder.write_header().expect("png header for a captured image");
+        writer.write_image_data(&image.rgba).expect("png pixels for a captured image");
+    }
+    out
+}
 
 /// Encode PNG `bytes` as a `data:image/png;base64,...` URL the webview draws onto its
 /// capture canvas. The capture side (`sdk/screen-capture`) produces the PNG; this is the
@@ -22,6 +40,12 @@ use arlen_screen_capture::{default_filename, screenshots_dir, OutputInfo, Window
 pub fn png_data_url(bytes: &[u8]) -> String {
     let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
     format!("data:image/png;base64,{b64}")
+}
+
+/// Encode a captured image straight to the webview data URL (the `capture_*` command
+/// path): `to_png_bytes` then `png_data_url`.
+pub fn capture_to_data_url(image: &CapturedImage) -> String {
+    png_data_url(&to_png_bytes(image))
 }
 
 /// Write the annotated capture's PNG `bytes` (the webview hands back the flattened
@@ -106,6 +130,37 @@ mod tests {
     // A minimal 1x1 PNG (the exact bytes are irrelevant to these transforms; only that
     // they are carried verbatim and base64-round-trip).
     const PNG: &[u8] = &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4];
+
+    #[test]
+    fn to_png_bytes_encodes_a_decodable_rgba_image() {
+        // A 2x1 RGBA image: one red pixel, one green.
+        let img = CapturedImage {
+            width: 2,
+            height: 1,
+            rgba: vec![255, 0, 0, 255, 0, 255, 0, 255],
+        };
+        let png = to_png_bytes(&img);
+        assert_eq!(
+            &png[..8],
+            &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a],
+            "PNG magic bytes"
+        );
+        // Decode it back: the dimensions and pixels must survive the encode.
+        let decoder = png::Decoder::new(std::io::Cursor::new(&png));
+        let mut reader = decoder.read_info().unwrap();
+        let mut buf = vec![0u8; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut buf).unwrap();
+        assert_eq!((info.width, info.height), (2, 1));
+        assert_eq!(&buf[..8], &img.rgba[..], "RGBA pixels round-trip");
+        // The data-url path wraps exactly this PNG.
+        let url = capture_to_data_url(&img);
+        let b64 = url.strip_prefix("data:image/png;base64,").unwrap();
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD.decode(b64).unwrap(),
+            png,
+            "capture_to_data_url carries the encoded PNG"
+        );
+    }
 
     #[test]
     fn png_data_url_has_the_png_mime_and_round_trips_the_bytes() {
