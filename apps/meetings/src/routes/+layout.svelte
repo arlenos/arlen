@@ -7,6 +7,7 @@
   import "../app.css";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
+  import { t } from "$lib/i18n/messages";
 
   let { children } = $props();
 
@@ -46,7 +47,7 @@
     ondblclick={toggleMax}
     class="flex h-10 shrink-0 items-center justify-between border-b border-border bg-background pl-3 pr-1"
   >
-    <span class="select-none text-sm font-medium text-foreground">Meetings</span>
+    <span class="select-none text-sm font-medium text-foreground">{$t("mt.title")}</span>
     <WindowButtons />
   </header>
   <main class="min-h-0 flex-1 overflow-auto">
