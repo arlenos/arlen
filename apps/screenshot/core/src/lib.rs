@@ -34,6 +34,57 @@ pub fn to_png_bytes(image: &CapturedImage) -> Vec<u8> {
     out
 }
 
+/// Why a PNG handed back for the clipboard could not be decoded to RGBA.
+#[derive(Debug)]
+pub struct PngDecodeError(pub String);
+
+impl std::fmt::Display for PngDecodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "png decode: {}", self.0)
+    }
+}
+
+impl std::error::Error for PngDecodeError {}
+
+/// Decode PNG `bytes` back to `(rgba, width, height)` for a clipboard image offer
+/// (`arboard` wants raw RGBA, not a PNG). The inverse of [`to_png_bytes`].
+///
+/// A browser canvas encoding an OPAQUE capture to PNG may drop the alpha channel and
+/// emit an RGB (color type 2) image, so an 8-bit RGB PNG is accepted and expanded to
+/// RGBA with a full-opaque alpha rather than rejected; an 8-bit RGBA PNG is taken as
+/// is. Other forms (non-8-bit, grayscale, palette) a capture/annotate canvas does not
+/// produce, so they fail closed rather than guess a channel layout.
+pub fn decode_png_rgba(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), PngDecodeError> {
+    let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    let mut reader = decoder.read_info().map_err(|e| PngDecodeError(e.to_string()))?;
+    let size = reader
+        .output_buffer_size()
+        .ok_or_else(|| PngDecodeError("image too large to buffer".into()))?;
+    let mut buf = vec![0u8; size];
+    let info = reader.next_frame(&mut buf).map_err(|e| PngDecodeError(e.to_string()))?;
+    if info.bit_depth != png::BitDepth::Eight {
+        return Err(PngDecodeError(format!("expected 8-bit, got {:?}", info.bit_depth)));
+    }
+    let (w, h) = (info.width, info.height);
+    let px = (w as usize) * (h as usize);
+    let rgba = match info.color_type {
+        png::ColorType::Rgba => {
+            buf.truncate(px * 4);
+            buf
+        }
+        png::ColorType::Rgb => {
+            let mut out = Vec::with_capacity(px * 4);
+            for chunk in buf[..px * 3].chunks_exact(3) {
+                out.extend_from_slice(chunk);
+                out.push(255);
+            }
+            out
+        }
+        other => return Err(PngDecodeError(format!("unsupported color type {other:?}"))),
+    };
+    Ok((rgba, w, h))
+}
+
 /// Encode PNG `bytes` as a `data:image/png;base64,...` URL the webview draws onto its
 /// capture canvas. The capture side (`sdk/screen-capture`) produces the PNG; this is the
 /// wire form the `capture_*` commands return to the frontend.
@@ -160,6 +211,41 @@ mod tests {
             png,
             "capture_to_data_url carries the encoded PNG"
         );
+    }
+
+    #[test]
+    fn decode_png_rgba_round_trips_an_rgba_image() {
+        let img = CapturedImage {
+            width: 2,
+            height: 1,
+            rgba: vec![255, 0, 0, 255, 0, 255, 0, 128],
+        };
+        let png = to_png_bytes(&img);
+        let (rgba, w, h) = decode_png_rgba(&png).unwrap();
+        assert_eq!((w, h), (2, 1));
+        assert_eq!(rgba, img.rgba, "the alpha channel survives the round trip");
+    }
+
+    #[test]
+    fn decode_png_rgba_expands_an_opaque_rgb_png_to_rgba() {
+        // A browser encoding an opaque capture may emit an RGB PNG (no alpha); build
+        // one directly and confirm decode expands it to full-opaque RGBA.
+        let mut rgb_png = Vec::new();
+        {
+            let mut enc = png::Encoder::new(&mut rgb_png, 2, 1);
+            enc.set_color(png::ColorType::Rgb);
+            enc.set_depth(png::BitDepth::Eight);
+            let mut w = enc.write_header().unwrap();
+            w.write_image_data(&[10, 20, 30, 40, 50, 60]).unwrap();
+        }
+        let (rgba, w, h) = decode_png_rgba(&rgb_png).unwrap();
+        assert_eq!((w, h), (2, 1));
+        assert_eq!(rgba, vec![10, 20, 30, 255, 40, 50, 60, 255], "rgb pixels gain opaque alpha");
+    }
+
+    #[test]
+    fn decode_png_rgba_rejects_non_png_bytes() {
+        assert!(decode_png_rgba(b"not a png at all").is_err());
     }
 
     #[test]
