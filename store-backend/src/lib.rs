@@ -7,8 +7,10 @@
 //! "one card, never N duplicates, never a silent pick" invariant is tested directly.
 
 pub mod catalog;
+pub mod query;
 
 pub use catalog::{
     merge_catalog, AppCard, CapabilityFootprint, CatalogEntry, ComponentId, DisplayMeta,
     SourceLayer, TrustSignals, Variant,
 };
+pub use query::{answer, CapabilityFacet, Catalog, Request, Response};
