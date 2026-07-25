@@ -9,6 +9,7 @@
 pub mod catalog;
 pub mod compose;
 pub mod query;
+pub mod serve;
 
 pub use catalog::{
     merge_catalog, AppCard, CapabilityFootprint, CatalogEntry, ComponentId, DisplayMeta,
