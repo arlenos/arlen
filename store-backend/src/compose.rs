@@ -291,6 +291,44 @@ fn dep11_icon_ref(icon: Dep11Icon) -> Option<String> {
         .or_else(|| icon.cached.and_then(|c| c.into_iter().find_map(|i| i.name)))
 }
 
+// --- compose orchestration (section 9.3: "produces the one merged model") --------
+
+/// The already-read source contents the compose step merges. Held as text (not file
+/// paths) so the orchestration is pure and testable; the daemon reads the files.
+#[derive(Debug, Default)]
+pub struct SourceInputs {
+    /// `(recipe.toml text, the cookbook's resolved tier)` per forage recipe.
+    pub forage: Vec<(String, SourceLayer)>,
+    /// The Flathub composed-AppStream catalog XML, when present on the image.
+    pub flathub_xml: Option<String>,
+    /// The Debian DEP-11 catalog YAML, when present on the image.
+    pub dep11_yaml: Option<String>,
+}
+
+/// Compose the merged [`Catalog`] from every configured source. Best-effort: a source
+/// that fails to parse (one malformed recipe, an unreadable catalog) is SKIPPED, never
+/// fatal, so a single bad input cannot blank the whole store. Returns the deduped,
+/// merged catalog the `org.arlen.Store1` backend serves.
+pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
+    let mut entries = Vec::new();
+    for (toml, layer) in &inputs.forage {
+        if let Ok(recipe) = arlen_forage_recipe::parse(toml) {
+            entries.push(forage_entry(&recipe, *layer));
+        }
+    }
+    if let Some(xml) = &inputs.flathub_xml {
+        if let Ok(es) = flathub_entries(xml) {
+            entries.extend(es);
+        }
+    }
+    if let Some(yaml) = &inputs.dep11_yaml {
+        if let Ok(es) = dep11_entries(yaml) {
+            entries.extend(es);
+        }
+    }
+    crate::query::Catalog::new(crate::catalog::merge_catalog(entries))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -468,5 +506,44 @@ Name:
         let cards = merge_catalog(dep11_entries(DEP11_YAML).unwrap());
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].variants[0].layer, SourceLayer::Apt);
+    }
+
+    const FORAGE_TOML: &str = r#"
+[recipe]
+id = "org.forage.Tool"
+name = "Forage Tool"
+summary = "a tool"
+maintainer = "key1"
+
+[[source]]
+type = "git"
+url = "https://github.com/example/tool"
+commit = "0000000000000000000000000000000000000000"
+"#;
+
+    #[test]
+    fn compose_catalog_merges_every_source() {
+        let inputs = SourceInputs {
+            forage: vec![(FORAGE_TOML.to_string(), SourceLayer::Community)],
+            flathub_xml: Some(FLATHUB_XML.to_string()),
+            dep11_yaml: Some(DEP11_YAML.to_string()),
+        };
+        let catalog = compose_catalog(inputs);
+        // One forage + one Flathub + one DEP-11 app, all distinct ids -> 3 cards.
+        assert!(catalog.card(&ComponentId("org.forage.Tool".into())).is_some());
+        assert!(catalog.card(&ComponentId("org.gnome.Calculator".into())).is_some());
+        assert!(catalog.card(&ComponentId("org.gnome.gedit".into())).is_some());
+    }
+
+    #[test]
+    fn compose_catalog_skips_a_malformed_source() {
+        let inputs = SourceInputs {
+            forage: vec![("this is not valid toml {{{".to_string(), SourceLayer::Personal)],
+            flathub_xml: Some("<not xml".to_string()),
+            dep11_yaml: Some(DEP11_YAML.to_string()),
+        };
+        // The bad forage + bad XML are skipped; the good DEP-11 app still lands.
+        let catalog = compose_catalog(inputs);
+        assert!(catalog.card(&ComponentId("org.gnome.gedit".into())).is_some());
     }
 }
