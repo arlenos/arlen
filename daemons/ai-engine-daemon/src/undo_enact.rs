@@ -15,15 +15,13 @@
 //! carries the commit-time fingerprint (so undo never deletes a replacement a user
 //! put in its place); relocation-undo refuses to clobber an occupied prior path.
 
-use std::io::Read;
 use std::path::Path;
 
 use arlen_ai_undo_core::effect_model::{
-    CanonicalPath, CreatedIdentity, InverseReceipt, SettingTarget,
+    fingerprint_file, CanonicalPath, CreatedIdentity, InverseReceipt, SettingTarget,
 };
 use arlen_ai_undo_core::undo_log::UndoEntry;
 use arlen_config_format::{checked_remove, checked_set, handler_for, ConfigValue, Format};
-use sha2::{Digest, Sha256};
 
 /// What the enactment did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,33 +98,6 @@ where
         }
     }
     outcome
-}
-
-/// The content fingerprint of a file: the lowercase hex SHA-256 of its bytes. This
-/// is the identity a [`InverseReceipt::DeleteCreated`] undo checks against the
-/// commit-time fingerprint, so the CAPTURE side (recording a created file) MUST
-/// fingerprint the same way. `None` if the file is unreadable (e.g. already gone).
-pub fn fingerprint_file(path: &Path) -> Option<String> {
-    let mut file = std::fs::File::open(path).ok()?;
-    let mut hasher = Sha256::new();
-    let mut buf = [0u8; 64 * 1024];
-    loop {
-        let n = file.read(&mut buf).ok()?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    Some(hex_lower(&hasher.finalize()))
-}
-
-/// Lowercase hex of a byte slice.
-fn hex_lower(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        s.push_str(&format!("{b:02x}"));
-    }
-    s
 }
 
 /// Enact a filesystem/setting inverse receipt. Reversible + identity-safe:
