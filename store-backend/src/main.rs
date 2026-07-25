@@ -46,7 +46,7 @@ fn load_source_inputs() -> SourceInputs {
         std::env::var_os(var)
             .map(PathBuf::from)
             .filter(|p| p.is_file())
-            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|p| read_catalog(&p))
     };
     // A single forage recipe path (the multi-cookbook tiering is the resolver's job,
     // wired with the refresh step); default it to the Official tier for the skeleton.
@@ -57,6 +57,60 @@ fn load_source_inputs() -> SourceInputs {
         forage,
         flathub_xml: read_env("ARLEN_STORE_FLATHUB_XML"),
         dep11_yaml: read_env("ARLEN_STORE_DEP11_YAML"),
+    }
+}
+
+/// Read a catalog file to a UTF-8 string, transparently decompressing gzip. The
+/// deployed Flathub AppStream and Debian DEP-11 catalogs ship gzipped
+/// (`.xml.gz`/`.yml.gz`), so a plain read would hand the parser garbage and silently
+/// drop the whole source; detection is by the gzip magic bytes (robust to a
+/// `.gz`-less or mislabelled path), not the extension. `None` on an unreadable file
+/// or invalid UTF-8.
+fn read_catalog(path: &std::path::Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.starts_with(&[0x1f, 0x8b]) {
+        use std::io::Read;
+        let mut out = String::new();
+        flate2::read::GzDecoder::new(&bytes[..]).read_to_string(&mut out).ok()?;
+        Some(out)
+    } else {
+        String::from_utf8(bytes).ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_catalog;
+
+    fn tmp_file(name: &str, bytes: &[u8]) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("store-read-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join(name);
+        std::fs::write(&p, bytes).unwrap();
+        p
+    }
+
+    #[test]
+    fn reads_a_plain_utf8_catalog() {
+        let p = tmp_file("plain.xml", b"<components/>");
+        assert_eq!(read_catalog(&p).as_deref(), Some("<components/>"));
+    }
+
+    #[test]
+    fn transparently_decompresses_a_gzipped_catalog() {
+        use flate2::{write::GzEncoder, Compression};
+        use std::io::Write;
+        let mut enc = GzEncoder::new(Vec::new(), Compression::default());
+        enc.write_all(b"File: DEP-11\n").unwrap();
+        let gz = enc.finish().unwrap();
+        // Named without a .gz suffix on purpose: detection is by magic bytes.
+        let p = tmp_file("catalog.yml", &gz);
+        assert_eq!(read_catalog(&p).as_deref(), Some("File: DEP-11\n"));
+    }
+
+    #[test]
+    fn a_missing_file_is_none() {
+        assert!(read_catalog(std::path::Path::new("/nonexistent/store-x.xml")).is_none());
     }
 }
 
