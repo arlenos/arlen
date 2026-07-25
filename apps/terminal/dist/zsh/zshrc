@@ -51,6 +51,15 @@ if [[ -o interactive ]]; then
   command -v bat >/dev/null 2>&1 && alias cat='bat --paging=never --style=plain'
   command -v rg  >/dev/null 2>&1 && alias grep='rg'
   command -v fd  >/dev/null 2>&1 && alias find='fd'
+
+  # Trash-first rm (CAH-2): an interactive delete goes to the reversible home
+  # trash; trash-rm itself keeps POSIX hard-unlink for a non-tty (piped or scripted)
+  # invocation, and `--purge` always hard-deletes. A shell FUNCTION, never a PATH
+  # alias named `rm` (a binary shadowing rm on PATH would divert EVERY script's rm
+  # via execve). `command rm` and separate-process scripts still reach GNU rm.
+  if command -v trash-rm >/dev/null 2>&1; then
+    rm() { command trash-rm "$@" }
+  fi
 fi
 
 # Arlen terminal block marks (TM-R3): emit the OSC 133/633/7 marks the VT engine
