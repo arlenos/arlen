@@ -203,6 +203,35 @@ pub async fn ai_behaviour_set_enabled(name: String, enabled: bool) -> Result<(),
     .await
 }
 
+/// Whether the user has opted into offering uncensored / abliterated local models in
+/// the model picker (ai-greyzone-controls-plan.md A1). Reads `[ai] uncensored` from
+/// `ai.toml`, defaulting to `false` - opt-in, never a dark-pattern default-on. This is
+/// a local UI preference: the daemon does not enforce which models the picker shows,
+/// so it is a plain `ai.toml` key (not a config-broker master switch); the honest gate
+/// is the one-time first-download confirm, not this flag. Absent/unreadable config
+/// reads as `false`.
+#[tauri::command]
+pub fn ai_uncensored_enabled() -> bool {
+    use crate::commands::config::{config_get, ConfigFile};
+    config_get(ConfigFile::Ai, Some("ai.uncensored".to_string()))
+        .ok()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// Set the uncensored-models opt-in (`[ai] uncensored` in `ai.toml`), a
+/// format-preserving atomic write via the shared config helper.
+#[tauri::command]
+pub async fn ai_uncensored_set_enabled(enabled: bool) -> Result<(), String> {
+    use crate::commands::config::{config_set, ConfigFile};
+    config_set(
+        ConfigFile::Ai,
+        "ai.uncensored".to_string(),
+        serde_json::json!(enabled),
+    )
+    .await
+}
+
 /// The configured default provider/model + ranked fallback (`ai_defaults_get`),
 /// as `{ provider, model, ranking }`, for the manager's Default-Models page.
 /// Empty object if the daemon is unreachable.

@@ -79,6 +79,8 @@ pub fn run() {
             commands::capsules::revoke_capsule,
             commands::ai::ai_behaviours,
             commands::ai::ai_behaviour_set_enabled,
+            commands::ai::ai_uncensored_enabled,
+            commands::ai::ai_uncensored_set_enabled,
             commands::ai::ai_defaults_get,
             commands::ai::ai_models_list,
             commands::ai::ai_hardware_probe,
