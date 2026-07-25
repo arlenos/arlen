@@ -47,7 +47,12 @@ base64 = "0.22"
 prost = "0.13"
 # Already in the tree via tauri; `sync` carries the semaphore bounding
 # concurrent sandboxed decodes.
-tokio = { version = "1", features = ["sync"] }
+tokio = { version = "1", features = ["sync", "net", "io-util"] }
+# Journal FM deletes/creates to the signed undo-log so they are undoable across
+# sessions (CAH-3): the inverse-receipt model + the undo-signer wire protocol.
+arlen-ai-undo-core = { path = "../../../ai/ai-undo-core" }
+arlen-ai-undo-proto = { path = "../../../ai/ai-undo-proto" }
+getrandom = "0.2"
 # Archive extraction (bucket B). The host owns these so the lean core stays
 # archive-free; entries are written through a cap-std capability at the
 # destination, so a traversing entry is refused by construction.

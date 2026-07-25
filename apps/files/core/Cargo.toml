@@ -12,6 +12,9 @@ authors = ["Arlen"]
 cap-std = "3"
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
+# The durable undo-log inverse-receipt model: an FM op maps to the InverseReceipt
+# the signed undo-log stores, so an FM delete/create is undoable across sessions.
+arlen-ai-undo-core = { path = "../../../ai/ai-undo-core" }
 percent-encoding = "2"
 libc = "0.2"
 time = { version = "0.3", features = ["formatting", "local-offset"] }
