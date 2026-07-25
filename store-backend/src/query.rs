@@ -232,6 +232,29 @@ mod tests {
     }
 
     #[test]
+    fn multiple_facets_are_anded_not_ored() {
+        // The doc promises facets are ANDed: a card must pass EVERY facet. With a
+        // single facet all() == any(), so single-facet tests cannot catch an
+        // all()->any() regression; this uses two facets whose union differs from
+        // their intersection. Requires(network) AND Excludes(camera) keeps only a
+        // card that both asks network AND has no camera-requesting variant.
+        let cat = Catalog::new(merge_catalog(vec![
+            entry("org.x.Chat", SourceLayer::Flatpak, "Chatter", &["network"]),
+            entry("org.z.Cam", SourceLayer::Flatpak, "Camera", &["network", "camera"]),
+            entry("org.y.Paint", SourceLayer::Flatpak, "Painter", &[]),
+        ]));
+        let facets = vec![
+            CapabilityFacet::Requires("network".into()),
+            CapabilityFacet::Excludes("camera".into()),
+        ];
+        let cards = cat.search("", &facets);
+        // AND: only Chat (network, no camera). Cam fails Excludes(camera); Paint fails
+        // Requires(network). An OR mutation would also let Cam and Paint through.
+        assert_eq!(cards.len(), 1, "facets must intersect, not union");
+        assert_eq!(cards[0].id, ComponentId("org.x.Chat".into()));
+    }
+
+    #[test]
     fn install_validates_the_variant_exists() {
         let cat = catalog();
         match answer(&cat, Request::Install {
