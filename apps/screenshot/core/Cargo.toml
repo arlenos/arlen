@@ -12,6 +12,9 @@ path = "src/lib.rs"
 serde = { version = "1", features = ["derive"] }
 # Encode a captured PNG as a data URL for the webview canvas.
 base64 = "0.22"
+# Encode a captured image's RGBA pixels to in-memory PNG bytes (sdk::write_png only
+# writes to a file); matches the capture crate's png version so the lock stays single.
+png = "0.18"
 # The capture core: the source lists + the screenshots-dir/name convention this
 # command layer wraps for the Tauri backend.
 arlen-screen-capture = { path = "../../../sdk/screen-capture" }
