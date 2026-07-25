@@ -32,6 +32,9 @@ pub enum EnactOutcome {
     Restored,
     /// The created entity was deleted (its fingerprint still matched).
     Deleted,
+    /// The created entity was moved to the trash (its fingerprint still matched);
+    /// the trash-first undo-of-create, restorable rather than destroyed.
+    Trashed,
     /// The created entity no longer carries its commit-time fingerprint (a user
     /// replaced it), so undo left it in place rather than deleting a replacement.
     RefusedIdentityMismatch,
@@ -139,6 +142,9 @@ pub fn enact_inverse(receipt: &InverseReceipt) -> Result<EnactOutcome, EnactErro
         InverseReceipt::DeleteCreated { created } => {
             enact_delete_created(created.path().as_str(), created.fingerprint())
         }
+        InverseReceipt::TrashCreated { created } => {
+            enact_trash_created(created.path().as_str(), created.fingerprint())
+        }
         InverseReceipt::RestoreValue { target, prior } => {
             enact_restore_value(target.file(), target.key(), prior.as_deref())
         }
@@ -232,6 +238,43 @@ fn enact_delete_created(path: &str, fingerprint: &str) -> Result<EnactOutcome, E
         Some(current) if current == fingerprint => {
             std::fs::remove_file(path).map_err(|e| EnactError::Io(e.to_string()))?;
             Ok(EnactOutcome::Deleted)
+        }
+        _ => Ok(EnactOutcome::RefusedIdentityMismatch),
+    }
+}
+
+/// Trash the created entity at `path` (move it to the freedesktop home trash) only
+/// if it still carries `fingerprint`; otherwise leave a user's replacement in place.
+/// The trash-first undo-of-create - it NEVER permanently destroys, so an accidental
+/// undo (e.g. of a folder the user has since filled) stays recoverable from the
+/// trash. An already-absent file is an identity mismatch, never an error (idempotent).
+fn enact_trash_created(path: &str, fingerprint: &str) -> Result<EnactOutcome, EnactError> {
+    let trash = crate::file_executor::home_trash_dir()
+        .ok_or_else(|| EnactError::Io("no home trash directory".to_string()))?;
+    enact_trash_created_in(path, fingerprint, &trash)
+}
+
+/// [`enact_trash_created`] against an explicit trash root, so the trash-put is
+/// unit-tested without touching the real home trash.
+fn enact_trash_created_in(
+    path: &str,
+    fingerprint: &str,
+    trash_dir: &Path,
+) -> Result<EnactOutcome, EnactError> {
+    match fingerprint_file(Path::new(path)) {
+        Some(current) if current == fingerprint => {
+            let files_dir = trash_dir.join("files");
+            let info_dir = trash_dir.join("info");
+            std::fs::create_dir_all(&files_dir)
+                .and_then(|()| std::fs::create_dir_all(&info_dir))
+                .map_err(|e| EnactError::Io(e.to_string()))?;
+            let base_name = Path::new(path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .ok_or_else(|| EnactError::Io("created path has no file name".to_string()))?;
+            crate::file_executor::trash_into(&files_dir, &info_dir, base_name, path)
+                .map(|_slot| EnactOutcome::Trashed)
+                .map_err(|e| EnactError::Io(format!("trash: {e:?}")))
         }
         _ => Ok(EnactOutcome::RefusedIdentityMismatch),
     }
@@ -576,6 +619,34 @@ mod tests {
         // Both files untouched.
         assert_eq!(std::fs::read(&prior).unwrap(), b"someone-else");
         assert_eq!(std::fs::read(&now).unwrap(), b"a");
+    }
+
+    #[test]
+    fn trash_created_moves_the_file_to_trash_when_the_fingerprint_matches() {
+        let d = tmp();
+        let created = d.join("new.txt");
+        std::fs::write(&created, b"content").unwrap();
+        let fp = fingerprint_file(&created).unwrap();
+        let trash = d.join("Trash");
+        let outcome = enact_trash_created_in(created.to_str().unwrap(), &fp, &trash).unwrap();
+        assert_eq!(outcome, EnactOutcome::Trashed);
+        assert!(!created.exists(), "the created file was moved out of its place");
+        // It landed in the trash with its sidecar - restorable, not destroyed.
+        assert_eq!(std::fs::read(trash.join("files/new.txt")).unwrap(), b"content");
+        assert!(trash.join("info/new.txt.trashinfo").exists());
+    }
+
+    #[test]
+    fn trash_created_refuses_when_the_fingerprint_no_longer_matches() {
+        let d = tmp();
+        let created = d.join("new.txt");
+        std::fs::write(&created, b"content").unwrap();
+        let trash = d.join("Trash");
+        // A user replaced the file (different content) -> undo leaves it alone.
+        let outcome =
+            enact_trash_created_in(created.to_str().unwrap(), "deadbeef", &trash).unwrap();
+        assert_eq!(outcome, EnactOutcome::RefusedIdentityMismatch);
+        assert!(created.exists(), "the replacement is left in place");
     }
 
     #[test]

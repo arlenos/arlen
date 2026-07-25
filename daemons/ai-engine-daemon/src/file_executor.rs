@@ -532,7 +532,7 @@ fn rename_noreplace(from: &str, to: &str) -> Result<(), RenameError> {
 }
 
 /// The canonical trashed + sidecar paths of a reserved trash slot, for the inverse.
-struct TrashSlot {
+pub(crate) struct TrashSlot {
     /// The entity's new location under `Trash/files/`.
     trashed: CanonicalPath,
     /// The companion `Trash/info/<name>.trashinfo` sidecar.
@@ -540,7 +540,8 @@ struct TrashSlot {
 }
 
 /// Why a trash operation could not complete.
-enum TrashError {
+#[derive(Debug)]
+pub(crate) enum TrashError {
     /// The source path does not exist.
     NotFound,
     /// The filesystem does not support an atomic no-clobber move.
@@ -561,7 +562,7 @@ const MAX_TRASH_DEDUP: u32 = 10_000;
 /// The user's home trash directory (`$XDG_DATA_HOME/Trash`, else
 /// `$HOME/.local/share/Trash`). `None` if neither yields an absolute base, so a
 /// trash never lands at a relative path.
-fn home_trash_dir() -> Option<PathBuf> {
+pub(crate) fn home_trash_dir() -> Option<PathBuf> {
     let data_home = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
@@ -579,7 +580,7 @@ fn home_trash_dir() -> Option<PathBuf> {
 /// (freedesktop info-first) and removed on a move failure, so a failed trash leaves
 /// no partial state. Each candidate's canonical paths are validated BEFORE its move,
 /// so a returned slot always yields a constructible inverse.
-fn trash_into(
+pub(crate) fn trash_into(
     files_dir: &Path,
     info_dir: &Path,
     base_name: &str,

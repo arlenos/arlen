@@ -192,8 +192,21 @@ pub enum InverseReceipt {
         prior: Option<String>,
     },
     /// Creation: undo deletes exactly the entity this action created,
-    /// identity-bound so undo never deletes a replacement.
+    /// identity-bound so undo never deletes a replacement. This is the HARD-delete
+    /// inverse, reserved for explicit hard-delete cases; for an ordinary undo-of-
+    /// create prefer [`TrashCreated`](InverseReceipt::TrashCreated), which never
+    /// permanently destroys.
     DeleteCreated {
+        /// The created entity's identity (canonical path + fingerprint).
+        created: CreatedIdentity,
+    },
+    /// Creation (trash-first undo): undo moves exactly the entity this action
+    /// created into the freedesktop trash rather than permanently deleting it,
+    /// identity-bound so undo never trashes a replacement. This is the trash-first
+    /// form the file manager uses for undo-of-create, upholding the invariant that
+    /// undo never permanently destroys; the trashed entity remains restorable from
+    /// the trash.
+    TrashCreated {
         /// The created entity's identity (canonical path + fingerprint).
         created: CreatedIdentity,
     },
@@ -253,6 +266,9 @@ pub enum CaptureShape {
     RestoreValue,
     /// The created entity's identity is captured ([`InverseReceipt::DeleteCreated`]).
     DeleteCreated,
+    /// The created entity's identity is captured for a trash-first undo
+    /// ([`InverseReceipt::TrashCreated`]).
+    TrashCreated,
     /// A pre-action snapshot is captured ([`InverseReceipt::RestoreSnapshot`]).
     RestoreSnapshot,
 }
@@ -462,6 +478,24 @@ mod tests {
         // The op id is the retract key, so it survives the round trip.
         match serde_json::from_str::<InverseReceipt>(&json).unwrap() {
             InverseReceipt::RetractGraphEdge { op_id, .. } => assert_eq!(op_id, "op-7"),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn trash_created_round_trips_and_is_identity_bound() {
+        let created =
+            CreatedIdentity::new(CanonicalPath::new("/a/new.txt").unwrap(), "abc123").unwrap();
+        let inv = InverseReceipt::TrashCreated { created };
+        let json = serde_json::to_string(&inv).unwrap();
+        assert_eq!(serde_json::from_str::<InverseReceipt>(&json).unwrap(), inv);
+        // The trash-first undo binds to the created entity's identity (path +
+        // fingerprint), so undo trashes exactly what the action created.
+        match serde_json::from_str::<InverseReceipt>(&json).unwrap() {
+            InverseReceipt::TrashCreated { created: c } => {
+                assert_eq!(c.path().as_str(), "/a/new.txt");
+                assert_eq!(c.fingerprint(), "abc123");
+            }
             _ => panic!("wrong variant"),
         }
     }
