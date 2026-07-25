@@ -281,6 +281,59 @@ mod tests {
         assert_eq!(cards[0].display.name, "rich");
     }
 
+    /// All permutations of `items` (Heap's algorithm), for the order-independence
+    /// test below.
+    fn permutations<T: Clone>(items: Vec<T>) -> Vec<Vec<T>> {
+        fn go<T: Clone>(k: usize, arr: &mut [T], out: &mut Vec<Vec<T>>) {
+            if k <= 1 {
+                out.push(arr.to_vec());
+                return;
+            }
+            for i in 0..k {
+                go(k - 1, arr, out);
+                if k.is_multiple_of(2) {
+                    arr.swap(i, k - 1);
+                } else {
+                    arr.swap(0, k - 1);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        let n = items.len();
+        let mut arr = items;
+        go(n, &mut arr, &mut out);
+        out
+    }
+
+    #[test]
+    fn merge_is_order_independent() {
+        // The catalog is composed from several sources (forage, Flathub, DEP-11)
+        // whose iteration order is an implementation detail, and the periodic refresh
+        // re-composes; the served catalog MUST be identical regardless of the order
+        // entries arrive in. A mutation that made the display or variant choice
+        // order-dependent (e.g. taking the first entry rather than the richest, or
+        // grouping in a hash-ordered map) would change an app's rendered display
+        // across restarts, and the fixed-order example tests above would not catch it.
+        // Official (highest precedence) is deliberately the POOREST here (no
+        // screenshots), so the display must come from the richer lower-precedence
+        // Flatpak: that is the order-sensitive `max_by` path a wrong impl would break.
+        let base = vec![
+            entry("org.x.App", SourceLayer::Official, "App-official", 0),
+            entry("org.x.App", SourceLayer::Flatpak, "App-flathub", 3),
+            entry("org.x.App", SourceLayer::Apt, "App-apt", 1),
+            entry("org.a.Other", SourceLayer::Apt, "Other", 0),
+        ];
+        let expected = merge_catalog(base.clone());
+        // Sanity: the fixture actually exercises the order-sensitive paths (a
+        // multi-variant merge whose display is NOT the highest-precedence source).
+        assert_eq!(expected.len(), 2);
+        assert_eq!(expected[1].variants.len(), 3);
+        assert_eq!(expected[1].display.name, "App-flathub", "richest, not first or highest-precedence");
+        for perm in permutations(base) {
+            assert_eq!(merge_catalog(perm), expected, "merge must not depend on entry order");
+        }
+    }
+
     #[test]
     fn a_card_round_trips_through_json() {
         let cards = merge_catalog(vec![entry("org.x.App", SourceLayer::Official, "App", 1)]);
