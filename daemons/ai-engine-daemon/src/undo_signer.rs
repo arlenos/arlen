@@ -9,8 +9,8 @@
 use std::path::Path;
 use std::time::Duration;
 
-use arlen_ai_undo_core::undo_log::UndoEntry;
-use arlen_ai_undo_proto::{read_response, write_request, Request, Response};
+use arlen_ai_undo_core::undo_log::{UndoEntry, UndoState};
+use arlen_ai_undo_proto::{read_response, write_request, Request, Response, StateReply};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
@@ -126,6 +126,80 @@ pub async fn lookup_entry(socket: &Path, op_id: &str) -> Result<Option<UndoEntry
     match tokio::time::timeout(SUBMIT_TIMEOUT, lookup).await {
         Ok(result) => result,
         Err(_) => Err(format!("signer lookup timed out after {SUBMIT_TIMEOUT:?}")),
+    }
+}
+
+/// Record a lifecycle transition for an entry over an already-connected `stream`.
+/// Used to mark a non-graph inverse `Compensated`/`Superseded` after a live undo has
+/// enacted it, so a second undo of the same id is a no-op rather than a re-enact. A
+/// non-`Sealed` reply (the signer rejected an illegal transition, or a transport
+/// failure) is an error the caller handles.
+pub async fn transition_on<S>(stream: &mut S, op_id: &str, state: UndoState) -> Result<(), String>
+where
+    S: AsyncReadExt + AsyncWriteExt + Unpin,
+{
+    write_request(stream, &Request::Transition { op_id: op_id.to_string(), state })
+        .await
+        .map_err(|e| format!("write: {e}"))?;
+    match read_response(stream)
+        .await
+        .map_err(|e| format!("read: {e}"))?
+    {
+        Response::Sealed => Ok(()),
+        other => Err(format!("signer did not seal the transition: {other:?}")),
+    }
+}
+
+/// Connect to the signer at `socket` and record a lifecycle transition, bounded by
+/// [`SUBMIT_TIMEOUT`]. Best-effort at the call site: a transition that cannot be
+/// recorded (an unreachable signer, an illegal transition) is returned for the caller
+/// to log, since the undo it marks has already happened.
+pub async fn transition(socket: &Path, op_id: &str, state: UndoState) -> Result<(), String> {
+    let go = async {
+        let mut stream = UnixStream::connect(socket)
+            .await
+            .map_err(|e| format!("connect {}: {e}", socket.display()))?;
+        transition_on(&mut stream, op_id, state).await
+    };
+    match tokio::time::timeout(SUBMIT_TIMEOUT, go).await {
+        Ok(result) => result,
+        Err(_) => Err(format!("signer transition timed out after {SUBMIT_TIMEOUT:?}")),
+    }
+}
+
+/// Look up an entry's current folded lifecycle state over an already-connected
+/// `stream`. Returns the [`StateReply`] (`Absent` / `Present(state)` / `Corrupt`), so
+/// the live undo path can skip an already-terminal entry (idempotency) and refuse a
+/// corrupt one fail-closed.
+pub async fn lookup_state_on<S>(stream: &mut S, op_id: &str) -> Result<StateReply, String>
+where
+    S: AsyncReadExt + AsyncWriteExt + Unpin,
+{
+    write_request(stream, &Request::LookupState { op_id: op_id.to_string() })
+        .await
+        .map_err(|e| format!("write: {e}"))?;
+    match read_response(stream)
+        .await
+        .map_err(|e| format!("read: {e}"))?
+    {
+        Response::State(reply) => Ok(reply),
+        other => Err(format!("signer did not return a state: {other:?}")),
+    }
+}
+
+/// Connect to the signer at `socket` and look up an entry's lifecycle state, bounded
+/// by [`SUBMIT_TIMEOUT`]. A connect/transport/timeout failure is returned for the
+/// caller to handle fail-closed.
+pub async fn lookup_state(socket: &Path, op_id: &str) -> Result<StateReply, String> {
+    let go = async {
+        let mut stream = UnixStream::connect(socket)
+            .await
+            .map_err(|e| format!("connect {}: {e}", socket.display()))?;
+        lookup_state_on(&mut stream, op_id).await
+    };
+    match tokio::time::timeout(SUBMIT_TIMEOUT, go).await {
+        Ok(result) => result,
+        Err(_) => Err(format!("signer state lookup timed out after {SUBMIT_TIMEOUT:?}")),
     }
 }
 
@@ -248,5 +322,51 @@ mod tests {
         let r = lookup_entry_on(&mut client, "x").await;
         signer.await.unwrap();
         assert!(r.is_err(), "a non-Entry reply must be an error");
+    }
+
+    #[tokio::test]
+    async fn transition_seals_a_recorded_state_change() {
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let signer = tokio::spawn(async move {
+            match read_request(&mut server).await.unwrap() {
+                Request::Transition { op_id, state } => {
+                    assert_eq!(op_id, "op-t");
+                    assert_eq!(state, UndoState::Superseded);
+                }
+                other => panic!("expected Transition, got {other:?}"),
+            }
+            write_response(&mut server, &Response::Sealed).await.unwrap();
+        });
+        transition_on(&mut client, "op-t", UndoState::Superseded).await.expect("sealed");
+        signer.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_rejected_transition_is_an_error() {
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let signer = tokio::spawn(async move {
+            let _ = read_request(&mut server).await.unwrap();
+            write_response(&mut server, &Response::Error("illegal".into())).await.unwrap();
+        });
+        let r = transition_on(&mut client, "op-t", UndoState::Compensated).await;
+        signer.await.unwrap();
+        assert!(r.is_err(), "a rejected transition must be an error");
+    }
+
+    #[tokio::test]
+    async fn lookup_state_returns_the_folded_state() {
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let signer = tokio::spawn(async move {
+            match read_request(&mut server).await.unwrap() {
+                Request::LookupState { op_id } => assert_eq!(op_id, "op-s"),
+                other => panic!("expected LookupState, got {other:?}"),
+            }
+            write_response(&mut server, &Response::State(StateReply::Present(UndoState::Superseded)))
+                .await
+                .unwrap();
+        });
+        let reply = lookup_state_on(&mut client, "op-s").await.expect("state");
+        signer.await.unwrap();
+        assert_eq!(reply, StateReply::Present(UndoState::Superseded));
     }
 }
