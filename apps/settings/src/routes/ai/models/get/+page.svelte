@@ -174,21 +174,23 @@
   </SectionGrid>
 </Page>
 
-<!-- What the model is for, as quiet tags under the row. -->
+<!-- What the model is, as quiet marks under the row: the task tags, plus the
+     no-guardrails mark when it applies (kept out of the action column so every
+     row shares the same geometry). -->
 {#snippet tags(m: Model)}
   <span class="tags">
     {#each m.tasks as task (task)}<Badge variant="outline">{taskLabel(task)}</Badge>{/each}
-  </span>
-{/snippet}
-
-<!-- The one action slot: download / progress+cancel / installed, plus the
-     guardrails badge when the model has none. -->
-{#snippet action(m: Model)}
-  {@const pct = downloadPct(m.id)}
-  <span class="row-control">
     {#if m.uncensored}
       <Badge variant="outline"><ShieldOff strokeWidth={2} />{$t("s.mdl.unc.badge")}</Badge>
     {/if}
+  </span>
+{/snippet}
+
+<!-- The action column: one fixed box for every state (download / progress /
+     installed), so size and edges are identical across rows. -->
+{#snippet action(m: Model)}
+  {@const pct = downloadPct(m.id)}
+  <span class="row-control">
     {#if pct !== null}
       <span class="dl">
         <Progress value={pct} />
@@ -205,12 +207,14 @@
         </span>
       </span>
     {:else if m.installed}
-      <!-- Same box as the sm button so the right column lines up across rows. -->
-      <Badge variant="success" class="h-control px-2.5">{$t("s.mdl.installed")}</Badge>
+      <span class="installed-box">
+        <Badge variant="success" class="w-full justify-center">{$t("s.mdl.installed")}</Badge>
+      </span>
     {:else}
       <Button
         variant="outline"
         size="sm"
+        class="w-full"
         disabled={m.fit === "wont-fit" || $download !== null}
         onclick={() => (pending = m)}
       >
@@ -263,19 +267,28 @@
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
-  /* Badge and action stack (end-aligned) so a badged row never pushes its
-     button past the card edge. */
+  /* One fixed action box for every state, so all rows share the exact same
+     right-column geometry. */
   .row-control {
     display: inline-flex;
     flex-direction: column;
-    align-items: flex-end;
-    gap: 0.35rem;
+    align-items: stretch;
+    width: 7.5rem;
   }
   .dl {
     display: inline-flex;
     flex-direction: column;
     gap: 0.25rem;
-    width: 9rem;
+    width: 100%;
+  }
+  /* The installed mark fills the same box as the sm button (the badge's own
+     h-tag would keep it shorter). */
+  .installed-box {
+    display: flex;
+    height: var(--height-control, 1.75rem);
+  }
+  .installed-box > :global(*) {
+    height: 100%;
   }
   .dl-row {
     display: flex;
