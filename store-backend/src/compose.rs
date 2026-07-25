@@ -85,6 +85,111 @@ fn capability_labels(caps: &Capabilities) -> Vec<String> {
     labels
 }
 
+/// Why a composed catalog could not be read.
+#[derive(Debug)]
+pub enum ComposeError {
+    /// The XML did not parse.
+    Xml(String),
+}
+
+/// Parse a Flathub composed-AppStream catalog (`<components>` of `<component>`) into
+/// one `CatalogEntry` per desktop app (`layer = Flatpak`). Display comes from the
+/// AppStream fields (the UNLOCALIZED default element, ignoring `xml:lang` variants);
+/// the capability footprint (Flatpak `finish-args`) and the trust signals (Flathub
+/// verification / stats, ODRS) come from SEPARATE sources per section 9.2 and stay
+/// empty here. A `<component>` with no id is skipped, not guessed.
+pub fn flathub_entries(xml: &str) -> Result<Vec<CatalogEntry>, ComposeError> {
+    let doc = roxmltree::Document::parse(xml).map_err(|e| ComposeError::Xml(e.to_string()))?;
+    let mut entries = Vec::new();
+    for component in doc
+        .descendants()
+        .filter(|n| n.is_element() && n.tag_name().name() == "component")
+    {
+        let Some(id) = child_text(&component, "id") else {
+            continue; // A component with no id is unusable; skip it.
+        };
+        let name = default_localized(&component, "name").unwrap_or_default();
+        let display = DisplayMeta {
+            name,
+            summary: default_localized(&component, "summary"),
+            description: description_text(&component),
+            screenshots: screenshot_urls(&component),
+            icon: icon_ref(&component),
+        };
+        entries.push(CatalogEntry {
+            id: ComponentId(id),
+            layer: SourceLayer::Flatpak,
+            display,
+            capabilities: CapabilityFootprint::default(),
+            trust: TrustSignals::default(),
+        });
+    }
+    Ok(entries)
+}
+
+/// The text of the first direct child element named `tag`.
+fn child_text<'a>(node: &roxmltree::Node<'a, 'a>, tag: &str) -> Option<String> {
+    node.children()
+        .find(|c| c.is_element() && c.tag_name().name() == tag)
+        .and_then(|c| c.text())
+        .map(str::to_string)
+}
+
+/// The text of the unlocalized `tag` child (the one without an `xml:lang`), the
+/// default the store renders; localized variants are ignored.
+fn default_localized(node: &roxmltree::Node, tag: &str) -> Option<String> {
+    node.children()
+        .filter(|c| c.is_element() && c.tag_name().name() == tag)
+        .find(|c| !c.attributes().any(|a| a.name() == "lang"))
+        .and_then(|c| c.text())
+        .map(str::to_string)
+}
+
+/// The unlocalized `<description>`'s concatenated `<p>` paragraph texts.
+fn description_text(node: &roxmltree::Node) -> Option<String> {
+    let desc = node
+        .children()
+        .filter(|c| c.is_element() && c.tag_name().name() == "description")
+        .find(|c| !c.attributes().any(|a| a.name() == "lang"))?;
+    let paras: Vec<&str> = desc
+        .children()
+        .filter(|c| c.is_element() && c.tag_name().name() == "p")
+        .filter_map(|p| p.text())
+        .collect();
+    if paras.is_empty() {
+        None
+    } else {
+        Some(paras.join("\n\n"))
+    }
+}
+
+/// Every `<screenshots>/<screenshot>/<image>` URL, in document order.
+fn screenshot_urls(node: &roxmltree::Node) -> Vec<String> {
+    node.children()
+        .filter(|c| c.is_element() && c.tag_name().name() == "screenshots")
+        .flat_map(|shots| shots.children())
+        .filter(|c| c.is_element() && c.tag_name().name() == "screenshot")
+        .flat_map(|shot| shot.children())
+        .filter(|c| c.is_element() && c.tag_name().name() == "image")
+        .filter_map(|img| img.text().map(str::to_string))
+        .collect()
+}
+
+/// The first `<icon>` reference, preferring a `type="remote"` URL the store can
+/// fetch, else the first icon's text (a cached/stock name).
+fn icon_ref(node: &roxmltree::Node) -> Option<String> {
+    let icons: Vec<roxmltree::Node> = node
+        .children()
+        .filter(|c| c.is_element() && c.tag_name().name() == "icon")
+        .collect();
+    icons
+        .iter()
+        .find(|c| c.attribute("type") == Some("remote"))
+        .or_else(|| icons.first())
+        .and_then(|c| c.text())
+        .map(str::to_string)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,5 +257,58 @@ commit = "0000000000000000000000000000000000000000"
         let cards = merge_catalog(vec![forage_entry(&r, SourceLayer::Official)]);
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].variants[0].layer, SourceLayer::Official);
+    }
+
+    const FLATHUB_XML: &str = r#"<?xml version="1.0"?>
+<components>
+  <component type="desktop-application">
+    <id>org.gnome.Calculator</id>
+    <name>Calculator</name>
+    <name xml:lang="de">Taschenrechner</name>
+    <summary>Do calculations</summary>
+    <summary xml:lang="de">Rechnen</summary>
+    <description><p>A powerful calculator.</p><p>It has modes.</p></description>
+    <icon type="cached">org.gnome.Calculator.png</icon>
+    <icon type="remote">https://dl.flathub.org/icon.png</icon>
+    <screenshots>
+      <screenshot type="default"><image>https://dl.flathub.org/a.png</image></screenshot>
+      <screenshot><image>https://dl.flathub.org/b.png</image></screenshot>
+    </screenshots>
+  </component>
+  <component type="desktop-application">
+    <name>No Id</name>
+  </component>
+</components>"#;
+
+    #[test]
+    fn flathub_reader_maps_the_unlocalized_appstream_fields() {
+        let entries = flathub_entries(FLATHUB_XML).unwrap();
+        // The id-less component is skipped.
+        assert_eq!(entries.len(), 1);
+        let e = &entries[0];
+        assert_eq!(e.id, ComponentId("org.gnome.Calculator".into()));
+        assert_eq!(e.layer, SourceLayer::Flatpak);
+        assert_eq!(e.display.name, "Calculator", "the unlocalized name, not the de one");
+        assert_eq!(e.display.summary.as_deref(), Some("Do calculations"));
+        assert_eq!(
+            e.display.description.as_deref(),
+            Some("A powerful calculator.\n\nIt has modes.")
+        );
+        assert_eq!(e.display.screenshots, vec!["https://dl.flathub.org/a.png", "https://dl.flathub.org/b.png"]);
+        // The remote icon wins over the cached one.
+        assert_eq!(e.display.icon.as_deref(), Some("https://dl.flathub.org/icon.png"));
+    }
+
+    #[test]
+    fn flathub_reader_rejects_malformed_xml() {
+        assert!(matches!(flathub_entries("<components><oops"), Err(ComposeError::Xml(_))));
+    }
+
+    #[test]
+    fn flathub_entries_flow_through_the_merge() {
+        let entries = flathub_entries(FLATHUB_XML).unwrap();
+        let cards = merge_catalog(entries);
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].variants[0].layer, SourceLayer::Flatpak);
     }
 }
