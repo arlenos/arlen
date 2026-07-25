@@ -1,0 +1,43 @@
+[Unit]
+Description=Arlen App Store Backend (user service)
+Documentation=https://github.com/arlenos/arlen
+# The backend composes the merged catalog from local metadata and serves it over
+# org.arlen.Store1. It reads only local files and binds one AF_UNIX socket, so it
+# has no ordering dependency on any other daemon.
+
+[Service]
+Type=simple
+# Production binary path (system-wide install). Dev runs invoke the debug binary
+# directly; this file is the canonical production unit.
+ExecStart=/usr/lib/arlen/libexec/arlen-store-backend
+Restart=on-failure
+RestartSec=2
+
+# The backend reads local catalog metadata (read-only) and serves a read-only
+# catalog over a same-user socket. It authenticates no peer (the catalog carries no
+# per-user data), so the full mount-namespace hardening is safe here, unlike the
+# peer-authenticating daemons that must keep /proc readable.
+ProtectSystem=strict
+ProtectHome=read-only
+# The store socket lives under the per-user runtime dir.
+RuntimeDirectory=arlen
+ReadWritePaths=%t/arlen
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+# No network today: the compose reads local files only. When the live catalog
+# fetchers land (Flathub API, the Debian mirror, odrs.gnome.org, per-publisher
+# .well-known), this relaxes to an IPAddressAllow of exactly those hosts, with every
+# request audited and carrying no per-user identifier (store-app.md section 9.5).
+IPAddressDeny=any
+UMask=0077
+
+[Install]
+WantedBy=default.target
