@@ -2,6 +2,7 @@ mod app_history;
 mod app_index;
 mod app_state;
 mod audio;
+mod capability;
 mod battery;
 mod clipboard_history;
 mod clipboard_ipc;
@@ -326,6 +327,7 @@ pub fn run() {
             log_frontend,
             dispatch_app_action,
             app_shortcut_invoke,
+            capability::ai_capability,
             consent::consent_fetch,
             consent::consent_resolve,
             modulesd_commands::modulesd_list_modules,
