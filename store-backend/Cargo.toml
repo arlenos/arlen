@@ -19,7 +19,7 @@ serde_json = "1"
 # (store-app.md section 9.3), so a forage app lands in the same merged catalog.
 arlen-forage-recipe = { path = "../contracts/forage-recipe" }
 # The org.arlen.Store1 socket transport (length-prefixed frames over AF_UNIX).
-tokio = { version = "1", features = ["net", "io-util", "rt", "rt-multi-thread", "macros", "signal"] }
+tokio = { version = "1", features = ["net", "io-util", "rt", "rt-multi-thread", "macros", "signal", "time"] }
 # Read-only XML DOM for the Flathub composed-AppStream catalog reader (section 9.3).
 roxmltree = "0.20"
 # Decompress the deployed catalog metadata (Flathub/DEP-11 ship gzipped .xml.gz/.yml.gz).

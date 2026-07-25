@@ -10,7 +10,6 @@
 //! denies egress outright; the per-host allowlist lands with the live fetchers.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use arlen_store_backend::{compose_catalog, serve, SourceInputs, SourceLayer};
 
@@ -21,11 +20,31 @@ async fn main() {
         std::process::exit(1);
     };
 
-    let catalog = Arc::new(compose_catalog(load_source_inputs()));
-    eprintln!("store-backend: serving {} on {}", catalog_summary(&catalog), socket.display());
+    let catalog = serve::shared(compose_catalog(load_source_inputs()));
+    let count = catalog.lock().map(|c| c.search("", &[]).len()).unwrap_or(0);
+    eprintln!("store-backend: serving {count} app(s) on {}", socket.display());
+
+    // Periodically re-compose the catalog so it tracks the on-disk metadata without a
+    // restart (store-app.md section 9.3). `ARLEN_STORE_REFRESH_SECS=0` disables it.
+    if let Some(interval) = refresh_interval() {
+        let catalog = catalog.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(interval).await;
+                // The compose reads + parses files (blocking), off the runtime.
+                if let Ok(fresh) = tokio::task::spawn_blocking(|| {
+                    compose_catalog(load_source_inputs())
+                })
+                .await
+                {
+                    serve::swap(&catalog, fresh);
+                }
+            }
+        });
+    }
 
     tokio::select! {
-        result = serve::run(Arc::clone(&catalog), &socket) => {
+        result = serve::run(catalog, &socket) => {
             if let Err(e) = result {
                 eprintln!("store-backend: serve loop ended: {e:?}");
             }
@@ -36,6 +55,16 @@ async fn main() {
     }
     // Best-effort: leave no stale socket behind.
     let _ = std::fs::remove_file(&socket);
+}
+
+/// The catalog-refresh interval from `ARLEN_STORE_REFRESH_SECS` (default 3600s = 1h).
+/// `0` disables the periodic refresh (the catalog is then composed once at startup).
+fn refresh_interval() -> Option<std::time::Duration> {
+    let secs = std::env::var("ARLEN_STORE_REFRESH_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(3600);
+    (secs > 0).then(|| std::time::Duration::from_secs(secs))
 }
 
 /// Read the source metadata from configured paths, all optional. A path that is unset
@@ -115,12 +144,6 @@ mod tests {
 }
 
 /// A one-line summary of the composed catalog for the startup log.
-fn catalog_summary(catalog: &arlen_store_backend::Catalog) -> String {
-    // The catalog has no public len; a search with an empty query returns every card.
-    let n = catalog.search("", &[]).len();
-    format!("{n} app(s)")
-}
-
 /// Resolve on SIGTERM (systemd stop) or SIGINT (Ctrl-C).
 async fn shutdown_signal() {
     use tokio::signal::unix::{signal, SignalKind};

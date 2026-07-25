@@ -9,12 +9,29 @@
 //! catalog is read-only and shared, so a connection never mutates store state.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixListener;
 
 use crate::query::{answer, Catalog, Request, Response};
+
+/// A hot-swappable catalog: the served catalog behind a mutex holding an `Arc`, so a
+/// periodic refresh can atomically replace it (a brief lock to swap the `Arc`, never
+/// held across an await) while readers snapshot the current `Arc` per connection.
+pub type SharedCatalog = Arc<Mutex<Arc<Catalog>>>;
+
+/// Wrap an owned catalog as a [`SharedCatalog`].
+pub fn shared(catalog: Catalog) -> SharedCatalog {
+    Arc::new(Mutex::new(Arc::new(catalog)))
+}
+
+/// Atomically replace the served catalog (the refresh task calls this).
+pub fn swap(shared: &SharedCatalog, catalog: Catalog) {
+    if let Ok(mut guard) = shared.lock() {
+        *guard = Arc::new(catalog);
+    }
+}
 
 /// The largest request frame accepted (a request is small: a query + facets).
 pub const MAX_REQUEST_FRAME: usize = 64 * 1024;
@@ -101,11 +118,12 @@ where
 }
 
 /// Bind `socket` (creating its parent dir, replacing a stale socket, clamping it to
-/// owner-only 0600) and serve every connection against the shared read-only catalog.
+/// owner-only 0600) and serve every connection against the hot-swappable catalog.
 /// Runs until the listener errors; each connection is handled on its own task so a
-/// slow client never blocks the accept loop. The catalog is `Arc`-shared, never
-/// mutated by a connection.
-pub async fn run(catalog: Arc<Catalog>, socket: &Path) -> Result<(), ServeError> {
+/// slow client never blocks the accept loop, and each snapshots the catalog `Arc` at
+/// accept time (a periodic refresh that swaps the catalog is picked up by the next
+/// connection). A connection never mutates store state.
+pub async fn run(catalog: SharedCatalog, socket: &Path) -> Result<(), ServeError> {
     if let Some(parent) = socket.parent() {
         std::fs::create_dir_all(parent).map_err(|e| ServeError::Io(e.to_string()))?;
     }
@@ -119,11 +137,15 @@ pub async fn run(catalog: Arc<Catalog>, socket: &Path) -> Result<(), ServeError>
     }
     loop {
         let (mut stream, _addr) = listener.accept().await.map_err(|e| ServeError::Io(e.to_string()))?;
-        let catalog = Arc::clone(&catalog);
+        // Snapshot the current catalog Arc (brief lock, not held across the await).
+        let snapshot = match catalog.lock() {
+            Ok(guard) => Arc::clone(&guard),
+            Err(_) => Arc::new(Catalog::default()),
+        };
         tokio::spawn(async move {
             // A per-connection error (a malformed frame, a hangup) ends only that
             // connection; the accept loop keeps serving.
-            let _ = serve_connection(&mut stream, &catalog).await;
+            let _ = serve_connection(&mut stream, &snapshot).await;
         });
     }
 }
@@ -188,12 +210,31 @@ mod tests {
         assert!(handle.await.unwrap().is_ok());
     }
 
+    #[test]
+    fn swap_replaces_the_served_catalog() {
+        let holder = shared(fixture_catalog());
+        let entry = CatalogEntry {
+            id: ComponentId("org.new.App".into()),
+            layer: SourceLayer::Official,
+            display: DisplayMeta { name: "New".into(), ..Default::default() },
+            capabilities: CapabilityFootprint::default(),
+            trust: TrustSignals::default(),
+        };
+        swap(&holder, Catalog::new(merge_catalog(vec![entry])));
+        let current = holder.lock().unwrap().clone();
+        assert!(current.card(&ComponentId("org.new.App".into())).is_some());
+        assert!(
+            current.card(&ComponentId("org.demo.App".into())).is_none(),
+            "the previous catalog is fully replaced"
+        );
+    }
+
     #[tokio::test]
     async fn the_accept_loop_serves_a_real_socket() {
         let dir = std::env::temp_dir().join(format!("store-serve-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let socket = dir.join("store.sock");
-        let catalog = Arc::new(fixture_catalog());
+        let catalog = shared(fixture_catalog());
         let listener = {
             let socket = socket.clone();
             tokio::spawn(async move { run(catalog, &socket).await })
