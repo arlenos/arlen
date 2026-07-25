@@ -46,7 +46,7 @@
     if (m.baked) parts.push($t("s.mdl.builtIn"));
     if (m.imported) parts.push($t("s.mdl.imported"));
     if (m.sizeGb != null) parts.push(`${m.sizeGb.toFixed(1)} GB`);
-    return parts.join(" · ");
+    return parts.join(", ");
   }
 </script>
 
