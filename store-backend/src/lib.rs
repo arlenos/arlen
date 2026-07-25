@@ -7,6 +7,7 @@
 //! "one card, never N duplicates, never a silent pick" invariant is tested directly.
 
 pub mod catalog;
+pub mod compose;
 pub mod query;
 
 pub use catalog::{

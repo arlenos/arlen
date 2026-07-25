@@ -10,6 +10,9 @@ path = "src/lib.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+# The forage recipe schema: the compose step maps a recipe to one catalog entry
+# (store-app.md section 9.3), so a forage app lands in the same merged catalog.
+arlen-forage-recipe = { path = "../contracts/forage-recipe" }
 
 [dev-dependencies]
 serde_json = "1"
