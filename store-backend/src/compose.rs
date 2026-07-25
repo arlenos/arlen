@@ -88,10 +88,11 @@ fn capability_labels(caps: &Capabilities) -> Vec<String> {
 /// Why a composed catalog could not be read.
 #[derive(Debug)]
 pub enum ComposeError {
-    /// The XML did not parse (Flathub reader).
+    /// The XML did not parse (Flathub reader). XML is one atomic document, so a
+    /// malformed catalog cannot be partially read; the DEP-11 reader, a multi-
+    /// document stream, instead skips a single bad record (it is best-effort, not
+    /// `Result`).
     Xml(String),
-    /// The YAML did not parse (DEP-11 reader).
-    Yaml(String),
 }
 
 /// Parse a Flathub composed-AppStream catalog (`<components>` of `<component>`) into
@@ -246,14 +247,22 @@ struct Dep11Image {
 /// Display comes from the `C` (unlocalized) locale value of each field; the capability
 /// footprint (the apt-enrolled profile, section 5) and the trust signals (Debian
 /// keyring / popcon / reproduce.debian.net) come from SEPARATE sources per section 9.2
-/// and stay empty here. A document with no `ID` (the header, a partial record) is
-/// skipped, not guessed; a malformed document returns `ComposeError::Yaml`.
-pub fn dep11_entries(yaml: &str) -> Result<Vec<CatalogEntry>, ComposeError> {
+/// and stay empty here.
+///
+/// Best-effort per record, matching the module's skip-don't-guess philosophy: a
+/// document with no `ID` (the header, a partial record) is skipped, and a single
+/// document that fails to deserialize (a corrupt or non-conformant record, e.g. a
+/// `Name:` that is a scalar rather than the expected locale map) is skipped too,
+/// keeping the rest. A real DEP-11 catalog carries thousands of components, so one
+/// bad record must not drop every Debian app from the store. There is no whole-stream
+/// error: an entirely unparseable input simply yields no entries.
+pub fn dep11_entries(yaml: &str) -> Vec<CatalogEntry> {
     use serde::Deserialize;
     let mut entries = Vec::new();
     for doc in serde_yaml::Deserializer::from_str(yaml) {
-        let comp =
-            Dep11Component::deserialize(doc).map_err(|e| ComposeError::Yaml(e.to_string()))?;
+        let Ok(comp) = Dep11Component::deserialize(doc) else {
+            continue; // A corrupt/non-conformant record is skipped, not fatal to the source.
+        };
         let Some(id) = comp.id else {
             continue; // The header document or a record with no id.
         };
@@ -280,7 +289,7 @@ pub fn dep11_entries(yaml: &str) -> Result<Vec<CatalogEntry>, ComposeError> {
             trust: TrustSignals::default(),
         });
     }
-    Ok(entries)
+    entries
 }
 
 /// The best icon reference from a DEP-11 `Icon` block: a remote URL the store can
@@ -322,9 +331,8 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
         }
     }
     if let Some(yaml) = &inputs.dep11_yaml {
-        if let Ok(es) = dep11_entries(yaml) {
-            entries.extend(es);
-        }
+        // Best-effort per record: a corrupt document is skipped inside, never fatal.
+        entries.extend(dep11_entries(yaml));
     }
     crate::query::Catalog::new(crate::catalog::merge_catalog(entries))
 }
@@ -482,7 +490,7 @@ Name:
 
     #[test]
     fn dep11_reader_maps_the_c_locale_fields() {
-        let entries = dep11_entries(DEP11_YAML).unwrap();
+        let entries = dep11_entries(DEP11_YAML);
         // Header doc + the id-less record are both skipped.
         assert_eq!(entries.len(), 1);
         let e = &entries[0];
@@ -497,13 +505,34 @@ Name:
     }
 
     #[test]
-    fn dep11_reader_rejects_malformed_yaml() {
-        assert!(matches!(dep11_entries("ID: [unterminated"), Err(ComposeError::Yaml(_))));
+    fn dep11_reader_skips_a_corrupt_record_and_keeps_the_rest() {
+        // A real DEP-11 catalog is thousands of documents; one non-conformant record
+        // (here a `Name:` that is a scalar, not the expected locale map) must not
+        // drop every Debian app. The two well-formed records survive it.
+        let yaml = r#"File: DEP-11
+---
+Type: desktop-application
+ID: good.one
+Name:
+  C: Good One
+---
+Type: desktop-application
+ID: bad.two
+Name: "not a locale map"
+---
+Type: desktop-application
+ID: good.three
+Name:
+  C: Good Three
+"#;
+        let entries = dep11_entries(yaml);
+        let ids: Vec<&str> = entries.iter().map(|e| e.id.0.as_str()).collect();
+        assert_eq!(ids, vec!["good.one", "good.three"], "the corrupt record is skipped, the rest kept");
     }
 
     #[test]
     fn dep11_entries_flow_through_the_merge() {
-        let cards = merge_catalog(dep11_entries(DEP11_YAML).unwrap());
+        let cards = merge_catalog(dep11_entries(DEP11_YAML));
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].variants[0].layer, SourceLayer::Apt);
     }
