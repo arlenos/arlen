@@ -29,6 +29,9 @@ arlen-ai-core = { path = "../../ai/ai-core" }
 # The signed undo log's inverse-receipt model: the graph compensation receipt maps
 # to InverseReceipt::RetractGraphEdge for the persisted, HMAC-chained undo log.
 arlen-ai-undo-core = { path = "../../ai/ai-undo-core" }
+# The shared freedesktop home-trash primitive (atomic no-clobber move + .trashinfo
+# sidecar), shared with the trash-first rm and the file manager.
+arlen-freedesktop-trash = { path = "../../contracts/freedesktop-trash" }
 # The wire protocol to the separate-uid undo signer: submit a created undo entry
 # so a graph compensation survives a restart.
 arlen-ai-undo-proto = { path = "../../ai/ai-undo-proto" }

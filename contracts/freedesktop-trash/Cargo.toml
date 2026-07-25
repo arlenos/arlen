@@ -1,0 +1,15 @@
+[package]
+license = "Apache-2.0"
+name = "arlen-freedesktop-trash"
+version = "0.1.0"
+edition = "2021"
+description = "Freedesktop home-trash primitive: atomic no-clobber move plus the .trashinfo sidecar"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+arlen-ai-undo-core = { path = "../../ai/ai-undo-core" }
+libc = "0.2"
+
+[workspace]
