@@ -20,6 +20,7 @@ mod notices;
 mod prep;
 mod pins;
 mod save;
+mod launch;
 mod sessions;
 mod url;
 
@@ -88,6 +89,7 @@ pub fn run() {
             capsule::capsule_mint,
             prep::prep_for,
             prep::working_set_briefing,
+            launch::launch_session,
             url::open_url
         ])
         .run(tauri::generate_context!())
