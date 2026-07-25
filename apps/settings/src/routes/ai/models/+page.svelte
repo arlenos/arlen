@@ -1,14 +1,11 @@
 <script lang="ts">
-  /// The Models hub (merges the old Default-models picker + the Model Manager).
-  /// One surface to: assign which model answers each task, get a curated model
-  /// for this machine, browse/search for a specific one, and import your own.
-  /// Choosing lives here (per-role); Providers stays separate (connect accounts).
-  ///
-  /// Almost everything is a fixture today: the daemon stores one active model
-  /// (per-role is new backend), cannot enumerate downloaded models, has no HF
-  /// search and no import. The store reads the intended commands, then mocks.
+  /// The Models hub, kept tiny (model-catalog-and-picker.md, split shape): pure
+  /// configuration - which model answers each task and what lives on disk. The
+  /// acquisition flow (picks for this machine, search, Hugging Face) is its own
+  /// sub-page behind the one "Get a model" entry, so this page never turns into
+  /// a catalog wall.
   import { onMount } from "svelte";
-  import { HardDrive, Trash2, Upload, ExternalLink, ShieldOff } from "lucide-svelte";
+  import { HardDrive, Trash2, Upload, CirclePlus, ShieldOff } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
@@ -16,101 +13,34 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
-  import { Progress } from "@arlen/ui-kit/components/ui/progress";
-  import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
+  import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { ProviderLogo } from "@arlen/ui-kit/components/ui/provider-logo";
-  import { Input } from "@arlen/ui-kit/components/ui/input";
-  import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
-  import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { t } from "$lib/i18n/messages";
   import {
     models,
     hardware,
-    download,
     modelsLoaded,
     modelsMocked,
     roles,
     installedModels,
     availableModels,
-    uncensoredEnabled,
-    uncensoredModels,
-    setUncensoredEnabled,
-    tierPicks,
-    tierMeta,
     roleMeta,
-    taskLabel,
     modelById,
     loadModels,
     setRole,
-    startDownload,
-    cancelDownload,
     deleteModel,
     importModel,
-    searchHuggingFace,
     type Role,
-    type Tier,
     type Model,
-    type Fit,
   } from "$lib/stores/models";
 
   onMount(loadModels);
 
   const ROLES: Role[] = ["query", "agent", "title"];
-  const TIERS: Tier[] = ["fast", "balanced", "quality"];
-  const picks = $derived(tierPicks($models));
-
   const roleOptions = $derived($availableModels.map((m) => ({ value: m.id, label: m.name })));
 
-  // Browse: search + task filter over the curated local list, uncurated hidden.
-  let query = $state("");
-  let taskFilter = $state("all");
-  let showAdvanced = $state(false);
-  const TASK_OPTIONS = $derived([
-    { value: "all", label: $t("s.mdl.task.all") },
-    { value: "general", label: $t("s.mdl.task.general") },
-    { value: "coding", label: $t("s.mdl.task.coding") },
-    { value: "reasoning", label: $t("s.mdl.task.reasoning") },
-    { value: "writing", label: $t("s.mdl.task.writing") },
-  ]);
-  const browseList = $derived(
-    $models
-      .filter((m) => m.kind === "local")
-      .filter((m) => !m.uncensored)
-      .filter((m) => showAdvanced || !m.advanced)
-      .filter((m) => taskFilter === "all" || m.tasks.includes(taskFilter))
-      .filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase()))
-      .sort((a, b) => (a.paramsB ?? 0) - (b.paramsB ?? 0)),
-  );
-
-  // The one consented egress: a clear affirmation before a download.
-  let pending = $state<Model | null>(null);
-  async function confirmDownload() {
-    const m = pending;
-    pending = null;
-    if (m) await startDownload(m);
-  }
-
-  const FIT_TONE: Record<Fit, "success" | "warn" | "destructive"> = {
-    fits: "success",
-    "may-be-slow": "warn",
-    "wont-fit": "destructive",
-  };
-  function fitText(fit: Fit): string {
-    return fit === "fits"
-      ? $t("s.mdl.fits")
-      : fit === "may-be-slow"
-        ? $t("s.mdl.maybeSlow")
-        : $t("s.mdl.wontFit");
-  }
-
-  function downloadPct(id: string): number | null {
-    const d = $download;
-    if (!d || d.id !== id) return null;
-    return d.status === "verifying" ? 100 : (d.bytesFetched / d.totalBytes) * 100;
-  }
-
-  function meta(m: Model): string {
+  function installedMeta(m: Model): string {
     const parts: string[] = [];
     if (m.baked) parts.push($t("s.mdl.builtIn"));
     if (m.imported) parts.push($t("s.mdl.imported"));
@@ -126,8 +56,8 @@
   <SectionGrid>
     {#if $modelsMocked}
       <!-- Above the hardware line, because the summary below it is an invented
-           claim about THIS machine and the catalogue marks models installed
-           that are not. Both drive a multi-gigabyte download decision. -->
+           claim about THIS machine and the list marks models installed that are
+           not. Both drive real decisions. -->
       <p class="sample span-full">{$t("s.mdl.sample")}</p>
     {/if}
     {#if $hardware}
@@ -155,43 +85,18 @@
       {/each}
     </Group>
 
-    <Group label={$t("s.mdl.recommended")} class="span-full">
-      <div class="tiers">
-        {#each TIERS as tier (tier)}
-          {@const m = picks[tier]}
-          {@const tm = tierMeta(tier)}
-          <div class="tier">
-            <div class="tier-head">
-              <span class="tier-label">{tm.label}</span>
-              <span class="tier-note">{tm.note}</span>
-            </div>
-            {#if m}
-              <div class="tier-body">
-                <span class="model-name">{m.name}</span>
-                <span class="model-tags">
-                  {#each m.tasks as t (t)}<Badge variant="outline">{taskLabel(t)}</Badge>{/each}
-                  {#if m.fit}<Badge variant={FIT_TONE[m.fit]}>{fitText(m.fit)}</Badge>{/if}
-                </span>
-                <span class="model-meta">
-                  {m.sizeGb != null ? `${m.sizeGb.toFixed(1)} GB` : ""}
-                  {#if m.tokensPerSec != null}· {$t("s.mdl.wordsPerSec", { n: Math.round(m.tokensPerSec) })}{/if}
-                </span>
-              </div>
-              <div class="tier-foot">{@render modelAction(m, true)}</div>
-            {:else}
-              <p class="muted-line">{$t("s.mdl.tierEmpty")}</p>
-            {/if}
-          </div>
-        {/each}
-      </div>
-    </Group>
+    <div class="span-full">
+      <LinkCard href="/ai/models/get" title={$t("s.mdl.get")} description={$t("s.mdl.get.hint")}>
+        {#snippet icon()}<CirclePlus size={20} strokeWidth={1.75} />{/snippet}
+      </LinkCard>
+    </div>
 
     {#if $installedModels.length > 0}
       <Group label={$t("s.mdl.yourModels")} class="span-full">
         {#each $installedModels as m (m.id)}
-          <Row label={m.name} description={meta(m)} id={`installed-${m.id}`}>
+          <Row label={m.name} description={installedMeta(m)} id={`installed-${m.id}`}>
             {#snippet control()}
-              <span class="ym-control">
+              <span class="row-control">
                 {#if m.uncensored}
                   <Badge variant="outline"><ShieldOff strokeWidth={2} />{$t("s.mdl.unc.badge")}</Badge>
                 {/if}
@@ -217,80 +122,17 @@
       </Group>
     {/if}
 
-    <Group label={$t("s.mdl.browse")} class="span-full">
-      <div class="browse-bar">
-        <span class="browse-search">
-          <Input bind:value={query} placeholder={$t("s.mdl.search")} />
-        </span>
-        <PopoverSelect
-          value={taskFilter}
-          options={TASK_OPTIONS}
-          ariaLabel={$t("s.mdl.filterTask")}
-          width="11rem"
-          onchange={(v) => (taskFilter = v)}
-        />
-      </div>
-
-      {#each browseList as m (m.id)}
-        <div class="browse-row">{@render modelBody(m)}</div>
-      {:else}
-        <p class="muted-line browse-note">{$t("s.mdl.noMatch")}</p>
-      {/each}
-
-      {#if query.trim()}
-        <Button
-          variant="ghost"
-          class="w-full justify-start gap-2 px-4 font-normal text-muted-foreground hover:text-foreground"
-          onclick={() => searchHuggingFace(query)}
-        >
-          <ExternalLink size={15} strokeWidth={1.75} />
-          {$t("s.mdl.searchHfFor", { q: query })}
-        </Button>
-      {/if}
-
-      <label class="adv-check">
-        <Checkbox
-          checked={showAdvanced}
-          ariaLabel={$t("s.mdl.showUncurated")}
-          onchange={(v) => (showAdvanced = v)}
-        />
-        {$t("s.mdl.showUncurated")}
-      </label>
-    </Group>
-
-    {#if $uncensoredModels.length > 0}
-      <Group label={$t("s.mdl.unc.title")} class="span-full">
-        <Row label={$t("s.mdl.unc.toggle")} id="uncensored-toggle">
-          {#snippet control()}
-            <Switch
-              value={$uncensoredEnabled}
-              ariaLabel={$t("s.mdl.unc.toggle")}
-              onchange={(v) => setUncensoredEnabled(v)}
-            />
-          {/snippet}
-        </Row>
-        {#if $uncensoredEnabled}
-          {#each $uncensoredModels as m (m.id)}
-            <div class="unc-row">
-              {@render modelBody(m)}
-              <Badge variant="outline" class="self-start"><ShieldOff strokeWidth={2} />{$t("s.mdl.unc.badge")}</Badge>
-            </div>
-          {/each}
-        {/if}
-      </Group>
-    {/if}
-
     {#if $modelsLoaded && $models.length === 0}
       <Group label={$t("s.mdl.models")} class="span-full">
-        <p class="muted-line">{$t("s.mdl.noneAvailable")}</p>
+        <p class="quiet-note">{$t("s.mdl.noneAvailable")}</p>
       </Group>
     {/if}
   </SectionGrid>
 </Page>
 
 <!-- The picker label: a local model shows the on-device mark, a cloud model its
-     provider logo, then the name. Cast to `never` (kit vs app resolve `svelte`
-     to distinct Snippet types, identical at runtime). -->
+     provider logo, then the name; a no-guardrails model carries its badge. Cast
+     to `never` (kit vs app resolve `svelte` to distinct Snippet types). -->
 {#snippet modelOption(opt: { value: string; label: string })}
   {@const m = modelById($availableModels, opt.value)}
   <span class="opt">
@@ -305,71 +147,6 @@
     {/if}
   </span>
 {/snippet}
-
-<!-- A model's name, tags, fit, size, and the right action (download / progress /
-     installed), shared by the tier cards and the browse list. -->
-{#snippet modelBody(m: Model)}
-  <div class="model">
-    <div class="model-info">
-      <span class="model-name">{m.name}</span>
-      <span class="model-tags">
-        {#each m.tasks as t (t)}<Badge variant="outline">{taskLabel(t)}</Badge>{/each}
-        {#if m.fit}<Badge variant={FIT_TONE[m.fit]}>{fitText(m.fit)}</Badge>{/if}
-      </span>
-      <span class="model-meta">
-        {m.sizeGb != null ? `${m.sizeGb.toFixed(1)} GB` : ""}
-        {#if m.tokensPerSec != null}· {$t("s.mdl.wordsPerSec", { n: Math.round(m.tokensPerSec) })}{/if}
-      </span>
-    </div>
-    <div class="model-action">{@render modelAction(m, false)}</div>
-  </div>
-{/snippet}
-
-<!-- The right-hand action: download / progress+cancel / installed. `full`
-     stretches the button across a tier card; the browse list uses the compact
-     form. -->
-{#snippet modelAction(m: Model, full: boolean)}
-  {@const pct = downloadPct(m.id)}
-  {#if pct !== null}
-    <div class="dl" class:dl-full={full}>
-      <Progress value={pct} />
-      <div class="dl-row">
-        <span class="muted-line">{$download?.status === "verifying" ? $t("s.mdl.verifying") : `${Math.round(pct)}%`}</span>
-        <Button
-          variant="link"
-          size="sm"
-          class="h-auto p-0 text-xs text-muted-foreground hover:text-destructive"
-          onclick={() => cancelDownload(m.id)}
-        >
-          {$t("s.mdl.cancel")}
-        </Button>
-      </div>
-    </div>
-  {:else if m.installed}
-    <Badge variant="success">{$t("s.mdl.installed")}</Badge>
-  {:else}
-    <Button
-      variant={m.fit === "wont-fit" ? "outline" : "default"}
-      size="sm"
-      class={full ? "w-full" : ""}
-      disabled={m.fit === "wont-fit" || $download !== null}
-      onclick={() => (pending = m)}
-    >
-      {$t("s.mdl.download")}
-    </Button>
-  {/if}
-{/snippet}
-
-<ConfirmDialog
-  open={pending !== null}
-  title={$t("s.mdl.confirmTitle")}
-  message={pending
-    ? $t("s.mdl.confirmMsg", { name: pending.name, size: pending.sizeGb?.toFixed(1) ?? "?" })
-    : ""}
-  confirmLabel={$t("s.mdl.download")}
-  onConfirm={confirmDownload}
-  onCancel={() => (pending = null)}
-/>
 
 <style>
   .sample {
@@ -386,128 +163,17 @@
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 65%, transparent);
   }
-  .muted-line {
+  .quiet-note {
     margin: 0;
-    font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-  }
-
-  /* Recommended tiers: three bordered columns inside one card. */
-  .tiers {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-  }
-  .tier {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding: 1rem;
-    border-right: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
-  }
-  .tier:last-child {
-    border-right: none;
-  }
-  .tier-head {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-  .tier-label {
-    font-size: var(--text-base);
-    font-weight: 600;
-    color: var(--foreground);
-  }
-  .tier-note {
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
-  }
-  /* The model block stacks; the action pins to the bottom so all three tier
-     cards line their Download buttons up regardless of badge wrapping. */
-  .tier-body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-  }
-  .tier-foot {
-    margin-top: auto;
-    padding-top: 0.25rem;
-  }
-  .dl.dl-full {
-    width: 100%;
-  }
-
-  /* One model row body: info left, action right. */
-  .model {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.75rem;
-  }
-  .model-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    min-width: 0;
-  }
-  .model-name {
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--foreground);
-  }
-  .model-tags {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.375rem;
-  }
-  .model-meta {
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
-  }
-  .model-action {
-    flex-shrink: 0;
-  }
-  .dl {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    width: 9rem;
-  }
-  .dl-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  /* Browse: the search + filter bar, the result rows, the advanced toggle. */
-  .browse-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    flex-wrap: wrap;
-  }
-  .browse-search {
-    flex: 1;
-    min-width: 12rem;
-  }
-  .browse-note {
-    padding: 0 1rem 0.25rem;
-  }
-  .browse-row {
     padding: 0.5rem 1rem;
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
-  .adv-check {
-    display: flex;
+  .row-control {
+    display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.625rem 1rem;
-    font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-    cursor: pointer;
   }
-
-  /* The picker label: logo/mark beside the model name. */
   .opt {
     display: inline-flex;
     align-items: center;
@@ -518,19 +184,5 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  /* Uncensored section: the opt-in model rows under the toggle. */
-  .unc-row {
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-    padding: 0.625rem 1rem;
-    border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
-  }
-  .ym-control {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
   }
 </style>

@@ -229,21 +229,17 @@ export function modelById(list: Model[], id: string): Model | undefined {
 /// ready to run when none is.
 export const modelsMocked = writable(false);
 
-/// Whether the user has opted into uncensored / abliterated models. Off by
-/// default (the default catalogue is guardrailed); flipping it reveals the
-/// Uncensored section. Persisted server-side (`ai.toml`).
-export const uncensoredEnabled = writable(false);
-
-/// The uncensored models, shown only in their opt-in section (never the default
-/// catalogue or the browse list).
-export const uncensoredModels = derived(models, ($m) => $m.filter((m) => m.uncensored));
+/// Whether the one-time first-uncensored-download confirm has been shown. The
+/// first download of a no-guardrails model swaps the normal size confirm for the
+/// honest one, once ever. Live: persisted in `ai.toml` (a coder seam); until that
+/// lands this is session-scoped.
+export const uncensoredConfirmSeen = writable(false);
 
 export async function loadModels(): Promise<void> {
   try {
     hardware.set(await invoke<Hardware>("ai_hardware_probe"));
     models.set(await invoke<Model[]>("ai_models_catalog"));
     roles.set(await invoke<Record<Role, string>>("ai_defaults_get_roles"));
-    uncensoredEnabled.set(await invoke<boolean>("ai_uncensored_enabled"));
     modelsMocked.set(false);
   } catch {
     hardware.set(MOCK_HARDWARE);
@@ -251,17 +247,6 @@ export async function loadModels(): Promise<void> {
     modelsMocked.set(true);
   } finally {
     modelsLoaded.set(true);
-  }
-}
-
-/// Opt into (or out of) uncensored models. Persisted server-side; the local view
-/// reflects it immediately.
-export async function setUncensoredEnabled(v: boolean): Promise<void> {
-  uncensoredEnabled.set(v);
-  try {
-    await invoke("ai_uncensored_set_enabled", { enabled: v });
-  } catch {
-    // Bridge unwired: the local view already reflects the choice.
   }
 }
 
