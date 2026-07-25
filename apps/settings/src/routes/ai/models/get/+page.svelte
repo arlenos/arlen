@@ -25,6 +25,7 @@
     uncensoredConfirmSeen,
     tierPicks,
     tierMeta,
+    taskLabel,
     loadModels,
     startDownload,
     cancelDownload,
@@ -46,6 +47,14 @@
       .filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase()))
       .sort((a, b) => (a.paramsB ?? 0) - (b.paramsB ?? 0)),
   );
+  // The rest of the catalogue, browsable without typing: everything local that is
+  // neither installed nor already one of the three picks.
+  const more = $derived.by(() => {
+    const picked = new Set(TIERS.map((t) => picks[t]?.id).filter(Boolean));
+    return $models
+      .filter((m) => m.kind === "local" && !m.installed && !picked.has(m.id))
+      .sort((a, b) => (a.paramsB ?? 0) - (b.paramsB ?? 0));
+  });
   const offline = $derived($hfSearch !== null && !$hfSearch.reachable);
 
   // The download affirmation; the first no-guardrails download carries the honest
@@ -113,16 +122,37 @@
               {#snippet control()}
                 {@render action(m)}
               {/snippet}
+              {#snippet below()}
+                {@render tags(m)}
+              {/snippet}
             </Row>
           {/if}
         {/each}
       </Group>
+
+      {#if more.length > 0}
+        <Group label={$t("s.mdl.more")} class="span-full">
+          {#each more as m (m.id)}
+            <Row label={m.name} description={resultMeta(m)} id={`more-${m.id}`}>
+              {#snippet control()}
+                {@render action(m)}
+              {/snippet}
+              {#snippet below()}
+                {@render tags(m)}
+              {/snippet}
+            </Row>
+          {/each}
+        </Group>
+      {/if}
     {:else}
       <Group label={$t("s.mdl.results")} class="span-full">
         {#each results as m (m.id)}
           <Row label={m.name} description={resultMeta(m)} id={`result-${m.id}`}>
             {#snippet control()}
               {@render action(m)}
+            {/snippet}
+            {#snippet below()}
+              {@render tags(m)}
             {/snippet}
           </Row>
         {:else}
@@ -143,6 +173,13 @@
     {/if}
   </SectionGrid>
 </Page>
+
+<!-- What the model is for, as quiet tags under the row. -->
+{#snippet tags(m: Model)}
+  <span class="tags">
+    {#each m.tasks as task (task)}<Badge variant="outline">{taskLabel(task)}</Badge>{/each}
+  </span>
+{/snippet}
 
 <!-- The one action slot: download / progress+cancel / installed, plus the
      guardrails badge when the model has none. -->
@@ -207,6 +244,11 @@
   }
   .search {
     padding: 0 0.25rem;
+  }
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
   }
   .offline-note {
     padding: 0.4rem 0.25rem 0;
