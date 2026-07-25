@@ -69,18 +69,11 @@ export async function loadAskCapability(): Promise<void> {
   }
 }
 
-/// The one-line status sentence for the capability line.
+/// The status line for the two states that speak (off / unreachable); the
+/// healthy state renders nothing.
 export function capabilitySentence(c: AskCapability | null): string {
   if (c === null) return "The agent isn't reachable right now.";
-  if (!c.enabled) return "AI is off. The agent won't read or answer anything.";
-  const tier = c.tier.toLowerCase();
-  const reach =
-    tier === "none" || tier === "metadata"
-      ? "sees names and structure only"
-      : tier === "full"
-        ? "reads everything you granted"
-        : "reads your recent work";
-  return `AI on · ${reach}`;
+  return "AI is off. The agent won't read or answer anything.";
 }
 
 /// Send a prompt (first ask or follow-up). Live: `waypointer_ask` streams the

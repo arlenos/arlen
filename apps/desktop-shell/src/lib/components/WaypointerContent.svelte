@@ -31,6 +31,7 @@
   import WaypointerSettingInline from "./WaypointerSettingInline.svelte";
   import WaypointerResult from "./waypointer/WaypointerResult.svelte";
   import WaypointerAskPane from "./waypointer/WaypointerAskPane.svelte";
+  import { Badge } from "@arlen/ui-kit/components/ui/badge";
   import {
     askMode,
     ask as askAgent,
@@ -796,12 +797,19 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="wp-card shell-surface" onclick={(e) => e.stopPropagation()}>
     <Command class="wp-root" shouldFilter={false} bind:value={commandValue}>
-      <CommandInput
-        placeholder={$askMode ? "Ask the agent..." : "Search..."}
-        bind:value={query}
-        bind:ref={inputRef}
-        autofocus
-      />
+      <!-- The Ask-mode marker: a quiet chip riding the input line, exactly where
+           the user types (stronger than a frame, which reads as mere focus). -->
+      <div class="wp-input-wrap">
+        <CommandInput
+          placeholder={$askMode ? "Ask the agent..." : "Search..."}
+          bind:value={query}
+          bind:ref={inputRef}
+          autofocus
+        />
+        {#if $askMode}
+          <span class="wp-ask-chip"><Badge variant="outline">Agent</Badge></span>
+        {/if}
+      </div>
 
       {#if $askMode}
         <WaypointerAskPane />
@@ -1210,6 +1218,17 @@
      inline display values by id, so only !important wins over it. */
   :global(.wp-hidden) {
     display: none !important;
+  }
+
+  .wp-input-wrap {
+    position: relative;
+  }
+  .wp-ask-chip {
+    position: absolute;
+    inset-inline-end: 0.9rem;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
   }
 
   .wp-backdrop {
