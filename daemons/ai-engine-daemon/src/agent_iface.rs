@@ -235,6 +235,50 @@ fn compensate_outcome_wire(outcome: RelationRetractOutcome) -> &'static str {
     }
 }
 
+/// The wire verdict for a non-graph (filesystem/settings) undo enactment.
+fn enact_outcome_wire(outcome: crate::undo_enact::EnactOutcome) -> &'static str {
+    use crate::undo_enact::EnactOutcome;
+    match outcome {
+        EnactOutcome::Restored => "restored",
+        EnactOutcome::Deleted => "deleted",
+        EnactOutcome::Trashed => "trashed",
+        EnactOutcome::RefusedIdentityMismatch => "refused-identity-mismatch",
+        EnactOutcome::RefusedPriorOccupied => "refused-prior-occupied",
+        // A graph inverse reached the filesystem enact (it was in the durable log but
+        // aged out of the in-memory graph store). The graph store is the authoritative
+        // graph-undo path, so from here there is nothing this path can undo.
+        EnactOutcome::NotFilesystem => "no-such-receipt",
+    }
+}
+
+/// Enact one NON-GRAPH inverse (a filesystem/settings receipt the FM, the trash-first
+/// rm or the settings executor journaled to the signed undo-log). Fail-closed:
+/// AUDIT BEFORE the enact (S13, content-free, records WHO undid) and refuse if the
+/// ledger will not record it; then run the identity-checked, fail-closed
+/// `enact_inverse` off the async runtime (it does blocking filesystem I/O). The
+/// executor_live gate + caller-auth are enforced upstream in `run_compensate` / the
+/// D-Bus method, so this is reached only for an admitted, live, authorised undo.
+async fn dispatch_nongraph_inverse(
+    caller: &str,
+    correlation_id: &str,
+    inverse: arlen_ai_undo_core::effect_model::InverseReceipt,
+    audit: &dyn AuditSink,
+) -> String {
+    let event = behaviour_action_event(
+        "compensate",
+        format!("enact-inverse:by={caller}"),
+        correlation_id,
+    );
+    if audit.submit(event).await.is_err() {
+        return "error: audit unavailable".to_string();
+    }
+    match tokio::task::spawn_blocking(move || crate::undo_enact::enact_inverse(&inverse)).await {
+        Ok(Ok(outcome)) => enact_outcome_wire(outcome).to_string(),
+        Ok(Err(e)) => format!("error: {e}"),
+        Err(_) => "error: enact task failed".to_string(),
+    }
+}
+
 /// Run one `compensate`: undo the executed write recorded under `correlation_id`.
 /// Fail-closed at every step, in order: refuse unless the executor is live; refuse
 /// an unknown receipt; AUDIT BEFORE the retract (S13) and refuse if the audit
@@ -252,14 +296,31 @@ async fn run_compensate(
     if !executor_live {
         return "not-enabled".to_string();
     }
+    // Sample the in-memory graph store (the authoritative graph-undo fast path),
+    // dropping the lock before any await.
     let receipt = {
         let store = match compensation.lock() {
             Ok(s) => s,
             Err(_) => return "error: compensation store unavailable".to_string(),
         };
-        match store.get(correlation_id) {
-            Some(r) => r.clone(),
-            None => return "no-such-receipt".to_string(),
+        store.get(correlation_id).cloned()
+    };
+    let receipt = match receipt {
+        Some(r) => r,
+        None => {
+            // Fallthrough: the graph store is graph-only, but the durable signed
+            // undo-log may hold a NON-GRAPH inverse (a filesystem/settings receipt).
+            // Look it up at the well-known signer rendezvous and enact it. The
+            // executor_live gate + caller-auth already passed; audit-before-act runs
+            // inside `dispatch_nongraph_inverse`. A lookup failure is fail-closed.
+            let socket = arlen_ai_undo_proto::socket_path();
+            return match crate::undo_signer::lookup_entry(&socket, correlation_id).await {
+                Ok(Some(entry)) => {
+                    dispatch_nongraph_inverse(caller, correlation_id, entry.inverse, audit).await
+                }
+                Ok(None) => "no-such-receipt".to_string(),
+                Err(_) => "error: undo log unavailable".to_string(),
+            };
         }
     };
     // Audit-before-act, fail-closed: an undo that cannot be recorded does not run.
@@ -498,6 +559,87 @@ mod tests {
         Mutex::new(s)
     }
 
+    use arlen_ai_undo_core::effect_model::{CanonicalPath, InverseReceipt};
+
+    fn tmp() -> std::path::PathBuf {
+        use std::sync::atomic::AtomicU64;
+        static N: AtomicU64 = AtomicU64::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        let d = std::env::temp_dir().join(format!("compensate-nongraph-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d.canonicalize().unwrap()
+    }
+
+    fn restore_path_inverse(now: &std::path::Path, prior: &std::path::Path) -> InverseReceipt {
+        InverseReceipt::RestorePath {
+            now: CanonicalPath::new(now.to_str().unwrap()).unwrap(),
+            prior: CanonicalPath::new(prior.to_str().unwrap()).unwrap(),
+        }
+    }
+
+    #[test]
+    fn enact_wire_maps_the_variants() {
+        use crate::undo_enact::EnactOutcome::*;
+        assert_eq!(enact_outcome_wire(Restored), "restored");
+        assert_eq!(enact_outcome_wire(Deleted), "deleted");
+        assert_eq!(enact_outcome_wire(Trashed), "trashed");
+        assert_eq!(enact_outcome_wire(RefusedIdentityMismatch), "refused-identity-mismatch");
+        assert_eq!(enact_outcome_wire(RefusedPriorOccupied), "refused-prior-occupied");
+        // A graph inverse reaching the fs enact is nothing this path can undo.
+        assert_eq!(enact_outcome_wire(NotFilesystem), "no-such-receipt");
+    }
+
+    #[tokio::test]
+    async fn a_nongraph_inverse_is_enacted_when_admitted_and_audited() {
+        let dir = tmp();
+        let now = dir.join("moved.txt");
+        let prior = dir.join("orig.txt");
+        std::fs::write(&now, b"x").unwrap();
+        let out = dispatch_nongraph_inverse(
+            "settings",
+            "corr-1",
+            restore_path_inverse(&now, &prior),
+            &MockAuditSink::accepting(),
+        )
+        .await;
+        assert_eq!(out, "restored");
+        assert!(prior.exists() && !now.exists(), "the entity moved back to its prior path");
+    }
+
+    #[tokio::test]
+    async fn a_nongraph_undo_refuses_and_does_not_act_when_the_audit_fails() {
+        let dir = tmp();
+        let now = dir.join("moved.txt");
+        let prior = dir.join("orig.txt");
+        std::fs::write(&now, b"x").unwrap();
+        let out = dispatch_nongraph_inverse(
+            "settings",
+            "corr-1",
+            restore_path_inverse(&now, &prior),
+            &MockAuditSink::failing(),
+        )
+        .await;
+        assert_eq!(out, "error: audit unavailable");
+        assert!(now.exists() && !prior.exists(), "no enact runs when the audit cannot record");
+    }
+
+    #[tokio::test]
+    async fn a_graph_inverse_on_the_nongraph_path_is_nothing_to_undo() {
+        let inverse = InverseReceipt::RetractGraphEdge {
+            op_id: "op".into(),
+            from_type: "system.File".into(),
+            from_id: "/x".into(),
+            to_type: "system.Project".into(),
+            to_id: "p".into(),
+            relation_type: "FILE_PART_OF".into(),
+        };
+        let out =
+            dispatch_nongraph_inverse("settings", "corr-1", inverse, &MockAuditSink::accepting())
+                .await;
+        assert_eq!(out, "no-such-receipt");
+    }
+
     #[test]
     fn only_the_harness_and_settings_may_compensate() {
         assert!(compensate_caller_admitted("harness"));
@@ -518,7 +660,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_unknown_receipt_is_refused() {
+    async fn an_unknown_receipt_falls_through_to_the_log_and_fails_closed() {
         let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
         let out = run_compensate(
             true,
@@ -529,7 +671,12 @@ mod tests {
             &MockAuditSink::accepting(),
         )
         .await;
-        assert_eq!(out, "no-such-receipt");
+        // Not in the in-memory graph store, so it consults the durable undo-log for a
+        // non-graph inverse. With no signer reachable in the unit env, that is
+        // fail-closed: the undo is refused ("undo log unavailable") rather than a
+        // false "no-such-receipt" that could hide a real filesystem receipt. The
+        // graph retract is never touched on this path.
+        assert_eq!(out, "error: undo log unavailable");
         assert!(!writer.retract_called.load(Ordering::Relaxed));
     }
 
