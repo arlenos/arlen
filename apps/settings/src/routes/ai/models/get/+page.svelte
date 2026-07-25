@@ -80,14 +80,14 @@
     if (m.sizeGb != null) parts.push(`${m.sizeGb.toFixed(1)} GB`);
     const fit = fitPhrase(m);
     if (fit) parts.push(fit);
-    return parts.join(" · ");
+    return parts.join(", ");
   }
   function pickMeta(m: Model, tier: Tier): string {
     const parts: string[] = [tierMeta(tier).label];
     if (m.sizeGb != null) parts.push(`${m.sizeGb.toFixed(1)} GB`);
     const fit = fitPhrase(m);
     if (fit) parts.push(fit);
-    return parts.join(" · ");
+    return parts.join(", ");
   }
 
   function downloadPct(id: string): number | null {
