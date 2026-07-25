@@ -1,0 +1,20 @@
+[package]
+license = "Apache-2.0"
+name = "arlen-trash-rm"
+version = "0.1.0"
+edition = "2021"
+description = "The trash-first rm executable: routes interactive deletes to the reversible home trash"
+
+[[bin]]
+name = "trash-rm"
+path = "src/main.rs"
+
+[dependencies]
+arlen-trash-rm-core = { path = "../core" }
+arlen-freedesktop-trash = { path = "../../../contracts/freedesktop-trash" }
+arlen-ai-undo-core = { path = "../../../ai/ai-undo-core" }
+arlen-ai-undo-proto = { path = "../../../ai/ai-undo-proto" }
+getrandom = "0.2"
+tokio = { version = "1", features = ["rt", "net", "macros", "io-util"] }
+
+[workspace]
