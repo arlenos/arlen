@@ -20,6 +20,7 @@
 //! own layer could write a `defaults_only` key by simply claiming it may.
 
 pub mod apply;
+pub mod client;
 pub mod broker;
 pub mod decide;
 pub mod migrate;
