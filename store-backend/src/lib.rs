@@ -20,5 +20,5 @@ pub use catalog::{
 };
 pub use compose::{compose_catalog, dep11_entries, flathub_entries, forage_entry, SourceInputs};
 pub use client::{request as store_request, request_default, ClientError};
-pub use query::{answer, CapabilityFacet, Catalog, Request, Response};
+pub use query::{answer, CapabilityFacet, Catalog, ObservedStatus, Request, Response};
 pub use view::{store_card, store_cards, StoreCard, Tier};
