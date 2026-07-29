@@ -141,10 +141,7 @@ pub fn flathub_entries(xml: &str) -> Result<Vec<CatalogEntry>, ComposeError> {
             capabilities: CapabilityFootprint::default(),
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
-            // AppStream carries versions in <releases>, which this harvest does
-            // not read yet. Empty means "not stated", so the update check stays
-            // silent about Flathub apps rather than guessing.
-            version: String::new(),
+            version: latest_release_version(&component),
         });
     }
     Ok(entries)
@@ -200,6 +197,54 @@ fn screenshot_urls(node: &roxmltree::Node) -> Vec<String> {
 
 /// The first `<icon>` reference, preferring a `type="remote"` URL the store can
 /// fetch, else the first icon's text (a cached/stock name).
+/// The version this component's newest stable release states, or empty.
+///
+/// AppStream conventionally lists releases newest-first, but that is convention
+/// and not a guarantee, so the newest `timestamp` wins where one is given and
+/// document order only decides among releases that state none. Getting this
+/// backwards would report an OLD version as available and make a current install
+/// look outdated forever.
+///
+/// `type="development"` releases are skipped: they are pre-release builds, and
+/// offering one as the available version would push users onto a track they did
+/// not choose.
+fn latest_release_version(node: &roxmltree::Node) -> String {
+    let mut best: Option<(i64, usize, String)> = None;
+
+    for (index, release) in node
+        .children()
+        .filter(|c| c.is_element() && c.tag_name().name() == "releases")
+        .flat_map(|r| r.children())
+        .filter(|c| c.is_element() && c.tag_name().name() == "release")
+        .enumerate()
+    {
+        if release.attribute("type") == Some("development") {
+            continue;
+        }
+        let Some(version) = release.attribute("version").filter(|v| !v.is_empty()) else {
+            continue;
+        };
+        let timestamp = release
+            .attribute("timestamp")
+            .and_then(|t| t.parse::<i64>().ok())
+            .unwrap_or(i64::MIN);
+
+        // Later timestamp wins; among equals (including all-unstamped) the first
+        // in document order does, which is the newest by AppStream convention.
+        let better = match &best {
+            None => true,
+            Some((best_ts, best_index, _)) => {
+                timestamp > *best_ts || (timestamp == *best_ts && index < *best_index)
+            }
+        };
+        if better {
+            best = Some((timestamp, index, version.to_string()));
+        }
+    }
+
+    best.map(|(_, _, v)| v).unwrap_or_default()
+}
+
 fn icon_ref(node: &roxmltree::Node) -> Option<String> {
     let icons: Vec<roxmltree::Node> = node
         .children()
@@ -233,6 +278,48 @@ struct Dep11Component {
     icon: Option<Dep11Icon>,
     #[serde(rename = "Screenshots")]
     screenshots: Option<Vec<Dep11Screenshot>>,
+    #[serde(rename = "Releases")]
+    releases: Option<Vec<Dep11Release>>,
+}
+
+/// One DEP-11 release record. Only the fields the update check needs; unknown
+/// keys are ignored, since a distro's catalog carries far more than this.
+#[derive(serde::Deserialize)]
+struct Dep11Release {
+    version: Option<String>,
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    unix_timestamp: Option<i64>,
+}
+
+/// The newest stable version a DEP-11 component states, or empty.
+///
+/// Same rule as the XML side: development releases are skipped, the newest
+/// timestamp wins, and document order breaks ties.
+fn dep11_release_version(releases: &Option<Vec<Dep11Release>>) -> String {
+    let Some(releases) = releases else {
+        return String::new();
+    };
+    let mut best: Option<(i64, usize, String)> = None;
+    for (index, release) in releases.iter().enumerate() {
+        if release.kind.as_deref() == Some("development") {
+            continue;
+        }
+        let Some(version) = release.version.as_deref().filter(|v| !v.is_empty()) else {
+            continue;
+        };
+        let timestamp = release.unix_timestamp.unwrap_or(i64::MIN);
+        let better = match &best {
+            None => true,
+            Some((best_ts, best_index, _)) => {
+                timestamp > *best_ts || (timestamp == *best_ts && index < *best_index)
+            }
+        };
+        if better {
+            best = Some((timestamp, index, version.to_string()));
+        }
+    }
+    best.map(|(_, _, v)| v).unwrap_or_default()
 }
 
 #[derive(serde::Deserialize)]
@@ -308,8 +395,7 @@ pub fn dep11_entries(yaml: &str) -> Vec<CatalogEntry> {
             capabilities: CapabilityFootprint::default(),
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
-            // As above: DEP-11 states a version in <releases>, not harvested yet.
-            version: String::new(),
+            version: dep11_release_version(&comp.releases),
         });
     }
     entries
@@ -468,6 +554,73 @@ commit = "0000000000000000000000000000000000000000"
     <name>No Id</name>
   </component>
 </components>"#;
+
+    /// AppStream lists releases newest-first by convention, but the timestamp is
+    /// the fact. Trusting document order over a stamp would report an OLD version
+    /// as available and leave a current install looking outdated forever.
+    #[test]
+    fn the_newest_stamped_release_wins_over_document_order() {
+        let xml = r#"<components>
+          <component type="desktop-application">
+            <id>org.example.App</id>
+            <releases>
+              <release version="1.0" timestamp="1600000000"/>
+              <release version="3.0" timestamp="1700000000"/>
+              <release version="2.0" timestamp="1650000000"/>
+            </releases>
+          </component>
+        </components>"#;
+        let entries = flathub_entries(xml).unwrap();
+        assert_eq!(entries[0].version, "3.0");
+    }
+
+    /// A pre-release is not what a user gets by updating; offering it as the
+    /// available version would push them onto a track they never chose.
+    #[test]
+    fn a_development_release_is_not_the_available_version() {
+        let xml = r#"<components>
+          <component type="desktop-application">
+            <id>org.example.App</id>
+            <releases>
+              <release version="4.0-beta" type="development" timestamp="1800000000"/>
+              <release version="3.0" timestamp="1700000000"/>
+            </releases>
+          </component>
+        </components>"#;
+        assert_eq!(flathub_entries(xml).unwrap()[0].version, "3.0");
+    }
+
+    /// Unstamped releases fall back to document order, which is AppStream's
+    /// newest-first convention.
+    #[test]
+    fn unstamped_releases_keep_the_newest_first_convention() {
+        let xml = r#"<components>
+          <component type="desktop-application">
+            <id>org.example.App</id>
+            <releases>
+              <release version="2.0"/>
+              <release version="1.0"/>
+            </releases>
+          </component>
+        </components>"#;
+        assert_eq!(flathub_entries(xml).unwrap()[0].version, "2.0");
+    }
+
+    /// A component stating no release must yield empty, which `outdated` reads as
+    /// nothing to compare rather than as a change.
+    #[test]
+    fn a_component_without_releases_states_no_version() {
+        let entries = flathub_entries(FLATHUB_XML).unwrap();
+        assert_eq!(entries[0].version, "");
+    }
+
+    #[test]
+    fn a_dep11_component_takes_its_newest_stable_release() {
+        let yaml = "---\nID: org.example.App\nName:\n  C: App\nReleases:\n  - version: '9.0'\n    type: development\n    unix_timestamp: 1800000000\n  - version: '2.0'\n    unix_timestamp: 1700000000\n  - version: '1.0'\n    unix_timestamp: 1600000000\n";
+        let entries = dep11_entries(yaml);
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        assert_eq!(entries[0].version, "2.0");
+    }
 
     #[test]
     fn flathub_reader_maps_the_unlocalized_appstream_fields() {
