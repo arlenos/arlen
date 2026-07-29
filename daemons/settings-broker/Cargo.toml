@@ -1,0 +1,17 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-settings-broker"
+version = "0.1.0"
+edition = "2021"
+description = "Settings Broker: the session daemon that owns writes to an app's settings (per-app-settings-plan.md section 3)"
+
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+# The declared schema a write is validated against (PAS-1).
+arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
