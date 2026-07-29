@@ -1109,6 +1109,28 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     anchor: "",
   },
 
+  // ── App access (the permission browser) ────────────────────────────
+  {
+    id: "privacy.panel",
+    title: "App access",
+    description: "Which apps can reach your data, and what you have allowed",
+    keywords: [
+      "privacy",
+      "permissions",
+      "access",
+      "grants",
+      "capabilities",
+      "revoke",
+      "camera",
+      "microphone",
+      "clipboard",
+      "knowledge graph",
+    ],
+    panel: "privacy",
+    section: "Privacy",
+    anchor: "",
+  },
+
   // ── Extensions (Sprint D coverage) ─────────────────────────────────
   {
     id: "extensions.panel",
