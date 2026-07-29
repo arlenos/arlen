@@ -85,6 +85,38 @@ pub enum Request {
     },
 }
 
+/// What the store can honestly say about an app's observed-vs-declared standing
+/// (store-app.md section 8.2). Structured, never prose: the store app is
+/// translated, so it renders each variant in its own language. Crucially it
+/// distinguishes "we have no feed" from "the feed says nothing was observed" -
+/// collapsing those two into an empty panel would read as a clean bill of health
+/// the system cannot actually give.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "state")]
+pub enum ObservedStatus {
+    /// No per-app capability-use feed exists yet, so nothing can be said. The
+    /// audit ledger records the AI taxonomy (queries, tool calls, graph access,
+    /// provider egress) and coarse app actions; it does NOT record "this app used
+    /// its network capability", and `AuditKind::NetworkCall` is specifically the
+    /// AI proxy's outbound call, not general per-app egress. Until the
+    /// observe-mode feed lands the app must say so plainly rather than render an
+    /// empty panel.
+    Unavailable,
+    /// The feed is live: `declared` is what the app asks for, `observed` the
+    /// subset actually seen in use on this machine, both as capability
+    /// identifiers. A declared capability absent from `observed` is "not observed
+    /// on your machine", never "safe" (section 8.2's copy caveat).
+    Measured {
+        /// The capability identifiers the app declares.
+        declared: Vec<String>,
+        /// The identifiers observed in use locally.
+        observed: Vec<String>,
+        /// How many days the local observation window covers, so the app can say
+        /// "in 3 months" rather than implying an all-time verdict.
+        window_days: u32,
+    },
+}
+
 /// A store response.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Response {
@@ -103,8 +135,8 @@ pub enum Response {
         /// The resolved variant layer.
         variant: SourceLayer,
     },
-    /// The observed-vs-declared summary, or `None` when nothing is recorded.
-    Observed(Option<String>),
+    /// What can honestly be said about this app's observed-vs-declared standing.
+    Observed(ObservedStatus),
     /// A request the backend could not satisfy (unknown id/variant, ...).
     Error(String),
 }
@@ -171,7 +203,9 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
         // The observed-vs-declared read is an audit-ledger lookup the backend wires
         // later; the pure layer reports "nothing recorded" for an unknown/empty id.
         Request::ObservedVsDeclared { id } => match catalog.card(&id) {
-            Some(_) => Response::Observed(None),
+            // The feed does not exist yet (LCG-R8). Say so, rather than return an
+            // empty summary the app would render as "nothing observed".
+            Some(_) => Response::Observed(ObservedStatus::Unavailable),
             None => Response::Error(format!("unknown app: {}", id.0)),
         },
     }
@@ -292,4 +326,30 @@ mod tests {
         let json = serde_json::to_string(&req).unwrap();
         assert_eq!(serde_json::from_str::<Request>(&json).unwrap(), req);
     }
+    /// The store must be able to say "no feed" distinctly from "nothing
+    /// observed": collapsing them would render as a clean bill of health the
+    /// system cannot give (section 8.2's copy caveat).
+    #[test]
+    fn observed_reports_the_feed_as_unavailable_not_as_an_empty_result() {
+        match answer(
+            &catalog(),
+            Request::ObservedVsDeclared { id: ComponentId("org.x.Chat".into()) },
+        ) {
+            Response::Observed(ObservedStatus::Unavailable) => {}
+            other => panic!("expected Unavailable, got {other:?}"),
+        }
+    }
+
+    /// An unknown id is still an error, not an "unavailable" reading.
+    #[test]
+    fn observed_on_an_unknown_id_is_an_error() {
+        match answer(
+            &catalog(),
+            Request::ObservedVsDeclared { id: ComponentId("org.nope.Gone".into()) },
+        ) {
+            Response::Error(_) => {}
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
 }

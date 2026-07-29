@@ -16,7 +16,7 @@ use std::collections::BTreeSet;
 
 use arlen_store_backend::{
     request_default, store_card, store_cards, CapabilityFacet, ComponentId, Request, Response,
-    SourceLayer, StoreCard, TrustSignals, Variant,
+    ObservedStatus, SourceLayer, StoreCard, TrustSignals, Variant,
 };
 use serde::Serialize;
 
@@ -136,10 +136,12 @@ async fn store_install(
     }
 }
 
-/// The local observed-vs-declared summary for an id (an audit-ledger read), or
-/// `None` when nothing has been recorded yet.
+/// What can honestly be said about this app's observed-vs-declared standing
+/// (store-app.md section 8.2). Structured, not prose: the app renders it in its
+/// own language, and it distinguishes "no feed yet" from "nothing observed" so
+/// the panel never reads as a clean bill of health the system cannot give.
 #[tauri::command]
-async fn store_observed_vs_declared(id: String) -> Result<Option<String>, String> {
+async fn store_observed_vs_declared(id: String) -> Result<ObservedStatus, String> {
     match ask(Request::ObservedVsDeclared { id: ComponentId(id) }).await? {
         Response::Observed(o) => Ok(o),
         Response::Error(e) => Err(e),
