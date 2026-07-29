@@ -13,5 +13,11 @@ path = "src/lib.rs"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+# Format-preserving edits: the config file is the user's and may be hand-edited,
+# so a write must not discard their comments or ordering.
+toml_edit = "0.22"
 # The declared schema a write is validated against (PAS-1).
 arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
+
+[dev-dependencies]
+tempfile = "3"
