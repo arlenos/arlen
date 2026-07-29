@@ -9,6 +9,7 @@
 pub mod catalog;
 pub mod client;
 pub mod compose;
+pub mod flatpak;
 pub mod query;
 pub mod serve;
 pub mod view;
