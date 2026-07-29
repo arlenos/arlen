@@ -516,7 +516,7 @@ mod tests {
     async fn bridges_against_finds_the_matching_foreign_app() {
         let dir = tempfile::tempdir().unwrap();
         let cb = signed_bridge_fixture(&dir.path().join("taps"), "md.obsidian.bridge", "obsidian").await;
-        let found = bridges_against(&[cb.clone()], "obsidian").await.unwrap();
+        let found = bridges_against(std::slice::from_ref(&cb), "obsidian").await.unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].name, "md.obsidian.bridge");
         // A different app has no bridge here.
