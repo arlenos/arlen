@@ -13,6 +13,7 @@ pub mod menu;
 pub mod power;
 pub mod presence;
 pub mod runtime;
+pub mod settings;
 pub mod search;
 pub mod shortcuts;
 pub mod spatial;
