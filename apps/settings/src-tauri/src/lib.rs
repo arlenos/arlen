@@ -113,6 +113,7 @@ pub fn run() {
             commands::theme::theme_toolkit_prereqs,
             commands::theme::theme_set_accent,
             commands::theme::get_available_themes,
+            commands::values::settings_resolve_options,
             commands::theme::set_theme,
             commands::theme::get_active_theme_id,
             commands::theme::theme_install_file,

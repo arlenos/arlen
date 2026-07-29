@@ -28,6 +28,8 @@ toml = "0.8"
 toml_edit = "0.22"
 # The pure, CI-tested settings core (the format-preserving TOML writer).
 arlen-settings-core = { path = "../core" }
+# The dynamic-enum resolver dispatches on the schema's own ValueSource.
+arlen-forage-recipe = { path = "../../../contracts/forage-recipe" }
 # RON serialiser used to write the screen-filter state file at
 # `~/.local/state/cosmic-comp/a11y_screen_filter.ron`. The
 # compositor reads this file format; matching it lets the Settings

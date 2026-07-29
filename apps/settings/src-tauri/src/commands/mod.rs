@@ -19,6 +19,7 @@ pub mod privacy;
 pub mod search;
 pub mod theme;
 pub mod url;
+pub mod values;
 pub mod waypointer_plugins;
 
 /// Route a log line from the frontend into the Rust logger so it
