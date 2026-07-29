@@ -206,6 +206,213 @@ pub fn is_valid_setting_key(key: &str) -> bool {
         })
 }
 
+/// Fatal checks over a declared schema: things that make it unrenderable,
+/// ambiguous, or self-contradictory. Called from the crate's [`crate::validate`].
+///
+/// The split follows the crate's existing convention. A rule lands here when the
+/// schema cannot be rendered or applied as written (an enum with nothing to
+/// choose from, two items claiming one key, a default that is not among the
+/// options). A rule that only signals a probable mistake, while the item still
+/// renders correctly, is a lint instead - see [`lint_settings`].
+pub(crate) fn validate_settings(
+    schema: &SettingsSchema,
+    errors: &mut Vec<crate::ValidationError>,
+) {
+    let mut seen_keys: Vec<&str> = Vec::new();
+
+    for (si, section) in schema.sections.iter().enumerate() {
+        if section.label.trim().is_empty() {
+            errors.push(crate::err(
+                &format!("settings.sections[{si}].label"),
+                "must not be empty (it is the rendered heading)",
+            ));
+        }
+
+        for (ii, item) in section.items.iter().enumerate() {
+            let at = |f: &str| format!("settings.sections[{si}].items[{ii}].{f}");
+
+            if !is_valid_setting_key(&item.key) {
+                errors.push(crate::err(
+                    &at("key"),
+                    "must be a dotted path of [a-zA-Z0-9_-] segments",
+                ));
+            } else if seen_keys.contains(&item.key.as_str()) {
+                // Two items claiming one key leaves no answer to "which item
+                // owns this value", so it is fatal rather than a hint.
+                errors.push(crate::err(
+                    &at("key"),
+                    "is declared more than once in this schema",
+                ));
+            } else {
+                seen_keys.push(&item.key);
+            }
+
+            if item.label.trim().is_empty() {
+                errors.push(crate::err(&at("label"), "must not be empty"));
+            }
+
+            validate_item_options(item, &at, errors);
+            validate_item_bounds(item, &at, errors);
+            validate_item_lifecycle(item, &at, errors);
+        }
+    }
+
+    validate_visible_when(schema, errors);
+}
+
+/// Enum items must offer a choice, the choices must be distinct, and a declared
+/// default must be one of them.
+fn validate_item_options(
+    item: &SettingsItem,
+    at: &impl Fn(&str) -> String,
+    errors: &mut Vec<crate::ValidationError>,
+) {
+    if item.value_type != SettingType::Enum {
+        return;
+    }
+    if item.options.is_empty() {
+        errors.push(crate::err(
+            &at("options"),
+            "an enum must declare at least one option",
+        ));
+        return;
+    }
+
+    let mut seen: Vec<&str> = Vec::new();
+    for option in &item.options {
+        if seen.contains(&option.value.as_str()) {
+            errors.push(crate::err(
+                &at("options"),
+                &format!("option value '{}' is declared more than once", option.value),
+            ));
+        } else {
+            seen.push(&option.value);
+        }
+    }
+
+    // A default outside the options would ship a value the user can never
+    // reselect once changed.
+    if let Some(default) = item.default.as_ref().and_then(|v| v.as_str()) {
+        if !seen.contains(&default) {
+            errors.push(crate::err(
+                &at("default"),
+                &format!("default '{default}' is not one of the declared options"),
+            ));
+        }
+    }
+}
+
+/// An inverted range admits no value at all.
+fn validate_item_bounds(
+    item: &SettingsItem,
+    at: &impl Fn(&str) -> String,
+    errors: &mut Vec<crate::ValidationError>,
+) {
+    if let (Some(min), Some(max)) = (item.min, item.max) {
+        if min > max {
+            errors.push(crate::err(
+                &at("min"),
+                "min is greater than max, so no value is valid",
+            ));
+        }
+    }
+}
+
+/// Migration metadata must describe a possible history.
+fn validate_item_lifecycle(
+    item: &SettingsItem,
+    at: &impl Fn(&str) -> String,
+    errors: &mut Vec<crate::ValidationError>,
+) {
+    if let (Some(since), Some(removed)) = (item.since, item.removed_in) {
+        if removed <= since {
+            errors.push(crate::err(
+                &at("removed_in"),
+                "a key cannot be removed in the version it appeared in, or earlier",
+            ));
+        }
+    }
+    if item.renamed_from.iter().any(|old| old == &item.key) {
+        errors.push(crate::err(
+            &at("renamed_from"),
+            "a key cannot be renamed from itself",
+        ));
+    }
+}
+
+/// A visibility condition must name a key this schema actually declares, and
+/// must state exactly one condition.
+fn validate_visible_when(schema: &SettingsSchema, errors: &mut Vec<crate::ValidationError>) {
+    let declared: Vec<&str> = schema
+        .sections
+        .iter()
+        .flat_map(|s| s.items.iter().map(|i| i.key.as_str()))
+        .collect();
+
+    for (si, section) in schema.sections.iter().enumerate() {
+        for (ii, item) in section.items.iter().enumerate() {
+            let Some(cond) = &item.visible_when else { continue };
+            let field = format!("settings.sections[{si}].items[{ii}].visible_when");
+
+            // The target may live in any section of the SAME app; there is no
+            // way to name another app's key, by construction of the type.
+            if !declared.contains(&cond.key.as_str()) {
+                errors.push(crate::err(
+                    &field,
+                    &format!("refers to '{}', which this schema does not declare", cond.key),
+                ));
+            }
+            match (&cond.equals, &cond.in_) {
+                (None, None) => errors.push(crate::err(
+                    &field,
+                    "must state either equals or in",
+                )),
+                (Some(_), Some(_)) => errors.push(crate::err(
+                    &field,
+                    "states both equals and in; exactly one applies",
+                )),
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Non-fatal recommendations: the schema renders, but something was probably
+/// meant differently.
+pub(crate) fn lint_settings(
+    schema: &SettingsSchema,
+    warnings: &mut Vec<crate::ValidationWarning>,
+) {
+    for (si, section) in schema.sections.iter().enumerate() {
+        if section.items.is_empty() {
+            warnings.push(crate::warn(
+                &format!("settings.sections[{si}]"),
+                "declares no items, so it renders as an empty heading",
+            ));
+        }
+        for (ii, item) in section.items.iter().enumerate() {
+            let at = |f: &str| format!("settings.sections[{si}].items[{ii}].{f}");
+
+            // These render fine; the declared extra is simply ignored, which is
+            // worth saying out loud rather than silently dropping.
+            if !item.value_type.is_numeric()
+                && (item.min.is_some() || item.max.is_some() || item.unit.is_some())
+            {
+                warnings.push(crate::warn(
+                    &at("min"),
+                    "min, max and unit only apply to numeric types and are ignored here",
+                ));
+            }
+            if item.value_type != SettingType::Enum && !item.options.is_empty() {
+                warnings.push(crate::warn(
+                    &at("options"),
+                    "options only apply to an enum and are ignored here",
+                ));
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -411,6 +618,266 @@ commit = "0000000000000000000000000000000000000000"
             !errors.iter().any(|e| e.field.starts_with("settings")),
             "settings must be optional, got {errors:?}"
         );
+    }
+
+    /// Build a one-section schema from items, for the rule tests.
+    fn schema_of(items: Vec<SettingsItem>) -> SettingsSchema {
+        SettingsSchema {
+            version: 1,
+            sections: vec![SettingsSection {
+                label: "S".into(),
+                description: None,
+                order: None,
+                items,
+            }],
+        }
+    }
+
+    fn item(key: &str, value_type: SettingType) -> SettingsItem {
+        SettingsItem {
+            key: key.into(),
+            value_type,
+            label: "L".into(),
+            description: None,
+            default: None,
+            min: None,
+            max: None,
+            unit: None,
+            options: Vec::new(),
+            order: None,
+            keywords: Vec::new(),
+            scope: SettingScope::default(),
+            tags: Vec::new(),
+            included: None,
+            deprecated_message: None,
+            replaced_by: None,
+            renamed_from: Vec::new(),
+            since: None,
+            removed_in: None,
+            visible_when: None,
+        }
+    }
+
+    fn errors_of(schema: &SettingsSchema) -> Vec<String> {
+        let mut e = Vec::new();
+        validate_settings(schema, &mut e);
+        e.into_iter().map(|x| format!("{}: {}", x.field, x.message)).collect()
+    }
+
+    fn warnings_of(schema: &SettingsSchema) -> Vec<String> {
+        let mut w = Vec::new();
+        lint_settings(schema, &mut w);
+        w.into_iter().map(|x| format!("{}: {}", x.field, x.message)).collect()
+    }
+
+    #[test]
+    fn a_well_formed_schema_has_no_errors() {
+        let mut e = item("theme", SettingType::Enum);
+        e.options = vec![SettingOption {
+            value: "dark".into(),
+            label: "Dark".into(),
+            description: "d".into(),
+        }];
+        e.default = Some(toml::Value::String("dark".into()));
+        assert!(errors_of(&schema_of(vec![e, item("other", SettingType::Bool)])).is_empty());
+    }
+
+    #[test]
+    fn an_enum_without_options_is_fatal() {
+        let errs = errors_of(&schema_of(vec![item("mode", SettingType::Enum)]));
+        assert!(errs.iter().any(|e| e.contains("at least one option")), "{errs:?}");
+    }
+
+    /// The shipped default must be selectable, or the user can never get back to
+    /// it once they change the value.
+    #[test]
+    fn an_enum_default_outside_the_options_is_fatal() {
+        let mut e = item("mode", SettingType::Enum);
+        e.options = vec![SettingOption {
+            value: "a".into(),
+            label: "A".into(),
+            description: "d".into(),
+        }];
+        e.default = Some(toml::Value::String("b".into()));
+        let errs = errors_of(&schema_of(vec![e]));
+        assert!(errs.iter().any(|x| x.contains("not one of the declared options")), "{errs:?}");
+    }
+
+    #[test]
+    fn duplicate_option_values_are_fatal() {
+        let mut e = item("mode", SettingType::Enum);
+        let opt = |v: &str| SettingOption {
+            value: v.into(),
+            label: "L".into(),
+            description: "d".into(),
+        };
+        e.options = vec![opt("a"), opt("a")];
+        let errs = errors_of(&schema_of(vec![e]));
+        assert!(errs.iter().any(|x| x.contains("more than once")), "{errs:?}");
+    }
+
+    #[test]
+    fn a_duplicate_key_is_fatal() {
+        let errs = errors_of(&schema_of(vec![
+            item("dup", SettingType::Bool),
+            item("dup", SettingType::String),
+        ]));
+        assert!(errs.iter().any(|e| e.contains("declared more than once")), "{errs:?}");
+    }
+
+    /// The duplicate check must span sections, not just look within one.
+    #[test]
+    fn a_duplicate_key_across_sections_is_fatal() {
+        let schema = SettingsSchema {
+            version: 1,
+            sections: vec![
+                SettingsSection {
+                    label: "A".into(),
+                    description: None,
+                    order: None,
+                    items: vec![item("shared", SettingType::Bool)],
+                },
+                SettingsSection {
+                    label: "B".into(),
+                    description: None,
+                    order: None,
+                    items: vec![item("shared", SettingType::Bool)],
+                },
+            ],
+        };
+        let errs = errors_of(&schema);
+        assert!(errs.iter().any(|e| e.contains("declared more than once")), "{errs:?}");
+    }
+
+    #[test]
+    fn an_inverted_range_is_fatal() {
+        let mut i = item("size", SettingType::Int);
+        i.min = Some(10.0);
+        i.max = Some(1.0);
+        let errs = errors_of(&schema_of(vec![i]));
+        assert!(errs.iter().any(|e| e.contains("no value is valid")), "{errs:?}");
+    }
+
+    #[test]
+    fn a_dangling_visible_when_is_fatal() {
+        let mut i = item("advanced", SettingType::Bool);
+        i.visible_when = Some(VisibleWhen {
+            key: "nonexistent".into(),
+            equals: Some("true".into()),
+            in_: None,
+        });
+        let errs = errors_of(&schema_of(vec![i]));
+        assert!(errs.iter().any(|e| e.contains("does not declare")), "{errs:?}");
+    }
+
+    /// The target may live in ANOTHER section of the same app, which must be
+    /// accepted - the condition is app-scoped, not section-scoped.
+    #[test]
+    fn a_visible_when_may_target_another_section() {
+        let mut dependent = item("b", SettingType::Bool);
+        dependent.visible_when = Some(VisibleWhen {
+            key: "a".into(),
+            equals: Some("true".into()),
+            in_: None,
+        });
+        let schema = SettingsSchema {
+            version: 1,
+            sections: vec![
+                SettingsSection {
+                    label: "One".into(),
+                    description: None,
+                    order: None,
+                    items: vec![item("a", SettingType::Bool)],
+                },
+                SettingsSection {
+                    label: "Two".into(),
+                    description: None,
+                    order: None,
+                    items: vec![dependent],
+                },
+            ],
+        };
+        assert!(errors_of(&schema).is_empty(), "{:?}", errors_of(&schema));
+    }
+
+    #[test]
+    fn a_visible_when_needs_exactly_one_condition() {
+        let mut none = item("b", SettingType::Bool);
+        none.visible_when = Some(VisibleWhen {
+            key: "b".into(),
+            equals: None,
+            in_: None,
+        });
+        assert!(errors_of(&schema_of(vec![none]))
+            .iter()
+            .any(|e| e.contains("either equals or in")));
+
+        let mut both = item("c", SettingType::Bool);
+        both.visible_when = Some(VisibleWhen {
+            key: "c".into(),
+            equals: Some("x".into()),
+            in_: Some(vec!["y".into()]),
+        });
+        assert!(errors_of(&schema_of(vec![both]))
+            .iter()
+            .any(|e| e.contains("exactly one applies")));
+    }
+
+    #[test]
+    fn impossible_lifecycle_metadata_is_fatal() {
+        let mut removed_too_early = item("old", SettingType::Bool);
+        removed_too_early.since = Some(3);
+        removed_too_early.removed_in = Some(3);
+        assert!(errors_of(&schema_of(vec![removed_too_early]))
+            .iter()
+            .any(|e| e.contains("cannot be removed")));
+
+        let mut self_rename = item("k", SettingType::Bool);
+        self_rename.renamed_from = vec!["k".into()];
+        assert!(errors_of(&schema_of(vec![self_rename]))
+            .iter()
+            .any(|e| e.contains("renamed from itself")));
+    }
+
+    #[test]
+    fn a_malformed_key_or_empty_label_is_fatal() {
+        assert!(errors_of(&schema_of(vec![item("bad key", SettingType::Bool)]))
+            .iter()
+            .any(|e| e.contains("dotted path")));
+
+        let mut blank = item("k", SettingType::Bool);
+        blank.label = "  ".into();
+        assert!(errors_of(&schema_of(vec![blank]))
+            .iter()
+            .any(|e| e.contains("label")));
+    }
+
+    /// These render correctly, so they are advice, not failures - the split the
+    /// crate draws between validate and lint.
+    #[test]
+    fn misapplied_extras_are_warnings_not_errors() {
+        let mut bounded_string = item("name", SettingType::String);
+        bounded_string.min = Some(1.0);
+        bounded_string.unit = Some("px".into());
+        let mut bool_with_options = item("flag", SettingType::Bool);
+        bool_with_options.options = vec![SettingOption {
+            value: "a".into(),
+            label: "A".into(),
+            description: "d".into(),
+        }];
+        let schema = schema_of(vec![bounded_string, bool_with_options]);
+
+        assert!(errors_of(&schema).is_empty(), "{:?}", errors_of(&schema));
+        let warns = warnings_of(&schema);
+        assert!(warns.iter().any(|w| w.contains("only apply to numeric types")), "{warns:?}");
+        assert!(warns.iter().any(|w| w.contains("only apply to an enum")), "{warns:?}");
+    }
+
+    #[test]
+    fn an_empty_section_is_a_warning() {
+        let schema = schema_of(vec![]);
+        assert!(errors_of(&schema).is_empty());
+        assert!(warnings_of(&schema).iter().any(|w| w.contains("no items")));
     }
 
 }
