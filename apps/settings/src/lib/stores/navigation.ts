@@ -72,10 +72,11 @@ export const PANELS: PanelMeta[] = [
   // The route still resolves (the page renders a placeholder for
   // direct-URL visitors) but the sidebar entry is greyed out and
   // the settings-search index doesn't list it — Codex Sprint D
-  // review HIGH 1: enabling a non-functional permission panel is a
-  // security UX trap, users could infer permissions are manageable
-  // here.
-  { id: "privacy", title: "s.nav.privacy", icon: "Shield", enabled: false, href: "/privacy" },
+  // Was disabled while the panel was a placeholder: offering a permission
+  // page that cannot actually manage permissions is a security UX trap. The
+  // App-access browser is now real (it reads live grants via `access_grants`
+  // and revokes through `revoke_reach`), so the panel is reachable.
+  { id: "privacy", title: "s.nav.privacy", icon: "Shield", enabled: true, href: "/privacy" },
 ];
 
 interface NavigationState {
