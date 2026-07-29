@@ -147,6 +147,13 @@ pub fn apply_to_file(path: &Path, key: &str, value: &Value) -> Result<bool, Appl
     Ok(true)
 }
 
+/// Write a document to `path` atomically, keeping its existing permissions.
+/// Shared so the migration path writes exactly the way the write path does.
+pub fn write_document(path: &Path, doc: &DocumentMut) -> Result<(), ApplyError> {
+    atomic_write_preserving_mode(path, doc.to_string().as_bytes())?;
+    Ok(())
+}
+
 /// Write `bytes` to `path` atomically, keeping the file's existing permissions.
 fn atomic_write_preserving_mode(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
