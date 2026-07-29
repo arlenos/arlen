@@ -107,6 +107,11 @@ fn check_type(item: &SettingsItem, value: &Value) -> Result<(), WriteRejection> 
         | SettingType::Color
         | SettingType::Keybind
         | SettingType::SecretRef => value.is_str(),
+        // Raw is the escape from the type vocabulary, so there is no type to
+        // check. Every other rule still stands: the key must be declared and its
+        // scope must permit the write, which is what keeps a raw item from
+        // becoming a way to write anything anywhere.
+        SettingType::Raw => true,
         SettingType::StringList => value
             .as_array()
             .is_some_and(|a| a.iter().all(Value::is_str)),
@@ -346,6 +351,44 @@ mod tests {
             Err(WriteRejection::WrongType {
                 expected: SettingType::Enum
             })
+        );
+    }
+
+    /// Raw escapes the type vocabulary and nothing else. A table, an array or a
+    /// scalar all go through, because "raw" means the schema gave up on typing
+    /// this one value.
+    #[test]
+    fn a_raw_key_takes_a_value_of_any_shape() {
+        let schema = schema_of(vec![item("tuning", SettingType::Raw)]);
+        let table = Value::Table(
+            [("retries".to_string(), Value::Integer(3))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(decide_write(&schema, &req("tuning", table)).is_ok());
+        assert!(decide_write(&schema, &req("tuning", Value::Integer(1))).is_ok());
+        assert!(decide_write(
+            &schema,
+            &req("tuning", Value::Array(vec![Value::Integer(1)]))
+        )
+        .is_ok());
+    }
+
+    /// The important half: a raw item is not a way to write anything anywhere.
+    /// The key must still be declared, and its scope must still permit the write.
+    #[test]
+    fn a_raw_item_does_not_lift_the_other_rules() {
+        let mut locked = item("tuning", SettingType::Raw);
+        locked.scope = SettingScope::DefaultsOnly;
+        let schema = schema_of(vec![locked]);
+
+        assert_eq!(
+            decide_write(&schema, &req("tuning", Value::Integer(1))),
+            Err(WriteRejection::NotUserWritable)
+        );
+        assert_eq!(
+            decide_write(&schema, &req("undeclared", Value::Integer(1))),
+            Err(WriteRejection::UndeclaredKey)
         );
     }
 

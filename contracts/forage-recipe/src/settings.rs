@@ -76,6 +76,17 @@ pub enum SettingType {
     /// A REFERENCE to a secret held in the vault, never the secret itself: the
     /// schema and the app's `config.toml` only ever carry the handle.
     SecretRef,
+    /// A value this vocabulary cannot express, edited as raw TOML.
+    ///
+    /// The escape hatch, and the reason the type set above can stay closed: an
+    /// app with one genuinely irregular value marks that ONE key raw rather than
+    /// shipping its own widget. VS Code ("Edit in settings.json") and Chrome
+    /// policy (`dict` types as a raw JSON box) converged on the same answer.
+    ///
+    /// It escapes the type vocabulary, not the model. The key is still declared,
+    /// still scope-checked, and the edit still lands at that key alone - so a raw
+    /// item cannot reach a key the schema never mentioned.
+    Raw,
 }
 
 /// Which layer a key may legally be written to. The EDITOR enforces this, not
