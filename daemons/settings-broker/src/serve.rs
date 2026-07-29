@@ -30,7 +30,10 @@ pub struct AppSettings {
 
 /// Resolves an app-id to its settings. Implemented for real by the live
 /// registry (PAS-4); implemented in tests by a fixed map.
-pub trait AppRegistry {
+///
+/// `Send + Sync` because one registry is shared across every connection the
+/// broker serves concurrently.
+pub trait AppRegistry: Send + Sync {
     /// The app's schema and config path, or `None` when the app is unknown.
     fn lookup(&self, app_id: &str) -> Option<AppSettings>;
 }
