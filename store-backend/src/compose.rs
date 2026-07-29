@@ -312,6 +312,11 @@ pub struct SourceInputs {
     pub flathub_xml: Option<String>,
     /// The Debian DEP-11 catalog YAML, when present on the image.
     pub dep11_yaml: Option<String>,
+    /// `(component-id, Flatpak `metadata` file text)` for Flathub apps whose
+    /// sandbox permissions are known (SC-3). The composed AppStream catalog
+    /// carries no `finish-args`, so the footprint is fused in from here; an id
+    /// with no entry keeps an empty footprint rather than a guessed one.
+    pub flatpak_metadata: Vec<(String, String)>,
 }
 
 /// Compose the merged [`Catalog`] from every configured source. Best-effort: a source
@@ -326,7 +331,8 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
         }
     }
     if let Some(xml) = &inputs.flathub_xml {
-        if let Ok(es) = flathub_entries(xml) {
+        if let Ok(mut es) = flathub_entries(xml) {
+            fuse_flatpak_metadata(&mut es, &inputs.flatpak_metadata);
             entries.extend(es);
         }
     }
@@ -335,6 +341,19 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
         entries.extend(dep11_entries(yaml));
     }
     crate::query::Catalog::new(crate::catalog::merge_catalog(entries))
+}
+
+/// Fill each Flatpak entry's capability footprint from its `metadata` file
+/// (SC-3). Matching is by component-id; an entry with no metadata is left with
+/// its empty footprint, which the app renders as "not known" rather than as
+/// "asks for nothing".
+fn fuse_flatpak_metadata(entries: &mut [CatalogEntry], metadata: &[(String, String)]) {
+    for (id, text) in metadata {
+        let labels = crate::flatpak::context_labels(text);
+        for entry in entries.iter_mut().filter(|e| e.id.0 == *id) {
+            entry.capabilities.capabilities = labels.clone();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -556,6 +575,7 @@ commit = "0000000000000000000000000000000000000000"
             forage: vec![(FORAGE_TOML.to_string(), SourceLayer::Community)],
             flathub_xml: Some(FLATHUB_XML.to_string()),
             dep11_yaml: Some(DEP11_YAML.to_string()),
+            ..Default::default()
         };
         let catalog = compose_catalog(inputs);
         // One forage + one Flathub + one DEP-11 app, all distinct ids -> 3 cards.
@@ -570,6 +590,7 @@ commit = "0000000000000000000000000000000000000000"
             forage: vec![("this is not valid toml {{{".to_string(), SourceLayer::Personal)],
             flathub_xml: Some("<not xml".to_string()),
             dep11_yaml: Some(DEP11_YAML.to_string()),
+            ..Default::default()
         };
         // The bad forage + bad XML are skipped; the good DEP-11 app still lands.
         let catalog = compose_catalog(inputs);

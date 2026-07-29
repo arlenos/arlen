@@ -86,6 +86,10 @@ fn load_source_inputs() -> SourceInputs {
         forage,
         flathub_xml: read_env("ARLEN_STORE_FLATHUB_XML"),
         dep11_yaml: read_env("ARLEN_STORE_DEP11_YAML"),
+        // SC-3: the Flatpak sandbox permissions. Populated by the section 9.3
+        // compose job (SC-5); until it exists this stays empty and a Flathub
+        // card carries no footprint rather than a guessed one.
+        flatpak_metadata: Vec::new(),
     }
 }
 
