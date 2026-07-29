@@ -10,16 +10,23 @@ description = "Settings Broker: the session daemon that owns writes to an app's 
 [lib]
 path = "src/lib.rs"
 
+[[bin]]
+name = "arlen-settings-broker"
+path = "src/main.rs"
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "signal", "time"] }
 toml = "0.8"
 # Format-preserving edits: the config file is the user's and may be hand-edited,
 # so a write must not discard their comments or ordering.
 toml_edit = "0.22"
 # The declared schema a write is validated against (PAS-1).
 arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
+# The broker must write exactly where an app reads, so the config layout comes
+# from the SDK rather than being written out a second time here.
+os-sdk = { path = "../../sdk/os-sdk" }
 
 [dev-dependencies]
 tempfile = "3"
