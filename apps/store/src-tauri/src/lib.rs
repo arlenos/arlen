@@ -15,8 +15,8 @@
 use std::collections::BTreeSet;
 
 use arlen_store_backend::{
-    request_default, store_card, store_cards, CapabilityFacet, ComponentId, Request, Response,
-    ObservedStatus, SourceLayer, StoreCard, TrustSignals, Variant,
+    request_default, store_card, store_cards, CapabilityFacet, ComponentId, ObservedStatus,
+    Request, Response, SortOrder, SourceLayer, StoreCard, TrustSignals, Variant,
 };
 use serde::Serialize;
 
@@ -54,12 +54,23 @@ async fn fetch_installed() -> Result<Vec<(String, String, String, String)>, zbus
 
 /// Full-text search over the merged catalog, narrowed by capability facets.
 /// Returns the flattened cards the browse grid renders.
+///
+/// `sort` is optional and defaults to catalog order. Asking for least-privilege
+/// puts the app that requests the least first, which is what declaring
+/// capabilities rather than inferring them makes possible.
 #[tauri::command]
 async fn store_search(
     query: String,
     facets: Vec<CapabilityFacet>,
+    sort: Option<SortOrder>,
 ) -> Result<Vec<StoreCard>, String> {
-    match ask(Request::Search { query, facets }).await? {
+    match ask(Request::Search {
+        query,
+        facets,
+        sort: sort.unwrap_or_default(),
+    })
+    .await?
+    {
         Response::Cards(cards) => Ok(store_cards(&cards, &installed_ids().await)),
         Response::Error(e) => Err(e),
         other => Err(format!("unexpected store response: {other:?}")),

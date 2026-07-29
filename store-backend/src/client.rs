@@ -134,7 +134,7 @@ mod tests {
 
         let resp = roundtrip(
             &mut client,
-            &Request::Search { query: "demo".into(), facets: vec![] },
+            &Request::Search { query: "demo".into(), facets: vec![], sort: Default::default() },
         )
         .await
         .unwrap();
