@@ -23,6 +23,7 @@ pub mod apply;
 pub mod broker;
 pub mod decide;
 pub mod protocol;
+pub mod registry;
 pub mod serve;
 pub mod server;
 
@@ -30,5 +31,6 @@ pub use apply::{apply_to_file, ApplyError};
 pub use broker::{apply_writes, BrokerError, ChangeSignal};
 pub use decide::{decide_write, WriteRejection, WriteRequest};
 pub use protocol::{Request, Response};
+pub use registry::{is_safe_app_id, DirectoryRegistry};
 pub use serve::{answer, AppRegistry, AppSettings};
 pub use server::{serve_connection, shared_write_lock, socket_path, ServeError};
