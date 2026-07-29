@@ -14,6 +14,7 @@ mod event_emit;
 mod flatpak;
 mod install;
 mod jobs;
+mod lock;
 mod module_permissions;
 mod permission_helper;
 mod signature;
