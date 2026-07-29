@@ -53,7 +53,18 @@ pub fn forage_entry(recipe: &Recipe, layer: SourceLayer) -> CatalogEntry {
     // A recipe carrying `[bridge] foreign_app` is a bridge, not a standalone app
     // (store-app.md section 8b); everything else is an app.
     let kind = if recipe.bridge.is_some() { ItemKind::Bridge } else { ItemKind::App };
-    CatalogEntry { id: ComponentId(meta.id.clone()), layer, display, capabilities, trust, kind }
+    CatalogEntry {
+        id: ComponentId(meta.id.clone()),
+        layer,
+        display,
+        capabilities,
+        trust,
+        kind,
+        // A `github-release` recipe follows tags and states no version; empty
+        // means "this source does not say", which the update check treats as
+        // nothing to compare rather than as a change.
+        version: meta.version.clone().unwrap_or_default(),
+    }
 }
 
 /// The coarse capability categories a recipe declares, as sorted, deduped display
@@ -130,6 +141,10 @@ pub fn flathub_entries(xml: &str) -> Result<Vec<CatalogEntry>, ComposeError> {
             capabilities: CapabilityFootprint::default(),
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
+            // AppStream carries versions in <releases>, which this harvest does
+            // not read yet. Empty means "not stated", so the update check stays
+            // silent about Flathub apps rather than guessing.
+            version: String::new(),
         });
     }
     Ok(entries)
@@ -293,6 +308,8 @@ pub fn dep11_entries(yaml: &str) -> Vec<CatalogEntry> {
             capabilities: CapabilityFootprint::default(),
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
+            // As above: DEP-11 states a version in <releases>, not harvested yet.
+            version: String::new(),
         });
     }
     entries

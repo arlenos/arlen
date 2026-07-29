@@ -139,6 +139,13 @@ pub struct CatalogEntry {
     /// What kind of item this is. Only the forage path can know: a recipe with a
     /// `[bridge]` section is a bridge. Other sources leave the default.
     pub kind: ItemKind,
+    /// The version this source offers, verbatim as the source states it.
+    ///
+    /// Per-source because they genuinely differ: Flathub and apt can ship the
+    /// same component at different versions, and each spells its own version its
+    /// own way. Empty when a source does not state one.
+    #[serde(default)]
+    pub version: String,
 }
 
 /// One install option on a merged card: a source layer with its own caps + trust.
@@ -150,6 +157,9 @@ pub struct Variant {
     pub capabilities: CapabilityFootprint,
     /// This variant's trust signals.
     pub trust: TrustSignals,
+    /// The version this source offers, as the source states it.
+    #[serde(default)]
+    pub version: String,
 }
 
 /// A merged app card: one per component-id, richest display, per-source variants.
@@ -221,7 +231,12 @@ pub fn merge_catalog(entries: Vec<CatalogEntry>) -> Vec<AppCard> {
             if variants.last().is_some_and(|v| v.layer == e.layer) {
                 continue; // A poorer duplicate for the same layer; already have it.
             }
-            variants.push(Variant { layer: e.layer, capabilities: e.capabilities, trust: e.trust });
+            variants.push(Variant {
+                layer: e.layer,
+                capabilities: e.capabilities,
+                trust: e.trust,
+                version: e.version,
+            });
         }
 
         cards.push(AppCard { id, display, variants, default_variant: 0, kind });
@@ -250,6 +265,7 @@ mod tests {
             },
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
+            version: String::new(),
         }
     }
 
