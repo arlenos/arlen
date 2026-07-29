@@ -106,6 +106,35 @@ pub struct SettingOption {
     pub description: String,
 }
 
+/// Where an enum's choices come from when the package cannot know them.
+///
+/// The valid set for "which audio output", "which theme", "which browser" is a
+/// property of the user's machine, not of the app: it does not exist when the
+/// recipe is written and it changes while Settings is open. VS Code has no way
+/// to express this, so every extension that needs it ships a free-text field and
+/// validates by hand.
+///
+/// **This is a CLOSED enum, deliberately.** The obvious shape - a command or a
+/// path the app names, resolved at render time - would let any third-party
+/// package turn its settings page into arbitrary execution or an arbitrary file
+/// read, running as Settings. A closed set means the system knows every source it
+/// will ever resolve, and a package can only ask for one that already exists.
+/// Adding a source is a deliberate change here, which is the point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ValueSource {
+    /// Audio sinks currently present.
+    AudioOutputs,
+    /// Audio sources currently present.
+    AudioInputs,
+    /// Themes installed on this machine.
+    InstalledThemes,
+    /// Locales available on this machine.
+    Locales,
+    /// Installed applications that handle `http`/`https`.
+    Browsers,
+}
+
 /// A conditional-visibility rule over ANOTHER key of the SAME app. Cross-app
 /// conditions are not expressible: an app must not be able to make its own page
 /// depend on another app's configuration.
@@ -150,6 +179,10 @@ pub struct SettingsItem {
     /// The choices, for `enum`.
     #[serde(default)]
     pub options: Vec<SettingOption>,
+    /// Resolve this enum's choices from live system state instead of declaring
+    /// them. Mutually exclusive with `options`.
+    #[serde(default)]
+    pub options_from: Option<ValueSource>,
     /// Sort position within the section.
     #[serde(default)]
     pub order: Option<i32>,
@@ -270,6 +303,24 @@ fn validate_item_options(
     if item.value_type != SettingType::Enum {
         return;
     }
+
+    // Exactly one source of choices. Declaring both leaves the renderer to pick
+    // which list is real, and whichever it picked would be right half the time.
+    if item.options_from.is_some() {
+        if !item.options.is_empty() {
+            errors.push(crate::err(
+                &at("options_from"),
+                "an enum declares either 'options' or 'options_from', not both",
+            ));
+        }
+        // The rest of this function checks the declared list. There isn't one:
+        // the choices are whatever the machine has at render time, so neither
+        // the duplicate check nor the default-is-one-of-them check can run here.
+        // The renderer is what has to cope with a stored value the machine no
+        // longer offers.
+        return;
+    }
+
     if item.options.is_empty() {
         errors.push(crate::err(
             &at("options"),
@@ -407,6 +458,23 @@ pub(crate) fn lint_settings(
                 warnings.push(crate::warn(
                     &at("options"),
                     "options only apply to an enum and are ignored here",
+                ));
+            }
+            if item.value_type != SettingType::Enum && item.options_from.is_some() {
+                warnings.push(crate::warn(
+                    &at("options_from"),
+                    "options_from only applies to an enum and is ignored here",
+                ));
+            }
+            // A shipped default names a value the packager guessed; the whole
+            // reason for a dynamic source is that the valid values belong to the
+            // user's machine. On most machines that guess is simply absent, and
+            // the user sees a setting whose stored value is not among its
+            // choices.
+            if item.options_from.is_some() && item.default.is_some() {
+                warnings.push(crate::warn(
+                    &at("default"),
+                    "a default cannot be relied on with options_from: the machine decides the valid values",
                 ));
             }
         }
@@ -644,6 +712,7 @@ commit = "0000000000000000000000000000000000000000"
             max: None,
             unit: None,
             options: Vec::new(),
+            options_from: None,
             order: None,
             keywords: Vec::new(),
             scope: SettingScope::default(),
@@ -668,6 +737,83 @@ commit = "0000000000000000000000000000000000000000"
         let mut w = Vec::new();
         lint_settings(schema, &mut w);
         w.into_iter().map(|x| format!("{}: {}", x.field, x.message)).collect()
+    }
+
+    /// The point of PAS-7: an enum whose valid values live on the user's machine
+    /// declares a source instead of a list, and that satisfies the
+    /// must-offer-a-choice rule that a bare empty `options` would fail.
+    #[test]
+    fn an_enum_may_take_its_choices_from_a_system_source() {
+        let mut e = item("output", SettingType::Enum);
+        e.options_from = Some(ValueSource::AudioOutputs);
+        assert!(errors_of(&schema_of(vec![e])).is_empty());
+    }
+
+    /// Two lists means the renderer picks which one is real.
+    #[test]
+    fn declaring_both_options_and_a_source_is_refused() {
+        let mut e = item("output", SettingType::Enum);
+        e.options_from = Some(ValueSource::AudioOutputs);
+        e.options = vec![SettingOption {
+            value: "hdmi".into(),
+            label: "HDMI".into(),
+            description: "The screen".into(),
+        }];
+        let errs = errors_of(&schema_of(vec![e]));
+        assert!(
+            errs.iter().any(|e| e.contains("not both")),
+            "{errs:?}"
+        );
+    }
+
+    /// A dynamic source cannot be checked against a declared default, so the
+    /// default-is-one-of-the-options rule must not fire on values it can never
+    /// see. It stays advisory instead.
+    #[test]
+    fn a_default_with_a_system_source_is_advised_not_refused() {
+        let mut e = item("output", SettingType::Enum);
+        e.options_from = Some(ValueSource::AudioOutputs);
+        e.default = Some(toml::Value::String("built-in".into()));
+
+        assert!(
+            errors_of(&schema_of(vec![e.clone()])).is_empty(),
+            "the packager's default must not be a hard error"
+        );
+        let warns = warnings_of(&schema_of(vec![e]));
+        assert!(
+            warns.iter().any(|w| w.contains("options_from")),
+            "{warns:?}"
+        );
+    }
+
+    #[test]
+    fn a_source_on_a_non_enum_is_flagged_as_ignored() {
+        let mut s = item("name", SettingType::String);
+        s.options_from = Some(ValueSource::Locales);
+        let warns = warnings_of(&schema_of(vec![s]));
+        assert!(
+            warns.iter().any(|w| w.contains("options_from only applies")),
+            "{warns:?}"
+        );
+    }
+
+    /// A package declares a source by name from a closed set, so it cannot ask
+    /// the system to run or read something of its choosing.
+    #[test]
+    fn a_source_is_named_from_the_closed_set() {
+        let parsed: SettingsItem = toml::from_str(
+            "key = \"output\"\ntype = \"enum\"\nlabel = \"Output\"\noptions_from = \"audio_outputs\"\n",
+        )
+        .expect("a known source parses");
+        assert_eq!(parsed.options_from, Some(ValueSource::AudioOutputs));
+
+        assert!(
+            toml::from_str::<SettingsItem>(
+                "key = \"x\"\ntype = \"enum\"\nlabel = \"X\"\noptions_from = \"sh -c 'cat /etc/shadow'\"\n",
+            )
+            .is_err(),
+            "an arbitrary source must not parse"
+        );
     }
 
     #[test]
