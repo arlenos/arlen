@@ -288,6 +288,11 @@ async fn run_install_package(
     // Capture the identity inputs before the manifest moves into the transaction.
     let app_id = manifest.package.id.clone();
     let binary_rel = manifest.binary.path.clone();
+    // Capture the lock inputs here too: the manifest moves into the transaction
+    // below, and after an upgrade the on-disk one is the NEW version, so this is
+    // the last moment the old side of a future diff can be recorded.
+    let lock_version = manifest.package.version.clone();
+    let lock_granted = crate::consent::capabilities_from(&manifest.permissions);
 
     // 5. Begin transaction. From here, any error triggers auto-rollback.
     let mut txn = InstallTransaction::new(temp_dir, manifest);
@@ -335,6 +340,14 @@ async fn run_install_package(
     //     the truth, not a value we pass). Best-effort: a record failure does NOT
     //     fail the install (the app is usable; its identity is the cooperative
     //     residual until recorded), and a missing helper (dev box) is non-fatal.
+    // 13. Record what was installed, at what version, under which grants (U-1).
+    //     This is the OLD side every later update diff reads: the manifest on
+    //     disk is replaced by an upgrade, so nothing else remembers what the app
+    //     was allowed to do before. Best-effort, like the identity record: a
+    //     lock write failing must not undo a good install, but it is logged
+    //     loudly because an update will then have nothing to compare against.
+    record_in_lock(&app_id, &lock_version, lock_granted);
+
     let install_path = install::user_apps_dir_pub().join(&app_id).join(&binary_rel);
     // SAFETY: getuid never fails.
     let uid = unsafe { libc::getuid() };
@@ -368,7 +381,60 @@ async fn run_uninstall(
     emit_progress(conn, job_id, 60, "removing desktop entry").await;
     install::remove_desktop_entry(app_id)?;
 
+    // 3. Drop it from the lock: it is no longer installed, so it has no version
+    //    or grants to compare a future install against. The app stays in the
+    //    30-day trash, but a restore reinstalls and re-records.
+    remove_from_lock(app_id);
+
     Ok(())
+}
+
+/// Record an install in the lock, logging rather than failing.
+///
+/// A lock write that fails leaves a working install whose next update has no old
+/// side to diff against, so the capability gate would treat it as a first
+/// install. Worth a loud log; not worth undoing an otherwise good install.
+fn record_in_lock(app_id: &str, version: &str, granted: arlen_forage_recipe::Capabilities) {
+    let path = crate::lock::lock_path();
+    let mut lock = match crate::lock::Lock::load(&path) {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::warn!(error = %e, "could not read the install lock; not recording");
+            return;
+        }
+    };
+    let installed_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    lock.record(crate::lock::LockEntry::new(
+        app_id,
+        "lunpkg",
+        version,
+        installed_at,
+        granted,
+    ));
+    if let Err(e) = lock.save(&path) {
+        tracing::warn!(
+            error = %e,
+            app_id = %app_id,
+            "could not write the install lock; a later update will have nothing to diff against"
+        );
+    }
+}
+
+/// Drop an uninstalled app from the lock, logging rather than failing.
+fn remove_from_lock(app_id: &str) {
+    let path = crate::lock::lock_path();
+    let Ok(mut lock) = crate::lock::Lock::load(&path) else {
+        tracing::warn!("could not read the install lock; not clearing {app_id}");
+        return;
+    };
+    if lock.remove(app_id) {
+        if let Err(e) = lock.save(&path) {
+            tracing::warn!(error = %e, "could not write the install lock after uninstall");
+        }
+    }
 }
 
 /// Execute a Flatpak install job.
