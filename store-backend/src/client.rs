@@ -104,7 +104,7 @@ where
 mod tests {
     use super::*;
     use crate::catalog::{
-        merge_catalog, CapabilityFootprint, CatalogEntry, ComponentId, DisplayMeta, SourceLayer,
+        merge_catalog, CapabilityFootprint, CatalogEntry, ComponentId, DisplayMeta, ItemKind, SourceLayer,
         TrustSignals,
     };
     use crate::query::Catalog;
@@ -117,6 +117,7 @@ mod tests {
             display: DisplayMeta { name: "Demo".into(), ..Default::default() },
             capabilities: CapabilityFootprint::default(),
             trust: TrustSignals::default(),
+            kind: ItemKind::default(),
         };
         Catalog::new(merge_catalog(vec![entry]))
     }

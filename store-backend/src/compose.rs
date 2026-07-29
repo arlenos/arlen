@@ -11,6 +11,7 @@
 use arlen_forage_recipe::{Capabilities, Recipe, ReproducibleStatus};
 
 use crate::catalog::{
+    ItemKind,
     CapabilityFootprint, CatalogEntry, ComponentId, DisplayMeta, SourceLayer, TrustSignals,
 };
 
@@ -49,7 +50,10 @@ pub fn forage_entry(recipe: &Recipe, layer: SourceLayer) -> CatalogEntry {
         odrs_score: None,
         observed_vs_declared: None,
     };
-    CatalogEntry { id: ComponentId(meta.id.clone()), layer, display, capabilities, trust }
+    // A recipe carrying `[bridge] foreign_app` is a bridge, not a standalone app
+    // (store-app.md section 8b); everything else is an app.
+    let kind = if recipe.bridge.is_some() { ItemKind::Bridge } else { ItemKind::App };
+    CatalogEntry { id: ComponentId(meta.id.clone()), layer, display, capabilities, trust, kind }
 }
 
 /// The coarse capability categories a recipe declares, as sorted, deduped display
@@ -125,6 +129,7 @@ pub fn flathub_entries(xml: &str) -> Result<Vec<CatalogEntry>, ComposeError> {
             display,
             capabilities: CapabilityFootprint::default(),
             trust: TrustSignals::default(),
+            kind: ItemKind::default(),
         });
     }
     Ok(entries)
@@ -287,6 +292,7 @@ pub fn dep11_entries(yaml: &str) -> Vec<CatalogEntry> {
             display,
             capabilities: CapabilityFootprint::default(),
             trust: TrustSignals::default(),
+            kind: ItemKind::default(),
         });
     }
     entries
@@ -556,6 +562,30 @@ Name:
         assert_eq!(cards[0].variants[0].layer, SourceLayer::Apt);
     }
 
+    /// A bridge recipe: `[bridge]` plus the two-halves `[install]` it requires.
+    const BRIDGE_TOML: &str = r#"
+[recipe]
+id = "org.forage.ObsidianBridge"
+name = "Obsidian Bridge"
+summary = "bridges obsidian"
+maintainer = "key1"
+
+[[source]]
+type = "git"
+url = "https://github.com/example/bridge"
+commit = "0000000000000000000000000000000000000000"
+
+[bridge]
+foreign_app = "obsidian"
+
+[install]
+arlen_side = ["entities.toml", "bridge.toml"]
+
+[install.foreign_side]
+into = "$VAULT/.obsidian/plugins/md-obsidian-bridge/"
+files = ["main.js", "manifest.json"]
+"#;
+
     const FORAGE_TOML: &str = r#"
 [recipe]
 id = "org.forage.Tool"
@@ -596,4 +626,32 @@ commit = "0000000000000000000000000000000000000000"
         let catalog = compose_catalog(inputs);
         assert!(catalog.card(&ComponentId("org.gnome.gedit".into())).is_some());
     }
+    /// A recipe carrying `[bridge]` is a bridge, so the store can browse it as
+    /// one (store-app.md section 8b). Without this the card model has no way to
+    /// tell a bridge from a standalone app.
+    #[test]
+    fn a_bridge_recipe_produces_a_bridge_entry() {
+        let recipe = arlen_forage_recipe::parse(BRIDGE_TOML).unwrap();
+        let entry = forage_entry(&recipe, SourceLayer::Community);
+        assert_eq!(entry.kind, ItemKind::Bridge);
+    }
+
+    /// An ordinary recipe must NOT be labelled a bridge.
+    #[test]
+    fn a_plain_recipe_produces_an_app_entry() {
+        let recipe = arlen_forage_recipe::parse(FORAGE_TOML).unwrap();
+        let entry = forage_entry(&recipe, SourceLayer::Community);
+        assert_eq!(entry.kind, ItemKind::App);
+    }
+
+    /// The Flathub and DEP-11 sources cannot express a bridge, so they must
+    /// default to App rather than inherit anything.
+    #[test]
+    fn foreign_sources_default_to_app() {
+        let flathub = flathub_entries(FLATHUB_XML).unwrap();
+        assert!(flathub.iter().all(|e| e.kind == ItemKind::App));
+        let dep11 = dep11_entries(DEP11_YAML);
+        assert!(dep11.iter().all(|e| e.kind == ItemKind::App));
+    }
+
 }

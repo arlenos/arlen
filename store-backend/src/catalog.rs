@@ -105,6 +105,24 @@ pub struct TrustSignals {
     pub observed_vs_declared: Option<String>,
 }
 
+/// What kind of item a card is (store-app.md section 8b). Apps and bridges are
+/// both browsable; `Module` exists so the vocabulary is complete but nothing
+/// emits it yet - remote module install has no path, so a module cannot be
+/// offered here honestly.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ItemKind {
+    /// An application (the default when a source says nothing else).
+    #[default]
+    App,
+    /// A foreign-app bridge: a forage recipe carrying `[bridge] foreign_app`.
+    /// It installs alongside the foreign app it serves rather than standing
+    /// alone, so the app renders it differently.
+    Bridge,
+    /// A module. Reserved; not currently produced.
+    Module,
+}
+
 /// One per-source app entry the compose step produced (section 9.3): the merge input.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CatalogEntry {
@@ -118,6 +136,9 @@ pub struct CatalogEntry {
     pub capabilities: CapabilityFootprint,
     /// This variant's trust signals.
     pub trust: TrustSignals,
+    /// What kind of item this is. Only the forage path can know: a recipe with a
+    /// `[bridge]` section is a bridge. Other sources leave the default.
+    pub kind: ItemKind,
 }
 
 /// One install option on a merged card: a source layer with its own caps + trust.
@@ -143,6 +164,10 @@ pub struct AppCard {
     /// The index (into `variants`) of the default variant: the highest-precedence
     /// one. Browsing exposes all; installing picks this unless the user chooses.
     pub default_variant: usize,
+    /// What kind of item this is. A card is a bridge as soon as ANY source says
+    /// so: only a forage recipe can declare `[bridge]`, and a bridge's id does
+    /// not collide with a standalone app's, so this cannot mislabel an app.
+    pub kind: ItemKind,
 }
 
 /// Merge per-source catalog entries into one card per component-id (section 9.1).
@@ -177,6 +202,13 @@ pub fn merge_catalog(entries: Vec<CatalogEntry>) -> Vec<AppCard> {
             .map(|e| e.display.clone())
             .unwrap_or_default();
 
+        // A card is a bridge as soon as any source says so (only forage can).
+        let kind = group
+            .iter()
+            .map(|e| e.kind)
+            .find(|k| *k != ItemKind::App)
+            .unwrap_or(ItemKind::App);
+
         // One variant per layer: if a layer appears twice, keep the richer display's
         // caps/trust (defensive; the compose step should not emit duplicates).
         group.sort_by(|a, b| {
@@ -192,7 +224,7 @@ pub fn merge_catalog(entries: Vec<CatalogEntry>) -> Vec<AppCard> {
             variants.push(Variant { layer: e.layer, capabilities: e.capabilities, trust: e.trust });
         }
 
-        cards.push(AppCard { id, display, variants, default_variant: 0 });
+        cards.push(AppCard { id, display, variants, default_variant: 0, kind });
     }
     cards
 }
@@ -217,6 +249,7 @@ mod tests {
                 capabilities: vec!["network".into()],
             },
             trust: TrustSignals::default(),
+            kind: ItemKind::default(),
         }
     }
 
