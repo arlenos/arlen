@@ -23,4 +23,4 @@ arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
 
 [dev-dependencies]
 tempfile = "3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "sync", "net", "time"] }

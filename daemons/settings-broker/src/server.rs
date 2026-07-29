@@ -11,6 +11,7 @@
 //! Reads take no part in this. An app reads its own config directly, which is
 //! why dconf can describe its service as involved only in writes.
 
+use std::os::unix::fs::FileTypeExt;
 use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -121,6 +122,50 @@ where
 /// A lock shared by every connection the broker serves.
 pub fn shared_write_lock() -> Arc<Mutex<()>> {
     Arc::new(Mutex::new(()))
+}
+
+/// Bind `socket` and serve every connection against `registry`.
+///
+/// The socket is clamped to owner-only: these writes reach the user's own
+/// config files, so another user on the machine has no business reaching this
+/// even to be refused. A stale socket from a previous run is replaced, because
+/// bind fails with EADDRINUSE against a leftover file rather than a live peer.
+///
+/// Every connection shares one write lock, which is what keeps concurrent
+/// writers from losing each other's updates.
+pub async fn run(
+    registry: Arc<dyn AppRegistry>,
+    socket: &std::path::Path,
+) -> Result<(), ServeError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    if let Some(parent) = socket.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    // Only remove what looks like our own stale socket, never an unrelated file.
+    if let Ok(meta) = std::fs::symlink_metadata(socket) {
+        if meta.file_type().is_socket() {
+            let _ = std::fs::remove_file(socket);
+        }
+    }
+
+    let listener = tokio::net::UnixListener::bind(socket)?;
+    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600))?;
+
+    let write_lock = shared_write_lock();
+    loop {
+        let (mut stream, _addr) = listener.accept().await?;
+        let registry = registry.clone();
+        let write_lock = write_lock.clone();
+        // One slow or wedged caller must not stall the others, so each
+        // connection is served on its own task; the shared lock still keeps the
+        // writes themselves ordered.
+        tokio::spawn(async move {
+            if let Err(e) = serve_connection(&mut stream, registry.as_ref(), &write_lock).await {
+                eprintln!("settings-broker: connection ended: {e}");
+            }
+        });
+    }
 }
 
 #[cfg(test)]
@@ -390,4 +435,51 @@ mod tests {
             );
         }
     }
+    /// The accept loop over a REAL bound socket: binds, serves a client, and the
+    /// write reaches the file. Also pins the 0600 clamp, since these writes
+    /// reach the user's own config.
+    #[tokio::test]
+    async fn the_accept_loop_serves_a_real_socket_at_owner_only_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config.toml");
+        std::fs::write(&config, "").unwrap();
+        let socket = dir.path().join("broker.sock");
+
+        let registry: Arc<dyn AppRegistry> = Arc::new(OneApp {
+            schema: schema(),
+            path: config.clone(),
+        });
+        let socket_for_task = socket.clone();
+        let server = tokio::spawn(async move { run(registry, &socket_for_task).await });
+
+        // Wait for the bind rather than sleeping a fixed interval.
+        let mut client = None;
+        for _ in 0..50 {
+            match tokio::net::UnixStream::connect(&socket).await {
+                Ok(s) => {
+                    client = Some(s);
+                    break;
+                }
+                Err(_) => tokio::time::sleep(std::time::Duration::from_millis(20)).await,
+            }
+        }
+        let mut client = client.expect("broker never bound its socket");
+
+        let mode = std::fs::metadata(&socket).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "socket mode is {mode:o}");
+
+        send(&mut client, &write_req("theme", Value::String("dark".into()))).await;
+        match recv(&mut client).await {
+            Response::Changed { changed, .. } => assert_eq!(changed, vec!["theme".to_string()]),
+            other => panic!("expected Changed, got {other:?}"),
+        }
+
+        let parsed: toml::Value =
+            toml::from_str(&std::fs::read_to_string(&config).unwrap()).unwrap();
+        assert_eq!(parsed["theme"].as_str(), Some("dark"));
+        server.abort();
+    }
+
 }
