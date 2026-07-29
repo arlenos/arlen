@@ -214,7 +214,7 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::catalog::{merge_catalog, CapabilityFootprint, CatalogEntry, DisplayMeta};
+    use crate::catalog::{merge_catalog, CapabilityFootprint, CatalogEntry, DisplayMeta, ItemKind};
 
     fn entry(id: &str, layer: SourceLayer, name: &str, caps: &[&str]) -> CatalogEntry {
         CatalogEntry {
@@ -230,6 +230,7 @@ mod tests {
                 capabilities: caps.iter().map(|s| s.to_string()).collect(),
             },
             trust: TrustSignals::default(),
+            kind: ItemKind::default(),
         }
     }
 

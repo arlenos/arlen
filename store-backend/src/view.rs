@@ -19,7 +19,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::{AppCard, SourceLayer, Variant};
+use crate::catalog::{AppCard, ItemKind, SourceLayer, Variant};
 
 /// The source-tier badge shown on a card.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,6 +63,9 @@ pub struct StoreCard {
     pub screenshots: Vec<String>,
     /// Which mechanism installs the default variant.
     pub tier: Tier,
+    /// Whether this is an app or a foreign-app bridge. A bridge installs
+    /// alongside the app it serves, so the store renders it differently.
+    pub kind: ItemKind,
     /// The default variant's capability identifiers, sorted. The app renders each
     /// into its own language; this never carries user-facing copy.
     pub capabilities: Vec<String>,
@@ -135,6 +138,7 @@ pub fn store_card(card: &AppCard, installed: &BTreeSet<String>) -> StoreCard {
         icon: card.display.icon.clone(),
         screenshots: card.display.screenshots.clone(),
         tier: default.map(|v| Tier::from(v.layer)).unwrap_or(Tier::Forage),
+        kind: card.kind,
         cap_weight: capabilities.len(),
         capabilities,
         no_network,
@@ -176,6 +180,7 @@ mod tests {
                 capabilities: caps.iter().map(|c| c.to_string()).collect(),
             },
             trust: TrustSignals::default(),
+            kind: ItemKind::default(),
         }
     }
 

@@ -154,6 +154,7 @@ pub async fn run(catalog: SharedCatalog, socket: &Path) -> Result<(), ServeError
 mod tests {
     use super::*;
     use crate::catalog::{
+        ItemKind,
         merge_catalog, CapabilityFootprint, CatalogEntry, ComponentId, DisplayMeta, SourceLayer,
         TrustSignals,
     };
@@ -165,6 +166,7 @@ mod tests {
             display: DisplayMeta { name: "Demo".into(), ..Default::default() },
             capabilities: CapabilityFootprint::default(),
             trust: TrustSignals::default(),
+            kind: ItemKind::default(),
         };
         Catalog::new(merge_catalog(vec![entry]))
     }
@@ -219,6 +221,7 @@ mod tests {
             display: DisplayMeta { name: "New".into(), ..Default::default() },
             capabilities: CapabilityFootprint::default(),
             trust: TrustSignals::default(),
+            kind: ItemKind::default(),
         };
         swap(&holder, Catalog::new(merge_catalog(vec![entry])));
         let current = holder.lock().unwrap().clone();
