@@ -22,7 +22,11 @@
 pub mod apply;
 pub mod broker;
 pub mod decide;
+pub mod protocol;
+pub mod serve;
 
 pub use apply::{apply_to_file, ApplyError};
 pub use broker::{apply_writes, BrokerError, ChangeSignal};
 pub use decide::{decide_write, WriteRejection, WriteRequest};
+pub use protocol::{Request, Response};
+pub use serve::{answer, AppRegistry, AppSettings};
