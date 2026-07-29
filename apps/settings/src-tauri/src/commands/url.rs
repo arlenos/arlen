@@ -1,11 +1,10 @@
 //! URL opener.
 //!
-//! Prefers the Arlen portal plugin (`tauri-plugin-arlen-portal`), which routes
-//! through `org.freedesktop.portal.OpenURI` and so lands on the Arlen backend
-//! like every other portal call; falls back to `xdg-open` when the portal
-//! frontend is not available (CI, headless dev, stripped image). This is the
-//! same portal-first shape [`super::picker`] uses, so URL opening and file
-//! picking do not take two different routes out of Settings.
+//! Opens through `tauri_plugin_arlen_portal::api::open_external`, which prefers
+//! `org.freedesktop.portal.OpenURI` (landing on the Arlen backend like every
+//! other portal call) and falls back to `xdg-open` when no portal frontend is
+//! running. That helper is shared, so URL opening and file picking take the same
+//! route out of Settings and every app gets the same behaviour.
 //!
 //! Restricted to `https://` and `http://` schemes — passing arbitrary `file://`
 //! or shell-meta-character URLs from untrusted code paths would be a
@@ -13,9 +12,7 @@
 //! plugin's own allowlist (which also permits mailto/tel/sms/xmpp/ftps/file), so
 //! it stays in front of the plugin call rather than delegating to it.
 
-use std::process::Command;
-
-use tauri_plugin_arlen_portal::{api, OpenUriOptions, PickerError};
+use tauri_plugin_arlen_portal::api;
 
 const ALLOWED_SCHEMES: &[&str] = &["https://", "http://"];
 
@@ -35,21 +32,9 @@ fn validate_scheme(url: &str) -> Result<(), String> {
 pub async fn open_url(url: String) -> Result<(), String> {
     validate_scheme(&url)?;
 
-    match api::open_uri(&url, OpenUriOptions::default()).await {
-        Ok(()) => return Ok(()),
-        Err(PickerError::PortalUnavailable { .. }) | Err(PickerError::ConnectionLost { .. }) => {
-            log::info!("portal unavailable, falling back to xdg-open");
-        }
-        Err(e) => return Err(format!("portal open_uri failed: {e}")),
-    }
-
-    Command::new("xdg-open")
-        .arg(&url)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("xdg-open: {e}"))?;
-    Ok(())
+    api::open_external(&url)
+        .await
+        .map_err(|e| format!("open {url}: {e}"))
 }
 
 #[cfg(test)]
