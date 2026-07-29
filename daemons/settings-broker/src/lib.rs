@@ -20,7 +20,9 @@
 //! own layer could write a `defaults_only` key by simply claiming it may.
 
 pub mod apply;
+pub mod broker;
 pub mod decide;
 
 pub use apply::{apply_to_file, ApplyError};
+pub use broker::{apply_writes, BrokerError, ChangeSignal};
 pub use decide::{decide_write, WriteRejection, WriteRequest};
