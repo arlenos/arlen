@@ -1,6 +1,7 @@
 //! Tauri command handlers grouped by config file.
 
 pub mod about;
+pub mod app_settings;
 pub mod accessibility;
 pub mod activity;
 pub mod ai;

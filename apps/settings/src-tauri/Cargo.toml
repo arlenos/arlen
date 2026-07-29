@@ -30,6 +30,8 @@ toml_edit = "0.22"
 arlen-settings-core = { path = "../core" }
 # The dynamic-enum resolver dispatches on the schema's own ValueSource.
 arlen-forage-recipe = { path = "../../../contracts/forage-recipe" }
+# Per-app settings writes go through the broker, never straight to the file.
+arlen-settings-broker = { path = "../../../daemons/settings-broker" }
 # RON serialiser used to write the screen-filter state file at
 # `~/.local/state/cosmic-comp/a11y_screen_filter.ron`. The
 # compositor reads this file format; matching it lets the Settings
