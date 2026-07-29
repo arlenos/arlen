@@ -48,6 +48,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
+name = "arlen-theme"
+version = "0.1.0"
+dependencies = [
+ "dirs 5.0.1",
+ "notify",
+ "serde",
+ "thiserror 1.0.69",
+ "toml 0.8.2",
+]
+
+[[package]]
+name = "arlen-ui-kit"
+version = "0.1.0"
+dependencies = [
+ "arlen-theme",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tempfile",
+]
+
+[[package]]
 name = "async-broadcast"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2072,29 +2096,6 @@ name = "log"
 version = "0.4.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
-
-[[package]]
-name = "arlen-theme"
-version = "0.1.0"
-dependencies = [
- "dirs 5.0.1",
- "notify",
- "serde",
- "toml 0.8.2",
-]
-
-[[package]]
-name = "arlen-ui-kit"
-version = "0.1.0"
-dependencies = [
- "arlen-theme",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "tempfile",
-]
 
 [[package]]
 name = "mac"
