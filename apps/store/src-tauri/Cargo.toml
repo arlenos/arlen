@@ -23,3 +23,6 @@ env_logger = "0.11"
 # socket roundtrip) plus the request/response and catalog types the proxy
 # commands hand back verbatim, so the wire model lives in one crate.
 arlen-store-backend = { path = "../../../store-backend" }
+# Ask installd which components are installed (org.arlen.InstallDaemon1
+# ListInstalled) so a card can render Installed against real state, not a guess.
+zbus = { version = "5", default-features = false, features = ["tokio"] }

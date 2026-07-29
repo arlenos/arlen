@@ -1,18 +1,29 @@
 //! Arlen store app backend.
 //!
 //! Thin Tauri proxy over the `org.arlen.Store1` socket (store-app.md section
-//! 9.4). Each command forwards one request to the running `store-backend` and
-//! hands back its `Response` payload verbatim (`AppCard`, `Variant`,
-//! `TrustSignals`, ...). The view model - the plain-language capability lines,
-//! the tier and facet flags, the least-privilege weight - is derived in the
-//! i18n'd frontend, not here: the backend must not emit user-facing copy or it
-//! would ship one language. "arlen-ui designs against this surface."
+//! 9.4). Each command forwards one request to the running `store-backend`.
+//!
+//! The browse commands flatten the merged `AppCard` into the `StoreCard` the app
+//! renders (SC-2), fusing in the installed set from installd. The flattening
+//! itself is the tested `arlen_store_backend::view` logic, so the derivation of
+//! the facets, the least-privilege weight and the tier lives in one place and is
+//! covered by CI. What stays out of it is COPY: the app is translated (`st.*`,
+//! en + de), so the card carries capability *identifiers* and the frontend
+//! renders each into its own language. A Rust backend writing "Cannot reach the
+//! network" would ship one language.
+
+use std::collections::BTreeSet;
 
 use arlen_store_backend::{
-    request_default, AppCard, CapabilityFacet, ComponentId, Request, Response, SourceLayer,
-    TrustSignals, Variant,
+    request_default, store_card, store_cards, CapabilityFacet, ComponentId, Request, Response,
+    SourceLayer, StoreCard, TrustSignals, Variant,
 };
 use serde::Serialize;
+
+/// installd's well-known name, object and interface (all three coincide).
+const INSTALLD: &str = "org.arlen.InstallDaemon1";
+/// installd's object path.
+const INSTALLD_PATH: &str = "/org/arlen/InstallDaemon1";
 
 /// Forward one request to the store backend, mapping a transport failure to a
 /// string the frontend surfaces.
@@ -20,23 +31,48 @@ async fn ask(req: Request) -> Result<Response, String> {
     request_default(&req).await.map_err(|e| e.to_string())
 }
 
+/// The component-ids installd reports installed. Degrades to an empty set when
+/// the daemon is unreachable: a card then renders as not-installed, which is the
+/// honest default (never claim something is installed on a failed read).
+async fn installed_ids() -> BTreeSet<String> {
+    match fetch_installed().await {
+        Ok(apps) => apps.into_iter().map(|(id, _, _, _)| id).collect(),
+        Err(e) => {
+            log::warn!("installed_ids: install daemon unavailable: {e}");
+            BTreeSet::new()
+        }
+    }
+}
+
+/// Call `org.arlen.InstallDaemon1.ListInstalled`, returning its
+/// `(id, name, version, source)` tuples.
+async fn fetch_installed() -> Result<Vec<(String, String, String, String)>, zbus::Error> {
+    let conn = zbus::Connection::session().await?;
+    let proxy = zbus::Proxy::new(&conn, INSTALLD, INSTALLD_PATH, INSTALLD).await?;
+    proxy.call("ListInstalled", &()).await
+}
+
 /// Full-text search over the merged catalog, narrowed by capability facets.
-/// Returns the backend `AppCard`s; the frontend maps them to its view model.
+/// Returns the flattened cards the browse grid renders.
 #[tauri::command]
-async fn store_search(query: String, facets: Vec<CapabilityFacet>) -> Result<Vec<AppCard>, String> {
+async fn store_search(
+    query: String,
+    facets: Vec<CapabilityFacet>,
+) -> Result<Vec<StoreCard>, String> {
     match ask(Request::Search { query, facets }).await? {
-        Response::Cards(cards) => Ok(cards),
+        Response::Cards(cards) => Ok(store_cards(&cards, &installed_ids().await)),
         Response::Error(e) => Err(e),
         other => Err(format!("unexpected store response: {other:?}")),
     }
 }
 
-/// The full merged card for an id, or `None` when the id is unknown (a clean
+/// The flattened card for an id, or `None` when the id is unknown (a clean
 /// not-found for the app page, not an error).
 #[tauri::command]
-async fn store_app_detail(id: String) -> Result<Option<AppCard>, String> {
+async fn store_app_detail(id: String) -> Result<Option<StoreCard>, String> {
     match ask(Request::AppDetail { id: ComponentId(id) }).await? {
-        Response::Card(card) => Ok(card),
+        Response::Card(Some(card)) => Ok(Some(store_card(&card, &installed_ids().await))),
+        Response::Card(None) => Ok(None),
         Response::Error(e) => Err(e),
         other => Err(format!("unexpected store response: {other:?}")),
     }
