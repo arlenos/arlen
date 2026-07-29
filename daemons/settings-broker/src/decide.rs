@@ -139,6 +139,17 @@ fn check_option(item: &SettingsItem, value: &Value) -> Result<(), WriteRejection
     if item.value_type != SettingType::Enum {
         return Ok(());
     }
+    // An enum sourced from live system state has no declared list to check
+    // against - its valid values are the machine's audio devices, installed
+    // themes and so on, which the broker cannot see. Holding it to the empty
+    // `options` would refuse every write and ship a setting nobody can set.
+    //
+    // This costs nothing that was ever a boundary: the option list is a
+    // correctness aid, and the value lands in the app's own config for the app
+    // itself to interpret. The type check above still applies.
+    if item.options_from.is_some() {
+        return Ok(());
+    }
     let Some(s) = value.as_str() else {
         return Ok(()); // Already refused by the type check.
     };
@@ -174,6 +185,7 @@ mod tests {
             max: None,
             unit: None,
             options: Vec::new(),
+            options_from: None,
             order: None,
             keywords: Vec::new(),
             scope: SettingScope::default(),
@@ -310,6 +322,30 @@ mod tests {
         assert_eq!(
             decide_write(&schema, &req("theme", Value::String("neon".into()))),
             Err(WriteRejection::NotAnOption)
+        );
+    }
+
+    /// The values of a system-sourced enum are the machine's, not the package's.
+    /// Holding one to its (empty) declared list would refuse every write and
+    /// leave a setting nobody can set.
+    #[test]
+    fn a_system_sourced_enum_accepts_a_value_the_package_never_declared() {
+        let mut e = item("output", SettingType::Enum);
+        e.options_from = Some(arlen_forage_recipe::settings::ValueSource::AudioOutputs);
+        let schema = schema_of(vec![e]);
+
+        assert!(decide_write(
+            &schema,
+            &req("output", Value::String("alsa_output.pci-0000_00_1f.3".into()))
+        )
+        .is_ok());
+
+        // The type check still applies: it is an enum of strings.
+        assert_eq!(
+            decide_write(&schema, &req("output", Value::Integer(3))),
+            Err(WriteRejection::WrongType {
+                expected: SettingType::Enum
+            })
         );
     }
 

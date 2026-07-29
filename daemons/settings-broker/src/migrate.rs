@@ -155,11 +155,17 @@ pub fn apply_migration(doc: &mut DocumentMut, plan: &MigrationPlan) -> bool {
         let Some(value) = value_at(doc, &forward.from) else {
             continue;
         };
-        if crate::apply::set_in_document(doc, &forward.to, &to_toml(&value)).unwrap_or(false) {
+        // Write the new key BEFORE dropping the old one, and only drop it if the
+        // write went in. Removing it regardless would delete the user's value
+        // whenever the forward failed - the one outcome a migration must never
+        // have. Leaving it in place means the next load simply tries again.
+        //
+        // `Ok(false)` (the value was already there) still removes: that is what
+        // makes a re-run idempotent rather than leaving the old key forever.
+        if crate::apply::set_in_document(doc, &forward.to, &to_toml(&value)).is_ok() {
+            remove_key(doc, &forward.from);
             changed = true;
         }
-        remove_key(doc, &forward.from);
-        changed = true;
     }
 
     for stale in &plan.supersedes {
@@ -245,6 +251,7 @@ mod tests {
             max: None,
             unit: None,
             options: Vec::new(),
+            options_from: None,
             order: None,
             keywords: Vec::new(),
             scope: SettingScope::default(),
@@ -273,6 +280,24 @@ mod tests {
 
     fn doc(text: &str) -> DocumentMut {
         text.parse::<DocumentMut>().unwrap()
+    }
+
+    /// If the forward cannot be written, the old key must survive. Deleting it
+    /// anyway would destroy the user's value outright, which is the one outcome
+    /// a migration may never have; keeping it lets the next load try again.
+    #[test]
+    fn a_failed_forward_leaves_the_users_value_alone() {
+        // `ui` holds a string, so writing `ui.mode` under it cannot work.
+        let schema = schema(vec![item("ui.mode", &["mode"])]);
+        let mut d = doc("ui = \"compact\"\nmode = \"dark\"\n");
+
+        let plan = plan_migration(&schema, &d);
+        assert_eq!(plan.forwards.len(), 1, "the rename should be planned");
+
+        let changed = apply_migration(&mut d, &plan);
+
+        assert!(is_set(&d, "mode"), "the user's value must still be there");
+        assert!(!changed, "nothing moved, so nothing should be announced");
     }
 
     #[test]

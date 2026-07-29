@@ -141,6 +141,7 @@ mod tests {
                         max: None,
                         unit: None,
                         options: Vec::new(),
+                        options_from: None,
                         order: None,
                         keywords: Vec::new(),
                         scope: SettingScope::default(),
