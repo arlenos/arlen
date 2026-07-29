@@ -17,6 +17,15 @@ pub enum Commands {
         /// Package path (.lunpkg), URL, or flatpak:{app_id}.
         target: String,
     },
+    /// Update an installed app to what its cookbook now offers. Explicit and
+    /// foreground: nothing here runs on a timer.
+    Update {
+        /// The app's reverse-DNS name, as its cookbook lists it.
+        name: String,
+        /// Apply without asking, even when the update wants something new.
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
     /// Remove an installed app (staged deletion with 30-day grace period).
     Remove {
         /// App ID (e.g. com.example.app).

@@ -18,6 +18,37 @@ pub async fn connect() -> Result<Connection, String> {
         .map_err(|e| format!("failed to connect to session bus: {e}"))
 }
 
+/// Ask what upgrading to `path` would require, without installing it.
+///
+/// Returns `(app_id, verdict, details)` straight from the daemon: `silent` when
+/// the update asks for nothing new, `interruptive` when it wants something it did
+/// not have, `unknown` when nothing was recorded so no comparison is possible,
+/// `error` when the package could not be read or verified.
+///
+/// A plain call rather than a job: nothing is installed by asking, so there is no
+/// progress to follow and no completion to wait for.
+pub async fn preview_upgrade(
+    conn: &Connection,
+    path: &str,
+) -> Result<(String, String, Vec<String>), String> {
+    let iface = zbus::names::InterfaceName::try_from(INTERFACE)
+        .map_err(|e| format!("invalid interface: {e}"))?;
+    let bus =
+        zbus::names::BusName::try_from(BUS_NAME).map_err(|e| format!("invalid bus name: {e}"))?;
+    let path_obj = zbus::zvariant::ObjectPath::try_from(OBJECT_PATH)
+        .map_err(|e| format!("invalid path: {e}"))?;
+
+    let reply = conn
+        .call_method(Some(&bus), &path_obj, Some(&iface), "PreviewUpgrade", &(path,))
+        .await
+        .map_err(|e| format!("PreviewUpgrade call failed: {e}"))?;
+
+    reply
+        .body()
+        .deserialize()
+        .map_err(|e| format!("unreadable PreviewUpgrade reply: {e}"))
+}
+
 /// Call a D-Bus method that returns a job_id, then wait for completion.
 async fn call_and_wait(
     conn: &Connection,

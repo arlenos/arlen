@@ -15,6 +15,7 @@ fn main() {
 
     match cli.command {
         Commands::Install { target } => run_async(cmd_install(target)),
+        Commands::Update { name, yes } => run_async(update_by_name(name, yes)),
         Commands::Remove { app_id } => run_async(cmd_remove(app_id)),
         Commands::List { json } => run_async(cmd_list(json)),
         Commands::Info { app_id, json } => run_async(cmd_info(app_id, json)),
@@ -200,6 +201,16 @@ async fn cmd_install(target: String) {
 /// signed hash, then build (always sandboxed, the remote recipe is untrusted)
 /// and install. Any verification failure aborts.
 async fn install_by_name(name: String) {
+    let lunpkg = build_by_name(name).await;
+    Box::pin(cmd_install(lunpkg.to_string_lossy().into_owned())).await;
+}
+
+/// Resolve, verify and build a named recipe, returning the built package.
+///
+/// Split out because update needs exactly this and then one more step. Every
+/// verification below is on the path to a package that will be installed, so
+/// update inherits them rather than growing a laxer copy.
+async fn build_by_name(name: String) -> std::path::PathBuf {
     use arlen_forage_fetch::{GitFetcher, ProcessGitFetcher, DEFAULT_RECIPE_REPO_BYTES};
 
     let resolved = match commands::cookbook::resolve_in_cookbooks(&name).await {
@@ -278,11 +289,80 @@ async fn install_by_name(name: String) {
     }
 
     // Untrusted remote recipe: never build it unconfined.
-    let lunpkg = match commands::build::build_recipe_at(&recipe_path, false).await {
+    match commands::build::build_recipe_at(&recipe_path, false).await {
         Ok(p) => p,
         Err(()) => std::process::exit(1),
+    }
+}
+
+/// Update an installed app to what its cookbook now offers.
+///
+/// **Explicit, never automatic.** Nothing here runs on a timer: the user asks,
+/// and the update happens in the foreground where they can see it.
+///
+/// The package is built exactly as an install builds it, then the daemon is asked
+/// what applying it would require BEFORE anything is applied. An update that wants
+/// something the installed version did not gets an interruption naming what it is;
+/// an update that asks for nothing new applies without ceremony, because a prompt
+/// on every update is how people learn to click through prompts.
+async fn update_by_name(name: String, assume_yes: bool) {
+    let lunpkg = build_by_name(name).await;
+    let path = lunpkg.to_string_lossy().into_owned();
+
+    let conn = match commands::install_client::connect().await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("{} {e}", "error:".red().bold());
+            std::process::exit(1);
+        }
     };
-    Box::pin(cmd_install(lunpkg.to_string_lossy().into_owned())).await;
+
+    match commands::install_client::preview_upgrade(&conn, &path).await {
+        Ok((_app_id, verdict, details)) => match verdict.as_str() {
+            "silent" => {}
+            "interruptive" => {
+                println!("This update asks for something the installed version did not:");
+                for line in &details {
+                    println!("  {line}");
+                }
+                if !assume_yes && !confirm("Apply the update? [y/N] ") {
+                    println!("Not applied.");
+                    return;
+                }
+            }
+            "unknown" => {
+                // No baseline, so nothing can be shown as a delta. Say so rather
+                // than implying the update changes nothing.
+                println!(
+                    "There is no record of what {} was granted, so this update cannot be \
+                     compared against it. It asks for:",
+                    lunpkg.display()
+                );
+                for line in &details {
+                    println!("  {line}");
+                }
+                if !assume_yes && !confirm("Apply the update? [y/N] ") {
+                    println!("Not applied.");
+                    return;
+                }
+            }
+            _ => {
+                eprintln!(
+                    "{} the update could not be checked: {}",
+                    "error:".red().bold(),
+                    details.join("; ")
+                );
+                std::process::exit(1);
+            }
+        },
+        Err(e) => {
+            // A check that cannot run is not a check that passed.
+            eprintln!("{} {e}", "error:".red().bold());
+            std::process::exit(1);
+        }
+    }
+
+    Box::pin(cmd_install(path)).await;
 }
 
 /// Install every cookbook bridge tagged for a foreign app (foreign-app-bridges.md
