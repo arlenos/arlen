@@ -580,6 +580,9 @@ pub fn validate(recipe: &Recipe) -> Vec<ValidationError> {
     }
 
     validate_bridge(recipe, &mut errors);
+    if let Some(schema) = &recipe.settings {
+        settings::validate_settings(schema, &mut errors);
+    }
 
     errors
 }
@@ -768,6 +771,10 @@ fn validate_build(build: &Build, errors: &mut Vec<ValidationError>) {
 pub fn lint(recipe: &Recipe) -> Vec<ValidationWarning> {
     let mut warnings = Vec::new();
 
+    if let Some(schema) = &recipe.settings {
+        settings::lint_settings(schema, &mut warnings);
+    }
+
     // Note: a malformed reverse-DNS id is a fatal `validate` error, not a lint.
 
     match &recipe.recipe.version {
@@ -815,14 +822,14 @@ pub fn lint(recipe: &Recipe) -> Vec<ValidationWarning> {
 // small helpers
 // ---------------------------------------------------------------------------
 
-fn err(field: &str, message: &str) -> ValidationError {
+pub(crate) fn err(field: &str, message: &str) -> ValidationError {
     ValidationError {
         field: field.to_string(),
         message: message.to_string(),
     }
 }
 
-fn warn(field: &str, message: impl Into<String>) -> ValidationWarning {
+pub(crate) fn warn(field: &str, message: impl Into<String>) -> ValidationWarning {
     ValidationWarning {
         field: field.to_string(),
         message: message.into(),
