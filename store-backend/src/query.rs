@@ -81,6 +81,81 @@ pub fn sort_least_privilege(cards: &mut [AppCard]) {
     cards.sort_by_key(privilege_cost);
 }
 
+/// What is installed, as the caller read it from the install lock.
+///
+/// The store-backend does not read the lock itself: that lives with installd,
+/// which writes it, and a store that reached into another daemon's state file
+/// would break the moment either side moved. The caller passes the old side in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstalledVersion {
+    /// Which layer it was installed from.
+    pub layer: SourceLayer,
+    /// The version recorded at install.
+    pub version: String,
+}
+
+/// An app whose source now offers a different version than the one installed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingUpdate {
+    /// The component-id.
+    pub id: ComponentId,
+    /// The layer it is installed from, which is the only layer compared.
+    pub layer: SourceLayer,
+    /// The version recorded at install.
+    pub installed_version: String,
+    /// The version that layer now offers.
+    pub available_version: String,
+}
+
+/// Which installed apps their own source now offers at a different version.
+///
+/// **A local computation over the cached catalog.** No network call: the catalog
+/// is refreshed in the background, and asking the network every time a page opens
+/// would make opening the store a request to every source the user has.
+///
+/// Two rules keep the answer honest:
+///
+/// **Only the installed layer counts.** If an app was installed from apt and
+/// Flathub offers a newer build, that is not an update, it is a different
+/// packaging with its own capabilities and trust signals. Offering it as "an
+/// update" would walk the user across a trust boundary they never chose.
+///
+/// **A version neither side states is not a change.** Sources that do not state a
+/// version yield an empty string, and comparing empty against empty - or against
+/// anything - would either flag every app forever or silently hide real updates.
+/// An app is only reported when both versions are known and they differ.
+///
+/// Note it reports "differs", not "newer": ordering distro version strings
+/// correctly is per-layer and intricate (dpkg's algorithm is famously so), and a
+/// wrong ordering either hides updates or offers downgrades. Both versions are
+/// carried so the caller can show them and let the user decide.
+pub fn outdated(
+    catalog: &Catalog,
+    installed: &std::collections::BTreeMap<String, InstalledVersion>,
+) -> Vec<PendingUpdate> {
+    let mut out = Vec::new();
+    for (id, have) in installed {
+        let Some(card) = catalog.card(&ComponentId(id.clone())) else {
+            continue; // No longer in the catalog: nothing to compare against.
+        };
+        let Some(variant) = card.variants.iter().find(|v| v.layer == have.layer) else {
+            continue; // That layer no longer offers it.
+        };
+        if have.version.is_empty() || variant.version.is_empty() {
+            continue;
+        }
+        if variant.version != have.version {
+            out.push(PendingUpdate {
+                id: ComponentId(id.clone()),
+                layer: have.layer,
+                installed_version: have.version.clone(),
+                available_version: variant.version.clone(),
+            });
+        }
+    }
+    out
+}
+
 /// A store request over `org.arlen.Store1` (section 9.4, v1).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Request {
@@ -129,6 +204,12 @@ pub enum Request {
         /// The component-id.
         id: ComponentId,
     },
+    /// Which installed apps their own source now offers at a different version.
+    /// The caller supplies what is installed, read from the install lock.
+    Outdated {
+        /// Component-id to what is installed, from the lock.
+        installed: std::collections::BTreeMap<String, InstalledVersion>,
+    },
 }
 
 /// What the store can honestly say about an app's observed-vs-declared standing
@@ -174,6 +255,8 @@ pub enum Response {
     Trust(Vec<(SourceLayer, TrustSignals)>),
     /// The install variants for an id.
     Variants(Vec<Variant>),
+    /// The apps whose source offers a different version than the installed one.
+    Updates(Vec<PendingUpdate>),
     /// A validated install handoff: the id + variant exist; the caller proceeds.
     InstallResolved {
         /// The component-id.
@@ -238,6 +321,7 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
             Response::Cards(cards)
         }
         Request::ListByFacet { facet } => Response::Cards(catalog.search("", &[facet])),
+        Request::Outdated { installed } => Response::Updates(outdated(catalog, &installed)),
         Request::AppDetail { id } => Response::Card(catalog.card(&id).cloned()),
         Request::TrustSignals { id } => match catalog.card(&id) {
             Some(card) => Response::Trust(
@@ -270,6 +354,7 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
     use crate::catalog::{merge_catalog, CapabilityFootprint, CatalogEntry, DisplayMeta, ItemKind};
 
     fn entry(id: &str, layer: SourceLayer, name: &str, caps: &[&str]) -> CatalogEntry {
@@ -287,6 +372,7 @@ mod tests {
             },
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
+            version: String::new(),
         }
     }
 
@@ -305,6 +391,93 @@ mod tests {
         assert_eq!(cards[0].id, ComponentId("org.y.Paint".into()));
         // Empty query returns everything.
         assert_eq!(catalog().search("", &[]).len(), 2);
+    }
+
+    /// A catalog where one app is versioned on two layers.
+    fn versioned_catalog() -> Catalog {
+        let mut a = entry("org.x.Chat", SourceLayer::Flatpak, "Chatter", &["network"]);
+        a.version = "2.0".into();
+        let mut b = entry("org.x.Chat", SourceLayer::Apt, "Chatter", &[]);
+        b.version = "1.0".into();
+        Catalog::new(merge_catalog(vec![a, b]))
+    }
+
+    fn installed(layer: SourceLayer, version: &str) -> BTreeMap<String, InstalledVersion> {
+        [(
+            "org.x.Chat".to_string(),
+            InstalledVersion {
+                layer,
+                version: version.into(),
+            },
+        )]
+        .into_iter()
+        .collect()
+    }
+
+    #[test]
+    fn a_newer_version_on_the_installed_layer_is_an_update() {
+        let updates = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "0.9"));
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0].installed_version, "0.9");
+        assert_eq!(updates[0].available_version, "1.0");
+        assert_eq!(updates[0].layer, SourceLayer::Apt);
+    }
+
+    /// The rule that keeps the user on the packaging they chose: Flathub offering
+    /// 2.0 for an apt-installed app is a different variant with its own
+    /// capabilities and trust, not an update. Offering it as one would walk them
+    /// across a trust boundary they never agreed to.
+    #[test]
+    fn another_layers_version_is_not_an_update() {
+        let updates = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "1.0"));
+        assert!(
+            updates.is_empty(),
+            "flathub's 2.0 must not surface for an apt install: {updates:?}"
+        );
+    }
+
+    /// A source that states no version must not make every app look changed, nor
+    /// hide a real change behind a comparison against nothing.
+    #[test]
+    fn an_unstated_version_is_not_a_change() {
+        // The catalog states one, the lock does not.
+        assert!(outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "")).is_empty());
+
+        // The lock states one, the catalog does not.
+        let unversioned = Catalog::new(merge_catalog(vec![entry(
+            "org.x.Chat",
+            SourceLayer::Apt,
+            "Chatter",
+            &[],
+        )]));
+        assert!(outdated(&unversioned, &installed(SourceLayer::Apt, "1.0")).is_empty());
+    }
+
+    #[test]
+    fn an_app_the_catalog_dropped_is_not_reported() {
+        let empty = Catalog::new(merge_catalog(vec![]));
+        assert!(outdated(&empty, &installed(SourceLayer::Apt, "1.0")).is_empty());
+    }
+
+    #[test]
+    fn nothing_installed_means_nothing_outdated() {
+        assert!(outdated(&versioned_catalog(), &BTreeMap::new()).is_empty());
+    }
+
+    /// The op answers the same as the function, so a caller over the socket gets
+    /// what a caller in-process does.
+    #[test]
+    fn the_outdated_op_answers_the_same_updates() {
+        let answer = answer(
+            &versioned_catalog(),
+            Request::Outdated {
+                installed: installed(SourceLayer::Apt, "0.9"),
+            },
+        );
+        match answer {
+            Response::Updates(u) => assert_eq!(u.len(), 1),
+            other => panic!("expected updates, got {other:?}"),
+        }
     }
 
     /// The point of declaring capabilities instead of inferring them: the app

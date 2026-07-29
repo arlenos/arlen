@@ -167,6 +167,7 @@ mod tests {
             capabilities: CapabilityFootprint::default(),
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
+            version: String::new(),
         };
         Catalog::new(merge_catalog(vec![entry]))
     }
@@ -222,6 +223,7 @@ mod tests {
             capabilities: CapabilityFootprint::default(),
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
+            version: String::new(),
         };
         swap(&holder, Catalog::new(merge_catalog(vec![entry])));
         let current = holder.lock().unwrap().clone();
