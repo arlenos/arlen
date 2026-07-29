@@ -195,7 +195,7 @@ mod tests {
             serve_connection(&mut server, &cat).await
         });
 
-        write_request(&mut client, &Request::Search { query: "demo".into(), facets: vec![] }).await;
+        write_request(&mut client, &Request::Search { query: "demo".into(), facets: vec![], sort: Default::default() }).await;
         match read_response(&mut client).await {
             Response::Cards(cards) => {
                 assert_eq!(cards.len(), 1);
@@ -249,7 +249,7 @@ mod tests {
             }
             tokio::task::yield_now().await;
         };
-        write_request(&mut client, &Request::Search { query: "".into(), facets: vec![] }).await;
+        write_request(&mut client, &Request::Search { query: "".into(), facets: vec![], sort: Default::default() }).await;
         assert!(matches!(read_response(&mut client).await, Response::Cards(c) if c.len() == 1));
         listener.abort();
         let _ = std::fs::remove_dir_all(&dir);

@@ -39,6 +39,48 @@ impl CapabilityFacet {
     }
 }
 
+/// How results are ordered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SortOrder {
+    /// Catalog order: how the sources listed them.
+    #[default]
+    Relevance,
+    /// The app that asks for least, first.
+    ///
+    /// The store's whole argument is that a capability is declared here rather
+    /// than inferred from a binary, and this is what that declaration buys the
+    /// user: a way to find the app that wants the least, which no store built on
+    /// inference can offer.
+    LeastPrivilege,
+}
+
+/// How much a card asks for, as the count of the most modest variant.
+///
+/// The MINIMUM over variants, not the sum or the maximum, because capabilities
+/// are per-variant and the user picks the variant: the honest question is "how
+/// little can I install this with", not "what is the worst packaging of it".
+///
+/// A card with no installable variant sorts last rather than first. It asks for
+/// nothing only because there is nothing to install.
+pub fn privilege_cost(card: &AppCard) -> usize {
+    card.variants
+        .iter()
+        .map(|v| v.capabilities.capabilities.len())
+        .min()
+        .unwrap_or(usize::MAX)
+}
+
+/// Order cards by how little they ask for.
+///
+/// Ties keep catalog order rather than falling back to the name: two apps that
+/// ask for the same thing have no privilege reason to outrank each other, and
+/// re-sorting them alphabetically would bury whatever the sources ranked first.
+/// `sort_by_key` is stable, so this holds.
+pub fn sort_least_privilege(cards: &mut [AppCard]) {
+    cards.sort_by_key(privilege_cost);
+}
+
 /// A store request over `org.arlen.Store1` (section 9.4, v1).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Request {
@@ -49,6 +91,10 @@ pub enum Request {
         /// Capability facets to AND against the results.
         #[serde(default)]
         facets: Vec<CapabilityFacet>,
+        /// How to order what comes back. Absent means catalog order, so an
+        /// older caller keeps the results it used to get.
+        #[serde(default)]
+        sort: SortOrder,
     },
     /// List every card passing a single capability facet.
     ListByFacet {
@@ -180,7 +226,17 @@ impl Catalog {
 /// [`Response::Error`], never a panic.
 pub fn answer(catalog: &Catalog, request: Request) -> Response {
     match request {
-        Request::Search { query, facets } => Response::Cards(catalog.search(&query, &facets)),
+        Request::Search {
+            query,
+            facets,
+            sort,
+        } => {
+            let mut cards = catalog.search(&query, &facets);
+            if sort == SortOrder::LeastPrivilege {
+                sort_least_privilege(&mut cards);
+            }
+            Response::Cards(cards)
+        }
         Request::ListByFacet { facet } => Response::Cards(catalog.search("", &[facet])),
         Request::AppDetail { id } => Response::Card(catalog.card(&id).cloned()),
         Request::TrustSignals { id } => match catalog.card(&id) {
@@ -249,6 +305,88 @@ mod tests {
         assert_eq!(cards[0].id, ComponentId("org.y.Paint".into()));
         // Empty query returns everything.
         assert_eq!(catalog().search("", &[]).len(), 2);
+    }
+
+    /// The point of declaring capabilities instead of inferring them: the app
+    /// that asks for least can be found. Catalog order puts Chat first; asking
+    /// for least-privilege puts Paint there, because Paint can be installed
+    /// asking for nothing at all.
+    #[test]
+    fn least_privilege_puts_the_most_modest_app_first() {
+        let mut cards = catalog().search("", &[]);
+        assert_eq!(cards[0].id, ComponentId("org.x.Chat".into()), "catalog order");
+
+        sort_least_privilege(&mut cards);
+        assert_eq!(cards[0].id, ComponentId("org.y.Paint".into()));
+        assert_eq!(cards[1].id, ComponentId("org.x.Chat".into()));
+    }
+
+    /// The cost is the MINIMUM over variants, not the maximum: Paint's Flatpak
+    /// variant asks for the network, but its Official one asks for nothing, and
+    /// the user is the one who picks. Ranking it by its worst packaging would
+    /// bury an app that can be installed cleanly.
+    #[test]
+    fn the_cost_is_the_variant_the_user_could_choose() {
+        let cards = catalog().search("paint", &[]);
+        let paint = &cards[0];
+        assert_eq!(paint.variants.len(), 2, "both variants merged onto one card");
+        assert_eq!(privilege_cost(paint), 0);
+    }
+
+    /// A card with nothing to install must not top a least-privilege list by
+    /// virtue of asking for nothing.
+    #[test]
+    fn a_card_with_no_variant_sorts_last() {
+        let mut empty = catalog().search("paint", &[])[0].clone();
+        empty.variants.clear();
+        assert_eq!(privilege_cost(&empty), usize::MAX);
+
+        let mut cards = catalog().search("", &[]);
+        cards.push(empty.clone());
+        sort_least_privilege(&mut cards);
+        assert_eq!(cards.last().unwrap().variants.len(), 0);
+    }
+
+    /// The order is opt-in, so a caller that does not ask keeps what it got.
+    #[test]
+    fn the_default_order_is_unchanged() {
+        let plain = answer(
+            &catalog(),
+            Request::Search {
+                query: String::new(),
+                facets: vec![],
+                sort: SortOrder::default(),
+            },
+        );
+        let sorted = answer(
+            &catalog(),
+            Request::Search {
+                query: String::new(),
+                facets: vec![],
+                sort: SortOrder::LeastPrivilege,
+            },
+        );
+        let ids = |r: Response| match r {
+            Response::Cards(c) => c.into_iter().map(|c| c.id).collect::<Vec<_>>(),
+            other => panic!("expected cards, got {other:?}"),
+        };
+        assert_eq!(ids(plain)[0], ComponentId("org.x.Chat".into()));
+        assert_eq!(ids(sorted)[0], ComponentId("org.y.Paint".into()));
+    }
+
+    /// An older caller sends no `sort` at all; it must still parse.
+    #[test]
+    fn a_request_without_a_sort_field_still_parses() {
+        let req: Request =
+            serde_json::from_str(r#"{"Search":{"query":"x","facets":[]}}"#).expect("should parse");
+        assert_eq!(
+            req,
+            Request::Search {
+                query: "x".into(),
+                facets: vec![],
+                sort: SortOrder::Relevance,
+            }
+        );
     }
 
     #[test]
@@ -323,6 +461,7 @@ mod tests {
         let req = Request::Search {
             query: "chat".into(),
             facets: vec![CapabilityFacet::Excludes("camera".into())],
+            sort: SortOrder::LeastPrivilege,
         };
         let json = serde_json::to_string(&req).unwrap();
         assert_eq!(serde_json::from_str::<Request>(&json).unwrap(), req);
