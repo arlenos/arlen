@@ -440,6 +440,35 @@ impl From<SaveFilesOptions> for WireRequest {
     }
 }
 
+/// Open `uri` externally the Arlen way: through the portal when a frontend is
+/// running, falling back to `xdg-open` when it is not (CI, headless dev, a
+/// stripped image). Every first-party app wants exactly this, and each had
+/// grown its own copy of the fallback; keeping it here means the portal is
+/// preferred consistently and the fallback exists once.
+///
+/// The caller keeps its OWN scheme policy and applies it BEFORE calling this -
+/// Settings allows only http(s) while the harness and terminal also allow
+/// `mailto:`, and that difference is deliberate. This function still enforces
+/// the plugin's own allowlist through [`open_uri`], so it can only ever be more
+/// restrictive than the caller, never less.
+pub async fn open_external(uri: &str) -> Result<(), PickerError> {
+    match open_uri(uri, OpenUriOptions::default()).await {
+        Ok(()) => return Ok(()),
+        Err(PickerError::PortalUnavailable { .. }) | Err(PickerError::ConnectionLost { .. }) => {}
+        Err(e) => return Err(e),
+    }
+
+    // No portal frontend. Hand the URI to xdg-open as a single argument (never a
+    // shell), so it carries no injection risk.
+    std::process::Command::new("xdg-open")
+        .arg(uri)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| PickerError::Other { message: format!("xdg-open: {e}") })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
