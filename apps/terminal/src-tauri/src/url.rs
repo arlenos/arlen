@@ -1,5 +1,5 @@
-//! URL opener: hand a link off to the user's browser/mail client via
-//! `xdg-open`.
+//! URL opener: hand a link off to the user's browser/mail client through the
+//! Arlen portal, falling back to `xdg-open` when no portal frontend is running.
 //!
 //! Markdown answers can contain links. Letting a click navigate the Tauri
 //! webview would replace the single-page app with the target site (and there is
@@ -8,10 +8,10 @@
 //!
 //! Restricted to the same schemes the markdown sanitizer allows (`http`,
 //! `https`, `mailto`); anything else is refused, so this cannot be used as a
-//! generic `file://`/protocol shell-out from the webview. The URL is passed to
-//! `xdg-open` as a single argument (no shell), so it carries no injection risk.
+//! generic `file://`/protocol shell-out from the webview. The URI is passed on as
+//! a single argument (never a shell), so it carries no injection risk.
 
-use std::process::Command;
+use tauri_plugin_arlen_portal::api;
 
 const ALLOWED_SCHEMES: &[&str] = &["https://", "http://", "mailto:"];
 
@@ -28,19 +28,15 @@ fn scheme_allowed(url: &str) -> bool {
 
 /// Open `url` in the user's default handler, if its scheme is allowed.
 #[tauri::command]
-pub fn open_url(url: String) -> Result<(), String> {
+pub async fn open_url(url: String) -> Result<(), String> {
     if !scheme_allowed(&url) {
         return Err(format!(
             "rejected URL with disallowed scheme: {url}; only http(s) and mailto are supported"
         ));
     }
-    Command::new("xdg-open")
-        .arg(&url)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("xdg-open: {e}"))?;
-    Ok(())
+    api::open_external(&url)
+        .await
+        .map_err(|e| format!("open {url}: {e}"))
 }
 
 #[cfg(test)]
