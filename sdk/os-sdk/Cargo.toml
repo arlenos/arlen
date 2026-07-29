@@ -17,6 +17,8 @@ rmcp = { version = "1.7", features = ["server", "macros"] }
 tracing = "0.1"
 arlen-permissions = { path = "../permissions" }
 arlen-capsule = { path = "../../contracts/capsule" }
+# The declared settings schema (PAS-1) an app reads its own config against.
+arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
 
 toml = "0.8"
 notify = "6"
