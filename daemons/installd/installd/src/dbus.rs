@@ -71,6 +71,33 @@ impl InstallDaemon {
         apps
     }
 
+    /// What upgrading to a package would ask of the user, without installing it.
+    ///
+    /// Returns `(app_id, verdict, details)`. `verdict` is `silent` when the update
+    /// asks for nothing new, `interruptive` when it wants something it did not
+    /// have before, `unknown` when nothing was recorded for the app so no
+    /// comparison is possible, and `error` when the package could not be read or
+    /// verified. `details` carries the newly-requested capabilities in plain
+    /// language for the first three, and the reason for the last.
+    ///
+    /// A read-only preview: it extracts and VERIFIES the package exactly as an
+    /// install does, then throws the extraction away. Nothing is installed and no
+    /// consent is recorded by asking.
+    async fn preview_upgrade(&self, path: String) -> (String, String, Vec<String>) {
+        match crate::consent::preview_upgrade(&path) {
+            Ok((app_id, crate::consent::UpgradeGate::Silent)) => {
+                (app_id, "silent".into(), Vec::new())
+            }
+            Ok((app_id, crate::consent::UpgradeGate::Interruptive { widened })) => {
+                (app_id, "interruptive".into(), widened)
+            }
+            Ok((app_id, crate::consent::UpgradeGate::Unknown { requested })) => {
+                (app_id, "unknown".into(), requested)
+            }
+            Err(e) => (String::new(), "error".into(), vec![e.to_string()]),
+        }
+    }
+
     /// Restore a previously uninstalled app from the 30-day trash.
     ///
     /// Returns (success, error_message).
