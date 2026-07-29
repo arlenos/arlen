@@ -10,6 +10,8 @@
 //! fatal schema violations (an empty list means the recipe is structurally
 //! sound) and [`lint`] returns non-fatal recommendations.
 
+pub mod settings;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -84,6 +86,11 @@ pub struct Recipe {
     /// Reproducibility status (`[reproducible]`).
     #[serde(default)]
     pub reproducible: Option<Reproducible>,
+    /// The settings this app declares (`[settings]`), rendered by the system
+    /// Settings app (PAS-1). Shipped with the package so an app can be
+    /// configured before it has ever been launched.
+    #[serde(default)]
+    pub settings: Option<settings::SettingsSchema>,
     /// Which foreign app this recipe bridges (`[bridge]`), when it is a bridge.
     /// `forage install <foreign_app>` finds every cookbook recipe carrying this id
     /// and installs its bridge alongside the app (foreign-app-bridges.md §4).
