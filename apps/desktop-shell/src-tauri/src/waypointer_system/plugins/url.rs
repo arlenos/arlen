@@ -64,6 +64,14 @@ fn looks_like_url(s: &str) -> bool {
     if s.starts_with("http://") || s.starts_with("https://") || s.starts_with("ftp://") {
         return true;
     }
+    // Any OTHER explicit scheme is refused. `search` hands a `://` query to the
+    // opener verbatim, so without this the launcher would open arbitrary
+    // protocols: `file:///etc/hosts.allow` used to reach here because "allow"
+    // reads as a valid TLD to the domain check below. The three schemes above
+    // are the ones this plugin advertises, and they are the only ones it opens.
+    if s.contains("://") {
+        return false;
+    }
     // Fast-path: explicit web-shorthand. Always a URL.
     if s.starts_with("www.") && s.len() > 4 {
         return true;
@@ -134,4 +142,20 @@ mod tests {
         let p = UrlPlugin;
         assert!(p.search("hello world").is_empty());
     }
+    /// A query carrying an explicit scheme is only a URL if it is a scheme this
+    /// plugin actually advertises (http/https/ftp). Without this, anything
+    /// shaped `scheme://...something.tld` was passed to `xdg-open` verbatim -
+    /// `file:///etc/hosts.allow` slipped through because "allow" reads as a
+    /// valid TLD - which turns the launcher into a generic protocol shell-out.
+    #[test]
+    fn unadvertised_schemes_are_not_urls() {
+        assert!(!looks_like_url("file:///etc/hosts.allow"));
+        assert!(!looks_like_url("smb://server/share.txt"));
+        assert!(!looks_like_url("vnc://host.example"));
+        // The advertised ones still pass.
+        assert!(looks_like_url("http://example.com"));
+        assert!(looks_like_url("https://example.com/p?q=1"));
+        assert!(looks_like_url("ftp://files.example.com"));
+    }
+
 }
