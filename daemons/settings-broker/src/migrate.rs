@@ -192,6 +192,41 @@ fn to_toml(value: &toml_edit::Value) -> toml::Value {
     }
 }
 
+/// Migrate the config at `path` against `schema`, returning the keys whose
+/// value moved.
+///
+/// Called before any write is applied, which is what "the broker runs
+/// migrations at load, before any reader" means in practice: by the time a
+/// caller's write lands, or the app next reads the file, the rename has already
+/// been carried across.
+///
+/// A missing or unreadable file is not an error - there is simply nothing to
+/// migrate. A MALFORMED file is left strictly alone: rewriting a config we
+/// cannot parse would risk destroying whatever it really contains, and the
+/// write path refuses it separately with a clearer message.
+pub fn migrate_file(
+    path: &std::path::Path,
+    schema: &SettingsSchema,
+) -> Result<Vec<String>, crate::apply::ApplyError> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Ok(Vec::new());
+    };
+    let Ok(mut doc) = text.parse::<DocumentMut>() else {
+        return Ok(Vec::new());
+    };
+
+    let plan = plan_migration(schema, &doc);
+    if plan.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !apply_migration(&mut doc, &plan) {
+        return Ok(Vec::new());
+    }
+
+    crate::apply::write_document(path, &doc)?;
+    Ok(plan.forwards.iter().map(|f| f.to.clone()).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -107,9 +107,16 @@ pub fn apply_writes(
         })?;
     }
 
-    let mut changed = Vec::new();
+    // Migrate BEFORE applying: a rename must be carried across before a write
+    // lands, or the write would go to the new key while the user's old value
+    // still sat under the former name. Forwarded keys are part of the changed
+    // set because the file genuinely changed - a subscriber live-reloading needs
+    // to pick the moved value up.
+    let mut changed = crate::migrate::migrate_file(config_path, schema)?;
     for request in requests {
-        if apply_to_file(config_path, &request.key, &request.value)? {
+        if apply_to_file(config_path, &request.key, &request.value)?
+            && !changed.contains(&request.key)
+        {
             changed.push(request.key.clone());
         }
     }
@@ -282,4 +289,71 @@ mod tests {
         let signal = apply_writes(&schema(), &path, &[]).unwrap();
         assert!(signal.is_empty());
     }
+    /// A rename must be carried across BEFORE the write lands, or the write goes
+    /// to the new key while the user's old value still sits under the former
+    /// name - two values for one setting, and the older one wins on next read.
+    #[test]
+    fn a_pending_rename_is_migrated_before_the_write() {
+        let mut renamed = item("colour_scheme", SettingType::String);
+        renamed.renamed_from = vec!["theme".into()];
+        let schema = SettingsSchema {
+            version: 2,
+            sections: vec![SettingsSection {
+                label: "S".into(),
+                description: None,
+                order: None,
+                items: vec![renamed, item("count", SettingType::Int)],
+            }],
+        };
+
+        // The user's value still sits under the OLD name.
+        let (_d, path) = temp_config("theme = \"dark\"\n");
+
+        // A write to an unrelated key still triggers the migration.
+        let signal = apply_writes(&schema, &path, &[req("count", Value::Integer(3))]).unwrap();
+
+        let parsed: toml::Value =
+            toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            parsed["colour_scheme"].as_str(),
+            Some("dark"),
+            "the value should have moved to the new key"
+        );
+        assert!(parsed.get("theme").is_none(), "the old key should be gone");
+
+        // The moved key is announced too: a subscriber has to pick it up.
+        assert!(
+            signal.changed.contains(&"colour_scheme".to_string()),
+            "{:?}",
+            signal.changed
+        );
+        assert!(signal.changed.contains(&"count".to_string()));
+    }
+
+    /// Migration is idempotent, so a second write does not re-announce it.
+    #[test]
+    fn a_completed_migration_is_not_re_announced() {
+        let mut renamed = item("colour_scheme", SettingType::String);
+        renamed.renamed_from = vec!["theme".into()];
+        let schema = SettingsSchema {
+            version: 2,
+            sections: vec![SettingsSection {
+                label: "S".into(),
+                description: None,
+                order: None,
+                items: vec![renamed, item("count", SettingType::Int)],
+            }],
+        };
+        let (_d, path) = temp_config("theme = \"dark\"\n");
+
+        apply_writes(&schema, &path, &[req("count", Value::Integer(1))]).unwrap();
+        let second = apply_writes(&schema, &path, &[req("count", Value::Integer(2))]).unwrap();
+
+        assert_eq!(
+            second.changed,
+            vec!["count".to_string()],
+            "the migration must not fire again"
+        );
+    }
+
 }
