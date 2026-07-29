@@ -3,15 +3,15 @@
 //! Most state lives in `~/.config/arlen/notifications.toml` and is
 //! managed via the generic `config_get` / `config_set` commands. This
 //! module wraps the few imperative actions that need direct access to
-//! the daemon's SQLite history file or the freedesktop `notify-send`
-//! tool:
+//! the daemon's SQLite history file or the freedesktop notification
+//! interface:
 //!
 //! * `notifications_get_known_apps` — read distinct `app_name` values
 //!   from the daemon's history DB so the per-app rule editor can be
 //!   populated without waiting for a given app to send again.
 //! * `notifications_clear_history` — delete every row from the daemon
 //!   DB. SQLite's file locking handles the concurrent daemon writer.
-//! * `notifications_test_notification` — spawn `notify-send` so the
+//! * `notifications_test_notification` — send a freedesktop `Notify` so the
 //!   user can preview their toast / DND / per-app rules without
 //!   waiting for a real app.
 //! * `notifications_set_dnd_temporary` — set a DND mode plus an
@@ -19,8 +19,8 @@
 //!   daemon picks it up via hot-reload. Used by the "1 hour" / "until
 //!   tomorrow" Quick Actions.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Command;
 
 use rusqlite::{Connection, OpenFlags};
 use serde::Serialize;
@@ -123,16 +123,22 @@ pub fn notifications_clear_history() -> Result<(), String> {
     Ok(())
 }
 
-/// Spawn `notify-send` to fire a test notification through the normal
-/// freedesktop pipeline. Hits the daemon's D-Bus listener exactly the
-/// same way a real app would, so all DND / per-app / grouping rules
-/// are exercised.
+/// Fire a test notification through the normal freedesktop pipeline: a plain
+/// `org.freedesktop.Notifications.Notify` call, which is exactly what a real app
+/// sends, so all DND / per-app / grouping rules are exercised.
+///
+/// Called directly over the session bus rather than by spawning `notify-send`:
+/// same interface, same daemon, same code path, minus a runtime dependency on
+/// libnotify being installed (a test button that fails because a helper binary
+/// is missing tells the user nothing about their notification setup).
 #[tauri::command]
-pub fn notifications_test_notification(priority: String) -> Result<(), String> {
-    let urgency = match priority.as_str() {
-        "critical" => "critical",
-        "low" => "low",
-        _ => "normal",
+pub async fn notifications_test_notification(priority: String) -> Result<(), String> {
+    // The freedesktop urgency hint: 0 low, 1 normal, 2 critical. There is no
+    // "high" level in the spec, so it rides at normal as it did before.
+    let urgency: u8 = match priority.as_str() {
+        "critical" => 2,
+        "low" => 0,
+        _ => 1,
     };
     let body = match priority.as_str() {
         "critical" => "Critical priority test — should bypass DND.",
@@ -140,15 +146,41 @@ pub fn notifications_test_notification(priority: String) -> Result<(), String> {
         "high" => "High priority test.",
         _ => "Normal priority test.",
     };
-    Command::new("notify-send")
-        .arg("--urgency")
-        .arg(urgency)
-        .arg("--app-name")
-        .arg("Arlen Settings")
-        .arg("Arlen Settings test")
-        .arg(body)
-        .spawn()
-        .map_err(|e| format!("spawn notify-send: {e}"))?;
+
+    let conn = zbus::Connection::session()
+        .await
+        .map_err(|e| format!("session bus: {e}"))?;
+    let proxy = zbus::Proxy::new(
+        &conn,
+        "org.freedesktop.Notifications",
+        "/org/freedesktop/Notifications",
+        "org.freedesktop.Notifications",
+    )
+    .await
+    .map_err(|e| format!("notification daemon unavailable: {e}"))?;
+
+    let mut hints: HashMap<&str, zbus::zvariant::Value> = HashMap::new();
+    hints.insert("urgency", zbus::zvariant::Value::U8(urgency));
+
+    // Notify(app_name, replaces_id, app_icon, summary, body, actions, hints,
+    // expire_timeout) -> id. `replaces_id` 0 posts a new notification and
+    // `expire_timeout` -1 leaves the timeout to the daemon's own policy.
+    let _id: u32 = proxy
+        .call(
+            "Notify",
+            &(
+                "Arlen Settings",
+                0u32,
+                "",
+                "Arlen Settings test",
+                body,
+                Vec::<&str>::new(),
+                hints,
+                -1i32,
+            ),
+        )
+        .await
+        .map_err(|e| format!("send test notification: {e}"))?;
     Ok(())
 }
 
