@@ -19,6 +19,8 @@
 //! trusting the requester to target the right one. A caller that could pick its
 //! own layer could write a `defaults_only` key by simply claiming it may.
 
+pub mod apply;
 pub mod decide;
 
+pub use apply::{apply_to_file, ApplyError};
 pub use decide::{decide_write, WriteRejection, WriteRequest};
