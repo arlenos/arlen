@@ -160,15 +160,27 @@ while read -r crate; do
       org.*.service) continue ;;
     esac
     built_checked=$((built_checked + 1))
-    if ! find dev/mkosi/mkosi.extra -name "$base" | grep -q .; then
+    # Not the *.target.wants/ enablement symlinks. They are named after the unit
+    # and satisfied this check on their own, so a packaged unit could be deleted
+    # while its dangling symlink kept the gate green - which is worse than no
+    # gate, because the symlink is precisely what makes systemd try to start a
+    # unit that is not there. The drift check above already excludes them.
+    if ! find dev/mkosi/mkosi.extra -name "$base" -not -path '*.wants/*' | grep -q .; then
       missing_unit=$((missing_unit + 1))
       echo "UNPACKAGED UNIT: $base"
       echo "  the image builds $crate but ships no copy of its unit under mkosi.extra,"
       echo "  so the binary installs and nothing ever starts it."
     fi
   done < <(find "$crate" -name '*.service' -not -path '*/target/*' 2>/dev/null | sort)
-done < <(grep -h "manifest-path" dev/mkosi/mkosi.build.d/*.chroot 2>/dev/null |
-           grep -oE "(daemons|ai)/[a-z0-9-]+" | sort -u)
+done < <({ # Two mechanisms stage a daemon into the image, and reading only the
+           # first is a real blind spot: the mkosi build scripts compile most of
+           # them in the chroot, while build-image.sh zigbuilds a few on the host
+           # and installs them straight into mkosi.extra. event-bus goes the
+           # second way, so it was outside this gate entirely. It ships a unit
+           # today, but nothing was checking that it did.
+           grep -h "manifest-path" dev/mkosi/mkosi.build.d/*.chroot 2>/dev/null
+           grep -hoE '^(daemons|ai)/[a-z0-9-]+:' dev/mkosi/build-image.sh 2>/dev/null
+         } | grep -oE "(daemons|ai)/[a-z0-9-]+" | sort -u)
 
 if [ "$missing_unit" -ne 0 ]; then
   echo "FAIL: $missing_unit image-built daemon(s) ship no unit."
