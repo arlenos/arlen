@@ -191,6 +191,13 @@ impl Extension {
     /// unified row always matches what audit and the LCG record for that bridge.
     /// A caller passing an already-prefixed id gets it back unchanged, since
     /// prefixing twice would address a bridge that does not exist.
+    ///
+    /// **The same rule lives in `bridge-ingest`'s `BridgeMeta::app_id`**, which is
+    /// where a bridge's real identity is minted. The two crates share no
+    /// dependency and this is one string, so it is duplicated on purpose rather
+    /// than given a crate of its own; both sides say so. If that prefix ever
+    /// changes, it changes in both or this inventory names bridges that do not
+    /// exist.
     pub fn bridge(
         id: impl Into<String>,
         namespace: impl Into<String>,
@@ -329,6 +336,16 @@ mod tests {
         assert_eq!(b.id, "bridge.md.obsidian");
         // The display name stays the bare id; only the address is prefixed.
         assert_eq!(b.name, "md.obsidian");
+    }
+
+    #[test]
+    fn the_bridge_prefix_matches_what_bridge_ingest_mints() {
+        // Pinned against the literal rather than against the other crate, which
+        // this one cannot see. If `BridgeMeta::app_id` ever stops producing
+        // `bridge.<id>`, this test still passes and the doc note on both sides is
+        // what catches it - so the note is the mechanism and this only fixes the
+        // shape it has today.
+        assert_eq!(Extension::bridge("md.obsidian", "", Vec::new()).id, "bridge.md.obsidian");
     }
 
     #[test]
