@@ -207,7 +207,6 @@ pub async fn build_recipe(
 mod tests {
     use super::*;
     use arlen_forage_build::BuildCommand;
-    use arlen_forage_recipe::{Artifacts, Build, BuildStep, BuildSystem, RecipeMeta, Source, SourceType};
     use async_trait::async_trait;
 
     /// A downloader that returns a fixed tar archive (a source tree).
@@ -304,64 +303,41 @@ mod tests {
         b.into_inner().unwrap()
     }
 
+    /// A minimal tarball recipe, parsed rather than constructed.
+    ///
+    /// Written as the TOML a recipe author would write, so the fixture tracks
+    /// the real schema and adding an optional field to any of these structs
+    /// does not break it. The struct-literal version broke on every new field
+    /// in `[recipe]`, `[[source]]`, `[build]` or `[artifacts]` - six exhaustive
+    /// literals for one fixture.
     fn recipe_for(sha: &str) -> Recipe {
-        Recipe {
-            recipe: RecipeMeta {
-                id: "org.example.demo".into(),
-                name: "demo".into(),
-                version: Some("1.0.0".into()),
-                summary: Some("demo".into()),
-                license: Some("MIT".into()),
-                homepage: None,
-                maintainer: "key:demo".into(),
-                recipe_revision: 1,
-                category: Vec::new(),
-                description: None,
-                screenshots: Vec::new(),
-            },
-            source: vec![Source {
-                source_type: SourceType::Tarball,
-                url: Some("https://example.org/src.tar".into()),
-                commit: None,
-                sha256: Some(sha.into()),
-                asset: None,
-                tag: None,
-                version: None,
-                patches: Vec::new(),
-            }],
-            build: Some(Build {
-                system: Some(BuildSystem::Custom),
-                host_deps: Vec::new(),
-                config_opts: Vec::new(),
-                env: Default::default(),
-                steps: vec![BuildStep {
-                    tool: "true".into(),
-                    args: Vec::new(),
-                    workdir: None,
-                }],
-                offline: true,
-                jobs: None,
-                fetch_lock: None,
-            }),
-            artifacts: Some(Artifacts {
-                bin: vec!["app".into()],
-                lib: Vec::new(),
-                include: Vec::new(),
-                share: Vec::new(),
-                libexec: Vec::new(),
-                desktop: None,
-                icon: None,
-            }),
-            capabilities: None,
-            provides: None,
-            depends: None,
-            reproducible: None,
-            // Not a bridge recipe: no foreign app to attach to, and so no
-            // two-halves install manifest either.
-            bridge: None,
-            install: None,
-            settings: None,
-        }
+        arlen_forage_recipe::parse(&format!(
+            r#"
+[recipe]
+id = "org.example.demo"
+name = "demo"
+version = "1.0.0"
+summary = "demo"
+license = "MIT"
+maintainer = "key:demo"
+
+[[source]]
+type = "tarball"
+url = "https://example.org/src.tar"
+sha256 = "{sha}"
+
+[build]
+system = "custom"
+offline = true
+
+[[build.steps]]
+tool = "true"
+
+[artifacts]
+bin = ["app"]
+"#
+        ))
+        .expect("the fixture recipe parses")
     }
 
     #[tokio::test]
