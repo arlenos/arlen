@@ -25,7 +25,11 @@ use arlen_settings_broker::serve::AppRegistry;
 pub struct AppSettingsPage {
     /// The app this page is for.
     pub app_id: String,
-    /// The declared schema, verbatim.
+    /// The declared schema, with one deliberate exception: an item declaring
+    /// `options_from` has had its `options` filled in by the system (PAS-7).
+    /// Those choices are the machine's to know - which audio devices exist,
+    /// which themes are installed - so an app cannot ship them and the schema
+    /// alone would render an empty dropdown.
     pub schema: SettingsSchema,
     /// The value in force for each declared key, as JSON.
     pub values: BTreeMap<String, serde_json::Value>,
@@ -34,6 +38,14 @@ pub struct AppSettingsPage {
     /// The page needs the difference to offer "reset to default" honestly, and a
     /// value equal to the default is NOT the same as one nobody ever set.
     pub user_set: Vec<String>,
+    /// Dynamic sources that could not be resolved, keyed by the item, with the
+    /// reason in plain words.
+    ///
+    /// Separate from the empty options list it leaves behind, because "there
+    /// are no other audio devices" and "we could not ask the audio system" look
+    /// identical in an empty dropdown and mean entirely different things to
+    /// someone trying to pick one.
+    pub unavailable: BTreeMap<String, String>,
 }
 
 /// What came back from a write.
@@ -100,9 +112,34 @@ pub async fn app_settings_page(app_id: String) -> Result<Option<AppSettingsPage>
         let settings = os_sdk::settings::Settings::load(&app_id, found.schema.clone())
             .map_err(|e| format!("could not read the app's settings: {e}"))?;
 
+        let mut schema = found.schema.clone();
+        let mut unavailable = BTreeMap::new();
+        // PAS-7: fill in the choices the machine knows and the app cannot. Done
+        // per page load rather than cached, because the whole reason these are
+        // dynamic is that they change - a headset plugged in after the page
+        // opened should be there on the next visit.
+        let machine = super::values::ThisMachine;
+        for section in schema.sections.iter_mut() {
+            for item in section.items.iter_mut() {
+                let Some(source) = item.options_from else {
+                    continue;
+                };
+                match arlen_settings_core::values::resolve(source, &machine) {
+                    arlen_settings_core::values::Resolution::Options(options) => {
+                        item.options = options;
+                    }
+                    arlen_settings_core::values::Resolution::Unavailable(why) => {
+                        // The options stay empty, and the reason travels beside
+                        // them so the page can say which kind of empty this is.
+                        unavailable.insert(item.key.clone(), why);
+                    }
+                }
+            }
+        }
+
         let mut values = BTreeMap::new();
         let mut user_set = Vec::new();
-        for section in &found.schema.sections {
+        for section in &schema.sections {
             for item in &section.items {
                 if let Some(value) = settings.get_raw(&item.key) {
                     values.insert(item.key.clone(), toml_to_json(value));
@@ -115,9 +152,10 @@ pub async fn app_settings_page(app_id: String) -> Result<Option<AppSettingsPage>
 
         Ok(Some(AppSettingsPage {
             app_id,
-            schema: found.schema,
+            schema,
             values,
             user_set,
+            unavailable,
         }))
     })
     .await
