@@ -1,6 +1,5 @@
-# Starting permission profile for a math/statistics/LaTeX/GPS-document tool. Works
-# with Documents (worksheets, datasets, .tex sources); no network and no Knowledge
-# Graph by default.
+# Starting permission profile for a LaTeX editor. Edits documents and invokes the
+# TeX toolchain on them; no network and no Knowledge Graph by default.
 [info]
 app_id = "texstudio"
 tier = "third-party"
