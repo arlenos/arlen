@@ -294,6 +294,38 @@ mod tests {
         );
     }
 
+    /// The same bounds, written as a float to a float setting. The test above
+    /// only ever sends `Value::Integer`, so the float branch of `numeric` was
+    /// never exercised - mutation testing found it could be DELETED, and then
+    /// `numeric` returns `None`, `check_range` returns `Ok`, and **every declared
+    /// bound on every float setting stops being enforced**. A `0.0..=1.0` volume
+    /// would accept -5.0.
+    #[test]
+    fn declared_bounds_are_enforced_for_floats_too() {
+        let mut bounded = item("volume", SettingType::Float);
+        bounded.min = Some(0.0);
+        bounded.max = Some(1.0);
+        let schema = schema_of(vec![bounded]);
+
+        assert!(decide_write(&schema, &req("volume", Value::Float(0.0))).is_ok());
+        assert!(decide_write(&schema, &req("volume", Value::Float(1.0))).is_ok());
+        assert!(decide_write(&schema, &req("volume", Value::Float(0.5))).is_ok());
+        assert_eq!(
+            decide_write(&schema, &req("volume", Value::Float(-0.1))),
+            Err(WriteRejection::OutOfRange)
+        );
+        assert_eq!(
+            decide_write(&schema, &req("volume", Value::Float(1.1))),
+            Err(WriteRejection::OutOfRange)
+        );
+        // An integer written to a float field is accepted by the type check, so
+        // it must meet the same bounds rather than slipping past them.
+        assert_eq!(
+            decide_write(&schema, &req("volume", Value::Integer(9))),
+            Err(WriteRejection::OutOfRange)
+        );
+    }
+
     #[test]
     fn an_enum_only_accepts_a_declared_option() {
         let mut e = item("theme", SettingType::Enum);
