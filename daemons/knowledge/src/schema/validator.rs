@@ -15,6 +15,8 @@ const RESERVED_FIELDS: &[&str] = &[
     "_deleted",
     "_deleted_at",
     "_pending_delete",
+    "_run_id",
+    "_origin_ref",
 ];
 
 /// Reserved entity names (system and shared entities, plus internal names).
