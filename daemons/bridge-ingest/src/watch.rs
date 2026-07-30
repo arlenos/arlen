@@ -147,7 +147,7 @@ mod tests {
         // The shipped Obsidian floor mapping: a `note` becomes an md.obsidian.Note
         // keyed by path, projecting title/tags/links.
         BridgeConfig::parse(
-            "[bridge]\nallowed_plugin_id = \"md.obsidian.arlen-bridge\"\n\
+            "[bridge]\nid = \"md.obsidian\"\nallowed_plugin_id = \"md.obsidian.arlen-bridge\"\n\
              [map.note]\nupsert = \"md.obsidian.Note\"\nkey = \"path\"\n\
              set = { title = \"$.title\", tags = \"$.tags\", links = \"$.links\" }\n",
         )

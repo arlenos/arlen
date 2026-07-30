@@ -125,6 +125,7 @@ mod tests {
         BridgeConfig::parse(
             r#"
 [bridge]
+id = "md.obsidian"
 allowed_plugin_id = "maria-obsidian-bridge"
 [map."note.upsert"]
 upsert = "md.obsidian.Note"

@@ -204,6 +204,7 @@ mod tests {
 
     const BRIDGE_TOML: &str = r#"
 [bridge]
+id = "md.obsidian"
 allowed_plugin_id = "maria-obsidian-bridge"
 [map."note.upsert"]
 upsert = "md.obsidian.Note"

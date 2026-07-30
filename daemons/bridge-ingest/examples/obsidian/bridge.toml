@@ -12,6 +12,12 @@
 # (foreign-app-bridges.md). So the floor ingests each note plus the names it
 # references as data; the plugin tier, when installed, adds the resolved edges.
 [bridge]
+# This bridge's identity, and the namespace it writes under. Every bridge runs
+# the same binary, so this is what distinguishes one from another: it derives
+# the per-bridge app id (`bridge.md.obsidian`) a per-bridge profile is keyed
+# under, and every `upsert` type below must lie within it.
+id = "md.obsidian"
+
 # The single permitted foreign plugin id (mutual id-pin) for the plugin tier.
 # The floor reader runs inside this daemon, but the id is pinned here so the
 # plugin tier, when installed, shares this bridge's namespace and config.
