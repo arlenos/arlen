@@ -15,6 +15,7 @@
   import { readCapability, type Capability } from "$lib/capability";
   import { messages, send } from "$lib/stores/conversation";
   import { invoke } from "@tauri-apps/api/core";
+  import { tauriAvailable } from "$lib/tauri";
   import { goto } from "$app/navigation";
   import { openArtifact, closePane } from "$lib/stores/artifact";
   import { startPoll } from "$lib/stores/agentActions";
@@ -35,7 +36,13 @@
   // one real pi turn on load so the headless screenshot pipeline can capture a
   // LIVE answer without synthetic keyboard/mouse input, which is unreliable under
   // a headless compositor. A normal run sets no such env var, so this is a no-op.
+  // Guarded because plain-browser dev has no Tauri runtime: an unguarded invoke
+  // throws an uncaught TypeError here, which also swallowed the second call
+  // below - the hook meant to make headless capture work was the one thing
+  // failing in a headless browser. Same helper the rest of the app uses to tell
+  // "no backend at all" from "the backend refused".
   onMount(async () => {
+    if (!tauriAvailable) return;
     const auto = await invoke<string | null>("pi_autodrive_prompt");
     if (auto) await send(auto);
     // After any driven turn, optionally navigate to a route to capture (e.g.
