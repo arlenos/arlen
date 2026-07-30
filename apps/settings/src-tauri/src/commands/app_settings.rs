@@ -187,32 +187,7 @@ pub async fn app_settings_write(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(match response {
-        Response::Changed { changed, .. } => WriteAnswer {
-            ok: true,
-            changed,
-            refused_key: String::new(),
-            message: String::new(),
-        },
-        Response::Refused { key, reason } => WriteAnswer {
-            ok: false,
-            changed: Vec::new(),
-            refused_key: key,
-            message: reason,
-        },
-        Response::UnknownApp { app_id } => WriteAnswer {
-            ok: false,
-            changed: Vec::new(),
-            refused_key: String::new(),
-            message: format!("{app_id} declares no settings"),
-        },
-        Response::Error { message } => WriteAnswer {
-            ok: false,
-            changed: Vec::new(),
-            refused_key: String::new(),
-            message,
-        },
-    })
+    Ok(answer_from(response))
 }
 
 /// A stored TOML value as the JSON the page reads.
@@ -281,4 +256,62 @@ mod tests {
         assert_eq!(answer.refused_key, "count");
         assert_eq!(answer.message, "expected an integer");
     }
+}
+
+/// Map a broker reply into the page's answer shape. Shared so the raw editor
+/// reports a refusal in exactly the same words a control does.
+fn answer_from(response: Response) -> WriteAnswer {
+    match response {
+        Response::Changed { changed, .. } => WriteAnswer {
+            ok: true,
+            changed,
+            refused_key: String::new(),
+            message: String::new(),
+        },
+        Response::Refused { key, reason } => WriteAnswer {
+            ok: false,
+            changed: Vec::new(),
+            refused_key: key,
+            message: reason,
+        },
+        Response::UnknownApp { app_id } => WriteAnswer {
+            ok: false,
+            changed: Vec::new(),
+            refused_key: String::new(),
+            message: format!("{app_id} declares no settings"),
+        },
+        Response::Error { message } => WriteAnswer {
+            ok: false,
+            changed: Vec::new(),
+            refused_key: String::new(),
+            message,
+        },
+    }
+}
+
+/// Write one key from the raw TOML editor (PAS-6 tier two).
+///
+/// The escape hatch for settings a schema cannot describe: the user types the
+/// value as TOML and it is stored as that value.
+///
+/// **Parsing is not validation, and this does not skip the broker.** All the
+/// parse does is turn text into a `toml::Value`; the value then goes through the
+/// same write path as any control, so the app's declared type, its scope and
+/// the key's existence are all still checked. A raw editor that wrote the file
+/// directly would be a hole straight through the thing the broker exists to be.
+#[tauri::command]
+pub async fn app_settings_write_raw(
+    app_id: String,
+    key: String,
+    text: String,
+) -> Result<WriteAnswer, String> {
+    let value = arlen_settings_core::raw::parse_raw_edit(&text).map_err(|e| e.to_string())?;
+    let socket = arlen_settings_broker::server::socket_path()
+        .ok_or_else(|| "there is no runtime directory to reach the broker in".to_string())?;
+
+    let response = write_settings(&socket, &app_id, vec![KeyWrite { key, value }])
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(answer_from(response))
 }
