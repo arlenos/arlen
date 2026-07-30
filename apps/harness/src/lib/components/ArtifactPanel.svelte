@@ -63,11 +63,20 @@
 </script>
 
 <aside class="ap" style="width:{width}px" aria-label={$t("h.artifact.aria")}>
+  <!-- A focusable separator IS an interactive widget under ARIA: it takes focus and
+       is driven with the arrow keys (onKey below), and it reports its position via
+       aria-valuenow/min/max. The lint's role table classifies `separator` as
+       non-interactive unconditionally, so both rules misfire here. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     class="ap-resize"
     role="separator"
     aria-orientation="vertical"
     aria-label={$t("h.artifact.resize")}
+    aria-valuenow={width}
+    aria-valuemin={MIN}
+    aria-valuemax={MAX}
     tabindex="0"
     onpointerdown={onDown}
     onkeydown={onKey}

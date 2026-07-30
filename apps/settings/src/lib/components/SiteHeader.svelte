@@ -44,6 +44,10 @@
      apps get the exact same menu (Move to Workspace submenu included)
      rather than a divergent copy. Until that lands, no menu on
      right-click is better than two different ones. -->
+<!-- The header is a drag surface (a non-keyboard pointer interaction); its actual
+     controls are the accessible buttons inside it, so the static-interaction lint
+     is a false positive here. Same treatment as the meetings layout. -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <header
   onpointerdown={startDrag}
   ondblclick={toggleMax}

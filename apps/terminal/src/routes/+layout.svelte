@@ -90,6 +90,11 @@
   <!-- `h-svh` locks the shell to the viewport; only the block stream
        inside the page scrolls. -->
   <SidebarInset class="h-svh">
+    <!-- The header is a drag surface (a non-keyboard pointer interaction); its actual
+         controls are the accessible SidebarTrigger and WindowButtons, so the
+         static-interaction lint is a false positive here. Same treatment as the
+         meetings layout, which carries the identical drag header. -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <header
       onpointerdown={startDrag}
       ondblclick={toggleMax}
