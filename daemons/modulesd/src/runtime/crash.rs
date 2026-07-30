@@ -37,6 +37,12 @@ pub struct CrashState {
     /// True after we have given up on automatic restart. Manual retry
     /// is the only path out.
     failed: bool,
+    /// What the most recent crash said. The management surface's whole
+    /// purpose is answering "why is this not working", and until this was
+    /// recorded the honest answer was only "it crashed enough times" - the
+    /// call sites already had the trap or load message and were logging it
+    /// to the journal, then dropping it on the floor.
+    last_error: Option<String>,
 }
 
 impl Default for CrashState {
@@ -52,6 +58,7 @@ impl CrashState {
             window_start: Instant::now(),
             last_clean: None,
             failed: false,
+            last_error: None,
         }
     }
 
@@ -61,6 +68,11 @@ impl CrashState {
 
     pub fn crash_count(&self) -> u32 {
         self.crashes
+    }
+
+    /// What the most recent crash said, if it has crashed.
+    pub fn last_error(&self) -> Option<&str> {
+        self.last_error.as_deref()
     }
 
     /// Called when the module produced a result without trapping.
@@ -82,7 +94,11 @@ impl CrashState {
     /// means caller should respawn at once; `Delayed` means schedule
     /// a respawn after the duration; `PermanentlyFailed` means stop
     /// trying.
-    pub fn record_crash(&mut self, now: Instant) -> Recovery {
+    pub fn record_crash(&mut self, now: Instant, reason: &str) -> Recovery {
+        // The newest reason wins. A module that trapped, was retried and then
+        // failed to load has two stories, and the second one is the one that
+        // describes the state it is in now.
+        self.last_error = Some(reason.to_string());
         // Clear the window if it has elapsed without a fresh crash.
         if now.duration_since(self.window_start) > CRASH_WINDOW {
             self.crashes = 0;
@@ -123,7 +139,7 @@ mod tests {
     #[test]
     fn first_crash_is_immediate() {
         let mut s = CrashState::new();
-        assert_eq!(s.record_crash(Instant::now()), Recovery::Immediate);
+        assert_eq!(s.record_crash(Instant::now(), "trap"), Recovery::Immediate);
         assert!(!s.is_failed());
     }
 
@@ -131,8 +147,8 @@ mod tests {
     fn second_crash_within_window_delays_5s() {
         let mut s = CrashState::new();
         let t0 = Instant::now();
-        s.record_crash(t0);
-        let r = s.record_crash(t0 + Duration::from_secs(2));
+        s.record_crash(t0, "trap");
+        let r = s.record_crash(t0 + Duration::from_secs(2), "trap");
         assert_eq!(r, Recovery::Delayed { delay: Duration::from_secs(5) });
     }
 
@@ -140,9 +156,9 @@ mod tests {
     fn third_crash_within_window_delays_30s() {
         let mut s = CrashState::new();
         let t0 = Instant::now();
-        s.record_crash(t0);
-        s.record_crash(t0 + Duration::from_secs(2));
-        let r = s.record_crash(t0 + Duration::from_secs(4));
+        s.record_crash(t0, "trap");
+        s.record_crash(t0 + Duration::from_secs(2), "trap");
+        let r = s.record_crash(t0 + Duration::from_secs(4), "trap");
         assert_eq!(r, Recovery::Delayed { delay: Duration::from_secs(30) });
     }
 
@@ -150,10 +166,10 @@ mod tests {
     fn fourth_crash_within_window_permanently_fails() {
         let mut s = CrashState::new();
         let t0 = Instant::now();
-        s.record_crash(t0);
-        s.record_crash(t0 + Duration::from_secs(1));
-        s.record_crash(t0 + Duration::from_secs(2));
-        let r = s.record_crash(t0 + Duration::from_secs(3));
+        s.record_crash(t0, "trap");
+        s.record_crash(t0 + Duration::from_secs(1), "trap");
+        s.record_crash(t0 + Duration::from_secs(2), "trap");
+        let r = s.record_crash(t0 + Duration::from_secs(3), "trap");
         assert_eq!(r, Recovery::PermanentlyFailed { crashes: 4 });
         assert!(s.is_failed());
     }
@@ -163,12 +179,12 @@ mod tests {
         let mut s = CrashState::new();
         let t0 = Instant::now();
         // Three crashes inside the window.
-        s.record_crash(t0);
-        s.record_crash(t0 + Duration::from_secs(1));
-        s.record_crash(t0 + Duration::from_secs(2));
+        s.record_crash(t0, "trap");
+        s.record_crash(t0 + Duration::from_secs(1), "trap");
+        s.record_crash(t0 + Duration::from_secs(2), "trap");
         // Crash long after the window has elapsed: counter resets,
         // recovery is Immediate again.
-        let r = s.record_crash(t0 + Duration::from_secs(120));
+        let r = s.record_crash(t0 + Duration::from_secs(120), "trap");
         assert_eq!(r, Recovery::Immediate);
         assert!(!s.is_failed());
     }
@@ -177,12 +193,12 @@ mod tests {
     fn clean_run_inside_window_does_not_reset() {
         let mut s = CrashState::new();
         let t0 = Instant::now();
-        s.record_crash(t0);
-        s.record_crash(t0 + Duration::from_secs(1));
+        s.record_crash(t0, "trap");
+        s.record_crash(t0 + Duration::from_secs(1), "trap");
         // Single clean run inside the window: module may still be
         // flapping, so the counter must not reset.
         s.record_clean_run(t0 + Duration::from_secs(10));
-        let r = s.record_crash(t0 + Duration::from_secs(11));
+        let r = s.record_crash(t0 + Duration::from_secs(11), "trap");
         assert_eq!(r, Recovery::Delayed { delay: Duration::from_secs(30) });
     }
 
@@ -190,12 +206,12 @@ mod tests {
     fn extended_clean_period_resets_counter() {
         let mut s = CrashState::new();
         let t0 = Instant::now();
-        s.record_crash(t0);
+        s.record_crash(t0, "trap");
         // Two clean runs separated by more than the crash window means
         // the module is healthy. The next crash is treated as the first.
         s.record_clean_run(t0 + Duration::from_secs(10));
         s.record_clean_run(t0 + Duration::from_secs(80));
-        let r = s.record_crash(t0 + Duration::from_secs(81));
+        let r = s.record_crash(t0 + Duration::from_secs(81), "trap");
         assert_eq!(r, Recovery::Immediate);
     }
 
@@ -204,12 +220,12 @@ mod tests {
         let mut s = CrashState::new();
         let t0 = Instant::now();
         for i in 0..4 {
-            s.record_crash(t0 + Duration::from_secs(i));
+            s.record_crash(t0 + Duration::from_secs(i), "trap");
         }
         assert!(s.is_failed());
         s.manual_retry();
         assert!(!s.is_failed());
         assert_eq!(s.crash_count(), 0);
-        assert_eq!(s.record_crash(Instant::now()), Recovery::Immediate);
+        assert_eq!(s.record_crash(Instant::now(), "trap"), Recovery::Immediate);
     }
 }

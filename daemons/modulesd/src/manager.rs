@@ -75,6 +75,7 @@ impl ModuleEntry {
             },
             enabled: self.enabled,
             failed: self.crash.is_failed(),
+            last_error: self.crash.last_error().map(str::to_string),
             priority: self.record.manifest.module.module_type.default_priority(),
             extension_points: points,
         }
@@ -777,7 +778,7 @@ impl Manager {
                 // step so a transient init failure does not strand
                 // the module with no server and no scheduled restart.
                 warn!(module = %module_id, "mcp module init trapped: {reason}");
-                let recovery = self.record_crash(module_id).await;
+                let recovery = self.record_crash(module_id, &reason).await;
                 self.schedule_mcp_restart(module_id, recovery);
                 return;
             }
@@ -830,7 +831,7 @@ impl Manager {
                         module = %faulted,
                         "mcp module faulted on a guest call; recording crash"
                     );
-                    Some(manager.record_crash(&faulted).await)
+                    Some(manager.record_crash(&faulted, "faulted on a guest call").await)
                 }
             };
             // Teardown. `revoke` makes every still-open connection's
@@ -1066,7 +1067,7 @@ impl Manager {
             },
             Err(SearchFailure::Trap(reason)) => {
                 warn!(module = %module_id, reason = %reason, "tier 1 search trapped");
-                self.record_crash(module_id).await;
+                self.record_crash(module_id, &reason).await;
                 self.drop_tier1_instance(module_id).await;
                 // Return empty results so the shell can still render
                 // results from other modules. The crash event broadcast
@@ -1082,7 +1083,7 @@ impl Manager {
                 // Promote to permanent failure by recording 4 crashes:
                 // bytecode is structurally broken, retries will not help.
                 for _ in 0..4 {
-                    self.record_crash(module_id).await;
+                    self.record_crash(module_id, &reason).await;
                 }
                 self.drop_tier1_instance(module_id).await;
                 Response::Error {
@@ -1174,13 +1175,17 @@ impl Manager {
                 Ok(Some((_module_id, Ok(Ok(rs))))) => all.extend(rs),
                 Ok(Some((module_id, Ok(Err(SearchFailure::Trap(reason)))))) => {
                     warn!(module = %module_id, reason = %reason, "tier 1 search trapped during search_all");
-                    self.record_crash(&module_id).await;
+                    self.record_crash(
+                        &module_id,
+                        &format!("exceeded the {}s per-call budget", SEARCH_TIMEOUT.as_secs()),
+                    )
+                    .await;
                     self.drop_tier1_instance(&module_id).await;
                 }
                 Ok(Some((module_id, Ok(Err(SearchFailure::Load(reason)))))) => {
                     warn!(module = %module_id, reason = %reason, "tier 1 load failed during search_all");
                     for _ in 0..4 {
-                        self.record_crash(&module_id).await;
+                        self.record_crash(&module_id, &reason).await;
                     }
                     self.drop_tier1_instance(&module_id).await;
                 }
@@ -1197,7 +1202,11 @@ impl Manager {
                         "tier 1 module exceeded {}s per-call budget; dropping",
                         SEARCH_TIMEOUT.as_secs(),
                     );
-                    self.record_crash(&module_id).await;
+                    self.record_crash(
+                        &module_id,
+                        &format!("exceeded the {}s per-call budget", SEARCH_TIMEOUT.as_secs()),
+                    )
+                    .await;
                     self.drop_tier1_instance(&module_id).await;
                 }
                 Ok(None) => break, // all modules completed
@@ -1314,7 +1323,7 @@ impl Manager {
         let instance = match self.ensure_tier1_instance(module_id).await {
             Ok(i) => i,
             Err(DaemonError::WasmTrap { reason, .. }) => {
-                self.record_crash(module_id).await;
+                self.record_crash(module_id, &reason).await;
                 self.drop_tier1_instance(module_id).await;
                 return Response::Error {
                     id: id.to_string(),
@@ -1354,7 +1363,7 @@ impl Manager {
             Ok(Err(trap)) => {
                 warn!(module = %module_id, "execute trapped: {trap}");
                 drop(guard);
-                self.record_crash(module_id).await;
+                self.record_crash(module_id, &format!("execute trapped: {trap}")).await;
                 self.drop_tier1_instance(module_id).await;
                 Response::Error {
                     id: id.to_string(),
@@ -1365,7 +1374,7 @@ impl Manager {
             Err(_elapsed) => {
                 warn!(module = %module_id, "execute exceeded wall-clock budget");
                 drop(guard);
-                self.record_crash(module_id).await;
+                self.record_crash(module_id, "exceeded its wall-clock budget").await;
                 self.drop_tier1_instance(module_id).await;
                 Response::Error {
                     id: id.to_string(),
@@ -1805,14 +1814,14 @@ impl Manager {
     /// trapped invocation, the Tier 2 broker calls it on iframe
     /// `onerror`. Both paths apply the same Foundation §07 recovery
     /// policy and broadcast the matching event.
-    pub async fn record_crash(&self, module_id: &str) -> Recovery {
+    pub async fn record_crash(&self, module_id: &str, reason: &str) -> Recovery {
         let mut guard = self.modules.write().await;
         let Some(entry) = guard.get_mut(module_id) else {
             warn!("modulesd: crash recorded for unknown module {module_id}");
             return Recovery::Immediate;
         };
         let now = Instant::now();
-        let recovery = entry.crash.record_crash(now);
+        let recovery = entry.crash.record_crash(now, reason);
         // Codex round-2 finding 3: store the retry deadline so the
         // search dispatch path can short-circuit during backoff.
         // Without this the recorded `Recovery` was rhetorical only
@@ -2073,14 +2082,14 @@ mod tests {
         let m = Manager::new(tx).unwrap();
         m.insert_for_test(record("x", Tier::Wasm)).await;
 
-        let r1 = m.record_crash("x").await;
+        let r1 = m.record_crash("x", "trap").await;
         assert_eq!(r1, Recovery::Immediate);
 
         // Should have emitted ModuleCrashed.
         let ev = rx.try_recv().unwrap();
         assert!(matches!(ev, Event::ModuleCrashed { .. }));
 
-        let r2 = m.record_crash("x").await;
+        let r2 = m.record_crash("x", "trap").await;
         assert!(matches!(r2, Recovery::Delayed { .. }));
     }
 
@@ -2090,7 +2099,7 @@ mod tests {
         let m = Manager::new(tx).unwrap();
         m.insert_for_test(record("x", Tier::Wasm)).await;
         for _ in 0..4 {
-            m.record_crash("x").await;
+            m.record_crash("x", "trap").await;
         }
         let resp = m
             .handle_request(Request::Retry {
@@ -2100,7 +2109,7 @@ mod tests {
             .await;
         assert!(matches!(resp, Response::Acked { .. }));
         // Next crash should again be Immediate.
-        assert_eq!(m.record_crash("x").await, Recovery::Immediate);
+        assert_eq!(m.record_crash("x", "trap").await, Recovery::Immediate);
     }
 
     #[tokio::test]
@@ -2616,7 +2625,7 @@ mod tests {
         let m = Manager::new(tx).unwrap();
         m.insert_for_test(record("x", Tier::Wasm)).await;
         for _ in 0..4 {
-            m.record_crash("x").await;
+            m.record_crash("x", "trap").await;
         }
         let resp = m
             .handle_request(Request::WaypointerSearch {
@@ -3046,7 +3055,7 @@ mod tests {
             .await;
 
         // First crash = Immediate → no cooldown.
-        let r1 = m.record_crash("com.example.flap").await;
+        let r1 = m.record_crash("com.example.flap", "trap").await;
         assert_eq!(r1, Recovery::Immediate);
         match m.ensure_tier1_instance("com.example.flap").await {
             Err(DaemonError::InCooldown { .. }) => {
@@ -3058,7 +3067,7 @@ mod tests {
         }
 
         // Second crash = Delayed{5s} → cooldown active.
-        let r2 = m.record_crash("com.example.flap").await;
+        let r2 = m.record_crash("com.example.flap", "trap").await;
         assert!(matches!(r2, Recovery::Delayed { .. }));
         match m.ensure_tier1_instance("com.example.flap").await {
             Err(DaemonError::InCooldown { module_id }) => {
@@ -3099,8 +3108,8 @@ mod tests {
         let m = Manager::new(tx).unwrap();
         m.insert_for_test(record("com.example.cool", Tier::Wasm))
             .await;
-        m.record_crash("com.example.cool").await; // crash 1 (immediate)
-        m.record_crash("com.example.cool").await; // crash 2 (delayed 5s, cooldown active)
+        m.record_crash("com.example.cool", "trap").await; // crash 1 (immediate)
+        m.record_crash("com.example.cool", "trap").await; // crash 2 (delayed 5s, cooldown active)
 
         // Many searches during the cooldown window: none should
         // increment crash_count beyond 2.
