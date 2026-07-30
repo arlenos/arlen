@@ -325,6 +325,36 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-modulesd" => {
             return Ok("modulesd".to_string());
         }
+        // The remaining first-party daemons, each named for its binary. Derived
+        // from the shipped units by the `every_shipped_unit_binary_has_an_identity`
+        // guard in `dev/integration`: a daemon with no identity at its deployed
+        // path is refused by every peer-authenticated socket, so the cheap thing
+        // is for all of them to have one rather than to track which do not need it
+        // yet. `code-indexer` is the live case - it writes the code graph through
+        // the knowledge daemon's tier-gated write path.
+        "/usr/lib/arlen/libexec/arlen-code-indexer" => {
+            return Ok("code-indexer".to_string());
+        }
+        "/usr/lib/arlen/libexec/arlen-journald-parser" => {
+            return Ok("journald-parser".to_string());
+        }
+        "/usr/lib/arlen/libexec/arlen-auditd" => {
+            return Ok("auditd".to_string());
+        }
+        "/usr/lib/arlen/libexec/arlen-settings-broker" => {
+            return Ok("settings-broker".to_string());
+        }
+        "/usr/lib/arlen/libexec/arlen-wallpaperd" => {
+            return Ok("wallpaperd".to_string());
+        }
+        "/usr/lib/arlen/libexec/arlen-install-helper" => {
+            return Ok("install-helper".to_string());
+        }
+        // NB this one is NOT under libexec, unlike every sibling - its unit execs
+        // `/usr/lib/arlen/permission-helper` directly. Matched as shipped.
+        "/usr/lib/arlen/permission-helper" => {
+            return Ok("permission-helper".to_string());
+        }
         // The foreign-app bridge ingestion daemon (foreign-app-bridges.md §4). It
         // installs under /usr/lib/arlen/libexec/ and writes the KG under its
         // delegated namespace (the Obsidian floor's `md.obsidian.*` entity

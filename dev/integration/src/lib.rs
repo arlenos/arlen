@@ -724,3 +724,79 @@ mod tests {
         assert!(!path.exists(), "the private runtime root is removed on drop");
     }
 }
+
+#[cfg(test)]
+mod unit_identity {
+    use super::repo_path;
+    use arlen_permissions::identity::path_to_app_id;
+    use std::path::{Path, PathBuf};
+
+    /// Every shipped unit's `ExecStart`, as the deployment actually declares it.
+    fn shipped_exec_starts() -> Vec<(PathBuf, String)> {
+        let mut found = Vec::new();
+        for root in ["daemons", "apps"] {
+            collect(&repo_path(root), &mut found);
+        }
+        found
+    }
+
+    fn collect(dir: &Path, out: &mut Vec<(PathBuf, String)>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                if p.file_name().is_some_and(|n| n == "target" || n == "node_modules") {
+                    continue;
+                }
+                collect(&p, out);
+            } else if p.extension().is_some_and(|x| x == "service") {
+                if let Ok(text) = std::fs::read_to_string(&p) {
+                    for line in text.lines() {
+                        if let Some(rest) = line.strip_prefix("ExecStart=") {
+                            let bin = rest.split_whitespace().next().unwrap_or("").to_string();
+                            if !bin.is_empty() {
+                                out.push((p.clone(), bin));
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// A daemon that cannot be resolved from the path its own unit execs has no
+    /// identity at deployment: every peer-authenticated socket it speaks to sees
+    /// `UnknownBinary` and refuses it, and a fail-closed audit turns that into a
+    /// dead feature. Three daemons have landed in this hole - the transfer daemon
+    /// (live), the module runtime (latent), the agent before it - each time
+    /// because a binary sits in libexec while the resolver kept a `/usr/bin`
+    /// assumption that a hand-written test happily confirmed.
+    ///
+    /// Deriving the check from the shipped units closes it: the unit is the
+    /// deployment's own statement of where the binary goes, so this cannot drift
+    /// from reality the way a hand-picked path can.
+    #[test]
+    fn every_shipped_unit_binary_has_an_identity() {
+        let mut unresolved = Vec::new();
+        for (unit, bin) in shipped_exec_starts() {
+            // Only Arlen's own binaries carry an app id; a unit that execs a
+            // system tool (busctl, sh) is not making an identity claim.
+            if !bin.starts_with("/usr/lib/arlen/") && !bin.starts_with("/usr/bin/arlen-") {
+                continue;
+            }
+            if path_to_app_id(Path::new(&bin)).is_err() {
+                let name = unit.file_name().unwrap().to_string_lossy().to_string();
+                unresolved.push(format!("{name} execs {bin}"));
+            }
+        }
+        assert!(
+            unresolved.is_empty(),
+            "shipped units whose binary has no app id ({}):\n  {}",
+            unresolved.len(),
+            unresolved.join("\n  ")
+        );
+    }
+}
