@@ -20,20 +20,22 @@ Environment=RUST_LOG=info
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=read-only
+# NOT read-only, and not an oversight: reading the user's home is this daemon's
+# PURPOSE (project detection, file.opened path promotion, the ~/.timeline FUSE
+# mount). Verified on a booted image: as a system service with
+# ProtectHome=read-only it could not read /home/<user> at all - graph.toml under
+# ~/.config came back "not found" while the --user AI daemons read ai.toml from
+# the same directory. The capability-scoped query socket is this daemon's access
+# boundary, not ProtectHome.
+ProtectHome=no
 ReadWritePaths=%h/.local/share/arlen
 ReadWritePaths=/run/user/%U/arlen
-# DEPLOYMENT CAVEAT (Phase 10, needs on-host verification): the daemon mounts a
-# FUSE timeline at ~/.timeline (DEFAULT_TIMELINE_MOUNT). That conflicts with the
-# hardening above twice over: ProtectHome=read-only makes ~/.timeline read-only
-# (the mount point cannot be created/mounted), AND ProtectSystem/ProtectHome put
-# this unit in a private mount namespace, so a FUSE mount made here is not
-# visible to the user's session. Making the timeline usable under this unit
-# likely needs ~/.timeline in ReadWritePaths plus mount propagation
-# (PrivateMounts=no / a shared MountFlags), or relaxing ProtectHome for the
-# mount point. Set ARLEN_TIMELINE_MOUNT to a ReadWritePaths-covered location
-# meanwhile. The graph/DB/socket paths above are correct; only the FUSE mount is
-# affected.
+# REMAINING CAVEAT, narrowed by the above: ProtectSystem=strict still puts this
+# unit in a private mount namespace, so a FUSE timeline mounted here is not
+# necessarily visible to the user's session even now that the mount point is
+# writable. That half needs mount propagation (PrivateMounts=no or a shared
+# MountFlags) and has not been verified on a boot. The access half - which is
+# what made graph.toml unreadable and the mount point uncreatable - is fixed.
 
 [Install]
 WantedBy=default.target
