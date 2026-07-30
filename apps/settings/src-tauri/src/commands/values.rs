@@ -69,7 +69,8 @@ impl From<SettingOption> for OptionView {
 }
 
 /// This machine, as the resolver sees it.
-struct ThisMachine;
+/// The live machine, as the value sources see it.
+pub struct ThisMachine;
 
 impl ThisMachine {
     /// Run a listing command and hand its stdout to a parser, reporting the
