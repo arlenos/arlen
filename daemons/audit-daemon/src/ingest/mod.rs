@@ -501,6 +501,73 @@ mod tests {
         let _ = serving.await;
     }
 
+    /// The admission gate itself, driven through `handle` rather than around it.
+    ///
+    /// The test above deliberately calls `serve_connection` with the actor
+    /// already decided, so nothing exercised `handle`'s
+    /// `if !caller_is_admitted(...)`. Mutation testing found that `!` could be
+    /// DELETED - which inverts the gate, admitting exactly the callers the
+    /// allowlist exists to keep out - and no test failed.
+    ///
+    /// The test process is a perfect probe for it: its own resolved id is a
+    /// hash-suffixed `dev.<binary>`, which is not a producer, so a correct
+    /// daemon refuses it and appends nothing. An inverted gate would let it
+    /// through and the ledger would grow.
+    #[tokio::test]
+    async fn a_caller_that_is_not_a_producer_appends_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let ledger = Ledger::open(
+            &dir.path().join("ledger.db"),
+            zeroize::Zeroizing::new(b"test-key".to_vec()),
+        )
+        .await
+        .expect("open ledger");
+        let ledger = Arc::new(Mutex::new(ledger));
+        let emitter = Arc::new(UnixEventEmitter::new("/nonexistent/producer.sock"));
+        let server = Arc::new(IngestServer::new(
+            Arc::clone(&ledger),
+            emitter,
+            Arc::new(AtomicBool::new(false)),
+        ));
+
+        // Both ends are this process, so the peer resolves to the test binary -
+        // an honest, kernel-attested identity that simply is not on the list.
+        let (mut client, server_end) = UnixStream::pair().unwrap();
+        let uid = current_uid();
+        let serving = tokio::spawn(async move {
+            let _ = server.handle(server_end, uid).await;
+        });
+
+        let req = IngestRequest {
+            kind: AuditKind::Query,
+            structural: StructuralRecord {
+                subject: "graph".into(),
+                node_types: vec!["File".into()],
+                relations: vec![],
+                result_count: Some(1),
+                duration_ms: Some(1),
+                outcome: "ok".into(),
+                depth: None,
+                capability_change: None,
+            },
+            forensic: None,
+            call_chain_id: None,
+            project_id: None,
+        };
+        let body = serde_json::to_vec(&req).unwrap();
+        // The write may fail if the server already hung up on us, which is itself
+        // the refusal - either way nothing may be appended.
+        let _ = write_frame(&mut client, &body).await;
+        drop(client);
+        let _ = serving.await;
+
+        assert_eq!(
+            ledger.lock().await.verify().await.unwrap(),
+            0,
+            "a caller outside the producer allowlist must leave the ledger empty"
+        );
+    }
+
     /// A server whose tamper flag is set must refuse every append:
     /// no entry may chain onto a ledger that failed verification.
     #[tokio::test]
