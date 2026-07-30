@@ -28,20 +28,20 @@ mod proto {
 /// Locate a binary in the Cargo target directory.
 /// Cargo sets CARGO_MANIFEST_DIR to the knowledge crate root.
 /// The event-bus binary is in the sibling repo's target dir.
+/// A sibling daemon binary, resolved beside this test binary.
+///
+/// Derived from `current_exe` (`<target>/debug/deps/<test>-<hash>`, so two levels
+/// up is `<target>/debug`) rather than from the source layout. The previous form
+/// walked up from `CARGO_MANIFEST_DIR` to `<repo>/daemons/<name>/target/debug/`,
+/// which was the pre-monorepo shape where each daemon was its own repo with its
+/// own target dir. Since the restructure the root `.cargo/config.toml` puts every
+/// binary in one `target/`, so that path has not existed for a long time - and
+/// because this test is `#[ignore]`d, nothing ever reported it.
 fn binary_path(name: &str) -> PathBuf {
-    // Walk up from knowledge/ to the workspace parent, then into event-bus/target
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let workspace_root = PathBuf::from(&manifest_dir)
-        .parent()
-        .unwrap()
-        .to_path_buf();
-
-    // In the same workspace root the other repos live as siblings.
-    // Cargo builds each binary into its own target/debug/ directory.
-    workspace_root
-        .join(name)
-        .join("target")
-        .join("debug")
+    let exe = std::env::current_exe().expect("locate the test binary");
+    exe.parent()
+        .and_then(|deps| deps.parent())
+        .expect("test binary lives in <target>/debug/deps")
         .join(name)
 }
 
@@ -148,25 +148,55 @@ async fn event_lands_in_sqlite() {
         project_id: String::new(),
     };
 
-    send_event(producer_socket_str, &event);
+    // Emit until it lands, rather than sleeping a fixed time and hoping.
+    //
+    // The writer registers as a consumer concurrently with the rest of the daemon's
+    // startup, and the bus drops an event that has no consumer at dispatch time, so
+    // a single send after a fixed sleep races registration. The same fixed-sleep
+    // shape was why the hermetic integration suite moved to this pattern. Each
+    // attempt still allows the writer's 500ms batch timer to fire before looking.
+    let pool = loop_until_open(db_path_str).await;
 
-    // Wait for the knowledge daemon's 500ms batch timer to fire and write to SQLite.
-    std::thread::sleep(Duration::from_millis(800));
-
-    // Open the SQLite database directly and check the event is there.
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect(&format!("sqlite:{db_path_str}"))
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    let mut found: Option<(String, String)> = None;
+    while std::time::Instant::now() < deadline {
+        send_event(producer_socket_str, &event);
+        std::thread::sleep(Duration::from_millis(800));
+        if let Ok(row) = sqlx::query_as::<_, (String, String)>(
+            "SELECT id, type FROM events WHERE id = ?",
+        )
+        .bind(&event.id)
+        .fetch_one(&pool)
         .await
-        .expect("failed to open db");
+        {
+            found = Some(row);
+            break;
+        }
+    }
 
-    let row: (String, String) =
-        sqlx::query_as("SELECT id, type FROM events WHERE id = ?")
-            .bind(&event.id)
-            .fetch_one(&pool)
-            .await
-            .expect("event not found in SQLite");
-
+    let row = found.expect(
+        "the event never reached SQLite: the producer -> bus -> writer -> store path \
+         is broken, not merely slow (retried for 30s)",
+    );
     assert_eq!(row.0, event.id);
     assert_eq!(row.1, event.r#type);
+}
+
+/// The daemon creates the database on startup, so opening it can lose a race with
+/// the daemon's own first write. Retries until it opens or the deadline passes.
+async fn loop_until_open(db_path: &str) -> sqlx::SqlitePool {
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    loop {
+        match SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&format!("sqlite:{db_path}"))
+            .await
+        {
+            Ok(pool) => return pool,
+            Err(e) if std::time::Instant::now() >= deadline => {
+                panic!("the knowledge daemon never created its database: {e}")
+            }
+            Err(_) => std::thread::sleep(Duration::from_millis(200)),
+        }
+    }
 }
