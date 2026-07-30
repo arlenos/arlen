@@ -310,7 +310,18 @@ mod tests {
             }],
         };
         let json = serde_json::to_string(&r).unwrap();
-        let _: Response = serde_json::from_str(&json).unwrap();
+
+        // Two different things, both needed. Decoding and re-encoding to the same
+        // bytes proves the shape is STABLE - a decode that quietly reinterprets
+        // something shows up here. It does NOT prove a field reached the wire at
+        // all: a field skipped on both sides is omitted consistently and compares
+        // equal, which is how a dropped field passes an ordinary round-trip test.
+        // So the payload's fields are named explicitly as well.
+        let back: Response = serde_json::from_str(&json).unwrap();
+        assert_eq!(serde_json::to_string(&back).unwrap(), json, "the shape is stable");
+        for field in ["\"id\"", "\"title\"", "\"relevance\"", "\"plugin_id\"", "\"action\""] {
+            assert!(json.contains(field), "{field} must reach the wire, got {json}");
+        }
     }
 
     #[test]
@@ -339,7 +350,12 @@ mod tests {
         ];
         for call in calls {
             let json = serde_json::to_string(&call).unwrap();
-            let _: HostCall = serde_json::from_str(&json).unwrap();
+            let back: HostCall = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                serde_json::to_string(&back).unwrap(),
+                json,
+                "a host call must survive the wire unchanged"
+            );
         }
     }
 
