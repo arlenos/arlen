@@ -104,7 +104,12 @@ fn run() -> Result<(), String> {
         .map_err(|e| format!("graph client runtime: {e}"))?;
     let mut sink = KgPlanSink::new(writer);
 
+    // Which bridge this process IS. Every bridge runs this same binary, so
+    // without the id a log line cannot be attributed to one of several running
+    // instances - and the app id is what a per-bridge profile is keyed under.
     tracing::info!(
+        bridge = %config.bridge.id,
+        app_id = %config.bridge.app_id(),
         plugin = %config.bridge.allowed_plugin_id,
         "bridge ingest host ready"
     );
