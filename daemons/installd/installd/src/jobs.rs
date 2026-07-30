@@ -27,6 +27,14 @@ pub enum JobKind {
     Uninstall { app_id: String },
     /// Uninstall a Flatpak app.
     UninstallFlatpak { app_id: String },
+    /// Upgrade an already-installed app from a local .lunpkg.
+    ///
+    /// Distinct from `InstallPackage` because install REFUSES an app that is
+    /// already there (`AlreadyInstalled`) - correctly, since silently replacing
+    /// an installed app is how an "install" becomes an unreviewed update. An
+    /// upgrade is the reviewed form of that same write: it runs the capability
+    /// gate against what the app was granted before, and only then replaces.
+    Upgrade { path: String },
 }
 
 /// Current state of a job.
@@ -138,6 +146,78 @@ impl JobQueue {
     }
 }
 
+/// Emit the ConsentRequired signal: this update wants something the installed
+/// version was not granted, so a surface has to ask before it can proceed.
+async fn emit_consent_required(
+    conn: &Connection,
+    job_id: &str,
+    app_id: &str,
+    app_name: &str,
+    permissions: Vec<String>,
+) {
+    let iface_ref = conn
+        .object_server()
+        .interface::<_, crate::dbus::InstallDaemon>("/org/arlen/InstallDaemon1")
+        .await;
+    if let Ok(iface) = iface_ref {
+        let ctx = iface.signal_emitter();
+        let _ = crate::dbus::InstallDaemon::consent_required(
+            ctx,
+            job_id.to_string(),
+            app_id.to_string(),
+            app_name.to_string(),
+            permissions,
+        )
+        .await;
+    }
+}
+
+/// Upgrade an installed app, gated on what it newly asks for.
+///
+/// The order is the point: verify, read the manifest, and run the capability
+/// gate against the install lock BEFORE anything on disk is replaced. An update
+/// that asks for nothing new applies silently (a prompt on every update is how
+/// people learn to click through prompts); one that widens stops here, emits
+/// `ConsentRequired`, and changes nothing.
+///
+/// Stopping is deliberate rather than a gap. There is no trusted channel yet for
+/// a surface to answer that signal - the system consent dialog is a separate
+/// strand - and the alternative, letting the caller assert its own consent, would
+/// mean any caller could wave through exactly the widening the gate exists to
+/// catch. Refusing until the answer path exists is the safe half, and
+/// `forage update` already covers the interactive case on the terminal.
+async fn run_upgrade(
+    queue: &JobQueue,
+    conn: &Connection,
+    job_id: &str,
+    path: &str,
+) -> Result<(), install::InstallError> {
+    queue.update_progress(job_id, 10, "checking the update");
+    emit_progress(conn, job_id, 10, "checking the update").await;
+
+    // Verifies structure + signature before reading any claim from the package.
+    let (app_id, gate) = crate::consent::preview_upgrade(path)?;
+
+    match gate {
+        crate::consent::UpgradeGate::Silent => {}
+        crate::consent::UpgradeGate::Interruptive { widened }
+        | crate::consent::UpgradeGate::Unknown { requested: widened } => {
+            queue.update_progress(job_id, 15, "waiting for your approval");
+            emit_consent_required(conn, job_id, &app_id, &app_id, widened.clone()).await;
+            return Err(install::InstallError::ConsentRequired(widened.join(", ")));
+        }
+    }
+
+    // Nothing new is being asked for, so replace in place: stage the installed
+    // version out of the way, then run the ordinary install path.
+    queue.update_progress(job_id, 20, "replacing the installed version");
+    emit_progress(conn, job_id, 20, "replacing the installed version").await;
+    crate::trash::stage_for_deletion(&app_id)
+        .map_err(|e| install::InstallError::TrashFailed(e.to_string()))?;
+
+    run_install_package(queue, conn, job_id, path).await
+}
+
 /// Emit a JobProgress D-Bus signal.
 async fn emit_progress(conn: &Connection, job_id: &str, percent: u8, status: &str) {
     let iface_ref = conn
@@ -208,6 +288,7 @@ pub async fn run_worker(queue: std::sync::Arc<JobQueue>, conn: Connection) {
             JobKind::UninstallFlatpak { ref app_id } => {
                 run_uninstall_flatpak(&queue, &conn, &job_id, app_id).await
             }
+            JobKind::Upgrade { ref path } => run_upgrade(&queue, &conn, &job_id, path).await,
         };
 
         // Content-free GAP-2 audit of the completed action (action, source and
@@ -223,6 +304,7 @@ pub async fn run_worker(queue: std::sync::Arc<JobQueue>, conn: Connection) {
             JobKind::UninstallFlatpak { app_id } => {
                 ("uninstall", "flatpak", Some(app_id.as_str()))
             }
+            JobKind::Upgrade { .. } => ("upgrade", "lunpkg", None),
         };
         if let Err(e) = audit
             .submit(install_action_event(action, source, subject_id, outcome))
@@ -537,6 +619,20 @@ async fn run_uninstall_flatpak(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The upgrade job carries its own kind so it can be gated. Install refuses
+    /// an already-installed app on purpose; routing an update through it would
+    /// turn "install" into an unreviewed replace.
+    #[test]
+    fn an_upgrade_is_its_own_job_kind() {
+        let q = JobQueue::new();
+        let id = q.enqueue(JobKind::Upgrade {
+            path: "/tmp/app.lunpkg".into(),
+        });
+        assert!(!id.is_empty());
+        let (_, state, _) = q.get_status(&id).expect("the job should be queued");
+        assert_eq!(state, "pending");
+    }
 
     #[test]
     fn test_enqueue_and_status() {
