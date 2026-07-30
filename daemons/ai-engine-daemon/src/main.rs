@@ -385,6 +385,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // from the separate-uid signer's signed, HMAC-chained log (below), so a
     // graph compensation recorded before a restart is still undoable.
     let compensation = Arc::new(Mutex::new(CompensationStore::new(256)));
+    // Crash recovery FIRST, before the re-arm below, because a reversal the last
+    // run started and never finished is not a write the user may undo - it is one
+    // the system owes them the rest of. `live_entries` includes these, so re-arming
+    // without draining them would offer a half-undone action back as undoable.
+    // Replaying the captured inverse is safe: each one is idempotent, so finishing
+    // an interrupted reversal is the same operation as performing it.
+    {
+        let signer = arlen_ai_undo_proto::socket_path();
+        match arlen_ai_engine_daemon::undo_signer::fetch_compensating(&signer).await {
+            Ok(entries) if !entries.is_empty() => {
+                let refs: Vec<&arlen_ai_undo_core::undo_log::UndoEntry> = entries.iter().collect();
+                let outcome = arlen_ai_engine_daemon::undo_enact::drive_compensation_recovery(
+                    &refs,
+                    arlen_ai_engine_daemon::undo_enact::enact_inverse,
+                );
+                for op_id in &outcome.recovered {
+                    // Recorded terminal so the next restart does not re-drive an
+                    // op whose outcome is already settled.
+                    if let Err(e) = arlen_ai_engine_daemon::undo_signer::transition(
+                        &signer,
+                        op_id,
+                        arlen_ai_undo_core::undo_log::UndoState::Compensated,
+                    )
+                    .await
+                    {
+                        tracing::warn!(op_id = %op_id, error = %e, "recovered undo not recorded");
+                    }
+                }
+                for (op_id, why) in &outcome.deferred {
+                    // Left Compensating on purpose: a transient failure retries on
+                    // the next restart rather than being written off.
+                    tracing::warn!(op_id = %op_id, error = %why, "undo recovery deferred");
+                }
+                info!(
+                    recovered = outcome.recovered.len(),
+                    deferred = outcome.deferred.len(),
+                    "finished undo reversals interrupted by a crash"
+                );
+            }
+            Ok(_) => {}
+            Err(e) => tracing::debug!(error = %e, "no interrupted undo recovery attempted"),
+        }
+    }
     // Restart restore: fetch the signer's still-undoable (non-terminal) entries and
     // re-arm the in-memory store, so an undo issued after a restart finds a write
     // the signed log recorded. Best-effort - an absent/failing signer just means no

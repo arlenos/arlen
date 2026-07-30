@@ -92,6 +92,15 @@ pub enum Request {
     /// Enumerate every entry still in a non-terminal state - what a restarting
     /// consumer re-arms so a persisted compensation survives (no fields).
     LiveEntries,
+    /// Enumerate only the entries a crash caught mid-reversal: an undo that
+    /// started and never reached its terminal state (no fields).
+    ///
+    /// Distinct from [`Request::LiveEntries`], which includes these, because the
+    /// two demand OPPOSITE handling. A live entry is offered back to the user as
+    /// still-undoable; an interrupted one must instead have its inverse replayed
+    /// to completion, and offering it as undoable would invite undoing something
+    /// already half-undone.
+    CompensatingEntries,
 }
 
 impl Request {
@@ -123,7 +132,7 @@ impl Request {
             }
             // No caller-supplied field to bound; the frame length already caps
             // the response the signer streams back.
-            Request::LiveEntries => {}
+            Request::LiveEntries | Request::CompensatingEntries => {}
         }
         Ok(())
     }

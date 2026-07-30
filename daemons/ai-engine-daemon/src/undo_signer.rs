@@ -74,6 +74,42 @@ where
     }
 }
 
+/// Fetch only the entries a crash caught mid-reversal, over an open stream.
+pub async fn fetch_compensating_on<S>(stream: &mut S) -> Result<Vec<UndoEntry>, String>
+where
+    S: AsyncReadExt + AsyncWriteExt + Unpin,
+{
+    write_request(stream, &Request::CompensatingEntries)
+        .await
+        .map_err(|e| format!("write: {e}"))?;
+    match read_response(stream)
+        .await
+        .map_err(|e| format!("read: {e}"))?
+    {
+        Response::Entries(entries) => Ok(entries),
+        other => Err(format!("signer did not return compensating entries: {other:?}")),
+    }
+}
+
+/// Connect to the signer at `socket` and fetch the entries a crash caught
+/// mid-reversal, bounded by [`SUBMIT_TIMEOUT`]. Best-effort like
+/// [`fetch_live`]: an unreachable signer leaves the interrupted reversals for
+/// the next restart rather than failing startup.
+pub async fn fetch_compensating(socket: &Path) -> Result<Vec<UndoEntry>, String> {
+    let fetch = async {
+        let mut stream = UnixStream::connect(socket)
+            .await
+            .map_err(|e| format!("connect {}: {e}", socket.display()))?;
+        fetch_compensating_on(&mut stream).await
+    };
+    match tokio::time::timeout(SUBMIT_TIMEOUT, fetch).await {
+        Ok(result) => result,
+        Err(_) => Err(format!(
+            "signer compensating-entries fetch timed out after {SUBMIT_TIMEOUT:?}"
+        )),
+    }
+}
+
 /// Connect to the signer at `socket` and fetch its live entries, bounded by
 /// [`SUBMIT_TIMEOUT`]. Best-effort: a connect/transport/timeout failure is
 /// returned for the caller to swallow, so an unreachable signer never hangs or

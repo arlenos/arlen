@@ -161,6 +161,14 @@ impl SignerStore {
     pub fn live_entries(&self) -> Vec<UndoEntry> {
         self.log.live_entries().into_iter().cloned().collect()
     }
+
+    /// The sealed entries a crash caught mid-reversal, for a restarting consumer
+    /// to replay to completion. A subset of [`Self::live_entries`], separated
+    /// because the two want opposite handling: these must be finished, not
+    /// offered back as undoable.
+    pub fn compensating_entries(&self) -> Vec<UndoEntry> {
+        self.log.compensating_entries().into_iter().cloned().collect()
+    }
 }
 
 /// Whether the undo-log file at `path` already holds at least one record: it
