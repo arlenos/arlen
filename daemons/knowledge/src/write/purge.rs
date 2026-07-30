@@ -60,9 +60,15 @@ fn is_under(qualified_type: &str, namespace: &str) -> bool {
 
 /// Plan the purge of everything written under `namespace`.
 ///
-/// `all_types` is the registry's list of qualified entity types and
-/// `known_rel_tables` the rel tables that currently exist, each with the
-/// endpoint types it was created for.
+/// `all_types` is the registry's list of qualified entity types; `catalog` is
+/// what the engine reports for its rel tables, each as
+/// `(rel_table, source_node_table, destination_node_table)`.
+///
+/// The rel side comes from the ENGINE, not the registry, because a rel table's
+/// name is a hash of its `(edge, from, to)` triple and the triple cannot be
+/// recovered from it. `CALL show_tables()` and `CALL show_connection(name)`
+/// answer this exactly, which beats enumerating every possible triple and
+/// checking which exist.
 ///
 /// **Types come from the registry, never from table-name prefixes.** Table
 /// names sanitise non-alphanumerics to `_`, so `e_md_obsidian_` is a prefix of
@@ -77,27 +83,23 @@ fn is_under(qualified_type: &str, namespace: &str) -> bool {
 pub fn plan_purge(
     namespace: &str,
     all_types: &[String],
-    known_rel_tables: &[(String, String, String)],
+    catalog: &[(String, String, String)],
 ) -> PurgePlan {
-    let owned: Vec<&String> = all_types
+    let mut node_tables: Vec<String> = all_types
         .iter()
         .filter(|t| is_under(t, namespace))
-        .collect();
-
-    let mut rel_tables: Vec<String> = known_rel_tables
-        .iter()
-        .filter(|(_, from, to)| is_under(from, namespace) || is_under(to, namespace))
-        .map(|(edge, from, to)| super::entity_rel_table_name(edge, from, to))
-        .collect();
-    rel_tables.sort();
-    rel_tables.dedup();
-
-    let mut node_tables: Vec<String> = owned
-        .iter()
         .map(|t| super::entity_table_name(t))
         .collect();
     node_tables.sort();
     node_tables.dedup();
+
+    let mut rel_tables: Vec<String> = catalog
+        .iter()
+        .filter(|(_, src, dst)| node_tables.contains(src) || node_tables.contains(dst))
+        .map(|(rel, _, _)| rel.clone())
+        .collect();
+    rel_tables.sort();
+    rel_tables.dedup();
 
     PurgePlan {
         rel_tables,
@@ -136,9 +138,9 @@ mod tests {
     #[test]
     fn the_statements_drop_every_edge_before_any_node() {
         let rels = vec![(
-            "LINKS_TO".to_string(),
-            "md.obsidian.Note".to_string(),
-            "system.File".to_string(),
+            "r_LINKS_TO_1".to_string(),
+            super::super::entity_table_name("md.obsidian.Note"),
+            super::super::entity_table_name("system.File"),
         )];
         let plan = plan_purge("md.obsidian", &types(), &rels);
         let stmts = plan.statements();
@@ -158,9 +160,9 @@ mod tests {
     #[test]
     fn an_inbound_edge_is_included() {
         let rels = vec![(
-            "MENTIONS".to_string(),
-            "system.File".to_string(),
-            "md.obsidian.Note".to_string(),
+            "r_MENTIONS_1".to_string(),
+            super::super::entity_table_name("system.File"),
+            super::super::entity_table_name("md.obsidian.Note"),
         )];
         let plan = plan_purge("md.obsidian", &types(), &rels);
         assert_eq!(plan.rel_tables.len(), 1, "{plan:?}");
@@ -170,9 +172,9 @@ mod tests {
     #[test]
     fn an_unrelated_edge_is_left_alone() {
         let rels = vec![(
-            "LINKS_TO".to_string(),
-            "system.File".to_string(),
-            "md.obsidianvault.Note".to_string(),
+            "r_LINKS_TO_2".to_string(),
+            super::super::entity_table_name("system.File"),
+            super::super::entity_table_name("md.obsidianvault.Note"),
         )];
         let plan = plan_purge("md.obsidian", &types(), &rels);
         assert!(plan.rel_tables.is_empty(), "{plan:?}");
