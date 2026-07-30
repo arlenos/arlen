@@ -1090,3 +1090,98 @@ mod dbus_activation {
         );
     }
 }
+
+#[cfg(test)]
+mod ci_matrix {
+    use super::repo_path;
+    use std::path::{Path, PathBuf};
+
+    /// The crate directories `ci.yml` builds, parsed from its `RUST_ALL` line.
+    fn matrix() -> Vec<String> {
+        let ci = std::fs::read_to_string(repo_path(".github/workflows/ci.yml"))
+            .expect("read ci.yml");
+        let line = ci
+            .lines()
+            .find(|l| l.trim_start().starts_with("RUST_ALL="))
+            .expect("ci.yml declares RUST_ALL");
+        // The value is a JSON array in single quotes: take what is between the
+        // brackets and read the quoted entries out of it.
+        let inner = line
+            .split_once('[')
+            .and_then(|(_, rest)| rest.rsplit_once(']'))
+            .map(|(inner, _)| inner)
+            .expect("RUST_ALL is a bracketed list");
+        inner
+            .split(',')
+            .map(|e| e.trim().trim_matches('"').to_string())
+            .filter(|e| !e.is_empty())
+            .collect()
+    }
+
+    /// Every directory in the tree holding a `[package]` manifest.
+    fn packages(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                let n = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if n == "target" || n == "node_modules" || n.starts_with("mkosi") || n == ".git" {
+                    continue;
+                }
+                packages(&p, out);
+            } else if p.file_name().is_some_and(|n| n == "Cargo.toml")
+                && std::fs::read_to_string(&p).is_ok_and(|t| t.contains("[package]"))
+            {
+                out.push(p.parent().unwrap().to_path_buf());
+            }
+        }
+    }
+
+    /// `ci.yml` states the rule in its own comment: "Everything else that defines
+    /// a `[package]` IS listed", with two documented exclusions - `apps/*/src-tauri`
+    /// (needs webkit2gtk and the tauri toolchain) and `daemons/kernel-layer/*`
+    /// (needs the bpf toolchain or a VM). Nothing enforced that, and it has drifted
+    /// before: `dev/integration` sat outside the matrix for a while, so its tests
+    /// never ran on a pull request despite being written to gate exactly that.
+    ///
+    /// A crate counts as covered if it is listed OR an ancestor is - the matrix
+    /// names workspace roots like `sdk` and `ai` rather than each member.
+    #[test]
+    fn every_package_is_in_the_ci_matrix_or_documented_as_excluded() {
+        let root = repo_path("");
+        let listed = matrix();
+        let mut found = Vec::new();
+        packages(&root, &mut found);
+        assert!(found.len() > 50, "expected to find the tree's crates, got {}", found.len());
+
+        let mut missing = Vec::new();
+        for dir in found {
+            let rel = dir.strip_prefix(&root).unwrap_or(&dir).to_string_lossy().to_string();
+            // The two exclusions ci.yml documents.
+            if rel.contains("/src-tauri") || rel.starts_with("daemons/kernel-layer") {
+                continue;
+            }
+            // Listed outright, or a member of a listed workspace. A crate that
+            // declares its own `[workspace]` is NOT a member of anything above
+            // it - `forage/patch` sits under the listed `forage` but is built
+            // separately - so a shared path prefix is not coverage.
+            let standalone = std::fs::read_to_string(dir.join("Cargo.toml"))
+                .is_ok_and(|t| t.contains("[workspace]"));
+            let covered = listed.iter().any(|l| {
+                rel == *l || (!standalone && rel.starts_with(&format!("{l}/")))
+            });
+            if !covered {
+                missing.push(rel);
+            }
+        }
+        missing.sort();
+        assert!(
+            missing.is_empty(),
+            "crates outside the CI matrix and outside its documented exclusions ({}):\n  {}",
+            missing.len(),
+            missing.join("\n  ")
+        );
+    }
+}
