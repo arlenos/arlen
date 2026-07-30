@@ -165,6 +165,11 @@ async fn cmd_install(target: String) {
         }
     };
 
+    // The foreign app a bridge would be for, when the target names one. A
+    // .lunpkg's id is inside the package, so bridges for a local file install
+    // are a later step; a flatpak's id is right there in the target.
+    let foreign_app = target.strip_prefix("flatpak:").map(str::to_string);
+
     let result = if target.starts_with("flatpak:") {
         // flatpak:{app_id}
         let app_id = target.strip_prefix("flatpak:").unwrap();
@@ -192,6 +197,30 @@ async fn cmd_install(target: String) {
     if let Err(e) = result {
         eprintln!("{} {e}", "error:".red().bold());
         std::process::exit(1);
+    }
+
+    // BR-5: a foreign app's bridges install alongside it. After the app, so a
+    // failed install never leaves a bridge for something that is not there, and
+    // never fatal - the user asked for the app, and they have it.
+    if let Some(app) = foreign_app {
+        let fetcher = arlen_forage_fetch::ProcessGitFetcher;
+        report_bridges(commands::bridge::install_bridges_for(&fetcher, &app).await);
+    }
+}
+
+/// Say what became of an app's bridges, without pretending it was the install.
+fn report_bridges(outcome: commands::bridge::BridgeOutcome) {
+    use commands::bridge::BridgeOutcome as O;
+    match outcome {
+        O::None => {}
+        O::Installed(namespaces) => println!(
+            "{} bridge installed; it may now write {}",
+            "ok:".green().bold(),
+            namespaces.join(", ")
+        ),
+        O::Declined => println!("bridge not installed: you declined the access it asked for"),
+        // The app is installed and working; only the bridge is not.
+        O::Failed(why) => eprintln!("{} the app is installed, its bridge is not: {why}", "note:".yellow()),
     }
 }
 

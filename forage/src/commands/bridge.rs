@@ -14,10 +14,6 @@
 //! (e.g. `$VAULT` for Obsidian) are the caller's job - a [`PreparedBridge`] arrives
 //! already fetched, parsed and namespace-resolved, so this core is pure and tested
 //! without a network or a cookbook.
-// Mechanism ahead of its consumer: the `forage install <app>` trigger hook that
-// fetches the bridges and calls this is a following slice, like `bridges_in_cookbooks`.
-#![allow(dead_code)]
-
 use arlen_forage_bridge_install::{
     arlen_bridge_dir, bridge_namespace, deprovision_bridge_namespace, install_bridge,
     is_safe_relative_path, resolve_foreign_dest, BridgeInstallResult, InstallBridgeError,
@@ -802,4 +798,74 @@ files = ["main.js"]
         assert!(consent_summary(&[]).is_empty());
     }
 
+}
+
+/// What came of trying to install an app's bridges.
+///
+/// Reported rather than returned as a bare error, because bridges are a side
+/// effect of installing the app: none of these outcomes should fail the install
+/// the user actually asked for, and all of them are worth telling them about.
+#[derive(Debug, PartialEq, Eq)]
+pub enum BridgeOutcome {
+    /// No cookbook offers a bridge for this app.
+    None,
+    /// Installed, naming the namespaces now writable.
+    Installed(Vec<String>),
+    /// The user declined the grant.
+    Declined,
+    /// Something went wrong, in words worth printing.
+    Failed(String),
+}
+
+/// Install every bridge the cookbooks offer for `foreign_app` (BR-5).
+///
+/// The order is the point: resolve, fetch, prepare, **ask**, install. Consent
+/// comes after preparation because that is the first moment the real namespaces
+/// are known - asking before would describe a grant from the cookbook's
+/// metadata rather than from the recipe that will actually be installed - and
+/// before installation because a grant written first is a grant nobody
+/// authorised.
+///
+/// The clone directories are held until the install finishes: they own the
+/// source the files are copied from, and dropping one early would delete the
+/// files mid-copy.
+pub async fn install_bridges_for<F: GitFetcher>(fetcher: &F, foreign_app: &str) -> BridgeOutcome {
+    let resolved = match super::cookbook::bridges_in_cookbooks(foreign_app).await {
+        Ok(r) if r.is_empty() => return BridgeOutcome::None,
+        Ok(r) => r,
+        Err(e) => return BridgeOutcome::Failed(e),
+    };
+
+    let mut clones = Vec::new();
+    let mut prepared = Vec::new();
+    for recipe in &resolved {
+        match prepare_bridge(fetcher, recipe) {
+            Ok((clone, pb)) => {
+                clones.push(clone);
+                prepared.push(pb);
+            }
+            // One unavailable bridge does not cancel the others: they are
+            // independent grants from independent cookbooks.
+            Err(e) => return BridgeOutcome::Failed(format!("preparing a bridge: {e}")),
+        }
+    }
+
+    let (tokens, missing) = tokens_from_env(&prepared);
+    if !missing.is_empty() {
+        // Without the anchor there is nowhere to put the foreign half, and
+        // guessing a path inside someone's home is not a guess worth making.
+        return BridgeOutcome::Failed(format!(
+            "these are not set, so there is nowhere to install the plugin half: {}",
+            missing.join(", ")
+        ));
+    }
+
+    if !request_bridge_consent(&prepared).await {
+        return BridgeOutcome::Declined;
+    }
+
+    match install_prepared_bridges(&prepared, &tokens) {
+        Ok(_) => BridgeOutcome::Installed(prepared.into_iter().map(|p| p.namespace).collect()),
+        Err(e) => BridgeOutcome::Failed(e.to_string()),
+    }
 }

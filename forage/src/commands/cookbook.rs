@@ -164,7 +164,6 @@ async fn resolve_against(
 /// pinned cookbook. The consumer is the `forage install <app>` bridge-install flow
 /// (its consent gate is the remaining piece), so this is wired there, not exposed
 /// as its own command (the design auto-installs, it does not add a query verb).
-#[allow(dead_code)]
 pub async fn bridges_in_cookbooks(
     foreign_app: &str,
 ) -> Result<Vec<arlen_cookbook_resolve::ResolvedRecipe>, String> {
