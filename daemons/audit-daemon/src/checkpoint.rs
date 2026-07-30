@@ -206,6 +206,39 @@ pub fn assess_startup(
 mod tests {
     use super::*;
 
+    /// A checkpoint that cannot be READ is not the same as one that is not
+    /// there, and the difference is the whole point of having a checkpoint.
+    /// Absent means genesis - a fresh ledger, nothing to witness yet. Unreadable
+    /// means the witness is gone, which is exactly what truncating a ledger and
+    /// removing its checkpoint looks like.
+    ///
+    /// Mutation testing found the `NotFound` guard could be replaced with `true`,
+    /// which folds every read failure into "absent" - so an unreadable checkpoint
+    /// would report genesis and the daemon would accept a truncated ledger
+    /// without complaint. Only `NotFound` may mean absent.
+    #[test]
+    fn a_checkpoint_that_cannot_be_read_is_not_reported_as_absent() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Genuinely absent: no file at all.
+        let missing = dir.path().join("nothing.json");
+        assert!(
+            matches!(read(&missing), Ok(None)),
+            "a file that is not there means no checkpoint yet"
+        );
+
+        // Present but unreadable: a directory where a file belongs. The open
+        // fails with something other than NotFound, so it must be an error and
+        // never `Ok(None)`.
+        let blocked = dir.path().join("checkpoint.json");
+        std::fs::create_dir(&blocked).unwrap();
+        let got = read(&blocked);
+        assert!(
+            matches!(got, Err(AuditError::Storage(_))),
+            "an unreadable checkpoint must not read as absent, got {got:?}"
+        );
+    }
+
     fn cp(index: u64, hash: &str) -> Checkpoint {
         Checkpoint {
             index,
