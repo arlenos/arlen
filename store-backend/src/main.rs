@@ -90,6 +90,10 @@ fn load_source_inputs() -> SourceInputs {
         // compose job (SC-5); until it exists this stays empty and a Flathub
         // card carries no footprint rather than a guessed one.
         flatpak_metadata: Vec::new(),
+        // SC-3's apt half, same shape and same gate: the enrolled profile of an
+        // apt app is local state the compose job (SC-5) supplies. Empty until
+        // then, so a Debian card carries no footprint rather than a wrong one.
+        apt_profiles: Vec::new(),
     }
 }
 
