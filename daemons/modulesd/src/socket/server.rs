@@ -13,6 +13,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::os::unix::fs::PermissionsExt;
+
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{broadcast, Mutex};
 use tracing::{debug, error, info, warn};
@@ -52,6 +54,11 @@ impl SocketServer {
         // Replace any stale socket from a previous run.
         let _ = std::fs::remove_file(socket_path);
         let listener = UnixListener::bind(socket_path)?;
+        // 0600 like every sibling daemon's socket. The runtime directory is
+        // already 0700, so this changes nothing for a cross-uid peer - it is
+        // here so the socket does not depend on the directory above it staying
+        // that way.
+        std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600))?;
         info!("modulesd: listening on {}", socket_path.display());
         Ok(Self {
             listener,
@@ -105,6 +112,20 @@ impl SocketServer {
         loop {
             match self.listener.accept().await {
                 Ok((stream, _addr)) => {
+                    // Who is asking. This socket carries the module runtime's
+                    // whole control surface - enabling a module, minting an
+                    // iframe capability nonce, driving host calls under a
+                    // module's capabilities - and until now it authenticated
+                    // nobody, unlike every other daemon in the tree.
+                    match admitted_peer(&stream) {
+                        Some(app_id) => {
+                            debug!(peer = %app_id, "modulesd: admitted a client");
+                        }
+                        None => {
+                            warn!("modulesd: refused a client that is not an admitted caller");
+                            continue;
+                        }
+                    }
                     let manager = Arc::clone(&self.manager);
                     let events_rx = self.events_tx.subscribe();
                     tokio::spawn(async move {
@@ -122,6 +143,38 @@ impl SocketServer {
             }
         }
     }
+}
+
+/// The callers permitted to drive the module runtime.
+///
+/// `desktop-shell` renders modules and is the only client today. `settings`
+/// is listed because the Extensions page's toggle belongs here rather than
+/// writing `modules.toml` behind the runtime's back, which is the bypass that
+/// currently skips the consent gate.
+const ADMITTED: &[&str] = &["desktop-shell", "settings"];
+
+/// Resolve the connecting peer and admit it, or `None` to refuse.
+///
+/// Same-uid only, from the kernel-attested credential rather than anything the
+/// client says. A `dev.`-prefixed id passes in debug builds, matching the audit
+/// and revoke admissions, so a cargo-run shell works without widening release.
+fn admitted_peer(stream: &UnixStream) -> Option<String> {
+    let cred = stream.peer_cred().ok()?;
+    if cred.uid() != unsafe { libc::getuid() } {
+        return None;
+    }
+    let exe = std::fs::read_link(format!("/proc/{}/exe", cred.pid()?)).ok()?;
+    let app_id = arlen_permissions::identity::path_to_app_id(&exe).ok()?;
+    is_admitted_id(&app_id).then_some(app_id)
+}
+
+/// Whether an attested app id may drive the module runtime.
+///
+/// Split out from the socket so the decision is testable without a peer: the
+/// resolution is kernel work, but which ids are allowed is policy and policy is
+/// what regresses.
+fn is_admitted_id(app_id: &str) -> bool {
+    ADMITTED.contains(&app_id) || (cfg!(debug_assertions) && app_id.starts_with("dev."))
 }
 
 async fn handle_connection(
@@ -220,5 +273,20 @@ mod tests {
         let s = p.to_string_lossy();
         assert!(s.contains("/run/user/"));
         assert!(s.ends_with("/arlen/modulesd.sock"));
+    }
+
+    /// This socket carries enabling a module, minting an iframe capability
+    /// nonce and driving host calls, so who reaches it is the policy that
+    /// matters.
+    #[test]
+    fn only_the_shell_and_settings_drive_the_module_runtime() {
+        assert!(is_admitted_id("desktop-shell"));
+        assert!(is_admitted_id("settings"));
+        for other in ["org.example.App", "ai-agent", "bridge-ingest", "", "desktop-shell.evil"] {
+            assert!(
+                !is_admitted_id(other),
+                "{other:?} was admitted to the module runtime"
+            );
+        }
     }
 }
