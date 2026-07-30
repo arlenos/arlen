@@ -48,20 +48,19 @@ fn main() {
     }
 }
 
-/// Load the wallpaper manifest: the `ARLEN_WALLPAPER_MANIFEST` override (for
-/// testing) else the user path (`~/.config/arlen/wallpaper.toml`). `None` when
-/// unset or unreadable - the daemon then renders nothing.
+/// Load the wallpaper manifest through the shared resolver: the
+/// `ARLEN_WALLPAPER_MANIFEST` override for testing, else the user's, else the
+/// distro default. `None` when none of them loads, and the daemon renders
+/// nothing.
+///
+/// This used to stop at the user path, so a machine with only the shipped
+/// default rendered no wallpaper at all - the fallback was written and never
+/// reached.
 fn load_manifest() -> Option<WallpaperManifest> {
-    let path = std::env::var_os("ARLEN_WALLPAPER_MANIFEST")
-        .map(std::path::PathBuf::from)
-        .or_else(config::user_manifest_path)?;
-    match config::load_manifest(&path) {
-        Ok(m) => Some(m),
-        Err(e) => {
-            tracing::warn!(path = %path.display(), "could not load wallpaper manifest: {e}");
-            None
-        }
-    }
+    config::active_manifest(
+        std::env::var_os("ARLEN_WALLPAPER_MANIFEST").map(std::path::PathBuf::from),
+        |path, e| tracing::warn!(path = %path.display(), "could not load wallpaper manifest: {e}"),
+    )
 }
 
 /// Minutes since midnight for the time-of-day source selection. Uses UTC as a
