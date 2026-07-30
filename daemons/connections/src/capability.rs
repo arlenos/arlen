@@ -365,6 +365,54 @@ mod tests {
     const FAR_FUTURE: i64 = 4_102_444_800; // 2100-01-01
     const NOW: i64 = 1_700_000_000; // 2023-11-14, before FAR_FUTURE
 
+    /// Each cap admits its exact limit and refuses one past it. Mutation testing
+    /// found every `>` in `validate_term` could become `>=` unnoticed, which
+    /// moves each boundary by one - a host of exactly 255 bytes, the DNS limit
+    /// this cap was chosen to clear, would start being refused.
+    #[test]
+    fn every_term_cap_admits_its_limit_and_refuses_one_more() {
+        let root = KeyPair::new();
+
+        let host_at = "h".repeat(MAX_HOST_LEN);
+        assert!(mint_token(&root, "c", &hosts(&[&host_at]), FAR_FUTURE, "n").is_ok());
+        let host_over = "h".repeat(MAX_HOST_LEN + 1);
+        assert!(mint_token(&root, "c", &hosts(&[&host_over]), FAR_FUTURE, "n").is_err());
+
+        let nonce_at = "n".repeat(MAX_NONCE_LEN);
+        assert!(mint_token(&root, "c", &hosts(&["h"]), FAR_FUTURE, &nonce_at).is_ok());
+        let nonce_over = "n".repeat(MAX_NONCE_LEN + 1);
+        assert!(mint_token(&root, "c", &hosts(&["h"]), FAR_FUTURE, &nonce_over).is_err());
+
+        let many: Vec<String> = (0..MAX_HOSTS).map(|i| format!("h{i}.example")).collect();
+        assert!(mint_token(&root, "c", &many, FAR_FUTURE, "n").is_ok());
+        let too_many: Vec<String> = (0..MAX_HOSTS + 1).map(|i| format!("h{i}.example")).collect();
+        assert!(mint_token(&root, "c", &too_many, FAR_FUTURE, "n").is_err());
+    }
+
+    /// The caps are contract values - `MAX_HOST_LEN` exists to clear the 253-byte
+    /// DNS name limit - so their magnitudes are pinned. The boundary test above
+    /// cannot do it: written in terms of the constants, it stays true whatever
+    /// they become.
+    #[test]
+    fn the_caps_are_the_sizes_the_contract_says() {
+        assert_eq!(MAX_HOST_LEN, 255);
+        assert_eq!(MAX_NONCE_LEN, 128);
+        assert_eq!(MAX_HOSTS, 64);
+    }
+
+    /// Epoch zero is a time, not a negative one. Mutation testing found `< 0`
+    /// could become `<= 0`, turning a valid clock reading into a hard error.
+    #[test]
+    fn time_zero_is_not_treated_as_a_negative_clock() {
+        let root = KeyPair::new();
+        let token = mint_token(&root, "c", &hosts(&["h"]), FAR_FUTURE, "n").unwrap();
+        assert!(verify_token(&token, &root.public(), "h", None, 0).is_ok());
+        assert!(matches!(
+            verify_token(&token, &root.public(), "h", None, -1),
+            Err(CapabilityError::InvalidInput(_))
+        ));
+    }
+
     #[test]
     fn mint_then_verify_allowed_host_passes() {
         let root = KeyPair::new();
