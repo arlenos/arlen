@@ -119,4 +119,85 @@ mod tests {
         let got: PowerSnapshot = serde_json::from_slice(&buf).unwrap();
         assert_eq!(got, want);
     }
+
+    /// Restarting must work, and must not be a way to delete whatever happens to
+    /// sit at the socket path. The code only unlinks an actual socket for that
+    /// reason, and nothing checked it: removing unconditionally passes every
+    /// other test in this file.
+    #[tokio::test]
+    async fn bind_clears_a_stale_socket_and_refuses_to_clobber_anything_else() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+
+        // A socket left by a previous run: bind again over it, as a restart does.
+        let path = dir.path().join("power.sock");
+        let first = bind(&path).expect("first bind");
+        drop(first);
+        let listener = bind(&path).expect("a stale socket must not block a restart");
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600,
+            "the snapshot is the user's own state, so the socket is owner-only"
+        );
+        drop(listener);
+
+        // A regular file: not ours, so it stays and the bind fails.
+        let file = dir.path().join("real-file");
+        std::fs::write(&file, b"not a socket").unwrap();
+        assert!(bind(&file).is_err(), "binding over a regular file must fail");
+        assert_eq!(
+            std::fs::read(&file).unwrap(),
+            b"not a socket",
+            "a regular file at the socket path must survive untouched"
+        );
+
+        // A symlink: likewise untouched, and its target too - following it would
+        // make the socket path a way to delete an arbitrary file.
+        let target = dir.path().join("target-file");
+        std::fs::write(&target, b"target").unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(bind(&link).is_err(), "binding over a symlink must fail");
+        assert!(link.symlink_metadata().is_ok(), "the symlink must survive");
+        assert_eq!(std::fs::read(&target).unwrap(), b"target", "and its target");
+    }
+
+    /// The accept loop snapshots per connection, so a reader always sees current
+    /// state. Hoisting that read out of the loop - the natural refactor - would
+    /// serve the state as it was at daemon start, forever, and every existing
+    /// test would still pass because none of them accepts twice.
+    #[tokio::test]
+    async fn each_connection_is_answered_with_the_state_as_it_is_now() {
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("power.sock");
+        let listener = bind(&path).expect("bind");
+
+        let shared: SharedState = Arc::new(RwLock::new(PowerState::from_upower(
+            true, 73.0, 2, 4200, 0, true, false, None,
+        )));
+        let serving = tokio::spawn(serve(listener, Arc::clone(&shared)));
+
+        let read_percentage = |path: std::path::PathBuf| async move {
+            let mut c = UnixStream::connect(&path).await.expect("connect");
+            let mut buf = Vec::new();
+            c.read_to_end(&mut buf).await.expect("read snapshot");
+            serde_json::from_slice::<PowerSnapshot>(&buf).expect("decode").percentage
+        };
+
+        assert_eq!(read_percentage(path.clone()).await, 73);
+
+        *shared.write().await =
+            PowerState::from_upower(true, 12.0, 2, 900, 0, true, false, None);
+
+        assert_eq!(
+            read_percentage(path.clone()).await,
+            12,
+            "the second reader must see the new state, not the one from startup"
+        );
+
+        serving.abort();
+    }
 }
