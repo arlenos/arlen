@@ -85,6 +85,10 @@ const ADMITTED: &[&str] = &[
     // `ConnectionAuth::extract_from_trusting_root` (below); it resolves to this id
     // via its canonical `/usr/lib/arlen/libexec/arlen-config-broker` path entry.
     "config-broker",
+    // The cross-profile transfer daemon: it audits every transfer to BOTH
+    // profiles' ledgers fail-closed BEFORE any byte crosses the boundary, so
+    // without admission every transfer is refused rather than merely unlogged.
+    "transferd",
 ];
 
 /// Resolve the ingest socket path:
@@ -344,6 +348,7 @@ mod tests {
             ("/usr/lib/arlen/libexec/arlen-capsuled", "capsuled"),
             ("/usr/lib/arlen/libexec/arlen-connectionsd", "connections"),
             ("/usr/lib/arlen/libexec/arlen-config-broker", "config-broker"),
+            ("/usr/lib/arlen/libexec/arlen-transferd", "transferd"),
         ];
         for &(path, id) in deployed {
             assert_eq!(
