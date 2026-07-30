@@ -15,6 +15,10 @@ pub mod health;
 /// Per-app access aggregation over the audit ledger's activity (the sovereign lens).
 pub mod access;
 
+/// One inventory across apps, modules and bridges, so "what extends my system" is
+/// a single question with a single answer.
+pub mod extensions;
+
 use audit_proto::{ReadClient, ReadClientError, ReadPage};
 
 /// The audit ledger's integrity state - the monitor's "nothing was altered"
