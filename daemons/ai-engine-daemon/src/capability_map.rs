@@ -459,6 +459,14 @@ pub fn gate_class_for_tool(tool: &str) -> GateClass {
         // (standing autonomy for these comes only via the heavy consent surface).
         "install" | "uninstall" | "send" | "email" | "post" | "fetch" | "http"
         | "run_command" | "exec" | "eval" | "sudo" | "pkexec" => GateClass::Confirm,
+        // Reading a terminal's blocks: Confirm, NOT Read. `graph.read` is Read
+        // because its scope is already bounded by the caller's read tier; a
+        // terminal carries whatever the user typed into it, including things they
+        // would never hand an assistant, and no tier bounds that. The confirmation
+        // is also what mints the scope-bound consent the terminal then verifies,
+        // so classing this Read would not merely widen it - it would break it, by
+        // producing an Allow with no token to present.
+        t if t == arlen_run_consent_token::READ_OUTPUT_TOOL => GateClass::Confirm,
         // Anything not in the registry: fail-closed Deny (possession of an entry is
         // the trust proof).
         _ => GateClass::Deny,
@@ -602,6 +610,25 @@ pub(crate) fn fs_create_target_is_sensitive(tool_input: &serde_json::Value) -> b
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn reading_a_terminal_confirms_rather_than_being_a_plain_read() {
+        // The whole read half hangs off this class. `Read` would produce an Allow
+        // with no confirmation, so nothing would mint the scope-bound token and
+        // the terminal would refuse every call; `Deny`, the table's fallback,
+        // would stop it before that. Only Confirm makes the path work, and it is
+        // also the honest classification: a terminal holds what the user typed.
+        assert_eq!(
+            gate_class_for_tool(arlen_run_consent_token::READ_OUTPUT_TOOL),
+            GateClass::Confirm
+        );
+        // And it must not resolve to an Ordinary kind, or executor_live would lift
+        // it to autonomous.
+        assert_ne!(
+            action_kind_for_tool(arlen_run_consent_token::READ_OUTPUT_TOOL),
+            ActionKind::Ordinary
+        );
+    }
     fn tool(name: &str) -> Authorize {
         Authorize { tool_name: name.into(), tool_input: serde_json::json!({}), external_triggered: false }
     }
