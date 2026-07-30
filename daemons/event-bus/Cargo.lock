@@ -129,6 +129,7 @@ dependencies = [
  "libc",
  "prost",
  "prost-build",
+ "tempfile",
  "tokio",
  "toml",
  "tracing",

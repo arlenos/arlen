@@ -26,6 +26,7 @@ libc = "0.2"
 # the same TOML shape a real profile file has.
 [dev-dependencies]
 toml = "0.8"
+tempfile = "3"
 
 [build-dependencies]
 prost-build = "0.13"
