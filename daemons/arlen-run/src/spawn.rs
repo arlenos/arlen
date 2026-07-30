@@ -677,6 +677,124 @@ mod tests {
         );
     }
 
+    /// Killing the launcher must take the confined tree with it.
+    ///
+    /// This is the regression guard for a real leak: on the filtered path the
+    /// process the launcher execs is `pasta`, and the `--die-with-parent` inside
+    /// pasta's argv binds *bwrap* to *pasta*, not the launch to the launcher. So a
+    /// killed launcher left `pasta -> bwrap -> bwrap -> app` alive, reparented to
+    /// init, with its network namespace and forwarding proxy intact. `PR_SET_PDEATHSIG`
+    /// in `child_pre_exec` closes it.
+    ///
+    /// Shaped as a fork because "the launcher dies" needs a launcher that is not the
+    /// test process. The child plays launcher and blocks in the launch; the parent
+    /// waits for the confined payload to appear, kills the child, and requires the
+    /// payload to be gone. Metal-only, and `--test-threads=1` like the other fork
+    /// test in this crate.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "needs pasta + bwrap + unprivileged userns on the host kernel"]
+    fn killing_the_launcher_kills_the_confined_tree() {
+        // A marker unique to this run, carried in the payload argv. pasta and bwrap
+        // both repeat the app argv, so scanning for it finds the whole chain.
+        let sentinel = format!("ARLEN-PDEATH-{}", std::process::id());
+
+        /// Pids whose cmdline carries `sentinel`, excluding ourselves.
+        fn matching(sentinel: &str) -> Vec<libc::pid_t> {
+            let me = std::process::id();
+            let mut out = Vec::new();
+            let Ok(entries) = std::fs::read_dir("/proc") else {
+                return out;
+            };
+            for e in entries.flatten() {
+                let name = e.file_name();
+                let Some(pid) = name.to_str().and_then(|s| s.parse::<u32>().ok()) else {
+                    continue;
+                };
+                if pid == me {
+                    continue;
+                }
+                if let Ok(raw) = std::fs::read(format!("/proc/{pid}/cmdline")) {
+                    if String::from_utf8_lossy(&raw).contains(sentinel) {
+                        out.push(pid as libc::pid_t);
+                    }
+                }
+            }
+            out
+        }
+
+        let payload = format!("sleep 300 # {sentinel}");
+        let argv: Vec<String> = [
+            "--unshare-user",
+            "--unshare-pid",
+            "--ro-bind",
+            "/",
+            "/",
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--",
+            "/usr/bin/bash",
+            "-c",
+            &payload,
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        // SAFETY: a deliberate fork in an `--test-threads=1` test (the same pattern
+        // and the same reasoning as the Landlock fork self-test). The child only
+        // performs the launch and then `_exit`s, never returning to the harness.
+        let launcher = unsafe { libc::fork() };
+        assert!(launcher >= 0, "fork failed");
+        if launcher == 0 {
+            let bpf = crate::seccomp::app_filter_bytes().unwrap_or_default();
+            // Blocks for the payload's lifetime; the parent kills us out of it.
+            let _ = spawn_filtered_and_wait(&argv, &[], None, bpf);
+            unsafe { libc::_exit(0) };
+        }
+
+        // Wait for the confined payload to actually exist before killing anything,
+        // or the test would pass on a launch that never started.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while matching(&sentinel).is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let started = matching(&sentinel);
+        if started.is_empty() {
+            unsafe {
+                libc::kill(launcher, libc::SIGKILL);
+                libc::waitpid(launcher, std::ptr::null_mut(), 0);
+            }
+            panic!("the confined launch never started; nothing to observe");
+        }
+
+        // Kill the launcher and reap it, so the tree's only remaining anchor is gone.
+        unsafe {
+            libc::kill(launcher, libc::SIGKILL);
+            libc::waitpid(launcher, std::ptr::null_mut(), 0);
+        }
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while !matching(&sentinel).is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let survivors = matching(&sentinel);
+
+        // Clean up BEFORE asserting: a failure here means processes are still running,
+        // and leaving a confined network daemon behind to prove a point is not on.
+        for pid in &survivors {
+            unsafe { libc::kill(*pid, libc::SIGKILL) };
+        }
+
+        assert!(
+            survivors.is_empty(),
+            "the confined tree outlived its launcher ({} process(es) left);              PDEATHSIG is not reaching the pasta wrapper",
+            survivors.len()
+        );
+    }
+
     /// The in-sandbox Landlock fence composes with the FILTERED path (pasta netns +
     /// the seccomp-wrapper file). To isolate the FENCE's contribution from bwrap's
     /// mount namespace, bwrap binds TWO dirs read-write but the fence grants only
