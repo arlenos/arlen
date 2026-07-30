@@ -16,6 +16,11 @@ name = "arlen_decode_heic"
 arlen-viewers-core = { path = "../core" }
 # Binds the system libheif (>= 1.17); AVIF -> dav1d, HEIC -> libde265, the C
 # threaded codecs that need the wider per-decoder seccomp profile.
-libheif-rs = "2"
+# Pinned to the 1.17 API, and NOT the crate's `latest` default: the default
+# resolves a -sys that demands a libheif newer than any current distro ships
+# (5.3.0 wants 1.23), so CI failed to build against Ubuntu's libheif-dev while
+# a rolling dev box was fine. 1.17 is the floor this crate's own doc states and
+# is what the runner has; it links fine against newer libheif too.
+libheif-rs = { version = "2", default-features = false, features = ["v1_17"] }
 
 [workspace]
