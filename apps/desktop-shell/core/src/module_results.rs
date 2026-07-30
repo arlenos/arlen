@@ -104,6 +104,43 @@ pub fn accept(results: Vec<ModuleResult>) -> (Vec<ModuleEntry>, Vec<(String, Rej
     (kept, dropped)
 }
 
+impl ModuleEntry {
+    /// This entry as a launcher [`SearchResult`].
+    ///
+    /// The plugin id is prefixed `module:` so a module's rows are attributable
+    /// in the list and cannot be mistaken for a builtin's - a module naming
+    /// itself `core.power` would otherwise look like the shell's own power
+    /// plugin, which is a display-spoof rather than a capability escape but
+    /// still a lie the user cannot see through.
+    ///
+    /// Relevance is fixed below the builtins' range rather than taken from the
+    /// module: it is a self-assessed number from untrusted code, and honouring
+    /// it would let any module sort itself above the app the user was typing.
+    pub fn to_search_result(&self) -> module_sdk::waypointer::SearchResult {
+        use module_sdk::waypointer::{Action, SearchResult};
+        SearchResult {
+            id: self.id.clone(),
+            title: self.title.clone(),
+            description: self.description.clone(),
+            icon: None,
+            relevance: MODULE_RELEVANCE,
+            action: match &self.action {
+                SafeAction::Copy(text) => Action::Copy { text: text.clone() },
+                SafeAction::OpenUrl(url) => Action::OpenUrl { url: url.clone() },
+                SafeAction::OpenPath(path) => Action::Open {
+                    path: std::path::PathBuf::from(path),
+                },
+            },
+            plugin_id: format!("module:{}", self.module_id),
+        }
+    }
+}
+
+/// Where a module's rows sort. Below the builtins, because a module scoring
+/// itself is not evidence, and the launcher's first row is the one people press
+/// Enter on without reading.
+pub const MODULE_RELEVANCE: f32 = 0.1;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,6 +217,27 @@ mod tests {
         let (kept, dropped) = accept(vec![r]);
         assert!(kept.is_empty());
         assert_eq!(dropped[0].1, Rejected::Unlabelled);
+    }
+
+    /// A module naming itself `core.power` would otherwise render as the
+    /// shell's own plugin. Not a capability escape, but a lie the user cannot
+    /// see through.
+    #[test]
+    fn a_module_row_is_attributable_and_cannot_pose_as_a_builtin() {
+        let mut r = result("r1", SearchAction::Copy { text: "x".into() });
+        r.plugin_id = "core.power".into();
+        let (kept, _) = accept(vec![r]);
+        assert_eq!(kept[0].to_search_result().plugin_id, "module:core.power");
+    }
+
+    /// A self-assessed score from untrusted code is not evidence, and the first
+    /// row is the one people press Enter on without reading.
+    #[test]
+    fn a_module_cannot_sort_itself_above_the_builtins() {
+        let mut r = result("r1", SearchAction::Copy { text: "x".into() });
+        r.relevance = 999.0;
+        let (kept, _) = accept(vec![r]);
+        assert_eq!(kept[0].to_search_result().relevance, MODULE_RELEVANCE);
     }
 
     /// One bad result must not cost the module its good ones.

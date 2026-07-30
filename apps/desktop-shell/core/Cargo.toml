@@ -20,6 +20,8 @@ arlen-theme = { path = "../../../sdk/theme" }
 notification-proto = { path = "../../../contracts/notification-proto" }
 prost = "0.13"
 bytes = "1"
+# The launcher result type a module result is mapped into.
+module-sdk = { path = "../../../sdk/module-sdk" }
 # The modulesd socket client (module runtime IPC).
 modulesd-proto = { path = "../../../contracts/modulesd-proto" }
 serde_json = "1"

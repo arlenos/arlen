@@ -26,14 +26,51 @@ use std::sync::RwLock;
 /// methods are immutable — concurrent reads are always safe.
 pub type PluginManagerState = RwLock<PluginManager>;
 
-/// Search via the plugin manager (new Tauri command).
+/// Search via the plugin manager, plus whatever installed modules contribute.
+///
+/// The builtin results come first and are not made to wait on the module
+/// runtime: modulesd is asked best-effort, and if it is down or slow the
+/// launcher still answers with everything it can compute in-process. A
+/// launcher that stalls because an extension host is wedged is worse than one
+/// that shows fewer rows.
+///
+/// Module results are filtered through `module_results::accept`, which bounds
+/// what a sandboxed module may ask the shell to do - notably it may not have
+/// the shell run a command.
 #[tauri::command]
-pub fn waypointer_search(
+pub async fn waypointer_search(
     query: String,
     state: tauri::State<'_, PluginManagerState>,
-) -> Vec<SearchResult> {
-    let mgr = state.read().unwrap();
-    mgr.search(&query)
+) -> Result<Vec<SearchResult>, String> {
+    let mut results = {
+        let mgr = state.read().unwrap();
+        mgr.search(&query)
+    };
+    results.extend(module_results(&query).await);
+    Ok(results)
+}
+
+/// What the installed modules found, or nothing if the runtime cannot answer.
+async fn module_results(query: &str) -> Vec<SearchResult> {
+    use arlen_desktop_shell_core::module_results;
+    use modulesd_proto::{client, Request, Response};
+
+    let request = Request::WaypointerSearchAll {
+        id: "waypointer-search".to_string(),
+        query: query.to_string(),
+    };
+    let reply = match client::request_once(&client::socket_path(), request).await {
+        Ok(Response::WaypointerAggregate { results, .. }) => results,
+        _ => return Vec::new(),
+    };
+    let (kept, dropped) = module_results::accept(reply);
+    for (id, why) in dropped {
+        // Logged rather than swallowed: a module whose results never appear is
+        // otherwise indistinguishable from one that found nothing, which is a
+        // miserable thing for its author to debug.
+        log::debug!("waypointer: dropped module result {id}: {why:?}");
+    }
+    kept.iter().map(|e| e.to_search_result()).collect()
 }
 
 /// Execute a search result via the plugin manager.
