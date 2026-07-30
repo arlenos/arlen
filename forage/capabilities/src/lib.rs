@@ -366,6 +366,185 @@ mod tests {
         Capabilities::default()
     }
 
+    /// Every dimension of the cap check, in BOTH directions: a recipe within the
+    /// cap must draw no complaint, and one that exceeds it must draw exactly one.
+    ///
+    /// Mutation testing found each `!` in `cap_exceeded` could be DELETED
+    /// undetected - which inverts that dimension's verdict, so a recipe staying
+    /// inside its signed cap would be refused and one exceeding it would install.
+    /// The surviving mutants say the within-cap direction was never tested, and
+    /// this is the check that stops an install exceeding what the cookbook signed.
+    #[test]
+    fn each_dimension_of_the_cap_is_checked_in_both_directions() {
+        type Set = fn(&mut Capabilities);
+        let dims: &[(&str, Set)] = &[
+            ("network", |c| c.network = vec!["api.example.com".into()]),
+            ("filesystem", |c| c.filesystem = vec!["home".into()]),
+            ("graph", |c| c.graph = vec!["read:system.File".into()]),
+            ("notifications", |c| c.notifications = true),
+            ("clipboard", |c| c.clipboard = true),
+            ("audio", |c| c.audio = true),
+            ("extra", |c| {
+                c.extra.insert("input:global".into(), toml::Value::Boolean(true));
+            }),
+        ];
+        for (name, set) in dims {
+            let mut recipe = caps();
+            set(&mut recipe);
+
+            // Within: the cap grants exactly what the recipe asks.
+            let mut cap = caps();
+            set(&mut cap);
+            assert!(
+                cap_exceeded(&recipe, &cap).is_empty(),
+                "{name}: a recipe inside its cap must not be reported as exceeding"
+            );
+
+            // Exceeds: the cap grants nothing of this dimension.
+            let over = cap_exceeded(&recipe, &caps());
+            assert_eq!(
+                over.len(),
+                1,
+                "{name}: asking for what the cap withholds must be reported once, got {over:?}"
+            );
+        }
+    }
+
+    /// Every named directory maps to its own flag and none falls through to
+    /// `custom`. Mutation testing found four of the six arms could be deleted
+    /// undetected, which silently turns a declared directory grant into a
+    /// nonsense custom path - the app declares `downloads` and gets a relative
+    /// path called "downloads" instead.
+    #[test]
+    fn each_named_directory_maps_to_its_own_flag() {
+        type Get = fn(&FilesystemPermissions) -> bool;
+        let dirs: &[(&str, Get)] = &[
+            ("home", |f| f.home),
+            ("documents", |f| f.documents),
+            ("downloads", |f| f.downloads),
+            ("pictures", |f| f.pictures),
+            ("music", |f| f.music),
+            ("videos", |f| f.videos),
+        ];
+        for (name, get) in dirs {
+            let fs = map_filesystem(&[name.to_string()]);
+            assert!(get(&fs), "{name} must set its own flag");
+            assert!(fs.custom.is_empty(), "{name} must not fall through to custom");
+        }
+        // And something that is not a named directory still does.
+        let fs = map_filesystem(&["/opt/data".to_string()]);
+        assert_eq!(fs.custom, vec![PathBuf::from("/opt/data")]);
+    }
+
+    /// A `host:port` scope keeps only the host, but only when the port really is
+    /// one. Mutation testing found the guard could be replaced with `true` and its
+    /// `&&` with `||`, either of which would strip a trailing colon-segment that
+    /// is not a port - turning `db.example.com:replica` into `db.example.com`,
+    /// silently widening the allowlist entry to the whole host.
+    #[test]
+    fn only_a_real_port_is_stripped_from_a_host_scope() {
+        let mut unmapped = Vec::new();
+        let net = map_network(&["api.example.com:443".to_string()], &mut unmapped);
+        assert_eq!(net.allowed_domains, vec!["api.example.com".to_string()]);
+
+        for not_a_port in ["db.example.com:replica", "db.example.com:", "db.example.com:8a"] {
+            let net = map_network(&[not_a_port.to_string()], &mut unmapped);
+            assert_eq!(
+                net.allowed_domains,
+                vec![not_a_port.to_string()],
+                "{not_a_port} has no port to strip, so it stays whole"
+            );
+        }
+    }
+
+    /// Additions and removals are found in both directions, and a repeat is not
+    /// double-counted. Mutation testing found the `!` in each membership check and
+    /// the dedup comparison could be flipped, which changes what
+    /// `requires_consent` sees - the difference between prompting and not.
+    #[test]
+    fn the_diff_finds_each_side_once_and_only_once() {
+        let mut old = caps();
+        old.graph = vec!["read:system.File".into()];
+        old.network = vec!["old.example".into()];
+        let mut new = caps();
+        // One graph scope kept, one added; the network entry dropped.
+        new.graph = vec!["read:system.File".into(), "write:md.note.Note".into()];
+
+        let d = diff_capabilities(&old, &new);
+        let added: Vec<&str> = d.added.iter().map(|c| c.description.as_str()).collect();
+        assert_eq!(added, vec!["graph write:md.note.Note"], "only the new scope is added");
+        assert!(
+            d.removed.iter().any(|r| r.contains("old.example")),
+            "the dropped host is removed: {:?}",
+            d.removed
+        );
+        assert!(
+            !d.removed.iter().any(|r| r.contains("read:system.File")),
+            "a scope present on both sides is neither added nor removed: {:?}",
+            d.removed
+        );
+
+        // An `extra` category dropped between versions is a removal; one still
+        // present is not. Mutation testing found that `!` could be deleted, which
+        // reports every surviving category as removed.
+        let mut with_extra = caps();
+        with_extra.extra.insert("input:global".into(), toml::Value::Boolean(true));
+        with_extra.extra.insert("kept".into(), toml::Value::Boolean(true));
+        let mut fewer = caps();
+        fewer.extra.insert("kept".into(), toml::Value::Boolean(true));
+        let d = diff_capabilities(&with_extra, &fewer);
+        assert!(
+            d.removed.iter().any(|r| r.contains("input:global")),
+            "the dropped category is removed: {:?}",
+            d.removed
+        );
+        assert!(
+            !d.removed.iter().any(|r| r.contains("kept")),
+            "a category on both sides is not removed: {:?}",
+            d.removed
+        );
+
+        // The same scope listed twice is reported once.
+        let mut twice = caps();
+        twice.graph = vec!["write:md.note.Note".into(), "write:md.note.Note".into()];
+        let d = diff_capabilities(&caps(), &twice);
+        assert_eq!(d.added.len(), 1, "a repeated scope is not double-counted: {:?}", d.added);
+    }
+
+    /// An `extra` category present in the cap but with a DIFFERENT value still
+    /// exceeds: an unrecognised value cannot be proven within an upper bound.
+    /// Mutation testing found the `cap_value == value` guard could be replaced
+    /// with `true`, which would accept any value the cap happened to mention.
+    #[test]
+    fn an_extra_category_with_a_different_value_still_exceeds() {
+        let mut recipe = caps();
+        recipe.extra.insert("quota_mb".into(), toml::Value::Integer(500));
+        let mut cap = caps();
+        cap.extra.insert("quota_mb".into(), toml::Value::Integer(10));
+        assert_eq!(cap_exceeded(&recipe, &cap), vec!["extra.quota_mb".to_string()]);
+    }
+
+    /// `is_empty` is what "nothing changed" means to the update flow, so a diff
+    /// with content must not report empty. Mutation testing found it could be
+    /// replaced with `true`, and its `&&` with `||` - either of which makes a
+    /// real change read as no change.
+    #[test]
+    fn a_diff_with_content_is_not_empty() {
+        let mut added = caps();
+        added.network = vec!["api.example.com".into()];
+        let only_added = diff_capabilities(&caps(), &added);
+        assert!(!only_added.added.is_empty());
+        assert!(only_added.removed.is_empty());
+        assert!(!only_added.is_empty(), "an addition alone is a change");
+
+        let only_removed = diff_capabilities(&added, &caps());
+        assert!(only_removed.added.is_empty());
+        assert!(!only_removed.removed.is_empty());
+        assert!(!only_removed.is_empty(), "a removal alone is a change");
+
+        assert!(diff_capabilities(&added, &added).is_empty(), "no change is empty");
+    }
+
     fn map(c: &Capabilities) -> CapabilityMapping {
         capabilities_to_profile("org.example.app", AppTier::ThirdParty, c)
     }
