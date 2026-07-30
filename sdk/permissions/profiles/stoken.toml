@@ -1,0 +1,6 @@
+# Starting permission profile for a software token generator. The seed lives in
+# its own app dir; no standing file access, no network (a token is computed
+# offline) and no Knowledge Graph.
+[info]
+app_id = "stoken"
+tier = "third-party"

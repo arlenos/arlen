@@ -1,0 +1,7 @@
+# Starting permission profile for a Windows compatibility layer. The programs it
+# runs carry their own reach, so the layer itself starts with none: its prefix
+# lives in its own app dir, and any host path a guest program needs is an explicit
+# grant. No network and no Knowledge Graph by default.
+[info]
+app_id = "wine"
+tier = "third-party"

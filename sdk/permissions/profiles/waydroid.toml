@@ -1,0 +1,10 @@
+# Starting permission profile for an Android container runtime. It runs guest apps
+# that carry their own grants and reaches the network on their behalf; the host
+# files it exposes to the guest are an explicit grant, never a default. No
+# Knowledge Graph.
+[info]
+app_id = "waydroid"
+tier = "third-party"
+
+[network]
+allow_all = true
