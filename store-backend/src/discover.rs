@@ -322,7 +322,15 @@ fn parse_lock(text: &str) -> Vec<InstalledEntry> {
 /// layer would install a different app than the one on disk.
 pub fn installed_versions(
 ) -> std::collections::BTreeMap<String, crate::query::InstalledVersion> {
-    installed_entries()
+    versions_from(installed_entries())
+}
+
+/// The join itself, over entries already read, so the mapping is testable
+/// without a lock file or an environment.
+fn versions_from(
+    entries: Vec<InstalledEntry>,
+) -> std::collections::BTreeMap<String, crate::query::InstalledVersion> {
+    entries
         .into_iter()
         .filter_map(|e| {
             let layer = parse_layer(&e.source_layer)?;
@@ -351,4 +359,48 @@ fn parse_layer(name: &str) -> Option<crate::catalog::SourceLayer> {
         "apt" => L::Apt,
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod lock_tests {
+    use super::*;
+
+    fn entry(id: &str, layer: &str, version: &str) -> InstalledEntry {
+        InstalledEntry {
+            component_id: id.to_string(),
+            source_layer: layer.to_string(),
+            version: version.to_string(),
+        }
+    }
+
+    #[test]
+    fn a_lock_becomes_the_map_the_update_check_compares_against() {
+        let map = versions_from(vec![
+            entry("org.x.Chat", "apt", "1.0"),
+            entry("org.x.Paint", "flatpak", "2.3"),
+        ]);
+        assert_eq!(map.len(), 2);
+        assert_eq!(map["org.x.Chat"].version, "1.0");
+        assert_eq!(map["org.x.Paint"].layer, crate::catalog::SourceLayer::Flatpak);
+    }
+
+    #[test]
+    fn an_entry_from_a_layer_this_store_does_not_know_is_dropped() {
+        // Guessing a layer would offer an update built by a source the user never
+        // chose, which installs a different app than the one on disk. Dropping it
+        // means the app simply shows no update, which is recoverable.
+        let map = versions_from(vec![
+            entry("org.x.Chat", "snap", "1.0"),
+            entry("org.x.Paint", "apt", "2.0"),
+        ]);
+        assert_eq!(map.len(), 1);
+        assert!(map.contains_key("org.x.Paint"));
+    }
+
+    #[test]
+    fn a_corrupt_lock_reads_as_nothing_installed() {
+        // Deliberately not an error: the only consumer is the update check, and a
+        // store that refuses to open is worse than one that misses an update.
+        assert!(parse_lock("this is not toml {{{").is_empty());
+    }
 }

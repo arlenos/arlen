@@ -205,11 +205,13 @@ pub enum Request {
         id: ComponentId,
     },
     /// Which installed apps their own source now offers at a different version.
-    /// The caller supplies what is installed, read from the install lock.
-    Outdated {
-        /// Component-id to what is installed, from the lock.
-        installed: std::collections::BTreeMap<String, InstalledVersion>,
-    },
+    ///
+    /// Carries nothing: what is installed is read from installd's lock by the
+    /// store itself. It was briefly the caller's to supply, which was wrong twice
+    /// over - it asked a frontend to parse another daemon's state file, and it
+    /// let the answer depend on what the caller claimed rather than on what is
+    /// actually on disk.
+    Outdated,
 }
 
 /// What the store can honestly say about an app's observed-vs-declared standing
@@ -321,7 +323,13 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
             Response::Cards(cards)
         }
         Request::ListByFacet { facet } => Response::Cards(catalog.search("", &[facet])),
-        Request::Outdated { installed } => Response::Updates(outdated(catalog, &installed)),
+        // The lock is the authority on what is installed, so it is read here
+        // rather than accepted from the request. Absent or unreadable yields an
+        // empty map, which reports no updates - the honest answer when nothing is
+        // known to be installed.
+        Request::Outdated => {
+            Response::Updates(outdated(catalog, &crate::discover::installed_versions()))
+        }
         Request::AppDetail { id } => Response::Card(catalog.card(&id).cloned()),
         Request::TrustSignals { id } => match catalog.card(&id) {
             Some(card) => Response::Trust(
@@ -467,15 +475,14 @@ mod tests {
     /// The op answers the same as the function, so a caller over the socket gets
     /// what a caller in-process does.
     #[test]
-    fn the_outdated_op_answers_the_same_updates() {
-        let answer = answer(
-            &versioned_catalog(),
-            Request::Outdated {
-                installed: installed(SourceLayer::Apt, "0.9"),
-            },
-        );
-        match answer {
-            Response::Updates(u) => assert_eq!(u.len(), 1),
+    fn the_outdated_op_reports_nothing_when_no_lock_exists() {
+        // The op no longer takes the caller's word for what is installed: it
+        // reads installd's lock. With no lock on this machine there is nothing
+        // installed through installd, so there is nothing to update - and that
+        // must be an empty list rather than an error, since it is the ordinary
+        // state of a fresh machine.
+        match answer(&versioned_catalog(), Request::Outdated) {
+            Response::Updates(u) => assert!(u.is_empty()),
             other => panic!("expected updates, got {other:?}"),
         }
     }
