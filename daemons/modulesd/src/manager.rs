@@ -1758,8 +1758,12 @@ impl Manager {
             }
         }
         // Durable, and in the same file Settings reads - otherwise a toggle
-        // here is invisible to the UI and silently reverts on restart.
-        if let Err(e) = crate::enabled::persist(module_id, enabled) {
+        // here is invisible to the UI and silently reverts on restart. Done
+        // after the in-memory flip so containment does not wait on a disk
+        // write: a module being switched off must lose its nonces now, whether
+        // or not the file can be updated.
+        let persisted = crate::enabled::persist(module_id, enabled);
+        if let Err(e) = &persisted {
             tracing::warn!(
                 module = %module_id,
                 error = %e,
@@ -1775,7 +1779,12 @@ impl Manager {
                 module_id: module_id.to_string(),
             }
         });
-        Response::Acked { id: id.to_string() }
+        toggle_response(
+            id,
+            module_id,
+            enabled,
+            persisted.err().map(|e| e.to_string()).as_deref(),
+        )
     }
 
     async fn handle_retry(self: &Arc<Self>, id: &str, module_id: &str) -> Response {
@@ -1894,10 +1903,65 @@ impl Manager {
     }
 }
 
+/// What to answer a toggle with, given whether the new state could be recorded.
+///
+/// The file records who is DISABLED, so a failed write is not symmetrical.
+/// Failing to record an ENABLE leaves the module in the disabled list and it
+/// comes back off: the user loses a grant they made, and will see that it is off
+/// and can grant it again. Failing to record a DISABLE leaves it out of the list
+/// and it comes back ON - the user revoked something, watched it go away, and it
+/// returns at the next restart with nothing having said so.
+///
+/// So a failed disable is reported even though the module really is off right
+/// now. The alternative is a silent log line and a user who believes a module is
+/// off when the next boot will turn it on.
+fn toggle_response(id: &str, module_id: &str, enabled: bool, persist_error: Option<&str>) -> Response {
+    match persist_error {
+        None => Response::Acked { id: id.to_string() },
+        Some(_) if enabled => Response::Acked { id: id.to_string() },
+        Some(e) => Response::Error {
+            id: id.to_string(),
+            code: ErrorCode::Internal,
+            message: format!(
+                "{module_id} is off now, but this could not be saved ({e}), \
+                 so it will be enabled again after a restart"
+            ),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use arlen_modules::{ModuleManifest, ModuleMeta, ModuleType};
+
+    /// A disable that could not be recorded comes back ON at the next restart.
+    /// A log line is not enough for that: the user watched the module go away
+    /// and would have no reason to check on it again.
+    #[test]
+    fn a_disable_that_could_not_be_saved_is_reported() {
+        let r = toggle_response("r1", "com.example.a", false, Some("read-only file system"));
+        let Response::Error { message, code, .. } = r else {
+            panic!("a disable that will not survive a restart must not read as done");
+        };
+        assert!(matches!(code, ErrorCode::Internal));
+        assert!(message.contains("off now"), "{message}");
+        assert!(message.contains("after a restart"), "{message}");
+    }
+
+    /// The other direction is safe on its own: the module stays in the disabled
+    /// list, so it comes back OFF, which the user can see and redo.
+    #[test]
+    fn an_enable_that_could_not_be_saved_still_acks() {
+        let r = toggle_response("r1", "com.example.a", true, Some("read-only file system"));
+        assert!(matches!(r, Response::Acked { .. }));
+    }
+
+    #[test]
+    fn a_saved_toggle_acks_either_way() {
+        assert!(matches!(toggle_response("r", "a", true, None), Response::Acked { .. }));
+        assert!(matches!(toggle_response("r", "a", false, None), Response::Acked { .. }));
+    }
 
     fn record(id: &str, tier: Tier) -> ModuleRecord {
         ModuleRecord {
