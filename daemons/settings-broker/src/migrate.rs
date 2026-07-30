@@ -241,10 +241,10 @@ mod tests {
     };
 
     fn item(key: &str, renamed_from: &[&str]) -> SettingsItem {
-            let mut item = SettingsItem::new(key, SettingType::String, "L");
-            item.renamed_from = renamed_from.iter().map(|s| s.to_string()).collect();
-            item
-        }
+        let mut item = SettingsItem::new(key, SettingType::String, "L");
+        item.renamed_from = renamed_from.iter().map(|s| s.to_string()).collect();
+        item
+    }
 
     fn schema(items: Vec<SettingsItem>) -> SettingsSchema {
         SettingsSchema {
