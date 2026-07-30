@@ -51,17 +51,53 @@ pub fn load_manifest(path: &Path) -> Result<WallpaperManifest, LoadError> {
     Ok(WallpaperManifest::parse(&text)?)
 }
 
-/// The active manifest: the user's if present and valid, else the system default,
-/// else `None` (the renderer then paints nothing). A malformed USER manifest does
-/// NOT silently fall through to the system default here - that decision is the
-/// caller's; this returns the first that loads, user first.
-pub fn active_manifest() -> Option<WallpaperManifest> {
-    if let Some(p) = user_manifest_path() {
-        if let Ok(m) = load_manifest(&p) {
-            return Some(m);
+/// The active manifest: the user's if it loads, else the distro default, else
+/// `None` (the renderer then paints nothing).
+///
+/// `override_path` is the `ARLEN_WALLPAPER_MANIFEST` test hook. When set it is
+/// the only path tried, so a test cannot accidentally pick up a real manifest
+/// from the machine it runs on.
+///
+/// A user manifest that exists but does not load falls through to the default
+/// rather than leaving the desktop bare. The fault is reported through
+/// `on_user_error` rather than swallowed, because the two halves want different
+/// answers: the user should hear that their file is broken, and should still get
+/// a background while they fix it. Silently falling through would hide the fault;
+/// refusing to fall through would punish it with an empty screen.
+pub fn active_manifest(
+    override_path: Option<PathBuf>,
+    on_user_error: impl FnOnce(&Path, LoadError),
+) -> Option<WallpaperManifest> {
+    active_manifest_from(
+        override_path,
+        user_manifest_path(),
+        Path::new(SYSTEM_MANIFEST_PATH),
+        on_user_error,
+    )
+}
+
+/// [`active_manifest`] over explicit paths, so the precedence is unit-tested
+/// against fixtures rather than against whatever the running machine happens to
+/// have configured. Same split as [`user_manifest_path_from`].
+pub fn active_manifest_from(
+    override_path: Option<PathBuf>,
+    user_path: Option<PathBuf>,
+    system_path: &Path,
+    on_user_error: impl FnOnce(&Path, LoadError),
+) -> Option<WallpaperManifest> {
+    if let Some(p) = override_path {
+        return load_manifest(&p).ok();
+    }
+    if let Some(p) = user_path {
+        match load_manifest(&p) {
+            Ok(m) => return Some(m),
+            // Absent is the ordinary case for a user who has not set one, and is
+            // not worth reporting; unreadable or malformed is.
+            Err(LoadError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => on_user_error(&p, e),
         }
     }
-    load_manifest(Path::new(SYSTEM_MANIFEST_PATH)).ok()
+    load_manifest(system_path).ok()
 }
 
 #[cfg(test)]
@@ -104,5 +140,70 @@ mod tests {
 
         // Missing file -> Io error, not a panic.
         assert!(matches!(load_manifest(&dir.path().join("nope.toml")), Err(LoadError::Io(_))));
+    }
+}
+
+#[cfg(test)]
+mod resolver_tests {
+    use super::*;
+
+    fn write(dir: &Path, name: &str, text: &str) -> PathBuf {
+        let p = dir.join(name);
+        std::fs::write(&p, text).unwrap();
+        p
+    }
+
+    const VALID: &str = r#"
+kind = "image"
+[default]
+asset = "/usr/share/backgrounds/arlen.png"
+scale = "fill"
+"#;
+
+    #[test]
+    fn an_override_is_the_only_path_tried() {
+        // So a test never picks up a manifest from the machine it runs on.
+        let dir = tempfile::tempdir().unwrap();
+        let p = write(dir.path(), "w.toml", VALID);
+        assert!(active_manifest(Some(p), |_, _| panic!("not a user path")).is_some());
+        assert!(active_manifest(Some(dir.path().join("absent.toml")), |_, _| {}).is_none());
+    }
+
+    #[test]
+    fn a_broken_user_manifest_is_reported_and_still_falls_back() {
+        // Both halves matter: the user hears their file is broken, and does not
+        // get an empty desktop while they fix it.
+        let dir = tempfile::tempdir().unwrap();
+        let user = write(dir.path(), "user.toml", "this is not a manifest {{{");
+        let system = write(dir.path(), "system.toml", VALID);
+        let mut reported = None;
+        let got = active_manifest_from(None, Some(user.clone()), &system, |p, _| {
+            reported = Some(p.to_path_buf())
+        });
+        assert_eq!(reported.as_deref(), Some(user.as_path()), "the fault is reported");
+        assert!(got.is_some(), "and the default still paints something");
+    }
+
+    #[test]
+    fn a_valid_user_manifest_wins_over_the_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let user = write(dir.path(), "user.toml", VALID);
+        let system = write(dir.path(), "system.toml", "broken {{{");
+        assert!(
+            active_manifest_from(None, Some(user), &system, |_, _| panic!("no fault")).is_some()
+        );
+    }
+
+    #[test]
+    fn with_no_user_manifest_the_distro_default_is_used() {
+        // The case that was unreachable: the resolver existed and nothing called
+        // it, so a machine carrying only the shipped default rendered nothing.
+        let dir = tempfile::tempdir().unwrap();
+        let system = write(dir.path(), "system.toml", VALID);
+        let absent = dir.path().join("nope.toml");
+        assert!(
+            active_manifest_from(None, Some(absent), &system, |_, _| panic!("absent is no fault"))
+                .is_some()
+        );
     }
 }
