@@ -512,6 +512,79 @@ mod tests {
         assert_eq!(r.load(Ordering::SeqCst), 1);
     }
 
+    /// A call with no proof at all must not reach the executor. The happy path
+    /// and the replay are covered above; this is the third door - calling Execute
+    /// directly, never having asked the gate.
+    #[tokio::test]
+    async fn execute_without_a_proof_never_reaches_the_executor() {
+        let (d, _g, e, _r) = dispatcher();
+        let token = d.init_session(&init(), std::process::id()).unwrap();
+
+        let out = d.execute(&token, std::process::id(), &Execute {
+            tool_name: "bash".into(),
+            tool_input: serde_json::json!({}),
+            proof: None,
+        }).await;
+
+        assert!(matches!(out, ExecuteOutcome::Error { code: ContractError::PermissionDenied, .. }));
+        assert_eq!(e.load(Ordering::SeqCst), 0, "no proof means the executor is never called");
+    }
+
+    /// A proof authorises ONE call, not any call. The store tests that binding in
+    /// isolation; what is unproven there is that the dispatcher hands the store
+    /// THIS request's tool and arguments. If it hashed a constant, or read the
+    /// tool name from the wrong place, every existing test would still pass -
+    /// authorize and execute agree with each other in the happy path either way.
+    #[tokio::test]
+    async fn a_proof_minted_for_another_call_does_not_authorise_this_one() {
+        // Wrong tool: authorize `bash`, execute `graph.write` with that proof.
+        let (d, _g, e, _r) = dispatcher();
+        let token = d.init_session(&init(), std::process::id()).unwrap();
+        let dec = d.authorize(&token, std::process::id(), &Authorize {
+            tool_name: "bash".into(),
+            tool_input: serde_json::json!({"cmd": "ls"}),
+            external_triggered: false,
+        }).await;
+        let proof = match dec {
+            AuthorizeDecision::Allow { proof } => proof,
+            other => panic!("expected Allow, got {other:?}"),
+        };
+
+        let wrong_tool = d.execute(&token, std::process::id(), &Execute {
+            tool_name: "graph.write".into(),
+            tool_input: serde_json::json!({"cmd": "ls"}),
+            proof: proof.clone(),
+        }).await;
+        assert!(
+            matches!(wrong_tool, ExecuteOutcome::Error { code: ContractError::PermissionDenied, .. }),
+            "a proof for `bash` must not run `graph.write`"
+        );
+        assert_eq!(e.load(Ordering::SeqCst), 0);
+
+        // Wrong arguments: same tool, different input. The proof is still unconsumed
+        // by the refusal above, so this isolates the argument binding.
+        let wrong_args = d.execute(&token, std::process::id(), &Execute {
+            tool_name: "bash".into(),
+            tool_input: serde_json::json!({"cmd": "rm -rf /"}),
+            proof: proof.clone(),
+        }).await;
+        assert!(
+            matches!(wrong_args, ExecuteOutcome::Error { code: ContractError::PermissionDenied, .. }),
+            "a proof for one argument set must not run another"
+        );
+        assert_eq!(e.load(Ordering::SeqCst), 0);
+
+        // And the original call still works, so the refusals above were about the
+        // mismatch rather than the proof having been quietly burnt.
+        let right = d.execute(&token, std::process::id(), &Execute {
+            tool_name: "bash".into(),
+            tool_input: serde_json::json!({"cmd": "ls"}),
+            proof,
+        }).await;
+        assert!(matches!(right, ExecuteOutcome::Ok { .. }), "the call it was minted for still runs");
+        assert_eq!(e.load(Ordering::SeqCst), 1);
+    }
+
     #[tokio::test]
     async fn the_bound_grant_is_threaded_to_the_gate() {
         let g = Arc::new(AtomicUsize::new(0));
