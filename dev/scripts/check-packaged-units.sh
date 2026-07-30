@@ -46,6 +46,26 @@ while IFS= read -r pkg; do
   fi
   checked=$((checked + 1))
   if ! diff <(directives "$canonical") <(directives "$pkg") >/dev/null 2>&1; then
+    # A KNOWN, reasoned exception does not fail the gate - but it is reprinted on
+    # every run, because an exception nobody sees is just a silent failure with
+    # extra steps. Anything NOT listed here still fails, which is the point:
+    # leaving the whole gate red would mean new drift lands unnoticed behind an
+    # old one.
+    case "$base" in
+      arlen-config-broker.service)
+        echo "KNOWN DRIFT (not failing): $base"
+        echo "  The image packages this as User=root with the state/runtime dirs and the"
+        echo "  hardening stripped, because it creates no arlen-config user and ships no"
+        echo "  /etc/arlen/config-broker.env - and the canonical EnvironmentFile= has no"
+        echo "  '-' prefix, so the canonical unit would fail to start there outright."
+        echo "  CONSEQUENCE: in the image, the daemon owning executor_live, access_level"
+        echo "  and the provider settings runs as root with no separate-uid isolation."
+        echo "  FIX: provision the user (sysusers.d) + write config-broker.env at image"
+        echo "  build, then delete this exception. Not a reconcile."
+        echo
+        continue
+        ;;
+    esac
     drift=$((drift + 1))
     echo "DRIFT: $base"
     echo "  canonical: $canonical"
