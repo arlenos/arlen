@@ -37,6 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.detect.outputs.rust }}
+      rust_touched: ${{ steps.detect.outputs.rust_touched }}
       frontend: ${{ steps.detect.outputs.frontend }}
     steps:
       - uses: actions/checkout@v4
@@ -115,6 +116,12 @@ jobs:
           # Always run it. The cost is one small leg (its dev-deps are light
           # client crates, and the daemon scenarios stay #[ignore]d) on changes
           # that cannot break a guard, in exchange for the guards being real.
+          # Jobs that ask "did rust actually change" must keep asking the
+          # unaugmented list, or adding dev/integration below turns them all on
+          # for every commit: `lint` gates on non-empty, and `integration`
+          # gates on dev/integration being present, which would run the heavy
+          # knowledge/lbug build on a README edit.
+          rust_touched="$rust"
           rust="$(printf '%s' "$rust" | jq -c '. + ["dev/integration"] | unique')"
 
           if [ "$frontend_full" = "1" ]; then
@@ -125,6 +132,7 @@ jobs:
           fi
 
           echo "rust=$rust" >> "$GITHUB_OUTPUT"
+          echo "rust_touched=$rust_touched" >> "$GITHUB_OUTPUT"
           echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
           echo "rust components: $rust"
           echo "frontend apps: $frontend"
@@ -184,7 +192,7 @@ jobs:
     needs: changes
     # Run when the backend daemons or the integration harness change (a
     # full-matrix run lists them too). The scenarios assemble real daemons.
-    if: ${{ contains(needs.changes.outputs.rust, 'daemons/knowledge') || contains(needs.changes.outputs.rust, 'daemons/event-bus') || contains(needs.changes.outputs.rust, 'dev/integration') }}
+    if: ${{ contains(needs.changes.outputs.rust_touched, 'daemons/knowledge') || contains(needs.changes.outputs.rust_touched, 'daemons/event-bus') || contains(needs.changes.outputs.rust_touched, 'dev/integration') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -234,7 +242,7 @@ jobs:
   lint:
     name: clippy + rustfmt
     needs: changes
-    if: ${{ needs.changes.outputs.rust != '[]' }}
+    if: ${{ needs.changes.outputs.rust_touched != '[]' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
