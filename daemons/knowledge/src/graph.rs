@@ -1429,6 +1429,74 @@ mod tests {
     }
 
     #[test]
+    fn br6_engine_permits_dropping_a_bridges_own_tables() {
+        // BR-6: revoking a bridge must remove its data, and its data is already
+        // partitioned - entity tables are per type, rel tables per (edge, from,
+        // to) triple, and a bridge writes only its own namespace. So the purge
+        // wants DROP TABLE per affected table rather than a scan for an owner
+        // column. Nothing in the tree drops a table, so this probes whether the
+        // engine allows it at all; a failure selects the per-table DELETE
+        // fallback instead, which is still bounded to the bridge's own tables.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("graph");
+        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+
+        // One bridge's node table, one neighbour's, and an edge between them -
+        // the shape a real purge meets.
+        conn.query("CREATE NODE TABLE e_md_obsidian_Note(id STRING, PRIMARY KEY(id))")
+            .unwrap();
+        conn.query("CREATE NODE TABLE e_system_File(id STRING, PRIMARY KEY(id))")
+            .unwrap();
+        conn.query("CREATE REL TABLE r_LINKS_TO(FROM e_md_obsidian_Note TO e_system_File)")
+            .unwrap();
+        conn.query("CREATE (:e_md_obsidian_Note {id:'n1'})").unwrap();
+        conn.query("CREATE (:e_system_File {id:'f1'})").unwrap();
+        conn.query(
+            "MATCH (n:e_md_obsidian_Note {id:'n1'}), (f:e_system_File {id:'f1'}) \
+             CREATE (n)-[:r_LINKS_TO]->(f)",
+        )
+        .unwrap();
+
+        // The rel table goes first: an edge table referencing a dropped node
+        // table would be left dangling, and this is the order a purge must use.
+        conn.query("DROP TABLE r_LINKS_TO")
+            .expect("the engine permits dropping a rel table");
+        conn.query("DROP TABLE e_md_obsidian_Note")
+            .expect("the engine permits dropping a node table");
+
+        // The neighbour's data is untouched: purging one source must not take
+        // the rest of the graph with it.
+        let rest = conn
+            .query("MATCH (f:e_system_File) RETURN f.id")
+            .unwrap()
+            .count();
+        assert_eq!(rest, 1, "dropping a bridge's tables kept the neighbour's row");
+    }
+
+    #[test]
+    fn br6_a_node_table_cannot_be_dropped_while_an_edge_references_it() {
+        // Whether the rel-table-first order is mandatory or merely tidy decides
+        // whether a purge implementation has to sequence its drops. It is
+        // mandatory: the engine refuses to strand an edge table.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("graph");
+        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+        conn.query("CREATE NODE TABLE e_md_obsidian_Note(id STRING, PRIMARY KEY(id))")
+            .unwrap();
+        conn.query("CREATE NODE TABLE e_system_File(id STRING, PRIMARY KEY(id))")
+            .unwrap();
+        conn.query("CREATE REL TABLE r_LINKS_TO(FROM e_md_obsidian_Note TO e_system_File)")
+            .unwrap();
+
+        assert!(
+            conn.query("DROP TABLE e_md_obsidian_Note").is_err(),
+            "dropping a node table out from under its rel table was allowed"
+        );
+    }
+
+    #[test]
     fn r0_engine_permits_parallel_same_type_edges_and_set_counts_matched() {
         // KG-R0 (bitemporal-knowledge-graph.md §4.10): the append-don't-overwrite
         // bi-temporal model needs multiple FILE_PART_OF edges between one
