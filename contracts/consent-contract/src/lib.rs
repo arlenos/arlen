@@ -184,6 +184,32 @@ impl ConsentOutcome {
 mod tests {
     use super::*;
 
+    /// The two predicates the whole consent contract turns on, over every
+    /// outcome. Neither had a test: mutation testing found each could be
+    /// replaced with a constant `true` or `false`, and `allowed -> true` means a
+    /// DENIAL reads as permission to proceed while `mints_grant -> true` turns a
+    /// one-off approval into a standing revocable grant.
+    ///
+    /// Written as an exhaustive table so a new outcome has to state what it means
+    /// on both axes rather than inheriting whichever answer the match falls to.
+    #[test]
+    fn each_outcome_says_what_it_permits_and_what_it_records() {
+        // (outcome, may proceed, mints a remembered grant)
+        let table = [
+            (ConsentOutcome::AllowedOnce, true, false),
+            (ConsentOutcome::AllowedRemembered, true, true),
+            (ConsentOutcome::Denied, false, false),
+        ];
+        for (outcome, allowed, mints) in table {
+            assert_eq!(outcome.allowed(), allowed, "{outcome:?} may-proceed");
+            assert_eq!(outcome.mints_grant(), mints, "{outcome:?} mints-grant");
+        }
+        // Stated separately because it is the property that matters most: nothing
+        // that is refused may proceed, and nothing refused leaves a grant behind.
+        assert!(!ConsentOutcome::Denied.allowed());
+        assert!(!ConsentOutcome::Denied.mints_grant());
+    }
+
     #[test]
     fn capture_class_keys_are_stable() {
         // The key is a load-bearing component of the deterministic revocation
