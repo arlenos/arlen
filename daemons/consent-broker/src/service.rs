@@ -58,7 +58,14 @@ pub fn assemble(body: RequestBody, requester: AttestedRequester) -> ConsentReque
 /// it must be able to attribute the capture grant to the app, not to itself. A
 /// peer NOT in this set that sets `on_behalf_of` is ignored (attributed to
 /// itself), so the field can never redirect a grant unless the peer is trusted.
-const TRUSTED_INTERMEDIARIES: &[&str] = &["xdg-desktop-portal"];
+/// `modulesd` is the same shape: a module never speaks to this broker, its
+/// runtime does, so without mediation every extension's capability grant would
+/// be attributed to `modulesd` itself - one recipient for all of them, meaning
+/// the ledger could not say WHICH extension was granted graph write and a
+/// revoke would be all-or-nothing across every module. The module id it names
+/// comes from the discovered manifest it loaded, not from anything the module
+/// said, which is what makes it a resolution rather than a claim.
+const TRUSTED_INTERMEDIARIES: &[&str] = &["xdg-desktop-portal", "modulesd"];
 
 /// Whether `peer` (an SO_PEERCRED-attested app id) may assert `on_behalf_of`.
 fn is_trusted_intermediary(peer: &str) -> bool {
@@ -167,6 +174,15 @@ mod tests {
         assert_eq!(r.grant_recipient(), "org.example.recorder");
         assert_eq!(r.display_id(), "org.example.recorder");
         assert_eq!(r.mediator(), Some("xdg-desktop-portal"));
+    }
+
+    /// Without this the ledger records every extension's grant under the one
+    /// recipient `modulesd`, so it cannot say which extension was granted graph
+    /// write and revoking one revokes them all.
+    #[test]
+    fn a_module_grant_is_attributed_to_the_module_not_its_runtime() {
+        let r = resolve_requester("modulesd", Some("com.example.weather"));
+        assert_eq!(r.grant_recipient(), "com.example.weather");
     }
 
     #[test]

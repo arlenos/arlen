@@ -522,7 +522,12 @@ pub fn is_reserved_app_id(app_id: &str) -> bool {
         || app_id.starts_with("org.arlen.")
         || matches!(
             app_id,
-            "ai-daemon" | "ai-agent" | "settings" | "xdg-desktop-portal"
+            // `modulesd` and `xdg-desktop-portal` are the consent broker's
+            // trusted intermediaries: each may attribute a grant to a principal
+            // it resolved itself. A same-uid app able to MINT either id would
+            // inherit that power and redirect grants to any app it named, so
+            // both must be unclaimable from a user-app directory.
+            "ai-daemon" | "ai-agent" | "settings" | "xdg-desktop-portal" | "modulesd"
         )
 }
 

@@ -145,10 +145,13 @@ pub fn intake_socket_path() -> PathBuf {
 /// needs no decision and is admitted without a round trip. Every other outcome
 /// - denial, a broker that cannot be reached, a malformed reply - is a refusal.
 ///
-/// The requester is NOT sent: the broker fills it from the attested peer, so
-/// modulesd cannot claim to be something else. There is no `on_behalf_of`
-/// either, because unlike the portal, modulesd is not relaying an app's request
-/// - it is the one that would hold the capability, and the grant should name it.
+/// The grant is attributed to the MODULE, not to modulesd. A module never
+/// speaks to the broker itself, so without `on_behalf_of` every extension's
+/// grant would land under the one recipient `modulesd`: the ledger could not
+/// say which extension was granted graph write, and revoking one would revoke
+/// them all. Same trusted-intermediary shape as the portal, and honored only
+/// because the broker allowlists modulesd - the module id comes from the
+/// discovered manifest modulesd loaded, not from anything the module said.
 pub async fn request_enable_consent(
     socket: &Path,
     module_id: &str,
@@ -170,7 +173,7 @@ pub async fn request_enable_consent(
         preview: None,
         targets: Vec::new(),
         total: None,
-        on_behalf_of: None,
+        on_behalf_of: Some(module_id.to_string()),
     };
     matches!(
         request(socket, &body).await,
