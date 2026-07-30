@@ -1,9 +1,9 @@
 # Starting permission profile for an OCR text-extraction tool. It reads image files
-# to extract text (Home) and copies the result to the clipboard via the portal; no
-# network of its own and no Knowledge Graph.
+# to extract text, so it gets Pictures like the other image tools here; the result
+# goes to the clipboard through the portal. No network and no Knowledge Graph.
 [info]
 app_id = "gnome-frog"
 tier = "third-party"
 
 [filesystem]
-home = true
+pictures = true

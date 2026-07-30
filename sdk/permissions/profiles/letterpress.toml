@@ -1,9 +1,9 @@
 # Starting permission profile for an image-to-ASCII-art converter (Letterpress). It
-# opens an image and saves/copies the text art, so it gets home filesystem access;
-# it uses no network.
+# opens an image and saves or copies the text art, so it gets Pictures; saving
+# elsewhere goes through the file picker, which is a per-file grant. No network.
 [info]
 app_id = "letterpress"
 tier = "third-party"
 
 [filesystem]
-home = true
+pictures = true

@@ -1,9 +1,11 @@
 # Starting permission profile for a video player. It plays the user's local video
-# files, so it gets Home; playback is offline, so no network of its own and no
-# Knowledge Graph.
+# and audio files, so it gets Videos and Music - not Home, which is the scope the
+# other players in this corpus take (vlc, mpv, celluloid, totem). Playback is
+# offline, so no network of its own and no Knowledge Graph.
 [info]
 app_id = "showtime"
 tier = "third-party"
 
 [filesystem]
-home = true
+music = true
+videos = true

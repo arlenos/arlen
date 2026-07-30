@@ -1,9 +1,10 @@
 # Starting permission profile for an audio player. It plays the user's local music
-# files, so it gets Home; playback is offline, so no network of its own and no
-# Knowledge Graph.
+# files, so it gets Music, matching the other audio players in this corpus
+# (rhythmbox, audacious, lollypop). Playback is offline, so no network of its own
+# and no Knowledge Graph.
 [info]
 app_id = "decibels"
 tier = "third-party"
 
 [filesystem]
-home = true
+music = true
