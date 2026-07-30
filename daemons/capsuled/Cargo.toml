@@ -31,4 +31,5 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "io-util", 
 
 [dev-dependencies]
 audit-proto = { path = "../../contracts/audit-proto", features = ["test-util"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "net", "time"] }
+tempfile = "3"
