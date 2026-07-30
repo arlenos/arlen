@@ -1258,12 +1258,190 @@ mod tests {
         assert!(matches!(r, Err(IdentityError::ProcessNotFound(_))));
     }
 
+    /// A child process running a binary at a known path, reaped on drop.
+    ///
+    /// Everything below this point tests the syscall layer against a real
+    /// process rather than against a fake `/proc`. That is deliberate: a
+    /// redirectable proc root would be a new production-reachable override on
+    /// the file the whole peer-authentication story rests on, and the thing
+    /// worth proving is that the real `openat`/`readlinkat`/`fstatat` sequence
+    /// returns the truth about a real pid.
+    struct Child {
+        inner: Option<std::process::Child>,
+        exe: PathBuf,
+    }
+
+    impl Child {
+        /// Spawn a long-lived child from a copy of `/bin/sh` at `name`, so the
+        /// test controls both the pid and the exact path `/proc/{pid}/exe`
+        /// must resolve to.
+        fn spawn_named(dir: &Path, name: &str) -> Option<Self> {
+            let src = ["/bin/sleep", "/usr/bin/sleep"]
+                .into_iter()
+                .map(Path::new)
+                .find(|p| p.exists())?;
+            let exe = dir.join(name);
+            std::fs::copy(src, &exe).ok()?;
+            let inner = std::process::Command::new(&exe)
+                .arg("60")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .ok()?;
+            let me = Self {
+                inner: Some(inner),
+                exe,
+            };
+            me.wait_for_exec();
+            Some(me)
+        }
+
+        /// Block until the child has actually `execve`d its own binary.
+        ///
+        /// Between `fork` and `exec` the child still carries the *parent's*
+        /// image, so `/proc/{pid}/exe` reports the test binary. Reading it
+        /// straight after `spawn` therefore races, and the race is invisible
+        /// most of the time: the first run of these tests passed on luck.
+        ///
+        /// Polled with `std::fs::read_link` rather than the resolver under
+        /// test, so readiness never depends on the thing being asserted.
+        fn wait_for_exec(&self) {
+            let link = format!("/proc/{}/exe", self.pid());
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while std::time::Instant::now() < deadline {
+                if std::fs::read_link(&link).is_ok_and(|p| p == self.exe) {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            panic!("child never exec'd {}", self.exe.display());
+        }
+
+        fn pid(&self) -> u32 {
+            self.inner.as_ref().expect("child is live").id()
+        }
+
+        /// Kill and reap, so the pid is genuinely gone rather than a zombie
+        /// (a zombie keeps its `/proc/{pid}` directory).
+        fn reap(&mut self) {
+            if let Some(mut c) = self.inner.take() {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+        }
+    }
+
+    impl Drop for Child {
+        fn drop(&mut self) {
+            self.reap();
+        }
+    }
+
+    /// The resolver must name the binary the process is *actually* running.
+    /// Every mutant that shortcuts the `openat`/`readlinkat` pair - a hardcoded
+    /// path, an empty string, dropping `O_NOFOLLOW`, treating a negative fd as
+    /// success - answers something other than this exact path.
     #[test]
-    fn test_pid_start_time_handles_paren_comm() {
-        // Manual test: comm with parentheses is rare but legal.
-        // We don't write to /proc, so this is unit-tested via
-        // the rsplit_once(") ") path implicitly through the
-        // self-test which always succeeds. The defensive
-        // rsplit catches programs named like "weird (test) name".
+    fn the_exe_resolver_names_the_binary_a_real_process_is_running() {
+        let dir = tempfile::tempdir().unwrap();
+        let Some(child) = Child::spawn_named(dir.path(), "arlen-probe") else {
+            return; // no sleep binary on this host
+        };
+
+        let got = exe_path_openat(child.pid()).expect("resolve a live child");
+        assert_eq!(
+            got, child.exe,
+            "the resolver must report the binary actually running, not a guess"
+        );
+    }
+
+    /// The inode gate is what makes a copied binary fail identity (F3), so it
+    /// has to read the inode of the *running* image. Cross-checking it against
+    /// a plain `stat` of the same path pins both halves: if either the fd
+    /// pinning or the `fstatat` were mutated, the pair would disagree.
+    #[test]
+    fn the_inode_of_a_live_process_matches_a_stat_of_its_binary() {
+        use std::os::unix::fs::MetadataExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let Some(child) = Child::spawn_named(dir.path(), "arlen-probe") else {
+            return;
+        };
+
+        let (ino, dev) = exe_ino_dev(child.pid()).expect("stat a live child's image");
+        let meta = std::fs::metadata(&child.exe).unwrap();
+        assert_eq!((ino, dev), (meta.ino(), meta.dev()));
+        assert_ne!(ino, 0, "a zeroed stat buffer is not an identity");
+    }
+
+    /// An arbitrary binary is not an app. This is the security property the
+    /// resolver exists for: identity comes from a trusted install root, so a
+    /// process running out of a temp directory gets no id at all rather than
+    /// an id derived from its filename.
+    #[test]
+    fn a_process_running_from_a_temp_dir_earns_no_app_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let Some(child) = Child::spawn_named(dir.path(), "arlen-ai-daemon") else {
+            return;
+        };
+
+        // Named to look exactly like the canonical daemon, and still refused:
+        // only the anchored path counts, never the basename.
+        assert!(
+            app_id_from_pid(child.pid()).is_err(),
+            "a lookalike binary outside a trusted root must not resolve"
+        );
+    }
+
+    /// `process_alive` backs the PID-reuse guard, so it has to distinguish a
+    /// running pid from a reaped one. A mutant answering a constant passes
+    /// either half alone; it cannot pass both.
+    #[test]
+    fn liveness_tracks_a_child_across_its_death() {
+        let dir = tempfile::tempdir().unwrap();
+        let Some(mut child) = Child::spawn_named(dir.path(), "arlen-probe") else {
+            return;
+        };
+        let pid = child.pid();
+
+        assert!(process_alive(pid), "a running child must read as alive");
+        child.reap();
+        assert!(
+            !process_alive(pid),
+            "a reaped pid must read as gone, or the reuse guard never fires"
+        );
+    }
+
+    /// The start-time parse skips `comm` by splitting on the LAST `") "`, and
+    /// the doc comment says why: `comm` is the binary's basename and may itself
+    /// contain parens. That reasoning was never exercised - the old test for it
+    /// was an empty body with a comment explaining that it tested nothing.
+    ///
+    /// A child whose basename is `we (ird) name` puts a `") "` *inside* comm.
+    /// A leftmost split lands there and reads one field early, which is
+    /// `itrealvalue` (0 for any normal process) instead of the start time.
+    #[test]
+    fn a_binary_name_containing_parens_does_not_shift_the_start_time_field() {
+        let dir = tempfile::tempdir().unwrap();
+        let Some(child) = Child::spawn_named(dir.path(), "we (ird) name") else {
+            return;
+        };
+        let pid = child.pid();
+
+        let got = pid_start_time(pid).expect("parse a paren-laden comm");
+
+        // Independent oracle: the spec is "column 22, where comm ends at the
+        // last `)`". Parsed here by a different route than the code under test.
+        let raw = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+        let tail = &raw[raw.rfind(')').unwrap() + 1..];
+        let expected: u64 = tail.split_whitespace().nth(19).unwrap().parse().unwrap();
+
+        assert_eq!(got, expected, "comm parens must not shift the field index");
+        assert!(got > 0, "a leftmost split would read itrealvalue, which is 0");
+        assert!(
+            got >= pid_start_time(std::process::id()).unwrap(),
+            "the child started after the test process, so its tick cannot be earlier"
+        );
     }
 }
