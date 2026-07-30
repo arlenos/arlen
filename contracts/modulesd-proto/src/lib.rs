@@ -10,6 +10,8 @@
 ///   * `Response` — daemon → shell, replies to a Request by id.
 ///   * `Event`    — daemon → shell, unsolicited (lifecycle, broadcasts).
 
+pub mod client;
+
 use serde::{Deserialize, Serialize};
 
 /// Plugin priority on the wire; matches `WaypointerPlugin::priority`
