@@ -114,7 +114,7 @@ mod tests {
     async fn a_write_reaches_the_broker_and_the_answer_comes_back() {
         use crate::serve::{AppRegistry, AppSettings};
         use arlen_forage_recipe::settings::{
-            SettingScope, SettingType, SettingsItem, SettingsSchema, SettingsSection,
+            SettingType, SettingsItem, SettingsSchema, SettingsSection,
         };
 
         struct One(std::path::PathBuf);
@@ -130,30 +130,7 @@ mod tests {
                             label: "S".into(),
                             description: None,
                             order: None,
-                            items: vec![SettingsItem {
-                                key: "theme".into(),
-                                value_type: SettingType::String,
-                                label: "Theme".into(),
-                                description: None,
-                                default: None,
-                                min: None,
-                                max: None,
-                                unit: None,
-                                options: Vec::new(),
-                                options_from: None,
-                                order: None,
-                                keywords: Vec::new(),
-                                scope: SettingScope::default(),
-                                handoff: None,
-                                tags: Vec::new(),
-                                included: None,
-                                deprecated_message: None,
-                                replaced_by: None,
-                                renamed_from: Vec::new(),
-                                since: None,
-                                removed_in: None,
-                                visible_when: None,
-                            }],
+                            items: vec![SettingsItem::new("theme", SettingType::String, "Theme")],
                         }],
                     },
                     config_path: self.0.clone(),
