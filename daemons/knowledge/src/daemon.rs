@@ -3649,11 +3649,7 @@ async fn filter_ids_to_readable_labels(
     if ids.is_empty() || readable_labels.is_empty() {
         return Vec::new();
     }
-    let in_list = ids
-        .iter()
-        .map(|id| format!("'{}'", escape_cypher(id)))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let in_list = crate::cypher::id_list(ids.iter());
     let mut allowed = std::collections::HashSet::new();
     for label in readable_labels {
         let cypher = format!("MATCH (n:{label}) WHERE n.id IN [{in_list}] RETURN n.id");

@@ -20,7 +20,6 @@ use anyhow::Result;
 use sqlx::SqlitePool;
 
 use crate::graph::GraphHandle;
-use crate::utils::escape_cypher;
 
 /// LLM-free retrieval (§7): combine the keyword and graph primitives into one
 /// temporally-honest ranking of node ids, with no LLM call at query time.
@@ -54,11 +53,7 @@ pub async fn retrieve(
 /// the expansion cannot explode. The seed ids are escaped into the id-list
 /// literal.
 async fn neighbours(graph: &GraphHandle, seeds: &[String]) -> Result<Vec<String>> {
-    let list = seeds
-        .iter()
-        .map(|id| format!("'{}'", escape_cypher(id)))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let list = crate::cypher::id_list(seeds.iter());
     let cypher =
         format!("MATCH (s) WHERE s.id IN [{list}] MATCH (s)-[]-(n) RETURN DISTINCT n.id AS id");
     let rs = graph.query_rows(cypher).await?;
@@ -184,11 +179,7 @@ pub async fn confirm_present(graph: &GraphHandle, candidates: &[String]) -> Resu
     if candidates.is_empty() {
         return Ok(Vec::new());
     }
-    let list = candidates
-        .iter()
-        .map(|id| format!("'{}'", escape_cypher(id)))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let list = crate::cypher::id_list(candidates.iter());
     // Label-agnostic: a candidate id may belong to any node table. The
     // `expired_at IS NULL` clause is the as-of-now node liveness (§4.9): a
     // transaction-closed node (an archived Project) is dropped, while a node
