@@ -1,0 +1,6 @@
+# Starting permission profile for a printer configuration tool. It talks to the
+# local print service, which is privileged and elevates via polkit rather than
+# through this profile. No file access, no network and no Knowledge Graph.
+[info]
+app_id = "system-config-printer"
+tier = "third-party"
