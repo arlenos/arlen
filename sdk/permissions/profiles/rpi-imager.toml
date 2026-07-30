@@ -1,7 +1,13 @@
-# Starting permission profile for an SD-card imaging tool. Writing a raw block
-# device is privileged and elevates via polkit, never through this profile, and
-# the image it flashes is chosen through the file picker. So no standing file
-# access, no network and no Knowledge Graph.
+# Starting permission profile for an SD-card imaging tool. It downloads OS images
+# over the network and saves them to Downloads, which is its normal workflow;
+# writing the raw block device is privileged and elevates via polkit rather than
+# through this profile. Matches org.raspberrypi.rpi-imager. No Knowledge Graph.
 [info]
 app_id = "rpi-imager"
 tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
