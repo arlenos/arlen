@@ -107,6 +107,89 @@ pub fn plan_purge(
     }
 }
 
+/// What a purge actually removed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Purged {
+    /// The tables that are now gone.
+    pub dropped: Vec<String>,
+    /// Tables the plan named that could not be dropped, with the reason.
+    ///
+    /// Reported rather than aborting: a table already gone is the state the
+    /// caller wanted, and one that refuses is worth naming rather than hiding
+    /// behind a failed whole.
+    pub failed: Vec<(String, String)>,
+}
+
+/// Read the engine's rel tables and their endpoints.
+///
+/// `show_tables` classifies, `show_connection` resolves. Both are read
+/// positionally: the catalog's column names contain spaces, so quoting them in
+/// a `RETURN` reads as a string literal rather than an identifier.
+pub async fn read_rel_catalog(
+    graph: &crate::graph::GraphHandle,
+) -> anyhow::Result<Vec<(String, String, String)>> {
+    let listed = graph
+        .query_rows("CALL show_tables() RETURN name, type".to_string())
+        .await?;
+
+    let mut out = Vec::new();
+    for row in &listed.rows {
+        let (Some(crate::graph::CellValue::String(name)), Some(crate::graph::CellValue::String(kind))) =
+            (row.first(), row.get(1))
+        else {
+            continue;
+        };
+        if kind != "REL" {
+            continue;
+        }
+        // A table name from the catalog, quoted into the call. It came from the
+        // engine rather than from a caller, but it is still interpolated, so a
+        // name carrying a quote is skipped instead of trusted.
+        if name.contains('\'') || name.contains('"') {
+            continue;
+        }
+        let endpoints = graph
+            .query_rows(format!("CALL show_connection('{name}') RETURN *"))
+            .await?;
+        if let Some(row) = endpoints.rows.first() {
+            if let (Some(crate::graph::CellValue::String(src)), Some(crate::graph::CellValue::String(dst))) =
+                (row.first(), row.get(1))
+            {
+                out.push((name.clone(), src.clone(), dst.clone()));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Remove everything stored under `namespace`.
+///
+/// Runs the plan's statements in order - edges before nodes, which the engine
+/// requires - and reports per table rather than stopping at the first refusal.
+/// Re-running is safe: a table already dropped simply lands in `failed` with
+/// the engine's own message, and the end state is the one that was asked for.
+pub async fn purge_namespace(
+    graph: &crate::graph::GraphHandle,
+    namespace: &str,
+    all_types: &[String],
+) -> anyhow::Result<Purged> {
+    let catalog = read_rel_catalog(graph).await?;
+    let plan = plan_purge(namespace, all_types, &catalog);
+
+    let mut purged = Purged {
+        dropped: Vec::new(),
+        failed: Vec::new(),
+    };
+    for statement in plan.statements() {
+        let table = statement.trim_start_matches("DROP TABLE ").to_string();
+        match graph.write(statement).await {
+            Ok(_) => purged.dropped.push(table),
+            Err(e) => purged.failed.push((table, e.to_string())),
+        }
+    }
+    Ok(purged)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,4 +270,70 @@ mod tests {
         assert!(plan.is_empty());
         assert!(plan.statements().is_empty());
     }
+    /// End to end against a real graph: a source's nodes and edges go, its
+    /// neighbour's stay. This is the property the whole feature exists for.
+    #[tokio::test]
+    async fn purging_a_namespace_removes_its_data_and_spares_the_rest() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+
+        let note = super::super::entity_table_name("md.obsidian.Note");
+        let file = super::super::entity_table_name("system.File");
+        graph
+            .write(format!("CREATE NODE TABLE {note}(id STRING, PRIMARY KEY(id))"))
+            .await
+            .unwrap();
+        graph
+            .write(format!("CREATE NODE TABLE {file}(id STRING, PRIMARY KEY(id))"))
+            .await
+            .unwrap();
+        graph
+            .write(format!("CREATE REL TABLE r_LINKS_TO_1(FROM {note} TO {file})"))
+            .await
+            .unwrap();
+        graph.write(format!("CREATE (:{note} {{id:'n1'}})")).await.unwrap();
+        graph.write(format!("CREATE (:{file} {{id:'f1'}})")).await.unwrap();
+
+        let types = vec!["md.obsidian.Note".to_string(), "system.File".to_string()];
+        let purged = purge_namespace(&graph, "md.obsidian", &types).await.unwrap();
+        assert!(purged.failed.is_empty(), "{purged:?}");
+        assert_eq!(purged.dropped.len(), 2, "the edge table and the node table");
+
+        // The neighbour is untouched, which is the half that would be a disaster
+        // to get wrong.
+        let rest = graph
+            .query_rows(format!("MATCH (f:{file}) RETURN f.id"))
+            .await
+            .unwrap();
+        assert_eq!(rest.rows.len(), 1, "the neighbour's row survived");
+
+        // And the source's table is genuinely gone, not merely emptied.
+        assert!(
+            graph.query_rows(format!("MATCH (n:{note}) RETURN n.id")).await.is_err(),
+            "the purged table still answers queries"
+        );
+    }
+
+    /// Re-running must be safe: the second pass finds nothing left and says so
+    /// rather than failing, because the end state is the one that was asked for.
+    #[tokio::test]
+    async fn purging_twice_is_not_an_error_the_second_time() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("g").to_str().unwrap()).unwrap();
+        let note = super::super::entity_table_name("md.obsidian.Note");
+        graph
+            .write(format!("CREATE NODE TABLE {note}(id STRING, PRIMARY KEY(id))"))
+            .await
+            .unwrap();
+
+        let types = vec!["md.obsidian.Note".to_string()];
+        assert_eq!(
+            purge_namespace(&graph, "md.obsidian", &types).await.unwrap().dropped.len(),
+            1
+        );
+        let again = purge_namespace(&graph, "md.obsidian", &types).await.unwrap();
+        assert!(again.dropped.is_empty());
+        assert_eq!(again.failed.len(), 1, "the second pass names what was already gone");
+    }
+
 }
