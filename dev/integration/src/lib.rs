@@ -992,3 +992,101 @@ mod proto_agreement {
         );
     }
 }
+
+#[cfg(test)]
+mod dbus_activation {
+    use super::repo_path;
+    use std::collections::BTreeMap;
+    use std::path::{Path, PathBuf};
+
+    fn key(text: &str, k: &str) -> Option<String> {
+        text.lines()
+            .find_map(|l| l.trim().strip_prefix(&format!("{k}=")))
+            .map(|v| v.split_whitespace().next().unwrap_or("").to_string())
+            .filter(|v| !v.is_empty())
+    }
+
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                if p.file_name().is_some_and(|n| {
+                    n == "target" || n == "node_modules" || n.to_string_lossy().starts_with("mkosi")
+                }) {
+                    continue;
+                }
+                walk(&p, out);
+            } else if p.extension().is_some_and(|x| x == "service") {
+                out.push(p);
+            }
+        }
+    }
+
+    /// A D-Bus activation file and the systemd unit it points at are two files
+    /// that must agree on three things, with nothing checking any of them:
+    ///
+    /// - the `SystemdService=` must name a unit that exists, or activation starts
+    ///   the bare `Exec=` binary directly and BYPASSES the unit's hardening (that
+    ///   exact bug was found on `InstallDaemon1`, which had no `SystemdService=`
+    ///   at all and would have run installd unsandboxed);
+    /// - the unit's `BusName=` must be the name being activated, or the unit
+    ///   never reports ready and `Type=dbus` hangs until timeout;
+    /// - `Exec=` must be the unit's `ExecStart`, or the two disagree about which
+    ///   binary serves the name.
+    #[test]
+    fn every_dbus_activation_file_agrees_with_its_unit() {
+        let mut all = Vec::new();
+        for root in ["daemons", "apps"] {
+            walk(&repo_path(root), &mut all);
+        }
+        // Units by file name, so an activation file can find the one it names.
+        let units: BTreeMap<String, PathBuf> = all
+            .iter()
+            .map(|p| (p.file_name().unwrap().to_string_lossy().to_string(), p.clone()))
+            .collect();
+
+        let activation: Vec<&PathBuf> = all
+            .iter()
+            .filter(|p| p.file_name().unwrap().to_string_lossy().starts_with("org."))
+            .collect();
+        assert!(!activation.is_empty(), "expected D-Bus activation files");
+
+        let mut problems = Vec::new();
+        for act in activation {
+            let text = std::fs::read_to_string(act).unwrap_or_default();
+            let name = act.file_name().unwrap().to_string_lossy().to_string();
+            let Some(unit_name) = key(&text, "SystemdService") else {
+                problems.push(format!("{name} has no SystemdService=, so activation bypasses the unit"));
+                continue;
+            };
+            let Some(unit_path) = units.get(&unit_name) else {
+                problems.push(format!("{name} names {unit_name}, which does not exist"));
+                continue;
+            };
+            let unit = std::fs::read_to_string(unit_path).unwrap_or_default();
+            if let (Some(bus), Some(declared)) = (key(&text, "Name"), key(&unit, "BusName")) {
+                if bus != declared {
+                    problems.push(format!(
+                        "{name} activates {bus} but {unit_name} declares BusName={declared}"
+                    ));
+                }
+            }
+            if let (Some(exec), Some(start)) = (key(&text, "Exec"), key(&unit, "ExecStart")) {
+                if exec != start {
+                    problems.push(format!(
+                        "{name} execs {exec} but {unit_name} starts {start}"
+                    ));
+                }
+            }
+        }
+        assert!(
+            problems.is_empty(),
+            "D-Bus activation files disagreeing with their units ({}):\n  {}",
+            problems.len(),
+            problems.join("\n  ")
+        );
+    }
+}
