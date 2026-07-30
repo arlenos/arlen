@@ -14,6 +14,13 @@
 # canonical). Exit 1 = a drift a reviewer must reconcile.
 set -euo pipefail
 
+# Every gate below runs even when an earlier one fails, and the script exits
+# non-zero at the end. Bailing on the first failure meant one long-standing
+# drift silently disabled the gates after it - the netlink sandbox check was
+# dead for exactly that reason, which is the kind of thing a guard is supposed
+# to prevent, not demonstrate.
+gate_failed=0
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 
@@ -52,7 +59,7 @@ done < <(find dev/mkosi/mkosi.extra -name '*.service' -not -path '*.wants/*' | s
 if [ "$drift" -ne 0 ]; then
   echo "FAIL: $drift packaged unit(s) drifted from their dist/ canonical (directives differ)."
   echo "Reconcile the packaged copy under dev/mkosi/mkosi.extra with the canonical daemons/*/dist unit."
-  exit 1
+  gate_failed=1
 fi
 
 echo "OK: $checked packaged unit(s) match their dist/ canonical; $skipped mkosi-only unit(s) skipped."
@@ -97,7 +104,59 @@ done < <(find daemons -path '*/dist/*.service' | sort)
 
 if [ "$netlink_fail" -ne 0 ]; then
   echo "FAIL: $netlink_fail sandbox-spawning unit(s) deny AF_NETLINK."
-  exit 1
+  gate_failed=1
 fi
 
 echo "OK: $netlink_checked sandbox-spawning unit(s) allow the netlink socket bwrap needs."
+
+# ---------------------------------------------------------------------------
+# Third gate: a daemon the image BUILDS must have its unit packaged.
+#
+# The drift check above only compares units present in both places, so it is
+# blind to the opposite mistake: adding a daemon to the image build and never
+# packaging its unit. The binary lands in /usr/lib/arlen/libexec and nothing
+# ever starts it - a daemon that is present, looks installed, and is simply
+# never running. That reads as a runtime bug, not a packaging one, which is why
+# it is worth catching here.
+#
+# Only daemons the image actually builds are checked. Most canonical units are
+# for daemons deliberately outside this image's scope (the install stack, the
+# accounts and connection daemons, the settings broker - the image builds no
+# apps, so nothing would call them); flagging those would be noise, and the
+# absence of a unit for them is the scope boundary, not an omission.
+missing_unit=0
+built_checked=0
+
+while read -r crate; do
+  [ -d "$crate" ] || continue
+  # Every SYSTEMD unit the crate ships, whichever convention it uses (dist/ or
+  # systemd/). A `org.*.service` is a D-BUS ACTIVATION file, not a unit: it says
+  # how to start a daemon on demand, and a daemon whose unit is WantedBy a target
+  # is already running without it. Different artifact, different question, so it
+  # is not checked here.
+  while read -r canonical; do
+    base="$(basename "$canonical")"
+    case "$base" in
+      org.*.service) continue ;;
+    esac
+    built_checked=$((built_checked + 1))
+    if ! find dev/mkosi/mkosi.extra -name "$base" | grep -q .; then
+      missing_unit=$((missing_unit + 1))
+      echo "UNPACKAGED UNIT: $base"
+      echo "  the image builds $crate but ships no copy of its unit under mkosi.extra,"
+      echo "  so the binary installs and nothing ever starts it."
+    fi
+  done < <(find "$crate" -name '*.service' -not -path '*/target/*' 2>/dev/null | sort)
+done < <(grep -h "manifest-path" dev/mkosi/mkosi.build.d/*.chroot 2>/dev/null |
+           grep -oE "(daemons|ai)/[a-z0-9-]+" | sort -u)
+
+if [ "$missing_unit" -ne 0 ]; then
+  echo "FAIL: $missing_unit image-built daemon(s) ship no unit."
+  gate_failed=1
+else
+  echo "OK: all $built_checked image-built daemon(s) ship their unit."
+fi
+
+if [ "$gate_failed" -ne 0 ]; then
+  exit 1
+fi
