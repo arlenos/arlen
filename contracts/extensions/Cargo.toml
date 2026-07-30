@@ -11,6 +11,7 @@ serde = { version = "1", features = ["derive"] }
 # The three sources whose declarations become capability labels.
 arlen-permissions = { path = "../../sdk/permissions" }
 arlen-modules = { path = "../../sdk/modules" }
+toml = "0.8"
 
 [dev-dependencies]
-toml = "0.8"
+tempfile = "3"
