@@ -244,6 +244,124 @@ pub fn mint_run_consent(
     Ok(token.to_base64()?)
 }
 
+/// The tool name a terminal READ consent authorizes, the read half's counterpart
+/// to [`RUN_COMMAND_TOOL`]. A token minted for one never satisfies the other,
+/// because the tool name is part of what the authorizer matches.
+pub const READ_OUTPUT_TOOL: &str = "get_recent_output";
+
+/// The sha256 hex digest binding a terminal read to its exact SCOPE.
+///
+/// Binding the scope and not just the terminal is the point. The consent dialog
+/// says something specific - "let it read the last 3 blocks of this terminal, not
+/// including your own commands" - and a token that bound only the terminal id
+/// would let the reader come back for twenty blocks including the user's. So the
+/// limit and both widening flags are digested alongside the id, and a token
+/// authorizes exactly the reading the user saw described.
+///
+/// Length-delimited like [`run_digest`], so a terminal id ending in digits cannot
+/// collide with a different id and limit.
+pub fn read_digest(
+    terminal_id: &str,
+    limit: u32,
+    include_user_blocks: bool,
+    include_running: bool,
+) -> String {
+    let mut h = Sha256::new();
+    h.update((terminal_id.len() as u64).to_le_bytes());
+    h.update(terminal_id.as_bytes());
+    h.update(u64::from(limit).to_le_bytes());
+    h.update([u8::from(include_user_blocks), u8::from(include_running)]);
+    let out = h.finalize();
+    let mut hex = String::with_capacity(out.len() * 2);
+    for b in out {
+        hex.push_str(&format!("{b:02x}"));
+    }
+    hex
+}
+
+/// Mint a consent token authorizing exactly this terminal read until
+/// `expiry_unix`, signed by the daemon's `root` keypair. Called once the consent
+/// broker approves the read. `expiry_unix` must be positive.
+pub fn mint_read_consent(
+    root: &KeyPair,
+    terminal_id: &str,
+    limit: u32,
+    include_user_blocks: bool,
+    include_running: bool,
+    expiry_unix: i64,
+) -> Result<String, ConsentTokenError> {
+    if expiry_unix <= 0 {
+        return Err(ConsentTokenError::InvalidInput("expiry not positive"));
+    }
+    if terminal_id.is_empty() {
+        return Err(ConsentTokenError::InvalidInput("terminal id is empty"));
+    }
+    let digest = read_digest(terminal_id, limit, include_user_blocks, include_running);
+
+    let mut raw = [0u8; 16];
+    getrandom::getrandom(&mut raw)
+        .map_err(|_| ConsentTokenError::InvalidInput("nonce entropy unavailable"))?;
+    let mut nonce = String::with_capacity(raw.len() * 2);
+    for b in raw {
+        nonce.push_str(&format!("{b:02x}"));
+    }
+
+    let mut builder: BiscuitBuilder = Biscuit::builder();
+    let mut params: HashMap<String, Term> = HashMap::new();
+    params.insert("tool".to_string(), Term::Str(READ_OUTPUT_TOOL.to_string()));
+    params.insert("digest".to_string(), Term::Str(digest));
+    params.insert("nonce".to_string(), Term::Str(nonce));
+    builder = builder.code_with_params(
+        "tool({tool}); read_digest({digest}); nonce({nonce});",
+        params,
+        HashMap::new(),
+    )?;
+    let mut tp: HashMap<String, Term> = HashMap::new();
+    tp.insert("expiry".to_string(), Term::Date(expiry_unix as u64));
+    builder = builder.code_with_params("check if time($t), $t <= {expiry};", tp, HashMap::new())?;
+
+    let token = builder.build(root)?;
+    Ok(token.to_base64()?)
+}
+
+/// Verify that `token_b64` authorizes reading exactly this terminal at exactly
+/// this scope at `now_unix`. Same fail-closed contract as
+/// [`verify_run_consent`]: a bad signature is an `Err`, a token that does not
+/// authorize this reading is `Ok(false)`.
+pub fn verify_read_consent(
+    token_b64: &str,
+    root_public: &PublicKey,
+    terminal_id: &str,
+    limit: u32,
+    include_user_blocks: bool,
+    include_running: bool,
+    now_unix: i64,
+) -> Result<bool, ConsentTokenError> {
+    if now_unix < 0 {
+        return Err(ConsentTokenError::InvalidInput("negative time"));
+    }
+    let token = Biscuit::from_base64(token_b64, root_public)?;
+    let digest = read_digest(terminal_id, limit, include_user_blocks, include_running);
+
+    let mut params: HashMap<String, Term> = HashMap::new();
+    params.insert("now".to_string(), Term::Date(now_unix as u64));
+    params.insert("reqtool".to_string(), Term::Str(READ_OUTPUT_TOOL.to_string()));
+    params.insert("reqdigest".to_string(), Term::Str(digest));
+    let source = "time({now}); req_tool({reqtool}); req_digest({reqdigest}); \
+                  allow if req_tool($t), tool($t), req_digest($d), read_digest($d) trusting authority;";
+    let authorizer: AuthorizerBuilder =
+        AuthorizerBuilder::new().code_with_params(source, params, HashMap::new())?;
+
+    let mut built = authorizer.build(&token)?;
+    match built.authorize_with_limits(datalog_limits()) {
+        Ok(_) => Ok(true),
+        Err(biscuit_auth::error::Token::RunLimit(limit)) => {
+            Err(ConsentTokenError::EngineLimit(limit.to_string()))
+        }
+        Err(_) => Ok(false),
+    }
+}
+
 /// Verify that `token_b64` (signed by the mint's `root_public`) authorizes running
 /// exactly `command` + `args` at `now_unix`.
 ///
@@ -295,6 +413,78 @@ pub fn verify_run_consent(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A read token authorizes the exact scope it was minted for, and nothing
+    /// wider. This is the property the whole read half rests on: the user agreed
+    /// to a specific sentence, and every way of asking for more must fail.
+    #[test]
+    fn a_read_token_does_not_authorize_a_wider_reading() {
+        let root = KeyPair::new();
+        let pubkey = root.public();
+        let now = 1_000;
+        let token = mint_read_consent(&root, "t1", 3, false, false, now + 60).expect("mint");
+
+        // The exact reading it was minted for.
+        assert_eq!(
+            verify_read_consent(&token, &pubkey, "t1", 3, false, false, now).expect("the token verifies without fault"),
+            true
+        );
+        // More blocks than consented.
+        assert_eq!(
+            verify_read_consent(&token, &pubkey, "t1", 20, false, false, now).expect("the token verifies without fault"),
+            false
+        );
+        // The user's own commands, which the consent excluded.
+        assert_eq!(
+            verify_read_consent(&token, &pubkey, "t1", 3, true, false, now).expect("the token verifies without fault"),
+            false
+        );
+        // Running blocks, likewise.
+        assert_eq!(
+            verify_read_consent(&token, &pubkey, "t1", 3, false, true, now).expect("the token verifies without fault"),
+            false
+        );
+        // A different terminal.
+        assert_eq!(
+            verify_read_consent(&token, &pubkey, "t2", 3, false, false, now).expect("the token verifies without fault"),
+            false
+        );
+        // After it expires.
+        assert_eq!(
+            verify_read_consent(&token, &pubkey, "t1", 3, false, false, now + 61).expect("the token verifies without fault"),
+            false
+        );
+    }
+
+    /// The two tools do not share tokens in either direction, because the tool
+    /// name is part of what the authorizer matches. Reading is not running.
+    #[test]
+    fn a_run_token_and_a_read_token_are_not_interchangeable() {
+        let root = KeyPair::new();
+        let pubkey = root.public();
+        let now = 1_000;
+
+        let run = mint_run_consent(&root, "ls", &args(&["-l"]), now + 60).expect("mint run");
+        assert_eq!(
+            verify_read_consent(&run, &pubkey, "t1", 3, false, false, now).expect("the token verifies without fault"),
+            false,
+            "a run token must not authorize a read",
+        );
+
+        let read = mint_read_consent(&root, "t1", 3, false, false, now + 60).expect("mint read");
+        assert_eq!(
+            verify_run_consent(&read, &pubkey, "ls", &args(&["-l"]), now).expect("the token verifies without fault"),
+            false,
+            "a read token must not authorize a run",
+        );
+    }
+
+    /// Length-delimiting matters here too: a terminal id ending in digits must not
+    /// collide with a different id and limit.
+    #[test]
+    fn the_read_digest_does_not_collide_across_the_id_boundary() {
+        assert_ne!(read_digest("t1", 2, false, false), read_digest("t", 12, false, false));
+    }
 
     fn args(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
