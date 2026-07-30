@@ -151,6 +151,44 @@ mod tests {
 
     /// A machine with nothing installed is the normal empty case, not an error.
     #[test]
+    fn an_absent_or_corrupt_lock_reads_as_nothing_installed() {
+        // Both are normal-enough states, and the only consumer is the update
+        // check: not noticing an update beats a store that will not open.
+        assert!(super::parse_lock("").is_empty());
+        assert!(super::parse_lock("this is not toml {{{").is_empty());
+    }
+
+    #[test]
+    fn an_installed_entry_is_read_with_its_layer_and_version() {
+        let entries = super::parse_lock(
+            "[entries.\"org.example.App\"]\ncomponent_id = \"org.example.App\"\n\
+             source_layer = \"official\"\nversion = \"1.2.0\"\n",
+        );
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].version, "1.2.0");
+        assert_eq!(entries[0].source_layer, "official");
+    }
+
+    /// An entry missing a field it would be compared on is skipped, not
+    /// defaulted - comparing a guessed version is worse than not comparing.
+    #[test]
+    fn an_incomplete_entry_is_not_compared() {
+        assert!(super::parse_lock(
+            "[entries.\"org.example.App\"]\ncomponent_id = \"org.example.App\"\n"
+        )
+        .is_empty());
+    }
+
+    /// An unknown layer is dropped: offering an update from the wrong layer
+    /// would install a different app than the one on disk.
+    #[test]
+    fn an_unknown_layer_is_dropped_rather_than_guessed() {
+        assert!(super::parse_layer("official").is_some());
+        assert!(super::parse_layer("snap").is_none());
+        assert!(super::parse_layer("").is_none());
+    }
+
+    #[test]
     fn nothing_installed_finds_nothing_and_does_not_fail() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(discover(&roots_in(dir.path())), Discovered::default());
@@ -219,4 +257,98 @@ mod tests {
             .collect();
         assert_eq!(names, vec!["a.yml", "b.yml", "c.yml"]);
     }
+}
+
+/// What installd recorded about one installed package.
+///
+/// A deliberate partial read of a file this crate does not own: installd's lock
+/// carries more per entry (granted capabilities, recipe commit, revision) and
+/// this takes only the three fields an update check needs. Depending on the
+/// installd crate to get them would pull a D-Bus daemon into the store for a
+/// struct, and the store has no business knowing the rest.
+///
+/// The fields are `#[serde(default)]`-free on purpose: an entry missing its id,
+/// layer or version is not an entry this can compare, and silently defaulting
+/// one would compare the wrong thing.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct InstalledEntry {
+    /// The component this is an installation of.
+    pub component_id: String,
+    /// Which layer it came from, as installd wrote it.
+    pub source_layer: String,
+    /// The version on disk.
+    pub version: String,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct LockFile {
+    #[serde(default)]
+    entries: std::collections::BTreeMap<String, InstalledEntry>,
+}
+
+/// `~/.local/share/arlen/apps/installed.lock`, matching installd's `lock_path`.
+pub fn lock_path() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?;
+    Some(base.join("arlen").join("apps").join("installed.lock"))
+}
+
+/// Read what is installed, or nothing.
+///
+/// An absent lock means nothing has been installed through installd, which is a
+/// normal state. A CORRUPT lock also yields nothing rather than an error,
+/// because the only consumer is the update check: failing to notice an update
+/// is a smaller harm than a store that will not open.
+pub fn installed_entries() -> Vec<InstalledEntry> {
+    let Some(text) = lock_path().and_then(|p| std::fs::read_to_string(p).ok()) else {
+        return Vec::new();
+    };
+    parse_lock(&text)
+}
+
+/// Parse a lock's text, so the reading is testable without a file.
+fn parse_lock(text: &str) -> Vec<InstalledEntry> {
+    toml::from_str::<LockFile>(text)
+        .map(|l| l.entries.into_values().collect())
+        .unwrap_or_default()
+}
+
+/// What is installed, in the shape [`crate::query::Request::Outdated`] wants.
+///
+/// The join that was missing: the wire op and the comparison both existed, and
+/// nothing built the map they need. Entries whose layer is not one this store
+/// knows are dropped rather than guessed at - an update offered from the wrong
+/// layer would install a different app than the one on disk.
+pub fn installed_versions(
+) -> std::collections::BTreeMap<String, crate::query::InstalledVersion> {
+    installed_entries()
+        .into_iter()
+        .filter_map(|e| {
+            let layer = parse_layer(&e.source_layer)?;
+            Some((
+                e.component_id,
+                crate::query::InstalledVersion {
+                    layer,
+                    version: e.version,
+                },
+            ))
+        })
+        .collect()
+}
+
+/// The layer installd recorded, as this store's enum.
+///
+/// Matched explicitly rather than through serde so an unknown string is a
+/// `None` we can drop, not a parse error that would fail the whole read.
+fn parse_layer(name: &str) -> Option<crate::catalog::SourceLayer> {
+    use crate::catalog::SourceLayer as L;
+    Some(match name {
+        "personal" => L::Personal,
+        "community" => L::Community,
+        "official" => L::Official,
+        "flatpak" => L::Flatpak,
+        "apt" => L::Apt,
+        _ => return None,
+    })
 }
