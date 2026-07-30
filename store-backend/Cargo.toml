@@ -16,6 +16,9 @@ path = "src/main.rs"
 # SC-3 apt half: the capability footprint of an apt-enrolled app comes from the
 # permission profile the enrol hook writes, which is what confines it at runtime.
 arlen-permissions = { path = "../sdk/permissions" }
+# The one capability vocabulary the store shares with the extension inventory,
+# so an app filtered by "network" in one surface matches in the other.
+arlen-extensions = { path = "../contracts/extensions" }
 # Enrolled profiles arrive as the TOML they are on disk.
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }

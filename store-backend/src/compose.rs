@@ -499,7 +499,7 @@ fn fuse_apt_profiles(entries: &mut [CatalogEntry], profiles: &[(String, String)]
         let Ok(profile) = toml::from_str::<arlen_permissions::PermissionProfile>(toml) else {
             continue;
         };
-        let labels = crate::profile_caps::profile_labels(&profile);
+        let labels = arlen_extensions::profile::profile_labels(&profile);
         for entry in entries.iter_mut().filter(|e| e.id.0 == *id) {
             entry.capabilities.capabilities = labels.clone();
         }

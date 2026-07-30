@@ -1,4 +1,4 @@
-//! SC-3, apt half: the capability footprint of an apt-enrolled app.
+//! An app's capability footprint, from its enrolled permission profile.
 //!
 //! A Debian package declares no capabilities - `.deb` has no manifest for them -
 //! so the honest source is the permission profile the enrol hook writes when the
