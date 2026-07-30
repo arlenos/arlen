@@ -106,7 +106,17 @@ pub fn plan(extension: &Extension) -> RevokePlan {
             )],
         ),
         ExtensionKind::Bridge => {
-            let namespace = namespace_of(extension);
+            // No namespace label means there is no namespace to name, and naming
+            // the wrong one is worse than naming none: `deprovision_bridge_namespace`
+            // answers `Ok(false)` for a grant that was never there, which the
+            // caller reports as "already gone" rather than as a failure. So a
+            // bridge whose authority cannot be read gives no plan at all.
+            let Some(namespace) = namespace_of(extension) else {
+                return RevokePlan {
+                    steps: Vec::new(),
+                    residue: Vec::new(),
+                };
+            };
             (
                 vec![RevokeStep::RemoveNamespaceGrant {
                     namespace: namespace.clone(),
@@ -134,13 +144,16 @@ pub fn plan(extension: &Extension) -> RevokePlan {
 /// The label is the authority (`crate::bridge::bridge_labels` emits exactly
 /// one), so reading it back is reading the same fact rather than re-deriving
 /// it from the id and risking the two disagreeing.
-fn namespace_of(extension: &Extension) -> String {
+///
+/// `None` when there is no such label, which is not the same as "the
+/// namespace is the id": a bridge's id is `bridge.<namespace>`, so falling
+/// back to it would name a namespace that was never granted.
+fn namespace_of(extension: &Extension) -> Option<String> {
     extension
         .capabilities
         .iter()
         .find_map(|c| c.strip_prefix("write:"))
-        .unwrap_or(&extension.id)
-        .to_string()
+        .map(str::to_string)
 }
 
 /// The concrete reaches that giving up `labels` means for this profile.
@@ -478,6 +491,36 @@ mod tests {
         assert!(matches!(
             plan(&ext("md.obsidian", ExtensionKind::Bridge, &["write:md.obsidian"])).steps[0],
             RevokeStep::RemoveNamespaceGrant { .. }
+        ));
+    }
+
+    /// A bridge's namespace is read back off its `write:` label. If that label
+    /// is missing, the old code guessed the extension id instead - and a
+    /// bridge's id is `bridge.<namespace>`, never the bare namespace. So the
+    /// guess named a grant that does not exist, `deprovision_bridge_namespace`
+    /// answered `Ok(false)`, and the caller reported "already gone": a silent
+    /// success for a revoke that revoked nothing.
+    ///
+    /// Naming no namespace is the honest answer, and an empty plan is visibly
+    /// nothing rather than invisibly wrong.
+    #[test]
+    fn a_bridge_with_no_namespace_label_names_no_namespace() {
+        let p = plan(&ext("bridge.md.obsidian", ExtensionKind::Bridge, &["read"]));
+        assert!(
+            p.steps.is_empty(),
+            "a namespace it cannot read must not be one it invents, got {:?}",
+            p.steps
+        );
+
+        // And the label, when present, is still what is used - not the id.
+        let p = plan(&ext(
+            "bridge.md.obsidian",
+            ExtensionKind::Bridge,
+            &["write:md.obsidian"],
+        ));
+        assert!(matches!(
+            &p.steps[0],
+            RevokeStep::RemoveNamespaceGrant { namespace } if namespace == "md.obsidian"
         ));
     }
 
