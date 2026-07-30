@@ -212,6 +212,19 @@ jobs:
           cargo test --manifest-path dev/integration/Cargo.toml \
             --test integration_backend_smoke -- --ignored --test-threads=1
 
+  units:
+    name: systemd unit gates
+    # No `needs: changes` filter and no build deps: this is pure shell over the
+    # unit files, it runs in seconds, and the drift it catches is deployment
+    # hardening - the class that shipped a broken peer-auth sandbox before. It
+    # was justfile-only until now, which is exactly why a drift sat unnoticed
+    # long enough to disable the gates behind it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: packaged unit gates
+        run: bash dev/scripts/check-packaged-units.sh
+
   lint:
     name: clippy + rustfmt
     needs: changes
