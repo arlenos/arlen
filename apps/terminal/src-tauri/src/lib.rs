@@ -99,6 +99,42 @@ fn terminal_sessions(registry: State<Mutex<SessionRegistry>>) -> Vec<Session> {
         .collect()
 }
 
+/// The consented-read view of the sessions, for the Terminal MCP read half.
+///
+/// Deliberately READ-ONLY, which is the difference from [`terminal_blocks`] and
+/// the reason this is a separate impl rather than a call into it. That command
+/// drains the engine's pending events, consumes them into the assembler and takes
+/// the engine's finished outputs, because the UI polling it is the thing driving
+/// the session forward. An assistant reading the terminal must not drive it: a
+/// read that advances another component's state machine is a side effect nobody
+/// asked for, and it would make what the UI sees depend on whether an assistant
+/// happened to look.
+///
+/// The cost is that a command which finished since the UI's last poll may not be
+/// assembled into a block yet, so the read can lag by one poll interval. That is
+/// the honest trade: slightly stale beats perturbing the session.
+// Built before its caller: the socket listener that serves this to the MCP
+// read tool is the next piece. Same mechanism-before-trigger shape the
+// canary and executor cores used, so the decision lands reviewed and tested
+// before anything can reach it.
+#[allow(dead_code)]
+struct ConsentedBlocks<'a>(&'a Mutex<SessionRegistry>);
+
+impl arlen_terminal_core::read_serve::BlockSource for ConsentedBlocks<'_> {
+    fn blocks_for(&self, terminal_id: &str) -> Vec<Block> {
+        // `terminal_id` on the wire is this app's `session_id`: one terminal is
+        // one shell session. An unknown id and a session with no blocks both
+        // yield an empty list, so a reader cannot tell them apart.
+        let Ok(reg) = self.0.lock() else {
+            return Vec::new();
+        };
+        reg.sessions
+            .get(terminal_id)
+            .map(|live| live.assembler.blocks())
+            .unwrap_or_default()
+    }
+}
+
 /// A session's blocks: drain the engine's new OSC-mark events into the session's
 /// assembler and return the assembled command blocks. Called off the listing path
 /// by the UI polling; a missing session yields an empty list rather than an error.
