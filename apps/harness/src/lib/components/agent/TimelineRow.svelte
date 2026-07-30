@@ -119,6 +119,23 @@
     align-items: start;
     padding: 0.625rem var(--space-row, 0.75rem);
   }
+  /* In a narrow container the fixed badge column stops being alignment and
+     starts being theft: in the 341px transparency drawer it took 96px of the
+     width and left the SENTENCE - the thing the row exists to say - 120px, so
+     "Looked at your file records" rendered as "Looked at your ...". Below the
+     threshold the badge sizes to its own text and the end column (time, undo,
+     chevron) moves under the body, which is where the width was going. The wide
+     timeline is untouched, so badges still line up there. Same
+     container-query approach as ui-kit's FileRow. */
+  @container timeline (max-width: 26rem) {
+    .row {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+    .end {
+      grid-column: 2;
+      justify-content: flex-start;
+    }
+  }
   .badge {
     display: inline-flex;
     align-items: center;

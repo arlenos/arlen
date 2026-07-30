@@ -67,6 +67,9 @@
 
 <style>
   .list {
+    /* Name a container so TimelineRow can lay itself out for the drawer's
+       width rather than the viewport's. */
+    container: timeline / inline-size;
     list-style: none;
     margin: 0;
     padding: 0;
