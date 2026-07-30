@@ -73,14 +73,53 @@ async fn module_results(query: &str) -> Vec<SearchResult> {
     kept.iter().map(|e| e.to_search_result()).collect()
 }
 
-/// Execute a search result via the plugin manager.
+/// Execute a search result.
+///
+/// A builtin's result goes to the plugin manager, as it always has. A module's
+/// cannot: its plugin id is prefixed `module:` so it cannot pose as a builtin,
+/// and no builtin carries that id, so the manager would never find one. The
+/// shell acts on the module's behalf instead, within the same closed set of
+/// actions the search side allows, re-checked here because the result has been
+/// out to the webview and back since then.
 #[tauri::command]
 pub fn waypointer_execute(
     result: SearchResult,
     state: tauri::State<'_, PluginManagerState>,
 ) -> Result<(), String> {
-    let mgr = state.read().unwrap();
-    mgr.execute(&result).map_err(|e| e.to_string())
+    use arlen_desktop_shell_core::module_results::{dispatch, Dispatch};
+
+    match dispatch(&result) {
+        Dispatch::Builtin => {
+            let mgr = state.read().unwrap();
+            mgr.execute(&result).map_err(|e| e.to_string())
+        }
+        Dispatch::Module(action) => run_for_module(&action),
+        Dispatch::Refused(why) => {
+            Err(format!("a module may not ask the shell to do this ({why:?})"))
+        }
+    }
+}
+
+/// Carry out the one action a module asked for, in the shell's own hands.
+fn run_for_module(action: &arlen_desktop_shell_core::module_results::SafeAction) -> Result<(), String> {
+    use arlen_desktop_shell_core::module_results::SafeAction;
+
+    match action {
+        SafeAction::Copy(text) => crate::clipboard_history::copy_via_wl_copy(text),
+        SafeAction::OpenUrl(target) | SafeAction::OpenPath(target) => open_with_handler(target),
+    }
+}
+
+/// Hand something to the desktop's own opener, detached from the shell.
+fn open_with_handler(target: &str) -> Result<(), String> {
+    std::process::Command::new("xdg-open")
+        .arg(target)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// List all currently-registered built-in plugins with their metadata.
