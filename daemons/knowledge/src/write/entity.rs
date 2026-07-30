@@ -39,7 +39,66 @@ const RESERVED_COLUMNS: &[(&str, &str)] = &[
     ("_created_at", "STRING"),
     ("_modified_at", "STRING"),
     ("_deleted", "BOOL"),
+    ("_run_id", "STRING"),
+    ("_origin_ref", "STRING"),
 ];
+
+/// The longest a caller-supplied origin value may be. A run id is a UUID and an
+/// origin ref is an upstream identifier (a commit sha, a message id, a file path),
+/// so this is generous for anything real and small enough that a caller cannot
+/// grow the row with it.
+const MAX_ORIGIN_LEN: usize = 512;
+
+/// Where one write came from upstream: which sync run produced it, and what it
+/// was in the source system (`bridge-architecture.md` §4).
+///
+/// Both halves are the CLIENT's to supply, because the daemon has no concept of a
+/// run or of an upstream ref. What the daemon owns is that they land as reserved
+/// `_`-prefixed columns rather than as content: schema validation rejects a
+/// reserved name in `fields`, so a sink cannot claim provenance by writing it
+/// itself, and the row's `_owner` is the peer-attested caller either way. So the
+/// origin says which run of an attested bridge wrote this, and cannot say it was
+/// some other bridge.
+///
+/// The two fields that a first sketch of this also carried are deliberately
+/// absent: a source id would duplicate `_owner`, which is already the attested
+/// caller and the per-bridge purge key, and an ingestion timestamp would duplicate
+/// `_modified_at`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteOrigin {
+    run_id: String,
+    origin_ref: String,
+}
+
+impl WriteOrigin {
+    /// Validate a caller-supplied origin. Both halves must be present and
+    /// bounded; an origin that names a run but not what it produced, or the
+    /// reverse, is a half-record that would be worse than none.
+    pub fn new(run_id: &str, origin_ref: &str) -> Result<Self, String> {
+        for (label, v) in [("run_id", run_id), ("origin_ref", origin_ref)] {
+            if v.trim().is_empty() {
+                return Err(format!("origin {label} must not be empty"));
+            }
+            if v.len() > MAX_ORIGIN_LEN {
+                return Err(format!("origin {label} exceeds {MAX_ORIGIN_LEN} bytes"));
+            }
+        }
+        Ok(Self {
+            run_id: run_id.to_string(),
+            origin_ref: origin_ref.to_string(),
+        })
+    }
+
+    /// The `SET` clause fragment stamping this origin, escaped into literals like
+    /// every other caller value.
+    fn set_fragment(&self) -> String {
+        format!(
+            ", n._run_id='{}', n._origin_ref='{}'",
+            escape_cypher(&self.run_id),
+            escape_cypher(&self.origin_ref)
+        )
+    }
+}
 
 /// Errors building an entity table's DDL.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -193,6 +252,7 @@ fn build_upsert_cypher(
     owner: &str,
     fields: &BTreeMap<String, serde_json::Value>,
     now: &str,
+    origin: Option<&WriteOrigin>,
 ) -> String {
     let table = entity_table_name(qualified_type);
     let id = escape_cypher(&entity_node_id(qualified_type, external_key));
@@ -208,11 +268,18 @@ fn build_upsert_cypher(
         .map(|(name, v)| format!(", n.{name}={}", field_literal(v)))
         .collect();
 
+    // Stamped on BOTH arms, like `_modified_at` and unlike `_created_at`: the
+    // question these answer is which run last wrote this row and where that write
+    // came from, so a re-sync must move them forward. Absent when the caller
+    // supplied no origin, which leaves the columns null rather than writing an
+    // empty string that would read as a known-empty provenance.
+    let origin_sets = origin.map(WriteOrigin::set_fragment).unwrap_or_default();
+
     format!(
         "MERGE (n:{table} {{id: '{id}'}}) \
          ON CREATE SET n._type='{qt}', n._external_key='{ek}', n._owner='{owner_lit}', \
-         n._created_at='{now_lit}', n._modified_at='{now_lit}', n._version=1, n._deleted=false{field_sets} \
-         ON MATCH SET n._modified_at='{now_lit}', n._version=n._version+1{field_sets} \
+         n._created_at='{now_lit}', n._modified_at='{now_lit}', n._version=1, n._deleted=false{field_sets}{origin_sets} \
+         ON MATCH SET n._modified_at='{now_lit}', n._version=n._version+1{field_sets}{origin_sets} \
          RETURN n._version AS version"
     )
 }
@@ -243,6 +310,7 @@ pub fn plan_entity_upsert(
     qualified_type: &str,
     external_key: &str,
     fields: HashMap<String, serde_json::Value>,
+    origin: Option<&WriteOrigin>,
 ) -> Result<(String, String), String> {
     if external_key.trim().is_empty() {
         return Err("upsert requires a non-empty external_key".into());
@@ -302,7 +370,8 @@ pub fn plan_entity_upsert(
     let ddl = entity_table_ddl(qualified_type, def).map_err(|e| format!("schema: {e}"))?;
     let now = Utc::now().to_rfc3339();
     let ordered: BTreeMap<String, serde_json::Value> = fields.into_iter().collect();
-    let cypher = build_upsert_cypher(qualified_type, external_key, &token.app_id, &ordered, &now);
+    let cypher =
+        build_upsert_cypher(qualified_type, external_key, &token.app_id, &ordered, &now, origin);
     Ok((ddl, cypher))
 }
 
@@ -669,6 +738,7 @@ mod tests {
             "md.obsidian",
             &fields,
             "2026-01-01T00:00:00Z",
+            None,
         );
         // The single quote in the value is escaped, so it cannot close the literal.
         assert!(cypher.contains("O\\'Brien"), "value not escaped: {cypher}");
@@ -700,6 +770,7 @@ mod tests {
             "md.obsidian",
             &f1,
             "2026-01-01T00:00:00Z",
+            None,
         ))
         .expect("first upsert");
 
@@ -713,6 +784,7 @@ mod tests {
             "md.obsidian",
             &f2,
             "2026-01-02T00:00:00Z",
+            None,
         ))
         .expect("re-sync upsert");
 
@@ -770,17 +842,17 @@ mod tests {
         fields.insert("title".to_string(), serde_json::json!("hi"));
 
         // Own namespace, registered type, valid fields → planned.
-        assert!(plan_entity_upsert(&reg, &token, "md.obsidian.Note", "k1", fields.clone()).is_ok());
+        assert!(plan_entity_upsert(&reg, &token, "md.obsidian.Note", "k1", fields.clone(), None).is_ok());
         // system.* is structurally unwritable even with a matching scope.
-        assert!(plan_entity_upsert(&reg, &token, "system.File", "k1", fields.clone()).is_err());
+        assert!(plan_entity_upsert(&reg, &token, "system.File", "k1", fields.clone(), None).is_err());
         // A foreign namespace is rejected by the namespace bound.
-        assert!(plan_entity_upsert(&reg, &token, "com.other.Note", "k1", fields.clone()).is_err());
+        assert!(plan_entity_upsert(&reg, &token, "com.other.Note", "k1", fields.clone(), None).is_err());
         // An empty external_key is rejected (no idempotency key).
-        assert!(plan_entity_upsert(&reg, &token, "md.obsidian.Note", "", fields.clone()).is_err());
+        assert!(plan_entity_upsert(&reg, &token, "md.obsidian.Note", "", fields.clone(), None).is_err());
         // An unknown field for the registered type fails validation.
         let mut bad = HashMap::new();
         bad.insert("nope".to_string(), serde_json::json!("x"));
-        assert!(plan_entity_upsert(&reg, &token, "md.obsidian.Note", "k1", bad).is_err());
+        assert!(plan_entity_upsert(&reg, &token, "md.obsidian.Note", "k1", bad, None).is_err());
     }
 
     #[test]
@@ -806,7 +878,7 @@ mod tests {
         let mut fields = HashMap::new();
         fields.insert("name".to_string(), serde_json::json!("Alice"));
         assert!(
-            plan_entity_upsert(&reg, &owner, "shared.Person", "alice@example.com", fields).is_ok(),
+            plan_entity_upsert(&reg, &owner, "shared.Person", "alice@example.com", fields, None).is_ok(),
             "the owner app writes its own shared entity"
         );
     }
@@ -833,7 +905,7 @@ mod tests {
             vec![],
             InstanceScope::Own,
         );
-        let r = plan_entity_upsert(&reg, &other, "shared.Person", "bob@x", fields.clone());
+        let r = plan_entity_upsert(&reg, &other, "shared.Person", "bob@x", fields.clone(), None);
         assert!(r.is_err(), "a non-owner shared write is refused");
         assert!(r.unwrap_err().contains("owner"), "the error names the owner-only rule");
 
@@ -848,7 +920,7 @@ mod tests {
             InstanceScope::Own,
         );
         assert!(
-            plan_entity_upsert(&reg, &calendar, "shared.Person", "x", fields).is_err(),
+            plan_entity_upsert(&reg, &calendar, "shared.Person", "x", fields, None).is_err(),
             "the owner of a different shared type cannot write this one"
         );
     }
@@ -886,11 +958,11 @@ mod tests {
         .with_delegated_namespaces(vec!["md.obsidian".into()]);
         // The delegated namespace is admitted even though it is not the bridge's
         // own app id.
-        assert!(plan_entity_upsert(&reg, &bridge, "md.obsidian.Note", "k1", fields.clone()).is_ok());
+        assert!(plan_entity_upsert(&reg, &bridge, "md.obsidian.Note", "k1", fields.clone(), None).is_ok());
         // A namespace it was NOT delegated is refused (the cross-tenant bound).
-        assert!(plan_entity_upsert(&reg, &bridge, "com.other.Note", "k1", fields.clone()).is_err());
+        assert!(plan_entity_upsert(&reg, &bridge, "com.other.Note", "k1", fields.clone(), None).is_err());
         // system.* stays unwritable even though the bridge holds a delegation.
-        assert!(plan_entity_upsert(&reg, &bridge, "system.File", "k1", fields.clone()).is_err());
+        assert!(plan_entity_upsert(&reg, &bridge, "system.File", "k1", fields.clone(), None).is_err());
 
         // A bridge that tries to DELEGATE a reserved namespace gains nothing: the
         // declaration yields no grant (NamespaceGrant::new refuses it), and the
@@ -904,7 +976,7 @@ mod tests {
             InstanceScope::Own,
         )
         .with_delegated_namespaces(vec!["system".into()]);
-        assert!(plan_entity_upsert(&reg, &evil, "system.File", "k1", fields.clone()).is_err());
+        assert!(plan_entity_upsert(&reg, &evil, "system.File", "k1", fields.clone(), None).is_err());
 
         // Without any delegation, the bridge cannot write md.obsidian at all.
         let nodel = CapabilityToken::new(
@@ -915,7 +987,7 @@ mod tests {
             vec![],
             InstanceScope::Own,
         );
-        assert!(plan_entity_upsert(&reg, &nodel, "md.obsidian.Note", "k1", fields.clone()).is_err());
+        assert!(plan_entity_upsert(&reg, &nodel, "md.obsidian.Note", "k1", fields.clone(), None).is_err());
     }
 
     fn obsidian_token() -> crate::token::CapabilityToken {
@@ -1020,6 +1092,7 @@ mod tests {
                 "md.obsidian",
                 &f,
                 "2026-01-01T00:00:00Z",
+                None,
             ))
             .unwrap();
         }
@@ -1091,7 +1164,7 @@ mod tests {
         for key in ["dup", "canon", "other"] {
             let mut f = BTreeMap::new();
             f.insert("title".to_string(), serde_json::json!(key));
-            conn.query(&build_upsert_cypher(ty, key, "md.obsidian", &f, "2026-01-01T00:00:00Z"))
+            conn.query(&build_upsert_cypher(ty, key, "md.obsidian", &f, "2026-01-01T00:00:00Z", None))
                 .unwrap();
         }
         let rel = entity_rel_table_name("LINKS_TO", ty, ty);
@@ -1172,7 +1245,7 @@ mod tests {
         for (key, owner) in [("a", "bridge-a"), ("c", "bridge-a"), ("b", "bridge-b")] {
             let mut f = BTreeMap::new();
             f.insert("title".to_string(), serde_json::json!(key));
-            conn.query(&build_upsert_cypher(ty, key, owner, &f, "2026-01-01T00:00:00Z"))
+            conn.query(&build_upsert_cypher(ty, key, owner, &f, "2026-01-01T00:00:00Z", None))
                 .unwrap();
         }
         let rel = entity_rel_table_name("LINKS_TO", ty, ty);
@@ -1240,7 +1313,7 @@ mod tests {
         for key in ["dup", "other"] {
             let mut f = BTreeMap::new();
             f.insert("title".to_string(), serde_json::json!(key));
-            conn.query(&build_upsert_cypher(ty, key, "md.obsidian", &f, "2026-01-01T00:00:00Z"))
+            conn.query(&build_upsert_cypher(ty, key, "md.obsidian", &f, "2026-01-01T00:00:00Z", None))
                 .unwrap();
         }
         let rel = entity_rel_table_name("LINKS_TO", ty, ty);
@@ -1284,4 +1357,75 @@ mod tests {
             "the duplicate's edge is not swept"
         );
     }
+
+    #[test]
+    fn an_origin_needs_both_halves_and_stays_bounded() {
+        assert!(WriteOrigin::new("run-1", "sha:abc").is_ok());
+        // Half a provenance record is worse than none: it says a run touched
+        // this row without saying what it produced, or the reverse.
+        assert!(WriteOrigin::new("", "sha:abc").is_err());
+        assert!(WriteOrigin::new("run-1", "   ").is_err());
+        let long = "x".repeat(MAX_ORIGIN_LEN + 1);
+        assert!(WriteOrigin::new(&long, "sha:abc").is_err());
+        assert!(WriteOrigin::new("run-1", &long).is_err());
+    }
+
+    #[test]
+    fn an_origin_is_stamped_on_a_resync_not_only_on_first_write() {
+        // These answer "which run last wrote this row", so they must move
+        // forward like `_modified_at` rather than freeze like `_created_at`.
+        let fields = BTreeMap::new();
+        let origin = WriteOrigin::new("run-7", "sha:deadbeef").expect("valid");
+        let cypher = build_upsert_cypher(
+            "md.obsidian.Note",
+            "n-1",
+            "md.obsidian",
+            &fields,
+            "2026-01-01T00:00:00Z",
+            Some(&origin),
+        );
+        let (create_arm, match_arm) = cypher
+            .split_once("ON MATCH SET")
+            .expect("the upsert has both arms");
+        for arm in [create_arm, match_arm] {
+            assert!(arm.contains("n._run_id='run-7'"), "missing run id in {arm}");
+            assert!(arm.contains("n._origin_ref='sha:deadbeef'"));
+        }
+    }
+
+    #[test]
+    fn no_origin_leaves_the_columns_unset_rather_than_empty() {
+        // An empty string would read as a known-empty provenance; null reads as
+        // "this write carried none", which is the truth for an ordinary app.
+        let fields = BTreeMap::new();
+        let cypher = build_upsert_cypher(
+            "md.obsidian.Note",
+            "n-1",
+            "md.obsidian",
+            &fields,
+            "2026-01-01T00:00:00Z",
+            None,
+        );
+        assert!(!cypher.contains("_run_id"));
+        assert!(!cypher.contains("_origin_ref"));
+    }
+
+    #[test]
+    fn an_origin_value_cannot_break_out_of_its_literal() {
+        let fields = BTreeMap::new();
+        let origin = WriteOrigin::new("r", "x' SET n._owner='attacker").expect("valid shape");
+        let cypher = build_upsert_cypher(
+            "md.obsidian.Note",
+            "n-1",
+            "md.obsidian",
+            &fields,
+            "2026-01-01T00:00:00Z",
+            Some(&origin),
+        );
+        // The owner assignment appears exactly twice, once per arm, and both are
+        // the daemon's own. The injected one is inert inside the escaped literal.
+        assert_eq!(cypher.matches("n._owner='md.obsidian'").count(), 1);
+        assert!(!cypher.contains("n._owner='attacker'"));
+    }
+
 }

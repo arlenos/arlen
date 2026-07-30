@@ -67,7 +67,10 @@ impl EntityWriter for GraphEntityWriter {
         fields: &Map<String, Value>,
     ) -> Result<(), String> {
         self.runtime
-            .block_on(self.client.upsert_entity(qualified_type, external_key, fields))
+            // No origin yet: the sink would need the ingested record to carry its
+            // upstream ref, which is a bridge-protocol change (BR-3), and a run id
+            // scoped to the sync session. The write protocol accepts one already.
+            .block_on(self.client.upsert_entity(qualified_type, external_key, fields, None))
             .map_err(|e| e.to_string())
     }
 

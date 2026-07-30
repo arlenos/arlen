@@ -209,6 +209,23 @@ pub struct UnixGraphClient {
     stream: Arc<Mutex<Option<UnixStream>>>,
 }
 
+/// Where a synced row came from upstream, sent alongside an
+/// [`UnixGraphClient::upsert_entity`] so the daemon can stamp it as provenance.
+///
+/// A sink knows two things the daemon cannot: which sync run it is currently
+/// performing, and what the row was in the source system. Both are opaque
+/// strings here. They are sent as a distinct object rather than loose fields so
+/// half of a provenance record cannot be sent, and the daemon stores them in
+/// reserved columns that schema validation keeps out of ordinary content, so a
+/// sink cannot claim provenance by writing the fields itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteOrigin {
+    /// The sink's id for this sync run, typically a per-session UUID.
+    pub run_id: String,
+    /// What this row is upstream: a commit sha, a message id, a source path.
+    pub origin_ref: String,
+}
+
 impl UnixGraphClient {
     /// Create a new client that will connect to the given socket path.
     ///
@@ -886,13 +903,21 @@ impl UnixGraphClient {
         qualified_type: &str,
         external_key: &str,
         fields: &serde_json::Map<String, serde_json::Value>,
+        origin: Option<&WriteOrigin>,
     ) -> Result<(), QueryError> {
-        let req = serde_json::json!({
+        let mut req = serde_json::json!({
             "op": "upsert_entity",
             "qualified_type": qualified_type,
             "external_key": external_key,
             "fields": fields,
         });
+        if let Some(o) = origin {
+            req["origin"] = serde_json::json!({
+                "run_id": o.run_id,
+                "origin_ref": o.origin_ref,
+            });
+        }
+        let req = req;
         let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
 
         // A leading 0x02 byte selects the daemon's structured write mode.
@@ -2166,7 +2191,53 @@ mod tests {
         let client = UnixGraphClient::new(path.to_string_lossy().to_string());
         let mut fields = serde_json::Map::new();
         fields.insert("title".to_string(), serde_json::json!("Hello"));
-        let result = client.upsert_entity("md.obsidian.Note", "note-1", &fields).await;
+        let result = client.upsert_entity("md.obsidian.Note", "note-1", &fields, None).await;
+        let _ = server.await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(result.is_ok(), "got {result:?}");
+    }
+
+    #[tokio::test]
+    async fn upsert_entity_carries_an_origin_when_one_is_given() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::UnixListener;
+
+        let path = std::env::temp_dir().join("arlen-os-sdk-upsert-origin-test.sock");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut conn, _) = listener.accept().await.unwrap();
+            let mut len_buf = [0u8; 4];
+            conn.read_exact(&mut len_buf).await.unwrap();
+            let req_len = u32::from_be_bytes(len_buf) as usize;
+            let mut req = vec![0u8; req_len];
+            conn.read_exact(&mut req).await.unwrap();
+
+            let body: serde_json::Value = serde_json::from_slice(&req[1..]).unwrap();
+            // Sent as its own object, so half of it cannot be sent, and never
+            // folded into `fields`, where the daemon's schema validation would
+            // reject a reserved name anyway.
+            assert_eq!(body["origin"]["run_id"], "run-7");
+            assert_eq!(body["origin"]["origin_ref"], "sha:deadbeef");
+            assert!(body["fields"].get("_run_id").is_none());
+
+            let reply = b"OK: upserted";
+            conn.write_all(&(reply.len() as u32).to_be_bytes()).await.unwrap();
+            conn.write_all(reply).await.unwrap();
+        });
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let mut fields = serde_json::Map::new();
+        fields.insert("title".to_string(), serde_json::json!("t"));
+        let origin = WriteOrigin {
+            run_id: "run-7".to_string(),
+            origin_ref: "sha:deadbeef".to_string(),
+        };
+        let result = client
+            .upsert_entity("md.obsidian.Note", "note-1", &fields, Some(&origin))
+            .await;
         let _ = server.await;
         let _ = std::fs::remove_file(&path);
 
@@ -2317,7 +2388,7 @@ mod tests {
 
         let client = UnixGraphClient::new(path.to_string_lossy().to_string());
         let fields = serde_json::Map::new();
-        let result = client.upsert_entity("com.other.Note", "k1", &fields).await;
+        let result = client.upsert_entity("com.other.Note", "k1", &fields, None).await;
         let _ = server.await;
         let _ = std::fs::remove_file(&path);
 

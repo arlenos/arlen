@@ -504,6 +504,12 @@ enum WriteRequest {
         /// The instance's field values, validated against the registered schema.
         #[serde(default)]
         fields: std::collections::HashMap<String, serde_json::Value>,
+        /// Optional upstream provenance for this write: which sync run produced
+        /// it and what it was in the source system. Stamped by the daemon into
+        /// reserved `_`-prefixed columns, so a caller cannot forge it through
+        /// `fields` (schema validation refuses a reserved name there).
+        #[serde(default)]
+        origin: Option<WireOrigin>,
     },
     /// Link two instances of the CALLER'S OWN declared entity types with an edge
     /// (foreign-app-bridges piece 2). Both endpoints must be in the caller's
@@ -572,6 +578,20 @@ enum WriteRequest {
         /// The recording start, microseconds since epoch.
         started_at: i64,
     },
+}
+
+/// The upstream provenance a bridge may attach to an entity upsert: the sync run
+/// that produced the write and the ref it came from in the source system.
+///
+/// Deliberately a separate wire struct rather than two loose fields, so a caller
+/// cannot send half of it; `WriteOrigin::new` then rejects an empty or oversized
+/// half before the write is planned.
+#[derive(Debug, Deserialize)]
+struct WireOrigin {
+    /// The sink's id for this sync run, opaque to the daemon.
+    run_id: String,
+    /// What this row was upstream, opaque to the daemon.
+    origin_ref: String,
 }
 
 /// One action item in a [`WriteRequest::FileMeeting`] request.
@@ -1498,6 +1518,7 @@ async fn handle_write_request(
             qualified_type,
             external_key,
             fields,
+            origin,
         } => {
             // For a shared-entity write, keep a copy of the fields so duplicate
             // detection can run AFTER the write (plan_entity_upsert consumes the
@@ -1511,12 +1532,23 @@ async fn handle_write_request(
             // (ensure-table, upsert) plan; all fail-closed in `plan_entity_upsert`
             // (namespace bound, system.* refused, shared.* owner-gated, fields
             // type-checked).
+            // Validate the origin before anything else touches it: a malformed
+            // one refuses the write rather than landing a row with half a
+            // provenance record on it.
+            let origin = match origin
+                .map(|o| crate::write::WriteOrigin::new(&o.run_id, &o.origin_ref))
+                .transpose()
+            {
+                Ok(o) => o,
+                Err(e) => return format!("ERROR: {e}"),
+            };
             let (ddl, cypher) = match crate::write::plan_entity_upsert(
                 registry,
                 &token,
                 &qualified_type,
                 &external_key,
                 fields,
+                origin.as_ref(),
             ) {
                 Ok(p) => p,
                 Err(e) => return format!("ERROR: {e}"),
