@@ -427,6 +427,33 @@ mod tests {
         );
     }
 
+    /// The guard on the notifications arm has to matter: an app carrying the
+    /// label with the flag already off must resolve to no reach, or a revoke
+    /// would try to turn off something that is not on. Mutation testing found
+    /// the guard could be replaced with `true` unnoticed.
+    #[test]
+    fn a_family_whose_flag_is_already_off_resolves_to_nothing() {
+        let mut p = profile();
+        p.notifications.enabled = false;
+        assert!(resolve_reaches(&p, &["notifications".to_string()]).is_empty());
+
+        p.notifications.enabled = true;
+        assert_eq!(
+            resolve_reaches(&p, &["notifications".to_string()]),
+            vec![RevokedReach::NotificationsOff]
+        );
+    }
+
+    /// `is_empty` is what decides whether the user is asked at all, so a plan
+    /// WITH steps must report non-empty - the mutant that always answered `true`
+    /// would have skipped every confirmation.
+    #[test]
+    fn a_plan_with_steps_is_not_empty() {
+        let p = plan(&ext("x", ExtensionKind::App, &["network"]));
+        assert!(!p.is_empty());
+        assert!(!p.steps.is_empty());
+    }
+
     /// Asking the user to confirm giving up nothing is friction with no content.
     #[test]
     fn an_extension_that_holds_nothing_has_nothing_to_revoke() {

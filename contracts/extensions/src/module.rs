@@ -96,6 +96,35 @@ mod tests {
         assert_eq!(module_labels(&m), crate::profile::profile_labels(&p));
     }
 
+    /// Each flag in these OR chains must earn its label alone, the same property
+    /// the profile labeller has. Mutation testing found the `||` in the clipboard
+    /// and event-bus checks could be flipped to `&&` unnoticed, which would mean
+    /// a module with read-only clipboard access showed nothing at all.
+    #[test]
+    fn one_grant_alone_earns_the_module_label() {
+        let clip = |read, write| ModuleCapabilities {
+            clipboard: Some(ClipboardCapability { read, write }),
+            ..Default::default()
+        };
+        let bus = |subscribe: Vec<String>, publish: Vec<String>| ModuleCapabilities {
+            event_bus: Some(EventBusCapability { subscribe, publish }),
+            ..Default::default()
+        };
+        let cases: Vec<(&str, ModuleCapabilities)> = vec![
+            ("clipboard", clip(true, false)),
+            ("clipboard", clip(false, true)),
+            ("system", bus(vec!["a.*".into()], Vec::new())),
+            ("system", bus(Vec::new(), vec!["a.*".into()])),
+        ];
+        for (i, (label, caps)) in cases.iter().enumerate() {
+            let labels = module_labels(caps);
+            assert!(
+                labels.iter().any(|l| l == label),
+                "case {i}: this single grant alone must show {label}, got {labels:?}"
+            );
+        }
+    }
+
     /// Graph scopes stay verbatim so a `read:system.File` facet matches a
     /// module exactly as it matches an app or a bridge.
     #[test]
