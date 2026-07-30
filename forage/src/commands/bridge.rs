@@ -601,6 +601,30 @@ files = ["main.js"]
         assert_eq!(pb.install.arlen_side.len(), 2);
     }
 
+    /// Two bridges from two cookbooks are two independent grants. One repo being
+    /// unreachable is no reason to withhold the other, which the code used to do
+    /// by returning on the first error - so a single broken bridge cost the user
+    /// every bridge their app had.
+    #[test]
+    fn one_unpreparable_bridge_does_not_cost_the_others() {
+        let fetcher = FakeFetcher { recipe_toml: BRIDGE_RECIPE_TOML.to_string() };
+        let good = resolved(&crate::sha256_hex(BRIDGE_RECIPE_TOML.as_bytes()));
+        // Same fetcher, but the cookbook signed a hash the fetched recipe does
+        // not produce, so this one cannot be prepared.
+        let mut bad = resolved(&"0".repeat(64));
+        bad.name = "com.example.broken".to_string();
+
+        let (_clones, prepared, skipped) = prepare_all(&fetcher, &[bad, good]);
+        assert_eq!(prepared.len(), 1, "the good bridge survives its broken sibling");
+        assert_eq!(prepared[0].namespace, "md.obsidian");
+        assert_eq!(skipped.len(), 1);
+        assert!(
+            skipped[0].starts_with("com.example.broken:"),
+            "the skipped bridge is named so it is not silently absent: {}",
+            skipped[0]
+        );
+    }
+
     #[test]
     fn prepare_bridge_refuses_a_recipe_that_does_not_match_the_signed_hash() {
         let fetcher = FakeFetcher { recipe_toml: BRIDGE_RECIPE_TOML.to_string() };
@@ -809,12 +833,51 @@ files = ["main.js"]
 pub enum BridgeOutcome {
     /// No cookbook offers a bridge for this app.
     None,
-    /// Installed, naming the namespaces now writable.
-    Installed(Vec<String>),
+    /// Installed, naming the namespaces now writable and any bridge that could
+    /// not be prepared and so was left out. Both, because "some of them" is the
+    /// honest answer and reporting only the successes would hide a bridge the
+    /// user believes they have.
+    Installed {
+        /// The namespaces the installed bridges may now write.
+        namespaces: Vec<String>,
+        /// One line per bridge that was skipped, saying which and why.
+        skipped: Vec<String>,
+    },
     /// The user declined the grant.
     Declined,
     /// Something went wrong, in words worth printing.
     Failed(String),
+}
+
+/// Fetch and prepare each resolved bridge, keeping the ones that worked.
+///
+/// One unavailable bridge does not cancel the others: they are independent
+/// grants from independent cookbooks, so an unreachable repo for one is no
+/// reason to withhold another. A failure is named rather than swallowed - a
+/// bridge silently absent is worse than one reported missing, because the user
+/// would go on believing they had it.
+///
+/// The clone directories come back with the prepared bridges because they own
+/// the files that will be copied; dropping one early deletes the source
+/// mid-install.
+#[allow(clippy::type_complexity)]
+fn prepare_all<F: GitFetcher>(
+    fetcher: &F,
+    resolved: &[arlen_cookbook_resolve::ResolvedRecipe],
+) -> (Vec<tempfile::TempDir>, Vec<PreparedBridge>, Vec<String>) {
+    let mut clones = Vec::new();
+    let mut prepared = Vec::new();
+    let mut skipped = Vec::new();
+    for recipe in resolved {
+        match prepare_bridge(fetcher, recipe) {
+            Ok((clone, pb)) => {
+                clones.push(clone);
+                prepared.push(pb);
+            }
+            Err(e) => skipped.push(format!("{}: {e}", recipe.name)),
+        }
+    }
+    (clones, prepared, skipped)
 }
 
 /// Install every bridge the cookbooks offer for `foreign_app` (BR-5).
@@ -836,18 +899,16 @@ pub async fn install_bridges_for<F: GitFetcher>(fetcher: &F, foreign_app: &str) 
         Err(e) => return BridgeOutcome::Failed(e),
     };
 
-    let mut clones = Vec::new();
-    let mut prepared = Vec::new();
-    for recipe in &resolved {
-        match prepare_bridge(fetcher, recipe) {
-            Ok((clone, pb)) => {
-                clones.push(clone);
-                prepared.push(pb);
-            }
-            // One unavailable bridge does not cancel the others: they are
-            // independent grants from independent cookbooks.
-            Err(e) => return BridgeOutcome::Failed(format!("preparing a bridge: {e}")),
-        }
+    // Bound, not dropped: the clone dirs own the files the install copies from,
+    // and letting them fall here would delete the source before it is read.
+    let (_clones, prepared, skipped) = prepare_all(fetcher, &resolved);
+    // Every one of them failed. That is a failure, not a partial success with an
+    // empty list, and it reads as one.
+    if prepared.is_empty() {
+        return match skipped.is_empty() {
+            true => BridgeOutcome::None,
+            false => BridgeOutcome::Failed(format!("no bridge could be prepared: {}", skipped.join("; "))),
+        };
     }
 
     let (tokens, missing) = tokens_from_env(&prepared);
@@ -865,7 +926,10 @@ pub async fn install_bridges_for<F: GitFetcher>(fetcher: &F, foreign_app: &str) 
     }
 
     match install_prepared_bridges(&prepared, &tokens) {
-        Ok(_) => BridgeOutcome::Installed(prepared.into_iter().map(|p| p.namespace).collect()),
+        Ok(_) => BridgeOutcome::Installed {
+            namespaces: prepared.into_iter().map(|p| p.namespace).collect(),
+            skipped,
+        },
         Err(e) => BridgeOutcome::Failed(e.to_string()),
     }
 }
