@@ -42,6 +42,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-forage-recipe"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.18",
+ "toml",
+]
+
+[[package]]
 name = "arlen-permissions"
 version = "0.1.0"
 dependencies = [
@@ -1022,6 +1031,7 @@ name = "os-sdk"
 version = "0.1.0"
 dependencies = [
  "arlen-capsule",
+ "arlen-forage-recipe",
  "arlen-permissions",
  "dirs",
  "libc",

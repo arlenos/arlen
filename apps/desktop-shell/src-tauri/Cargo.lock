@@ -222,6 +222,7 @@ dependencies = [
  "dirs 5.0.1",
  "libc",
  "log",
+ "module-sdk",
  "modulesd-proto",
  "notification-proto",
  "prost",
@@ -229,6 +230,15 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "toml 0.8.2",
+]
+
+[[package]]
+name = "arlen-forage-recipe"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.18",
  "toml 0.8.2",
 ]
 
@@ -2731,8 +2741,11 @@ dependencies = [
 name = "modulesd-proto"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "serde",
  "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
@@ -3089,6 +3102,7 @@ name = "os-sdk"
 version = "0.1.0"
 dependencies = [
  "arlen-capsule",
+ "arlen-forage-recipe",
  "arlen-permissions",
  "dirs 5.0.1",
  "libc",
