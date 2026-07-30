@@ -10,6 +10,8 @@ name = "forage"
 path = "src/main.rs"
 
 [dependencies]
+# The install-time consent decision for a bridge namespace grant.
+arlen-consent-contract = { path = "../contracts/consent-contract" }
 clap = { version = "4", features = ["derive"] }
 arlen-modules = { path = "../sdk/modules" }
 arlen-forage-recipe = { path = "../contracts/forage-recipe" }

@@ -341,6 +341,75 @@ fn rollback_failed_bridge(err: &InstallBridgeError) {
     }
 }
 
+/// What installing this batch of bridges would grant, in the words a consent
+/// dialog needs.
+///
+/// One request for the batch rather than one per bridge: they install in a
+/// single transaction that unwinds as a unit, so approving half of it is not a
+/// state the installer can produce, and asking twice would imply otherwise.
+pub fn consent_summary(prepared: &[PreparedBridge]) -> String {
+    let mut namespaces: Vec<&str> = prepared.iter().map(|p| p.namespace.as_str()).collect();
+    namespaces.sort_unstable();
+    namespaces.dedup();
+    if namespaces.is_empty() {
+        return String::new();
+    }
+    format!(
+        "Let this app write {} into your knowledge graph",
+        namespaces.join(", ")
+    )
+}
+
+/// Ask the consent broker to authorise installing `prepared`.
+///
+/// **This exists because both `install_prepared_bridges` and `install_bridge`
+/// document consent as "gated upstream" and the upstream did not exist.** A
+/// bridge install writes a delegated namespace grant into a permission profile,
+/// so installing one silently would hand an app write access to the knowledge
+/// graph as a side effect of installing something else - the same shape as the
+/// module gate SX-1 closed.
+///
+/// An empty batch needs no decision. Every failure - a broker that cannot be
+/// reached, a malformed reply, a denial - is a refusal, because a grant that
+/// could not be authorised must not be written.
+pub async fn request_bridge_consent(prepared: &[PreparedBridge]) -> bool {
+    use arlen_consent_contract::{
+        ActionKind, ConsentClass, ConsentOutcome, IntakeResult, RequestBody,
+    };
+
+    if prepared.is_empty() {
+        return true;
+    }
+    let body = RequestBody {
+        class: ConsentClass::CapabilityGrant,
+        // A namespace grant lets the bridge write the user's knowledge graph.
+        // Not `Ordinary`, so the broker cannot resolve it silently.
+        kind: ActionKind::SystemConfigChange,
+        // The user ran `forage install`. Nothing in a document asked for this.
+        triggered_by_external_content: false,
+        summary: consent_summary(prepared),
+        scope: Some(
+            prepared
+                .iter()
+                .map(|p| p.namespace.clone())
+                .collect::<Vec<_>>()
+                .join("; "),
+        ),
+        recipient: None,
+        preview: None,
+        targets: Vec::new(),
+        total: None,
+        on_behalf_of: None,
+    };
+    matches!(
+        crate::commands::consent::ask(&body).await,
+        Some(IntakeResult::SilentGranted)
+            | Some(IntakeResult::Decided {
+                outcome: ConsentOutcome::AllowedOnce | ConsentOutcome::AllowedRemembered,
+            })
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -689,4 +758,48 @@ files = ["main.js"]
         assert_eq!(missing, vec!["VAULT".to_string()]);
         std::env::remove_var("VAULT");
     }
+    fn consent_fixture(namespace: &str) -> PreparedBridge {
+        PreparedBridge {
+            recipe_id: format!("{namespace}.bridge"),
+            source_dir: std::path::PathBuf::from("/tmp"),
+            install: Install {
+                arlen_side: vec![],
+                foreign_side: ForeignSide {
+                    into: "$VAULT/x/".to_string(),
+                    files: vec![],
+                },
+            },
+            namespace: namespace.to_string(),
+        }
+    }
+
+    /// The batch installs as a unit and unwinds as a unit, so approving half of
+    /// it is not a state the installer can produce.
+    #[test]
+    fn one_summary_covers_the_whole_batch() {
+        let s = consent_summary(&[consent_fixture("md.obsidian"), consent_fixture("com.slack")]);
+        assert!(s.contains("md.obsidian"), "{s}");
+        assert!(s.contains("com.slack"), "{s}");
+    }
+
+    /// What is being allowed has to be in the sentence.
+    #[test]
+    fn the_summary_names_the_namespace_and_what_it_permits() {
+        let s = consent_summary(&[consent_fixture("md.obsidian")]);
+        assert!(s.contains("md.obsidian"), "{s}");
+        assert!(s.contains("knowledge graph"), "{s}");
+    }
+
+    /// Two bridges sharing a namespace are one grant, not two.
+    #[test]
+    fn a_repeated_namespace_is_named_once() {
+        let s = consent_summary(&[consent_fixture("md.obsidian"), consent_fixture("md.obsidian")]);
+        assert_eq!(s.matches("md.obsidian").count(), 1, "{s}");
+    }
+
+    #[test]
+    fn an_empty_batch_has_nothing_to_summarise() {
+        assert!(consent_summary(&[]).is_empty());
+    }
+
 }
