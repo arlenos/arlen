@@ -34,6 +34,22 @@ impl InstallDaemon {
         job_id
     }
 
+    /// Upgrade an already-installed app from a local .lunpkg.
+    ///
+    /// Separate from `InstallPackage`, which refuses an app that is already
+    /// installed - and should, since replacing an installed app silently is how
+    /// an install becomes an unreviewed update. This runs the capability gate
+    /// against what the app was granted before: an update asking for nothing new
+    /// applies, one that widens emits `ConsentRequired` and applies nothing.
+    ///
+    /// Returns a job_id; the outcome arrives on `JobCompleted`, and a widened
+    /// update also emits `ConsentRequired` naming what it newly wants.
+    async fn update(&self, path: String) -> String {
+        let job_id = self.queue.enqueue(JobKind::Upgrade { path });
+        tracing::info!("enqueued upgrade job {job_id}");
+        job_id
+    }
+
     /// Install a Flatpak app.
     ///
     /// `remote` defaults to "flathub" if empty. Returns a job_id.

@@ -16,6 +16,10 @@ use thiserror::Error;
 pub enum InstallError {
     #[error("invalid app_id: {0}")]
     InvalidAppId(String),
+    /// The update asks for capabilities the installed version was not granted,
+    /// so it needs the user's consent before it may replace anything.
+    #[error("this update needs your approval: it now wants {0}")]
+    ConsentRequired(String),
     #[error("package not found: {0}")]
     PackageNotFound(String),
     #[error("manifest not found in package")]
