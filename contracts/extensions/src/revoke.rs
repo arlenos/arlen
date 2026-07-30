@@ -185,6 +185,32 @@ pub fn resolve_reaches(
                         out.push(RevokedReach::FilesystemDir { dir: flag.into() });
                     }
                 }
+                // The label is set by a custom path too, so leaving these out
+                // meant an app whose only filesystem grant was a custom path
+                // showed "filesystem", offered a revoke, and gave up nothing.
+                // Matched against the profile's own TOML entry, which is UTF-8
+                // by definition, so a path that is not is one no revoke could
+                // match. Skipped rather than lossily converted into a reach that
+                // would silently hit nothing.
+                for path in fs.custom.iter().filter_map(|p| p.to_str()) {
+                    out.push(RevokedReach::FilesystemPath { path: path.to_string() });
+                }
+            }
+            // Had no arm at all, so it fell through to the graph-prefix branch,
+            // matched neither `read:` nor `write:`, and resolved to nothing -
+            // the revoke reported success having removed no grant.
+            "system" => {
+                let sys = &profile.system;
+                for (cap, on) in [
+                    ("autostart", sys.autostart),
+                    ("background", sys.background),
+                    ("suspend", sys.power.suspend),
+                    ("set_profile", sys.power.set_profile),
+                ] {
+                    if on {
+                        out.push(RevokedReach::SystemCap { cap: cap.into() });
+                    }
+                }
             }
             "notifications" if profile.notifications.enabled => {
                 out.push(RevokedReach::NotificationsOff);
@@ -248,6 +274,63 @@ mod tests {
             provenance: None,
             health: Health::Unknown,
         }
+    }
+
+    /// The invariant that was broken: every label `profile_labels` can put in
+    /// front of a user must resolve to something a revoke can act on. A label
+    /// that resolves to nothing is a button that reports success and gives up
+    /// no grant, which is worse than having no button.
+    ///
+    /// `system` had no arm at all and `filesystem` ignored custom paths, so both
+    /// produced exactly that.
+    #[test]
+    fn every_label_a_profile_can_show_resolves_to_a_reach() {
+        let mut p = profile();
+        p.network.allowed_domains = vec!["api.example.com".into()];
+        p.filesystem.documents = true;
+        p.filesystem.custom = vec![std::path::PathBuf::from("/opt/data")];
+        p.notifications.enabled = true;
+        p.clipboard.read = true;
+        p.system.autostart = true;
+        p.system.power.suspend = true;
+        p.graph.read = vec!["system.File".to_string()];
+
+        for label in crate::profile::profile_labels(&p) {
+            let reaches = resolve_reaches(&p, std::slice::from_ref(&label));
+            let excused = unrevocable(&p, std::slice::from_ref(&label));
+            assert!(
+                !reaches.is_empty() || !excused.is_empty(),
+                "the label {label:?} resolves to no reach and is not reported unrevocable, \
+                 so revoking it would silently do nothing"
+            );
+        }
+    }
+
+    /// The label is set by a custom path too, so the resolver has to produce one.
+    #[test]
+    fn a_custom_path_is_a_revocable_filesystem_reach() {
+        let mut p = profile();
+        p.filesystem.custom = vec![std::path::PathBuf::from("/opt/data")];
+        assert_eq!(
+            resolve_reaches(&p, &["filesystem".to_string()]),
+            vec![RevokedReach::FilesystemPath { path: "/opt/data".to_string() }]
+        );
+    }
+
+    /// Each granted system flag is its own reach, so revoking `system` gives up
+    /// all of them rather than none.
+    #[test]
+    fn the_system_label_resolves_to_the_flags_that_are_set() {
+        let mut p = profile();
+        p.system.background = true;
+        p.system.power.set_profile = true;
+        assert_eq!(
+            resolve_reaches(&p, &["system".to_string()]),
+            vec![
+                RevokedReach::SystemCap { cap: "background".to_string() },
+                RevokedReach::SystemCap { cap: "set_profile".to_string() },
+            ]
+        );
     }
 
     /// Asking the user to confirm giving up nothing is friction with no content.
