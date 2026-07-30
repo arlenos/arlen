@@ -598,11 +598,53 @@ mod tests {
         drop(client);
         let _ = serving.await;
 
+        // Third phase, same test for the same reason: everything above drove
+        // `handle` directly with a hand-made socket pair, which leaves the part
+        // the daemon actually starts - bind, accept, and the uid it hands each
+        // connection - never executed. `current_uid` in particular is read
+        // ONLY in `run`, so nothing could tell a correct one from a constant.
+        //
+        // Here a real client connects to a really-bound socket and is answered.
+        let sock_dir = tempfile::tempdir().unwrap();
+        let sock = sock_dir.path().join("ingest.sock");
+        let server = Arc::new(IngestServer::new(
+            Arc::clone(&ledger),
+            Arc::new(UnixEventEmitter::new("/nonexistent/producer.sock")),
+            Arc::new(AtomicBool::new(false)),
+        ));
+        let serving = {
+            let sock = sock.clone();
+            tokio::spawn(async move { server.run(&sock).await })
+        };
+
+        // `run` binds before it accepts, so the socket appearing is the
+        // readiness signal. Polled rather than slept on, so a slow machine
+        // cannot turn this into a flake.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !sock.exists() && std::time::Instant::now() < deadline {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert!(sock.exists(), "run must bind the socket it was given");
+
+        let mut client = UnixStream::connect(&sock).await.expect("connect to the bound socket");
+        write_frame(&mut client, &serde_json::to_vec(&req).unwrap())
+            .await
+            .expect("a bound socket accepts a connection and reads from it");
+        let reply = read_frame(&mut client).await.expect("and answers it");
+        assert_eq!(
+            serde_json::from_slice::<IngestResponse>(&reply).unwrap(),
+            IngestResponse::Appended { index: 1 },
+            "the accept loop must serve the connection with the caller's own uid; \
+             a wrong uid fails peer auth and closes without ever replying"
+        );
+        drop(client);
+        serving.abort();
+
         std::env::remove_var("ARLEN_AUDIT_EXTRA_ADMIT");
         assert_eq!(
             ledger.lock().await.verify().await.unwrap(),
-            1,
-            "the admitted caller's entry is really in the chain"
+            2,
+            "both the paired-socket entry and the bound-socket entry are in the chain"
         );
     }
 
