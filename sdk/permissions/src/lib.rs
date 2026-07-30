@@ -871,12 +871,22 @@ pub fn profile_path(app_id: &str) -> Result<PathBuf, PermissionError> {
 }
 
 /// Whether `app_id` is a safe single path component for joining into a
-/// root-owned profile path: a non-empty lowercase reverse-DNS-style id over
-/// `[a-z0-9._-]` with no traversal (`..`, leading/trailing dot, or any path
-/// separator — the charset already excludes `/`). A root-owned path must never be
-/// built from an unvalidated id, so [`system_profile_path`] returns `None` for an
-/// invalid one rather than touching `/var/lib`. `pub` so the identity broker can
-/// apply the same charset guard on the register side, symmetric with the resolver.
+/// root-owned profile path: a non-empty reverse-DNS-style id over `[A-Za-z0-9._-]`
+/// with no traversal (`..`, leading/trailing dot, or any path separator — the
+/// charset already excludes `/`). A root-owned path must never be built from an
+/// unvalidated id, so [`system_profile_path`] returns `None` for an invalid one
+/// rather than touching `/var/lib`. `pub` so the identity broker can apply the same
+/// charset guard on the register side, symmetric with the resolver.
+///
+/// ASCII case is accepted because a real app id carries it: `org.gnome.Calculator`,
+/// `app.drey.Biblioteca` and `md.obsidian.Obsidian` are the ids those apps actually
+/// ship, and the reverse-DNS convention capitalises the final component almost
+/// everywhere. This guard exists to keep an id a single traversal-free path
+/// component, and an uppercase letter is no less safe a path component than a
+/// lowercase one; rejecting it was over-tight for that purpose and made every such
+/// app unaddressable. Ids are compared and stored verbatim, never case-folded, so
+/// two ids differing only in case are two apps - which is how a case-sensitive
+/// filesystem and Flatpak itself already treat them.
 pub fn is_valid_app_id(app_id: &str) -> bool {
     !app_id.is_empty()
         && app_id != ".."
@@ -885,7 +895,7 @@ pub fn is_valid_app_id(app_id: &str) -> bool {
         && !app_id.contains("..")
         && app_id
             .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'))
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
 
 /// The system-tier (root-owned) profile path for `app_id`, or `None` if the id is
@@ -1188,8 +1198,28 @@ always_confirm_overrides = ["empty_trash"]
             assert!(p.to_string_lossy().contains("/var/lib/arlen/permissions"));
         }
         // A root-owned path is never built from an unsafe id.
-        for bad in ["..", "a/b", "../etc/x", "", "Upper", ".hidden", "trailing."] {
+        for bad in ["..", "a/b", "../etc/x", "", ".hidden", "trailing.", "com.exämple.x"] {
             assert!(system_profile_path(bad).is_none(), "{bad:?} must be rejected");
+        }
+    }
+
+    #[test]
+    fn a_real_world_reverse_dns_id_is_addressable() {
+        // Regression: this guard used to demand lowercase, so every app whose id
+        // capitalises its last component - the ordinary convention, and what 478
+        // of the curated profiles are named after - resolved through
+        // `path_to_app_id` and was then refused by `profile_path`. The profile was
+        // written and could never be loaded, so the app's connection was rejected
+        // outright. Fails closed, but it broke every such app.
+        for id in [
+            "org.gnome.Calculator",
+            "app.drey.Biblioteca",
+            "md.obsidian.Obsidian",
+            "com.example.notes",
+        ] {
+            assert!(is_valid_app_id(id), "{id} is a real app id and must resolve");
+            assert!(profile_path(id).is_ok(), "{id} must build a profile path");
+            assert!(system_profile_path(id).is_some(), "{id} must build a system path");
         }
     }
 
@@ -1197,7 +1227,7 @@ always_confirm_overrides = ["empty_trash"]
     fn profile_path_rejects_a_traversal_id() {
         // The user-config path is fail-safe too: a traversal id can never build a
         // path outside the permissions dir, even without a caller-side pre-check.
-        for bad in ["..", "a/b", "../etc/x", "/etc/x", "", "Upper", ".hidden", "trailing."] {
+        for bad in ["..", "a/b", "../etc/x", "/etc/x", "", ".hidden", "trailing.", "com.exämple.x"] {
             assert!(
                 matches!(profile_path(bad), Err(PermissionError::InvalidAppId { .. })),
                 "{bad:?} must be rejected as an invalid app id"

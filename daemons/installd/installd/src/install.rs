@@ -248,14 +248,13 @@ fn user_modules_dir() -> PathBuf {
 
 /// Validate an app_id.
 pub fn validate_app_id(app_id: &str) -> Result<(), InstallError> {
-    if app_id.is_empty()
-        || app_id.contains('/')
-        || app_id.contains("..")
-        || app_id.contains('\0')
-        || !app_id
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '_')
-    {
+    // Deferred to the SDK guard rather than re-stated, because the two must agree:
+    // installd decides what may be installed, and `arlen_permissions::profile_path`
+    // decides what may be addressed afterwards, so anything accepted here and
+    // refused there installs an app whose profile can never be loaded. The local
+    // check used `char::is_alphanumeric`, which is Unicode, and so accepted ids like
+    // `com.exämple.notes` that the ASCII-only SDK guard rejects.
+    if !arlen_permissions::is_valid_app_id(app_id) {
         return Err(InstallError::InvalidAppId(app_id.into()));
     }
     if !app_id.contains('.') {
@@ -873,6 +872,32 @@ mod tests {
         assert!(validate_app_id("nodots").is_err());
         assert!(validate_app_id("../evil").is_err());
         assert!(validate_app_id("").is_err());
+        // The convention nearly every real app follows.
+        assert!(validate_app_id("org.gnome.Calculator").is_ok());
+    }
+
+    #[test]
+    fn nothing_installable_is_unaddressable_afterwards() {
+        // The invariant behind deferring to the SDK guard: an id this accepts must
+        // be one `profile_path` can build, or the install writes a profile that no
+        // enforcement point can ever load. The local check was Unicode-alphanumeric
+        // and the SDK guard is ASCII, so ids like the third one below used to pass
+        // here and be refused there.
+        for id in [
+            "com.example.app",
+            "org.gnome.Calculator",
+            "com.exämple.notes",
+            "app.drey.Biblioteca",
+            "UPPER.CASE.Id",
+            "with-dash.and_underscore.x9",
+        ] {
+            if validate_app_id(id).is_ok() {
+                assert!(
+                    arlen_permissions::profile_path(id).is_ok(),
+                    "{id} installs but its profile path cannot be built",
+                );
+            }
+        }
     }
 
     #[test]
