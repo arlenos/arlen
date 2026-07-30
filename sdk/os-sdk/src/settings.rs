@@ -131,28 +131,10 @@ mod tests {
                 order: None,
                 items: items
                     .iter()
-                    .map(|(key, ty, default)| SettingsItem {
-                        key: (*key).into(),
-                        value_type: *ty,
-                        label: "L".into(),
-                        description: None,
-                        default: default.clone(),
-                        min: None,
-                        max: None,
-                        unit: None,
-                        options: Vec::new(),
-                        options_from: None,
-                        order: None,
-                        keywords: Vec::new(),
-                        scope: SettingScope::default(),
-                        tags: Vec::new(),
-                        included: None,
-                        deprecated_message: None,
-                        replaced_by: None,
-                        renamed_from: Vec::new(),
-                        since: None,
-                        removed_in: None,
-                        visible_when: None,
+                    .map(|(key, ty, default)| {
+                        let mut item = SettingsItem::new(*key, *ty, "L");
+                        item.default = default.clone();
+                        item
                     })
                     .collect(),
             }],

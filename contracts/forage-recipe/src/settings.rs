@@ -166,6 +166,42 @@ pub struct VisibleWhen {
     pub in_: Option<Vec<String>>,
 }
 
+impl SettingsItem {
+    /// A settings item with only what every item must have.
+    ///
+    /// **Use this rather than a struct literal.** Three downstream crates broke
+    /// in two days because a field was added here and every exhaustive literal
+    /// in the tree stopped compiling - the schema is a shared contract that
+    /// grows, and growing it should not be a breaking change for everyone who
+    /// ever constructed one. Set the optional fields on the returned value.
+    pub fn new(key: impl Into<String>, value_type: SettingType, label: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value_type,
+            label: label.into(),
+            description: None,
+            default: None,
+            min: None,
+            max: None,
+            unit: None,
+            options: Vec::new(),
+            options_from: None,
+            order: None,
+            keywords: Vec::new(),
+            scope: SettingScope::default(),
+            handoff: None,
+            tags: Vec::new(),
+            included: None,
+            deprecated_message: None,
+            replaced_by: None,
+            renamed_from: Vec::new(),
+            since: None,
+            removed_in: None,
+            visible_when: None,
+        }
+    }
+}
+
 /// Which of the app's own windows a handoff row opens.
 ///
 /// A NAME the app declares, never a command. That is the whole security design,
