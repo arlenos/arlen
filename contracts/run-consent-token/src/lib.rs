@@ -300,6 +300,112 @@ mod tests {
         v.iter().map(|s| s.to_string()).collect()
     }
 
+    /// Guards the budget fix. Biscuit's default `max_time` is one millisecond,
+    /// which is a measure of machine speed rather than of the token, and a
+    /// contended machine crosses it while evaluating an authorized policy -
+    /// which this crate used to report as a refused command. Mutation testing
+    /// found `datalog_limits` could be replaced with `Default::default()`, i.e.
+    /// the whole fix reverted, without a single test failing.
+    ///
+    /// The sibling check lives in `connections::capability`; this crate had none.
+    #[test]
+    fn the_datalog_budget_is_far_above_what_a_real_verify_costs() {
+        let root = KeyPair::new();
+        let many: Vec<String> = (0..64).map(|i| format!("--flag{i}=value")).collect();
+        let token = mint_run_consent(&root, "/usr/bin/tool", &many, i64::MAX).unwrap();
+
+        let start = std::time::Instant::now();
+        assert!(verify_run_consent(&token, &root.public(), "/usr/bin/tool", &many, 1).unwrap());
+        let spent = start.elapsed();
+        assert!(
+            spent * 10 < datalog_limits().max_time,
+            "a full-size verify took {spent:?}, too close to the {:?} budget",
+            datalog_limits().max_time
+        );
+    }
+
+    /// Epoch zero is a time, not a negative one. The refusal is for a clock
+    /// BELOW zero; mutation testing found `< 0` could become `<= 0` unnoticed.
+    #[test]
+    fn time_zero_is_not_treated_as_a_negative_clock() {
+        let root = KeyPair::new();
+        let token = mint_run_consent(&root, "ls", &args(&[]), 10).unwrap();
+        assert!(verify_run_consent(&token, &root.public(), "ls", &args(&[]), 0).is_ok());
+        assert!(matches!(
+            verify_run_consent(&token, &root.public(), "ls", &args(&[]), -1),
+            Err(ConsentTokenError::InvalidInput(_))
+        ));
+    }
+
+    /// The caps are part of the contract between the daemon that signs a token
+    /// and the MCP server that parses it, not internal tuning, so their
+    /// magnitudes are pinned. Named because the boundary test below cannot pin
+    /// them: it is written in terms of the constants, so it stays true no matter
+    /// what they become - `128 * 1024` silently becoming `128 + 1024` would keep
+    /// every other test green while refusing any argument over a kilobyte.
+    #[test]
+    fn the_caps_are_the_sizes_the_contract_says() {
+        assert_eq!(MAX_COMMAND_LEN, 4096);
+        assert_eq!(MAX_ARG_LEN, 131_072);
+        assert_eq!(MAX_ARGS, 1024);
+    }
+
+    /// Each cap accepts its exact limit and refuses one past it. Without the
+    /// boundary, every `>` in the validator could become `>=` with nothing
+    /// failing.
+    #[test]
+    fn every_cap_admits_its_limit_and_refuses_one_more() {
+        let root = KeyPair::new();
+        let mint = |cmd: &str, a: &[String]| mint_run_consent(&root, cmd, a, 10);
+
+        let at = "c".repeat(MAX_COMMAND_LEN);
+        assert!(mint(&at, &[]).is_ok(), "a command of exactly the cap is allowed");
+        assert!(mint(&"c".repeat(MAX_COMMAND_LEN + 1), &[]).is_err());
+
+        let arg_at = vec!["a".repeat(MAX_ARG_LEN)];
+        assert!(mint("ls", &arg_at).is_ok(), "an argument of exactly the cap is allowed");
+        assert!(mint("ls", &vec!["a".repeat(MAX_ARG_LEN + 1)]).is_err());
+
+        let count_at: Vec<String> = (0..MAX_ARGS).map(|_| "x".to_string()).collect();
+        assert!(mint("ls", &count_at).is_ok(), "exactly the arg count is allowed");
+        let count_over: Vec<String> = (0..MAX_ARGS + 1).map(|_| "x".to_string()).collect();
+        assert!(mint("ls", &count_over).is_err());
+    }
+
+    /// The one resolver both the publish and read sides use, so a drift between
+    /// them is impossible. Mutation testing found it could return `None` - or a
+    /// bare default path - with nothing noticing, which on the read side means
+    /// silently finding no key and refusing every command.
+    #[test]
+    fn the_key_path_is_resolved_under_the_state_dir() {
+        // Serialised through one test because these are process-wide.
+        let saved = (std::env::var("XDG_STATE_HOME").ok(), std::env::var("HOME").ok());
+
+        std::env::set_var("XDG_STATE_HOME", "/state");
+        let p = published_public_key_path().expect("resolves from XDG_STATE_HOME");
+        assert_eq!(p, PathBuf::from("/state/arlen/ai-engine/run-consent-root.pub"));
+
+        // Empty is not a path: it must fall through to HOME, not resolve to a
+        // bare relative one.
+        std::env::set_var("XDG_STATE_HOME", "");
+        std::env::set_var("HOME", "/home/u");
+        let p = published_public_key_path().expect("falls back to HOME");
+        assert_eq!(p, PathBuf::from("/home/u/.local/state/arlen/ai-engine/run-consent-root.pub"));
+
+        std::env::remove_var("XDG_STATE_HOME");
+        std::env::remove_var("HOME");
+        assert!(published_public_key_path().is_none(), "neither set means no path");
+
+        match saved.0 {
+            Some(v) => std::env::set_var("XDG_STATE_HOME", v),
+            None => std::env::remove_var("XDG_STATE_HOME"),
+        }
+        match saved.1 {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+    }
+
     #[test]
     fn a_minted_token_authorizes_exactly_its_command() {
         let root = KeyPair::new();
