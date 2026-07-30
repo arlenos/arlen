@@ -28,6 +28,10 @@ arlen-forage-recipe = { path = "../../contracts/forage-recipe" }
 # from the SDK rather than being written out a second time here.
 os-sdk = { path = "../../sdk/os-sdk" }
 
+# Resolving the socket peer to an attested app id.
+arlen-permissions = { path = "../../sdk/permissions" }
+libc = "0.2"
+
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "sync", "net", "time"] }

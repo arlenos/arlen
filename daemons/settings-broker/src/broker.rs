@@ -147,6 +147,7 @@ mod tests {
             order: None,
             keywords: Vec::new(),
             scope: SettingScope::default(),
+            handoff: None,
             tags: Vec::new(),
             included: None,
             deprecated_message: None,

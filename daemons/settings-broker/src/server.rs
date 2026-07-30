@@ -105,11 +105,28 @@ pub async fn serve_connection<S>(
     stream: &mut S,
     registry: &dyn AppRegistry,
     write_lock: &Mutex<()>,
+    caller: &str,
 ) -> Result<(), ServeError>
 where
     S: AsyncReadExt + AsyncWriteExt + Unpin,
 {
     while let Some(request) = read_request(stream).await? {
+        // The app id in the request is a CLAIM. A caller may write its own
+        // settings; writing another app's is something only Settings does, on
+        // the user's behalf. Same uid throughout, so this is not a privilege
+        // boundary - it is the difference between an attributable write and an
+        // anonymous one, and it makes the confused-deputy shape (app A quietly
+        // reconfiguring app B through the validating broker) unrepresentable
+        // rather than merely unlikely.
+        let Request::Write { app_id, .. } = &request;
+        if !may_write_for(caller, app_id) {
+            let response = Response::Refused {
+                key: String::new(),
+                reason: "a caller may only write its own settings".to_string(),
+            };
+            write_response(stream, &response).await?;
+            continue;
+        }
         let response = {
             let _guard = write_lock.lock().await;
             answer(registry, request)
@@ -120,6 +137,36 @@ where
 }
 
 /// A lock shared by every connection the broker serves.
+/// Resolve the connecting peer to its attested app id, same-uid only.
+fn attested_caller(stream: &tokio::net::UnixStream) -> Option<String> {
+    let cred = stream.peer_cred().ok()?;
+    if cred.uid() != unsafe { libc::getuid() } {
+        return None;
+    }
+    let exe = std::fs::read_link(format!("/proc/{}/exe", cred.pid()?)).ok()?;
+    arlen_permissions::identity::path_to_app_id(&exe).ok()
+}
+
+/// Whether `caller` may write settings belonging to `target`.
+///
+/// Its own always. Settings may write any app's, because rendering another
+/// app's settings page and saving what the user changed is precisely its job -
+/// the same trusted-intermediary shape the consent broker and the handoff row
+/// use. `dev.`-prefixed callers pass in debug builds, matching the tree's other
+/// admissions, so a cargo-run Settings works without widening release.
+pub fn may_write_for(caller: &str, target: &str) -> bool {
+    // An unresolvable peer gets the empty id, and the equality below would
+    // otherwise admit it against an equally empty target. Refused first, so
+    // "we could not tell who this is" can never mean "and therefore it is
+    // whoever it claims to be".
+    if caller.is_empty() {
+        return false;
+    }
+    caller == target
+        || caller == "settings"
+        || (cfg!(debug_assertions) && caller.starts_with("dev."))
+}
+
 pub fn shared_write_lock() -> Arc<Mutex<()>> {
     Arc::new(Mutex::new(()))
 }
@@ -155,13 +202,19 @@ pub async fn run(
     let write_lock = shared_write_lock();
     loop {
         let (mut stream, _addr) = listener.accept().await?;
+        // Who is connecting, from the kernel-attested credential. A peer we
+        // cannot resolve gets the empty id, which `may_write_for` admits for
+        // nothing - so an unidentifiable caller can write no app's settings.
+        let caller = attested_caller(&stream).unwrap_or_default();
         let registry = registry.clone();
         let write_lock = write_lock.clone();
         // One slow or wedged caller must not stall the others, so each
         // connection is served on its own task; the shared lock still keeps the
         // writes themselves ordered.
         tokio::spawn(async move {
-            if let Err(e) = serve_connection(&mut stream, registry.as_ref(), &write_lock).await {
+            if let Err(e) =
+                serve_connection(&mut stream, registry.as_ref(), &write_lock, &caller).await
+            {
                 eprintln!("settings-broker: connection ended: {e}");
             }
         });
@@ -214,6 +267,7 @@ mod tests {
                     order: None,
                     keywords: Vec::new(),
                     scope: SettingScope::default(),
+                    handoff: None,
                     tags: Vec::new(),
                     included: None,
                     deprecated_message: None,
@@ -273,7 +327,7 @@ mod tests {
         let handle = tokio::spawn({
             let lock = lock.clone();
             async move {
-                let _ = serve_connection(&mut server, &app, &lock).await;
+                let _ = serve_connection(&mut server, &app, &lock, "org.example.App").await;
             }
         });
 
@@ -307,7 +361,7 @@ mod tests {
         let handle = tokio::spawn({
             let lock = lock.clone();
             async move {
-                let _ = serve_connection(&mut server, &app, &lock).await;
+                let _ = serve_connection(&mut server, &app, &lock, "org.example.App").await;
             }
         });
 
@@ -340,7 +394,7 @@ mod tests {
 
         let handle = tokio::spawn({
             let lock = lock.clone();
-            async move { serve_connection(&mut server, &app, &lock).await }
+            async move { serve_connection(&mut server, &app, &lock, "org.example.App").await }
         });
 
         client
@@ -382,6 +436,7 @@ mod tests {
                         order: None,
                         keywords: Vec::new(),
                         scope: SettingScope::default(),
+                        handoff: None,
                         tags: Vec::new(),
                         included: None,
                         deprecated_message: None,
@@ -406,7 +461,7 @@ mod tests {
             let lock = lock.clone();
             tasks.push(tokio::spawn(async move {
                 let served = tokio::spawn(async move {
-                    let _ = serve_connection(&mut server, &app, &lock).await;
+                    let _ = serve_connection(&mut server, &app, &lock, "org.example.App").await;
                 });
                 let request = Request::Write {
                     app_id: "org.example.App".into(),
@@ -484,4 +539,27 @@ mod tests {
         server.abort();
     }
 
+
+    /// App A quietly reconfiguring app B through the validating broker is the
+    /// shape this closes. Same uid throughout, so it is about attribution
+    /// rather than privilege - but a claim in a request is not attribution.
+    #[test]
+    fn a_caller_may_write_only_its_own_settings() {
+        assert!(may_write_for("org.example.App", "org.example.App"));
+        assert!(!may_write_for("org.example.App", "org.other.App"));
+    }
+
+    /// Rendering another app's settings page and saving what the user changed
+    /// is precisely what Settings is for.
+    #[test]
+    fn settings_may_write_on_any_apps_behalf() {
+        assert!(may_write_for("settings", "org.example.App"));
+    }
+
+    /// An unresolvable peer gets the empty id, which must open nothing.
+    #[test]
+    fn an_unidentifiable_caller_may_write_nothing() {
+        assert!(!may_write_for("", "org.example.App"));
+        assert!(!may_write_for("", ""));
+    }
 }

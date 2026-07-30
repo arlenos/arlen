@@ -144,6 +144,7 @@ mod tests {
                                 order: None,
                                 keywords: Vec::new(),
                                 scope: SettingScope::default(),
+                                handoff: None,
                                 tags: Vec::new(),
                                 included: None,
                                 deprecated_message: None,
@@ -168,7 +169,7 @@ mod tests {
         let registry = One(config.clone());
         let lock = tokio::sync::Mutex::new(());
         tokio::spawn(async move {
-            let _ = crate::server::serve_connection(&mut server, &registry, &lock).await;
+            let _ = crate::server::serve_connection(&mut server, &registry, &lock, "org.example.App").await;
         });
 
         let answer = exchange(
