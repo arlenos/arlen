@@ -426,6 +426,18 @@ pub struct SourceInputs {
     /// carries no `finish-args`, so the footprint is fused in from here; an id
     /// with no entry keeps an empty footprint rather than a guessed one.
     pub flatpak_metadata: Vec<(String, String)>,
+    /// `(component-id, the app's enrolled permission profile TOML)` for apt apps
+    /// (SC-3's apt half). A `.deb` declares no capabilities, so the footprint
+    /// comes from the profile the enrol hook wrote - which is also what confines
+    /// the app at runtime, so it describes what the app IS allowed rather than
+    /// what someone inferred it might do.
+    ///
+    /// The CALLER supplies these pairs rather than the composer reading
+    /// `~/.config/permissions` itself. The composer maps catalog files; knowing
+    /// which apps are installed locally, and which component-id an enrolled
+    /// profile belongs to, is local state it has no business guessing at. Same
+    /// split as `outdated()` taking the installed set from its caller.
+    pub apt_profiles: Vec<(String, String)>,
 }
 
 /// Compose the merged [`Catalog`] from every configured source. Best-effort: a source
@@ -447,7 +459,9 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
     }
     if let Some(yaml) = &inputs.dep11_yaml {
         // Best-effort per record: a corrupt document is skipped inside, never fatal.
-        entries.extend(dep11_entries(yaml));
+        let mut es = dep11_entries(yaml);
+        fuse_apt_profiles(&mut es, &inputs.apt_profiles);
+        entries.extend(es);
     }
     crate::query::Catalog::new(crate::catalog::merge_catalog(entries))
 }
@@ -465,10 +479,88 @@ fn fuse_flatpak_metadata(entries: &mut [CatalogEntry], metadata: &[(String, Stri
     }
 }
 
+/// Fill each apt entry's capability footprint from the app's enrolled profile.
+///
+/// An id with no enrolled profile keeps an EMPTY footprint rather than a guessed
+/// one - the same rule the Flatpak fuse follows. That matters for the
+/// least-privilege sort: a blank footprint must mean "we do not know", never
+/// "asks for nothing", or the ordering would reward apps we have no data on.
+/// A profile that does not parse is skipped for the same reason.
+fn fuse_apt_profiles(entries: &mut [CatalogEntry], profiles: &[(String, String)]) {
+    for (id, toml) in profiles {
+        let Ok(profile) = toml::from_str::<arlen_permissions::PermissionProfile>(toml) else {
+            continue;
+        };
+        let labels = crate::profile_caps::profile_labels(&profile);
+        for entry in entries.iter_mut().filter(|e| e.id.0 == *id) {
+            entry.capabilities.capabilities = labels.clone();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::catalog::merge_catalog;
+
+    const APT_YAML: &str = "---\nID: org.example.App\nName:\n  C: Example\n";
+
+    fn enrolled(network: bool) -> String {
+        format!(
+            "[info]\napp_id = \"org.example.App\"\nname = \"Example\"\ntier = \"third-party\"\n\n[network]\nallow_all = {network}\n"
+        )
+    }
+
+    /// SC-3's apt half end to end: a Debian card's footprint comes from the
+    /// enrolled profile, so the capability panel is no longer blank.
+    #[test]
+    fn an_apt_entry_takes_its_footprint_from_the_enrolled_profile() {
+        let catalog = compose_catalog(SourceInputs {
+            forage: vec![],
+            flathub_xml: None,
+            dep11_yaml: Some(APT_YAML.into()),
+            flatpak_metadata: vec![],
+            apt_profiles: vec![("org.example.App".into(), enrolled(true))],
+        });
+        let card = catalog
+            .card(&crate::catalog::ComponentId("org.example.App".into()))
+            .expect("the apt entry should be in the catalog");
+        assert_eq!(card.variants[0].capabilities.capabilities, vec!["network".to_string()]);
+    }
+
+    /// An app with no enrolled profile keeps an EMPTY footprint. Blank must mean
+    /// "we do not know", never "asks for nothing", or the least-privilege sort
+    /// would reward the apps we have no data on.
+    #[test]
+    fn an_apt_entry_without_a_profile_keeps_an_empty_footprint() {
+        let catalog = compose_catalog(SourceInputs {
+            forage: vec![],
+            flathub_xml: None,
+            dep11_yaml: Some(APT_YAML.into()),
+            flatpak_metadata: vec![],
+            apt_profiles: vec![],
+        });
+        let card = catalog
+            .card(&crate::catalog::ComponentId("org.example.App".into()))
+            .expect("the apt entry should be in the catalog");
+        assert!(card.variants[0].capabilities.capabilities.is_empty());
+    }
+
+    /// A profile that does not parse is skipped, not guessed at.
+    #[test]
+    fn an_unparseable_profile_leaves_the_footprint_empty() {
+        let catalog = compose_catalog(SourceInputs {
+            forage: vec![],
+            flathub_xml: None,
+            dep11_yaml: Some(APT_YAML.into()),
+            flatpak_metadata: vec![],
+            apt_profiles: vec![("org.example.App".into(), "not = = toml".into())],
+        });
+        let card = catalog
+            .card(&crate::catalog::ComponentId("org.example.App".into()))
+            .expect("the apt entry should be in the catalog");
+        assert!(card.variants[0].capabilities.capabilities.is_empty());
+    }
 
     fn recipe_toml(id: &str, extra: &str) -> Recipe {
         let text = format!(
