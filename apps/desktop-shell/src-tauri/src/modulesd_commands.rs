@@ -231,6 +231,7 @@ mod tests {
             version: "1.0".into(),
             tier: ModuleTier::Iframe,
             enabled: true,
+            last_error: None,
             failed: false,
             priority: 100,
             extension_points: vec!["topbar".into()],
