@@ -316,6 +316,15 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-transferd" => {
             return Ok("transferd".to_string());
         }
+        // The module runtime. Its shipped unit (`daemons/modulesd/dist`) execs
+        // from libexec, which rule (2) does not reach, while the only resolver
+        // test for it asserts the `/usr/bin` path - so the deployed daemon would
+        // resolve to UnknownBinary and the consent broker could never recognise
+        // it as a trusted intermediary, leaving every module's capability grant
+        // unattributable. Both paths resolve here so either deployment works.
+        "/usr/lib/arlen/libexec/arlen-modulesd" => {
+            return Ok("modulesd".to_string());
+        }
         // The foreign-app bridge ingestion daemon (foreign-app-bridges.md §4). It
         // installs under /usr/lib/arlen/libexec/ and writes the KG under its
         // delegated namespace (the Obsidian floor's `md.obsidian.*` entity
@@ -1175,6 +1184,8 @@ mod tests {
             ("/usr/bin/arlen-installd", "installd"),
             ("/usr/bin/arlen-desktop-shell", "desktop-shell"),
             ("/usr/bin/arlen-modulesd", "modulesd"),
+            // The shipped unit execs from libexec; both must resolve alike.
+            ("/usr/lib/arlen/libexec/arlen-modulesd", "modulesd"),
         ];
         for (path, expected) in cases {
             assert_eq!(
