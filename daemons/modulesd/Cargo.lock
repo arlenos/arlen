@@ -85,6 +85,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-consent-contract"
+version = "0.1.0"
+dependencies = [
+ "arlen-ai-core",
+ "serde",
+]
+
+[[package]]
+name = "arlen-forage-recipe"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.18",
+ "toml",
+]
+
+[[package]]
 name = "arlen-graph-schema"
 version = "0.1.0"
 
@@ -102,6 +119,7 @@ name = "arlen-modulesd"
 version = "0.1.0"
 dependencies = [
  "arlen-ai-core",
+ "arlen-consent-contract",
  "arlen-modules",
  "arlen-net-guard",
  "arlen-permissions",
@@ -1598,8 +1616,11 @@ dependencies = [
 name = "modulesd-proto"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "serde",
  "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
@@ -1694,6 +1715,7 @@ name = "os-sdk"
 version = "0.1.0"
 dependencies = [
  "arlen-capsule",
+ "arlen-forage-recipe",
  "arlen-permissions",
  "dirs 5.0.1",
  "libc",
