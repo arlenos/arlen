@@ -26,8 +26,6 @@ pub enum TrashError {
     NotInTrash(String),
     #[error("app already installed: {0}")]
     AlreadyInstalled(String),
-    #[error("invalid trash entry: {0}")]
-    InvalidEntry(String),
     #[error("IO: {0}")]
     Io(#[from] std::io::Error),
     #[error("install: {0}")]

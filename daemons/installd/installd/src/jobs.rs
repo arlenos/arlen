@@ -48,7 +48,11 @@ pub enum JobState {
     Completed,
     /// Failed with error.
     Failed { error: String },
-    /// Cancelled by user.
+    /// Cancelled by user. **Nothing produces this yet**: the interface exposes no
+    /// cancel method, so a queued or running job cannot be stopped. The state is
+    /// kept because cancellation is the intended behaviour for a long install,
+    /// and deleting it would erase that intent - but until a cancel path exists,
+    /// no caller will ever observe it.
     Cancelled,
 }
 
