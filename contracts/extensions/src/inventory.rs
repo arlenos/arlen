@@ -26,6 +26,11 @@ pub struct InventoryRoots {
     /// installed for the user only is as installed as a system one.
     pub module_dirs: Vec<PathBuf>,
     /// Installed bridge directories, each holding a `bridge.toml`.
+    ///
+    /// Per-user only, because that is the only place bridges are installed:
+    /// `arlen_bridge_dir` resolves under `XDG_DATA_HOME` or `$HOME` and has no
+    /// system branch. Listing a `/usr/share` root would imply a location
+    /// nothing writes to.
     pub bridge_dirs: Vec<PathBuf>,
     /// The ids the user has switched off (`modules.toml`'s disabled list).
     pub disabled_modules: BTreeSet<String>,
@@ -42,7 +47,7 @@ impl Default for InventoryRoots {
             .or_else(|| home.as_ref().map(|h| h.join(".local/share")));
 
         let mut module_dirs = vec![PathBuf::from("/usr/share/arlen/modules")];
-        let mut bridge_dirs = vec![PathBuf::from("/usr/share/arlen/bridges")];
+        let mut bridge_dirs = Vec::new();
         if let Some(d) = &data {
             module_dirs.push(d.join("arlen/modules"));
             bridge_dirs.push(d.join("arlen/bridges"));
