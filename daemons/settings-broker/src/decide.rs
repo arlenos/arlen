@@ -95,6 +95,10 @@ pub fn decide_write<'a>(
 /// it is a string here; the secret itself never reaches this file.
 fn check_type(item: &SettingsItem, value: &Value) -> Result<(), WriteRejection> {
     let ok = match item.value_type {
+        // A handoff row opens the app's own window and stores nothing, so
+        // there is no value a write could carry. Refused rather than given a
+        // permissive arm, which is why the type is matched exhaustively.
+        SettingType::Handoff => false,
         SettingType::Bool => value.is_bool(),
         // An integer is accepted for a float field (TOML writes `1`, not `1.0`,
         // for a whole number), but not the reverse: silently truncating 1.5 to 1
@@ -194,6 +198,7 @@ mod tests {
             order: None,
             keywords: Vec::new(),
             scope: SettingScope::default(),
+            handoff: None,
             tags: Vec::new(),
             included: None,
             deprecated_message: None,
