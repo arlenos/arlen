@@ -127,6 +127,15 @@ pub enum AuditKind {
 impl AuditKind {
     /// Stable wire string. Also the suffix of the Event Bus event
     /// type re-emitted after a successful append (`audit.ai.<kind>`).
+    ///
+    /// **This is snake_case, and it is not the only spelling of these kinds.**
+    /// The read API renders an `ActivityEntry.kind` through
+    /// `activity::kind_label`, which is kebab-case for the frontend, so
+    /// `ToolCall` is `tool_call` here and `tool-call` there. Both are
+    /// deliberate; the trap is that a literal written against one silently
+    /// matches nothing from the other, which has already cost one wrong test
+    /// assertion. Compare against these two functions, never against a
+    /// hand-written string.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Query => "query",
