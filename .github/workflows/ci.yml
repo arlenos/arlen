@@ -105,6 +105,18 @@ jobs:
             rust="$(printf '%s' "$changed_rust_json" | jq -c --argjson all "$RUST_ALL" \
               '. as $ch | $all | map(select(. as $c | $ch | any(startswith($c + "/"))))')"
           fi
+          # dev/integration holds the tree-wide guards: unit identity, image
+          # staging, proto agreement, D-Bus activation, both CI matrices, and
+          # module/crate reachability. Every one of them asserts something about
+          # OTHER crates, so selecting it by its own path meant it ran only when
+          # someone edited a guard, never on the commit that broke what the guard
+          # watches. A commit adding an unreferenced module to daemons/foo
+          # selects daemons/foo alone, and the reachability guard sat it out.
+          # Always run it. The cost is one small leg (its dev-deps are light
+          # client crates, and the daemon scenarios stay #[ignore]d) on changes
+          # that cannot break a guard, in exchange for the guards being real.
+          rust="$(printf '%s' "$rust" | jq -c '. + ["dev/integration"] | unique')"
+
           if [ "$frontend_full" = "1" ]; then
             frontend="$FRONT_ALL"
           else
