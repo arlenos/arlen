@@ -27,6 +27,7 @@ env_logger = "0.11"
 # each stub as a one-line command; the engine replaces the stubs when
 # it lands behind the same signatures.
 arlen-terminal-core = { path = "../core" }
+arlen-run-consent-token = { path = "../../../contracts/run-consent-token" }
 # The concrete VT engine: spawns the zsh PTY and surfaces its OSC marks as
 # VtEvents the command layer drains into blocks (replaces the core stubs).
 arlen-terminal-engine = { path = "../engine" }
