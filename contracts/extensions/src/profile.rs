@@ -134,6 +134,53 @@ mod tests {
         assert_eq!(profile_labels(&q), vec!["network".to_string()]);
     }
 
+    /// Every flag in each family's OR chain has to earn the label ON ITS OWN.
+    /// Mutation testing found this: the tests only ever set one flag per family,
+    /// so flipping any `||` in these chains to `&&` survived - a real
+    /// possibility for the families with four flags, where the label would then
+    /// need all four before it appeared and an app granted only one would show
+    /// nothing.
+    #[test]
+    fn each_grant_earns_its_family_label_alone() {
+        type Set = fn(&mut PermissionProfile);
+        let cases: &[(&str, Set)] = &[
+            ("filesystem", |p| p.filesystem.home = true),
+            ("filesystem", |p| p.filesystem.documents = true),
+            ("filesystem", |p| p.filesystem.downloads = true),
+            ("filesystem", |p| p.filesystem.pictures = true),
+            ("filesystem", |p| p.filesystem.music = true),
+            ("filesystem", |p| p.filesystem.videos = true),
+            ("filesystem", |p| p.filesystem.custom = vec!["/opt/x".into()]),
+            ("network", |p| p.network.allow_all = true),
+            ("network", |p| p.network.allowed_domains = vec!["x.example".into()]),
+            ("clipboard", |p| p.clipboard.read = true),
+            ("clipboard", |p| p.clipboard.write = true),
+            ("system", |p| p.system.autostart = true),
+            ("system", |p| p.system.background = true),
+            ("system", |p| p.system.power.suspend = true),
+            ("system", |p| p.system.power.set_profile = true),
+            ("input", |p| p.input.register_focused_bindings = true),
+            ("input", |p| p.input.register_global_bindings = true),
+            ("search", |p| p.search.open = true),
+            ("search", |p| p.search.register_handler = true),
+            ("search", |p| p.search.intercept_all = true),
+            ("intents", |p| p.intents.dispatch = true),
+            ("intents", |p| p.intents.register = true),
+            ("intents", |p| p.intents.preferences = true),
+            ("events", |p| p.event_bus.publish = vec!["a.*".into()]),
+            ("events", |p| p.event_bus.subscribe = vec!["a.*".into()]),
+        ];
+        for (i, (label, set)) in cases.iter().enumerate() {
+            let mut p = profile();
+            set(&mut p);
+            let labels = profile_labels(&p);
+            assert!(
+                labels.iter().any(|l| l == label),
+                "case {i}: this single grant alone must show {label}, got {labels:?}"
+            );
+        }
+    }
+
     #[test]
     fn any_filesystem_grant_earns_the_label_once() {
         let mut p = profile();
