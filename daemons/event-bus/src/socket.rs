@@ -568,4 +568,100 @@ mod tests {
         std::env::remove_var("ARLEN_EVENT_BUS_ENFORCE");
         assert!(!enforce_pubsub(), "the bus must default to shadow (log-only)");
     }
+
+    /// An event crosses the bus: producer socket in, consumer socket out.
+    ///
+    /// Nothing in this crate bound a socket before, so `bind_socket`, both
+    /// accept loops, the registration handshake and the delivery write had
+    /// never run in its own suite - only in the FUSE-gated integration suite
+    /// that normal CI skips. This is the funnel every other component depends
+    /// on, and the one bug that hurt most was exactly here: the knowledge
+    /// writer sent a two-line registration to a reader expecting three, so it
+    /// blocked forever and received nothing, silently, for months.
+    ///
+    /// So this pins the wire contract from the server's side - three
+    /// newline-terminated lines, then length-prefixed protobuf out - and proves
+    /// an event actually arrives.
+    #[tokio::test]
+    async fn an_event_crosses_from_a_producer_socket_to_a_consumer_socket() {
+        let dir = tempfile::tempdir().unwrap();
+        let producer_path = dir.path().join("producer.sock").to_str().unwrap().to_string();
+        let consumer_path = dir.path().join("consumer.sock").to_str().unwrap().to_string();
+
+        let registry = ConsumerRegistry::new();
+        let (p, c) = (producer_path.clone(), consumer_path.clone());
+        let reg = Arc::clone(&registry);
+        let producers = tokio::spawn(async move { listen_producers(&p, reg).await });
+        let consumers = tokio::spawn(async move { listen_consumers(&c, registry).await });
+
+        // Both loops bind before accepting, so the files appearing is readiness.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while (!Path::new(&producer_path).exists() || !Path::new(&consumer_path).exists())
+            && std::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert!(
+            Path::new(&producer_path).exists() && Path::new(&consumer_path).exists(),
+            "both sockets must be bound"
+        );
+
+        // Registration: consumer id, comma-separated patterns, uid filter.
+        // Three lines, because that is what the server reads.
+        let mut consumer = UnixStream::connect(&consumer_path).await.unwrap();
+        consumer.write_all(b"test-consumer\nfile.\n*\n").await.unwrap();
+
+        let event = Event {
+            id: "01890000-0000-7000-8000-000000000001".to_string(),
+            r#type: "file.opened".to_string(),
+            timestamp: 1_700_000_000_000_000,
+            source: "app:test".to_string(),
+            session_id: "test-session".to_string(),
+            ..Default::default()
+        };
+        let encoded = event.encode_to_vec();
+        let mut producer = UnixStream::connect(&producer_path).await.unwrap();
+
+        // Emit until it lands. Registration completes concurrently with the
+        // first writes, and the bus drops an event that has no consumer at
+        // dispatch time, so a single send would race.
+        let mut len_buf = [0u8; 4];
+        let mut delivered = false;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::time::Instant::now() < deadline {
+            producer
+                .write_all(&u32::try_from(encoded.len()).unwrap().to_be_bytes())
+                .await
+                .unwrap();
+            producer.write_all(&encoded).await.unwrap();
+
+            let read = tokio::time::timeout(
+                std::time::Duration::from_millis(200),
+                consumer.read_exact(&mut len_buf),
+            )
+            .await;
+            if matches!(read, Ok(Ok(_))) {
+                delivered = true;
+                break;
+            }
+        }
+        assert!(delivered, "no event ever reached the consumer socket");
+
+        let mut body = vec![0u8; u32::from_be_bytes(len_buf) as usize];
+        consumer.read_exact(&mut body).await.unwrap();
+        let got = Event::decode(&body[..]).expect("the consumer receives a decodable event");
+
+        assert_eq!(got.id, event.id);
+        assert_eq!(got.r#type, "file.opened");
+        // The test binary is not system tier, so the bus restamps the event
+        // with the producer's peercred uid rather than trusting the wire.
+        assert_eq!(
+            got.uid,
+            unsafe { libc::getuid() },
+            "a non-system producer's event must carry the peercred uid"
+        );
+
+        producers.abort();
+        consumers.abort();
+    }
 }
