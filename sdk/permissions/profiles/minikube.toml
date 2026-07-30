@@ -1,0 +1,14 @@
+# Starting permission profile for an infrastructure tool. It reads declarations
+# from whatever project directory the user runs it in, so it gets Home like the
+# other terminal tools here, and it reaches remote providers or a cluster, so it
+# gets network. No Knowledge Graph. The credentials it uses live in its own config
+# dir; a different state backend is an explicit grant.
+[info]
+app_id = "minikube"
+tier = "third-party"
+
+[filesystem]
+home = true
+
+[network]
+allow_all = true

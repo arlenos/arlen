@@ -1,0 +1,6 @@
+# Starting permission profile for a speech synthesiser. It turns text it is given
+# into audio; the sound device is a runtime grant, not a profile field, and its
+# voices live in its own data dir. No file access, no network, no Knowledge Graph.
+[info]
+app_id = "espeak"
+tier = "third-party"

@@ -1,0 +1,9 @@
+# Starting permission profile for a visual programming environment for learners.
+# It saves and opens projects under Documents; no network and no Knowledge Graph by
+# default (the online project library is an explicit grant).
+[info]
+app_id = "scratch"
+tier = "third-party"
+
+[filesystem]
+documents = true

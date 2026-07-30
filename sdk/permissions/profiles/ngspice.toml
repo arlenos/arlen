@@ -1,0 +1,8 @@
+# Starting permission profile for a circuit simulator. It reads netlists and writes
+# results alongside the user's documents; no network and no Knowledge Graph.
+[info]
+app_id = "ngspice"
+tier = "third-party"
+
+[filesystem]
+documents = true

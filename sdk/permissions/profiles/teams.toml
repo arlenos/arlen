@@ -1,0 +1,12 @@
+# Starting permission profile for a chat client. Needs network to message; saves
+# attachments to Downloads. No Knowledge Graph access. Camera, microphone and
+# screen share are runtime grants, not profile fields. Observe-mode refines it.
+[info]
+app_id = "teams"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
