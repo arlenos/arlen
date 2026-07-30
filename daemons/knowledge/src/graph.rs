@@ -1429,6 +1429,46 @@ mod tests {
     }
 
     #[test]
+    fn br6_the_catalog_names_a_rel_tables_endpoints() {
+        // A rel table's name is a hash of its (edge, from, to) triple, so the
+        // triple cannot be recovered from the name - and a purge has to find
+        // the rel tables referencing a node table it is about to drop. This
+        // pins the two catalog calls it relies on: `show_tables` to enumerate
+        // and classify, `show_connection` to resolve a rel table's endpoints.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("graph");
+        let db = Database::new(path.to_str().unwrap(), SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+        conn.query("CREATE NODE TABLE A(id STRING, PRIMARY KEY(id))").unwrap();
+        conn.query("CREATE NODE TABLE B(id STRING, PRIMARY KEY(id))").unwrap();
+        conn.query("CREATE REL TABLE R(FROM A TO B)").unwrap();
+
+        let listed: Vec<(String, String)> = conn
+            .query("CALL show_tables() RETURN name, type")
+            .unwrap()
+            .map(|row| match (&row[0], &row[1]) {
+                (Value::String(n), Value::String(k)) => (n.clone(), k.clone()),
+                _ => panic!("show_tables did not return two strings"),
+            })
+            .collect();
+        assert!(listed.contains(&("A".to_string(), "NODE".to_string())), "{listed:?}");
+        assert!(listed.contains(&("R".to_string(), "REL".to_string())), "{listed:?}");
+
+        let endpoints: Vec<(String, String)> = conn
+            // `RETURN *` and read positionally: the columns are named with
+            // spaces ("source table name"), which double quotes would make a
+            // string literal rather than an identifier.
+            .query("CALL show_connection('R') RETURN *")
+            .unwrap()
+            .map(|row| match (&row[0], &row[1]) {
+                (Value::String(s), Value::String(d)) => (s.clone(), d.clone()),
+                _ => panic!("show_connection did not return two strings"),
+            })
+            .collect();
+        assert_eq!(endpoints, vec![("A".to_string(), "B".to_string())]);
+    }
+
+    #[test]
     fn br6_engine_permits_dropping_a_bridges_own_tables() {
         // BR-6: revoking a bridge must remove its data, and its data is already
         // partitioned - entity tables are per type, rel tables per (edge, from,
