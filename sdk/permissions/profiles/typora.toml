@@ -1,0 +1,9 @@
+# Starting permission profile for a markdown editor. Edits documents; no network
+# and no Knowledge Graph by default (any sync or image upload needs an explicit
+# grant).
+[info]
+app_id = "typora"
+tier = "third-party"
+
+[filesystem]
+documents = true

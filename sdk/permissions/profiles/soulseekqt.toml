@@ -1,0 +1,12 @@
+# Starting permission profile for a peer-to-peer file sharing client. It needs
+# network to reach the network's peers and Downloads for what it fetches; the
+# shared-folder selection is an explicit grant, not a default. No Knowledge Graph.
+[info]
+app_id = "soulseekqt"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

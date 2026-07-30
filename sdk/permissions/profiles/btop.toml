@@ -1,0 +1,6 @@
+# Starting permission profile for a terminal system monitor. It reads process and
+# hardware state from the kernel (/proc, /sys), which is not a permission-profile
+# field, so it needs no file, network or Knowledge Graph grant here.
+[info]
+app_id = "btop"
+tier = "third-party"
