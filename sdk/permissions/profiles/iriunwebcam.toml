@@ -1,0 +1,9 @@
+# Starting permission profile for a phone-as-webcam bridge. It reaches the paired
+# handset over the local network, and the virtual camera device it feeds is a
+# runtime grant rather than a profile field. No file access, no Knowledge Graph.
+[info]
+app_id = "iriunwebcam"
+tier = "third-party"
+
+[network]
+allow_all = true
