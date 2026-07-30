@@ -168,7 +168,21 @@ impl AccountsDaemon {
         let service_key = service.as_key();
         let accounts = self.current_accounts();
         let granted_scope = match AccessGate::new(&accounts).access(&caller, &account_id, service) {
-            Access::Granted { scope } => scope.unwrap_or_default(),
+            // A grant that names no scope is refused rather than treated as an
+            // empty one. The daemon has no provider-default table - the phrase in
+            // the config doc describes something that was never built - so an
+            // empty scope here would either hand out a token good for nothing or,
+            // worse, make the caller's ordinary request look like an over-reach
+            // and be refused as amplification. Both blame the app for a grant the
+            // user has not finished writing. The daemon does not guess a scope
+            // (the same rule `Service::parse` follows for an unknown service), so
+            // it says which is missing instead.
+            Access::Granted { scope: None } => {
+                return Err(zbus::fdo::Error::AccessDenied(
+                    "the grant for this app and service names no scope".into(),
+                ))
+            }
+            Access::Granted { scope: Some(scope) } => scope,
             Access::Refused => {
                 return Err(zbus::fdo::Error::AccessDenied(
                     "no grant for this app on this account and service".into(),

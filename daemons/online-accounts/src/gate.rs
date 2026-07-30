@@ -15,8 +15,12 @@ use crate::config::{AccountConfig, Service};
 /// The decision for one `GetAccessToken(account, service)` by a resolved caller.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Access {
-    /// The app holds the grant; hand out a token at this least-privilege scope
-    /// (`None` = the provider default for the service).
+    /// The app holds the grant; hand out a token at this least-privilege scope.
+    ///
+    /// `None` means the grant names no scope, which the caller refuses - there is
+    /// no provider-default table to fall back to. The gate reports it rather than
+    /// deciding, because "you hold no grant" and "your grant is unfinished" are
+    /// different answers and the user can only fix the second one if told.
     Granted {
         /// The OAuth scope the grant maps to.
         scope: Option<String>,
@@ -93,6 +97,23 @@ mod tests {
             services,
             scope: scope.map(str::to_string),
         }
+    }
+
+    #[test]
+    fn a_grant_naming_no_scope_is_reported_as_granted_without_one() {
+        // The gate's job is to say which of the three states holds, not to fill
+        // one in. `Granted { scope: None }` is "the grant exists but is
+        // unfinished", and the caller refuses it - distinctly from `Refused`,
+        // which means no grant at all. Collapsing the two would tell a user with
+        // a half-written config that their app was never granted access, and they
+        // would go looking in the wrong place.
+        let accounts = vec![account("a", vec![grant("org.arlen.files", vec![Service::Files], None)])];
+        let gate = AccessGate::new(&accounts);
+        assert_eq!(
+            gate.access("org.arlen.files", "a", Service::Files),
+            Access::Granted { scope: None }
+        );
+        assert_eq!(gate.access("other.app", "a", Service::Files), Access::Refused);
     }
 
     #[test]
