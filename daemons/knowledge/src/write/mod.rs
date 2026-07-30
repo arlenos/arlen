@@ -10,10 +10,12 @@ mod create;
 mod delete;
 mod entity;
 mod namespace_grant;
+mod purge;
 mod update;
 mod validation;
 
 pub use create::*;
+pub use purge::*;
 pub use delete::*;
 pub use entity::*;
 pub use namespace_grant::*;
