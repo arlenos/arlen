@@ -1,0 +1,9 @@
+# Starting permission profile for an audio programming environment. It edits and
+# runs sound synthesis code kept with the user's documents; audio device access is
+# a runtime grant. No network and no Knowledge Graph by default.
+[info]
+app_id = "supercollider"
+tier = "third-party"
+
+[filesystem]
+documents = true

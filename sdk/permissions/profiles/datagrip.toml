@@ -2,7 +2,7 @@
 # Documents; no network and no Knowledge Graph by default (projects elsewhere,
 # plugins, SDKs or store fetches need an explicit grant). Observe-mode refines it.
 [info]
-app_id = "rstudio"
+app_id = "datagrip"
 tier = "third-party"
 
 [filesystem]
