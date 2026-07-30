@@ -1,0 +1,9 @@
+# Starting permission profile for an interactive shell. It is the thing the user
+# runs their tools with, over their own files, so it gets Home; no network of its
+# own. No Knowledge Graph.
+[info]
+app_id = "nushell"
+tier = "third-party"
+
+[filesystem]
+home = true
