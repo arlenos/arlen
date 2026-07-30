@@ -52,11 +52,10 @@ impl std::error::Error for RawEditError {}
 
 /// Turn the text in the raw editor into the value for one key.
 ///
-/// Two shapes are accepted because a raw value is not always a table. Text that
-/// parses as a TOML document becomes that table; text that does not is tried
-/// once more as a bare value, which is what `[1, 2, 3]` or `"a string"` needs.
-/// Trying the document form first matters: `[1, 2, 3]` is also a (nonsense)
-/// document header, and the value reading is the one the user meant.
+/// Two shapes are accepted because a raw value is not always a table. The bare
+/// value is tried FIRST and the document form second, which is the order that
+/// matters: `[1, 2, 3]` parses both as an array and as a (nonsense) document
+/// header, and someone typing it into a value box meant the array.
 pub fn parse_raw_edit(text: &str) -> Result<toml::Value, RawEditError> {
     if text.len() > MAX_RAW_BYTES {
         return Err(RawEditError::TooLarge { bytes: text.len() });

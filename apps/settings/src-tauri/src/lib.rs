@@ -126,6 +126,7 @@ pub fn run() {
             commands::notifications::notifications_dnd_expiry_in,
             commands::notifications::notifications_dnd_expiry_until_morning,
             commands::modules::modules_list,
+            commands::app_settings::app_settings_write_raw,
             commands::extensions::extensions_list,
             commands::extensions::extensions_revoke,
             commands::modules::modules_set_enabled,
