@@ -146,7 +146,7 @@ pub fn upgrade_gate(recorded: Option<&Capabilities>, new: &PermissionInfo) -> Up
 /// The package is verified exactly as an install verifies it, in the same order,
 /// before its manifest is read. A preview that reported the claims of an
 /// unverified package would be reporting whatever the file felt like saying.
-pub fn preview_upgrade(path: &str) -> Result<(String, UpgradeGate), crate::install::InstallError> {
+pub fn preview_upgrade(path: &str) -> Result<UpgradePreview, crate::install::InstallError> {
     let temp_dir = crate::install::extract_package(path)?;
     crate::install::validate_package_structure(&temp_dir)?;
     crate::signature::verify_signature(&temp_dir)
@@ -163,12 +163,70 @@ pub fn preview_upgrade(path: &str) -> Result<(String, UpgradeGate), crate::insta
         .and_then(|l| l.get(&app_id).map(|e| e.granted.clone()));
 
     let gate = upgrade_gate(recorded.as_ref(), &manifest.permissions);
-    Ok((app_id, gate))
+    Ok(UpgradePreview {
+        app_id,
+        // Taken from the manifest that was just signature-verified, so the name
+        // the prompt shows is the one the package is signed for.
+        display_name: display_name(&manifest.package),
+        gate,
+    })
+}
+
+/// What a preview found: who is being upgraded, under what name, and how the
+/// update should meet the user.
+#[derive(Debug, Clone)]
+pub struct UpgradePreview {
+    /// The reverse-DNS id the lock and the profile are keyed on.
+    pub app_id: String,
+    /// The name to put in front of a person. An app id is what the system calls
+    /// the app, not what the user does, and a consent prompt that names
+    /// `org.example.thing` is asking someone to approve something they have to
+    /// decode first.
+    pub display_name: String,
+    /// Silent, interruptive or unknown.
+    pub gate: UpgradeGate,
+}
+
+/// The name to show, falling back to the id when a package declares a blank one.
+///
+/// Blank rather than absent because the field is required by the manifest schema
+/// but nothing stops it being empty, and an empty prompt title is worse than a
+/// technical one.
+fn display_name(package: &crate::install::PackageInfo) -> String {
+    match package.name.trim() {
+        "" => package.id.clone(),
+        name => name.to_string(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn package(id: &str, name: &str) -> crate::install::PackageInfo {
+        crate::install::PackageInfo {
+            id: id.to_string(),
+            name: name.to_string(),
+            version: "1.0.0".to_string(),
+            description: String::new(),
+            author: String::new(),
+        }
+    }
+
+    /// The consent prompt asks a person to approve something. An app id is what
+    /// the system calls the app, not what they call it, and the signal used to
+    /// carry the id in both fields - so the prompt named `org.example.thing`.
+    #[test]
+    fn the_prompt_is_given_the_name_a_person_would_recognise() {
+        assert_eq!(display_name(&package("org.example.thing", "Thing")), "Thing");
+    }
+
+    /// The field is required by the schema but nothing stops it being blank, and
+    /// a prompt with no title at all is worse than a technical one.
+    #[test]
+    fn a_blank_name_falls_back_to_the_id() {
+        assert_eq!(display_name(&package("org.example.thing", "   ")), "org.example.thing");
+    }
 
     /// The decision between two manifests, which is what the old wrapper did.
     fn consent_between(old: &PermissionInfo, new: &PermissionInfo) -> UpgradeConsent {

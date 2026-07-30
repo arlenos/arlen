@@ -101,15 +101,15 @@ impl InstallDaemon {
     /// consent is recorded by asking.
     async fn preview_upgrade(&self, path: String) -> (String, String, Vec<String>) {
         match crate::consent::preview_upgrade(&path) {
-            Ok((app_id, crate::consent::UpgradeGate::Silent)) => {
-                (app_id, "silent".into(), Vec::new())
-            }
-            Ok((app_id, crate::consent::UpgradeGate::Interruptive { widened })) => {
-                (app_id, "interruptive".into(), widened)
-            }
-            Ok((app_id, crate::consent::UpgradeGate::Unknown { requested })) => {
-                (app_id, "unknown".into(), requested)
-            }
+            Ok(p) => match p.gate {
+                crate::consent::UpgradeGate::Silent => (p.app_id, "silent".into(), Vec::new()),
+                crate::consent::UpgradeGate::Interruptive { widened } => {
+                    (p.app_id, "interruptive".into(), widened)
+                }
+                crate::consent::UpgradeGate::Unknown { requested } => {
+                    (p.app_id, "unknown".into(), requested)
+                }
+            },
             Err(e) => (String::new(), "error".into(), vec![e.to_string()]),
         }
     }
