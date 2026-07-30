@@ -306,3 +306,110 @@ notifications = true
         assert!(apps(&roots_in(dir.path())).is_empty());
     }
 }
+
+/// What a running modulesd reports about one module.
+///
+/// Deliberately not the proto type: this crate stays free of daemon
+/// dependencies, and the caller that already speaks the socket can map into
+/// this in two lines. It also keeps the overlay testable without a daemon.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveModule {
+    /// The module id, matching the manifest.
+    pub id: String,
+    /// Whether the runtime currently admits it.
+    pub enabled: bool,
+    /// Whether the crash ladder has given up on it.
+    pub failed: bool,
+}
+
+/// Replace the disk-derived health of modules the runtime knows about.
+///
+/// The runtime is authoritative for the modules it has loaded - it is the thing
+/// actually running them - so where it answers, its answer wins over anything
+/// inferred from files. Crashed beats switched-off, because a module that
+/// crashed while enabled is what the user came to find out about.
+///
+/// A module the runtime does NOT list keeps its disk-derived health. That is
+/// not the same as absent: modulesd not knowing about an installed module is
+/// itself informative (it was added after the last discovery), and overwriting
+/// it with a guessed `Active` would replace a real signal with a wrong one.
+///
+/// The failure text is deliberately generic, because nothing in the runtime
+/// records WHY: `CrashState` counts crashes and flips a bool, and the proto
+/// carries only that bool. So this says what is actually known - it crashed
+/// enough times to be given up on, and the way back is a manual retry.
+pub fn overlay_modules(rows: &mut [Extension], live: &[LiveModule]) {
+    for row in rows.iter_mut().filter(|r| r.kind == ExtensionKind::Module) {
+        let Some(state) = live.iter().find(|l| l.id == row.id) else {
+            continue;
+        };
+        row.health = if state.failed {
+            Health::Failed("crashed repeatedly; needs a manual retry".to_string())
+        } else if !state.enabled {
+            Health::Disabled
+        } else {
+            Health::Active
+        };
+    }
+}
+
+#[cfg(test)]
+mod overlay_tests {
+    use super::*;
+
+    fn module(id: &str, health: Health) -> Extension {
+        Extension {
+            id: id.to_string(),
+            name: id.to_string(),
+            kind: ExtensionKind::Module,
+            capabilities: Vec::new(),
+            provenance: None,
+            health,
+        }
+    }
+
+    fn live(id: &str, enabled: bool, failed: bool) -> LiveModule {
+        LiveModule {
+            id: id.to_string(),
+            enabled,
+            failed,
+        }
+    }
+
+    #[test]
+    fn the_runtime_answer_replaces_the_disk_guess() {
+        let mut rows = vec![module("a", Health::Unknown), module("b", Health::Unknown)];
+        overlay_modules(&mut rows, &[live("a", true, false), live("b", false, false)]);
+        assert_eq!(rows[0].health, Health::Active);
+        assert_eq!(rows[1].health, Health::Disabled);
+    }
+
+    /// A module that crashed while enabled is exactly what the user came to
+    /// find out about, so it must not read as merely switched off.
+    #[test]
+    fn crashed_beats_switched_off() {
+        let mut rows = vec![module("a", Health::Unknown)];
+        overlay_modules(&mut rows, &[live("a", false, true)]);
+        assert!(matches!(rows[0].health, Health::Failed(_)));
+    }
+
+    /// modulesd not knowing about an installed module is itself a signal;
+    /// replacing it with a guess would destroy it.
+    #[test]
+    fn a_module_the_runtime_does_not_know_keeps_what_disk_said() {
+        let mut rows = vec![module("a", Health::Failed("missing entry file".into()))];
+        overlay_modules(&mut rows, &[live("other", true, false)]);
+        assert_eq!(rows[0].health, Health::Failed("missing entry file".into()));
+    }
+
+    /// Apps and bridges are not modulesd's to answer for.
+    #[test]
+    fn only_module_rows_are_touched() {
+        let mut rows = vec![Extension {
+            kind: ExtensionKind::App,
+            ..module("a", Health::Unknown)
+        }];
+        overlay_modules(&mut rows, &[live("a", true, false)]);
+        assert_eq!(rows[0].health, Health::Unknown);
+    }
+}
