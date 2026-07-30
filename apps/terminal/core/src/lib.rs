@@ -25,6 +25,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod blocks;
+pub mod read_frame;
 pub mod read_scope;
 pub mod read_serve;
 pub mod vt;
