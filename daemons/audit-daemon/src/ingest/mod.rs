@@ -566,6 +566,44 @@ mod tests {
             0,
             "a caller outside the producer allowlist must leave the ledger empty"
         );
+
+        // The same peer, now named by the debug-only extra-admit variable, must
+        // get through - otherwise "refused" above would prove nothing, since a
+        // handler that refuses everything satisfies it just as well.
+        //
+        // Both directions live in ONE test on purpose: the variable is process
+        // global, so a separate positive test could set it while this negative
+        // half is running and make the suite flaky in a way that looks like a
+        // real refusal failure.
+        let own = arlen_permissions::identity::path_to_app_id(
+            &std::fs::read_link("/proc/self/exe").expect("read own exe link"),
+        )
+        .expect("the test binary resolves to a dev id");
+        std::env::set_var("ARLEN_AUDIT_EXTRA_ADMIT", &own);
+
+        let (mut client, server_end) = UnixStream::pair().unwrap();
+        let server = Arc::new(IngestServer::new(
+            Arc::clone(&ledger),
+            Arc::new(UnixEventEmitter::new("/nonexistent/producer.sock")),
+            Arc::new(AtomicBool::new(false)),
+        ));
+        let serving = tokio::spawn(async move {
+            let _ = server.handle(server_end, uid).await;
+        });
+        let body = serde_json::to_vec(&req).unwrap();
+        write_frame(&mut client, &body).await.expect("an admitted caller is served");
+        let reply = read_frame(&mut client).await.expect("and answered");
+        let resp: IngestResponse = serde_json::from_slice(&reply).unwrap();
+        assert_eq!(resp, IngestResponse::Appended { index: 0 });
+        drop(client);
+        let _ = serving.await;
+
+        std::env::remove_var("ARLEN_AUDIT_EXTRA_ADMIT");
+        assert_eq!(
+            ledger.lock().await.verify().await.unwrap(),
+            1,
+            "the admitted caller's entry is really in the chain"
+        );
     }
 
     /// A server whose tamper flag is set must refuse every append:
