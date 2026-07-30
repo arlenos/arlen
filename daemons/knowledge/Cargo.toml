@@ -38,6 +38,23 @@ uuid = { version = "1", features = ["v5", "v7", "serde"] }
 # lineage has not stabilized its on-disk format across versions, so a bump is a
 # deliberate, tested step (verify the write -> upgrade -> reopen path first), never
 # an incidental `cargo update`.
+#
+# What that check concretely is, from reading the engine's own version table:
+# 0.15.2 writes storage version 40, unchanged across 0.12.0 to 0.16.0. The format
+# then moved three times - 41 (table storage FORMAT in catalog entries), 42
+# (per-FROM/TO rel multiplicity), 43 (node-table sorted-by metadata) - so 0.17.0
+# and later write something our build cannot read.
+#
+# Upgrading FORWARD is supported and needs no export/import: a newer engine reads
+# an older file when `StorageVersionInfo::canReadStorageVersion` still lists that
+# version, and the checkpointer rewrites the header to the new one in place. In
+# 0.19.0 that list is {40, 41, 42, 43}, so a 0.15.2 database opens and upgrades.
+#
+# Two things make it a one-way door. The upgrade is not reversible: once a file is
+# at 43 the pinned build, which knows only 40, refuses it, so a rollback needs a
+# backup taken BEFORE the bump. And that acceptance list is finite and hand-kept,
+# so a later release may drop 40 and strand our data. Before raising this pin,
+# read `canReadStorageVersion` in the target version and confirm 40 is still in it.
 lbug = "=0.15.2"
 hmac = "0.12"
 sha2 = "0.10"
