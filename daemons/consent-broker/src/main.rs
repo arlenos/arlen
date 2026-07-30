@@ -159,10 +159,20 @@ fn current_uid() -> u32 {
     unsafe { libc::getuid() }
 }
 
-/// Bind a Unix socket at `path` with 0600 perms, replacing any stale file.
+/// Bind a Unix socket at `path` with 0600 perms, replacing a stale socket left by
+/// a prior run.
+///
+/// Only an existing *socket* is removed. The previous form unlinked anything the
+/// path led to, and it tested `path.exists()`, which follows symlinks - so both a
+/// regular file and a symlink pointing at a live file triggered the removal. A
+/// socket path should not be a way to delete a file the daemon did not create.
+/// Matches the settings-broker and power-daemon sockets, which do the same job.
 fn bind_socket(path: &PathBuf) -> std::io::Result<UnixListener> {
-    if path.exists() {
-        let _ = std::fs::remove_file(path);
+    if let Ok(meta) = std::fs::symlink_metadata(path) {
+        use std::os::unix::fs::FileTypeExt;
+        if meta.file_type().is_socket() {
+            let _ = std::fs::remove_file(path);
+        }
     }
     let listener = UnixListener::bind(path)?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
@@ -524,6 +534,36 @@ async fn main() -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A restart has to clear the socket a previous run left, and the socket path
+    /// must not double as a way to delete a file the daemon did not create. The
+    /// old form tested `path.exists()`, which follows symlinks.
+    #[tokio::test]
+    async fn bind_clears_a_stale_socket_and_refuses_to_clobber_anything_else() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let path = dir.path().join("consent.sock");
+        drop(bind_socket(&path).expect("first bind"));
+        drop(bind_socket(&path).expect("a stale socket must not block a restart"));
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600,
+            "consent sockets are owner-only"
+        );
+
+        let file = dir.path().join("real-file");
+        std::fs::write(&file, b"not a socket").unwrap();
+        assert!(bind_socket(&file).is_err(), "binding over a regular file must fail");
+        assert_eq!(std::fs::read(&file).unwrap(), b"not a socket", "and leave it alone");
+
+        let target = dir.path().join("target-file");
+        std::fs::write(&target, b"target").unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(bind_socket(&link).is_err(), "binding over a symlink must fail");
+        assert!(link.symlink_metadata().is_ok(), "the symlink survives");
+        assert_eq!(std::fs::read(&target).unwrap(), b"target", "and its target");
+    }
 
     #[test]
     fn settings_may_manage_grants_but_not_answer_prompts() {
