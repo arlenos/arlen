@@ -1,4 +1,5 @@
 pub mod bridge;
+pub mod consent;
 pub mod build;
 pub mod build_config;
 pub mod challenge;
