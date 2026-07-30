@@ -236,6 +236,25 @@ processes:
     availability:
       restart: "on_failure"
 
+  # Settings broker: validates every per-app settings write against the app's
+  # declared schema before it touches the file. Without it running, the per-app
+  # settings page in Settings can render (reads go straight to the config file)
+  # but every write fails with an unreachable broker - which is exactly the
+  # shape of the socket-env bug this stack had before, so it is wired here
+  # rather than left to a systemd-only path.
+  settings-broker:
+    command: "cargo run --manifest-path daemons/settings-broker/Cargo.toml"
+    depends_on:
+      runtime-dir: { condition: process_completed_successfully }
+    readiness_probe:
+      exec:
+        command: "test -S ${XDG_RUNTIME_DIR}/arlen/settings-broker.sock"
+      initial_delay_seconds: 2
+      period_seconds: 2
+      failure_threshold: 30
+    availability:
+      restart: "on_failure"
+
   # System-state daemon. power-daemon reads UPower on the system bus, publishes
   # power.state on the event bus (the shell consumes it), and serves a query
   # socket. Resilient to a late/absent UPower (retries per poll, never crashes),
