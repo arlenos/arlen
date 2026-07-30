@@ -217,7 +217,9 @@ impl InstallDaemon {
     /// Get the current status of a job.
     ///
     /// Returns (progress: u8, state: String, status_message: String).
-    /// State is one of: "pending", "running", "completed", "failed", "cancelled".
+    /// State is one of: "pending", "running", "completed", "failed". ("cancelled"
+    /// is defined in `JobState` but unreachable - there is no cancel method on
+    /// this interface, so no job ever enters it.)
     /// Returns ("0", "unknown", "") if the job_id is not found.
     async fn get_job_status(&self, job_id: String) -> (u8, String, String) {
         self.queue

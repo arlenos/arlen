@@ -72,6 +72,12 @@ pub fn uninstall_flatpak(app_id: &str) -> Result<(), FlatpakError> {
 }
 
 /// Get metadata for an installed Flatpak app.
+///
+/// **No caller today.** It works - it shells out to `flatpak info --user` and
+/// parses the name and version - but nothing in the daemon asks for it, which is
+/// why `FlatpakInfo` reads as never constructed. Kept as the obvious building
+/// block for surfacing installed Flatpak metadata; delete it if that surface is
+/// not coming.
 pub fn get_flatpak_info(app_id: &str) -> Result<FlatpakInfo, FlatpakError> {
     let output = Command::new("flatpak")
         .args(["info", "--user", app_id])

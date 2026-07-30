@@ -40,8 +40,6 @@ pub enum InstallError {
     TrashFailed(String),
     #[error("signature verification failed: {0}")]
     SignatureVerificationFailed(String),
-    #[error("schema compilation failed: {0}")]
-    SchemaCompileFailed(String),
     #[error("IO: {0}")]
     Io(#[from] std::io::Error),
 }
