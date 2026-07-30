@@ -878,3 +878,117 @@ mod image_staging {
         );
     }
 }
+
+#[cfg(test)]
+mod proto_agreement {
+    use super::repo_path;
+    use std::collections::BTreeMap;
+    use std::path::{Path, PathBuf};
+
+    /// Every copy of the event wire contract in the tree.
+    fn proto_copies() -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        for root in ["daemons", "sdk", "contracts", "apps", "dev"] {
+            collect(&repo_path(root), &mut out);
+        }
+        out
+    }
+
+    fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                if p.file_name().is_some_and(|n| {
+                    n == "target" || n == "node_modules" || n.to_string_lossy().starts_with("mkosi")
+                }) {
+                    continue;
+                }
+                collect(&p, out);
+            } else if p.file_name().is_some_and(|n| n == "event.proto") {
+                out.push(p);
+            }
+        }
+    }
+
+    /// `(message, field) -> number`, parsed line-wise. The files are plain
+    /// proto3 with one field per line, so a full parser would be more machinery
+    /// than the check is worth; anything this misses simply is not compared.
+    fn fields(path: &Path) -> BTreeMap<(String, String), u32> {
+        let mut out = BTreeMap::new();
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return out;
+        };
+        let mut message = String::new();
+        for line in text.lines() {
+            let line = line.split("//").next().unwrap_or("").trim();
+            if let Some(rest) = line.strip_prefix("message ") {
+                message = rest.trim_end_matches(" {").trim().to_string();
+                continue;
+            }
+            if line == "}" {
+                message.clear();
+                continue;
+            }
+            if message.is_empty() {
+                continue;
+            }
+            // `<type> <name> = <number>;`
+            if let Some((decl, num)) = line.trim_end_matches(';').split_once('=') {
+                let name = decl.split_whitespace().last().unwrap_or("");
+                if let Ok(n) = num.trim().parse::<u32>() {
+                    if !name.is_empty() {
+                        out.insert((message.clone(), name.to_string()), n);
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// The event schema is COPIED into each daemon that speaks it rather than
+    /// shared as one crate. Copies may legitimately differ by ABSENCE - a daemon
+    /// that does not care about a field simply does not carry it, and proto3
+    /// decodes an absent field to its default. What they may never do is
+    /// disagree on a field NUMBER, because the number is the wire identity: two
+    /// daemons would then read the same bytes as different fields, silently.
+    ///
+    /// Nothing checked this. I diffed the copies by hand once and found them
+    /// consistent, which is a fact about that afternoon rather than a property
+    /// of the tree.
+    #[test]
+    fn every_copy_of_the_event_schema_agrees_on_field_numbers() {
+        let copies = proto_copies();
+        assert!(copies.len() > 1, "expected several copies, found {}", copies.len());
+
+        let mut seen: BTreeMap<(String, String), (u32, PathBuf)> = BTreeMap::new();
+        let mut conflicts = Vec::new();
+        for path in &copies {
+            for (key, num) in fields(path) {
+                match seen.get(&key) {
+                    Some((first, first_path)) if *first != num => conflicts.push(format!(
+                        "{}.{} is {} in {} but {} in {}",
+                        key.0,
+                        key.1,
+                        first,
+                        first_path.display(),
+                        num,
+                        path.display()
+                    )),
+                    Some(_) => {}
+                    None => {
+                        seen.insert(key, (num, path.clone()));
+                    }
+                }
+            }
+        }
+        assert!(
+            conflicts.is_empty(),
+            "event schema copies disagree on field numbers ({}):\n  {}",
+            conflicts.len(),
+            conflicts.join("\n  ")
+        );
+    }
+}
