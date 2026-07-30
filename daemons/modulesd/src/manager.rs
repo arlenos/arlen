@@ -1672,10 +1672,46 @@ impl Manager {
         module_id: &str,
         enabled: bool,
     ) -> Response {
+        // SX-1: enabling is where a module gains its declared capabilities, so
+        // it is where consent belongs. Read what it would gain FIRST, without
+        // holding the lock across the broker round trip - the dialog blocks
+        // until the user decides, and a held write lock would stall every other
+        // module operation behind one prompt.
+        let requested = {
+            let guard = self.modules.read().await;
+            let Some(entry) = guard.get(module_id) else {
+                return Response::Error {
+                    id: id.to_string(),
+                    code: ErrorCode::NotFound,
+                    message: format!("module {module_id} not found"),
+                };
+            };
+            entry.record.manifest.capabilities.clone()
+        };
+        // Only granting authority needs a decision. Disabling gives authority
+        // up, which never needs asking and must never be blocked by a broker
+        // that is down - refusing to disable would strand a module the user is
+        // actively trying to switch off.
+        if enabled
+            && !crate::consent::request_enable_consent(
+                &crate::consent::intake_socket_path(),
+                module_id,
+                &requested,
+            )
+            .await
+        {
+            return Response::Error {
+                id: id.to_string(),
+                code: ErrorCode::PermissionDenied,
+                message: format!("enabling {module_id} was not consented to"),
+            };
+        }
+
         let is_mcp_module;
         {
             let mut guard = self.modules.write().await;
             let Some(entry) = guard.get_mut(module_id) else {
+                // It went away while the prompt was open.
                 return Response::Error {
                     id: id.to_string(),
                     code: ErrorCode::NotFound,
@@ -1900,6 +1936,82 @@ mod tests {
         if let Response::ModuleList { modules, .. } = resp {
             assert!(!modules[0].enabled);
         }
+    }
+
+    /// SX-1: a module gains its declared capabilities by being enabled, so an
+    /// enable that could not be consented to must not take effect. Without a
+    /// broker the request fails closed, which is what this asserts - the module
+    /// stays disabled rather than silently gaining graph writes.
+    #[tokio::test]
+    async fn enabling_a_capability_bearing_module_without_consent_is_refused() {
+        let (tx, _rx) = broadcast::channel(16);
+        let m = Manager::new(tx).unwrap();
+        let mut rec = record("com.example.grabby", Tier::Iframe);
+        rec.manifest.capabilities.graph = Some(arlen_modules::GraphCapability {
+            read: Vec::new(),
+            write: vec!["x.Y".into()],
+        });
+        m.insert_for_test(rec).await;
+        // Discovery inserts modules enabled, so switch it off first - this
+        // asserts the ENABLE transition is gated, not the initial state.
+        let off = m
+            .handle_request(Request::SetEnabled {
+                id: "0".into(),
+                module_id: "com.example.grabby".into(),
+                enabled: false,
+            })
+            .await;
+        assert!(matches!(off, Response::Acked { .. }), "unexpected: {off:?}");
+        // No broker is running under the test's runtime dir, so the gate fails
+        // closed.
+        let resp = m
+            .handle_request(Request::SetEnabled {
+                id: "1".into(),
+                module_id: "com.example.grabby".into(),
+                enabled: true,
+            })
+            .await;
+        assert!(
+            matches!(
+                resp,
+                Response::Error {
+                    code: ErrorCode::PermissionDenied,
+                    ..
+                }
+            ),
+            "unexpected: {resp:?}"
+        );
+        let listed = m
+            .handle_request(Request::ListModules { id: "2".into() })
+            .await;
+        if let Response::ModuleList { modules, .. } = listed {
+            assert!(!modules[0].enabled, "the module was enabled without consent");
+        } else {
+            panic!("unexpected: {listed:?}");
+        }
+    }
+
+    /// Giving authority UP needs no decision, and must not be blocked by a
+    /// broker that is down - refusing would strand a module the user is
+    /// actively switching off.
+    #[tokio::test]
+    async fn disabling_never_asks_for_consent() {
+        let (tx, _rx) = broadcast::channel(16);
+        let m = Manager::new(tx).unwrap();
+        let mut rec = record("com.example.grabby", Tier::Iframe);
+        rec.manifest.capabilities.graph = Some(arlen_modules::GraphCapability {
+            read: Vec::new(),
+            write: vec!["x.Y".into()],
+        });
+        m.insert_for_test(rec).await;
+        let resp = m
+            .handle_request(Request::SetEnabled {
+                id: "1".into(),
+                module_id: "com.example.grabby".into(),
+                enabled: false,
+            })
+            .await;
+        assert!(matches!(resp, Response::Acked { .. }), "unexpected: {resp:?}");
     }
 
     #[tokio::test]
