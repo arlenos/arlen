@@ -425,7 +425,22 @@ mod tests {
         for (reply, tag) in cases {
             let json = serde_json::to_string(&reply).unwrap();
             assert!(json.contains(&format!("\"type\":\"{tag}\"")), "{tag}: tag changed, got {json}");
-            let _: HostReply = serde_json::from_str(&json).unwrap();
+            // The tag alone is not the contract - the payload beside it is. A
+            // discarded decode would keep passing while a reply's body went
+            // missing, so the decode is re-encoded and compared.
+            let back: HostReply = serde_json::from_str(&json).unwrap();
+            assert_eq!(serde_json::to_string(&back).unwrap(), json, "{tag}: body changed");
+        }
+        // And the fields the replies carry must be on the wire, which comparing a
+        // decode against its own re-encode cannot show (a field dropped on both
+        // sides is dropped consistently).
+        let body = serde_json::to_string(&HostReply::NetworkBody {
+            status: 200,
+            body_b64: "AA==".into(),
+        })
+        .unwrap();
+        for field in ["\"status\"", "\"body_b64\""] {
+            assert!(body.contains(field), "{field} must reach the wire, got {body}");
         }
     }
 
