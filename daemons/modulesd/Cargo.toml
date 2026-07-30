@@ -52,6 +52,8 @@ base64 = "0.22"
 arlen-modules = { path = "../../sdk/modules" }
 arlen-permissions = { path = "../../sdk/permissions" }
 os-sdk = { path = "../../sdk/os-sdk" }
+# SX-1: the consent gate a module passes before it goes active.
+arlen-consent-contract = { path = "../../contracts/consent-contract" }
 module-sdk = { path = "../../sdk/module-sdk" }
 modulesd-proto = { path = "../../contracts/modulesd-proto" }
 

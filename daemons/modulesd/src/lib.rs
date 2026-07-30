@@ -21,6 +21,7 @@
 /// "Module Runtime" paragraph and Table 08 (crash recovery).
 /// Architecture reference: `docs/architecture/module-system.md`.
 
+pub mod consent;
 pub mod error;
 pub mod host;
 pub mod manager;
