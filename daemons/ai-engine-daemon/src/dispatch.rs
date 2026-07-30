@@ -54,6 +54,20 @@ pub trait ConsentMinter: Send + Sync {
     /// minting is unavailable (then the run cannot be authorized at the MCP
     /// boundary).
     fn mint_run(&self, command: &str, args: &[String]) -> Option<String>;
+
+    /// Mint a consent token binding exactly this terminal READ and its scope, or
+    /// `None` if minting is unavailable (then the terminal refuses the read).
+    ///
+    /// The scope is part of what is bound, not a hint: a token minted for three
+    /// of the assistant's own blocks must not authorize twenty including the
+    /// user's, because those are different sentences to have agreed to.
+    fn mint_read(
+        &self,
+        terminal_id: &str,
+        limit: u32,
+        include_user_blocks: bool,
+        include_running: bool,
+    ) -> Option<String>;
 }
 
 /// Extract `(command, args)` from a `run_command` tool input, matching the
@@ -61,6 +75,34 @@ pub trait ConsentMinter: Send + Sync {
 /// the server's verified digest agree: a non-empty string `command`, and `args`
 /// absent (empty) or an array of strings. Any deviation returns `None` (no token
 /// is minted; the MCP server, parsing the same input, also refuses).
+/// Extract `(terminal_id, limit, include_user_blocks, include_running)` from a
+/// `get_recent_output` tool input, matching how the MCP server and the terminal
+/// parse it so the minted digest and the verified digest agree.
+///
+/// The two widening flags default to FALSE when absent, exactly as the wire type
+/// does. That agreement is load-bearing: if this defaulted to true while the
+/// request defaulted to false, a token would be minted for a wider reading than
+/// the one performed, and the mismatch would show up as an unexplained refusal.
+fn extract_read_scope(tool_input: &serde_json::Value) -> Option<(String, u32, bool, bool)> {
+    let terminal_id = tool_input.get("terminal_id")?.as_str()?;
+    if terminal_id.is_empty() {
+        return None;
+    }
+    let limit = u32::try_from(tool_input.get("limit")?.as_u64()?).ok()?;
+    let flag = |name: &str| -> Option<bool> {
+        match tool_input.get(name) {
+            None => Some(false),
+            Some(v) => v.as_bool(),
+        }
+    };
+    Some((
+        terminal_id.to_string(),
+        limit,
+        flag("include_user_blocks")?,
+        flag("include_running")?,
+    ))
+}
+
 fn extract_run_argv(tool_input: &serde_json::Value) -> Option<(String, Vec<String>)> {
     let command = tool_input
         .get("command")
@@ -200,6 +242,14 @@ impl<G: Gate, E: Executor, R: Reporter> Dispatcher<G, E, R> {
             let minter = self.consent_minter.as_ref()?;
             let (command, args) = extract_run_argv(tool_input)?;
             return minter.mint_run(&command, &args);
+        }
+        if tool_name == arlen_run_consent_token::READ_OUTPUT_TOOL {
+            if !confirmed {
+                return None;
+            }
+            let minter = self.consent_minter.as_ref()?;
+            let scope = extract_read_scope(tool_input)?;
+            return minter.mint_read(&scope.0, scope.1, scope.2, scope.3);
         }
         self.mint_proof(tool_name, tool_input, session)
     }
@@ -730,6 +780,54 @@ mod tests {
             *self.seen.lock().unwrap() = Some((command.to_string(), args.to_vec()));
             Some(self.token.clone())
         }
+
+        fn mint_read(
+            &self,
+            terminal_id: &str,
+            limit: u32,
+            include_user_blocks: bool,
+            include_running: bool,
+        ) -> Option<String> {
+            // Recorded through the same channel as a run so a test can assert
+            // WHICH scope was minted, not merely that something was.
+            *self.seen.lock().unwrap() = Some((
+                terminal_id.to_string(),
+                vec![
+                    limit.to_string(),
+                    include_user_blocks.to_string(),
+                    include_running.to_string(),
+                ],
+            ));
+            Some(self.token.clone())
+        }
+    }
+
+    #[test]
+    fn a_read_scope_extracts_with_both_widening_flags_defaulting_closed() {
+        // The daemon and the wire type must agree on the default, or a token gets
+        // minted for a wider reading than the one performed and the mismatch
+        // surfaces as an unexplained refusal.
+        let input = serde_json::json!({"terminal_id": "t1", "limit": 3});
+        assert_eq!(
+            extract_read_scope(&input),
+            Some(("t1".to_string(), 3, false, false))
+        );
+        let widened = serde_json::json!({
+            "terminal_id": "t1", "limit": 3, "include_user_blocks": true
+        });
+        assert_eq!(
+            extract_read_scope(&widened),
+            Some(("t1".to_string(), 3, true, false))
+        );
+    }
+
+    #[test]
+    fn a_read_scope_with_no_terminal_or_a_blank_one_mints_nothing() {
+        assert_eq!(extract_read_scope(&serde_json::json!({"limit": 3})), None);
+        assert_eq!(
+            extract_read_scope(&serde_json::json!({"terminal_id": "", "limit": 3})),
+            None
+        );
     }
 
     /// Build a dispatcher whose gate returns Confirm (the real run_command class),
