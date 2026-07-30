@@ -43,6 +43,12 @@ fn example_module_path() -> std::path::PathBuf {
 }
 
 #[tokio::test]
+// Reports as ignored rather than as a pass. The example module is not in the
+// tree and building one needs `cargo component`, so the guard below used to
+// print "skipping" and return - which `cargo test` counts as ok. Three of this
+// crate's five integration tests read as coverage while exercising nothing, and
+// the project notes cited them as proof the Tier-1 chain works.
+#[ignore = "needs the example module built with cargo component; absent from the tree"]
 async fn currency_module_discoverable_after_copy_and_capabilities_enforced() {
     let example = example_module_path();
     if !example.exists() {
