@@ -71,8 +71,13 @@ pub struct Grant {
     #[serde(default)]
     pub services: Vec<Service>,
     /// The least-privilege OAuth scope this grant maps to (`drive.file` /
-    /// `drive.appfolder`), handed out with the token. `None` lets the daemon pick
-    /// the provider default for the service.
+    /// `drive.appfolder`), handed out with the token.
+    ///
+    /// Optional in the FORMAT so an incomplete grant parses and can be reported,
+    /// but a grant without one is refused at access time: there is no
+    /// provider-default table, and the daemon does not guess a scope any more than
+    /// it guesses one for an unknown service. Omitting it means the grant is
+    /// unfinished, not that it is permissive.
     #[serde(default)]
     pub scope: Option<String>,
 }
