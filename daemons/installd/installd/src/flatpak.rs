@@ -419,6 +419,23 @@ mod tests {
     }
 
     #[test]
+    fn an_admitted_flatpak_id_can_reach_a_profile_path() {
+        // These two gates sit fifteen lines apart in `install_flatpak_app`: this
+        // one admits the id, then `arlen_permissions::profile_path` builds the path
+        // the profile is written to. They disagreed, and the loader's half demanded
+        // lowercase, so installing any ordinary CamelCase Flatpak app installed it
+        // through the flatpak CLI and then failed the job at the profile step. The
+        // app was left on disk with no Arlen grant and the user saw a failure.
+        for id in ["org.gnome.Calculator", "org.kde.Kdenlive", "com.obsproject.Studio"] {
+            assert!(is_valid_app_id(id));
+            assert!(
+                arlen_permissions::profile_path(id).is_ok(),
+                "{id} is admitted for install but has no profile path",
+            );
+        }
+    }
+
+    #[test]
     fn test_list_installed_flatpaks_no_flatpak() {
         // If flatpak is not installed or has no user apps, returns empty.
         // This test validates the graceful fallback.
