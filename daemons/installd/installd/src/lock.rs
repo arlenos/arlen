@@ -312,6 +312,74 @@ mod tests {
         assert_eq!(e.recipe_revision, 2);
     }
 
+    /// The seam between what U-1 writes and what U-4 reads: a lock written by the
+    /// install path must come back through a real load as the baseline the
+    /// upgrade gate compares against. Each half is tested alone; this is the join,
+    /// where a serde round trip or a field rename would quietly break the gate
+    /// into always reporting "nothing recorded".
+    #[test]
+    fn a_written_lock_is_the_baseline_the_upgrade_gate_reads() {
+        use crate::consent::{upgrade_gate, UpgradeGate};
+        use crate::install::PermissionInfo;
+
+        let (_d, path) = temp();
+
+        // Install records what was granted.
+        let granted = crate::consent::capabilities_from(&PermissionInfo {
+            graph_read: Vec::new(),
+            graph_write: Vec::new(),
+            filesystem: vec!["~/Documents".into()],
+            network: Vec::new(),
+            notifications: false,
+            clipboard: false,
+            input: Vec::new(),
+        });
+        let mut lock = Lock::default();
+        lock.record(LockEntry::new(
+            "org.example.App",
+            "lunpkg",
+            "1.0.0",
+            1_700_000_000,
+            granted,
+        ));
+        lock.save(&path).unwrap();
+
+        // A later upgrade reads it back off disk, as the daemon would.
+        let reloaded = Lock::load(&path).unwrap();
+        let baseline = reloaded.get("org.example.App").map(|e| &e.granted);
+        assert!(baseline.is_some(), "the install must leave a baseline");
+
+        // Asking for the same thing is silent.
+        let unchanged = PermissionInfo {
+            graph_read: Vec::new(),
+            graph_write: Vec::new(),
+            filesystem: vec!["~/Documents".into()],
+            network: Vec::new(),
+            notifications: false,
+            clipboard: false,
+            input: Vec::new(),
+        };
+        assert_eq!(upgrade_gate(baseline, &unchanged), UpgradeGate::Silent);
+
+        // Asking for more interrupts, and names what is new.
+        let wider = PermissionInfo {
+            filesystem: vec!["~/Documents".into(), "~/.ssh".into()],
+            ..unchanged.clone()
+        };
+        match upgrade_gate(baseline, &wider) {
+            UpgradeGate::Interruptive { widened } => {
+                assert!(!widened.is_empty(), "the new grant has to be named");
+            }
+            other => panic!("a widening after a recorded install must interrupt: {other:?}"),
+        }
+
+        // And an app the lock never saw is not silently waved through.
+        assert!(matches!(
+            upgrade_gate(reloaded.get("org.other.App").map(|e| &e.granted), &wider),
+            UpgradeGate::Unknown { .. }
+        ));
+    }
+
     /// Rewriting must not leave a temp file behind for the next read to trip on.
     #[test]
     fn saving_twice_leaves_only_the_lock() {
