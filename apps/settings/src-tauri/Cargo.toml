@@ -16,6 +16,8 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # The module toggle goes through the runtime, not around it.
 modulesd-proto = { path = "../../../contracts/modulesd-proto" }
+# One inventory and one capability vocabulary across apps, modules and bridges.
+arlen-extensions = { path = "../../../contracts/extensions" }
 arlen-ai-model-manager = { path = "../../../ai/ai-model-manager" }
 arlen-theme = { path = "../../../sdk/theme" }
 arlen-print = { path = "../../../daemons/print", features = ["cups"] }

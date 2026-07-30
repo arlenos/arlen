@@ -9,6 +9,7 @@ pub mod brightness;
 pub mod capsules;
 pub mod config;
 pub mod displays;
+pub mod extensions;
 pub mod input;
 pub mod knowledge;
 pub mod modules;
