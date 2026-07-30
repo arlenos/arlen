@@ -99,6 +99,52 @@ fn terminal_sessions(registry: State<Mutex<SessionRegistry>>) -> Vec<Session> {
         .collect()
 }
 
+/// Verifies a presented read-consent token against the daemon's published public
+/// key, the real implementation of the core's `ConsentVerifier`.
+///
+/// Mirrors how the Terminal-run MCP authorizes `run_command`: read the published
+/// key from the rendezvous file, then ask the token crate whether this exact
+/// request is covered. Every adverse condition is a refusal rather than an error
+/// - no key file, malformed key, malformed token, wrong scope, expired - because
+/// the caller has one question and the safe answer to all of them is no.
+// Built before its caller, like ConsentedBlocks below: the socket that presents
+// a token to it is the next piece.
+#[allow(dead_code)]
+struct PublishedKeyConsent;
+
+impl arlen_terminal_core::read_serve::ConsentVerifier for PublishedKeyConsent {
+    fn authorizes(&self, req: &arlen_terminal_core::read_serve::ReadRequest) -> bool {
+        let Some(pub_path) = arlen_run_consent_token::published_public_key_path() else {
+            return false;
+        };
+        let Ok(hex) = std::fs::read_to_string(&pub_path) else {
+            return false;
+        };
+        let Ok(key) = arlen_run_consent_token::public_key_from_hex(&hex) else {
+            return false;
+        };
+        let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else {
+            return false;
+        };
+        // The limit crosses as u32 because that is what the token digests; a
+        // request asking for more than u32 can hold is refused rather than
+        // truncated into a smaller, wrongly-matching number.
+        let Ok(limit) = u32::try_from(req.limit) else {
+            return false;
+        };
+        arlen_run_consent_token::verify_read_consent(
+            &req.consent,
+            &key,
+            &req.terminal_id,
+            limit,
+            req.include_user_blocks,
+            req.include_running,
+            now.as_secs() as i64,
+        )
+        .unwrap_or(false)
+    }
+}
+
 /// The consented-read view of the sessions, for the Terminal MCP read half.
 ///
 /// Deliberately READ-ONLY, which is the difference from [`terminal_blocks`] and
