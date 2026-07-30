@@ -163,6 +163,46 @@ mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
+    /// The symlink refusal is already covered below; what was not covered is
+    /// that it applies ONLY to a symlink. Mutation testing found the `ELOOP`
+    /// guard could be replaced with `true`, folding every open failure into "is
+    /// a symlink" - and the existing test still passed, because it only checks
+    /// that SOME `KeyUnavailable` came back.
+    ///
+    /// So the discriminating case is an open that fails for another reason. A
+    /// missing key is an ordinary I/O error, not an attack, and reporting it as
+    /// a planted symlink would send whoever reads the log looking for one.
+    #[test]
+    fn only_a_symlink_is_reported_as_a_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let absent = dir.path().join("not-here.key");
+        let got = read_key(&absent);
+        assert!(
+            !matches!(got, Err(AuditError::KeyUnavailable(ref m)) if m.contains("symlink")),
+            "a missing key is not a symlink attack, got {got:?}"
+        );
+        assert!(got.is_err(), "it is still a refusal, just an honest one");
+    }
+
+    /// Two starts must converge on the SAME key, never clobber one. Re-keying a
+    /// live ledger would silently invalidate every existing HMAC, which reads as
+    /// wholesale tampering - so the create path is `create_new` and losing that
+    /// race falls back to reading. Mutation testing found the `AlreadyExists`
+    /// guard could be flipped either way with nothing failing.
+    #[test]
+    fn a_second_start_reuses_the_key_and_never_replaces_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("hmac.key");
+
+        let first = load_or_create(&path, false).expect("genesis creates a key");
+        let second = load_or_create(&path, true).expect("a later start reuses it");
+        assert_eq!(
+            first.as_slice(),
+            second.as_slice(),
+            "the key must survive a restart, or every prior entry reads as tampered"
+        );
+    }
+
     #[test]
     fn creates_a_0600_key_on_genesis() {
         let dir = tempfile::tempdir().unwrap();
