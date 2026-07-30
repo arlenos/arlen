@@ -184,30 +184,7 @@ mod tests {
     use arlen_forage_recipe::settings::{SettingOption, SettingsSection};
 
     fn item(key: &str, value_type: SettingType) -> SettingsItem {
-        SettingsItem {
-            key: key.into(),
-            value_type,
-            label: "L".into(),
-            description: None,
-            default: None,
-            min: None,
-            max: None,
-            unit: None,
-            options: Vec::new(),
-            options_from: None,
-            order: None,
-            keywords: Vec::new(),
-            scope: SettingScope::default(),
-            handoff: None,
-            tags: Vec::new(),
-            included: None,
-            deprecated_message: None,
-            replaced_by: None,
-            renamed_from: Vec::new(),
-            since: None,
-            removed_in: None,
-            visible_when: None,
-        }
+        SettingsItem::new(key, value_type, "L")
     }
 
     fn schema_of(items: Vec<SettingsItem>) -> SettingsSchema {

@@ -72,7 +72,7 @@ pub fn answer(registry: &dyn AppRegistry, request: Request) -> Response {
 mod tests {
     use super::*;
     use arlen_forage_recipe::settings::{
-        SettingScope, SettingType, SettingsItem, SettingsSection,
+        SettingType, SettingsItem, SettingsSection,
     };
     use crate::protocol::KeyWrite;
     use toml::Value;
@@ -99,30 +99,7 @@ mod tests {
                 label: "S".into(),
                 description: None,
                 order: None,
-                items: vec![SettingsItem {
-                    key: "theme".into(),
-                    value_type: SettingType::String,
-                    label: "Theme".into(),
-                    description: None,
-                    default: None,
-                    min: None,
-                    max: None,
-                    unit: None,
-                    options: Vec::new(),
-                    options_from: None,
-                    order: None,
-                    keywords: Vec::new(),
-                    scope: SettingScope::default(),
-                    handoff: None,
-                    tags: Vec::new(),
-                    included: None,
-                    deprecated_message: None,
-                    replaced_by: None,
-                    renamed_from: Vec::new(),
-                    since: None,
-                    removed_in: None,
-                    visible_when: None,
-                }],
+                items: vec![SettingsItem::new("theme", SettingType::String, "Theme")],
             }],
         }
     }
