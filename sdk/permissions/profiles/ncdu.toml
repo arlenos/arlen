@@ -1,0 +1,9 @@
+# Starting permission profile for a disk-usage analyser. It walks the user's tree
+# to measure it, so it gets Home, matching the other analysers here (baobab,
+# filelight, qdirstat); no network and no Knowledge Graph.
+[info]
+app_id = "ncdu"
+tier = "third-party"
+
+[filesystem]
+home = true

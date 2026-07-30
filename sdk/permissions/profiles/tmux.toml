@@ -1,0 +1,9 @@
+# Starting permission profile for a terminal multiplexer. It runs the user's shell
+# and tools over their files, so it gets Home; no network of its own (the tools it
+# launches carry their own grants). No Knowledge Graph.
+[info]
+app_id = "tmux"
+tier = "third-party"
+
+[filesystem]
+home = true

@@ -1,0 +1,9 @@
+# Starting permission profile for a terminal git client. It works with repositories
+# wherever they live in the user's tree, so it gets Home; no network by default,
+# because push, pull and sign-in are a separate grant, matching the git GUIs here.
+[info]
+app_id = "lazygit"
+tier = "third-party"
+
+[filesystem]
+home = true

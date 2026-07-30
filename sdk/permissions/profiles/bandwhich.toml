@@ -1,0 +1,7 @@
+# Starting permission profile for a network monitor. It reads traffic and socket
+# state from the kernel, which is not a permission-profile field and is privileged,
+# elevating out of band; no standing file access, no network of its own and no
+# Knowledge Graph.
+[info]
+app_id = "bandwhich"
+tier = "third-party"
