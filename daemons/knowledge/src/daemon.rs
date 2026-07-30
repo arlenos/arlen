@@ -853,10 +853,12 @@ async fn handle_provenance_read(
     // primary key is per-table, so one id can exist under several labels). The
     // labels are safe identifiers (see `readable_system_labels`); the id is
     // escaped.
-    let id_esc = escape_cypher(&req.object_id);
     let mut found_label: Option<String> = None;
     for label in readable_system_labels(&token.read_scopes) {
-        let cypher = format!("MATCH (n:{label} {{id: '{id_esc}'}}) RETURN n.id LIMIT 1");
+        let cypher = format!(
+            "{} RETURN n.id LIMIT 1",
+            crate::cypher::match_node("n", &label, &req.object_id)
+        );
         if let Ok(rs) = graph.query_rows(cypher).await {
             if !rs.rows.is_empty() && found_label.is_none() {
                 found_label = Some(label);
@@ -873,7 +875,10 @@ async fn handle_provenance_read(
     // token's own app id, the identity the read scope was resolved for, not the
     // connection-time id.
     let cypher =
-        format!("MATCH (n:{label} {{id: '{id_esc}'}})-[:ACCESSED_BY]->(a) RETURN a.id AS id");
+        format!(
+            "{}-[:ACCESSED_BY]->(a) RETURN a.id AS id",
+            crate::cypher::match_node("n", &label, &req.object_id)
+        );
     let actors: Vec<String> = match graph.query_rows(cypher).await {
         Ok(rs) => rs
             .rows
