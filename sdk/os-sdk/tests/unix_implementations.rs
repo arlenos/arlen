@@ -24,7 +24,11 @@ mod proto {
 /// A minimal Event Bus producer socket server that records received messages.
 struct FakeEventBus {
     received: Arc<Mutex<Vec<proto::Event>>>,
-    tmp: TempDir,
+    /// Held, never read: the socket lives inside this directory, so dropping the
+    /// `TempDir` early would unlink it out from under the running test. The
+    /// underscore says so to the compiler and to the next person tempted to
+    /// delete an apparently unused field.
+    _tmp: TempDir,
     socket_path: PathBuf,
 }
 
@@ -70,7 +74,7 @@ impl FakeEventBus {
         // Give server time to start
         std::thread::sleep(Duration::from_millis(50));
 
-        Self { received, tmp, socket_path }
+        Self { received, _tmp: tmp, socket_path }
     }
 
     fn socket_path(&self) -> &str {
@@ -95,7 +99,8 @@ impl FakeEventBus {
 
 /// A minimal Graph Daemon socket server that returns canned responses.
 struct FakeGraphDaemon {
-    tmp: TempDir,
+    /// Held, never read - see `FakeEventBus::_tmp`.
+    _tmp: TempDir,
     socket_path: PathBuf,
 }
 
@@ -142,7 +147,7 @@ impl FakeGraphDaemon {
         });
 
         std::thread::sleep(Duration::from_millis(50));
-        Self { tmp, socket_path }
+        Self { _tmp: tmp, socket_path }
     }
 
     fn socket_path(&self) -> &str {
