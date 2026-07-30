@@ -86,6 +86,13 @@ impl ActivityPage {
 /// A stable, frontend-friendly label for each audit kind. Exhaustive on
 /// purpose: a new [`AuditKind`] variant must be given a label here rather
 /// than silently rendering as a fallback.
+///
+/// **Kebab-case, and deliberately not the wire spelling.** [`AuditKind::as_str`]
+/// is snake_case, so the same variant reads `tool-call` in an
+/// [`ActivityEntry`] and `tool_call` on the wire. Anything consuming an
+/// `ActivityEntry.kind` must compare against THIS form - a literal borrowed
+/// from the wire side matches nothing here, silently, which is exactly how one
+/// integration test came to assert a kind no activity entry carries.
 fn kind_label(kind: &AuditKind) -> &'static str {
     match kind {
         AuditKind::Query => "query",
