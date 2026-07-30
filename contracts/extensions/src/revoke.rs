@@ -20,6 +20,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use arlen_permissions::revoke::RevokedReach;
+
 use crate::{Extension, ExtensionKind};
 
 /// One concrete operation, named by the service that owns it.
@@ -141,6 +143,97 @@ fn namespace_of(extension: &Extension) -> String {
         .to_string()
 }
 
+/// The concrete reaches that giving up `labels` means for this profile.
+///
+/// Resolved against the profile at the moment of revoking rather than baked
+/// into the plan, and that is a correctness point rather than a style one: the
+/// plan is built from an inventory read that may be seconds or minutes old, and
+/// an app whose grants changed since would otherwise have a stale set revoked -
+/// either missing what it gained or refusing over what it already gave up.
+///
+/// A label expands to every grant under it, because the label IS the coarse
+/// answer: a user giving up "network" means all of it, not the first domain.
+/// `allow_all` yields no domain reaches, matching the revoke gate, which
+/// refuses removing a list entry while the blanket flag makes the list moot -
+/// so that combination is reported by [`unrevocable`] instead of silently
+/// producing steps that would be refused.
+pub fn resolve_reaches(
+    profile: &arlen_permissions::PermissionProfile,
+    labels: &[String],
+) -> Vec<RevokedReach> {
+    let mut out = Vec::new();
+    for label in labels {
+        match label.as_str() {
+            "network" if !profile.network.allow_all => {
+                for domain in &profile.network.allowed_domains {
+                    out.push(RevokedReach::NetworkDomain {
+                        domain: domain.clone(),
+                    });
+                }
+            }
+            "filesystem" => {
+                let fs = &profile.filesystem;
+                for (flag, on) in [
+                    ("home", fs.home),
+                    ("documents", fs.documents),
+                    ("downloads", fs.downloads),
+                    ("pictures", fs.pictures),
+                    ("music", fs.music),
+                    ("videos", fs.videos),
+                ] {
+                    if on {
+                        out.push(RevokedReach::FilesystemDir { dir: flag.into() });
+                    }
+                }
+            }
+            "notifications" if profile.notifications.enabled => {
+                out.push(RevokedReach::NotificationsOff);
+            }
+            "clipboard" => {
+                for (cap, on) in [
+                    ("read", profile.clipboard.read),
+                    ("write", profile.clipboard.write),
+                ] {
+                    if on {
+                        out.push(RevokedReach::ClipboardCap { cap: cap.into() });
+                    }
+                }
+            }
+            other => {
+                // Graph scopes are carried verbatim in the label, so they need
+                // no lookup - the label already names exactly one pattern.
+                if let Some(pattern) = other.strip_prefix("read:") {
+                    out.push(RevokedReach::Read {
+                        entity_pattern: pattern.to_string(),
+                    });
+                } else if let Some(pattern) = other.strip_prefix("write:") {
+                    out.push(RevokedReach::Write {
+                        entity_pattern: pattern.to_string(),
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The labels this profile holds that revoking cannot currently take back.
+///
+/// Today that is a blanket `network.allow_all`: the revoke gate proves a strict
+/// narrowing, and removing a domain from a list that `allow_all` overrides is
+/// not one. Naming it is the point - a revoke button that quietly does nothing
+/// for the broadest grant of all is worse than one that says it cannot.
+pub fn unrevocable(profile: &arlen_permissions::PermissionProfile, labels: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    if profile.network.allow_all && labels.iter().any(|l| l == "network") {
+        out.push(
+            "This app has blanket network access, which cannot be narrowed one domain at a time."
+                .to_string(),
+        );
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,5 +309,68 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    fn profile() -> arlen_permissions::PermissionProfile {
+        toml::from_str(
+            "[info]\napp_id = \"org.example.App\"\nname = \"Example\"\ntier = \"third-party\"\n",
+        )
+        .expect("a minimal profile parses")
+    }
+
+    /// A label is the coarse answer, so giving it up means all of it - not the
+    /// first domain, not the first directory.
+    #[test]
+    fn a_label_expands_to_every_grant_under_it() {
+        let mut p = profile();
+        p.network.allowed_domains = vec!["a.example.com".into(), "b.example.com".into()];
+        p.filesystem.home = true;
+        p.filesystem.documents = true;
+
+        let reaches = resolve_reaches(&p, &["network".into(), "filesystem".into()]);
+        assert_eq!(reaches.len(), 4, "{reaches:?}");
+    }
+
+    /// Nothing granted, nothing to revoke - not a step that would be refused.
+    #[test]
+    fn a_label_the_profile_does_not_hold_yields_no_step() {
+        assert!(resolve_reaches(&profile(), &["filesystem".into(), "clipboard".into()]).is_empty());
+    }
+
+    /// The graph label already names the pattern, so it needs no lookup.
+    #[test]
+    fn a_graph_scope_carries_straight_through() {
+        let got = resolve_reaches(&profile(), &["read:system.File".into()]);
+        assert_eq!(
+            got,
+            vec![RevokedReach::Read {
+                entity_pattern: "system.File".into()
+            }]
+        );
+    }
+
+    /// The revoke gate refuses removing a domain while `allow_all` makes the
+    /// list moot, so producing those steps would generate refusals. It is
+    /// reported as unrevocable instead - a button that quietly does nothing for
+    /// the broadest grant of all is worse than one that says it cannot.
+    #[test]
+    fn blanket_network_access_is_reported_rather_than_uselessly_stepped() {
+        let mut p = profile();
+        p.network.allow_all = true;
+        p.network.allowed_domains = vec!["a.example.com".into()];
+
+        let labels = vec!["network".to_string()];
+        assert!(resolve_reaches(&p, &labels).is_empty());
+        assert!(!unrevocable(&p, &labels).is_empty());
+    }
+
+    /// With a plain allowlist there is nothing to warn about.
+    #[test]
+    fn an_ordinary_allowlist_is_fully_revocable() {
+        let mut p = profile();
+        p.network.allowed_domains = vec!["a.example.com".into()];
+        let labels = vec!["network".to_string()];
+        assert_eq!(resolve_reaches(&p, &labels).len(), 1);
+        assert!(unrevocable(&p, &labels).is_empty());
     }
 }
