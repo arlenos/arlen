@@ -49,6 +49,14 @@ impl BridgeMeta {
     /// Prefixed rather than bare so a bridge can never collide with a
     /// first-party app id - a bridge declaring `id = "settings"` would
     /// otherwise name the Settings app and inherit whatever is keyed to it.
+    ///
+    /// **This prefix is stated in a second place**, `arlen_system_monitor::
+    /// extensions::Extension::bridge`, which builds the same address for the
+    /// unified management inventory. The two crates share no dependency, so the
+    /// rule is duplicated deliberately rather than extracted into a crate that
+    /// would exist for one string - the same call made for the canary token. A
+    /// change here has to be made there too, or the inventory will address a
+    /// bridge that audit and the LCG have never heard of.
     pub fn app_id(&self) -> String {
         format!("bridge.{}", self.id)
     }
