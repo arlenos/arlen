@@ -107,9 +107,88 @@ fn terminal_sessions(registry: State<Mutex<SessionRegistry>>) -> Vec<Session> {
 /// request is covered. Every adverse condition is a refusal rather than an error
 /// - no key file, malformed key, malformed token, wrong scope, expired - because
 /// the caller has one question and the safe answer to all of them is no.
-// Built before its caller, like ConsentedBlocks below: the socket that presents
-// a token to it is the next piece.
-#[allow(dead_code)]
+/// Serve one connection on the read socket: one request, one reply, close.
+///
+/// One exchange per connection rather than a session, because a read is a
+/// one-shot question and a long-lived connection would need its own idle policy
+/// for no gain. Every failure closes quietly: a peer that sends a bad header, a
+/// short body or nothing at all gets no reply and no diagnosis, which keeps the
+/// socket useless as a probe.
+fn serve_read_connection(stream: &mut std::os::unix::net::UnixStream, registry: &Mutex<SessionRegistry>) {
+    use arlen_terminal_core::read_frame;
+    use arlen_terminal_core::read_serve::{self, ReadReply, ReadRequest};
+    use std::io::{Read, Write};
+
+    let mut header = [0u8; 4];
+    if stream.read_exact(&mut header).is_err() {
+        return;
+    }
+    // The length is judged before the body is allocated: a peer cannot make this
+    // process reserve an arbitrary buffer by claiming a large frame.
+    let Ok(len) = read_frame::decode_len(header) else {
+        return;
+    };
+    let mut body = vec![0u8; len];
+    if stream.read_exact(&mut body).is_err() {
+        return;
+    }
+    let Ok(req) = read_frame::decode_body::<ReadRequest>(&body) else {
+        return;
+    };
+
+    let reply = match read_serve::authorize(&req, &PublishedKeyConsent) {
+        Some(authorized) => {
+            ReadReply::Blocks(read_serve::handle(&ConsentedBlocks(registry), &authorized))
+        }
+        None => ReadReply::Refused,
+    };
+    if let Ok(bytes) = read_frame::encode(&reply) {
+        let _ = stream.write_all(&bytes);
+    }
+}
+
+/// Bind the read socket and serve it until the process exits.
+///
+/// Blocking, on its own thread, because this app has no async runtime and one
+/// would be a large dependency for a socket that answers a question now and then.
+/// The socket is 0600 and a stale one is replaced, matching how the daemons bind
+/// theirs; the real authority is the consent token, and the mode is the cheap
+/// second lock.
+/// Takes the `AppHandle` rather than the registry itself: the registry is Tauri
+/// managed state, and reaching it through the handle inside the thread avoids
+/// changing the signature of every command that already borrows it. The handle is
+/// cheap to clone and `'static`, which is what a detached thread needs.
+fn spawn_read_listener(handle: tauri::AppHandle) {
+    use std::os::unix::fs::PermissionsExt;
+    use tauri::Manager;
+
+    let path = os_sdk::runtime::socket_path("ARLEN_TERMINAL_READ_SOCKET", "terminal-read.sock");
+    std::thread::spawn(move || {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        // Replace a stale socket, but only if it IS a socket: refusing to unlink
+        // anything else means a misconfigured path cannot delete a real file.
+        if let Ok(meta) = std::fs::symlink_metadata(&path) {
+            use std::os::unix::fs::FileTypeExt;
+            if meta.file_type().is_socket() {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+        let Ok(listener) = std::os::unix::net::UnixListener::bind(&path) else {
+            return;
+        };
+        if std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).is_err() {
+            return;
+        }
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let registry = handle.state::<Mutex<SessionRegistry>>();
+            serve_read_connection(&mut stream, &registry);
+        }
+    });
+}
+
 struct PublishedKeyConsent;
 
 impl arlen_terminal_core::read_serve::ConsentVerifier for PublishedKeyConsent {
@@ -159,11 +238,6 @@ impl arlen_terminal_core::read_serve::ConsentVerifier for PublishedKeyConsent {
 /// The cost is that a command which finished since the UI's last poll may not be
 /// assembled into a block yet, so the read can lag by one poll interval. That is
 /// the honest trade: slightly stale beats perturbing the session.
-// Built before its caller: the socket listener that serves this to the MCP
-// read tool is the next piece. Same mechanism-before-trigger shape the
-// canary and executor cores used, so the decision lands reviewed and tested
-// before anything can reach it.
-#[allow(dead_code)]
 struct ConsentedBlocks<'a>(&'a Mutex<SessionRegistry>);
 
 impl arlen_terminal_core::read_serve::BlockSource for ConsentedBlocks<'_> {
@@ -707,6 +781,13 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
+        .setup(|app| {
+            // The consented-read socket for the Terminal MCP read half. Started
+            // here so it exists for the app's whole life; it serves only what a
+            // valid consent token covers.
+            spawn_read_listener(app.handle().clone());
+            Ok(())
+        })
         .manage(Mutex::new(SessionRegistry {
             sessions: HashMap::new(),
             order: Vec::new(),
