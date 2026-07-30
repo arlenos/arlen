@@ -115,6 +115,25 @@ pub enum ConsentTokenError {
     /// A caller-supplied value was out of range.
     #[error("invalid input: {0}")]
     InvalidInput(&'static str),
+    /// The datalog engine hit a run limit before it could decide. Kept apart
+    /// from a denial because it says nothing about the token: a caller that read
+    /// it as "refused" would report a legitimate, user-confirmed command as
+    /// unauthorized whenever the machine was busy.
+    #[error("consent engine limit: {0}")]
+    EngineLimit(String),
+}
+
+/// The datalog run limits used when authorizing.
+///
+/// Biscuit's default `max_time` is one millisecond, which measures machine speed
+/// rather than anything about the token. `max_facts` and `max_iterations` are the
+/// bounds that actually contain a hostile token, and they stay at the defaults;
+/// only the clock is given room a real verify never approaches.
+fn datalog_limits() -> biscuit_auth::AuthorizerLimits {
+    biscuit_auth::AuthorizerLimits {
+        max_time: std::time::Duration::from_millis(500),
+        ..Default::default()
+    }
 }
 
 impl From<biscuit_auth::error::Token> for ConsentTokenError {
@@ -261,8 +280,13 @@ pub fn verify_run_consent(
         AuthorizerBuilder::new().code_with_params(source, params, HashMap::new())?;
 
     let mut built = authorizer.build(&token)?;
-    match built.authorize() {
+    match built.authorize_with_limits(datalog_limits()) {
         Ok(_) => Ok(true),
+        // The engine giving up is a fault, not the token failing. Reported apart
+        // so a busy machine cannot masquerade as a refused command.
+        Err(biscuit_auth::error::Token::RunLimit(limit)) => {
+            Err(ConsentTokenError::EngineLimit(limit.to_string()))
+        }
         // A denied or expired token is an authorization outcome, not a fault.
         Err(_) => Ok(false),
     }

@@ -85,6 +85,32 @@ pub enum CapabilityError {
     /// treat it as a hard error, never as a soft "unauthorized".
     #[error("biscuit error: {0}")]
     Biscuit(#[from] biscuit_auth::error::Token),
+    /// The datalog engine hit a run limit before it could decide. Reported apart
+    /// from a denial because it says nothing about the token: the same token may
+    /// authorize fine on an unloaded machine. The caller must not proceed, but it
+    /// must also not conclude the token was bad.
+    #[error("capability engine limit: {0}")]
+    EngineLimit(biscuit_auth::error::RunLimit),
+}
+
+/// The datalog run limits used when authorizing.
+///
+/// Biscuit's default `max_time` is one millisecond, which is not a security
+/// bound at all - it is a proxy for machine speed, and a contended machine
+/// crosses it while evaluating a perfectly ordinary policy. That produced an
+/// intermittent CI failure where the connection-bound verify (the largest of our
+/// policies) timed out and, before the arm above existed, read as "unauthorized".
+///
+/// The bounds that actually contain a hostile token are `max_facts` and
+/// `max_iterations`, since a malicious attenuation would have to generate facts
+/// or loop to cost anything; both are kept at Biscuit's defaults. Time is raised
+/// to a value no honest policy of ours approaches while still capping a
+/// pathological one.
+fn datalog_limits() -> biscuit_auth::AuthorizerLimits {
+    biscuit_auth::AuthorizerLimits {
+        max_time: std::time::Duration::from_millis(500),
+        ..Default::default()
+    }
 }
 
 /// Validate a single string term (host, nonce, connection id): non-empty, within
@@ -209,6 +235,29 @@ pub fn verify_token(
     requested_connection: Option<&str>,
     now_unix: i64,
 ) -> Result<bool, CapabilityError> {
+    verify_with_limits(
+        token_b64,
+        root_public,
+        requested_host,
+        requested_connection,
+        now_unix,
+        datalog_limits(),
+    )
+}
+
+/// The verify body with the run limits injected, so the limit-exceeded path can
+/// be exercised deterministically instead of waiting for a loaded machine.
+///
+/// Private: the limits are a safety bound, and a public setter would let a
+/// caller widen them past what this module is willing to spend.
+fn verify_with_limits(
+    token_b64: &str,
+    root_public: &PublicKey,
+    requested_host: &str,
+    requested_connection: Option<&str>,
+    now_unix: i64,
+    limits: biscuit_auth::AuthorizerLimits,
+) -> Result<bool, CapabilityError> {
     validate_term(requested_host, MAX_HOST_LEN, "host")?;
     if let Some(conn) = requested_connection {
         validate_term(conn, 128, "connection id")?;
@@ -246,8 +295,16 @@ pub fn verify_token(
         AuthorizerBuilder::new().code_with_params(source, params, HashMap::new())?;
 
     let mut built = authorizer.build(&token)?;
-    match built.authorize() {
+    match built.authorize_with_limits(limits) {
         Ok(_) => Ok(true),
+        // Hitting a run limit is the engine giving up, not the token failing.
+        // Reporting it as a denial would be indistinguishable from an
+        // unauthorized token, so the caller could never tell a real refusal from
+        // a machine under load. It is a hard error; the caller still refuses to
+        // proceed, but it refuses knowing why.
+        Err(biscuit_auth::error::Token::RunLimit(limit)) => {
+            Err(CapabilityError::EngineLimit(limit))
+        }
         // A denied or expired token is an authorization outcome, not a fault.
         Err(_) => Ok(false),
     }
@@ -336,6 +393,58 @@ mod tests {
         // With no connection required, the host-only check still passes (the pure
         // destination-scope property the other tests rely on).
         assert!(verify_token(&token, &root.public(), "shared.example", None, NOW).unwrap());
+    }
+
+    /// The intermittent CI failure this arm exists for: on a contended machine
+    /// the datalog engine can exceed its time budget while evaluating a policy
+    /// that is perfectly authorized. Folding that into `Ok(false)` told the
+    /// caller the token was refused, which is a different and wrong answer - and
+    /// an unfalsifiable one, since it looks identical to a genuine denial.
+    ///
+    /// A zero budget reproduces on any machine what a loaded runner reached by
+    /// accident.
+    #[test]
+    fn an_engine_that_runs_out_of_budget_is_a_fault_not_a_denial() {
+        let root = KeyPair::new();
+        let token = mint_token(&root, "github", &hosts(&["shared.example"]), FAR_FUTURE, "n").unwrap();
+
+        let starved = verify_with_limits(
+            &token,
+            &root.public(),
+            "shared.example",
+            Some("github"),
+            NOW,
+            biscuit_auth::AuthorizerLimits {
+                max_time: std::time::Duration::ZERO,
+                ..Default::default()
+            },
+        );
+        assert!(
+            matches!(starved, Err(CapabilityError::EngineLimit(_))),
+            "a starved engine must not read as a refusal, got {starved:?}"
+        );
+
+        // The same token, same request, with the budget this module actually
+        // uses: authorized. So the error above is the engine's, not the token's.
+        assert!(verify_token(&token, &root.public(), "shared.example", Some("github"), NOW).unwrap());
+    }
+
+    /// The budget has to be wide enough that the largest policy we mint does not
+    /// approach it, or the fix above only moves where the flake happens.
+    #[test]
+    fn the_configured_budget_is_far_above_what_a_real_verify_costs() {
+        let root = KeyPair::new();
+        let many: Vec<String> = (0..MAX_HOSTS).map(|i| format!("h{i}.example")).collect();
+        let token = mint_token(&root, "github", &many, FAR_FUTURE, "n").unwrap();
+
+        let start = std::time::Instant::now();
+        assert!(verify_token(&token, &root.public(), "h63.example", Some("github"), NOW).unwrap());
+        let spent = start.elapsed();
+        assert!(
+            spent * 10 < datalog_limits().max_time,
+            "a full-size token verified in {spent:?}, too close to the {:?} budget",
+            datalog_limits().max_time
+        );
     }
 
     #[test]
