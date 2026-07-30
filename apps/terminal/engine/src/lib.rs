@@ -508,7 +508,17 @@ mod tests {
     #[test]
     #[ignore]
     fn replay_capture_for_double_prompt() {
-        let file = std::env::var("ARLEN_REPLAY_FILE").expect("set ARLEN_REPLAY_FILE");
+        // A diagnostic, not an assertion: it needs a capture file that is not in
+        // the tree, so without one there is nothing to replay. Skip rather than
+        // panic - the ai-engine-daemon e2e tests take the same line - so a run of
+        // the gated set reports what actually broke instead of this asking for an
+        // environment variable.
+        let Ok(file) = std::env::var("ARLEN_REPLAY_FILE") else {
+            eprintln!(
+                "skipping: set ARLEN_REPLAY_FILE to a captured byte stream to replay it"
+            );
+            return;
+        };
         let cmd = format!("cat {file}; sleep 1");
         let eng = PtyEngine::spawn("sh", &["-c", &cmd], None, 80, 24).expect("spawn");
         std::thread::sleep(std::time::Duration::from_millis(1600));
