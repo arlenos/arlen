@@ -13,6 +13,9 @@ name = "arlen-store-backend"
 path = "src/main.rs"
 
 [dependencies]
+# SC-3 apt half: the capability footprint of an apt-enrolled app comes from the
+# permission profile the enrol hook writes, which is what confines it at runtime.
+arlen-permissions = { path = "../sdk/permissions" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The forage recipe schema: the compose step maps a recipe to one catalog entry
@@ -28,6 +31,8 @@ flate2 = "1"
 serde_yaml = "0.9"
 
 [dev-dependencies]
+# The profile fixtures in the capability-label tests are TOML, as on disk.
+toml = "0.8"
 tokio = { version = "1", features = ["net", "io-util", "macros", "rt"] }
 
 [workspace]
