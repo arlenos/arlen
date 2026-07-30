@@ -1,0 +1,12 @@
+# Starting permission profile for an AI chat client. Needs network to reach its
+# service; saves what it downloads to Downloads. No Knowledge Graph access - a
+# third-party assistant reads the graph only through an explicit grant.
+[info]
+app_id = "claude-desktop"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true

@@ -1,0 +1,6 @@
+# Starting permission profile for a printer utility. It drives the local print
+# service and its device access is privileged, elevating via polkit rather than
+# through this profile. No standing file access, no network and no Knowledge Graph.
+[info]
+app_id = "hplip"
+tier = "third-party"
