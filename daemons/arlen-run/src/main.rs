@@ -68,14 +68,12 @@ pub mod exit {
 /// no `..`, and no leading/trailing dot. It lands in both a filesystem path and a
 /// cgroup leaf name, so it is validated strictly before either.
 fn valid_app_id(app_id: &str) -> bool {
-    !app_id.is_empty()
-        && app_id.contains('.')
-        && !app_id.starts_with('.')
-        && !app_id.ends_with('.')
-        && !app_id.contains("..")
-        && app_id
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'))
+    // The charset and traversal rules come from the profile loader, because this
+    // launcher must be able to run every app the loader can address - restating
+    // them here is how it came to reject `org.gnome.Calculator` while the rest of
+    // the system accepted it. The reverse-domain dot is this launcher's own extra
+    // requirement, since the id also becomes a cgroup leaf name.
+    arlen_permissions::is_valid_app_id(app_id) && app_id.contains('.')
 }
 
 /// The parsed launch request.
@@ -451,14 +449,24 @@ mod tests {
         for bad in [
             "",
             "noseparator",       // no dot
-            "UPPER.case",        // uppercase
             ".leading",          // leading dot
             "trailing.",         // trailing dot
             "a..b",              // double dot
             "a/b.c",             // separator
             "a b.c",             // space
+            "café.app",          // non-ascii
         ] {
             assert!(!valid_app_id(bad), "{bad:?} must be invalid");
+        }
+    }
+
+    #[test]
+    fn a_real_apps_id_can_be_launched() {
+        // Case is part of a real reverse-domain id, and this launcher must accept
+        // every id the profile loader can address or the app cannot run confined
+        // at all. It used to demand lowercase, which excluded most real apps.
+        for good in ["org.gnome.Calculator", "app.drey.Biblioteca", "com.example.notes"] {
+            assert!(valid_app_id(good), "{good:?} must be launchable");
         }
     }
 
