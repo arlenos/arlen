@@ -413,15 +413,15 @@ mod tests {
         m["links"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect()
     }
 
-    /// The scanners read whatever is in someone's vault, so the properties that
-    /// matter are the ones that hold for ALL input, not for the notes anyone
-    /// thought to write down: they finish, they do not panic, and every tag or
-    /// link they report was actually in the text.
-    ///
-    /// Hand-written fixtures had never reached a multibyte tag, an unbalanced
-    /// `[[`, or a note that is one long run of brackets - which is why mutation
-    /// testing could break the offset arithmetic here and get a hang rather than
-    /// a failure.
+    // The scanners read whatever is in someone's vault, so the properties that
+    // matter are the ones that hold for ALL input, not for the notes anyone
+    // thought to write down: they finish, they do not panic, and every tag or
+    // link they report was actually in the text.
+    //
+    // Hand-written fixtures had never reached a multibyte tag, an unbalanced
+    // `[[`, or a note that is one long run of brackets - which is why mutation
+    // testing could break the offset arithmetic here and get a hang rather than
+    // a failure.
     proptest::proptest! {
         #[test]
         fn scanning_any_note_finishes_and_reports_only_what_is_there(note in ".{0,400}") {
@@ -445,8 +445,8 @@ mod tests {
             }
         }
 
-        /// The shapes most likely to trip a scanner, generated densely rather
-        /// than hoped for: brackets, hashes and multibyte characters only.
+        // The shapes most likely to trip a scanner, generated densely rather
+        // than hoped for: brackets, hashes and multibyte characters only.
         #[test]
         fn dense_bracket_and_tag_soup_is_survivable(note in "[#\\[\\]|^/\u{00e9}\u{4e16}a1 ]{0,300}") {
             let _ = parse_note(&note);
