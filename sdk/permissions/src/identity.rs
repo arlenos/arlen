@@ -637,6 +637,65 @@ pub fn app_id_from_cgroup(pid: u32) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// Every canonical binary resolves to the id the rest of the system keys on.
+    ///
+    /// These are pinned one arm per binary because the generic rules do not reach
+    /// them: rule (2) covers only `/usr/bin/arlen-*`, so a `libexec` daemon
+    /// without its own arm falls through to `UnknownBinary`. The consequences are
+    /// named in each arm's comment and they are not small - `ai-proxy` losing its
+    /// id means every forward's fail-closed audit is refused, and `settings`
+    /// losing its id means the revoke op refuses the one caller it admits.
+    ///
+    /// Mutation testing found each of these arms could be DELETED with no test
+    /// failing. Asserted as a table so a new canonical binary is added here too,
+    /// rather than shipping an arm nothing checks.
+    #[test]
+    fn every_canonical_binary_resolves_to_its_own_id() {
+        let canonical: &[(&str, &str)] = &[
+            ("/usr/bin/arlen-ai-daemon", "ai-daemon"),
+            ("/usr/lib/arlen/libexec/arlen-ai-agent", "ai-agent"),
+            ("/usr/lib/arlen/libexec/arlen-ai-proxy", "ai-proxy"),
+            ("/usr/lib/arlen/libexec/arlen-run", "arlen-run"),
+            ("/usr/lib/arlen/libexec/arlen-accountsd", "online-accounts"),
+            ("/usr/lib/arlen/libexec/arlen-notifyd", "notifyd"),
+            ("/usr/lib/arlen/libexec/arlen-installd", "installd"),
+            ("/usr/lib/arlen/libexec/arlen-powerd", "powerd"),
+            ("/usr/lib/arlen/libexec/arlen-anomalyd", "anomalyd"),
+            ("/usr/lib/arlen/libexec/arlen-bridge-ingest", "bridge-ingest"),
+            ("/usr/lib/arlen/libexec/arlen-consent-broker", "consent-broker"),
+            ("/usr/lib/arlen/libexec/xdg-desktop-portal-arlen", "xdg-desktop-portal"),
+            ("/usr/lib/arlen/libexec/arlen-capsuled", "capsuled"),
+            ("/usr/lib/arlen/libexec/arlen-config-broker", "config-broker"),
+            ("/usr/bin/arlen-graph-daemon", "knowledge"),
+            ("/usr/lib/arlen/libexec/arlen-connectionsd", "connections"),
+            ("/usr/lib/arlen/apps/settings/bin/arlen-settings", "settings"),
+        ];
+        for (path, want) in canonical {
+            assert_eq!(
+                path_to_app_id(Path::new(path)).ok().as_deref(),
+                Some(*want),
+                "{path} must resolve to {want}"
+            );
+        }
+    }
+
+    /// A path that only LOOKS canonical resolves to no privileged id. The arms
+    /// match exactly, so a copy placed beside one of them - the same basename in
+    /// a directory anyone can write - must not inherit its identity.
+    #[test]
+    fn a_lookalike_path_does_not_inherit_a_canonical_id() {
+        for imposter in [
+            "/tmp/arlen-ai-proxy",
+            "/usr/lib/arlen/libexec/../libexec/arlen-ai-proxy",
+            "/home/u/.local/bin/arlen-settings",
+            "/usr/lib/arlen/libexec/arlen-ai-proxy-evil",
+        ] {
+            let got = path_to_app_id(Path::new(imposter));
+            assert_ne!(got.as_deref().ok(), Some("ai-proxy"), "{imposter}");
+            assert_ne!(got.as_deref().ok(), Some("settings"), "{imposter}");
+        }
+    }
+
     #[test]
     fn cgroup_unit_resolves_the_ai_engine_daemon() {
         const ENGINE_UNIT: &str = "arlen-ai-engine-daemon.service";
