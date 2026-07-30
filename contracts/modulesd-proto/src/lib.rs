@@ -183,6 +183,12 @@ pub struct ModuleSummary {
     pub tier: ModuleTier,
     pub enabled: bool,
     pub failed: bool,
+    /// What the most recent crash said, when it has crashed. `None` for a
+    /// module that has not. Carried because "why is this not working" is the
+    /// question a management surface exists to answer, and a bare `failed`
+    /// bool cannot.
+    #[serde(default)]
+    pub last_error: Option<String>,
     /// Lower means higher priority; matches `WaypointerPlugin::priority`.
     pub priority: PluginPriority,
     pub extension_points: Vec<String>,

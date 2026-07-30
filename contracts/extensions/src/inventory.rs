@@ -320,6 +320,8 @@ pub struct LiveModule {
     pub enabled: bool,
     /// Whether the crash ladder has given up on it.
     pub failed: bool,
+    /// What the most recent crash said, when the runtime recorded one.
+    pub last_error: Option<String>,
 }
 
 /// Replace the disk-derived health of modules the runtime knows about.
@@ -334,17 +336,20 @@ pub struct LiveModule {
 /// itself informative (it was added after the last discovery), and overwriting
 /// it with a guessed `Active` would replace a real signal with a wrong one.
 ///
-/// The failure text is deliberately generic, because nothing in the runtime
-/// records WHY: `CrashState` counts crashes and flips a bool, and the proto
-/// carries only that bool. So this says what is actually known - it crashed
-/// enough times to be given up on, and the way back is a manual retry.
+/// The failure text prefers what the runtime actually recorded. Where it has
+/// nothing - a module failed before any reason was captured - it falls back to
+/// what is still true, that it crashed enough times to be given up on and the
+/// way back is a manual retry. Never a guessed cause.
 pub fn overlay_modules(rows: &mut [Extension], live: &[LiveModule]) {
     for row in rows.iter_mut().filter(|r| r.kind == ExtensionKind::Module) {
         let Some(state) = live.iter().find(|l| l.id == row.id) else {
             continue;
         };
         row.health = if state.failed {
-            Health::Failed("crashed repeatedly; needs a manual retry".to_string())
+            Health::Failed(match &state.last_error {
+                Some(why) => format!("{why}; needs a manual retry"),
+                None => "crashed repeatedly; needs a manual retry".to_string(),
+            })
         } else if !state.enabled {
             Health::Disabled
         } else {
@@ -373,6 +378,7 @@ mod overlay_tests {
             id: id.to_string(),
             enabled,
             failed,
+            last_error: None,
         }
     }
 
@@ -400,6 +406,20 @@ mod overlay_tests {
         let mut rows = vec![module("a", Health::Failed("missing entry file".into()))];
         overlay_modules(&mut rows, &[live("other", true, false)]);
         assert_eq!(rows[0].health, Health::Failed("missing entry file".into()));
+    }
+
+    /// The reason the runtime recorded is what the user needs; the generic
+    /// fallback is only for a failure that captured none.
+    #[test]
+    fn the_recorded_reason_is_surfaced_when_there_is_one() {
+        let mut rows = vec![module("a", Health::Unknown)];
+        let mut state = live("a", true, true);
+        state.last_error = Some("execute trapped: unreachable".into());
+        overlay_modules(&mut rows, &[state]);
+        match &rows[0].health {
+            Health::Failed(why) => assert!(why.contains("unreachable"), "{why}"),
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 
     /// Apps and bridges are not modulesd's to answer for.
