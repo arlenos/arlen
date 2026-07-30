@@ -465,6 +465,12 @@ mod tests {
             // A `#` after a word character is a fragment or an anchor, not a tag.
             ("see file#section for more", &[]),
             ("a_b#notatag", &[]),
+            // An underscore is a word character too, and it is the ONLY case that
+            // reaches the second half of that check - everywhere else the
+            // alphanumeric test short-circuits first. Mutation testing found the
+            // `_` branch could be broken with nothing noticing, because every
+            // case above happens to have a letter before the `#`.
+            ("snake_#nottag", &[]),
             // At the start of a line or after a space it is a tag.
             ("#alpha and #beta", &["alpha", "beta"]),
             ("(#parenthesised)", &["parenthesised"]),
