@@ -1,12 +1,13 @@
 # Starting permission profile for a note-taking app with Nextcloud Notes sync. It
-# stores notes as local files (Home) and syncs them to a server (network). No
+# stores notes as local files under Documents, matching the other notes apps here
+# (obsidian, joplin, zim, logseq), and syncs them to a server over the network. No
 # Knowledge Graph.
 [info]
 app_id = "iotas"
 tier = "third-party"
 
 [filesystem]
-home = true
+documents = true
 
 [network]
 allow_all = true

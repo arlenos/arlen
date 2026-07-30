@@ -1,12 +1,13 @@
-# Starting permission profile for a download manager (Varia). It downloads files
-# from the network and writes them to disk, so it gets both network and home
-# filesystem access.
+# Starting permission profile for a download manager (Varia). It fetches over the
+# network and writes what it fetches to Downloads, matching every other download
+# manager in this corpus (jdownloader, transmission, qbittorrent, deluge, motrix,
+# uget, fragments); a different destination goes through the file picker.
 [info]
 app_id = "varia"
 tier = "third-party"
 
 [filesystem]
-home = true
+downloads = true
 
 [network]
 allow_all = true
