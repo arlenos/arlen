@@ -1,0 +1,33 @@
+#!/bin/sh
+# Phase 8k (CHROOT): the app-store backend (arlen-store-backend), which composes
+# the merged catalog from local metadata and serves it over org.arlen.Store1.
+#
+# Built and unit-shipped but never in the image, so the store app on a booted
+# Arlen had nothing to talk to and fell back to its fixture catalogue - the same
+# "built, not deployed" class as the code indexer. It reads local files and binds
+# one AF_UNIX socket, so it has no ordering dependency on any other daemon.
+#
+# Resolves as a standalone package (cargo build --manifest-path) -> its own target
+# dir in the persistent cache.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-store-backend"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the store backend (arlen-store-backend) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path store-backend/Cargo.toml
+
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-store-backend" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-store-backend"
+echo ">> staged arlen-store-backend into the image"
