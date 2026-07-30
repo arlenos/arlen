@@ -37,6 +37,10 @@ pub struct ReadRequest {
     /// Whether a still-running block is included.
     #[serde(default)]
     pub include_running: bool,
+    /// The consent token proving the user approved THIS reading. Opaque here:
+    /// the core does not parse or trust it, it only hands it to a
+    /// [`ConsentVerifier`] that does.
+    pub consent: String,
 }
 
 impl ReadRequest {
@@ -65,6 +69,37 @@ pub struct ReadResponse {
     pub blocks: Vec<Block>,
 }
 
+/// Whether a presented consent token authorizes exactly the reading a request
+/// asks for.
+///
+/// A trait rather than a direct call so this crate stays what it says it is: the
+/// embeddable contract types, serde and nothing else. The real implementation
+/// lives with the socket and verifies the biscuit against the daemon's published
+/// key; tests implement it in a line.
+pub trait ConsentVerifier {
+    /// `true` only when the token authorizes this exact terminal AND scope, now.
+    /// Anything else - malformed, expired, minted for a different or wider
+    /// reading - is `false`.
+    fn authorizes(&self, req: &ReadRequest) -> bool;
+}
+
+/// A read that has been authorized. The only way to obtain one is [`authorize`],
+/// and [`handle`] takes one rather than a bare request, so serving an unverified
+/// read is not something a caller can express.
+///
+/// Same sealed shape as `TrustedActionSchema` and `ExecutedWrite` elsewhere in the
+/// tree: the check is not a step someone can forget to call, it is the only door.
+pub struct AuthorizedRead<'a>(&'a ReadRequest);
+
+/// Authorize a request, or refuse it. `None` means the token does not cover this
+/// exact reading and nothing should be served.
+pub fn authorize<'a, V: ConsentVerifier>(
+    req: &'a ReadRequest,
+    verifier: &V,
+) -> Option<AuthorizedRead<'a>> {
+    verifier.authorizes(req).then_some(AuthorizedRead(req))
+}
+
 /// Where the handler gets a terminal's blocks. The app implements this over its
 /// live state; tests implement it over a vector.
 pub trait BlockSource {
@@ -79,7 +114,8 @@ pub trait BlockSource {
 /// The whole decision is: ask the source for the named terminal, then let the
 /// scope rules filter and bound it. No branch here can widen what
 /// [`read_scope::select`] allows.
-pub fn handle<S: BlockSource>(source: &S, req: &ReadRequest) -> ReadResponse {
+pub fn handle<S: BlockSource>(source: &S, read: &AuthorizedRead) -> ReadResponse {
+    let req = read.0;
     let blocks = source.blocks_for(&req.terminal_id);
     let visible = read_scope::select(&blocks, &req.scope());
     ReadResponse { blocks: visible.into_iter().cloned().collect() }
@@ -122,7 +158,30 @@ mod tests {
             limit: 5,
             include_user_blocks: false,
             include_running: false,
+            consent: "token".to_string(),
         }
+    }
+
+    /// Approves everything, so a test exercises the handler rather than the
+    /// verifier.
+    struct Consenting;
+    impl ConsentVerifier for Consenting {
+        fn authorizes(&self, _req: &ReadRequest) -> bool {
+            true
+        }
+    }
+
+    /// Refuses everything.
+    struct Refusing;
+    impl ConsentVerifier for Refusing {
+        fn authorizes(&self, _req: &ReadRequest) -> bool {
+            false
+        }
+    }
+
+    /// The request as an authorized read, for tests about the handler itself.
+    fn ok(req: &ReadRequest) -> AuthorizedRead<'_> {
+        authorize(req, &Consenting).expect("the consenting verifier authorizes")
     }
 
     #[test]
@@ -131,7 +190,8 @@ mod tests {
             ("t1", vec![block("a", Origin::Agent)]),
             ("t2", vec![block("b", Origin::Agent)]),
         ]);
-        let got = handle(&src, &req("t1"));
+        let r = req("t1");
+        let got = handle(&src, &ok(&r));
         assert_eq!(got.blocks.len(), 1);
         assert_eq!(got.blocks[0].id, "a", "a read must not cross terminals");
     }
@@ -141,7 +201,8 @@ mod tests {
         // Indistinguishable on purpose: a reader cannot probe which terminals
         // exist by comparing the two answers.
         let src = Fake(vec![("t1", Vec::new())]);
-        assert_eq!(handle(&src, &req("t1")), handle(&src, &req("nope")));
+        let (a, b) = (req("t1"), req("nope"));
+        assert_eq!(handle(&src, &ok(&a)), handle(&src, &ok(&b)));
     }
 
     #[test]
@@ -149,7 +210,8 @@ mod tests {
         // The source offers the user's blocks; the default scope hides them, and
         // nothing in the handler puts them back.
         let src = Fake(vec![("t1", vec![block("u", Origin::You), block("a", Origin::Agent)])]);
-        let got = handle(&src, &req("t1"));
+        let r = req("t1");
+        let got = handle(&src, &ok(&r));
         assert_eq!(got.blocks.len(), 1);
         assert_eq!(got.blocks[0].origin, Origin::Agent);
     }
@@ -161,7 +223,17 @@ mod tests {
         let src = Fake(vec![("t1", many)]);
         let mut r = req("t1");
         r.limit = usize::MAX;
-        assert_eq!(handle(&src, &r).blocks.len(), read_scope::MAX_BLOCKS);
+        assert_eq!(handle(&src, &ok(&r)).blocks.len(), read_scope::MAX_BLOCKS);
+    }
+
+    #[test]
+    fn a_refused_token_yields_no_authorized_read_at_all() {
+        // The refusal is structural: without an AuthorizedRead there is nothing to
+        // pass to `handle`, so a caller cannot serve an unverified request even by
+        // mistake. This asserts the door is shut; the type system is what keeps it
+        // shut.
+        let r = req("t1");
+        assert!(authorize(&r, &Refusing).is_none());
     }
 
     #[test]
@@ -169,7 +241,8 @@ mod tests {
         // A request that names only a terminal and a limit must deserialize to
         // the narrow reading, so a caller cannot widen by leaving fields out.
         let r: ReadRequest =
-            serde_json::from_str(r#"{"terminal_id":"t1","limit":3}"#).expect("parses");
+            serde_json::from_str(r#"{"terminal_id":"t1","limit":3,"consent":"t"}"#)
+                .expect("parses");
         assert!(!r.include_user_blocks);
         assert!(!r.include_running);
     }
