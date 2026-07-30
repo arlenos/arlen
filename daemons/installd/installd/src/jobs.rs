@@ -196,14 +196,16 @@ async fn run_upgrade(
     emit_progress(conn, job_id, 10, "checking the update").await;
 
     // Verifies structure + signature before reading any claim from the package.
-    let (app_id, gate) = crate::consent::preview_upgrade(path)?;
+    let preview = crate::consent::preview_upgrade(path)?;
+    let app_id = preview.app_id;
 
-    match gate {
+    match preview.gate {
         crate::consent::UpgradeGate::Silent => {}
         crate::consent::UpgradeGate::Interruptive { widened }
         | crate::consent::UpgradeGate::Unknown { requested: widened } => {
             queue.update_progress(job_id, 15, "waiting for your approval");
-            emit_consent_required(conn, job_id, &app_id, &app_id, widened.clone()).await;
+            emit_consent_required(conn, job_id, &app_id, &preview.display_name, widened.clone())
+                .await;
             return Err(install::InstallError::ConsentRequired(widened.join(", ")));
         }
     }
