@@ -939,6 +939,46 @@ mod tests {
         assert!(count >= 8, "expected the curated starting profiles, found {count}");
     }
 
+    #[test]
+    fn a_curated_profile_id_is_the_id_enrollment_resolves_to() {
+        // The corpus is keyed by app_id, and an app_id is only ever produced by
+        // `path_to_app_id`. These two facts are asserted in separate places and
+        // nothing tied them together, which invites the wrong conclusion about
+        // what a profile is for: `firefox.toml` does NOT apply to a distro
+        // `/usr/bin/firefox`, because that path matches no resolution rule and
+        // errors (see `test_app_id_from_path_unknown`). It applies to a firefox
+        // ENROLLED under `/usr/lib/arlen/apps/firefox/`, where the directory
+        // name is the id.
+        //
+        // So this pins the pairing: for a real profile from the corpus, the
+        // canonical enrolled path built from its filename must resolve back to
+        // exactly that filename. If the enrollment layout or rule (3) ever
+        // changes shape, every profile in the corpus becomes unreachable at
+        // once, and that should fail here rather than at a user's first launch.
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("profiles");
+        let mut checked = 0usize;
+        for entry in std::fs::read_dir(&dir).expect("the curated profiles dir exists") {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            let id = path.file_stem().and_then(|s| s.to_str()).unwrap().to_string();
+            let installed = std::path::PathBuf::from(format!("/usr/lib/arlen/apps/{id}/bin/{id}"));
+            assert_eq!(
+                crate::identity::path_to_app_id(&installed).ok(),
+                Some(id.clone()),
+                "the enrolled path for {id} does not resolve back to its profile id",
+            );
+            checked += 1;
+            // The property is uniform over the corpus; a sample keeps the test
+            // fast while still catching a change to the layout or the rule.
+            if checked >= 50 {
+                break;
+            }
+        }
+        assert!(checked >= 8, "expected profiles to sample, found {checked}");
+    }
+
     const SAMPLE_PROFILE: &str = r#"
 [info]
 app_id = "com.example.notes"
