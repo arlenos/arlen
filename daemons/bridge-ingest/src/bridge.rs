@@ -251,6 +251,29 @@ pub fn msg_field_ref(reference: &str) -> Option<&str> {
 mod tests {
     use super::*;
 
+    /// The namespace charset, in both directions. Mutation testing found the
+    /// `||` chain could be narrowed so that only lowercase letters pass, which
+    /// refuses a perfectly ordinary id - `md.obsidian2`, `com.slack-app` - and
+    /// nothing caught it, because no test used a digit or a hyphen. Over-
+    /// rejection is the safe direction, but a bridge that cannot declare its own
+    /// name is still broken, and the charset is documented as `[a-z0-9-]`.
+    #[test]
+    fn the_namespace_charset_admits_digits_and_hyphens_and_nothing_else() {
+        for ok in ["md.obsidian", "md.obsidian2", "com.slack-app", "a.b-2.c3"] {
+            assert!(
+                invalid_namespace(ok).is_none(),
+                "{ok} is within the documented [a-z0-9-] charset"
+            );
+        }
+        for bad in ["md.Obsidian", "md.obsidian_vault", "md.obsidian!", "md..obsidian", "md.obsidian "] {
+            assert!(invalid_namespace(bad).is_some(), "{bad} must be refused");
+        }
+        // And the reserved roots, which are a different refusal entirely.
+        for reserved in ["system.Thing", "shared.Person"] {
+            assert!(invalid_namespace(reserved).is_some(), "{reserved} is reserved");
+        }
+    }
+
     const SAMPLE: &str = r#"
 [bridge]
 id = "md.obsidian"
