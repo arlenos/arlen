@@ -15,7 +15,9 @@ export CXXFLAGS := "-include cstdint"
 RUST_CRATES := "contracts/audit-proto contracts/notification-proto contracts/modulesd-proto contracts/ai-engine-contract contracts/graph-schema contracts/forage-recipe contracts/capsule contracts/artifact contracts/file-change contracts/lenv contracts/run-consent-token contracts/consent-contract contracts/extensions contracts/transcript contracts/meeting-note sdk sdk/secret-vault sdk/config-format sdk/i18n ai daemons/event-bus daemons/knowledge daemons/notification-daemon daemons/audit-daemon daemons/anomaly-detector daemons/modulesd daemons/installd daemons/knowledge-mcp daemons/file-manager-mcp daemons/system-monitor-mcp daemons/xdg-portal daemons/capsuled daemons/arlen-run daemons/online-accounts daemons/connections daemons/power-daemon daemons/journald-parser daemons/code-indexer daemons/print daemons/transfer-daemon daemons/lock-auth daemons/wallpaper daemons/integration-packages daemons/bridge-ingest daemons/consent-broker daemons/config-broker daemons/settings-broker daemons/ai-engine-daemon daemons/terminal-run-mcp forage forage/store forage/fetch forage/build forage/package forage/extract forage/pipeline forage/signing forage/patch forage/capabilities forage/cookbook-index forage/cookbook-sign forage/cookbook-resolve forage/bridge-install apps/terminal/core apps/terminal/engine apps/files/core apps/viewers/core apps/viewers/decode-image apps/viewers/decode-jxl apps/viewers/decode-heic apps/viewers/host apps/viewers/decode-audio apps/greeter/core apps/system-monitor/core apps/settings/core apps/meetings/core apps/desktop-shell/core dev/integration"
 
 # The SvelteKit frontends CI svelte-checks.
-FRONTENDS := "apps/settings apps/harness apps/desktop-shell apps/terminal apps/files apps/viewers apps/greeter sdk/ui-kit"
+# Exactly CI's FRONT_ALL, in the same order. Six of these were missing, so a
+# local `just check` passed while CI checked more than it did.
+FRONTENDS := "apps/settings apps/harness apps/desktop-shell apps/terminal apps/files apps/greeter apps/meetings apps/system-monitor apps/text-editor apps/screenshot apps/store apps/viewers sdk/ui-kit ai/pi-plugins"
 
 # List recipes (default).
 default:
@@ -147,7 +149,12 @@ check:
     set -euo pipefail
     for c in {{RUST_CRATES}}; do echo "== check $c =="; cargo check --manifest-path "{{ROOT}}/$c/Cargo.toml"; done
     for f in {{FRONTENDS}}; do
-        echo "== svelte-check $f =="; (cd "{{ROOT}}/$f" && npx svelte-check --threshold error)
+        # The package's OWN check script, not a re-implementation of it: this
+        # used to run a bare `svelte-check`, which skipped the `svelte-kit sync`
+        # and the tsconfig every one of these packages declares, so it was not
+        # the check CI runs. It also means a package checked with something else
+        # entirely (pi-plugins runs tsc) is covered without a special case.
+        echo "== check $f =="; (cd "{{ROOT}}/$f" && npm run check)
         if [ "$(cd "{{ROOT}}/$f" && npm pkg get scripts.test)" != "{}" ]; then
             echo "== vitest $f =="; (cd "{{ROOT}}/$f" && npm test -- --passWithNoTests)
         fi
