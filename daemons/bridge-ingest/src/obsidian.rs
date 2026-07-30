@@ -453,6 +453,54 @@ mod tests {
         }
     }
 
+    /// Each documented tag rule, stated as a case. The property test above says
+    /// every reported tag is really in the note, which is true of a scanner that
+    /// finds too few or slices one character off - so mutation testing kept
+    /// finding arithmetic here that no test could see. These are the rules the
+    /// doc comment promises, each pinned so breaking one fails something.
+    #[test]
+    fn the_tag_rules_hold_case_by_case() {
+        // (body, expected tags)
+        let cases: &[(&str, &[&str])] = &[
+            // A `#` after a word character is a fragment or an anchor, not a tag.
+            ("see file#section for more", &[]),
+            ("a_b#notatag", &[]),
+            // At the start of a line or after a space it is a tag.
+            ("#alpha and #beta", &["alpha", "beta"]),
+            ("(#parenthesised)", &["parenthesised"]),
+            // A bare `#` names nothing, and neither does a heading.
+            ("#", &[]),
+            ("# Heading text", &[]),
+            ("## Deeper heading", &[]),
+            // At least one non-digit, so an issue reference is not a tag.
+            ("fixes #123", &[]),
+            ("#1a", &["1a"]),
+            // The body charset is [A-Za-z0-9_/-], and a nested tag stays whole.
+            ("#area/sub/leaf", &["area/sub/leaf"]),
+            ("#kebab-case", &["kebab-case"]),
+            ("#snake_case", &["snake_case"]),
+            // The tag ends at the first character outside that set, and the `#`
+            // itself is never part of what is reported.
+            ("#tag, then prose", &["tag"]),
+            ("#tag.", &["tag"]),
+        ];
+        for (body, want) in cases {
+            let got = tags(&parse_note(body));
+            let want: Vec<String> = want.iter().map(|s| s.to_string()).collect();
+            assert_eq!(got, want, "body {body:?}");
+        }
+    }
+
+    /// Code is masked before scanning, so a sample in a note cannot inject a tag
+    /// or a link - and the masking must not eat the prose around it.
+    #[test]
+    fn code_cannot_inject_a_tag_and_masking_spares_the_prose() {
+        let note = "before #real\n```\n#fenced [[fenced-link]]\n```\nafter #alsoreal and `#inline [[inline-link]]` done\n";
+        let m = parse_note(note);
+        assert_eq!(tags(&m), vec!["alsoreal".to_string(), "real".to_string()]);
+        assert!(links(&m).is_empty(), "no link may come out of code: {:?}", links(&m));
+    }
+
     #[test]
     fn frontmatter_scalar_inline_list_and_block_list_parse() {
         let note = "---\ntitle: My Note\naliases: [Alt, Other]\nstatus:\n  - draft\n  - review\n---\nbody\n";
