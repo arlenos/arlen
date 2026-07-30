@@ -24,6 +24,7 @@ pub mod bridge;
 pub mod inventory;
 pub mod module;
 pub mod profile;
+pub mod revoke;
 
 use serde::{Deserialize, Serialize};
 
