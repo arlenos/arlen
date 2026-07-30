@@ -1,0 +1,16 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-extensions"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen unified extension inventory: one capability vocabulary and one model across apps, modules and bridges"
+authors = ["Arlen"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# The three sources whose declarations become capability labels.
+arlen-permissions = { path = "../../sdk/permissions" }
+arlen-modules = { path = "../../sdk/modules" }
+
+[dev-dependencies]
+toml = "0.8"
