@@ -196,6 +196,53 @@ pub fn resolve_reaches(
                     out.push(RevokedReach::FilesystemPath { path: path.to_string() });
                 }
             }
+            "input" => {
+                let i = &profile.input;
+                for (cap, on) in [
+                    ("register_focused_bindings", i.register_focused_bindings),
+                    ("register_global_bindings", i.register_global_bindings),
+                ] {
+                    if on {
+                        out.push(RevokedReach::InputCap { cap: cap.into() });
+                    }
+                }
+            }
+            "search" => {
+                let s = &profile.search;
+                for (cap, on) in [
+                    ("open", s.open),
+                    ("register_handler", s.register_handler),
+                    ("intercept_all", s.intercept_all),
+                ] {
+                    if on {
+                        out.push(RevokedReach::SearchCap { cap: cap.into() });
+                    }
+                }
+            }
+            "intents" => {
+                let i = &profile.intents;
+                for (cap, on) in [
+                    ("dispatch", i.dispatch),
+                    ("register", i.register),
+                    ("preferences", i.preferences),
+                ] {
+                    if on {
+                        out.push(RevokedReach::IntentsCap { cap: cap.into() });
+                    }
+                }
+            }
+            "events" => {
+                for pattern in &profile.event_bus.subscribe {
+                    out.push(RevokedReach::EventBusSubscribe {
+                        pattern: pattern.clone(),
+                    });
+                }
+                for pattern in &profile.event_bus.publish {
+                    out.push(RevokedReach::EventBusPublish {
+                        pattern: pattern.clone(),
+                    });
+                }
+            }
             // Had no arm at all, so it fell through to the graph-prefix branch,
             // matched neither `read:` nor `write:`, and resolved to nothing -
             // the revoke reported success having removed no grant.
@@ -293,6 +340,10 @@ mod tests {
         p.clipboard.read = true;
         p.system.autostart = true;
         p.system.power.suspend = true;
+        p.input.register_global_bindings = true;
+        p.search.register_handler = true;
+        p.intents.dispatch = true;
+        p.event_bus.subscribe = vec!["file.*".to_string()];
         p.graph.read = vec!["system.File".to_string()];
 
         for label in crate::profile::profile_labels(&p) {
@@ -302,6 +353,49 @@ mod tests {
                 !reaches.is_empty() || !excused.is_empty(),
                 "the label {label:?} resolves to no reach and is not reported unrevocable, \
                  so revoking it would silently do nothing"
+            );
+        }
+    }
+
+    /// The other direction of the same invariant, and the one that was broken
+    /// here: a permission family the revoke vocabulary can express must also be
+    /// SHOWN. Four were not, so an app holding them appeared to hold nothing -
+    /// `input` most of all, since a global binding sees keys pressed in other
+    /// apps' windows.
+    ///
+    /// Pinned by name rather than derived, because Rust cannot enumerate the
+    /// profile's fields; adding a family means adding it here, which is the
+    /// prompt to add its label and its arm.
+    #[test]
+    fn every_family_the_revoke_vocabulary_covers_is_shown() {
+        let mut p = profile();
+        p.network.allowed_domains = vec!["api.example.com".into()];
+        p.filesystem.documents = true;
+        p.notifications.enabled = true;
+        p.clipboard.read = true;
+        p.system.autostart = true;
+        p.input.register_global_bindings = true;
+        p.search.register_handler = true;
+        p.intents.dispatch = true;
+        p.event_bus.publish = vec!["app.*".to_string()];
+        p.graph.write = vec!["system.File".to_string()];
+
+        let labels = crate::profile::profile_labels(&p);
+        for expected in [
+            "network",
+            "filesystem",
+            "notifications",
+            "clipboard",
+            "system",
+            "input",
+            "search",
+            "intents",
+            "events",
+            "write:system.File",
+        ] {
+            assert!(
+                labels.iter().any(|l| l == expected),
+                "a granted family is invisible on the surface: {expected} missing from {labels:?}"
             );
         }
     }

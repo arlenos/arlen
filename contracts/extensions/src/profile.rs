@@ -66,6 +66,34 @@ pub fn profile_labels(profile: &PermissionProfile) -> Vec<String> {
         labels.insert("system".into());
     }
 
+    // The four families below were missing, which mattered most for `input`: an
+    // app holding a global binding sees keys pressed in other apps' windows, and
+    // it showed nothing at all here - invisible on the one surface whose job is
+    // saying what an app can do, and so unreachable by the revoke built on these
+    // labels. The revoke vocabulary already had a reach for each of them.
+    let input = &profile.input;
+    if input.register_focused_bindings || input.register_global_bindings {
+        labels.insert("input".into());
+    }
+
+    // Registering a handler puts an app in front of what the user types into the
+    // launcher; intercepting all of it is stronger still.
+    let search = &profile.search;
+    if search.open || search.register_handler || search.intercept_all {
+        labels.insert("search".into());
+    }
+
+    let intents = &profile.intents;
+    if intents.dispatch || intents.register || intents.preferences {
+        labels.insert("intents".into());
+    }
+
+    // Either direction is reach across the system's own event traffic.
+    let bus = &profile.event_bus;
+    if !bus.publish.is_empty() || !bus.subscribe.is_empty() {
+        labels.insert("events".into());
+    }
+
     // Graph scopes verbatim, matching the recipe path, so a `read:system.File`
     // facet matches an apt app exactly as it matches a forage one.
     for scope in &profile.graph.read {
