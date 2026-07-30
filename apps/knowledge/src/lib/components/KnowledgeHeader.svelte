@@ -34,6 +34,10 @@
   }
 </script>
 
+<!-- The header is a drag surface (a non-keyboard pointer interaction); its actual
+     controls are the accessible WindowButtons inside it, so the static-interaction
+     lint is a false positive here. Same treatment as the meetings layout. -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <header class="kn-header" onpointerdown={startDrag} ondblclick={toggleMax}>
   <span class="kn-header-title">{$t("k.title")}</span>
   <span class="kn-header-spacer"></span>
