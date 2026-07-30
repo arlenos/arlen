@@ -800,3 +800,81 @@ mod unit_identity {
         );
     }
 }
+
+#[cfg(test)]
+mod image_staging {
+    use super::repo_path;
+    use std::path::{Path, PathBuf};
+
+    /// Units the IMAGE actually stages (not every `dist/*.service` in the tree -
+    /// several daemons deliberately are not in the image yet).
+    fn staged_units() -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        collect(&repo_path("dev/mkosi/mkosi.extra/usr/lib/systemd"), &mut out);
+        out
+    }
+
+    fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                collect(&p, out);
+            } else if p.extension().is_some_and(|x| x == "service") && !p.is_symlink() {
+                out.push(p);
+            }
+        }
+    }
+
+    fn exec_start(unit: &Path) -> Option<String> {
+        let text = std::fs::read_to_string(unit).ok()?;
+        text.lines()
+            .find_map(|l| l.strip_prefix("ExecStart="))
+            .map(|rest| rest.split_whitespace().next().unwrap_or("").to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    /// A staged unit whose binary nothing produces fails at boot with 203/EXEC,
+    /// and every unit ordered after it starts anyway into a system missing that
+    /// component. There are TWO ways a binary gets into the image - a
+    /// `mkosi.build.d/*.sh.chroot` script, or `build-image.sh` staging a
+    /// cross-built binary into the overlay - and checking only one of them
+    /// produces a confident false positive (I managed exactly that on the event
+    /// bus, and nearly wrote a redundant build script for it). So this checks
+    /// both, plus a binary already sitting in the overlay.
+    #[test]
+    fn every_staged_unit_has_something_that_builds_its_binary() {
+        let build_d = repo_path("dev/mkosi/mkosi.build.d");
+        let scripts: String = std::fs::read_dir(&build_d)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+            .collect();
+        let image_script =
+            std::fs::read_to_string(repo_path("dev/mkosi/build-image.sh")).unwrap_or_default();
+        let extra = repo_path("dev/mkosi/mkosi.extra");
+
+        let mut missing = Vec::new();
+        for unit in staged_units() {
+            let Some(bin) = exec_start(&unit) else { continue };
+            let name = Path::new(&bin).file_name().unwrap_or_default().to_string_lossy().to_string();
+            let staged_file = extra.join(bin.trim_start_matches('/'));
+            if scripts.contains(&name) || image_script.contains(&name) || staged_file.exists() {
+                continue;
+            }
+            missing.push(format!(
+                "{} execs {bin}, which no build script produces",
+                unit.file_name().unwrap().to_string_lossy()
+            ));
+        }
+        assert!(
+            missing.is_empty(),
+            "staged units whose binary is never built ({}):\n  {}",
+            missing.len(),
+            missing.join("\n  ")
+        );
+    }
+}
