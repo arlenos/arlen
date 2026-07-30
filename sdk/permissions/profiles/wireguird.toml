@@ -1,0 +1,9 @@
+# Starting permission profile for a VPN client. Needs network to reach its
+# gateways; the tunnel setup itself is privileged and elevates via polkit rather
+# than through this profile. No file access and no Knowledge Graph.
+[info]
+app_id = "wireguird"
+tier = "third-party"
+
+[network]
+allow_all = true

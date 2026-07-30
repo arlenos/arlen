@@ -1,0 +1,6 @@
+# Starting permission profile for a toolkit appearance configurator. It writes its
+# own settings under the user config dir and reads installed themes; no network
+# and no Knowledge Graph.
+[info]
+app_id = "qt6ct"
+tier = "third-party"

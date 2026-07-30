@@ -1,0 +1,12 @@
+# Starting permission profile for a video conferencing client. Needs network for
+# calls and saves what it receives to Downloads; camera, microphone and screen
+# share are runtime grants, not profile fields. No Knowledge Graph access.
+[info]
+app_id = "webex"
+tier = "third-party"
+
+[filesystem]
+downloads = true
+
+[network]
+allow_all = true
