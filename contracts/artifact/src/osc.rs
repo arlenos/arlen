@@ -97,7 +97,19 @@ pub fn decode_frames(stream: &[u8]) -> Result<Artifact, ArtifactError> {
             ));
         };
         let inner = &stream[frame_start..frame_start + end_rel];
-        pos = frame_start + end_rel + ST.len();
+        let next = frame_start + end_rel + ST.len();
+        // The loop terminates because `pos` strictly advances, and that rested
+        // entirely on the arithmetic above being right: mutation testing showed
+        // that breaking one offset makes this spin forever on a stream it can
+        // never finish. This parser reads untrusted terminal output, so the
+        // invariant is checked rather than assumed - a stall is reported as
+        // malformed instead of hanging the reader.
+        if next <= pos {
+            return Err(ArtifactError::Malformed(
+                "APC frame scan did not advance".into(),
+            ));
+        }
+        pos = next;
 
         let sentinel = SENTINEL.as_bytes();
         if !inner.starts_with(sentinel) || inner.get(sentinel.len()) != Some(&b';') {
@@ -223,6 +235,49 @@ mod tests {
         stream.extend_from_slice(ST);
         stream.extend_from_slice(&encode_frames(&art.to_json()));
         let back = decode_frames(&stream).unwrap();
+        assert_eq!(back.text, "real");
+    }
+
+    /// The real wire layout: the text leg is written FIRST and the sidecar
+    /// follows, so on a live terminal the frame never begins at offset 0. Every
+    /// other test here decodes a stream that starts with the frame, which leaves
+    /// `pos` and `rel` both zero - and with both zero, `pos + rel` and `pos - rel`
+    /// are the same number. Mutation testing found exactly that: the offset
+    /// arithmetic in `decode_frames` could be flipped from `+` to `-` and no test
+    /// noticed, because no test ever gave those terms a value.
+    #[test]
+    fn a_frame_preceded_by_output_decodes_from_the_right_offset() {
+        let art = artifact("the visible table");
+        let mut stream = Vec::new();
+        // Plain output, as `emit_legs` writes it.
+        stream.extend_from_slice(b"USER  PID  COMMAND\nroot  1  init\n");
+        // Then a foreign APC, so the ARLEN frame is at a non-trivial offset with a
+        // non-zero `pos` carried over from skipping it.
+        stream.extend_from_slice(APC);
+        stream.extend_from_slice(b"Gf=100,a=T;kitty-image-payload");
+        stream.extend_from_slice(ST);
+        stream.extend_from_slice(b"more output between\n");
+        stream.extend_from_slice(&encode_frames(&art.to_json()));
+        stream.extend_from_slice(b"\ntrailing output\n");
+
+        let back = decode_frames(&stream).expect("the frame is found past the leading output");
+        assert_eq!(back.text, "the visible table");
+        assert_eq!(back.meta.origin, ArtifactOrigin::ExternalContent);
+    }
+
+    /// An empty frame body is the exact-length case for the ST search: the
+    /// remainder of the stream IS the terminator, nothing before it. Mutation
+    /// testing found `needle.len() > haystack.len()` could become `>=`, which
+    /// stops finding a terminator that fills the rest of the slice - turning a
+    /// skippable empty frame into "unterminated".
+    #[test]
+    fn an_empty_foreign_frame_is_skipped_not_called_unterminated() {
+        let art = artifact("real");
+        let mut stream = Vec::new();
+        stream.extend_from_slice(APC);
+        stream.extend_from_slice(ST); // empty body, terminator flush against it
+        stream.extend_from_slice(&encode_frames(&art.to_json()));
+        let back = decode_frames(&stream).expect("an empty foreign frame is skipped");
         assert_eq!(back.text, "real");
     }
 
