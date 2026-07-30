@@ -61,6 +61,23 @@ fn node_pattern_by_field(var: &str, label: &str, field: &str, value: &str) -> St
     format!("({var}:{label} {{{field}: '{}'}})", escape_cypher(value))
 }
 
+/// The `'<esc a>', '<esc b>'` body of an `IN [...]` list of caller-supplied ids.
+///
+/// Three read paths built this by hand with the same map/join, each escaping its
+/// own elements: the retrieval neighbour expansion, the retrieval liveness
+/// confirm, and the read-scope label filter. Escaping a list of caller ids is
+/// exactly the construct that must not drift between copies, so it lives here
+/// with the rest of the injection boundary. Byte-for-byte identical to the
+/// `ids.map(|id| format!("'{}'", escape_cypher(id))).join(", ")` it replaces.
+///
+/// An empty iterator yields an empty string, so the caller's `IN []` matches
+/// nothing - the correct reading of "no ids", not "any id".
+pub fn id_list<'a>(ids: impl Iterator<Item = &'a String>) -> String {
+    ids.map(|id| format!("'{}'", escape_cypher(id)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// `MATCH (<var>:<Label> {<field>: '<escaped value>'})` - the node-by-field
 /// lookup that prefixes a `WHERE`/`SET`/`DETACH DELETE`/`RETURN` (e.g. `Grant`
 /// anchored by `app_id`). Byte-for-byte identical to the hand-rolled
@@ -166,6 +183,29 @@ mod tests {
             escape_cypher("c\\d"),
         );
         assert_eq!(match_two_nodes("s", "File", "a'b", "t", "File", "c\\d"), raw);
+    }
+
+    #[test]
+    fn the_id_list_escapes_every_element() {
+        // Byte-identical to the hand-rolled map/join the call sites used.
+        let raw = ["a'b", "c\\d"]
+            .iter()
+            .map(|id| format!("'{}'", escape_cypher(id)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        assert_eq!(id_list(["a'b".to_string(), "c\\d".to_string()].iter()), raw);
+        // Every element is escaped, not just the first.
+        assert_eq!(
+            id_list(["o'ne".to_string(), "t'wo".to_string()].iter()),
+            "'o\\'ne', 't\\'wo'",
+        );
+    }
+
+    #[test]
+    fn an_empty_id_list_is_empty() {
+        // `IN []` matches nothing, which is the correct reading of "no ids".
+        let none: Vec<String> = Vec::new();
+        assert_eq!(id_list(none.iter()), "");
     }
 
     #[test]
