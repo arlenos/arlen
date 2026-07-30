@@ -122,12 +122,6 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.rust != '[]' }}
     runs-on: ubuntu-latest
-    # apps/viewers/decode-heic needs system libheif >= 1.21 (libheif-rs 2.7 ->
-    # libheif-sys ^5.2), but ubuntu-latest ships 1.17, so it cannot build here and
-    # its failure blocks the whole matrix. Keep it non-fatal until libheif >= 1.21
-    # is provisioned in the system-deps step, then drop this line. It gates nothing
-    # today because it cannot build on the runner image.
-    continue-on-error: ${{ matrix.component == 'apps/viewers/decode-heic' }}
     strategy:
       fail-fast: false
       matrix:
@@ -151,7 +145,7 @@ jobs:
             protobuf-compiler build-essential pkg-config cmake nasm \
             libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
             libssl-dev libdbus-1-dev fuse3 libfuse3-dev \
-            libdav1d-dev libheif-dev
+            libdav1d-dev libheif-dev zlib1g-dev libheif-plugin-libde265
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -196,7 +190,7 @@ jobs:
             protobuf-compiler build-essential pkg-config cmake nasm \
             libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
             libssl-dev libdbus-1-dev fuse3 libfuse3-dev \
-            libdav1d-dev libheif-dev
+            libdav1d-dev libheif-dev zlib1g-dev libheif-plugin-libde265
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: build backend daemons
