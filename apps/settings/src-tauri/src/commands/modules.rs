@@ -334,19 +334,40 @@ pub fn modules_list() -> Vec<ModuleSummary> {
     out
 }
 
-/// Toggle enabled state. Persists to `modules.toml`.
+/// Toggle enabled state, through the module runtime.
+///
+/// This used to write `modules.toml` directly, which had two consequences: the
+/// toggle never passed the runtime's consent gate, so a module gained its
+/// declared capabilities without anyone being asked, and the runtime never
+/// learned about the change - a module switched off here kept minting iframe
+/// nonces and serving its MCP tools. modulesd owns that state and persists the
+/// same file itself, so asking it is both the gated path and the one that takes
+/// effect.
+///
+/// There is deliberately NO fallback to writing the file when modulesd is
+/// unreachable. A fallback would be the bypass this exists to close, and with
+/// the runtime down the toggle would not take effect anyway.
+///
 /// Returns `true` so the frontend can show a "restart required" banner.
 #[tauri::command]
-pub fn modules_set_enabled(id: String, enabled: bool) -> Result<bool, String> {
-    let mut disabled = load_disabled_list();
-    disabled.retain(|d| d != &id);
-    if !enabled {
-        disabled.push(id);
+pub async fn modules_set_enabled(id: String, enabled: bool) -> Result<bool, String> {
+    use modulesd_proto::{client, Request, Response};
+
+    let request = Request::SetEnabled {
+        id: "settings-toggle".to_string(),
+        module_id: id.clone(),
+        enabled,
+    };
+    match client::request_once(&client::socket_path(), request).await {
+        Ok(Response::Acked { .. }) => Ok(true),
+        // The runtime refused it - today that means consent was not given.
+        // Surfaced as itself rather than as a generic failure, because "you
+        // declined this" and "something broke" want different answers from the
+        // user.
+        Ok(Response::Error { message, .. }) => Err(message),
+        Ok(other) => Err(format!("unexpected reply from the module runtime: {other:?}")),
+        Err(e) => Err(e.to_string()),
     }
-    disabled.sort();
-    disabled.dedup();
-    save_disabled_list(disabled)?;
-    Ok(true)
 }
 
 /// Uninstall a user module by deleting its directory.
