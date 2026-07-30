@@ -22,6 +22,7 @@
 /// Architecture reference: `docs/architecture/module-system.md`.
 
 pub mod consent;
+pub mod enabled;
 pub mod error;
 pub mod host;
 pub mod manager;
