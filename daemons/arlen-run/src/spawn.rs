@@ -200,8 +200,10 @@ pub fn spawn_and_wait(
     // launcher is single-threaded so the post-fork child is too, making the
     // ruleset allocations safe; the syscalls (close_range, fcntl, setpgid, the
     // Landlock setup) only narrow the child's own capabilities.
+    // Captured in the PARENT: inside the closure this would be the child's own pid.
+    let launcher_pid = std::process::id() as libc::pid_t;
     unsafe {
-        cmd.pre_exec(move || child_pre_exec(None, &cgroup_procs, &keep_fds));
+        cmd.pre_exec(move || child_pre_exec(None, &cgroup_procs, &keep_fds, launcher_pid));
     }
 
     let spawned = cmd.spawn();
@@ -250,7 +252,26 @@ unsafe fn child_pre_exec(
     landlock_writable: Option<&[PathBuf]>,
     cgroup_procs: &Option<PathBuf>,
     keep_fds: &[libc::c_int],
+    launcher_pid: libc::pid_t,
 ) -> std::io::Result<()> {
+    // Tie the child's life to this launcher's: when the launcher dies the kernel
+    // SIGKILLs the child. `bwrap --die-with-parent` already does this on the direct
+    // path, but on the filtered path the process this execs into is `pasta`, which
+    // has no equivalent flag - and `--die-with-parent` inside pasta's argv binds
+    // bwrap to PASTA, not to the launcher. Without this, killing the launcher left
+    // pasta reparented to init with the whole confined tree (namespace, proxy and
+    // app) still running. Observed, not theorised: a killed test harness left a
+    // `pasta -> bwrap -> bwrap -> rclone rcd` chain alive at ppid 1.
+    if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // PDEATHSIG only fires for a parent that dies AFTER it is set. If the launcher
+    // exited inside the fork window the signal will never come, so check for it
+    // rather than exec into a child that would outlive its purpose. Returning Err
+    // here makes std report the failure and `_exit` the child before exec.
+    if libc::getppid() != launcher_pid {
+        return Err(std::io::Error::other("launcher exited during spawn"));
+    }
     // CLOSE_RANGE_CLOEXEC (not an immediate close) so std's pre_exec/execve error
     // pipe (an fd >= 3) survives to report a failure, while every launcher fd is
     // closed atomically on a successful exec. Needs kernel >= 5.11, below the
@@ -348,8 +369,10 @@ pub fn spawn_filtered_and_wait(
     cmd.args(&argv[1..]);
     // SAFETY: single-threaded post-fork child (see child_pre_exec). No memfd (the
     // wrapper opens the seccomp file) and no Landlock (`None`) on this path.
+    // Captured in the PARENT (see the direct path).
+    let launcher_pid = std::process::id() as libc::pid_t;
     unsafe {
-        cmd.pre_exec(move || child_pre_exec(None, &cgroup_procs, &[]));
+        cmd.pre_exec(move || child_pre_exec(None, &cgroup_procs, &[], launcher_pid));
     }
     let status = cmd.spawn()?.wait()?;
     drop(seccomp_file); // remove the temp filter now the launch has ended
