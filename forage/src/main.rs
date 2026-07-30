@@ -213,11 +213,18 @@ fn report_bridges(outcome: commands::bridge::BridgeOutcome) {
     use commands::bridge::BridgeOutcome as O;
     match outcome {
         O::None => {}
-        O::Installed(namespaces) => println!(
-            "{} bridge installed; it may now write {}",
-            "ok:".green().bold(),
-            namespaces.join(", ")
-        ),
+        O::Installed { namespaces, skipped } => {
+            println!(
+                "{} bridge installed; it may now write {}",
+                "ok:".green().bold(),
+                namespaces.join(", ")
+            );
+            // Said after the success, so a partial install cannot read as a
+            // clean one.
+            for s in skipped {
+                eprintln!("{} a bridge was left out: {s}", "note:".yellow());
+            }
+        }
         O::Declined => println!("bridge not installed: you declined the access it asked for"),
         // The app is installed and working; only the bridge is not.
         O::Failed(why) => eprintln!("{} the app is installed, its bridge is not: {why}", "note:".yellow()),
