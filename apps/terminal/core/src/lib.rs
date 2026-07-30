@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod blocks;
 pub mod read_scope;
+pub mod read_serve;
 pub mod vt;
 
 /// Who issued the command in a block: the user typed it, or the agent ran it.
