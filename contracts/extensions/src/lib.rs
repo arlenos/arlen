@@ -21,6 +21,7 @@
 //! detail belongs on the thing's own page, where it can be read in context.
 
 pub mod bridge;
+pub mod inventory;
 pub mod module;
 pub mod profile;
 
