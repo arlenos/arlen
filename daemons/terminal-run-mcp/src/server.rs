@@ -89,6 +89,31 @@ impl TerminalRunMcp {
     }
 }
 
+impl TerminalRunMcp {
+    /// The `get_recent_output` tool schema: the read half.
+    fn read_tool() -> Tool {
+        let schema: JsonObject = serde_json::from_value(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "terminal_id": { "type": "string", "description": "Which terminal session to read. One terminal per call; there is no all." },
+                "limit": { "type": "integer", "description": "How many recent blocks, newest first (capped by the terminal)." },
+                "include_user_blocks": { "type": "boolean", "description": "Include commands the user typed, not just the assistant's own. Requires a consent that covers it." },
+                "include_running": { "type": "boolean", "description": "Include a command that has not finished yet." },
+                "consent": { "type": "string", "description": "The consent token proving the user approved THIS reading, bound to the terminal and the exact scope." }
+            },
+            "required": ["terminal_id", "limit", "consent"]
+        }))
+        .expect("the static get_recent_output schema is a valid JSON object");
+        Tool::new_with_raw(
+            arlen_run_consent_token::READ_OUTPUT_TOOL.to_owned(),
+            Some(Cow::Borrowed(
+                "Look at a terminal's recent command blocks without running anything: what ran, how it exited, and its output. Reads only what the user's consent covers, and by default only the assistant's own commands.",
+            )),
+            Arc::new(schema),
+        )
+    }
+}
+
 /// The parsed, validated `run_command` arguments.
 struct RunArgs {
     command: String,
@@ -184,6 +209,45 @@ fn authorize_run_with_key(
     }
 }
 
+/// Handle `get_recent_output`: parse the arguments, ask the terminal, render.
+///
+/// Consent is NOT verified here. The terminal holds the blocks and verifies the
+/// token itself, so this process never decides what may be seen; forwarding an
+/// unauthorized request simply gets a refusal back. Checking here as well would
+/// duplicate the rule in a second place, which is how two copies drift.
+fn call_read_tool(arguments: Option<&JsonObject>) -> CallToolResult {
+    let args = arguments.cloned().unwrap_or_default();
+    let Some(terminal_id) = args.get("terminal_id").and_then(|v| v.as_str()) else {
+        return CallToolResult::error(vec![Content::text(
+            "get_recent_output needs a terminal_id".to_string(),
+        )]);
+    };
+    let Some(limit) = args.get("limit").and_then(|v| v.as_u64()) else {
+        return CallToolResult::error(vec![Content::text(
+            "get_recent_output needs a limit".to_string(),
+        )]);
+    };
+    let Some(consent) = args.get("consent").and_then(|v| v.as_str()) else {
+        return CallToolResult::error(vec![Content::text(
+            "get_recent_output needs a consent token".to_string(),
+        )]);
+    };
+    let req = arlen_terminal_core::read_serve::ReadRequest {
+        terminal_id: terminal_id.to_string(),
+        limit: limit as usize,
+        include_user_blocks: args
+            .get("include_user_blocks")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        include_running: args.get("include_running").and_then(|v| v.as_bool()).unwrap_or(false),
+        consent: consent.to_string(),
+    };
+    match crate::read::fetch(&req) {
+        Ok(blocks) => CallToolResult::success(vec![Content::text(crate::read::render(&blocks))]),
+        Err(e) => CallToolResult::error(vec![Content::text(e.to_string())]),
+    }
+}
+
 /// The system directories a confined command may READ: enough to resolve and run
 /// a binary (interpreter, shared libraries, `ld.so.cache`, `/etc/passwd`), and
 /// nothing else.
@@ -263,7 +327,7 @@ impl ServerHandler for TerminalRunMcp {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
-        Ok(ListToolsResult::with_all_items(vec![Self::run_tool()]))
+        Ok(ListToolsResult::with_all_items(vec![Self::run_tool(), Self::read_tool()]))
     }
 
     async fn call_tool(
@@ -272,6 +336,9 @@ impl ServerHandler for TerminalRunMcp {
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let tool = request.name.to_string();
+        if tool == arlen_run_consent_token::READ_OUTPUT_TOOL {
+            return Ok(call_read_tool(request.arguments.as_ref()));
+        }
         if tool != RUN_TOOL {
             return Err(McpError::invalid_request(format!("unknown tool: {tool}"), None));
         }

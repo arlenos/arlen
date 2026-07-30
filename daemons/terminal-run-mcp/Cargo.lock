@@ -75,11 +75,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-terminal-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "arlen-terminal-run-mcp"
 version = "0.1.0"
 dependencies = [
  "arlen-confiner",
  "arlen-run-consent-token",
+ "arlen-terminal-core",
  "biscuit-auth",
  "libc",
  "os-sdk",
