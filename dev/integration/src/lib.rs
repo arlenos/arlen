@@ -1425,3 +1425,209 @@ mod module_reachability {
         );
     }
 }
+
+#[cfg(test)]
+mod crate_reachability {
+    use super::repo_path;
+    use std::path::{Path, PathBuf};
+
+    /// Library crates nothing in the tree depends on.
+    ///
+    /// The module check above cannot see these, because a crate's own modules
+    /// reference each other perfectly well while the crate as a whole has no
+    /// consumer. Several are here because a successor took the job under a
+    /// similar name, which is what makes them easy to miss when reading the tree.
+    const KNOWN_UNCONSUMED: &[&str] = &[
+        // `apps/system-monitor/core` and `daemons/system-monitor-mcp` do this work.
+        "sdk/system-monitor",
+        "sdk/proc-collect",
+        // `sdk/config-format` and `daemons/config-broker` do this work, and the
+        // compositor parses its own keybindings. The one mention left is a
+        // commented-out dependency in `apps/settings/src-tauri/Cargo.toml`
+        // pointing at `github.com/arlenos/sdk`, a repo from before the monorepo.
+        "sdk/config",
+        "sdk/tauri-plugin-clipboard",
+        // Built recently, consumer still to come.
+        "sdk/i18n",
+        "daemons/integration-packages",
+        "contracts/lenv",
+        "contracts/file-change",
+        // The pure detector core for an `org.arlen.Sentinel1` daemon that does
+        // not exist yet.
+        "daemons/sentinel-detect",
+        // System Explanation Mode. Its caller was `ai/ai-daemon`, which became
+        // `daemons/ai-engine-daemon` and does not call it.
+        "ai/ai-explanation",
+    ];
+
+    /// Every `Cargo.toml` in the tree that declares a `[package]`.
+    fn manifests(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                let n = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if n == "target" || n == "node_modules" || n.starts_with("mkosi") || n == ".git" {
+                    continue;
+                }
+                manifests(&p, out);
+            } else if p.file_name().is_some_and(|n| n == "Cargo.toml") {
+                out.push(p);
+            }
+        }
+    }
+
+    /// A manifest with comments stripped, so a commented-out dependency does not
+    /// read as a live one. `apps/settings/src-tauri` carries exactly that: a
+    /// commented `arlen-config` line that would otherwise mask the finding.
+    fn uncommented(text: &str) -> String {
+        text.lines()
+            .map(|l| l.split_once('#').map_or(l, |(before, _)| before))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// A manifest without its `[package]` block, so the crate's own name does not
+    /// read as a reference to a same-named crate elsewhere.
+    fn strip_package_block(text: &str) -> String {
+        let mut out = Vec::new();
+        let mut in_package = false;
+        for line in text.lines() {
+            let l = line.trim();
+            if l.starts_with('[') {
+                in_package = l == "[package]";
+            }
+            if !in_package {
+                out.push(line);
+            }
+        }
+        out.join("\n")
+    }
+
+    /// The `name = "..."` of a manifest's `[package]`, if it has one.
+    fn package_name(text: &str) -> Option<String> {
+        let mut in_package = false;
+        for line in text.lines() {
+            let l = line.trim();
+            if l.starts_with('[') {
+                in_package = l == "[package]";
+                continue;
+            }
+            if in_package {
+                if let Some(rest) = l.strip_prefix("name") {
+                    if let Some((_, v)) = rest.split_once('=') {
+                        return Some(v.trim().trim_matches('"').to_string());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Whether `text` names `krate` as a whole token, so `arlen-config` does not
+    /// match inside `arlen-config-format`.
+    fn names(text: &str, krate: &str) -> bool {
+        text.match_indices(krate).any(|(i, _)| {
+            let before_ok = i == 0
+                || !text[..i]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_alphanumeric() || c == '-' || c == '_');
+            let after = text[i + krate.len()..].chars().next();
+            let after_ok = !after.is_some_and(|c| c.is_alphanumeric() || c == '-' || c == '_');
+            before_ok && after_ok
+        })
+    }
+
+    /// A library crate with no binary and no dependent ships in nothing. It still
+    /// compiles in CI and its tests still pass, so it reads as healthy from the
+    /// outside; the only thing that distinguishes it from a live crate is that no
+    /// manifest names it.
+    ///
+    /// Workspace membership does not count as consumption: `ai/Cargo.toml` lists
+    /// `ai-explanation` as a member, which builds and tests it without anything
+    /// calling it. Only a dependency edge counts, which is why the search skips
+    /// the crate's own manifest and strips comments before looking.
+    ///
+    /// `dev/integration` is excluded because it is this test's own crate: a test
+    /// harness is consumed by being run, not by being depended on.
+    #[test]
+    fn no_new_library_crate_is_unconsumed() {
+        let root = repo_path("");
+        let mut found = Vec::new();
+        manifests(&root, &mut found);
+        assert!(found.len() > 50, "expected the tree's manifests, got {}", found.len());
+
+        let bodies: Vec<(PathBuf, String)> = found
+            .iter()
+            .filter_map(|m| std::fs::read_to_string(m).ok().map(|t| (m.clone(), uncommented(&t))))
+            .collect();
+
+        let mut unconsumed = Vec::new();
+        for (manifest, text) in &bodies {
+            let Some(name) = package_name(text) else {
+                continue;
+            };
+            let dir = manifest.parent().expect("manifest has a directory");
+            let rel = dir.strip_prefix(&root).unwrap_or(dir).to_string_lossy().to_string();
+            if rel == "dev/integration" {
+                continue;
+            }
+            let has_lib = dir.join("src/lib.rs").exists() || text.contains("[lib]");
+            let has_bin = dir.join("src/main.rs").exists() || text.contains("[[bin]]");
+            if !has_lib || has_bin {
+                continue;
+            }
+            // A dependent is any OTHER manifest naming it outside its own
+            // `[package]` block. Workspace member lists are not dependencies, so
+            // the workspace root's mention does not count either.
+            let depended = bodies.iter().any(|(other, other_text)| {
+                if other == manifest {
+                    return false;
+                }
+                // Another manifest's own `[package] name` is not a dependency on
+                // this crate even when the two names are equal, and two are:
+                // `sdk/system-monitor` and `apps/system-monitor/src-tauri` both
+                // call themselves `arlen-system-monitor`. Reading that as a
+                // dependent is how this check first passed for a dead crate.
+                let other_text = &strip_package_block(other_text);
+                let without_members = other_text
+                    .split("[workspace]")
+                    .next()
+                    .unwrap_or(other_text)
+                    .to_string();
+                let tail = other_text
+                    .split_once("members")
+                    .map_or(String::new(), |(_, t)| {
+                        t.split_once(']').map_or(String::new(), |(_, r)| r.to_string())
+                    });
+                names(&without_members, &name) || names(&tail, &name)
+            });
+            if !depended {
+                unconsumed.push(rel);
+            }
+        }
+        unconsumed.sort();
+
+        let known: Vec<String> = KNOWN_UNCONSUMED.iter().map(|s| s.to_string()).collect();
+        let fresh: Vec<&String> = unconsumed.iter().filter(|u| !known.contains(u)).collect();
+        assert!(
+            fresh.is_empty(),
+            "library crates that build and test but nothing depends on ({}):\n  {}\n\
+             Give it a consumer, or add it to KNOWN_UNCONSUMED with the reason it waits.",
+            fresh.len(),
+            fresh.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        );
+
+        let stale: Vec<&String> = known.iter().filter(|k| !unconsumed.contains(k)).collect();
+        assert!(
+            stale.is_empty(),
+            "KNOWN_UNCONSUMED lists crates that now have a dependent ({}):\n  {}\n\
+             Delete these entries: the list is meant to shrink.",
+            stale.len(),
+            stale.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        );
+    }
+}
