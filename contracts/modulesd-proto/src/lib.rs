@@ -194,6 +194,17 @@ pub struct ModuleSummary {
     /// Lower means higher priority; matches `WaypointerPlugin::priority`.
     pub priority: PluginPriority,
     pub extension_points: Vec<String>,
+    /// What the module may do, in the SAME words the consent dialog used when it
+    /// was enabled (`modulesd::consent::describe`). Carried on the summary so a
+    /// management surface can list a module's reach without re-reading manifests
+    /// it has no access to, and so what the surface shows and what the user was
+    /// asked cannot drift into two different descriptions of one grant.
+    ///
+    /// Empty means the module declares nothing, not that its capabilities are
+    /// unknown - the summary is built from the manifest, so there is always an
+    /// answer.
+    #[serde(default)]
+    pub granted: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

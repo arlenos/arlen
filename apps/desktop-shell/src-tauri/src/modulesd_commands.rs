@@ -235,6 +235,7 @@ mod tests {
             failed: false,
             priority: 100,
             extension_points: vec!["topbar".into()],
+            granted: Vec::new(),
         };
         let ui: UiModule = s.into();
         assert_eq!(ui.tier, "iframe");

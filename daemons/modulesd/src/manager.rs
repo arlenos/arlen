@@ -66,6 +66,7 @@ impl ModuleEntry {
             points.push("mcp".to_string());
         }
         ModuleSummary {
+            granted: crate::consent::describe(&self.record.manifest.capabilities).grants,
             id: self.record.id().to_string(),
             name: self.record.manifest.module.name.clone(),
             version: self.record.manifest.module.version.clone(),
@@ -2006,6 +2007,49 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn the_summary_lists_what_the_consent_dialog_asked_for() {
+        // The management surface and the consent prompt must describe one grant
+        // the same way. Sharing `describe` is what makes that true by
+        // construction rather than by two teams keeping their wording in step.
+        use arlen_modules::NetworkCapability;
+        let (tx, _rx) = broadcast::channel(16);
+        let m = Manager::new(tx).unwrap();
+        let mut rec = record("x", Tier::Wasm);
+        rec.manifest.capabilities.network = Some(NetworkCapability {
+            allowed_domains: vec!["api.example.com".into()],
+        });
+        m.insert_for_test(rec).await;
+
+        let resp = m
+            .handle_request(Request::ListModules { id: "1".into() })
+            .await;
+        let Response::ModuleList { modules, .. } = resp else {
+            panic!("expected a module list, got {resp:?}");
+        };
+        let granted = &modules[0].granted;
+        assert!(
+            granted.iter().any(|g| g.contains("api.example.com")),
+            "the summary must name the reach, got {granted:?}"
+        );
+        assert_eq!(
+            granted,
+            &crate::consent::describe(&modules_capabilities_for_test()).grants,
+            "and it must be the same words the prompt used"
+        );
+    }
+
+    /// The capability set the record above declares, so the assertion above
+    /// compares against `describe`'s output rather than a hand-copied string.
+    fn modules_capabilities_for_test() -> arlen_modules::ModuleCapabilities {
+        use arlen_modules::NetworkCapability;
+        let mut caps = arlen_modules::ModuleCapabilities::default();
+        caps.network = Some(NetworkCapability {
+            allowed_domains: vec!["api.example.com".into()],
+        });
+        caps
     }
 
     #[tokio::test]
