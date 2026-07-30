@@ -69,6 +69,28 @@ pub struct ReadResponse {
     pub blocks: Vec<Block>,
 }
 
+/// What the socket answers: the blocks, or a refusal.
+///
+/// Refusal is a distinct answer rather than an empty block list, because the two
+/// mean different things to the caller and conflating them would be unkind rather
+/// than safe. "Nothing you may see" and "you are not allowed to ask" lead to
+/// different next steps: the first is an answer, the second means the assistant
+/// should ask the user to approve. Nor is the distinction an oracle - a caller
+/// already knows whether it presented a token - so hiding it would cost clarity
+/// and buy nothing.
+///
+/// The refusal deliberately carries no reason. Which of expired, wrong scope,
+/// wrong terminal or malformed applies is exactly the detail that would let a
+/// caller probe, and the assistant's next step is the same in every case.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ReadReply {
+    /// The reading was authorized; these are the visible blocks, newest first.
+    Blocks(ReadResponse),
+    /// The consent token does not authorize this reading.
+    Refused,
+}
+
 /// Whether a presented consent token authorizes exactly the reading a request
 /// asks for.
 ///
@@ -224,6 +246,21 @@ mod tests {
         let mut r = req("t1");
         r.limit = usize::MAX;
         assert_eq!(handle(&src, &ok(&r)).blocks.len(), read_scope::MAX_BLOCKS);
+    }
+
+    #[test]
+    fn a_refusal_is_distinguishable_from_an_empty_result_on_the_wire() {
+        // Both are legitimate answers and they must not look alike: an empty
+        // block list is "nothing you may see", a refusal is "you may not ask".
+        let empty = ReadReply::Blocks(ReadResponse { blocks: Vec::new() });
+        let refused = ReadReply::Refused;
+        assert_ne!(
+            serde_json::to_string(&empty).expect("encodes"),
+            serde_json::to_string(&refused).expect("encodes"),
+        );
+        // And the refusal says nothing about why.
+        let text = serde_json::to_string(&refused).expect("encodes");
+        assert_eq!(text, r#"{"outcome":"refused"}"#);
     }
 
     #[test]
