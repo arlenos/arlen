@@ -364,7 +364,7 @@ mod tests {
 
         let arg_at = vec!["a".repeat(MAX_ARG_LEN)];
         assert!(mint("ls", &arg_at).is_ok(), "an argument of exactly the cap is allowed");
-        assert!(mint("ls", &vec!["a".repeat(MAX_ARG_LEN + 1)]).is_err());
+        assert!(mint("ls", &["a".repeat(MAX_ARG_LEN + 1)]).is_err());
 
         let count_at: Vec<String> = (0..MAX_ARGS).map(|_| "x".to_string()).collect();
         assert!(mint("ls", &count_at).is_ok(), "exactly the arg count is allowed");
