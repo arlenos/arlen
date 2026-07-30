@@ -492,6 +492,7 @@ impl Manager {
     pub async fn discover(&self) {
         let records = discover_all();
         info!("modulesd: discovered {} module(s)", records.len());
+        let disabled = crate::enabled::disabled_modules();
         let mut guard = self.modules.write().await;
         for record in records {
             let id = record.id().to_string();
@@ -504,11 +505,17 @@ impl Manager {
                 );
                 continue;
             }
+            // Start from the user's own disabled list rather than admitting
+            // everything. Settings and the shell loader write this file, and
+            // until now modulesd never read it - so a module switched off in
+            // the UI stayed enabled in the runtime that enforces its
+            // capabilities, still minting nonces and still serving MCP tools.
+            let enabled = !disabled.contains(&id);
             guard.insert(
                 id,
                 ModuleEntry {
                     record,
-                    enabled: true,
+                    enabled,
                     crash: CrashState::new(),
                     next_retry_at: None,
                 },
@@ -1740,6 +1747,15 @@ impl Manager {
             } else {
                 self.stop_mcp_server(module_id).await;
             }
+        }
+        // Durable, and in the same file Settings reads - otherwise a toggle
+        // here is invisible to the UI and silently reverts on restart.
+        if let Err(e) = crate::enabled::persist(module_id, enabled) {
+            tracing::warn!(
+                module = %module_id,
+                error = %e,
+                "modulesd: could not persist the module's enabled state"
+            );
         }
         let _ = self.events_tx.send(if enabled {
             Event::ModuleEnabled {
