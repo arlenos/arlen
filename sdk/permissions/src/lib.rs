@@ -81,6 +81,20 @@ pub fn detect_tier(exe_path: &Path) -> AppTier {
 // ---------------------------------------------------------------------------
 
 /// Complete permission profile for one app.
+///
+/// Every dimension here is projected into the Living Capability Graph as a
+/// `declared` Grant, which is what makes an app's reach visible on the App-access
+/// page and revocable there. A grant that exists in this struct but not in the
+/// graph is a second, invisible permission store, and that is the failure mode
+/// behind essentially every real-world per-app-permission drift bug: Android's
+/// special-access screens, Flatpak's static manifest versus its portal grants,
+/// macOS `locationd`. So the projection is enforced structurally rather than by
+/// discipline. `emit_all_declared_grants` destructures this struct with no `..`
+/// rest pattern, and each dimension's `reach_summary` destructures its own fields
+/// the same way, so adding a permission anywhere in this file fails to compile
+/// until someone has said whether it is reach. A field that deliberately is not
+/// reach is bound to `_` with the reason, which is a decision on the record
+/// instead of a silence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionProfile {
     pub info: ProfileInfo,
@@ -219,13 +233,36 @@ impl GraphPermissions {
 
     /// The declared graph reach as an LCG grant `consent_scope`: the read + write
     /// entity-type patterns. `None` when the app declares neither.
+    ///
+    /// Unlike its sibling dimensions this one has no caller: the graph grant is
+    /// projected from the minted capability TOKEN (`emit_grant_node`) rather than
+    /// from the profile, so the reach shown on the App-access page comes from what
+    /// the app was actually granted at connect. This method is kept because the
+    /// token path covers only `read`/`write`; three of the fields below are reach
+    /// the token does not carry, so if graph ever projects from the profile they
+    /// need classifying first rather than defaulting to invisible.
     pub fn reach_summary(&self) -> Option<String> {
+        // Exhaustive on purpose; see [`PermissionProfile`].
+        let Self {
+            read,
+            write,
+            app_isolated: _, // a narrowing, not reach
+            // Reach, not yet summarised: reading another app's annotations is an
+            // explicit grant (foundation §395), relations are edge-write grants,
+            // and a delegated namespace is authority handed to another principal.
+            annotations_read_cross_namespace: _,
+            relations: _,
+            delegated_namespaces: _,
+            read_sensitive: _,  // gated separately at the daemon
+            instance_scope: _,  // which instances, not which types
+            required: _,        // an install-time assertion, not reach
+        } = self;
         let mut parts = Vec::new();
-        if !self.read.is_empty() {
-            parts.push(format!("read {}", self.read.join(", ")));
+        if !read.is_empty() {
+            parts.push(format!("read {}", read.join(", ")));
         }
-        if !self.write.is_empty() {
-            parts.push(format!("write {}", self.write.join(", ")));
+        if !write.is_empty() {
+            parts.push(format!("write {}", write.join(", ")));
         }
         if parts.is_empty() {
             None
@@ -260,12 +297,14 @@ impl EventBusPermissions {
     /// event kinds. An app that hears the bus sees activity, so this is real reach.
     /// `None` when the app declares neither.
     pub fn reach_summary(&self) -> Option<String> {
+        // Exhaustive on purpose; see [`PermissionProfile`].
+        let Self { publish, subscribe } = self;
         let mut parts = Vec::new();
-        if !self.subscribe.is_empty() {
-            parts.push(format!("hears {}", self.subscribe.join(", ")));
+        if !subscribe.is_empty() {
+            parts.push(format!("hears {}", subscribe.join(", ")));
         }
-        if !self.publish.is_empty() {
-            parts.push(format!("emits {}", self.publish.join(", ")));
+        if !publish.is_empty() {
+            parts.push(format!("emits {}", publish.join(", ")));
         }
         if parts.is_empty() {
             None
@@ -299,20 +338,30 @@ impl FilesystemPermissions {
     /// The declared filesystem reach: the standard directories the app may access
     /// plus any custom paths. `None` when nothing is declared.
     pub fn reach_summary(&self) -> Option<String> {
+        // Exhaustive on purpose; see [`PermissionProfile`].
+        let Self {
+            home,
+            documents,
+            downloads,
+            pictures,
+            music,
+            videos,
+            custom,
+        } = self;
         let mut parts: Vec<String> = Vec::new();
         for (on, label) in [
-            (self.home, "home"),
-            (self.documents, "documents"),
-            (self.downloads, "downloads"),
-            (self.pictures, "pictures"),
-            (self.music, "music"),
-            (self.videos, "videos"),
+            (home, "home"),
+            (documents, "documents"),
+            (downloads, "downloads"),
+            (pictures, "pictures"),
+            (music, "music"),
+            (videos, "videos"),
         ] {
-            if on {
+            if *on {
                 parts.push(label.to_string());
             }
         }
-        for p in &self.custom {
+        for p in custom {
             parts.push(p.display().to_string());
         }
         if parts.is_empty() {
@@ -363,11 +412,12 @@ impl NetworkPermissions {
     /// net-guard proxy does SNI/Host matching per connection. This is the declared
     /// reach (visible plus revocable is the win), not an enforcement guarantee.
     pub fn reach_summary(&self) -> Option<String> {
-        if self.allow_all {
+        // Exhaustive on purpose; see [`PermissionProfile`].
+        let Self { allow_all, allowed_domains } = self;
+        if *allow_all {
             return Some("all".to_string());
         }
-        let mut domains: Vec<String> = self
-            .allowed_domains
+        let mut domains: Vec<String> = allowed_domains
             .iter()
             .map(|d| d.trim().to_lowercase())
             .filter(|d| !d.is_empty())
@@ -394,7 +444,11 @@ impl NotificationPermissions {
     /// Declared notification reach: `Some("on")` when the app may post
     /// notifications, else `None`.
     pub fn reach_summary(&self) -> Option<String> {
-        if self.enabled {
+        // Exhaustive on purpose; see [`PermissionProfile`].
+        let Self {
+            enabled,
+        } = self;
+        if *enabled {
             Some("on".to_string())
         } else {
             None
@@ -439,17 +493,24 @@ impl ClipboardPermissions {
     /// Declared clipboard reach: the enabled capabilities (read, write, read
     /// sensitive, history). `None` when the app declares no clipboard access.
     pub fn reach_summary(&self) -> Option<String> {
+        // Exhaustive on purpose; see [`PermissionProfile`].
+        let Self {
+            read,
+            read_sensitive,
+            write,
+            history,
+        } = self;
         let mut parts: Vec<&str> = Vec::new();
-        if self.read {
+        if *read {
             parts.push("read");
         }
-        if self.write {
+        if *write {
             parts.push("write");
         }
-        if self.read_sensitive {
+        if *read_sensitive {
             parts.push("read sensitive");
         }
-        if self.history {
+        if *history {
             parts.push("history");
         }
         if parts.is_empty() {
@@ -479,17 +540,23 @@ impl SystemPermissions {
     /// Declared system reach: autostart, background running, and power actions.
     /// `None` when none is declared. Power actions are `org.arlen.Power1`-mediated.
     pub fn reach_summary(&self) -> Option<String> {
+        // Exhaustive on purpose; see [`PermissionProfile`].
+        let Self {
+            autostart,
+            background,
+            power,
+        } = self;
         let mut parts: Vec<&str> = Vec::new();
-        if self.autostart {
+        if *autostart {
             parts.push("autostart");
         }
-        if self.background {
+        if *background {
             parts.push("background");
         }
-        if self.power.suspend {
+        if power.suspend {
             parts.push("suspend/power-off");
         }
-        if self.power.set_profile {
+        if power.set_profile {
             parts.push("set power profile");
         }
         if parts.is_empty() {
@@ -552,14 +619,20 @@ impl SearchPermissions {
     /// live capability today; the reserved handler flags are surfaced too).
     /// `None` when the app declares no search access.
     pub fn reach_summary(&self) -> Option<String> {
+        // Exhaustive on purpose; see [`PermissionProfile`].
+        let Self {
+            open,
+            register_handler,
+            intercept_all,
+        } = self;
         let mut parts: Vec<&str> = Vec::new();
-        if self.open {
+        if *open {
             parts.push("open launcher");
         }
-        if self.register_handler {
+        if *register_handler {
             parts.push("register handler");
         }
-        if self.intercept_all {
+        if *intercept_all {
             parts.push("intercept all");
         }
         if parts.is_empty() {
@@ -609,14 +682,20 @@ impl IntentsPermissions {
     /// Declared intents reach: `dispatch` (live) plus the reserved register /
     /// preferences flags. `None` when the app declares no intents access.
     pub fn reach_summary(&self) -> Option<String> {
+        // Exhaustive on purpose; see [`PermissionProfile`].
+        let Self {
+            dispatch,
+            register,
+            preferences,
+        } = self;
         let mut parts: Vec<&str> = Vec::new();
-        if self.dispatch {
+        if *dispatch {
             parts.push("dispatch");
         }
-        if self.register {
+        if *register {
             parts.push("register");
         }
-        if self.preferences {
+        if *preferences {
             parts.push("preferences");
         }
         if parts.is_empty() {
@@ -678,11 +757,13 @@ impl InputPermissions {
     /// Declared input reach: focused / global keybinding registration. `None` when
     /// the module registers no bindings.
     pub fn reach_summary(&self) -> Option<String> {
+        // Exhaustive on purpose; see [`PermissionProfile`].
+        let Self { register_focused_bindings, register_global_bindings } = self;
         let mut parts: Vec<&str> = Vec::new();
-        if self.register_focused_bindings {
+        if *register_focused_bindings {
             parts.push("focused bindings");
         }
-        if self.register_global_bindings {
+        if *register_global_bindings {
             parts.push("global bindings");
         }
         if parts.is_empty() {
@@ -735,11 +816,17 @@ impl McpPermissions {
     /// action tools the AI can call after authorization). An app exposing tools
     /// the AI then uses is real reach. `None` when the app exposes no MCP tools.
     pub fn reach_summary(&self) -> Option<String> {
+        // Exhaustive on purpose; see [`PermissionProfile`].
+        let Self {
+            tools_default_permit,
+            tools_action_authorize,
+            always_confirm_overrides: _, // friction the app adds, not reach it gains
+        } = self;
         let mut parts: Vec<String> = Vec::new();
-        for t in &self.tools_default_permit {
+        for t in tools_default_permit {
             parts.push(t.clone());
         }
-        for t in &self.tools_action_authorize {
+        for t in tools_action_authorize {
             parts.push(format!("{t} (action)"));
         }
         if parts.is_empty() {
