@@ -76,6 +76,11 @@ pub enum SettingType {
     /// A REFERENCE to a secret held in the vault, never the secret itself: the
     /// schema and the app's `config.toml` only ever carry the handle.
     SecretRef,
+    /// Not a value at all: a row that opens the app's own settings window.
+    /// The third PAS-6 tier, for the settings a schema genuinely cannot
+    /// describe. There is no embedding - Wayland has no XEmbed - so the app
+    /// gets its own window.
+    Handoff,
     /// A value this vocabulary cannot express, edited as raw TOML.
     ///
     /// The escape hatch, and the reason the type set above can stay closed: an
@@ -161,6 +166,34 @@ pub struct VisibleWhen {
     pub in_: Option<Vec<String>>,
 }
 
+/// Which of the app's own windows a handoff row opens.
+///
+/// A NAME the app declares, never a command. That is the whole security design,
+/// and it is Android's lesson taken structurally: there, exposing a settings
+/// activity to the system settings app exported it to EVERY app, because the
+/// mechanism was a public intent filter. Here the app exposes nothing - the
+/// system launches the app's ordinary attested entry point and passes the name,
+/// so there is no second door to leave open. A free exec string would
+/// reintroduce exactly that door, so this type cannot express one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HandoffTarget {
+    /// The window name, passed to the app as `--settings-window <name>`.
+    /// Constrained to `[a-z0-9-]` because it becomes an argv element.
+    pub window: String,
+}
+
+/// Whether `app_id` may ask the system to open an app's handoff window.
+///
+/// Only Settings. A handoff opens a window belonging to another app, on that
+/// app's behalf, which is authority no ordinary caller should hold - and
+/// Settings is the surface the row is rendered in, so nothing else has a reason
+/// to ask. `dev.`-prefixed ids pass in debug builds, the same convention the
+/// audit and revoke admissions use, so a cargo-run Settings works without
+/// widening the release rule.
+pub fn handoff_caller_admitted(app_id: &str) -> bool {
+    app_id == "settings" || (cfg!(debug_assertions) && app_id.starts_with("dev."))
+}
+
 /// One declared setting.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SettingsItem {
@@ -203,6 +236,11 @@ pub struct SettingsItem {
     /// Which layer may hold this key.
     #[serde(default)]
     pub scope: SettingScope,
+    /// PAS-6 tier three: the app's own window to open instead of rendering a
+    /// control. Required for [`SettingType::Handoff`] and meaningless for
+    /// anything else.
+    #[serde(default)]
+    pub handoff: Option<HandoffTarget>,
     /// Free tags; `experimental` and `advanced` are the rendered ones.
     #[serde(default)]
     pub tags: Vec<String>,
@@ -295,6 +333,7 @@ pub(crate) fn validate_settings(
                 errors.push(crate::err(&at("label"), "must not be empty"));
             }
 
+            validate_item_handoff(item, &at, errors);
             validate_item_options(item, &at, errors);
             validate_item_bounds(item, &at, errors);
             validate_item_lifecycle(item, &at, errors);
@@ -302,6 +341,58 @@ pub(crate) fn validate_settings(
     }
 
     validate_visible_when(schema, errors);
+}
+
+/// A handoff row opens a window and holds no value, so it must declare a target
+/// and must not pretend to have one.
+fn validate_item_handoff(
+    item: &SettingsItem,
+    at: &dyn Fn(&str) -> String,
+    errors: &mut Vec<crate::ValidationError>,
+) {
+    let is_handoff = item.value_type == SettingType::Handoff;
+    match (&item.handoff, is_handoff) {
+        (None, true) => errors.push(crate::err(
+            &at("handoff"),
+            "a handoff item must declare which window it opens",
+        )),
+        (Some(_), false) => errors.push(crate::err(
+            &at("handoff"),
+            "only a handoff item may declare a window",
+        )),
+        (Some(target), true) => {
+            // It becomes an argv element, so the charset is the guard rather
+            // than a tidiness rule.
+            // A leading dash is the one the charset alone lets through, and it
+            // is the dangerous one: the name is passed as an argv element, so
+            // `--flag` would reach the app's argument parser as a FLAG rather
+            // than as the value of `--settings-window`.
+            if target.window.is_empty()
+                || target.window.starts_with('-')
+                || !target
+                    .window
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            {
+                errors.push(crate::err(
+                    &at("handoff.window"),
+                    "must be a non-empty [a-z0-9-] name",
+                ));
+            }
+        }
+        (None, false) => {}
+    }
+    // A handoff carries no value, so a default or an option list describes
+    // something that does not exist and would render a control beside a row
+    // whose whole point is that it has none.
+    if is_handoff {
+        if item.default.is_some() {
+            errors.push(crate::err(&at("default"), "a handoff item holds no value"));
+        }
+        if !item.options.is_empty() || item.options_from.is_some() {
+            errors.push(crate::err(&at("options"), "a handoff item holds no value"));
+        }
+    }
 }
 
 /// Enum items must offer a choice, the choices must be distinct, and a declared
@@ -727,6 +818,7 @@ commit = "0000000000000000000000000000000000000000"
             order: None,
             keywords: Vec::new(),
             scope: SettingScope::default(),
+            handoff: None,
             tags: Vec::new(),
             included: None,
             deprecated_message: None,
@@ -1037,4 +1129,93 @@ commit = "0000000000000000000000000000000000000000"
         assert!(warnings_of(&schema).iter().any(|w| w.contains("no items")));
     }
 
+
+    fn handoff_item(window: &str) -> SettingsItem {
+        let mut it = item("advanced", SettingType::Handoff);
+        it.handoff = Some(HandoffTarget {
+            window: window.into(),
+        });
+        it
+    }
+
+    fn errors_for(items: Vec<SettingsItem>) -> Vec<crate::ValidationError> {
+        let schema = SettingsSchema {
+            version: 1,
+            sections: vec![SettingsSection {
+                label: "S".into(),
+                description: None,
+                order: None,
+                items,
+            }],
+        };
+        let mut errors = Vec::new();
+        validate_settings(&schema, &mut errors);
+        errors
+    }
+
+    #[test]
+    fn a_handoff_item_declaring_its_window_is_valid() {
+        assert!(errors_for(vec![handoff_item("preferences")]).is_empty());
+    }
+
+    /// A row that opens nothing is a dead row, so the target is required.
+    #[test]
+    fn a_handoff_without_a_window_is_refused() {
+        let it = item("advanced", SettingType::Handoff);
+        assert!(!errors_for(vec![it]).is_empty());
+    }
+
+    /// The window name becomes an argv element, so the charset is a guard
+    /// rather than a style rule.
+    #[test]
+    fn a_window_name_that_is_not_a_plain_identifier_is_refused() {
+        for bad in ["", "Preferences", "pref erences", "--flag", "a;b", "../x"] {
+            assert!(
+                !errors_for(vec![handoff_item(bad)]).is_empty(),
+                "{bad:?} was accepted as a window name"
+            );
+        }
+    }
+
+    /// A handoff holds no value, so a default or an option list describes
+    /// something that does not exist.
+    #[test]
+    fn a_handoff_cannot_also_claim_a_value() {
+        let mut with_default = handoff_item("preferences");
+        with_default.default = Some(toml::Value::Boolean(true));
+        assert!(!errors_for(vec![with_default]).is_empty());
+
+        let mut with_options = handoff_item("preferences");
+        with_options.options = vec![SettingOption {
+            value: "a".into(),
+            label: "A".into(),
+            description: String::new(),
+        }];
+        assert!(!errors_for(vec![with_options]).is_empty());
+    }
+
+    /// Only a handoff row may name a window; anything else declaring one is a
+    /// schema that will not render the way its author expects.
+    #[test]
+    fn only_a_handoff_may_declare_a_window() {
+        let mut it = item("colour", SettingType::Bool);
+        it.handoff = Some(HandoffTarget {
+            window: "preferences".into(),
+        });
+        assert!(!errors_for(vec![it]).is_empty());
+    }
+
+    /// Opening another app's window on its behalf is authority only Settings
+    /// holds. This is the check that keeps the handoff from becoming the
+    /// exported activity Android shipped.
+    #[test]
+    fn only_settings_may_trigger_a_handoff() {
+        assert!(handoff_caller_admitted("settings"));
+        for other in ["org.example.App", "modulesd", "ai-agent", "", "settings.evil"] {
+            assert!(
+                !handoff_caller_admitted(other),
+                "{other:?} was admitted to open another app's window"
+            );
+        }
+    }
 }
