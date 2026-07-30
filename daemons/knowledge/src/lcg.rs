@@ -269,6 +269,32 @@ pub async fn emit_all_declared_grants(
     app_id: &str,
     profile: &arlen_permissions::PermissionProfile,
 ) -> Result<()> {
+    // Destructured field-by-field with no `..` REST PATTERN, deliberately: adding a
+    // dimension to `PermissionProfile` must fail to compile here until someone
+    // decides whether it projects. That is the PAS-8 invariant made structural -
+    // an unprojected grant is exactly the second, invisible store the job exists to
+    // prevent, and it would otherwise arrive silently, since the profile is parsed
+    // from TOML rather than built by a struct literal anyone would have to update.
+    //
+    // A field added here is not automatically a grant: `info` is identity and
+    // `graph` is projected by `emit_grant_node` as the token-based capability
+    // grant. Both are bound to `_` with that reason, which is the decision this
+    // pattern forces a future author to make rather than skip.
+    let arlen_permissions::PermissionProfile {
+        info: _,
+        graph: _,
+        event_bus,
+        filesystem,
+        network,
+        notifications,
+        clipboard,
+        system,
+        input,
+        search,
+        intents,
+        mcp,
+    } = profile;
+
     // (reach, consent_class, dimension key). event_bus (an app that hears the bus
     // sees activity) and mcp (an app exposing tools the AI then uses) are real reach.
     // The `consent_class` strings must normalise (lowercase, strip non-alpha) to the
@@ -277,20 +303,20 @@ pub async fn emit_all_declared_grants(
     // search / intents. Network is the one "…Access" form; the rest are the bare
     // dimension name so they land in the right family instead of falling through.
     let dims: [(Option<String>, &str, &str); 10] = [
-        (profile.network.reach_summary(), "NetworkAccess", "network"),
-        (profile.event_bus.reach_summary(), "EventBus", "event_bus"),
-        (profile.filesystem.reach_summary(), "Filesystem", "filesystem"),
+        (network.reach_summary(), "NetworkAccess", "network"),
+        (event_bus.reach_summary(), "EventBus", "event_bus"),
+        (filesystem.reach_summary(), "Filesystem", "filesystem"),
         (
-            profile.notifications.reach_summary(),
+            notifications.reach_summary(),
             "Notifications",
             "notifications",
         ),
-        (profile.clipboard.reach_summary(), "Clipboard", "clipboard"),
-        (profile.system.reach_summary(), "System", "system"),
-        (profile.input.reach_summary(), "Input", "input"),
-        (profile.search.reach_summary(), "Search", "search"),
-        (profile.intents.reach_summary(), "Intents", "intents"),
-        (profile.mcp.reach_summary(), "Mcp", "mcp"),
+        (clipboard.reach_summary(), "Clipboard", "clipboard"),
+        (system.reach_summary(), "System", "system"),
+        (input.reach_summary(), "Input", "input"),
+        (search.reach_summary(), "Search", "search"),
+        (intents.reach_summary(), "Intents", "intents"),
+        (mcp.reach_summary(), "Mcp", "mcp"),
     ];
     for (reach, consent_class, dim_key) in dims {
         if let Some(scope) = reach {
