@@ -1268,3 +1268,160 @@ mod frontend_matrix {
         );
     }
 }
+
+#[cfg(test)]
+mod module_reachability {
+    use super::repo_path;
+    use std::path::{Path, PathBuf};
+
+    /// Modules declared in a daemon crate root that nothing in the tree reaches.
+    ///
+    /// Each is real, each compiles, each has passing unit tests, and none of them
+    /// runs. They are listed rather than fixed because the fix is a design call:
+    /// knowledge's `lifecycle` and `backup` need someone to decide when an
+    /// uninstall or an export reaches the graph, and `sentinel-detect` is the pure
+    /// detector core for a `org.arlen.Sentinel1` daemon that does not exist yet.
+    ///
+    /// The point of the list is that it cannot grow silently. Removing an entry
+    /// once it is wired up is the expected direction of travel.
+    const KNOWN_UNREACHED: &[&str] = &[
+        "daemons/knowledge/backup",
+        "daemons/knowledge/lifecycle",
+        "daemons/knowledge/migration",
+        "daemons/sentinel-detect/exposure",
+        "daemons/sentinel-detect/movement",
+        "daemons/sentinel-detect/recording",
+        "daemons/sentinel-detect/usb",
+    ];
+
+    /// Every `.rs` file in the tree, skipping build and vendor directories.
+    fn sources(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                let n = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if n == "target" || n == "node_modules" || n.starts_with("mkosi") || n == ".git" {
+                    continue;
+                }
+                sources(&p, out);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                out.push(p);
+            }
+        }
+    }
+
+    /// Whether `text` names `needle` (a `module::` path) as a whole identifier.
+    ///
+    /// A plain substring search is wrong here and said so on the first run: it
+    /// reported knowledge's `lifecycle` as reached because the xdg-portal daemon
+    /// writes `picker_lifecycle::`, which contains it. The preceding character
+    /// must not be part of an identifier for the match to be this module.
+    fn mentions(text: &str, needle: &str) -> bool {
+        text.match_indices(needle).any(|(i, _)| {
+            i == 0
+                || !text[..i]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_alphanumeric() || c == '_')
+        })
+    }
+
+    /// The module names a crate root declares, as `mod x;` or `pub mod x;`.
+    fn declared(root: &Path) -> Vec<String> {
+        let Ok(text) = std::fs::read_to_string(root) else {
+            return Vec::new();
+        };
+        text.lines()
+            .filter_map(|l| {
+                let l = l.trim();
+                let rest = l.strip_prefix("pub mod ").or_else(|| l.strip_prefix("mod "))?;
+                let name = rest.strip_suffix(';')?;
+                name.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+                    .then(|| name.to_string())
+            })
+            .collect()
+    }
+
+    /// A module declared in a daemon crate root but named by no file outside its
+    /// own is dead: nothing can call it, and nothing ever will until someone
+    /// wires it up. This found `knowledge/lifecycle`, 644 lines of entity trash,
+    /// restore and staged uninstall that has never run, and `knowledge/backup`,
+    /// 858 lines that are the only path by which a user would export their graph.
+    ///
+    /// Scoped to `daemons/*` on purpose. An `sdk/*` module can legitimately have
+    /// no in-tree caller because a consumer outside this repo reaches it, and the
+    /// compositor does exactly that for `arlen-theme`. Daemon crates have no such
+    /// consumer: the compositor's only arlen dependency is `arlen-theme`, so for
+    /// `daemons/*` "unreferenced in this tree" means unreferenced anywhere.
+    ///
+    /// The check is per module, so it does not see an entire crate going unused -
+    /// `sentinel-detect`'s modules reference each other, which is why only four of
+    /// its six appear above while the crate as a whole has no consumer at all.
+    #[test]
+    fn no_new_daemon_module_is_unreachable() {
+        let root = repo_path("");
+        let mut all = Vec::new();
+        sources(&root, &mut all);
+        assert!(all.len() > 500, "expected the tree's sources, got {}", all.len());
+
+        let daemons = root.join("daemons");
+        let mut crates: Vec<PathBuf> = Vec::new();
+        for e in std::fs::read_dir(&daemons).expect("read daemons/").flatten() {
+            if e.path().is_dir() {
+                crates.push(e.path());
+            }
+        }
+        crates.sort();
+
+        let mut unreached = Vec::new();
+        for c in crates {
+            let rel_crate = c
+                .strip_prefix(&root)
+                .unwrap_or(&c)
+                .to_string_lossy()
+                .to_string();
+            for root_file in ["src/lib.rs", "src/main.rs"] {
+                for m in declared(&c.join(root_file)) {
+                    // Its own file and its own directory do not count as callers.
+                    let own_file = c.join(format!("src/{m}.rs"));
+                    let own_dir = c.join("src").join(&m);
+                    let needle = format!("{m}::");
+                    let reached = all.iter().any(|f| {
+                        if *f == own_file || f.starts_with(&own_dir) {
+                            return false;
+                        }
+                        std::fs::read_to_string(f).is_ok_and(|t| mentions(&t, &needle))
+                    });
+                    let id = format!("{rel_crate}/{m}");
+                    if !reached && !unreached.contains(&id) {
+                        unreached.push(id);
+                    }
+                }
+            }
+        }
+        unreached.sort();
+
+        let known: Vec<String> = KNOWN_UNREACHED.iter().map(|s| s.to_string()).collect();
+        let fresh: Vec<&String> = unreached.iter().filter(|u| !known.contains(u)).collect();
+        assert!(
+            fresh.is_empty(),
+            "daemon modules that compile and test but nothing reaches ({}):\n  {}\n\
+             Wire it up, or add it to KNOWN_UNREACHED with the reason it waits.",
+            fresh.len(),
+            fresh.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        );
+
+        let stale: Vec<&String> = known.iter().filter(|k| !unreached.contains(k)).collect();
+        assert!(
+            stale.is_empty(),
+            "KNOWN_UNREACHED lists modules that are now reached ({}):\n  {}\n\
+             Delete these entries: the list is meant to shrink.",
+            stale.len(),
+            stale.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+        );
+    }
+}
