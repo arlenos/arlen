@@ -308,6 +308,14 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-anomalyd" => {
             return Ok("anomalyd".to_string());
         }
+        // The cross-profile transfer daemon (profile-system, PR-R4). It audits
+        // every transfer to BOTH profiles' ledgers fail-closed BEFORE any byte
+        // crosses a boundary, so without this entry it resolves to UnknownBinary,
+        // the audit ingest refuses it, and every transfer is denied. Named for
+        // its binary like its `notifyd` / `powerd` / `anomalyd` siblings.
+        "/usr/lib/arlen/libexec/arlen-transferd" => {
+            return Ok("transferd".to_string());
+        }
         // The foreign-app bridge ingestion daemon (foreign-app-bridges.md §4). It
         // installs under /usr/lib/arlen/libexec/ and writes the KG under its
         // delegated namespace (the Obsidian floor's `md.obsidian.*` entity
@@ -658,6 +666,7 @@ mod tests {
             ("/usr/lib/arlen/libexec/arlen-run", "arlen-run"),
             ("/usr/lib/arlen/libexec/arlen-accountsd", "online-accounts"),
             ("/usr/lib/arlen/libexec/arlen-notifyd", "notifyd"),
+            ("/usr/lib/arlen/libexec/arlen-transferd", "transferd"),
             ("/usr/lib/arlen/libexec/arlen-installd", "installd"),
             ("/usr/lib/arlen/libexec/arlen-powerd", "powerd"),
             ("/usr/lib/arlen/libexec/arlen-anomalyd", "anomalyd"),
