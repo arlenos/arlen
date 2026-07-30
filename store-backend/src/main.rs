@@ -71,6 +71,9 @@ fn refresh_interval() -> Option<std::time::Duration> {
 /// or missing contributes nothing (the compose is best-effort), so the daemon runs on
 /// an image that ships only some catalogs, or none.
 fn load_source_inputs() -> SourceInputs {
+    // Where the metadata actually is. Env vars still override every source, so
+    // discovery is the default rather than a replacement.
+    let found = arlen_store_backend::discover::discover(&Default::default());
     let read_env = |var: &str| {
         std::env::var_os(var)
             .map(PathBuf::from)
@@ -84,17 +87,38 @@ fn load_source_inputs() -> SourceInputs {
         .unwrap_or_default();
     SourceInputs {
         forage,
-        flathub_xml: read_env("ARLEN_STORE_FLATHUB_XML"),
-        dep11_yaml: read_env("ARLEN_STORE_DEP11_YAML"),
-        // SC-3: the Flatpak sandbox permissions. Populated by the section 9.3
-        // compose job (SC-5); until it exists this stays empty and a Flathub
-        // card carries no footprint rather than a guessed one.
-        flatpak_metadata: Vec::new(),
-        // SC-3's apt half, same shape and same gate: the enrolled profile of an
-        // apt app is local state the compose job (SC-5) supplies. Empty until
-        // then, so a Debian card carries no footprint rather than a wrong one.
-        apt_profiles: Vec::new(),
+        // An env override replaces discovery for that source rather than adding to
+        // it, so a test pointing at one fixture catalog gets exactly that catalog
+        // and not the build machine's installed apps mixed in.
+        flathub_xml: read_env("ARLEN_STORE_FLATHUB_XML")
+            .map(|xml| vec![xml])
+            .unwrap_or_else(|| read_all(&found.flathub_xml)),
+        dep11_yaml: read_env("ARLEN_STORE_DEP11_YAML")
+            .map(|yaml| vec![yaml])
+            .unwrap_or_else(|| read_all(&found.dep11_yaml)),
+        // SC-3 + SC-5: the sandbox permissions and enrolled profiles, located on
+        // the machine rather than configured. An env override still wins above,
+        // so a test or a bespoke deployment can point at its own tree.
+        flatpak_metadata: read_pairs(&found.flatpak_metadata),
+        apt_profiles: read_pairs(&found.apt_profiles),
     }
+}
+
+/// Read every discovered catalog, dropping any that cannot be read.
+fn read_all(paths: &[std::path::PathBuf]) -> Vec<String> {
+    paths.iter().filter_map(|p| read_catalog(p)).collect()
+}
+
+/// Read each discovered `(id, path)` pair, dropping any that cannot be read.
+///
+/// A file that vanished between discovery and read, or is not UTF-8, is skipped
+/// rather than failing the whole compose - one unreadable app's metadata must
+/// not cost the user their entire catalog.
+fn read_pairs(pairs: &[(String, std::path::PathBuf)]) -> Vec<(String, String)> {
+    pairs
+        .iter()
+        .filter_map(|(id, path)| Some((id.clone(), read_catalog(path)?)))
+        .collect()
 }
 
 /// Read a catalog file to a UTF-8 string, transparently decompressing gzip. The
