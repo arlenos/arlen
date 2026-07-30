@@ -65,6 +65,7 @@ pub fn dispatch(store: &mut SignerStore, request: Request) -> Response {
         }
         Request::LookupEntry { op_id } => Response::Entry(store.entry(&op_id).cloned()),
         Request::LiveEntries => Response::Entries(store.live_entries()),
+        Request::CompensatingEntries => Response::Entries(store.compensating_entries()),
     }
 }
 
@@ -226,6 +227,49 @@ mod tests {
         match dispatch(&mut s, Request::LookupEntry { op_id: "op-1".into() }) {
             Response::Entry(Some(e)) => assert_eq!(e.op_id, "op-1"),
             other => panic!("expected the sealed entry, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn compensating_entries_are_separable_from_merely_live_ones() {
+        // The distinction the restart path turns on. Both entries are non-terminal
+        // so `LiveEntries` returns both, but only the interrupted reversal may be
+        // re-driven; offering the other one to the recovery loop would undo a write
+        // the user never asked to undo.
+        let tmp = tempfile::tempdir().unwrap();
+        let store = SignerStore::open_in(&tmp.path().join("undo-log")).unwrap();
+        let store = Arc::new(Mutex::new(store));
+        let mut s = store.lock().await;
+
+        for op in ["op-live", "op-interrupted"] {
+            assert_eq!(dispatch(&mut s, Request::SubmitCreated(entry(op))), Response::Sealed);
+            assert_eq!(
+                dispatch(&mut s, Request::Transition { op_id: op.into(), state: UndoState::Committed }),
+                Response::Sealed
+            );
+        }
+        // One of them started its reversal and never finished.
+        assert_eq!(
+            dispatch(
+                &mut s,
+                Request::Transition {
+                    op_id: "op-interrupted".into(),
+                    state: UndoState::Compensating
+                }
+            ),
+            Response::Sealed
+        );
+
+        match dispatch(&mut s, Request::LiveEntries) {
+            Response::Entries(e) => assert_eq!(e.len(), 2, "both are still non-terminal"),
+            other => panic!("expected entries, got {other:?}"),
+        }
+        match dispatch(&mut s, Request::CompensatingEntries) {
+            Response::Entries(e) => {
+                assert_eq!(e.len(), 1);
+                assert_eq!(e[0].op_id, "op-interrupted");
+            }
+            other => panic!("expected entries, got {other:?}"),
         }
     }
 
