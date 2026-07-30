@@ -176,6 +176,29 @@ impl crate::dispatch::ConsentMinter for BiscuitConsentMinter {
         // closed: no credential, so the MCP server refuses the run.
         arlen_run_consent_token::mint_run_consent(self.root.keypair(), command, args, expiry).ok()
     }
+
+    fn mint_read(
+        &self,
+        terminal_id: &str,
+        limit: u32,
+        include_user_blocks: bool,
+        include_running: bool,
+    ) -> Option<String> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_secs() as i64;
+        let expiry = now.checked_add(self.ttl_secs)?;
+        arlen_run_consent_token::mint_read_consent(
+            self.root.keypair(),
+            terminal_id,
+            limit,
+            include_user_blocks,
+            include_running,
+            expiry,
+        )
+        .ok()
+    }
 }
 
 #[cfg(test)]
