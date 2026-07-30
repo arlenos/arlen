@@ -167,6 +167,13 @@ fn write_toolkit_configs(
         &crate::cli::generate_git_colors(term_theme),
         &mut report,
     );
+    // starship reads one config file, so this is emitted as an Arlen-owned
+    // fragment the user pastes or symlinks rather than a file we own outright.
+    write_owned(
+        &config.join("arlen/starship-palette.toml"),
+        &crate::cli::generate_starship_palette(term_theme),
+        &mut report,
+    );
     write_owned(
         &config.join("arlen/delta.gitconfig"),
         &crate::cli::generate_delta_config(term_theme),
@@ -284,6 +291,7 @@ accent = "#00ff00"
             "arlen/fzf-colors.sh",
             "arlen/git-colors.gitconfig",
             "arlen/delta.gitconfig",
+            "arlen/starship-palette.toml",
             "arlen/base16-arlen.yaml",
         ] {
             assert!(c.join(rel).is_file(), "missing {rel}");

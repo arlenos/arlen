@@ -1481,6 +1481,18 @@ button = 12
                 toml::from_str::<toml::Table>(&alacritty).is_ok(),
                 "Alacritty output is not valid TOML for payload {p:?}"
             );
+            // The CLI-tool emitters too. They were added after this list and it
+            // did not grow with them, so the "every outbound generator" claim
+            // above had quietly stopped being true.
+            let _ = crate::cli::generate_fzf_colors(&t);
+            let _ = crate::cli::generate_git_colors(&t);
+            let _ = crate::cli::generate_delta_config(&t);
+            let _ = crate::cli::generate_nvim_base16(&t);
+            let starship = crate::cli::generate_starship_palette(&t);
+            proptest::prop_assert!(
+                toml::from_str::<toml::Table>(&starship).is_ok(),
+                "starship output is not valid TOML for payload {p:?}"
+            );
         }
     }
 
