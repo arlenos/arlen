@@ -316,6 +316,8 @@ mod tests {
                 maintainer: "key:demo".into(),
                 recipe_revision: 1,
                 category: Vec::new(),
+                description: None,
+                screenshots: Vec::new(),
             },
             source: vec![Source {
                 source_type: SourceType::Tarball,
@@ -358,6 +360,7 @@ mod tests {
             // two-halves install manifest either.
             bridge: None,
             install: None,
+            settings: None,
         }
     }
 
