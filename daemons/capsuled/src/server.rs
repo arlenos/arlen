@@ -163,13 +163,24 @@ where
     write_frame(&mut stream, &response).await
 }
 
-/// Bind the capsule serve socket at `path`, replacing any stale socket, and clamp
-/// it to `0600` (owner-only; same-uid is also enforced per connection).
+/// Bind the capsule serve socket at `path`, replacing a stale socket left by a
+/// prior run, and clamp it to `0600` (owner-only; same-uid is also enforced per
+/// connection).
+///
+/// Only an existing *socket* is removed. Unlinking whatever happens to be at the
+/// path would make the socket path a way to delete an arbitrary file, so a
+/// regular file or symlink there fails the bind instead. Same rule as the power
+/// daemon's query socket, which is the same job.
 pub(crate) fn bind_socket(path: &Path) -> std::io::Result<UnixListener> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let _ = std::fs::remove_file(path);
+    if let Ok(meta) = std::fs::symlink_metadata(path) {
+        use std::os::unix::fs::FileTypeExt;
+        if meta.file_type().is_socket() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
     let listener = UnixListener::bind(path)?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     Ok(listener)
@@ -322,6 +333,77 @@ mod tests {
         server_task.await.unwrap();
 
         assert_eq!(resp, slice_bytes, "the slice is served back");
+    }
+
+    /// The daemon's own entry point: bind a real socket, accept a real client,
+    /// serve it. `run`, `handle`, `bind_socket` and `current_uid` were all
+    /// unreached before - every test drove `serve_connection` or `handle_request`
+    /// directly - so nothing covered peer admission or the uid it admits against.
+    #[tokio::test]
+    async fn a_client_on_the_bound_socket_is_admitted_and_served() {
+        let (store, ledger, key, signed, slice_bytes) = setup();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("capsule.sock");
+
+        let ctx = ServeContext {
+            verifying_key: key.verifying_key(),
+            ledger: Arc::new(ledger),
+            store: Arc::new(store),
+            audit: Arc::new(MockAuditSink::accepting()),
+        };
+        let serving = {
+            let path = path.clone();
+            tokio::spawn(async move { run(&path, ctx).await })
+        };
+
+        // `run` binds before accepting, so the socket appearing is readiness.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !path.exists() && std::time::Instant::now() < deadline {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert!(path.exists(), "run must bind the socket it was given");
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600,
+            "the capsule socket is owner-only"
+        );
+
+        let mut client = UnixStream::connect(&path).await.expect("connect");
+        let req = serde_json::to_vec(&signed).unwrap();
+        client.write_all(&(req.len() as u32).to_be_bytes()).await.unwrap();
+        client.write_all(&req).await.unwrap();
+        client.flush().await.unwrap();
+        let resp = read_frame(&mut client, MAX_RESPONSE_FRAME).await.expect(
+            "an admitted same-uid peer is served; a wrong caller uid fails admission \
+             and closes without a reply",
+        );
+        assert_eq!(resp, slice_bytes, "the slice is served over the bound socket");
+
+        serving.abort();
+    }
+
+    /// A restart has to clear the socket a previous run left, and must not turn
+    /// the socket path into a way to delete whatever else is sitting there.
+    #[tokio::test]
+    async fn bind_clears_a_stale_socket_and_refuses_to_clobber_anything_else() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let path = dir.path().join("capsule.sock");
+        let first = bind_socket(&path).expect("first bind");
+        drop(first);
+        drop(bind_socket(&path).expect("a stale socket must not block a restart"));
+
+        let file = dir.path().join("real-file");
+        std::fs::write(&file, b"not a socket").unwrap();
+        assert!(bind_socket(&file).is_err(), "binding over a regular file must fail");
+        assert_eq!(std::fs::read(&file).unwrap(), b"not a socket", "and leave it alone");
+
+        let target = dir.path().join("target-file");
+        std::fs::write(&target, b"target").unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(bind_socket(&link).is_err(), "binding over a symlink must fail");
+        assert_eq!(std::fs::read(&target).unwrap(), b"target", "target untouched");
     }
 
     #[tokio::test]
