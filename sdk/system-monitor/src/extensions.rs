@@ -113,6 +113,98 @@ impl Extension {
     }
 }
 
+impl Extension {
+    /// An installed application.
+    ///
+    /// Health is [`Health::Unknown`] and not a parameter, because nothing watches
+    /// an app after installing it. A constructor that accepted a health here would
+    /// invite a caller to pass `Ok` meaning "the install succeeded", which is a
+    /// different claim and the one that turns into a false green tick.
+    pub fn app(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        version: Option<String>,
+        source_layer: impl Into<String>,
+        granted: Vec<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            kind: ExtensionKind::App,
+            name: name.into(),
+            version,
+            // Installed is active; an app has no separate enabled flag.
+            enabled: true,
+            granted,
+            provenance: source_layer.into(),
+            health: Health::Unknown,
+        }
+    }
+
+    /// A shell module, whose runtime is the one source that reports crashes.
+    ///
+    /// `last_error` is only meaningful alongside `failed`; a caller that passes a
+    /// reason without the flag means the module recovered, and the reason belongs
+    /// to a past failure rather than the current state.
+    pub fn module(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        version: Option<String>,
+        tier: impl Into<String>,
+        enabled: bool,
+        failed: bool,
+        last_error: Option<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            kind: ExtensionKind::Module,
+            name: name.into(),
+            version,
+            enabled,
+            // modulesd's summary carries no capability list; the manifest does.
+            // Omitted rather than sent empty, per the `granted` contract.
+            granted: Vec::new(),
+            provenance: tier.into(),
+            health: if failed {
+                Health::Failed { reason: last_error }
+            } else {
+                Health::Ok
+            },
+        }
+    }
+
+    /// A foreign-app bridge, addressed by the `bridge.<id>` app id it writes
+    /// under.
+    ///
+    /// The prefix is applied HERE rather than expected from the caller, so the
+    /// unified row always matches what audit and the LCG record for that bridge.
+    /// A caller passing an already-prefixed id gets it back unchanged, since
+    /// prefixing twice would address a bridge that does not exist.
+    pub fn bridge(
+        id: impl Into<String>,
+        namespace: impl Into<String>,
+        granted: Vec<String>,
+    ) -> Self {
+        let raw = id.into();
+        let app_id = if raw.starts_with("bridge.") {
+            raw.clone()
+        } else {
+            format!("bridge.{raw}")
+        };
+        Self {
+            id: app_id,
+            kind: ExtensionKind::Bridge,
+            name: raw,
+            version: None,
+            enabled: true,
+            granted,
+            provenance: namespace.into(),
+            // A bridge only looks unhealthy once something tries to use it, and
+            // nothing polls it, so its standing state is genuinely unknown.
+            health: Health::Unknown,
+        }
+    }
+}
+
 /// Merge the three inventories into one list.
 ///
 /// Ordered for a management surface: what needs attention first, then by kind, then
@@ -217,6 +309,50 @@ mod tests {
         let module = row(ExtensionKind::Module, "x", Health::Ok);
         assert_eq!(app.key(), "app:x");
         assert_eq!(module.key(), "module:x");
+    }
+
+    #[test]
+    fn a_bridge_is_addressed_by_the_id_audit_records_for_it() {
+        let b = Extension::bridge("md.obsidian", "md.obsidian", vec!["write md.obsidian.*".into()]);
+        assert_eq!(b.id, "bridge.md.obsidian");
+        // The display name stays the bare id; only the address is prefixed.
+        assert_eq!(b.name, "md.obsidian");
+    }
+
+    #[test]
+    fn prefixing_an_already_prefixed_bridge_id_would_address_nothing() {
+        let b = Extension::bridge("bridge.md.obsidian", "md.obsidian", Vec::new());
+        assert_eq!(b.id, "bridge.md.obsidian");
+    }
+
+    #[test]
+    fn an_apps_health_is_unknown_rather_than_ok() {
+        // Nothing watches an app after install, so claiming Ok would be claiming
+        // a check that never ran. This is why `app` takes no health argument.
+        let a = Extension::app("com.example.notes", "Notes", Some("1.2".into()), "apt", Vec::new());
+        assert_eq!(a.health, Health::Unknown);
+        assert!(a.enabled, "installed is active");
+    }
+
+    #[test]
+    fn a_crashed_module_carries_what_it_said() {
+        let m = Extension::module(
+            "com.example.clock", "Clock", None, "wasm", true, true,
+            Some("trap at instantiate".into()),
+        );
+        assert_eq!(m.health, Health::Failed { reason: Some("trap at instantiate".into()) });
+        let ok = Extension::module("com.example.clock", "Clock", None, "wasm", true, false, None);
+        assert_eq!(ok.health, Health::Ok);
+    }
+
+    #[test]
+    fn a_module_row_reports_no_capabilities_rather_than_an_empty_grant() {
+        // modulesd's summary does not carry the manifest, so per the `granted`
+        // contract the row must not claim the module holds nothing. Until the
+        // manifest is joined in, a surface reading this row should treat a module
+        // as capability-unknown, which is why this is asserted rather than assumed.
+        let m = Extension::module("a", "A", None, "iframe", true, false, None);
+        assert!(m.granted.is_empty());
     }
 
     #[test]
