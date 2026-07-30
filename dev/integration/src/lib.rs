@@ -1185,3 +1185,86 @@ mod ci_matrix {
         );
     }
 }
+
+#[cfg(test)]
+mod frontend_matrix {
+    use super::repo_path;
+    use std::path::{Path, PathBuf};
+
+    fn front_all() -> Vec<String> {
+        let ci = std::fs::read_to_string(repo_path(".github/workflows/ci.yml")).expect("ci.yml");
+        let line = ci
+            .lines()
+            .find(|l| l.trim_start().starts_with("FRONT_ALL="))
+            .expect("ci.yml declares FRONT_ALL");
+        let inner = line
+            .split_once('[')
+            .and_then(|(_, r)| r.rsplit_once(']'))
+            .map(|(i, _)| i)
+            .expect("FRONT_ALL is a bracketed list");
+        inner
+            .split(',')
+            .map(|e| e.trim().trim_matches('"').to_string())
+            .filter(|e| !e.is_empty())
+            .collect()
+    }
+
+    fn packages(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                let n = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if n == "node_modules" || n == "target" || n.starts_with("mkosi") || n == ".git" {
+                    continue;
+                }
+                packages(&p, out);
+            } else if p.file_name().is_some_and(|n| n == "package.json") {
+                out.push(p);
+            }
+        }
+    }
+
+    /// `ci.yml` applies the same rule to `FRONT_ALL` as to `RUST_ALL`. The
+    /// discriminating fact for a frontend package is whether it declares a
+    /// `check` script: if it does, CI can type-check it, and a package that can
+    /// be checked but is not listed simply never is. `apps/knowledge` and the
+    /// portal's `picker-ui` were in exactly that position - both pass `npm run
+    /// check` today, and neither had ever been run by CI.
+    ///
+    /// Packages with no `check` script (the `sdk/tauri-plugin-*` binding crates,
+    /// which only build) are outside this by their own shape rather than by a
+    /// list someone maintains.
+    #[test]
+    fn every_checkable_frontend_package_is_in_the_matrix() {
+        let root = repo_path("");
+        let listed = front_all();
+        let mut found = Vec::new();
+        packages(&root, &mut found);
+
+        let mut missing = Vec::new();
+        for manifest in found {
+            let text = std::fs::read_to_string(&manifest).unwrap_or_default();
+            let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+                continue;
+            };
+            if json.get("scripts").and_then(|s| s.get("check")).is_none() {
+                continue;
+            }
+            let dir = manifest.parent().unwrap();
+            let rel = dir.strip_prefix(&root).unwrap_or(dir).to_string_lossy().to_string();
+            if !listed.iter().any(|l| rel == *l) {
+                missing.push(rel);
+            }
+        }
+        missing.sort();
+        assert!(
+            missing.is_empty(),
+            "frontend packages with a `check` script that CI never runs ({}):\n  {}",
+            missing.len(),
+            missing.join("\n  ")
+        );
+    }
+}
