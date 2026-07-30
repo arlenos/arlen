@@ -62,6 +62,19 @@ pub enum Health {
 }
 
 impl Health {
+    /// The health a crash-reporting source states, from its two fields.
+    ///
+    /// `last_error` is only meaningful alongside `failed`; a source reporting a
+    /// reason without the flag means the thing recovered, and the reason belongs
+    /// to a past failure rather than the current state, so it is dropped.
+    pub fn from_failure(failed: bool, last_error: Option<String>) -> Self {
+        if failed {
+            Self::Failed { reason: last_error }
+        } else {
+            Self::Ok
+        }
+    }
+
     /// Ordering for a surface that leads with what needs attention: failures
     /// first, then unknowns, then healthy.
     ///
@@ -142,17 +155,19 @@ impl Extension {
 
     /// A shell module, whose runtime is the one source that reports crashes.
     ///
-    /// `last_error` is only meaningful alongside `failed`; a caller that passes a
-    /// reason without the flag means the module recovered, and the reason belongs
-    /// to a past failure rather than the current state.
+    /// Takes a [`Health`] rather than the runtime's `failed` + `last_error` pair,
+    /// which [`Health::from_failure`] converts. Two adjacent booleans in a
+    /// positional call - `enabled` and `failed` - are a swap waiting to happen,
+    /// and the swapped row would report a working module as broken and a broken
+    /// one as fine.
     pub fn module(
         id: impl Into<String>,
         name: impl Into<String>,
         version: Option<String>,
         tier: impl Into<String>,
         enabled: bool,
-        failed: bool,
-        last_error: Option<String>,
+        health: Health,
+        granted: Vec<String>,
     ) -> Self {
         Self {
             id: id.into(),
@@ -160,15 +175,12 @@ impl Extension {
             name: name.into(),
             version,
             enabled,
-            // modulesd's summary carries no capability list; the manifest does.
-            // Omitted rather than sent empty, per the `granted` contract.
-            granted: Vec::new(),
+            // `ModuleSummary::granted`, which modulesd fills from the same
+            // `describe` the consent dialog used. So a module's row here reads
+            // back the words the user was actually asked to approve.
+            granted,
             provenance: tier.into(),
-            health: if failed {
-                Health::Failed { reason: last_error }
-            } else {
-                Health::Ok
-            },
+            health,
         }
     }
 
@@ -337,22 +349,46 @@ mod tests {
     #[test]
     fn a_crashed_module_carries_what_it_said() {
         let m = Extension::module(
-            "com.example.clock", "Clock", None, "wasm", true, true,
-            Some("trap at instantiate".into()),
+            "com.example.clock", "Clock", None, "wasm", true,
+            Health::from_failure(true, Some("trap at instantiate".into())), Vec::new(),
         );
         assert_eq!(m.health, Health::Failed { reason: Some("trap at instantiate".into()) });
-        let ok = Extension::module("com.example.clock", "Clock", None, "wasm", true, false, None);
+        let ok = Extension::module(
+            "com.example.clock", "Clock", None, "wasm", true,
+            Health::from_failure(false, None), Vec::new(),
+        );
         assert_eq!(ok.health, Health::Ok);
     }
 
     #[test]
-    fn a_module_row_reports_no_capabilities_rather_than_an_empty_grant() {
-        // modulesd's summary does not carry the manifest, so per the `granted`
-        // contract the row must not claim the module holds nothing. Until the
-        // manifest is joined in, a surface reading this row should treat a module
-        // as capability-unknown, which is why this is asserted rather than assumed.
-        let m = Extension::module("a", "A", None, "iframe", true, false, None);
-        assert!(m.granted.is_empty());
+    fn a_reason_without_a_failure_flag_is_a_past_failure_not_a_current_one() {
+        // A source that reports a reason but says it is not failed has recovered.
+        // Keeping the reason would render a working module as broken forever.
+        assert_eq!(Health::from_failure(false, Some("old crash".into())), Health::Ok);
+        assert_eq!(
+            Health::from_failure(true, Some("now".into())),
+            Health::Failed { reason: Some("now".into()) }
+        );
+        // Failed with nothing to say is still failed.
+        assert_eq!(Health::from_failure(true, None), Health::Failed { reason: None });
+    }
+
+    #[test]
+    fn a_module_carries_the_grants_the_user_approved() {
+        // The summary now carries them, filled from the same `describe` the
+        // consent dialog used, so this row shows what was actually asked for
+        // rather than a second wording of it.
+        let m = Extension::module(
+            "a", "A", None, "iframe", true, Health::Ok,
+            vec!["connect to api.example.com".into()],
+        );
+        assert_eq!(m.granted, ["connect to api.example.com"]);
+
+        // And an empty list still means "declares nothing", which is now the
+        // truth for a module rather than a gap: the summary is built from the
+        // manifest, so there is always an answer.
+        let none = Extension::module("b", "B", None, "wasm", true, Health::Ok, Vec::new());
+        assert!(none.granted.is_empty());
     }
 
     #[test]
