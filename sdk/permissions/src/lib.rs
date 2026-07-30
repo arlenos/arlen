@@ -1012,6 +1012,16 @@ mod tests {
                 "{}: filename must equal info.app_id",
                 path.display()
             );
+            // A curated profile is only worth anything if the loader can address
+            // the id it is filed under. This was silently false for 478 of them
+            // while the guard demanded lowercase: correctly named, correctly
+            // parsed and permanently unloadable. Filename-equals-id did not catch
+            // it, because both sides were equally unaddressable.
+            assert!(
+                profile_path(stem).is_ok(),
+                "{}: no profile path can be built for this id",
+                path.display()
+            );
             assert_eq!(
                 profile.info.tier,
                 AppTier::ThirdParty,
