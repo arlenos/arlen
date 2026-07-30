@@ -1631,3 +1631,55 @@ mod crate_reachability {
         );
     }
 }
+
+#[cfg(test)]
+mod terminal_read_scope_agreement {
+    use arlen_terminal_core::read_serve::ReadRequest;
+
+    /// The read half has three parties that must agree on what a scope is: the
+    /// daemon digests one to mint a token, the MCP tool forwards a request, and
+    /// the terminal digests the request to verify. They are three separate
+    /// parsers in three crates, and if any of them disagreed about a default the
+    /// digests would differ and every read would fail as an unexplained refusal,
+    /// with each side believing it was right.
+    ///
+    /// The dangerous direction is a default drifting OPEN: if one side treated an
+    /// absent `include_user_blocks` as true, a token would authorize a reading
+    /// wider than the one performed. So this pins the shape rather than trusting
+    /// three `#[serde(default)]` attributes to stay in step.
+    #[test]
+    fn an_omitted_flag_means_the_same_narrow_thing_to_every_party() {
+        // What the MCP tool sends when the model asks for the minimal reading.
+        let wire = r#"{"terminal_id":"t1","limit":3,"consent":"tok"}"#;
+        let req: ReadRequest = serde_json::from_str(wire).expect("the wire shape parses");
+        assert!(!req.include_user_blocks, "an omitted flag must not widen the reading");
+        assert!(!req.include_running);
+
+        // The terminal digests the request; the daemon digests what it minted for.
+        // Same values, same digest - that equality is the contract.
+        let from_request = arlen_run_consent_token::read_digest(
+            &req.terminal_id,
+            u32::try_from(req.limit).expect("a test limit fits"),
+            req.include_user_blocks,
+            req.include_running,
+        );
+        let from_mint = arlen_run_consent_token::read_digest("t1", 3, false, false);
+        assert_eq!(from_request, from_mint);
+    }
+
+    /// And a token minted for the narrow reading must not verify against a wider
+    /// request, which is the same property one layer up: the digests differ, so
+    /// the biscuit refuses.
+    #[test]
+    fn a_narrow_token_does_not_verify_a_widened_request() {
+        let narrow = arlen_run_consent_token::read_digest("t1", 3, false, false);
+        for widened in [
+            arlen_run_consent_token::read_digest("t1", 3, true, false),
+            arlen_run_consent_token::read_digest("t1", 3, false, true),
+            arlen_run_consent_token::read_digest("t1", 4, false, false),
+            arlen_run_consent_token::read_digest("t2", 3, false, false),
+        ] {
+            assert_ne!(narrow, widened);
+        }
+    }
+}
