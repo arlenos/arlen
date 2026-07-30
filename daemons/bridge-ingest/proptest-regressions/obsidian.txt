@@ -1,0 +1,15 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 3c3c933dc5b61eb5836c4a7391fde9145d2746d93c069c9423565a0e511f6c79 # shrinks to note = ""
+cc d8d9ffc7ba9baec6175938ee40242bb667daa99d2c87c507a73f6245f06cab14 # shrinks to note = ""
+cc 9d358986ef76ac8046cfec0d44e275b4e3f58407a9a4469c3921f872b911387e # shrinks to note = "#"
+cc f936da20d505d04893f0087854934b1f40246644bfe09fce5f63189ba51337c9 # shrinks to note = "#"
+cc ca816cb7014df78b5250afd5459118d2a5441e24a6a7f6ffd1d1dc430ac0f8d8 # shrinks to note = "[#"
+cc 70bcfd3d2b60ba6931bee86b24378c5d262f39db954606c1f36e58b04c93503e # shrinks to note = "`` ``````````#"
+cc 677a2b7259fc84b570bf992b7b9ccd72012b8365f0c7bf752270546e02eca148 # shrinks to note = "#1"
+cc e34c32b41a843be9da0f853b5093be3d3d854cdead5ff907aada1dd86d0f8b5c # shrinks to note = "[[]]"
+cc 97ec273271b779593f8bba63777518762cdd3e9e5a9c500d019ff53504e2e58d # shrinks to note = "[[#]aéa]a##a] [世a]||  |]#/世# ]]"

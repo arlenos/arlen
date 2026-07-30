@@ -346,7 +346,14 @@ fn scan_tags(masked: &str) -> Vec<String> {
                         tags.push(tag);
                     }
                 }
-                i = j;
+                // `j` starts at `i + 1` and only grows, so this always moves
+                // forward - but that is the ONLY reason the loop ends, and it is
+                // reading whatever is in the user's vault. Mutation testing shows
+                // that getting the arithmetic wrong here does not produce a wrong
+                // answer, it produces a daemon that stops ingesting and never says
+                // why. Checked rather than argued.
+                debug_assert!(j > i, "the tag scan must advance");
+                i = j.max(i + 1);
                 continue;
             }
         }
@@ -381,7 +388,16 @@ fn scan_wikilinks(masked: &str) -> Vec<String> {
         if !target.is_empty() {
             links.push(target.to_string());
         }
-        rest = &after[close + 2..];
+        // Same reasoning as the tag scan: `rest` shrinks by at least the `[[`
+        // and `]]` it just consumed, and that is the whole termination argument
+        // for a loop over user-authored notes. If it ever failed to shrink, the
+        // vault watcher would hang on one file instead of reporting anything.
+        let next = &after[close + 2..];
+        debug_assert!(next.len() < rest.len(), "the wikilink scan must consume input");
+        if next.len() >= rest.len() {
+            break;
+        }
+        rest = next;
     }
     links
 }
@@ -395,6 +411,46 @@ mod tests {
     }
     fn links(m: &Map<String, Value>) -> Vec<String> {
         m["links"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect()
+    }
+
+    /// The scanners read whatever is in someone's vault, so the properties that
+    /// matter are the ones that hold for ALL input, not for the notes anyone
+    /// thought to write down: they finish, they do not panic, and every tag or
+    /// link they report was actually in the text.
+    ///
+    /// Hand-written fixtures had never reached a multibyte tag, an unbalanced
+    /// `[[`, or a note that is one long run of brackets - which is why mutation
+    /// testing could break the offset arithmetic here and get a hang rather than
+    /// a failure.
+    proptest::proptest! {
+        #[test]
+        fn scanning_any_note_finishes_and_reports_only_what_is_there(note in ".{0,400}") {
+            let m = parse_note(&note);
+
+            // Reported tags and links are substrings of the note. A scanner that
+            // mis-slices would either panic on a char boundary or invent text.
+            for t in m.get("tags").and_then(|v| v.as_array()).into_iter().flatten() {
+                let t = t.as_str().unwrap();
+                proptest::prop_assert!(
+                    note.contains(t),
+                    "reported a tag that is not in the note: {t:?}"
+                );
+            }
+            for l in m.get("links").and_then(|v| v.as_array()).into_iter().flatten() {
+                let l = l.as_str().unwrap();
+                proptest::prop_assert!(
+                    note.contains(l),
+                    "reported a link that is not in the note: {l:?}"
+                );
+            }
+        }
+
+        /// The shapes most likely to trip a scanner, generated densely rather
+        /// than hoped for: brackets, hashes and multibyte characters only.
+        #[test]
+        fn dense_bracket_and_tag_soup_is_survivable(note in "[#\\[\\]|^/\u{00e9}\u{4e16}a1 ]{0,300}") {
+            let _ = parse_note(&note);
+        }
     }
 
     #[test]
