@@ -417,10 +417,16 @@ fn dep11_icon_ref(icon: Dep11Icon) -> Option<String> {
 pub struct SourceInputs {
     /// `(recipe.toml text, the cookbook's resolved tier)` per forage recipe.
     pub forage: Vec<(String, SourceLayer)>,
-    /// The Flathub composed-AppStream catalog XML, when present on the image.
-    pub flathub_xml: Option<String>,
-    /// The Debian DEP-11 catalog YAML, when present on the image.
-    pub dep11_yaml: Option<String>,
+    /// The Flathub composed-AppStream catalog XML, one per configured remote.
+    ///
+    /// A LIST, not one document: a machine can have several Flatpak remotes, and
+    /// Debian splits its catalog per suite and component (`main`, `contrib`,
+    /// `non-free` are separate files). Taking only the first would silently
+    /// serve a fraction of what is installable while looking complete.
+    pub flathub_xml: Vec<String>,
+    /// The Debian DEP-11 catalog YAML, one per suite/component file. See
+    /// [`SourceInputs::flathub_xml`] for why this is a list.
+    pub dep11_yaml: Vec<String>,
     /// `(component-id, Flatpak `metadata` file text)` for Flathub apps whose
     /// sandbox permissions are known (SC-3). The composed AppStream catalog
     /// carries no `finish-args`, so the footprint is fused in from here; an id
@@ -451,13 +457,15 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
             entries.push(forage_entry(&recipe, *layer));
         }
     }
-    if let Some(xml) = &inputs.flathub_xml {
+    // Every remote and every suite/component, merged. The dedupe in
+    // `merge_catalog` collapses an app carried by two of them into one card.
+    for xml in &inputs.flathub_xml {
         if let Ok(mut es) = flathub_entries(xml) {
             fuse_flatpak_metadata(&mut es, &inputs.flatpak_metadata);
             entries.extend(es);
         }
     }
-    if let Some(yaml) = &inputs.dep11_yaml {
+    for yaml in &inputs.dep11_yaml {
         // Best-effort per record: a corrupt document is skipped inside, never fatal.
         let mut es = dep11_entries(yaml);
         fuse_apt_profiles(&mut es, &inputs.apt_profiles);
@@ -517,8 +525,8 @@ mod tests {
     fn an_apt_entry_takes_its_footprint_from_the_enrolled_profile() {
         let catalog = compose_catalog(SourceInputs {
             forage: vec![],
-            flathub_xml: None,
-            dep11_yaml: Some(APT_YAML.into()),
+            flathub_xml: Vec::new(),
+            dep11_yaml: vec![APT_YAML.into()],
             flatpak_metadata: vec![],
             apt_profiles: vec![("org.example.App".into(), enrolled(true))],
         });
@@ -535,8 +543,8 @@ mod tests {
     fn an_apt_entry_without_a_profile_keeps_an_empty_footprint() {
         let catalog = compose_catalog(SourceInputs {
             forage: vec![],
-            flathub_xml: None,
-            dep11_yaml: Some(APT_YAML.into()),
+            flathub_xml: Vec::new(),
+            dep11_yaml: vec![APT_YAML.into()],
             flatpak_metadata: vec![],
             apt_profiles: vec![],
         });
@@ -551,8 +559,8 @@ mod tests {
     fn an_unparseable_profile_leaves_the_footprint_empty() {
         let catalog = compose_catalog(SourceInputs {
             forage: vec![],
-            flathub_xml: None,
-            dep11_yaml: Some(APT_YAML.into()),
+            flathub_xml: Vec::new(),
+            dep11_yaml: vec![APT_YAML.into()],
             flatpak_metadata: vec![],
             apt_profiles: vec![("org.example.App".into(), "not = = toml".into())],
         });
@@ -865,8 +873,8 @@ commit = "0000000000000000000000000000000000000000"
     fn compose_catalog_merges_every_source() {
         let inputs = SourceInputs {
             forage: vec![(FORAGE_TOML.to_string(), SourceLayer::Community)],
-            flathub_xml: Some(FLATHUB_XML.to_string()),
-            dep11_yaml: Some(DEP11_YAML.to_string()),
+            flathub_xml: vec![FLATHUB_XML.to_string()],
+            dep11_yaml: vec![DEP11_YAML.to_string()],
             ..Default::default()
         };
         let catalog = compose_catalog(inputs);
@@ -876,12 +884,30 @@ commit = "0000000000000000000000000000000000000000"
         assert!(catalog.card(&ComponentId("org.gnome.gedit".into())).is_some());
     }
 
+    /// Debian splits its catalog per suite and component, so `main`, `contrib`
+    /// and `non-free` arrive as separate documents. Reading only one would serve
+    /// a fraction of what is installable while looking like the whole store.
+    #[test]
+    fn every_dep11_document_contributes_its_apps() {
+        let second = DEP11_YAML.replace("org.gnome.gedit", "org.gnome.Maps");
+        let inputs = SourceInputs {
+            dep11_yaml: vec![DEP11_YAML.to_string(), second],
+            ..Default::default()
+        };
+        let catalog = compose_catalog(inputs);
+        assert!(catalog.card(&ComponentId("org.gnome.gedit".into())).is_some());
+        assert!(
+            catalog.card(&ComponentId("org.gnome.Maps".into())).is_some(),
+            "the second catalog's app is missing, so only one document was read"
+        );
+    }
+
     #[test]
     fn compose_catalog_skips_a_malformed_source() {
         let inputs = SourceInputs {
             forage: vec![("this is not valid toml {{{".to_string(), SourceLayer::Personal)],
-            flathub_xml: Some("<not xml".to_string()),
-            dep11_yaml: Some(DEP11_YAML.to_string()),
+            flathub_xml: vec!["<not xml".to_string()],
+            dep11_yaml: vec![DEP11_YAML.to_string()],
             ..Default::default()
         };
         // The bad forage + bad XML are skipped; the good DEP-11 app still lands.

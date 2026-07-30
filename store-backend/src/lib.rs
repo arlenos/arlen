@@ -9,6 +9,7 @@
 pub mod catalog;
 pub mod client;
 pub mod compose;
+pub mod discover;
 pub mod flatpak;
 pub mod profile_caps;
 pub mod query;
