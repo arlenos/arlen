@@ -1,0 +1,76 @@
+[Unit]
+Description=Arlen settings broker (user service)
+Documentation=https://github.com/arlenos/arlen
+# No ordering dependency. The broker validates and applies writes to apps'
+# own config files; it reads nothing from another service, and its callers
+# (Settings, an app's own page) fail with a plain "not reachable" when it is
+# absent rather than falling back to writing the file themselves.
+
+[Service]
+# Type=simple: the broker does not call sd_notify. Clients connect per write
+# and report an unreachable broker rather than queueing behind a readiness
+# barrier, so nothing needs to wait for it to be up.
+Type=simple
+ExecStart=/usr/lib/arlen/libexec/arlen-settings-broker
+Restart=on-failure
+RestartSec=2
+
+# Runs as the SESSION USER, unlike the config broker. The distinction is
+# deliberate: the config broker owns the AI master switches, which is state the
+# user's own uid must not be able to rewrite, so it runs as its own uid. These
+# are the user's own application settings. Putting them behind another uid
+# would buy nothing and would mean a service account owning a person's
+# preferences.
+#
+# What the broker is for is not isolation from the user but VALIDATION: one
+# process checks every write against the app's declared schema, so a settings
+# page cannot store a value the app never declared, at a type it never
+# declared, in a layer its scope forbids.
+
+# The broker WRITES apps' config files, so the directory holding them has to be
+# writable. ProtectHome=read-only plus an explicit ReadWritePaths is the narrow
+# form: everything under the home stays read-only except the one directory the
+# broker's whole job is to write.
+#
+# Getting this wrong is not theoretical - a sibling unit shipped with a
+# ReadWritePaths that omitted the directory its daemon wrote, and every write
+# failed EROFS under ProtectSystem=strict while the code looked correct. The
+# paths below are the two the broker actually touches: the app config directory
+# (`os_sdk::config::config_path`) and the runtime dir it binds its socket in.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.config/arlen
+ReadWritePaths=/run/user/%U/arlen
+
+# Schemas are read-only inputs, installed by packages. The broker never writes
+# them, and ProtectSystem=strict already makes /usr read-only, so the
+# user-installed schema directory is the only one worth naming - and only to
+# document that it is READ, not written.
+# %h/.local/share/arlen/settings-schemas: read-only by inheritance.
+
+# AF_UNIX only: the broker speaks one socket and never the network.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete
+# The socket is bound 0600 by the broker itself; the umask keeps anything else
+# it creates - the atomic temp file a write renames into place - owner-only too.
+UMask=0077
+
+[Install]
+WantedBy=default.target

@@ -14,5 +14,28 @@ ExecStart=/usr/lib/arlen/libexec/arlen-notifyd
 Restart=on-failure
 RestartSec=2
 
+# Hardening. This daemon speaks only D-Bus + its AF_UNIX broadcast socket and does
+# local file I/O; it makes no network connections (verified: only AF_UNIX in the
+# code, and its sound-cue subprocesses reach PipeWire/PulseAudio over AF_UNIX too),
+# unshares no namespaces, and needs no privilege escalation. Only break-safe
+# restrictions are set here. The FILESYSTEM sandbox (ProtectSystem=strict +
+# ProtectHome=read-only + ReadWritePaths for the DB `%h/.local/share/arlen`, the
+# synth sound theme `%h/.local/share/sounds`, and the runtime socket dir `%t/arlen`)
+# is a deliberate metal-verify follow-up: an EROFS from a missed write path is a
+# silent break, so the filesystem hardening lands once it can be started + tested.
+# PrivateDevices is likewise omitted: it hides `/dev/snd`, which would break the
+# ALSA `aplay` last-resort sound player.
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+UMask=0077
+
 [Install]
 WantedBy=default.target
