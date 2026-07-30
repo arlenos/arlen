@@ -12,6 +12,7 @@
 //! gate + the consent broker); this crate never decides to run - it runs what the
 //! gate already approved.
 
+pub mod read;
 pub mod run;
 
 pub mod seccomp;
