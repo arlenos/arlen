@@ -510,6 +510,12 @@ viewers-decode-check:
 rtl-lint:
     cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-rtl-lint -- --root apps --root sdk/ui-kit --baseline dev/rtl-baseline.tsv
 
+# Drop baseline entries the scanner can no longer reproduce, and only those. The
+# safe counterpart to `rtl-baseline` when findings are outstanding: it never
+# accepts a new usage. Verify by re-running `rtl-lint` and seeing the same count.
+rtl-prune:
+    cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-rtl-lint -- --root apps --root sdk/ui-kit --baseline dev/rtl-baseline.tsv --prune
+
 # Re-snapshot the born-RTL baseline (accept the current physical directional CSS).
 rtl-baseline:
     cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-rtl-lint -- --root apps --root sdk/ui-kit --baseline dev/rtl-baseline.tsv --update
