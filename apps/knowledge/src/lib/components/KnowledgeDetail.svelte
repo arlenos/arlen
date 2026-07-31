@@ -5,9 +5,20 @@
   import { X } from "lucide-svelte";
   import type { FileEntry } from "@arlen/ui-kit/components/browser";
   import { formatModified } from "@arlen/ui-kit/components/browser";
+  import type { TimelineEvent } from "$lib/stores/timeline";
   import { t } from "$lib/i18n/messages";
 
-  let { entry, onclose }: { entry: FileEntry; onclose: () => void } = $props();
+  let {
+    entry = null,
+    event = null,
+    onclose,
+  }: {
+    /// A browsed graph node (the generic places).
+    entry?: FileEntry | null;
+    /// A timeline event; when set it wins over `entry`.
+    event?: TimelineEvent | null;
+    onclose: () => void;
+  } = $props();
 </script>
 
 <aside class="kn-detail" aria-label={$t("k.detail.title")}>
@@ -18,16 +29,35 @@
     </button>
   </header>
 
-  <div class="kn-detail-name">{entry.name}</div>
-
-  {#if entry.modified_unix != null}
+  {#if event}
+    <div class="kn-detail-name">{event.verb} {event.object}</div>
     <div class="kn-kv">
       <span class="kn-k">{$t("k.detail.when")}</span>
-      <span class="kn-v">{formatModified(entry.modified_unix)}</span>
+      <span class="kn-v">{formatModified(event.at)}</span>
     </div>
-  {/if}
+    <div class="kn-kv">
+      <span class="kn-k">{$t("k.detail.source")}</span>
+      <span class="kn-v">{event.source}</span>
+    </div>
+    {#if event.project}
+      <div class="kn-kv">
+        <span class="kn-k">{$t("k.detail.project")}</span>
+        <span class="kn-v">{event.project}</span>
+      </div>
+    {/if}
+    <p class="kn-detail-more">{$t("k.detail.more")}</p>
+  {:else if entry}
+    <div class="kn-detail-name">{entry.name}</div>
 
-  <p class="kn-detail-more">{$t("k.detail.more")}</p>
+    {#if entry.modified_unix != null}
+      <div class="kn-kv">
+        <span class="kn-k">{$t("k.detail.when")}</span>
+        <span class="kn-v">{formatModified(entry.modified_unix)}</span>
+      </div>
+    {/if}
+
+    <p class="kn-detail-more">{$t("k.detail.more")}</p>
+  {/if}
 </aside>
 
 <style>
