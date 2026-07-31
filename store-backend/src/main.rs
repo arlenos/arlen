@@ -82,8 +82,15 @@ fn load_source_inputs() -> SourceInputs {
     };
     // A single forage recipe path (the multi-cookbook tiering is the resolver's job,
     // wired with the refresh step); default it to the Official tier for the skeleton.
+    //
+    // No cookbook origin, and that is the truthful answer for this input rather
+    // than a gap in the plumbing: a recipe named by a path came from a path. It
+    // is in no tracked cookbook, so there is no publisher to name and no TUF
+    // chain to point at. The catalog rows that CAN carry an origin are the ones
+    // enumerated from the registry's own cookbooks, which is the next step and
+    // needs recipe discovery inside a cookbook clone.
     let forage = read_env("ARLEN_STORE_FORAGE_RECIPE")
-        .map(|toml| vec![(toml, SourceLayer::Official)])
+        .map(|toml| vec![(toml, SourceLayer::Official, None)])
         .unwrap_or_default();
     SourceInputs {
         forage,

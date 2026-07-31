@@ -18,9 +18,11 @@ pub mod view;
 
 pub use catalog::{
     merge_catalog, AppCard, CapabilityFootprint, CatalogEntry, ComponentId, DisplayMeta, ItemKind,
-    SourceLayer, TrustSignals, Variant,
+    SourceAttestation, SourceLayer, TrustSignals, Variant,
 };
-pub use compose::{compose_catalog, dep11_entries, flathub_entries, forage_entry, SourceInputs};
+pub use compose::{
+    compose_catalog, dep11_entries, flathub_entries, forage_entry, CookbookOrigin, SourceInputs,
+};
 pub use client::{request as store_request, request_default, ClientError};
 pub use query::{
     answer, outdated, privilege_cost, sort_least_privilege, CapabilityFacet, Catalog,

@@ -100,6 +100,39 @@ pub struct TrustSignals {
     pub odrs_score: Option<f32>,
     /// A local observed-vs-declared summary from the audit ledger, when computed.
     pub observed_vs_declared: Option<String>,
+    /// Where this build provably came from, when its source publishes a chain
+    /// that says so (store-app.md section 8.5).
+    #[serde(default)]
+    pub attestation: Option<SourceAttestation>,
+}
+
+/// The supply-chain chain a source publishes for a variant: who vouches that the
+/// artefact came from the source it claims.
+///
+/// **This is a record of what is published, not a verification result.** The
+/// store composes a catalog; it does not check signatures, and it must not,
+/// because a browse-time check would either be a lie about cached metadata or a
+/// network round trip per card. The actual verification happens at install, in
+/// the resolver that already loads a cookbook's TUF metadata against the pinned
+/// root and refuses on mismatch. A frontend rendering this row as "verified"
+/// would claim a check nobody ran.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceAttestation {
+    /// Which chain vouches: `tuf` for a signed forage cookbook. An identifier
+    /// rather than a sentence, because the app is translated and this crate is
+    /// not.
+    pub chain: String,
+    /// Who it names: the cookbook for forage, and for a future Sigstore layer
+    /// the workflow identity the artefact was built by.
+    pub signer: String,
+    /// Whether this machine holds its own pin for that signer's root.
+    ///
+    /// The distinction worth drawing at browse time. Pinned means a later swap
+    /// of the signer's root is caught when this app is installed or updated,
+    /// because the pin was taken on first use and is re-checked then. Unpinned
+    /// means the source says a chain exists and nothing here is holding it to
+    /// that claim yet.
+    pub pinned_here: bool,
 }
 
 /// What kind of item a card is (store-app.md section 8b). Apps and bridges are
