@@ -211,6 +211,18 @@ fn command_allowlist() -> Vec<libc::c_long> {
         libc::SYS_timerfd_create,
         libc::SYS_timerfd_settime,
         libc::SYS_timerfd_gettime,
+        // The POSIX per-process timers as well as the fd-based ones. The same gap
+        // existed in `arlen-run`'s app filter and was found by running a confined
+        // `timeout(1)`, which warns `timer_create: Operation not permitted` and
+        // degrades - two independently written allowlists with the identical hole,
+        // because "timers" reads as covered once one family is listed. It matters
+        // more here: this filter confines an arbitrary user-approved command, not
+        // one known app. The timers reach nothing outside the calling process.
+        libc::SYS_timer_create,
+        libc::SYS_timer_settime,
+        libc::SYS_timer_gettime,
+        libc::SYS_timer_getoverrun,
+        libc::SYS_timer_delete,
         // Sockets. IP exfiltration is prevented by the network namespace, NOT this
         // filter, so a command may speak the local sockets it legitimately needs
         // (e.g. a compiler talking to a local build server over AF_UNIX).
@@ -436,6 +448,34 @@ pub(crate) fn make_seccomp_memfd(bpf: &[u8]) -> std::io::Result<libc::c_int> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Both timer families. The `timerfd` set alone was what `arlen-run`'s filter
+    /// had too, and a real confined `timeout(1)` found it there; this filter
+    /// confines an arbitrary approved command, so the same gap is likelier to be
+    /// met here.
+    #[test]
+    fn both_timer_families_are_allowed() {
+        let allowed = super::command_allowlist();
+        for (nr, name) in [
+            (libc::SYS_timerfd_create, "timerfd_create"),
+            (libc::SYS_timer_create, "timer_create"),
+            (libc::SYS_timer_settime, "timer_settime"),
+            (libc::SYS_timer_gettime, "timer_gettime"),
+            (libc::SYS_timer_getoverrun, "timer_getoverrun"),
+            (libc::SYS_timer_delete, "timer_delete"),
+        ] {
+            assert!(allowed.contains(&nr), "{name} is not in the command allowlist");
+        }
+    }
+
+    /// And the widening stopped where it should: a confined command still may not
+    /// move the system clock.
+    #[test]
+    fn setting_the_system_clock_is_still_refused() {
+        let allowed = super::command_allowlist();
+        assert!(!allowed.contains(&libc::SYS_clock_settime));
+        assert!(!allowed.contains(&libc::SYS_settimeofday));
+    }
 
     #[test]
     fn the_filter_compiles_to_a_non_empty_program() {
