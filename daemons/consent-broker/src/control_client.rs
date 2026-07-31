@@ -20,12 +20,24 @@ use crate::grant::ConsentGrant;
 use crate::socket::{read_frame, write_frame, MAX_FRAME};
 
 /// The default control-socket path: `$XDG_RUNTIME_DIR/arlen/consent-control.sock`,
-/// else `/run/arlen/consent-control.sock`. Mirrors the broker's bind.
-pub fn control_socket_path() -> PathBuf {
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/run"));
-    base.join("arlen").join("consent-control.sock")
+/// or `None` when `XDG_RUNTIME_DIR` is unset.
+///
+/// `None` rather than a `/run/arlen` fallback, because the broker's own
+/// `runtime_dir` REFUSES to start without `XDG_RUNTIME_DIR` - it never binds
+/// under `/run`. Dialling there could only ever fail, and the previous doc
+/// claimed this mirrored the bind while doing the opposite. A client that cannot
+/// name the socket should say the environment is missing, not produce a path
+/// nothing is listening on and let the caller read the resulting "no such file"
+/// as a broker that is down.
+pub fn control_socket_path() -> Option<PathBuf> {
+    control_socket_path_from(std::env::var_os("XDG_RUNTIME_DIR").as_deref())
+}
+
+/// [`control_socket_path`] over an explicit `XDG_RUNTIME_DIR`, so the precedence
+/// is unit-tested without mutating the process environment - which is shared, and
+/// would race whatever else is running.
+fn control_socket_path_from(xdg: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+    Some(PathBuf::from(xdg?).join("arlen").join("consent-control.sock"))
 }
 
 /// A client for the consent broker's control socket.
@@ -39,9 +51,16 @@ impl ControlClient {
         Self { path: path.into() }
     }
 
-    /// A client targeting the default control-socket path.
-    pub fn at_default_path() -> Self {
-        Self::new(control_socket_path())
+    /// A client targeting the default control-socket path, or an error naming
+    /// the missing environment. Same shape as `capsuled`'s control client, which
+    /// faces the same question.
+    pub fn at_default_path() -> io::Result<Self> {
+        control_socket_path().map(Self::new).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "XDG_RUNTIME_DIR is unset; the consent broker's control socket has no path",
+            )
+        })
     }
 
     /// The control-socket path this client dials.
@@ -107,6 +126,19 @@ fn unexpected(reply: &ControlReply) -> io::Error {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_default_path_is_absent_without_a_runtime_dir() {
+        // The broker refuses to start without XDG_RUNTIME_DIR, so there is no
+        // path to dial - and inventing `/run/arlen` would turn "your session has
+        // no runtime dir" into "the broker is not running", which sends whoever
+        // reads the error to the wrong place entirely.
+        assert_eq!(
+            control_socket_path_from(Some(std::ffi::OsStr::new("/run/user/1000"))),
+            Some(std::path::PathBuf::from("/run/user/1000/arlen/consent-control.sock"))
+        );
+        assert_eq!(control_socket_path_from(None), None);
+    }
     use super::*;
     use std::os::unix::net::UnixListener;
     use std::thread;
