@@ -92,6 +92,46 @@ pub async fn pick_gguf_file() -> Option<String> {
     }
 }
 
+/// Pick any file, for a schema item of type `path` (PAS-6's Browse row).
+///
+/// No filter: an app declaring a `path` setting can mean any file at all, and a
+/// filter invented here would hide exactly the one the app wanted. A directory is
+/// `pick_directory`, which is a separate affordance rather than a mode of this
+/// one, since the caller knows which it needs and the two dialogs differ.
+#[tauri::command]
+pub async fn settings_pick_path() -> Result<Option<String>, String> {
+    let options = PickFileOptions {
+        title: Some("Choose a file".to_string()),
+        ..PickFileOptions::default()
+    };
+    match api::pick_file(options).await {
+        Ok(PickerResult::Picked { uris }) => {
+            Ok(uris.first().and_then(|u| uri_to_path(u)).or_else(legacy_pick_any))
+        }
+        Ok(PickerResult::Cancelled) => Ok(None),
+        Err(PickerError::PortalUnavailable { .. }) | Err(PickerError::ConnectionLost { .. }) => {
+            Ok(legacy_pick_any())
+        }
+        // A cancel and a broken chooser must not look the same to the caller: the
+        // first leaves the setting alone, the second is worth telling someone about.
+        Err(e) => Err(format!("the file chooser failed: {e}")),
+    }
+}
+
+/// kdialog then zenity for any single file, when no portal frontend is running.
+/// Returns the path only if it exists and is a file, so a chooser that hands back
+/// a directory does not become a setting value.
+fn legacy_pick_any() -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
+    let picked = try_kdialog_file(&home).or_else(|| try_zenity_file(&home))?;
+    if Path::new(&picked).is_file() {
+        Some(picked)
+    } else {
+        log::warn!("settings_pick_path: chooser returned non-file: {picked}");
+        None
+    }
+}
+
 /// Pick a single `.toml` theme file to install. Portal first, kdialog/zenity
 /// fallback; returns the chosen path or `None` on cancel/unavailable.
 pub async fn pick_theme_file() -> Option<String> {
