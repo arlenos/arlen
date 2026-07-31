@@ -213,4 +213,39 @@ for f in $(git ls-files '*.service' '*.socket' '*.timer'); do
     done
 done
 [ "$missing_refs" -eq 0 ] && echo "OK: every ordering reference resolves to a unit in the tree"
-exit "$missing_refs"
+
+# D-Bus activation: an activation file without `SystemdService=` starts the bare
+# `Exec=` binary instead of the unit, so the daemon comes up with none of the
+# unit's hardening. `org.arlen.InstallDaemon1.service` shipped that way - the
+# install daemon would have run unsandboxed whenever D-Bus activated it - and
+# nothing would have said so. Also checked: the named unit exists, and its
+# `BusName=` is the name being activated, since a pair that disagrees activates
+# one thing and waits for another.
+bad_activation=0
+for f in $(git ls-files '*.service'); do
+    name=$(grep -m1 '^Name=' "$f" 2>/dev/null | cut -d= -f2 || true)
+    [ -n "$name" ] || continue   # not an activation file
+    svc=$(grep -m1 '^SystemdService=' "$f" 2>/dev/null | cut -d= -f2 || true)
+    if [ -z "$svc" ]; then
+        echo "FAIL: $f activates $name with no SystemdService=, so D-Bus starts the bare Exec= without the unit's hardening"
+        bad_activation=1
+        continue
+    fi
+    unit=$(git ls-files '*.service' | grep -E "/$svc\$" | head -1 || true)
+    if [ -z "$unit" ]; then
+        echo "FAIL: $f names $svc, which no unit file in the tree provides"
+        bad_activation=1
+        continue
+    fi
+    bus=$(grep -m1 '^BusName=' "$unit" 2>/dev/null | cut -d= -f2 || true)
+    if [ "$bus" != "$name" ]; then
+        echo "FAIL: $f activates $name but $unit has BusName=${bus:-<none>}"
+        bad_activation=1
+    fi
+done
+[ "$bad_activation" -eq 0 ] && echo "OK: every D-Bus activation file names a unit that owns the name it activates"
+
+if [ "$missing_refs" -ne 0 ] || [ "$bad_activation" -ne 0 ]; then
+    exit 1
+fi
+exit 0
