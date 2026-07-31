@@ -157,13 +157,27 @@ def interface_methods(text: str) -> list[tuple[str, bool]]:
             depth += (text[i] == "{") - (text[i] == "}")
             i += 1
         lines = text[start + 1 : i - 1].split("\n")
+        # Attributes are carried forward to the fn they precede and cleared at it,
+        # rather than read from a fixed window above. A window that happens to
+        # reach back over the PREVIOUS item's attributes would silently drop a
+        # method that follows a signal, and a check that quietly stops asking
+        # about something is the failure this file is here to prevent.
+        pending_signal = False
         for idx, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("#["):
+                pending_signal = pending_signal or "zbus(signal)" in stripped
+                continue
             fm = FN.match(line)
             if not fm:
+                # A doc comment or blank line keeps the attributes pending; any
+                # other content means they belonged to something already passed.
+                if stripped and not stripped.startswith("//"):
+                    pending_signal = False
                 continue
-            # The attribute sits on the lines just above the fn.
-            preceding = "\n".join(lines[max(0, idx - 4) : idx])
-            if "zbus(signal)" in preceding:
+            was_signal = pending_signal
+            pending_signal = False
+            if was_signal:
                 continue
             j, body = idx + 1, []
             while j < len(lines) and not END.match(lines[j]):
