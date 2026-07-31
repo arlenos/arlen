@@ -17,12 +17,14 @@
 //! rule guards against, because the two are indistinguishable to a reader and one
 //! of them is worthless. [`Observation::NotMeasured`] keeps them apart.
 
+use serde::Serialize;
 use std::collections::BTreeMap;
 
 use crate::access::{AccessReport, AppAccess};
 
 /// What the local ledger says about one declared capability.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "state")]
 pub enum Observation {
     /// Audited use of this capability appeared in the window that was read.
     Observed {
@@ -47,13 +49,20 @@ pub enum Observation {
 }
 
 /// Why a declared capability could not be measured.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum NotMeasuredReason {
     /// No audit kind evidences this capability. Using it is simply not recorded.
     NoFeed,
     /// There is a feed, but the ledger could not be read at all, so every
     /// capability is unmeasured this time rather than unused.
     LedgerUnavailable,
+    /// The ledger records actions against an actor id, and which id THIS
+    /// extension audits under is not established. A bridge is `bridge.<ns>` in
+    /// the ledger but its bare namespace in the inventory, and a module's actor
+    /// is not settled at all, so asking the ledger about the wrong id would come
+    /// back empty and read as restraint.
+    ActorUnknown,
     /// The ledger reports itself tampered. It may still answer, but an attacker
     /// who can edit it can remove exactly the entries that would have shown use,
     /// so absence of evidence is worth nothing here.
@@ -70,7 +79,8 @@ impl Observation {
 }
 
 /// One declared capability with what the ledger says about it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeclaredCapability {
     /// The capability label, in the shared vocabulary the store facets on
     /// (`network`, `filesystem`, `read:system.File`, ...).
@@ -168,6 +178,22 @@ fn observe(kinds: &[&str], app: Option<&AppAccess>) -> Observation {
         actions,
         last_micros,
     }
+}
+
+/// Every declared capability marked unmeasured for one reason, for a caller that
+/// cannot name the actor this extension audits under.
+///
+/// The alternative is passing a guessed id into [`observed_vs_declared`], which
+/// answers "not observed" for every fed capability because the ledger has no such
+/// actor - a confident wrong reading rather than an admitted gap.
+pub fn all_unmeasured(declared: &[String], reason: NotMeasuredReason) -> Vec<DeclaredCapability> {
+    declared
+        .iter()
+        .map(|label| DeclaredCapability {
+            label: label.clone(),
+            observation: Observation::NotMeasured { reason },
+        })
+        .collect()
 }
 
 /// Group rows by observation for a surface that wants counts rather than a list -

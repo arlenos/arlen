@@ -18,6 +18,8 @@ tauri-build = { version = "2", features = [] }
 modulesd-proto = { path = "../../../contracts/modulesd-proto" }
 # One inventory and one capability vocabulary across apps, modules and bridges.
 arlen-extensions = { path = "../../../contracts/extensions" }
+# ST-7 reads the audit ledger to answer what an extension was seen doing.
+arlen-monitor-reads = { path = "../../../sdk/monitor-reads" }
 arlen-forage-bridge-install = { path = "../../../forage/bridge-install" }
 arlen-ai-model-manager = { path = "../../../ai/ai-model-manager" }
 arlen-theme = { path = "../../../sdk/theme" }
