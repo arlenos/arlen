@@ -32,12 +32,26 @@ pub fn forage_entry(recipe: &Recipe, layer: SourceLayer) -> CatalogEntry {
         icon: None,
     };
     let capabilities = CapabilityFootprint {
-        // The tier BADGE is a trust property of the cookbook, not the recipe; the
-        // caller sets it from the cookbook's verification, so it stays None here.
+        // The tier BADGE is a trust property of the cookbook, not the recipe, and
+        // NOTHING sets it after this: `compose_catalog` pushes the entry straight
+        // into the merge, and `SourceInputs::forage` carries the recipe text plus a
+        // tier enum without ever naming the cookbook it came from. So a forage card
+        // has no badge today, and will not until the composer is given its
+        // cookbook - see `verified_publisher` below for the same seam.
         tier: None,
         capabilities: recipe.capabilities.as_ref().map(capability_labels).unwrap_or_default(),
     };
     let trust = TrustSignals {
+        // Not an oversight and not "forage vouches for nobody": the publisher a
+        // forage app has IS its cookbook, and this function is never told which
+        // cookbook the recipe came from. The daemon reads a single recipe path
+        // from an env var and hardcodes the Official tier, explicitly as a
+        // skeleton, so there is no cookbook identity anywhere on this path to
+        // pass. Wiring it needs the cookbook registry, which currently lives
+        // inside the `forage` BINARY crate and so cannot be depended on from
+        // here. That extraction is the first step, and it unblocks the tier badge
+        // above and the ST-9 attestation row as well - all three wait on the same
+        // missing seam rather than on three separate pieces of work.
         verified_publisher: None,
         reproducible_build: recipe.reproducible.as_ref().and_then(|r| match r.status {
             ReproducibleStatus::Verified => Some("verified".to_string()),
