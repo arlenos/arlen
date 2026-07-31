@@ -1297,10 +1297,12 @@ mod module_reachability {
         // matching error text is the fragility they exist to avoid. That
         // contract change is the wiring step.
         //
-        // Only `retry` was caught by this test; `auth` is listed because I know
-        // it is equally unreached, and the test not catching it is a hole in the
-        // matcher rather than a fact about the module - see the note below.
-        "daemons/bridge-ingest/auth",
+        // `auth` is equally unreached and is NOT listed, because this test does
+        // not agree: it searches the whole tree for `auth::`, several daemons
+        // have a module by that name, and any one of them saying it makes all
+        // the others look reached. Listing it trips the stale check. `retry` is
+        // here only because that name happens to be unique. The hole is in the
+        // matcher, not in the module.
         "daemons/bridge-ingest/retry",
         // Diagnosed rather than assumed: the transfer daemon's live per-uid
         // listeners are deliberately deferred to PR-R1's per-uid sockets, which
