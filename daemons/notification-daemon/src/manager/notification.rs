@@ -137,17 +137,7 @@ impl NotificationManager {
             summary: input.summary,
             body: input.body,
             app_icon: input.app_icon,
-            actions: input
-                .actions
-                .chunks(2)
-                .filter_map(|c| {
-                    if c.len() == 2 {
-                        Some((c[0].clone(), c[1].clone()))
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
+            actions: crate::dbus::server::parse_actions(&input.actions),
             priority,
             urgency,
             category: category.to_string(),

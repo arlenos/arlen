@@ -202,7 +202,13 @@ async fn resolve_caller(
 
 /// Parse the actions array from D-Bus (flat list of alternating key/label pairs)
 /// into a `Vec<(String, String)>`.
-fn parse_actions(raw: &[String]) -> Vec<(String, String)> {
+///
+/// `pub(crate)` because the manager had its own identical copy of this, inlined
+/// into the notification it builds, and that copy is the one that runs. The
+/// tests below, including the odd-length case any client can send, were
+/// therefore testing a function nothing called. One implementation, tested once,
+/// used by the path that runs.
+pub(crate) fn parse_actions(raw: &[String]) -> Vec<(String, String)> {
     raw.chunks(2)
         .filter_map(|chunk| {
             if chunk.len() == 2 {
