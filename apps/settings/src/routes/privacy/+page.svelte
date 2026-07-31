@@ -19,21 +19,6 @@
   /// under vite. Copy law: no em-dashes, no middot separators; usage is "not
   /// measured yet", never a fabricated "never".
   import { onMount } from "svelte";
-  import {
-    Sparkles,
-    FolderOpen,
-    SquareTerminal,
-    SlidersHorizontal,
-    ChevronRight,
-    Brain,
-    Globe,
-    Folder,
-    Camera,
-    Clipboard,
-    Bell,
-    Zap,
-    Workflow,
-  } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
@@ -49,7 +34,6 @@
     removed,
     byApp,
     byCapability,
-    familyGroups,
     loadGrants,
     revokeScope,
     revokeAllFor,
@@ -58,8 +42,10 @@
     type Principal,
     type ScopeLine,
     type RemovedItem,
-    type Family,
   } from "$lib/stores/grants";
+  import PrincipalGrants from "$lib/components/privacy/PrincipalGrants.svelte";
+  import AppAvatar from "$lib/components/privacy/AppAvatar.svelte";
+  import { familyIcon } from "$lib/components/privacy/familyIcons";
   import {
     capsules,
     capsulesLoaded,
@@ -84,53 +70,11 @@
     { value: "capability", label: $t("s.priv.byCapability") },
   ]);
 
-  // The mark for each capability family (the hero anchor of the by-capability
-  // view and the subheaders in the by-app view).
-  // Keep these in step with the settings nav icons where the system already has
-  // one for the same thing: Knowledge Graph -> Brain, Notifications -> Bell,
-  // System (Actions) -> Zap, the assistant -> Sparkles.
-  const FAMILY_ICONS: Record<Family, typeof Sparkles> = {
-    data: Brain,
-    network: Globe,
-    files: Folder,
-    devices: Camera,
-    clipboard: Clipboard,
-    notifications: Bell,
-    system: Zap,
-    automation: Workflow,
-  };
-  function familyIcon(key: string) {
-    return FAMILY_ICONS[key as Family] ?? Brain;
-  }
-
-  // Known first-party principals get their own mark; everything else falls back
-  // to an initial tile. A real per-app icon (the shell's app_index carries one)
-  // can replace this once a Settings bridge exposes it.
-  const APP_ICONS: Record<string, typeof Sparkles> = {
-    "org.arlen.AI1": Sparkles,
-    "ai-daemon": Sparkles,
-    "org.arlen.AIAgent1": Sparkles,
-    "ai-agent": Sparkles,
-    "org.arlen.files": FolderOpen,
-    "org.arlen.terminal": SquareTerminal,
-    "org.arlen.settings": SlidersHorizontal,
-  };
-  function appIcon(appId: string) {
-    return APP_ICONS[appId];
-  }
-
   const principals = $derived(byApp($grants));
   const assistants = $derived(principals.filter((p) => p.assistant));
   const apps = $derived(principals.filter((p) => !p.assistant));
   const resources = $derived(byCapability($grants));
   const isEmpty = $derived($grantsLoaded && principals.length === 0);
-
-  let expanded = $state<Set<string>>(new Set());
-  function toggle(key: string) {
-    const next = new Set(expanded);
-    next.has(key) ? next.delete(key) : next.add(key);
-    expanded = next;
-  }
 
   let pending = $state<{
     title: string;
@@ -210,7 +154,8 @@
   }
 
   // The short muted marker shown where a Remove button cannot be, with the reason
-  // stated (settled model: explained before the click, no tooltip).
+  // stated (settled model: explained before the click, no tooltip). The by-app
+  // pivot's copy of this lives inside PrincipalGrants.
   function revokeLabel(line: ScopeLine): string {
     if (line.required) return $t("s.priv.required");
     if (line.systemManaged) return $t("s.priv.systemManaged");
@@ -265,14 +210,14 @@
       {#if assistants.length > 0}
         <Group label={$t("s.priv.assistant")} class="span-full">
           {#each assistants as p (p.appId)}
-            {@render principalBlock(p)}
+            <PrincipalGrants principal={p} onRemoveScope={askScope} onRemoveAll={askAll} />
           {/each}
         </Group>
       {/if}
       {#if apps.length > 0}
         <Group label={$t("s.priv.apps")} class="span-full">
           {#each apps as p (p.appId)}
-            {@render principalBlock(p)}
+            <PrincipalGrants principal={p} onRemoveScope={askScope} onRemoveAll={askAll} />
           {/each}
         </Group>
       {/if}
@@ -290,7 +235,7 @@
           </div>
           <div class="reacher-list">
             {#each r.reachers as reacher (reacher.appId + reacher.line.key)}
-              {@render avatar(reacher.appId, reacher.label, 24)}
+              <AppAvatar appId={reacher.appId} label={reacher.label} size={24} />
               <span class="who">
                 {reacher.label}{#if !reacher.identityVerified}<span class="warn">{$t("s.priv.unverified")}</span>{/if}
               </span>
@@ -358,7 +303,7 @@
       <Group label={$t("s.priv.recentlyRemoved")} class="span-full">
         <div class="removed-list">
           {#each $removed as it (it.id)}
-            {@render avatar(it.appId, it.appLabel, 24)}
+            <AppAvatar appId={it.appId} label={it.appLabel} size={24} />
             <span class="who">{it.appLabel}</span>
             <span class="how">{it.text}</span>
             <button type="button" class="restore" onclick={() => restore(it)}>
@@ -391,77 +336,6 @@
   </div>
 {/if}
 
-{#snippet avatar(appId: string, label: string, size: number)}
-  {@const Icon = appIcon(appId)}
-  <span class="avatar" style={`width:${size}px;height:${size}px`}>
-    {#if Icon}
-      <Icon size={size * 0.6} strokeWidth={1.75} />
-    {:else}
-      <span class="avatar-initial" style={`font-size:${size * 0.42}px`}>
-        {label.charAt(0).toUpperCase()}
-      </span>
-    {/if}
-  </span>
-{/snippet}
-
-{#snippet principalBlock(p: Principal)}
-  <div class="principal">
-    <div class="p-head">
-      {@render avatar(p.appId, p.label, 28)}
-      <span class="p-label">{p.label}</span>
-      {#if !p.identityVerified}<span class="warn">{$t("s.priv.unverified")}</span>{/if}
-      <span class="p-spacer"></span>
-      <button type="button" class="remove" onclick={() => askAll(p)}>{$t("s.priv.removeAll")}</button>
-    </div>
-    {#each familyGroups(p.lines) as fam (fam.key)}
-      {@const FamIcon = familyIcon(fam.key)}
-      <div class="fam-sub">
-        <span class="fam-sub-icon"><FamIcon size={13} strokeWidth={1.75} /></span>
-        <span class="fam-sub-label">{fam.label}</span>
-      </div>
-      <div class="lines">
-        {#each fam.lines as line (line.key)}
-          <span class="verb" class:dim={line.own}>{line.verb}</span>
-          <span class="object" class:dim={line.own}>
-            {line.object}
-            {#if line.detail.length > 0}
-              <button
-                type="button"
-                class="expand"
-                class:open={expanded.has(line.key)}
-                aria-label={$t("s.priv.showDetail")}
-                onclick={() => toggle(line.key)}
-              >
-                <ChevronRight size={13} strokeWidth={2} />
-              </button>
-            {/if}
-          </span>
-          <span class="prov" class:dim={line.own}>{line.provenance}</span>
-          {#if line.revoke.enabled}
-            <button
-              type="button"
-              class="remove"
-              aria-label={$t("s.priv.removeLineAria", { what: line.text })}
-              onclick={() => askScope(p.label, line)}
-            >
-              {$t("s.priv.remove")}
-            </button>
-          {:else}
-            <span class="remove-off">{revokeLabel(line)}</span>
-          {/if}
-          {#if line.detail.length > 0 && expanded.has(line.key)}
-            <ul class="detail">
-              {#each line.detail as d (d)}
-                <li>{d}</li>
-              {/each}
-            </ul>
-          {/if}
-        {/each}
-      </div>
-    {/each}
-  </div>
-{/snippet}
-
 <ConfirmDialog
   open={pending !== null}
   title={pending?.title ?? ""}
@@ -477,105 +351,12 @@
     display: flex;
     margin-bottom: 0.25rem;
   }
-  /* The app identity tile: a calm slot for the icon, forward-compatible with a
-     real app icon replacing the glyph. */
-  .avatar {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    border-radius: var(--radius-chip, 4px);
-    background: color-mix(in srgb, var(--foreground) 8%, transparent);
-    color: color-mix(in srgb, var(--foreground) 60%, transparent);
-  }
-  .avatar-initial {
-    font-weight: 600;
-    line-height: 1;
-    color: color-mix(in srgb, var(--foreground) 60%, transparent);
-  }
-
-  /* Match the Row inset (Group has no padding of its own; each direct child
-     provides it, and the card draws the divider between children). */
-  .principal {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: var(--space-row, 0.75rem) 1rem;
-  }
-  .p-head {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-  }
-  .p-label {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--foreground);
-  }
-  .p-spacer {
-    flex: 1;
-  }
   .warn {
     margin-left: 0.375rem;
     font-size: var(--text-2xs);
     color: var(--color-warning, #ca8a04);
   }
 
-  /* Family subheader inside an app block: a quiet category label above that
-     family's lines, indented to the label edge. */
-  .fam-sub {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding-left: calc(28px + 0.625rem);
-    margin-top: 0.625rem;
-    margin-bottom: 0.25rem;
-  }
-  .fam-sub-icon {
-    display: inline-flex;
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
-  }
-  .fam-sub-label {
-    font-size: var(--text-2xs);
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: color-mix(in srgb, var(--foreground) 45%, transparent);
-  }
-
-  /* Sentence lines as an aligned grid, indented under the label past the 28px
-     avatar + head gap. The verb is right-aligned so the data (the object) forms
-     a clean scannable column; provenance and Remove are their own columns. */
-  .lines {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
-    align-items: baseline;
-    column-gap: 0.75rem;
-    row-gap: 0.5rem;
-    padding-left: calc(28px + 0.625rem);
-  }
-  /* The reach as a sentence: the verb quiet, the object (the user's data) the
-     emphasized word. Own-data dims the line. */
-  .verb {
-    justify-self: end;
-    font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--foreground) 55%, transparent);
-  }
-  .object {
-    justify-self: start;
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.375rem;
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--foreground);
-  }
-  .prov {
-    justify-self: start;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
-    white-space: nowrap;
-  }
   .dim {
     opacity: 0.6;
   }
@@ -606,41 +387,6 @@
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 32%, transparent);
     white-space: nowrap;
-  }
-
-  .expand {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.125rem;
-    height: 1.125rem;
-    border: none;
-    border-radius: var(--radius-chip, 4px);
-    background: transparent;
-    color: color-mix(in srgb, var(--foreground) 40%, transparent);
-    cursor: pointer;
-    transition:
-      color var(--duration-micro, 100ms) var(--ease-out, ease),
-      transform var(--duration-micro, 100ms) var(--ease-out, ease);
-  }
-  .expand:hover {
-    color: var(--foreground);
-  }
-  .expand.open {
-    transform: rotate(90deg);
-  }
-  /* Detail sits under the object column, not the verb. */
-  .detail {
-    grid-column: 2 / -1;
-    margin: -0.125rem 0 0.125rem;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 0.1875rem;
-  }
-  .detail li {
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
 
   /* By-data hero: the kind of data is the anchor, larger than an app name, with
