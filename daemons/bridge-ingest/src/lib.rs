@@ -25,6 +25,7 @@
 //! rides the forage auto-install grant flow (foreign-app-bridges.md item 3, gated
 //! on forage's install path).
 
+pub mod auth;
 pub mod bridge;
 pub mod host;
 pub mod interpret;
