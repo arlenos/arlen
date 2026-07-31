@@ -144,7 +144,18 @@ test crate="":
         # `cargo test`, which passes a test-free crate, so this also stops the
         # local gate from disagreeing with the one that gates merges.
         cargo nextest run --no-tests=pass --manifest-path "{{ROOT}}/$c/Cargo.toml" $extra
-        cargo test --doc --manifest-path "{{ROOT}}/$c/Cargo.toml"
+        # Doc tests need a library target, and several crates here are binaries
+        # only (event-bus among them), where cargo exits 101 with "no library
+        # targets found". That is the absence of a thing to test, not a failing
+        # test, and it used to kill the loop at crate 22 of 88. Only that exact
+        # message is forgiven; any real doc-test failure still fails, which is
+        # why this is not a `|| true`.
+        if ! doc_out=$(cargo test --doc --manifest-path "{{ROOT}}/$c/Cargo.toml" 2>&1); then
+            if ! grep -q 'no library targets found' <<<"$doc_out"; then
+                printf '%s\n' "$doc_out"
+                return 1
+            fi
+        fi
     }
     if [ -n "{{crate}}" ]; then run_one "{{crate}}"; exit 0; fi
     for c in {{RUST_CRATES}}; do echo "== test $c =="; run_one "$c"; done
