@@ -7,6 +7,7 @@
   import { formatModified } from "@arlen/ui-kit/components/browser";
   import { clock, type TimelineEvent } from "$lib/stores/timeline";
   import type { ProjectInfo } from "$lib/stores/projects";
+  import { provenanceFor, type ProvenanceHop } from "$lib/stores/provenance";
   import { t, locale } from "$lib/i18n/messages";
 
   let {
@@ -23,7 +24,44 @@
     project?: ProjectInfo | null;
     onclose: () => void;
   } = $props();
+
+  // The lineage for the shown node (entry or event object), aggregated with
+  // degree-of-interest: three hops up front, the rest behind one expand.
+  const DOI = 3;
+  let hops = $state<ProvenanceHop[]>([]);
+  let hopsOpen = $state(false);
+  $effect(() => {
+    const name = event ? event.object : entry ? entry.name : null;
+    hopsOpen = false;
+    hops = [];
+    if (name) {
+      void provenanceFor(name).then((h) => (hops = h));
+    }
+  });
+  const shownHops = $derived(hopsOpen ? hops : hops.slice(0, DOI));
 </script>
+
+{#snippet lineage()}
+  {#if hops.length > 0}
+    <div class="kn-kv">
+      <span class="kn-k">{$t("k.detail.provenance")}</span>
+      <div class="kn-recent">
+        {#each shownHops as h, i (i)}
+          <div class="kn-recent-row">
+            <span class="kn-recent-verb">{h.verb}</span>
+            <span class="kn-recent-object">{h.subject}</span>
+            {#if h.when}<span class="kn-recent-time">{formatModified(h.when)}</span>{/if}
+          </div>
+        {/each}
+      </div>
+      {#if hops.length > DOI && !hopsOpen}
+        <button type="button" class="kn-more" onclick={() => (hopsOpen = true)}>
+          {$t("k.detail.showMore", { n: hops.length - DOI })}
+        </button>
+      {/if}
+    </div>
+  {/if}
+{/snippet}
 
 <aside class="kn-detail" aria-label={$t("k.detail.title")}>
   <header class="kn-detail-head">
@@ -73,7 +111,7 @@
         <span class="kn-v">{event.project}</span>
       </div>
     {/if}
-    <p class="kn-detail-more">{$t("k.detail.more")}</p>
+    {@render lineage()}
   {:else if entry}
     <div class="kn-detail-name">{entry.name}</div>
 
@@ -84,7 +122,7 @@
       </div>
     {/if}
 
-    <p class="kn-detail-more">{$t("k.detail.more")}</p>
+    {@render lineage()}
   {/if}
 </aside>
 
@@ -142,11 +180,21 @@
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 80%, transparent);
   }
-  .kn-detail-more {
-    margin: 0.4rem 0 0;
+
+  /* The quiet degree-of-interest expand under an aggregated lineage. */
+  .kn-more {
+    align-self: flex-start;
+    margin-top: 0.25rem;
+    padding: 0;
+    border: none;
+    background: transparent;
     font-size: var(--text-2xs);
-    line-height: 1.45;
-    color: color-mix(in srgb, var(--color-fg-primary) 48%, transparent);
+    font-weight: 500;
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
+    cursor: pointer;
+  }
+  .kn-more:hover {
+    color: var(--color-fg-primary);
   }
 
   /* The project's recent activity: the timeline's sentence anatomy in
