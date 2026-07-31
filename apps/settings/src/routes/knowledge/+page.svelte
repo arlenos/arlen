@@ -26,7 +26,7 @@
   } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { ChipList } from "@arlen/ui-kit/components/ui/chip-list";
   import { Button } from "@arlen/ui-kit/components/ui/button";
@@ -128,7 +128,7 @@
   description={$t("s.know.desc")}
 >
   <SectionGrid>
-    <Group label={$t("s.know.status")}>
+    <Section label={$t("s.know.status")}>
       {#if error}
         <Row label={$t("s.know.statsUnavail")} description={$t("s.know.statsUnavail.desc")} id="kg-error">
           {#snippet control()}
@@ -182,9 +182,9 @@
           </Button>
         {/snippet}
       </Row>
-    </Group>
+    </Section>
 
-    <Group label={$t("s.know.projectDetection")}>
+    <Section label={$t("s.know.projectDetection")}>
       <Row
         label={$t("s.know.watchDirs")}
         description={watchDirs.length === 0
@@ -229,9 +229,9 @@
           {/snippet}
         </Row>
       {/if}
-    </Group>
+    </Section>
 
-    <Group label={$t("s.know.timeline")}>
+    <Section label={$t("s.know.timeline")}>
       <Row
         label={$t("s.know.timelineFs")}
         description={$t("s.know.timelineFs.desc")}
@@ -284,9 +284,9 @@
           {/snippet}
         </Row>
       {/if}
-    </Group>
+    </Section>
 
-    <Group label={$t("s.know.app")}>
+    <Section label={$t("s.know.app")}>
       <Row
         label={$t("s.know.browse")}
         description={$t("s.know.browse.desc")}
@@ -299,7 +299,7 @@
           </Button>
         {/snippet}
       </Row>
-    </Group>
+    </Section>
   </SectionGrid>
 </Page>
 

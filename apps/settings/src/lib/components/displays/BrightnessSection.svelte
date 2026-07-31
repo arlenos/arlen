@@ -14,7 +14,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { t } from "$lib/i18n/messages";
 
@@ -109,7 +109,7 @@
   );
 </script>
 
-<Group label={$t("s.bright.title")}>
+<Section label={$t("s.bright.title")}>
   {#if snapshots.length === 0}
     <div class="empty">
       {$t("s.bright.empty")}
@@ -150,7 +150,7 @@
       {/snippet}
     </Row>
   {/if}
-</Group>
+</Section>
 
 <style>
   .slider-cell {

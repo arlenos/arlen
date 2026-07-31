@@ -11,7 +11,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import ActivityTimeline from "$lib/components/agent/ActivityTimeline.svelte";
   import WarningsPanel from "$lib/components/agent/WarningsPanel.svelte";
   import ExplainPanel from "$lib/components/agent/ExplainPanel.svelte";
@@ -199,11 +199,11 @@
   description={$t("h.agent.sub")}
 >
   <SectionGrid>
-    <Group label={$t("h.agent.warnings")} class="span-full">
+    <Section label={$t("h.agent.warnings")} class="span-full">
       <WarningsPanel {notices} unreadable={noticesUnreadable} />
-    </Group>
+    </Section>
 
-    <Group class="span-full">
+    <Section class="span-full">
       <ActivityTimeline
         {activity}
         entries={filteredEntries}
@@ -217,9 +217,9 @@
         onmore={loadMore}
         onundo={undoEntry}
       />
-    </Group>
+    </Section>
 
-    <Group label={$t("h.agent.nowTab")} class="span-full">
+    <Section label={$t("h.agent.nowTab")} class="span-full">
       <ExplainPanel
         {explanation}
         error={explainError}
@@ -227,6 +227,6 @@
         aiOff={capability !== null && !capability.enabled}
         onexplain={runExplain}
       />
-    </Group>
+    </Section>
   </SectionGrid>
 </Page>

@@ -10,7 +10,7 @@
   import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import {
@@ -65,7 +65,7 @@
   <SectionGrid>
     <div class="editor span-full">
     <div class="controls">
-      <Group label="Roundness">
+      <Section label="Roundness">
         {@render sliderRow(field("intensity"))}
         <Collapsible class="expander">
           <CollapsibleTrigger class="exp-trigger">
@@ -78,14 +78,14 @@
             {/each}
           </CollapsibleContent>
         </Collapsible>
-      </Group>
+      </Section>
 
-      <Group label="Window">
+      <Section label="Window">
         {@render sliderRow(field("window_corner"))}
         {@render sliderRow(field("border_width"))}
-      </Group>
+      </Section>
 
-      <Group label="Spacing">
+      <Section label="Spacing">
         {@render sliderRow(field("density"))}
         <Collapsible class="expander">
           <CollapsibleTrigger class="exp-trigger">
@@ -98,9 +98,9 @@
             {/each}
           </CollapsibleContent>
         </Collapsible>
-      </Group>
+      </Section>
 
-      <Group label="Tiling gaps">
+      <Section label="Tiling gaps">
         {@render sliderRow(field("gap"))}
         <OverrideRow
           label="Smart gaps"
@@ -113,7 +113,7 @@
             <Switch value={$smartGaps} ariaLabel="Smart gaps" onchange={toggleSmartGaps} />
           {/snippet}
         </OverrideRow>
-      </Group>
+      </Section>
     </div>
 
     <aside class="preview-col">

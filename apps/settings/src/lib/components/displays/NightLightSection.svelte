@@ -21,7 +21,7 @@
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { TimeInput } from "@arlen/ui-kit/components/ui/time-input";
   import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { t } from "$lib/i18n/messages";
 
@@ -167,7 +167,7 @@
   const locationUnset = $derived(cfg.latitude === 0 && cfg.longitude === 0);
 </script>
 
-<Group label={$t("s.night.title")}>
+<Section label={$t("s.night.title")}>
   <Row
     label={$t("s.night.active")}
     description={$t("s.night.active.desc")}
@@ -259,7 +259,7 @@
       {/snippet}
     </Row>
   {/if}
-</Group>
+</Section>
 
 <style>
   /* Slider needs more horizontal room than other controls. Row

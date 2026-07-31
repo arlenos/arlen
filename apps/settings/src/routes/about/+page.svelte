@@ -11,7 +11,7 @@
   import { RefreshCw, ExternalLink, Info, Bug, FileText } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { t } from "$lib/i18n/messages";
@@ -59,7 +59,7 @@
   description={$t("s.about.desc")}
 >
   <SectionGrid>
-    <Group label="Arlen OS">
+    <Section label="Arlen OS">
       <Row label={$t("s.about.version")} id="arlen-version">
         {#snippet control()}
           <span class="meta">{info?.arlenVersion ?? $t("s.about.unknown")}</span>
@@ -75,9 +75,9 @@
           <span class="meta">{info?.waylandDisplay ?? $t("s.about.unknown")}</span>
         {/snippet}
       </Row>
-    </Group>
+    </Section>
 
-    <Group label={$t("s.about.services")}>
+    <Section label={$t("s.about.services")}>
       {#if info}
         {#each info.daemons as d (d.name)}
           <Row
@@ -105,9 +105,9 @@
           </Button>
         {/snippet}
       </Row>
-    </Group>
+    </Section>
 
-    <Group label={$t("s.about.resources")}>
+    <Section label={$t("s.about.resources")}>
       <Row label={$t("s.about.docs")} id="link-docs">
         {#snippet control()}
           <Button variant="outline" size="sm" onclick={() => openUrl("https://github.com/arlenos/docs")}>
@@ -139,7 +139,7 @@
           </Button>
         {/snippet}
       </Row>
-    </Group>
+    </Section>
   </SectionGrid>
 </Page>
 

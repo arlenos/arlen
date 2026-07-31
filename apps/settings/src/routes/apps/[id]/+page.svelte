@@ -10,7 +10,7 @@
   import { page } from "$app/stores";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
@@ -112,24 +112,24 @@
 
       {#if orphans.length > 0}
         <div class="sect span-full">
-          <Group label={$t("s.apps.olderVersion")}>
+          <Section label={$t("s.apps.olderVersion")}>
             {#each orphans as key (key)}
               <Row id={`${appId}.${key}`} label={key} description={String($appPage.values[key])} />
             {/each}
-          </Group>
+          </Section>
           <p class="sect-desc">{$t("s.apps.olderVersionNote")}</p>
         </div>
       {/if}
     {:else}
-      <Group class="span-full">
+      <Section class="span-full">
         <p class="no-schema">{$t("s.apps.noSchema")}</p>
-      </Group>
+      </Section>
     {/if}
 
     {#if principal}
-      <Group label={$t("s.apps.reach")} class="span-full">
+      <Section label={$t("s.apps.reach")} class="span-full">
         <PrincipalGrants {principal} split showHead={false} onRemoveScope={askScope} />
-      </Group>
+      </Section>
       <div class="span-full">
         <LinkCard href="/privacy" title={$t("s.apps.allApps")} description={$t("s.apps.allAppsDesc")}>
           {#snippet icon()}<Shield size={20} strokeWidth={1.75} />{/snippet}
@@ -138,12 +138,12 @@
     {/if}
 
     {#if $appPage}
-      <Group label={$t("s.apps.aboutApp")} class="span-full">
+      <Section label={$t("s.apps.aboutApp")} class="span-full">
         <Row
           label={$t("s.apps.schemaVersion")}
           description={$t("s.apps.schemaVersionVal", { n: $appPage.schema.version })}
         />
-      </Group>
+      </Section>
     {/if}
   </SectionGrid>
 </Page>

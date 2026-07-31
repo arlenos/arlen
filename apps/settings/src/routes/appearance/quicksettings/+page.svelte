@@ -34,7 +34,7 @@
 
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import PanelPreview from "$lib/components/quicksettings/PanelPreview.svelte";
@@ -399,7 +399,7 @@
     </div>
   {/if}
 
-  <Group label="Layout">
+  <Section label="Layout">
     <div class="qs-layout-row" id="qs-layout-list">
       <div class="qs-layout-stage">
         <PanelPreview
@@ -412,10 +412,10 @@
         <HiddenDrawer tiles={hiddenTiles} onShow={showTile} />
       </div>
     </div>
-  </Group>
+  </Section>
 
   {#if unknownEntries.length > 0}
-    <Group label="Module tiles">
+    <Section label="Module tiles">
       <div class="qs-unknown-row">
         <p>
           {unknownEntries.length} tile{unknownEntries.length === 1 ? "" : "s"}
@@ -428,7 +428,7 @@
           {/each}
         </ul>
       </div>
-    </Group>
+    </Section>
   {/if}
   </div>
   </SectionGrid>

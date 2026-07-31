@@ -7,7 +7,7 @@
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { t } from "$lib/i18n/messages";
@@ -35,7 +35,7 @@
   description={$t("s.touchpad.desc")}
 >
   <SectionGrid>
-    <Group label={$t("s.touchpad.clicking")}>
+    <Section label={$t("s.touchpad.clicking")}>
       <Row
         label={$t("s.touchpad.clickMethod")}
         description={$t("s.touchpad.clickMethod.desc")}
@@ -77,9 +77,9 @@
           <Switch value={$touchpad.config.disable_while_typing} onchange={(v) => set("disable_while_typing", v)} />
         {/snippet}
       </Row>
-    </Group>
+    </Section>
 
-    <Group label={$t("s.touchpad.scrolling")}>
+    <Section label={$t("s.touchpad.scrolling")}>
       <Row label={$t("s.touchpad.twoFinger")} description={$t("s.touchpad.twoFinger.desc")} id="touchpad-two-finger-scroll">
         {#snippet control()}
           <Switch value={$touchpad.config.two_finger_scroll} onchange={(v) => set("two_finger_scroll", v)} />
@@ -90,9 +90,9 @@
           <Switch value={$touchpad.config.natural_scroll} onchange={(v) => set("natural_scroll", v)} />
         {/snippet}
       </Row>
-    </Group>
+    </Section>
 
-    <Group label={$t("s.touchpad.pointer")}>
+    <Section label={$t("s.touchpad.pointer")}>
       <Row
         label={$t("s.mouse.accel")}
         description={$t("s.mouse.accel.desc")}
@@ -114,7 +114,7 @@
           </div>
         {/snippet}
       </Row>
-    </Group>
+    </Section>
 
     {#if $touchpad.error}
       <div class="span-full error-box" title={$touchpad.error}>{$t("s.err.readPaused")}</div>

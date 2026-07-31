@@ -29,7 +29,7 @@
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { t } from "$lib/i18n/messages";
 
   // We deliberately do NOT mirror $monitors / $selectedConnector
@@ -136,7 +136,7 @@
 >
   <SectionGrid>
   <div class="span-full disp-column">
-  <Group label={$t("s.display.arrangement")}>
+  <Section label={$t("s.display.arrangement")}>
     <div class="map-wrap">
       <MonitorMap
         {drafts}
@@ -145,7 +145,7 @@
         onPositionChange={updatePosition}
       />
     </div>
-  </Group>
+  </Section>
 
   {#if $monitors.length > 0}
     {@const selectedMonitor =
@@ -155,7 +155,7 @@
     {@const dirty = isDirty($monitors, drafts)}
 
     {#if selectedMonitor}
-      <Group label={selectedMonitor.connector}>
+      <Section label={selectedMonitor.connector}>
         <MonitorSidePanel
           monitor={selectedMonitor}
           draft={drafts[selectedMonitor.connector] ?? monitorToConfig(selectedMonitor)}
@@ -170,7 +170,7 @@
             {$t("s.display.apply")}
           </Button>
         </div>
-      </Group>
+      </Section>
     {/if}
   {/if}
 

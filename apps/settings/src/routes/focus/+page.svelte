@@ -13,7 +13,7 @@
   import { AppWindow, FolderSearch } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Button } from "@arlen/ui-kit/components/ui/button";
@@ -88,7 +88,7 @@
   description={$t("s.focus.desc")}
 >
   <SectionGrid>
-    <Group label={$t("s.focus.topBar")}>
+    <Section label={$t("s.focus.topBar")}>
     <Row
       label={$t("s.focus.showProject")}
       description={$t("s.focus.showProject.desc")}
@@ -102,9 +102,9 @@
         />
       {/snippet}
     </Row>
-  </Group>
+  </Section>
 
-  <Group label={$t("s.focus.suppressed")}>
+  <Section label={$t("s.focus.suppressed")}>
     <Row
       label={$t("s.focus.suppress")}
       description={$t("s.focus.suppress.desc")}
@@ -142,9 +142,9 @@
         {/snippet}
       </AddRemoveList>
     </div>
-  </Group>
+  </Section>
 
-  <Group label={$t("s.focus.projectDetection")}>
+  <Section label={$t("s.focus.projectDetection")}>
     <Row
       label={$t("s.focus.configKnowledge")}
       description={$t("s.focus.configKnowledge.desc")}
@@ -161,7 +161,7 @@
         </Button>
       {/snippet}
     </Row>
-    </Group>
+    </Section>
   </SectionGrid>
 </Page>
 

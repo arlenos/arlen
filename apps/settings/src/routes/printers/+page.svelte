@@ -11,7 +11,7 @@
   import { onMount } from "svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
@@ -141,7 +141,7 @@
       </p>
     {/if}
 
-    <Group label="Printers">
+    <Section label="Printers">
       {#if $printers.printers.length === 0}
         <p class="empty">No printers yet. Add one below.</p>
       {:else}
@@ -160,9 +160,9 @@
       {#each $printers.printers as p (p.name)}
         {@render printerRow(p)}
       {/each}
-    </Group>
+    </Section>
 
-    <Group label="Print queue">
+    <Section label="Print queue">
       {#if $printers.queue.length === 0}
         <p class="empty">No jobs in the queue.</p>
       {:else}
@@ -173,9 +173,9 @@
           <Button variant="ghost" size="sm" onclick={clearCompleted}>Clear finished</Button>
         </div>
       {/if}
-    </Group>
+    </Section>
 
-    <Group label="Add a printer">
+    <Section label="Add a printer">
       {#each $printers.discovered as d (d.uri)}
         {@render discoveredRow(d)}
       {/each}
@@ -199,7 +199,7 @@
           <Button variant="default" size="sm" disabled={!addUri.trim()} onclick={submitManual}>Add</Button>
         </div>
       {/if}
-    </Group>
+    </Section>
   </SectionGrid>
 </Page>
 

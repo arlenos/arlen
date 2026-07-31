@@ -11,7 +11,7 @@
   import { onMount } from "svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
@@ -88,7 +88,7 @@
   description={$t("s.a11y.desc")}
 >
   <SectionGrid>
-    <Group label={$t("s.a11y.magnifier")}>
+    <Section label={$t("s.a11y.magnifier")}>
     <Row
       label={$t("s.a11y.mouseZoom")}
       description={$t("s.a11y.mouseZoom.desc")}
@@ -163,9 +163,9 @@
         />
       {/snippet}
     </Row>
-  </Group>
+  </Section>
 
-  <Group label={$t("s.a11y.colorFilters")}>
+  <Section label={$t("s.a11y.colorFilters")}>
     <Row
       label={$t("s.a11y.invert")}
       description={$t("s.a11y.invert.desc")}
@@ -194,6 +194,6 @@
         />
       {/snippet}
     </Row>
-    </Group>
+    </Section>
   </SectionGrid>
 </Page>

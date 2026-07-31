@@ -11,7 +11,7 @@
   import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import {
     Collapsible,
@@ -53,7 +53,7 @@
   <SectionGrid>
     <div class="editor span-full">
     <div class="controls">
-      <Group label="Fonts">
+      <Section label="Fonts">
         <OverrideRow
           label="Interface"
           hint="The font for the desktop and apps"
@@ -86,9 +86,9 @@
             />
           {/snippet}
         </OverrideRow>
-      </Group>
+      </Section>
 
-      <Group label="Size">
+      <Section label="Size">
         <OverrideRow
           label="Base size"
           hint="The base text size"
@@ -126,7 +126,7 @@
             />
           {/snippet}
         </OverrideRow>
-      </Group>
+      </Section>
 
       <Collapsible class="expander">
         <CollapsibleTrigger class="exp-trigger">
@@ -134,7 +134,7 @@
           Weights
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <Group>
+          <Section>
             {#each WEIGHTS as w (w.key)}
               <OverrideRow
                 label={w.label}
@@ -155,7 +155,7 @@
                 {/snippet}
               </OverrideRow>
             {/each}
-          </Group>
+          </Section>
         </CollapsibleContent>
       </Collapsible>
     </div>

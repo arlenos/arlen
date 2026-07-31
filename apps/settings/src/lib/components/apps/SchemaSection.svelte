@@ -5,7 +5,7 @@
   /// rows (a whole-advanced section becomes one collapsed expander under its
   /// own label). The section description, when declared, reads as a quiet
   /// footnote under the card.
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import {
     Collapsible,
     CollapsibleTrigger,
@@ -61,15 +61,15 @@
           {section.label}
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <Group>
+          <Section>
             {@render rows(advanced)}
-          </Group>
+          </Section>
         </CollapsibleContent>
       </Collapsible>
     {:else}
-      <Group label={section.label}>
+      <Section label={section.label}>
         {@render rows(plain)}
-      </Group>
+      </Section>
       {#if advanced.length > 0}
         <Collapsible class="expander">
           <CollapsibleTrigger class="exp-trigger">
@@ -77,9 +77,9 @@
             {$t("s.apps.advanced")}
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <Group>
+            <Section>
               {@render rows(advanced)}
-            </Group>
+            </Section>
           </CollapsibleContent>
         </Collapsible>
       {/if}

@@ -36,7 +36,7 @@
 
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Button } from "@arlen/ui-kit/components/ui/button";
@@ -290,7 +290,7 @@
   {:else}
     <div class="groups">
       <!-- ── DO NOT DISTURB ────────────────────────────────── -->
-      <Group label="Do Not Disturb">
+      <Section label="Do Not Disturb">
         <div class="dnd-section">
           <div class="dnd-pills">
             {#each DND_PILLS as pill}
@@ -383,10 +383,10 @@
             />
           {/snippet}
         </Row>
-      </Group>
+      </Section>
 
       <!-- ── LISTS ────────────────────────────────── -->
-      <Group label="Lists">
+      <Section label="Lists">
         <Row label="Always allow" id="always-allow">
           {#snippet control()}
             <div class="list-control">
@@ -434,10 +434,10 @@
             </div>
           {/snippet}
         </Row>
-      </Group>
+      </Section>
 
       <!-- ── TOAST APPEARANCE ────────────────────────────────── -->
-      <Group label="Toast Appearance">
+      <Section label="Toast Appearance">
         <Row label="Position" id="toast-position">
           {#snippet control()}
             <PositionPicker
@@ -475,10 +475,10 @@
             </div>
           {/snippet}
         </Row>
-      </Group>
+      </Section>
 
       <!-- ── TIMING ────────────────────────────────── -->
-      <Group label="Timing">
+      <Section label="Timing">
         <Row label="Normal duration" id="toast-duration-normal">
           {#snippet control()}
             <ValueSlider
@@ -527,10 +527,10 @@
             </div>
           {/snippet}
         </Row>
-      </Group>
+      </Section>
 
       <!-- ── GROUPING ────────────────────────────────── -->
-      <Group label="Grouping">
+      <Section label="Grouping">
         <Row label="Group by app" id="group-by-app">
           {#snippet control()}
             <Switch
@@ -562,10 +562,10 @@
             />
           {/snippet}
         </Row>
-      </Group>
+      </Section>
 
       <!-- ── HISTORY ────────────────────────────────── -->
-      <Group label="History">
+      <Section label="History">
         <Row label="Keep history" id="history-enabled">
           {#snippet control()}
             <Switch
@@ -609,10 +609,10 @@
             </Button>
           {/snippet}
         </Row>
-      </Group>
+      </Section>
 
       <!-- ── PER-APP ────────────────────────────────── -->
-      <Group label="Per-App Rules">
+      <Section label="Per-App Rules">
         <div class="apps-section">
           <div class="apps-toolbar">
             <Input placeholder="Filter rules…" bind:value={appFilter} />
@@ -643,7 +643,7 @@
             </div>
           {/if}
         </div>
-      </Group>
+      </Section>
     </div>
   {/if}
   </div>

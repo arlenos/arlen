@@ -9,7 +9,7 @@
   import { ChevronDown, ChevronRight, Trash2, FolderOpen, Eraser } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
@@ -94,7 +94,7 @@
       </p>
     {/if}
 
-    <Group label="Installed apps" class="span-full">
+    <Section label="Installed apps" class="span-full">
       {#if $winApps.bottles.length === 0}
         <p class="empty">No Windows apps installed yet. Add one below.</p>
       {/if}
@@ -285,17 +285,17 @@
           {/snippet}
         </Row>
       {/each}
-    </Group>
+    </Section>
 
-    <Group label="Add an app" class="span-full">
+    <Section label="Add an app" class="span-full">
       <Row label="Install a Windows app" description="Pick a Windows installer, like a .exe or .msi, and the compatibility layer sets it up.">
         {#snippet control()}
           <Button variant="default" size="sm" onclick={installExe}>Choose an installer</Button>
         {/snippet}
       </Row>
-    </Group>
+    </Section>
 
-    <Group label="Defaults" class="span-full">
+    <Section label="Defaults" class="span-full">
       <Row label="Default compatibility version" description="New apps start on this Wine or Proton version.">
         {#snippet control()}
           <PopoverSelect
@@ -327,7 +327,7 @@
           {/snippet}
         </Row>
       {/each}
-    </Group>
+    </Section>
   </SectionGrid>
 </Page>
 

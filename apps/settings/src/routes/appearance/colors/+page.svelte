@@ -13,7 +13,7 @@
   import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
   import {
     Collapsible,
@@ -51,7 +51,7 @@
   <SectionGrid>
     <div class="editor span-full">
     <div class="controls">
-      <Group label="Contrast">
+      <Section label="Contrast">
         {#each CONTRAST_PAIRS as pair (pair.label)}
           {@const ratio = contrastRatio($effective[pair.fg], $effective[pair.bg])}
           {@const pass = ratio >= 4.5}
@@ -63,9 +63,9 @@
             </span>
           </div>
         {/each}
-      </Group>
+      </Section>
 
-      <Group label="Colours">
+      <Section label="Colours">
         {#each common as role (role.key)}
           <OverrideRow
             label={role.label}
@@ -79,7 +79,7 @@
             {/snippet}
           </OverrideRow>
         {/each}
-      </Group>
+      </Section>
 
       <Collapsible class="all-roles">
         <CollapsibleTrigger class="all-trigger">
@@ -87,7 +87,7 @@
           All roles
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <Group>
+          <Section>
             {#each full as role (role.key)}
               <OverrideRow
                 label={role.label}
@@ -101,7 +101,7 @@
                 {/snippet}
               </OverrideRow>
             {/each}
-          </Group>
+          </Section>
         </CollapsibleContent>
       </Collapsible>
     </div>

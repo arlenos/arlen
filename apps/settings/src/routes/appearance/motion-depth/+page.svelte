@@ -11,7 +11,7 @@
   import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
@@ -57,7 +57,7 @@
   <SectionGrid>
     <div class="editor span-full">
     <div class="controls">
-      <Group label="Motion">
+      <Section label="Motion">
         <OverrideRow
           label="Reduce motion"
           hint="Turn off animation across the desktop"
@@ -129,9 +129,9 @@
             <SegmentedControl value={easing} options={EASING_PRESETS} ariaLabel="Easing" onchange={(v) => setMd("easing", v)} />
           {/snippet}
         </OverrideRow>
-      </Group>
+      </Section>
 
-      <Group label="Depth">
+      <Section label="Depth">
         <OverrideRow
           label="Shadows"
           hint="How much things lift off the surface"
@@ -154,7 +154,7 @@
             <Switch value={blur} ariaLabel="Blur" onchange={(v) => setMd("blurEnabled", v)} />
           {/snippet}
         </OverrideRow>
-      </Group>
+      </Section>
     </div>
 
     <aside class="preview-col">
