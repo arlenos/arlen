@@ -129,6 +129,7 @@ pub fn run() {
             commands::app_settings::app_settings_write_raw,
             commands::extensions::extensions_list,
             commands::extensions::extensions_revoke,
+            commands::extensions::extensions_observed,
             commands::modules::modules_set_enabled,
             commands::modules::modules_uninstall,
             commands::waypointer_plugins::waypointer_list_plugins,

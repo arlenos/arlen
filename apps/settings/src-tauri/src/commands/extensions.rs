@@ -11,7 +11,11 @@
 //! shared rather than written per view.
 
 use arlen_extensions::inventory::{self, InventoryRoots, LiveModule};
-use arlen_extensions::Extension;
+use arlen_extensions::{Extension, ExtensionKind};
+use arlen_monitor_reads::observed::{
+    all_unmeasured, observed_vs_declared, DeclaredCapability, NotMeasuredReason,
+};
+use audit_proto::{read_socket_path, ReadClient};
 use modulesd_proto::{client, Request, Response};
 
 /// Everything installed, with what it was granted and what it is doing.
@@ -109,6 +113,60 @@ pub async fn extensions_revoke(id: String, kind: String) -> Result<RevokeReport,
         run_step(step, &mut report).await;
     }
     Ok(report)
+}
+
+/// What one extension was actually seen doing locally, per declared capability.
+///
+/// The counterpart to the capability list: that says what it MAY do, this says
+/// what the user's own audit ledger recorded it doing. Never "safe" - a grant it
+/// has not exercised is a grant it still holds - and never a confident silence
+/// where nothing is watching. See `arlen_monitor_reads::observed`.
+#[tauri::command]
+pub async fn extensions_observed(
+    id: String,
+    kind: String,
+) -> Result<Vec<DeclaredCapability>, String> {
+    let rows = extensions_list().await?;
+    let target = rows
+        .iter()
+        .find(|e| e.id == id && format!("{:?}", e.kind).to_lowercase() == kind.to_lowercase())
+        .ok_or_else(|| format!("no {kind} named {id} is installed"))?;
+
+    // The ledger records an ACTOR id, which is not always the inventory's id.
+    let Some(actor) = audit_actor(target) else {
+        return Ok(all_unmeasured(
+            &target.capabilities,
+            NotMeasuredReason::ActorUnknown,
+        ));
+    };
+    let report = arlen_monitor_reads::access::app_access(
+        &ReadClient::new(read_socket_path()),
+        ACTIVITY_WINDOW,
+    )
+    .await;
+    Ok(observed_vs_declared(&target.capabilities, &report, &actor))
+}
+
+/// How many recent audit entries to aggregate over. A window rather than all of
+/// history: "has not touched the network lately" is the question a user asks, and
+/// reading the whole ledger to answer it would grow slower the longer the machine
+/// has been in use.
+const ACTIVITY_WINDOW: u64 = 500;
+
+/// The actor id an extension's audited actions carry, or `None` when that is not
+/// established for its kind.
+///
+/// An app audits under its own id. A bridge audits under `bridge.<namespace>`
+/// while the inventory rows it under the bare namespace, so the prefix is
+/// reapplied here. A module's actor is not settled - host calls are audited, but
+/// which id they carry has never been pinned - and guessing would produce an empty
+/// answer indistinguishable from restraint.
+fn audit_actor(extension: &Extension) -> Option<String> {
+    match extension.kind {
+        ExtensionKind::App => Some(extension.id.clone()),
+        ExtensionKind::Bridge => Some(format!("bridge.{}", extension.id)),
+        ExtensionKind::Module => None,
+    }
 }
 
 /// Route one step and record what came back.
