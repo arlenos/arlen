@@ -154,15 +154,47 @@ impl GraphScopeExt for arlen_permissions::PermissionProfile {
     }
 }
 
-/// The mtime of an app's on-disk profile, used to invalidate a cached token when
-/// the profile changes on disk. Resolves the canonical profile path, then stats
-/// it. Replaces the fork's `PermissionProfile::profile_mtime` associated fn.
+/// The newest mtime across BOTH tiers of an app's on-disk profile, used to
+/// invalidate a cached token when what governs the app changes.
+///
+/// Both, not just the user tier, because the system tier is the one that wins
+/// (`load_tiered`): stating only the user file meant a system-tier profile could
+/// be narrowed and the daemon would keep serving the cached token until restart -
+/// the revoke would look applied and take no effect. A system profile APPEARING
+/// also changes the effective grants without touching the user file, and taking
+/// the newest of the two catches that too.
+///
+/// Deliberately conservative: any change to either file invalidates, including one
+/// to a user file the system tier currently shadows. Re-minting a token that did
+/// not need re-minting costs a profile read; missing one serves authority the user
+/// believes they revoked.
+///
+/// `Err` only when neither tier has a readable profile, which the caller already
+/// treats as "no mtime to compare".
 pub fn profile_mtime(
     app_id: &str,
 ) -> Result<std::time::SystemTime, arlen_permissions::PermissionError> {
-    let path = arlen_permissions::profile_path(app_id)?;
-    let meta = std::fs::metadata(&path)?;
-    Ok(meta.modified()?)
+    let user = arlen_permissions::profile_path(app_id).ok();
+    let system = Some(
+        arlen_permissions::system_permissions_dir().join(format!("{app_id}.toml")),
+    );
+    newest_mtime([system, user].into_iter().flatten()).ok_or(
+        arlen_permissions::PermissionError::NotFound {
+            app_id: app_id.to_string(),
+        },
+    )
+}
+
+/// The newest mtime among the paths that exist, or `None` when none do. Split out
+/// so the both-tiers rule is tested against real files rather than by mutating the
+/// process environment, which is shared and would race the other tests.
+fn newest_mtime(
+    paths: impl IntoIterator<Item = std::path::PathBuf>,
+) -> Option<std::time::SystemTime> {
+    paths
+        .into_iter()
+        .filter_map(|p| std::fs::metadata(&p).ok()?.modified().ok())
+        .max()
 }
 
 /// The app ids of every installed app, from the profile directory (each app has a
@@ -208,6 +240,32 @@ mod tests {
     /// projections under test come from [`GraphScopeExt`].
     fn graph_profile(content: &str) -> arlen_permissions::PermissionProfile {
         toml::from_str(&format!("[info]\napp_id = \"com.test\"\n{content}")).unwrap()
+    }
+
+    #[test]
+    fn the_newest_of_the_two_tiers_is_what_invalidates() {
+        // A system-tier profile is the one that governs, so a change to it has to
+        // invalidate the cached token. Taking the newest of both also catches a
+        // system profile APPEARING, which changes the effective grants without
+        // touching the user file at all.
+        let dir = tempfile::tempdir().unwrap();
+        let user = dir.path().join("user.toml");
+        let system = dir.path().join("system.toml");
+        std::fs::write(&user, "a").unwrap();
+        let user_at = std::fs::metadata(&user).unwrap().modified().unwrap();
+
+        // Only the user file exists: that is the answer.
+        assert_eq!(newest_mtime([system.clone(), user.clone()]), Some(user_at));
+
+        // The system file appears, later: it wins.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(&system, "b").unwrap();
+        let system_at = std::fs::metadata(&system).unwrap().modified().unwrap();
+        assert_eq!(newest_mtime([system.clone(), user.clone()]), Some(system_at));
+        assert!(system_at > user_at, "the fixture must actually differ");
+
+        // Neither exists: nothing to compare, rather than a bogus epoch.
+        assert_eq!(newest_mtime([dir.path().join("absent.toml")]), None);
     }
 
     #[test]
