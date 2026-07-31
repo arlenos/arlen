@@ -38,6 +38,10 @@ DAEMONS=(
     # over the dev's ~/.timeline. It logs consumer-reconnect errors while the
     # event bus is absent, which is the writer's backoff working, not a failure -
     # the log is only printed when the socket never appears.
+    "arlen-anomalyd|-|"
+    "arlen-code-indexer|-|"
+    "arlen-journald-parser|-|"
+    "arlen-transferd|-|"
     "arlen-graph-daemon|knowledge.sock|ARLEN_DB_PATH=\$rt/knowledge/events.db ARLEN_GRAPH_PATH=\$rt/knowledge/graph ARLEN_TIMELINE_MOUNT=off ARLEN_PERMISSIONS_DIR=\$rt/permissions"
 )
 
@@ -62,10 +66,6 @@ SKIPPED=(
     "arlen-system-monitor-mcp|an MCP server on stdio, no socket to bind"
     "arlen-terminal-run-mcp|an MCP server on stdio, no socket to bind"
     "arlen-ai-engine-daemon|needs the session bus and a provisioned model"
-    "arlen-anomalyd|polls the audit ledger, binds nothing"
-    "arlen-code-indexer|an event-bus consumer, binds nothing"
-    "arlen-journald-parser|reads journald, binds nothing"
-    "arlen-transferd|needs two live profile uids"
     "arlen-wallpaperd|renders to a compositor output"
 )
 
@@ -86,8 +86,23 @@ for entry in "${DAEMONS[@]}"; do
     eval "extra_env=\"$extra\""
     # shellcheck disable=SC2086
     env XDG_RUNTIME_DIR="$rt" XDG_DATA_HOME="$rt/data" XDG_STATE_HOME="$rt/state" \
-        $extra_env "$bin" >"$rt/log" 2>&1 &
+        XDG_CONFIG_HOME="$rt/config" $extra_env "$bin" >"$rt/log" 2>&1 &
     pid=$!
+    # A socket of `-` means this daemon serves nothing: it consumes events, polls
+    # a ledger or waits on a bus. There is no bind to wait for, so the assertion
+    # is that it is still running after a settle rather than having panicked its
+    # way out, which is the failure this whole script exists to catch.
+    if [ "$sock" = "-" ]; then
+        sleep 2
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "OK   $name -> running (serves no socket)"
+            started=$((started + 1))
+        else
+            echo "FAIL $name: exited during startup"
+            sed 's/^/       /' "$rt/log" | head -5
+            failed=1
+        fi
+    else
     # Poll rather than sleep a fixed time: the bind is fast, and a fixed wait
     # either flakes or wastes seconds. Ten half-seconds is generous.
     bound=0
@@ -104,6 +119,7 @@ for entry in "${DAEMONS[@]}"; do
         sed 's/^/       /' "$rt/log" | head -5
         failed=1
     fi
+    fi
     kill "$pid" 2>/dev/null
     wait "$pid" 2>/dev/null
     rm -rf "$rt"
@@ -113,4 +129,4 @@ if [ "$failed" -ne 0 ]; then
     echo "a daemon did not come up"
     exit 1
 fi
-echo "OK: $started daemon(s) started and bound their socket"
+echo "OK: $started daemon(s) started; each bound its socket or stayed up"
