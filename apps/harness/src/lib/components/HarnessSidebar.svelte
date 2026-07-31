@@ -35,7 +35,6 @@
     Search,
     Share2,
     Trash2,
-    Upload,
   } from "@lucide/svelte";
   import {
     orderedSessions,
@@ -47,7 +46,6 @@
     togglePinSession,
   } from "$lib/stores/conversation";
   import { openMint } from "$lib/stores/mint";
-  import { openImportChat } from "$lib/stores/importChat";
   import { sessionMatches } from "$lib/search";
   import { groupSessions } from "$lib/session-groups";
   import { conversationToMarkdown, conversationToJson } from "$lib/export";
@@ -177,12 +175,6 @@
         <SidebarMenuButton id="harness-share-context" title={$t("h.sidebar.shareContextTitle")} onclick={openMint}>
           <Share2 strokeWidth={2} />
           <span>{$t("h.sidebar.shareContext")}</span>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-      <SidebarMenuItem>
-        <SidebarMenuButton id="harness-import-chat" title={$t("h.sidebar.importChatTitle")} onclick={openImportChat}>
-          <Upload strokeWidth={2} />
-          <span>{$t("h.sidebar.importChat")}</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
       <SidebarMenuItem>

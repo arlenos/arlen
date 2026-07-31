@@ -25,6 +25,7 @@
   import MintFlow from "$lib/components/mint/MintFlow.svelte";
   import ImportDialog from "$lib/components/chat/ImportDialog.svelte";
   import { activeTitle, initSessions, newSession } from "$lib/stores/conversation";
+  import { initAppMenu } from "$lib/menu";
 
   let { children } = $props();
 
@@ -32,6 +33,7 @@
   // sidebar is populated whichever surface the app opens on.
   onMount(() => {
     initSessions();
+    void initAppMenu();
   });
 
   // The header names the place. On the conversation route it shows the active
