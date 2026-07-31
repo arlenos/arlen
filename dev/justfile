@@ -626,6 +626,13 @@ check-ignores:
 check-protos:
     python3 "{{ROOT}}/dev/scripts/check-proto-drift.py"
 
+# Some on-disk files are written by one crate and read by another, each with its
+# own struct because they cannot share a type. A writer that renames a field the
+# reader needs breaks nothing loudly: the parse fails, the reader returns empty by
+# design, and the surface goes quiet with both sides' tests still green.
+check-shared:
+    python3 "{{ROOT}}/dev/scripts/check-shared-files.py"
+
 # `check-crates` compares the two build lists. This compares what the two gates
 # DO with a crate they both list: the serial-test case arm, duplicated by hand in
 # ci.yml and here, and CXXFLAGS, which is set in three places for three entry
@@ -641,12 +648,13 @@ check-gates:
 smoke:
     bash {{ROOT}}/dev/scripts/smoke-daemons.sh
 
-# The structural checks that need no build, in one command: seconds for all five,
+# The structural checks that need no build, in one command: seconds for all six,
 # so there is no reason not to run them before pushing. Each one exists because
 # the thing it checks had already drifted once - the justfile fell behind the CI
 # matrix, build logs were committed against their own ignore rule, a unit ordered
 # against a name no unit provides, eight proto copies agreed only by luck, and the
-# two gates ran different commands on the same crate. `check-locks` is
+# two gates ran different commands on the same crate, and a file's reader asked
+# for a field its writer had renamed. `check-locks` is
 # deliberately not here: it is minutes, not milliseconds. Neither is
 # `lint-licenses`, which needs cargo-deny and reuse.
 checks:
@@ -654,7 +662,7 @@ checks:
     set -uo pipefail
     cd "{{ROOT}}"
     status=0
-    for r in check-crates check-ignores check-protos check-units check-gates; do
+    for r in check-crates check-ignores check-protos check-units check-gates check-shared; do
         echo "== $r =="
         just --justfile dev/justfile "$r" || status=1
     done
