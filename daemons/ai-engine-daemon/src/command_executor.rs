@@ -82,7 +82,7 @@ impl CommandExecutor {
         let socket_path = os_sdk::mcp::mcp_socket_path(TERMINAL_RUN_SERVER)
             .to_string_lossy()
             .into_owned();
-        Self { executor_live: crate::engine_config::executor_live, audit, socket_path }
+        Self { executor_live: crate::engine_config::may_act, audit, socket_path }
     }
 
     /// Dial an explicit socket path (tests, and a future per-profile instance).
