@@ -155,8 +155,17 @@ check:
         # the check CI runs. It also means a package checked with something else
         # entirely (pi-plugins runs tsc) is covered without a special case.
         echo "== check $f =="; (cd "{{ROOT}}/$f" && npm run check)
+        # `--passWithNoTests` is a VITEST flag. pi-plugins runs `node --test`,
+        # which takes it as a file path and exits 1, so it only goes to the
+        # runner that understands it. CI already branches this way; the justfile
+        # did not, so `just check` failed on a package CI passes.
         if [ "$(cd "{{ROOT}}/$f" && npm pkg get scripts.test)" != "{}" ]; then
-            echo "== vitest $f =="; (cd "{{ROOT}}/$f" && npm test -- --passWithNoTests)
+            echo "== test $f =="
+            if (cd "{{ROOT}}/$f" && npm pkg get scripts.test | grep -q vitest); then
+                (cd "{{ROOT}}/$f" && npm test -- --passWithNoTests)
+            else
+                (cd "{{ROOT}}/$f" && npm test)
+            fi
         fi
     done
 
