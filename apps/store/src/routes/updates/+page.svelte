@@ -16,6 +16,7 @@
     applyUpdate,
     applyAllRoutine,
     skipUpdate,
+    uninstallApp,
     type PendingUpdate,
   } from "$lib/stores/updates";
 
@@ -61,7 +62,7 @@
                   <div class="actions">
                     <Button size="sm" onclick={() => applyUpdate(u.id)}>{$t("st.upd.update")}</Button>
                     <Button variant="ghost" size="sm" onclick={() => skipUpdate(u.id)}>{$t("st.upd.skip")}</Button>
-                    <Button variant="ghost" size="sm" class="text-muted-foreground">{$t("st.upd.uninstall")}</Button>
+                    <Button variant="ghost" size="sm" class="text-muted-foreground" onclick={() => uninstallApp(u.id)}>{$t("st.upd.uninstall")}</Button>
                   </div>
                 </div>
               </div>
