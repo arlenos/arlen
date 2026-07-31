@@ -104,9 +104,12 @@ impl ConsentDriver for ConsentBrokerClient {
         match self.request(&body).await {
             Ok(IntakeResult::SilentGranted) => ConfirmAnswer::Approved,
             Ok(IntakeResult::Decided { outcome }) => match outcome {
-                ConsentOutcome::AllowedOnce | ConsentOutcome::AllowedRemembered => {
-                    ConfirmAnswer::Approved
-                }
+                // A window is an allow like the others as far as this call is
+                // concerned. Nothing here has to remember it: the broker records
+                // the grant and its expiry, and the next call asks again.
+                ConsentOutcome::AllowedOnce
+                | ConsentOutcome::AllowedRemembered
+                | ConsentOutcome::AllowedForWindow => ConfirmAnswer::Approved,
                 ConsentOutcome::Denied => ConfirmAnswer::Denied,
             },
             // Broker unreachable / framing / I/O error: fail closed.

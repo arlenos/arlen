@@ -184,6 +184,15 @@ pub enum ConsentOutcome {
     AllowedOnce,
     /// Allowed and remembered: a revocable grant is minted for the recipient.
     AllowedRemembered,
+    /// Allowed for a bounded window starting now: a revocable grant is minted
+    /// and stops authorising when the window closes.
+    ///
+    /// The middle the surface was missing. `AllowedOnce` records nothing, so
+    /// nothing can show what was allowed or take it back before it is used
+    /// again; `AllowedRemembered` lasts until someone revokes it. A gesture-
+    /// scoped elevation is neither: it is real authority, so it must be visible
+    /// and revocable, and it must stop on its own.
+    AllowedForWindow,
     /// Denied.
     Denied,
 }
@@ -191,14 +200,19 @@ pub enum ConsentOutcome {
 impl ConsentOutcome {
     /// Whether a remembered, revocable grant should be minted for this outcome.
     pub fn mints_grant(self) -> bool {
-        matches!(self, ConsentOutcome::AllowedRemembered)
+        matches!(
+            self,
+            ConsentOutcome::AllowedRemembered | ConsentOutcome::AllowedForWindow
+        )
     }
 
     /// Whether the action may proceed.
     pub fn allowed(self) -> bool {
         matches!(
             self,
-            ConsentOutcome::AllowedOnce | ConsentOutcome::AllowedRemembered
+            ConsentOutcome::AllowedOnce
+                | ConsentOutcome::AllowedRemembered
+                | ConsentOutcome::AllowedForWindow
         )
     }
 }
@@ -221,6 +235,7 @@ mod tests {
         let table = [
             (ConsentOutcome::AllowedOnce, true, false),
             (ConsentOutcome::AllowedRemembered, true, true),
+            (ConsentOutcome::AllowedForWindow, true, true),
             (ConsentOutcome::Denied, false, false),
         ];
         for (outcome, allowed, mints) in table {

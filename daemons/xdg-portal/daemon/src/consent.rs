@@ -66,9 +66,11 @@ pub async fn request_screencast_consent(socket: &PathBuf, app_id: &str, summary:
     match request(socket, &body).await {
         Ok(IntakeResult::SilentGranted) => ConsentDecision::Allowed,
         Ok(IntakeResult::Decided { outcome }) => match outcome {
-            ConsentOutcome::AllowedOnce | ConsentOutcome::AllowedRemembered => {
-                ConsentDecision::Allowed
-            }
+            // A window allows this call like the others; the broker owns the
+            // grant and when it closes, so the portal asks again next time.
+            ConsentOutcome::AllowedOnce
+            | ConsentOutcome::AllowedRemembered
+            | ConsentOutcome::AllowedForWindow => ConsentDecision::Allowed,
             ConsentOutcome::Denied => ConsentDecision::Denied,
         },
         // Broker unreachable / framing / IO error: fail closed.
