@@ -1,19 +1,20 @@
-/// The active meeting: the human's own notes (the Granola anchor - held by this app,
-/// what you jotted during capture) plus the produced MeetingNote (the engine output).
-/// The verifiable merge shows your notes against the AI summary, both checkable against
-/// the embedded transcript.
+/// The active meeting: the human's own notes (the Granola anchor - what you jotted
+/// during capture) plus the produced MeetingNote (the engine output). The note view
+/// merges the two INLINE - your lines full-strength, the AI's enhancements in the AI
+/// tint under the line they anchor to - both checkable against the embedded transcript.
 ///
-/// Mock-vs-live: fixture-backed. The ASR/diarization capture stream, the `summarize`
-/// engine call, the KG-file store, and the text-editor handoff are coder seams; under
-/// vite the store serves a fixture so the surface renders.
+/// Mock-vs-live: `meetings_list`, `meeting_note {id}` and `meeting_summarize` are
+/// live; the ASR capture stream, notes persistence (`meeting_save_notes`), speaker
+/// relabel (`meeting_relabel_speaker`) and item updates (`meeting_update_item`) are
+/// coder seams - under vite the fixture stands in and edits apply locally.
 import { writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { MeetingNote, Transcript, TranscriptSegment } from "$lib/contract";
 
 /// A captured meeting: your notes (the anchor) + the produced note.
 export interface Meeting {
-  /// What you typed during the meeting - the black anchor that suppresses
-  /// hallucination. Held by the app, never sent back inside the MeetingNote.
+  /// What you typed during the meeting - the anchor that steers salience. Held
+  /// by the app, never sent back inside the MeetingNote.
   humanNotes: string;
   /// The engine's output (summary + action items + transcript).
   note: MeetingNote;
@@ -22,9 +23,16 @@ export interface Meeting {
 }
 
 export const meeting = writable<Meeting | null>(null);
+/// The id of the open meeting ("live" right after a capture, before the KG files it).
+export const currentId = writable<string | null>(null);
+
+/// User corrections of diarization labels ("speaker_0" -> "Anna"). A draft the
+/// user confirms - diarization is ~20% wrong on real meetings, so relabelling is
+/// first-class, never buried.
+export const speakerNames = writable<Record<string, string>>({});
 
 /// One row in the recent-meetings home. Not in the note contract - a summary the
-/// `meetings_list` seam derives from the KG meeting nodes (flagged for the coder).
+/// `meetings_list` seam derives from the KG meeting nodes.
 export interface MeetingSummary {
   id: string;
   title: string;
@@ -35,19 +43,15 @@ export interface MeetingSummary {
 
 export const meetings = writable<MeetingSummary[]>([]);
 
-/// True while the home list is the FIXTURE, not your real meetings. The rows
-/// carry titles, dates and named participants, so unlabelled they read as a
-/// history of conversations that never happened.
+/// True while the home list is the FIXTURE, not your real meetings.
 export const meetingsMocked = writable(false);
 
-/// The app lifecycle: nothing yet, a meeting recording, or the produced note.
-export type Phase = "idle" | "capturing" | "note";
-export const phase = writable<Phase>("idle");
-
-/// Live capture state (the capturing phase): the transcript as it streams in, the
-/// notes you type as the anchor, and the elapsed recording time in ms.
+/// Live capture state: the transcript as it streams in, the notes you type as the
+/// anchor, whether transcription is on (a separate, opt-outable step - recording
+/// and transcribing are different consents), and the elapsed time in ms.
 export const liveTranscript = writable<Transcript>({ language: "en", segments: [] });
 export const liveNotes = writable("");
+export const transcribe = writable(true);
 export const elapsed = writable(0);
 
 const FIXTURE: Meeting = {
@@ -60,38 +64,27 @@ const FIXTURE: Meeting = {
     summary:
       "The KG-lens is the reason to build a first-party editor rather than reuse gedit; a plain editor cannot show provenance and project context. Meeting capture stays fully on-device, which is the edge over cloud transcription bots. Capture lives in its own small surface and the resulting note becomes a knowledge-graph file, opened in the editor for follow-up.",
     summary_claims: [
-      { text: "The KG-lens is the reason to build a first-party editor rather than reuse gedit.", source_segment: 0 },
-      { text: "Meeting capture stays fully on-device, the edge over cloud transcription bots.", source_segment: 2 },
-      { text: "Capture lives in its own small surface and the note becomes a knowledge-graph file.", source_segment: 3 },
+      { text: "A plain editor cannot surface provenance or project context - that is what the lens adds.", source_segment: 1, anchor_line: 0 },
+      { text: "On-device capture is the edge over cloud transcription bots - the Otter class action is the trap avoided.", source_segment: 2, anchor_line: 1 },
+      { text: "The produced note becomes a knowledge-graph file, opened in the editor for follow-up.", source_segment: 3, anchor_line: 2 },
       { text: "This keeps the whole workflow sovereign end to end." },
     ],
     action_items: [
       { text: "Split capture into its own Meetings surface", owner: "arlen-ui", source_segment: 3 },
-      { text: "File the produced note as a knowledge-graph node", owner: "coder", source_segment: 4 },
+      { text: "File the produced note as a knowledge-graph node", source_segment: 4 },
     ],
     transcript: {
       language: "en",
       segments: [
         { start_ms: 4200, end_ms: 9800, speaker: "speaker_0", confidence: 0.95, text: "So the whole reason to build our own editor is the knowledge-graph lens." },
         { start_ms: 9800, end_ms: 15200, speaker: "speaker_0", confidence: 0.93, text: "A plain editor like gedit just cannot surface provenance or which project a file belongs to." },
-        { start_ms: 15200, end_ms: 21000, speaker: "speaker_1", confidence: 0.9, text: "Right, and the meeting notes have to stay on this device. The Otter lawsuit is exactly the trap we avoid." },
+        { start_ms: 15200, end_ms: 21000, speaker: "speaker_1", confidence: 0.72, text: "Right, and the meeting notes have to stay on this device. The Otter lawsuit is exactly the trap we avoid." },
         { start_ms: 21000, end_ms: 27400, speaker: "speaker_1", confidence: 0.92, text: "Let's make the capture its own small surface, and the note it produces becomes a graph file you open in the editor." },
         { start_ms: 27400, end_ms: 31900, speaker: "speaker_0", confidence: 0.94, text: "Agreed. Capture is one lifecycle, the note is a citizen of the graph after." },
       ],
     },
   },
 };
-
-/// Load the active meeting: the engine seam, with the fixture fallback under vite.
-export async function loadMeeting(): Promise<void> {
-  try {
-    const note = await invoke<MeetingNote>("meeting_note");
-    const humanNotes = await invoke<string>("meeting_human_notes");
-    meeting.set({ humanNotes, note, mocked: false });
-  } catch {
-    meeting.set(FIXTURE);
-  }
-}
 
 const MEETINGS_FIXTURE: MeetingSummary[] = [
   {
@@ -117,8 +110,7 @@ const MEETINGS_FIXTURE: MeetingSummary[] = [
   },
 ];
 
-/// Load the recent meetings for the home (the `meetings_list` seam over the KG meeting
-/// nodes; fixture under vite).
+/// Load the recent meetings for the home (live: KG meeting nodes; fixture under vite).
 export async function loadMeetings(): Promise<void> {
   try {
     meetings.set(await invoke<MeetingSummary[]>("meetings_list"));
@@ -129,19 +121,61 @@ export async function loadMeetings(): Promise<void> {
   }
 }
 
-/// Open a past meeting's note (the `meeting_note {id}` seam; the fixture note under
-/// vite), landing on the note phase.
+/// Open a past meeting's note by id (live: `meeting_note {id}`; the fixture under
+/// vite). The route mounts call this; navigation is the router's job.
 export async function openMeeting(id: string): Promise<void> {
+  currentId.set(id);
+  speakerNames.set({});
   try {
     const note = await invoke<MeetingNote>("meeting_note", { id });
     meeting.set({ humanNotes: "", note, mocked: false });
   } catch {
     meeting.set({ humanNotes: FIXTURE.humanNotes, note: FIXTURE.note, mocked: true });
   }
-  phase.set("note");
 }
 
-/// A short, locale-aware meeting date for the list (ties into the i18n locale later).
+/// Save the user's edited notes (a coder seam - today nothing persists edits; the
+/// local view applies either way).
+export async function saveNotes(text: string): Promise<void> {
+  meeting.update((m) => (m ? { ...m, humanNotes: text } : m));
+  try {
+    await invoke("meeting_save_notes", { id: get(currentId), text });
+  } catch {
+    // Seam unwired: the local save stands.
+  }
+}
+
+/// Relabel a diarization speaker everywhere ("speaker_1" -> "Ben"). Confirming
+/// attribution is the user's job by design; the seam persists it with the note.
+export async function relabelSpeaker(label: string, name: string): Promise<void> {
+  speakerNames.update((s) => {
+    const next = { ...s };
+    if (name.trim()) next[label] = name.trim();
+    else delete next[label];
+    return next;
+  });
+  try {
+    await invoke("meeting_relabel_speaker", { id: get(currentId), label, name: name.trim() });
+  } catch {
+    // Seam unwired.
+  }
+}
+
+/// Update one action item (owner confirm/edit, done tick). Persisted via the seam.
+export async function updateItem(index: number, patch: { owner?: string; done?: boolean }): Promise<void> {
+  meeting.update((m) => {
+    if (!m) return m;
+    const items = m.note.action_items.map((it, i) => (i === index ? { ...it, ...patch } : it));
+    return { ...m, note: { ...m.note, action_items: items } };
+  });
+  try {
+    await invoke("meeting_update_item", { id: get(currentId), index, ...patch });
+  } catch {
+    // Seam unwired.
+  }
+}
+
+/// A short meeting date for the list.
 export function fmtDate(ms: number): string {
   return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(new Date(ms));
 }
@@ -179,7 +213,8 @@ export function speakerNum(label: string | undefined): number | null {
   return m ? Number(m[1]) + 1 : null;
 }
 
-/// Open the produced note in the text editor (the KG-citizen handoff seam).
+/// Open the produced note in the text editor (the KG-citizen handoff seam; the
+/// real note path is the coder's to supply).
 export function openInEditor(): void {
   invoke("open_file", { file: "meeting-note.md" }).catch(() => {});
 }
@@ -194,20 +229,21 @@ function clearTimers(): void {
   streamer = null;
 }
 
-/// Begin capturing. Live: the ASR feed fills `liveTranscript`; under vite a dev stream
-/// reveals the fixture segments one at a time so the surface shows the streaming
-/// experience. The recording is on-device and audited (the sovereign frame).
+/// Begin capturing. Live: the ASR feed fills `liveTranscript` (when transcription
+/// is on); under vite a dev stream reveals the fixture segments so the streaming
+/// experience shows. On-device, nothing joins the call.
 export function startCapture(): void {
   clearTimers();
   liveTranscript.set({ language: "en", segments: [] });
   liveNotes.set("");
+  transcribe.set(true);
   elapsed.set(0);
-  phase.set("capturing");
   invoke("meeting_start_capture").catch(() => {});
   ticker = setInterval(() => elapsed.update((e) => e + 1000), 1000);
   const seg = [...FIXTURE.note.transcript.segments];
   let i = 0;
   streamer = setInterval(() => {
+    if (!get(transcribe)) return;
     if (i >= seg.length) {
       if (streamer) clearInterval(streamer);
       streamer = null;
@@ -218,13 +254,15 @@ export function startCapture(): void {
   }, 1400);
 }
 
-/// Stop capturing and produce the note. Live: the summarize seam turns the transcript +
-/// your notes into a MeetingNote; under vite it resolves to the fixture note. The notes
-/// you typed are carried into the note view (the app holds them; the note never does).
+/// Stop capturing and produce the note. Live: the summarize seam turns the
+/// transcript + your notes into a MeetingNote; under vite it resolves to the
+/// fixture. The caller navigates to the note route after.
 export async function stopCapture(): Promise<void> {
   clearTimers();
   invoke("meeting_stop_capture").catch(() => {});
   const notes = get(liveNotes);
+  currentId.set("live");
+  speakerNames.set({});
   try {
     const note = await invoke<MeetingNote>("meeting_summarize", {
       transcript: get(liveTranscript),
@@ -234,5 +272,4 @@ export async function stopCapture(): Promise<void> {
   } catch {
     meeting.set({ humanNotes: notes.trim() || FIXTURE.humanNotes, note: FIXTURE.note, mocked: true });
   }
-  phase.set("note");
 }

@@ -44,6 +44,9 @@
   --color-error:          #ef4444;
   --color-warning:        #f59e0b;
   --color-success:        #10b981;
+  /* AI-authored content (the notes-anchor merge tint) - a semantic role like
+     error/warning, distinct from the user's own text in any theme. */
+  --color-ai:             #6aa9e0;
 
   /* Card elevation (themes/*.toml [depth].shadow_card). Dark layers by surface
      lightness, so none; the light override sets the soft lift. */
@@ -152,6 +155,7 @@
   /* Border */
   --color-border-default: #e5e5e5;
   --color-border-strong:  #d4d4d4;
+  --color-ai:             #2f6fae;
   --color-border:         var(--color-border-default);
 
   /* Card elevation: the soft lift (dark is none in :root). */
