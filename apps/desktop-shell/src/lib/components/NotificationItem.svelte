@@ -116,7 +116,7 @@
     gap: 2px;
     /* Reserve space for the dismiss button (24px + gap) so long
        summary text doesn't slide under it. */
-    padding-right: 28px;
+    padding-inline-end: 28px;
   }
 
   .notif-title-row {

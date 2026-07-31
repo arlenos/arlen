@@ -55,7 +55,7 @@
   }
   .glyph {
     color: var(--color-success);
-    margin-right: 0.25rem;
+    margin-inline-end: 0.25rem;
   }
   .glyph.off {
     color: color-mix(in srgb, var(--foreground) 35%, transparent);

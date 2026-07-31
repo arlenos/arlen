@@ -390,7 +390,7 @@
     border: none;
     border-radius: var(--radius-chip);
     color: var(--color-fg-app);
-    text-align: left;
+    text-align: start;
     transition:
       background 80ms ease;
   }

@@ -51,7 +51,7 @@
   }
 
   th {
-    text-align: left;
+    text-align: start;
     font-weight: 600;
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     padding: 2px 14px 4px 0;
@@ -71,7 +71,7 @@
   }
 
   .num {
-    text-align: right;
+    text-align: end;
     font-variant-numeric: tabular-nums;
   }
 </style>

@@ -74,7 +74,7 @@
     font-weight: 500;
     color: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
     line-height: 1;
-    margin-right: 4px;
+    margin-inline-end: 4px;
   }
   .clock-time {
     font-size: var(--text-xs);

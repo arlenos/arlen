@@ -205,7 +205,7 @@
         background: none;
         color: var(--foreground);
         font-size: 13px;
-        text-align: left;
+        text-align: start;
     }
 
     .zoom-popover-item:hover {

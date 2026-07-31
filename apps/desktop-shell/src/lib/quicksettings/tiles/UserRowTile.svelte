@@ -211,7 +211,7 @@
     border-radius: var(--radius-input);
     color: var(--color-fg-shell);
     font-size: var(--text-xs);
-    text-align: left;
+    text-align: start;
     transition: background-color 100ms ease;
   }
   .user-power button:hover {

@@ -334,7 +334,7 @@
     display: flex; align-items: center; gap: 10px;
     padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-input);
     color: var(--color-fg-shell); font-size: var(--text-sm);
-    text-align: left; width: 100%;
+    text-align: start; width: 100%;
     transition: background-color var(--duration-micro, 100ms) ease;
   }
   .bt-device:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
@@ -347,7 +347,7 @@
   /* Battery reading sits apart from the status word by spacing, not
      a separator glyph. */
   .bt-battery { display: inline-flex; align-items: center; gap: 3px; }
-  .bt-battery-spaced { margin-left: 6px; }
+  .bt-battery-spaced { margin-inline-start: 6px; }
   :global(.bt-battery-icon) { display: inline; vertical-align: middle; }
 
   .bt-scan-btn {

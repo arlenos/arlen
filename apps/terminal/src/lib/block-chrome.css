@@ -30,22 +30,22 @@
  * the status - the command stays the star). The decoration spans the prompt row
  * full-width (the engine registers it with `width` = the column count); the strip
  * right-aligns its content within, so the result sits at the right edge, clear of
- * the prompt on the left. `text-align: right` survives whatever `display` xterm
+ * the prompt on the left. `text-align: end` survives whatever `display` xterm
  * puts on the decoration element (flex `justify-content` does not). The strip
  * ignores pointer events except the button, so it never eats a text selection. */
 .arlen-block-result {
   width: 100%;
-  text-align: right;
+  text-align: end;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 0.8125rem;
   line-height: 1.5;
   white-space: nowrap;
   pointer-events: none;
-  padding-right: 8px;
+  padding-inline-end: 8px;
   box-sizing: border-box;
 }
 .arlen-block-exit {
   color: var(--color-error, #c96a6a);
   font-variant-numeric: tabular-nums;
-  margin-left: 10px;
+  margin-inline-start: 10px;
 }

@@ -207,7 +207,7 @@
         background: none;
         border: none;
         font-size: var(--text-base);
-        text-align: left;
+        text-align: start;
         color: var(--color-fg-primary, var(--color-fg-shell));
         border-radius: 0;
         transition: background-color var(--duration-fast, 150ms) var(--ease-out, ease);
@@ -222,7 +222,7 @@
     .ctx-shortcut {
         font-size: var(--text-xs);
         color: var(--color-fg-secondary, color-mix(in srgb, var(--color-fg-shell) 50%, transparent));
-        margin-left: 24px;
+        margin-inline-start: 24px;
     }
     .ctx-sub-wrap {
         position: relative;
@@ -241,6 +241,6 @@
     }
     :global(.ctx-chevron) {
         opacity: 0.6;
-        margin-left: 8px;
+        margin-inline-start: 8px;
     }
 </style>

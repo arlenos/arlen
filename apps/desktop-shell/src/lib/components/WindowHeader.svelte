@@ -208,7 +208,7 @@
         display: flex;
         align-items: stretch;
         height: 100%;
-        padding-left: 8px;
+        padding-inline-start: 8px;
         gap: 2px;
         overflow: hidden;
         max-width: 60%;
@@ -259,7 +259,7 @@
         display: flex;
         align-items: center;
         gap: 0;
-        padding-right: 4px;
+        padding-inline-end: 4px;
     }
 
     .header-btn {

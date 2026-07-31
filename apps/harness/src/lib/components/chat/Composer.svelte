@@ -399,7 +399,7 @@
     background: transparent;
     color: var(--foreground);
     font-size: var(--text-sm);
-    text-align: left;
+    text-align: start;
     border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
   }
   .mention-item.active {

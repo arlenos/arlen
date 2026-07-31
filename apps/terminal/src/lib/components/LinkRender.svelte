@@ -38,7 +38,7 @@
     padding: 0;
     border: none;
     background: transparent;
-    text-align: left;
+    text-align: start;
     font-family: var(--font-mono, ui-monospace, monospace);
   }
 

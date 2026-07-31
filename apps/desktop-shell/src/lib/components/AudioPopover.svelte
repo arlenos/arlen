@@ -223,7 +223,7 @@
       color var(--duration-micro, 100ms) ease;
   }
   .vol-icon-btn:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); color: var(--color-fg-shell); }
-  .vol-value { font-size: var(--text-2xs); opacity: 0.5; min-width: 30px; text-align: right; }
+  .vol-value { font-size: var(--text-2xs); opacity: 0.5; min-width: 30px; text-align: end; }
 
   /* Slider wrappers: sizing only; the bar itself comes from FillSlider. */
   .vol-slider-wrap { flex: 1; display: flex; align-items: center; }
@@ -241,7 +241,7 @@
     display: flex; align-items: center; gap: 6px;
     padding: 4px 0; background: transparent; border: none;
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
-    font-size: var(--text-xs); font-weight: 500; width: 100%; text-align: left;
+    font-size: var(--text-xs); font-weight: 500; width: 100%; text-align: start;
     transition: color var(--duration-micro, 100ms) ease;
   }
   .apps-header:hover { color: var(--color-fg-shell); }

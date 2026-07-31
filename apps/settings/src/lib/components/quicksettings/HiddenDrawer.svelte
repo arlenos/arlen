@@ -119,7 +119,7 @@
     color: var(--color-fg-shell);
     font-size: var(--text-sm);
     font-weight: 500;
-    text-align: left;
+    text-align: start;
     transition: background-color 100ms ease;
   }
   .drawer-header:hover {
@@ -134,7 +134,7 @@
     transform: rotate(0deg);
   }
   .drawer-count {
-    margin-left: auto;
+    margin-inline-start: auto;
     font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-shell) 55%, transparent);
     background: color-mix(in srgb, var(--color-fg-shell) 12%, transparent);

@@ -27,7 +27,7 @@
   /* The tag holds its own line so framed content never runs into it. */
   .of-tag {
     display: block;
-    text-align: right;
+    text-align: end;
     padding: 4px 12px 0;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 35%, transparent);

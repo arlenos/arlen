@@ -510,7 +510,7 @@
   }
   .qs-unknown-row ul {
     margin: 0;
-    padding-left: 1rem;
+    padding-inline-start: 1rem;
   }
   .qs-unknown-row code {
     font-size: var(--text-xs);

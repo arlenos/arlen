@@ -181,7 +181,7 @@
     max-height: 60vh;
     overflow-y: auto;
     scrollbar-gutter: stable;
-    padding-right: 2px;
+    padding-inline-end: 2px;
   }
 
   .notif-group {
@@ -200,7 +200,7 @@
     padding: 4px 6px;
     border: none;
     background: transparent;
-    text-align: left;
+    text-align: start;
     border-radius: var(--radius-chip);
     transition: background-color var(--duration-micro, 100ms) ease;
   }
@@ -231,7 +231,7 @@
     font-variant-numeric: tabular-nums;
   }
   :global(.notif-chevron) {
-    margin-left: auto;
+    margin-inline-start: auto;
     color: color-mix(in srgb, var(--color-fg-shell) 50%, transparent);
     transition: transform var(--duration-fast, 150ms) ease;
   }

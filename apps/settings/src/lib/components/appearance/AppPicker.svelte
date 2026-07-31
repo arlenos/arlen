@@ -269,7 +269,7 @@
     border-radius: var(--radius-chip);
     color: var(--foreground);
     font-size: var(--text-xs);
-    text-align: left;
+    text-align: start;
     transition: background-color 100ms ease;
   }
   .item:hover {
