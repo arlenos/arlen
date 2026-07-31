@@ -473,4 +473,28 @@ mod lock_tests {
         // store that refuses to open is worse than one that misses an update.
         assert!(parse_lock("this is not toml {{{").is_empty());
     }
+
+    /// The skip file is written by one function and read by another, so the two
+    /// have to agree on its shape. Asserted through the serialiser the writer
+    /// uses rather than against a hand-typed fixture, because what would actually
+    /// break is the writer emitting something the reader does not recognise, and
+    /// a fixture only proves the reader can read what I typed.
+    #[test]
+    fn a_written_skip_reads_back() {
+        let mut skips = std::collections::BTreeMap::new();
+        skips.insert("org.x.Chat".to_string(), "1.2.0".to_string());
+        skips.insert("org.y.Paint".to_string(), "0.9".to_string());
+
+        let text = toml::to_string(&skips).expect("the writer serialises this map");
+        let read = parse_skipped(&text);
+
+        assert_eq!(read, skips);
+    }
+
+    /// Same direction as the lock: a skip file nobody can parse means no skips,
+    /// which shows an update the user declined rather than hiding one that exists.
+    #[test]
+    fn a_corrupt_skip_file_reads_as_no_skips() {
+        assert!(parse_skipped("this is not toml {{{").is_empty());
+    }
 }
