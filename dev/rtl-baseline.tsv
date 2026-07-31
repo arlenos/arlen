@@ -4,10 +4,7 @@ apps/desktop-shell/src/lib/components/SniContextMenuContent.svelte	mr-
 apps/desktop-shell/src/lib/components/ui/dialog/dialog-content.svelte	left-
 apps/files/src/routes/+layout.svelte	pl-
 apps/files/src/routes/+layout.svelte	pr-
-apps/harness/src/lib/components/HarnessSidebar.svelte	left-
 apps/harness/src/lib/components/HarnessSidebar.svelte	ml-
-apps/harness/src/lib/components/HarnessSidebar.svelte	pl-
-apps/harness/src/lib/components/HarnessSidebar.svelte	pr-
 apps/harness/src/routes/+layout.svelte	mr-
 apps/harness/src/routes/+layout.svelte	pl-
 apps/harness/src/routes/+layout.svelte	pr-
@@ -17,9 +14,7 @@ apps/settings/src/lib/components/SiteHeader.svelte	pl-
 apps/settings/src/lib/components/SiteHeader.svelte	pr-
 apps/settings/src/lib/components/settings/KeyCapture.svelte	pl-
 apps/settings/src/routes/keyboard/+page.svelte	mr-
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	left-
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	mr-
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	pl-
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	text-left
 apps/terminal/src/lib/components/TerminalSidebar.svelte	ml-
 apps/terminal/src/routes/+layout.svelte	pl-

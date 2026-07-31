@@ -136,11 +136,11 @@
           <Search
             size={13}
             strokeWidth={2}
-            class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 opacity-50"
+            class="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 opacity-50"
           />
           <Input
             id="harness-session-search"
-            class="pl-7"
+            class="ps-7"
             bind:value={query}
             placeholder={$t("h.sidebar.search")}
             aria-label={$t("h.sidebar.search")}
@@ -222,7 +222,7 @@
       />
     {:else}
       <SidebarMenuButton
-        class="pr-7"
+        class="pe-7"
         isActive={onChat && s.id === $activeSessionId}
         title={s.title}
         onclick={() => openSession(s.id)}

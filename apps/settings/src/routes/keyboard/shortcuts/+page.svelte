@@ -239,12 +239,12 @@
   <div class="flex flex-wrap items-center gap-2" data-anchor="search">
     <div class="relative min-w-56 flex-1">
       <Search
-        class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+        class="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
       />
       <Input
         bind:value={query}
         placeholder="Search bindings…"
-        class="pl-9"
+        class="ps-9"
       />
     </div>
     <Button variant="outline" onclick={() => (addOpen = true)}>
