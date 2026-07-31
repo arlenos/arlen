@@ -9,6 +9,8 @@ node_modules/
 
 # Rust
 src-tauri/target/
+# Tauri regenerates gen/schemas from capabilities/ on every build.
+src-tauri/gen/
 
 # Editors
 .vscode/
