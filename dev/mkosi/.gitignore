@@ -6,10 +6,12 @@
 /arlen.vmlinuz
 /initrd
 /initrd.cpio.zst
-/build.log
-/boot.log
-/boot-gpu.log
-/buildimg.log
+# Globs, not exact names: the rule below said "never committed" while four
+# suffixed variants of buildimg.log were tracked, because ad-hoc runs wrote
+# buildimg-1b.log and friends and only the bare name was listed.
+/build*.log
+/boot*.log
+/buildimg*.log
 # the Debian tools tree (ToolsTree=default) and its manifest, fetched per build.
 /mkosi.tools/
 /mkosi.tools.manifest
