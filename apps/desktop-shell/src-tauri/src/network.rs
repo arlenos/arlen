@@ -291,6 +291,27 @@ pub async fn connect_wifi(ssid: String) -> Result<(), String> {
 }
 
 /// Connects to a WiFi network with a password.
+///
+/// **The password is passed as a command-line argument, where it is readable by
+/// every process on the machine for the duration of the call.**
+/// `/proc/<pid>/cmdline` is mode 0444 with no `hidepid` in effect, so this is not
+/// a same-uid caveat - any process can poll for an `nmcli` and read the secret out
+/// of its argv. The window is short and the race has to be won, but a polling loop
+/// wins it reliably, and a WiFi PSK is long-lived.
+///
+/// Not changed here, deliberately. `nmcli --ask` reads the secret from stdin and
+/// would close it with a small change, but this is the live WiFi path on a machine
+/// I cannot test an actual association against, and a wrong guess about which
+/// nmcli versions prompt the same way breaks connecting to networks. The real
+/// answer is the NetworkManager D-Bus API, which takes secrets as method
+/// arguments over the bus and never puts them in an argv - which is what makes
+/// the "replace the shelling-out with real D-Bus" job a security fix rather than
+/// a tidiness one.
+///
+/// The same exposure applies in reverse to [`get_saved_password`], which reads a
+/// stored PSK back out through `nmcli -s`: the secret is in that child's OUTPUT
+/// rather than its argv, so it is not world-readable, but it does cross a pipe
+/// through this process.
 #[tauri::command]
 pub async fn connect_wifi_password(ssid: String, password: String) -> Result<(), String> {
     let output = tokio::process::Command::new("nmcli")
