@@ -141,6 +141,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-monitor-reads"
+version = "0.1.0"
+dependencies = [
+ "audit-proto",
+ "tokio",
+]
+
+[[package]]
 name = "arlen-net-guard"
 version = "0.1.0"
 dependencies = [
@@ -196,14 +204,6 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "zeroize",
-]
-
-[[package]]
-name = "arlen-system-monitor"
-version = "0.1.0"
-dependencies = [
- "audit-proto",
- "tokio",
 ]
 
 [[package]]

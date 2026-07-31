@@ -1438,8 +1438,15 @@ mod crate_reachability {
     /// consumer. Several are here because a successor took the job under a
     /// similar name, which is what makes them easy to miss when reading the tree.
     const KNOWN_UNCONSUMED: &[&str] = &[
-        // `apps/system-monitor/core` and `daemons/system-monitor-mcp` do this work.
-        "sdk/system-monitor",
+        // NOT superseded, despite what this entry said until the reads were
+        // checked: `apps/system-monitor/core` is process monitoring and
+        // `daemons/system-monitor-mcp` is sysinfo, while this crate holds the
+        // audit-ledger integrity verdict, the daemon-health verdict, per-app
+        // access and observed-vs-declared capability use, which exist nowhere
+        // else. Its consumer is the monitor app's sovereignty view, not yet
+        // wired. A wrong epitaph here is worse than no entry: it reads as
+        // permission to delete work nothing replaces.
+        "sdk/monitor-reads",
         "sdk/proc-collect",
         // `sdk/config-format` and `daemons/config-broker` do this work, and the
         // compositor parses its own keybindings. The one mention left is a
@@ -1588,10 +1595,11 @@ mod crate_reachability {
                     return false;
                 }
                 // Another manifest's own `[package] name` is not a dependency on
-                // this crate even when the two names are equal, and two are:
-                // `sdk/system-monitor` and `apps/system-monitor/src-tauri` both
-                // call themselves `arlen-system-monitor`. Reading that as a
-                // dependent is how this check first passed for a dead crate.
+                // this crate even when the two names are equal. Reading that as a
+                // dependent is how this check first passed for a dead crate. The
+                // pair that made it concrete - two crates both calling themselves
+                // `arlen-system-monitor` - has since been renamed apart, but the
+                // rule stands on its own: a name is not a dependency.
                 let other_text = &strip_package_block(other_text);
                 let without_members = other_text
                     .split("[workspace]")

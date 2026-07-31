@@ -50,13 +50,13 @@ impl BridgeMeta {
     /// first-party app id - a bridge declaring `id = "settings"` would
     /// otherwise name the Settings app and inherit whatever is keyed to it.
     ///
-    /// **This prefix is stated in a second place**, `arlen_system_monitor::
-    /// extensions::Extension::bridge`, which builds the same address for the
-    /// unified management inventory. The two crates share no dependency, so the
-    /// rule is duplicated deliberately rather than extracted into a crate that
-    /// would exist for one string - the same call made for the canary token. A
-    /// change here has to be made there too, or the inventory will address a
-    /// bridge that audit and the LCG have never heard of.
+    /// **The unified management inventory does NOT apply this prefix.**
+    /// `arlen_extensions::inventory::bridges` rows a bridge under its bare
+    /// namespace, so the same bridge is `md.obsidian` there and
+    /// `bridge.md.obsidian` here. That is survivable only because nothing joins
+    /// the two by id: the inventory's revoke reads the namespace out of a
+    /// capability label rather than off the id. Anything that does start joining
+    /// them has to reconcile the two spellings first.
     pub fn app_id(&self) -> String {
         format!("bridge.{}", self.id)
     }
