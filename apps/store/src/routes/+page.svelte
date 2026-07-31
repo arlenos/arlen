@@ -7,6 +7,7 @@
   import { goto } from "$app/navigation";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import StoreHeader from "$lib/components/StoreHeader.svelte";
+  import StoreRail from "$lib/components/StoreRail.svelte";
   import AppCard from "$lib/components/AppCard.svelte";
   import { t } from "$lib/i18n/messages";
   import {
@@ -64,6 +65,8 @@
 <div class="st-app">
   <StoreHeader />
 
+  <div class="st-body">
+  <StoreRail />
   <main class="st-main">
   <div class="st-content">
     {#if $catalogMocked}
@@ -133,6 +136,7 @@
     {/if}
   </div>
   </main>
+  </div>
 </div>
 
 <style>
@@ -143,11 +147,16 @@
     background: var(--color-bg-app);
     color: var(--color-fg-primary);
   }
-  /* The scroller spans the window so the scrollbar sits at the edge; the
+  .st-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+  /* The scroller spans the content area so the scrollbar sits at the edge; the
      content column is capped inside it. */
   .st-main {
     flex: 1;
-    min-height: 0;
+    min-width: 0;
     overflow-y: auto;
   }
   .st-content {
