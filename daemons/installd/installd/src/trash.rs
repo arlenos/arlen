@@ -83,10 +83,19 @@ pub fn stage_for_deletion(app_id: &str) -> Result<TrashInfo, TrashError> {
         .map(|m| m.package.version.clone())
         .unwrap_or_default();
 
-    // Remove schemas and modules (they are not moved to trash).
+    // Remove schemas, modules and the keybinding fragment (none are moved to
+    // trash; a restore reinstalls, which rewrites all three).
+    //
+    // The fragment was missing here. `uninstall_user` removes it and is the
+    // path nothing calls; this is the path the uninstall job actually runs, so
+    // an uninstalled app left `keybindings.d/<id>.toml` behind, the compositor
+    // watcher kept picking it up, and its accelerators went on firing for a
+    // package that is gone. Global ones are gated at install time on
+    // `permissions.input`, so that grant outlived the app holding it.
     if let Some(ref m) = manifest {
         let _ = install::remove_schemas(m);
         let _ = install::remove_modules(m);
+        let _ = install::remove_keybindings_fragment(&m.package.id);
     }
 
     // Move app directory to trash.
@@ -331,6 +340,46 @@ fn is_leap(y: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Uninstalling has to take the app's keybindings with it. The fragment
+    /// lives in a directory the compositor watches, so one left behind keeps
+    /// firing its accelerators for a package that is gone, and a global binding
+    /// is granted at install time against `permissions.input` - a grant that
+    /// then outlives the app that held it. The uninstall job goes through
+    /// `stage_for_deletion`, not through `uninstall_user`, which is where the
+    /// removal used to live and where nothing calls it.
+    #[test]
+    fn staging_for_deletion_takes_the_keybinding_fragment_with_it() {
+        let _env = crate::env_lock();
+        let apps = tempfile::TempDir::new().unwrap();
+        let trash = tempfile::TempDir::new().unwrap();
+        let keys = tempfile::TempDir::new().unwrap();
+
+        std::env::set_var("ARLEN_USER_APPS_DIR", apps.path());
+        std::env::set_var("ARLEN_TRASH_DIR", trash.path());
+        std::env::set_var("ARLEN_USER_KEYBINDINGS_DIR", keys.path());
+
+        let app_dir = apps.path().join("com.test.keys");
+        fs::create_dir_all(app_dir.join("bin")).unwrap();
+        fs::write(app_dir.join("bin/app"), "#!/bin/sh").unwrap();
+        fs::write(
+            app_dir.join("manifest.toml"),
+            "[package]\nid=\"com.test.keys\"\nname=\"Keys\"\nversion=\"1.0\"\n[binary]\npath=\"bin/app\"\n",
+        )
+        .unwrap();
+
+        let fragment = keys.path().join("com.test.keys.toml");
+        fs::write(&fragment, "[keybindings]\n\"Super+K\" = \"spawn:app\"\n").unwrap();
+        assert!(fragment.exists());
+
+        stage_for_deletion("com.test.keys").unwrap();
+
+        assert!(
+            !fragment.exists(),
+            "the uninstalled app's keybindings are still registered with the compositor"
+        );
+        std::env::remove_var("ARLEN_USER_KEYBINDINGS_DIR");
+    }
 
     #[test]
     fn test_stage_and_restore() {
