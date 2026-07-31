@@ -92,6 +92,10 @@ pub struct StoreCard {
     pub reproducible: bool,
     /// This component is already installed on the machine.
     pub installed: bool,
+    /// Whether the store has a route to install this app. False for something the
+    /// distribution installed, and for a catalog entry that names no package: the
+    /// card is real and browsable, the action is not available.
+    pub installable: bool,
 }
 
 /// Whether a capability label names a Knowledge Graph scope. `compose` pushes
@@ -155,7 +159,19 @@ pub fn store_card(card: &AppCard, installed: &BTreeSet<String>) -> StoreCard {
         no_graph: !any_variant_requests(card, is_graph_scope),
         verified: default.is_some_and(|v| v.trust.verified_publisher.is_some()),
         reproducible: default.is_some_and(|v| v.trust.reproducible_build.is_some()),
-        installed: installed.contains(&card.id.0),
+        // Installed by US, or present as a distribution package. A `Native`
+        // variant EXISTS because `/usr/share/metainfo` says the app is installed
+        // on this machine, so reporting it as not-installed - which is what the
+        // installd set alone does, since installd never recorded it - would tell
+        // the user their editor is missing while they have it open.
+        installed: installed.contains(&card.id.0)
+            || card.variants.iter().any(|v| v.layer == SourceLayer::Native),
+        // Whether the store can act, which is not the same as whether the app
+        // exists. A distribution package has no `install_handle` because there is
+        // no route to install, update or remove it from here; the same is true of
+        // a DEP-11 component that states no package name. Without this the surface
+        // can only find out by trying, and the honest place to know is here.
+        installable: default.is_some_and(|v| v.install_handle.is_some()),
     }
 }
 
@@ -170,6 +186,32 @@ mod tests {
     use crate::catalog::{
         merge_catalog, CapabilityFootprint, CatalogEntry, ComponentId, DisplayMeta, TrustSignals,
     };
+
+    /// A distribution package is present and cannot be acted on, and the card has
+    /// to say both. Reporting it as not-installed would deny an app the user has;
+    /// reporting it as installable would offer a button with nothing behind it.
+    #[test]
+    fn a_distribution_package_reads_as_installed_and_not_installable() {
+        let mut e = entry("com.example.App", SourceLayer::Native, &[]);
+        e.install_handle = None;
+        let card = card_of(vec![e]);
+        let view = store_card(&card, &BTreeSet::new());
+        assert!(view.installed, "metainfo exists because the app is on the machine");
+        assert!(!view.installable, "the store has no route to a pacman package");
+        assert_eq!(view.tier, Tier::Installed);
+    }
+
+    /// The ordinary case still reads the other way, so the flag tracks the
+    /// variant rather than just being off for everything.
+    #[test]
+    fn a_catalog_app_with_a_package_reads_as_installable() {
+        let mut e = entry("com.example.Other", SourceLayer::Flatpak, &[]);
+        e.install_handle = Some("com.example.Other".into());
+        let card = card_of(vec![e]);
+        let view = store_card(&card, &BTreeSet::new());
+        assert!(!view.installed);
+        assert!(view.installable);
+    }
 
     fn entry(id: &str, layer: SourceLayer, caps: &[&str]) -> CatalogEntry {
         CatalogEntry {
