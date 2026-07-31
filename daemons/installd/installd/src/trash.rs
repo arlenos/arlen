@@ -96,6 +96,7 @@ pub fn stage_for_deletion(app_id: &str) -> Result<TrashInfo, TrashError> {
         let _ = install::remove_schemas(m);
         let _ = install::remove_modules(m);
         let _ = install::remove_keybindings_fragment(&m.package.id);
+        let _ = install::remove_settings_schema(&m.package.id);
     }
 
     // Move app directory to trash.
