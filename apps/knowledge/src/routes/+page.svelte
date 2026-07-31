@@ -9,8 +9,10 @@
   import KnowledgeHeader from "$lib/components/KnowledgeHeader.svelte";
   import KnowledgeSidebar from "$lib/components/KnowledgeSidebar.svelte";
   import KnowledgeDetail from "$lib/components/KnowledgeDetail.svelte";
+  import TimelineView from "$lib/components/TimelineView.svelte";
   import { knowledgeAdapter, mocked } from "$lib/adapter";
   import { labelKeyFor, emptyKeyFor } from "$lib/locations";
+  import type { TimelineEvent } from "$lib/stores/timeline";
   import { t } from "$lib/i18n/messages";
 
   // The headless controller auto-loads its initial place (Timeline, the spine).
@@ -18,9 +20,11 @@
   const path = ctrl.path;
 
   let selected = $state<FileEntry | null>(null);
+  let selectedEvent = $state<TimelineEvent | null>(null);
 
   function navigate(location: string): void {
     selected = null;
+    selectedEvent = null;
     void ctrl.navigate(location);
   }
   function onselection(entries: FileEntry[]): void {
@@ -48,21 +52,27 @@
     <main class="kn-main">
     <header class="kn-head">
       <h1 class="kn-h1">{$t(labelKeyFor($path))}</h1>
-      {#if $mocked}<span class="kn-sample">{$t("k.sample")}</span>{/if}
+      {#if $mocked && $path !== "timeline"}<span class="kn-sample">{$t("k.sample")}</span>{/if}
     </header>
-    <div class="kn-browser">
-      <FileBrowser
-        controller={ctrl}
-        {onactivate}
-        {onselection}
-        {now}
-        nameLabel={$t(labelKeyFor($path))}
-        emptyLabel={$t(emptyKeyFor($path))}
-      />
-    </div>
+    {#if $path === "timeline"}
+      <TimelineView onselect={(e) => (selectedEvent = e)} />
+    {:else}
+      <div class="kn-browser">
+        <FileBrowser
+          controller={ctrl}
+          {onactivate}
+          {onselection}
+          {now}
+          nameLabel={$t(labelKeyFor($path))}
+          emptyLabel={$t(emptyKeyFor($path))}
+        />
+      </div>
+    {/if}
   </main>
 
-    {#if selected}
+    {#if selectedEvent}
+      <KnowledgeDetail event={selectedEvent} onclose={() => (selectedEvent = null)} />
+    {:else if selected}
       <KnowledgeDetail entry={selected} onclose={() => (selected = null)} />
     {/if}
   </div>
