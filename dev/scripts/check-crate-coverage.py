@@ -2,17 +2,20 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Check that the two hand-kept crate lists still describe the repo.
+"""Check that the hand-kept build lists still describe the repo.
 
-Three lists have to agree and drift apart silently when they do not:
+Four things have to agree and drift apart silently when they do not:
 
-  1. `RUST_ALL` in `.github/workflows/ci.yml` - what CI actually builds.
-  2. `RUST_CRATES` in `dev/justfile` - what `just check`/`test`/`lint` build.
+  1. `RUST_ALL` / `FRONT_ALL` in `.github/workflows/ci.yml` - what CI builds.
+  2. `RUST_CRATES` / `FRONTENDS` in `dev/justfile` - what `just check`/`test`
+     build.
   3. the crate roots on disk.
+  4. the package.json files that declare a test script.
 
 Nothing enforced (1) == (2), so the justfile fell nine crates behind CI and
-`just test` reported a green that CI did not share. Nothing enforced (3) either,
-so a new crate is built by CI only if whoever added it remembered the matrix.
+`just test` reported a green that CI did not share. Nothing enforced (3) or (4)
+either, so a new crate or app is built by CI only if whoever added it remembered
+the matrix.
 
 The exclusions below are the two documented ones. They are listed as prefixes
 rather than inferred, so dropping a crate out of CI is a visible edit here.
@@ -39,6 +42,16 @@ def excluded(path: str) -> bool:
     return any(p.match(pat) or p.is_relative_to(pat) for pat in EXCLUDED)
 
 
+def tracked_files(pattern: str) -> list[str]:
+    return subprocess.run(
+        ["git", "ls-files", pattern],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+
+
 def listed(name: str, text: str, pattern: str) -> list[str]:
     m = re.search(pattern, text, re.S)
     if not m:
@@ -52,7 +65,7 @@ def main() -> int:
     jf = (ROOT / "dev/justfile").read_text()
 
     rust_ci = listed("RUST_ALL", ci, r"RUST_ALL='(\[.*?\])'")
-    front_ci = listed("FRONT_ALL", ci, r"FRONT_ALL='(\[.*?\])'")
+    front_ci_list = listed("FRONT_ALL", ci, r"FRONT_ALL='(\[.*?\])'")
     rust_just = listed("RUST_CRATES", jf, r'RUST_CRATES := "(.*?)"')
     front_just = listed("FRONTENDS", jf, r'FRONTENDS := "(.*?)"')
 
@@ -60,7 +73,7 @@ def main() -> int:
 
     for label, a, b in (
         ("RUST_ALL / RUST_CRATES", rust_ci, rust_just),
-        ("FRONT_ALL / FRONTENDS", front_ci, front_just),
+        ("FRONT_ALL / FRONTENDS", front_ci_list, front_just),
     ):
         only_ci = sorted(set(a) - set(b))
         only_just = sorted(set(b) - set(a))
@@ -76,15 +89,10 @@ def main() -> int:
 
     # Every crate root on disk is built by CI, covered by a workspace root that is,
     # or explicitly excluded above.
-    tracked = subprocess.run(
-        ["git", "ls-files", "*Cargo.toml"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.split()
+    tracked = tracked_files("*Cargo.toml")
 
     in_ci = set(rust_ci)
+    front_ci = set(front_ci_list)
     workspaces = {c for c in in_ci if "[workspace]" in (ROOT / c / "Cargo.toml").read_text()}
 
     for f in tracked:
@@ -98,6 +106,26 @@ def main() -> int:
             continue
         problems.append(f"{d} is a crate nothing builds: add it to RUST_ALL + RUST_CRATES")
 
+    # The frontend side of the same claim: the matrix comment says every
+    # package.json declaring a test script is listed. The rust arm above checks
+    # its half against the tree; without this the frontend half was only ever
+    # checked against the justfile, so a new app with tests could be listed
+    # nowhere and nothing would say so.
+    for f in tracked_files("*package.json"):
+        if "node_modules" in f:
+            continue
+        try:
+            pkg = json.loads((ROOT / f).read_text())
+        except json.JSONDecodeError:
+            problems.append(f"{f} is not valid JSON")
+            continue
+        scripts = pkg.get("scripts", {})
+        if not {"test", "check"} & set(scripts):
+            continue
+        d = str(pathlib.Path(f).parent)
+        if d not in front_ci:
+            problems.append(f"{d} declares a test script but is in no frontend matrix")
+
     if problems:
         print("crate list drift:\n")
         for p in problems:
@@ -105,7 +133,7 @@ def main() -> int:
         print("\nthe two lists and the tree have to agree; fix whichever is behind")
         return 1
 
-    print(f"crate lists agree: {len(rust_ci)} rust, {len(front_ci)} frontend, tree fully covered")
+    print(f"crate lists agree: {len(rust_ci)} rust, {len(front_ci_list)} frontend, tree fully covered")
     return 0
 
 
