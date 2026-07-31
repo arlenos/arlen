@@ -5,6 +5,7 @@
   /// the quiet trust panel (ODRS is one row, never the headline), screenshots,
   /// description, and the passive support link.
   import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
   import { ArrowLeft, ExternalLink, Check, Minus } from "lucide-svelte";
@@ -55,15 +56,15 @@
     return s === "forage" ? $t("st.src.forage") : s === "flathub" ? $t("st.src.flathub") : $t("st.src.debian");
   }
 
-  // The variant row's one meta line: the least-privilege marker (only when the
-  // variants actually differ), else the plain footprint, plus installed.
+  // The variant row's one meta line: the same axis on every row (the
+  // capability count) so the rows actually compare, then the least-privilege
+  // marker where it is earned, then installed.
   function variantMeta(v: (typeof app extends null ? never : NonNullable<typeof app>)["variants"][number]): string {
     const a = app;
     if (!a) return "";
-    const parts: string[] = [];
+    const parts: string[] = [$t("st.capCount", { n: v.caps.filter((c) => !c.negative).length })];
     const differ = a.variants.some((o) => o.capWeight !== leastWeight);
-    if (v.capWeight === leastWeight && differ) parts.push($t("st.leastPrivilege"));
-    else parts.push($t("st.capCount", { n: v.caps.filter((c) => !c.negative).length }));
+    if (v.capWeight === leastWeight && differ) parts.push($t("st.leastPrivilege").toLowerCase());
     if (v.installed) parts.push($t("st.installed").toLowerCase());
     return parts.join(", ");
   }
@@ -153,31 +154,33 @@
         </section>
       {/if}
 
-      {#if trust}
-        <section class="panel" aria-labelledby="trust-label">
-          <div class="panel-label" id="trust-label">{$t("st.trust.title")}</div>
+      <section class="panel" aria-labelledby="trust-label">
+        <div class="panel-label" id="trust-label">{$t("st.trust.title")}</div>
+        <!-- Reproducible and verified are facts about the CHOSEN variant (the
+             fixture already differs per source), so they read from it and
+             follow the selection like the capability panel does. Installs and
+             the ODRS rating are app-level. -->
+        <div class="trust-row">
+          <span class="trust-k">{$t("st.trust.reproducible")}</span>
+          <span class="trust-v">{variant.reproducible ? $t("st.trust.reproducible.yes") : $t("st.trust.reproducible.no")}</span>
+        </div>
+        <div class="trust-row">
+          <span class="trust-k">{$t("st.trust.publisher")}</span>
+          <span class="trust-v">{variant.verified ? $t("st.trust.publisher.yes") : $t("st.trust.publisher.no")}</span>
+        </div>
+        {#if trust?.installCount != null}
           <div class="trust-row">
-            <span class="trust-k">{$t("st.trust.reproducible")}</span>
-            <span class="trust-v">{trust.reproducible ? $t("st.trust.reproducible.yes") : $t("st.trust.reproducible.no")}</span>
+            <span class="trust-k">{$t("st.trust.installs")}</span>
+            <span class="trust-v">{$t("st.trust.installs.value", { n: trust.installCount.toLocaleString() })}</span>
           </div>
+        {/if}
+        {#if trust?.odrsRating != null}
           <div class="trust-row">
-            <span class="trust-k">{$t("st.trust.publisher")}</span>
-            <span class="trust-v">{trust.verifiedPublisher ? $t("st.trust.publisher.yes") : $t("st.trust.publisher.no")}</span>
+            <span class="trust-k">{$t("st.trust.rating")}</span>
+            <span class="trust-v">{$t("st.trust.rating.value", { score: trust.odrsRating.toFixed(1) })}</span>
           </div>
-          {#if trust.installCount != null}
-            <div class="trust-row">
-              <span class="trust-k">{$t("st.trust.installs")}</span>
-              <span class="trust-v">{$t("st.trust.installs.value", { n: trust.installCount.toLocaleString() })}</span>
-            </div>
-          {/if}
-          {#if trust.odrsRating != null}
-            <div class="trust-row">
-              <span class="trust-k">{$t("st.trust.rating")}</span>
-              <span class="trust-v">{$t("st.trust.rating.value", { score: trust.odrsRating.toFixed(1) })}</span>
-            </div>
-          {/if}
-        </section>
-      {/if}
+        {/if}
+      </section>
 
       {#if app.shots && app.shots.length > 0}
         <div class="group-label">{$t("st.screenshots")}</div>
@@ -194,7 +197,13 @@
       {/if}
 
       {#if app.donationUrl}
-        <Button variant="ghost" class="gap-2 px-3 font-normal text-muted-foreground hover:text-foreground" id="support">
+        {@const url = app.donationUrl}
+        <Button
+          variant="ghost"
+          class="gap-2 px-3 font-normal text-muted-foreground hover:text-foreground"
+          id="support"
+          onclick={() => invoke("open_url", { url }).catch(() => {})}
+        >
           <ExternalLink size={15} strokeWidth={1.75} />
           {$t("st.support")}
         </Button>
