@@ -370,9 +370,12 @@ async fn remove_app_grants(graph: &GraphHandle, app_id: &str) {
 /// whose profile is gone is an uninstall (the projection must be cleaned up), not
 /// a narrowing (the projection stays stale and re-mints).
 fn profile_exists(app_id: &str) -> bool {
-    arlen_permissions::profile_path(app_id)
-        .map(|p| p.exists())
-        .unwrap_or(false)
+    // Both tiers: this decides whether a permission change is an EDIT (reproject
+    // the declared grants) or an UNINSTALL (delete them). A system-tier-only app,
+    // which is what an apt-installed one looks like, has no user file at all, so
+    // asking that tier alone would read every edit to it as an uninstall and drop
+    // the grants of an app that is still installed.
+    arlen_permissions::profile_exists(app_id)
 }
 
 /// Process a graph-relevant event.
