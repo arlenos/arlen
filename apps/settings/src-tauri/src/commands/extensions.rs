@@ -148,6 +148,23 @@ async fn narrow_profile(app_id: &str, capabilities: &[String], report: &mut Revo
         .failed
         .extend(arlen_extensions::revoke::unrevocable(&profile, capabilities));
 
+    // A system-tier profile wins outright over the user one (`load_tiered`), and
+    // the daemon's revoke narrows the USER file. So for an app enrolled at the
+    // system tier - anything apt-installed - this narrowing changes nothing that
+    // is enforced, and reporting each reach as revoked would tell the user they
+    // had taken away an authority the app still holds. Say so once, up front, and
+    // still perform the narrowing: it is not useless, it is what takes effect if
+    // the system profile is ever removed.
+    if arlen_permissions::system_permissions_dir()
+        .join(format!("{app_id}.toml"))
+        .exists()
+    {
+        report.failed.push(format!(
+            "{app_id} is enrolled at the system tier, which overrides the profile this \
+             narrows - what it may do is unchanged until the system profile is changed"
+        ));
+    }
+
     let client = os_sdk::UnixGraphClient::new(knowledge_socket());
     for reach in arlen_extensions::revoke::resolve_reaches(&profile, capabilities) {
         let request = RevokeReach {
@@ -234,7 +251,13 @@ fn describe(reach: &arlen_permissions::revoke::RevokedReach) -> String {
     }
 }
 
-/// The app's enrolled profile, or `None` if it has none or it will not parse.
+/// The app's enrolled USER-tier profile, or `None` if it has none or it will not
+/// parse.
+///
+/// Deliberately the user tier alone, because it is what the revoke path narrows -
+/// the daemon's revoke resolves `profile_path`, which is this same file. Reading
+/// the tiered result here would list reaches this code cannot then remove.
+/// `narrow_profile` says so separately when a system profile is what governs.
 fn load_profile(app_id: &str) -> Option<arlen_permissions::PermissionProfile> {
     let path = arlen_permissions::profile_path(app_id).ok()?;
     toml::from_str(&std::fs::read_to_string(path).ok()?).ok()
