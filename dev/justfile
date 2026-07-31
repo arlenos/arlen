@@ -421,6 +421,33 @@ screenshot-nested out client *args:
     COMPOSITOR_PATH="${COMPOSITOR_PATH:-$HOME/Repositories/compositor}" \
         "{{justfile_directory()}}/screenshot/shoot-compositor.sh" "{{out}}" {{client}} {{args}}
 
+# Every confinement path this repo has, exercised for real: the launcher, the
+# arbitrary-command sandbox, and the decoder workers. All `#[ignore]`d, so they run
+# only here - and all of them run on an ordinary developer machine with bwrap,
+# pasta and Landlock present, despite being filed as needing metal.
+#
+# Worth running after any change to a confinement profile, a seccomp allowlist or
+# the spawn path. Reading those does not tell you whether a real program fits
+# through them: the command sandbox could not execute a single dynamically linked
+# binary while its unit tests passed, and two separate seccomp allowlists refused
+# the POSIX timers while their comments said "timers".
+#
+# Expect ONE failure today: `killing_the_launcher_kills_the_confined_tree`. It is a
+# true defect, not an environment gap - the confined tree outlives a SIGKILLed
+# launcher because the teardown chains PDEATHSIG through pasta. See coder-reports.
+#
+# Run every confinement path for real (expect one known failure).
+confinement-check:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd "{{ROOT}}"
+    echo "== arlen-run (launcher, landlock, netns, seccomp) =="
+    (cd daemons/arlen-run && cargo test -- --ignored --test-threads=1) || true
+    echo "== terminal-run-mcp (the run_command sandbox) =="
+    (cd daemons/terminal-run-mcp && cargo test --test confined_exec -- --ignored --test-threads=1) || true
+    echo "== viewers (the decoder workers) =="
+    just --justfile "{{justfile()}}" viewers-decode-check || true
+
 # The confined decoder workers against real fixtures, on-kernel (`#[ignore]`d, so
 # they only run here). Each worker decodes UNDER its installed seccomp filter, so a
 # pass also proves the tight per-decoder allowlist permits a real decode - the one
@@ -429,6 +456,8 @@ screenshot-nested out client *args:
 # The paths must be ABSOLUTE: the test process does not run in this directory, and
 # a relative fixture path fails as a missing file rather than a decode error, which
 # reads like a broken worker.
+#
+# Decode a real PNG, JXL, AVIF and WAV in their sandboxes.
 viewers-decode-check:
     #!/usr/bin/env bash
     set -euo pipefail
