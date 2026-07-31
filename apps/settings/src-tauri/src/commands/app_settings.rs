@@ -315,3 +315,137 @@ pub async fn app_settings_write_raw(
 
     Ok(answer_from(response))
 }
+
+/// Whether the app's own schema declares a handoff row opening `window`.
+///
+/// The gate on the handoff: the window name reaches another program's argv, so
+/// it has to come from what that program declared rather than from the request.
+fn schema_declares_handoff(schema: &SettingsSchema, window: &str) -> bool {
+    schema
+        .sections
+        .iter()
+        .flat_map(|s| &s.items)
+        .filter_map(|i| i.handoff.as_ref())
+        .any(|h| h.window == window)
+}
+
+/// Where an installed app's files live, matching installd's `user_apps_dir`.
+fn user_apps_dir() -> Option<std::path::PathBuf> {
+    if let Ok(dir) = std::env::var("ARLEN_USER_APPS_DIR") {
+        return Some(std::path::PathBuf::from(dir));
+    }
+    dirs::data_dir().map(|d| d.join("arlen/apps"))
+}
+
+/// Just enough of an installed package's manifest to find its entry point.
+#[derive(serde::Deserialize)]
+struct InstalledManifest {
+    binary: InstalledBinary,
+}
+
+#[derive(serde::Deserialize)]
+struct InstalledBinary {
+    path: String,
+}
+
+/// Resolve the executable of an installed app, relative to its install dir.
+///
+/// Read from the package's own `manifest.toml` rather than guessed from the
+/// app-id, because the binary's name is the package's to state.
+fn installed_executable(app_id: &str) -> Result<std::path::PathBuf, String> {
+    let dir = user_apps_dir()
+        .ok_or_else(|| "there is no data directory to find installed apps in".to_string())?
+        .join(app_id);
+    let manifest_text = std::fs::read_to_string(dir.join("manifest.toml"))
+        .map_err(|_| format!("{app_id} does not look installed"))?;
+    let manifest: InstalledManifest =
+        toml::from_str(&manifest_text).map_err(|e| format!("{app_id} has an unreadable manifest: {e}"))?;
+    let exe = dir.join(&manifest.binary.path);
+    if !exe.exists() {
+        return Err(format!("{app_id} declares a binary that is not installed"));
+    }
+    Ok(exe)
+}
+
+/// Open an app's own settings window (PAS-6 tier three, the handoff).
+///
+/// The app declares a window NAME in its schema and the system launches the
+/// app's ordinary entry point with `--settings-window <name>`. The app exposes
+/// no second entry point for this, which is the whole design: Android's
+/// equivalent had the settings app start an exported activity, and exporting it
+/// to the settings app exported it to every app on the device.
+///
+/// **The name is checked against the app's own schema, not taken on trust.**
+/// Without that, this command would pass any caller-supplied string into another
+/// program's argv, which is the door the design is built to not have. A window
+/// no item declares is refused, and so is an app with no schema at all.
+///
+/// Launched detached: the handoff hands the user over to the app's own window,
+/// and Settings does not wait for it or own its lifetime.
+#[tauri::command]
+pub async fn app_settings_handoff(app_id: String, window: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let registry = DirectoryRegistry::new(schema_dirs(), config_dir());
+        // Validates the app-id before touching a path, and proves the app is
+        // installed with a schema at all.
+        let found = registry
+            .lookup(&app_id)
+            .ok_or_else(|| format!("{app_id} has no settings schema"))?;
+
+        if !schema_declares_handoff(&found.schema, &window) {
+            return Err(format!("{app_id} declares no handoff window {window:?}"));
+        }
+
+        let exe = installed_executable(&app_id)?;
+        std::process::Command::new(&exe)
+            .arg("--settings-window")
+            .arg(&window)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("could not start {}: {e}", exe.display()))
+    })
+    .await
+    .map_err(|e| format!("the handoff task failed: {e}"))?
+}
+
+#[cfg(test)]
+mod handoff_tests {
+    use super::*;
+
+    fn schema_with(handoff_window: Option<&str>) -> SettingsSchema {
+        let handoff = handoff_window
+            .map(|w| format!("\nhandoff = {{ window = \"{w}\" }}"))
+            .unwrap_or_default();
+        let text = format!(
+            r#"
+version = 1
+[[sections]]
+label = "General"
+[[sections.items]]
+key = "advanced"
+type = "handoff"
+label = "Advanced"{handoff}
+"#
+        );
+        toml::from_str(&text).expect("schema fixture parses")
+    }
+
+    /// The whole point of the check: a window the app declared opens, and one it
+    /// did not is refused, because the name becomes an argv element of another
+    /// program.
+    #[test]
+    fn only_a_window_the_app_declared_is_a_handoff_target() {
+        let schema = schema_with(Some("advanced"));
+        assert!(schema_declares_handoff(&schema, "advanced"));
+        assert!(!schema_declares_handoff(&schema, "anything-else"));
+        assert!(!schema_declares_handoff(&schema, ""));
+    }
+
+    /// A schema with no handoff row at all opens nothing, rather than falling
+    /// through to "no objection".
+    #[test]
+    fn a_schema_without_a_handoff_opens_nothing() {
+        let schema = schema_with(None);
+        assert!(!schema_declares_handoff(&schema, "advanced"));
+    }
+}
