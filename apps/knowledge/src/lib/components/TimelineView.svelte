@@ -354,9 +354,11 @@
 
   /* The sentence row: quiet verb, emphasized object, quiet source, tabular
      time. One grid so the columns align down the whole spine. */
+  /* The time column is fixed so the flexible column resolves identically on
+     every row; the sources then share one clean right seam. */
   .tl-row {
     display: grid;
-    grid-template-columns: max-content max-content minmax(0, 1fr) max-content max-content;
+    grid-template-columns: max-content max-content minmax(0, 1fr) max-content 5.5rem;
     align-items: baseline;
     column-gap: 0.625rem;
     width: 100%;
@@ -410,6 +412,7 @@
     white-space: nowrap;
   }
   .tl-time {
+    justify-self: end;
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);

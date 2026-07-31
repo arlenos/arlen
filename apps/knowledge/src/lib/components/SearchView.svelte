@@ -376,9 +376,12 @@
     display: flex;
     flex-direction: column;
   }
+  /* The time column is FIXED so the two fr columns resolve identically on
+     every row - a max-content time made the sub column drift a few pixels
+     between rows (each row is its own grid). */
   .se-row {
     display: grid;
-    grid-template-columns: 4.5rem minmax(0, 1.2fr) minmax(0, 1fr) max-content;
+    grid-template-columns: 4.5rem minmax(0, 1.2fr) minmax(0, 1fr) 7.5rem;
     align-items: baseline;
     column-gap: 0.75rem;
     width: 100%;
@@ -436,6 +439,7 @@
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
   }
   .se-time {
+    justify-self: end;
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
