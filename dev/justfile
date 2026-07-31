@@ -393,9 +393,20 @@ go-live-rehearsal:
         cargo build --manifest-path "{{ROOT}}/$c/Cargo.toml" 2>&1 | tee -a "$report"
     done
     echo "== run the live-executor rehearsal (#[ignore]d, single-threaded) ==" | tee -a "$report"
+    # NB the filter below matched NOTHING until this was noticed: no test in the
+    # suite is named `the_live_executor`, so the rehearsal built four crates, ran
+    # zero tests and exited 0 - a green go-live gate that gated nothing. The
+    # closest scenario is `the_engine_executor_does_not_silently_write_from_an_
+    # event_trigger`, but which scenarios constitute the rehearsal is your call,
+    # not a name I should guess at. So the filter is left as-is and the run now
+    # REFUSES to report success when it selected no tests.
     cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml" \
         --test integration_backend_smoke -- --ignored --test-threads=1 the_live_executor 2>&1 | tee -a "$report"
     status="${PIPESTATUS[0]}"
+    if grep -qE "^running 0 tests" "$report"; then
+        echo "REHEARSAL SELECTED NO TESTS - the filter matches nothing; this is not a pass" | tee -a "$report"
+        status=1
+    fi
     echo "== rehearsal exit ${status} (report ${report}) ==" | tee -a "$report"
     echo "NB a GREEN run does NOT flip production; executor_live in ~/.config/arlen/ai.toml stays Tim's manual step."
     exit "${status}"
