@@ -105,10 +105,14 @@ mod tests {
 
     #[test]
     fn the_delay_stops_growing_at_the_ceiling() {
-        assert_eq!(backoff_delay_micros(20), MAX_DELAY_MICROS);
+        // Spelled out rather than compared against the constant: asserting
+        // `== MAX_DELAY_MICROS` moves with the constant, so mistyping it as
+        // something a thousand times smaller would still pass. Five minutes.
+        assert_eq!(backoff_delay_micros(20), 300_000_000);
+        assert_eq!(backoff_delay_micros(20), MAX_DELAY_MICROS, "and it is the ceiling");
         // And nothing overflows into a small or negative wait at absurd counts,
         // which would turn a backoff into a hot loop.
-        assert_eq!(backoff_delay_micros(u32::MAX), MAX_DELAY_MICROS);
+        assert_eq!(backoff_delay_micros(u32::MAX), 300_000_000);
     }
 
     /// A caller that passes 0 means "the first retry", not "immediately".

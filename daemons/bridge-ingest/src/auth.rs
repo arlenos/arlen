@@ -168,6 +168,20 @@ mod tests {
         assert_eq!(c.freshness(NOW + 1), Freshness::Expired);
     }
 
+    /// The accessors, which nothing asserted: a credential that hands back the
+    /// wrong secret, or forgets its own expiry, would have passed every test
+    /// above because they all go through `freshness`.
+    #[test]
+    fn a_credential_hands_back_what_it_was_built_from() {
+        let c = ScopedCredential::expiring("tok-abc", NOW + 60);
+        assert_eq!(c.secret(), "tok-abc");
+        assert_eq!(c.expires_at_micros(), Some(NOW + 60));
+
+        let p = ScopedCredential::perpetual("static-key");
+        assert_eq!(p.secret(), "static-key");
+        assert_eq!(p.expires_at_micros(), None, "no window means no expiry to report");
+    }
+
     #[test]
     fn a_perpetual_credential_is_usable_at_any_time_and_never_due() {
         let c = ScopedCredential::perpetual("k");
