@@ -259,8 +259,13 @@ fn describe(reach: &arlen_permissions::revoke::RevokedReach) -> String {
 /// the tiered result here would list reaches this code cannot then remove.
 /// `narrow_profile` says so separately when a system profile is what governs.
 fn load_profile(app_id: &str) -> Option<arlen_permissions::PermissionProfile> {
-    let path = arlen_permissions::profile_path(app_id).ok()?;
-    toml::from_str(&std::fs::read_to_string(path).ok()?).ok()
+    // The TIERED loader, not the user file. Reading `~/.config` directly meant an
+    // app enrolled only at the system tier - anything apt-installed - reported "no
+    // readable profile" and the revoke gave up before resolving a single reach,
+    // while an app with files in both tiers had its reaches resolved against the
+    // overlay the system profile overrides. What may be revoked has to be computed
+    // from the profile that is actually in force.
+    arlen_permissions::load_profile(app_id).ok()
 }
 
 /// The knowledge daemon's socket, matching its bind.

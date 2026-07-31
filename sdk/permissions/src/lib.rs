@@ -841,12 +841,22 @@ impl McpPermissions {
 // Loading
 // ---------------------------------------------------------------------------
 
-/// Get the profile file path for an app.
+/// Get the USER-tier profile file path for an app.
 ///
 /// Foundation §7.3 canonical path: `~/.config/permissions/{app_id}.toml`.
 /// The user owns this file. The optional `ARLEN_PERMISSIONS_DIR` env
 /// override is for tests and dev sandboxes only — never set in
 /// production.
+///
+/// **This is one of two tiers, and not the authoritative one.** A root-owned
+/// system profile wins outright ([`load_tiered`]), so an app can be fully
+/// installed and governed with nothing at this path at all. Four separate sites
+/// have read it as "the app's profile" and each was wrong in its own way: a
+/// stale token cache, a grant projection that deleted an installed app's grants,
+/// a file watcher that saw nothing, a revoke that gave up reporting "no readable
+/// profile". Use it to WRITE the user tier - which is what installd and revoke
+/// legitimately target. To READ what an app may do, use [`load_profile`]; to ask
+/// whether it has one, [`profile_exists`]; to stat or watch, [`profile_paths`].
 pub fn profile_path(app_id: &str) -> Result<PathBuf, PermissionError> {
     // The id is interpolated into a filesystem path, so it MUST be a single safe
     // path component - the same guard `system_profile_path` applies. Validating
