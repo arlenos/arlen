@@ -947,6 +947,14 @@ fn system_profile_path(app_id: &str) -> Option<PathBuf> {
 /// Infallible, unlike [`permissions_dir`]: the system tier is an absolute path
 /// that needs no home directory.
 pub fn system_permissions_dir() -> PathBuf {
+    // Debug-gated, because the doc above says "tests and dev sandboxes only" and
+    // nothing was enforcing it. This resolves the tier `load_tiered` lets win
+    // outright, and its whole point is that a same-uid user cannot rewrite it:
+    // the files are root-owned under /var/lib. An override honoured in a release
+    // build hands that back, since anyone who can launch the process can set its
+    // environment and point the authoritative tier at a directory they control.
+    // Same fix, same reason, as the permission-helper's own base_dir.
+    #[cfg(debug_assertions)]
     if let Ok(dir) = std::env::var("ARLEN_SYSTEM_PERMISSIONS_DIR") {
         return PathBuf::from(dir);
     }
@@ -1276,6 +1284,34 @@ always_confirm_overrides = ["empty_trash"]
     }
 
     // ── F3 Rung A: the system tier ──
+
+    /// The system tier wins outright in `load_tiered`, and it is only worth
+    /// winning because a same-uid user cannot write it. An override honoured in
+    /// a release build would undo that, so the gate is asserted rather than
+    /// left to whoever reads the doc comment. Written to hold in both build
+    /// modes so it says something wherever it runs.
+    #[test]
+    fn the_system_tier_override_is_a_debug_affordance() {
+        let previous = std::env::var("ARLEN_SYSTEM_PERMISSIONS_DIR").ok();
+        std::env::set_var("ARLEN_SYSTEM_PERMISSIONS_DIR", "/tmp/not-the-system-tier");
+        let resolved = system_permissions_dir();
+        match previous {
+            Some(p) => std::env::set_var("ARLEN_SYSTEM_PERMISSIONS_DIR", p),
+            None => std::env::remove_var("ARLEN_SYSTEM_PERMISSIONS_DIR"),
+        }
+        if cfg!(debug_assertions) {
+            assert_eq!(
+                resolved,
+                PathBuf::from("/tmp/not-the-system-tier"),
+                "the override has to work in debug or the harness cannot seed a system tier"
+            );
+        } else {
+            assert!(
+                resolved.starts_with("/var/lib/arlen/permissions"),
+                "a release build resolved the system tier to {resolved:?} from the environment"
+            );
+        }
+    }
 
     #[test]
     fn system_profile_path_validates_the_app_id() {
