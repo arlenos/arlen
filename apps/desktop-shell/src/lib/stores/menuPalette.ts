@@ -65,7 +65,11 @@ const MOCK_MENU: MenuGroup[] = [
 ];
 
 /// The palette open state (live: set by the shortcut action).
-export const menuPaletteOpen = writable(false);
+/// `?menumock` (DEV only) opens it on load so the surface is screenshot-able
+/// before the shortcut wiring lands - same pattern as `?askmock`/`?consentmock`.
+export const menuPaletteOpen = writable(
+  import.meta.env.DEV && typeof location !== "undefined" && new URLSearchParams(location.search).has("menumock")
+);
 export function openMenuPalette(): void {
   menuPaletteOpen.set(true);
 }
