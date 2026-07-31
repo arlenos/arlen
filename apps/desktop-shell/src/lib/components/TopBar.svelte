@@ -5,6 +5,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+  import { tauriAvailable } from "$lib/tauri";
   import GlobalMenuBar from "$lib/components/GlobalMenuBar.svelte";
   import ClockIndicator from "$lib/components/ClockIndicator.svelte";
   import NetworkIndicator from "$lib/components/NetworkIndicator.svelte";
@@ -72,9 +73,11 @@
   // `outputInfo === null` and fall through to a primary-rendering
   // default, briefly mounting tray + popovers + per-app D-Bus
   // subscribers it shouldn't have.
+  // In plain-browser dev there is no webview to ask, and asking throws and
+  // takes the whole route down - treat the mock as the primary bar.
   const initialIsPrimary =
     typeof window !== "undefined" &&
-    getCurrentWebviewWindow().label === "main";
+    (!tauriAvailable || getCurrentWebviewWindow().label === "main");
 
   let outputInfo = $state<OutputInfo | null>(null);
   // `isPrimary` falls back to the label-derived value until the
