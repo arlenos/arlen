@@ -29,18 +29,13 @@
     if (e.key === "Escape" && get(current)) cancel();
   }
 
-  // The tier wears its own quiet tag beside "Windows app"; the status line
-  // keeps the certainty sentence, stated plainly, never "just works".
+  // The tier is a tag, not a sentence; only "untested" earns one short line
+  // (the consequence the tag alone does not carry).
   const TIER_LABELS: Record<PendingWindowsFile["tier"], string> = {
     verified: "Verified",
     "should-work": "Should work",
     untested: "Untested",
   };
-  function statusLine(p: PendingWindowsFile): string {
-    if (p.tier === "verified") return `Verified compatible, using the ${p.recipe ?? "curated recipe"}.`;
-    if (p.tier === "should-work") return "This should work. Runs sandboxed either way.";
-    return "Untested, it might not run properly.";
-  }
 
   // The sovereign preview: the permission profile this open would mint, shown
   // BEFORE the decision. Closed by default, one click away.
@@ -64,19 +59,21 @@
   >
     <Dialog.Content>
       <div class="wf">
-        <div class="wf-req">
+        <!-- Identity once: the title carries the name; the tags carry what a
+             sentence would otherwise repeat. -->
+        <div class="wf-head">
           <span class="wf-avatar">{p.appName.charAt(0)}</span>
-          <span class="wf-req-name">{p.appName}</span>
+          <h2 class="wf-title">Open {p.appName}?</h2>
+        </div>
+        <div class="wf-tags">
           <span class="wf-tag">Windows app</span>
           <span class="wf-tag tier-{p.tier}">{TIER_LABELS[p.tier]}</span>
         </div>
+        {#if p.tier === "untested"}
+          <p class="wf-status">It might not run properly.</p>
+        {/if}
 
-        <h2 class="wf-title">Open {p.appName}?</h2>
-        <p class="wf-status">{statusLine(p)}</p>
-
-        <!-- The sovereign preview: the profile this open mints, before the
-             decision. The disclosure names where it lives afterwards, so the
-             grant is revisitable, not a one-shot. -->
+        <!-- The sovereign preview: the profile this open mints, one click away. -->
         <div class="wf-access">
           <button type="button" class="wf-access-head" class:open={accessOpen} onclick={() => (accessOpen = !accessOpen)}>
             <ChevronRight size={13} strokeWidth={2} />
@@ -90,9 +87,7 @@
                   <span class="wf-scope-object">{scope}</span>
                 </div>
               {/each}
-              <p class="wf-access-note">
-                This profile is created when you {isInstaller ? "install" : "run"} it and lives in App access.
-              </p>
+              <p class="wf-access-note">Changeable later in App access.</p>
             </div>
           {/if}
         </div>
@@ -133,28 +128,28 @@
     flex-direction: column;
     gap: 0.625rem;
   }
-  .wf-req {
+  .wf-head {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    font-size: var(--text-xs);
+    gap: 0.625rem;
   }
   .wf-avatar {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 1.75rem;
+    height: 1.75rem;
     flex-shrink: 0;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--foreground);
   }
-  .wf-req-name {
-    font-weight: 600;
-    color: var(--foreground);
+  .wf-tags {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
   }
   .wf-tag {
     padding: 0.05rem 0.35rem;
