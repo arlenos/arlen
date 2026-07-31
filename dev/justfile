@@ -439,14 +439,13 @@ screenshot-nested out client *args:
 # the POSIX timers while their comments said "timers".
 #
 # Expect ONE failure today: `killing_the_launcher_kills_the_confined_tree`. It is a
-# true defect, not an environment gap. Sampling the process tree while it runs
-# shows why: the outer bwrap reaches ppid 1 within about 50ms of starting, before
-# anything is killed, because the process between it and the launcher exits as
-# soon as it has spawned it. A PDEATHSIG set against that parent has nothing left
-# to fire on. The intermittency follows - a run whose kill lands inside that
-# window still tears the tree down, which is why it passes perhaps half the time,
-# and pasta is not involved at all (this path unshares user and pid only). See
-# coder-reports.
+# true defect, not an environment gap - the confined tree outlives a SIGKILLed
+# launcher because the teardown chains PDEATHSIG through pasta, two levels deep.
+# Sampling the tree while it runs puts a clock on it: the outer bwrap reaches
+# ppid 1 within about 50ms of starting, before anything is killed at all, so the
+# signal has nothing left to fire on by the time the launcher dies. That is also
+# why it passes about half the time - a run whose kill lands inside that window
+# still tears the tree down. See the test's own doc comment and coder-reports.
 #
 # Run every confinement path for real (expect one known failure).
 confinement-check:
