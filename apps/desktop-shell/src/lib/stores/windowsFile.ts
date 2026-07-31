@@ -31,9 +31,14 @@ export interface PendingWindowsFile {
   recipe?: string;
   /// The scopes the freshly minted permission profile grants (the sovereign preview).
   access: string[];
+  /// First-run runtime fetch in progress ("Getting Wine 9.0 for this app") - a
+  /// progress step inside the same dialog, never a setup wall. Live: the bottle
+  /// daemon's fetch-progress event (seam).
+  fetch?: { runtime: string; progress: number } | null;
 }
 
-// One representative installer + one portable so both action layouts + tiers render.
+// One case per state the dialog must carry: the verified installer, the
+// untested portable, and a first-run fetch in flight.
 const MOCK: PendingWindowsFile[] = [
   {
     id: 1,
@@ -52,12 +57,28 @@ const MOCK: PendingWindowsFile[] = [
     tier: "untested",
     access: ["Its own files", "Network"],
   },
+  {
+    id: 3,
+    appName: "Affinity Photo Setup",
+    fileName: "affinity-photo-2.6.exe",
+    fileKind: "installer",
+    tier: "should-work",
+    access: ["Its own files", "Your Pictures folder"],
+    fetch: { runtime: "Wine 9.0", progress: 0.42 },
+  },
 ];
+
 
 /// The Windows file waiting on a decision now, or null.
 export const current = writable<PendingWindowsFile | null>(null);
 
 let mockIndex = 0;
+// `?wfmock=<n>` (DEV only) pins which fixture renders, so the screenshot loop
+// can address every state by URL - the `?consentmock` pattern.
+if (import.meta.env.DEV && typeof location !== "undefined") {
+  const pinned = Number(new URLSearchParams(location.search).get("wfmock"));
+  if (Number.isInteger(pinned) && pinned >= 0) mockIndex = pinned;
+}
 
 /// Fetch the pending open request. Live: `windows_file_request`. The fixture is
 /// served ONLY under vite (dev) so the surface renders for screenshots; on a real
