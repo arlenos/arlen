@@ -13,6 +13,7 @@
   import ProjectsView from "$lib/components/ProjectsView.svelte";
   import SearchView from "$lib/components/SearchView.svelte";
   import LibraryView from "$lib/components/LibraryView.svelte";
+  import CapsulesView from "$lib/components/CapsulesView.svelte";
   import { onMount } from "svelte";
   import { knowledgeAdapter, mocked } from "$lib/adapter";
   import { labelKeyFor, emptyKeyFor } from "$lib/locations";
@@ -113,8 +114,8 @@
     <main class="kn-main">
     <header class="kn-head">
       <h1 class="kn-h1">{$t(labelKeyFor($path))}</h1>
-      <!-- The designed places carry their own example-data line. -->
-      {#if $mocked && $path === "capsules" && $searchQuery.trim().length === 0}<span class="kn-sample">{$t("k.sample")}</span>{/if}
+      <!-- Every designed place carries its own example-data line. -->
+
     </header>
     {#if $searchQuery.trim().length > 0 || $path === "searches"}
       <!-- The titlebar query owns the content area wherever you are; the
@@ -126,6 +127,8 @@
       <ProjectsView onselect={onProjectsSelect} />
     {:else if $path === "library"}
       <LibraryView onselect={onLibrarySelect} />
+    {:else if $path === "capsules"}
+      <CapsulesView />
     {:else}
       <div class="kn-browser">
         <FileBrowser
@@ -181,10 +184,6 @@
     font-size: var(--text-lg);
     font-weight: 600;
     color: var(--color-fg-primary);
-  }
-  .kn-sample {
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .kn-browser {
     flex: 1;
