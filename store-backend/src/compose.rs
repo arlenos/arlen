@@ -60,6 +60,8 @@ pub fn forage_entry(recipe: &Recipe, layer: SourceLayer) -> CatalogEntry {
         capabilities,
         trust,
         kind,
+        // `forage install <name>` takes the recipe's own id.
+        install_handle: Some(meta.id.clone()),
         // A `github-release` recipe follows tags and states no version; empty
         // means "this source does not say", which the update check treats as
         // nothing to compare rather than as a change.
@@ -135,12 +137,15 @@ pub fn flathub_entries(xml: &str) -> Result<Vec<CatalogEntry>, ComposeError> {
             icon: icon_ref(&component),
         };
         entries.push(CatalogEntry {
-            id: ComponentId(id),
+            id: ComponentId(id.clone()),
             layer: SourceLayer::Flatpak,
             display,
             capabilities: CapabilityFootprint::default(),
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
+            // A Flathub ref is the component id; this layer is the reason the
+            // handle went unnoticed, since deriving it happens to work here.
+            install_handle: Some(id),
             version: latest_release_version(&component),
         });
     }
@@ -280,6 +285,11 @@ struct Dep11Component {
     screenshots: Option<Vec<Dep11Screenshot>>,
     #[serde(rename = "Releases")]
     releases: Option<Vec<Dep11Release>>,
+    /// The Debian package that provides this component - the name `apt install`
+    /// takes, and the key the curated permission profiles are filed under. Not
+    /// derivable from `ID`, which is why DEP-11 states it separately.
+    #[serde(rename = "Package")]
+    package: Option<String>,
 }
 
 /// One DEP-11 release record. Only the fields the update check needs; unknown
@@ -396,6 +406,10 @@ pub fn dep11_entries(yaml: &str) -> Vec<CatalogEntry> {
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
             version: dep11_release_version(&comp.releases),
+            // Absent when the record does not name one, which the caller must
+            // read as "cannot install this variant" - guessing a package name
+            // from the component id installs whatever happens to match.
+            install_handle: comp.package,
         });
     }
     entries
@@ -508,6 +522,43 @@ fn fuse_apt_profiles(entries: &mut [CatalogEntry], profiles: &[(String, String)]
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_apt_entry_carries_the_package_apt_would_be_told_to_install() {
+        // Without this the store can describe a Debian app and not install it:
+        // the component id is not the package name, and guessing one from the
+        // other installs whatever happens to match.
+        let yaml = "\
+---
+File: DEP-11
+---
+ID: org.example.Thing
+Package: example-thing
+Name:
+  C: Thing
+";
+        let entries = dep11_entries(yaml);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].install_handle.as_deref(), Some("example-thing"));
+    }
+
+    #[test]
+    fn a_record_naming_no_package_is_not_guessed_at() {
+        let yaml = "\
+---
+File: DEP-11
+---
+ID: org.example.Thing
+Name:
+  C: Thing
+";
+        let entries = dep11_entries(yaml);
+        assert_eq!(entries.len(), 1);
+        assert!(
+            entries[0].install_handle.is_none(),
+            "no package stated means not installable, not `org.example.Thing`"
+        );
+    }
     use super::*;
     use crate::catalog::merge_catalog;
 
