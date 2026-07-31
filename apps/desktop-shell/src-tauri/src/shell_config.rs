@@ -19,7 +19,7 @@
 /// TOML on disk.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -240,11 +240,23 @@ fn config_path() -> PathBuf {
 /// or unparseable.
 #[tauri::command]
 pub fn get_shell_config() -> Result<ShellConfig, String> {
-    let path = config_path();
+    read_at(&config_path())
+}
+
+/// Read a config from an explicit path.
+///
+/// Split out so the behaviour can be tested without pointing
+/// `XDG_CONFIG_HOME` at a temp dir. That env var is process-global: a
+/// mutex among the tests that set it does not isolate it from the tests
+/// that do not, and three other modules in this crate read the same
+/// variable, so under a parallel `cargo test` one of them would
+/// occasionally observe another test's temp directory. Passing the path
+/// removes the shared state instead of scheduling around it.
+fn read_at(path: &Path) -> Result<ShellConfig, String> {
     if !path.exists() {
         return Ok(ShellConfig::default());
     }
-    let content = fs::read_to_string(&path).map_err(|e| format!("read: {e}"))?;
+    let content = fs::read_to_string(path).map_err(|e| format!("read: {e}"))?;
     toml::from_str(&content).map_err(|e| format!("parse: {e}"))
 }
 
@@ -278,16 +290,30 @@ pub fn update_shell_config<F>(patch: F) -> Result<ShellConfig, String>
 where
     F: FnOnce(&mut ShellConfig),
 {
+    update_at_locked(&config_path(), patch)
+}
+
+/// [`update_at`] under `WRITE_LOCK`, which is what makes concurrent in-process
+/// writers safe. Takes the path so the serialisation itself can be tested without
+/// the process-global env var; the lock is real either way.
+fn update_at_locked<F>(path: &Path, patch: F) -> Result<ShellConfig, String>
+where
+    F: FnOnce(&mut ShellConfig),
+{
     let _guard = WRITE_LOCK.lock().map_err(|_| "WRITE_LOCK poisoned".to_string())?;
-    let path = config_path();
-    let mut cfg = if path.exists() {
-        let content = fs::read_to_string(&path).map_err(|e| format!("read: {e}"))?;
-        toml::from_str::<ShellConfig>(&content).map_err(|e| format!("parse: {e}"))?
-    } else {
-        ShellConfig::default()
-    };
+    update_at(path, patch)
+}
+
+/// The read-patch-write core over an explicit path. See [`read_at`] for why the
+/// path is a parameter. Takes no lock: [`update_at_locked`] is the guarded entry
+/// and the only caller.
+fn update_at<F>(path: &Path, patch: F) -> Result<ShellConfig, String>
+where
+    F: FnOnce(&mut ShellConfig),
+{
+    let mut cfg = read_at(path)?;
     patch(&mut cfg);
-    write_atomic(&cfg)?;
+    write_atomic_at(path, &cfg)?;
     Ok(cfg)
 }
 
@@ -296,14 +322,19 @@ where
 /// is atomic within the same filesystem, so a process crash mid-
 /// write cannot leave a partial or empty config file.
 fn write_atomic(cfg: &ShellConfig) -> Result<(), String> {
-    let path = config_path();
+    write_atomic_at(&config_path(), cfg)
+}
+
+/// The atomic write over an explicit path. See [`read_at`] for why the path is a
+/// parameter rather than read from the environment.
+fn write_atomic_at(path: &Path, cfg: &ShellConfig) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
     }
     let tmp = path.with_extension("toml.tmp");
     let content = toml::to_string_pretty(cfg).map_err(|e| format!("serialize: {e}"))?;
     fs::write(&tmp, content).map_err(|e| format!("write tmp: {e}"))?;
-    fs::rename(&tmp, &path).map_err(|e| format!("rename: {e}"))
+    fs::rename(&tmp, path).map_err(|e| format!("rename: {e}"))
 }
 
 /// Watch `~/.config/arlen/shell.toml` for external writes (e.g. from
@@ -392,38 +423,14 @@ pub fn start_shell_config_watcher(app: tauri::AppHandle) {
 mod tests {
     use super::*;
 
-    /// Tests in this module redirect `dirs::config_dir()` via the
-    /// `XDG_CONFIG_HOME` env var, which is process-global. cargo
-    /// runs unit tests in parallel, so we serialise this module's
-    /// tests through a dedicated mutex to keep the env mutation
-    /// race-free.
-    static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    /// Run the closure with `XDG_CONFIG_HOME` pointing at a fresh
-    /// tempdir. Restores the previous value on the way out.
-    fn with_isolated_config<R>(f: impl FnOnce() -> R) -> R {
-        let _guard = TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let prev = std::env::var_os("XDG_CONFIG_HOME");
-        // SAFETY: tests in this module are serialised by
-        // TEST_ENV_LOCK, so the env mutation is well-defined for
-        // the duration of `f`.
-        unsafe {
-            std::env::set_var("XDG_CONFIG_HOME", tmp.path());
-        }
-        let out = f();
-        unsafe {
-            match prev {
-                Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
-                None => std::env::remove_var("XDG_CONFIG_HOME"),
-            }
-        }
-        out
-    }
-
-    /// Codex finding (high): a brightness-key write must not silently
+    /// These tests write to a temp path they are handed, not to
+    /// `XDG_CONFIG_HOME`. The env var is process-global and three other
+    /// modules in this crate read it, so serialising this module through a
+    /// mutex never isolated anything: a test elsewhere could observe the
+    /// redirected value and this module's own tests failed under a plain
+    /// `cargo test` while passing single-threaded.
+    ///
+    /// A brightness-key write must not silently
     /// drop fields that another writer just set. With the old
     /// `get + save` pattern the second writer would have read a
     /// stale config and overwritten the first writer's change. The
@@ -431,22 +438,24 @@ mod tests {
     /// each writer scopes its mutation to the fields it cares about.
     #[test]
     fn update_shell_config_preserves_unrelated_fields() {
-        with_isolated_config(|| {
+        {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("shell.toml");
             // Writer A: sets night-light enabled + temperature.
-            update_shell_config(|cfg| {
+            update_at_locked(&path, |cfg| {
                 cfg.night_light.enabled = true;
                 cfg.night_light.temperature = 4500;
             })
             .expect("writer A");
 
             // Writer B: simulates the brightness-key path.
-            update_shell_config(|cfg| {
+            update_at_locked(&path, |cfg| {
                 cfg.display.brightness = 0.42;
             })
             .expect("writer B");
 
             // Reload from disk: both writes must be present.
-            let cfg = get_shell_config().expect("reload");
+            let cfg = read_at(&path).expect("reload");
             assert!(
                 cfg.night_light.enabled,
                 "writer A's night_light.enabled was clobbered"
@@ -459,7 +468,7 @@ mod tests {
                 (cfg.display.brightness - 0.42).abs() < f32::EPSILON,
                 "writer B's display.brightness was clobbered"
             );
-        });
+        }
     }
 
     /// Concurrent writers from multiple threads must each see a
@@ -472,9 +481,11 @@ mod tests {
     /// guarantee we care about.
     #[test]
     fn update_shell_config_serialises_concurrent_writers() {
-        with_isolated_config(|| {
+        {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("shell.toml");
             // Seed the file so each writer reads a known baseline.
-            update_shell_config(|cfg| {
+            update_at_locked(&path, |cfg| {
                 cfg.display.brightness = 0.0;
             })
             .expect("seed");
@@ -482,11 +493,12 @@ mod tests {
             const N: u32 = 16;
             let handles: Vec<_> = (0..N)
                 .map(|i| {
+                    let path = path.clone();
                     std::thread::spawn(move || {
                         // Each thread sets a *different* temperature
                         // so we can later verify the last writer's
                         // value made it. The intermediates can race.
-                        update_shell_config(|cfg| {
+                        update_at_locked(&path, |cfg| {
                             cfg.night_light.temperature = 3000 + i as u16;
                         })
                         .expect("update");
@@ -501,12 +513,12 @@ mod tests {
             // in the expected range. A torn write would either
                 // leave invalid TOML (parse error) or a default
             // value outside the loop's range.
-            let cfg = get_shell_config().expect("reload");
+            let cfg = read_at(&path).expect("reload");
             let t = cfg.night_light.temperature;
             assert!(
                 (3000..3000 + N as u16).contains(&t),
                 "torn write: temperature {t} is outside the writer range"
             );
-        });
+        }
     }
 }
