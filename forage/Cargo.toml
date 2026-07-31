@@ -20,6 +20,7 @@ arlen-forage-build = { path = "build" }
 arlen-forage-fetch = { path = "fetch" }
 arlen-forage-store = { path = "store" }
 arlen-forage-signing = { path = "signing" }
+arlen-cookbook-registry = { path = "cookbook-registry" }
 arlen-cookbook-resolve = { path = "cookbook-resolve" }
 arlen-forage-capabilities = { path = "capabilities" }
 arlen-forage-bridge-install = { path = "bridge-install" }
