@@ -94,10 +94,13 @@ pub fn build_confinement(
 /// real dirs bind directly. Absent paths are skipped (bwrap rejects a missing
 /// bind source), so this is safe on any layout.
 fn merged_usr_compat_binds() -> Vec<Bind> {
-    ["/lib64", "/lib", "/bin", "/sbin"]
+    // The path list lives in the confiner, which is where the other two
+    // confinement constructors reach for it. Keeping a third copy here is how
+    // `command_profile` came to be missing it entirely and `run_command` could not
+    // execute a dynamically linked program.
+    arlen_confiner::merged_usr_compat_roots()
         .into_iter()
-        .filter(|p| Path::new(p).exists())
-        .map(|p| Bind::ReadOnly(p.into(), p.into()))
+        .map(|p| Bind::ReadOnly(p.clone(), p))
         .collect()
 }
 
