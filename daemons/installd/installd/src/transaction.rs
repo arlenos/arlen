@@ -24,6 +24,9 @@ pub struct InstallTransaction {
     /// the manifest had no shippable bindings (empty list or every
     /// entry was filtered out by permission rules).
     keybindings_fragment: Option<PathBuf>,
+    /// Path of the settings schema we wrote, if any. `None` means the package
+    /// declared no settings.
+    settings_schema: Option<PathBuf>,
     committed: bool,
 }
 
@@ -38,6 +41,7 @@ impl InstallTransaction {
             installed_modules: Vec::new(),
             desktop_entry_path: None,
             keybindings_fragment: None,
+            settings_schema: None,
             committed: false,
         }
     }
@@ -101,6 +105,17 @@ impl InstallTransaction {
         Ok(())
     }
 
+    /// Step: Write the app's settings schema (if any).
+    ///
+    /// After the app's files are on disk, so a schema never describes an app
+    /// whose install then failed, and before the desktop entry, so the app is
+    /// never launchable from the menu with no settings page behind it.
+    pub fn write_settings_schema(&mut self) -> Result<(), InstallError> {
+        let path = install::write_settings_schema(&self.manifest)?;
+        self.settings_schema = path;
+        Ok(())
+    }
+
     /// Step: Create desktop entry.
     pub fn create_desktop_entry(&mut self) -> Result<(), InstallError> {
         let path = install::create_desktop_entry(&self.manifest)?;
@@ -125,7 +140,8 @@ impl InstallTransaction {
         let app_id = &self.manifest.package.id;
         tracing::warn!("rolling back install for {app_id}");
 
-        // Reverse order: desktop entry, modules, schemas, app files.
+        // Reverse order: desktop entry, settings schema, keybindings, modules,
+        // GSettings schemas, app files.
 
         if let Some(ref path) = self.desktop_entry_path {
             if path.exists() {
@@ -134,6 +150,13 @@ impl InstallTransaction {
                     .arg(path.parent().unwrap_or(Path::new(".")))
                     .status();
                 tracing::debug!("rollback: removed desktop entry");
+            }
+        }
+
+        if let Some(ref path) = self.settings_schema {
+            if path.exists() {
+                let _ = fs::remove_file(path);
+                tracing::debug!("rollback: removed settings schema");
             }
         }
 
@@ -263,6 +286,7 @@ mod tests {
             schemas: SchemaInfo::default(),
             modules: ModuleInfo::default(),
             keybindings: Vec::new(),
+            settings: None,
         }
     }
 

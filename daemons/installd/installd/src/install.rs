@@ -65,6 +65,13 @@ pub struct Manifest {
     /// not ship shortcuts leave the section out entirely.
     #[serde(default, rename = "keybinding")]
     pub keybindings: Vec<KeybindingEntry>,
+    /// The settings schema the package declares (PAS-1), carried verbatim from
+    /// the recipe's `[settings]`. Installed to
+    /// `~/.local/share/arlen/settings-schemas/<package.id>.toml`, which is where
+    /// the settings-broker looks, and removed on uninstall. Absent for a package
+    /// that declares no settings.
+    #[serde(default)]
+    pub settings: Option<arlen_forage_recipe::settings::SettingsSchema>,
 }
 
 /// [schemas] section.
@@ -222,6 +229,66 @@ pub fn user_keybindings_fragment_dir() -> PathBuf {
                 .unwrap_or_else(|| PathBuf::from("~/.config"))
                 .join("arlen/compositor.d/keybindings.d")
         })
+}
+
+/// Where an app's declared settings schema is installed (PAS-1).
+///
+/// Must stay `$XDG_DATA_HOME/arlen/settings-schemas`, because that is the first
+/// directory the settings-broker's `DirectoryRegistry` searches; a schema written
+/// anywhere else is a settings page that never appears. The env override exists
+/// for tests, matching the other install directories here.
+pub fn user_settings_schema_dir() -> PathBuf {
+    std::env::var("ARLEN_USER_SETTINGS_SCHEMA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            dirs::data_dir()
+                .unwrap_or_else(|| PathBuf::from("~/.local/share"))
+                .join("arlen/settings-schemas")
+        })
+}
+
+/// Write the package's settings schema so the app has a settings page before it
+/// has ever run.
+///
+/// No-op when the manifest declares none, so a package without settings leaves
+/// no empty file behind for the broker to parse. Atomic (tmp then rename): the
+/// broker re-reads this file on every request, so a half-written one would be a
+/// parse error at exactly the wrong moment.
+pub fn write_settings_schema(manifest: &Manifest) -> Result<Option<PathBuf>, InstallError> {
+    let Some(schema) = &manifest.settings else {
+        return Ok(None);
+    };
+    let app_id = &manifest.package.id;
+    let dir = user_settings_schema_dir();
+    fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{app_id}.toml"));
+
+    let body = toml::to_string(schema).map_err(|e| {
+        InstallError::InvalidManifest(format!("settings schema for {app_id}: {e}"))
+    })?;
+    let content = format!(
+        "# Settings schema for {app_id}, installed from its package.
+         # Managed by installd, do not edit manually.
+
+{body}"
+    );
+
+    let tmp = path.with_extension("toml.tmp");
+    fs::write(&tmp, content)?;
+    fs::rename(&tmp, &path)?;
+    tracing::info!("wrote settings schema for {app_id}");
+    Ok(Some(path))
+}
+
+/// Remove the package's settings schema. A missing file is not an error: a
+/// package that shipped no settings has nothing to remove.
+pub fn remove_settings_schema(app_id: &str) -> Result<(), InstallError> {
+    let path = user_settings_schema_dir().join(format!("{app_id}.toml"));
+    if path.exists() {
+        fs::remove_file(&path)?;
+        tracing::debug!("removed settings schema for {app_id}");
+    }
+    Ok(())
 }
 
 /// Get the user GSettings schemas directory.
@@ -627,6 +694,10 @@ pub fn uninstall_user(app_id: &str) -> Result<(), InstallError> {
         // Fragment cleanup is best-effort: a missing fragment on
         // uninstall is normal for packages that never shipped one.
         let _ = remove_keybindings_fragment(&manifest.package.id);
+        // Same best-effort reasoning: a package that shipped no settings has no
+        // schema file, and a leftover one would give the broker a page for an app
+        // that is gone.
+        let _ = remove_settings_schema(&manifest.package.id);
     }
 
     fs::remove_dir_all(&dest)?;
@@ -863,6 +934,7 @@ mod tests {
             schemas: SchemaInfo::default(),
             modules: ModuleInfo::default(),
             keybindings: Vec::new(),
+            settings: None,
         }
     }
 
@@ -1277,6 +1349,67 @@ default_binding = "Super+O"
         assert!(write_keybindings_fragment(&m).unwrap().is_none());
 
         std::env::remove_var("ARLEN_USER_KEYBINDINGS_DIR");
+    }
+
+    /// The whole point of PAS-1: an installed app has a settings page before it
+    /// has ever run. Written where the broker looks, parseable as what the broker
+    /// parses, and gone again on removal.
+    #[test]
+    fn a_settings_schema_is_installed_where_the_broker_reads_it() {
+        let _env = crate::env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("ARLEN_USER_SETTINGS_SCHEMA_DIR", dir.path());
+
+        let mut m = make_manifest();
+        m.package.id = "com.test.settings".into();
+        m.settings = Some(
+            toml::from_str(
+                r#"
+version = 1
+[[sections]]
+label = "General"
+[[sections.items]]
+key = "theme"
+type = "string"
+label = "Theme"
+default = "dark"
+"#,
+            )
+            .expect("schema fixture parses"),
+        );
+
+        let path = write_settings_schema(&m).unwrap().expect("a schema was written");
+        assert_eq!(path, dir.path().join("com.test.settings.toml"));
+
+        // Re-read it the way the broker does, not as opaque text.
+        let text = fs::read_to_string(&path).unwrap();
+        let parsed: arlen_forage_recipe::settings::SettingsSchema =
+            toml::from_str(&text).expect("the broker can parse what we wrote");
+        assert_eq!(parsed, m.settings.clone().unwrap());
+
+        // No leftover temp file beside it.
+        assert!(!dir.path().join("com.test.settings.toml.tmp").exists());
+
+        remove_settings_schema("com.test.settings").unwrap();
+        assert!(!path.exists());
+        // Removing again is fine: a package that shipped none has nothing to drop.
+        remove_settings_schema("com.test.settings").unwrap();
+
+        std::env::remove_var("ARLEN_USER_SETTINGS_SCHEMA_DIR");
+    }
+
+    /// A package declaring no settings must leave no file, or the broker would
+    /// serve an empty page for an app that never asked for one.
+    #[test]
+    fn no_declared_settings_writes_nothing() {
+        let _env = crate::env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("ARLEN_USER_SETTINGS_SCHEMA_DIR", dir.path());
+        let mut m = make_manifest();
+        m.package.id = "com.test.nosettings".into();
+        assert!(write_settings_schema(&m).unwrap().is_none());
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+        std::env::remove_var("ARLEN_USER_SETTINGS_SCHEMA_DIR");
     }
 
     #[test]

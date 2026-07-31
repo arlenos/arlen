@@ -411,6 +411,7 @@ async fn run_install_package(
     queue.update_progress(job_id, 72, "writing keybindings");
     emit_progress(conn, job_id, 72, "writing keybindings").await;
     txn.write_keybindings()?;
+    txn.write_settings_schema()?;
 
     // 11. Create desktop entry.
     queue.update_progress(job_id, 80, "creating desktop entry");
