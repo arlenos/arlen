@@ -105,7 +105,7 @@
     display: inline-block;
     width: 0.45em;
     height: 1em;
-    margin-left: 0.15em;
+    margin-inline-start: 0.15em;
     vertical-align: text-bottom;
     background: color-mix(in srgb, var(--color-fg-shell) 60%, transparent);
     animation: ask-blink 1s steps(2, start) infinite;

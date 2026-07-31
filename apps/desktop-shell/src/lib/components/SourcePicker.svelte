@@ -153,7 +153,7 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-input);
     background: transparent;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   .sp-mon-prev {
@@ -191,7 +191,7 @@
     border: 1px solid transparent;
     border-radius: var(--radius-input);
     background: transparent;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   .sp-avatar {
@@ -230,7 +230,7 @@
     border: 1px dashed var(--color-border-strong, var(--color-border));
     border-radius: var(--radius-input);
     background: transparent;
-    text-align: left;
+    text-align: start;
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
     cursor: pointer;
