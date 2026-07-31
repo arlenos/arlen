@@ -189,6 +189,10 @@ pub async fn listen(socket_path: &str, graph: GraphHandle, pool: sqlx::SqlitePoo
     // across all query connections.
     let rate = Arc::new(Mutex::new(RateState::new()));
     let emitter = Arc::new(RateLimitEmitter::new());
+    // Grant exercises, tallied in memory and flushed coarsely (living-capability-graph.md
+    // §4). Shared across connections because the counter is per (app, capability),
+    // not per connection or per token.
+    let uses = Arc::new(Mutex::new(crate::lcg::UseTally::new(crate::time::now().0)));
 
     // Schema registry for write-mode relation validation. Built with the
     // compiled-in system entity types only; that is sufficient for the agent's
@@ -213,7 +217,17 @@ pub async fn listen(socket_path: &str, graph: GraphHandle, pool: sqlx::SqlitePoo
     let audit: Arc<dyn AuditSink> = Arc::new(LedgerAuditSink::at_default_socket());
 
     tokio::try_join!(
-        listen_queries(socket_path, graph.clone(), pool, auth.clone(), rate, emitter, registry, audit),
+        listen_queries(
+            socket_path,
+            graph.clone(),
+            pool,
+            auth.clone(),
+            rate,
+            emitter,
+            registry,
+            audit,
+            uses,
+        ),
         listen_events(auth, graph),
     )?;
 
@@ -231,6 +245,7 @@ async fn listen_queries(
     emitter: Arc<RateLimitEmitter>,
     registry: Arc<SchemaRegistry>,
     audit: Arc<dyn AuditSink>,
+    uses: Arc<Mutex<crate::lcg::UseTally>>,
 ) -> Result<()> {
     if Path::new(socket_path).exists() {
         std::fs::remove_file(socket_path)?;
@@ -275,10 +290,11 @@ async fn listen_queries(
                 let emitter = emitter.clone();
                 let registry = registry.clone();
                 let audit = audit.clone();
+                let uses = uses.clone();
                 tokio::spawn(async move {
                     if let Err(e) = handle_client(
                         stream, graph, pool, auth, rate, emitter, registry, our_uid, owner_uid,
-                        audit,
+                        audit, uses,
                     )
                     .await
                     {
@@ -1421,6 +1437,7 @@ async fn handle_write_request(
     graph: &GraphHandle,
     auth: &Arc<Mutex<Authenticator>>,
     audit: Option<&Arc<dyn AuditSink>>,
+    uses: Option<&Arc<Mutex<crate::lcg::UseTally>>>,
 ) -> String {
     let req: WriteRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
@@ -1460,7 +1477,26 @@ async fn handle_write_request(
         tracing::warn!("emit_grant_node failed (capability projection degraded): {e}");
     }
 
-    match req {
+    // What this request exercises, in the same vocabulary the grant's reach is
+    // projected in (`GRANTS` -> `EntityType`), captured before the match consumes
+    // the request. Counted only if the outcome below is not an error, so an
+    // authorisation refusal or a failed persist never counts as use: a denial is
+    // not use, and counting it would make an unused grant look used and hide it
+    // from the revoke prompt.
+    let exercised: Vec<String> = match &req {
+        WriteRequest::CreateRelation { from_type, to_type, .. }
+        | WriteRequest::RetractRelation { from_type, to_type, .. } => {
+            let mut v = vec![from_type.clone(), to_type.clone()];
+            v.sort();
+            v.dedup();
+            v
+        }
+        WriteRequest::CreateNode { node_type, .. } => vec![node_type.clone()],
+        _ => Vec::new(),
+    };
+    let exercising_app = token.app_id.clone();
+
+    let outcome = match req {
         WriteRequest::CreateRelation {
             from_type,
             from_id,
@@ -1854,7 +1890,29 @@ async fn handle_write_request(
                 Err(e) => format!("ERROR: {e}"),
             }
         }
+    };
+
+    // Successful exercise only. Best-effort: the tally is a projection, so a graph
+    // hiccup must never turn a completed write into a failed one.
+    if !outcome.starts_with("ERROR:") && !exercised.is_empty() {
+        if let Some(uses) = uses {
+            let now = crate::time::now().0;
+            let batch = {
+                let mut tally = uses.lock().await;
+                let mut due = false;
+                for capability in &exercised {
+                    due |= tally.record(&exercising_app, capability, now);
+                }
+                due.then(|| tally.drain(now))
+            };
+            if let Some(batch) = batch {
+                if let Err(e) = crate::lcg::flush_capability_use(graph, &batch).await {
+                    tracing::warn!("capability-use flush failed (effective-use projection stale): {e}");
+                }
+            }
+        }
     }
+    outcome
 }
 
 /// App ids permitted to file OR read a meeting note (the meetings app
@@ -2484,6 +2542,7 @@ async fn handle_client(
     our_uid: u32,
     owner_uid: Option<u32>,
     audit: Arc<dyn AuditSink>,
+    uses: Arc<Mutex<crate::lcg::UseTally>>,
 ) -> Result<()> {
     // Resolve the peer identity once at connection for per-identity
     // rate limiting (foundation §8.4). The socket is per-user, so a
@@ -2684,7 +2743,16 @@ async fn handle_client(
                 (format!("ERROR: RateLimited: {reason}"), emit)
             } else {
                 (
-                    handle_write_request(body, peer, &registry, &graph, &auth, Some(&audit)).await,
+                    handle_write_request(
+                        body,
+                        peer,
+                        &registry,
+                        &graph,
+                        &auth,
+                        Some(&audit),
+                        Some(&uses),
+                    )
+                    .await,
                     false,
                 )
             };
@@ -5072,6 +5140,41 @@ mod tests {
     const VALID_REL_BODY: &str = r#"{"op":"create_relation","from_type":"system.File","from_id":"f1","to_type":"system.Project","to_id":"p1","relation_type":"FILE_PART_OF"}"#;
 
     #[tokio::test]
+    async fn a_refused_write_records_no_capability_use() {
+        let (graph, _tmp) = spawn_test_graph().await;
+        let auth = Arc::new(Mutex::new(Authenticator::new()));
+        let registry = SchemaRegistry::new(vec![]);
+        // A tally whose interval has ALREADY elapsed, so any recorded use would
+        // flush on this very call and leave a node behind. Nothing may.
+        let uses = Arc::new(Mutex::new(crate::lcg::UseTally::new(
+            crate::time::now().0 - crate::lcg::USE_FLUSH_INTERVAL_MICROS,
+        )));
+        let peer = WritePeer { pid: std::process::id(), start_time: Some(0) };
+
+        let resp = handle_write_request(
+            VALID_REL_BODY.as_bytes(),
+            Some(peer),
+            &registry,
+            &graph,
+            &auth,
+            None,
+            Some(&uses),
+        )
+        .await;
+        assert!(resp.starts_with("ERROR:"), "the reuse guard refuses this write: {resp}");
+
+        let rows = graph
+            .query_rows_json("MATCH (u:CapabilityUse) RETURN count(*)".to_string())
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&rows).unwrap();
+        assert_eq!(
+            parsed["rows"][0][0], 0,
+            "a denial is not use; counting it would hide an unused grant from the revoke prompt"
+        );
+    }
+
+    #[tokio::test]
     async fn write_rejects_recycled_pid() {
         let (graph, _tmp) = spawn_test_graph().await;
         let auth = Arc::new(Mutex::new(Authenticator::new()));
@@ -5089,6 +5192,7 @@ mod tests {
                 &registry,
                 &graph,
                 &auth,
+                None,
                 None,
             )
             .await;
@@ -5113,6 +5217,7 @@ mod tests {
                 &graph,
                 &auth,
                 None,
+                None,
             )
             .await;
         assert_eq!(resp, "ERROR: write requires a verifiable peer process");
@@ -5125,12 +5230,12 @@ mod tests {
         let registry = SchemaRegistry::new(vec![]);
 
         let no_peer =
-            handle_write_request(VALID_REL_BODY.as_bytes(), None, &registry, &graph, &auth, None)
+            handle_write_request(VALID_REL_BODY.as_bytes(), None, &registry, &graph, &auth, None, None)
                 .await;
         assert_eq!(no_peer, "ERROR: write requires a resolvable peer process");
 
         // A malformed body is rejected before the peer is even consulted.
-        let bad = handle_write_request(b"not json", None, &registry, &graph, &auth, None).await;
+        let bad = handle_write_request(b"not json", None, &registry, &graph, &auth, None, None).await;
         assert!(bad.starts_with("ERROR: malformed write request"), "got: {bad}");
     }
 
