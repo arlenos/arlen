@@ -168,7 +168,7 @@
                     ? "another action"
                     : `${conflicts.length} other actions`}:
                 </div>
-                <ul class="mt-1 list-disc pl-4">
+                <ul class="mt-1 list-disc ps-4">
                   {#each conflicts as c (c.existingAction)}
                     <li>
                       <span class="font-mono">{c.existingAction}</span>

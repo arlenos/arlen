@@ -51,11 +51,11 @@
 <header
   onpointerdown={startDrag}
   ondblclick={toggleMax}
-  class="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background pl-2 pr-2"
+  class="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-2"
 >
   <div class="flex items-center gap-2">
     <SidebarTrigger class="-ml-1" />
-    <Separator orientation="vertical" class="mr-1 h-4" />
+    <Separator orientation="vertical" class="me-1 h-4" />
     <nav
       class="flex items-center gap-1.5 text-sm text-muted-foreground"
       aria-label={$t("s.header.breadcrumb")}

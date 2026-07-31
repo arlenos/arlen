@@ -107,10 +107,10 @@
     <header
       onpointerdown={startDrag}
       ondblclick={toggleMax}
-      class="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background pl-2 pr-2"
+      class="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-2"
     >
       <SidebarTrigger class="-ml-1" />
-      <Separator orientation="vertical" class="mr-1 h-4" />
+      <Separator orientation="vertical" class="me-1 h-4" />
       <span class="text-sm font-medium text-foreground">{viewTitle}</span>
       <div class="flex-1"></div>
       <WindowButtons />
