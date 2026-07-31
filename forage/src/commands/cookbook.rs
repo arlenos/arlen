@@ -9,12 +9,12 @@
 //! TUF-style index trust, land in forage-recipes.md R3 and are not here yet.
 //! This is the tap-management surface those build on.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::exit;
 
 use arlen_forage_fetch::{clone_recipe_repo, DEFAULT_RECIPE_REPO_BYTES};
 use arlen_cookbook_registry::{
-    clone_dir, cookbook_metadata_dir, is_valid_name, registry_path, root_pin, Cookbook, Registry,
+    clone_dir, is_valid_name, root_pin, Cookbook, Registry,
 };
 pub use arlen_cookbook_registry::{bridges_in_cookbooks, resolve_in_cookbooks};
 use colored::Colorize;
