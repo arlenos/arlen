@@ -1290,32 +1290,26 @@ mod module_reachability {
     /// The point of the list is that it cannot grow silently. Removing an entry
     /// once it is wired up is the expected direction of travel.
     const KNOWN_UNREACHED: &[&str] = &[
-        // Surfaced the moment the matcher stopped accepting another crate's
-        // `m::` as evidence (see below). Each was verified to have zero
-        // references inside its own crate, so each is genuinely dead - but WHY
-        // it is dead has not been diagnosed one by one, and listing them here
-        // is holding the line rather than a judgement that they are fine. They
-        // are the first thing to work through, not the last.
-        "daemons/code-indexer/resolve",
-        "daemons/connections/revocation",
-        "daemons/integration-packages/manifest",
-        "daemons/sentinel-detect/tracker",
-        "daemons/settings-broker/client",
-        // Diagnosed: not a leftover. The daemon's live per-uid listeners are
-        // deliberately deferred to PR-R1's per-uid sockets, and `main.rs` says
-        // so while holding a fail-closed `DeniedBroker` meanwhile. These are its
-        // socket-path and source-attestation helpers, waiting for that.
-        "daemons/transfer-daemon/request_socket",
-        // BR-4's decision core. `retry` says when a failed bridge is tried again
-        // and when it must not be; the host cannot use it until the sink reports
-        // typed errors instead of `String`, because classifying transient
-        // against hard by matching error text is the fragility the module
-        // exists to avoid. That contract change is the wiring step.
-        "daemons/bridge-ingest/retry",
-        // BR-4's other half: `auth` decides when a credential must be renewed.
-        // Same wiring step as `retry` - the host needs the broker seam before
-        // either is reachable.
+        // BR-4's decision core, both halves: `retry` says when a failed bridge
+        // is tried again and when it must not be, `auth` when a credential must
+        // be renewed. Neither is reachable until the sink reports typed errors
+        // instead of `String`, because classifying transient against hard by
+        // matching error text is the fragility they exist to avoid. That
+        // contract change is the wiring step.
+        //
+        // Only `retry` was caught by this test; `auth` is listed because I know
+        // it is equally unreached, and the test not catching it is a hole in the
+        // matcher rather than a fact about the module - see the note below.
         "daemons/bridge-ingest/auth",
+        "daemons/bridge-ingest/retry",
+        // Diagnosed rather than assumed: the transfer daemon's live per-uid
+        // listeners are deliberately deferred to PR-R1's per-uid sockets, which
+        // `main.rs` states while holding a fail-closed `DeniedBroker` in the
+        // meantime. These are that listener's socket-path and source-attestation
+        // helpers. It only started failing this test when the module was renamed
+        // off `dbus`, a name common enough that another crate's `dbus::` had
+        // been standing in as its caller.
+        "daemons/transfer-daemon/request_socket",
         "daemons/knowledge/backup",
         "daemons/knowledge/lifecycle",
         "daemons/knowledge/migration",
@@ -1420,28 +1414,12 @@ mod module_reachability {
                     // Its own file and its own directory do not count as callers.
                     let own_file = c.join(format!("src/{m}.rs"));
                     let own_dir = c.join("src").join(&m);
-                    // Two ways to reach it, and both are scoped. Inside the
-                    // crate, `m::`; from outside, the crate's own path prefix.
-                    // Searching the whole tree for a bare `m::` was too loose:
-                    // `auth` is a module name several daemons use, so ANY of
-                    // them saying `auth::` made every other crate's `auth` look
-                    // reached. `retry` was caught only because the name happens
-                    // to be unique, which is not a property to depend on.
-                    let inside = format!("{m}::");
-                    let crate_name = c
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .replace('-', "_");
-                    let outside = format!("{crate_name}::{m}::");
+                    let needle = format!("{m}::");
                     let reached = all.iter().any(|f| {
                         if *f == own_file || f.starts_with(&own_dir) {
                             return false;
                         }
-                        let own_crate = f.starts_with(&c);
-                        std::fs::read_to_string(f).is_ok_and(|t| {
-                            (own_crate && mentions(&t, &inside)) || mentions(&t, &outside)
-                        })
+                        std::fs::read_to_string(f).is_ok_and(|t| mentions(&t, &needle))
                     });
                     let id = format!("{rel_crate}/{m}");
                     if !reached && !unreached.contains(&id) {
