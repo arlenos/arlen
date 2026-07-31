@@ -338,6 +338,210 @@ pub async fn emit_all_declared_grants(
     Ok(())
 }
 
+/// How long uses accumulate in memory before one flush writes them (§4).
+///
+/// A grant exercised in a tight loop would otherwise write to the graph per
+/// request, which is the churn rule the power daemon already follows: promote
+/// coarse transitions, never per-event noise. Sixty seconds keeps "when did this
+/// app last use this" honest to the minute, which is the resolution the revoke
+/// prompt reads it at.
+pub const USE_FLUSH_INTERVAL_MICROS: i64 = 60_000_000;
+
+/// One (app, capability) pair's uses since the last flush.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PendingUse {
+    /// Successful exercises counted since the last flush.
+    count: i64,
+    /// When the most recent one happened.
+    last: i64,
+}
+
+/// In-memory tally of grant exercises, flushed to the graph coarsely.
+///
+/// **Why this is keyed on (app, capability) and NOT on the `Grant` node.** The
+/// Grant carries `use_count` and `last_exercised_at` columns and they look like
+/// the obvious home, but the daemon mints a FRESH token per request
+/// (`issue_token_from_profile` always calls `CapabilityToken::new`, which is a
+/// new `Uuid::now_v7()`, and the cache next to it is written but never read on
+/// the issue path). `emit_grant_node` MERGEs on that id, so every request makes a
+/// new Grant node and supersedes the one before it - the existing
+/// `emit_creates_a_live_grant_and_a_re_mint_supersedes_the_prior` test asserts
+/// exactly that. A counter there could only ever reach 1 before its node was
+/// replaced, so "the grants you never use" would read every grant as unused.
+///
+/// `CapabilityUse` is the node the schema already declares for this
+/// (`first_observed`, `last_observed`, `observe_count`), keyed on the app and the
+/// capability rather than on a token instance, so it survives the churn.
+#[derive(Debug, Default)]
+pub struct UseTally {
+    pending: std::collections::HashMap<(String, String), PendingUse>,
+    last_flush: i64,
+}
+
+impl UseTally {
+    /// Start a tally whose first flush is due `USE_FLUSH_INTERVAL_MICROS` after `now`.
+    pub fn new(now: i64) -> Self {
+        Self { pending: std::collections::HashMap::new(), last_flush: now }
+    }
+
+    /// Record ONE successful exercise. A denied check must never come here: a
+    /// denial is not use, and counting it would make an unused grant look used,
+    /// which hides it from the revoke prompt - the failure direction that matters.
+    ///
+    /// Returns whether a flush is now due, so the caller writes on the same path
+    /// rather than the daemon carrying another background task.
+    pub fn record(&mut self, app_id: &str, capability: &str, now: i64) -> bool {
+        let slot = self
+            .pending
+            .entry((app_id.to_string(), capability.to_string()))
+            .or_insert(PendingUse { count: 0, last: now });
+        slot.count += 1;
+        slot.last = now;
+        self.flush_due(now)
+    }
+
+    /// Whether the interval has elapsed AND anything is waiting. A clock that
+    /// jumps backwards does not strand the tally: the next forward tick flushes.
+    pub fn flush_due(&self, now: i64) -> bool {
+        !self.pending.is_empty() && now.saturating_sub(self.last_flush) >= USE_FLUSH_INTERVAL_MICROS
+    }
+
+    /// Take everything pending, sorted so a flush writes deterministically.
+    pub fn drain(&mut self, now: i64) -> Vec<(String, String, i64, i64)> {
+        self.last_flush = now;
+        let mut out: Vec<(String, String, i64, i64)> = self
+            .pending
+            .drain()
+            .map(|((app, cap), p)| (app, cap, p.count, p.last))
+            .collect();
+        out.sort();
+        out
+    }
+}
+
+/// Write one flush of accumulated uses onto the `CapabilityUse` nodes.
+///
+/// MERGE on `<app>:<capability>`, so the first exercise creates the node with
+/// `first_observed` and every later flush only moves `last_observed` forward and
+/// ADDS to the count. `first_observed` is never rewritten: "since when has this
+/// app been using this" is the question the revoke prompt asks, and rewriting it
+/// on every flush would answer "since a minute ago" forever.
+pub async fn flush_capability_use(
+    graph: &GraphHandle,
+    batch: &[(String, String, i64, i64)],
+) -> Result<()> {
+    for (app_id, capability, count, last) in batch {
+        let app = escape_cypher(app_id);
+        let cap = escape_cypher(capability);
+        graph
+            .write(format!(
+                "MERGE (u:CapabilityUse {{id:'{app}:{cap}'}}) \
+                 ON CREATE SET u.app_id = '{app}', u.capability = '{cap}', \
+                 u.first_observed = {last}, u.last_observed = {last}, u.observe_count = {count} \
+                 ON MATCH SET u.last_observed = {last}, u.observe_count = u.observe_count + {count}"
+            ))
+            .await?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod use_tally_tests {
+    use super::*;
+
+    #[test]
+    fn uses_accumulate_and_only_flush_once_the_interval_has_passed() {
+        let mut tally = UseTally::new(0);
+        assert!(!tally.record("com.x", "system.File", 1), "first use is not a flush");
+        assert!(!tally.record("com.x", "system.File", 2));
+        assert!(
+            !tally.record("com.x", "system.File", USE_FLUSH_INTERVAL_MICROS - 1),
+            "still inside the interval"
+        );
+        assert!(
+            tally.record("com.x", "system.File", USE_FLUSH_INTERVAL_MICROS),
+            "the interval has elapsed, so this call flushes"
+        );
+        let batch = tally.drain(USE_FLUSH_INTERVAL_MICROS);
+        assert_eq!(batch, vec![("com.x".into(), "system.File".into(), 4, USE_FLUSH_INTERVAL_MICROS)]);
+    }
+
+    #[test]
+    fn an_empty_tally_never_asks_for_a_flush() {
+        // Otherwise every request past the interval would write nothing, forever.
+        let tally = UseTally::new(0);
+        assert!(!tally.flush_due(USE_FLUSH_INTERVAL_MICROS * 10));
+    }
+
+    #[test]
+    fn draining_resets_the_interval_and_the_pending_set() {
+        let mut tally = UseTally::new(0);
+        tally.record("com.x", "system.File", 5);
+        let now = USE_FLUSH_INTERVAL_MICROS;
+        assert_eq!(tally.drain(now).len(), 1);
+        assert!(tally.drain(now).is_empty(), "a second drain has nothing left");
+        tally.record("com.x", "system.File", now + 1);
+        assert!(!tally.flush_due(now + 1), "the clock restarts at the drain");
+    }
+
+    #[test]
+    fn each_app_and_capability_counts_separately() {
+        let mut tally = UseTally::new(0);
+        tally.record("com.x", "system.File", 1);
+        tally.record("com.x", "system.Project", 2);
+        tally.record("com.y", "system.File", 3);
+        tally.record("com.x", "system.File", 4);
+        let batch = tally.drain(USE_FLUSH_INTERVAL_MICROS);
+        assert_eq!(
+            batch,
+            vec![
+                ("com.x".into(), "system.File".into(), 2, 4),
+                ("com.x".into(), "system.Project".into(), 1, 2),
+                ("com.y".into(), "system.File".into(), 1, 3),
+            ],
+            "sorted, and one row per pair"
+        );
+    }
+
+    #[test]
+    fn a_backwards_clock_does_not_strand_the_pending_uses() {
+        let mut tally = UseTally::new(USE_FLUSH_INTERVAL_MICROS * 2);
+        tally.record("com.x", "system.File", 10);
+        assert!(!tally.flush_due(10), "a time before the last flush is not overdue");
+        assert!(
+            tally.flush_due(USE_FLUSH_INTERVAL_MICROS * 3),
+            "the next forward tick past the interval still flushes"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_flush_creates_the_node_then_only_adds_to_it() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        flush_capability_use(&graph, &[("com.x".into(), "system.File".into(), 3, 100)])
+            .await
+            .unwrap();
+        flush_capability_use(&graph, &[("com.x".into(), "system.File".into(), 2, 250)])
+            .await
+            .unwrap();
+
+        let rows = graph
+            .query_rows_json(
+                "MATCH (u:CapabilityUse {id:'com.x:system.File'}) \
+                 RETURN u.first_observed, u.last_observed, u.observe_count"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&rows).unwrap();
+        let row = &parsed["rows"][0];
+        assert_eq!(row[0], 100, "first_observed is never rewritten");
+        assert_eq!(row[1], 250, "last_observed moves forward");
+        assert_eq!(row[2], 5, "counts add across flushes");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
