@@ -2415,6 +2415,7 @@ async fn handle_merge_accept(
     token: Option<&crate::token::CapabilityToken>,
     app_id: &str,
     body: &[u8],
+    uses: &Arc<Mutex<crate::lcg::UseTally>>,
 ) -> String {
     let req: MergeDecisionRequest = match serde_json::from_slice(body) {
         Ok(r) => r,
@@ -2486,6 +2487,10 @@ async fn handle_merge_accept(
         {
             return format!("ERROR: merge: {e}");
         }
+        // A merge is a write under the caller's grant for this entity type, and it
+        // has now happened, so it counts. The refusal above (`can_write`) returns
+        // before here, which is what keeps a denial out of the number.
+        record_capability_uses(graph, uses, app_id, &[core.entity_type.clone()]).await;
         // The merge is applied; mark accepted best-effort (a status-write hiccup
         // only leaves the suggestion listable, and a re-accept is now re-validated
         // and either re-runs the idempotent merge_node harmlessly or is refused as
@@ -2950,7 +2955,7 @@ async fn handle_client(
                 } else {
                     None
                 };
-                handle_merge_accept(&graph, &audit, token.as_ref(), &app_id, &buf[1..]).await
+                handle_merge_accept(&graph, &audit, token.as_ref(), &app_id, &buf[1..], &uses).await
             };
             timing_noise().await;
             let response_bytes = response.as_bytes();
