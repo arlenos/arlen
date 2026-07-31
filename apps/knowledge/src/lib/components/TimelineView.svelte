@@ -17,12 +17,12 @@
     Sparkles,
     ArrowDownToLine,
   } from "lucide-svelte";
-  import { Button } from "@arlen/ui-kit/components/ui/button";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import {
     days,
     timelineMocked,
     paused,
+    pendingMenuAction,
     loadTimeline,
     setPaused,
     exportTimeline,
@@ -96,14 +96,12 @@
     activeIndex = best;
   }
 
-  // The what's-recorded disclosure: the honest statement + export/delete live
-  // inside it, so the controls are one click away without preaching in the
-  // default view.
+  // The what's-recorded disclosure carries the honest statement; the export
+  // and delete ACTIONS live in the shell's app menu (lib/menu.ts), and this
+  // surface only resolves what a menu action started: run the export, or ask
+  // the destructive confirm.
   let disclosureOpen = $state(false);
   let exportFailed = $state(false);
-  async function onExport(): Promise<void> {
-    exportFailed = !(await exportTimeline());
-  }
 
   let pendingDelete = $state<{ from: number; label: string } | null>(null);
   function midnightToday(): number {
@@ -116,6 +114,19 @@
     await deleteRange(pendingDelete.from);
     pendingDelete = null;
   }
+
+  $effect(() => {
+    const action = $pendingMenuAction;
+    if (!action) return;
+    pendingMenuAction.set(null);
+    if (action === "export") {
+      void exportTimeline().then((ok) => (exportFailed = !ok));
+    } else if (action === "deleteToday") {
+      pendingDelete = { from: midnightToday(), label: $t("k.tl.rangeToday") };
+    } else {
+      pendingDelete = { from: 0, label: $t("k.tl.rangeAll") };
+    }
+  });
 
   const empty = $derived($days !== null && $days.length === 0);
 </script>
@@ -147,19 +158,7 @@
     {#if disclosureOpen}
       <div class="tl-disclosure">
         <p class="tl-statement">{$t("k.tl.statement")}</p>
-        <div class="tl-actions">
-          <Button variant="outline" size="sm" onclick={onExport}>{$t("k.tl.export")}</Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onclick={() => (pendingDelete = { from: midnightToday(), label: $t("k.tl.rangeToday") })}
-          >
-            {$t("k.tl.deleteToday")}
-          </Button>
-          <Button variant="outline" size="sm" onclick={() => (pendingDelete = { from: 0, label: $t("k.tl.rangeAll") })}>
-            {$t("k.tl.deleteAll")}
-          </Button>
-        </div>
+        <p class="tl-statement-menu">{$t("k.tl.menuHint")}</p>
         {#if exportFailed}
           <p class="tl-fail">{$t("k.tl.exportFail")}</p>
         {/if}
@@ -316,10 +315,10 @@
     line-height: 1.5;
     color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
   }
-  .tl-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+  .tl-statement-menu {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
   }
   .tl-fail {
     margin: 0;

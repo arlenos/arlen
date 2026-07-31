@@ -10,10 +10,16 @@
   import KnowledgeSidebar from "$lib/components/KnowledgeSidebar.svelte";
   import KnowledgeDetail from "$lib/components/KnowledgeDetail.svelte";
   import TimelineView from "$lib/components/TimelineView.svelte";
+  import { onMount } from "svelte";
   import { knowledgeAdapter, mocked } from "$lib/adapter";
   import { labelKeyFor, emptyKeyFor } from "$lib/locations";
   import type { TimelineEvent } from "$lib/stores/timeline";
+  import { initAppMenu } from "$lib/menu";
   import { t } from "$lib/i18n/messages";
+
+  onMount(() => {
+    void initAppMenu();
+  });
 
   // The headless controller auto-loads its initial place (Timeline, the spine).
   const ctrl = createBrowserState(knowledgeAdapter, { initial: "timeline", allowVirtual: true });
