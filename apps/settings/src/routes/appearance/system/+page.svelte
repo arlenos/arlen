@@ -239,7 +239,7 @@
     letter-spacing: 0.03em;
     text-transform: uppercase;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    padding-left: 0.125rem;
+    padding-inline-start: 0.125rem;
   }
   .preview-col {
     order: -1;
@@ -288,10 +288,10 @@
   .fgbg-label {
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
-    margin-right: 0.5rem;
+    margin-inline-end: 0.5rem;
   }
   .term-reset {
-    margin-left: auto;
+    margin-inline-start: auto;
     border: none;
     background: transparent;
     font-size: var(--text-xs);

@@ -192,7 +192,7 @@
     display: flex;
     flex-direction: column;
     padding: 0;
-    text-align: left;
+    text-align: start;
     border-radius: var(--radius-card, 12px);
     border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
     background: color-mix(in srgb, var(--foreground) 3%, transparent);

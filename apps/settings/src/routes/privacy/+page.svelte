@@ -352,7 +352,7 @@
     margin-bottom: 0.25rem;
   }
   .warn {
-    margin-left: 0.375rem;
+    margin-inline-start: 0.375rem;
     font-size: var(--text-2xs);
     color: var(--color-warning, #ca8a04);
   }
@@ -408,7 +408,7 @@
     color: var(--foreground);
   }
   .data-count {
-    margin-left: auto;
+    margin-inline-start: auto;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }

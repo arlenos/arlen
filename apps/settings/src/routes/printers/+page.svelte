@@ -357,7 +357,7 @@
   }
 
   .job-state {
-    margin-right: 6px;
+    margin-inline-end: 6px;
     font-size: var(--text-xs);
     color: var(--color-fg-secondary);
     white-space: nowrap;
@@ -385,7 +385,7 @@
     color: var(--color-fg-secondary);
   }
   .opt-actions {
-    margin-left: auto;
+    margin-inline-start: auto;
   }
 
   .foot {

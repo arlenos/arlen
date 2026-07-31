@@ -141,7 +141,7 @@
     flex: 1;
   }
   .warn {
-    margin-left: 0.375rem;
+    margin-inline-start: 0.375rem;
     font-size: var(--text-2xs);
     color: var(--color-warning, #ca8a04);
   }
@@ -152,7 +152,7 @@
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    padding-left: calc(28px + 0.625rem);
+    padding-inline-start: calc(28px + 0.625rem);
     margin-top: 0.625rem;
     margin-bottom: 0.25rem;
   }
@@ -177,14 +177,14 @@
     align-items: baseline;
     column-gap: 0.75rem;
     row-gap: 0.5rem;
-    padding-left: calc(28px + 0.625rem);
+    padding-inline-start: calc(28px + 0.625rem);
   }
   /* Headless (the per-app page names the app above): the block sits flush with
      the section inset instead of hanging under an absent avatar. */
   .fam-sub.flush,
   .lines.flush,
   .req-note.flush {
-    padding-left: 0;
+    padding-inline-start: 0;
   }
   /* The reach as a sentence: the verb quiet, the object (the user's data) the
      emphasized word. Own-data dims the line. */
@@ -216,7 +216,7 @@
      below carry no Remove. */
   .req-note {
     margin: 0.375rem 0 0;
-    padding-left: calc(28px + 0.625rem);
+    padding-inline-start: calc(28px + 0.625rem);
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
   }
