@@ -283,7 +283,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
-    padding-left: 0.25rem;
+    padding-inline-start: 0.25rem;
   }
   .job-item {
     display: flex;
