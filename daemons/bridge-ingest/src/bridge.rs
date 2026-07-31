@@ -81,6 +81,17 @@ pub struct MapRule {
     /// edge of this type to the node keyed by the element's `to_key`.
     #[serde(default)]
     pub for_each_link: Option<LinkRule>,
+    /// Optional: the message field naming what this row IS upstream - a commit
+    /// sha, a message id, a revision. Declared rather than fixed because only
+    /// the bridge author knows which field their plugin already sends, so a
+    /// plugin that carries one needs no protocol change to have it recorded.
+    ///
+    /// Leave it unset when the upstream ref would be the same string as `key`.
+    /// The daemon stamps `_owner` and `_modified_at` itself, and an origin ref
+    /// that repeats the external key is the same kind of duplicate: a second
+    /// copy of a fact the graph already holds, which can then disagree with it.
+    #[serde(default)]
+    pub origin_ref: Option<String>,
 }
 
 /// `for_each_link = { edge = "LINKS_TO", to_key = "path" }`.

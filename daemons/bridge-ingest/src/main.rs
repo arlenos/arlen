@@ -45,6 +45,11 @@ fn knowledge_socket() -> String {
 struct GraphEntityWriter {
     client: UnixGraphClient,
     runtime: tokio::runtime::Runtime,
+    /// This process's sync run. One host process is one run: it is spawned per
+    /// bridge and lives for that bridge's session, so every row it writes did
+    /// come from the same run, and a restart is a new one - which is the
+    /// distinction the id exists to draw.
+    run_id: String,
 }
 
 impl GraphEntityWriter {
@@ -55,6 +60,7 @@ impl GraphEntityWriter {
         Ok(Self {
             client: UnixGraphClient::new(socket_path),
             runtime,
+            run_id: uuid::Uuid::new_v4().to_string(),
         })
     }
 }
@@ -65,12 +71,22 @@ impl EntityWriter for GraphEntityWriter {
         qualified_type: &str,
         external_key: &str,
         fields: &Map<String, Value>,
+        origin_ref: Option<&str>,
     ) -> Result<(), String> {
+        // Stamped only when the row brought an upstream ref. The daemon refuses
+        // a half-origin, and it is right to: a run id pointing at nothing says
+        // this process wrote the row, which `_owner` already says.
+        let origin = origin_ref.map(|r| os_sdk::WriteOrigin {
+            run_id: self.run_id.clone(),
+            origin_ref: r.to_string(),
+        });
         self.runtime
-            // No origin yet: the sink would need the ingested record to carry its
-            // upstream ref, which is a bridge-protocol change (BR-3), and a run id
-            // scoped to the sync session. The write protocol accepts one already.
-            .block_on(self.client.upsert_entity(qualified_type, external_key, fields, None))
+            .block_on(self.client.upsert_entity(
+                qualified_type,
+                external_key,
+                fields,
+                origin.as_ref(),
+            ))
             .map_err(|e| e.to_string())
     }
 
@@ -177,7 +193,7 @@ mod tests {
         let mut w = GraphEntityWriter::new("/nonexistent-bridge-sock.sock".to_string()).unwrap();
         let fields = Map::new();
         let err = w
-            .upsert("md.obsidian.Note", "note-1", &fields)
+            .upsert("md.obsidian.Note", "note-1", &fields, None)
             .expect_err("a dead socket cannot upsert");
         assert!(!err.is_empty(), "the transport error is surfaced as a string");
     }
