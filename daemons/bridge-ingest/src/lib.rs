@@ -26,6 +26,7 @@
 //! on forage's install path).
 
 pub mod auth;
+pub mod retry;
 pub mod bridge;
 pub mod host;
 pub mod interpret;
