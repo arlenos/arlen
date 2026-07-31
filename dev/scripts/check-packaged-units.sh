@@ -192,3 +192,21 @@ fi
 if [ "$gate_failed" -ne 0 ]; then
   exit 1
 fi
+
+# Ordering references: systemd silently ignores After=/Requires= on a unit that
+# does not exist, so a renamed unit leaves its dependents ordered against nothing.
+# `arlen-modulesd.service` waited on `arlen-knowledge.service` for as long as the
+# knowledge daemon's unit has been called `arlen-graph.service`.
+missing_refs=0
+units=$(git ls-files '*.service' '*.socket' '*.timer' | xargs -n1 basename | sort -u)
+for f in $(git ls-files '*.service' '*.socket' '*.timer'); do
+    for ref in $(grep -oP '^(After|Requires|Wants|BindsTo|PartOf|Before)=\K.*' "$f" 2>/dev/null |
+        tr ' ' '\n' | grep -E '\.service$|\.socket$'); do
+        if ! printf '%s\n' "$units" | grep -qx "$ref"; then
+            echo "FAIL: $(basename "$f") orders against $ref, which no unit file provides"
+            missing_refs=1
+        fi
+    done
+done
+[ "$missing_refs" -eq 0 ] && echo "OK: every ordering reference resolves to a unit in the tree"
+exit "$missing_refs"
