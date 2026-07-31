@@ -33,6 +33,14 @@ use crate::install::InstallError;
 /// No `arlen/` sub-dir (this module previously used the wrong path).
 /// `ARLEN_PERMISSIONS_DIR` test override resolves directly to a flat
 /// `<dir>/{app_id}.toml` for test simplicity.
+///
+/// **The third statement of this path**, after `arlen_permissions::
+/// permissions_dir` (which the loaders and the profile watcher now share). It is
+/// restated here because a module profile is written before anything in this
+/// process has loaded one, and the note above records that this copy has already
+/// been wrong once. If the canonical location moves, it moves in both: a profile
+/// written to a directory the loaders do not read is a module that silently holds
+/// no permissions at all.
 pub fn permissions_dir() -> PathBuf {
     if let Ok(p) = std::env::var("ARLEN_PERMISSIONS_DIR") {
         return PathBuf::from(p);
