@@ -269,9 +269,7 @@ pub fn run() {
             // knowledge daemon invalidates its token cache. See
             // docs/architecture/peer-auth-system.md "In-flight
             // revocation".
-            if let Some(watcher) = permission_watcher::start(app.handle().clone()) {
-                app.manage(watcher);
-            }
+            app.manage(permission_watcher::start(app.handle().clone()));
             sni::start(app.handle().clone(), sni_items);
             bluetooth::start_monitor(app.handle().clone());
             mpris::start_monitor(app.handle().clone());

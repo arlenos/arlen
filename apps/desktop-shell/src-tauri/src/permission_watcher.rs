@@ -128,40 +128,66 @@ pub fn register_connection(
     ConnectionGuard { app_id, auth }
 }
 
-/// Start the file-watcher + event-bus emitter. Called once at
-/// shell startup. Owns its `ProfileWatcher` for the duration of
-/// the process — dropping the returned guard stops the watcher.
-pub fn start(_app: tauri::AppHandle) -> Option<ProfileWatcher> {
-    let dir = ProfileWatcher::permissions_dir();
-    // Ensure the dir exists so notify can attach. installd creates
-    // it on first install anyway; brokers might be started before
-    // any app is installed.
-    if let Err(e) = std::fs::create_dir_all(&dir) {
-        log::warn!("permission_watcher: cannot create {}: {e}", dir.display());
-        return None;
+/// Start the file-watchers + event-bus emitter. Called once at shell startup.
+/// Owns one `ProfileWatcher` per profile tier for the duration of the process —
+/// dropping the returned guards stops them.
+///
+/// Both tiers, because a profile's authority is decided by whichever tier holds
+/// it and the system tier is where an apt install writes. Watching only
+/// `~/.config` meant a system profile could be installed, narrowed or removed
+/// and nothing emitted `permission.changed` at all: no token invalidated, no
+/// broker connection refreshed, no declared grants projected into the capability
+/// graph. A missing tier directory is not fatal — the system one may legitimately
+/// not exist on a machine with no system-tier apps — so this returns whatever
+/// attached and warns about the rest.
+pub fn start(_app: tauri::AppHandle) -> Vec<ProfileWatcher> {
+    // The user dir is created if absent: installd makes it on first install, but
+    // brokers can start before anything is installed and notify needs something
+    // to attach to. The system dir is root-owned, so its absence is reported and
+    // left alone rather than created from a user process.
+    let user = ProfileWatcher::permissions_dir();
+    if let Err(e) = std::fs::create_dir_all(&user) {
+        log::warn!("permission_watcher: cannot create {}: {e}", user.display());
     }
 
-    match ProfileWatcher::start_at(
-        dir.clone(),
-        std::time::Duration::from_millis(150),
-        |change: ProfileChange| {
-            on_change(change);
-        },
-    ) {
-        Ok(w) => {
-            log::info!("permission_watcher: watching {}", dir.display());
-            Some(w)
-        }
-        Err(e) => {
-            log::warn!("permission_watcher: failed to start: {e}");
-            None
-        }
-    }
+    [user, arlen_permissions::system_permissions_dir()]
+        .into_iter()
+        .filter_map(|dir| {
+            match ProfileWatcher::start_at(
+                dir.clone(),
+                std::time::Duration::from_millis(150),
+                |change: ProfileChange| {
+                    on_change(change);
+                },
+            ) {
+                Ok(w) => {
+                    log::info!("permission_watcher: watching {}", dir.display());
+                    Some(w)
+                }
+                Err(e) => {
+                    log::warn!(
+                        "permission_watcher: not watching {}: {e}",
+                        dir.display()
+                    );
+                    None
+                }
+            }
+        })
+        .collect()
 }
 
 /// Handles one debounced profile change. Refresh in-process
 /// connections, emit Event Bus event for cross-process.
 fn on_change(change: ProfileChange) {
+    // A watcher reports existence in ITS OWN directory, but what consumers act on
+    // is the app's effective profile across both tiers: deleting a user file while
+    // a system profile still governs is an edit, not a revoke-all. Recompute
+    // rather than forward the per-tier flag, so whichever watcher fires reports
+    // the same answer.
+    let change = ProfileChange {
+        exists: arlen_permissions::profile_exists(&change.app_id),
+        app_id: change.app_id,
+    };
     log::info!(
         "permission_watcher: profile changed app_id={} exists={}",
         change.app_id,
