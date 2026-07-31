@@ -98,6 +98,13 @@ pub fn merge(sources: impl IntoIterator<Item = Vec<Extension>>) -> Vec<Extension
             .cmp(&kind_order(b.kind))
             .then_with(|| a.id.cmp(&b.id))
     });
+    // Within one kind a repeated id IS the same extension listed twice, and the
+    // surface showing it twice invites the reader to wonder which row is real. The
+    // first is kept: a source that listed something twice has no second opinion to
+    // offer, and the sort has already put the duplicates adjacent. Across kinds a
+    // shared id is two different things and is never collapsed - doing so would
+    // attribute one's capabilities under the other's name.
+    all.dedup_by(|a, b| a.kind == b.kind && a.id == b.id);
     all
 }
 
@@ -149,6 +156,27 @@ mod tests {
             vec![ext("md.obsidian", ExtensionKind::Bridge)],
         ]);
         assert_eq!(merged.len(), 2);
+    }
+
+    /// One source listing the same thing twice should not produce two rows the
+    /// reader has to reconcile.
+    #[test]
+    fn the_same_id_within_one_kind_collapses_to_one_row() {
+        let merged = merge([
+            vec![ext("md.obsidian", ExtensionKind::App)],
+            vec![ext("md.obsidian", ExtensionKind::App)],
+        ]);
+        assert_eq!(merged.len(), 1);
+        // And a duplicate inside a SINGLE source list, not only across two.
+        let merged = merge([vec![
+            ext("a.app", ExtensionKind::App),
+            ext("a.app", ExtensionKind::App),
+            ext("b.app", ExtensionKind::App),
+        ]]);
+        assert_eq!(
+            merged.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+            vec!["a.app", "b.app"]
+        );
     }
 
     /// Failed carries its reason because "why is this not working" is the
