@@ -8,7 +8,6 @@ apps/desktop-shell/src/lib/components/BatteryPopover.svelte	On battery
 apps/desktop-shell/src/lib/components/BatteryPopover.svelte	Power
 apps/desktop-shell/src/lib/components/BatteryPopover.svelte	Power Mode
 apps/desktop-shell/src/lib/components/BatteryPopover.svelte	remaining
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Cancel
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Digits entered on device
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	PIN
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	PIN code
@@ -98,7 +97,6 @@ apps/desktop-shell/src/lib/components/WaypointerContent.svelte	Clear clipboard h
 apps/desktop-shell/src/lib/components/WaypointerContent.svelte	Enter quits the app
 apps/desktop-shell/src/lib/components/WaypointerContent.svelte	No results found.
 apps/desktop-shell/src/lib/components/WaypointerContent.svelte	Remove from history
-apps/desktop-shell/src/lib/components/WaypointerContent.svelte	Search...
 apps/desktop-shell/src/lib/components/WaypointerContent.svelte	Shift+Enter force-quits
 apps/desktop-shell/src/lib/components/WaypointerContent.svelte	p: projects
 apps/desktop-shell/src/lib/components/WindowHeader.svelte	Close
@@ -170,53 +168,11 @@ apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	Settings
 apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	Shut Down
 apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	TK
 apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	Tim Kicker
-apps/files/src/lib/components/FmHeaderNav.svelte	Back
-apps/files/src/lib/components/FmHeaderNav.svelte	Forward
-apps/files/src/lib/components/FmHeaderNav.svelte	Up one folder
-apps/files/src/lib/components/FmInfoPanel.svelte	Access
-apps/files/src/lib/components/FmInfoPanel.svelte	Close info
-apps/files/src/lib/components/FmInfoPanel.svelte	Info
-apps/files/src/lib/components/FmInfoPanel.svelte	Manage access in Settings
-apps/files/src/lib/components/FmInfoPanel.svelte	Readable by
-apps/files/src/lib/components/FmInfoPanel.svelte	Related
-apps/files/src/lib/components/FmInfoPanel.svelte	Where from
-apps/files/src/lib/components/FmInfoPanel.svelte	changed
-apps/files/src/lib/components/FmSearchBar.svelte	Close search
-apps/files/src/lib/components/FmSearchBar.svelte	Save search
-apps/files/src/lib/components/FmSearchBar.svelte	Search
-apps/files/src/lib/components/FmSearchBar.svelte	Search this folder and everything inside it
-apps/files/src/lib/components/FmSearchResults.svelte	Nothing matches
-apps/files/src/lib/components/FmSearchResults.svelte	Search results
-apps/files/src/lib/components/FmSearchResults.svelte	Showing the first matches only. Narrow the search.
-apps/files/src/lib/components/FmSearchResults.svelte	Try fewer letters or different filters.
-apps/files/src/lib/components/FmSidebar.svelte	Files
-apps/files/src/lib/components/FmSidebar.svelte	Searches
-apps/files/src/lib/components/OpsOverlays.svelte	Cancel
-apps/files/src/lib/components/OpsOverlays.svelte	Dismiss
-apps/files/src/lib/components/OpsOverlays.svelte	Keep both
-apps/files/src/lib/components/OpsOverlays.svelte	Name conflict
-apps/files/src/lib/components/OpsOverlays.svelte	Replace
-apps/files/src/lib/components/OpsOverlays.svelte	Skip
-apps/files/src/lib/components/OpsOverlays.svelte	What should happen with it?
-apps/files/src/lib/components/OpsOverlays.svelte	already exists here
-apps/files/src/lib/components/TabStrip.svelte	Close tab
-apps/files/src/routes/+layout.svelte	Search
-apps/files/src/routes/+page.svelte	Copy
 apps/files/src/routes/+page.svelte	Ctrl+C
 apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
-apps/files/src/routes/+page.svelte	Cut
 apps/files/src/routes/+page.svelte	Del
-apps/files/src/routes/+page.svelte	Delete forever
-apps/files/src/routes/+page.svelte	Duplicate
 apps/files/src/routes/+page.svelte	F2
-apps/files/src/routes/+page.svelte	Move to trash
-apps/files/src/routes/+page.svelte	New folder
-apps/files/src/routes/+page.svelte	Open
-apps/files/src/routes/+page.svelte	Open in new tab
-apps/files/src/routes/+page.svelte	Paste
-apps/files/src/routes/+page.svelte	Pin to sidebar
-apps/files/src/routes/+page.svelte	Rename
 apps/greeter/src/lib/components/A11yMenu.svelte	Accessibility
 apps/greeter/src/lib/components/A11yMenu.svelte	Reading the screen aloud starts when assistive support is available.
 apps/greeter/src/lib/components/AuthPanel.svelte	Switch user
@@ -235,23 +191,6 @@ apps/greeter/src/lib/components/ProfileRow.svelte	Choose a profile
 apps/greeter/src/routes/+page.svelte	Login is not reachable right now.
 apps/greeter/src/routes/+page.svelte	No profiles are set up on this device.
 apps/greeter/src/routes/+page.svelte	Starting
-apps/harness/src/lib/components/HarnessSidebar.svelte	Activity
-apps/harness/src/lib/components/HarnessSidebar.svelte	Chat actions
-apps/harness/src/lib/components/HarnessSidebar.svelte	Chat name
-apps/harness/src/lib/components/HarnessSidebar.svelte	Copy chat
-apps/harness/src/lib/components/HarnessSidebar.svelte	Delete
-apps/harness/src/lib/components/HarnessSidebar.svelte	Delete this chat?
-apps/harness/src/lib/components/HarnessSidebar.svelte	History
-apps/harness/src/lib/components/HarnessSidebar.svelte	New chat (Ctrl+N)
-apps/harness/src/lib/components/HarnessSidebar.svelte	No chats match.
-apps/harness/src/lib/components/HarnessSidebar.svelte	Pin
-apps/harness/src/lib/components/HarnessSidebar.svelte	Pinned
-apps/harness/src/lib/components/HarnessSidebar.svelte	Rename
-apps/harness/src/lib/components/HarnessSidebar.svelte	Search chats
-apps/harness/src/lib/components/HarnessSidebar.svelte	Transparency
-apps/harness/src/lib/components/HarnessSidebar.svelte	Unpin
-apps/harness/src/lib/components/HarnessSidebar.svelte	Your chats will show up here.
-apps/harness/src/lib/components/agent/ActivityTimeline.svelte	A background refresh failed. What you see may be out of date; use Refresh.
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Can't read the activity record right now.
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Latest
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Loading activity
@@ -263,57 +202,11 @@ apps/harness/src/lib/components/agent/ActivityTimeline.svelte	This record failed
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	of
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	out of date
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	shown
-apps/harness/src/lib/components/agent/ExplainPanel.svelte	Ask for a plain summary of what this computer is doing right now.
-apps/harness/src/lib/components/agent/ExplainPanel.svelte	Could not build an explanation. Try again.
-apps/harness/src/lib/components/agent/ExplainPanel.svelte	The AI is off, so it cannot explain anything.
-apps/harness/src/lib/components/agent/TimelineRow.svelte	Could not undo this change.
-apps/harness/src/lib/components/agent/TimelineRow.svelte	Technical record
-apps/harness/src/lib/components/agent/WarningsPanel.svelte	No warnings. Nothing needs your attention.
-apps/harness/src/lib/components/agent/WarningsPanel.svelte	Warnings can't be read right now. That doesn't mean all is clear.
-apps/harness/src/lib/components/chat/CapabilityBar.svelte	Can't reach the assistant right now.
-apps/harness/src/lib/components/chat/CapabilityBar.svelte	Try again
-apps/harness/src/lib/components/chat/ChatMessage.svelte	Branch into a new chat from here
-apps/harness/src/lib/components/chat/ChatMessage.svelte	Cancel
-apps/harness/src/lib/components/chat/ChatMessage.svelte	Copy
-apps/harness/src/lib/components/chat/ChatMessage.svelte	Delete this turn
-apps/harness/src/lib/components/chat/ChatMessage.svelte	Edit and send again
-apps/harness/src/lib/components/chat/ChatMessage.svelte	Edit your message
-apps/harness/src/lib/components/chat/ChatMessage.svelte	No details were recorded for this answer.
-apps/harness/src/lib/components/chat/ChatMessage.svelte	Send again
-apps/harness/src/lib/components/chat/ChatMessage.svelte	The assistant could not answer.
-apps/harness/src/lib/components/chat/ChatMessage.svelte	Thinking
-apps/harness/src/lib/components/chat/ChatMessage.svelte	Try again
-apps/harness/src/lib/components/chat/ChatThread.svelte	Jump to latest
-apps/harness/src/lib/components/chat/Composer.svelte	Attach a file
-apps/harness/src/lib/components/chat/Composer.svelte	File suggestions
-apps/harness/src/lib/components/chat/Composer.svelte	Message
-apps/harness/src/lib/components/chat/Composer.svelte	Send
-apps/harness/src/lib/components/chat/EmptyState.svelte	Ask the assistant
-apps/harness/src/lib/components/chat/EmptyState.svelte	Can't reach the assistant
-apps/harness/src/lib/components/chat/EmptyState.svelte	It did not answer. Try again in a moment.
-apps/harness/src/lib/components/chat/EmptyState.svelte	It knows your files and what you have worked on. Ask in your own words. It does not remember earlier questions yet.
-apps/harness/src/lib/components/chat/EmptyState.svelte	Nothing runs while it is off. Turn it on in Settings to ask questions.
-apps/harness/src/lib/components/chat/EmptyState.svelte	The AI is off
-apps/harness/src/lib/components/chat/EmptyState.svelte	Try again
-apps/harness/src/lib/components/chat/ToolCallCard.svelte	Asked for
-apps/harness/src/lib/components/chat/ToolCallCard.svelte	Result
-apps/harness/src/lib/components/chat/ToolCallCard.svelte	Tool
 apps/harness/src/lib/components/transparency/AccessSection.svelte	While the AI is off, none of this access is active.
 apps/harness/src/lib/components/transparency/AccessSection.svelte	no data
 apps/harness/src/lib/components/transparency/ActivitySection.svelte	See everything it did
-apps/harness/src/lib/components/transparency/CostSection.svelte	Cloud use has a cost. Arlen does not count it yet, so nothing is shown here.
-apps/harness/src/lib/components/transparency/CostSection.svelte	Not measured yet
-apps/harness/src/lib/components/transparency/CostSection.svelte	There is no usage cost.
-apps/harness/src/lib/components/transparency/CostSection.svelte	This assistant runs on your own computer.
-apps/harness/src/lib/components/transparency/CostSection.svelte	This assistant uses a cloud service
 apps/harness/src/lib/components/transparency/MemorySection.svelte	This is the shape of what it holds, never the contents of your files.
-apps/harness/src/lib/components/transparency/OffSwitchSection.svelte	The AI is currently off.
 apps/harness/src/lib/components/transparency/OffSwitchSection.svelte	You are always in control. You can turn the AI off completely in Settings. When it is off, it does nothing at all, and you can remove it. The rest of your desktop keeps working without it.
-apps/harness/src/routes/agent/+page.svelte	Activity
-apps/harness/src/routes/agent/+page.svelte	Warnings
-apps/harness/src/routes/agent/+page.svelte	What's happening now
-apps/settings/src/lib/components/AppSidebar.svelte	Search settings
-apps/settings/src/lib/components/SiteHeader.svelte	Breadcrumb
 apps/settings/src/lib/components/appearance/AccentPicker.svelte	Custom color
 apps/settings/src/lib/components/appearance/AccentPicker.svelte	Monochrome
 apps/settings/src/lib/components/appearance/AppPicker.svelte	Add this name as a custom entry
@@ -346,43 +239,8 @@ apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Trust level
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	User
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
-apps/settings/src/lib/components/displays/BrightnessSection.svelte	Brightness
-apps/settings/src/lib/components/displays/BrightnessSection.svelte	Display
-apps/settings/src/lib/components/displays/BrightnessSection.svelte	No backlight-controllable display detected. External monitors (HDMI / DisplayPort) typically don't expose software brightness; use the monitor's hardware buttons instead.
-apps/settings/src/lib/components/displays/MonitorMap.svelte	Monitor arrangement
-apps/settings/src/lib/components/displays/MonitorMap.svelte	No displays detected. Are you running under a Wayland compositor that implements
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Active
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Adaptive Sync
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Mirror To
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Refresh Rate
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Resolution
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Rotation
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Scale
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	This output is currently disabled. Toggle
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	to wake it.
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Active
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Color Temperature
-apps/settings/src/lib/components/displays/NightLightSection.svelte	End
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Latitude
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Longitude
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Night Light
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Schedule
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Start
-apps/settings/src/lib/components/displays/ProfileSection.svelte	Active
-apps/settings/src/lib/components/displays/ProfileSection.svelte	Apply
-apps/settings/src/lib/components/displays/ProfileSection.svelte	Delete
-apps/settings/src/lib/components/displays/ProfileSection.svelte	Delete layout
-apps/settings/src/lib/components/displays/ProfileSection.svelte	Delete saved layout?
-apps/settings/src/lib/components/displays/ProfileSection.svelte	New layout name
-apps/settings/src/lib/components/displays/ProfileSection.svelte	New layout name…
-apps/settings/src/lib/components/displays/ProfileSection.svelte	No saved layouts yet. Save your current arrangement below to restore it automatically when you re-attach the same monitors.
-apps/settings/src/lib/components/displays/ProfileSection.svelte	Rename
-apps/settings/src/lib/components/displays/ProfileSection.svelte	Rename layout
-apps/settings/src/lib/components/displays/ProfileSection.svelte	Save current
-apps/settings/src/lib/components/displays/ProfileSection.svelte	Saved Layouts
 apps/settings/src/lib/components/displays/RevertConfirmModal.svelte	Keep changes (
-apps/settings/src/lib/components/displays/RevertConfirmModal.svelte	Keep these display changes?
 apps/settings/src/lib/components/displays/RevertConfirmModal.svelte	Revert now
 apps/settings/src/lib/components/displays/RevertConfirmModal.svelte	Reverting…
 apps/settings/src/lib/components/displays/RevertConfirmModal.svelte	The new layout has been applied. If you can read this clearly, confirm to keep it. Otherwise we'll roll back automatically in
@@ -417,88 +275,16 @@ apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Add Windo
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	App ID pattern
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	At least one matcher must be set. Patterns are regular expressions matched against the window's app_id / title.
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Cancel
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Float
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Match dialog windows
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Tile
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Title pattern
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Toolkit-declared dialog hint (xdg-decoration)
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	e.g. Preferences
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	e.g. firefox|chromium
-apps/settings/src/routes/about/+page.svelte	About
 apps/settings/src/routes/about/+page.svelte	Arlen OS
-apps/settings/src/routes/about/+page.svelte	Documentation
-apps/settings/src/routes/about/+page.svelte	GitHub organisation
-apps/settings/src/routes/about/+page.svelte	Kernel
-apps/settings/src/routes/about/+page.svelte	Loading…
-apps/settings/src/routes/about/+page.svelte	Open
-apps/settings/src/routes/about/+page.svelte	Refresh
-apps/settings/src/routes/about/+page.svelte	Report an issue
-apps/settings/src/routes/about/+page.svelte	Resources
-apps/settings/src/routes/about/+page.svelte	Services
-apps/settings/src/routes/about/+page.svelte	Version
-apps/settings/src/routes/about/+page.svelte	Wayland display
-apps/settings/src/routes/accessibility/+page.svelte	Accessibility
-apps/settings/src/routes/accessibility/+page.svelte	Color Filters
-apps/settings/src/routes/accessibility/+page.svelte	Color blindness filter
-apps/settings/src/routes/accessibility/+page.svelte	Enable mouse zoom shortcuts
-apps/settings/src/routes/accessibility/+page.svelte	Invert colors
-apps/settings/src/routes/accessibility/+page.svelte	Movement
-apps/settings/src/routes/accessibility/+page.svelte	Screen Magnifier
-apps/settings/src/routes/accessibility/+page.svelte	Show zoom overlay
-apps/settings/src/routes/accessibility/+page.svelte	Start zoom on login
-apps/settings/src/routes/accessibility/+page.svelte	Zoom increment
-apps/settings/src/routes/ai/+page.svelte	AI
-apps/settings/src/routes/ai/+page.svelte	AI Layer
-apps/settings/src/routes/ai/+page.svelte	Access
-apps/settings/src/routes/ai/+page.svelte	Action mode
-apps/settings/src/routes/ai/+page.svelte	Actions
-apps/settings/src/routes/ai/+page.svelte	Add an app id, e.g. org.arlen.files
-apps/settings/src/routes/ai/+page.svelte	Always-confirm rule
-apps/settings/src/routes/ai/+page.svelte	Assistant service
-apps/settings/src/routes/ai/+page.svelte	Autonomous apps
-apps/settings/src/routes/ai/+page.svelte	Behaviour list unavailable
-apps/settings/src/routes/ai/+page.svelte	Behaviours
-apps/settings/src/routes/ai/+page.svelte	Context window
-apps/settings/src/routes/ai/+page.svelte	Could not build an explanation. Try again.
-apps/settings/src/routes/ai/+page.svelte	Enable AI features
-apps/settings/src/routes/ai/+page.svelte	Execution
-apps/settings/src/routes/ai/+page.svelte	Explain my system
-apps/settings/src/routes/ai/+page.svelte	Knowledge read level
-apps/settings/src/routes/ai/+page.svelte	Let it make small changes
-apps/settings/src/routes/ai/+page.svelte	Model
-apps/settings/src/routes/ai/+page.svelte	Model provider
-apps/settings/src/routes/ai/+page.svelte	Network gate
-apps/settings/src/routes/ai/+page.svelte	No behaviours installed
-apps/settings/src/routes/ai/+page.svelte	Provider
-apps/settings/src/routes/ai/+page.svelte	Refresh
-apps/settings/src/routes/ai/+page.svelte	Restart needed
-apps/settings/src/routes/ai/+page.svelte	Some behaviours could not be read
-apps/settings/src/routes/ai/+page.svelte	Status
-apps/settings/src/routes/ai/+page.svelte	Status unavailable
-apps/settings/src/routes/ai/+page.svelte	What it may do on its own
-apps/settings/src/routes/ai/+page.svelte	What's happening now
-apps/settings/src/routes/ai/+page.svelte	enforced
-apps/settings/src/routes/ai/+page.svelte	llama3:8b
-apps/settings/src/routes/ai/+page.svelte	pending
-apps/settings/src/routes/appearance/+page.svelte	Aa
 apps/settings/src/routes/appearance/+page.svelte	Accent
 apps/settings/src/routes/appearance/+page.svelte	Appearance
-apps/settings/src/routes/appearance/+page.svelte	Border Width
-apps/settings/src/routes/appearance/+page.svelte	Can't read the appearance settings right now.
-apps/settings/src/routes/appearance/+page.svelte	Focused
-apps/settings/src/routes/appearance/+page.svelte	Gaps
-apps/settings/src/routes/appearance/+page.svelte	Interface
-apps/settings/src/routes/appearance/+page.svelte	Loading…
-apps/settings/src/routes/appearance/+page.svelte	Mode
-apps/settings/src/routes/appearance/+page.svelte	Monospace
 apps/settings/src/routes/appearance/+page.svelte	Roundness
-apps/settings/src/routes/appearance/+page.svelte	Size
-apps/settings/src/routes/appearance/+page.svelte	Smart Gaps
 apps/settings/src/routes/appearance/+page.svelte	Theme
-apps/settings/src/routes/appearance/+page.svelte	Typography
-apps/settings/src/routes/appearance/+page.svelte	Unfocused
-apps/settings/src/routes/appearance/+page.svelte	Window
-apps/settings/src/routes/appearance/+page.svelte	Window Borders
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	Layout
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	Module tiles
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	Quick Settings
@@ -506,34 +292,7 @@ apps/settings/src/routes/appearance/quicksettings/+page.svelte	Reset Quick Setti
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	Reset to defaults
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	installed by other modules are part of your layout but not editable here. They are preserved on save.
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	tile
-apps/settings/src/routes/display/+page.svelte	Apply
-apps/settings/src/routes/display/+page.svelte	Arrangement
-apps/settings/src/routes/display/+page.svelte	Could not apply this layout. Nothing was changed.
-apps/settings/src/routes/display/+page.svelte	Displays
-apps/settings/src/routes/extensions/+page.svelte	). Press refresh to rescan.
-apps/settings/src/routes/extensions/+page.svelte	, or place them in your modules folder (
-apps/settings/src/routes/extensions/+page.svelte	Can't read the modules right now.
-apps/settings/src/routes/extensions/+page.svelte	Changes will take effect after the Arlen shell restarts.
-apps/settings/src/routes/extensions/+page.svelte	Dismiss
-apps/settings/src/routes/extensions/+page.svelte	Extensions
-apps/settings/src/routes/extensions/+page.svelte	Filter modules...
-apps/settings/src/routes/extensions/+page.svelte	Install modules with
-apps/settings/src/routes/extensions/+page.svelte	Learn about modules
-apps/settings/src/routes/extensions/+page.svelte	No modules installed
-apps/settings/src/routes/extensions/+page.svelte	No modules match "
-apps/settings/src/routes/extensions/+page.svelte	Re-scan module directories
-apps/settings/src/routes/extensions/+page.svelte	Scanning module directories…
 apps/settings/src/routes/extensions/+page.svelte	forage install
-apps/settings/src/routes/extensions/+page.svelte	modules enabled
-apps/settings/src/routes/focus/+page.svelte	Add app...
-apps/settings/src/routes/focus/+page.svelte	Configured on the Knowledge page
-apps/settings/src/routes/focus/+page.svelte	Default Suppressed Apps
-apps/settings/src/routes/focus/+page.svelte	Focus Mode
-apps/settings/src/routes/focus/+page.svelte	Open Knowledge
-apps/settings/src/routes/focus/+page.svelte	Project Detection
-apps/settings/src/routes/focus/+page.svelte	Show project name when active
-apps/settings/src/routes/focus/+page.svelte	Suppress these apps' notifications by default
-apps/settings/src/routes/focus/+page.svelte	Top Bar Indicator
 apps/settings/src/routes/keyboard/+page.svelte	(none)
 apps/settings/src/routes/keyboard/+page.svelte	Add layout
 apps/settings/src/routes/keyboard/+page.svelte	Could not save the keyboard change. The previous setting still applies.
@@ -545,7 +304,6 @@ apps/settings/src/routes/keyboard/+page.svelte	Move up
 apps/settings/src/routes/keyboard/+page.svelte	Options
 apps/settings/src/routes/keyboard/+page.svelte	Primary
 apps/settings/src/routes/keyboard/+page.svelte	Primary variant
-apps/settings/src/routes/keyboard/+page.svelte	Rebind window management, workspaces, apps, and shell actions.
 apps/settings/src/routes/keyboard/+page.svelte	Remove layout
 apps/settings/src/routes/keyboard/+page.svelte	Repeat delay
 apps/settings/src/routes/keyboard/+page.svelte	Repeat rate
@@ -566,32 +324,6 @@ apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Use compositor defaults
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	bound to:
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	conflict
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	detected
-apps/settings/src/routes/knowledge/+page.svelte	Add a directory, e.g. ~/Projects
-apps/settings/src/routes/knowledge/+page.svelte	Auto-promote threshold
-apps/settings/src/routes/knowledge/+page.svelte	Browse the graph
-apps/settings/src/routes/knowledge/+page.svelte	Database size
-apps/settings/src/routes/knowledge/+page.svelte	FUSE mount
-apps/settings/src/routes/knowledge/+page.svelte	Graph size
-apps/settings/src/routes/knowledge/+page.svelte	Knowledge App
-apps/settings/src/routes/knowledge/+page.svelte	Knowledge Graph
-apps/settings/src/routes/knowledge/+page.svelte	Knowledge service
-apps/settings/src/routes/knowledge/+page.svelte	Open Knowledge App
-apps/settings/src/routes/knowledge/+page.svelte	Project Detection
-apps/settings/src/routes/knowledge/+page.svelte	Recursion depth
-apps/settings/src/routes/knowledge/+page.svelte	Refresh
-apps/settings/src/routes/knowledge/+page.svelte	Restart required
-apps/settings/src/routes/knowledge/+page.svelte	Stats unavailable
-apps/settings/src/routes/knowledge/+page.svelte	Status
-apps/settings/src/routes/knowledge/+page.svelte	Timeline
-apps/settings/src/routes/knowledge/+page.svelte	Timeline filesystem
-apps/settings/src/routes/knowledge/+page.svelte	Watch directories
-apps/settings/src/routes/mouse/+page.svelte	Acceleration
-apps/settings/src/routes/mouse/+page.svelte	Behavior
-apps/settings/src/routes/mouse/+page.svelte	Can't read these settings right now. Changes are paused.
-apps/settings/src/routes/mouse/+page.svelte	Left-handed
-apps/settings/src/routes/mouse/+page.svelte	Mouse
-apps/settings/src/routes/mouse/+page.svelte	Natural scroll
-apps/settings/src/routes/mouse/+page.svelte	Scroll speed
 apps/settings/src/routes/notifications/+page.svelte	Active until
 apps/settings/src/routes/notifications/+page.svelte	Add app...
 apps/settings/src/routes/notifications/+page.svelte	Add rule for app...
@@ -605,7 +337,6 @@ apps/settings/src/routes/notifications/+page.svelte	Critical
 apps/settings/src/routes/notifications/+page.svelte	Days
 apps/settings/src/routes/notifications/+page.svelte	Do Not Disturb
 apps/settings/src/routes/notifications/+page.svelte	Failed to load notifications config:
-apps/settings/src/routes/notifications/+page.svelte	Filter rules...
 apps/settings/src/routes/notifications/+page.svelte	For 1 hour
 apps/settings/src/routes/notifications/+page.svelte	From
 apps/settings/src/routes/notifications/+page.svelte	Group by app
@@ -633,16 +364,8 @@ apps/settings/src/routes/notifications/+page.svelte	Toast Appearance
 apps/settings/src/routes/notifications/+page.svelte	Until
 apps/settings/src/routes/notifications/+page.svelte	Until tomorrow
 apps/settings/src/routes/notifications/+page.svelte	Width
-apps/settings/src/routes/privacy/+page.svelte	Per-app permissions
-apps/settings/src/routes/privacy/+page.svelte	Permission system architecture
-apps/settings/src/routes/privacy/+page.svelte	Permissions
-apps/settings/src/routes/privacy/+page.svelte	Privacy
-apps/settings/src/routes/privacy/+page.svelte	Read the spec
 apps/settings/src/routes/system-actions/+page.svelte	/bin/sh -c
-apps/settings/src/routes/system-actions/+page.svelte	Command grammar:
-apps/settings/src/routes/system-actions/+page.svelte	Reset all system actions?
 apps/settings/src/routes/system-actions/+page.svelte	Reset all to defaults
-apps/settings/src/routes/system-actions/+page.svelte	System Actions
 apps/settings/src/routes/system-actions/+page.svelte	active
 apps/settings/src/routes/system-actions/+page.svelte	dispatches a shell-overlay event (e.g.
 apps/settings/src/routes/system-actions/+page.svelte	for compatibility.
@@ -650,18 +373,6 @@ apps/settings/src/routes/system-actions/+page.svelte	runs a shell command. Bare 
 apps/settings/src/routes/system-actions/+page.svelte	shell:brightness_up
 apps/settings/src/routes/system-actions/+page.svelte	shell:event_name
 apps/settings/src/routes/system-actions/+page.svelte	spawn:command
-apps/settings/src/routes/touchpad/+page.svelte	Acceleration
-apps/settings/src/routes/touchpad/+page.svelte	Can't read these settings right now. Changes are paused.
-apps/settings/src/routes/touchpad/+page.svelte	Click method
-apps/settings/src/routes/touchpad/+page.svelte	Clicking
-apps/settings/src/routes/touchpad/+page.svelte	Disable while typing
-apps/settings/src/routes/touchpad/+page.svelte	Natural scroll
-apps/settings/src/routes/touchpad/+page.svelte	Pointer
-apps/settings/src/routes/touchpad/+page.svelte	Scrolling
-apps/settings/src/routes/touchpad/+page.svelte	Tap and drag
-apps/settings/src/routes/touchpad/+page.svelte	Tap to click
-apps/settings/src/routes/touchpad/+page.svelte	Touchpad
-apps/settings/src/routes/touchpad/+page.svelte	Two-finger scroll
 apps/settings/src/routes/workspaces/+page.svelte	Inner gap
 apps/settings/src/routes/workspaces/+page.svelte	Layout direction
 apps/settings/src/routes/workspaces/+page.svelte	Outer gap
@@ -673,32 +384,10 @@ apps/settings/src/routes/workspaces/+page.svelte	Window Rules
 apps/settings/src/routes/workspaces/+page.svelte	Workspace Layout
 apps/settings/src/routes/workspaces/+page.svelte	Workspaces & Tiling
 apps/terminal/src/lib/components/BlockBody.svelte	Interactive widgets are not available yet.
-apps/terminal/src/lib/components/BlockBody.svelte	terminal output
 apps/terminal/src/lib/components/BlockStream.svelte	Jump to latest
-apps/terminal/src/lib/components/Composer.svelte	Command input
-apps/terminal/src/lib/components/HistoryPalette.svelte	Agent
-apps/terminal/src/lib/components/HistoryPalette.svelte	Command history
-apps/terminal/src/lib/components/HistoryPalette.svelte	Enter puts the command into the composer
-apps/terminal/src/lib/components/HistoryPalette.svelte	Esc closes
-apps/terminal/src/lib/components/HistoryPalette.svelte	Failures
-apps/terminal/src/lib/components/HistoryPalette.svelte	Only commands the agent ran
-apps/terminal/src/lib/components/HistoryPalette.svelte	Only failed commands
-apps/terminal/src/lib/components/HistoryPalette.svelte	Search history
 apps/terminal/src/lib/components/HistoryPalette.svelte	exit
-apps/terminal/src/lib/components/HistoryPalette.svelte	in
-apps/terminal/src/lib/components/OriginMarker.svelte	Drafted by the assistant
 apps/terminal/src/lib/components/OutputFrame.svelte	from the output
 apps/terminal/src/lib/components/StreamBlock.svelte	table
 apps/terminal/src/lib/components/TerminalSidebar.svelte	Ctrl+R
-apps/terminal/src/lib/components/TerminalSidebar.svelte	History
-apps/terminal/src/lib/components/TerminalSidebar.svelte	New session
-apps/terminal/src/lib/components/TerminalSidebar.svelte	New session (Ctrl+T)
 apps/terminal/src/lib/components/TerminalSidebar.svelte	No open sessions. Start one with the plus button or Ctrl+T.
-apps/terminal/src/lib/components/TerminalSidebar.svelte	Sessions
 apps/terminal/src/lib/components/TerminalSidebar.svelte	Terminal
-apps/terminal/src/routes/+page.svelte	Can't reach the shell backend
-apps/terminal/src/routes/+page.svelte	Couldn't start a session
-apps/terminal/src/routes/+page.svelte	New session
-apps/terminal/src/routes/+page.svelte	The shell did not come up.
-apps/terminal/src/routes/+page.svelte	The terminal engine did not answer.
-apps/terminal/src/routes/+page.svelte	Try again

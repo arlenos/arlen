@@ -421,6 +421,13 @@ go-live-rehearsal:
 i18n-lint:
     cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- --root apps --root sdk/ui-kit --baseline dev/i18n-baseline.tsv
 
+# Drop baseline entries the scanner can no longer reproduce, and only those. Safe
+# to run with new findings outstanding, unlike `i18n-baseline`: it never accepts a
+# new string, so the gate can only get stricter. The check that it behaved is that
+# `i18n-lint` reports the same number of new findings afterwards.
+i18n-prune:
+    cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- --root apps --root sdk/ui-kit --baseline dev/i18n-baseline.tsv --prune
+
 # Re-snapshot the born-translatable baseline (accept the current hardcoded set).
 i18n-baseline:
     cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- --root apps --root sdk/ui-kit --baseline dev/i18n-baseline.tsv --update
