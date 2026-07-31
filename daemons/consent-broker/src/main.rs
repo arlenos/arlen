@@ -56,9 +56,16 @@ impl GrantPersister for GraphGrantPersister {
         consent_class: &str,
         consent_scope: Option<&str>,
         revocation_handle: &str,
+        expires_at_micros: Option<i64>,
     ) -> Result<(), String> {
         self.client
-            .persist_consent_grant(recipient, consent_class, consent_scope, revocation_handle)
+            .persist_consent_grant(
+                recipient,
+                consent_class,
+                consent_scope,
+                revocation_handle,
+                expires_at_micros,
+            )
             .await
             .map_err(|e| e.to_string())
     }

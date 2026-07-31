@@ -996,6 +996,7 @@ impl UnixGraphClient {
         consent_class: &str,
         consent_scope: Option<&str>,
         revocation_handle: &str,
+        expires_at_micros: Option<i64>,
     ) -> Result<(), QueryError> {
         let req = serde_json::json!({
             "op": "persist_consent_grant",
@@ -1003,6 +1004,7 @@ impl UnixGraphClient {
             "consent_class": consent_class,
             "consent_scope": consent_scope,
             "revocation_handle": revocation_handle,
+            "expires_at_micros": expires_at_micros,
         });
         let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
 
@@ -2356,7 +2358,7 @@ mod tests {
 
         let client = UnixGraphClient::new(path.to_string_lossy().to_string());
         let result = client
-            .persist_consent_grant("org.arlen.files", "Destructive", Some("/home/x"), "rh-1")
+            .persist_consent_grant("org.arlen.files", "Destructive", Some("/home/x"), "rh-1", None)
             .await;
         let _ = server.await;
         let _ = std::fs::remove_file(&path);

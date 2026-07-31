@@ -99,6 +99,7 @@ pub trait GrantPersister: Send + Sync {
         consent_class: &str,
         consent_scope: Option<&str>,
         revocation_handle: &str,
+        expires_at_micros: Option<i64>,
     ) -> Result<(), String>;
 }
 
@@ -420,6 +421,7 @@ impl SharedState {
                         g.class.as_key(),
                         g.scope.as_deref(),
                         &g.revocation_handle,
+                        g.expires_at_micros,
                     )
                     .await
                 {
@@ -848,6 +850,7 @@ mod tests {
             _consent_class: &str,
             consent_scope: Option<&str>,
             _revocation_handle: &str,
+            _expires_at_micros: Option<i64>,
         ) -> Result<(), String> {
             self.persisted
                 .lock()

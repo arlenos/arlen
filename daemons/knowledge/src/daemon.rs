@@ -560,6 +560,10 @@ enum WriteRequest {
         consent_scope: Option<String>,
         /// The stable revocation handle = the Grant node id.
         revocation_handle: String,
+        /// When a time-boxed consent stops authorising, in epoch microseconds.
+        /// Absent for a grant that lasts until it is revoked.
+        #[serde(default)]
+        expires_at_micros: Option<i64>,
     },
     /// File a produced meeting note as a `Meeting` node with its `ActionItem`
     /// children (agent-work-surfaces). The summary + action items are AI-derived
@@ -1761,6 +1765,7 @@ async fn handle_write_request(
             consent_class,
             consent_scope,
             revocation_handle,
+            expires_at_micros,
         } => {
             // Only the consent broker may write a consent Grant node (the Grant
             // label is otherwise daemon-internal). Authorised by the caller's
@@ -1799,6 +1804,7 @@ async fn handle_write_request(
                 &consent_class,
                 consent_scope.as_deref(),
                 &revocation_handle,
+                expires_at_micros,
             )
             .await
             {
@@ -4305,6 +4311,7 @@ mod tests {
             "contacts.read",
             Some("self"),
             "rev-handle-1",
+            None,
         )
         .await
         .unwrap();
