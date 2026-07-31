@@ -499,12 +499,52 @@ confinement-check:
     #!/usr/bin/env bash
     set -uo pipefail
     cd "{{ROOT}}"
-    echo "== arlen-run (launcher, landlock, netns, seccomp) =="
-    (cd daemons/arlen-run && cargo test -- --ignored --test-threads=1) || true
-    echo "== terminal-run-mcp (the run_command sandbox) =="
-    (cd daemons/terminal-run-mcp && cargo test --test confined_exec -- --ignored --test-threads=1) || true
-    echo "== viewers (the decoder workers) =="
-    just --justfile "{{justfile()}}" viewers-decode-check || true
+    # Every leg runs even when an earlier one fails, so one missing capability does
+    # not hide the others. What it must NOT do is exit 0 regardless, which is what
+    # a bare `|| true` on each leg did: the confinement gate, over landlock,
+    # seccomp and the netns, could not fail. So failures are collected and the
+    # KNOWN flake is allowed BY NAME - the same shape as check-packaged-units.sh,
+    # for the same reason: holding the gate permanently red would mean a new
+    # confinement break lands unnoticed behind the old one.
+    KNOWN_FAILURES="killing_the_launcher_kills_the_confined_tree"
+    unexpected=()
+    leg() {
+        local label="$1"; shift
+        echo "== $label =="
+        local out rc
+        out=$("$@" 2>&1); rc=$?
+        printf '%s\n' "$out"
+        [ "$rc" -eq 0 ] && return 0
+        # cargo prints two `failures:` blocks; the per-test one carries
+        # `---- name stdout ----` lines, so a single-field line is a name.
+        local names
+        names=$(printf '%s\n' "$out" | awk '/^failures:$/{f=1;next} /^test result:/{f=0} f && NF==1 {print $1}' | sort -u)
+        if [ -z "$names" ]; then
+            unexpected+=("$label: exited $rc without naming a failing test")
+            return 0
+        fi
+        local n
+        for n in $names; do
+            case " $KNOWN_FAILURES " in
+                *" ${n##*::} "*) echo "   known flake, not failing the gate: ${n##*::}" ;;
+                *) unexpected+=("$label: $n") ;;
+            esac
+        done
+    }
+    leg "arlen-run (launcher, landlock, netns, seccomp)" \
+        bash -c 'cd daemons/arlen-run && cargo test -- --ignored --test-threads=1'
+    leg "terminal-run-mcp (the run_command sandbox)" \
+        bash -c 'cd daemons/terminal-run-mcp && cargo test --test confined_exec -- --ignored --test-threads=1'
+    leg "viewers (the decoder workers)" \
+        just --justfile "{{justfile()}}" viewers-decode-check
+    if [ "${#unexpected[@]}" -ne 0 ]; then
+        echo
+        echo "confinement broke in ${#unexpected[@]} place(s):"
+        printf '  - %s\n' "${unexpected[@]}"
+        exit 1
+    fi
+    echo
+    echo "OK: every confinement path holds"
 
 # The confined decoder workers against real fixtures, on-kernel (`#[ignore]`d, so
 # they only run here). Each worker decodes UNDER its installed seccomp filter, so a
