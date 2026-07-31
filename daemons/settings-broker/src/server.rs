@@ -152,8 +152,14 @@ fn attested_caller(stream: &tokio::net::UnixStream) -> Option<String> {
 /// Its own always. Settings may write any app's, because rendering another
 /// app's settings page and saving what the user changed is precisely its job -
 /// the same trusted-intermediary shape the consent broker and the handoff row
-/// use. `dev.`-prefixed callers pass in debug builds, matching the tree's other
-/// admissions, so a cargo-run Settings works without widening release.
+/// use. A cargo-run Settings passes in debug builds under its exact dev id.
+///
+/// Exact, not a `dev.` prefix: the prefix admitted ANY locally built binary as a
+/// trusted intermediary over every app's settings, which is a wide door to leave
+/// open on a development machine that also runs real apps. The audit daemon's
+/// ingest gate was narrowed from the same broad prefix to exact producer ids for
+/// this reason, and an app writing its OWN settings never needed the prefix
+/// anyway: that goes through the `caller == target` arm.
 pub fn may_write_for(caller: &str, target: &str) -> bool {
     // An unresolvable peer gets the empty id, and the equality below would
     // otherwise admit it against an equally empty target. Refused first, so
@@ -164,7 +170,7 @@ pub fn may_write_for(caller: &str, target: &str) -> bool {
     }
     caller == target
         || caller == "settings"
-        || (cfg!(debug_assertions) && caller.starts_with("dev."))
+        || (cfg!(debug_assertions) && caller == "dev.arlen-settings")
 }
 
 pub fn shared_write_lock() -> Arc<Mutex<()>> {
@@ -235,15 +241,27 @@ mod tests {
     struct OneApp {
         schema: SettingsSchema,
         path: PathBuf,
+        /// Which app id this registry answers for. The socket test uses the test
+        /// binary's OWN attested id so its write goes through the self-write arm,
+        /// which is the path a normal app takes; the pure tests keep a literal.
+        app_id: String,
     }
 
     impl AppRegistry for OneApp {
         fn lookup(&self, app_id: &str) -> Option<AppSettings> {
-            (app_id == "org.example.App").then(|| AppSettings {
+            (app_id == self.app_id).then(|| AppSettings {
                 schema: self.schema.clone(),
                 config_path: self.path.clone(),
             })
         }
+    }
+
+    /// The id the broker will attest this test process as, resolved the same way
+    /// the broker resolves any peer. Writing under it exercises `caller == target`
+    /// rather than leaning on a debug admission for a foreign app.
+    fn own_app_id() -> String {
+        let exe = std::fs::read_link("/proc/self/exe").expect("read /proc/self/exe");
+        arlen_permissions::identity::path_to_app_id(&exe).expect("resolve own app id")
     }
 
     fn schema() -> SettingsSchema {
@@ -277,9 +295,9 @@ mod tests {
         serde_json::from_slice(&body).unwrap()
     }
 
-    fn write_req(key: &str, value: Value) -> Request {
+    fn write_req_for(app_id: &str, key: &str, value: Value) -> Request {
         Request::Write {
-            app_id: "org.example.App".into(),
+            app_id: app_id.into(),
             writes: vec![KeyWrite {
                 key: key.into(),
                 value,
@@ -299,6 +317,7 @@ mod tests {
         let app = OneApp {
             schema: schema(),
             path: path.clone(),
+            app_id: "org.example.App".into(),
         };
         let lock = shared_write_lock();
         let handle = tokio::spawn({
@@ -308,7 +327,7 @@ mod tests {
             }
         });
 
-        send(&mut client, &write_req("theme", Value::String("dark".into()))).await;
+        send(&mut client, &write_req_for("org.example.App", "theme", Value::String("dark".into()))).await;
         match recv(&mut client).await {
             Response::Changed { changed, .. } => assert_eq!(changed, vec!["theme".to_string()]),
             other => panic!("expected Changed, got {other:?}"),
@@ -333,6 +352,7 @@ mod tests {
         let app = OneApp {
             schema: schema(),
             path,
+            app_id: "org.example.App".into(),
         };
         let lock = shared_write_lock();
         let handle = tokio::spawn({
@@ -342,9 +362,9 @@ mod tests {
             }
         });
 
-        send(&mut client, &write_req("theme", Value::String("dark".into()))).await;
+        send(&mut client, &write_req_for("org.example.App", "theme", Value::String("dark".into()))).await;
         let first = recv(&mut client).await;
-        send(&mut client, &write_req("theme", Value::String("light".into()))).await;
+        send(&mut client, &write_req_for("org.example.App", "theme", Value::String("light".into()))).await;
         let second = recv(&mut client).await;
 
         match (first, second) {
@@ -366,6 +386,7 @@ mod tests {
         let app = OneApp {
             schema: schema(),
             path: dir.path().join("config.toml"),
+            app_id: "org.example.App".into(),
         };
         let lock = shared_write_lock();
 
@@ -411,6 +432,7 @@ mod tests {
             let app = OneApp {
                 schema: schema.clone(),
                 path: path.clone(),
+                app_id: "org.example.App".into(),
             };
             let lock = lock.clone();
             tasks.push(tokio::spawn(async move {
@@ -461,6 +483,7 @@ mod tests {
         let registry: Arc<dyn AppRegistry> = Arc::new(OneApp {
             schema: schema(),
             path: config.clone(),
+            app_id: own_app_id(),
         });
         let socket_for_task = socket.clone();
         let server = tokio::spawn(async move { run(registry, &socket_for_task).await });
@@ -481,7 +504,14 @@ mod tests {
         let mode = std::fs::metadata(&socket).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "socket mode is {mode:o}");
 
-        send(&mut client, &write_req("theme", Value::String("dark".into()))).await;
+        // Under this process's own attested id: over a real socket the broker reads
+        // the peer credential, so the write has to be a self-write rather than lean
+        // on a debug admission for a foreign app.
+        send(
+            &mut client,
+            &write_req_for(&own_app_id(), "theme", Value::String("dark".into())),
+        )
+        .await;
         match recv(&mut client).await {
             Response::Changed { changed, .. } => assert_eq!(changed, vec!["theme".to_string()]),
             other => panic!("expected Changed, got {other:?}"),
@@ -516,4 +546,18 @@ mod tests {
         assert!(!may_write_for("", "org.example.App"));
         assert!(!may_write_for("", ""));
     }
+
+    /// The debug admission is Settings' exact dev id. Any other locally built
+    /// binary is refused for another app's settings even in a debug build, and
+    /// still writes its own through the `caller == target` arm.
+    #[test]
+    fn only_settings_own_dev_id_stands_in_for_settings() {
+        assert_eq!(
+            may_write_for("dev.arlen-settings", "org.example.App"),
+            cfg!(debug_assertions)
+        );
+        assert!(!may_write_for("dev.some-other-tool", "org.example.App"));
+        assert!(may_write_for("dev.some-other-tool", "dev.some-other-tool"));
+    }
+
 }
