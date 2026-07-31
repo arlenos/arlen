@@ -1437,34 +1437,33 @@ mod crate_reachability {
     /// reference each other perfectly well while the crate as a whole has no
     /// consumer. Several are here because a successor took the job under a
     /// similar name, which is what makes them easy to miss when reading the tree.
-    const KNOWN_UNCONSUMED: &[&str] = &[
-        // NOT superseded, despite what this entry said until the reads were
-        // checked: `apps/system-monitor/core` is process monitoring and
-        // `daemons/system-monitor-mcp` is sysinfo, while this crate holds the
-        // audit-ledger integrity verdict, the daemon-health verdict, per-app
-        // access and observed-vs-declared capability use, which exist nowhere
-        // else. Its consumer is the monitor app's sovereignty view, not yet
-        // wired. A wrong epitaph here is worse than no entry: it reads as
-        // permission to delete work nothing replaces.
-        "sdk/monitor-reads",
-        "sdk/proc-collect",
-        // `sdk/config-format` and `daemons/config-broker` do this work, and the
-        // compositor parses its own keybindings. The one mention left is a
-        // commented-out dependency in `apps/settings/src-tauri/Cargo.toml`
-        // pointing at `github.com/arlenos/sdk`, a repo from before the monorepo.
-        "sdk/config",
-        "sdk/tauri-plugin-clipboard",
-        // Built recently, consumer still to come.
-        "sdk/i18n",
-        "daemons/integration-packages",
-        "contracts/lenv",
-        "contracts/file-change",
-        // The pure detector core for an `org.arlen.Sentinel1` daemon that does
-        // not exist yet.
-        "daemons/sentinel-detect",
-        // System Explanation Mode. Its caller was `ai/ai-daemon`, which became
-        // `daemons/ai-engine-daemon` and does not call it.
-        "ai/ai-explanation",
+    /// Each entry pairs the crate with WHY it waits, because the reason is the
+    /// part that goes wrong. `sdk/monitor-reads` sat here under a neighbour's
+    /// comment claiming two other crates did its work; they did not, and the
+    /// entry read as permission to delete reads that exist nowhere else. A bare
+    /// path inherits whatever comment happens to sit above it, so the reason is
+    /// a field rather than a convention - unwritable without being written.
+    const KNOWN_UNCONSUMED: &[(&str, &str)] = &[
+        ("sdk/monitor-reads",
+         "NOT superseded, despite what this entry said until the reads were checked: `apps/system-monitor/core` is process monitoring and `daemons/system-monitor-mcp` is sysinfo, while this crate holds the audit-ledger integrity verdict, the daemon-health verdict, per-app access and observed-vs-declared capability use, which exist nowhere else. Its consumer is the monitor app's sovereignty view, not yet wired. A wrong epitaph here is worse than no entry: it reads as permission to delete work nothing replaces."),
+        ("sdk/proc-collect",
+         "Superseded, unlike `sdk/monitor-reads`: `apps/system-monitor/core`'s `procmon` reads the process list, CPU and memory through `system-monitor-mcp`'s sysinfo, which is this crate's whole job."),
+        ("sdk/config",
+         "`sdk/config-format` and `daemons/config-broker` do this work, and the compositor parses its own keybindings. The one mention left is a commented-out dependency in `apps/settings/src-tauri/Cargo.toml` pointing at `github.com/arlenos/sdk`, a repo from before the monorepo."),
+        ("sdk/tauri-plugin-clipboard",
+         "Not superseded - the clipboard client it wraps is live in `os-sdk` and used there. This is the Tauri-plugin shell around it, waiting for an app to register the plugin."),
+        ("sdk/i18n",
+         "Built recently, consumer still to come."),
+        ("daemons/integration-packages",
+         "Built recently. IP-R5's manifest and permission-profile half; the installd side that would call it is not wired."),
+        ("contracts/lenv",
+         "Built recently. The .lenv parse and trust model, waiting on the transfer path that presents one."),
+        ("contracts/file-change",
+         "Built recently, consumer still to come."),
+        ("daemons/sentinel-detect",
+         "The pure detector core for an `org.arlen.Sentinel1` daemon that does not exist yet."),
+        ("ai/ai-explanation",
+         "System Explanation Mode, genuinely replaced rather than merely uncalled: `daemons/ai-engine-daemon/src/explain_iface.rs` serves `org.arlen.AI1.explain_system` by running the built-in explain skill on an ephemeral confined pi, and its own doc gives retiring this path as a reason it exists. The feature is alive; this implementation of it is the one awaiting removal."),
     ];
 
     /// Every `Cargo.toml` in the tree that declares a `[package]`.
@@ -1619,7 +1618,7 @@ mod crate_reachability {
         }
         unconsumed.sort();
 
-        let known: Vec<String> = KNOWN_UNCONSUMED.iter().map(|s| s.to_string()).collect();
+        let known: Vec<String> = KNOWN_UNCONSUMED.iter().map(|(p, _)| p.to_string()).collect();
         let fresh: Vec<&String> = unconsumed.iter().filter(|u| !known.contains(u)).collect();
         assert!(
             fresh.is_empty(),
