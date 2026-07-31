@@ -1,15 +1,4 @@
 apps/desktop-shell/src/lib/components/ui/dialog/dialog-content.svelte	left-
-apps/files/src/routes/+layout.svelte	pl-
-apps/files/src/routes/+layout.svelte	pr-
-apps/harness/src/routes/+layout.svelte	mr-
-apps/harness/src/routes/+layout.svelte	pl-
-apps/harness/src/routes/+layout.svelte	pr-
 apps/settings/src/lib/components/AppSidebar.svelte	border-r
-apps/settings/src/lib/components/SiteHeader.svelte	mr-
-apps/settings/src/lib/components/SiteHeader.svelte	pl-
-apps/settings/src/lib/components/SiteHeader.svelte	pr-
-apps/settings/src/lib/components/settings/KeyCapture.svelte	pl-
-apps/terminal/src/routes/+layout.svelte	pl-
-apps/terminal/src/routes/+layout.svelte	pr-
 sdk/ui-kit/src/lib/components/ui/sidebar/SidebarRail.svelte	left-
 sdk/ui-kit/src/lib/components/ui/sidebar/SidebarRail.svelte	right-

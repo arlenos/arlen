@@ -5,18 +5,22 @@
   import { X } from "lucide-svelte";
   import type { FileEntry } from "@arlen/ui-kit/components/browser";
   import { formatModified } from "@arlen/ui-kit/components/browser";
-  import type { TimelineEvent } from "$lib/stores/timeline";
-  import { t } from "$lib/i18n/messages";
+  import { clock, type TimelineEvent } from "$lib/stores/timeline";
+  import type { ProjectInfo } from "$lib/stores/projects";
+  import { t, locale } from "$lib/i18n/messages";
 
   let {
     entry = null,
     event = null,
+    project = null,
     onclose,
   }: {
     /// A browsed graph node (the generic places).
     entry?: FileEntry | null;
     /// A timeline event; when set it wins over `entry`.
     event?: TimelineEvent | null;
+    /// A selected project; wins over both (the projects browser).
+    project?: ProjectInfo | null;
     onclose: () => void;
   } = $props();
 </script>
@@ -29,7 +33,31 @@
     </button>
   </header>
 
-  {#if event}
+  {#if project}
+    <div class="kn-detail-name">{project.name}</div>
+    <div class="kn-kv">
+      <span class="kn-k">{$t("k.detail.members")}</span>
+      <span class="kn-v">{$t("k.detail.membersVal", { n: project.memberCount })}</span>
+    </div>
+    <div class="kn-kv">
+      <span class="kn-k">{$t("k.detail.provenance")}</span>
+      <span class="kn-v">{$t("k.detail.detected", { when: formatModified(project.detected) })}</span>
+    </div>
+    {#if project.events.length > 0}
+      <div class="kn-kv">
+        <span class="kn-k">{$t("k.detail.recent")}</span>
+        <div class="kn-recent">
+          {#each project.events as e (e.id)}
+            <div class="kn-recent-row">
+              <span class="kn-recent-verb">{e.verb}</span>
+              <span class="kn-recent-object">{e.object}</span>
+              <span class="kn-recent-time">{clock(e.at, $locale)}</span>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+  {:else if event}
     <div class="kn-detail-name">{event.verb} {event.object}</div>
     <div class="kn-kv">
       <span class="kn-k">{$t("k.detail.when")}</span>

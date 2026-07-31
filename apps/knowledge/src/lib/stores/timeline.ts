@@ -67,6 +67,19 @@ function localMidnight(unix: number): number {
   return Math.floor(d.getTime() / 1000);
 }
 
+/// The spine's events as one flat list (sessions unrolled), newest first -
+/// the projects detail reuses these for its recent-activity block.
+export function flatEvents(list: TimelineDay[]): TimelineEvent[] {
+  const out: TimelineEvent[] = [];
+  for (const day of list) {
+    for (const item of day.items) {
+      if (item.kind === "event") out.push(item.event);
+      else out.push(...item.session.events);
+    }
+  }
+  return out.sort((a, b) => b.at - a.at);
+}
+
 /// Group a flat item list into days, newest first.
 export function groupByDay(items: TimelineItem[]): TimelineDay[] {
   const at = (it: TimelineItem) => (it.kind === "event" ? it.event.at : it.session.to);
