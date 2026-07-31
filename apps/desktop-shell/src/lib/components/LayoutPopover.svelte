@@ -188,7 +188,7 @@
   /* Gap slider */
   .gap-row { display: flex; align-items: center; gap: 10px; }
   .gap-label { font-size: var(--text-xs); flex-shrink: 0; }
-  .gap-value { font-size: var(--text-2xs); opacity: 0.5; min-width: 28px; text-align: right; }
+  .gap-value { font-size: var(--text-2xs); opacity: 0.5; min-width: 28px; text-align: end; }
   .gap-slider-wrap { flex: 1; display: flex; align-items: center; }
 
   /* Toggle row uses the same flex+gap pattern as `.gap-row` so

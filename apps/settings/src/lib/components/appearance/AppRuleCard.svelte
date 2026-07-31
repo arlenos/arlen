@@ -157,7 +157,7 @@
     padding: 0 0.5rem 0 0.6rem;
     background: transparent;
     border: none;
-    text-align: left;
+    text-align: start;
     color: inherit;
     font: inherit;
     transition: background-color 120ms ease;

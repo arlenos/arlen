@@ -164,7 +164,7 @@
     padding: 0.25rem 0.5rem 0.25rem 0.6rem;
     background: transparent;
     border: none;
-    text-align: left;
+    text-align: start;
     color: var(--foreground);
     font: inherit;
     border-radius: var(--radius-chip);
@@ -321,7 +321,7 @@
   }
   .warnings ul {
     margin: 0;
-    padding-left: 1rem;
+    padding-inline-start: 1rem;
     color: color-mix(in srgb, var(--color-warning) 85%, transparent);
   }
 

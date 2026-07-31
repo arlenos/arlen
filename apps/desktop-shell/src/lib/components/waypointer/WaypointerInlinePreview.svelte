@@ -100,7 +100,7 @@
   }
 
   .wp-inline-hint {
-    margin-left: auto;
+    margin-inline-start: auto;
     font-size: var(--text-2xs);
     opacity: 0.35;
   }

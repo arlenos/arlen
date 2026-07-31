@@ -191,7 +191,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin-left: 4px;
+    margin-inline-start: 4px;
     height: 14px;
     min-width: 14px;
     padding: 0 4px;
@@ -256,6 +256,6 @@
      triggers share the leading check column so every label lines up. */
   :global(.menubar-content.menu-checks [data-slot="dropdown-menu-item"]),
   :global(.menubar-content.menu-checks [data-slot="dropdown-menu-sub-trigger"]) {
-    padding-left: 2rem;
+    padding-inline-start: 2rem;
   }
 </style>

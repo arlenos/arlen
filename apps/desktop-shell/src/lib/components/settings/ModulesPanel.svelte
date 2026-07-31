@@ -188,7 +188,7 @@
   }
   .mod-card:hover { background: color-mix(in srgb, var(--color-fg-shell) 5%, transparent); }
   .mod-card.disabled { opacity: 0.6; }
-  .mod-card.error { border-left: 3px solid var(--color-error); }
+  .mod-card.error { border-inline-start: 3px solid var(--color-error); }
 
   .mod-row { display: flex; align-items: center; gap: 8px; }
   .mod-info { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; flex-wrap: wrap; }

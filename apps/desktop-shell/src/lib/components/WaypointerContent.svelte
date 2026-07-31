@@ -1304,7 +1304,7 @@
      delete). Sits at the right edge of the command item; clicks don't
      bubble to the item's onSelect. */
   .wp-inline-btn {
-    margin-left: auto;
+    margin-inline-start: auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;

@@ -695,7 +695,7 @@
     grid-column-gap: 8px;
     grid-row-gap: 1px;
     align-items: center;
-    text-align: left;
+    text-align: start;
     padding: 0.5rem 0.625rem;
     border-radius: var(--radius-input);
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
@@ -751,7 +751,7 @@
     font-weight: 600;
   }
   .expires-banner .link {
-    margin-left: auto;
+    margin-inline-start: auto;
     display: inline-flex;
     align-items: center;
     height: var(--height-control-compact, 24px);

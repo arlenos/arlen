@@ -259,7 +259,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding-right: 22px;
+    padding-inline-end: 22px;
   }
   .preview-icon {
     display: inline-flex;
@@ -325,7 +325,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    margin-left: auto;
+    margin-inline-start: auto;
   }
   :global(.footer-action) {
     width: var(--height-control-compact, 24px);

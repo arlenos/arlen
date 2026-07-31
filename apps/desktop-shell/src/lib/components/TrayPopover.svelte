@@ -108,7 +108,7 @@
   .tray-item {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-input);
-    color: var(--color-fg-shell); text-align: left; width: 100%;
+    color: var(--color-fg-shell); text-align: start; width: 100%;
     transition: background-color var(--duration-micro, 100ms) ease;
   }
   .tray-item:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }

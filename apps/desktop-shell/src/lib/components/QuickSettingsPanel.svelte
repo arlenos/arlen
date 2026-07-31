@@ -335,6 +335,6 @@
     border-radius: var(--radius-chip);
     font-family: var(--font-mono);
     font-size: var(--text-2xs);
-    margin-right: 4px;
+    margin-inline-end: 4px;
   }
 </style>

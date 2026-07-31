@@ -66,6 +66,6 @@
   .pl-dirty {
     color: var(--term-ansi-3, #d4b483);
     flex-shrink: 0;
-    margin-left: -4px;
+    margin-inline-start: -4px;
   }
 </style>

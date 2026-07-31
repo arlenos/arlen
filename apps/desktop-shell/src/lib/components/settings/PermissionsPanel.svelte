@@ -185,7 +185,7 @@
     display: flex; align-items: center; gap: 10px; width: 100%;
     padding: 10px 12px; background: transparent; border: none;
     color: var(--color-fg-primary, var(--color-fg-shell));
-    font-size: var(--text-sm); text-align: left;
+    font-size: var(--text-sm); text-align: start;
     border-radius: var(--radius-md, 8px);
     transition: background-color var(--duration-fast, 100ms) ease;
   }

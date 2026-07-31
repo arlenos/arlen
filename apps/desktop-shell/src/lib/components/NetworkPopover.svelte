@@ -355,7 +355,7 @@
     display: flex; align-items: center; justify-content: space-between;
     padding: 8px 10px; background: transparent; border: none; border-radius: var(--radius-input);
     color: var(--color-fg-shell); font-size: var(--text-sm);
-    text-align: left; width: 100%;
+    text-align: start; width: 100%;
     transition: background-color var(--duration-micro, 100ms) ease;
   }
   .net-item:hover { background: color-mix(in srgb, var(--color-fg-shell) 10%, transparent); }
@@ -374,18 +374,18 @@
   :global(.ctx-value) { font-size: var(--text-2xs); font-family: monospace; }
 
   .net-ethernet { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: var(--text-sm); opacity: 0.7; }
-  .net-ethernet-badge { margin-left: auto; font-size: var(--text-2xs); opacity: 0.5; }
+  .net-ethernet-badge { margin-inline-start: auto; font-size: var(--text-2xs); opacity: 0.5; }
 
   .vpn-header {
     display: flex; align-items: center; gap: 6px;
     padding: 6px 4px; background: transparent; border: none; border-radius: var(--radius-chip);
     color: color-mix(in srgb, var(--color-fg-shell) 70%, transparent);
-    font-size: var(--text-xs); font-weight: 500; width: 100%; text-align: left;
+    font-size: var(--text-xs); font-weight: 500; width: 100%; text-align: start;
     transition: color var(--duration-micro, 100ms) ease;
   }
   .vpn-header:hover { color: var(--color-fg-shell); }
   :global(.vpn-chevron-open) { transform: rotate(90deg); }
-  .vpn-badge { margin-left: auto; font-size: var(--text-2xs); opacity: 0.5; font-weight: 400; }
+  .vpn-badge { margin-inline-start: auto; font-size: var(--text-2xs); opacity: 0.5; font-weight: 400; }
   .vpn-list { display: flex; flex-direction: column; gap: 2px; }
   .vpn-status { font-size: var(--text-2xs); opacity: 0.5; }
 
