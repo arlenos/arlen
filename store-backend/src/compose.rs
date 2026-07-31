@@ -10,9 +10,25 @@
 
 use arlen_forage_recipe::{Capabilities, Recipe, ReproducibleStatus};
 
+/// Which tracked cookbook a forage recipe came from.
+///
+/// Carried alongside the recipe rather than read here: composing is pure mapping
+/// with no I/O, and the registry that knows this lives on disk. It is optional
+/// because a recipe can reach the catalog without one - a directly configured
+/// path has no cookbook, and inventing a publisher for it would be worse than
+/// showing none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CookbookOrigin {
+    /// The tap name as the registry tracks it.
+    pub name: String,
+    /// Whether the registry holds a pinned TUF root for it. False for a cookbook
+    /// tracked without a signed root, which resolution refuses to install from.
+    pub pinned_root: bool,
+}
+
 use crate::catalog::{
-    ItemKind,
-    CapabilityFootprint, CatalogEntry, ComponentId, DisplayMeta, SourceLayer, TrustSignals,
+    CapabilityFootprint, CatalogEntry, ComponentId, DisplayMeta, ItemKind, SourceAttestation,
+    SourceLayer, TrustSignals,
 };
 
 /// Map a parsed forage recipe to one catalog entry for the given source layer (the
@@ -21,7 +37,11 @@ use crate::catalog::{
 /// coarse categories the `[capabilities]` block declares (so a "needs network" /
 /// "offline" facet is meaningful); the reproducible-build trust signal is populated
 /// only when the recipe attests one (an unchecked status hides the row, section 9.2).
-pub fn forage_entry(recipe: &Recipe, layer: SourceLayer) -> CatalogEntry {
+pub fn forage_entry(
+    recipe: &Recipe,
+    layer: SourceLayer,
+    cookbook: Option<&CookbookOrigin>,
+) -> CatalogEntry {
     let meta = &recipe.recipe;
     let display = DisplayMeta {
         name: meta.name.clone(),
@@ -35,17 +55,10 @@ pub fn forage_entry(recipe: &Recipe, layer: SourceLayer) -> CatalogEntry {
         capabilities: recipe.capabilities.as_ref().map(capability_labels).unwrap_or_default(),
     };
     let trust = TrustSignals {
-        // Not an oversight and not "forage vouches for nobody": the publisher a
-        // forage app has IS its cookbook, and this function is never told which
-        // cookbook the recipe came from. The daemon reads a single recipe path
-        // from an env var and hardcodes the Official tier, explicitly as a
-        // skeleton, so there is no cookbook identity anywhere on this path to
-        // pass. Wiring it needs the cookbook registry, which currently lives
-        // inside the `forage` BINARY crate and so cannot be depended on from
-        // here. That extraction is the first step, and it unblocks the tier badge
-        // above and the ST-9 attestation row as well - all three wait on the same
-        // missing seam rather than on three separate pieces of work.
-        verified_publisher: None,
+        // The publisher a forage app has IS its cookbook: there is no separate
+        // vendor identity to check, so a recipe from a tracked cookbook is
+        // published by that cookbook and nothing more is claimed.
+        verified_publisher: cookbook.map(|c| c.name.clone()),
         reproducible_build: recipe.reproducible.as_ref().and_then(|r| match r.status {
             ReproducibleStatus::Verified => Some("verified".to_string()),
             ReproducibleStatus::Expected => Some("expected".to_string()),
@@ -56,6 +69,15 @@ pub fn forage_entry(recipe: &Recipe, layer: SourceLayer) -> CatalogEntry {
         install_count: None,
         odrs_score: None,
         observed_vs_declared: None,
+        // A cookbook's chain is TUF: the recipe is a signed target in metadata
+        // this machine resolves against a root it pinned on first use. Absent
+        // for a recipe that reached the catalog outside any tracked cookbook,
+        // where there is no chain to name.
+        attestation: cookbook.map(|c| SourceAttestation {
+            chain: "tuf".to_string(),
+            signer: c.name.clone(),
+            pinned_here: c.pinned_root,
+        }),
     };
     // A recipe carrying `[bridge] foreign_app` is a bridge, not a standalone app
     // (store-app.md section 8b); everything else is an app.
@@ -437,7 +459,7 @@ fn dep11_icon_ref(icon: Dep11Icon) -> Option<String> {
 #[derive(Debug, Default)]
 pub struct SourceInputs {
     /// `(recipe.toml text, the cookbook's resolved tier)` per forage recipe.
-    pub forage: Vec<(String, SourceLayer)>,
+    pub forage: Vec<(String, SourceLayer, Option<CookbookOrigin>)>,
     /// The Flathub composed-AppStream catalog XML, one per configured remote.
     ///
     /// A LIST, not one document: a machine can have several Flatpak remotes, and
@@ -473,9 +495,9 @@ pub struct SourceInputs {
 /// merged catalog the `org.arlen.Store1` backend serves.
 pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
     let mut entries = Vec::new();
-    for (toml, layer) in &inputs.forage {
+    for (toml, layer, cookbook) in &inputs.forage {
         if let Ok(recipe) = arlen_forage_recipe::parse(toml) {
-            entries.push(forage_entry(&recipe, *layer));
+            entries.push(forage_entry(&recipe, *layer, cookbook.as_ref()));
         }
     }
     // Every remote and every suite/component, merged. The dedupe in
@@ -652,7 +674,7 @@ commit = "0000000000000000000000000000000000000000"
     #[test]
     fn maps_recipe_metadata_to_the_display() {
         let r = recipe_toml("org.demo.App", "");
-        let e = forage_entry(&r, SourceLayer::Official);
+        let e = forage_entry(&r, SourceLayer::Official, None);
         assert_eq!(e.id, ComponentId("org.demo.App".into()));
         assert_eq!(e.layer, SourceLayer::Official);
         assert_eq!(e.display.name, "Demo App");
@@ -666,20 +688,53 @@ commit = "0000000000000000000000000000000000000000"
             "org.demo.App",
             "[capabilities]\nnetwork = [\"example.org:443\"]\nnotifications = true\ngraph = [\"read:File\"]",
         );
-        let e = forage_entry(&r, SourceLayer::Community);
+        let e = forage_entry(&r, SourceLayer::Community, None);
         // Sorted + deduped coarse categories.
         assert_eq!(e.capabilities.capabilities, vec!["network", "notifications", "read:File"]);
+    }
+
+    #[test]
+    fn a_recipe_from_a_pinned_cookbook_names_its_chain_and_its_publisher() {
+        let recipe = arlen_forage_recipe::parse(FORAGE_TOML).unwrap();
+        let origin = CookbookOrigin { name: "arlen-official".into(), pinned_root: true };
+        let entry = forage_entry(&recipe, SourceLayer::Official, Some(&origin));
+        let a = entry.trust.attestation.expect("a tracked cookbook has a chain");
+        assert_eq!(a.chain, "tuf");
+        assert_eq!(a.signer, "arlen-official");
+        assert!(a.pinned_here);
+        // The publisher a forage app has is that same cookbook.
+        assert_eq!(entry.trust.verified_publisher.as_deref(), Some("arlen-official"));
+    }
+
+    /// A tracked cookbook without a signed root still names its publisher, but
+    /// the row must not read as pinned - nothing here is holding it to a chain.
+    #[test]
+    fn an_unpinned_cookbook_is_named_but_not_pinned() {
+        let recipe = arlen_forage_recipe::parse(FORAGE_TOML).unwrap();
+        let origin = CookbookOrigin { name: "local-notes".into(), pinned_root: false };
+        let entry = forage_entry(&recipe, SourceLayer::Personal, Some(&origin));
+        assert!(!entry.trust.attestation.expect("still a named signer").pinned_here);
+    }
+
+    /// A recipe that reached the catalog outside any cookbook: no publisher and
+    /// no chain, rather than an invented one.
+    #[test]
+    fn a_recipe_with_no_cookbook_claims_nothing() {
+        let recipe = arlen_forage_recipe::parse(FORAGE_TOML).unwrap();
+        let entry = forage_entry(&recipe, SourceLayer::Official, None);
+        assert!(entry.trust.attestation.is_none());
+        assert!(entry.trust.verified_publisher.is_none());
     }
 
     #[test]
     fn an_unverified_reproducible_status_hides_the_row() {
         // No [reproducible] block -> None (hidden).
         let r = recipe_toml("org.demo.App", "");
-        assert!(forage_entry(&r, SourceLayer::Official).trust.reproducible_build.is_none());
+        assert!(forage_entry(&r, SourceLayer::Official, None).trust.reproducible_build.is_none());
         // An explicit verified status is shown.
         let r = recipe_toml("org.demo.App", "[reproducible]\nstatus = \"verified\"");
         assert_eq!(
-            forage_entry(&r, SourceLayer::Official).trust.reproducible_build.as_deref(),
+            forage_entry(&r, SourceLayer::Official, None).trust.reproducible_build.as_deref(),
             Some("verified")
         );
     }
@@ -687,7 +742,7 @@ commit = "0000000000000000000000000000000000000000"
     #[test]
     fn a_forage_entry_flows_through_the_merge() {
         let r = recipe_toml("org.demo.App", "");
-        let cards = merge_catalog(vec![forage_entry(&r, SourceLayer::Official)]);
+        let cards = merge_catalog(vec![forage_entry(&r, SourceLayer::Official, None)]);
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0].variants[0].layer, SourceLayer::Official);
     }
@@ -930,7 +985,7 @@ commit = "0000000000000000000000000000000000000000"
     #[test]
     fn compose_catalog_merges_every_source() {
         let inputs = SourceInputs {
-            forage: vec![(FORAGE_TOML.to_string(), SourceLayer::Community)],
+            forage: vec![(FORAGE_TOML.to_string(), SourceLayer::Community, None)],
             flathub_xml: vec![FLATHUB_XML.to_string()],
             dep11_yaml: vec![DEP11_YAML.to_string()],
             ..Default::default()
@@ -963,7 +1018,7 @@ commit = "0000000000000000000000000000000000000000"
     #[test]
     fn compose_catalog_skips_a_malformed_source() {
         let inputs = SourceInputs {
-            forage: vec![("this is not valid toml {{{".to_string(), SourceLayer::Personal)],
+            forage: vec![("this is not valid toml {{{".to_string(), SourceLayer::Personal, None)],
             flathub_xml: vec!["<not xml".to_string()],
             dep11_yaml: vec![DEP11_YAML.to_string()],
             ..Default::default()
@@ -978,7 +1033,7 @@ commit = "0000000000000000000000000000000000000000"
     #[test]
     fn a_bridge_recipe_produces_a_bridge_entry() {
         let recipe = arlen_forage_recipe::parse(BRIDGE_TOML).unwrap();
-        let entry = forage_entry(&recipe, SourceLayer::Community);
+        let entry = forage_entry(&recipe, SourceLayer::Community, None);
         assert_eq!(entry.kind, ItemKind::Bridge);
     }
 
@@ -986,7 +1041,7 @@ commit = "0000000000000000000000000000000000000000"
     #[test]
     fn a_plain_recipe_produces_an_app_entry() {
         let recipe = arlen_forage_recipe::parse(FORAGE_TOML).unwrap();
-        let entry = forage_entry(&recipe, SourceLayer::Community);
+        let entry = forage_entry(&recipe, SourceLayer::Community, None);
         assert_eq!(entry.kind, ItemKind::App);
     }
 
