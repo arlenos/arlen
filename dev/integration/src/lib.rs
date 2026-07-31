@@ -1301,7 +1301,11 @@ mod module_reachability {
         "daemons/integration-packages/manifest",
         "daemons/sentinel-detect/tracker",
         "daemons/settings-broker/client",
-        "daemons/transfer-daemon/dbus",
+        // Diagnosed: not a leftover. The daemon's live per-uid listeners are
+        // deliberately deferred to PR-R1's per-uid sockets, and `main.rs` says
+        // so while holding a fail-closed `DeniedBroker` meanwhile. These are its
+        // socket-path and source-attestation helpers, waiting for that.
+        "daemons/transfer-daemon/request_socket",
         // BR-4's decision core. `retry` says when a failed bridge is tried again
         // and when it must not be; the host cannot use it until the sink reports
         // typed errors instead of `String`, because classifying transient

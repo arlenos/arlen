@@ -35,7 +35,7 @@ pub mod audit;
 pub mod auth;
 pub mod broker;
 pub mod config;
-pub mod dbus;
+pub mod request_socket;
 pub mod gate;
 pub mod policy;
 pub mod receive;
