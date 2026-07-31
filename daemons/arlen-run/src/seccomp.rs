@@ -184,6 +184,19 @@ fn app_allowlist() -> Vec<libc::c_long> {
         libc::SYS_timerfd_create,
         libc::SYS_timerfd_settime,
         libc::SYS_timerfd_gettime,
+        // The POSIX per-process timers, alongside the fd-based ones above. The
+        // module doc claimed "timers" while covering only the `timerfd` family,
+        // and the gap is not theoretical: `timeout(1)` inside a confined launch
+        // warns `timer_create: Operation not permitted` and falls back, and
+        // anything using SIGALRM-style timers degrades or fails the same way.
+        // They reach nothing outside the calling process - a timer delivers a
+        // signal to its own process or runs a thread in it - which is why every
+        // mainstream sandbox profile permits them.
+        libc::SYS_timer_create,
+        libc::SYS_timer_settime,
+        libc::SYS_timer_gettime,
+        libc::SYS_timer_getoverrun,
+        libc::SYS_timer_delete,
         // AF_UNIX IPC: the Wayland display, the session bus, PipeWire. Network
         // containment is the namespace/egress layer's job (an unshared net ns or
         // the egress proxy), not this filter, so the socket calls are allowed for
@@ -332,6 +345,34 @@ pub fn app_filter_bytes() -> Result<Vec<u8>, SeccompError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Both timer families, because the allowlist had only one and the module doc
+    /// said "timers" - a real confined `timeout(1)` hit the gap.
+    #[test]
+    fn both_timer_families_are_allowed() {
+        let allowed = super::app_allowlist();
+        for (nr, name) in [
+            (libc::SYS_timerfd_create, "timerfd_create"),
+            (libc::SYS_timerfd_settime, "timerfd_settime"),
+            (libc::SYS_timerfd_gettime, "timerfd_gettime"),
+            (libc::SYS_timer_create, "timer_create"),
+            (libc::SYS_timer_settime, "timer_settime"),
+            (libc::SYS_timer_gettime, "timer_gettime"),
+            (libc::SYS_timer_getoverrun, "timer_getoverrun"),
+            (libc::SYS_timer_delete, "timer_delete"),
+        ] {
+            assert!(allowed.contains(&nr), "{name} is not in the app allowlist");
+        }
+    }
+
+    /// The clock a process may not change stays out, so widening the timer set
+    /// did not quietly widen the clock set with it.
+    #[test]
+    fn setting_the_system_clock_is_still_refused() {
+        let allowed = super::app_allowlist();
+        assert!(!allowed.contains(&libc::SYS_clock_settime));
+        assert!(!allowed.contains(&libc::SYS_settimeofday));
+    }
 
     #[test]
     fn the_filter_compiles_to_a_non_empty_program() {
