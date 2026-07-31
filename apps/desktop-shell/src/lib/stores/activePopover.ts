@@ -12,6 +12,7 @@ export type PopoverType =
   | "tray"
   | "layout"
   | "mpris"
+  | "undo"
   | `module:${string}`
   | null;
 
