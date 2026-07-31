@@ -16,7 +16,7 @@ use arlen_consent_broker::ConsentOutcome;
 /// pending. Wraps the broker's `ControlClient::fetch`.
 #[tauri::command]
 pub async fn consent_fetch() -> Result<Option<PendingView>, String> {
-    tokio::task::spawn_blocking(|| ControlClient::at_default_path().fetch())
+    tokio::task::spawn_blocking(|| ControlClient::at_default_path()?.fetch())
         .await
         .map_err(|e| format!("consent fetch task failed: {e}"))?
         .map_err(|e| format!("consent fetch: {e}"))
@@ -28,7 +28,7 @@ pub async fn consent_fetch() -> Result<Option<PendingView>, String> {
 /// grant for an always-allow.
 #[tauri::command]
 pub async fn consent_resolve(id: u64, outcome: ConsentOutcome) -> Result<bool, String> {
-    tokio::task::spawn_blocking(move || ControlClient::at_default_path().resolve(id, outcome))
+    tokio::task::spawn_blocking(move || ControlClient::at_default_path()?.resolve(id, outcome))
         .await
         .map_err(|e| format!("consent resolve task failed: {e}"))?
         .map_err(|e| format!("consent resolve: {e}"))
