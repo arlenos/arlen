@@ -267,6 +267,12 @@ pub fn build_profile(
         network: NetworkPolicy::None,
         binds: vec![
             // The toolchain (base platform) is the read-only root, emitted first.
+            // At `/`, so the base platform IS the sandbox root and brings its own
+            // `/lib64`, `/proc` and friends - which is why this profile needs
+            // neither the merged-`/usr` compat binds nor a writable root, unlike
+            // the profiles that bind only `/usr`. It does mean a base platform
+            // missing the standard directories fails at mount time rather than
+            // degrading.
             Bind::ReadOnly(base, BUILD_ROOT.into()),
             // The build directory is writable at the fixed in-sandbox path.
             Bind::ReadWrite(build, BUILD_MOUNT.into()),
