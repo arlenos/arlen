@@ -2,10 +2,6 @@ apps/desktop-shell/src/lib/components/AudioPopover.svelte	Apps (
 apps/desktop-shell/src/lib/components/AudioPopover.svelte	Input
 apps/desktop-shell/src/lib/components/AudioPopover.svelte	Output
 apps/desktop-shell/src/lib/components/AudioPopover.svelte	Sound
-apps/desktop-shell/src/lib/components/AuthorizationDialog.svelte	Allow
-apps/desktop-shell/src/lib/components/AuthorizationDialog.svelte	Allow the assistant to
-apps/desktop-shell/src/lib/components/AuthorizationDialog.svelte	Deny
-apps/desktop-shell/src/lib/components/AuthorizationDialog.svelte	This permission lasts for the current session only. It is not remembered, and it covers nothing beyond this request.
 apps/desktop-shell/src/lib/components/BatteryPopover.svelte	Charging
 apps/desktop-shell/src/lib/components/BatteryPopover.svelte	No battery found
 apps/desktop-shell/src/lib/components/BatteryPopover.svelte	On battery
@@ -316,13 +312,6 @@ apps/harness/src/lib/components/transparency/OffSwitchSection.svelte	You are alw
 apps/harness/src/routes/agent/+page.svelte	Activity
 apps/harness/src/routes/agent/+page.svelte	Warnings
 apps/harness/src/routes/agent/+page.svelte	What's happening now
-apps/harness/src/routes/transparency/+page.svelte	Transparency
-apps/harness/src/routes/transparency/+page.svelte	Turning it off
-apps/harness/src/routes/transparency/+page.svelte	What it can reach
-apps/harness/src/routes/transparency/+page.svelte	What it costs
-apps/harness/src/routes/transparency/+page.svelte	What it did
-apps/harness/src/routes/transparency/+page.svelte	What it has read
-apps/harness/src/routes/transparency/+page.svelte	What it is holding now
 apps/settings/src/lib/components/AppSidebar.svelte	Search settings
 apps/settings/src/lib/components/SiteHeader.svelte	Breadcrumb
 apps/settings/src/lib/components/appearance/AccentPicker.svelte	Custom color
@@ -347,7 +336,6 @@ apps/settings/src/lib/components/appearance/AppRuleCard.svelte	Remove rule
 apps/settings/src/lib/components/appearance/AppRuleCard.svelte	Silent
 apps/settings/src/lib/components/appearance/AppRuleCard.svelte	Stored in history but no toast.
 apps/settings/src/lib/components/appearance/BorderColorPicker.svelte	Custom color
-apps/settings/src/lib/components/appearance/ModeToggle.svelte	Theme mode
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Built-in
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	ID
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Manifest warnings
