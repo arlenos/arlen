@@ -633,6 +633,13 @@ check-protos:
 # a unit ordered against a name no unit provides, and eight proto copies agreed
 # only by luck. `check-locks` is deliberately not here: it is minutes, not
 # milliseconds. Neither is `lint-licenses`, which needs cargo-deny and reuse.
+# Start each unattended-runnable daemon and check it binds the socket it claims.
+# Deliberately NOT part of `checks`: those read files in milliseconds, this one
+# builds and runs processes. It covers what no unit test can - a daemon that
+# compiles, passes its suite and still dies on startup.
+smoke:
+    bash {{ROOT}}/dev/scripts/smoke-daemons.sh
+
 checks:
     #!/usr/bin/env bash
     set -uo pipefail
