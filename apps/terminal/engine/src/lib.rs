@@ -506,7 +506,7 @@ mod tests {
     /// 633;E text is dropped). Prints the resulting live snapshot + finished block
     /// grids so the prompt-leak can be SEEN. Set ARLEN_REPLAY_FILE to the capture.
     #[test]
-    #[ignore]
+    #[ignore = "needs a capture file that is not in the tree"]
     fn replay_capture_for_double_prompt() {
         // A diagnostic, not an assertion: it needs a capture file that is not in
         // the tree, so without one there is nothing to replay. Skip rather than
@@ -571,7 +571,7 @@ mod tests {
     /// to end. `#[ignore]`d so CI (which need not have a usable PTY) skips it; run
     /// with `--ignored`.
     #[test]
-    #[ignore]
+    #[ignore = "needs a pty"]
     fn pty_surfaces_an_emitted_osc_mark_end_to_end() {
         let mut eng = PtyEngine::spawn(
             "/bin/sh",
@@ -625,7 +625,7 @@ mod tests {
     /// flag + content reach the snapshot off a real PTY, not only a synthetic
     /// parser. `#[ignore]`d (needs a usable PTY); run with `--ignored`.
     #[test]
-    #[ignore]
+    #[ignore = "needs a pty"]
     fn the_live_pty_path_carries_alt_screen_and_its_content() {
         // Enter the alternate screen, paint a marker, and hold the screen open so
         // the snapshot is taken while the app still owns the alt screen (exiting
@@ -669,7 +669,7 @@ mod tests {
     /// the xterm.js drive renderer, alongside the grid parse. `#[ignore]`d (needs
     /// a real PTY); run with `--ignored`.
     #[test]
-    #[ignore]
+    #[ignore = "needs a pty and zsh"]
     fn the_raw_pty_output_is_forwarded_verbatim() {
         let eng = PtyEngine::spawn(
             "/bin/sh",
@@ -705,7 +705,7 @@ mod tests {
     /// frontend input path (the grid taking keystrokes, not a textbox). `#[ignore]`d
     /// (needs an interactive zsh with the user's config); run with `--ignored`.
     #[test]
-    #[ignore]
+    #[ignore = "needs a pty and zsh"]
     fn the_real_shell_echoes_and_colours_per_keystroke_input() {
         let mut eng = PtyEngine::spawn("zsh", &["-i"], None, 80, 24).expect("spawn zsh");
         // Let the shell + prompt + plugins finish loading before typing.
@@ -755,7 +755,7 @@ mod tests {
     /// after the 133;D end mark, `running` is false. `#[ignore]`d (needs a PTY);
     /// run with `--ignored`.
     #[test]
-    #[ignore]
+    #[ignore = "needs a pty"]
     fn the_live_pty_path_tracks_the_command_output_region() {
         // `read` pauses gate the phases (released by send_input), so the snapshot
         // is read in a known steady state rather than racing the byte stream.
@@ -812,7 +812,7 @@ mod tests {
     /// running command's region is `output_start_row` instead. `#[ignore]`d (needs
     /// a PTY); run with `--ignored`.
     #[test]
-    #[ignore]
+    #[ignore = "needs a pty"]
     fn the_prompt_start_row_marks_the_prompt_and_clears_on_exec() {
         let script = concat!(
             "printf '\\033]133;A\\007';", // prompt start at row 0
@@ -858,7 +858,7 @@ mod tests {
     /// initial 80x24 no matter the window size. `#[ignore]`d (needs a PTY); run
     /// with `--ignored`.
     #[test]
-    #[ignore]
+    #[ignore = "needs a pty"]
     fn resizing_tracks_the_new_geometry_in_the_snapshot() {
         let mut eng = PtyEngine::spawn("/bin/sh", &["-c", "sleep 5"], None, 80, 24).unwrap();
         let before = eng.screen_snapshot();
@@ -877,7 +877,7 @@ mod tests {
     /// shell prints), so the reader pulses the receiver with no install-vs-output
     /// race. `#[ignore]`d (needs a PTY); run with `--ignored`.
     #[test]
-    #[ignore]
+    #[ignore = "needs a pty"]
     fn the_frame_notifier_pulses_when_the_shell_produces_output() {
         let mut eng = PtyEngine::spawn(
             "/bin/sh",
@@ -904,7 +904,7 @@ mod tests {
     /// must hold exactly those lines and neither the prompt nor the echo.
     /// `#[ignore]`d (needs a PTY); run with `--ignored`.
     #[test]
-    #[ignore]
+    #[ignore = "needs a pty and zsh"]
     fn a_commands_output_is_captured_into_its_own_block_grid() {
         let script = concat!(
             "printf 'prompt$ ';",
@@ -957,7 +957,7 @@ mod tests {
     /// it and decodes the command. Proves the producer and consumer agree on the
     /// nonce, the OSC framing and the escaping. `#[ignore]`d (on-host).
     #[test]
-    #[ignore]
+    #[ignore = "needs a pty and zsh"]
     fn the_integration_script_emits_a_nonced_command_mark_the_engine_decodes() {
         let script = concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -997,7 +997,7 @@ mod tests {
     /// dir without dropping the user's setup. `#[ignore]`d (on-host); run with
     /// `--ignored --test-threads=1` (it mutates process env).
     #[test]
-    #[ignore]
+    #[ignore = "needs a pty and zsh"]
     fn the_curated_zdotdir_sources_the_user_rc_and_the_integration() {
         let curated = concat!(env!("CARGO_MANIFEST_DIR"), "/../integration/zdotdir");
         let tmp = std::env::temp_dir().join(format!("arlen-term-zdotdir-test-{}", std::process::id()));
@@ -1059,7 +1059,7 @@ mod tests {
     /// byte round-trips back into the decoded command. Guards the framing-safety
     /// escaping. `#[ignore]`d (on-host).
     #[test]
-    #[ignore]
+    #[ignore = "needs a pty and zsh"]
     fn a_command_with_a_control_byte_survives_the_osc_framing() {
         let script = concat!(
             env!("CARGO_MANIFEST_DIR"),

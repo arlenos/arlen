@@ -1317,7 +1317,7 @@ async fn the_agent_audits_a_workflow_proposal_in_suggest_mode() {
 /// `#[ignore]`d (needs the built daemons via `just integration-nightly`); it runs
 /// without `/dev/fuse` since the harness disables the timeline mount.
 #[tokio::test]
-#[ignore]
+#[ignore = "needs the built daemons and a fuse host"]
 async fn the_engine_executor_does_not_silently_write_from_an_event_trigger() {
     if !(arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd")
         && arlen_integration::binary_built(

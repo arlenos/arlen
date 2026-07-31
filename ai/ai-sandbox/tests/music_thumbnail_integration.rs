@@ -64,7 +64,7 @@ fn minimal_flac(png: Option<&[u8]>) -> Vec<u8> {
 }
 
 #[test]
-#[ignore]
+#[ignore = "needs a landlock-capable kernel"]
 fn embedded_cover_art_is_extracted_and_thumbnailed_under_lockdown() {
     let file = minimal_flac(Some(&tiny_png()));
     let thumb = arlen_ai_sandbox::album_art_thumbnail(Path::new(worker_bin()), &file)
@@ -76,7 +76,7 @@ fn embedded_cover_art_is_extracted_and_thumbnailed_under_lockdown() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "needs a landlock-capable kernel"]
 fn a_file_without_art_yields_no_thumbnail_under_lockdown() {
     let file = minimal_flac(None);
     let out = arlen_ai_sandbox::album_art_thumbnail(Path::new(worker_bin()), &file)
