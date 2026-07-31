@@ -52,6 +52,12 @@
   // hint shows after a real edit this session.
   let projectDirty = $state(false);
 
+  // Timeline capture exclusions (KA-R8): what the daemon must never record.
+  // Same startup-only config, same honest restart hint.
+  let excludedApps = $state<string[]>([]);
+  let excludedPaths = $state<string[]>([]);
+  let timelineDirty = $state(false);
+
   const maxDepth = $derived<number>(
     ($graph.data?.projects?.max_depth as number | undefined) ??
       PROJECTS_DEFAULTS.max_depth,
@@ -78,7 +84,18 @@
     await Promise.all([refresh(), graph.load()]);
     watchDirs =
       (get(graph).data?.projects?.watch_directories as string[] | undefined) ?? [];
+    excludedApps = (get(graph).data?.timeline?.excluded_apps as string[] | undefined) ?? [];
+    excludedPaths = (get(graph).data?.timeline?.excluded_paths as string[] | undefined) ?? [];
   });
+
+  async function persistExcludedApps() {
+    timelineDirty = true;
+    await graph.setValue("timeline.excluded_apps", excludedApps);
+  }
+  async function persistExcludedPaths() {
+    timelineDirty = true;
+    await graph.setValue("timeline.excluded_paths", excludedPaths);
+  }
 
   async function persistWatchDirs() {
     projectDirty = true;
@@ -227,6 +244,46 @@
           </span>
         {/snippet}
       </Row>
+      <!-- The honest what-is-recorded statement, word for word the Knowledge
+           app's disclosure - one statement, two surfaces. -->
+      <Row label={$t("s.know.recStatement")} description={$t("s.know.recStatement.desc")} id="kg-rec-statement" />
+      <Row
+        label={$t("s.know.recApps")}
+        description={$t("s.know.recApps.desc")}
+        id="kg-rec-apps"
+      >
+        {#snippet below()}
+          <ChipList
+            bind:items={excludedApps}
+            placeholder={$t("s.know.recApps.placeholder")}
+            onchange={persistExcludedApps}
+          />
+        {/snippet}
+      </Row>
+      <Row
+        label={$t("s.know.recPaths")}
+        description={$t("s.know.recPaths.desc")}
+        id="kg-rec-paths"
+      >
+        {#snippet below()}
+          <ChipList
+            bind:items={excludedPaths}
+            placeholder={$t("s.know.recPaths.placeholder")}
+            onchange={persistExcludedPaths}
+          />
+        {/snippet}
+      </Row>
+      {#if timelineDirty}
+        <Row
+          label={$t("s.know.restart")}
+          description={$t("s.know.restart.desc")}
+          id="kg-rec-restart-hint"
+        >
+          {#snippet control()}
+            <AlertCircle size={16} class="kg-warn-icon" />
+          {/snippet}
+        </Row>
+      {/if}
     </Group>
 
     <Group label={$t("s.know.app")}>
