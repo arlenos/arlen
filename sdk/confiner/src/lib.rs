@@ -390,6 +390,21 @@ pub fn command_profile(
         let r = checked_abs(root)?;
         binds.push(Bind::ReadOnly(r.clone(), r));
     }
+    // On a merged-`/usr` system `/lib64`, `/bin` and friends are root-level
+    // symlinks into `/usr`. Binding only `/usr` therefore leaves a dynamically
+    // linked command unable to find its ELF INTERPRETER, and the failure is
+    // `execvp: No such file or directory` naming the command - which reads as "the
+    // binary is missing" and is why this went unnoticed: the command IS there, its
+    // loader is not. Add whichever exist and are not already inside a bound root.
+    for compat in merged_usr_compat_roots() {
+        if !binds.iter().any(|b| match b {
+            Bind::ReadOnly(_, dst) | Bind::ReadWrite(_, dst) => {
+                Path::new(&compat).starts_with(Path::new(dst))
+            }
+        }) {
+            binds.push(Bind::ReadOnly(compat.clone(), compat));
+        }
+    }
 
     let mut env = env;
     env.insert("PATH".into(), "/usr/bin:/bin".into());
@@ -493,6 +508,18 @@ pub fn app_runtime_profile(
             as_pid_1: false,
         },
     })
+}
+
+/// The merged-`/usr` root-level compatibility paths that exist on this host.
+///
+/// I/O rather than pure, deliberately: which of these are present is a property of
+/// the machine, and binding one that does not exist makes bwrap fail outright.
+pub fn merged_usr_compat_roots() -> Vec<String> {
+    ["/lib64", "/lib", "/bin", "/sbin"]
+        .into_iter()
+        .filter(|p| Path::new(p).exists())
+        .map(String::from)
+        .collect()
 }
 
 /// Validate a path is absolute and UTF-8, returning it as a string. Rejects
