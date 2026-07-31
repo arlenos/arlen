@@ -617,6 +617,34 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    /// `as_str` is not a display helper, it is the storage format: these exact
+    /// strings sit in `p.status` on every Project node ever written. Renaming a
+    /// variant would quietly change them and orphan every existing row, which
+    /// reads back through the `_ => Active` arm below as a resurrected project
+    /// rather than as an error. Pinned literally so that rename has to happen
+    /// here first, where the migration question is unavoidable.
+    #[test]
+    fn the_stored_status_strings_are_the_storage_format() {
+        assert_eq!(ProjectStatus::Active.as_str(), "active");
+        assert_eq!(ProjectStatus::Archived.as_str(), "archived");
+        for status in [ProjectStatus::Active, ProjectStatus::Archived] {
+            assert_eq!(
+                ProjectStatus::from_str(status.as_str()),
+                status,
+                "{status:?} does not survive a write and read back"
+            );
+        }
+    }
+
+    /// The parse is deliberately total and defaults to `Active`, which matters
+    /// for rows written before the column existed. Worth pinning the direction:
+    /// an unreadable status shows a project rather than hiding one.
+    #[test]
+    fn an_unrecognised_status_reads_as_active() {
+        assert_eq!(ProjectStatus::from_str(""), ProjectStatus::Active);
+        assert_eq!(ProjectStatus::from_str("Archived"), ProjectStatus::Active);
+    }
+
     async fn setup() -> (ProjectStore, TempDir) {
         let tmp = TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
