@@ -1,5 +1,10 @@
 //! The transfer request surface (profile-system-plan.md, Decided 5).
 //!
+//! Named for the socket rather than for D-Bus, because the first thing this
+//! module has to say is that it is NOT a bus service - and it spent a while
+//! called `dbus`, which meant anyone grepping for this daemon's bus surface
+//! found a file whose own doc explains why there isn't one.
+//!
 //! TRANSPORT DECISION. The online-accounts daemon serves on the session bus,
 //! where the bus authoritatively stamps the sender and answers
 //! `GetConnectionUnixProcessID`, so a caller cannot forge another connection's
