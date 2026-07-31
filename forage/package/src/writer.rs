@@ -30,6 +30,7 @@
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
+use arlen_forage_recipe::settings::SettingsSchema;
 use arlen_forage_recipe::Recipe;
 use ed25519_dalek::{Signer, SigningKey};
 use serde::Serialize;
@@ -101,6 +102,15 @@ struct Manifest {
     schemas: SchemaInfo,
     #[serde(skip_serializing_if = "ProvidesInfo::is_empty")]
     provides: ProvidesInfo,
+    /// The app's declared settings schema, carried verbatim from the recipe so
+    /// the installed app has a settings page before it has ever run.
+    ///
+    /// Last, because TOML wants scalars before tables and this is a table of
+    /// tables. Absent when the recipe declares no `[settings]`, which is why it
+    /// is an `Option` rather than an empty schema: an empty one would install a
+    /// settings page with nothing on it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    settings: Option<SettingsSchema>,
 }
 
 /// `[package]` section.
@@ -273,6 +283,9 @@ pub fn synthesize_manifest(
         permissions,
         schemas,
         provides: provides_info,
+        // Cloned rather than validated again: `Recipe` validation already
+        // rejected a malformed schema before packaging could start.
+        settings: recipe.settings.clone(),
     };
 
     Ok(toml::to_string(&manifest)?)
@@ -570,6 +583,43 @@ commit = "{COMMIT}"
             parsed["package"]["description"].as_str(),
             Some("a friendly greeter")
         );
+    }
+
+    /// The settings page has to exist before the app has ever run, so the schema
+    /// has to survive packaging. Round-tripped through the emitted TOML rather
+    /// than asserted on the struct: what installd reads is the text.
+    #[test]
+    fn a_declared_settings_schema_reaches_the_manifest() {
+        let recipe = recipe_with_caps(
+            r#"
+[settings]
+version = 1
+
+[[settings.sections]]
+label = "General"
+
+[[settings.sections.items]]
+key = "theme"
+type = "string"
+label = "Theme"
+default = "dark"
+"#,
+        );
+        let toml = synthesize_manifest(&recipe, &collection()).unwrap();
+        let parsed: toml::Value = toml::from_str(&toml).unwrap();
+        assert_eq!(parsed["settings"]["version"].as_integer(), Some(1));
+        let item = &parsed["settings"]["sections"][0]["items"][0];
+        assert_eq!(item["key"].as_str(), Some("theme"));
+        assert_eq!(item["default"].as_str(), Some("dark"));
+    }
+
+    /// A recipe with no `[settings]` emits no section at all, rather than an
+    /// empty one that would install a settings page with nothing on it.
+    #[test]
+    fn no_declared_settings_emits_no_section() {
+        let toml = synthesize_manifest(&recipe_with_caps(""), &collection()).unwrap();
+        let parsed: toml::Value = toml::from_str(&toml).unwrap();
+        assert!(parsed.get("settings").is_none(), "{toml}");
     }
 
     #[test]
