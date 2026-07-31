@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Summary of an app's permissions for the UI list view.
 #[derive(Debug, Clone, Serialize)]
@@ -129,22 +129,6 @@ struct NotificationsSection {
     enabled: bool,
 }
 
-/// The directory this surface reads: the SYSTEM tier for the current uid.
-///
-/// Deferred to `arlen_permissions` rather than built here. The local version
-/// hardcoded `/var/lib/arlen/permissions` - the system tier - while honouring
-/// `ARLEN_PERMISSIONS_DIR`, which overrides the USER tier, so under a test
-/// harness this surface read a directory nothing writes and reported no profiles
-/// with no error. The two tiers have two overrides, and that is the pair a second
-/// copy of the path gets wrong.
-///
-/// NOTE this still reads ONE tier: a user-tier profile under
-/// `~/.config/permissions` is invisible here, though the listing below says it
-/// lists what the user has. Fixing that is a change to what the screen shows and
-/// is left deliberate rather than folded into a path correction.
-fn user_permissions_dir() -> PathBuf {
-    arlen_permissions::system_permissions_dir()
-}
 
 /// Load a raw profile from a TOML file.
 fn load_raw_profile(path: &Path) -> Option<RawProfile> {
@@ -152,30 +136,49 @@ fn load_raw_profile(path: &Path) -> Option<RawProfile> {
     toml::from_str(&content).ok()
 }
 
-/// List all apps that have permission profiles for the current user.
+/// List all apps that have permission profiles for the current user, across BOTH
+/// tiers.
+///
+/// This used to read the system tier alone, so every app installed the user-tier
+/// way - which is where installd writes module profiles and where `profile_path`
+/// resolves - was missing from a screen whose whole job is to say what is
+/// installed and what it may do. An app you installed simply was not listed.
+///
+/// Where an app_id appears in both, the system-tier entry wins and the user one is
+/// not shown, matching what `load_tiered` actually enforces: a root-owned profile
+/// is authoritative and the `~/.config` overlay is ignored for that id. Listing
+/// both would show a grant that is not the one in force.
 #[tauri::command]
 pub fn get_app_permissions() -> Result<Vec<AppPermissionSummary>, String> {
-    let dir = user_permissions_dir();
-    if !dir.exists() {
-        return Ok(Vec::new());
-    }
+    let mut apps: Vec<AppPermissionSummary> = Vec::new();
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
 
-    let mut apps = Vec::new();
-    let entries = std::fs::read_dir(&dir).map_err(|e| e.to_string())?;
+    // System first, so its entry claims the id and the user overlay is skipped.
+    let dirs = [
+        Some(arlen_permissions::system_permissions_dir()),
+        arlen_permissions::permissions_dir(),
+    ];
+    for dir in dirs.into_iter().flatten() {
+        if !dir.exists() {
+            continue;
+        }
+        let entries = std::fs::read_dir(&dir).map_err(|e| e.to_string())?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e == "toml").unwrap_or(false) {
+                if let Some(profile) = load_raw_profile(&path) {
+                    let app_id = if profile.info.app_id.is_empty() {
+                        path.file_stem()
+                            .map(|s| s.to_string_lossy().to_string())
+                            .unwrap_or_default()
+                    } else {
+                        profile.info.app_id.clone()
+                    };
+                    if !seen.insert(app_id.clone()) {
+                        continue; // The system tier already answered for this id.
+                    }
 
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().map(|e| e == "toml").unwrap_or(false) {
-            if let Some(profile) = load_raw_profile(&path) {
-                let app_id = if profile.info.app_id.is_empty() {
-                    path.file_stem()
-                        .map(|s| s.to_string_lossy().to_string())
-                        .unwrap_or_default()
-                } else {
-                    profile.info.app_id.clone()
-                };
-
-                apps.push(AppPermissionSummary {
+                    apps.push(AppPermissionSummary {
                     app_id,
                     tier: if profile.info.tier.is_empty() {
                         "third-party".into()
@@ -187,8 +190,9 @@ pub fn get_app_permissions() -> Result<Vec<AppPermissionSummary>, String> {
                     has_filesystem: profile.filesystem.as_ref().map(|f| f.home || f.documents || f.downloads || f.pictures || f.music || f.videos || !f.custom.is_empty()).unwrap_or(false),
                     has_notifications: profile.notifications.as_ref().map(|n| n.enabled).unwrap_or(false),
                     has_clipboard: profile.clipboard.as_ref().map(|c| c.read || c.write).unwrap_or(false),
-                    has_background: profile.system.as_ref().map(|s| s.background).unwrap_or(false),
-                });
+                        has_background: profile.system.as_ref().map(|s| s.background).unwrap_or(false),
+                    });
+                }
             }
         }
     }
@@ -197,13 +201,22 @@ pub fn get_app_permissions() -> Result<Vec<AppPermissionSummary>, String> {
     Ok(apps)
 }
 
-/// Get full permission details for a specific app.
+/// Get full permission details for a specific app, from whichever tier is in
+/// force.
+///
+/// System first and user only as a fallback, the same precedence the listing uses
+/// and the same one `load_tiered` enforces. Reading the user file for an app that
+/// has a system profile would show a grant the system tier overrides - a screen
+/// stating permissions the app does not actually run under.
 #[tauri::command]
 pub fn get_app_permission_detail(app_id: String) -> Result<AppPermissionDetail, String> {
-    let path = user_permissions_dir().join(format!("{app_id}.toml"));
-
-    let profile =
-        load_raw_profile(&path).ok_or_else(|| format!("no profile for {app_id}"))?;
+    let system = arlen_permissions::system_permissions_dir().join(format!("{app_id}.toml"));
+    let profile = load_raw_profile(&system)
+        .or_else(|| {
+            let user = arlen_permissions::permissions_dir()?.join(format!("{app_id}.toml"));
+            load_raw_profile(&user)
+        })
+        .ok_or_else(|| format!("no profile for {app_id}"))?;
 
     Ok(AppPermissionDetail {
         app_id: if profile.info.app_id.is_empty() {
