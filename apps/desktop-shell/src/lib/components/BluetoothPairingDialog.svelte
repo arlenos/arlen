@@ -134,22 +134,22 @@
       case "confirmation":
       case "displayPinCode":
       case "displayPasskey":
-        return "Pair";
       case "pinCodeInput":
       case "passkeyInput":
-        return "OK";
+        return "Pair";
       case "authorization":
       case "authorizeService":
         return "Allow";
     }
   }
 
-  // The allow/deny kinds are rejecting a request (Deny); the input kinds are
-  // cancelling your own entry (Cancel).
+  // One vocabulary through the whole pairing flow: every pairing step (the
+  // yes-no confirm, the code entry, the code display) is Cancel/Pair, so the
+  // confirm reads the same from first prompt to done. Only the authorization
+  // kinds are a permission being refused - those keep Deny, matching the
+  // consent dialogs.
   function rejectLabel(req: PairRequest): string {
-    return req.kind === "confirmation" || req.kind === "authorization" || req.kind === "authorizeService"
-      ? "Deny"
-      : "Cancel";
+    return req.kind === "authorization" || req.kind === "authorizeService" ? "Deny" : "Cancel";
   }
 
   function showsConfirmButton(req: PairRequest): boolean {

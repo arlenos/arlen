@@ -84,6 +84,7 @@
   function scopeLabel(p: PendingView): string {
     if (p.class === "external_send") return "To";
     if (p.class === "destructive") return "Target";
+    if (p.class === "network_access") return "Host";
     return "Scope";
   }
   // Habituation defeat: with a single target the confirm names it, so the button
