@@ -143,7 +143,7 @@
   }
   /* The first column's text aligns with the row names (icon + gap). */
   .sr-col-name {
-    padding-left: 24px;
+    padding-inline-start: 24px;
   }
 
   .sr-row {

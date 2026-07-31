@@ -819,7 +819,7 @@
     min-height: 0;
   }
   .fm-panes.split .fm-pane + .fm-pane {
-    border-left: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+    border-inline-start: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
   }
   /* The focused pane carries a quiet top rule so the toolbar's
      subject is visible; only meaningful with two panes. */

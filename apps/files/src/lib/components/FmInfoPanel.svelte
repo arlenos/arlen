@@ -445,7 +445,7 @@
     flex-direction: column;
     gap: 1rem;
     padding: 1rem;
-    border-left: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+    border-inline-start: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
     overflow-y: auto;
   }
 
