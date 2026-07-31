@@ -9,7 +9,7 @@ members = [
     "landlock-fence",
     "modules",
     "net-guard",
-    "system-monitor",
+    "monitor-reads",
     "proc-collect",
     "permissions",
     "screen-capture",
