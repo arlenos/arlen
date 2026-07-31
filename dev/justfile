@@ -137,7 +137,13 @@ test crate="":
         case "$c" in
             daemons/installd|daemons/knowledge) extra="--test-threads=1" ;;
         esac
-        cargo nextest run --manifest-path "{{ROOT}}/$c/Cargo.toml" $extra
+        # `--no-tests=pass`: nextest exits 4 on a crate with no tests, and some
+        # legitimately have none - a proto crate is generated types. Without
+        # this the loop below dies at the SECOND crate, which is what it had
+        # been doing: `just test` could never reach crate 3 of 88. CI runs
+        # `cargo test`, which passes a test-free crate, so this also stops the
+        # local gate from disagreeing with the one that gates merges.
+        cargo nextest run --no-tests=pass --manifest-path "{{ROOT}}/$c/Cargo.toml" $extra
         cargo test --doc --manifest-path "{{ROOT}}/$c/Cargo.toml"
     }
     if [ -n "{{crate}}" ]; then run_one "{{crate}}"; exit 0; fi
