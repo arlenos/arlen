@@ -1108,7 +1108,17 @@ mod tests {
             );
             count += 1;
         }
-        assert!(count >= 8, "expected the curated starting profiles, found {count}");
+        // This floor was `>= 8`, written when the corpus held eight profiles. It
+        // now holds thousands, so it had stopped being a check: a change to the
+        // extension filter or the walk that silently visited a handful of files
+        // would leave the rest unvalidated and still pass. The floor tracks the
+        // real corpus so under-checking fails here rather than shipping an
+        // unreviewed grant.
+        assert!(
+            count >= 2000,
+            "the curated corpus is thousands of profiles; only {count} were checked, \
+             so the walk is skipping files rather than the corpus having shrunk"
+        );
     }
 
     #[test]
@@ -1148,7 +1158,10 @@ mod tests {
                 break;
             }
         }
-        assert!(checked >= 8, "expected profiles to sample, found {checked}");
+        // The sample is capped at 50 above, so anything short of 50 means the
+        // walk found fewer files than the corpus holds, not that the sample was
+        // deliberately small.
+        assert_eq!(checked, 50, "expected a full sample of 50, walked {checked}");
     }
 
     const SAMPLE_PROFILE: &str = r#"
