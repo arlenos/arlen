@@ -421,6 +421,28 @@ screenshot-nested out client *args:
     COMPOSITOR_PATH="${COMPOSITOR_PATH:-$HOME/Repositories/compositor}" \
         "{{justfile_directory()}}/screenshot/shoot-compositor.sh" "{{out}}" {{client}} {{args}}
 
+# The confined decoder workers against real fixtures, on-kernel (`#[ignore]`d, so
+# they only run here). Each worker decodes UNDER its installed seccomp filter, so a
+# pass also proves the tight per-decoder allowlist permits a real decode - the one
+# thing reading the allowlist cannot tell you.
+#
+# The paths must be ABSOLUTE: the test process does not run in this directory, and
+# a relative fixture path fails as a missing file rather than a decode error, which
+# reads like a broken worker.
+viewers-decode-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ROOT}}"
+    for c in decode-image decode-jxl decode-heic decode-audio; do
+        cargo build -q --manifest-path "apps/viewers/$c/Cargo.toml"
+    done
+    D="{{ROOT}}/target/debug"; F="{{ROOT}}/apps/viewers"
+    ARLEN_VIEWERS_WORKER_DIR="$D" ARLEN_VIEWERS_TEST_PNG="${ARLEN_VIEWERS_TEST_PNG:-/usr/share/pixmaps/archlinux-logo.png}" \
+    ARLEN_VIEWERS_JXL_DIR="$D"    ARLEN_VIEWERS_TEST_JXL="$F/decode-jxl/tests/fixtures/tiny.jxl" \
+    ARLEN_VIEWERS_HEIC_DIR="$D"   ARLEN_VIEWERS_TEST_HEIC="$F/decode-heic/tests/fixtures/tiny.avif" \
+    ARLEN_VIEWERS_AUDIO_DIR="$D"  ARLEN_VIEWERS_TEST_AUDIO="$F/decode-audio/tests/fixtures/tiny.wav" \
+        cargo test --manifest-path apps/viewers/host/Cargo.toml -- --ignored --test-threads=1
+
 # Born-RTL gate (I18N-R3): fail on NEW physical directional CSS, accept the existing
 # via the baseline. Like i18n-lint, run on demand today; the blocking CI gate flips
 # on once the UI stabilises. Re-snapshot with `just rtl-baseline` after intentional changes.
