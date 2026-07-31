@@ -184,10 +184,6 @@
   .pr-pick:hover {
     background: color-mix(in srgb, var(--color-fg-primary) 7%, transparent);
   }
-  .pr-pick-date {
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
-    font-variant-numeric: tabular-nums;
-  }
 
   /* Active time travel: the chip names the moment; the x returns to now. */
   .pr-chip {
