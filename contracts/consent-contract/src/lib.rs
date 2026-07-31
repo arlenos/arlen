@@ -64,6 +64,29 @@ pub enum ConsentClass {
 }
 
 impl ConsentClass {
+    /// Every class, so the key-versus-serde agreement can be checked over all of
+    /// them rather than the three the capture test happened to walk. The two
+    /// spellings are produced by different mechanisms - `as_key` is written out
+    /// by hand, the wire form comes from `rename_all` - and they only agree
+    /// because `ScreenCast` carries an explicit rename. Any future variant with
+    /// an interior capital needs the same, and this is what notices.
+    pub const ALL: &'static [Self] = &[
+        Self::CapabilityGrant,
+        Self::AppData,
+        Self::Install,
+        Self::Destructive,
+        Self::ExternalSend,
+        Self::NetworkAccess,
+        Self::ExecConfined,
+        Self::ElevatedPrivilege,
+        Self::Portal,
+        Self::Camera,
+        Self::Microphone,
+        Self::ScreenCast,
+        Self::NotificationAction,
+        Self::AgentAction,
+    ];
+
     /// A stable lowercase key for this class, used in logs, the wire form and
     /// the deterministic revocation handle. Stable across releases (do not
     /// rename) so a persisted grant's handle keeps matching.
@@ -235,5 +258,32 @@ mod tests {
             let back: ConsentClass = serde_json::from_str(&wire).unwrap();
             assert_eq!(back, class);
         }
+    }
+
+    /// `as_key` builds the deterministic revocation handle a grant is stored
+    /// under, and the serde form is what a request carries. They have to be the
+    /// same string or a grant is persisted under one spelling and looked up
+    /// under the other, which reads as "not granted" for something the user
+    /// granted. The test above checks the three capture classes; this checks
+    /// every class, including whichever one is added next.
+    #[test]
+    fn every_class_key_matches_its_wire_form() {
+        let mut seen = std::collections::BTreeSet::new();
+        for &class in ConsentClass::ALL {
+            let wire = serde_json::to_string(&class).unwrap();
+            assert_eq!(
+                wire,
+                format!("\"{}\"", class.as_key()),
+                "{class:?} serialises differently from its stable key; it needs a serde rename"
+            );
+            let back: ConsentClass = serde_json::from_str(&wire).unwrap();
+            assert_eq!(back, class, "{class:?} does not survive its own wire form");
+            assert!(seen.insert(class.as_key()), "{class:?} reuses a key");
+        }
+        assert_eq!(
+            ConsentClass::ALL.len(),
+            14,
+            "a consent class was added or removed; check `as_key` and this slice agree"
+        );
     }
 }
