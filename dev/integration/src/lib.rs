@@ -441,15 +441,20 @@ impl EphemeralStack {
     }
 
     /// Start a private session D-Bus daemon under the runtime root and return its
-    /// `unix:path=...` address. The go-live undo rehearsal needs it: the agent
-    /// must register `org.arlen.AIAgent1` so the test can drive
-    /// `completed_actions` -> `compensate` (the agent's other scenarios run with
-    /// no bus, the workflow-only path). A minimal permissive config (own/send/
-    /// receive allowed) lets the agent claim the name and the test call it. The
-    /// daemon is tracked + killed on drop like any spawned child; after this,
+    /// `unix:path=...` address. A minimal permissive config (own/send/receive
+    /// allowed) lets a spawned daemon claim a name and the test call it. Tracked
+    /// and killed on drop like any spawned child; after this,
     /// `wait_socket("dbus-session.sock", ...)` until it binds. `dbus-daemon` must
-    /// be on PATH - the undo scenario is `#[ignore]d`/metal-gated, so a host
-    /// without it simply skips.
+    /// be on PATH.
+    ///
+    /// **No scenario calls this.** It was written for the go-live undo
+    /// rehearsal, where the agent registers `org.arlen.AIAgent1` and the test
+    /// drives `completed_actions` -> `compensate`, and the native `arlen-ai-agent`
+    /// that owned that name is retired: the two scenarios that spawned it are
+    /// `#[ignore]`d as obsolete pending a pi-engine-daemon rewrite. So this is
+    /// waiting for a bus-owning daemon to test rather than for someone to get
+    /// round to it, which is a different kind of unused and worth saying, since
+    /// the previous version of this comment read as pending work.
     pub fn start_session_bus(&mut self) -> std::io::Result<String> {
         let sock = self.runtime.path().join("dbus-session.sock");
         let addr = format!("unix:path={}", sock.to_string_lossy());
