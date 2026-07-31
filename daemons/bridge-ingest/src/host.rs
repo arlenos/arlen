@@ -354,4 +354,49 @@ for_each_link = { edge = "LINKS_TO", to_key = "path" }
         assert_eq!(sink.plans.len(), 1);
         assert_eq!(sink.plans[0].1.external_key, "notes/c.md");
     }
+
+    /// A sink that refuses every write, to pin what the host does about it.
+    #[derive(Default)]
+    struct RefusingSink {
+        seen: usize,
+    }
+    impl PlanSink for RefusingSink {
+        fn write_plan(&mut self, _bridge: &str, _plan: &UpsertPlan) -> Result<(), String> {
+            self.seen += 1;
+            Err("the graph said no".to_string())
+        }
+    }
+
+    /// The documented contract, which was not pinned: a write that fails reports
+    /// THAT MESSAGE failed and the session carries on, rather than dropping the
+    /// node silently or tearing the session down.
+    ///
+    /// Worth a test because it is the behaviour a retry or an abort would
+    /// change. With this here, taking a different decision about failed writes
+    /// shows up as a deliberate edit rather than as drift nobody noticed.
+    #[test]
+    fn a_failed_write_errors_that_message_and_keeps_the_session() {
+        let input = framed(&[
+            serde_json::json!({ "kind": "hello", "plugin_id": "maria-obsidian-bridge" }),
+            serde_json::json!({
+                "kind": "ingest",
+                "msg_type": "note.upsert",
+                "payload": { "path": "notes/a.md", "title": "A" }
+            }),
+            serde_json::json!({
+                "kind": "ingest",
+                "msg_type": "note.upsert",
+                "payload": { "path": "notes/b.md", "title": "B" }
+            }),
+        ]);
+        let mut out = Vec::new();
+        let mut sink = RefusingSink::default();
+        serve(&config(), &mut input.as_slice(), &mut out, &mut sink).unwrap();
+
+        let r = replies(&out);
+        assert_eq!(r[0], OutboundMessage::Ready);
+        assert!(matches!(r[1], OutboundMessage::Error { .. }), "the write failure is reported");
+        assert!(matches!(r[2], OutboundMessage::Error { .. }), "and so is the next one");
+        assert_eq!(sink.seen, 2, "the session kept handing messages to the sink");
+    }
 }
