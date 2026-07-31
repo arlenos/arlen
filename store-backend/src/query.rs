@@ -485,6 +485,28 @@ mod tests {
         assert_eq!(updates[0].layer, SourceLayer::Apt);
     }
 
+    /// A version nobody states is not a difference. A source that publishes no
+    /// version yields an empty string, and treating empty-versus-known as a
+    /// change would put every such app in the update list permanently, where no
+    /// action the user takes could clear it.
+    #[test]
+    fn an_unstated_version_on_either_side_is_not_an_update() {
+        // Installed version unknown, catalog states 1.0.
+        let updates = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, ""), &BTreeMap::new());
+        assert!(updates.is_empty(), "an unknown installed version is not an update: {updates:?}");
+
+        // And the reverse: the catalog states nothing for the installed layer,
+        // which is `entry`'s default, so the apt variant goes in unversioned.
+        let mut flatpak = entry("org.x.Chat", SourceLayer::Flatpak, "Chatter", &["network"]);
+        flatpak.version = "2.0".into();
+        let catalog = Catalog::new(merge_catalog(vec![
+            flatpak,
+            entry("org.x.Chat", SourceLayer::Apt, "Chatter", &[]),
+        ]));
+        let updates = outdated(&catalog, &installed(SourceLayer::Apt, "0.9"), &BTreeMap::new());
+        assert!(updates.is_empty(), "an unknown offered version is not an update: {updates:?}");
+    }
+
     /// The rule that keeps the user on the packaging they chose: Flathub offering
     /// 2.0 for an apt-installed app is a different variant with its own
     /// capabilities and trust, not an update. Offering it as one would walk them
