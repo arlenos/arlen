@@ -32,6 +32,7 @@ DAEMONS=(
     "arlen-auditd|audit-ingest.sock|"
     "arlen-capsuled|capsule.sock|"
     "arlen-settings-broker|settings-broker.sock|"
+    "arlen-modulesd|modulesd.sock|"
     # The knowledge daemon needs its store paths pointed somewhere disposable,
     # and the FUSE timeline turned OFF: left at its default it would try to mount
     # over the dev's ~/.timeline. It logs consumer-reconnect errors while the
@@ -64,7 +65,6 @@ SKIPPED=(
     "arlen-anomalyd|polls the audit ledger, binds nothing"
     "arlen-code-indexer|an event-bus consumer, binds nothing"
     "arlen-journald-parser|reads journald, binds nothing"
-    "arlen-modulesd|needs its module directories provisioned"
     "arlen-transferd|needs two live profile uids"
     "arlen-wallpaperd|renders to a compositor output"
 )

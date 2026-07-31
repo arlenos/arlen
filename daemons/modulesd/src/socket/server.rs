@@ -25,12 +25,14 @@ use crate::socket::protocol::{Event, Request, Response};
 
 const MAX_FRAME_BYTES: usize = 1024 * 1024;
 
+/// Where this daemon binds, which is by definition where its clients look.
+///
+/// Delegated to the protocol crate rather than derived again here: the daemon and
+/// the client had two copies of this, and only one of them honoured
+/// `ARLEN_MODULESD_SOCKET`, so setting it moved the bind and left every client
+/// asking at the old path. One function cannot disagree with itself.
 pub fn default_socket_path() -> PathBuf {
-    if let Ok(p) = std::env::var("ARLEN_MODULESD_SOCKET") {
-        return PathBuf::from(p);
-    }
-    let uid = unsafe { libc::getuid() };
-    PathBuf::from(format!("/run/user/{uid}/arlen/modulesd.sock"))
+    modulesd_proto::client::socket_path()
 }
 
 pub struct SocketServer {
