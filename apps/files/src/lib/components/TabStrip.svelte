@@ -101,7 +101,7 @@
     justify-content: center;
     width: 1.25rem;
     height: 1.25rem;
-    margin-right: 4px;
+    margin-inline-end: 4px;
     border: none;
     border-radius: var(--radius-chip);
     background: transparent;

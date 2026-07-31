@@ -49,7 +49,7 @@
     background: transparent;
     color: var(--foreground);
     font-size: calc(0.875rem * var(--greeter-scale, 1));
-    text-align: left;
+    text-align: start;
   }
   .item:hover {
     background: color-mix(in srgb, var(--foreground) 10%, transparent);

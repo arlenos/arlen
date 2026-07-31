@@ -28,14 +28,8 @@ apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	text-alig
 apps/desktop-shell/src/lib/components/ui/dialog/dialog-content.svelte	left-
 apps/desktop-shell/src/lib/components/waypointer/WaypointerInlinePreview.svelte	margin-left
 apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	text-align: left
-apps/files/src/app.css	padding-left
-apps/files/src/lib/components/FmInfoPanel.svelte	border-left
-apps/files/src/lib/components/FmSearchResults.svelte	padding-left
-apps/files/src/lib/components/TabStrip.svelte	margin-right
 apps/files/src/routes/+layout.svelte	pl-
 apps/files/src/routes/+layout.svelte	pr-
-apps/files/src/routes/+page.svelte	border-left
-apps/greeter/src/lib/components/PowerMenu.svelte	text-align: left
 apps/harness/src/app.css	padding-left
 apps/harness/src/lib/components/HarnessSidebar.svelte	left-
 apps/harness/src/lib/components/HarnessSidebar.svelte	ml-
