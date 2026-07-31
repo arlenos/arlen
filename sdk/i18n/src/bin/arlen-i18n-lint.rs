@@ -22,6 +22,13 @@
 //!     --root      a directory tree to scan (repeatable; default `apps`)
 //!     --baseline  the accepted-strings file (default `dev/i18n-baseline.tsv`)
 //!     --update    rewrite the baseline from the current findings (then exit 0)
+//!     --prune     drop baseline entries this scan can no longer reproduce, and
+//!                 ONLY those (then exit 0). Unlike `--update` it never accepts a
+//!                 new string, so it is safe to run with new findings outstanding:
+//!                 removing an entry can only make the gate stricter. Exists
+//!                 because a baseline goes stale as files are rewritten, and the
+//!                 obvious approximation - grep the file for the text - disagrees
+//!                 with this scanner's own extraction on real entries.
 //! Exit code 0 = no new strings (or `--update`); 1 = new strings; 2 = usage/IO.
 
 use std::collections::BTreeSet;
@@ -316,12 +323,14 @@ struct Args {
     roots: Vec<PathBuf>,
     baseline: PathBuf,
     update: bool,
+    prune: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
     let mut roots = Vec::new();
     let mut baseline = PathBuf::from("dev/i18n-baseline.tsv");
     let mut update = false;
+    let mut prune = false;
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -332,13 +341,14 @@ fn parse_args() -> Result<Args, String> {
                 baseline = PathBuf::from(it.next().ok_or("--baseline needs a value")?)
             }
             "--update" => update = true,
+            "--prune" => prune = true,
             other => return Err(format!("unknown argument: {other}")),
         }
     }
     if roots.is_empty() {
         roots.push(PathBuf::from("apps"));
     }
-    Ok(Args { roots, baseline, update })
+    Ok(Args { roots, baseline, update, prune })
 }
 
 fn main() -> ExitCode {
@@ -375,6 +385,35 @@ fn main() -> ExitCode {
                 report.push((rel.clone(), f.line, f.text));
             }
         }
+    }
+
+    if args.prune {
+        let baseline: Vec<String> = match std::fs::read_to_string(&args.baseline) {
+            Ok(s) => s.lines().map(|l| l.to_string()).collect(),
+            Err(e) => {
+                eprintln!(
+                    "arlen-i18n-lint: cannot read baseline {}: {e}",
+                    args.baseline.display()
+                );
+                return ExitCode::from(2);
+            }
+        };
+        let kept: Vec<&String> = baseline.iter().filter(|k| current.contains(*k)).collect();
+        let dropped = baseline.len() - kept.len();
+        let body: String = kept.iter().map(|k| format!("{k}\n")).collect();
+        if let Err(e) = std::fs::write(&args.baseline, body) {
+            eprintln!(
+                "arlen-i18n-lint: cannot write baseline {}: {e}",
+                args.baseline.display()
+            );
+            return ExitCode::from(2);
+        }
+        println!(
+            "arlen-i18n-lint: pruned {dropped} unreproducible entr(ies), {} kept -> {}",
+            kept.len(),
+            args.baseline.display()
+        );
+        return ExitCode::SUCCESS;
     }
 
     if args.update {
