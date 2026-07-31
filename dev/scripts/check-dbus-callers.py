@@ -34,6 +34,14 @@ Who may install and uninstall is a real decision (the store app, Settings, the
 forage CLI, all of which would have to keep working) and not one to make by
 picking a list that turns this green. Wire it in once that is answered; until
 then run it by hand and read the installd entries as the open item.
+
+That decision now blocks a named feature, not just hygiene. The update flow
+(U-3/U-4) is built through to the gate: `run_upgrade` emits `consent_required`
+and REFUSES a capability-widening upgrade, and its own doc says it refuses
+"until the answer path exists". The answer path is a method that approves a
+specific widening - which is the single worst method to expose on a bus where no
+method resolves its caller. So the U strand stops exactly here until the caller
+question is answered, and `forage update` covers the interactive case meanwhile.
 """
 
 import pathlib
