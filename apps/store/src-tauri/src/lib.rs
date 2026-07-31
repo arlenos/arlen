@@ -16,7 +16,7 @@ use std::collections::BTreeSet;
 
 use arlen_store_backend::{
     request_default, store_card, store_cards, CapabilityFacet, ComponentId, ObservedStatus,
-    Request, Response, SortOrder, SourceLayer, StoreCard, TrustSignals, Variant,
+    PendingUpdate, Request, Response, SortOrder, SourceLayer, StoreCard, TrustSignals, Variant,
 };
 use serde::Serialize;
 
@@ -155,6 +155,28 @@ async fn store_install(
     }
 }
 
+/// The installed apps whose own source now offers a different version.
+///
+/// A local read of the cached catalog against the install lock, so opening a
+/// page that shows updates does not become a request to every source the user
+/// has. The backend compares only within the layer an app was installed from,
+/// and reports that the versions differ rather than that one is newer: ordering
+/// distro version strings is per-layer and getting it wrong either hides updates
+/// or offers downgrades. Both versions come back so the app can show them.
+///
+/// Returned unflattened, unlike the browse commands: a [`PendingUpdate`] is
+/// already the flat row, and it carries capability identifiers rather than copy
+/// for the same reason the cards do - the app is translated and the backend is
+/// not.
+#[tauri::command]
+async fn store_outdated() -> Result<Vec<PendingUpdate>, String> {
+    match ask(Request::Outdated).await? {
+        Response::Updates(u) => Ok(u),
+        Response::Error(e) => Err(e),
+        other => Err(format!("unexpected store response: {other:?}")),
+    }
+}
+
 /// What can honestly be said about this app's observed-vs-declared standing
 /// (store-app.md section 8.2). Structured, not prose: the app renders it in its
 /// own language, and it distinguishes "no feed yet" from "nothing observed" so
@@ -192,6 +214,7 @@ pub fn run() {
             store_variants,
             store_install,
             store_observed_vs_declared,
+            store_outdated,
             frontend_log,
         ])
         .run(tauri::generate_context!())
