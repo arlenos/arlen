@@ -46,6 +46,9 @@ DAEMONS=(
     "arlen-file-manager-mcp|-|"
     "arlen-system-monitor-mcp|-|"
     "arlen-terminal-run-mcp|-|"
+    # Takes its config from the environment, so the bundled Obsidian example
+    # drives it: it comes up as a real bridge and watches an empty vault.
+    "arlen-bridge-ingest|-|ARLEN_BRIDGE_CONFIG=daemons/bridge-ingest/examples/obsidian/bridge.toml ARLEN_OBSIDIAN_VAULT=\$rt/vault"
     "arlen-graph-daemon|knowledge.sock|ARLEN_DB_PATH=\$rt/knowledge/events.db ARLEN_GRAPH_PATH=\$rt/knowledge/graph ARLEN_TIMELINE_MOUNT=off ARLEN_PERMISSIONS_DIR=\$rt/permissions"
 )
 
@@ -63,7 +66,6 @@ SKIPPED=(
     "arlen-config-broker|runs as its own uid by design"
     "kernel-layer|needs the bpf toolchain and a privileged host"
     "kernel-layer-ebpf|an eBPF object, not a host binary"
-    "arlen-bridge-ingest|takes a bridge.toml argument rather than binding a socket"
     "arlen-run|a launcher: it execs a confined app and exits"
     "arlen-ai-engine-daemon|needs the session bus and a provisioned model"
     "arlen-wallpaperd|exits cleanly with no manifest configured, so there is nothing to stay up for"
@@ -80,7 +82,7 @@ for entry in "${DAEMONS[@]}"; do
     fi
     rt=$(mktemp -d "${TMPDIR:-/tmp}/arlen-smoke.XXXXXX")
     chmod 700 "$rt"
-    mkdir -p "$rt/arlen" "$rt/knowledge"
+    mkdir -p "$rt/arlen" "$rt/knowledge" "$rt/vault"
     # `extra` carries `$rt` unexpanded so it can be resolved against THIS run's
     # directory; eval is safe here because the list is in this file, not input.
     eval "extra_env=\"$extra\""
