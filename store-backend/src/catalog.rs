@@ -78,9 +78,6 @@ impl DisplayMeta {
 /// it requests, so the install picker can show the least-privilege choice.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapabilityFootprint {
-    /// The trust tier badge (e.g. "verified", "community"), when the layer supplies
-    /// one; `None` hides the badge.
-    pub tier: Option<String>,
     /// The requested capabilities (network hosts, filesystem scopes, devices...),
     /// in a stable display order.
     #[serde(default)]
@@ -280,7 +277,6 @@ mod tests {
                 icon: Some("icon".into()),
             },
             capabilities: CapabilityFootprint {
-                tier: Some(format!("{layer:?}")),
                 capabilities: vec!["network".into()],
             },
             trust: TrustSignals::default(),

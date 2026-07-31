@@ -32,13 +32,6 @@ pub fn forage_entry(recipe: &Recipe, layer: SourceLayer) -> CatalogEntry {
         icon: None,
     };
     let capabilities = CapabilityFootprint {
-        // The tier BADGE is a trust property of the cookbook, not the recipe, and
-        // NOTHING sets it after this: `compose_catalog` pushes the entry straight
-        // into the merge, and `SourceInputs::forage` carries the recipe text plus a
-        // tier enum without ever naming the cookbook it came from. So a forage card
-        // has no badge today, and will not until the composer is given its
-        // cookbook - see `verified_publisher` below for the same seam.
-        tier: None,
         capabilities: recipe.capabilities.as_ref().map(capability_labels).unwrap_or_default(),
     };
     let trust = TrustSignals {

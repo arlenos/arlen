@@ -176,7 +176,6 @@ mod tests {
                 ..Default::default()
             },
             capabilities: CapabilityFootprint {
-                tier: None,
                 capabilities: caps.iter().map(|c| c.to_string()).collect(),
             },
             trust: TrustSignals::default(),

@@ -429,7 +429,6 @@ mod tests {
                 ..Default::default()
             },
             capabilities: CapabilityFootprint {
-                tier: None,
                 capabilities: caps.iter().map(|s| s.to_string()).collect(),
             },
             trust: TrustSignals::default(),
