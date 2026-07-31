@@ -626,13 +626,14 @@ check-ignores:
 check-protos:
     python3 "{{ROOT}}/dev/scripts/check-proto-drift.py"
 
-# The structural checks that need no build, in one command: under four seconds
-# for all four, so there is no reason not to run them before pushing. Each one
-# exists because the thing it checks had already drifted once - the justfile fell
-# behind the CI matrix, build logs were committed against their own ignore rule,
-# a unit ordered against a name no unit provides, and eight proto copies agreed
-# only by luck. `check-locks` is deliberately not here: it is minutes, not
-# milliseconds. Neither is `lint-licenses`, which needs cargo-deny and reuse.
+# `check-crates` compares the two build lists. This compares what the two gates
+# DO with a crate they both list: the serial-test case arm, duplicated by hand in
+# ci.yml and here, and CXXFLAGS, which is set in three places for three entry
+# points. Command drift has cost three debugging rounds already and reads like a
+# broken crate rather than a broken gate.
+check-gates:
+    python3 "{{ROOT}}/dev/scripts/check-gate-drift.py"
+
 # Start each unattended-runnable daemon and check it binds the socket it claims.
 # Deliberately NOT part of `checks`: those read files in milliseconds, this one
 # builds and runs processes. It covers what no unit test can - a daemon that
@@ -640,12 +641,20 @@ check-protos:
 smoke:
     bash {{ROOT}}/dev/scripts/smoke-daemons.sh
 
+# The structural checks that need no build, in one command: seconds for all five,
+# so there is no reason not to run them before pushing. Each one exists because
+# the thing it checks had already drifted once - the justfile fell behind the CI
+# matrix, build logs were committed against their own ignore rule, a unit ordered
+# against a name no unit provides, eight proto copies agreed only by luck, and the
+# two gates ran different commands on the same crate. `check-locks` is
+# deliberately not here: it is minutes, not milliseconds. Neither is
+# `lint-licenses`, which needs cargo-deny and reuse.
 checks:
     #!/usr/bin/env bash
     set -uo pipefail
     cd "{{ROOT}}"
     status=0
-    for r in check-crates check-ignores check-protos check-units; do
+    for r in check-crates check-ignores check-protos check-units check-gates; do
         echo "== $r =="
         just --justfile dev/justfile "$r" || status=1
     done
