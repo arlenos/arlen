@@ -68,6 +68,15 @@ pub fn forage_entry(
         }),
         install_count: None,
         odrs_score: None,
+        // Deliberately empty, not unimplemented. Saying anything here needs a
+        // per-app capability-USE feed, and nothing produces one: the audit ledger
+        // records the AI taxonomy plus coarse app actions, `AuditKind::NetworkCall`
+        // is the AI proxy's own egress rather than an app's, and a Grant node's
+        // `use_count` is written 0 at every emit site and never incremented. The
+        // per-app query answers `ObservedStatus::Unavailable` for the same reason
+        // and with the same intent: an empty summary would render as a clean bill
+        // of health the system cannot give. Fill this in with the observe-mode
+        // feed (LCG-R8), not before.
         observed_vs_declared: None,
         // A cookbook's chain is TUF: the recipe is a signed target in metadata
         // this machine resolves against a root it pinned on first use. Absent
