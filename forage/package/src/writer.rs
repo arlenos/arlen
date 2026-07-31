@@ -606,6 +606,24 @@ default = "dark"
 "#,
         );
         let toml = synthesize_manifest(&recipe, &collection()).unwrap();
+
+        // The link nothing else covers: installd reads this section back as an
+        // `Option<SettingsSchema>` and writes it out as the app's schema file. If
+        // the two shapes disagreed the settings page would silently never appear,
+        // and a test that only walks the `toml::Value` would not notice, because
+        // the keys would all still be there.
+        #[derive(serde::Deserialize)]
+        struct AsInstalldReadsIt {
+            settings: Option<arlen_forage_recipe::settings::SettingsSchema>,
+        }
+        let read: AsInstalldReadsIt = toml::from_str(&toml).expect("installd can parse the manifest");
+        assert_eq!(
+            read.settings.as_ref(),
+            recipe.settings.as_ref(),
+            "the schema installd reads back is the one the recipe declared"
+        );
+
+        // And the section is where it is expected in the document itself.
         let parsed: toml::Value = toml::from_str(&toml).unwrap();
         assert_eq!(parsed["settings"]["version"].as_integer(), Some(1));
         let item = &parsed["settings"]["sections"][0]["items"][0];
