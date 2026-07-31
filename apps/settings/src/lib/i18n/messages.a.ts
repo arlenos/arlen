@@ -26,6 +26,7 @@ export const a: Catalogs = {
     "s.nav.mouse": "Mouse",
     "s.nav.touchpad": "Touchpad",
     "s.nav.systemActions": "System Actions",
+    "s.nav.apps": "Apps",
     "s.nav.extensions": "Extensions",
     "s.nav.privacy": "Privacy",
     // Sidebar section headers
@@ -171,6 +172,7 @@ export const a: Catalogs = {
     "s.nav.mouse": "Maus",
     "s.nav.touchpad": "Touchpad",
     "s.nav.systemActions": "Systemaktionen",
+    "s.nav.apps": "Apps",
     "s.nav.extensions": "Erweiterungen",
     "s.nav.privacy": "Datenschutz",
     "s.section.system": "System",
