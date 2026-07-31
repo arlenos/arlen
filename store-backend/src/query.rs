@@ -473,6 +473,10 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
 }
 
 #[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+    use crate::catalog::{merge_catalog, CapabilityFootprint, CatalogEntry, DisplayMeta, ItemKind};
 
     /// A distribution-installed app has no install route, so it must never appear
     /// in the update list - the store would be offering to do something it cannot.
@@ -514,10 +518,7 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
             "a Native variant offers no install route, so it is not an update: {pending:?}"
         );
     }
-mod tests {
-    use super::*;
-    use std::collections::BTreeMap;
-    use crate::catalog::{merge_catalog, CapabilityFootprint, CatalogEntry, DisplayMeta, ItemKind};
+
 
     fn entry(id: &str, layer: SourceLayer, name: &str, caps: &[&str]) -> CatalogEntry {
         CatalogEntry {
