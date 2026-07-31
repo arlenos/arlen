@@ -9,6 +9,7 @@
   import ClockIndicator from "$lib/components/ClockIndicator.svelte";
   import NetworkIndicator from "$lib/components/NetworkIndicator.svelte";
   import AudioIndicator from "$lib/components/AudioIndicator.svelte";
+  import UndoIndicator from "$lib/components/UndoIndicator.svelte";
   import BatteryIndicator from "$lib/components/BatteryIndicator.svelte";
   import BluetoothIndicator from "$lib/components/BluetoothIndicator.svelte";
   import BluetoothPopover from "$lib/components/BluetoothPopover.svelte";
@@ -20,6 +21,7 @@
   import QuickSettingsPanel from "$lib/components/QuickSettingsPanel.svelte";
   import NetworkPopover from "$lib/components/NetworkPopover.svelte";
   import AudioPopover from "$lib/components/AudioPopover.svelte";
+  import UndoPopover from "$lib/components/UndoPopover.svelte";
   import BatteryPopover from "$lib/components/BatteryPopover.svelte";
   import WorkspaceIndicator from "$lib/components/WorkspaceIndicator.svelte";
   import SandboxedModuleIndicatorSlot from "$lib/components/SandboxedModuleIndicatorSlot.svelte";
@@ -303,6 +305,7 @@
       {#if isPrimary}
         <div class="topbar-sep"></div>
         <NotificationsTrigger />
+        <UndoIndicator />
         <AudioIndicator />
         <NetworkIndicator />
         <BluetoothIndicator />
@@ -325,6 +328,7 @@
   <LayoutPopover />
   <NetworkPopover />
   <AudioPopover />
+  <UndoPopover />
   <BatteryPopover />
   <BluetoothPopover />
   <TrayPopover />
