@@ -11,14 +11,15 @@
 //! Spec:
 //! https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.impl.portal.ScreenCast.html
 //!
-//! Build status: this is the D-Bus + session + content-free-audit skeleton. Two
-//! follow-up slices make it live and are why it is not yet registered in
-//! `main.rs` (registering a `Start` that cannot stream would advertise a broken
-//! capability): (1) route `SelectSources` consent through the consent broker as
-//! [`ConsentClass::ScreenCast`] so the share mints a revocable LCG grant (needs
-//! a broker client on the portal daemon), and (2) the PipeWire producer that
-//! makes `Start` return real node ids. The session model, the frontend-only
-//! gate and the no-silent-capture audit are real here.
+//! Build status: the session model, the frontend-only gate, the no-silent-capture
+//! audit and the CONSENT are real. `SelectSources` routes through the consent
+//! broker as `ConsentClass::ScreenCast` on behalf of the capturing app, and
+//! fails closed - a denial or an unreachable broker refuses the share.
+//!
+//! What remains is the PipeWire producer that makes `Start` return real node
+//! ids, which is why this interface is served on the bus but deliberately not
+//! listed in `arlen.portal`'s `Interfaces` line: advertising a `Start` that
+//! cannot stream would offer the frontend a capability that does not work.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
