@@ -5,13 +5,18 @@
 //! Wire-protocol matches the rest of the SDK: 4-byte big-endian
 //! length prefix, then a `ClipboardEnvelope` protobuf body.
 //!
-//! Permission enforcement is staged: phase 1 trusts caller-provided
-//! intent (any app may read normal content, history reads bypass
-//! the gate). Sensitive-content filtering still works because it
-//! is label-based and decided at read time; the future hardening
-//! adds caller-app-id authentication via SO_PEERCRED + cgroup so
-//! the `read.sensitive` and `history` permission profile lookups
-//! fire against a real identity rather than a self-declared one.
+//! Permission enforcement is REAL, not staged. Every connection is
+//! authenticated with `ConnectionAuth::extract_from` (kernel-attested
+//! SO_PEERCRED), and the caller's own permission profile decides:
+//! `clipboard.read_sensitive` gates sensitive-labelled content on
+//! every read and subscription, and `clipboard.history` gates the
+//! history surface outright, both audited either way.
+//!
+//! This paragraph used to say the opposite - that phase 1 trusted
+//! caller-provided intent and identity was future work - and it stayed
+//! that way after the authentication landed. A stale note in that
+//! direction is worse than none: it invites someone to either distrust
+//! a boundary that holds or to add a second one beside it.
 //!
 //! See `docs/architecture/clipboard-api.md`.
 
