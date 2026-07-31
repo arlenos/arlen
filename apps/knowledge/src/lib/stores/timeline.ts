@@ -50,6 +50,10 @@ export interface TimelineDay {
 
 /// The loaded spine, or null before the read settles.
 export const days = writable<TimelineDay[] | null>(null);
+/// A pending menu-invoked action the surface must resolve (the export run, or
+/// the delete confirm). The shell's app menu is where these actions live
+/// (Tim, 31 Jul); the surface only renders their consequences.
+export const pendingMenuAction = writable<"export" | "deleteToday" | "deleteAll" | null>(null);
 /// True while the spine is the FIXTURE, so the surface says so and never
 /// passes invented activity as recorded history.
 export const timelineMocked = writable(false);
