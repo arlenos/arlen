@@ -35,6 +35,18 @@ pub enum HelperError {
 /// `org.arlen.PermissionHelper1.WriteProfile(app_id, uid, profile_toml)` at
 /// `/org/arlen/PermissionHelper1`, and maps the helper's `(bool, String)` reply to
 /// a `Result`: `(true, _)` is success, `(false, reason)` is [`HelperError::Refused`].
+///
+/// A successful write also emits `permission.changed`, and that belongs here
+/// rather than at the call site. The profile it writes lands under `/var/lib`,
+/// which the desktop-shell profile watcher does not cover, so this event is the
+/// only thing that makes the app's declared grants appear in the LCG. If the
+/// emit sat next to each caller, a second caller added later could write the
+/// highest-authority grants we have and leave them invisible to every surface
+/// that reads authority from the graph - which is the second-store drift PAS-8
+/// exists to prevent. Written together, it cannot be forgotten.
+///
+/// Best-effort, deliberately: a down Event Bus degrades the projection, it does
+/// not fail an install. The daemon re-projects at connect time as the backstop.
 pub async fn write_system_profile(
     uid: u32,
     app_id: &str,
@@ -52,6 +64,7 @@ pub async fn write_system_profile(
         .call("WriteProfile", &(app_id, uid, profile_toml))
         .await?;
     if ok {
+        crate::event_emit::emit_permission_changed(app_id, true);
         Ok(())
     } else {
         Err(HelperError::Refused(reason))
