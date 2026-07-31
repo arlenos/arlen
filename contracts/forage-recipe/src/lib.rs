@@ -59,7 +59,18 @@ pub struct ValidationWarning {
 // ---------------------------------------------------------------------------
 
 /// A parsed `recipe.toml`.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+///
+/// `Default` exists so a caller can build one with `..Default::default()` and
+/// stop breaking when this struct grows a field. That is not cosmetic: growing
+/// `RecipeMeta` and then `Recipe` broke a downstream struct literal in CI twice
+/// in two days, and every one of those literals is a TEST FIXTURE in another
+/// crate - so the cost of an additive contract change was landing on five test
+/// helpers rather than on anything that had an opinion about the new field.
+///
+/// **A defaulted `Recipe` is not a VALID recipe.** Every string is empty and
+/// every list is absent; validation is a separate step and will reject it. Use it
+/// as a base to fill in, never as data.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Recipe {
     /// Identity and metadata (`[recipe]`).
@@ -141,7 +152,10 @@ pub struct ForeignSide {
 }
 
 /// Identity and metadata (`[recipe]`).
-#[derive(Debug, Clone, Deserialize, Serialize)]
+///
+/// `Default` for the same reason as [`Recipe`], and with the same caveat: an
+/// empty id and name are not a usable identity.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecipeMeta {
     /// Reverse-DNS id, identical to the `.lunpkg` manifest id.
@@ -978,6 +992,31 @@ url = "https://github.com/example/hello"
 commit = "{COMMIT}"
 {extra}"#
         )
+    }
+
+    /// The reason `Default` is derived: a downstream crate can construct from a
+    /// base and adding a field here stops being a breaking change for it. Three
+    /// CI reds in two days came from exactly that, all in other crates' test
+    /// fixtures.
+    #[test]
+    fn a_recipe_can_be_built_from_a_default_base() {
+        let r = Recipe {
+            recipe: RecipeMeta {
+                id: "com.example.App".into(),
+                name: "App".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(r.recipe.id, "com.example.App");
+        assert!(r.source.is_empty());
+    }
+
+    /// And the caveat, so nobody reads `Default` as "a recipe": the empty one is
+    /// not valid, and validation says so rather than letting it through.
+    #[test]
+    fn a_defaulted_recipe_does_not_validate() {
+        assert!(!validate(&Recipe::default()).is_empty());
     }
 
     #[test]
