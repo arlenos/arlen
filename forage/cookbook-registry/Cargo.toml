@@ -1,0 +1,27 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-cookbook-registry"
+version = "0.1.0"
+edition = "2021"
+description = "The tracked-cookbook registry: which cookbooks a machine trusts, where they live, and layered resolution of a recipe name across them against each cookbook's pinned TUF root."
+
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+arlen-cookbook-resolve = { path = "../cookbook-resolve" }
+dirs = "6"
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+toml = "0.8"
+
+[dev-dependencies]
+# The resolution tests sign REAL fixture cookbooks rather than hand-rolling
+# metadata, so a change to the signing side that breaks resolution is caught here.
+arlen-cookbook-index = { path = "../cookbook-index" }
+arlen-cookbook-sign = { path = "../cookbook-sign" }
+chrono = "0.4"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt"] }
