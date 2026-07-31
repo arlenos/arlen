@@ -128,6 +128,7 @@ pub fn run() {
             commands::notifications::notifications_dnd_expiry_until_morning,
             commands::modules::modules_list,
             commands::app_settings::app_settings_write_raw,
+            commands::app_settings::app_settings_handoff,
             commands::extensions::extensions_list,
             commands::extensions::extensions_revoke,
             commands::extensions::extensions_observed,
