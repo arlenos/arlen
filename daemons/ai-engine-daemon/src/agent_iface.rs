@@ -259,13 +259,44 @@ fn compensate_caller_admitted(app_id: &str) -> bool {
     COMPENSATE_ADMITTED.contains(&app_id)
 }
 
+/// The surfaces that speak for the user: the two first-party apps that render an
+/// AI answer to them. Shared with `explain_system`, which is a full-scope KG read
+/// (`reads: full` in the explain skill) handed straight back to whoever asked, so
+/// it needs the same gate as the destructive verb even though it writes nothing.
+///
+/// Same list as [`COMPENSATE_ADMITTED`] today and deliberately a separate name: a
+/// read surface and a destructive one may diverge, and a shared constant would
+/// make that divergence look like a mistake.
+const USER_SURFACE_ADMITTED: &[&str] = &["harness", "settings"];
+
+/// The same two surfaces as they resolve when run from a cargo target dir, so the
+/// dev loop keeps working. Exact ids, never a `dev.` prefix match, and compiled out
+/// of a release build entirely (the audit daemon's ingest gate does this the same
+/// way). Without it, adding this gate would break the explain button for everyone
+/// working on Settings or the harness.
+#[cfg(debug_assertions)]
+const USER_SURFACE_DEV_ADMITTED: &[&str] = &["dev.arlen-settings", "dev.arlen-harness"];
+
+/// Whether `app_id` is a user-facing surface allowed to ask the engine to read on
+/// the user's behalf.
+pub(crate) fn user_surface_admitted(app_id: &str) -> bool {
+    if USER_SURFACE_ADMITTED.contains(&app_id) {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    if USER_SURFACE_DEV_ADMITTED.contains(&app_id) {
+        return true;
+    }
+    false
+}
+
 /// Resolve the calling app's Arlen identity from the D-Bus connection: the session
 /// bus attests the sender PID (`GetConnectionUnixProcessID`, not a client value),
 /// and `app_id_from_pid` resolves `/proc/<pid>/exe` through the F3 chain. Any
 /// failure is an `Err`, treated as not-admitted (fail-closed). Documented residual
 /// (the same one the whole F3 model carries): a sub-millisecond PID-reuse window
 /// and a same-uid `exec` - closed only by the inode-attested identity registry.
-async fn resolve_dbus_caller(
+pub(crate) async fn resolve_dbus_caller(
     header: &zbus::message::Header<'_>,
     connection: &zbus::Connection,
 ) -> Result<String, String> {
@@ -823,6 +854,36 @@ mod tests {
         assert!(!compensate_caller_admitted("com.example.app"));
         assert!(!compensate_caller_admitted("ai-agent"));
         assert!(!compensate_caller_admitted(""));
+    }
+
+    /// The same gate on the read side. A confined app reaches the session bus, so
+    /// an ungated `explain_system` would hand it a full-scope summary of the user's
+    /// work; only the two surfaces that show the answer to the user may ask.
+    #[test]
+    fn only_the_harness_and_settings_may_ask_the_engine_to_read() {
+        assert!(user_surface_admitted("harness"));
+        assert!(user_surface_admitted("settings"));
+        assert!(!user_surface_admitted("com.example.app"));
+        assert!(!user_surface_admitted("ai-agent"));
+        assert!(!user_surface_admitted(""));
+        // The dev ids are exact, so a neighbouring cargo binary is still refused
+        // even in a debug build, and the prefix alone never admits.
+        assert!(!user_surface_admitted("dev.arlen-run"));
+        assert!(!user_surface_admitted("dev."));
+    }
+
+    /// What a release build admits is exactly [`USER_SURFACE_ADMITTED`], so the
+    /// property to check is that this list carries no development id. Asserted on
+    /// the list rather than by calling the function under `cfg(not(debug))`, which
+    /// would never run: `cargo test --release` cannot build this crate at all,
+    /// because dev-dependencies pull audit-proto's `test-util` and that feature
+    /// refuses to compile optimized on purpose.
+    #[test]
+    fn the_release_admission_list_carries_no_development_id() {
+        assert!(
+            USER_SURFACE_ADMITTED.iter().all(|id| !id.starts_with("dev.")),
+            "a dev id here would admit any cargo binary of that name on a real system"
+        );
     }
 
     #[tokio::test]

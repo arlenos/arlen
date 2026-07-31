@@ -4,6 +4,7 @@
 //! decoupling b) so the old ai-daemon's explain path can be retired. Read-only,
 //! on-demand, bounded; nothing runs in the background.
 
+use crate::agent_iface::{resolve_dbus_caller, user_surface_admitted};
 use crate::pi_run::{run_ephemeral_explain, SessionBinder};
 use crate::sidecar::PiSidecar;
 use arlen_ai_skills::behaviour::Behaviour;
@@ -59,7 +60,24 @@ impl ExplainInterface {
     /// Answer "What is my computer doing right now?" (Foundation §5.8) by running
     /// the explain skill on a fresh ephemeral confined pi and returning its
     /// answer. A failure to produce one is a D-Bus error the caller surfaces.
-    async fn explain_system(&self) -> zbus::fdo::Result<String> {
+    ///
+    /// Caller-gated to the user-facing surfaces. The explain skill declares
+    /// `reads: full` and its answer names the active app, the current project and
+    /// recently opened files, and it is handed straight back to whoever called.
+    /// The session bus is default-allow and `arlen-run` binds its socket into every
+    /// confined app, so without this an app with no graph read scope could ask for
+    /// a summary of the user's work and read the reply, which is the read-scope
+    /// enforcement the knowledge daemon exists to apply. Unresolvable callers are
+    /// refused too: fail-closed.
+    async fn explain_system(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
+        match resolve_dbus_caller(&header, connection).await {
+            Ok(caller) if user_surface_admitted(&caller) => {}
+            _ => return Err(zbus::fdo::Error::AccessDenied("not permitted".into())),
+        }
         run_ephemeral_explain(&self.behaviour, None, &*self.sidecar, &*self.binder)
             .await
             .map_err(|e| zbus::fdo::Error::Failed(format!("explanation unavailable: {e}")))
