@@ -18,10 +18,25 @@ use std::io::{self, BufReader, BufWriter};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use arlen_bridge_ingest::sink::EntityWriter;
+use arlen_bridge_ingest::sink::{EntityWriter, WriteFailure};
 use arlen_bridge_ingest::{BridgeConfig, KgPlanSink};
 use os_sdk::UnixGraphClient;
 use serde_json::{Map, Value};
+
+/// Map a graph-client error to a failure the host can act on.
+///
+/// `ConnectionFailed` is the daemon being down or restarting, which a later
+/// attempt plausibly survives. The other two will not change on their own: a
+/// refused grant needs the profile fixed, and a query the daemon rejects needs
+/// the mapping fixed, so retrying either is noise that hides the cause.
+fn classify(e: os_sdk::QueryError) -> WriteFailure {
+    match e {
+        os_sdk::QueryError::ConnectionFailed(_) => WriteFailure::transient(e.to_string()),
+        os_sdk::QueryError::PermissionDenied | os_sdk::QueryError::InvalidQuery(_) => {
+            WriteFailure::hard(e.to_string())
+        }
+    }
+}
 
 /// Resolve the knowledge daemon's write socket: `ARLEN_DAEMON_SOCKET`, else
 /// `$XDG_RUNTIME_DIR/arlen/knowledge.sock`, else `/run/arlen/knowledge.sock`.
@@ -72,7 +87,7 @@ impl EntityWriter for GraphEntityWriter {
         external_key: &str,
         fields: &Map<String, Value>,
         origin_ref: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<(), WriteFailure> {
         // Stamped only when the row brought an upstream ref. The daemon refuses
         // a half-origin, and it is right to: a run id pointing at nothing says
         // this process wrote the row, which `_owner` already says.
@@ -87,7 +102,7 @@ impl EntityWriter for GraphEntityWriter {
                 fields,
                 origin.as_ref(),
             ))
-            .map_err(|e| e.to_string())
+            .map_err(classify)
     }
 
     fn link(
@@ -97,13 +112,13 @@ impl EntityWriter for GraphEntityWriter {
         from_key: &str,
         to_type: &str,
         to_key: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), WriteFailure> {
         self.runtime
             .block_on(
                 self.client
                     .link_entities(edge, from_type, from_key, to_type, to_key),
             )
-            .map_err(|e| e.to_string())
+            .map_err(classify)
     }
 }
 
@@ -182,7 +197,14 @@ mod tests {
         let err = w
             .link("LINKS_TO", "md.obsidian.Note", "note-1", "md.obsidian.Note", "note-2")
             .expect_err("a dead socket cannot link");
-        assert!(!err.is_empty(), "the transport error is surfaced as a string");
+        assert!(!err.message.is_empty(), "the transport error is surfaced");
+        // A dead socket is the daemon being down, which a later attempt can
+        // survive - the distinction the host needs to decide whether to retry.
+        assert_eq!(
+            err.kind,
+            arlen_bridge_ingest::retry::FailureKind::Transient,
+            "a dead socket is transient, not a reason to stop"
+        );
     }
 
     #[test]
@@ -195,6 +217,13 @@ mod tests {
         let err = w
             .upsert("md.obsidian.Note", "note-1", &fields, None)
             .expect_err("a dead socket cannot upsert");
-        assert!(!err.is_empty(), "the transport error is surfaced as a string");
+        assert!(!err.message.is_empty(), "the transport error is surfaced");
+        // A dead socket is the daemon being down, which a later attempt can
+        // survive - the distinction the host needs to decide whether to retry.
+        assert_eq!(
+            err.kind,
+            arlen_bridge_ingest::retry::FailureKind::Transient,
+            "a dead socket is transient, not a reason to stop"
+        );
     }
 }

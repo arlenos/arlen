@@ -1290,14 +1290,12 @@ mod module_reachability {
     /// The point of the list is that it cannot grow silently. Removing an entry
     /// once it is wired up is the expected direction of travel.
     const KNOWN_UNREACHED: &[&str] = &[
-        // BR-4's decision core, both halves: `retry` says when a failed bridge
-        // is tried again and when it must not be, `auth` when a credential must
-        // be renewed. Neither is reachable until the sink reports typed errors
-        // instead of `String`, because classifying transient against hard by
-        // matching error text is the fragility they exist to avoid. That
-        // contract change is the wiring step.
+        // BR-4's `auth`: when a credential must be renewed. Not reachable
+        // until the broker seam exists to hand one over. Its sibling `retry`
+        // WAS here and is not any more - the sink now reports a typed failure
+        // instead of a `String`, so the writer says whether an error is
+        // transient rather than leaving the host to guess from its text.
         "daemons/bridge-ingest/auth",
-        "daemons/bridge-ingest/retry",
         // Surfaced once the matcher stopped taking another crate's module name
         // as evidence. Each is real work waiting on the piece that would call
         // it, named here rather than deleted, because deleting a tested core to
