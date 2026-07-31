@@ -43,25 +43,43 @@ struct GrantStore {
 }
 
 impl GrantStore {
-    /// Record a remembered grant, deduped on its (recipient, class, scope)
-    /// identity (the revocation_handle is deterministic over that key, so
-    /// re-consenting the same scope does not duplicate it).
+    /// Record a grant, keyed on its (recipient, class, scope) identity (the
+    /// revocation_handle is deterministic over that key, so re-consenting the
+    /// same scope does not duplicate it).
+    ///
+    /// A repeat REPLACES rather than being dropped, which matters once a grant
+    /// can carry a window: renewing an elevation has to move its close, and
+    /// keeping the first record would pin the expiry to the first consent and
+    /// let a renewed window lapse while the user believes they just extended it.
+    /// The graph's MERGE refreshes on match for the same reason.
     fn record(&mut self, grant: ConsentGrant) {
-        if !self
+        match self
             .grants
-            .iter()
-            .any(|g| g.revocation_handle == grant.revocation_handle)
+            .iter_mut()
+            .find(|g| g.revocation_handle == grant.revocation_handle)
         {
-            self.grants.push(grant);
+            Some(existing) => *existing = grant,
+            None => self.grants.push(grant),
         }
     }
 
     /// Whether a live grant covers this request: same attested recipient, same
-    /// class, same concrete scope.
-    fn covers(&self, request: &ConsentRequest) -> bool {
+    /// class, same concrete scope, and its window still open.
+    ///
+    /// This is where a window actually closes. The browse surface showing a
+    /// grant as expired is a report; THIS is the decision, and a closed window
+    /// that still silently granted here would make the whole time-boxing
+    /// cosmetic - the prompt would stay suppressed for as long as the process
+    /// lived. An expired grant is kept in the store rather than dropped, so the
+    /// "what you allowed" surface can still say what happened, exactly as the
+    /// graph keeps the node and reports it not-live.
+    fn covers(&self, request: &ConsentRequest, now_micros: i64) -> bool {
         let recipient = request.requester.grant_recipient();
         self.grants.iter().any(|g| {
-            g.recipient == recipient && g.class == request.class && g.scope == request.scope
+            g.recipient == recipient
+                && g.class == request.class
+                && g.scope == request.scope
+                && g.expires_at_micros.is_none_or(|e| now_micros < e)
         })
     }
 
@@ -340,7 +358,7 @@ impl SharedState {
         let tier = classify(&request, &self.capability);
         if matches!(tier, SeverityTier::Standard)
             && !request.triggered_by_external_content
-            && inner.grants.covers(&request)
+            && inner.grants.covers(&request, now_micros())
         {
             return IntakeOutcome::SilentGranted;
         }
@@ -476,6 +494,79 @@ impl SharedState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn grant_for(handle: &str, expires: Option<i64>) -> ConsentGrant {
+        ConsentGrant {
+            recipient: "com.example.app".to_string(),
+            class: crate::ConsentClass::CapabilityGrant,
+            scope: Some("/photos".to_string()),
+            summary: "reach your photos".to_string(),
+            revocation_handle: handle.to_string(),
+            expires_at_micros: expires,
+        }
+    }
+
+    fn request_covered_by(grant: &ConsentGrant) -> ConsentRequest {
+        ConsentRequest {
+            requester: crate::AttestedRequester::new(&grant.recipient),
+            class: grant.class,
+            kind: arlen_ai_core::capability::ActionKind::Ordinary,
+            triggered_by_external_content: false,
+            recipient: None,
+            preview: None,
+            targets: Vec::new(),
+            total: None,
+            summary: grant.summary.clone(),
+            scope: grant.scope.clone(),
+        }
+    }
+
+    /// The decision point, not the report. A closed window that still covered a
+    /// request would suppress the prompt for as long as the process lived, which
+    /// would make time-boxing a label rather than a limit.
+    #[test]
+    fn a_closed_window_stops_covering_the_request_it_used_to() {
+        let mut store = GrantStore::default();
+        let now = 1_700_000_000_000_000;
+        let g = grant_for("h1", Some(now + 60_000_000));
+        let req = request_covered_by(&g);
+        store.record(g);
+
+        assert!(store.covers(&req, now), "inside the window it covers");
+        assert!(!store.covers(&req, now + 60_000_001), "past it, it does not");
+        // Still listed: the surface can say what was allowed and when it lapsed.
+        assert_eq!(store.list().len(), 1);
+    }
+
+    /// A grant with no window is unaffected by the clock, which is what makes it
+    /// remembering rather than a very long elevation.
+    #[test]
+    fn a_grant_without_a_window_covers_regardless_of_the_clock() {
+        let mut store = GrantStore::default();
+        let g = grant_for("h1", None);
+        let req = request_covered_by(&g);
+        store.record(g);
+        assert!(store.covers(&req, i64::MAX));
+    }
+
+    /// Renewing an elevation has to move its close. Keeping the first record
+    /// would pin the expiry to the first consent, and the window would lapse
+    /// while the user believes they just extended it.
+    #[test]
+    fn re_consenting_a_window_moves_its_close_rather_than_keeping_the_first() {
+        let mut store = GrantStore::default();
+        let now = 1_700_000_000_000_000;
+        let first = grant_for("h1", Some(now + 60_000_000));
+        let req = request_covered_by(&first);
+        store.record(first);
+        store.record(grant_for("h1", Some(now + 600_000_000)));
+
+        assert_eq!(store.list().len(), 1, "the same scope is still one grant");
+        assert!(
+            store.covers(&req, now + 300_000_000),
+            "the renewal moved the close out"
+        );
+    }
 
     #[test]
     fn a_mediated_decision_records_the_mediator_content_free() {
