@@ -103,6 +103,10 @@ fn load_source_inputs() -> SourceInputs {
         dep11_yaml: read_env("ARLEN_STORE_DEP11_YAML")
             .map(|yaml| vec![yaml])
             .unwrap_or_else(|| read_all(&found.dep11_yaml)),
+        // No env override: this is not a catalog anyone points at, it is whatever
+        // the distribution installed on THIS machine. A test that wants a clean
+        // catalog sets the roots, not a file.
+        metainfo_xml: read_all(&found.metainfo_xml),
         // SC-3 + SC-5: the sandbox permissions and enrolled profiles, located on
         // the machine rather than configured. An env override still wins above,
         // so a test or a bespoke deployment can point at its own tree.

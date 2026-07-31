@@ -25,6 +25,11 @@ pub struct SourceRoots {
     /// name, `app-info` the older one; both appear in the field depending on the
     /// release, so both are searched.
     pub dep11_dirs: Vec<PathBuf>,
+    /// Directories holding per-app MetaInfo for what the distribution installed.
+    /// Every distribution has this; the DEP-11 catalogs above are Debian-only,
+    /// and on the Arch machine this was written against neither of them exists
+    /// while `/usr/share/metainfo` holds 78 documents.
+    pub metainfo_dirs: Vec<PathBuf>,
     /// Where enrolled permission profiles live.
     pub profiles_dir: PathBuf,
 }
@@ -37,13 +42,16 @@ impl Default for SourceRoots {
             PathBuf::from("/var/lib/swcatalog"),
             PathBuf::from("/var/lib/app-info"),
         ];
+        let mut metainfo_dirs = vec![PathBuf::from("/usr/share/metainfo")];
         if let Some(h) = &home {
             flatpak_dirs.push(h.join(".local/share/flatpak"));
             dep11_dirs.push(h.join(".local/share/swcatalog"));
+            metainfo_dirs.push(h.join(".local/share/metainfo"));
         }
         Self {
             flatpak_dirs,
             dep11_dirs,
+            metainfo_dirs,
             profiles_dir: home
                 .map(|h| h.join(".config/permissions"))
                 .unwrap_or_else(|| PathBuf::from("/etc/arlen/permissions")),
@@ -63,6 +71,8 @@ pub struct Discovered {
     pub flatpak_metadata: Vec<(String, PathBuf)>,
     /// `(app-id, profile path)` per enrolled app, the id being the filename stem.
     pub apt_profiles: Vec<(String, PathBuf)>,
+    /// MetaInfo documents (`.xml`) for apps the distribution installed.
+    pub metainfo_xml: Vec<PathBuf>,
 }
 
 /// Locate every source under `roots`.
@@ -106,6 +116,17 @@ pub fn discover(roots: &SourceRoots) -> Discovered {
         }
     }
 
+    for dir in &roots.metainfo_dirs {
+        // Flat: `<root>/<component-id>.metainfo.xml` (and the older
+        // `.appdata.xml`, still shipped by plenty of packages).
+        for entry in read_dir_sorted(dir) {
+            let name = entry.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if entry.is_file() && name.ends_with(".xml") {
+                found.metainfo_xml.push(entry);
+            }
+        }
+    }
+
     for entry in read_dir_sorted(&roots.profiles_dir) {
         if entry.extension().and_then(|e| e.to_str()) != Some("toml") {
             continue;
@@ -145,6 +166,7 @@ mod tests {
         SourceRoots {
             flatpak_dirs: vec![dir.join("flatpak")],
             dep11_dirs: vec![dir.join("swcatalog")],
+            metainfo_dirs: vec![dir.join("metainfo")],
             profiles_dir: dir.join("permissions"),
         }
     }

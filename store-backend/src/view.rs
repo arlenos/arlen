@@ -31,6 +31,10 @@ pub enum Tier {
     Flathub,
     /// An apt `.deb`.
     Debian,
+    /// Already installed by the distribution's own package manager. The badge
+    /// exists so a card from this source cannot be mistaken for something the
+    /// store can install: it carries no install handle.
+    Installed,
 }
 
 impl From<SourceLayer> for Tier {
@@ -41,6 +45,7 @@ impl From<SourceLayer> for Tier {
             SourceLayer::Personal | SourceLayer::Community | SourceLayer::Official => Tier::Forage,
             SourceLayer::Flatpak => Tier::Flathub,
             SourceLayer::Apt => Tier::Debian,
+            SourceLayer::Native => Tier::Installed,
         }
     }
 }
