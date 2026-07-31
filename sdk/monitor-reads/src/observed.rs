@@ -57,11 +57,16 @@ pub enum NotMeasuredReason {
     /// There is a feed, but the ledger could not be read at all, so every
     /// capability is unmeasured this time rather than unused.
     LedgerUnavailable,
-    /// The ledger records actions against an actor id, and which id THIS
-    /// extension audits under is not established. A bridge is `bridge.<ns>` in
-    /// the ledger but its bare namespace in the inventory, and a module's actor
-    /// is not settled at all, so asking the ledger about the wrong id would come
-    /// back empty and read as restraint.
+    /// The ledger records actions against an actor id, and this extension has
+    /// none. Asking about the wrong id comes back empty, which reads as restraint.
+    ///
+    /// Modules are the case. `modulesd` takes no audit dependency at all, so a
+    /// module's own host calls - graph, network, events, clipboard - are gated by
+    /// the capability check and then recorded nowhere. The one audited path is a
+    /// module's MCP tool invoked BY the AI, and there the ai-daemon is the actor
+    /// while the module is the SUBJECT, so an actor-keyed aggregation cannot see
+    /// it. Crediting those entries here would also answer a different question -
+    /// "the AI used this module", not "this module did something".
     ActorUnknown,
     /// The ledger reports itself tampered. It may still answer, but an attacker
     /// who can edit it can remove exactly the entries that would have shown use,
