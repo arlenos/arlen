@@ -41,13 +41,19 @@ def binaries() -> dict[str, str]:
         if not manifest.is_file() or not (d / "src/main.rs").is_file():
             continue
         text = manifest.read_text()
-        # An explicit `[[bin]] name` wins: several crates build a binary named
-        # nothing like their package (knowledge builds `arlen-graph-daemon`).
+        # EVERY explicit `[[bin]] name`, not just the first: knowledge builds both
+        # `arlen-graph-daemon` and the `arlen-timeline` FUSE helper, and taking
+        # only the first meant the second was never demanded to be classified,
+        # which is this check failing in the direction that says nothing.
+        #
+        # A crate with no `[[bin]]` at all falls back to its package name, which
+        # is what cargo does for a bare `src/main.rs`.
         named = [m.group(1) for sec in BIN_SECTION.findall(text) for m in [NAME.search(sec)] if m]
         pkg = NAME.search(text)
         if not named and not pkg:
             sys.exit(f"{manifest} declares no name; the check needs updating")
-        out[named[0] if named else pkg.group(1)] = str(d.relative_to(ROOT))
+        for name in named or [pkg.group(1)]:
+            out[name] = str(d.relative_to(ROOT))
     if not out:
         sys.exit("found no daemon binaries at all; the check needs updating")
     return out

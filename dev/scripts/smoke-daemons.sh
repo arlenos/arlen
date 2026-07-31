@@ -69,6 +69,7 @@ SKIPPED=(
     "arlen-run|a launcher: it execs a confined app and exits"
     "arlen-ai-engine-daemon|needs the session bus and a provisioned model"
     "arlen-wallpaperd|exits cleanly with no manifest configured, so there is nothing to stay up for"
+    "arlen-timeline|mounts a FUSE filesystem, which needs /dev/fuse and a mount point the run would have to own"
 )
 
 failed=0
