@@ -77,7 +77,8 @@
       case "pinCodeInput":
         return "1 to 16 characters. The PIN is set on the device itself.";
       case "passkeyInput":
-        return "Numeric code, 0 to 999999.";
+        // The input's placeholder already shows the shape; no line needed.
+        return "";
       case "displayPinCode":
         return "Type this PIN on the device.";
       case "displayPasskey":
@@ -213,7 +214,9 @@
         <span>{request.uuidLabel}</span>
       </div>
     {/if}
-    <p class="bt-note">{descriptionFor(request)}</p>
+    {#if descriptionFor(request)}
+      <p class="bt-note">{descriptionFor(request)}</p>
+    {/if}
   {/snippet}
 
   {#snippet footer()}
