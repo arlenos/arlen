@@ -312,6 +312,39 @@ pub fn theme_resolved_metrics() -> Result<std::collections::BTreeMap<String, Str
     Ok(m)
 }
 
+/// Persist one appearance metric override.
+///
+/// The write counterpart to [`theme_resolved_metrics`], which had none: the theme
+/// backend exposed eleven READ commands and exactly two writes (the accent and the
+/// active theme), so every override row in the Appearance suite edited an
+/// in-memory store that was never persisted and never applied.
+///
+/// `key` is validated against the same key set the read command emits, so the
+/// frontend can only write metric overrides and cannot reach an arbitrary dotted
+/// path in the appearance config. That agreement is test-pinned rather than
+/// restated: a metric that becomes readable but not writable, or the reverse, is
+/// a row that silently does nothing.
+#[tauri::command]
+pub async fn theme_set_metric(key: String, value: String) -> Result<(), String> {
+    if !is_known_metric(&key) {
+        return Err(format!("not an appearance metric: {key}"));
+    }
+    config_set(
+        ConfigFile::Appearance,
+        format!("overrides.{key}"),
+        serde_json::Value::String(value),
+    )
+    .await
+}
+
+/// Whether `key` names a metric [`theme_resolved_metrics`] reports.
+///
+/// Derived from the read command itself rather than from a second hand-kept list,
+/// because the two drifting apart is the failure this guard exists to prevent.
+fn is_known_metric(key: &str) -> bool {
+    theme_resolved_metrics().is_ok_and(|m| m.contains_key(key))
+}
+
 /// The system's installed font families via `fc-list`, deduplicated and sorted,
 /// for the Appearance font pickers (replacing the fixed short list). Each
 /// `fc-list` line is one font file's family names; the primary (first
@@ -683,6 +716,32 @@ pub async fn theme_import_scheme(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The guard the write command rests on: it accepts exactly what the read
+    /// command reports. A key readable but not writable is a row that silently
+    /// does nothing; a key writable but not readable is a value nothing shows.
+    #[test]
+    fn every_reported_metric_is_writable_and_nothing_else_is() {
+        let Ok(metrics) = super::theme_resolved_metrics() else {
+            // No resolvable theme in this environment; the agreement is still
+            // pinned by the negative cases below.
+            assert!(!super::is_known_metric("typography.size_base"));
+            return;
+        };
+        for key in metrics.keys() {
+            assert!(super::is_known_metric(key), "{key} is reported but not writable");
+        }
+        for bad in [
+            "overrides.accent",
+            "ai.enabled",
+            "typography",
+            "typography.size_base.extra",
+            "",
+            "../../etc/passwd",
+        ] {
+            assert!(!super::is_known_metric(bad), "{bad:?} must not be writable");
+        }
+    }
 
     #[test]
     fn sound_bindings_map_the_four_events_from_the_resolved_theme() {
