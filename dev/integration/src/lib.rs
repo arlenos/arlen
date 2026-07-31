@@ -1303,16 +1303,12 @@ mod module_reachability {
         //   code-indexer/resolve    CG-R2 query-time cross-file resolution; the
         //                           extractor records reference names and
         //                           nothing yet asks this to bind them.
-        //   connections/revocation  CONN-R2 exit and expiry revocation of
-        //                           derived tokens; no process-exit watcher
-        //                           calls it.
         //   integration-packages/manifest  IP-R5's manifest, parsed by nothing
         //                           until the installer path reaches it.
         //   sentinel-detect/tracker the finder-tag classifier for a
         //                           `org.arlen.Sentinel1` daemon that does not
         //                           exist, like its siblings below.
         "daemons/code-indexer/resolve",
-        "daemons/connections/revocation",
         "daemons/integration-packages/manifest",
         "daemons/sentinel-detect/tracker",
         // Diagnosed rather than assumed: the transfer daemon's live per-uid
