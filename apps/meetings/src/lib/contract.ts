@@ -28,12 +28,16 @@ export interface Transcript {
 /// One extracted action item (`contracts/meeting-note::ActionItem`).
 export interface ActionItem {
   text: string;
-  /// The person it was assigned to, when the model identified one.
+  /// The person it was assigned to, when the model identified one. Attribution
+  /// rides diarization (~20% wrong), so the surface treats it as a draft the
+  /// user confirms or edits, never an assertion.
   owner?: string;
   /// The transcript segment index this item was plainly derived from, for
   /// click-to-transcript. Set only on a strong deterministic match, else absent
   /// (no fabricated citation).
   source_segment?: number;
+  /// Ticked off by the user (persisted via `meeting_update_item` - a seam).
+  done?: boolean;
 }
 
 /// One sentence of the prose summary paired with the transcript segment it was
@@ -43,6 +47,10 @@ export interface ActionItem {
 export interface SummaryClaim {
   text: string;
   source_segment?: number;
+  /// The 0-based line of the user's own notes this claim enhances (the
+  /// notes-anchor merge). Absent = not anchored to a specific line; the surface
+  /// collects those under a quiet trailing group instead of guessing.
+  anchor_line?: number;
 }
 
 /// The produced meeting note (`contracts/meeting-note::MeetingNote`). The summary +
