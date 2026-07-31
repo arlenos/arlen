@@ -294,6 +294,55 @@ pub fn lock_path() -> Option<PathBuf> {
     Some(base.join("arlen").join("apps").join("installed.lock"))
 }
 
+/// `~/.local/share/arlen/apps/skipped-updates.toml`, beside the lock it
+/// qualifies.
+///
+/// Its own file rather than a field on the lock entry: the lock records what an
+/// install did, and a skip is the user declining something that has not happened.
+/// Rewriting the lock to hold a preference would also mean the update check
+/// writes to the record the capability gate reads as its old side.
+pub fn skipped_path() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?;
+    Some(base.join("arlen").join("apps").join("skipped-updates.toml"))
+}
+
+/// Which offered version the user has skipped, per component-id.
+///
+/// Absent or unparseable yields nothing, which shows an update the user had
+/// skipped. That is the right direction to fail: a skip the system forgets is a
+/// row reappearing, while a skip it invents hides an update that exists.
+pub fn skipped_updates() -> std::collections::BTreeMap<String, String> {
+    let Some(text) = skipped_path().and_then(|p| std::fs::read_to_string(p).ok()) else {
+        return Default::default();
+    };
+    parse_skipped(&text)
+}
+
+/// Parse the skip file's text, so the reading is testable without a file.
+fn parse_skipped(text: &str) -> std::collections::BTreeMap<String, String> {
+    toml::from_str(text).unwrap_or_default()
+}
+
+/// Record that `version` of `id` was skipped, replacing any earlier skip for it.
+///
+/// Atomic, because the update check reads this file and a half-written one would
+/// parse as no skips at all.
+pub fn skip_update(id: &str, version: &str) -> Result<(), String> {
+    let path = skipped_path().ok_or_else(|| "no data directory to record the skip in".to_string())?;
+    let mut skipped = skipped_updates();
+    skipped.insert(id.to_string(), version.to_string());
+    let body = toml::to_string(&skipped).map_err(|e| format!("could not serialise the skips: {e}"))?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, body).map_err(|e| format!("{}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(())
+}
+
 /// Read what is installed, or nothing.
 ///
 /// An absent lock means nothing has been installed through installd, which is a
