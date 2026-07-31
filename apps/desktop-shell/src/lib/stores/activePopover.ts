@@ -17,7 +17,14 @@ export type PopoverType =
   | null;
 
 /// Which popover is currently open. Only one at a time.
-export const activePopover = writable<PopoverType>(null);
+/// `?popover=<type>` (DEV only) opens one on load so any popover surface is
+/// screenshot-able before its live trigger exists - the general form of the
+/// `?menumock` pattern.
+export const activePopover = writable<PopoverType>(
+  import.meta.env.DEV && typeof location !== "undefined"
+    ? ((new URLSearchParams(location.search).get("popover") as PopoverType) ?? null)
+    : null
+);
 
 export function openPopover(type: PopoverType) {
   activePopover.set(type);
