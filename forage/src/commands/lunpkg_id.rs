@@ -97,6 +97,44 @@ version = "1.2.0"
         assert_eq!(id.as_deref(), Some("com.example.notes"));
     }
 
+    /// The one that matters: a package built by the writer that actually
+    /// produces them, read back by the reader that will meet them. The pure
+    /// tests above pin the parse; this pins the layout, so moving the manifest
+    /// inside the archive fails here instead of silently provisioning no
+    /// bridges for every local install.
+    #[test]
+    fn a_real_package_written_by_the_writer_reads_back_its_id() {
+        use arlen_forage_package::write_lunpkg;
+        use ed25519_dalek::SigningKey;
+
+        let staging = tempfile::TempDir::new().unwrap();
+        std::fs::write(staging.path().join("run.sh"), b"#!/bin/sh\necho hi\n").unwrap();
+
+        // The manifest text rather than `synthesize_manifest`: this test is
+        // about where the writer PUTS it, not about deriving it from a recipe.
+        let manifest = r#"
+[package]
+id = "com.example.notes"
+name = "Notes"
+version = "1.2.0"
+
+[binary]
+path = "run.sh"
+"#;
+
+        let out = tempfile::TempDir::new().unwrap();
+        let pkg = out.path().join("notes.lunpkg");
+        write_lunpkg(
+            staging.path(),
+            manifest,
+            &SigningKey::from_bytes(&[7u8; 32]),
+            &pkg,
+        )
+        .expect("write a package");
+
+        assert_eq!(package_id(&pkg).as_deref(), Some("com.example.notes"));
+    }
+
     #[test]
     fn a_missing_archive_reads_as_no_id_rather_than_panicking() {
         assert_eq!(package_id(Path::new("/nonexistent-package.lunpkg")), None);

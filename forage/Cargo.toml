@@ -40,6 +40,10 @@ tempfile = "3"
 
 [dev-dependencies]
 tempfile = "3"
+# The lunpkg-id reader is only worth anything if it reads a REAL package, so the
+# round-trip test builds one with the writer that produces them.
+arlen-forage-package = { path = "package" }
+ed25519-dalek = { version = "2", features = ["std"] }
 # The bridge-flow tests assert the provisioned bridge-ingest profile's granted
 # namespaces; the profile type lives here (a transitive dep of bridge-install).
 arlen-permissions = { path = "../sdk/permissions" }
