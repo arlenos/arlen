@@ -24,10 +24,5 @@ apps/settings/src/routes/keyboard/shortcuts/+page.svelte	text-left
 apps/terminal/src/lib/components/TerminalSidebar.svelte	ml-
 apps/terminal/src/routes/+layout.svelte	pl-
 apps/terminal/src/routes/+layout.svelte	pr-
-sdk/ui-kit/src/lib/components/ui/context-menu/context-menu-checkbox-item.svelte	right-
-sdk/ui-kit/src/lib/components/ui/context-menu/context-menu-radio-item.svelte	right-
-sdk/ui-kit/src/lib/components/ui/dropdown-menu/dropdown-menu-checkbox-item.svelte	left-
-sdk/ui-kit/src/lib/components/ui/dropdown-menu/dropdown-menu-radio-item.svelte	right-
-sdk/ui-kit/src/lib/components/ui/sidebar/SidebarMenuAction.svelte	right-
 sdk/ui-kit/src/lib/components/ui/sidebar/SidebarRail.svelte	left-
 sdk/ui-kit/src/lib/components/ui/sidebar/SidebarRail.svelte	right-
