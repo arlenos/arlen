@@ -148,4 +148,4 @@ echo "       busctl --user list | grep org.freedesktop.impl.portal.desktop.arlen
 echo "  4. Log out / log back in so the environment generator runs"
 echo "     and \$XDG_CURRENT_DESKTOP includes 'arlen'."
 echo
-echo "Uninstall: see dev/scripts/uninstall-portal.sh (not yet shipped)."
+echo "Uninstall: dev/scripts/uninstall-portal.sh"
