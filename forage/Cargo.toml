@@ -19,6 +19,7 @@ arlen-forage-pipeline = { path = "pipeline" }
 arlen-forage-build = { path = "build" }
 arlen-forage-fetch = { path = "fetch" }
 arlen-forage-store = { path = "store" }
+arlen-forage-extract = { path = "extract" }
 arlen-forage-signing = { path = "signing" }
 arlen-cookbook-registry = { path = "cookbook-registry" }
 arlen-cookbook-resolve = { path = "cookbook-resolve" }

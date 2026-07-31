@@ -165,10 +165,18 @@ async fn cmd_install(target: String) {
         }
     };
 
-    // The foreign app a bridge would be for, when the target names one. A
-    // .lunpkg's id is inside the package, so bridges for a local file install
-    // are a later step; a flatpak's id is right there in the target.
-    let foreign_app = target.strip_prefix("flatpak:").map(str::to_string);
+    // The foreign app a bridge would be for. A flatpak names it in the target;
+    // a .lunpkg carries it inside the archive, so it is read out before the
+    // install rather than guessed from what appeared afterwards - a set
+    // difference over the installed list would attribute a concurrent install
+    // to this one.
+    let foreign_app = if let Some(app) = target.strip_prefix("flatpak:") {
+        Some(app.to_string())
+    } else if target.ends_with(".lunpkg") || std::path::Path::new(&target).exists() {
+        commands::lunpkg_id::package_id(std::path::Path::new(&target))
+    } else {
+        None
+    };
 
     let result = if target.starts_with("flatpak:") {
         // flatpak:{app_id}
