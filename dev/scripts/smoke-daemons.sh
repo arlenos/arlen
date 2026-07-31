@@ -25,21 +25,27 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 
-# name:socket-basename - the socket the daemon says it binds.
+# name|socket-basename|extra env - the socket the daemon says it binds, and any
+# env it needs to keep its state inside the throwaway dir. `$rt` expands per run.
 DAEMONS=(
-    "event-bus:event-bus-producer.sock"
-    "arlen-consent-broker:consent-intake.sock"
-    "arlen-store-backend:store.sock"
-    "arlen-auditd:audit-ingest.sock"
-    "arlen-capsuled:capsule.sock"
-    "arlen-settings-broker:settings-broker.sock"
+    "event-bus|event-bus-producer.sock|"
+    "arlen-consent-broker|consent-intake.sock|"
+    "arlen-store-backend|store.sock|"
+    "arlen-auditd|audit-ingest.sock|"
+    "arlen-capsuled|capsule.sock|"
+    "arlen-settings-broker|settings-broker.sock|"
+    # The knowledge daemon needs its store paths pointed somewhere disposable,
+    # and the FUSE timeline turned OFF: left at its default it would try to mount
+    # over the dev's ~/.timeline. It logs consumer-reconnect errors while the
+    # event bus is absent, which is the writer's backoff working, not a failure -
+    # the log is only printed when the socket never appears.
+    "arlen-graph-daemon|knowledge.sock|ARLEN_DB_PATH=\$rt/knowledge/events.db ARLEN_GRAPH_PATH=\$rt/knowledge/graph ARLEN_TIMELINE_MOUNT=off ARLEN_PERMISSIONS_DIR=\$rt/permissions"
 )
 
 failed=0
 started=0
 for entry in "${DAEMONS[@]}"; do
-    name="${entry%%:*}"
-    sock="${entry##*:}"
+    IFS='|' read -r name sock extra <<<"$entry"
     bin="target/debug/$name"
     if [ ! -x "$bin" ]; then
         echo "SKIP $name: not built (cargo build --manifest-path <its crate>)"
@@ -47,8 +53,13 @@ for entry in "${DAEMONS[@]}"; do
     fi
     rt=$(mktemp -d "${TMPDIR:-/tmp}/arlen-smoke.XXXXXX")
     chmod 700 "$rt"
-    XDG_RUNTIME_DIR="$rt" XDG_DATA_HOME="$rt/data" XDG_STATE_HOME="$rt/state" \
-        "$bin" >"$rt/log" 2>&1 &
+    mkdir -p "$rt/arlen" "$rt/knowledge"
+    # `extra` carries `$rt` unexpanded so it can be resolved against THIS run's
+    # directory; eval is safe here because the list is in this file, not input.
+    eval "extra_env=\"$extra\""
+    # shellcheck disable=SC2086
+    env XDG_RUNTIME_DIR="$rt" XDG_DATA_HOME="$rt/data" XDG_STATE_HOME="$rt/state" \
+        $extra_env "$bin" >"$rt/log" 2>&1 &
     pid=$!
     # Poll rather than sleep a fixed time: the bind is fast, and a fixed wait
     # either flakes or wastes seconds. Ten half-seconds is generous.
