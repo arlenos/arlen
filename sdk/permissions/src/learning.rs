@@ -190,6 +190,102 @@ pub fn grant_rate_exceeded(new_grants_this_minute: u32) -> bool {
     new_grants_this_minute > MAX_GRANTS_PER_MINUTE
 }
 
+/// Where a learning session currently stands.
+///
+/// The two bounds above answer "has the window closed" and "is the rate too
+/// high" as separate questions, and a caller that only asks them is missing the
+/// thing guardrails 3 and 4 are actually about: a session that tripped the rate
+/// cap must STAY stopped. Reading `grant_rate_exceeded` once, suspending, and
+/// then asking again a minute later - when the per-minute count has naturally
+/// fallen - would resume learning by itself, which is precisely the silent
+/// auto-widen guardrail 3 forbids. Suspension is therefore a state, and only an
+/// explicit re-consent leaves it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LearningState {
+    /// Observing, and new grants may be accepted.
+    Learning,
+    /// The rate cap tripped. No further grants are accepted, and an anomaly is
+    /// owed. Only [`LearningSession::reconsent`] resumes it.
+    Suspended,
+    /// The window ended normally. The profile derived so far is the result; no
+    /// further grants are accepted, and this is terminal.
+    Closed,
+}
+
+/// The learning window as a state machine over the bounds.
+///
+/// Deliberately not a timer or a task: it is fed observations and answers whether
+/// a grant may be accepted, so the whole of guardrail 3 and 4 can be tested
+/// against synthetic input, with the live clock and the confiner hook outside.
+#[derive(Debug, Clone, Copy)]
+pub struct LearningSession {
+    window: LearningWindow,
+    state: LearningState,
+}
+
+impl LearningSession {
+    /// Open a session over `window`.
+    pub fn new(window: LearningWindow) -> Self {
+        Self {
+            window,
+            state: LearningState::Learning,
+        }
+    }
+
+    /// The current state.
+    pub fn state(&self) -> LearningState {
+        self.state
+    }
+
+    /// Whether a newly observed access may still be folded into the profile.
+    pub fn accepts_grants(&self) -> bool {
+        self.state == LearningState::Learning
+    }
+
+    /// Feed the session the current bounds. Returns the state after the step.
+    ///
+    /// Ordering matters: the rate cap is checked FIRST, so a burst that arrives in
+    /// the same step the window would have closed is still recorded as a
+    /// suspension. Those are different outcomes - a closed window yields a profile,
+    /// a suspended one yields a profile plus an anomaly and a demand for
+    /// re-consent - and silently preferring the benign one would lose the signal
+    /// that the app behaved abnormally.
+    ///
+    /// Neither `Suspended` nor `Closed` is left by observing more; both ignore
+    /// further steps.
+    pub fn observe(
+        &mut self,
+        elapsed_secs: u64,
+        launches: u32,
+        idle_after_init: bool,
+        new_grants_this_minute: u32,
+    ) -> LearningState {
+        if self.state != LearningState::Learning {
+            return self.state;
+        }
+        if grant_rate_exceeded(new_grants_this_minute) {
+            self.state = LearningState::Suspended;
+        } else if self.window.is_closed(elapsed_secs, launches, idle_after_init) {
+            self.state = LearningState::Closed;
+        }
+        self.state
+    }
+
+    /// Resume a suspended session after the user explicitly re-consented
+    /// (guardrail 3: a mini-window, never a silent auto-widen).
+    ///
+    /// A `Closed` session is NOT resumed: its window ended on its own terms and
+    /// re-opening it would be a second learning window wearing the first one's
+    /// name. Returns whether anything resumed.
+    pub fn reconsent(&mut self) -> bool {
+        if self.state == LearningState::Suspended {
+            self.state = LearningState::Learning;
+            return true;
+        }
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +293,57 @@ mod tests {
 
     fn home() -> PathBuf {
         PathBuf::from("/home/u")
+    }
+
+    #[test]
+    fn a_suspended_session_does_not_resume_when_the_burst_passes() {
+        // The bug the state exists to prevent. The rate cap trips, and a minute
+        // later the per-minute count is naturally back to normal - a caller
+        // re-asking `grant_rate_exceeded` would see false and carry on learning,
+        // widening the profile with no one having consented to anything.
+        let mut s = LearningSession::new(LearningWindow::default());
+        assert_eq!(s.observe(10, 1, false, MAX_GRANTS_PER_MINUTE + 1), LearningState::Suspended);
+        assert!(!s.accepts_grants());
+        assert_eq!(s.observe(20, 1, false, 0), LearningState::Suspended);
+        assert!(!s.accepts_grants(), "a quiet minute must not resume learning");
+    }
+
+    #[test]
+    fn only_an_explicit_reconsent_resumes_a_suspended_session() {
+        let mut s = LearningSession::new(LearningWindow::default());
+        s.observe(10, 1, false, MAX_GRANTS_PER_MINUTE + 1);
+        assert!(s.reconsent());
+        assert!(s.accepts_grants());
+        assert_eq!(s.state(), LearningState::Learning);
+    }
+
+    #[test]
+    fn a_closed_window_is_terminal_and_reconsent_does_not_reopen_it() {
+        // Re-opening a window that ended on its own terms would be a second
+        // learning window wearing the first one's name.
+        let mut s = LearningSession::new(LearningWindow::default());
+        assert_eq!(s.observe(0, 0, true, 0), LearningState::Closed);
+        assert!(!s.accepts_grants());
+        assert!(!s.reconsent());
+        assert_eq!(s.state(), LearningState::Closed);
+    }
+
+    #[test]
+    fn a_burst_in_the_closing_step_is_a_suspension_not_a_clean_close() {
+        // Both conditions in one step. Suspension wins because the outcomes
+        // differ: a close yields a profile, a suspension yields a profile plus an
+        // anomaly and a demand for re-consent, and preferring the benign reading
+        // would lose the signal that the app behaved abnormally.
+        let mut s = LearningSession::new(LearningWindow::default());
+        let after = s.observe(9_999, 99, true, MAX_GRANTS_PER_MINUTE + 1);
+        assert_eq!(after, LearningState::Suspended);
+    }
+
+    #[test]
+    fn a_session_within_every_bound_keeps_learning() {
+        let mut s = LearningSession::new(LearningWindow::default());
+        assert_eq!(s.observe(1, 1, false, MAX_GRANTS_PER_MINUTE), LearningState::Learning);
+        assert!(s.accepts_grants());
     }
 
     #[test]
