@@ -22,8 +22,11 @@
   } = $props();
 
   /// Grow to fit the content up to `maxRows`, then scroll. Reads the
-  /// computed line height so the cap follows the font.
+  /// computed line height so the cap follows the font. Skips while the
+  /// element is hidden (a collapsed expander, a background tab): scrollHeight
+  /// is 0 there, and fitting to it would nail the box to its padding.
   function autogrow(el: HTMLTextAreaElement) {
+    if (el.clientWidth === 0) return;
     el.style.height = "auto";
     const line = parseFloat(getComputedStyle(el).lineHeight) || 20;
     const padding = el.offsetHeight - el.clientHeight;
@@ -38,6 +41,18 @@
   $effect(() => {
     void value;
     if (ref) autogrow(ref);
+  });
+
+  // Re-fit when the element's size changes from outside: most importantly the
+  // 0 -> real-width jump when a hidden ancestor (Collapsible, tab) opens,
+  // which the value-watching effect never sees. Settles immediately because
+  // re-applying an unchanged height fires no further resize.
+  $effect(() => {
+    if (!ref) return;
+    const el = ref;
+    const ro = new ResizeObserver(() => autogrow(el));
+    ro.observe(el);
+    return () => ro.disconnect();
   });
 </script>
 
