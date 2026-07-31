@@ -2,8 +2,23 @@
 Cargo.lock
 *.bak
 
+# ...except for the crates CI builds on their own. A lockfile that cannot be
+# committed is one CI resolves fresh on every run, which is the one crate in the
+# matrix whose dependency graph is not recorded anywhere - and `just check-locks`
+# cannot notice, because there is no tracked lock to compare. `sdk/Cargo.lock`
+# was already tracked in spite of this rule; i18n was not.
+!/Cargo.lock
+!/i18n/Cargo.lock
+!/ui-kit/src-tauri/Cargo.lock
+
 # TypeScript SDK packages (module-sdk, tauri-plugin-menu, tauri-plugin-shell)
 node_modules/
 package-lock.json
+# Same exception: module-sdk and ui-kit are their own entries in the frontend
+# matrix, and CI's `npm ci || npm install` silently falls back to an unpinned
+# install when the lock is missing, so a dependency bump never reaches them.
+!/module-sdk/package-lock.json
+!/ui-kit/package-lock.json
+!/tauri-plugin-menu/package-lock.json
 dist/
 *.tgz
