@@ -325,6 +325,27 @@ pub fn installed_versions(
     versions_from(installed_entries())
 }
 
+/// The capability labels each installed app currently HOLDS, from the permission
+/// profile in force for it.
+///
+/// The profile rather than the catalog, because the catalog describes what a
+/// source offers today and the question is what this machine already granted. An
+/// app with no readable profile is simply absent from the map, which the update
+/// row carries through as "not known" rather than as "holds nothing" - the latter
+/// would make every capability of every update look newly requested.
+pub fn held_capabilities() -> std::collections::BTreeMap<String, Vec<String>> {
+    installed_entries()
+        .into_iter()
+        .filter_map(|e| {
+            let profile = arlen_permissions::load_profile(&e.component_id).ok()?;
+            Some((
+                e.component_id,
+                arlen_extensions::profile::profile_labels(&profile),
+            ))
+        })
+        .collect()
+}
+
 /// The join itself, over entries already read, so the mapping is testable
 /// without a lock file or an environment.
 fn versions_from(
