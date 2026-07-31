@@ -230,7 +230,7 @@
       >
         <span class="truncate">{s.title}</span>
         {#if s.pinned}
-          <Pin strokeWidth={1.75} class="ml-auto opacity-50" aria-label={$t("h.sidebar.pinned")} />
+          <Pin strokeWidth={1.75} class="ms-auto opacity-50" aria-label={$t("h.sidebar.pinned")} />
         {/if}
       </SidebarMenuButton>
       <DropdownMenu.Root>

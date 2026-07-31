@@ -148,23 +148,23 @@
     <ContextMenu.Content class="shell-popover">
       {#if net.is_connected}
         <ContextMenu.Item onclick={() => handleConnect(net)}>
-          <WifiOff size={14} class="mr-2" />Disconnect
+          <WifiOff size={14} class="me-2" />Disconnect
         </ContextMenu.Item>
       {:else}
         <ContextMenu.Item onclick={() => handleConnect(net)}>
-          <Wifi size={14} class="mr-2" />Connect
+          <Wifi size={14} class="me-2" />Connect
         </ContextMenu.Item>
       {/if}
       {#if net.is_known}
         <ContextMenu.Item onclick={() => copyPassword(net.ssid)}>
-          <Copy size={14} class="mr-2" />Copy Password
+          <Copy size={14} class="me-2" />Copy Password
         </ContextMenu.Item>
       {/if}
       {#if net.is_connected}
         <ContextMenu.Separator />
         <ContextMenu.Sub>
           <ContextMenu.SubTrigger>
-            <Info size={14} class="mr-2" />Connection Info
+            <Info size={14} class="me-2" />Connection Info
           </ContextMenu.SubTrigger>
           <ContextMenu.SubContent class="shell-popover">
             {#if connDetails}
@@ -199,7 +199,7 @@
       {#if net.is_known}
         <ContextMenu.Separator />
         <ContextMenu.Item onclick={() => forgetNetwork(net.ssid)} class="text-[var(--color-error)]">
-          <Trash2 size={14} class="mr-2" />Forget Network
+          <Trash2 size={14} class="me-2" />Forget Network
         </ContextMenu.Item>
       {/if}
     </ContextMenu.Content>

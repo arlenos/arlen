@@ -90,7 +90,7 @@
               ></span>
               <span class="ts-text group-data-[collapsible=icon]:hidden">{$activeRemote.label}</span>
               <span
-                class="ts-remote-badge ml-auto group-data-[collapsible=icon]:hidden"
+                class="ts-remote-badge ms-auto group-data-[collapsible=icon]:hidden"
                 style="background:var(--color-fg-secondary)"
               ></span>
             </SidebarMenuButton>
@@ -119,7 +119,7 @@
                 {displayPath(s.cwd)}
               </span>
               <span
-                class="ts-dot ml-auto group-data-[collapsible=icon]:hidden"
+                class="ts-dot ms-auto group-data-[collapsible=icon]:hidden"
                 class:ts-dot-exited={s.status === "exited"}
                 class:ts-dot-failed={sessionFailed(s)}
               ></span>

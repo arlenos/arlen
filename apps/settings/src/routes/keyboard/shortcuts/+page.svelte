@@ -248,7 +248,7 @@
       />
     </div>
     <Button variant="outline" onclick={() => (addOpen = true)}>
-      <Plus class="mr-1 h-4 w-4" /> Add custom
+      <Plus class="me-1 h-4 w-4" /> Add custom
     </Button>
     <Button variant="ghost" onclick={() => (pendingReset = "all")}>
       Reset all
@@ -313,7 +313,7 @@
         >
           <button
             type="button"
-            class="flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:bg-muted/40"
+            class="flex w-full items-center gap-2 px-4 py-2.5 text-start text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:bg-muted/40"
             onclick={() => toggleCategory(category.id)}
             aria-expanded={expanded}
           >
