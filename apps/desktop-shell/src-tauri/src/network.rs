@@ -302,7 +302,16 @@ pub async fn connect_wifi(ssid: String) -> Result<(), String> {
 /// Not changed here, deliberately. `nmcli --ask` reads the secret from stdin and
 /// would close it with a small change, but this is the live WiFi path on a machine
 /// I cannot test an actual association against, and a wrong guess about which
-/// nmcli versions prompt the same way breaks connecting to networks. The real
+/// nmcli versions prompt the same way breaks connecting to networks.
+///
+/// What IS established, so whoever can test an association does not have to
+/// re-derive it: nmcli 1.56.1 accepts `--ask` on `dev wifi connect`, and with a
+/// bogus SSID it fails fast on "No network with SSID found" rather than hanging
+/// for input - so the flag parses and the no-such-network path is safe. The one
+/// unverified step is whether a piped password satisfies the prompt for a network
+/// that actually requires one. Do NOT add an argv fallback if it does not: falling
+/// back would re-introduce the exposure precisely in the failure case, and
+/// silently. The real
 /// answer is the NetworkManager D-Bus API, which takes secrets as method
 /// arguments over the bus and never puts them in an argv - which is what makes
 /// the "replace the shelling-out with real D-Bus" job a security fix rather than
