@@ -505,6 +505,10 @@ pub async fn forget_network(ssid: String) -> Result<(), String> {
 }
 
 /// Connect to a hidden WiFi network with SSID and password.
+///
+/// Carries the same world-readable-argv exposure as
+/// [`connect_wifi_password`], for the same reason and with the same fix: see
+/// that function's note. Both close together or neither does.
 #[tauri::command]
 pub async fn connect_hidden_network(ssid: String, password: String) -> Result<(), String> {
     let output = tokio::process::Command::new("nmcli")
