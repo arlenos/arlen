@@ -1017,9 +1017,10 @@ const ACCESS_GRANTS_ROW_CAP: usize = 5000;
 /// prevent). Settings reaches authority data only through this curated projection and
 /// `revoke`; the general read path's `Grant`-label deny still holds for it.
 ///
-/// `live` is recomputed fresh from `process_alive(g.pid)`: a node stored live but
-/// whose process is gone renders not-live, so the flag never lies beyond the read
-/// instant (§4.2). The general read path already denies the `Grant` label, so this
+/// `live` is recomputed fresh from `process_alive(g.pid)` and from the stored
+/// expiry: a node stored live but whose process is gone, or whose window has
+/// closed, renders not-live, so the flag never lies beyond the read instant
+/// (§4.2). The general read path already denies the `Grant` label, so this
 /// is the only way these nodes are ever served.
 async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
     let privileged = is_privileged_authority_reader(app_id) || is_settings_principal(app_id);
@@ -1044,7 +1045,7 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
          OPTIONAL MATCH (g)-[:GRANTS]->(t:EntityType) \
          RETURN g.id, g.app_id, g.declared_ceiling, g.required, g.identity_verified, \
          g.live, g.revoked, g.superseded, g.pid, g.issued_at, t.label, \
-         g.source, g.consent_class, g.consent_scope \
+         g.source, g.consent_class, g.consent_scope, g.expires_at \
          LIMIT {ACCESS_GRANTS_ROW_CAP}"
     );
     let rows = match graph.query_rows(cypher).await {
@@ -1055,7 +1056,7 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
     let mut views: Vec<GrantView> = Vec::new();
     let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for row in rows {
-        if row.len() < 14 {
+        if row.len() < 15 {
             continue;
         }
         let id = row[0].as_str().to_string();
@@ -1076,9 +1077,19 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
             // in the reader, not only by emitter discipline). `try_from` keeps a bad
             // stored pid from wrapping.
             let process_independent = source == "consent" || source == "declared";
+            // An expiry that has passed makes a grant not-live regardless of every
+            // other flag. It belongs in the reader for exactly the reason the
+            // others do: it is a pure function of the clock, so no emitter can
+            // keep it current, and a time-boxed grant that renders live after its
+            // window is the one failure this whole surface exists to prevent. `0`
+            // is the stored "no expiry" (a token without one projects zero), not
+            // an expiry at the epoch.
+            let expires_at = row[14].as_i64();
+            let expired = expires_at != 0 && expires_at <= crate::time::now().0;
             let live = stored_live
                 && !revoked
                 && !superseded
+                && !expired
                 && (process_independent
                     || u32::try_from(pid).map(process_alive).unwrap_or(false));
             views.push(GrantView {
@@ -4348,6 +4359,40 @@ mod tests {
         assert_eq!(net["consent_scope"], "api.openai.com");
         assert_eq!(net["live"], true, "a pid-free declared grant renders live: {json}");
         assert_eq!(net["revoked"], false);
+    }
+
+    /// A time-boxed grant whose window has closed must not read as live, and one
+    /// whose window is still open must. Nothing but the clock changes between
+    /// them, which is why the reader has to do this rather than trust the stored
+    /// flag: no emitter runs at the moment a window closes.
+    #[tokio::test]
+    async fn a_grant_past_its_expiry_is_not_live() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        let now = crate::time::now().0;
+
+        for (id, expires) in [("g-open", now + 60_000_000), ("g-closed", now - 1)] {
+            graph
+                .write(format!(
+                    "CREATE (:Grant {{id:'{id}', app_id:'com.app', pid:0, issued_at:{now},                      expires_at:{expires}, declared_ceiling:'', required:false,                      identity_verified:false, live:true, revoked:false, superseded:false,                      last_exercised_at:0, use_count:0, source:'consent',                      consent_class:'NetworkAccess', consent_scope:'api.example.com'}})"
+                ))
+                .await
+                .unwrap();
+        }
+
+        let json = handle_access_grants("com.app", &graph).await;
+        let views: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let arr = views.as_array().unwrap();
+        let of = |id: &str| {
+            arr.iter()
+                .find(|v| v["id"] == id)
+                .unwrap_or_else(|| panic!("{id} surfaces: {json}"))
+                .clone()
+        };
+        assert_eq!(of("g-open")["live"], true, "an open window is live: {json}");
+        assert_eq!(of("g-closed")["live"], false, "a closed window is not: {json}");
+        // Expiry is not revocation: the row still says what it was.
+        assert_eq!(of("g-closed")["revoked"], false);
     }
 
     #[tokio::test]
