@@ -94,7 +94,7 @@ impl FileSystemExecutor {
         Self {
             audit: None,
             undo_signer: None,
-            executor_live: crate::engine_config::executor_live,
+            executor_live: crate::engine_config::may_act,
             trash_root: None,
         }
     }

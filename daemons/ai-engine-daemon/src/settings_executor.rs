@@ -83,7 +83,7 @@ impl SettingsExecutor {
         Self {
             audit: None,
             undo_signer: None,
-            executor_live: crate::engine_config::executor_live,
+            executor_live: crate::engine_config::may_act,
             config_root: None,
         }
     }

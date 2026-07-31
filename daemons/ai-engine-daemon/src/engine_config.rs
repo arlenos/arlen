@@ -168,6 +168,23 @@ pub fn ai_enabled() -> bool {
     std::fs::read_to_string(ai_config_path()).map(|t| ai_enabled_from_text(&t)).unwrap_or(false)
 }
 
+/// Whether an executor may act: BOTH the master switch and the executor gate.
+///
+/// The two answer different questions and the executors need both. `ai_enabled`
+/// is "is there an assistant at all"; `executor_live` is "may it act on the real
+/// system". Turning the assistant off in Settings does not spawn pi, but the
+/// contract socket keeps serving and nothing on the request path asked the master
+/// switch - so an executor consulted only `executor_live` and would have acted
+/// with the AI switched off. A user who turns it off means it, and this is the
+/// direction to be wrong in: refusing to act while the assistant is off costs a
+/// refusal, acting while it is off is the thing they thought they had prevented.
+///
+/// This is the DEFAULT the executors wire themselves to; each still takes the
+/// predicate as a `fn() -> bool` so a test can drive either side.
+pub fn may_act() -> bool {
+    ai_enabled() && executor_live()
+}
+
 /// Resolve the [`ProviderSettings`] from the given `ai.toml` text. A malformed
 /// document yields the safe defaults with an empty name (no provider), so the
 /// caller builds no live provider rather than a wrong one (fail-closed).
@@ -273,6 +290,41 @@ mod tests {
 
         // Reset the global cache + env so nothing leaks into other tests.
         publish_broker_switches(None);
+        std::env::remove_var("ARLEN_AI_CONFIG");
+        let _ = std::fs::remove_file(&ai);
+    }
+
+    /// Acting needs BOTH switches, driven through the real `may_act` against real
+    /// config rather than a re-implementation of `&&` (which would pass whatever
+    /// `may_act` actually did).
+    ///
+    /// The case that motivated it is the third one: master switch off, executor
+    /// gate on. pi is not spawned then, but the contract socket keeps serving and
+    /// the executors only ever asked the second flag.
+    #[test]
+    fn may_act_needs_both_switches() {
+        let _g = CACHE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let ai = std::env::temp_dir().join(format!("arlen-mayact-{}.toml", std::process::id()));
+        std::env::set_var("ARLEN_AI_CONFIG", &ai);
+        publish_broker_switches(None);
+
+        for (enabled, live, expected) in [
+            (true, true, true),
+            (false, true, false),
+            (true, false, false),
+            (false, false, false),
+        ] {
+            std::fs::write(
+                &ai,
+                format!("[ai]\nenabled = {enabled}\n[agent]\nexecutor_live = {live}\n"),
+            )
+            .unwrap();
+            assert_eq!(
+                may_act(),
+                expected,
+                "enabled={enabled} executor_live={live}"
+            );
+        }
         std::env::remove_var("ARLEN_AI_CONFIG");
         let _ = std::fs::remove_file(&ai);
     }

@@ -198,7 +198,7 @@ impl GraphWriteExecutor {
             audit: None,
             compensation: None,
             undo_signer: None,
-            executor_live: crate::engine_config::executor_live,
+            executor_live: crate::engine_config::may_act,
         }
     }
 
