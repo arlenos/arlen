@@ -102,7 +102,9 @@
     overflow: hidden;
   }
   :global(.mp-list) {
-    max-height: 340px;
+    /* Ten whole 32px rows plus the 4px padding, so the fold never lands
+       mid-row - a half row reads as a rendering bug, not as "scroll on". */
+    max-height: 328px;
     padding: 4px;
     scrollbar-width: none;
   }
