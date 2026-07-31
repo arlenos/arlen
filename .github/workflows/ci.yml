@@ -47,8 +47,24 @@ jobs:
       # listed. Nothing checked that, and the justfile copy of the same list had
       # already fallen nine crates behind. Runs here because this job is
       # unconditional: drift can arrive in a commit that touches no rust at all.
-      - name: crate lists agree with the tree
-        run: python3 dev/scripts/check-crate-coverage.py
+      - name: structural checks
+        # The four build-free checks, run directly rather than through `just`,
+        # which the runner does not have. Each is deterministic file reading with
+        # no network and no build, and each guards something that had already
+        # drifted once: the matrix against the tree, an ignore rule against what
+        # is tracked, a unit ordering against a unit that exists, and the eight
+        # copies of event.proto against each other. Together under four seconds.
+        run: |
+          python3 dev/scripts/check-crate-coverage.py
+          python3 dev/scripts/check-proto-drift.py
+          bash dev/scripts/check-packaged-units.sh
+          tracked=$(git ls-files --ignored --exclude-standard -c)
+          if [ -n "$tracked" ]; then
+            echo "tracked, yet matched by an ignore rule:"
+            printf '  %s\n' $tracked
+            exit 1
+          fi
+          echo "no tracked file is matched by an ignore rule"
       - id: detect
         env:
           EVENT_NAME: ${{ github.event_name }}
