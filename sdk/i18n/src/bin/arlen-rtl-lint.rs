@@ -8,6 +8,12 @@
 //!     --root      a directory tree to scan (repeatable; default `apps`)
 //!     --baseline  the accepted-usages file (default `dev/rtl-baseline.tsv`)
 //!     --update    rewrite the baseline from the current findings (then exit 0)
+//!     --prune     drop baseline entries this scan can no longer reproduce, and
+//!                 ONLY those (then exit 0). The safe counterpart to `--update`
+//!                 when findings are outstanding: it never accepts a new usage, so
+//!                 the gate can only get stricter. Without it the only way to
+//!                 clear a stale baseline is `--update`, which also accepts every
+//!                 pending finding - easy to reach for and hard to notice.
 //! Exit code 0 = no new physical CSS (or `--update`); 1 = new usages; 2 = usage/IO.
 
 use std::collections::BTreeSet;
@@ -51,25 +57,28 @@ struct Args {
     roots: Vec<PathBuf>,
     baseline: PathBuf,
     update: bool,
+    prune: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
     let mut roots = Vec::new();
     let mut baseline = PathBuf::from("dev/rtl-baseline.tsv");
     let mut update = false;
+    let mut prune = false;
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
             "--root" => roots.push(PathBuf::from(it.next().ok_or("--root needs a value")?)),
             "--baseline" => baseline = PathBuf::from(it.next().ok_or("--baseline needs a value")?),
             "--update" => update = true,
+            "--prune" => prune = true,
             other => return Err(format!("unknown argument: {other}")),
         }
     }
     if roots.is_empty() {
         roots.push(PathBuf::from("apps"));
     }
-    Ok(Args { roots, baseline, update })
+    Ok(Args { roots, baseline, update, prune })
 }
 
 fn load_baseline(path: &Path) -> BTreeSet<String> {
@@ -110,6 +119,29 @@ fn main() -> ExitCode {
                 report.push((rel.clone(), f.line, f.found, f.suggestion));
             }
         }
+    }
+
+    if args.prune {
+        let baseline: Vec<String> = match std::fs::read_to_string(&args.baseline) {
+            Ok(s) => s.lines().map(|l| l.to_string()).collect(),
+            Err(e) => {
+                eprintln!("arlen-rtl-lint: cannot read baseline {}: {e}", args.baseline.display());
+                return ExitCode::from(2);
+            }
+        };
+        let kept: Vec<&String> = baseline.iter().filter(|k| current.contains(*k)).collect();
+        let dropped = baseline.len() - kept.len();
+        let body: String = kept.iter().map(|k| format!("{k}\n")).collect();
+        if let Err(e) = std::fs::write(&args.baseline, body) {
+            eprintln!("arlen-rtl-lint: cannot write baseline {}: {e}", args.baseline.display());
+            return ExitCode::from(2);
+        }
+        println!(
+            "arlen-rtl-lint: pruned {dropped} unreproducible entr(ies), {} kept -> {}",
+            kept.len(),
+            args.baseline.display()
+        );
+        return ExitCode::SUCCESS;
     }
 
     if args.update {
