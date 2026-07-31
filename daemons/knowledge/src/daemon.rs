@@ -989,6 +989,11 @@ struct GrantView {
     revoked: bool,
     superseded: bool,
     issued_at: i64,
+    /// When a time-boxed grant stops authorising, or `0` for one that lasts
+    /// until revoked. Sent so a surface can say why a grant is not live: a
+    /// closed window is the only one of expired / process-gone / revoked the
+    /// user can do something about.
+    expires_at: i64,
     reach: Vec<String>,
     /// The grant kind: `capability-token` (an empty/null source reads the same)
     /// or `consent` (a remembered consent grant, system-dialog-plan.md Option A).
@@ -1106,6 +1111,7 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
                 revoked,
                 superseded,
                 issued_at: row[9].as_i64(),
+                expires_at,
                 reach: Vec::new(),
                 source: source.to_string(),
                 consent_class: row[12].as_str().to_string(),
@@ -4400,6 +4406,9 @@ mod tests {
         assert_eq!(of("g-closed")["live"], false, "a closed window is not: {json}");
         // Expiry is not revocation: the row still says what it was.
         assert_eq!(of("g-closed")["revoked"], false);
+        // And it carries WHEN, so a surface can say the window closed rather
+        // than leaving "not live" to mean any of three different things.
+        assert_eq!(of("g-closed")["expires_at"], now - 1);
     }
 
     #[tokio::test]
