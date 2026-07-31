@@ -193,34 +193,53 @@ fn newest_mtime(
         .max()
 }
 
-/// The app ids of every installed app, from the profile directory (each app has a
-/// `<app_id>.toml` there). Used to refuse a namespace delegation that would collide
-/// with an installed app's own namespace (the foreign-app-bridges MEDIUM). An
-/// unreadable directory yields an EMPTY list, which fails toward permitting the
-/// delegation - the delegation is already bounded to the user's own KG and cannot
-/// reach `system.*`/`shared.*`, so a missing enumeration must not brick a bridge;
-/// the check is a hardening layer over that existing boundary, not the boundary.
-pub fn installed_app_ids() -> Vec<String> {
-    // Any valid app id resolves the profile directory; the id itself is only used
-    // to locate the parent dir, then discarded.
-    let Some(dir) = arlen_permissions::profile_path("probe")
-        .ok()
-        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
-    else {
-        return Vec::new();
-    };
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return Vec::new();
-    };
-    entries
-        .filter_map(|e| e.ok())
-        .filter_map(|e| {
-            e.file_name()
-                .to_str()
-                .and_then(|n| n.strip_suffix(".toml"))
-                .map(str::to_string)
+/// The app ids of every installed app, from BOTH profile tiers (each app has a
+/// `<app_id>.toml` in one of them). Used to refuse a namespace delegation that
+/// would collide with an installed app's own namespace (the foreign-app-bridges
+/// MEDIUM).
+///
+/// Both tiers because an apt-installed app has a profile only at the system tier,
+/// and it is installed in exactly the sense this check means - enumerating the
+/// user directory alone left every such app's namespace claimable by a bridge.
+/// Sorted and deduped so an app present in both tiers is named once.
+///
+/// An unreadable directory contributes nothing rather than failing, which fails
+/// toward permitting the delegation - the delegation is already bounded to the
+/// user's own KG and cannot reach `system.*`/`shared.*`, so a missing enumeration
+/// must not brick a bridge; the check is a hardening layer over that existing
+/// boundary, not the boundary.
+/// The ids found across `dirs`, sorted and deduped. Split out so the both-tiers
+/// rule is tested against real directories rather than by pointing the process
+/// environment at temp paths, which is shared state and would race.
+fn ids_in(dirs: [Option<std::path::PathBuf>; 2]) -> Vec<String> {
+    let mut ids: Vec<String> = dirs
+        .into_iter()
+        .flatten()
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
+        .flat_map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .filter_map(|e| {
+                    e.file_name()
+                        .to_str()
+                        .and_then(|n| n.strip_suffix(".toml"))
+                        .map(str::to_string)
+                })
+                .collect::<Vec<_>>()
         })
-        .collect()
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+pub fn installed_app_ids() -> Vec<String> {
+    // Any valid app id resolves a profile path; the id itself is only used to
+    // locate the parent dirs, then discarded.
+    let user = arlen_permissions::profile_path("probe")
+        .ok()
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+    ids_in([Some(arlen_permissions::system_permissions_dir()), user])
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +255,45 @@ mod tests {
     /// projections under test come from [`GraphScopeExt`].
     fn graph_profile(content: &str) -> arlen_permissions::PermissionProfile {
         toml::from_str(&format!("[info]\napp_id = \"com.test\"\n{content}")).unwrap()
+    }
+
+    #[test]
+    fn an_app_installed_at_either_tier_is_enumerated_once() {
+        // The collision check means "installed", and an apt app is installed with
+        // a profile only at the system tier - reading the user directory alone
+        // left its namespace claimable by a bridge.
+        let dir = tempfile::tempdir().unwrap();
+        let system = dir.path().join("system");
+        let user = dir.path().join("user");
+        std::fs::create_dir_all(&system).unwrap();
+        std::fs::create_dir_all(&user).unwrap();
+        std::fs::write(system.join("com.apt.Only.toml"), "").unwrap();
+        std::fs::write(user.join("com.user.Only.toml"), "").unwrap();
+        // Present in both: named once, not twice.
+        std::fs::write(system.join("com.both.App.toml"), "").unwrap();
+        std::fs::write(user.join("com.both.App.toml"), "").unwrap();
+        // A non-profile file is not an app.
+        std::fs::write(user.join("notes.txt"), "").unwrap();
+
+        let ids = ids_in([Some(system), Some(user)]);
+        assert_eq!(
+            ids,
+            vec![
+                "com.apt.Only".to_string(),
+                "com.both.App".to_string(),
+                "com.user.Only".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_unreadable_directory_contributes_nothing_rather_than_failing() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::write(real.join("com.example.App.toml"), "").unwrap();
+        let ids = ids_in([Some(dir.path().join("absent")), Some(real)]);
+        assert_eq!(ids, vec!["com.example.App".to_string()]);
     }
 
     #[test]
