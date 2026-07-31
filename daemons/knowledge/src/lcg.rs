@@ -142,18 +142,28 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
 /// consent grants for one app at different scopes), and a re-consent RE-ACTIVATES
 /// a previously revoked grant (the user explicitly re-allowed it). Atomic +
 /// idempotent.
+///
+/// `expires_at_micros` carries a time-boxed consent's window, or `None` for one
+/// that lasts until revoked. It is written on CREATE and on MATCH both, because
+/// the latest decision is the one in force: renewing a window has to push the
+/// expiry out, and re-consenting without one has to clear it rather than leave
+/// a stale close hanging over a grant the user just made open-ended.
 pub async fn persist_consent_grant(
     graph: &GraphHandle,
     recipient: &str,
     consent_class: &str,
     consent_scope: Option<&str>,
     revocation_handle: &str,
+    expires_at_micros: Option<i64>,
 ) -> Result<()> {
     let app_esc = escape_cypher(recipient);
     let id_esc = escape_cypher(revocation_handle);
     let class_esc = escape_cypher(consent_class);
     let scope_esc = escape_cypher(consent_scope.unwrap_or(""));
     let now = time::now().0;
+    // `0` is the stored "no expiry" the reader treats as open-ended, so a grant
+    // without a window says zero rather than an epoch date.
+    let expires = expires_at_micros.unwrap_or(0);
 
     let stmts = vec![
         // The App principal (do not clobber a name set by promotion).
@@ -165,11 +175,12 @@ pub async fn persist_consent_grant(
             "MERGE (g:Grant {{id: '{id_esc}'}}) \
              ON CREATE SET g.app_id = '{app_esc}', g.source = 'consent', \
              g.consent_class = '{class_esc}', g.consent_scope = '{scope_esc}', \
-             g.pid = 0, g.issued_at = {now}, g.expires_at = 0, g.declared_ceiling = '', \
+             g.pid = 0, g.issued_at = {now}, g.expires_at = {expires}, g.declared_ceiling = '', \
              g.required = false, g.identity_verified = false, g.live = true, \
              g.revoked = false, g.superseded = false, g.last_exercised_at = 0, g.use_count = 0 \
              ON MATCH SET g.source = 'consent', g.consent_class = '{class_esc}', \
-             g.consent_scope = '{scope_esc}', g.live = true, g.revoked = false, g.superseded = false"
+             g.consent_scope = '{scope_esc}', g.expires_at = {expires}, g.live = true, \
+             g.revoked = false, g.superseded = false"
         ),
         // USED_BY: Grant -> App.
         format!(
@@ -470,13 +481,37 @@ mod tests {
         assert_eq!(row[1], false, "a revoked grant is not made live again: {state}");
     }
 
+    /// A windowed consent writes its close onto the node, and re-consenting
+    /// without a window clears it. The latest decision is the one in force: a
+    /// stale expiry left behind would close a grant the user just made
+    /// open-ended, and a stale open would keep a closed one authorising.
+    #[tokio::test]
+    async fn a_windowed_consent_writes_its_expiry_and_a_later_open_one_clears_it() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        let expiry = crate::time::now().0 + 300_000_000;
+
+        persist_consent_grant(&graph, "org.arlen.files", "Destructive", None, "rh-w", Some(expiry))
+            .await
+            .unwrap();
+        let q = "MATCH (g:Grant {id:'rh-w'}) RETURN g.expires_at".to_string();
+        let rows = graph.query_rows(q.clone()).await.unwrap().rows;
+        assert_eq!(rows[0][0].as_i64(), expiry, "the window is stored");
+
+        persist_consent_grant(&graph, "org.arlen.files", "Destructive", None, "rh-w", None)
+            .await
+            .unwrap();
+        let rows = graph.query_rows(q).await.unwrap().rows;
+        assert_eq!(rows[0][0].as_i64(), 0, "re-consenting open-ended clears it");
+    }
+
     #[tokio::test]
     async fn persist_consent_grant_creates_a_live_consent_grant_then_re_consent_reactivates() {
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-        persist_consent_grant(&graph, "org.arlen.files", "Destructive", Some("/home/x"), "rh-1")
+        persist_consent_grant(&graph, "org.arlen.files", "Destructive", Some("/home/x"), "rh-1", None)
             .await
             .unwrap();
         // The consent grant exists, live, source=consent, with class+scope, joined
@@ -501,7 +536,7 @@ mod tests {
             .write("MATCH (g:Grant {id:'rh-1'}) SET g.revoked = true, g.live = false".into())
             .await
             .unwrap();
-        persist_consent_grant(&graph, "org.arlen.files", "Destructive", Some("/home/x"), "rh-1")
+        persist_consent_grant(&graph, "org.arlen.files", "Destructive", Some("/home/x"), "rh-1", None)
             .await
             .unwrap();
         let rs2 = graph
