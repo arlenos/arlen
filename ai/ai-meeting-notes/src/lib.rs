@@ -125,6 +125,9 @@ fn build_note(
                 text,
                 owner: i.owner.map(|o| o.trim().to_string()).filter(|o| !o.is_empty()),
                 source_segment,
+                // The extractor never ticks anything off: reading a transcript
+                // cannot tell you an action was carried out.
+                done: false,
             }
         })
         .collect();
