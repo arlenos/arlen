@@ -40,6 +40,7 @@
     PanelTop,
     Printer,
     Wine,
+    AppWindow,
   } from "lucide-svelte";
 
   let query = $state("");
@@ -120,6 +121,7 @@
     PanelTop,
     Printer,
     Wine,
+    AppWindow,
   };
 
   // Group panels by section, matching the Pre-Phase-6 plan
@@ -156,12 +158,19 @@
     },
     {
       label: "s.section.apps",
-      panelIds: ["extensions", "privacy"] as const,
+      panelIds: ["apps", "extensions", "privacy"] as const,
     },
   ];
 
+  /// A panel is active when it is the longest-prefix owner of the current
+  /// route, so `/apps/<id>` highlights Apps and `/privacy/physical` highlights
+  /// Privacy, while `/keyboard/shortcuts` still belongs to its own Shortcuts
+  /// panel (the longer prefix wins, same rule as `syncFromRoute`).
   function isActive(href: string): boolean {
-    return $page.url.pathname === href;
+    const path = $page.url.pathname;
+    const candidates = PANELS.filter((p) => path === p.href || path.startsWith(p.href + "/"));
+    candidates.sort((a, b) => b.href.length - a.href.length);
+    return candidates[0]?.href === href;
   }
 </script>
 

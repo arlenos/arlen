@@ -25,6 +25,7 @@ export type PanelId =
   | "ai-models"
   | "privacy"
   | "extensions"
+  | "apps"
   | "about";
 
 export interface PanelMeta {
@@ -67,6 +68,7 @@ export const PANELS: PanelMeta[] = [
   { id: "system-actions", title: "s.nav.systemActions", icon: "Zap", enabled: true, href: "/system-actions" },
 
   // Apps & Modules
+  { id: "apps", title: "s.nav.apps", icon: "AppWindow", enabled: true, href: "/apps" },
   { id: "extensions", title: "s.nav.extensions", icon: "Puzzle", enabled: true, href: "/extensions" },
   // Disabled until Phase 8 ships the permission-management UI.
   // The route still resolves (the page renders a placeholder for
