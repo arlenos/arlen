@@ -23,9 +23,13 @@ So the rule is not "always take the header". It is that a header-less method has
 to be listed below with the reason it is safe, which makes adding one a decision
 someone writes down instead of an omission nobody sees.
 
-NOT IN `just checks` YET, on purpose. It currently fails, on the whole of
-`org.arlen.InstallDaemon1`: `install_package`, `update`, `install_flatpak`,
-`uninstall` and `uninstall_flatpak` enqueue their job without resolving anyone.
+NOT IN `just checks` YET, on purpose. It currently fails on exactly eleven
+methods, all of them `org.arlen.InstallDaemon1`: `install_package`, `update`,
+`install_flatpak`, `uninstall` and `uninstall_flatpak` enqueue their job without
+resolving anyone, and the reads beside them (`list_installed`, `preview_upgrade`,
+`restore_app`, `list_trashed`, `cleanup_trash`, `get_job_status`) are unresolved
+too. Nothing else in the tree is unaccounted for, so that one interface is the
+whole of the open question.
 Who may install and uninstall is a real decision (the store app, Settings, the
 forage CLI, all of which would have to keep working) and not one to make by
 picking a list that turns this green. Wire it in once that is answered; until
@@ -82,9 +86,6 @@ ACKNOWLEDGED: dict[str, tuple[set[str], str]] = {
             "registered_status_notifier_items",
             "is_status_notifier_host_registered",
             "protocol_version",
-            "status_notifier_item_registered",
-            "status_notifier_item_unregistered",
-            "status_notifier_host_registered",
         },
         "org.kde.StatusNotifierWatcher, a freedesktop protocol whose registration "
         "is open by specification: any tray-capable app registers itself, and the "
@@ -101,18 +102,12 @@ ACKNOWLEDGED: dict[str, tuple[set[str], str]] = {
         "(WriteProfile, RecordIdentity) all check the caller uid",
     ),
     "daemons/notification-daemon/src/dbus/server.rs": (
-        {
-            "close_notification",
-            "get_capabilities",
-            "get_server_information",
-            "notification_closed",
-            "action_invoked",
-        },
-        "org.freedesktop.Notifications: the spec has no caller identity, any app "
-        "may notify and close by id, and the two signals are outbound",
+        {"close_notification", "get_capabilities", "get_server_information"},
+        "org.freedesktop.Notifications: the spec has no caller identity, and any "
+        "app may notify and close by id",
     ),
     "daemons/notification-daemon/src/dbus/job_view.rs": (
-        {"register", "update", "set_state", "finish", "request_cancel", "cancel_requested"},
+        {"register", "update", "set_state", "finish", "request_cancel"},
         "org.arlen.JobViewServer1: a progress surface an app keeps for its own "
         "job, holding what that app chose to publish about its own work",
     ),
@@ -147,7 +142,13 @@ ACKNOWLEDGED: dict[str, tuple[set[str], str]] = {
 
 
 def interface_methods(text: str) -> list[tuple[str, bool]]:
-    """Every method of every interface impl in the file, with whether it sees the header."""
+    """Every METHOD of every interface impl, with whether it sees the header.
+
+    Signals are excluded rather than acknowledged one by one: a `#[zbus(signal)]`
+    is emitted BY the daemon, so asking who called it is meaningless. They were in
+    the acknowledged list at first, with reasons that all amounted to "this is a
+    signal", which is the check failing to model its own subject.
+    """
     out: list[tuple[str, bool]] = []
     for m in IFACE.finditer(text):
         start = text.index("{", m.end())
@@ -159,6 +160,10 @@ def interface_methods(text: str) -> list[tuple[str, bool]]:
         for idx, line in enumerate(lines):
             fm = FN.match(line)
             if not fm:
+                continue
+            # The attribute sits on the lines just above the fn.
+            preceding = "\n".join(lines[max(0, idx - 4) : idx])
+            if "zbus(signal)" in preceding:
                 continue
             j, body = idx + 1, []
             while j < len(lines) and not END.match(lines[j]):
