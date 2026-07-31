@@ -27,6 +27,18 @@ zbus = { version = "5", optional = true }
 # composition is what CI builds and tests. `pam` links libpam (the password ->
 # systemd-homed key release) and `greetd` pulls greetd_ipc (the greeter's auth
 # conversation); each is built and verified on hardware, like PWR-R2's metal path.
+#
+# `pam` pulls the unmaintained `users` crate, which carries two advisories:
+# GHSA-m65q-v92h-cm7q (group listings can gain a spurious `root`, an escalation
+# if used for access control) and GHSA-jcr6-4frq-9gjj (unaligned read). Both are
+# in the group path - `members()` over `gr_mem`. pam 0.8 calls `users` exactly
+# once, `get_user_by_name` in `initialize_environment`, which builds a passwd
+# entry and never constructs a group, so neither is reachable from here. Checked
+# in the vendored source rather than assumed; recheck if pam is upgraded.
+#
+# Worth knowing before the pam backend goes live on hardware: that same function
+# panics when the user lookup fails and unwraps `home_dir`/`shell`, so a missing
+# or non-UTF8 passwd entry aborts instead of failing the login.
 pam = ["dep:pam"]
 greetd = ["dep:greetd_ipc"]
 fprintd = ["dep:zbus"]
