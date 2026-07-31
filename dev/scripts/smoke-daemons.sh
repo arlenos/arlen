@@ -42,6 +42,10 @@ DAEMONS=(
     "arlen-code-indexer|-|"
     "arlen-journald-parser|-|"
     "arlen-transferd|-|"
+    "arlen-knowledge-mcp|-|"
+    "arlen-file-manager-mcp|-|"
+    "arlen-system-monitor-mcp|-|"
+    "arlen-terminal-run-mcp|-|"
     "arlen-graph-daemon|knowledge.sock|ARLEN_DB_PATH=\$rt/knowledge/events.db ARLEN_GRAPH_PATH=\$rt/knowledge/graph ARLEN_TIMELINE_MOUNT=off ARLEN_PERMISSIONS_DIR=\$rt/permissions"
 )
 
@@ -61,12 +65,8 @@ SKIPPED=(
     "kernel-layer-ebpf|an eBPF object, not a host binary"
     "arlen-bridge-ingest|takes a bridge.toml argument rather than binding a socket"
     "arlen-run|a launcher: it execs a confined app and exits"
-    "arlen-knowledge-mcp|an MCP server on stdio, no socket to bind"
-    "arlen-file-manager-mcp|an MCP server on stdio, no socket to bind"
-    "arlen-system-monitor-mcp|an MCP server on stdio, no socket to bind"
-    "arlen-terminal-run-mcp|an MCP server on stdio, no socket to bind"
     "arlen-ai-engine-daemon|needs the session bus and a provisioned model"
-    "arlen-wallpaperd|renders to a compositor output"
+    "arlen-wallpaperd|exits cleanly with no manifest configured, so there is nothing to stay up for"
 )
 
 failed=0
@@ -86,7 +86,7 @@ for entry in "${DAEMONS[@]}"; do
     eval "extra_env=\"$extra\""
     # shellcheck disable=SC2086
     env XDG_RUNTIME_DIR="$rt" XDG_DATA_HOME="$rt/data" XDG_STATE_HOME="$rt/state" \
-        XDG_CONFIG_HOME="$rt/config" $extra_env "$bin" >"$rt/log" 2>&1 &
+        XDG_CONFIG_HOME="$rt/config" $extra_env "$bin" >"$rt/log" 2>&1 </dev/null &
     pid=$!
     # A socket of `-` means this daemon serves nothing: it consumes events, polls
     # a ledger or waits on a bus. There is no bind to wait for, so the assertion
