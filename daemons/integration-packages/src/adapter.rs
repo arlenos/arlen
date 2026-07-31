@@ -9,7 +9,7 @@
 //! source. Resolving a source's glob to concrete files and the write engine build
 //! on this.
 
-use crate::allowlist::{resolve_under_allowlist, AllowlistError};
+use crate::allowlist::{resolve_under_allowlist, AllowlistError, ALLOWED_SUBDIRS};
 use arlen_config_format::Format;
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -185,6 +185,17 @@ pub enum AdapterError {
         /// The allowlist failure.
         error: AllowlistError,
     },
+    /// The adapter's sources span more than one app's config subtree, or one of
+    /// them globs across apps.
+    #[error(
+        "an adapter must stay inside ONE app's config subtree; sources reach {first:?} and {second:?}"
+    )]
+    CrossApp {
+        /// The subtree the earlier sources settled on.
+        first: String,
+        /// The subtree that broke out of it.
+        second: String,
+    },
     /// A setting referenced a source name that no `[sources]` entry declares.
     #[error("setting {key:?} references unknown source {source_name:?}")]
     DanglingSource {
@@ -221,6 +232,7 @@ impl AdapterManifest {
                 error,
             })?;
         }
+        self.check_single_app_subtree(home)?;
         for setting in &self.settings {
             if !self.sources.contains_key(&setting.source) {
                 return Err(AdapterError::DanglingSource {
@@ -231,6 +243,66 @@ impl AdapterManifest {
         }
         Ok(())
     }
+
+    /// Refuse an adapter whose sources reach into more than one app's config
+    /// subtree (E7).
+    ///
+    /// The allowlist already keeps an adapter inside the user's own config, and
+    /// the resolver narrows each individual capability to its source's glob-free
+    /// prefix, so no single access can wander sideways. Neither stops an adapter
+    /// from simply DECLARING sources in two apps: a Firefox adapter that also
+    /// lists `~/.config/chromium/...` gets a legitimate capability for each. This
+    /// is the adapter-level bound the other two layers cannot express.
+    ///
+    /// Derived from the sources rather than declared in a manifest field. Both
+    /// were acceptable; derivation wins because it cannot drift from what the
+    /// adapter actually touches - a declared subtree is a second thing to keep in
+    /// sync, and since an adapter is untrusted community data, it would be a
+    /// second thing an author can get wrong or lie about while the real reach is
+    /// in the source list either way.
+    fn check_single_app_subtree(&self, home: &Path) -> Result<(), AdapterError> {
+        let mut settled: Option<String> = None;
+        // Sorted so the reported pair is stable regardless of map iteration order.
+        let mut paths: Vec<&String> = self.sources.values().map(|s| &s.path).collect();
+        paths.sort();
+        for path in paths {
+            let Some(subtree) = app_subtree(path, home) else {
+                // A named file directly under an allowlist root reaches exactly
+                // itself, so it belongs to no app subtree and constrains nothing.
+                continue;
+            };
+            match &settled {
+                None => settled = Some(subtree),
+                Some(first) if *first == subtree => {}
+                Some(first) => {
+                    return Err(AdapterError::CrossApp {
+                        first: first.clone(),
+                        second: subtree,
+                    })
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The app subtree a source path sits in: the first component below its
+/// allowlist root, or `None` when the path names a file directly in that root
+/// (which reaches only itself).
+///
+/// A glob in that first position - `~/.config/*/prefs` - is NOT `None`: it would
+/// reach every app under the root, so it is returned verbatim and will only ever
+/// match itself, which makes any second source a cross-app breakout.
+fn app_subtree(raw_source_path: &str, home: &Path) -> Option<String> {
+    let abs = resolve_under_allowlist(raw_source_path, home).ok()?;
+    let relative = ALLOWED_SUBDIRS
+        .iter()
+        .find_map(|sub| abs.strip_prefix(home.join(sub)).ok().map(|r| r.to_path_buf()))?;
+    let mut comps = relative.components();
+    let first = comps.next()?.as_os_str().to_string_lossy().into_owned();
+    // Nothing after it: the source names a file sitting in the root itself.
+    comps.next()?;
+    Some(first)
 }
 
 #[cfg(test)]
@@ -240,6 +312,81 @@ mod tests {
 
     fn home() -> PathBuf {
         PathBuf::from("/home/u")
+    }
+
+    fn adapter_with(sources: &[(&str, &str)]) -> String {
+        let mut t = String::from(
+            "[adapter]\nschema_version = \"1.0\"\nwrite_strategy = \"requires_app_closed\"\n\n[sources]\n",
+        );
+        for (name, path) in sources {
+            t.push_str(&format!("{name} = {{ path = \"{path}\", format = \"ini\" }}\n"));
+        }
+        t
+    }
+
+    #[test]
+    fn an_adapter_may_not_declare_sources_in_two_apps() {
+        // The allowlist admits both paths and the resolver narrows each capability
+        // correctly, so nothing below this level objects: a Firefox adapter that
+        // also lists chromium simply gets a working capability for each.
+        let text = adapter_with(&[
+            ("prefs", "~/.config/firefox/prefs.js"),
+            ("other", "~/.config/chromium/Preferences"),
+        ]);
+        // `parse` validates, so the refusal lands there. Sources are checked in
+        // path order, so the pair is reported deterministically.
+        match AdapterManifest::parse(&text, &home()) {
+            Err(AdapterError::CrossApp { first, second }) => {
+                assert_eq!((first.as_str(), second.as_str()), ("chromium", "firefox"));
+            }
+            other => panic!("expected a cross-app refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn several_sources_inside_one_app_are_fine() {
+        let text = adapter_with(&[
+            ("a", "~/.config/firefox/prefs.js"),
+            ("b", "~/.config/firefox/profiles/*/user.js"),
+        ]);
+        AdapterManifest::parse(&text, &home()).expect("one app subtree is allowed");
+    }
+
+    #[test]
+    fn a_glob_in_the_app_position_cannot_be_paired_with_anything() {
+        // `~/.config/*/x` reaches every app under the root. It is not treated as
+        // "no subtree" - that would let it sit quietly beside a real one.
+        let text = adapter_with(&[
+            ("wide", "~/.config/*/settings.ini"),
+            ("real", "~/.config/firefox/prefs.js"),
+        ]);
+        assert!(matches!(
+            AdapterManifest::parse(&text, &home()),
+            Err(AdapterError::CrossApp { .. })
+        ));
+    }
+
+    #[test]
+    fn a_file_directly_in_the_root_reaches_only_itself() {
+        // `~/.config/mimeapps.list` is a real pattern and belongs to no app
+        // subtree, so it neither claims one nor conflicts with one.
+        let text = adapter_with(&[
+            ("mime", "~/.config/mimeapps.list"),
+            ("app", "~/.config/firefox/prefs.js"),
+        ]);
+        AdapterManifest::parse(&text, &home()).expect("a root-level file constrains nothing");
+    }
+
+    #[test]
+    fn two_allowlist_roots_are_still_two_subtrees() {
+        let text = adapter_with(&[
+            ("a", "~/.mozilla/firefox/prefs.js"),
+            ("b", "~/.config/chromium/Preferences"),
+        ]);
+        assert!(matches!(
+            AdapterManifest::parse(&text, &home()),
+            Err(AdapterError::CrossApp { .. })
+        ));
     }
 
     const FIREFOX: &str = r#"
