@@ -10,15 +10,20 @@
   import KnowledgeSidebar from "$lib/components/KnowledgeSidebar.svelte";
   import KnowledgeDetail from "$lib/components/KnowledgeDetail.svelte";
   import TimelineView from "$lib/components/TimelineView.svelte";
+  import ProjectsView from "$lib/components/ProjectsView.svelte";
   import { onMount } from "svelte";
   import { knowledgeAdapter, mocked } from "$lib/adapter";
   import { labelKeyFor, emptyKeyFor } from "$lib/locations";
-  import type { TimelineEvent } from "$lib/stores/timeline";
+  import { days, flatEvents, loadTimeline, type TimelineEvent } from "$lib/stores/timeline";
+  import { asOf, projectInfo, type ProjectInfo } from "$lib/stores/projects";
   import { initAppMenu } from "$lib/menu";
   import { t } from "$lib/i18n/messages";
 
   onMount(() => {
     void initAppMenu();
+    // The projects detail reuses the timeline's events for its recent-activity
+    // block, so both fixtures stay one story.
+    void loadTimeline();
   });
 
   // The headless controller auto-loads its initial place (Timeline, the spine).
@@ -27,11 +32,27 @@
 
   let selected = $state<FileEntry | null>(null);
   let selectedEvent = $state<TimelineEvent | null>(null);
+  let selectedProject = $state<ProjectInfo | null>(null);
 
   function navigate(location: string): void {
     selected = null;
     selectedEvent = null;
+    selectedProject = null;
     void ctrl.navigate(location);
+  }
+
+  // A projects selection is either a project (its info panel) or a deeper
+  // node (the plain entry panel).
+  function onProjectsSelect(entry: FileEntry | null, path: string): void {
+    selectedEvent = null;
+    const atProjectLevel = path.replace(/\/+$/, "") === "/projects";
+    if (entry && atProjectLevel) {
+      selectedProject = projectInfo(entry.name, $days ? flatEvents($days) : [], $asOf);
+      selected = selectedProject ? null : entry;
+    } else {
+      selectedProject = null;
+      selected = entry;
+    }
   }
   function onselection(entries: FileEntry[]): void {
     selected = entries[0] ?? null;
@@ -58,10 +79,13 @@
     <main class="kn-main">
     <header class="kn-head">
       <h1 class="kn-h1">{$t(labelKeyFor($path))}</h1>
-      {#if $mocked && $path !== "timeline"}<span class="kn-sample">{$t("k.sample")}</span>{/if}
+      <!-- Timeline and Projects carry their own example-data line. -->
+      {#if $mocked && $path !== "timeline" && $path !== "projects"}<span class="kn-sample">{$t("k.sample")}</span>{/if}
     </header>
     {#if $path === "timeline"}
       <TimelineView onselect={(e) => (selectedEvent = e)} />
+    {:else if $path === "projects"}
+      <ProjectsView onselect={onProjectsSelect} />
     {:else}
       <div class="kn-browser">
         <FileBrowser
@@ -76,7 +100,9 @@
     {/if}
   </main>
 
-    {#if selectedEvent}
+    {#if selectedProject}
+      <KnowledgeDetail project={selectedProject} onclose={() => (selectedProject = null)} />
+    {:else if selectedEvent}
       <KnowledgeDetail event={selectedEvent} onclose={() => (selectedEvent = null)} />
     {:else if selected}
       <KnowledgeDetail entry={selected} onclose={() => (selected = null)} />

@@ -39,18 +39,33 @@
   // The as-of picker: a small popover with recent moments (the fixture's
   // horizon; live this becomes the graph's recorded range).
   let pickerOpen = $state(false);
-  function pick(unix: number): void {
+
+  // Changing the moment returns to the project list: a drilled path may not
+  // exist at the new moment, and the Miller ancestor columns only refetch on
+  // a path change - jumping to the root keeps every visible column honest.
+  async function retime(unix: number | null): Promise<void> {
     asOf.set(unix);
     pickerOpen = false;
-    void ctrl.refresh();
+    await ctrl.refresh();
+    if ($path !== "/projects") await ctrl.navigate("/projects");
+    onselect(null, "/projects");
+  }
+  function pick(unix: number): void {
+    void retime(unix);
   }
   function clearAsOf(): void {
-    asOf.set(null);
-    void ctrl.refresh();
+    void retime(null);
   }
 
   function chipLabel(unix: number): string {
     return new Date(unix * 1000).toLocaleDateString($locale, { weekday: "short", day: "numeric", month: "short" });
+  }
+  // Local midnight for the picker rows, so "Yesterday" matches dayLabel's
+  // local-day comparison (a raw unix floor is UTC and can miss by a day).
+  function localDay(unix: number): number {
+    const d = new Date(unix * 1000);
+    d.setHours(0, 0, 0, 0);
+    return Math.floor(d.getTime() / 1000);
   }
 
   onMount(() => () => asOf.set(null));
@@ -72,8 +87,7 @@
           <div class="pr-picker" role="listbox" aria-label={$t("k.pr.asofAria")}>
             {#each asOfCandidates() as cand (cand)}
               <button type="button" class="pr-pick" role="option" aria-selected="false" onclick={() => pick(cand)}>
-                {dayLabel(cand - (cand % 86400), $locale)}
-                <span class="pr-pick-date">{chipLabel(cand)}</span>
+                {dayLabel(localDay(cand), $locale)}
               </button>
             {/each}
           </div>
