@@ -414,7 +414,6 @@
           unit="chars/s"
           disabled={loading}
           ariaLabel="Repeat rate"
-          width="180px"
           onchange={setRepeatRate}
         />
       {/snippet}
@@ -432,7 +431,6 @@
           unit="ms"
           disabled={loading}
           ariaLabel="Repeat delay"
-          width="180px"
           onchange={setRepeatDelay}
         />
       {/snippet}

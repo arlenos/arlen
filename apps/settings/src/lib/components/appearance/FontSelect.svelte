@@ -30,7 +30,6 @@
   {options}
   {ariaLabel}
   {onchange}
-  width="200px"
 >
   {#snippet renderLabel(opt: PopoverSelectOption)}
     <span style="font-family: '{opt.value}', ui-sans-serif, monospace;">

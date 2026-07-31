@@ -63,7 +63,7 @@
           id="sys-cursorTheme"
         >
           {#snippet control()}
-            <PopoverSelect value={String($effective.cursorTheme)} options={CURSOR_THEMES} ariaLabel="Cursor theme" width="12rem" onchange={(v) => setSys("cursorTheme", v)} />
+            <PopoverSelect value={String($effective.cursorTheme)} options={CURSOR_THEMES} ariaLabel="Cursor theme" onchange={(v) => setSys("cursorTheme", v)} />
           {/snippet}
         </OverrideRow>
         <OverrideRow
@@ -88,7 +88,7 @@
           id="sys-iconTheme"
         >
           {#snippet control()}
-            <PopoverSelect value={iconTheme} options={ICON_THEMES} ariaLabel="Icon theme" width="12rem" onchange={(v) => setSys("iconTheme", v)} />
+            <PopoverSelect value={iconTheme} options={ICON_THEMES} ariaLabel="Icon theme" onchange={(v) => setSys("iconTheme", v)} />
           {/snippet}
         </OverrideRow>
       </Group>
@@ -113,7 +113,7 @@
           id="sys-soundTheme"
         >
           {#snippet control()}
-            <PopoverSelect value={String($effective.soundTheme)} options={SOUND_THEMES} ariaLabel="Sound theme" width="12rem" onchange={(v) => setSys("soundTheme", v)} />
+            <PopoverSelect value={String($effective.soundTheme)} options={SOUND_THEMES} ariaLabel="Sound theme" onchange={(v) => setSys("soundTheme", v)} />
           {/snippet}
         </OverrideRow>
         <Collapsible class="expander">
@@ -136,7 +136,7 @@
                       <button class="snd-play" type="button" title="Preview (coming with audio)" aria-label={`Play ${ev.label}`}>
                         <Play size={13} strokeWidth={2} />
                       </button>
-                      <PopoverSelect value={String($effective[ev.key])} options={SOUND_NAMES} ariaLabel={`${ev.label} sound`} width="10rem" onchange={(v) => setSys(ev.key, v)} />
+                      <PopoverSelect value={String($effective[ev.key])} options={SOUND_NAMES} ariaLabel={`${ev.label} sound`} onchange={(v) => setSys(ev.key, v)} />
                     </span>
                   {/snippet}
                 </OverrideRow>

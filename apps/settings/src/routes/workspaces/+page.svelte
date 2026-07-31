@@ -116,7 +116,6 @@
           value={workspaceLayout}
           options={LAYOUT_OPTIONS}
           ariaLabel="Workspace layout"
-          width="180px"
           onchange={setWorkspaceLayout}
         />
       {/snippet}

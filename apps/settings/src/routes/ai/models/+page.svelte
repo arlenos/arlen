@@ -77,7 +77,6 @@
               value={$roles[role]}
               options={roleOptions}
               ariaLabel={$t("s.mdl.roleModel", { role: rm.label })}
-              width="15rem"
               onchange={(v) => setRole(role, v)}
               renderLabel={modelOption as never}
             />
