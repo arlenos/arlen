@@ -110,14 +110,14 @@ impl ProfileWatcher {
     /// Default canonical path per AUTH-CANONICAL.md §2:
     /// `~/.config/permissions/`. Honours `ARLEN_PERMISSIONS_DIR`
     /// for tests (same env var `installd` uses).
+    ///
+    /// Deferred to [`crate::permissions_dir`] rather than restated: the watcher
+    /// MUST watch the directory the loaders read, and two copies of that path
+    /// could drift into a system where profile edits are simply never noticed.
+    /// The `/tmp` fallback for a missing home is kept - a watcher with nowhere to
+    /// watch should be inert, not absent.
     pub fn permissions_dir() -> PathBuf {
-        if let Ok(p) = std::env::var("ARLEN_PERMISSIONS_DIR") {
-            return PathBuf::from(p);
-        }
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join(".config")
-            .join("permissions")
+        crate::permissions_dir().unwrap_or_else(|| PathBuf::from("/tmp"))
     }
 
     /// Start watching the default permissions dir.

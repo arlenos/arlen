@@ -860,14 +860,25 @@ pub fn profile_path(app_id: &str) -> Result<PathBuf, PermissionError> {
             app_id: app_id.to_string(),
         });
     }
-    if let Ok(p) = std::env::var("ARLEN_PERMISSIONS_DIR") {
-        return Ok(PathBuf::from(p).join(format!("{app_id}.toml")));
-    }
-    let home = dirs::home_dir().ok_or(PermissionError::NoHomeDir)?;
-    Ok(home
-        .join(".config")
-        .join("permissions")
+    Ok(permissions_dir()
+        .ok_or(PermissionError::NoHomeDir)?
         .join(format!("{app_id}.toml")))
+}
+
+/// The directory user profiles live in: `$ARLEN_PERMISSIONS_DIR` when set (tests
+/// and dev sandboxes only), else `~/.config/permissions`.
+///
+/// The single statement of that location. It used to be written out in three
+/// places - here, the profile watcher, and installd's module installer - and the
+/// three had to agree for the system to work at all: if the watcher ever watched a
+/// different directory than the loaders read, no profile change would reach the
+/// Living Capability Graph and nothing would report the silence. Two of the three
+/// now call this; installd is a separate crate and says so at its own copy.
+pub fn permissions_dir() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("ARLEN_PERMISSIONS_DIR") {
+        return Some(PathBuf::from(p));
+    }
+    Some(dirs::home_dir()?.join(".config").join("permissions"))
 }
 
 /// Whether `app_id` is a safe single path component for joining into a
@@ -1211,6 +1222,20 @@ always_confirm_overrides = ["empty_trash"]
         for bad in ["..", "a/b", "../etc/x", "", ".hidden", "trailing.", "com.exämple.x"] {
             assert!(system_profile_path(bad).is_none(), "{bad:?} must be rejected");
         }
+    }
+
+    #[test]
+    fn the_watcher_watches_the_directory_the_loaders_read() {
+        // The invariant the whole projection rests on. If these two ever differ,
+        // profiles are read from one place and watched in another, so an edit
+        // lands and nothing notices - no error anywhere, the Living Capability
+        // Graph just quietly stops matching the profiles on disk.
+        let read_from = profile_path("com.example.notes")
+            .expect("a valid id resolves")
+            .parent()
+            .expect("a profile path has a directory")
+            .to_path_buf();
+        assert_eq!(read_from, crate::ProfileWatcher::permissions_dir());
     }
 
     #[test]
