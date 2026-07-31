@@ -15,6 +15,9 @@ pub mod health;
 /// Per-app access aggregation over the audit ledger's activity (the sovereign lens).
 pub mod access;
 
+/// What an app was actually seen doing locally, against what it declared.
+pub mod observed;
+
 /// One inventory across apps, modules and bridges, so "what extends my system" is
 /// a single question with a single answer.
 pub mod extensions;
