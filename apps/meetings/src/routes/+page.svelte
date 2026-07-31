@@ -36,7 +36,6 @@
       </div>
     {/if}
 
-    <p class="foot">{$t("mt.foot")}</p>
   </div>
 </div>
 
@@ -111,10 +110,5 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .foot {
-    margin: 0.5rem 0 0;
-    font-size: var(--text-2xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
 </style>
