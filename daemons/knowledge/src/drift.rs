@@ -105,10 +105,16 @@ impl MembershipEdge {
     /// orders `None < Some(_)`, so it never out-ranks a user/agent/model
     /// assertion on a later clock), then the HLC (the later write wins a trust
     /// tie), then a deterministic content tiebreak (`to`, `from`, origin key) so
-    /// the winner is total even when trust and HLC coincide. The intended
-    /// semantic breaker for a genuine same-HLC cross-device clash is a per-device
-    /// id (a net-new column, section 4); until it lands the content tiebreak
-    /// keeps the merge deterministic and convergent.
+    /// the winner is total even when trust and HLC coincide.
+    ///
+    /// Section 4 names a per-device id as the semantic breaker for a same-HLC
+    /// cross-device clash. That column exists on the edge now, and this key
+    /// still does not use it, deliberately: a candidate here carries no device
+    /// id, and the case it would break is one where every other field already
+    /// matches - same endpoints, same origin, same clock - so the two rows are
+    /// the same assertion made twice and which one wins is immaterial. If a
+    /// candidate ever carries the device id for another reason, revisit this
+    /// rather than reaching for it because it is there.
     fn winner_key(&self) -> (Option<u8>, Hlc, &str, &str, &'static str) {
         (
             self.origin.trust_rank(),
