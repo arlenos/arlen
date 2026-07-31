@@ -542,3 +542,21 @@ check-locks:
         exit 1
     fi
     echo "every tracked lockfile still describes its manifest"
+
+# A tracked file that an ignore rule also matches means one of the two is wrong,
+# and git will not tell you unasked: ignore rules do not apply to files already
+# tracked. Three found this way in one morning - the mkosi build logs matched by
+# exact name, and sdk excluding lockfiles two CI-built packages need.
+check-ignores:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ROOT}}"
+    tracked=$(git ls-files --ignored --exclude-standard -c)
+    if [ -n "$tracked" ]; then
+        echo "tracked, yet matched by an ignore rule:"
+        printf '  %s\n' $tracked
+        echo
+        echo "either untrack the file or narrow the rule; git applies neither on its own"
+        exit 1
+    fi
+    echo "no tracked file is matched by an ignore rule"
