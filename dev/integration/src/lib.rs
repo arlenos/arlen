@@ -1444,10 +1444,8 @@ mod crate_reachability {
     /// path inherits whatever comment happens to sit above it, so the reason is
     /// a field rather than a convention - unwritable without being written.
     const KNOWN_UNCONSUMED: &[(&str, &str)] = &[
-        ("sdk/monitor-reads",
-         "NOT superseded, despite what this entry said until the reads were checked: `apps/system-monitor/core` is process monitoring and `daemons/system-monitor-mcp` is sysinfo, while this crate holds the audit-ledger integrity verdict, the daemon-health verdict, per-app access and observed-vs-declared capability use, which exist nowhere else. Its consumer is the monitor app's sovereignty view, not yet wired. A wrong epitaph here is worse than no entry: it reads as permission to delete work nothing replaces."),
         ("sdk/proc-collect",
-         "Superseded, unlike `sdk/monitor-reads`: `apps/system-monitor/core`'s `procmon` reads the process list, CPU and memory through `system-monitor-mcp`'s sysinfo, which is this crate's whole job."),
+         "Superseded, genuinely: `apps/system-monitor/core`'s `procmon` reads the process list, CPU and memory through `system-monitor-mcp`'s sysinfo, which is this crate's whole job."),
         ("sdk/config",
          "`sdk/config-format` and `daemons/config-broker` do this work, and the compositor parses its own keybindings. The one mention left is a commented-out dependency in `apps/settings/src-tauri/Cargo.toml` pointing at `github.com/arlenos/sdk`, a repo from before the monorepo."),
         ("sdk/tauri-plugin-clipboard",
