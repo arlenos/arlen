@@ -85,15 +85,26 @@ struct Args {
     profile_root: Option<PathBuf>,
     /// The program and its argv (everything after `--`).
     program: Vec<String>,
+    /// Run with no trace over a single untrusted file (§E10) instead of the app's
+    /// permission profile. `None` is the ordinary profiled launch.
+    ephemeral_file: Option<PathBuf>,
 }
 
-/// Parse `arlen-run --app-id <id> [--profile-root <dir>] -- <program> [args...]`
-/// from the argument list (excluding the binary name). Returns the parsed request,
-/// or the exit code to fail with: an unknown flag, a missing/invalid `--app-id`, a
-/// missing `--`, or an empty program is `BAD_ARGS`.
+/// Parse `arlen-run --app-id <id> [--profile-root <dir>] [--ephemeral <file>] --
+/// <program> [args...]` from the argument list (excluding the binary name).
+/// Returns the parsed request, or the exit code to fail with: an unknown flag, a
+/// missing/invalid `--app-id`, a missing `--`, or an empty program is `BAD_ARGS`.
+///
+/// `--ephemeral` takes the ONE untrusted file the launch may see, and requires an
+/// absolute path - the confiner refuses a relative bind source anyway, but failing
+/// here names the argument instead of surfacing later as a confinement-setup
+/// error. It is rejected alongside `--profile-root`, which points at a profile an
+/// ephemeral launch never reads: accepting both would let a caller believe a
+/// profile was in force when nothing loaded it.
 fn parse_args(args: &[String]) -> Result<Args, u8> {
     let mut app_id: Option<String> = None;
     let mut profile_root: Option<PathBuf> = None;
+    let mut ephemeral_file: Option<PathBuf> = None;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -107,6 +118,15 @@ fn parse_args(args: &[String]) -> Result<Args, u8> {
                 profile_root = Some(PathBuf::from(value));
                 i += 2;
             }
+            "--ephemeral" => {
+                let value = args.get(i + 1).ok_or(exit::BAD_ARGS)?;
+                let path = PathBuf::from(value);
+                if !path.is_absolute() {
+                    return Err(exit::BAD_ARGS);
+                }
+                ephemeral_file = Some(path);
+                i += 2;
+            }
             "--" => {
                 let program: Vec<String> = args[i + 1..].to_vec();
                 if program.is_empty() {
@@ -116,10 +136,14 @@ fn parse_args(args: &[String]) -> Result<Args, u8> {
                 if !valid_app_id(&app_id) {
                     return Err(exit::BAD_ARGS);
                 }
+                if ephemeral_file.is_some() && profile_root.is_some() {
+                    return Err(exit::BAD_ARGS);
+                }
                 return Ok(Args {
                     app_id,
                     profile_root,
                     program,
+                    ephemeral_file,
                 });
             }
             _ => return Err(exit::BAD_ARGS),
@@ -127,6 +151,79 @@ fn parse_args(args: &[String]) -> Result<Args, u8> {
     }
     // No `--` separator: there is no program to run.
     Err(exit::BAD_ARGS)
+}
+
+/// The tmpfs mounts an ephemeral launch gets, which are also the only places it
+/// can write - so they are its Landlock writable set. Kept next to the branch that
+/// uses them because they must stay identical to `ephemeral_profile`'s `tmpfs`:
+/// fencing a directory the sandbox does not have, or missing one it does, either
+/// breaks the launch or leaves a writable path unfenced.
+#[cfg(target_os = "linux")]
+const EPHEMERAL_WRITABLE: &[&str] = &["/home", "/tmp", "/run"];
+
+/// Run `program` over ONE untrusted file with no trace (§E10).
+///
+/// No permission profile, no app dirs, no cgroup and no egress setup, because
+/// there is no profile to derive any of them from - and no audit, which is the
+/// point: nothing about this launch is recorded. The file enters as a single
+/// read-only bind at a fixed path rather than a directory grant, `/home` is a
+/// fresh tmpfs so the user's home is not merely unbound but masked, and network is
+/// off outright.
+///
+/// The base platform is `/usr`, the same root the profiled path treats as the
+/// platform, rather than the whole host filesystem: read-only or not, an untrusted
+/// document's viewer has no business enumerating `/etc`, `/var` and `/root`. With
+/// `/usr` bound at `/`, the sandbox's `/bin` and `/lib64` are the host's
+/// `/usr/bin` and `/usr/lib64`, so a dynamically-linked viewer still finds its
+/// interpreter and the profile's `PATH` resolves.
+#[cfg(target_os = "linux")]
+fn run_ephemeral(app_id: &str, file: &std::path::Path, program: &[String]) -> ExitCode {
+    let confinement = match arlen_confiner::ephemeral_profile(
+        std::path::Path::new("/usr"),
+        file,
+        arlen_confiner::NetworkPolicy::None,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("arlen-run: ephemeral confinement for {app_id}: {e}");
+            return ExitCode::from(exit::CONFINE_SETUP);
+        }
+    };
+
+    // Same fail-closed rule as the profiled path: a filter that cannot be built
+    // would leave the confinement a layer short, so refuse rather than run.
+    let seccomp_bpf = match seccomp::app_filter_bytes() {
+        Ok(bpf) => bpf,
+        Err(e) => {
+            eprintln!("arlen-run: cannot build the seccomp filter ({e}); refusing to launch");
+            return ExitCode::from(exit::CONFINE_SETUP);
+        }
+    };
+
+    let writable: Vec<PathBuf> = EPHEMERAL_WRITABLE.iter().map(PathBuf::from).collect();
+    // The in-sandbox Landlock wrapper self-invokes arlen-run from INSIDE the
+    // sandbox, so it only works when arlen-run is reachable there. The profiled
+    // path binds the binary in when it lives outside `/usr`; here `/usr` is the
+    // only bind, so an arlen-run outside it simply cannot be re-executed. Fall
+    // back to launching the program directly, exactly as the profiled path does
+    // when it cannot resolve its own binary: bwrap's mount namespace and the
+    // seccomp filter still confine, and the ephemeral view has no app dirs to
+    // fence anyway.
+    let exe = std::env::current_exe().ok();
+    let program = match exe.as_deref().map(|e| e.to_string_lossy().into_owned()) {
+        Some(exe) if exe.starts_with("/usr/") => {
+            landlock_exec::landlock_exec_program(&exe, &writable, program)
+        }
+        _ => program.to_vec(),
+    };
+    let argv = spawn::bwrap_argv(&confinement, &program);
+    match spawn::spawn_and_wait(&argv, &writable, None, Some(seccomp_bpf), app_id) {
+        Ok(code) => ExitCode::from(code),
+        Err(e) => {
+            eprintln!("arlen-run: failed to spawn the ephemeral {app_id}: {e}");
+            ExitCode::from(exit::SPAWN)
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -161,6 +258,12 @@ fn main() -> ExitCode {
         Ok(a) => a,
         Err(code) => return ExitCode::from(code),
     };
+
+    // The no-trace path (§E10) reads no profile at all, so it branches out before
+    // the load rather than threading an Option through everything below.
+    if let Some(file) = args.ephemeral_file.clone() {
+        return run_ephemeral(&args.app_id, &file, &args.program);
+    }
 
     // Load the app's permission profile. A missing or unparsable profile is a DENY
     // (the confined launcher must never run an app it cannot scope), not a default.
@@ -435,6 +538,98 @@ mod tests {
 
     fn args(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn the_ephemeral_flag_takes_one_absolute_file() {
+        let args = super::parse_args(&[
+            "--app-id".into(),
+            "org.arlen.Viewer".into(),
+            "--ephemeral".into(),
+            "/tmp/untrusted.pdf".into(),
+            "--".into(),
+            "viewer".into(),
+        ])
+        .expect("parses");
+        assert_eq!(
+            args.ephemeral_file.as_deref(),
+            Some(std::path::Path::new("/tmp/untrusted.pdf"))
+        );
+    }
+
+    #[test]
+    fn a_relative_ephemeral_file_is_refused_by_name() {
+        // The confiner would refuse a relative bind source anyway; failing here
+        // means the error names the argument instead of arriving as an opaque
+        // confinement-setup failure.
+        assert_eq!(
+            super::parse_args(&[
+                "--app-id".into(),
+                "org.arlen.Viewer".into(),
+                "--ephemeral".into(),
+                "untrusted.pdf".into(),
+                "--".into(),
+                "viewer".into(),
+            ]),
+            Err(super::exit::BAD_ARGS)
+        );
+    }
+
+    #[test]
+    fn ephemeral_and_a_profile_root_together_are_refused() {
+        // An ephemeral launch reads no profile. Accepting both would let a caller
+        // believe the profile they pointed at was in force.
+        assert_eq!(
+            super::parse_args(&[
+                "--app-id".into(),
+                "org.arlen.Viewer".into(),
+                "--profile-root".into(),
+                "/tmp/profiles".into(),
+                "--ephemeral".into(),
+                "/tmp/untrusted.pdf".into(),
+                "--".into(),
+                "viewer".into(),
+            ]),
+            Err(super::exit::BAD_ARGS)
+        );
+    }
+
+    #[test]
+    fn an_ordinary_launch_is_not_ephemeral() {
+        let args = super::parse_args(&[
+            "--app-id".into(),
+            "org.gnome.Calculator".into(),
+            "--".into(),
+            "calc".into(),
+        ])
+        .expect("parses");
+        assert!(args.ephemeral_file.is_none());
+    }
+
+    /// The writable set handed to Landlock must be exactly the tmpfs mounts the
+    /// ephemeral confinement creates. If they drift, the fence either names a
+    /// directory the sandbox does not have or leaves a writable one unfenced.
+    #[test]
+    fn the_ephemeral_writable_set_matches_the_confinement_tmpfs() {
+        let conf = arlen_confiner::ephemeral_profile(
+            std::path::Path::new("/usr"),
+            std::path::Path::new("/tmp/untrusted.pdf"),
+            arlen_confiner::NetworkPolicy::None,
+        )
+        .expect("the profile builds");
+        let args = conf.bwrap_args();
+        for dir in super::EPHEMERAL_WRITABLE {
+            assert!(
+                args.windows(2).any(|w| w[0] == "--tmpfs" && w[1] == *dir),
+                "{dir} is in the writable set but the confinement does not tmpfs it"
+            );
+        }
+        let tmpfs_count = args.iter().filter(|a| *a == "--tmpfs").count();
+        assert_eq!(
+            tmpfs_count,
+            super::EPHEMERAL_WRITABLE.len(),
+            "the confinement tmpfs-es a directory the writable set does not fence"
+        );
     }
 
     #[test]
