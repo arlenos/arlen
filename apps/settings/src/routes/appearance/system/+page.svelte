@@ -8,7 +8,7 @@
   /// Mock-vs-live: the biggest backend gap - cursor/icon theme listing + setting +
   /// generator, the sound map + playback, and terminal per-slot editing all need
   /// coder backend. Fixture-backed until then.
-  import { ChevronRight, MousePointer2, Play, Image } from "lucide-svelte";
+  import { ChevronRight, MousePointer2, Image } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Group } from "@arlen/ui-kit/components/ui/group";
@@ -132,12 +132,10 @@
                   id={`sys-${ev.key}`}
                 >
                   {#snippet control()}
-                    <span class="snd-control">
-                      <button class="snd-play" type="button" title="Preview (coming with audio)" aria-label={`Play ${ev.label}`}>
-                        <Play size={13} strokeWidth={2} />
-                      </button>
-                      <PopoverSelect value={String($effective[ev.key])} options={SOUND_NAMES} ariaLabel={`${ev.label} sound`} onchange={(v) => setSys(ev.key, v)} />
-                    </span>
+                    <!-- A play-preview belongs here; it returns when a Settings
+                         command can ask the daemon to play a cue. Until then no
+                         dead button. -->
+                    <PopoverSelect value={String($effective[ev.key])} options={SOUND_NAMES} ariaLabel={`${ev.label} sound`} onchange={(v) => setSys(ev.key, v)} />
                   {/snippet}
                 </OverrideRow>
               {/each}
@@ -245,27 +243,6 @@
   }
   .preview-col {
     order: -1;
-  }
-
-  .snd-control {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .snd-play {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
-    border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
-    border-radius: var(--radius-button, 6px);
-    background: transparent;
-    color: color-mix(in srgb, var(--foreground) 60%, transparent);
-    cursor: pointer;
-  }
-  .snd-play:hover {
-    color: var(--foreground);
   }
 
   /* Terminal palette editor: a grid of 16 swatches + fg/bg. */
