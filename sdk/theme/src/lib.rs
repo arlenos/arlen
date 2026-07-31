@@ -67,7 +67,7 @@ pub use file::{
 };
 pub use watcher::ThemeWatcher;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// The canonical bundled default themes, embedded at compile time. This crate
 /// is the single source: every consumer (the shell, the compositor) reads the
@@ -1057,10 +1057,6 @@ pub fn load_theme_from_disk(
     };
     ArlenTheme::resolve(bundled, user_theme.as_deref(), custom.as_deref())
 }
-
-// Path is currently unused at the public API level but might be in tests.
-#[allow(dead_code)]
-fn _path_marker(_p: &Path) {}
 
 // ---------------------------------------------------------------------------
 // Tests
