@@ -452,7 +452,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // reads the same handle (the orchestrator writes idle/busy, the interface reads).
     // Hoisted so both the served surface and the orchestrator loop share one handle.
     let status = arlen_ai_engine_daemon::agent_iface::new_status_handle();
-    let reporter = ScreeningReporter::new(audit.clone(), Screener::off());
+    // Built FROM the config, not hardcoded off. With no `[classifier]` section -
+    // today's state on every machine - `from_config` returns exactly `off()`, so
+    // this changes nothing now. What it changes is the two cases that were
+    // silently unscreened before: a MALFORMED `[classifier]` section, and a valid
+    // one this build cannot load (no `onnx` feature). Both resolve to
+    // `FailClosed`, which is the whole point of configuring a screen - an operator
+    // who asks for screening and gets none, silently, is worse off than one who
+    // never asked.
+    let reporter = ScreeningReporter::new(
+        audit.clone(),
+        Screener::from_config(&engine_config::ai_config_text()),
+    );
     // The executor seam is a router so the daemon hosts several proxy tools
     // (graph.read + graph.write now; OS/MCP tools as they land), each enforcing
     // its own scope. graph.read runs over the LIVE CypherPipeline when AI is

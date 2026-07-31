@@ -156,6 +156,14 @@ pub async fn refresh_broker_switches(interval: std::time::Duration) {
     }
 }
 
+/// The raw `ai.toml` text, or empty when it is missing or unreadable.
+///
+/// Empty parses to "no sections", which every consumer already treats as its safe
+/// default, so an absent config never becomes a permissive one.
+pub fn ai_config_text() -> String {
+    std::fs::read_to_string(ai_config_path()).unwrap_or_default()
+}
+
 /// Whether AI is enabled: the config-broker (the authoritative owner of the master
 /// switch) when reached, else the on-disk `ai.toml` (missing/unreadable = disabled,
 /// fail-closed). Preferring the broker is what moves the switch off the ambient
@@ -292,6 +300,23 @@ mod tests {
         publish_broker_switches(None);
         std::env::remove_var("ARLEN_AI_CONFIG");
         let _ = std::fs::remove_file(&ai);
+    }
+
+    /// The screening posture the daemon builds comes from the same config text
+    /// everything else reads, and the case that matters is the middle one: a
+    /// malformed `[classifier]` must not read as "no screening asked for".
+    #[test]
+    fn a_broken_classifier_section_screens_fail_closed() {
+        use arlen_ai_core::screen::Screener;
+        // Absent: exactly today's posture, and the reason this change is a no-op
+        // on every machine right now.
+        assert!(!Screener::from_config("[ai]\nenabled = true\n").is_active());
+        // Present but unusable: active, so content is blocked rather than flowing
+        // unscreened past a screen someone asked for.
+        assert!(
+            Screener::from_config("[classifier]\nnonsense = 1\n").is_active(),
+            "a malformed classifier section must not silently disable screening"
+        );
     }
 
     /// Acting needs BOTH switches, driven through the real `may_act` against real
