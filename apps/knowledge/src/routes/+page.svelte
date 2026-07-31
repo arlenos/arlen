@@ -12,12 +12,14 @@
   import TimelineView from "$lib/components/TimelineView.svelte";
   import ProjectsView from "$lib/components/ProjectsView.svelte";
   import SearchView from "$lib/components/SearchView.svelte";
+  import LibraryView from "$lib/components/LibraryView.svelte";
   import { onMount } from "svelte";
   import { knowledgeAdapter, mocked } from "$lib/adapter";
   import { labelKeyFor, emptyKeyFor } from "$lib/locations";
   import { days, flatEvents, loadTimeline, type TimelineEvent } from "$lib/stores/timeline";
   import { asOf, projectInfo, type ProjectInfo } from "$lib/stores/projects";
   import { query as searchQuery, type SearchResult } from "$lib/stores/search";
+  import type { LibraryEntry } from "$lib/stores/library";
   import { initAppMenu } from "$lib/menu";
   import { t } from "$lib/i18n/messages";
 
@@ -41,6 +43,21 @@
     selectedEvent = null;
     selectedProject = null;
     void ctrl.navigate(location);
+  }
+
+  // A library item opens the plain entry panel with its display shape.
+  function onLibrarySelect(e: LibraryEntry): void {
+    selectedProject = null;
+    selectedEvent = null;
+    selected = {
+      name: e.title,
+      kind: "file",
+      size: null,
+      modified_unix: e.at,
+      is_hidden: false,
+      readonly: true,
+      symlink_target: null,
+    };
   }
 
   // A search hit opens the plain entry panel with its display shape.
@@ -96,9 +113,8 @@
     <main class="kn-main">
     <header class="kn-head">
       <h1 class="kn-h1">{$t(labelKeyFor($path))}</h1>
-      <!-- Timeline, Projects and the search surface carry their own
-           example-data line. -->
-      {#if $mocked && $path !== "timeline" && $path !== "projects" && $path !== "searches" && $searchQuery.trim().length === 0}<span class="kn-sample">{$t("k.sample")}</span>{/if}
+      <!-- The designed places carry their own example-data line. -->
+      {#if $mocked && $path === "capsules" && $searchQuery.trim().length === 0}<span class="kn-sample">{$t("k.sample")}</span>{/if}
     </header>
     {#if $searchQuery.trim().length > 0 || $path === "searches"}
       <!-- The titlebar query owns the content area wherever you are; the
@@ -108,6 +124,8 @@
       <TimelineView onselect={(e) => (selectedEvent = e)} />
     {:else if $path === "projects"}
       <ProjectsView onselect={onProjectsSelect} />
+    {:else if $path === "library"}
+      <LibraryView onselect={onLibrarySelect} />
     {:else}
       <div class="kn-browser">
         <FileBrowser
