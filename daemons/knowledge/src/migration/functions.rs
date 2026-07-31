@@ -3,51 +3,45 @@
 use chrono::DateTime;
 use serde_json::Value;
 
+/// Every transform a migration may name, paired with what it does.
+///
+/// One table rather than a dispatch and a separate name list, because the two
+/// are read by different halves of the same operation and disagreeing is worse
+/// than either being wrong: `list_functions` is the gate `run_operation` checks
+/// a migration against, and `apply_transform` is what runs once it passes. A
+/// name present here but not dispatched used to be expressible, and it would
+/// validate a migration and then fail partway through applying it.
+const TRANSFORMS: &[(&str, fn(&Value) -> Result<Value, String>)] = &[
+    ("split_comma", split_comma),
+    ("split_newline", split_newline),
+    ("join_comma", |v| join_array(v, ", ")),
+    ("join_newline", |v| join_array(v, "\n")),
+    ("to_string", to_string),
+    ("parse_int", parse_int),
+    ("parse_float", parse_float),
+    ("to_lowercase", |v| str_map(v, |s| s.to_lowercase())),
+    ("to_uppercase", |v| str_map(v, |s| s.to_uppercase())),
+    ("trim", |v| str_map(v, |s| s.trim().to_string())),
+    ("epoch_to_datetime", epoch_to_datetime),
+    ("datetime_to_epoch", datetime_to_epoch),
+    ("nullify", |_| Ok(Value::Null)),
+    ("default_empty_string", |_| Ok(Value::String(String::new()))),
+    ("default_zero", |_| Ok(Value::Number(0.into()))),
+    ("default_false", |_| Ok(Value::Bool(false))),
+    ("default_empty_array", |_| Ok(Value::Array(vec![]))),
+];
+
 /// Apply a named transform function to a value.
 pub fn apply_transform(func_name: &str, value: &Value) -> Result<Value, String> {
-    match func_name {
-        "split_comma" => split_comma(value),
-        "split_newline" => split_newline(value),
-        "join_comma" => join_array(value, ", "),
-        "join_newline" => join_array(value, "\n"),
-        "to_string" => to_string(value),
-        "parse_int" => parse_int(value),
-        "parse_float" => parse_float(value),
-        "to_lowercase" => str_map(value, |s| s.to_lowercase()),
-        "to_uppercase" => str_map(value, |s| s.to_uppercase()),
-        "trim" => str_map(value, |s| s.trim().to_string()),
-        "epoch_to_datetime" => epoch_to_datetime(value),
-        "datetime_to_epoch" => datetime_to_epoch(value),
-        "nullify" => Ok(Value::Null),
-        "default_empty_string" => Ok(Value::String(String::new())),
-        "default_zero" => Ok(Value::Number(0.into())),
-        "default_false" => Ok(Value::Bool(false)),
-        "default_empty_array" => Ok(Value::Array(vec![])),
-        _ => Err(format!("unknown function: {func_name}")),
+    match TRANSFORMS.iter().find(|(name, _)| *name == func_name) {
+        Some((_, f)) => f(value),
+        None => Err(format!("unknown function: {func_name}")),
     }
 }
 
 /// List all available transform functions.
 pub fn list_functions() -> Vec<&'static str> {
-    vec![
-        "split_comma",
-        "split_newline",
-        "join_comma",
-        "join_newline",
-        "to_string",
-        "parse_int",
-        "parse_float",
-        "to_lowercase",
-        "to_uppercase",
-        "trim",
-        "epoch_to_datetime",
-        "datetime_to_epoch",
-        "nullify",
-        "default_empty_string",
-        "default_zero",
-        "default_false",
-        "default_empty_array",
-    ]
+    TRANSFORMS.iter().map(|(name, _)| *name).collect()
 }
 
 fn split_comma(v: &Value) -> Result<Value, String> {
@@ -259,6 +253,24 @@ mod tests {
         let fns = list_functions();
         assert!(fns.contains(&"split_comma"));
         assert!(fns.contains(&"epoch_to_datetime"));
-        assert!(fns.len() >= 17);
+        assert_eq!(fns.len(), TRANSFORMS.len());
+    }
+
+    #[test]
+    fn every_listed_function_actually_dispatches() {
+        // The list is the gate a migration is validated against and the dispatch
+        // is what runs afterwards, so a name that validates but does not
+        // dispatch fails in the middle of a schema change rather than before it.
+        // They share a table now; this pins that they cannot come apart, whatever
+        // the table is rewritten into.
+        for name in list_functions() {
+            let err = apply_transform(name, &json!("1"))
+                .err()
+                .unwrap_or_default();
+            assert!(
+                !err.starts_with("unknown function"),
+                "{name} is offered to migrations but does not dispatch"
+            );
+        }
     }
 }
