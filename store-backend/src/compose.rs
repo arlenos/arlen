@@ -190,6 +190,54 @@ pub fn flathub_entries(xml: &str) -> Result<Vec<CatalogEntry>, ComposeError> {
     Ok(entries)
 }
 
+/// Parse an installed app's MetaInfo document into a `CatalogEntry` (`layer =
+/// Native`), or nothing when the document describes something that is not an app.
+///
+/// Same AppStream vocabulary as [`flathub_entries`], so the field extraction is
+/// shared; the two differ in what the document IS. A Flathub catalog is one
+/// `<components>` collection of things you can install. `/usr/share/metainfo`
+/// holds one `<component>` per thing the DISTRIBUTION installed, which is why the
+/// entry carries `install_handle: None`: the store has no route to install,
+/// update or remove a pacman or dnf package, and offering one would be a lie.
+///
+/// Only apps. The 78 documents on the machine this was written against are 24
+/// `desktop-application`, 18 `desktop` (the same thing, older spelling), 17
+/// `addon`, 12 `font`, 4 `console-application` and 3 with no type at all. A store
+/// listing fonts and codec addons as apps is noise, so the filter is the two
+/// desktop spellings. `console-application` is EXCLUDED for now and this is the
+/// line to change if that turns out to be wrong: those are real programs, they
+/// just have no window, and widening the filter is a smaller decision than
+/// pruning noise back out once people have seen it.
+pub fn metainfo_entry(xml: &str) -> Option<CatalogEntry> {
+    let doc = roxmltree::Document::parse(xml).ok()?;
+    let component = doc
+        .descendants()
+        .find(|n| n.is_element() && n.tag_name().name() == "component")?;
+    let kind = component.attribute("type").unwrap_or_default();
+    if kind != "desktop-application" && kind != "desktop" {
+        return None;
+    }
+    let id = child_text(&component, "id")?;
+    Some(CatalogEntry {
+        id: ComponentId(id),
+        layer: SourceLayer::Native,
+        display: DisplayMeta {
+            name: default_localized(&component, "name").unwrap_or_default(),
+            summary: default_localized(&component, "summary"),
+            description: description_text(&component),
+            screenshots: screenshot_urls(&component),
+            icon: icon_ref(&component),
+        },
+        capabilities: CapabilityFootprint::default(),
+        trust: TrustSignals::default(),
+        kind: ItemKind::default(),
+        // No install route exists for a distribution package, so the card shows
+        // the app without offering an action it cannot perform.
+        install_handle: None,
+        version: latest_release_version(&component),
+    })
+}
+
 /// The text of the first direct child element named `tag`.
 fn child_text<'a>(node: &roxmltree::Node<'a, 'a>, tag: &str) -> Option<String> {
     node.children()
@@ -209,6 +257,15 @@ fn default_localized(node: &roxmltree::Node, tag: &str) -> Option<String> {
 }
 
 /// The unlocalized `<description>`'s concatenated `<p>` paragraph texts.
+///
+/// Localization is filtered at BOTH levels, because AppStream puts it in both
+/// places. A composed catalog carries one `<description xml:lang="..">` per
+/// language; a `.metainfo.xml` shipped with an app keeps one `<description>` and
+/// tags the PARAGRAPHS inside it. Filtering only the outer element passed the
+/// inner ones straight through, so Helix's card described itself in English and
+/// then again in Arabic, one after the other, in the same string. Nothing failed;
+/// the card just read as nonsense, which is why no test caught it and looking at
+/// the served card did.
 fn description_text(node: &roxmltree::Node) -> Option<String> {
     let desc = node
         .children()
@@ -217,6 +274,7 @@ fn description_text(node: &roxmltree::Node) -> Option<String> {
     let paras: Vec<&str> = desc
         .children()
         .filter(|c| c.is_element() && c.tag_name().name() == "p")
+        .filter(|p| !p.attributes().any(|a| a.name() == "lang"))
         .filter_map(|p| p.text())
         .collect();
     if paras.is_empty() {
@@ -479,6 +537,9 @@ pub struct SourceInputs {
     /// The Debian DEP-11 catalog YAML, one per suite/component file. See
     /// [`SourceInputs::flathub_xml`] for why this is a list.
     pub dep11_yaml: Vec<String>,
+    /// One MetaInfo document per app the distribution installed, from
+    /// `/usr/share/metainfo`. Not an availability catalog: see [`metainfo_entry`].
+    pub metainfo_xml: Vec<String>,
     /// `(component-id, Flatpak `metadata` file text)` for Flathub apps whose
     /// sandbox permissions are known (SC-3). The composed AppStream catalog
     /// carries no `finish-args`, so the footprint is fused in from here; an id
@@ -515,6 +576,13 @@ pub fn compose_catalog(inputs: SourceInputs) -> crate::query::Catalog {
         if let Ok(mut es) = flathub_entries(xml) {
             fuse_flatpak_metadata(&mut es, &inputs.flatpak_metadata);
             entries.extend(es);
+        }
+    }
+    // One document per installed app, so a malformed one costs that app and
+    // nothing else - the same best-effort rule the other sources follow.
+    for xml in &inputs.metainfo_xml {
+        if let Some(entry) = metainfo_entry(xml) {
+            entries.push(entry);
         }
     }
     for yaml in &inputs.dep11_yaml {
@@ -616,6 +684,7 @@ Name:
             forage: vec![],
             flathub_xml: Vec::new(),
             dep11_yaml: vec![APT_YAML.into()],
+            metainfo_xml: Vec::new(),
             flatpak_metadata: vec![],
             apt_profiles: vec![("org.example.App".into(), enrolled(true))],
         });
@@ -634,6 +703,7 @@ Name:
             forage: vec![],
             flathub_xml: Vec::new(),
             dep11_yaml: vec![APT_YAML.into()],
+            metainfo_xml: Vec::new(),
             flatpak_metadata: vec![],
             apt_profiles: vec![],
         });
@@ -650,6 +720,7 @@ Name:
             forage: vec![],
             flathub_xml: Vec::new(),
             dep11_yaml: vec![APT_YAML.into()],
+            metainfo_xml: Vec::new(),
             flatpak_metadata: vec![],
             apt_profiles: vec![("org.example.App".into(), "not = = toml".into())],
         });
@@ -866,6 +937,63 @@ commit = "0000000000000000000000000000000000000000"
     #[test]
     fn flathub_reader_rejects_malformed_xml() {
         assert!(matches!(flathub_entries("<components><oops"), Err(ComposeError::Xml(_))));
+    }
+
+    /// One installed app's MetaInfo, the shape `/usr/share/metainfo` actually
+    /// holds: a single `<component>`, localized paragraphs INSIDE one
+    /// `<description>`, and no install route.
+    const METAINFO_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.example.Editor</id>
+  <name>Editor</name>
+  <summary>An editor</summary>
+  <description>
+    <p>The English paragraph.</p>
+    <p xml:lang="ar">The Arabic paragraph.</p>
+  </description>
+</component>"#;
+
+    #[test]
+    fn an_installed_apps_metainfo_becomes_a_card_that_cannot_be_installed() {
+        let entry = metainfo_entry(METAINFO_XML).expect("a desktop app should compose");
+        assert_eq!(entry.id.0, "com.example.Editor");
+        assert_eq!(entry.layer, SourceLayer::Native);
+        assert_eq!(entry.display.name, "Editor");
+        // The store has no route to a distribution package, so it must not offer one.
+        assert_eq!(entry.install_handle, None);
+    }
+
+    #[test]
+    fn a_localized_paragraph_stays_out_of_the_description() {
+        let entry = metainfo_entry(METAINFO_XML).unwrap();
+        let description = entry.display.description.expect("the English text");
+        assert_eq!(description, "The English paragraph.");
+        assert!(!description.contains("Arabic"));
+    }
+
+    #[test]
+    fn metainfo_that_is_not_an_app_composes_nothing() {
+        for kind in ["addon", "font", "console-application", "runtime"] {
+            let xml = METAINFO_XML.replace("desktop-application", kind);
+            assert!(
+                metainfo_entry(&xml).is_none(),
+                "a {kind} component is not an app card"
+            );
+        }
+    }
+
+    #[test]
+    fn a_native_card_never_outranks_a_real_install_route() {
+        // The derived Ord puts Native last, so merging an installed app with the
+        // same app from Flathub keeps the installable variant as the default.
+        let mut entries = flathub_entries(FLATHUB_XML).unwrap();
+        let id = entries[0].id.0.clone();
+        let mut native = metainfo_entry(METAINFO_XML).unwrap();
+        native.id = crate::catalog::ComponentId(id);
+        entries.push(native);
+        let cards = merge_catalog(entries);
+        assert_eq!(cards.len(), 1, "one id is one card");
+        assert_eq!(cards[0].variants[cards[0].default_variant].layer, SourceLayer::Flatpak);
     }
 
     #[test]

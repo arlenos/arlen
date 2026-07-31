@@ -109,9 +109,12 @@ processes:
       restart: "on_failure"
 
   # The app store backend: composes the merged app catalog from the local metadata
-  # and serves org.arlen.Store1 on the session socket for apps/store. Until the
-  # catalog-source env paths are set (SC-5) it serves an EMPTY store rather than
-  # failing, so a bare dev run still binds the socket for the store app to connect.
+  # and serves org.arlen.Store1 on the session socket for apps/store. It DISCOVERS
+  # its sources now (env paths only override), so what it serves depends on what
+  # the machine has: MetaInfo for installed apps under /usr/share/metainfo (42 of
+  # them on this dev box), Flathub's catalog only once `flatpak update --appstream`
+  # has extracted one, DEP-11 only on Debian. An empty store is still not a failure
+  # - it binds the socket regardless so the store app has something to connect to.
   store-backend:
     command: "cargo run --manifest-path store-backend/Cargo.toml"
     depends_on:

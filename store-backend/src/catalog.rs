@@ -32,6 +32,15 @@ pub enum SourceLayer {
     Flatpak,
     /// An apt `.deb` (the fallback).
     Apt,
+    /// An app the distribution already installed, found via its MetaInfo in
+    /// `/usr/share/metainfo`. LAST, because it is not an install route at all:
+    /// the store cannot install, update or remove a pacman/dnf package, so its
+    /// variants carry no `install_handle`. It is here because on a machine with
+    /// no AppStream catalog this is the only metadata that exists, and a store
+    /// that shows the apps you already have (with their capability panel) beats
+    /// one that shows an empty window. Declared after `Apt` so the derived `Ord`
+    /// can never make it the default variant when a real source offers the app.
+    Native,
 }
 
 /// The display metadata shown on a card, from the richest AppStream source.
