@@ -592,3 +592,10 @@ check-ignores:
         exit 1
     fi
     echo "no tracked file is matched by an ignore rule"
+
+# `event.proto` lives in eight copies because there is no crate for it yet, and a
+# copy missing a field is fine (it decodes to the default). Two copies giving one
+# field two NUMBERS is not: that is a silent mis-decode across a socket, and the
+# copies are only ever compiled separately so nothing else would notice.
+check-protos:
+    python3 "{{ROOT}}/dev/scripts/check-proto-drift.py"
