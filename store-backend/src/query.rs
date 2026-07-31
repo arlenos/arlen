@@ -105,6 +105,35 @@ pub struct PendingUpdate {
     pub installed_version: String,
     /// The version that layer now offers.
     pub available_version: String,
+    /// Capability labels the offered version declares that the app does not
+    /// already hold, or `None` when what it holds could not be read.
+    ///
+    /// The distinction is the point. An empty list means the update asks for
+    /// nothing new, which is a reason to apply it without thinking; `None` means
+    /// nobody knows, and rendering that as "asks for nothing new" would turn a
+    /// missing profile into reassurance.
+    pub new_capabilities: Option<Vec<String>>,
+}
+
+/// Labels in `available` that are absent from `held`, sorted, deduped.
+///
+/// A set difference over the coarse store vocabulary, deliberately NOT the
+/// recipe-level `arlen_forage_capabilities::diff_capabilities`: that one compares
+/// two recipe manifests field by field and classifies each addition's impact, and
+/// it cannot run here at all because an apt or Flatpak variant has no recipe. This
+/// answers the coarser question the store can actually ask of every layer.
+///
+/// Only additions. A version that DROPS a capability narrows what the app may do,
+/// which needs no warning and no consent.
+pub fn widened(available: &[String], held: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = available
+        .iter()
+        .filter(|c| !held.contains(c))
+        .cloned()
+        .collect();
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// Which installed apps their own source now offers at a different version.
@@ -132,6 +161,7 @@ pub struct PendingUpdate {
 pub fn outdated(
     catalog: &Catalog,
     installed: &std::collections::BTreeMap<String, InstalledVersion>,
+    held: &std::collections::BTreeMap<String, Vec<String>>,
 ) -> Vec<PendingUpdate> {
     let mut out = Vec::new();
     for (id, have) in installed {
@@ -150,6 +180,9 @@ pub fn outdated(
                 layer: have.layer,
                 installed_version: have.version.clone(),
                 available_version: variant.version.clone(),
+                new_capabilities: held
+                    .get(id)
+                    .map(|h| widened(&variant.capabilities.capabilities, h)),
             });
         }
     }
@@ -340,7 +373,11 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
         // empty map, which reports no updates - the honest answer when nothing is
         // known to be installed.
         Request::Outdated => {
-            Response::Updates(outdated(catalog, &crate::discover::installed_versions()))
+            Response::Updates(outdated(
+                catalog,
+                &crate::discover::installed_versions(),
+                &crate::discover::held_capabilities(),
+            ))
         }
         Request::AppDetail { id } => Response::Card(catalog.card(&id).cloned()),
         Request::TrustSignals { id } => match catalog.card(&id) {
@@ -442,7 +479,7 @@ mod tests {
 
     #[test]
     fn a_newer_version_on_the_installed_layer_is_an_update() {
-        let updates = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "0.9"));
+        let updates = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "0.9"), &BTreeMap::new());
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0].installed_version, "0.9");
         assert_eq!(updates[0].available_version, "1.0");
@@ -455,7 +492,7 @@ mod tests {
     /// across a trust boundary they never agreed to.
     #[test]
     fn another_layers_version_is_not_an_update() {
-        let updates = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "1.0"));
+        let updates = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "1.0"), &BTreeMap::new());
         assert!(
             updates.is_empty(),
             "flathub's 2.0 must not surface for an apt install: {updates:?}"
@@ -467,7 +504,7 @@ mod tests {
     #[test]
     fn an_unstated_version_is_not_a_change() {
         // The catalog states one, the lock does not.
-        assert!(outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "")).is_empty());
+        assert!(outdated(&versioned_catalog(), &installed(SourceLayer::Apt, ""), &BTreeMap::new()).is_empty());
 
         // The lock states one, the catalog does not.
         let unversioned = Catalog::new(merge_catalog(vec![entry(
@@ -476,18 +513,52 @@ mod tests {
             "Chatter",
             &[],
         )]));
-        assert!(outdated(&unversioned, &installed(SourceLayer::Apt, "1.0")).is_empty());
+        assert!(outdated(&unversioned, &installed(SourceLayer::Apt, "1.0"), &BTreeMap::new()).is_empty());
     }
 
     #[test]
     fn an_app_the_catalog_dropped_is_not_reported() {
         let empty = Catalog::new(merge_catalog(vec![]));
-        assert!(outdated(&empty, &installed(SourceLayer::Apt, "1.0")).is_empty());
+        assert!(outdated(&empty, &installed(SourceLayer::Apt, "1.0"), &BTreeMap::new()).is_empty());
+    }
+
+    #[test]
+    fn an_update_asking_for_nothing_new_is_distinguishable_from_an_unknown_one() {
+        // The reason this is `Option` and not an empty vec. An app whose held
+        // capabilities could not be read must not render as "asks for nothing
+        // new", which is the sentence that makes someone apply an update without
+        // looking.
+        let unknown = outdated(
+            &versioned_catalog(),
+            &installed(SourceLayer::Apt, "0.9"),
+            &BTreeMap::new(),
+        );
+        assert_eq!(unknown[0].new_capabilities, None);
+
+        let mut held = BTreeMap::new();
+        held.insert("org.x.Chat".to_string(), vec!["network".to_string()]);
+        let known = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "0.9"), &held);
+        assert_eq!(known[0].new_capabilities.as_deref(), Some(&[][..]));
+    }
+
+    #[test]
+    fn only_capabilities_the_app_does_not_already_hold_are_new() {
+        assert_eq!(
+            widened(
+                &["network".into(), "filesystem".into(), "clipboard".into()],
+                &["network".into()]
+            ),
+            vec!["clipboard".to_string(), "filesystem".to_string()]
+        );
+        // A version that DROPS one narrows what the app may do, and narrowing
+        // needs no warning: nothing is reported.
+        assert!(widened(&["network".into()], &["network".into(), "filesystem".into()]).is_empty());
+        assert!(widened(&[], &["network".into()]).is_empty());
     }
 
     #[test]
     fn nothing_installed_means_nothing_outdated() {
-        assert!(outdated(&versioned_catalog(), &BTreeMap::new()).is_empty());
+        assert!(outdated(&versioned_catalog(), &BTreeMap::new(), &BTreeMap::new()).is_empty());
     }
 
     /// The op answers the same as the function, so a caller over the socket gets
