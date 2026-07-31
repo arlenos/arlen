@@ -48,7 +48,7 @@ jobs:
       # already fallen nine crates behind. Runs here because this job is
       # unconditional: drift can arrive in a commit that touches no rust at all.
       - name: structural checks
-        # The six build-free checks, run directly rather than through `just`,
+        # The seven build-free checks, run directly rather than through `just`,
         # which the runner does not have. Each is deterministic file reading with
         # no network and no build, and each guards something that had already
         # drifted once: the matrix against the tree, an ignore rule against what
@@ -61,6 +61,7 @@ jobs:
           python3 dev/scripts/check-proto-drift.py
           python3 dev/scripts/check-gate-drift.py
           python3 dev/scripts/check-shared-files.py
+          python3 dev/scripts/check-smoke-coverage.py
           bash dev/scripts/check-packaged-units.sh
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
