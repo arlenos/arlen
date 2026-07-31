@@ -35,3 +35,8 @@ dev/mkosi/buildimg*.log
 # cargo-mutants working output (per-crate, regenerated on every run).
 mutants.out/
 mutants.out.old/
+
+# Python bytecode from the dev/scripts checks. Written on every `just checks`
+# run, so an unignored one lands in whatever commit is made next.
+__pycache__/
+*.pyc
