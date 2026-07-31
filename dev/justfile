@@ -267,8 +267,11 @@ pi-e2e:
     npm --prefix "{{ROOT}}/ai/pi-plugins" run build
     cargo test --manifest-path "{{ROOT}}/daemons/ai-engine-daemon/Cargo.toml" \
         --lib the_confined_node_starts -- --ignored
+    # No `--ignored` here: the e2e_gate tests are deliberately NOT ignored (see
+    # the file's own doc - they skip gracefully when the dist is absent instead),
+    # so asking for ignored tests filtered out all four and this step ran nothing.
     cargo test --manifest-path "{{ROOT}}/daemons/ai-engine-daemon/Cargo.toml" \
-        --test e2e_gate -- --ignored
+        --test e2e_gate
 
 # Dogfood Phase-1 data-path check (first-dogfoodable-session-plan.md): with the
 # `just dev` backend ALREADY up, emit a file.opened on the LIVE bus, confirm it
