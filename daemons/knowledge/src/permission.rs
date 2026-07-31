@@ -174,11 +174,7 @@ impl GraphScopeExt for arlen_permissions::PermissionProfile {
 pub fn profile_mtime(
     app_id: &str,
 ) -> Result<std::time::SystemTime, arlen_permissions::PermissionError> {
-    let user = arlen_permissions::profile_path(app_id).ok();
-    let system = Some(
-        arlen_permissions::system_permissions_dir().join(format!("{app_id}.toml")),
-    );
-    newest_mtime([system, user].into_iter().flatten()).ok_or(
+    newest_mtime(arlen_permissions::profile_paths(app_id)).ok_or(
         arlen_permissions::PermissionError::NotFound {
             app_id: app_id.to_string(),
         },

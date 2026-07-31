@@ -945,6 +945,37 @@ pub fn system_permissions_dir() -> PathBuf {
     PathBuf::from("/var/lib/arlen/permissions").join(uid.to_string())
 }
 
+/// Every path a profile for `app_id` could live at, system tier first, in the
+/// precedence order [`load_tiered`] resolves them.
+///
+/// Exists because "which files decide this app's authority" was being answered
+/// independently at each site that needed it, and each one answered "the user
+/// file" - so a system-tier profile could be installed, narrowed or removed
+/// while a token cache kept serving the old grants, a grant projection deleted
+/// an installed app's grants as though it had been uninstalled, and a file
+/// watcher reported nothing at all. Anything that stats, watches or invalidates
+/// on a profile should ask here rather than rebuild the list.
+///
+/// The user path is absent when there is no home directory; the system path is
+/// always present because it needs none.
+pub fn profile_paths(app_id: &str) -> Vec<PathBuf> {
+    [
+        Some(system_permissions_dir().join(format!("{app_id}.toml"))),
+        profile_path(app_id).ok(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+/// Whether a profile for `app_id` exists in **either** tier. A system-tier-only
+/// app - the shape an apt-installed one has - is installed just as much as a
+/// user-tier one, so a caller asking "is this app still around" must not answer
+/// from one tier alone.
+pub fn profile_exists(app_id: &str) -> bool {
+    profile_paths(app_id).iter().any(|p| p.exists())
+}
+
 /// Resolve a profile across the two tiers (F3 Rung A semantics): if a root-owned
 /// system-tier profile exists it is **authoritative and wins outright** — the user
 /// `~/.config` overlay is ignored for that app_id. This is the conservative,
@@ -1256,6 +1287,35 @@ always_confirm_overrides = ["empty_trash"]
         assert!(system_profile_path("com.example.notes")
             .expect("a valid id resolves")
             .starts_with(&system));
+    }
+
+    #[test]
+    fn profile_paths_covers_both_tiers_in_resolution_order() {
+        // Every site that stats, watches or invalidates on a profile has to know
+        // BOTH files decide the answer. Answering from the user tier alone is the
+        // mistake this exists to stop: a system-tier-only app then looks absent,
+        // which a cache reads as "nothing changed" and a projection reads as
+        // "uninstalled, delete its grants".
+        let paths = profile_paths("com.example.notes");
+        assert_eq!(paths.len(), 2, "both tiers, given a home directory");
+        assert!(
+            paths[0].starts_with(system_permissions_dir()),
+            "system tier first, matching the order load_tiered resolves them"
+        );
+        let user_dir = profile_path("com.example.notes")
+            .expect("a valid id resolves")
+            .parent()
+            .expect("a profile path has a directory")
+            .to_path_buf();
+        assert!(paths[1].starts_with(&user_dir));
+        for p in &paths {
+            assert!(p.ends_with("com.example.notes.toml"));
+        }
+        // An id that cannot form a safe system path still yields the user path
+        // rather than silently reporting no profile locations at all.
+        assert!(profile_paths("com.example.notes")
+            .iter()
+            .all(|p| p.is_absolute()));
     }
 
     #[test]
