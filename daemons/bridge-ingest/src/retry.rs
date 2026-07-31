@@ -67,17 +67,26 @@ pub fn backoff_delay_micros(attempt: u32) -> i64 {
         .min(MAX_DELAY_MICROS)
 }
 
-/// Whether to retry, given what went wrong and how many attempts have already
-/// failed.
+/// Whether to retry, given what went wrong and how many attempts have failed in
+/// a row.
 ///
-/// A hard failure never retries, at any attempt count, including the first: the
-/// point is that the cause is not time.
-pub fn retry_decision(kind: FailureKind, failed_attempts: u32) -> RetryDecision {
+/// A hard failure never retries, at any count, including the first: the point
+/// is that the cause is not time.
+///
+/// The count is CONSECUTIVE, and the caller owns resetting it. A success clears
+/// it, and so should an external signal that the world changed - the network
+/// coming back, the machine resuming. That matters more than it looks: ten
+/// doublings capped at five minutes is about thirteen minutes of trying, which
+/// a closed laptop passes without noticing, and a bridge that gave up while
+/// suspended and stayed given-up would be a worse failure than the one it was
+/// avoiding. Bounding the attempts is right; treating a suspend as thirteen
+/// minutes of a refusing upstream is not.
+pub fn retry_decision(kind: FailureKind, consecutive_failures: u32) -> RetryDecision {
     match kind {
         FailureKind::Hard => RetryDecision::GiveUp,
-        FailureKind::Transient if failed_attempts >= MAX_TRANSIENT_ATTEMPTS => RetryDecision::GiveUp,
+        FailureKind::Transient if consecutive_failures >= MAX_TRANSIENT_ATTEMPTS => RetryDecision::GiveUp,
         FailureKind::Transient => {
-            RetryDecision::RetryAfterMicros(backoff_delay_micros(failed_attempts))
+            RetryDecision::RetryAfterMicros(backoff_delay_micros(consecutive_failures))
         }
     }
 }
