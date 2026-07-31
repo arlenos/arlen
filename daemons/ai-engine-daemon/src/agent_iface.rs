@@ -539,7 +539,28 @@ impl AgentAdminInterface {
     }
 
     #[zbus(name = "completed_actions")]
-    async fn completed_actions(&self) -> String {
+    async fn completed_actions(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> String {
+        // Same gate as `explain_system`, for the same reason: an entry's `from` and
+        // `to` are `type/id`, and a File node's id is its path, so this list names
+        // the user's files. A refused caller gets an empty array rather than an
+        // error string, because the wire shape is JSON the caller parses; the
+        // warning is there so a harness whose identity stopped resolving shows up
+        // in the log instead of quietly seeing no actions.
+        match resolve_dbus_caller(&header, connection).await {
+            Ok(caller) if user_surface_admitted(&caller) => {}
+            Ok(caller) => {
+                tracing::warn!(%caller, "completed_actions refused: not a user surface");
+                return "[]".to_string();
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "completed_actions refused: caller unresolved");
+                return "[]".to_string();
+            }
+        }
         // The graph actions from the in-memory store (fast, always present).
         let graph = self
             .compensation
