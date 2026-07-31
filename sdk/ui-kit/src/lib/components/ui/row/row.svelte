@@ -113,6 +113,24 @@
     flex-shrink: 0;
   }
 
+  /* The row-control register: every box-shaped field inside a Row's control
+     slot (NumberInput, PopoverSelect, text fields that opt in) picks up one
+     shared width, so the left edges of the control column align down the whole
+     page. Intrinsic controls (Switch, Checkbox, buttons) ignore it. Pages tune
+     the register through the --width-row-control token, never per control; an
+     explicit width prop on a control still wins for the rare exception. */
+  .control {
+    --control-width: var(--width-row-control, 200px);
+  }
+  /* Bare text fields join the register too (the kit Input is w-full, which
+     collapses to intrinsic inside the shrink-to-fit control slot). Scoped to
+     the Input's data-slot so composed controls' inner inputs (NumberInput,
+     ChipList) stay untouched; a flexing wrapper (flex-basis) still wins for
+     composed clusters like a path field with its browse button. */
+  .control :global(input[data-slot="input"]) {
+    width: var(--control-width, auto);
+  }
+
   /* Full-width content under the row line. */
   .row-below {
     min-width: 0;

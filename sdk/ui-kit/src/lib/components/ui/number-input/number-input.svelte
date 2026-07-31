@@ -31,8 +31,11 @@
     unit?: string;
     disabled?: boolean;
     ariaLabel?: string;
-    /// CSS width for the whole control. Defaults to `auto` which sizes
-    /// around the content; pass `"180px"` etc. to align multiple rows.
+    /// CSS width for the whole control. When omitted, the control follows the
+    /// row-control register (--control-width, set by Row from
+    /// --width-row-control) so settings columns align without per-page widths;
+    /// outside a Row it sizes around the content. Pass a width only for a
+    /// genuine exception.
     width?: string;
     onchange: (value: number) => void;
   };
@@ -97,7 +100,9 @@
   }
 </script>
 
-<div class="wrap" class:disabled style={width ? `width: ${width};` : ""}>
+<!-- No explicit width: follow the row-control register when a Row provides it
+     (--control-width), intrinsic sizing everywhere else. -->
+<div class="wrap" class:disabled style={`width: ${width ?? "var(--control-width, auto)"};`}>
   <button
     type="button"
     class="btn"
