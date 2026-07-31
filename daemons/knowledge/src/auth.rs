@@ -6,7 +6,7 @@
 /// See `docs/architecture/CAPABILITY-TOKENS.md` Sections 7-8.
 
 use crate::identity::{app_id_from_cgroup, app_id_from_pid, process_alive, IdentityError};
-use arlen_permissions::{load_profile, load_profile_from, PermissionError, PermissionProfile};
+use arlen_permissions::{load_profile, PermissionError, PermissionProfile};
 
 use crate::permission::{profile_mtime, GraphScopeExt};
 use crate::token::{CapabilityToken, TokenSigner};
@@ -186,6 +186,9 @@ impl Authenticator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Only the tests build a profile from an explicit path; the daemon always
+    // resolves through the tiered loader.
+    use arlen_permissions::load_profile_from;
     use crate::token::{EntityScope, InstanceScope, RelationScope};
     use std::io::Write;
     use tempfile::TempDir;
