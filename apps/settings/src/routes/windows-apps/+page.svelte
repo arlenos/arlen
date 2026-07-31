@@ -401,7 +401,7 @@
     font-size: var(--text-sm);
     font-weight: 500;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   :global(.wa-sec-trigger:hover) {

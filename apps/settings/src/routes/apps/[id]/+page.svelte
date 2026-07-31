@@ -188,7 +188,7 @@
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .head-actions {
-    margin-left: auto;
+    margin-inline-start: auto;
     display: flex;
     align-items: center;
     gap: 0.5rem;

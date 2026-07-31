@@ -209,7 +209,7 @@
     letter-spacing: 0.03em;
     text-transform: uppercase;
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
-    padding-left: 0.125rem;
+    padding-inline-start: 0.125rem;
   }
   .preview-col {
     order: -1;
