@@ -692,8 +692,28 @@ mod tests {
     /// Shaped as a fork because "the launcher dies" needs a launcher that is not the
     /// test process. The child plays launcher and blocks in the launch; the parent
     /// waits for the confined payload to appear, kills the child, and requires the
-    /// payload to be gone. Metal-only, and `--test-threads=1` like the other fork
-    /// test in this crate.
+    /// payload to be gone. Needs pasta + bwrap + unprivileged userns, and
+    /// `--test-threads=1` like the other fork test in this crate.
+    ///
+    /// **This fails INTERMITTENTLY - roughly half of runs - and the failure is
+    /// real.** A failing run takes the full twenty-second wait and then finds
+    /// survivors; a passing run finishes in under a tenth of a second, which is
+    /// fast enough to suspect it is not observing the same state rather than
+    /// evidence the teardown worked. Observed on a failure, after a SIGKILLed
+    /// launcher: two `bwrap` processes still running, the outer one reparented to
+    /// pid 1, and NO pasta process left. So the teardown is not "PDEATHSIG never
+    /// reached pasta" - pasta died. bwrap outlived it, because `--die-with-parent`
+    /// is a `PR_SET_PDEATHSIG` against bwrap's own parent and PDEATHSIG is both
+    /// per-process and racy: a parent dying between fork and the prctl delivers
+    /// nothing. Chained two deep through pasta, it does not hold.
+    ///
+    /// The cgroup would be the backstop, but `main` reaps the leaf with `kill_all`
+    /// AFTER `wait` returns, and a SIGKILLed launcher never reaches that line.
+    ///
+    /// Fixing it means a teardown that does not chain PDEATHSIG - plausibly
+    /// spawning bwrap as the launcher's DIRECT child and attaching pasta to an
+    /// already-created netns (`pasta --netns`), so the app is one level down rather
+    /// than two. That is a restructure of the filtered launch path, not a flag.
     #[cfg(target_os = "linux")]
     #[test]
     #[ignore = "needs pasta + bwrap + unprivileged userns on the host kernel"]
@@ -793,7 +813,8 @@ mod tests {
 
         assert!(
             survivors.is_empty(),
-            "the confined tree outlived its launcher ({} process(es) left);              PDEATHSIG is not reaching the pasta wrapper",
+            "the confined tree outlived its launcher ({} process(es) left); \
+             the PDEATHSIG chain through pasta does not hold - see this test's doc",
             survivors.len()
         );
     }
