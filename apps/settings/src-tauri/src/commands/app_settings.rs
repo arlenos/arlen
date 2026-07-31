@@ -12,6 +12,7 @@
 //! needs no such gate.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use arlen_forage_recipe::settings::SettingsSchema;
 use arlen_settings_broker::client::write_settings;
@@ -367,6 +368,51 @@ fn installed_executable(app_id: &str) -> Result<std::path::PathBuf, String> {
     Ok(exe)
 }
 
+/// Whether the system routes app launches through `arlen-run`, read from the same
+/// `shell.toml [launcher] confined` the shell's launcher reads.
+///
+/// The flag is a property of the SYSTEM, not of whoever is launching, so every
+/// launch path has to honour it. A config that cannot be read is treated as
+/// unconfined, which is what the shell does too: this is the go-live switch, and
+/// a Settings that refused to open an app because it could not parse a TOML file
+/// would be worse than one that matches today's default.
+fn launcher_is_confined() -> bool {
+    let path = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join("arlen/shell.toml");
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    toml::from_str::<toml::Value>(&text)
+        .ok()
+        .and_then(|v| v.get("launcher")?.get("confined")?.as_bool())
+        .unwrap_or(false)
+}
+
+/// Build the handoff launch, confined or not.
+///
+/// Settings launching an app is a SECOND launch path beside the shell's, and a
+/// second path that skips confinement is how a sandbox gets bypassed without
+/// anyone deciding to bypass it. The shell routes through
+/// `arlen-run --app-id <id> -- <argv>` when the flag is on; this does the same,
+/// with the same argv contract, so an app opened from its Settings page runs
+/// under exactly the confinement it would have had from the launcher.
+///
+/// Split out from the spawn so the decision is testable without starting a
+/// process.
+fn handoff_command(app_id: &str, exe: &Path, window: &str, confined: bool) -> std::process::Command {
+    if confined {
+        let mut cmd = std::process::Command::new("arlen-run");
+        cmd.arg("--app-id").arg(app_id).arg("--");
+        cmd.arg(exe).arg("--settings-window").arg(window);
+        cmd
+    } else {
+        let mut cmd = std::process::Command::new(exe);
+        cmd.arg("--settings-window").arg(window);
+        cmd
+    }
+}
+
 /// Open an app's own settings window (PAS-6 tier three, the handoff).
 ///
 /// The app declares a window NAME in its schema and the system launches the
@@ -397,10 +443,8 @@ pub async fn app_settings_handoff(app_id: String, window: String) -> Result<(), 
         }
 
         let exe = installed_executable(&app_id)?;
-        std::process::Command::new(&exe)
-            .arg("--settings-window")
-            .arg(&window)
-            .spawn()
+        let mut cmd = handoff_command(&app_id, &exe, &window, launcher_is_confined());
+        cmd.spawn()
             .map(|_| ())
             .map_err(|e| format!("could not start {}: {e}", exe.display()))
     })
@@ -410,6 +454,32 @@ pub async fn app_settings_handoff(app_id: String, window: String) -> Result<(), 
 
 #[cfg(test)]
 mod handoff_tests {
+
+    use std::path::Path;
+
+    /// The confinement flag belongs to the system, so the second launch path has
+    /// to take the same route the shell's launcher does. A Settings handoff that
+    /// spawned the binary directly would leave an app unconfined precisely when
+    /// someone had turned confinement on.
+    #[test]
+    fn a_confined_handoff_goes_through_the_launcher() {
+        let cmd = super::handoff_command("com.example.App", Path::new("/usr/bin/app"), "prefs", true);
+        assert_eq!(cmd.get_program(), "arlen-run");
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().to_string()).collect();
+        assert_eq!(
+            args,
+            vec!["--app-id", "com.example.App", "--", "/usr/bin/app", "--settings-window", "prefs"],
+            "the argv contract arlen-run parses"
+        );
+    }
+
+    #[test]
+    fn an_unconfined_handoff_is_exactly_what_it_was() {
+        let cmd = super::handoff_command("com.example.App", Path::new("/usr/bin/app"), "prefs", false);
+        assert_eq!(cmd.get_program(), "/usr/bin/app");
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_string_lossy().to_string()).collect();
+        assert_eq!(args, vec!["--settings-window", "prefs"]);
+    }
     use super::*;
 
     fn schema_with(handoff_window: Option<&str>) -> SettingsSchema {
