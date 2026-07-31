@@ -132,3 +132,15 @@ export async function skipUpdate(id: string): Promise<void> {
     // Seam unwired.
   }
 }
+
+/// Uninstall instead of accepting a widening - the third honest answer to
+/// "now also wants". The row leaves the list; the removal itself is the
+/// actuator's job.
+export async function uninstallApp(id: string): Promise<void> {
+  drop(id);
+  try {
+    await invoke("store_uninstall", { id });
+  } catch {
+    // Seam unwired.
+  }
+}
