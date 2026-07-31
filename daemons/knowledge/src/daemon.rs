@@ -3429,6 +3429,14 @@ async fn handle_client(
             // the caller; it does not abort the graph worker's in-flight
             // query, which runs to completion — a true execution deadline
             // needs an interruptible graph API and is a follow-up.
+            // What this read exercises, captured before `cypher` is moved into the
+            // query. Empty for a system-anchored caller, which bypasses the gate
+            // and holds no read scope to exercise.
+            let exercised = if system_anchored {
+                Vec::new()
+            } else {
+                exercised_read_types(&cypher, &readable_labels)
+            };
             let r = if typed_rows {
                 // The Ladybug thread serialises the rows to JSON, so this
                 // deadline bounds the query AND its serialisation together
@@ -3453,6 +3461,24 @@ async fn handle_client(
                     Err(_elapsed) => "ERROR: QueryTimeout".to_string(),
                 }
             };
+            // Successful exercise only: a query that timed out or errored did not
+            // use the grant. Best-effort, and never in the way of the reply.
+            if !r.starts_with("ERROR:") && !exercised.is_empty() {
+                let now = crate::time::now().0;
+                let batch = {
+                    let mut tally = uses.lock().await;
+                    let mut due = false;
+                    for capability in &exercised {
+                        due |= tally.record(&app_id, capability, now);
+                    }
+                    due.then(|| tally.drain(now))
+                };
+                if let Some(batch) = batch {
+                    if let Err(e) = crate::lcg::flush_capability_use(&graph, &batch).await {
+                        warn!("capability-use flush failed (effective-use projection stale): {e}");
+                    }
+                }
+            }
             (r, false)
         };
 
@@ -3659,6 +3685,33 @@ fn cypher_label_tokens(cypher: &str) -> Vec<String> {
 /// B1), any sensitive label (RS-R2 only), and any label/rel-type outside its
 /// readable set (so a traversal to an out-of-scope neighbour, B2, is refused). Only
 /// a query whose every referenced label is in the readable, non-sensitive set runs.
+/// The read scopes a successful query actually exercised, as the namespaced type
+/// names the grant projection uses (`system.File`), so a count here joins the
+/// `GRANTS` -> `EntityType` reach on the card.
+///
+/// The GRANTED casing is bound, never the caller's: the gate matches labels
+/// case-insensitively, so a caller asking for `file` must not mint a second
+/// capability row distinct from the `system.File` it was granted. Same rule the
+/// structured read op follows when it interpolates a label.
+///
+/// Only meaningful for a gated caller. A system-anchored one bypasses the gate
+/// and mints no read scope at all, so it is not exercising a grant and the caller
+/// does not ask.
+fn exercised_read_types(cypher: &str, readable_labels: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = cypher_label_tokens(cypher)
+        .iter()
+        .filter_map(|t| {
+            readable_labels
+                .iter()
+                .find(|l| l.eq_ignore_ascii_case(t))
+                .map(|granted| format!("system.{granted}"))
+        })
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
 fn raw_read_label_gate(
     cypher: &str,
     readable_labels: &[String],
@@ -4054,6 +4107,39 @@ mod tests {
         // false, so Settings reaches Grant/CapabilityUse/EntityType only through the
         // curated access_grants/revoke ops, never arbitrary Cypher.
         assert!(!is_privileged_authority_reader("settings"));
+    }
+
+    #[test]
+    fn an_exercised_read_binds_the_granted_casing_not_the_callers() {
+        // The gate matches case-insensitively, so `file` passes against a
+        // `File` grant. The counter must still name the granted capability, or
+        // one grant would accrue two rows nothing can join.
+        let granted = vec!["File".to_string(), "Project".to_string()];
+        assert_eq!(
+            exercised_read_types("MATCH (f:file) RETURN f.path", &granted),
+            vec!["system.File".to_string()]
+        );
+    }
+
+    #[test]
+    fn an_exercised_read_names_every_label_once() {
+        let granted = vec!["File".to_string(), "Project".to_string()];
+        assert_eq!(
+            exercised_read_types(
+                "MATCH (f:File)-[:FILE_PART_OF]->(p:Project) MATCH (g:File) RETURN f, p, g",
+                &granted
+            ),
+            vec!["system.File".to_string(), "system.Project".to_string()],
+            "sorted and deduped, and the relation type is not a read scope"
+        );
+    }
+
+    #[test]
+    fn a_label_outside_the_read_scope_is_never_counted() {
+        // It cannot happen (the gate refuses the query first), but the counter
+        // must not depend on that: an ungranted label is not an exercise.
+        assert!(exercised_read_types("MATCH (s:Session) RETURN s", &["File".to_string()]).is_empty());
+        assert!(exercised_read_types("MATCH (n) RETURN n", &["File".to_string()]).is_empty());
     }
 
     #[test]
