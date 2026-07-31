@@ -1894,22 +1894,9 @@ async fn handle_write_request(
 
     // Successful exercise only. Best-effort: the tally is a projection, so a graph
     // hiccup must never turn a completed write into a failed one.
-    if !outcome.starts_with("ERROR:") && !exercised.is_empty() {
+    if !outcome.starts_with("ERROR:") {
         if let Some(uses) = uses {
-            let now = crate::time::now().0;
-            let batch = {
-                let mut tally = uses.lock().await;
-                let mut due = false;
-                for capability in &exercised {
-                    due |= tally.record(&exercising_app, capability, now);
-                }
-                due.then(|| tally.drain(now))
-            };
-            if let Some(batch) = batch {
-                if let Err(e) = crate::lcg::flush_capability_use(graph, &batch).await {
-                    tracing::warn!("capability-use flush failed (effective-use projection stale): {e}");
-                }
-            }
+            record_capability_uses(graph, uses, &exercising_app, &exercised).await;
         }
     }
     outcome
@@ -2803,7 +2790,7 @@ async fn handle_client(
                                     ids
                                 } else {
                                     let readable = caller_readable_labels(peer.as_ref(), &auth).await;
-                                    filter_ids_to_readable_labels(&graph, &ids, &readable).await
+                                    filter_ids_to_readable_labels(&graph, &ids, &readable, Some((&uses, &app_id))).await
                                 };
                                 serde_json::to_string(&scoped).unwrap_or_else(|_| "[]".to_string())
                             }
@@ -2854,8 +2841,13 @@ async fn handle_client(
                                     let readable =
                                         caller_readable_labels(peer.as_ref(), &auth).await;
                                     let allowed: std::collections::HashSet<String> =
-                                        filter_ids_to_readable_labels(&graph, &ids, &readable)
-                                            .await
+                                        filter_ids_to_readable_labels(
+                                            &graph,
+                                            &ids,
+                                            &readable,
+                                            Some((&uses, &app_id)),
+                                        )
+                                        .await
                                             .into_iter()
                                             .collect();
                                     items.into_iter().filter(|i| allowed.contains(&i.id)).collect()
@@ -2989,8 +2981,13 @@ async fn handle_client(
                                     let readable =
                                         caller_readable_labels(peer.as_ref(), &auth).await;
                                     let allowed: std::collections::HashSet<String> =
-                                        filter_ids_to_readable_labels(&graph, &ids, &readable)
-                                            .await
+                                        filter_ids_to_readable_labels(
+                                            &graph,
+                                            &ids,
+                                            &readable,
+                                            Some((&uses, &app_id)),
+                                        )
+                                        .await
                                             .into_iter()
                                             .collect();
                                     candidates
@@ -3463,21 +3460,8 @@ async fn handle_client(
             };
             // Successful exercise only: a query that timed out or errored did not
             // use the grant. Best-effort, and never in the way of the reply.
-            if !r.starts_with("ERROR:") && !exercised.is_empty() {
-                let now = crate::time::now().0;
-                let batch = {
-                    let mut tally = uses.lock().await;
-                    let mut due = false;
-                    for capability in &exercised {
-                        due |= tally.record(&app_id, capability, now);
-                    }
-                    due.then(|| tally.drain(now))
-                };
-                if let Some(batch) = batch {
-                    if let Err(e) = crate::lcg::flush_capability_use(&graph, &batch).await {
-                        warn!("capability-use flush failed (effective-use projection stale): {e}");
-                    }
-                }
+            if !r.starts_with("ERROR:") {
+                record_capability_uses(&graph, &uses, &app_id, &exercised).await;
             }
             (r, false)
         };
@@ -3829,23 +3813,70 @@ async fn filter_ids_to_readable_labels(
     graph: &GraphHandle,
     ids: &[String],
     readable_labels: &[String],
+    tally: Option<(&Arc<Mutex<crate::lcg::UseTally>>, &str)>,
 ) -> Vec<String> {
     if ids.is_empty() || readable_labels.is_empty() {
         return Vec::new();
     }
     let in_list = crate::cypher::id_list(ids.iter());
     let mut allowed = std::collections::HashSet::new();
+    // The labels that actually resolved something. A label that matched nothing
+    // was probed but not exercised: the caller learned no fact through it, so
+    // counting it would mark a grant used on the strength of an empty answer.
+    let mut exercised: Vec<String> = Vec::new();
     for label in readable_labels {
         let cypher = format!("MATCH (n:{label}) WHERE n.id IN [{in_list}] RETURN n.id");
         if let Ok(rs) = graph.query_rows(cypher).await {
+            let mut matched = false;
             for row in &rs.rows {
                 if let Some(cell) = row.first() {
                     allowed.insert(cell.as_str().to_string());
+                    matched = true;
                 }
+            }
+            if matched {
+                exercised.push(format!("system.{label}"));
             }
         }
     }
+    if let Some((uses, app_id)) = tally {
+        record_capability_uses(graph, uses, app_id, &exercised).await;
+    }
     ids.iter().filter(|id| allowed.contains(*id)).cloned().collect()
+}
+
+/// Tally successful grant exercises and flush them if the interval has passed.
+///
+/// One place, because every op that scopes a read reaches it: the raw-read path
+/// captures its own labels, and the id-filtering ops (retrieve, working set,
+/// prep) come through `filter_ids_to_readable_labels`. Best-effort throughout -
+/// the tally is a projection, so a graph hiccup must never change what the caller
+/// gets back.
+async fn record_capability_uses(
+    graph: &GraphHandle,
+    uses: &Arc<Mutex<crate::lcg::UseTally>>,
+    app_id: &str,
+    exercised: &[String],
+) {
+    if exercised.is_empty() {
+        return;
+    }
+    let now = crate::time::now().0;
+    // The lock is dropped before the flush is awaited: a slow graph write must
+    // not hold the counter against every other connection.
+    let batch = {
+        let mut tally = uses.lock().await;
+        let mut due = false;
+        for capability in exercised {
+            due |= tally.record(app_id, capability, now);
+        }
+        due.then(|| tally.drain(now))
+    };
+    if let Some(batch) = batch {
+        if let Err(e) = crate::lcg::flush_capability_use(graph, &batch).await {
+            warn!("capability-use flush failed (effective-use projection stale): {e}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -4816,17 +4847,34 @@ mod tests {
             .await
             .unwrap();
         // File readable, Session not: s1 is dropped, the ranking order is preserved.
+        // A tally already past its interval, so anything recorded flushes here
+        // and is visible below.
+        let uses = Arc::new(Mutex::new(crate::lcg::UseTally::new(
+            crate::time::now().0 - crate::lcg::USE_FLUSH_INTERVAL_MICROS,
+        )));
         let kept = filter_ids_to_readable_labels(
             &graph,
             &["f1".to_string(), "s1".to_string()],
             &["File".to_string()],
+            Some((&uses, "com.reader")),
         )
         .await;
         assert_eq!(kept, vec!["f1".to_string()]);
         // No readable label → nothing survives (fail-closed).
-        assert!(filter_ids_to_readable_labels(&graph, &["f1".to_string()], &[])
+        assert!(
+            filter_ids_to_readable_labels(&graph, &["f1".to_string()], &[], None)
+                .await
+                .is_empty()
+        );
+
+        // The label that resolved a row counted; the one that resolved nothing
+        // did not, and neither did the label with no grant behind it.
+        let rows = graph
+            .query_rows_json("MATCH (u:CapabilityUse) RETURN u.id ORDER BY u.id".to_string())
             .await
-            .is_empty());
+            .unwrap();
+        assert!(rows.contains("com.reader:system.File"), "the File read counted: {rows}");
+        assert!(!rows.contains("Session"), "a label that matched nothing is not use: {rows}");
     }
 
     #[tokio::test]
