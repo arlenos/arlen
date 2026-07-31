@@ -14,14 +14,12 @@
 # dev's real sockets, and is killed after it has either bound its socket or run
 # out of time. Nothing is installed, nothing persists.
 #
-# Daemons NOT started here, with the reason, because a smoke test that skips
-# things silently is worse than one that does not exist:
-#   - anything needing a session or system bus (power, online-accounts,
-#     notification, xdg-portal, installd): a bus is not available unattended
-#   - config-broker: runs as its own uid by design
-#   - kernel-layer: needs the bpf toolchain
-#   - bridge-ingest: needs a bridge.toml argument; covered by its own example
-#     in the crate, not by a socket bind
+# Daemons NOT started here each carry their reason in SKIPPED below, and
+# `check-smoke-coverage.py` fails if a daemon binary is in neither list. This
+# comment used to carry the reasons in prose and named eight of the twenty-four
+# it excluded, which is the failure it warned about: a smoke test that skips
+# things silently is worse than one that does not exist, and one that CLAIMS to
+# list its exclusions while listing a third of them is worse again.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 
@@ -40,6 +38,35 @@ DAEMONS=(
     # event bus is absent, which is the writer's backoff working, not a failure -
     # the log is only printed when the socket never appears.
     "arlen-graph-daemon|knowledge.sock|ARLEN_DB_PATH=\$rt/knowledge/events.db ARLEN_GRAPH_PATH=\$rt/knowledge/graph ARLEN_TIMELINE_MOUNT=off ARLEN_PERMISSIONS_DIR=\$rt/permissions"
+)
+
+# name|reason - every daemon binary that is deliberately not started here. The
+# coverage check reads this, so adding a daemon means classifying it.
+SKIPPED=(
+    "arlen-powerd|needs the system bus (UPower, logind)"
+    "arlen-accountsd|needs the session bus"
+    "arlen-notifyd|needs the session bus (org.freedesktop.Notifications)"
+    "xdg-desktop-portal-arlen|needs the session bus and the portal frontend"
+    "arlen-installd|needs the session bus"
+    "arlen-install-helper|system-bus service, runs as root"
+    "arlen-permission-helper|system-bus service, runs as root"
+    "arlen-connectionsd|needs the session bus"
+    "arlen-config-broker|runs as its own uid by design"
+    "kernel-layer|needs the bpf toolchain and a privileged host"
+    "kernel-layer-ebpf|an eBPF object, not a host binary"
+    "arlen-bridge-ingest|takes a bridge.toml argument rather than binding a socket"
+    "arlen-run|a launcher: it execs a confined app and exits"
+    "arlen-knowledge-mcp|an MCP server on stdio, no socket to bind"
+    "arlen-file-manager-mcp|an MCP server on stdio, no socket to bind"
+    "arlen-system-monitor-mcp|an MCP server on stdio, no socket to bind"
+    "arlen-terminal-run-mcp|an MCP server on stdio, no socket to bind"
+    "arlen-ai-engine-daemon|needs the session bus and a provisioned model"
+    "arlen-anomalyd|polls the audit ledger, binds nothing"
+    "arlen-code-indexer|an event-bus consumer, binds nothing"
+    "arlen-journald-parser|reads journald, binds nothing"
+    "arlen-modulesd|needs its module directories provisioned"
+    "arlen-transferd|needs two live profile uids"
+    "arlen-wallpaperd|renders to a compositor output"
 )
 
 failed=0
