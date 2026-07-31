@@ -17,6 +17,7 @@
 //! ([`crate::deliver`]) is the injection boundary and is the piece that got the
 //! adversarial review.
 
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use audit_proto::LedgerAuditSink;
@@ -26,6 +27,7 @@ use zbus::Connection;
 use crate::broker::{allowed_hosts_for, ConnectionId};
 use crate::config;
 use crate::deliver::{deliver_egress_credential, mint_egress_capability, DeliverError, EgressRequest};
+use crate::revocation::RevocationRegistry;
 use crate::root::RootKeypair;
 use crate::serve::{serve_request, ServeError};
 use crate::store::CredentialStore;
@@ -41,18 +43,36 @@ const EGRESS_AUTHORISERS: &[&str] = &["ai-proxy"];
 const EGRESS_TOKEN_TTL_SECS: i64 = 300;
 
 /// The Connections daemon object served on the bus: the sealed credential store,
-/// the audit sink, and the capability-token root keypair.
+/// the audit sink, the capability-token root keypair, and the registry that ties
+/// each minted egress token to the process that asked for it.
 pub struct ConnectionsDaemon {
     store: CredentialStore,
     audit: LedgerAuditSink,
     root: RootKeypair,
+    /// Minted egress tokens, keyed by the token itself, owned by a caller pid.
+    ///
+    /// Keyed by the token string rather than by its nonce because the nonce is a
+    /// fact inside the Biscuit and the verifier answers a yes/no question, so it
+    /// is not available on the fetch side; the token string is exactly the same
+    /// value at both ends and cannot collide. The daemon minted the token in the
+    /// first place and holds the root key, so keeping it for its 5-minute life is
+    /// not a new exposure.
+    ///
+    /// A `std::sync::Mutex`: every access is a map operation with no await inside,
+    /// and the guard is dropped before any await.
+    revocations: Mutex<RevocationRegistry>,
 }
 
 impl ConnectionsDaemon {
     /// Build the daemon over its store, audit sink, and capability-token root
-    /// keypair.
+    /// keypair, with an empty revocation registry.
     pub fn new(store: CredentialStore, audit: LedgerAuditSink, root: RootKeypair) -> Self {
-        Self { store, audit, root }
+        Self {
+            store,
+            audit,
+            root,
+            revocations: Mutex::new(RevocationRegistry::new()),
+        }
     }
 }
 
@@ -105,7 +125,7 @@ impl ConnectionsDaemon {
         #[zbus(header)] header: Header<'_>,
         #[zbus(connection)] conn: &Connection,
     ) -> zbus::fdo::Result<String> {
-        let caller = resolve_caller_app_id_guarded(&header, conn)
+        let (caller, caller_pid) = resolve_caller_guarded(&header, conn)
             .await
             .map_err(zbus::fdo::Error::AccessDenied)?;
         let Some(connection_id) = ConnectionId::new(&connection) else {
@@ -120,8 +140,23 @@ impl ConnectionsDaemon {
         };
         let expiry = now_unix().saturating_add(EGRESS_TOKEN_TTL_SECS);
         let nonce = fresh_nonce().map_err(|e| zbus::fdo::Error::Failed(format!("nonce: {e}")))?;
-        mint_egress_capability(self.root.keypair(), &connection, &hosts, expiry, &nonce)
-            .map_err(|_| zbus::fdo::Error::Failed("mint failed".into()))
+        let token = mint_egress_capability(self.root.keypair(), &connection, &hosts, expiry, &nonce)
+            .map_err(|_| zbus::fdo::Error::Failed("mint failed".into()))?;
+        // Remember who this was minted for, so the fetch side can refuse it once
+        // that process is gone (connections-plan.md §2 property 2). Also the point
+        // where the registry is kept from growing: expired entries are swept and
+        // revoked ones dropped, both bounded by the 5-minute TTL.
+        if let Ok(mut reg) = self.revocations.lock() {
+            let now_micros = now_unix().saturating_mul(1_000_000);
+            reg.revoke_expired(now_micros);
+            reg.forget_revoked();
+            reg.register(
+                token.clone(),
+                caller_pid,
+                expiry.saturating_mul(1_000_000),
+            );
+        }
+        Ok(token)
     }
 
     /// Fetch the raw Proxy-mode credential for `connection` to inject at the egress
@@ -143,6 +178,35 @@ impl ConnectionsDaemon {
             .await
             .map_err(zbus::fdo::Error::AccessDenied)?;
         let allowlist: Vec<String> = EGRESS_AUTHORISERS.iter().map(|s| s.to_string()).collect();
+        // The token is only good while the process it was minted for is still
+        // running (connections-plan.md §2 property 2). Sweep callers that have
+        // exited FIRST, so the check reflects the state now rather than whenever a
+        // timer last ran, then require the token to be live. The pid consulted is
+        // the OWNER's, recorded at mint; the caller here is the egress authoriser,
+        // a different process. An unknown token is not live, so a token minted
+        // before a daemon restart is refused and the owner mints a fresh one.
+        //
+        // Denial collapses into the same AccessDenied as every other authorization
+        // failure below: no oracle for which check failed. Note this closes the
+        // owner-exited window only, not replay within the TTL by the authoriser
+        // itself, which is still bounded by the TTL alone.
+        {
+            use arlen_permissions::identity::pid_start_time;
+            let live = match self.revocations.lock() {
+                Ok(mut reg) => egress_token_is_live(
+                    &mut reg,
+                    &capability_token,
+                    now_unix().saturating_mul(1_000_000),
+                    // A pid that will not convert is not a running process: fail closed.
+                    |pid| u32::try_from(pid).is_ok_and(|p| pid_start_time(p).is_ok()),
+                ),
+                // A poisoned registry cannot be consulted, so it cannot authorize.
+                Err(_) => false,
+            };
+            if !live {
+                return Err(zbus::fdo::Error::AccessDenied("not authorized".into()));
+            }
+        }
         let req = EgressRequest {
             caller: &caller,
             connection: &connection,
@@ -173,6 +237,23 @@ impl ConnectionsDaemon {
             Err(DeliverError::Mint(_)) => Err(zbus::fdo::Error::Failed("internal".into())),
         }
     }
+}
+
+/// Whether a presented egress token may still be honoured: its owning process is
+/// still running and the token is registered, unrevoked and unexpired.
+///
+/// Sweeping exited callers is part of the decision rather than a background job,
+/// so the answer reflects the moment the credential is about to be released. Every
+/// negative case collapses to the same `false`: unknown token (including one from
+/// before a daemon restart), owner exited, expired, already revoked.
+fn egress_token_is_live(
+    registry: &mut RevocationRegistry,
+    token: &str,
+    now_micros: i64,
+    is_alive: impl Fn(i32) -> bool,
+) -> bool {
+    registry.revoke_dead_callers(is_alive);
+    registry.is_live(token, now_micros)
 }
 
 /// The current unix time in seconds, for token expiry. A clock before the epoch
@@ -212,6 +293,15 @@ async fn resolve_caller_app_id_guarded(
     header: &Header<'_>,
     connection: &Connection,
 ) -> Result<String, String> {
+    resolve_caller_guarded(header, connection).await.map(|(id, _)| id)
+}
+
+/// The same resolution, also yielding the attested caller pid, for the paths that
+/// have to remember WHICH process a capability was minted for.
+async fn resolve_caller_guarded(
+    header: &Header<'_>,
+    connection: &Connection,
+) -> Result<(String, i32), String> {
     use arlen_permissions::identity::{app_id_from_pid, pid_start_time};
     let sender = header.sender().ok_or_else(|| "no sender".to_string())?;
     let proxy = zbus::fdo::DBusProxy::new(connection)
@@ -227,12 +317,52 @@ async fn resolve_caller_app_id_guarded(
     if before != after {
         return Err("pid recycled during resolution".to_string());
     }
-    Ok(app_id)
+    Ok((app_id, i32::try_from(pid).map_err(|_| "pid out of range".to_string())?))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Everything the fetch gate has to get right, on one registry: the owner's
+    /// token passes, a token whose owner exited does not, an expired one does not,
+    /// and a token the daemon never minted does not.
+    #[test]
+    fn only_a_live_owners_unexpired_token_passes_the_egress_gate() {
+        const OWNER: i32 = 4242;
+        const GONE: i32 = 4243;
+        const NOW: i64 = 1_000_000;
+        let mut reg = RevocationRegistry::new();
+        reg.register("owned".to_string(), OWNER, NOW + 300_000_000);
+        reg.register("orphan".to_string(), GONE, NOW + 300_000_000);
+        reg.register("stale".to_string(), OWNER, NOW - 1);
+        let alive = |pid: i32| pid == OWNER;
+
+        assert!(egress_token_is_live(&mut reg, "owned", NOW, alive));
+        assert!(
+            !egress_token_is_live(&mut reg, "orphan", NOW, alive),
+            "a token outlives its owner only until the next fetch"
+        );
+        assert!(!egress_token_is_live(&mut reg, "stale", NOW, alive), "past its expiry");
+        assert!(
+            !egress_token_is_live(&mut reg, "never-minted", NOW, alive),
+            "an unknown token is not live, which is also what makes a restart fail closed"
+        );
+    }
+
+    /// The sweep is part of the decision, so an owner that exits between mint and
+    /// fetch is caught on the very next fetch rather than whenever a timer runs.
+    #[test]
+    fn an_owner_exiting_after_the_mint_kills_the_token_immediately() {
+        const OWNER: i32 = 77;
+        const NOW: i64 = 500;
+        let mut reg = RevocationRegistry::new();
+        reg.register("t".to_string(), OWNER, NOW + 300_000_000);
+        assert!(egress_token_is_live(&mut reg, "t", NOW, |_| true));
+        assert!(!egress_token_is_live(&mut reg, "t", NOW, |_| false));
+        // Revocation is terminal: the pid coming back (reuse) does not revive it.
+        assert!(!egress_token_is_live(&mut reg, "t", NOW, |_| true));
+    }
 
     #[test]
     fn a_nonce_is_fresh_hex_within_the_cap() {
