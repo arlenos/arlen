@@ -35,10 +35,36 @@ pub enum ClientError {
     Malformed(String),
 }
 
-/// `/run/user/{uid}/arlen/modulesd.sock`, matching the daemon's bind.
+/// `$XDG_RUNTIME_DIR/arlen/modulesd.sock`, matching the daemon's bind.
+///
+/// Both the daemon and its clients call this, so they agree wherever it points.
+/// It used to compute `/run/user/{uid}` directly, which is the same path in an
+/// ordinary session and unreachable in any other: a nested session, a container,
+/// or a test that wants its own runtime dir all set `XDG_RUNTIME_DIR`, and this
+/// ignored them. It also meant a smoke run could not isolate modulesd, so it
+/// bound over the real session's socket instead of a throwaway one.
+///
+/// Falls back to `/run/user/{uid}` when the variable is unset, which is what a
+/// bare login shell without a session manager looks like.
 pub fn socket_path() -> PathBuf {
-    let uid = unsafe { libc::getuid() };
-    PathBuf::from(format!("/run/user/{uid}/arlen/modulesd.sock"))
+    // The explicit override wins, so a test or a second instance can be pointed
+    // somewhere without touching the session's runtime dir. It lived only on the
+    // daemon side before, which meant setting it moved the bind and left every
+    // client looking at the old path.
+    if let Some(explicit) = std::env::var_os("ARLEN_MODULESD_SOCKET") {
+        if !explicit.is_empty() {
+            return PathBuf::from(explicit);
+        }
+    }
+    let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| {
+            // SAFETY: getuid is always safe; it reads the real uid and cannot fail.
+            let uid = unsafe { libc::getuid() };
+            PathBuf::from(format!("/run/user/{uid}"))
+        });
+    runtime_dir.join("arlen/modulesd.sock")
 }
 
 /// Send one request and return the daemon's reply to it.
