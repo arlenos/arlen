@@ -129,6 +129,7 @@ pub fn run() {
             commands::modules::modules_list,
             commands::app_settings::app_settings_write_raw,
             commands::app_settings::app_settings_handoff,
+            commands::picker::settings_pick_path,
             commands::extensions::extensions_list,
             commands::extensions::extensions_revoke,
             commands::extensions::extensions_observed,
