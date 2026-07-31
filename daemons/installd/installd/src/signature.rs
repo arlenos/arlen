@@ -44,9 +44,16 @@ const SYSTEM_KEYS_DIR: &str = "/etc/arlen/trusted-keys";
 
 /// Get the system trusted keys directory.
 fn system_keys_dir() -> PathBuf {
-    std::env::var("ARLEN_SYSTEM_KEYS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(SYSTEM_KEYS_DIR))
+    // Debug-gated: this is the system trust anchor, the set of keys that decide
+    // whether a package is allowed to be installed at all. The user tier below
+    // is deliberately user-writable, so redirecting this one grants nothing new
+    // today, but a release binary taking its trust anchor from the environment
+    // is the wrong shape to leave lying around next to a root install path.
+    #[cfg(debug_assertions)]
+    if let Ok(dir) = std::env::var("ARLEN_SYSTEM_KEYS_DIR") {
+        return PathBuf::from(dir);
+    }
+    PathBuf::from(SYSTEM_KEYS_DIR)
 }
 
 /// Get the user trusted keys directory.

@@ -32,17 +32,26 @@ pub enum InstallError {
 }
 
 /// Get the system app installation base directory.
-fn apps_dir() -> PathBuf {
-    std::env::var("ARLEN_SYSTEM_APPS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(SYSTEM_APPS_DIR))
+pub(crate) fn apps_dir() -> PathBuf {
+    // Debug-gated: this is where the ROOT helper writes an installed app. Its
+    // environment comes from the unit rather than from a D-Bus caller, so this
+    // is defence in depth rather than a closed hole, but a root write root read
+    // from the environment only has to be wrong once.
+    #[cfg(debug_assertions)]
+    if let Ok(dir) = std::env::var("ARLEN_SYSTEM_APPS_DIR") {
+        return PathBuf::from(dir);
+    }
+    PathBuf::from(SYSTEM_APPS_DIR)
 }
 
 /// Get the system desktop entries directory.
 fn desktop_dir() -> PathBuf {
-    std::env::var("ARLEN_SYSTEM_DESKTOP_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(SYSTEM_DESKTOP_DIR))
+    // Debug-gated for the same reason as `apps_dir`: root writes here.
+    #[cfg(debug_assertions)]
+    if let Ok(dir) = std::env::var("ARLEN_SYSTEM_DESKTOP_DIR") {
+        return PathBuf::from(dir);
+    }
+    PathBuf::from(SYSTEM_DESKTOP_DIR)
 }
 
 /// Validate an app_id: reverse-domain notation, no path traversal.
