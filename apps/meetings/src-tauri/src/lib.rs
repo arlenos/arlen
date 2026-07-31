@@ -123,6 +123,55 @@ async fn meeting_human_notes(id: Option<String>) -> Result<String, String> {
         .unwrap_or_default())
 }
 
+/// Edit a stored meeting in place: load, apply, save.
+///
+/// One helper for all three edit commands, so every one of them fails the same
+/// way on a meeting that is not there. A missing document is an error rather than
+/// a silent no-op: the surface believes it is editing something.
+fn edit_meeting(
+    id: &str,
+    apply: impl FnOnce(&mut arlen_meetings_core::note_store::StoredMeeting) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut meeting = arlen_meetings_core::note_store::load(id)?
+        .ok_or_else(|| format!("there is no stored meeting {id}"))?;
+    apply(&mut meeting)?;
+    arlen_meetings_core::note_store::save(id, &meeting)
+}
+
+/// Persist the human's anchor notes for a meeting.
+#[tauri::command]
+async fn meeting_save_notes(id: String, text: String) -> Result<(), String> {
+    edit_meeting(&id, |m| {
+        arlen_meetings_core::note_store::set_human_notes(m, &text);
+        Ok(())
+    })
+}
+
+/// Give a diarization label the name of the person it is.
+///
+/// Every segment with that label is renamed, since the label is one speaker
+/// across the recording.
+#[tauri::command]
+async fn meeting_relabel_speaker(id: String, label: String, name: String) -> Result<(), String> {
+    edit_meeting(&id, |m| {
+        arlen_meetings_core::note_store::relabel_speaker(m, &label, &name);
+        Ok(())
+    })
+}
+
+/// Apply the user's edits to one action item: its owner, whether it is done.
+#[tauri::command]
+async fn meeting_update_item(
+    id: String,
+    index: usize,
+    owner: Option<String>,
+    done: Option<bool>,
+) -> Result<(), String> {
+    edit_meeting(&id, |m| {
+        arlen_meetings_core::note_store::update_action_item(m, index, owner, done)
+    })
+}
+
 /// Open a produced note document in its editor. Best-effort via `xdg-open`; a
 /// failure is surfaced but not fatal to the meetings surface.
 #[tauri::command]
@@ -174,7 +223,10 @@ pub fn run() {
             open_file,
             meeting_start_capture,
             meeting_stop_capture,
-            meeting_summarize
+            meeting_summarize,
+            meeting_save_notes,
+            meeting_relabel_speaker,
+            meeting_update_item
         ])
         .run(tauri::generate_context!())
         .expect("error while running arlen-meetings");

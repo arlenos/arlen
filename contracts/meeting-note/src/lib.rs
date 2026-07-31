@@ -30,6 +30,14 @@ pub struct ActionItem {
     /// so it is `None` rather than a fabricated citation when the grounding is unclear.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_segment: Option<usize>,
+    /// Whether the user has ticked the item off. The human's, never the
+    /// extractor's: nothing that reads a transcript can know an action was done,
+    /// so this is only ever set by the person looking at the list.
+    ///
+    /// Defaulted rather than optional, because a note written before this field
+    /// existed has items nobody ticked, which is exactly `false`.
+    #[serde(default)]
+    pub done: bool,
 }
 
 /// One sentence of the prose summary paired with the transcript segment it was plainly
@@ -214,7 +222,7 @@ mod tests {
     fn renders_the_expected_sections() {
         let n = note(
             "We shipped the parser.",
-            vec![ActionItem { text: "Write the changelog".into(), owner: Some("Ada".into()), source_segment: None }],
+            vec![ActionItem { text: "Write the changelog".into(), owner: Some("Ada".into()), source_segment: None, done: false }],
             vec![seg("all done")],
         );
         let md = n.to_markdown();
@@ -277,7 +285,7 @@ mod tests {
     fn an_injected_owner_cannot_break_the_line() {
         let n = note(
             "s",
-            vec![ActionItem { text: "do it\n## Fake".into(), owner: Some("x\n- y".into()), source_segment: None }],
+            vec![ActionItem { text: "do it\n## Fake".into(), owner: Some("x\n- y".into()), source_segment: None, done: false }],
             vec![seg("t")],
         );
         let md = n.to_markdown();
@@ -298,7 +306,7 @@ mod tests {
 
     #[test]
     fn round_trips_through_json() {
-        let n = note("s", vec![ActionItem { text: "t".into(), owner: None, source_segment: None }], vec![seg("x")]);
+        let n = note("s", vec![ActionItem { text: "t".into(), owner: None, source_segment: None, done: false }], vec![seg("x")]);
         let json = serde_json::to_string(&n).unwrap();
         let back: MeetingNote = serde_json::from_str(&json).unwrap();
         assert_eq!(n, back);
