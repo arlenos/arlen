@@ -3573,6 +3573,17 @@ fn references_authority_label(cypher: &str) -> bool {
 /// whole-machine authority harvester, so no caller is privileged yet and the
 /// general path denies the labels for everyone. When F3 lands, the privileged
 /// Knowledge/Settings principal held to a dedicated capability is admitted here.
+///
+/// This is what SX-5 (the unified apps + modules + bridges management view) is
+/// waiting on, and it is worth knowing that the DATA side of SX-5 already exists:
+/// modules get a `PermissionProfile` at install (`installd::module_permissions`),
+/// bridges get their write capability through a profile's delegated namespaces,
+/// and the shell's profile watcher fires `permission.changed` for any file in the
+/// permissions directory regardless of what kind of principal it belongs to - so
+/// `emit_all_declared_grants` already projects all three into the LCG. The
+/// missing piece is not an aggregation across three daemons; it is one read of
+/// every principal's grants, which IS the whole-machine authority view this gate
+/// denies. Open the gate and the query is small.
 fn is_privileged_authority_reader(_app_id: &str) -> bool {
     false
 }
