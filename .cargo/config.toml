@@ -8,3 +8,35 @@ CXXFLAGS = "-include cstdint"
 
 [build]
 target-dir = "target"
+
+# The dev profile is the whole disk story: `target/debug` was 180G of a 182G
+# target dir, because cargo's default `debug = true` emits full DWARF for every
+# crate in every dependency closure and we never set a profile anywhere.
+#
+# Measured on one crate's closure (contracts/consent-contract, fresh target dir):
+#
+#   cargo default (debug = 2)                     721M
+#   debug = "line-tables-only" everywhere         597M   -17%
+#   debug = false everywhere                      425M   -41%
+#   this split                                    425M   -41%
+#
+# So the debuginfo that costs the space is the dependencies', not ours: dropping
+# ours to line-tables saves almost nothing, dropping theirs saves all of it. The
+# split takes the full saving and keeps file:line for the crate being built.
+#
+# What this costs: a backtrace still names every function, including in tokio or
+# zbus, because `debug = false` does not strip the symbol table - it loses
+# file:line outside the crate under test. If you need full DWARF for a debugger
+# session, comment out the package block for the duration; there is no per-call
+# override for a per-package profile.
+#
+# `[profile.release.package.kernel-layer-ebpf]` in daemons/kernel-layer sets
+# debug = 2 for the eBPF object. That is a release-side package override and is
+# unaffected by either table here.
+[profile.dev]
+debug = "line-tables-only"
+
+# "*" is every package that is not the one being built, which with no root
+# workspace means our path dependencies too, not only crates.io.
+[profile.dev.package."*"]
+debug = false
