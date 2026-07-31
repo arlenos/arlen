@@ -1,10 +1,11 @@
 <script lang="ts">
   /// The one app card, reused everywhere (collections and results): icon tile,
-  /// name, one-line summary, a quiet source-tier chip. Deliberately nothing more -
-  /// no stars, no install counts on cards (store-app.md §8.7).
+  /// name, one-line summary. Trust is the only chip and only when it has
+  /// something to say - curated stays silent, community is flagged (§3); the
+  /// package format never shows in browse.
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
   import { t } from "$lib/i18n/messages";
-  import type { StoreApp } from "$lib/stores/catalog";
+  import { trustOf, type StoreApp } from "$lib/stores/catalog";
 
   let { app, onopen }: { app: StoreApp; onopen: (id: string) => void } = $props();
 </script>
@@ -14,7 +15,9 @@
   <span class="body">
     <span class="name">{app.name}</span>
     <span class="summary">{app.summary}</span>
-    <span class="chips"><Badge variant="outline">{$t(`st.tier.${app.tier}`)}</Badge></span>
+    {#if trustOf(app) === "community"}
+      <span class="chips"><Badge variant="outline">{$t("st.trust.community")}</Badge></span>
+    {/if}
   </span>
 </button>
 
