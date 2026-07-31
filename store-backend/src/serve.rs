@@ -168,6 +168,7 @@ mod tests {
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
             version: String::new(),
+            install_handle: None,
         };
         Catalog::new(merge_catalog(vec![entry]))
     }
@@ -224,6 +225,7 @@ mod tests {
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
             version: String::new(),
+            install_handle: None,
         };
         swap(&holder, Catalog::new(merge_catalog(vec![entry])));
         let current = holder.lock().unwrap().clone();

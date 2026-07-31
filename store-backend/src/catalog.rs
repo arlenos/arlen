@@ -146,6 +146,20 @@ pub struct CatalogEntry {
     /// own way. Empty when a source does not state one.
     #[serde(default)]
     pub version: String,
+    /// What this source needs to be told to install this variant: the Debian
+    /// package name, a Flatpak ref, a forage recipe id.
+    ///
+    /// Carried because it is NOT derivable from the component-id for every layer.
+    /// A Flatpak ref usually is the component-id, so that layer got away without
+    /// it; a Debian package name is a separate field in the source data and is
+    /// frequently unrelated to the id, which is why DEP-11 states it separately.
+    /// Without it a user can pick the apt variant of a merged card and the backend
+    /// has nothing to hand `apt`.
+    ///
+    /// `None` when the source does not state one, which a caller must treat as
+    /// "cannot install this variant" rather than guessing from the id.
+    #[serde(default)]
+    pub install_handle: Option<String>,
 }
 
 /// One install option on a merged card: a source layer with its own caps + trust.
@@ -160,6 +174,11 @@ pub struct Variant {
     /// The version this source offers, as the source states it.
     #[serde(default)]
     pub version: String,
+    /// What to tell this source to install this variant; see
+    /// [`CatalogEntry::install_handle`]. `None` means this variant cannot be
+    /// installed from what the catalog knows.
+    #[serde(default)]
+    pub install_handle: Option<String>,
 }
 
 /// A merged app card: one per component-id, richest display, per-source variants.
@@ -236,6 +255,7 @@ pub fn merge_catalog(entries: Vec<CatalogEntry>) -> Vec<AppCard> {
                 capabilities: e.capabilities,
                 trust: e.trust,
                 version: e.version,
+                install_handle: e.install_handle,
             });
         }
 
@@ -266,6 +286,7 @@ mod tests {
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
             version: String::new(),
+            install_handle: None,
         }
     }
 

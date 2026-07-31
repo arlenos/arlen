@@ -119,6 +119,7 @@ mod tests {
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
             version: String::new(),
+            install_handle: None,
         };
         Catalog::new(merge_catalog(vec![entry]))
     }
