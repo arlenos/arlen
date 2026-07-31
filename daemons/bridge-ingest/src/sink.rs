@@ -24,11 +24,16 @@ pub trait EntityWriter {
     /// Upsert (create-or-strengthen) a node of `qualified_type` keyed by
     /// `external_key`, with `fields`. Idempotent: a re-sync of the same key
     /// updates in place rather than duplicating.
+    ///
+    /// `origin_ref` is what the row is upstream, when the mapping declared a
+    /// field for it. An implementation pairs it with its own run id to stamp
+    /// provenance; without one it writes unstamped rather than inventing a ref.
     fn upsert(
         &mut self,
         qualified_type: &str,
         external_key: &str,
         fields: &Map<String, Value>,
+        origin_ref: Option<&str>,
     ) -> Result<(), String>;
 
     /// Create an `edge` from the node `(from_type, from_key)` to the node
@@ -66,8 +71,12 @@ impl<W: EntityWriter> KgPlanSink<W> {
 impl<W: EntityWriter> PlanSink for KgPlanSink<W> {
     fn write_plan(&mut self, _bridge: &str, plan: &UpsertPlan) -> Result<(), String> {
         // Upsert the node first; idempotent, so the edges below can reference it.
-        self.writer
-            .upsert(&plan.qualified_type, &plan.external_key, &plan.fields)?;
+        self.writer.upsert(
+            &plan.qualified_type,
+            &plan.external_key,
+            &plan.fields,
+            plan.origin_ref.as_deref(),
+        )?;
         // Then each edge. Both endpoints take this plan's entity type: the
         // bridge.toml link rule names no target type, so the lead case links
         // within one type (note -> note); a future cross-type link adds a
@@ -97,6 +106,7 @@ mod tests {
     struct MockWriter {
         upserts: Vec<(String, String)>,
         links: Vec<(String, String, String)>,
+        origin_refs: Vec<Option<String>>,
         fail_upsert: bool,
         fail_link: bool,
     }
@@ -107,10 +117,12 @@ mod tests {
             qualified_type: &str,
             external_key: &str,
             _fields: &Map<String, Value>,
+            origin_ref: Option<&str>,
         ) -> Result<(), String> {
             if self.fail_upsert {
                 return Err("upsert refused".to_string());
             }
+            self.origin_refs.push(origin_ref.map(str::to_string));
             self.upserts
                 .push((qualified_type.to_string(), external_key.to_string()));
             Ok(())
@@ -138,6 +150,7 @@ mod tests {
             qualified_type: "md.obsidian.Note".to_string(),
             external_key: "note-1".to_string(),
             fields: Map::new(),
+            origin_ref: None,
             links: vec![LinkPlan {
                 edge: "LINKS_TO".to_string(),
                 from_key: "note-1".to_string(),
@@ -185,12 +198,37 @@ mod tests {
     }
 
     #[test]
+    fn a_plans_origin_ref_reaches_the_writer() {
+        // The sink is the only thing between the mapping and the write, so if it
+        // drops the ref the daemon has nothing to stamp and the whole feature is
+        // silently inert.
+        let mut sink = KgPlanSink::new(MockWriter::default());
+        let mut plan = plan_with_link();
+        plan.origin_ref = Some("sha:deadbeef".to_string());
+        sink.write_plan("bridge.test", &plan).unwrap();
+        assert_eq!(
+            sink.writer().origin_refs,
+            vec![Some("sha:deadbeef".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_plan_without_an_origin_ref_writes_unstamped() {
+        // Not an error: a mapping that declares no ref field, or a message that
+        // omits it, still writes. Only the provenance is absent.
+        let mut sink = KgPlanSink::new(MockWriter::default());
+        sink.write_plan("bridge.test", &plan_with_link()).unwrap();
+        assert_eq!(sink.writer().origin_refs, vec![None]);
+    }
+
+    #[test]
     fn a_plan_without_links_just_upserts() {
         let mut sink = KgPlanSink::new(MockWriter::default());
         let plan = UpsertPlan {
             qualified_type: "md.obsidian.Note".to_string(),
             external_key: "note-1".to_string(),
             fields: Map::new(),
+            origin_ref: None,
             links: Vec::new(),
         };
         sink.write_plan("obsidian", &plan).unwrap();

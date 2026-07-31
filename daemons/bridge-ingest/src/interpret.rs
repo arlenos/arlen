@@ -25,6 +25,11 @@ pub struct UpsertPlan {
     pub fields: Map<String, Value>,
     /// Edges to create from this node (from `for_each_link`).
     pub links: Vec<LinkPlan>,
+    /// What this row is upstream, when the rule declared a field for it and the
+    /// message carried it. `None` is the ordinary case and means the write goes
+    /// out unstamped, which is correct: a run id with nothing to point at is a
+    /// half-record, and the daemon rejects one.
+    pub origin_ref: Option<String>,
 }
 
 /// One edge the plan creates: `(this node) -[edge]-> (node keyed to_key)`.
@@ -108,11 +113,23 @@ pub fn interpret_message(
         }
     }
 
+    // The upstream ref, when the rule names a field for it. Unlike the key this
+    // is optional at every step - an absent or blank value is simply no ref,
+    // never an error, because a message that omits it is still a valid row.
+    let origin_ref = rule
+        .origin_ref
+        .as_ref()
+        .and_then(|field| msg.get(field))
+        .and_then(Value::as_str)
+        .filter(|r| !r.trim().is_empty())
+        .map(str::to_string);
+
     Ok(UpsertPlan {
         qualified_type: rule.upsert.clone(),
         external_key,
         fields,
         links,
+        origin_ref,
     })
 }
 
@@ -139,6 +156,54 @@ for_each_link = { edge = "LINKS_TO", to_key = "path" }
 
     fn obj(v: Value) -> Map<String, Value> {
         v.as_object().unwrap().clone()
+    }
+
+    /// The same bridge, with the rule declaring which message field carries the
+    /// upstream ref.
+    fn config_with_origin_ref() -> BridgeConfig {
+        BridgeConfig::parse(
+            r#"
+[bridge]
+id = "md.obsidian"
+allowed_plugin_id = "maria-obsidian-bridge"
+[map."note.upsert"]
+upsert = "md.obsidian.Note"
+key    = "path"
+origin_ref = "rev"
+set    = { title = "$.title" }
+"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn an_origin_ref_field_is_read_off_the_message() {
+        let msg = obj(json!({ "path": "notes/a.md", "rev": "sha:deadbeef" }));
+        let plan = interpret_message(&config_with_origin_ref(), "note.upsert", &msg).unwrap();
+        assert_eq!(plan.origin_ref.as_deref(), Some("sha:deadbeef"));
+    }
+
+    #[test]
+    fn a_rule_that_declares_no_origin_ref_yields_none() {
+        let msg = obj(json!({ "path": "notes/a.md", "rev": "sha:deadbeef" }));
+        // Same message, a rule that never asked for the field: the ref is not
+        // guessed from a conveniently named key.
+        let plan = interpret_message(&config(), "note.upsert", &msg).unwrap();
+        assert_eq!(plan.origin_ref, None);
+    }
+
+    #[test]
+    fn a_missing_or_blank_origin_ref_is_absent_not_an_error() {
+        // Unlike the key, which is the idempotency anchor and must be present.
+        for msg in [
+            obj(json!({ "path": "notes/a.md" })),
+            obj(json!({ "path": "notes/a.md", "rev": "   " })),
+            obj(json!({ "path": "notes/a.md", "rev": 7 })),
+        ] {
+            let plan = interpret_message(&config_with_origin_ref(), "note.upsert", &msg)
+                .expect("the row is still valid without a ref");
+            assert_eq!(plan.origin_ref, None);
+        }
     }
 
     #[test]
