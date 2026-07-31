@@ -100,12 +100,30 @@ let unlistenUpdate: UnlistenFn | null = null;
 let unlistenCancel: UnlistenFn | null = null;
 let initialised = false;
 
+// `?btmock=<kind>` (DEV only) renders one pairing state without a BlueZ
+// event, so the screenshot loop can see this dialog too. A real boot never
+// hits this branch.
+const BT_MOCKS: Record<string, PairRequest> = {
+  confirmation: { kind: "confirmation", id: 1, deviceName: "WH-1000XM5", deviceAddress: "F8:4E:17:2A:9C:41", passkey: 748291 },
+  pinCodeInput: { kind: "pinCodeInput", id: 2, deviceName: "Magic Keyboard", deviceAddress: "60:F4:45:11:B0:8E" },
+  passkeyInput: { kind: "passkeyInput", id: 3, deviceName: "ThinkPad Keyboard", deviceAddress: "10:3D:1C:77:52:F0" },
+  displayPinCode: { kind: "displayPinCode", id: 4, deviceName: "Car Audio", deviceAddress: "00:1B:DC:0F:AA:23", pinCode: "4207" },
+  displayPasskey: { kind: "displayPasskey", id: 5, deviceName: "Magic Keyboard", deviceAddress: "60:F4:45:11:B0:8E", passkey: 351904, entered: 2 },
+  authorization: { kind: "authorization", id: 6, deviceName: "WH-1000XM5", deviceAddress: "F8:4E:17:2A:9C:41" },
+  authorizeService: { kind: "authorizeService", id: 7, deviceName: "WH-1000XM5", deviceAddress: "F8:4E:17:2A:9C:41", uuid: "0000110b-0000-1000-8000-00805f9b34fb", uuidLabel: "Audio sink" },
+};
+
 /// Wire up the three Tauri event listeners and restore any in-
 /// flight pending request from the backend. Idempotent — calling
 /// twice is safe; the second call short-circuits.
 export async function init(): Promise<void> {
   if (initialised) return;
   initialised = true;
+
+  if (import.meta.env.DEV && typeof location !== "undefined") {
+    const mock = BT_MOCKS[new URLSearchParams(location.search).get("btmock") ?? ""];
+    if (mock) inner.set(mock);
+  }
 
   unlistenRequest = await listen<PairRequest>(
     "bluetooth-pair-request",

@@ -68,7 +68,7 @@ export interface PendingView {
 // One representative request per tier/class so the design language + the
 // high-stakes treatments render under vite.
 const MOCK_PENDING: PendingView[] = [
-  { id: 1, requester: "org.arlen.files", class: "portal", tier: "standard", summary: "open one file you pick", scope: "a single file you choose", reversibility: "reversible" },
+  { id: 1, requester: "org.arlen.files", class: "portal", tier: "standard", summary: "open one file you pick", scope: null, reversibility: "reversible" },
   { id: 2, requester: "com.example.notes", class: "capability_grant", tier: "standard", summary: "read your notes and their tags", scope: "your notes", reversibility: "reversible" },
   { id: 3, requester: "org.arlen.files", class: "destructive", tier: "standard", summary: "move 8 files to the Trash", scope: "~/Downloads", reversibility: "reversible" },
   { id: 4, requester: "org.arlen.files", class: "destructive", tier: "high_stakes", summary: "permanently delete 3 files", scope: "~/Documents/old", reversibility: "irreversible", total: "1.2 GB", targets: [
@@ -78,6 +78,7 @@ const MOCK_PENDING: PendingView[] = [
   ] },
   { id: 5, requester: "com.example.mail", class: "external_send", tier: "high_stakes", summary: "send an email on your behalf", scope: "alex@example.com", reversibility: "irreversible", recipient: "alex@example.com", preview: "Subject: Re: Thursday\n\"Sounds good, see you at 3. I'll bring the printouts.\"" },
   { id: 6, requester: "org.arlen.installd", class: "elevated_privilege", tier: "high_stakes", summary: "install system software with admin rights", scope: "3 packages", reversibility: "reversible_with_cost" },
+  { id: 7, requester: "com.example.notes", class: "network_access", tier: "standard", summary: "connect to its sync service", scope: "sync.example.com", reversibility: "reversible", triggeredExternally: true },
 ];
 
 /// The request on screen now, or null when nothing is pending.
@@ -98,7 +99,14 @@ current.subscribe((pending) => {
   invoke("set_consent_input_region", { active: shown }).catch(() => {});
 });
 
+// `?consentmock=<n>` (DEV only) pins which fixture request renders, so the
+// screenshot loop can address every state by URL; without it the first one
+// shows. Same pattern as the waypointer's `?askmock`.
 let mockIndex = 0;
+if (import.meta.env.DEV && typeof location !== "undefined") {
+  const pinned = Number(new URLSearchParams(location.search).get("consentmock"));
+  if (Number.isInteger(pinned) && pinned >= 0) mockIndex = pinned;
+}
 
 /// Fetch the front pending request. Live: `consent_fetch`. When no broker
 /// answers, the fixture is served ONLY under vite (dev) so the surface renders

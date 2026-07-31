@@ -85,7 +85,9 @@
     left: -1.25rem;
     right: -1.25rem;
     height: 3px;
-    border-radius: var(--radius-input) var(--radius-input) 0 0;
+    /* Follows the dialog card's own corner radius so the bar hugs the top
+       edge concentrically. */
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
   }
   .cd-edge.tone-caution {
     background: var(--color-warning);
