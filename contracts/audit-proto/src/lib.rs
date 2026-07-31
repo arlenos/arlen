@@ -125,6 +125,25 @@ pub enum AuditKind {
 }
 
 impl AuditKind {
+    /// Every kind, so a test can walk the taxonomy instead of a hand-written
+    /// list of it. The round-trip test used to carry its own list and had
+    /// silently fallen one variant behind, leaving `CapabilityChange` - the
+    /// only kind that records a reach - unchecked against the wire mapping.
+    /// Adding a variant breaks the two exhaustive matches below and the
+    /// kebab-case one in `activity`, and the count pinned in the tests keeps
+    /// this slice from being the piece that gets forgotten.
+    pub const ALL: &'static [Self] = &[
+        Self::Query,
+        Self::ToolCall,
+        Self::Confirm,
+        Self::PolicyViolation,
+        Self::GraphAccess,
+        Self::Permission,
+        Self::NetworkCall,
+        Self::AppAction,
+        Self::CapabilityChange,
+    ];
+
     /// Stable wire string. Also the suffix of the Event Bus event
     /// type re-emitted after a successful append (`audit.ai.<kind>`).
     ///
@@ -481,19 +500,32 @@ mod tests {
 
     #[test]
     fn kind_wire_strings_round_trip() {
-        for kind in [
-            AuditKind::Query,
-            AuditKind::ToolCall,
-            AuditKind::Confirm,
-            AuditKind::PolicyViolation,
-            AuditKind::GraphAccess,
-            AuditKind::Permission,
-            AuditKind::NetworkCall,
-            AuditKind::AppAction,
-        ] {
-            assert_eq!(AuditKind::from_wire(kind.as_str()), Some(kind));
+        for &kind in AuditKind::ALL {
+            assert_eq!(
+                AuditKind::from_wire(kind.as_str()),
+                Some(kind),
+                "{kind:?} does not survive the ledger wire"
+            );
         }
         assert_eq!(AuditKind::from_wire("nonsense"), None);
+    }
+
+    /// A kind that shares a wire string with another one reads back as the
+    /// wrong kind, which for the ledger means an entry classified as something
+    /// it is not. Cheap to state, and it catches the copy-paste that a
+    /// round-trip over a single variant cannot.
+    #[test]
+    fn every_kind_has_its_own_wire_string() {
+        let mut seen = std::collections::BTreeSet::new();
+        for &kind in AuditKind::ALL {
+            assert!(seen.insert(kind.as_str()), "{kind:?} reuses a wire string");
+        }
+        assert_eq!(
+            AuditKind::ALL.len(),
+            9,
+            "a kind was added or removed; check `as_str`, `from_wire` and \
+             `activity::kind_label` all learned about it"
+        );
     }
 
     #[test]

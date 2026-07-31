@@ -163,6 +163,18 @@ pub enum RevokeOutcome {
 }
 
 impl RevokeOutcome {
+    /// Every outcome, so the round-trip test walks the enum instead of a list of
+    /// it. The list it used to carry had fallen one behind and left `Required`,
+    /// the refusal that protects an app from being bricked, unchecked against
+    /// the token a client parses.
+    pub const ALL: &'static [Self] = &[
+        Self::Revoked,
+        Self::NoChange,
+        Self::NotNarrowing,
+        Self::NotFound,
+        Self::Required,
+    ];
+
     /// The wire token the daemon sends for this outcome (always `OK:`-prefixed,
     /// since these are successful processings, not errors).
     pub fn wire_token(self) -> &'static str {
@@ -207,6 +219,10 @@ pub enum RestoreOutcome {
 }
 
 impl RestoreOutcome {
+    /// Every outcome; the round trip had no test at all on this side.
+    pub const ALL: &'static [Self] =
+        &[Self::Restored, Self::NoChange, Self::NotPermitted, Self::NotFound];
+
     /// The wire token the daemon sends for this outcome (always `OK:`-prefixed;
     /// a refusal is a successful, safe processing, not an error).
     pub fn wire_token(self) -> &'static str {
@@ -237,16 +253,49 @@ mod tests {
 
     #[test]
     fn outcome_tokens_round_trip() {
-        for o in [
-            RevokeOutcome::Revoked,
-            RevokeOutcome::NoChange,
-            RevokeOutcome::NotNarrowing,
-            RevokeOutcome::NotFound,
-        ] {
-            assert_eq!(RevokeOutcome::from_wire_token(o.wire_token()), Some(o));
+        for &o in RevokeOutcome::ALL {
+            assert_eq!(
+                RevokeOutcome::from_wire_token(o.wire_token()),
+                Some(o),
+                "{o:?} does not survive the wire"
+            );
         }
         assert_eq!(RevokeOutcome::from_wire_token("ERROR: nope"), None);
         assert_eq!(RevokeOutcome::from_wire_token("OK: revoked\n"), Some(RevokeOutcome::Revoked));
+    }
+
+    /// Restore is the one path that grows authority back, and its tokens had no
+    /// round-trip test at all. A token that does not parse reads as `None` at
+    /// the client, which is indistinguishable from an error reply: the user is
+    /// told the restore failed while the daemon has already written the profile.
+    #[test]
+    fn restore_outcome_tokens_round_trip() {
+        for &o in RestoreOutcome::ALL {
+            assert_eq!(
+                RestoreOutcome::from_wire_token(o.wire_token()),
+                Some(o),
+                "{o:?} does not survive the wire"
+            );
+        }
+        assert_eq!(RestoreOutcome::from_wire_token("ERROR: nope"), None);
+        assert_eq!(
+            RestoreOutcome::from_wire_token("OK: restored\n"),
+            Some(RestoreOutcome::Restored)
+        );
+    }
+
+    /// Within one enum a shared token would make two outcomes indistinguishable.
+    /// Across the two it is fine and deliberate: `OK: no-change` means the same
+    /// thing on both paths and is parsed by whichever call the client made.
+    #[test]
+    fn each_outcome_within_an_enum_has_its_own_token() {
+        for tokens in [
+            RevokeOutcome::ALL.iter().map(|o| o.wire_token()).collect::<Vec<_>>(),
+            RestoreOutcome::ALL.iter().map(|o| o.wire_token()).collect::<Vec<_>>(),
+        ] {
+            let unique: std::collections::BTreeSet<_> = tokens.iter().collect();
+            assert_eq!(unique.len(), tokens.len(), "a token is reused in {tokens:?}");
+        }
     }
 
     #[test]

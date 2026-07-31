@@ -219,6 +219,24 @@ mod tests {
     use super::*;
     use crate::{StructuralRecord, StructuralView};
 
+    /// The third spelling of the taxonomy, and the one the frontend filters on.
+    /// A kind that renders as another kind's label puts entries in the wrong
+    /// bucket in the activity view; a kind that renders as its snake_case wire
+    /// form leaks the wrong convention into the UI. Both are checked here
+    /// rather than trusted to a match nobody rereads.
+    #[test]
+    fn every_kind_gets_its_own_kebab_label() {
+        let mut seen = std::collections::BTreeSet::new();
+        for kind in AuditKind::ALL {
+            let label = kind_label(kind);
+            assert!(seen.insert(label), "{kind:?} reuses the label {label}");
+            assert!(
+                !label.contains('_'),
+                "{kind:?} renders as {label}, which is the wire spelling not the frontend one"
+            );
+        }
+    }
+
     fn view(index: u64, kind: AuditKind, subject: &str) -> StructuralView {
         StructuralView {
             index,
