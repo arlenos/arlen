@@ -172,10 +172,15 @@ const EPHEMERAL_WRITABLE: &[&str] = &["/home", "/tmp", "/run"];
 ///
 /// The base platform is `/usr`, the same root the profiled path treats as the
 /// platform, rather than the whole host filesystem: read-only or not, an untrusted
-/// document's viewer has no business enumerating `/etc`, `/var` and `/root`. With
-/// `/usr` bound at `/`, the sandbox's `/bin` and `/lib64` are the host's
-/// `/usr/bin` and `/usr/lib64`, so a dynamically-linked viewer still finds its
-/// interpreter and the profile's `PATH` resolves.
+/// document's viewer has no business enumerating `/etc`, `/var` and `/root`. The
+/// merged-`/usr` compat paths are bound alongside so a dynamically-linked viewer
+/// finds its ELF interpreter.
+///
+/// **The consequence for callers: the program must live under `/usr`.** Nothing
+/// else is bound, so a viewer installed at `~/.local/lib/arlen/libexec/...` - or
+/// run out of a dev build tree - is simply not present inside and exec fails with
+/// "No such file or directory". Whatever `Exec=` the untrusted-content MIME
+/// handler registers has to resolve within a `/usr`-only view.
 #[cfg(target_os = "linux")]
 fn run_ephemeral(app_id: &str, file: &std::path::Path, program: &[String]) -> ExitCode {
     // The merged-`/usr` root-level compat paths that actually exist here, so a
