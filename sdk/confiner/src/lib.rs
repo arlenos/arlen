@@ -69,6 +69,12 @@ pub struct Confinement {
     /// home grant). bwrap applies argv in order, so a later `--bind` wins over
     /// an earlier `--tmpfs` covering it.
     post_mask_binds: Vec<Bind>,
+    /// Directories to CREATE inside the sandbox (`--dir`), applied after the
+    /// tmpfs masks so they land on the fresh filesystem. A tmpfs mounts empty, so
+    /// a path the sandbox is told to use - an app's `HOME`, a scratch dir - has to
+    /// be created or it simply is not there, and the program fails on a path its
+    /// own environment told it to use.
+    dirs: Vec<String>,
     env: BTreeMap<String, String>,
     chdir: Option<String>,
     /// Run the command AS pid 1 in the new pid namespace (`--as-pid-1`), rather
@@ -160,6 +166,12 @@ impl Confinement {
         for t in &self.tmpfs {
             a.push("--tmpfs".into());
             a.push(t.clone());
+        }
+        // After the masks: a directory created before its covering tmpfs would be
+        // hidden by it.
+        for d in &self.dirs {
+            a.push("--dir".into());
+            a.push(d.clone());
         }
         // Re-binds applied AFTER the tmpfs masks, so a kept sub-path inside a
         // masked directory wins (later argv overrides the covering --tmpfs).
@@ -261,6 +273,7 @@ pub fn build_profile(
         ],
         tmpfs: vec!["/tmp".into(), "/sys".into()],
         post_mask_binds: vec![],
+        dirs: Vec::new(),
         env,
         chdir: Some(BUILD_MOUNT.into()),
         as_pid_1: false,
@@ -272,6 +285,10 @@ const BUILD_ROOT: &str = "/";
 /// The fixed in-sandbox path the single untrusted file is bound to in an
 /// [`ephemeral_profile`]. The app opens exactly this handle.
 pub const EPHEMERAL_FILE: &str = "/tmp/ephemeral/input";
+
+/// The in-sandbox home an ephemeral launch gets: a directory on the fresh tmpfs,
+/// gone when the last process exits.
+pub const EPHEMERAL_HOME: &str = "/home/ephemeral";
 
 /// The no-trace ephemeral confinement (app-enrollment §E10): open one untrusted
 /// file with no standing grant and no persistence, the default handler for
@@ -293,7 +310,7 @@ pub fn ephemeral_profile(
     let file = checked_abs(untrusted_file)?;
     let mut env = BTreeMap::new();
     env.insert("PATH".into(), "/usr/bin:/bin".into());
-    env.insert("HOME".into(), "/home/ephemeral".into());
+    env.insert("HOME".into(), EPHEMERAL_HOME.into());
     let mut binds = vec![
         // The read-only runtime root (libs, the viewer binary); nothing of the
         // host home is bound.
@@ -319,6 +336,10 @@ pub fn ephemeral_profile(
         binds,
         // Fresh, empty, auto-cleaned: no host home, no persisted state, no sockets.
         tmpfs: vec!["/home".into(), "/tmp".into(), "/run".into()],
+        // The advertised `HOME` has to exist: the tmpfs above mounts empty, so
+        // without this a program that writes anything under `$HOME` fails on a
+        // path its own environment handed it.
+        dirs: vec![EPHEMERAL_HOME.into()],
         // The one untrusted file, read-only at the fixed handle path, re-applied
         // AFTER the `/tmp` tmpfs mask so it survives it (bwrap applies argv in
         // order; a post-mask bind wins over the earlier tmpfs).
@@ -382,6 +403,7 @@ pub fn command_profile(
         // root (e.g. host `/`) leaves the sandbox root read-only, so the scratch
         // must land on the writable tmpfs where bwrap can create the mount point.
         post_mask_binds: vec![Bind::ReadWrite(work, WORK_MOUNT.into())],
+        dirs: Vec::new(),
         env,
         chdir: Some(WORK_MOUNT.into()),
         as_pid_1: false,
@@ -465,6 +487,7 @@ pub fn app_runtime_profile(
             binds,
             tmpfs,
             post_mask_binds,
+            dirs: Vec::new(),
             env,
             chdir: None,
             as_pid_1: false,
@@ -536,6 +559,30 @@ mod tests {
         assert_eq!(tmpfs, vec!["/sys", "/tmp"]);
         // PATH is set by the profile.
         assert!(args.windows(2).any(|w| w[0] == "PATH" && w[1] == "/usr/bin:/bin"));
+    }
+
+    #[test]
+    fn the_ephemeral_home_is_created_after_the_tmpfs_that_would_hide_it() {
+        // A `--dir` emitted before its covering `--tmpfs` is mounted over and the
+        // directory is not there, so the app's own `HOME` does not exist - which
+        // is exactly what a real run showed before this was ordered.
+        let conf = ephemeral_profile(
+            Path::new("/usr"),
+            Path::new("/tmp/untrusted.pdf"),
+            NetworkPolicy::None,
+            &[],
+        )
+        .expect("the profile builds");
+        let args = conf.bwrap_args();
+        let home_tmpfs = args
+            .windows(2)
+            .position(|w| w[0] == "--tmpfs" && w[1] == "/home")
+            .expect("/home is a tmpfs");
+        let home_dir = args
+            .windows(2)
+            .position(|w| w[0] == "--dir" && w[1] == EPHEMERAL_HOME)
+            .expect("the advertised HOME is created");
+        assert!(home_dir > home_tmpfs, "the created home would be masked");
     }
 
     #[test]
