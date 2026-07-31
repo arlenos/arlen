@@ -154,7 +154,6 @@
         value={currentMode ? `${currentMode.width}x${currentMode.height}` : ""}
         options={resolutionOptions}
         ariaLabel="Resolution"
-        width="180px"
         onchange={(v) => {
           const [w, h] = v.split("x").map(Number);
           if (w && h) pickResolution(w, h);
@@ -169,7 +168,6 @@
         value={currentMode ? String(currentMode.refreshMhz) : ""}
         options={refreshOptions}
         ariaLabel="Refresh rate"
-        width="180px"
         onchange={(v) => pickRefresh(Number(v))}
       />
     {/snippet}
@@ -198,7 +196,6 @@
         value={draft.transform}
         options={TRANSFORM_OPTIONS}
         ariaLabel="Rotation"
-        width="180px"
         onchange={(v) => setTransform(v as Transform)}
       />
     {/snippet}
@@ -213,7 +210,6 @@
         value={draft.vrr}
         options={VRR_OPTIONS}
         ariaLabel="Adaptive sync"
-        width="180px"
         onchange={(v) => setVrr(v as VrrState)}
       />
     {/snippet}
@@ -226,7 +222,6 @@
           value={mirrorTarget ?? "__none__"}
           options={mirrorOptions}
           ariaLabel="Mirror target"
-          width="180px"
           onchange={setMirror}
         />
       {/snippet}

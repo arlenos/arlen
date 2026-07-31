@@ -189,7 +189,7 @@
         />
       {:else if item.type === "string"}
         <Input
-          class="w-56"
+          class="field"
           value={textDraft}
           oninput={(e: Event) => (textDraft = (e.currentTarget as HTMLInputElement).value)}
           onblur={commitText}
@@ -208,7 +208,7 @@
       {:else if item.type === "path"}
         <div class="path-ctl">
           <Input
-            class="w-56"
+            class="field"
             value={textDraft}
             oninput={(e: Event) => (textDraft = (e.currentTarget as HTMLInputElement).value)}
             onblur={commitText}
@@ -246,7 +246,7 @@
         {#if secretEditing}
           <div class="secret-edit">
             <Input
-              class="w-48"
+              class="field"
               type="password"
               value={secretDraft}
               oninput={(e: Event) => (secretDraft = (e.currentTarget as HTMLInputElement).value)}
@@ -359,6 +359,11 @@
     display: flex;
     align-items: center;
     gap: 0.375rem;
+    width: var(--control-width, 14rem);
+  }
+  .path-ctl :global(.field) {
+    flex: 1;
+    min-width: 0;
   }
 
   /* The colour swatch hides the native picker input under itself (the

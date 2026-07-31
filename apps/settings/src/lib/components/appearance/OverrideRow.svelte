@@ -89,6 +89,9 @@
     align-items: center;
     gap: 0.5rem;
     flex-shrink: 0;
+    /* Same row-control register as the kit Row: field controls share one
+       width so the column aligns across the page. */
+    --control-width: var(--width-row-control, 200px);
   }
   /* Reset shows on row hover, only when the field is overridden. */
   .or-reset {

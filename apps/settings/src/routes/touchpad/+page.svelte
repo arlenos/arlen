@@ -47,7 +47,6 @@
             options={CLICK_METHODS}
             onchange={(v) => set("click_method", v)}
             ariaLabel={$t("s.touchpad.clickMethod.aria")}
-            width="280px"
           />
         {/snippet}
       </Row>

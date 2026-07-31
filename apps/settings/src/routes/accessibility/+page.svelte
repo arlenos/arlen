@@ -131,7 +131,6 @@
           value={viewMoves}
           options={ZOOM_MOVEMENT_OPTIONS as unknown as { value: string; label: string }[]}
           ariaLabel={$t("s.a11y.movement.aria")}
-          width="180px"
           onchange={setViewMoves}
         />
       {/snippet}
@@ -191,7 +190,6 @@
           value={colorFilter}
           options={COLOR_FILTER_OPTIONS as unknown as { value: string; label: string }[]}
           ariaLabel={$t("s.a11y.colorBlind")}
-          width="240px"
           onchange={(v) => setColorFilter(v as ColorFilterLabel)}
         />
       {/snippet}

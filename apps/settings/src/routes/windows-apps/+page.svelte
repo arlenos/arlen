@@ -148,7 +148,6 @@
                       <PopoverSelect
                         value={b.wineVersion}
                         options={versionOptions}
-                        width="180px"
                         ariaLabel="Compatibility version"
                         onchange={(v) => patchBottle(b.id, { wineVersion: v })}
                       />
@@ -178,7 +177,6 @@
                         max={300}
                         step={25}
                         unit="%"
-                        width="130px"
                         ariaLabel="Display scaling"
                         onchange={(v) => patchBottle(b.id, { scaling: v })}
                       />
@@ -303,7 +301,6 @@
           <PopoverSelect
             value={$defaults.version}
             options={versionOptions}
-            width="180px"
             ariaLabel="Default compatibility version"
             onchange={(v) => patchDefaults({ version: v })}
           />
@@ -434,6 +431,9 @@
     justify-content: space-between;
     gap: 1rem;
     min-height: 1.75rem;
+    /* Same row-control register as the kit Row, so the bottle's field
+       controls align with each other and the page above. */
+    --control-width: var(--width-row-control, 200px);
   }
   .wa-field {
     display: flex;

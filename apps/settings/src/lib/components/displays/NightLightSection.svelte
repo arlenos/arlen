@@ -202,7 +202,6 @@
         value={cfg.schedule}
         options={SCHEDULE_OPTIONS}
         ariaLabel="Night light schedule"
-        width="220px"
         onchange={setSchedule}
       />
     {/snippet}
@@ -243,7 +242,6 @@
           max={90}
           step={0.0001}
           ariaLabel="Latitude"
-          width="160px"
           onchange={setLatitude}
         />
       {/snippet}
@@ -256,7 +254,6 @@
           max={180}
           step={0.0001}
           ariaLabel="Longitude"
-          width="160px"
           onchange={setLongitude}
         />
       {/snippet}

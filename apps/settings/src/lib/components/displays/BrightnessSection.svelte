@@ -125,7 +125,6 @@
             value={selected ?? ""}
             options={deviceOptions}
             ariaLabel={$t("s.bright.device.aria")}
-            width="220px"
             onchange={selectDevice}
           />
         {/snippet}

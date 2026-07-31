@@ -152,7 +152,6 @@
               options={defaultOptions}
               placeholder="None"
               ariaLabel="Default printer"
-              width="200px"
               onchange={setDefault}
             />
           {/snippet}
@@ -253,7 +252,6 @@
               ariaLabel="Paper size"
               value={opts.paper}
               options={PAPER_OPTIONS}
-              width="140px"
               onchange={(v) => commitOptions(p.name, { paper: v as PrinterOptions["paper"] })}
             />
           </label>
