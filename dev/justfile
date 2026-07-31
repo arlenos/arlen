@@ -699,6 +699,12 @@ check-protos:
 # The smoke starts the daemons that can run unattended; this fails if a daemon
 # binary is in neither its start list nor its skip list, because a daemon nobody
 # added is simply absent from the run and it still says OK.
+# `executor_live` is what lets the AI act on the real system, and it defaults off.
+# A new sub-executor that never asks the flag would act anyway - nothing else
+# notices, because the flag being off is exactly when nobody looks.
+check-executor:
+    python3 "{{ROOT}}/dev/scripts/check-executor-gate.py"
+
 check-smoke:
     python3 "{{ROOT}}/dev/scripts/check-smoke-coverage.py"
 
@@ -745,7 +751,7 @@ checks:
     set -uo pipefail
     cd "{{ROOT}}"
     status=0
-    for r in check-crates check-ignores check-protos check-units check-gates check-shared check-smoke; do
+    for r in check-crates check-ignores check-protos check-units check-gates check-shared check-smoke check-executor; do
         echo "== $r =="
         just --justfile dev/justfile "$r" || status=1
     done
