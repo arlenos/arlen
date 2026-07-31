@@ -221,6 +221,15 @@ pub enum ResolveResult {
     },
 }
 
+/// Epoch microseconds now. A clock read rather than a seam because the only
+/// caller is the live resolve path; every pure function below takes the value.
+fn now_micros() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0)
+}
+
 /// Build the content-free audit entry for a resolved decision: the acting
 /// principal (the attested recipient) + the coarse disposition only, never the
 /// action's summary or scope (S13 keeps the always-recorded tier content-free).
@@ -228,6 +237,7 @@ fn consent_decision_entry(decision: &ResolvedDecision) -> IngestRequest {
     let outcome = match decision.reply {
         ConsentOutcome::AllowedOnce => "granted-once",
         ConsentOutcome::AllowedRemembered => "granted-remembered",
+        ConsentOutcome::AllowedForWindow => "granted-for-window",
         ConsentOutcome::Denied => "denied",
     };
     // A mediated grant (a trusted intermediary raised it on the recipient's
@@ -359,11 +369,15 @@ impl SharedState {
     /// still recorded). The queue lock is taken only for the synchronous removal
     /// and is released before the audit await.
     pub async fn resolve(&self, id: RequestId, outcome: ConsentOutcome) -> ResolveResult {
+        // The decision is stamped where it resolves, which is the moment the user
+        // acted. A window measured from anywhere later would be longer than the
+        // one they were offered.
+
         // Step 1: remove from the queue + take the parked sender under the lock,
         // with no await held (the guard is dropped at the end of this block).
         let taken = {
             let mut inner = self.inner.lock().expect("consent state mutex poisoned");
-            match resolve_decision(&mut inner.queue, id, outcome) {
+            match resolve_decision(&mut inner.queue, id, outcome, now_micros()) {
                 Some(decision) => Some((decision, inner.waiters.remove(&id))),
                 None => None,
             }

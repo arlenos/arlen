@@ -104,6 +104,7 @@ pub fn resolve_decision(
     queue: &mut ConsentQueue,
     id: RequestId,
     outcome: ConsentOutcome,
+    now_micros: i64,
 ) -> Option<ResolvedDecision> {
     let (pending, outcome) = queue.resolve(id, outcome)?;
     // Reversibility gates a remembered ("always allow") grant on the consent
@@ -119,7 +120,7 @@ pub fn resolve_decision(
     // grant consistent. Fail-closed - the gate holds even if the dialog mistakenly
     // offered the remember toggle.
     let outcome = gate_remember(pending.request.kind, outcome);
-    let grant = mint_grant(&pending, outcome);
+    let grant = mint_grant(&pending, outcome, now_micros);
     Some(ResolvedDecision {
         recipient: pending.request.requester.grant_recipient().to_string(),
         reply: outcome,
@@ -128,17 +129,24 @@ pub fn resolve_decision(
     })
 }
 
-/// Downgrade a remembered allow to a one-time allow unless the scope is fully
-/// reversible. The consent footer only mints standing authority for the
-/// [`Reversibility::Reversible`] class; every heavier class is allow-once here
-/// (system-dialog-plan.md Agent-autonomy).
+/// Downgrade an allow that outlasts this occurrence to a one-time allow unless
+/// the scope is fully reversible. The consent footer only mints lasting
+/// authority for the [`Reversibility::Reversible`] class; every heavier class is
+/// allow-once here (system-dialog-plan.md Agent-autonomy).
+///
+/// A window is gated the same as remembering, and for a sharper reason. The rule
+/// exists because an irreversible act deserves its own decision each time it
+/// happens, and a window authorises an unbounded number of them until it closes.
+/// Bounding how long that lasts does not make it one decision.
 fn gate_remember(
     kind: arlen_ai_core::capability::ActionKind,
     outcome: ConsentOutcome,
 ) -> ConsentOutcome {
-    if outcome == ConsentOutcome::AllowedRemembered
-        && Reversibility::of(kind) != Reversibility::Reversible
-    {
+    let outlasts_this_occurrence = matches!(
+        outcome,
+        ConsentOutcome::AllowedRemembered | ConsentOutcome::AllowedForWindow
+    );
+    if outlasts_this_occurrence && Reversibility::of(kind) != Reversibility::Reversible {
         ConsentOutcome::AllowedOnce
     } else {
         outcome
@@ -211,7 +219,7 @@ mod tests {
         let mut q = ConsentQueue::new();
         // Ordinary is fully reversible, so a remembered allow mints standing authority.
         let id = enqueue(&mut q, "org.arlen.files", ActionKind::Ordinary, Some("/x"));
-        let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedRemembered).unwrap();
+        let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedRemembered, 0).unwrap();
         assert_eq!(d.recipient, "org.arlen.files");
         assert_eq!(d.reply, ConsentOutcome::AllowedRemembered);
         let grant = d.grant.expect("always-allow on a reversible scope mints a grant");
@@ -224,10 +232,35 @@ mod tests {
         let mut q = ConsentQueue::new();
         // A genuine no-undo delete: the footer never grants standing authority.
         let id = enqueue(&mut q, "org.arlen.files", ActionKind::PermanentDelete, Some("/x"));
-        let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedRemembered).unwrap();
+        let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedRemembered, 0).unwrap();
         assert_eq!(d.reply, ConsentOutcome::AllowedOnce, "remember is downgraded to once");
         assert!(d.grant.is_none(), "an irreversible scope mints no standing grant");
         assert!(q.is_empty());
+    }
+
+    /// The window is gated the same as remembering. Bounding how long an
+    /// elevation lasts does not turn the acts inside it into one decision, so a
+    /// scope that is allow-once when remembered is allow-once when windowed.
+    #[test]
+    fn a_window_on_an_irreversible_scope_downgrades_to_allow_once() {
+        let mut q = ConsentQueue::new();
+        let id = enqueue(&mut q, "org.arlen.files", ActionKind::PermanentDelete, Some("/x"));
+        let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedForWindow, 0).unwrap();
+        assert_eq!(d.reply, ConsentOutcome::AllowedOnce, "a window is downgraded too");
+        assert!(d.grant.is_none(), "and nothing lasting is recorded");
+    }
+
+    /// On a reversible scope the window survives the gate and records a grant
+    /// that closes on its own.
+    #[test]
+    fn a_window_on_a_reversible_scope_records_a_closing_grant() {
+        let mut q = ConsentQueue::new();
+        let id = enqueue(&mut q, "org.arlen.files", ActionKind::Ordinary, Some("/x"));
+        let now = 1_700_000_000_000_000;
+        let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedForWindow, now).unwrap();
+        assert_eq!(d.reply, ConsentOutcome::AllowedForWindow);
+        let grant = d.grant.expect("a window is recorded, unlike allow-once");
+        assert_eq!(grant.expires_at_micros, Some(now + crate::grant::GESTURE_WINDOW_MICROS));
     }
 
     #[test]
@@ -236,7 +269,7 @@ mod tests {
         // Elevated privilege is reversible-with-cost: standing authority is the
         // heavier capability surface, not this dialog footer.
         let id = enqueue(&mut q, "org.arlen.installd", ActionKind::ElevatedPrivilege, None);
-        let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedRemembered).unwrap();
+        let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedRemembered, 0).unwrap();
         assert_eq!(d.reply, ConsentOutcome::AllowedOnce);
         assert!(d.grant.is_none(), "reversible-with-cost is allow-once on the footer");
     }
@@ -245,7 +278,7 @@ mod tests {
     fn deny_resolves_without_a_grant() {
         let mut q = ConsentQueue::new();
         let id = enqueue(&mut q, "app", ActionKind::PermanentDelete, None);
-        let d = resolve_decision(&mut q, id, ConsentOutcome::Denied).unwrap();
+        let d = resolve_decision(&mut q, id, ConsentOutcome::Denied, 0).unwrap();
         assert_eq!(d.reply, ConsentOutcome::Denied);
         assert!(d.grant.is_none(), "a denial mints nothing");
     }
@@ -254,7 +287,7 @@ mod tests {
     fn allow_once_resolves_without_a_grant() {
         let mut q = ConsentQueue::new();
         let id = enqueue(&mut q, "app", ActionKind::PermanentDelete, None);
-        let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedOnce).unwrap();
+        let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedOnce, 0).unwrap();
         assert_eq!(d.reply, ConsentOutcome::AllowedOnce);
         assert!(d.grant.is_none(), "allow-once records no grant");
     }
@@ -263,8 +296,8 @@ mod tests {
     fn an_unknown_id_resolves_to_none() {
         let mut q = ConsentQueue::new();
         let id = enqueue(&mut q, "app", ActionKind::PermanentDelete, None);
-        resolve_decision(&mut q, id, ConsentOutcome::Denied).unwrap();
+        resolve_decision(&mut q, id, ConsentOutcome::Denied, 0).unwrap();
         // Already resolved.
-        assert!(resolve_decision(&mut q, id, ConsentOutcome::Denied).is_none());
+        assert!(resolve_decision(&mut q, id, ConsentOutcome::Denied, 0).is_none());
     }
 }
