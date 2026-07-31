@@ -137,6 +137,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "arlen-cookbook-registry"
+version = "0.1.0"
+dependencies = [
+ "arlen-cookbook-resolve",
+ "dirs 6.0.0",
+ "serde",
+ "sha2",
+ "toml",
+]
+
+[[package]]
 name = "arlen-cookbook-resolve"
 version = "0.1.0"
 dependencies = [
@@ -936,6 +947,7 @@ version = "0.1.0"
 dependencies = [
  "arlen-consent-contract",
  "arlen-cookbook-index",
+ "arlen-cookbook-registry",
  "arlen-cookbook-resolve",
  "arlen-cookbook-sign",
  "arlen-forage-bridge-install",
