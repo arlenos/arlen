@@ -59,7 +59,7 @@
     value,
     options,
     ariaLabel,
-    width = "var(--width-row-control, 200px)",
+    width = "var(--control-width, var(--width-row-control, 200px))",
     placeholder = "None",
     onchange,
     disabled = false,
