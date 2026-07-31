@@ -204,12 +204,12 @@
   .rg {
     flex-shrink: 0;
     width: 1.1rem;
-    padding-left: 0.35rem;
+    padding-inline-start: 0.35rem;
     user-select: none;
     color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
   }
   .rc {
-    padding-right: 0.5rem;
+    padding-inline-end: 0.5rem;
     word-break: break-word;
   }
   .row.add {

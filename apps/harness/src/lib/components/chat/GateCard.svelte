@@ -188,7 +188,7 @@
     gap: 0.4rem;
     font-size: var(--text-xs);
     color: #8fae74;
-    margin-right: auto;
+    margin-inline-end: auto;
   }
   .done-note .via {
     color: color-mix(in srgb, var(--foreground) 50%, transparent);
@@ -199,7 +199,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.2rem;
-    margin-left: 0.125rem;
+    margin-inline-start: 0.125rem;
     padding: 0.05rem 0.35rem;
     border-radius: var(--radius-chip);
     background: color-mix(in srgb, #8fae74 16%, transparent);

@@ -46,7 +46,7 @@
     flex-direction: column;
     gap: 0.15rem;
     padding: 0.75rem 0.6rem;
-    border-right: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+    border-inline-end: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
   }
   .place {
     display: flex;
@@ -57,7 +57,7 @@
     border: none;
     border-radius: var(--radius-input);
     background: transparent;
-    text-align: left;
+    text-align: start;
     font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 82%, transparent);
     cursor: pointer;

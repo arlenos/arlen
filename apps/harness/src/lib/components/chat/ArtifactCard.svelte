@@ -42,7 +42,7 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-input);
     background: transparent;
-    text-align: left;
+    text-align: start;
     transition:
       background-color var(--duration-fast) var(--ease-out),
       border-color var(--duration-fast) var(--ease-out);

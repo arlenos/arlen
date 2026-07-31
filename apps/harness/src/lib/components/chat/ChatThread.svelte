@@ -253,7 +253,7 @@
   }
   .find-count {
     min-width: 4rem;
-    text-align: right;
+    text-align: end;
     font-size: var(--text-xs);
     white-space: nowrap;
     font-variant-numeric: tabular-nums;

@@ -156,7 +156,7 @@
   }
 
   .path { color: var(--blue); }
-  .git { color: var(--green); margin-left: 0.75rem; }
+  .git { color: var(--green); margin-inline-start: 0.75rem; }
   .cmd { color: var(--fg); }
   .pchar { color: var(--green); }
   .pchar.agent { color: var(--accent); }
@@ -173,7 +173,7 @@
   /* B — classic: at rest pure, chrome on hover/focus, hairline divider. */
   .b-block {
     padding: 0.25rem 0.875rem;
-    border-left: 2px solid transparent;
+    border-inline-start: 2px solid transparent;
   }
   .b-block + .b-block {
     border-top: 1px solid color-mix(in srgb, var(--fg) 7%, transparent);

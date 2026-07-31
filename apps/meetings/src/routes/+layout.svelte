@@ -45,7 +45,7 @@
   <header
     onpointerdown={startDrag}
     ondblclick={toggleMax}
-    class="flex h-10 shrink-0 items-center justify-between border-b border-border bg-background pl-3 pr-1"
+    class="flex h-10 shrink-0 items-center justify-between border-b border-border bg-background ps-3 pe-1"
   >
     <span class="select-none text-sm font-medium text-foreground">{$t("mt.title")}</span>
     <WindowButtons />

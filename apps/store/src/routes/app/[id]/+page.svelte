@@ -320,7 +320,7 @@
     border: 1px solid transparent;
     border-radius: var(--radius-input);
     background: transparent;
-    text-align: left;
+    text-align: start;
     cursor: pointer;
   }
   .variant:hover {

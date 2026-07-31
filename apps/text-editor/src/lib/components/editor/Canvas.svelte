@@ -243,9 +243,9 @@
     display: flex;
     flex-direction: column;
     padding: 0.85rem 0.5rem 0.85rem 0.75rem;
-    text-align: right;
+    text-align: end;
     user-select: none;
-    border-right: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+    border-inline-end: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
   }
   .ln {
     font-variant-numeric: tabular-nums;
@@ -293,7 +293,7 @@
     flex-direction: column;
     flex-shrink: 0;
     padding: 0 0.9rem 0 0.25rem;
-    text-align: right;
+    text-align: end;
     user-select: none;
   }
   .cf-ln {

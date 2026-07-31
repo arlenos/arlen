@@ -110,7 +110,7 @@
   th,
   td {
     padding: 0.375rem 0.625rem;
-    text-align: left;
+    text-align: start;
     border-bottom: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
     white-space: nowrap;
   }
