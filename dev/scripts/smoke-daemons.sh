@@ -14,6 +14,15 @@
 # dev's real sockets, and is killed after it has either bound its socket or run
 # out of time. Nothing is installed, nothing persists.
 #
+# What this does NOT do is read the logs. Tried it: every daemon here starts
+# ALONE in its own throwaway runtime dir, so the ones with peers log exactly what
+# you would expect - anomalyd cannot reach the audit socket, code-indexer cannot
+# reach the event bus, the graph writer logs ERROR reconnecting to a bus nobody
+# started. Surfacing that is three lines of noise on a healthy run, and noise on
+# a healthy run is how a person learns to stop reading the output. The health
+# signal available to a single-daemon smoke is the one it already asserts: it
+# came up, it bound what it claims, and it was still alive after.
+#
 # Daemons NOT started here each carry their reason in SKIPPED below, and
 # `check-smoke-coverage.py` fails if a daemon binary is in neither list. This
 # comment used to carry the reasons in prose and named eight of the twenty-four
