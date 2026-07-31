@@ -110,12 +110,11 @@ impl InstallHelper {
 
     /// Check if a system-wide app is installed.
     async fn is_installed(&self, app_id: &str) -> bool {
-        install::validate_app_id(app_id).is_ok() && {
-            let base = std::env::var("ARLEN_SYSTEM_APPS_DIR")
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|_| std::path::PathBuf::from("/usr/lib/arlen/apps"));
-            base.join(app_id).exists()
-        }
+        // Through `install::apps_dir` rather than a second copy of it: this one
+        // had the default path written out again as a literal, and now that the
+        // override is debug-gated in one place a duplicate would answer a
+        // different question in a release build than the install path does.
+        install::validate_app_id(app_id).is_ok() && install::apps_dir().join(app_id).exists()
     }
 }
 
