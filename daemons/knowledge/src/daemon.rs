@@ -864,6 +864,7 @@ async fn handle_provenance_read(
     peer: &Option<WritePeer>,
     auth: &Arc<Mutex<Authenticator>>,
     graph: &GraphHandle,
+    uses: &Arc<Mutex<crate::lcg::UseTally>>,
 ) -> String {
     let Ok(req) = serde_json::from_slice::<ProvenanceRequest>(body) else {
         return PROVENANCE_OUT_OF_SCOPE.to_string();
@@ -930,6 +931,11 @@ async fn handle_provenance_read(
             .collect(),
         Err(_) => return PROVENANCE_OUT_OF_SCOPE.to_string(),
     };
+    // The read completed under exactly one label - the one the scope check bound -
+    // so that is the capability exercised, not the whole readable set that was
+    // probed to find it.
+    record_capability_uses(graph, uses, &token.app_id, &[format!("system.{label}")]).await;
+
     let (visible, accessed_by_others) = co_tenant_filter(&actors, &token.app_id);
     serde_json::json!({ "actors": visible, "accessed_by_others": accessed_by_others }).to_string()
 }
@@ -951,6 +957,7 @@ async fn handle_typed_read(
     peer: Option<&WritePeer>,
     auth: &Arc<Mutex<Authenticator>>,
     graph: &GraphHandle,
+    uses: &Arc<Mutex<crate::lcg::UseTally>>,
 ) -> String {
     let Ok(req) = serde_json::from_slice::<crate::typed_read::TypedReadRequest>(body) else {
         return PROVENANCE_OUT_OF_SCOPE.to_string();
@@ -982,8 +989,15 @@ async fn handle_typed_read(
     let Some(cypher) = crate::typed_read::build_cypher(&validated) else {
         return PROVENANCE_OUT_OF_SCOPE.to_string();
     };
+    // The validated label carries the GRANTED casing (validation binds it from the
+    // readable set), so the capability recorded here is the same string the write
+    // and raw-read paths record.
+    let exercised = format!("system.{}", validated.label);
     match graph.query_rows_json(cypher).await {
-        Ok(json) => json,
+        Ok(json) => {
+            record_capability_uses(graph, uses, &token.app_id, &[exercised]).await;
+            json
+        }
         Err(_) => PROVENANCE_OUT_OF_SCOPE.to_string(),
     }
 }
@@ -3075,7 +3089,7 @@ async fn handle_client(
             } else {
                 match tokio::time::timeout(
                     Duration::from_millis(500),
-                    handle_provenance_read(&buf[1..], &peer, &auth, &graph),
+                    handle_provenance_read(&buf[1..], &peer, &auth, &graph, &uses),
                 )
                 .await
                 {
@@ -3110,7 +3124,7 @@ async fn handle_client(
             } else {
                 match tokio::time::timeout(
                     Duration::from_millis(500),
-                    handle_typed_read(&buf[1..], peer.as_ref(), &auth, &graph),
+                    handle_typed_read(&buf[1..], peer.as_ref(), &auth, &graph, &uses),
                 )
                 .await
                 {
@@ -4421,18 +4435,30 @@ mod tests {
         let auth = Arc::new(Mutex::new(Authenticator::new()));
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+        // Past its interval, so a recorded use would flush and be visible.
+        let uses = Arc::new(Mutex::new(crate::lcg::UseTally::new(
+            crate::time::now().0 - crate::lcg::USE_FLUSH_INTERVAL_MICROS,
+        )));
         // A malformed body never reaches the token guard: uniform OutOfScope.
         assert_eq!(
-            handle_typed_read(b"not json", None, &auth, &graph).await,
+            handle_typed_read(b"not json", None, &auth, &graph, &uses).await,
             PROVENANCE_OUT_OF_SCOPE
         );
         // A well-formed request with no attested peer is also the uniform denial
         // (no oracle distinguishing it from an out-of-scope or absent read).
         let body = br#"{"label":"CommandHistory","filters":[{"field":"session_id","value":"s1"}],"select":["command"]}"#;
         assert_eq!(
-            handle_typed_read(body, None, &auth, &graph).await,
+            handle_typed_read(body, None, &auth, &graph, &uses).await,
             PROVENANCE_OUT_OF_SCOPE
         );
+
+        // A denied read is not use, on this op as on every other.
+        let rows = graph
+            .query_rows_json("MATCH (u:CapabilityUse) RETURN count(*)".to_string())
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&rows).unwrap();
+        assert_eq!(parsed["rows"][0][0], 0, "a refused typed read counted nothing");
     }
 
     #[tokio::test]
