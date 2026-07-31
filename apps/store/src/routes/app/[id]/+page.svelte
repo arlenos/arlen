@@ -19,12 +19,20 @@
     trustFor,
     observedFor,
     installApp,
+    trustOf,
+    isInstalled,
     type TrustSignals,
     type ObservedLine,
   } from "$lib/stores/catalog";
 
   const id = $derived($page.params.id);
   const app = $derived($apps.find((a) => a.id === id) ?? null);
+
+  // The chosen install variant; the capability panel below follows it, so
+  // "install the least-privilege variant" is a real, visible choice (§9.1).
+  let chosen = $state(0);
+  const variant = $derived(app ? (app.variants[chosen] ?? app.variants[0]) : null);
+  const leastWeight = $derived(app ? Math.min(...app.variants.map((v) => v.capWeight)) : 0);
 
   let trust = $state<TrustSignals | null>(null);
   let observed = $state<ObservedLine[]>([]);
@@ -37,16 +45,35 @@
   $effect(() => {
     const a = app;
     if (!a) return;
+    chosen = a.defaultVariant;
     void trustFor(a.id).then((v) => (trust = v));
-    if (a.installed) void observedFor(a.id).then((v) => (observed = v));
+    if (isInstalled(a)) void observedFor(a.id).then((v) => (observed = v));
     else observed = [];
   });
+
+  function sourceLabel(s: string): string {
+    return s === "forage" ? $t("st.src.forage") : s === "flathub" ? $t("st.src.flathub") : $t("st.src.debian");
+  }
+
+  // The variant row's one meta line: the least-privilege marker (only when the
+  // variants actually differ), else the plain footprint, plus installed.
+  function variantMeta(v: (typeof app extends null ? never : NonNullable<typeof app>)["variants"][number]): string {
+    const a = app;
+    if (!a) return "";
+    const parts: string[] = [];
+    const differ = a.variants.some((o) => o.capWeight !== leastWeight);
+    if (v.capWeight === leastWeight && differ) parts.push($t("st.leastPrivilege"));
+    else parts.push($t("st.capCount", { n: v.caps.filter((c) => !c.negative).length }));
+    if (v.installed) parts.push($t("st.installed").toLowerCase());
+    return parts.join(", ");
+  }
 </script>
 
 <div class="st-app">
   <StoreHeader />
 
   <main class="st-main">
+  <div class="st-content">
     {#if $catalogMocked}
       <p class="sample">{$t("st.sample")}</p>
     {/if}
@@ -56,26 +83,53 @@
       {$t("st.back")}
     </button>
 
-    {#if app}
+    {#if app && variant}
       <header class="head">
         <span class="tile" style="background:{app.icon}" aria-hidden="true"></span>
         <div class="head-text">
           <h1 class="name">{app.name}</h1>
           <p class="summary">{app.summary}</p>
-          <span class="chips"><Badge variant="outline">{$t(`st.tier.${app.tier}`)}</Badge></span>
+          {#if trustOf(app) === "community"}
+            <span class="chips"><Badge variant="outline">{$t("st.trust.community")}</Badge></span>
+          {/if}
         </div>
         <span class="head-action">
-          {#if app.installed}
+          {#if variant.installed}
             <Badge variant="success" class="h-control px-3">{$t("st.installed")}</Badge>
           {:else}
-            <Button id="install" onclick={() => installApp(app.id)}>{$t("st.install")}</Button>
+            <Button id="install" onclick={() => installApp(app.id, variant.source)}>{$t("st.install")}</Button>
           {/if}
         </span>
       </header>
 
+      {#if app.variants.length > 1}
+        <section class="panel" aria-labelledby="variants-label">
+          <div class="panel-label" id="variants-label">{$t("st.installFrom")}</div>
+          <div class="variants" role="radiogroup" aria-label={$t("st.installFrom")}>
+            {#each app.variants as v, i (v.source)}
+              <button
+                type="button"
+                class="variant"
+                class:on={chosen === i}
+                role="radio"
+                aria-checked={chosen === i}
+                id={`variant-${v.source}`}
+                onclick={() => (chosen = i)}
+              >
+                <span class="variant-name">{sourceLabel(v.source)}</span>
+                <span class="variant-meta">{variantMeta(v)}</span>
+                {#if v.trust === "community"}
+                  <Badge variant="outline">{$t("st.trust.community")}</Badge>
+                {/if}
+              </button>
+            {/each}
+          </div>
+        </section>
+      {/if}
+
       <section class="panel" aria-labelledby="reach-label">
         <div class="panel-label" id="reach-label">{$t("st.reach.title")}</div>
-        {#each app.caps as cap (cap.text)}
+        {#each variant.caps as cap (cap.text)}
           <div class="cap" class:negative={cap.negative}>
             {#if cap.negative}
               <Minus size={14} strokeWidth={2} aria-hidden="true" />
@@ -85,7 +139,7 @@
             <span>{cap.text}</span>
           </div>
         {/each}
-        {#if app.enrolledDeb}
+        {#if variant.enrolledDeb}
           <p class="cap-note">{$t("st.reach.confined")}</p>
         {/if}
       </section>
@@ -148,6 +202,7 @@
     {:else}
       <p class="quiet">{$t("st.notFound")}</p>
     {/if}
+  </div>
   </main>
 </div>
 
@@ -159,10 +214,14 @@
     background: var(--color-bg-app);
     color: var(--color-fg-primary);
   }
+  /* The scroller spans the window so the scrollbar sits at the edge; the
+     content column is capped inside it. */
   .st-main {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+  }
+  .st-content {
     width: 100%;
     max-width: 46rem;
     margin: 0 auto;
@@ -244,6 +303,42 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+  }
+
+  /* The install-variant rows: the established selection language (border +
+     wash on the active one). The source is the choice here, so it is named. */
+  .variants {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .variant {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-input);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+  }
+  .variant:hover {
+    background: color-mix(in srgb, var(--color-fg-primary) 5%, transparent);
+  }
+  .variant.on {
+    border-color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+  }
+  .variant-name {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--color-fg-primary);
+  }
+  .variant-meta {
+    flex: 1;
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--color-fg-primary) 52%, transparent);
   }
 
   .cap {

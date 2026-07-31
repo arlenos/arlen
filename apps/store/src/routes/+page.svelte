@@ -9,7 +9,16 @@
   import StoreHeader from "$lib/components/StoreHeader.svelte";
   import AppCard from "$lib/components/AppCard.svelte";
   import { t } from "$lib/i18n/messages";
-  import { apps, catalogMocked, loadCatalog, COLLECTIONS, type StoreApp } from "$lib/stores/catalog";
+  import {
+    apps,
+    catalogMocked,
+    loadCatalog,
+    COLLECTIONS,
+    facetFlags,
+    trustOf,
+    defaultVariantOf,
+    type StoreApp,
+  } from "$lib/stores/catalog";
 
   onMount(loadCatalog);
 
@@ -26,6 +35,8 @@
   ];
   let active = $state<Set<FacetKey>>(new Set());
   let leastPrivilege = $state(false);
+  // Default-safe (§8.1): community-tier apps are hidden until revealed.
+  let showCommunity = $state(false);
   function toggleFacet(key: FacetKey): void {
     const next = new Set(active);
     if (next.has(key)) next.delete(key);
@@ -33,16 +44,17 @@
     active = next;
   }
 
+  const visible = $derived($apps.filter((a) => showCommunity || trustOf(a) !== "community"));
   const filtering = $derived(query.trim().length > 0 || active.size > 0 || leastPrivilege);
   const results = $derived.by(() => {
-    let list = $apps.filter((a) => a.name.toLowerCase().includes(query.trim().toLowerCase()));
-    for (const f of active) list = list.filter((a) => a[f]);
-    if (leastPrivilege) list = [...list].sort((a, b) => a.capWeight - b.capWeight);
+    let list = visible.filter((a) => a.name.toLowerCase().includes(query.trim().toLowerCase()));
+    for (const f of active) list = list.filter((a) => facetFlags(a)[f]);
+    if (leastPrivilege) list = [...list].sort((a, b) => defaultVariantOf(a).capWeight - defaultVariantOf(b).capWeight);
     return list;
   });
 
   function byId(id: string): StoreApp | undefined {
-    return $apps.find((a) => a.id === id);
+    return visible.find((a) => a.id === id);
   }
   function open(id: string): void {
     void goto(`/app/${id}`);
@@ -53,6 +65,7 @@
   <StoreHeader />
 
   <main class="st-main">
+  <div class="st-content">
     {#if $catalogMocked}
       <p class="sample">{$t("st.sample")}</p>
     {/if}
@@ -84,6 +97,16 @@
       >
         {$t("st.sort.leastPrivilege")}
       </button>
+      <button
+        type="button"
+        class="chip"
+        class:on={showCommunity}
+        aria-pressed={showCommunity}
+        id="facet-community"
+        onclick={() => (showCommunity = !showCommunity)}
+      >
+        {$t("st.facet.community")}
+      </button>
     </div>
 
     {#if filtering}
@@ -108,6 +131,7 @@
         {/if}
       {/each}
     {/if}
+  </div>
   </main>
 </div>
 
@@ -119,10 +143,14 @@
     background: var(--color-bg-app);
     color: var(--color-fg-primary);
   }
+  /* The scroller spans the window so the scrollbar sits at the edge; the
+     content column is capped inside it. */
   .st-main {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+  }
+  .st-content {
     width: 100%;
     max-width: 46rem;
     margin: 0 auto;
