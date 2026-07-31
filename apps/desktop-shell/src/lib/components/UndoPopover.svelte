@@ -5,7 +5,7 @@
   /// newest reversible act in one gesture (Raskin: never a warning where an
   /// undo will do). Honest vocabulary: entries name the inverse as the act it
   /// performs ("Put back", "Restore"), never a blanket "Undo everything".
-  import { Undo2, Check, AlertTriangle } from "lucide-svelte";
+  import { Undo2, Check, AlertTriangle, Folder, Sparkles, SquareTerminal, SlidersHorizontal } from "lucide-svelte";
   import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
   import {
@@ -16,9 +16,16 @@
     type UndoEntry,
   } from "$lib/stores/undoHistory";
 
-  const PRODUCER_LABELS: Record<UndoEntry["producer"], string> = {
-    agent: "Agent",
+  // Producer as a small icon, not a text tag - the sentence carries the story.
+  const PRODUCER_ICONS: Record<UndoEntry["producer"], typeof Folder> = {
+    files: Folder,
+    agent: Sparkles,
+    terminal: SquareTerminal,
+    settings: SlidersHorizontal,
+  };
+  const PRODUCER_NAMES: Record<UndoEntry["producer"], string> = {
     files: "Files",
+    agent: "The assistant",
     terminal: "Terminal",
     settings: "Settings",
   };
@@ -37,7 +44,7 @@
   );
 </script>
 
-<ShellPopover id="undo" width={400} right={116} bodyPadding="12px" bodyGap="8px">
+<ShellPopover id="undo" width={360} right={116} bodyPadding="12px" bodyGap="8px">
   {#snippet header()}
     <PopoverHeader icon={Undo2} title="Recent actions" />
   {/snippet}
@@ -56,8 +63,11 @@
   {:else if $undoHistory}
     <div class="undo-list">
       {#each $undoHistory as e (e.opId)}
+        {@const ProdIcon = PRODUCER_ICONS[e.producer]}
         <div class="undo-row" class:done={e.state === "done"}>
-          <span class="undo-prod">{PRODUCER_LABELS[e.producer]}</span>
+          <span class="undo-prod" aria-label={PRODUCER_NAMES[e.producer]}>
+            <ProdIcon size={13} strokeWidth={1.75} />
+          </span>
           <span class="undo-text">
             <span class="undo-verb">{e.verb}</span>
             <span class="undo-object">{e.object}</span>
@@ -130,8 +140,8 @@
      row grid keeps one seam because the action column is fixed. */
   .undo-row {
     display: grid;
-    grid-template-columns: 4.4rem minmax(0, 1fr) 2.2rem 7.5rem;
-    align-items: center;
+    grid-template-columns: 1.25rem minmax(0, 1fr) 2.2rem 7.5rem;
+    align-items: baseline;
     column-gap: 0.5rem;
     padding: 0.35rem 0.25rem;
     border-radius: var(--radius-chip, 4px);
@@ -143,20 +153,15 @@
     opacity: 0.55;
   }
   .undo-prod {
-    font-size: var(--text-2xs);
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    display: inline-flex;
+    align-self: start;
+    margin-top: 0.2rem;
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
+  /* The sentence wraps rather than truncating - the object is the point. */
   .undo-text {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.3rem;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.35;
   }
   .undo-verb {
     font-size: var(--text-xs);
@@ -166,9 +171,6 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: var(--color-fg-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .undo-time {
     justify-self: end;
