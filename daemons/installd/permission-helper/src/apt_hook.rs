@@ -7,16 +7,29 @@
 //! `.deb` package name is exactly the key of the curated starting profiles).
 //!
 //! The grammar here was CAPTURED FROM A REAL apt run in a `debian:trixie`
-//! container (not built against the doc alone), VERSION 3:
+//! container (not built against the doc alone). Re-captured since, across all
+//! four operations, because the first capture happened to be a REINSTALL and its
+//! line shape (`= 2.10-5 amd64 none`) is not what a fresh install produces:
 //!
 //! ```text
 //! VERSION 3
 //! APT::Architecture=amd64
 //! ... (config section) ...
 //!                                          <- blank line
-//! hello 2.10-5 amd64 none = 2.10-5 amd64 none /var/cache/apt/archives/hello_2.10-5_amd64.deb
-//! hello 2.10-5 amd64 none = 2.10-5 amd64 none **CONFIGURE**
+//! install:   hello - - none < 2.10-5 amd64 none /var/cache/apt/archives/hello_2.10-5_amd64.deb
+//!            hello - - none < 2.10-5 amd64 none **CONFIGURE**
+//! reinstall: hello 2.10-5 amd64 none = 2.10-5 amd64 none /var/cache/.../hello_2.10-5_amd64.deb
+//! remove:    hello 2.10-5 amd64 none > - - none **REMOVE**
+//! purge:     hello 2.10-5 amd64 none > - - none **REMOVE**
 //! ```
+//!
+//! **`apt-get purge` emits `**REMOVE**`, not `**PURGE**`** - verified directly,
+//! both for a purge of an installed package and for a purge of one already
+//! removed. [`Action::Purge`] is therefore not reachable from this hook on
+//! trixie. It is kept because the field is documented as a possible value and a
+//! stream that did carry it must not fail to parse, but anything building
+//! UNENROLLMENT has to key off [`Action::Remove`]: keying off `Purge` would
+//! compile, look correct, and never once fire.
 //!
 //! A v3 package line is nine whitespace-separated fields:
 //! `name old-ver old-arch old-multiarch compare new-ver new-arch new-multiarch action`.
@@ -36,7 +49,9 @@ pub enum Action {
     Configure,
     /// Remove the package (unenroll).
     Remove,
-    /// Purge the package and its config (unenroll).
+    /// Purge the package and its config. Documented by the format, but apt does
+    /// not emit it: a real `apt-get purge` produces `**REMOVE**`. Parse it rather
+    /// than reject it; do not build an unenroll trigger on it.
     Purge,
 }
 
@@ -262,6 +277,62 @@ APT::Sandbox::User=_apt\n\
 \n\
 hello 2.10-5 amd64 none = 2.10-5 amd64 none /var/cache/apt/archives/hello_2.10-5_amd64.deb\n\
 hello 2.10-5 amd64 none = 2.10-5 amd64 none **CONFIGURE**\n";
+
+    /// Verbatim from `apt-get install hello` in a `debian:trixie` container, hook
+    /// configured at Version 3. Pinned as bytes rather than paraphrased: the whole
+    /// point of a captured grammar is that it is not what someone believed the
+    /// format was.
+    #[test]
+    fn a_real_v3_fresh_install_stream_parses() {
+        let stream = "VERSION 3\nAPT::Architecture=amd64\nquiet=2\n\n\
+hello - - none < 2.10-5 amd64 none /var/cache/apt/archives/hello_2.10-5_amd64.deb\n\
+hello - - none < 2.10-5 amd64 none **CONFIGURE**\n";
+        let changes = parse_pre_install_pkgs(stream).expect("the captured stream parses");
+        assert_eq!(changes.len(), 2);
+        assert_eq!(changes[0].name, "hello");
+        // A fresh install carries `-` for the old version AND `-` for the old
+        // architecture; the reinstall shape the first capture recorded does not.
+        assert_eq!(changes[0].old_version, None);
+        assert_eq!(changes[0].new_version.as_deref(), Some("2.10-5"));
+        assert_eq!(
+            changes[0].action,
+            Action::Install("/var/cache/apt/archives/hello_2.10-5_amd64.deb".into())
+        );
+        assert_eq!(changes[1].action, Action::Configure);
+    }
+
+    /// Verbatim from `apt-get purge hello` on an INSTALLED package, v3. apt says
+    /// `**REMOVE**`; `**PURGE**` never appears.
+    #[test]
+    fn a_real_purge_reports_itself_as_a_remove() {
+        let stream =
+            "VERSION 3\nquiet=2\n\nhello 2.10-5 amd64 none > - - none **REMOVE**\n";
+        let changes = parse_pre_install_pkgs(stream).expect("the captured stream parses");
+        assert_eq!(changes[0].old_version.as_deref(), Some("2.10-5"));
+        assert_eq!(changes[0].new_version, None);
+        assert_eq!(
+            changes[0].action,
+            Action::Remove,
+            "an unenroll trigger keyed on Action::Purge would never fire"
+        );
+    }
+
+    /// Verbatim from the same operations with the hook at Version 2, which drops
+    /// the arch and multiarch fields.
+    #[test]
+    fn the_real_v2_shapes_parse() {
+        let stream = "VERSION 2\nquiet=2\n\n\
+hello - < 2.10-5 /var/cache/apt/archives/hello_2.10-5_amd64.deb\n\
+hello - < 2.10-5 **CONFIGURE**\n\
+hello 2.10-5 > - **REMOVE**\n";
+        let changes = parse_pre_install_pkgs(stream).expect("the captured stream parses");
+        assert_eq!(changes.len(), 3);
+        assert_eq!(changes[0].old_version, None);
+        assert_eq!(changes[0].new_version.as_deref(), Some("2.10-5"));
+        assert_eq!(changes[2].old_version.as_deref(), Some("2.10-5"));
+        assert_eq!(changes[2].new_version, None);
+        assert_eq!(changes[2].action, Action::Remove);
+    }
 
     #[test]
     fn parses_the_real_v3_stream() {
