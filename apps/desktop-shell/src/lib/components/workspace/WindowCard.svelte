@@ -219,7 +219,7 @@
     color: var(--color-fg-inverse);
     font-size: 11px;
     font-weight: 600;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-sm);
     z-index: 1;
   }
 
