@@ -14,8 +14,16 @@ export interface ProjectsSection {
   auto_promote_threshold?: number;
 }
 
+/// Timeline capture exclusions (KA-R8, the anti-Recall half): apps and paths
+/// the daemon must not record AT CAPTURE, not merely hide.
+export interface TimelineSection {
+  excluded_apps?: string[];
+  excluded_paths?: string[];
+}
+
 export interface GraphConfig {
   projects?: ProjectsSection;
+  timeline?: TimelineSection;
 }
 
 export const PROJECTS_DEFAULTS = {
