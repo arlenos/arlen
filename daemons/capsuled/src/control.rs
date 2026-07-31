@@ -92,6 +92,52 @@ mod tests {
         }
     }
 
+    /// `Mint` is the only request carrying real structure, a whole frozen slice
+    /// and the mint terms, and it was the one the round-trip above skipped. The
+    /// two it did walk are a unit variant and a single string, which cannot
+    /// catch a field that fails to deserialize; this can. It matters more than
+    /// the others because a mint that does not survive the socket fails on the
+    /// deliberate human share action, after the slice has been materialized.
+    #[test]
+    fn a_mint_request_survives_the_socket_with_its_slice_intact() {
+        use arlen_capsule::scope::CapsuleScope;
+        use arlen_capsule::slice::{SliceNode, SliceRelation, SliceValue};
+
+        let mut fields = std::collections::BTreeMap::new();
+        fields.insert("path".to_string(), SliceValue::Text("/work/notes.md".into()));
+        fields.insert("size".to_string(), SliceValue::Int(42));
+        fields.insert("pinned".to_string(), SliceValue::Bool(true));
+        fields.insert("archived_at".to_string(), SliceValue::Null);
+
+        let req = ControlRequest::Mint {
+            slice: FrozenSlice {
+                nodes: vec![SliceNode {
+                    id: "/work/notes.md".into(),
+                    label: "File".into(),
+                    fields,
+                }],
+                relations: vec![SliceRelation {
+                    from: "/work/notes.md".into(),
+                    rel_type: "FILE_PART_OF".into(),
+                    to: "project-1".into(),
+                }],
+            },
+            params: MintParams {
+                scope: CapsuleScope { roots: vec!["/work".into()], expand_hops: 1 },
+                audience_hex: "ab".repeat(32),
+                expires_at_micros: 1_800_000_000_000_000,
+                max_ops: 5,
+                originating_user: "tim".into(),
+                label: "notes for review".into(),
+                scope_summary: "1 file under /work".into(),
+            },
+        };
+
+        let json = serde_json::to_string(&req).unwrap();
+        let back: ControlRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, req, "a mint request does not survive the control socket");
+    }
+
     #[test]
     fn responses_round_trip_through_json() {
         let resp = ControlResponse::Capsules(vec![CapsuleListEntry {
