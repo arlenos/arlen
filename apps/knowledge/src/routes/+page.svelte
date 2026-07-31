@@ -11,11 +11,13 @@
   import KnowledgeDetail from "$lib/components/KnowledgeDetail.svelte";
   import TimelineView from "$lib/components/TimelineView.svelte";
   import ProjectsView from "$lib/components/ProjectsView.svelte";
+  import SearchView from "$lib/components/SearchView.svelte";
   import { onMount } from "svelte";
   import { knowledgeAdapter, mocked } from "$lib/adapter";
   import { labelKeyFor, emptyKeyFor } from "$lib/locations";
   import { days, flatEvents, loadTimeline, type TimelineEvent } from "$lib/stores/timeline";
   import { asOf, projectInfo, type ProjectInfo } from "$lib/stores/projects";
+  import { query as searchQuery, type SearchResult } from "$lib/stores/search";
   import { initAppMenu } from "$lib/menu";
   import { t } from "$lib/i18n/messages";
 
@@ -39,6 +41,21 @@
     selectedEvent = null;
     selectedProject = null;
     void ctrl.navigate(location);
+  }
+
+  // A search hit opens the plain entry panel with its display shape.
+  function onSearchSelect(r: SearchResult): void {
+    selectedProject = null;
+    selectedEvent = null;
+    selected = {
+      name: r.title,
+      kind: "file",
+      size: null,
+      modified_unix: r.at ?? null,
+      is_hidden: false,
+      readonly: true,
+      symlink_target: null,
+    };
   }
 
   // A projects selection is either a project (its info panel) or a deeper
@@ -79,10 +96,15 @@
     <main class="kn-main">
     <header class="kn-head">
       <h1 class="kn-h1">{$t(labelKeyFor($path))}</h1>
-      <!-- Timeline and Projects carry their own example-data line. -->
-      {#if $mocked && $path !== "timeline" && $path !== "projects"}<span class="kn-sample">{$t("k.sample")}</span>{/if}
+      <!-- Timeline, Projects and the search surface carry their own
+           example-data line. -->
+      {#if $mocked && $path !== "timeline" && $path !== "projects" && $path !== "searches" && $searchQuery.trim().length === 0}<span class="kn-sample">{$t("k.sample")}</span>{/if}
     </header>
-    {#if $path === "timeline"}
+    {#if $searchQuery.trim().length > 0 || $path === "searches"}
+      <!-- The titlebar query owns the content area wherever you are; the
+           Searches place shows the same surface at rest (the saved list). -->
+      <SearchView onselect={onSearchSelect} />
+    {:else if $path === "timeline"}
       <TimelineView onselect={(e) => (selectedEvent = e)} />
     {:else if $path === "projects"}
       <ProjectsView onselect={onProjectsSelect} />
