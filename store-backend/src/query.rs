@@ -158,10 +158,15 @@ pub fn widened(available: &[String], held: &[String]) -> Vec<String> {
 /// correctly is per-layer and intricate (dpkg's algorithm is famously so), and a
 /// wrong ordering either hides updates or offers downgrades. Both versions are
 /// carried so the caller can show them and let the user decide.
+/// `skipped` is what the user has already declined, per id, as the OFFERED
+/// version they declined. Keyed by that version rather than by id alone so a
+/// skip expires by itself: when the source moves on, the row comes back, which
+/// is what "stop asking until the next version" means.
 pub fn outdated(
     catalog: &Catalog,
     installed: &std::collections::BTreeMap<String, InstalledVersion>,
     held: &std::collections::BTreeMap<String, Vec<String>>,
+    skipped: &std::collections::BTreeMap<String, String>,
 ) -> Vec<PendingUpdate> {
     let mut out = Vec::new();
     for (id, have) in installed {
@@ -173,6 +178,9 @@ pub fn outdated(
         };
         if have.version.is_empty() || variant.version.is_empty() {
             continue;
+        }
+        if skipped.get(id).is_some_and(|v| v == &variant.version) {
+            continue; // Declined at exactly this offered version.
         }
         if variant.version != have.version {
             out.push(PendingUpdate {
@@ -208,6 +216,16 @@ pub enum Request {
     ListByFacet {
         /// The facet to filter by.
         facet: CapabilityFacet,
+    },
+    /// Stop offering the version currently on offer for this id.
+    ///
+    /// The version is resolved here rather than accepted from the request: a
+    /// caller passing one could park an id on a version that was never offered,
+    /// and the row would then stay hidden through however many real updates
+    /// followed.
+    SkipUpdate {
+        /// The component-id whose pending update is being declined.
+        id: ComponentId,
     },
     /// The full merged card for an id.
     AppDetail {
@@ -377,7 +395,29 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
                 catalog,
                 &crate::discover::installed_versions(),
                 &crate::discover::held_capabilities(),
+                &crate::discover::skipped_updates(),
             ))
+        }
+        Request::SkipUpdate { id } => {
+            let pending = outdated(
+                catalog,
+                &crate::discover::installed_versions(),
+                &crate::discover::held_capabilities(),
+                &crate::discover::skipped_updates(),
+            );
+            match pending.iter().find(|p| p.id == id) {
+                Some(p) => match crate::discover::skip_update(&id.0, &p.available_version) {
+                    // The remaining set, so the caller reconciles against what the
+                    // system now believes rather than against its own local removal.
+                    Ok(()) => Response::Updates(
+                        pending.into_iter().filter(|p| p.id != id).collect(),
+                    ),
+                    Err(e) => Response::Error(e),
+                },
+                // Already skipped, or never pending. Not an error: the caller's
+                // intent, that this row stops appearing, already holds.
+                None => Response::Updates(pending),
+            }
         }
         Request::AppDetail { id } => Response::Card(catalog.card(&id).cloned()),
         Request::TrustSignals { id } => match catalog.card(&id) {
@@ -478,7 +518,7 @@ mod tests {
 
     #[test]
     fn a_newer_version_on_the_installed_layer_is_an_update() {
-        let updates = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "0.9"), &BTreeMap::new());
+        let updates = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "0.9"), &BTreeMap::new(), &BTreeMap::new());
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0].installed_version, "0.9");
         assert_eq!(updates[0].available_version, "1.0");
@@ -492,7 +532,7 @@ mod tests {
     #[test]
     fn an_unstated_version_on_either_side_is_not_an_update() {
         // Installed version unknown, catalog states 1.0.
-        let updates = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, ""), &BTreeMap::new());
+        let updates = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, ""), &BTreeMap::new(), &BTreeMap::new());
         assert!(updates.is_empty(), "an unknown installed version is not an update: {updates:?}");
 
         // And the reverse: the catalog states nothing for the installed layer,
@@ -503,7 +543,7 @@ mod tests {
             flatpak,
             entry("org.x.Chat", SourceLayer::Apt, "Chatter", &[]),
         ]));
-        let updates = outdated(&catalog, &installed(SourceLayer::Apt, "0.9"), &BTreeMap::new());
+        let updates = outdated(&catalog, &installed(SourceLayer::Apt, "0.9"), &BTreeMap::new(), &BTreeMap::new());
         assert!(updates.is_empty(), "an unknown offered version is not an update: {updates:?}");
     }
 
@@ -513,7 +553,7 @@ mod tests {
     /// across a trust boundary they never agreed to.
     #[test]
     fn another_layers_version_is_not_an_update() {
-        let updates = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "1.0"), &BTreeMap::new());
+        let updates = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "1.0"), &BTreeMap::new(), &BTreeMap::new());
         assert!(
             updates.is_empty(),
             "flathub's 2.0 must not surface for an apt install: {updates:?}"
@@ -525,7 +565,7 @@ mod tests {
     #[test]
     fn an_unstated_version_is_not_a_change() {
         // The catalog states one, the lock does not.
-        assert!(outdated(&versioned_catalog(), &installed(SourceLayer::Apt, ""), &BTreeMap::new()).is_empty());
+        assert!(outdated(&versioned_catalog(), &installed(SourceLayer::Apt, ""), &BTreeMap::new(), &BTreeMap::new()).is_empty());
 
         // The lock states one, the catalog does not.
         let unversioned = Catalog::new(merge_catalog(vec![entry(
@@ -534,13 +574,13 @@ mod tests {
             "Chatter",
             &[],
         )]));
-        assert!(outdated(&unversioned, &installed(SourceLayer::Apt, "1.0"), &BTreeMap::new()).is_empty());
+        assert!(outdated(&unversioned, &installed(SourceLayer::Apt, "1.0"), &BTreeMap::new(), &BTreeMap::new()).is_empty());
     }
 
     #[test]
     fn an_app_the_catalog_dropped_is_not_reported() {
         let empty = Catalog::new(merge_catalog(vec![]));
-        assert!(outdated(&empty, &installed(SourceLayer::Apt, "1.0"), &BTreeMap::new()).is_empty());
+        assert!(outdated(&empty, &installed(SourceLayer::Apt, "1.0"), &BTreeMap::new(), &BTreeMap::new()).is_empty());
     }
 
     #[test]
@@ -553,13 +593,59 @@ mod tests {
             &versioned_catalog(),
             &installed(SourceLayer::Apt, "0.9"),
             &BTreeMap::new(),
+            &BTreeMap::new(),
         );
         assert_eq!(unknown[0].new_capabilities, None);
 
         let mut held = BTreeMap::new();
         held.insert("org.x.Chat".to_string(), vec!["network".to_string()]);
-        let known = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "0.9"), &held);
+        let known = outdated(&versioned_catalog(), &installed(SourceLayer::Apt, "0.9"), &held, &BTreeMap::new());
         assert_eq!(known[0].new_capabilities.as_deref(), Some(&[][..]));
+    }
+
+    /// A skip is keyed to the version that was declined, so it expires on its own
+    /// when the source moves on. Anything else would be a permanent mute wearing
+    /// the word "skip".
+    #[test]
+    fn a_skip_hides_only_the_version_it_declined() {
+        let mut skipped = BTreeMap::new();
+        skipped.insert("org.x.Chat".to_string(), "1.0".to_string());
+        // The catalog offers 1.0 and that is exactly what was declined.
+        assert!(outdated(
+            &versioned_catalog(),
+            &installed(SourceLayer::Apt, "0.9"),
+            &BTreeMap::new(),
+            &skipped,
+        )
+        .is_empty());
+
+        // A skip of some other version does not hide the one on offer.
+        let mut stale = BTreeMap::new();
+        stale.insert("org.x.Chat".to_string(), "0.5".to_string());
+        assert_eq!(
+            outdated(
+                &versioned_catalog(),
+                &installed(SourceLayer::Apt, "0.9"),
+                &BTreeMap::new(),
+                &stale,
+            )
+            .len(),
+            1
+        );
+
+        // Nor does a skip recorded against a different app.
+        let mut other = BTreeMap::new();
+        other.insert("org.other.App".to_string(), "1.0".to_string());
+        assert_eq!(
+            outdated(
+                &versioned_catalog(),
+                &installed(SourceLayer::Apt, "0.9"),
+                &BTreeMap::new(),
+                &other,
+            )
+            .len(),
+            1
+        );
     }
 
     #[test]
@@ -579,7 +665,7 @@ mod tests {
 
     #[test]
     fn nothing_installed_means_nothing_outdated() {
-        assert!(outdated(&versioned_catalog(), &BTreeMap::new(), &BTreeMap::new()).is_empty());
+        assert!(outdated(&versioned_catalog(), &BTreeMap::new(), &BTreeMap::new(), &BTreeMap::new()).is_empty());
     }
 
     /// The op answers the same as the function, so a caller over the socket gets

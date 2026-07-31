@@ -177,6 +177,21 @@ async fn store_outdated() -> Result<Vec<PendingUpdate>, String> {
     }
 }
 
+/// Stop offering the update currently pending for this app.
+///
+/// The backend resolves which version that is, so a caller cannot park an id on
+/// a version that was never on offer. Returns the remaining set, which is what
+/// the list should show: the frontend drops the row optimistically and this is
+/// the system's own answer to reconcile against.
+#[tauri::command]
+async fn store_skip_update(id: String) -> Result<Vec<PendingUpdate>, String> {
+    match ask(Request::SkipUpdate { id: ComponentId(id) }).await? {
+        Response::Updates(u) => Ok(u),
+        Response::Error(e) => Err(e),
+        other => Err(format!("unexpected store response: {other:?}")),
+    }
+}
+
 /// What can honestly be said about this app's observed-vs-declared standing
 /// (store-app.md section 8.2). Structured, not prose: the app renders it in its
 /// own language, and it distinguishes "no feed yet" from "nothing observed" so
@@ -215,6 +230,7 @@ pub fn run() {
             store_install,
             store_observed_vs_declared,
             store_outdated,
+            store_skip_update,
             frontend_log,
         ])
         .run(tauri::generate_context!())
