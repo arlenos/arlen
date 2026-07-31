@@ -129,17 +129,21 @@ struct NotificationsSection {
     enabled: bool,
 }
 
-/// Resolve the permissions directory.
-fn permissions_dir() -> PathBuf {
-    std::env::var("ARLEN_PERMISSIONS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/var/lib/arlen/permissions"))
-}
-
-/// Get the directory for the current user's profiles.
+/// The directory this surface reads: the SYSTEM tier for the current uid.
+///
+/// Deferred to `arlen_permissions` rather than built here. The local version
+/// hardcoded `/var/lib/arlen/permissions` - the system tier - while honouring
+/// `ARLEN_PERMISSIONS_DIR`, which overrides the USER tier, so under a test
+/// harness this surface read a directory nothing writes and reported no profiles
+/// with no error. The two tiers have two overrides, and that is the pair a second
+/// copy of the path gets wrong.
+///
+/// NOTE this still reads ONE tier: a user-tier profile under
+/// `~/.config/permissions` is invisible here, though the listing below says it
+/// lists what the user has. Fixing that is a change to what the screen shows and
+/// is left deliberate rather than folded into a path correction.
 fn user_permissions_dir() -> PathBuf {
-    let uid = unsafe { libc::getuid() };
-    permissions_dir().join(uid.to_string())
+    arlen_permissions::system_permissions_dir()
 }
 
 /// Load a raw profile from a TOML file.
@@ -196,10 +200,7 @@ pub fn get_app_permissions() -> Result<Vec<AppPermissionSummary>, String> {
 /// Get full permission details for a specific app.
 #[tauri::command]
 pub fn get_app_permission_detail(app_id: String) -> Result<AppPermissionDetail, String> {
-    let uid = unsafe { libc::getuid() };
-    let path = permissions_dir()
-        .join(uid.to_string())
-        .join(format!("{app_id}.toml"));
+    let path = user_permissions_dir().join(format!("{app_id}.toml"));
 
     let profile =
         load_raw_profile(&path).ok_or_else(|| format!("no profile for {app_id}"))?;

@@ -183,7 +183,15 @@ async fn narrow_profile(app_id: &str, capabilities: &[String], report: &mut Revo
 /// Grants are attributed to the module rather than to modulesd, so this removes
 /// one extension's authority and touches no other's.
 fn drop_consent_grants(module_id: &str, report: &mut RevokeReport) {
-    let client = arlen_consent_broker::control_client::ControlClient::at_default_path();
+    // No runtime dir means no broker socket to name, which is a reason this
+    // revoke could not run rather than a module with no grants.
+    let client = match arlen_consent_broker::control_client::ControlClient::at_default_path() {
+        Ok(c) => c,
+        Err(e) => {
+            report.failed.push(format!("consent grants: {e}"));
+            return;
+        }
+    };
     let grants = match client.list_grants() {
         Ok(g) => g,
         Err(e) => {

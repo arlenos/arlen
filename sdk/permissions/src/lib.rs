@@ -920,16 +920,29 @@ fn system_profile_path(app_id: &str) -> Option<PathBuf> {
     if !is_valid_app_id(app_id) {
         return None;
     }
+    Some(system_permissions_dir().join(format!("{app_id}.toml")))
+}
+
+/// The directory system-tier profiles live in for the current uid:
+/// `/var/lib/arlen/permissions/{uid}`, or `$ARLEN_SYSTEM_PERMISSIONS_DIR` when set
+/// (tests and dev sandboxes only, and then with no uid subdir - the override IS
+/// the directory).
+///
+/// `pub` because a surface that lists what is installed has to read this tier, and
+/// having no way to ask led the desktop shell to write the path out for itself -
+/// with the USER-tier override name attached to it, so under a test harness it
+/// reads a directory nothing writes. Two overrides that mean different tiers are
+/// exactly the pair a second copy gets wrong.
+///
+/// Infallible, unlike [`permissions_dir`]: the system tier is an absolute path
+/// that needs no home directory.
+pub fn system_permissions_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("ARLEN_SYSTEM_PERMISSIONS_DIR") {
-        return Some(PathBuf::from(dir).join(format!("{app_id}.toml")));
+        return PathBuf::from(dir);
     }
     // SAFETY: getuid never fails.
     let uid = unsafe { libc::getuid() };
-    Some(
-        PathBuf::from("/var/lib/arlen/permissions")
-            .join(uid.to_string())
-            .join(format!("{app_id}.toml")),
-    )
+    PathBuf::from("/var/lib/arlen/permissions").join(uid.to_string())
 }
 
 /// Resolve a profile across the two tiers (F3 Rung A semantics): if a root-owned
@@ -1222,6 +1235,27 @@ always_confirm_overrides = ["empty_trash"]
         for bad in ["..", "a/b", "../etc/x", "", ".hidden", "trailing.", "com.exämple.x"] {
             assert!(system_profile_path(bad).is_none(), "{bad:?} must be rejected");
         }
+    }
+
+    #[test]
+    fn the_two_tiers_have_separate_directories_and_separate_overrides() {
+        // The pair a second copy gets wrong: both tiers hold profiles named after
+        // the same app ids, so reading the wrong one shows the wrong answer with
+        // no error - and each tier has its OWN override, so honouring the user
+        // variable while reading the system path points a test at a directory
+        // nothing writes.
+        let system = system_permissions_dir();
+        let user = profile_path("com.example.notes")
+            .expect("a valid id resolves")
+            .parent()
+            .expect("a profile path has a directory")
+            .to_path_buf();
+        assert_ne!(system, user, "the tiers must not resolve to one directory");
+        // And the system path a profile lands on is inside the directory this
+        // reports, so a lister and a loader agree about where to look.
+        assert!(system_profile_path("com.example.notes")
+            .expect("a valid id resolves")
+            .starts_with(&system));
     }
 
     #[test]

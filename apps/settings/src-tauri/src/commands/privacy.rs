@@ -97,7 +97,7 @@ pub async fn restore_reach(target_app_id: String, reach: String) -> Result<Strin
 #[tauri::command]
 pub async fn revoke_consent(grant_id: String) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
-        arlen_consent_broker::ControlClient::at_default_path().revoke_grant(&grant_id)
+        arlen_consent_broker::ControlClient::at_default_path()?.revoke_grant(&grant_id)
     })
     .await
     .map_err(|e| format!("join: {e}"))?
