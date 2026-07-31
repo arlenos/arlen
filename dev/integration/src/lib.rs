@@ -1296,14 +1296,27 @@ mod module_reachability {
         // instead of `String`, because classifying transient against hard by
         // matching error text is the fragility they exist to avoid. That
         // contract change is the wiring step.
-        //
-        // `auth` is equally unreached and is NOT listed, because this test does
-        // not agree: it searches the whole tree for `auth::`, several daemons
-        // have a module by that name, and any one of them saying it makes all
-        // the others look reached. Listing it trips the stale check. `retry` is
-        // here only because that name happens to be unique. The hole is in the
-        // matcher, not in the module.
+        "daemons/bridge-ingest/auth",
         "daemons/bridge-ingest/retry",
+        // Surfaced once the matcher stopped taking another crate's module name
+        // as evidence. Each is real work waiting on the piece that would call
+        // it, named here rather than deleted, because deleting a tested core to
+        // shorten a list is the wrong direction:
+        //   code-indexer/resolve    CG-R2 query-time cross-file resolution; the
+        //                           extractor records reference names and
+        //                           nothing yet asks this to bind them.
+        //   connections/revocation  CONN-R2 exit and expiry revocation of
+        //                           derived tokens; no process-exit watcher
+        //                           calls it.
+        //   integration-packages/manifest  IP-R5's manifest, parsed by nothing
+        //                           until the installer path reaches it.
+        //   sentinel-detect/tracker the finder-tag classifier for a
+        //                           `org.arlen.Sentinel1` daemon that does not
+        //                           exist, like its siblings below.
+        "daemons/code-indexer/resolve",
+        "daemons/connections/revocation",
+        "daemons/integration-packages/manifest",
+        "daemons/sentinel-detect/tracker",
         // Diagnosed rather than assumed: the transfer daemon's live per-uid
         // listeners are deliberately deferred to PR-R1's per-uid sockets, which
         // `main.rs` states while holding a fail-closed `DeniedBroker` in the
@@ -1354,6 +1367,24 @@ mod module_reachability {
                     .next_back()
                     .is_some_and(|c| c.is_alphanumeric() || c == '_')
         })
+    }
+
+    /// A crate's published name from its `Cargo.toml`, which is what an external
+    /// caller writes in a path and is routinely not the directory name.
+    fn package_name(manifest: &Path) -> Option<String> {
+        let text = std::fs::read_to_string(manifest).ok()?;
+        for line in text.lines() {
+            let line = line.trim();
+            if let Some(rest) = line.strip_prefix("name") {
+                if let Some(v) = rest.trim_start().strip_prefix('=') {
+                    return Some(v.trim().trim_matches('"').to_string());
+                }
+            }
+            if line.starts_with('[') && line != "[package]" {
+                break;
+            }
+        }
+        None
     }
 
     /// The module names a crate root declares, as `mod x;` or `pub mod x;`.
@@ -1416,12 +1447,31 @@ mod module_reachability {
                     // Its own file and its own directory do not count as callers.
                     let own_file = c.join(format!("src/{m}.rs"));
                     let own_dir = c.join("src").join(&m);
-                    let needle = format!("{m}::");
+                    // Reached means something PATHS INTO it, and the path is
+                    // scoped. Inside its own crate a bare `m::` is that path;
+                    // from outside it has to be the crate's published name.
+                    // Searching the whole tree for a bare `m::` was too loose:
+                    // several daemons have a module called `auth`, and any one
+                    // of them saying `auth::` made every other crate's look
+                    // reached. The published name matters and is routinely not
+                    // the directory - `daemons/settings-broker` publishes
+                    // `arlen_settings_broker` - so deriving it from the folder
+                    // reports modules thatexternal callers use every day as dead.
+                    let inside = format!("{m}::");
+                    let crate_name = package_name(&c.join("Cargo.toml"))
+                        .unwrap_or_else(|| {
+                            c.file_name().unwrap_or_default().to_string_lossy().to_string()
+                        })
+                        .replace('-', "_");
+                    let outside = format!("{crate_name}::{m}::");
                     let reached = all.iter().any(|f| {
                         if *f == own_file || f.starts_with(&own_dir) {
                             return false;
                         }
-                        std::fs::read_to_string(f).is_ok_and(|t| mentions(&t, &needle))
+                        let own_crate = f.starts_with(&c);
+                        std::fs::read_to_string(f).is_ok_and(|t| {
+                            (own_crate && mentions(&t, &inside)) || mentions(&t, &outside)
+                        })
                     });
                     let id = format!("{rel_crate}/{m}");
                     if !reached && !unreached.contains(&id) {
