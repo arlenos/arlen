@@ -265,6 +265,18 @@ pub enum Response {
         id: ComponentId,
         /// The resolved variant layer.
         variant: SourceLayer,
+        /// What to tell that layer's installer: the Debian package name, the
+        /// Flatpak ref, the forage recipe id.
+        ///
+        /// The reason this op exists rather than the caller reading the card
+        /// itself. Without it the handoff returned only what the caller had
+        /// already sent, and the caller still had nothing to hand `apt`.
+        ///
+        /// `None` when the catalog knows of no handle for that variant, which is
+        /// a refusal to proceed rather than an invitation to derive one from the
+        /// component id - a guessed package name installs whatever matches.
+        #[serde(default)]
+        install_handle: Option<String>,
     },
     /// What can honestly be said about this app's observed-vs-declared standing.
     Observed(ObservedStatus),
@@ -343,7 +355,12 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
         },
         Request::Install { id, variant } => match catalog.card(&id) {
             Some(card) if card.variants.iter().any(|v| v.layer == variant) => {
-                Response::InstallResolved { id, variant }
+                let install_handle = card
+                    .variants
+                    .iter()
+                    .find(|v| v.layer == variant)
+                    .and_then(|v| v.install_handle.clone());
+                Response::InstallResolved { id, variant, install_handle }
             }
             Some(_) => Response::Error(format!("no {variant:?} variant for {}", id.0)),
             None => Response::Error(format!("unknown app: {}", id.0)),
@@ -606,6 +623,41 @@ mod tests {
         // Requires(network). An OR mutation would also let Cam and Paint through.
         assert_eq!(cards.len(), 1, "facets must intersect, not union");
         assert_eq!(cards[0].id, ComponentId("org.x.Chat".into()));
+    }
+
+    #[test]
+    fn a_resolved_install_hands_back_what_the_installer_needs() {
+        // The point of the op. Resolving used to return the id and layer the
+        // caller had just sent, which told it nothing it did not know - so an
+        // apt variant resolved successfully and the caller still had no package
+        // name to run.
+        use crate::catalog::{merge_catalog, CatalogEntry, DisplayMeta, ItemKind};
+        let entry = CatalogEntry {
+            id: ComponentId("org.example.Thing".into()),
+            layer: SourceLayer::Apt,
+            display: DisplayMeta {
+                name: "Thing".into(),
+                summary: None,
+                description: None,
+                screenshots: Vec::new(),
+                icon: None,
+            },
+            capabilities: Default::default(),
+            trust: TrustSignals::default(),
+            kind: ItemKind::default(),
+            version: "1.0".into(),
+            install_handle: Some("example-thing".into()),
+        };
+        let cat = Catalog::new(merge_catalog(vec![entry]));
+        match answer(&cat, Request::Install {
+            id: ComponentId("org.example.Thing".into()),
+            variant: SourceLayer::Apt,
+        }) {
+            Response::InstallResolved { install_handle, .. } => {
+                assert_eq!(install_handle.as_deref(), Some("example-thing"));
+            }
+            other => panic!("expected InstallResolved, got {other:?}"),
+        }
     }
 
     #[test]
