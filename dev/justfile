@@ -659,6 +659,36 @@ check-ignores:
     fi
     echo "no tracked file is matched by an ignore rule"
 
+    # The other end, and the one that actually bit: junk with NO rule at all.
+    # `git ls-files --others --exclude-standard` lists what is untracked and
+    # unignored, which is mostly legitimate work in progress, so failing on all
+    # of it would be noise. Failing on the paths that are build output BY NAME is
+    # not: `dev/scripts/__pycache__/` appeared the first time `just checks` ran
+    # and no rule covered it, so the next `git add -A` would have committed it.
+    # That is the `node_modules` shape, and the check above cannot see it,
+    # because it only looks at files that are already tracked.
+    #
+    # Keep this list to things that are never source. Anything ambiguous belongs
+    # in .gitignore as a decision, not here as a failure.
+    holes=""
+    while IFS= read -r f; do
+        case "$f" in
+            __pycache__/*|*/__pycache__/*|*.pyc|\
+            node_modules/*|*/node_modules/*|\
+            target/*|*/target/*|\
+            *.orig|*.rej|*/.DS_Store|.DS_Store) holes="$holes $f" ;;
+        esac
+    done < <(git ls-files --others --exclude-standard)
+    if [ -n "$holes" ]; then
+        echo
+        echo "build output that no ignore rule covers:"
+        printf '  %s\n' $holes
+        echo
+        echo "add a rule to .gitignore; until then the next 'git add -A' commits these"
+        exit 1
+    fi
+    echo "no unignored build output is lying around"
+
 # `event.proto` lives in eight copies because there is no crate for it yet, and a
 # copy missing a field is fine (it decodes to the default). Two copies giving one
 # field two NUMBERS is not: that is a silent mis-decode across a socket, and the
