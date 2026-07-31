@@ -178,10 +178,18 @@ const EPHEMERAL_WRITABLE: &[&str] = &["/home", "/tmp", "/run"];
 /// interpreter and the profile's `PATH` resolves.
 #[cfg(target_os = "linux")]
 fn run_ephemeral(app_id: &str, file: &std::path::Path, program: &[String]) -> ExitCode {
+    // The merged-`/usr` root-level compat paths that actually exist here, so a
+    // dynamically-linked viewer finds its ELF interpreter inside the sandbox.
+    let compat: Vec<&std::path::Path> = ["/lib64", "/lib", "/bin", "/sbin"]
+        .iter()
+        .map(std::path::Path::new)
+        .filter(|p| p.exists())
+        .collect();
     let confinement = match arlen_confiner::ephemeral_profile(
         std::path::Path::new("/usr"),
         file,
         arlen_confiner::NetworkPolicy::None,
+        &compat,
     ) {
         Ok(c) => c,
         Err(e) => {
@@ -615,6 +623,7 @@ mod tests {
             std::path::Path::new("/usr"),
             std::path::Path::new("/tmp/untrusted.pdf"),
             arlen_confiner::NetworkPolicy::None,
+            &[],
         )
         .expect("the profile builds");
         let args = conf.bwrap_args();
