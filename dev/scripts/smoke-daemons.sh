@@ -74,11 +74,19 @@ SKIPPED=(
 
 failed=0
 started=0
+unbuilt=()
 for entry in "${DAEMONS[@]}"; do
     IFS='|' read -r name sock extra <<<"$entry"
     bin="target/debug/$name"
+    # An unbuilt binary is NOT a legitimate skip. The legitimate ones are in
+    # SKIPPED with their reason; DAEMONS is the list this run has to exercise, so
+    # a missing binary means the run did not do its job. It used to print SKIP and
+    # carry on, which on a tree with nothing built reported `OK: 0 daemon(s)
+    # started` and exited 0 - a gate passing while testing nothing, which is the
+    # failure this file's own header calls worse than having no smoke at all.
     if [ ! -x "$bin" ]; then
-        echo "SKIP $name: not built (cargo build --manifest-path <its crate>)"
+        echo "MISS $name: not built"
+        unbuilt+=("$name")
         continue
     fi
     rt=$(mktemp -d "${TMPDIR:-/tmp}/arlen-smoke.XXXXXX")
@@ -128,8 +136,20 @@ for entry in "${DAEMONS[@]}"; do
     rm -rf "$rt"
 done
 
+if [ "${#unbuilt[@]}" -ne 0 ]; then
+    echo
+    echo "${#unbuilt[@]} of ${#DAEMONS[@]} daemon(s) are not built, so this run proved nothing about them:"
+    for name in "${unbuilt[@]}"; do
+        # Resolved on the failure path only, so the list needs no fourth field to
+        # drift: the manifest that declares the binary name is the crate to build.
+        manifest=$(git grep -lF "\"$name\"" -- '*/Cargo.toml' | head -1)
+        echo "  cargo build --manifest-path ${manifest:-<crate>/Cargo.toml} --bin $name"
+    done
+    exit 1
+fi
+
 if [ "$failed" -ne 0 ]; then
     echo "a daemon did not come up"
     exit 1
 fi
-echo "OK: $started daemon(s) started; each bound its socket or stayed up"
+echo "OK: $started of ${#DAEMONS[@]} daemon(s) started; each bound its socket or stayed up"
