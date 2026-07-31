@@ -16,7 +16,7 @@
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { t } from "$lib/i18n/messages";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { CommandStringEditor } from "$lib/components/ui/command-string-editor";
   import {
@@ -99,7 +99,7 @@
   {/if}
 
   {#each SYSTEM_ACTION_CATEGORIES as category (category)}
-    <Group label={category}>
+    <Section label={category}>
       {#each actionsByCategory(category) as action (action.key)}
         <Row
           label={action.label}
@@ -117,7 +117,7 @@
           {/snippet}
         </Row>
       {/each}
-    </Group>
+    </Section>
   {/each}
 
   <div class="footer-note span-full">

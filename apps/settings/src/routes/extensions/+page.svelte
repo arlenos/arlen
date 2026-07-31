@@ -14,7 +14,7 @@
   import { RefreshCw, Puzzle, Info, ExternalLink } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
@@ -118,7 +118,7 @@
 
     <div class="groups">
       {#each filteredGroups as group (group.label)}
-        <Group label={group.label}>
+        <Section label={group.label}>
           <div class="group-inner">
             {#each group.items as m (m.id)}
               <ModuleCard
@@ -128,7 +128,7 @@
               />
             {/each}
           </div>
-        </Group>
+        </Section>
       {/each}
 
       {#if filter && filteredGroups.length === 0}

@@ -13,7 +13,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Button } from "@arlen/ui-kit/components/ui/button";
@@ -206,14 +206,14 @@
   description={$t("s.prov.desc")}
 >
   <SectionGrid>
-    <Group class="span-full">
+    <Section class="span-full">
       {#each $providers as p (p.id)}
         {@render row(p)}
       {/each}
       {#if loaded && $providers.length === 0}
         <p class="empty">{$t("s.prov.empty")}</p>
       {/if}
-    </Group>
+    </Section>
     <div class="add-row span-full">
       <Button variant="secondary" size="sm" onclick={() => (showAdd = true)}>
         <Plus size={15} strokeWidth={2} />

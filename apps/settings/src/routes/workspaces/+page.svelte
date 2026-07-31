@@ -9,7 +9,7 @@
   import { onMount } from "svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
@@ -105,7 +105,7 @@
   description="Workspace layout direction, default tiling gaps, and per-app window rules."
 >
   <SectionGrid>
-    <Group label="Workspace Layout">
+    <Section label="Workspace Layout">
     <Row
       label="Layout direction"
       description="Vertical stacks workspaces top-to-bottom; Horizontal arranges them left-to-right."
@@ -120,9 +120,9 @@
         />
       {/snippet}
     </Row>
-  </Group>
+  </Section>
 
-  <Group label="Tiling">
+  <Section label="Tiling">
     <Row
       label="Inner gap"
       description="Pixels between adjacent tiled windows."
@@ -186,9 +186,9 @@
         />
       {/snippet}
     </Row>
-  </Group>
+  </Section>
 
-  <Group label="Window Rules">
+  <Section label="Window Rules">
     <Row
       label="Per-app rules"
       description="Force specific apps to float or tile based on app_id, title, or window type. Patterns are regular expressions."
@@ -214,7 +214,7 @@
         {/snippet}
       </AddRemoveList>
     </div>
-  </Group>
+  </Section>
   </SectionGrid>
 </Page>
 

@@ -17,7 +17,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Input } from "@arlen/ui-kit/components/ui/input";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { t } from "$lib/i18n/messages";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import type { ApplyHandle, MonitorConfig } from "$lib/stores/displays";
@@ -174,7 +174,7 @@
   }
 </script>
 
-<Group label={$t("s.profile.title")}>
+<Section label={$t("s.profile.title")}>
   {#if profiles.length === 0}
     <div class="empty">{$t("s.profile.empty")}</div>
   {:else}
@@ -253,7 +253,7 @@
       {$t("s.profile.saveCurrent")}
     </Button>
   </form>
-</Group>
+</Section>
 
 <ConfirmDialog
   open={!!deleteCandidate}

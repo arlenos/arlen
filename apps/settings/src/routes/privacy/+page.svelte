@@ -21,7 +21,7 @@
   import { onMount } from "svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
   import { Radar } from "lucide-svelte";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
@@ -199,33 +199,33 @@
     </div>
 
     {#if $grantsError}
-      <Group label={$t("s.priv.title")} class="span-full">
+      <Section label={$t("s.priv.title")} class="span-full">
         <p class="note">{$t("s.priv.readError")}</p>
-      </Group>
+      </Section>
     {:else if isEmpty}
-      <Group label={$t("s.priv.title")} class="span-full">
+      <Section label={$t("s.priv.title")} class="span-full">
         <p class="note">{$t("s.priv.empty")}</p>
-      </Group>
+      </Section>
     {:else if pivot === "app"}
       {#if assistants.length > 0}
-        <Group label={$t("s.priv.assistant")} class="span-full">
+        <Section label={$t("s.priv.assistant")} class="span-full">
           {#each assistants as p (p.appId)}
             <PrincipalGrants principal={p} onRemoveScope={askScope} onRemoveAll={askAll} />
           {/each}
-        </Group>
+        </Section>
       {/if}
       {#if apps.length > 0}
-        <Group label={$t("s.priv.apps")} class="span-full">
+        <Section label={$t("s.priv.apps")} class="span-full">
           {#each apps as p (p.appId)}
             <PrincipalGrants principal={p} onRemoveScope={askScope} onRemoveAll={askAll} />
           {/each}
-        </Group>
+        </Section>
       {/if}
     {:else}
       {#each resources as r (r.key)}
         {@const FamilyIcon = familyIcon(r.key)}
         {@const appCount = new Set(r.reachers.map((x) => x.appId)).size}
-        <Group class="span-full">
+        <Section class="span-full">
           <div class="data-head">
             <span class="data-icon"><FamilyIcon size={16} strokeWidth={1.75} /></span>
             <span class="data-name">{r.label}</span>
@@ -255,12 +255,12 @@
               {/if}
             {/each}
           </div>
-        </Group>
+        </Section>
       {/each}
     {/if}
 
     {#if $capsulesLoaded}
-      <Group label={$t("s.priv.sharedContext")} class="span-full">
+      <Section label={$t("s.priv.sharedContext")} class="span-full">
         {#if $capsules.length > 0}
           <div class="cap-list">
             {#each $capsules as c (c.id)}
@@ -296,11 +296,11 @@
         {:else}
           <p class="note">{$t("s.priv.noShares")}</p>
         {/if}
-      </Group>
+      </Section>
     {/if}
 
     {#if $removed.length > 0}
-      <Group label={$t("s.priv.recentlyRemoved")} class="span-full">
+      <Section label={$t("s.priv.recentlyRemoved")} class="span-full">
         <div class="removed-list">
           {#each $removed as it (it.id)}
             <AppAvatar appId={it.appId} label={it.appLabel} size={24} />
@@ -311,7 +311,7 @@
             </button>
           {/each}
         </div>
-      </Group>
+      </Section>
     {/if}
 
     {#if !isEmpty && !$grantsError}

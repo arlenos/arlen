@@ -11,7 +11,7 @@
   import { ChevronRight, MousePointer2, Image } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { ValueSlider } from "@arlen/ui-kit/components/ui/value-slider";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
@@ -54,7 +54,7 @@
   <SectionGrid>
     <div class="editor span-full">
     <div class="controls">
-      <Group label="Cursor">
+      <Section label="Cursor">
         <OverrideRow
           label="Theme"
           hint="The pointer style across the desktop"
@@ -77,9 +77,9 @@
             <ValueSlider value={cursorSize} min={16} max={48} step={2} unit="px" ariaLabel="Cursor size" onchange={(v) => setSys("cursorSize", v)} />
           {/snippet}
         </OverrideRow>
-      </Group>
+      </Section>
 
-      <Group label="Icons">
+      <Section label="Icons">
         <OverrideRow
           label="Theme"
           hint="The icon set across your apps"
@@ -91,9 +91,9 @@
             <PopoverSelect value={iconTheme} options={ICON_THEMES} ariaLabel="Icon theme" onchange={(v) => setSys("iconTheme", v)} />
           {/snippet}
         </OverrideRow>
-      </Group>
+      </Section>
 
-      <Group label="Sounds">
+      <Section label="Sounds">
         <OverrideRow
           label="System sounds"
           hint="Play a sound on system events"
@@ -122,7 +122,7 @@
             All sounds
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <Group>
+            <Section>
               {#each SOUND_EVENTS as ev (ev.key)}
                 <OverrideRow
                   label={ev.label}
@@ -139,12 +139,12 @@
                   {/snippet}
                 </OverrideRow>
               {/each}
-            </Group>
+            </Section>
           </CollapsibleContent>
         </Collapsible>
-      </Group>
+      </Section>
 
-      <Group label="Terminal">
+      <Section label="Terminal">
         <div class="term-editor">
           <div class="term-grid">
             {#each ANSI_META as a (a.key)}
@@ -172,7 +172,7 @@
             {/if}
           </div>
         </div>
-      </Group>
+      </Section>
     </div>
 
     <aside class="preview-col">

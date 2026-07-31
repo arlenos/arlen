@@ -16,7 +16,7 @@
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
 
@@ -278,7 +278,7 @@
     </div>
   {/if}
 
-  <Group label="Layouts">
+  <Section label="Layouts">
     <div class="flex flex-col divide-y divide-border">
       {#each layouts as layout, i (layout + ":" + i)}
         <div class="flex items-center gap-2 px-4 py-2.5">
@@ -351,9 +351,9 @@
         {/if}
       </div>
     </div>
-  </Group>
+  </Section>
 
-  <Group label="Primary variant">
+  <Section label="Primary variant">
     <Row
       label="Variant"
       description="Optional variant for the primary layout, e.g. 'dvorak' or 'colemak'."
@@ -379,9 +379,9 @@
         />
       {/snippet}
     </Row>
-  </Group>
+  </Section>
 
-  <Group label="Options">
+  <Section label="Options">
     {#each COMMON_OPTIONS as opt (opt.value)}
       <Row label={opt.label} description={opt.description}>
         {#snippet control()}
@@ -393,9 +393,9 @@
         {/snippet}
       </Row>
     {/each}
-  </Group>
+  </Section>
 
-  <Group label="Key Repeat">
+  <Section label="Key Repeat">
     <!-- Both rows share the same NumberInput width so their triggers
          form a clean vertical grid. 180px fits the longer unit label
          ("chars/s") plus a four-digit value without cropping, and
@@ -435,6 +435,6 @@
         />
       {/snippet}
     </Row>
-  </Group>
+  </Section>
   </SectionGrid>
 </Page>

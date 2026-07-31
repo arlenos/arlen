@@ -25,7 +25,7 @@
   } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
   import { Button } from "@arlen/ui-kit/components/ui/button";
@@ -118,7 +118,7 @@
       </Button>
     </div>
 
-    <Group label="Quick adjustments" class="span-full">
+    <Section label="Quick adjustments" class="span-full">
       <OverrideRow label="Accent" hint="The primary highlight colour" overridden={isColOv($coloursOv, "accent")} onreset={() => resetColorOverride("accent")} id="quick-accent">
         {#snippet control()}
           <span class="cf">
@@ -138,7 +138,7 @@
           <ValueSlider value={textSize} min={12} max={18} step={1} unit="px" ariaLabel="Text size" onchange={(v) => setTypo("sizeBase", v)} />
         {/snippet}
       </OverrideRow>
-    </Group>
+    </Section>
 
     <div class="cust-label span-full">Customise</div>
     <div class="cust-grid span-full">
@@ -150,7 +150,7 @@
       {/each}
     </div>
 
-    <Group label="My customisations" class="span-full">
+    <Section label="My customisations" class="span-full">
       {#if $overrideSummary.total === 0}
         <p class="empty">Nothing changed yet. This lists everything you set on top of the theme.</p>
       {:else}
@@ -168,7 +168,7 @@
           </Button>
         </div>
       {/if}
-    </Group>
+    </Section>
   </SectionGrid>
 </Page>
 

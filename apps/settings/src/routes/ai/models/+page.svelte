@@ -8,7 +8,7 @@
   import { HardDrive, Trash2, Upload, CirclePlus, ShieldOff } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
@@ -68,7 +68,7 @@
       </div>
     {/if}
 
-    <Group label={$t("s.mdl.active")} class="span-full">
+    <Section label={$t("s.mdl.active")} class="span-full">
       {#each ROLES as role (role)}
         {@const rm = roleMeta(role)}
         <Row label={rm.label} description={rm.description} id={`role-${role}`}>
@@ -83,7 +83,7 @@
           {/snippet}
         </Row>
       {/each}
-    </Group>
+    </Section>
 
     <div class="span-full">
       <LinkCard href="/ai/models/get" title={$t("s.mdl.get")} description={$t("s.mdl.get.hint")}>
@@ -92,7 +92,7 @@
     </div>
 
     {#if $installedModels.length > 0}
-      <Group label={$t("s.mdl.yourModels")} class="span-full">
+      <Section label={$t("s.mdl.yourModels")} class="span-full">
         {#each $installedModels as m (m.id)}
           <Row label={m.name} id={`installed-${m.id}`}>
             {#snippet control()}
@@ -125,13 +125,13 @@
           <Upload size={15} strokeWidth={1.75} />
           {$t("s.mdl.import")}
         </Button>
-      </Group>
+      </Section>
     {/if}
 
     {#if $modelsLoaded && $models.length === 0}
-      <Group label={$t("s.mdl.models")} class="span-full">
+      <Section label={$t("s.mdl.models")} class="span-full">
         <p class="quiet-note">{$t("s.mdl.noneAvailable")}</p>
-      </Group>
+      </Section>
     {/if}
   </SectionGrid>
 </Page>

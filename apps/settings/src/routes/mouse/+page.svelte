@@ -6,7 +6,7 @@
   import { FillSlider } from "@arlen/ui-kit/components/ui/fill-slider";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { t } from "$lib/i18n/messages";
@@ -30,7 +30,7 @@
   description={$t("s.mouse.desc")}
 >
   <SectionGrid>
-    <Group label={$t("s.mouse.behavior")} class="span-full">
+    <Section label={$t("s.mouse.behavior")} class="span-full">
       <Row
         label={$t("s.mouse.accel")}
         description={$t("s.mouse.accel.desc")}
@@ -90,7 +90,7 @@
           </div>
         {/snippet}
       </Row>
-    </Group>
+    </Section>
 
     {#if $mouse.error}
       <div class="span-full error-box" title={$mouse.error}>{$t("s.err.readPaused")}</div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  /// Settings group: a small uppercase label followed by a rounded
+  /// Settings section: a small uppercase label followed by a rounded
   /// card with divided rows. macOS System Settings pattern. The label is
   /// omitted when the page context already names the card (e.g. a feed card
   /// directly under a page title of the same name).
@@ -13,24 +13,24 @@
 </script>
 
 <!-- `class` is forwarded to the root so a section can opt into the SectionGrid
-     `span-full` escape hatch via `<Group class="span-full">`. -->
-<div class="group {className ?? ''}">
+     `span-full` escape hatch via `<Section class="span-full">`. -->
+<div class="section {className ?? ''}">
   {#if label}
-    <div class="group-label">{label}</div>
+    <div class="section-label">{label}</div>
   {/if}
-  <div class="group-card">
+  <div class="section-card">
     {@render children?.()}
   </div>
 </div>
 
 <style>
-  .group {
+  .section {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
   }
 
-  .group-label {
+  .section-label {
     font-size: var(--text-2xs);
     font-weight: 600;
     letter-spacing: 0.1em;
@@ -39,7 +39,7 @@
     padding-inline-start: 0.25rem;
   }
 
-  .group-card {
+  .section-card {
     border-radius: var(--radius-card);
     border: 1px solid
       color-mix(in srgb, var(--foreground) 10%, transparent);
@@ -56,7 +56,7 @@
     --container-inset: var(--space-row, 0.75rem);
   }
 
-  .group-card :global(> * + *) {
+  .section-card :global(> * + *) {
     border-top: 1px solid
       color-mix(in srgb, var(--foreground) 7%, transparent);
   }

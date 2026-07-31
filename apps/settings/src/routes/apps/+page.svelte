@@ -10,7 +10,7 @@
   import { ChevronRight } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { grants, grantsLoaded, grantsMocked, byApp, loadGrants } from "$lib/stores/grants";
   import AppAvatar from "$lib/components/privacy/AppAvatar.svelte";
   import { t } from "$lib/i18n/messages";
@@ -27,11 +27,11 @@
     {/if}
 
     {#if $grantsLoaded && apps.length === 0}
-      <Group class="span-full">
+      <Section class="span-full">
         <p class="note pad">{$t("s.apps.empty")}</p>
-      </Group>
+      </Section>
     {:else if apps.length > 0}
-      <Group class="span-full">
+      <Section class="span-full">
         {#each apps as p (p.appId)}
           <button type="button" class="app-row" id={`app-${p.appId}`} onclick={() => goto(`/apps/${p.appId}`)}>
             <AppAvatar appId={p.appId} label={p.label} size={32} />
@@ -45,7 +45,7 @@
             <span class="chev"><ChevronRight size={15} strokeWidth={2} /></span>
           </button>
         {/each}
-      </Group>
+      </Section>
     {/if}
   </SectionGrid>
 </Page>

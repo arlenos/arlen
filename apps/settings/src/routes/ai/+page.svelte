@@ -15,7 +15,7 @@
   import { Sparkles, RefreshCw, AlertCircle, Cloud, SlidersHorizontal } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { LinkCard } from "@arlen/ui-kit/components/ui/link-card";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
@@ -262,7 +262,7 @@
   description={$t("s.ai.desc")}
 >
   <SectionGrid>
-    <Group label={$t("s.ai.assistant")}>
+    <Section label={$t("s.ai.assistant")}>
       <Row
         label={$t("s.ai.enable")}
         description={$t("s.ai.enable.desc")}
@@ -272,9 +272,9 @@
           <Switch value={enabled} ariaLabel={$t("s.ai.enable")} onchange={setEnabled} />
         {/snippet}
       </Row>
-    </Group>
+    </Section>
 
-    <Group label={$t("s.ai.freely")}>
+    <Section label={$t("s.ai.freely")}>
       <Row label={$t("s.ai.whenActs")} description={actsHint} id="ai-action-mode">
         {#snippet below()}
           <SegmentedControl
@@ -318,9 +318,9 @@
           />
         {/snippet}
       </Row>
-    </Group>
+    </Section>
 
-    <Group label={$t("s.ai.canSee")}>
+    <Section label={$t("s.ai.canSee")}>
       <Row
         label={$t("s.ai.drawsOn")}
         description={$t("s.ai.drawsOn.desc")}
@@ -335,9 +335,9 @@
           />
         {/snippet}
       </Row>
-    </Group>
+    </Section>
 
-    <Group label={$t("s.ai.doesOnOwn")}>
+    <Section label={$t("s.ai.doesOnOwn")}>
       <Row
         label={$t("s.ai.bgTasks")}
         description={$t("s.ai.bgTasks.desc")}
@@ -380,18 +380,18 @@
           </Row>
         {/if}
       {/if}
-    </Group>
+    </Section>
 
-    <Group label={$t("s.ai.whereFrom")}>
+    <Section label={$t("s.ai.whereFrom")}>
       <LinkCard href="/ai/providers" title={$t("s.ai.providers")} description={$providerLine}>
         {#snippet icon()}<Cloud size={20} strokeWidth={1.75} />{/snippet}
       </LinkCard>
       <LinkCard href="/ai/models" title={$t("s.ai.models")} description={$defaultModelLine}>
         {#snippet icon()}<SlidersHorizontal size={20} strokeWidth={1.75} />{/snippet}
       </LinkCard>
-    </Group>
+    </Section>
 
-    <Group label={$t("s.ai.health")}>
+    <Section label={$t("s.ai.health")}>
       {#if statusError}
         <Row label={$t("s.ai.statusUnavailable")} description={$t("s.ai.statusUnavailable.desc")} id="ai-status-error">
           {#snippet control()}
@@ -425,9 +425,9 @@
           </Button>
         {/snippet}
       </Row>
-    </Group>
+    </Section>
 
-    <Group label={$t("s.ai.happeningNow")}>
+    <Section label={$t("s.ai.happeningNow")}>
       <Row
         label={$t("s.ai.explain")}
         description={$t("s.ai.explain.desc")}
@@ -447,7 +447,7 @@
           {/if}
         {/snippet}
       </Row>
-    </Group>
+    </Section>
   </SectionGrid>
 </Page>
 

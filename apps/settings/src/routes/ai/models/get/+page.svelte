@@ -9,7 +9,7 @@
   import { ExternalLink, ShieldOff } from "lucide-svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Badge } from "@arlen/ui-kit/components/ui/badge";
@@ -114,7 +114,7 @@
     </div>
 
     {#if !searching}
-      <Group label={$t("s.mdl.forMachine")} class="span-full">
+      <Section label={$t("s.mdl.forMachine")} class="span-full">
         {#each TIERS as tier (tier)}
           {@const m = picks[tier]}
           {#if m}
@@ -128,10 +128,10 @@
             </Row>
           {/if}
         {/each}
-      </Group>
+      </Section>
 
       {#if more.length > 0}
-        <Group label={$t("s.mdl.more")} class="span-full">
+        <Section label={$t("s.mdl.more")} class="span-full">
           {#each more as m (m.id)}
             <Row label={m.name} id={`more-${m.id}`}>
               {#snippet control()}
@@ -142,10 +142,10 @@
               {/snippet}
             </Row>
           {/each}
-        </Group>
+        </Section>
       {/if}
     {:else}
-      <Group label={$t("s.mdl.results")} class="span-full">
+      <Section label={$t("s.mdl.results")} class="span-full">
         {#each results as m (m.id)}
           <Row label={m.name} id={`result-${m.id}`}>
             {#snippet control()}
@@ -169,7 +169,7 @@
             {$t("s.mdl.searchHfFor", { q: query })}
           </Button>
         {/if}
-      </Group>
+      </Section>
     {/if}
   </SectionGrid>
 </Page>

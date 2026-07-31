@@ -7,7 +7,7 @@
   import { onMount } from "svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { Button } from "@arlen/ui-kit/components/ui/button";
@@ -78,7 +78,7 @@
 
       <div class="section-label span-full">{$t("s.sent.alwaysOn")}</div>
 
-      <Group label={$t("s.sent.exposure")} class="span-full">
+      <Section label={$t("s.sent.exposure")} class="span-full">
         <Row label={$t("s.sent.exposure.row")} description={$t("s.sent.exposure.rowDesc")} id="sent-exposure">
           {#snippet control()}
             {#key toggleEpoch}
@@ -106,16 +106,16 @@
           </Row>
         {/if}
         <p class="caveat">{$t("s.sent.exposure.caveat")}</p>
-      </Group>
+      </Section>
 
-      <Group label={$t("s.sent.capture")} class="span-full">
+      <Section label={$t("s.sent.capture")} class="span-full">
         <p class="status">
           {$sentinel.captureActive ? $t("s.sent.capture.active") : $t("s.sent.capture.idle")}
         </p>
         <p class="caveat">{$t("s.sent.capture.caveat")}</p>
-      </Group>
+      </Section>
 
-      <Group label={$t("s.sent.usb")} class="span-full">
+      <Section label={$t("s.sent.usb")} class="span-full">
         <Row label={$t("s.sent.usb.row")} description={$t("s.sent.usb.rowDesc")} id="sent-usb">
           {#snippet control()}
             {#key toggleEpoch}
@@ -131,11 +131,11 @@
           </Row>
         {/if}
         <p class="caveat">{$t("s.sent.usb.caveat")}</p>
-      </Group>
+      </Section>
 
       <div class="section-label span-full">{$t("s.sent.optIn")}</div>
 
-      <Group label={$t("s.sent.recording")} class="span-full">
+      <Section label={$t("s.sent.recording")} class="span-full">
         <Row label={$t("s.sent.recording.row")} description={$t("s.sent.recording.rowDesc")} id="sent-recording">
           {#snippet control()}
             <Switch value={d.recording.on} ariaLabel={$t("s.sent.recording.row")} onchange={(v) => setDetector("recording", v)} />
@@ -154,9 +154,9 @@
           </Row>
         {/if}
         <p class="caveat">{$t("s.sent.recording.caveat")}</p>
-      </Group>
+      </Section>
 
-      <Group label={$t("s.sent.tracker")} class="span-full">
+      <Section label={$t("s.sent.tracker")} class="span-full">
         <Row label={$t("s.sent.tracker.row")} description={$t("s.sent.tracker.rowDesc")} id="sent-tracker">
           {#snippet control()}
             <Switch
@@ -182,7 +182,7 @@
           </Row>
         {/if}
         <p class="caveat">{$t("s.sent.tracker.caveat")}</p>
-      </Group>
+      </Section>
     {/if}
   </SectionGrid>
 </Page>

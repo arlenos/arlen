@@ -8,7 +8,7 @@
   import { t } from "$lib/i18n/messages";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Check, ImagePlus } from "lucide-svelte";
@@ -36,7 +36,7 @@
 
 <Page title={$t("s.wallpaper.title")} description={$t("s.wallpaper.desc")}>
   <SectionGrid>
-    <Group label={$t("s.wallpaper.choose")}>
+    <Section label={$t("s.wallpaper.choose")}>
       <div class="wp-inset">
         <div class="wp-grid">
           {#each $wallpapers as w (w.id)}
@@ -61,9 +61,9 @@
           {$t("s.wallpaper.add")}
         </Button>
       </div>
-    </Group>
+    </Section>
 
-    <Group label={$t("s.wallpaper.fit")}>
+    <Section label={$t("s.wallpaper.fit")}>
       <div class="wp-inset">
         <SegmentedControl
           value={$scale}
@@ -73,7 +73,7 @@
         />
         <p class="wp-note">{$t("s.wallpaper.comingSoon")}</p>
       </div>
-    </Group>
+    </Section>
   </SectionGrid>
 </Page>
 

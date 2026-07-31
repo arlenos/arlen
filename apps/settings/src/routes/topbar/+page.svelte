@@ -21,7 +21,7 @@
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { t } from "$lib/i18n/messages";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
-  import { Group } from "@arlen/ui-kit/components/ui/group";
+  import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import { SortableList } from "@arlen/ui-kit/components/ui/sortable-list";
   import { topbar, shownItems, load, reorder, setShown, type TopbarItem } from "$lib/stores/topbar";
@@ -48,7 +48,7 @@
 
 <Page title={$t("s.topbar.title")} description={$t("s.topbar.desc")}>
   <SectionGrid>
-    <Group label={$t("s.topbar.preview")} class="span-full">
+    <Section label={$t("s.topbar.preview")} class="span-full">
       <div class="tb-preview" aria-label={$t("s.topbar.previewAria")}>
         <span class="tb-pv-left">Arlen</span>
         <span class="tb-pv-spacer"></span>
@@ -60,9 +60,9 @@
           <span class="tb-pv-icon tb-pv-overflow"><MoreHorizontal size={15} strokeWidth={1.75} /></span>
         {/if}
       </div>
-    </Group>
+    </Section>
 
-    <Group label={$t("s.topbar.applets")} class="span-full">
+    <Section label={$t("s.topbar.applets")} class="span-full">
       {#if $topbar.items.length > 0}
         <SortableList ids={order} onReorder={reorder}>
           {#snippet item(id)}
@@ -84,7 +84,7 @@
           {/snippet}
         </SortableList>
       {/if}
-    </Group>
+    </Section>
 
     {#if $topbar.error}
       <div class="span-full tb-error" title={$topbar.error}>

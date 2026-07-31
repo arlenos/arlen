@@ -42,7 +42,7 @@ export { DaysPicker } from "./days-picker";
 export { Dialog } from "./dialog";
 export { DirectoryPicker } from "./directory-picker";
 export { FillSlider } from "./fill-slider";
-export { Group } from "./group";
+export { Section } from "./section";
 export { IconAction } from "./icon-action";
 export { NumberInput } from "./number-input";
 export { Page } from "./page";
