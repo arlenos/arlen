@@ -24,7 +24,7 @@
   data-slot="sidebar-menu-action"
   data-sidebar="menu-action"
   class={cn(
-    "absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-chip p-0 text-sidebar-foreground outline-hidden transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring [&>svg]:size-4 [&>svg]:shrink-0",
+    "absolute top-1.5 end-1 flex aspect-square w-5 items-center justify-center rounded-chip p-0 text-sidebar-foreground outline-hidden transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring [&>svg]:size-4 [&>svg]:shrink-0",
     "peer-data-[size=sm]/menu-button:top-1 peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5",
     "group-data-[collapsible=icon]:hidden",
     showOnHover &&

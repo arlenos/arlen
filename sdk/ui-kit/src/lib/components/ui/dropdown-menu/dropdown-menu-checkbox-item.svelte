@@ -30,7 +30,7 @@
 >
 	{#snippet children({ checked, indeterminate })}
 		<span
-			class="absolute left-2 flex items-center justify-center pointer-events-none"
+			class="absolute start-2 flex items-center justify-center pointer-events-none"
 			data-slot="dropdown-menu-checkbox-item-indicator"
 		>
 			{#if indeterminate}
