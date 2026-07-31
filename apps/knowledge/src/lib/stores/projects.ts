@@ -94,14 +94,14 @@ function fixtureList(path: string, at: number | null): FileEntry[] {
   const segs = path.split("/").filter(Boolean).slice(1);
   if (segs.length === 0) {
     return PROJECTS.filter((p) => !past || p.detected <= (at as number)).map((p) =>
-      entry(p.name, "dir", p.detected)
+      entry(p.name, "directory", p.detected)
     );
   }
   const project = PROJECTS.find((p) => p.name === segs[0]);
   if (!project) return [];
   const members = past && project.pastMembers ? project.pastMembers : project.members;
   if (segs.length === 1) {
-    return Object.keys(members).map((m) => entry(m, "dir", project.detected));
+    return Object.keys(members).map((m) => entry(m, "directory", project.detected));
   }
   const leaves = members[segs[1]] ?? [];
   return leaves.map((l) => entry(l, "file", project.detected));

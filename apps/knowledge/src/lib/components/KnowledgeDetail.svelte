@@ -148,4 +148,40 @@
     line-height: 1.45;
     color: color-mix(in srgb, var(--color-fg-primary) 48%, transparent);
   }
+
+  /* The project's recent activity: the timeline's sentence anatomy in
+     miniature (quiet verb, emphasized object, tabular time). */
+  .kn-recent {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-top: 0.15rem;
+  }
+  .kn-recent-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.375rem;
+    min-width: 0;
+  }
+  .kn-recent-verb {
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
+  }
+  .kn-recent-object {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--color-fg-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .kn-recent-time {
+    flex-shrink: 0;
+    font-size: var(--text-2xs);
+    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
+  }
 </style>
