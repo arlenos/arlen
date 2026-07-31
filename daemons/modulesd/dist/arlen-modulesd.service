@@ -5,7 +5,11 @@ Documentation=https://github.com/arlenos/modulesd
 # If those run as user services too, this `After=` chain ensures
 # discovery doesn't race them; if they're system services, this is a
 # no-op (systemd just ignores unknown user-side dependencies).
-After=arlen-event-bus.service arlen-knowledge.service
+# arlen-graph.service, not arlen-knowledge.service: the knowledge daemon's unit
+# is named for the graph it serves. systemd ignores an ordering dependency on a
+# unit that does not exist, so the previous name made this half of the line a
+# silent no-op and modulesd could start before the graph was up.
+After=arlen-event-bus.service arlen-graph.service
 Requires=arlen-modulesd.socket
 
 [Service]
