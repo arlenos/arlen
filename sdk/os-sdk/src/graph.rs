@@ -86,6 +86,17 @@ pub struct GrantView {
     pub superseded: bool,
     /// When the grant was issued (epoch micros).
     pub issued_at: i64,
+    /// When a time-boxed grant stops authorising (epoch micros), or `0` for one
+    /// that lasts until revoked.
+    ///
+    /// Carried so a surface can say WHY a grant is not live. Without it an
+    /// elevation whose window closed looks the same as one whose process died
+    /// or one the user revoked, and "the five minutes you allowed have passed"
+    /// is the only one of those three the user can act on. An older daemon
+    /// omits it, which reads as no expiry, matching what it meant before the
+    /// field existed.
+    #[serde(default)]
+    pub expires_at: i64,
     /// The entity types this grant can reach (the queryable projection).
     pub reach: Vec<String>,
     /// The grant kind: `capability-token` or `consent` (system-dialog-plan.md
