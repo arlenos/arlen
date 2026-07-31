@@ -599,3 +599,21 @@ check-ignores:
 # copies are only ever compiled separately so nothing else would notice.
 check-protos:
     python3 "{{ROOT}}/dev/scripts/check-proto-drift.py"
+
+# The structural checks that need no build, in one command: under four seconds
+# for all four, so there is no reason not to run them before pushing. Each one
+# exists because the thing it checks had already drifted once - the justfile fell
+# behind the CI matrix, build logs were committed against their own ignore rule,
+# a unit ordered against a name no unit provides, and eight proto copies agreed
+# only by luck. `check-locks` is deliberately not here: it is minutes, not
+# milliseconds. Neither is `lint-licenses`, which needs cargo-deny and reuse.
+checks:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd "{{ROOT}}"
+    status=0
+    for r in check-crates check-ignores check-protos check-units; do
+        echo "== $r =="
+        just --justfile dev/justfile "$r" || status=1
+    done
+    exit "$status"
