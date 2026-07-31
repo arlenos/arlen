@@ -162,6 +162,14 @@ pub fn widened(available: &[String], held: &[String]) -> Vec<String> {
 /// version they declined. Keyed by that version rather than by id alone so a
 /// skip expires by itself: when the source moves on, the row comes back, which
 /// is what "stop asking until the next version" means.
+/// **A variant with no install route is not an update.** A distribution-installed
+/// app (`SourceLayer::Native`) carries `install_handle: None` because the store
+/// cannot install, update or remove a pacman or dnf package - and a source that
+/// cannot apply the change has no business offering it. I first wrote this down as
+/// something that fell out of the other two rules, on the grounds that nothing
+/// writes a Native row into `installed.lock`; the test I wrote to pin that failed,
+/// because the rule was a fact about a file this function never reads rather than
+/// anything the function does. It is a real check now.
 pub fn outdated(
     catalog: &Catalog,
     installed: &std::collections::BTreeMap<String, InstalledVersion>,
@@ -176,6 +184,17 @@ pub fn outdated(
         let Some(variant) = card.variants.iter().find(|v| v.layer == have.layer) else {
             continue; // That layer no longer offers it.
         };
+        if variant.install_handle.is_none() {
+            // The catalog knows of no way to install this variant, so it knows of
+            // no way to APPLY the update either. Offering it would put a button
+            // there that cannot work. This is a property of the variant rather
+            // than of who recorded the install, which matters because the reason
+            // it could not happen before was external: nothing wrote a
+            // distribution-installed row into `installed.lock`. Relying on that
+            // made the honesty of this list depend on a file this function never
+            // reads.
+            continue;
+        }
         if have.version.is_empty() || variant.version.is_empty() {
             continue;
         }
@@ -454,6 +473,47 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
 }
 
 #[cfg(test)]
+
+    /// A distribution-installed app has no install route, so it must never appear
+    /// in the update list - the store would be offering to do something it cannot.
+    ///
+    /// Today this holds because nothing writes a `Native` row into `installed.lock`.
+    /// The test drives the case anyway, with such a row forced in, because that is
+    /// the assumption most likely to change: the day something records a native
+    /// install, this fails instead of the store quietly offering a bad update.
+    #[test]
+    fn a_distribution_installed_app_is_never_offered_an_update() {
+        use crate::catalog::{AppCard, ComponentId, DisplayMeta, ItemKind, Variant};
+        let card = AppCard {
+            id: ComponentId("com.example.App".into()),
+            display: DisplayMeta { name: "App".into(), ..Default::default() },
+            variants: vec![Variant {
+                layer: SourceLayer::Native,
+                capabilities: Default::default(),
+                trust: Default::default(),
+                version: "2.0".into(),
+                install_handle: None,
+            }],
+            default_variant: 0,
+            kind: ItemKind::default(),
+        };
+        let catalog = Catalog::new(vec![card]);
+        let installed = std::collections::BTreeMap::from([(
+            "com.example.App".to_string(),
+            InstalledVersion { layer: SourceLayer::Native, version: "1.0".into() },
+        )]);
+
+        let pending = outdated(
+            &catalog,
+            &installed,
+            &Default::default(),
+            &Default::default(),
+        );
+        assert!(
+            pending.is_empty(),
+            "a Native variant offers no install route, so it is not an update: {pending:?}"
+        );
+    }
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
@@ -474,7 +534,13 @@ mod tests {
             trust: TrustSignals::default(),
             kind: ItemKind::default(),
             version: String::new(),
-            install_handle: None,
+            // Real sources state one (Flathub the component id, DEP-11 the package
+            // name), and `outdated` reads it now: a variant with no route to
+            // install it has no route to update it either. A fixture without one
+            // was modelling an app no source can install, which is not what these
+            // tests are about - the DEP-11 case that genuinely has none is tested
+            // where it is produced.
+            install_handle: Some(id.into()),
         }
     }
 
