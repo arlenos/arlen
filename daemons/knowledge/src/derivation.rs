@@ -16,9 +16,7 @@
 //! derivation confidence. (True same-PROCESS needs a `cgroup_id` on the
 //! `file.written` event, which the kernel-layer write probe does not emit today,
 //! unlike `file.opened`; the wiring uses the writing `app_id` as the proxy until
-//! that kernel follow-up lands.) Lives behind `allow(dead_code)` until the
-//! wiring consumes it (mechanism before trigger).
-#![allow(dead_code)]
+//! that kernel follow-up lands.)
 
 use std::path::Path;
 
