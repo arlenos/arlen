@@ -59,7 +59,11 @@ while IFS= read -r pkg; do
         echo "  /etc/arlen/config-broker.env - and the canonical EnvironmentFile= has no"
         echo "  '-' prefix, so the canonical unit would fail to start there outright."
         echo "  CONSEQUENCE: in the image, the daemon owning executor_live, access_level"
-        echo "  and the provider settings runs as root with no separate-uid isolation."
+        echo "  and the provider settings runs as root. The property the broker exists"
+        echo "  for still holds - root is a different uid from the session user, so the"
+        echo "  user still cannot write the switches directly - what is lost is the"
+        echo "  defence in depth: a compromise of the broker is a compromise of root"
+        echo "  rather than of a nologin account that owns nothing else."
         echo "  FIX: provision the user (sysusers.d) + write config-broker.env at image"
         echo "  build, then delete this exception. Not a reconcile."
         echo
