@@ -287,19 +287,36 @@ pub fn ephemeral_profile(
     base_platform: &Path,
     untrusted_file: &Path,
     network: NetworkPolicy,
+    compat_roots: &[&Path],
 ) -> Result<Confinement, ConfinerError> {
     let base = checked_abs(base_platform)?;
     let file = checked_abs(untrusted_file)?;
     let mut env = BTreeMap::new();
     env.insert("PATH".into(), "/usr/bin:/bin".into());
     env.insert("HOME".into(), "/home/ephemeral".into());
+    let mut binds = vec![
+        // The read-only runtime root (libs, the viewer binary); nothing of the
+        // host home is bound.
+        //
+        // Bound at `/usr`, NOT at `/`. Binding it as the root leaves the sandbox
+        // root read-only, and bwrap then cannot create the mount points it needs
+        // for `/proc` and `/dev` - it fails outright with "Can't mkdir /proc:
+        // Read-only file system". Leaving `/` as bwrap's own tmpfs is also what
+        // §E10 asks for in so many words ("fresh-tmpfs root"), and what the
+        // profiled path does.
+        Bind::ReadOnly(base, "/usr".into()),
+    ];
+    // A merged-`/usr` system keeps `/lib64`, `/bin` and friends as root-level
+    // symlinks into `/usr`; without them a dynamically-linked program cannot find
+    // its ELF interpreter and exec fails ENOENT. The caller passes the ones that
+    // exist, since checking is I/O and this stays pure.
+    for root in compat_roots {
+        let r = checked_abs(root)?;
+        binds.push(Bind::ReadOnly(r.clone(), r));
+    }
     Ok(Confinement {
         network,
-        binds: vec![
-            // The read-only runtime root (libs, the viewer binary); nothing of
-            // the host home is bound.
-            Bind::ReadOnly(base, "/".into()),
-        ],
+        binds,
         // Fresh, empty, auto-cleaned: no host home, no persisted state, no sockets.
         tmpfs: vec!["/home".into(), "/tmp".into(), "/run".into()],
         // The one untrusted file, read-only at the fixed handle path, re-applied
@@ -527,6 +544,7 @@ mod tests {
             Path::new("/usr/lib/arlen/runtime"),
             Path::new("/home/u/Downloads/untrusted.pdf"),
             NetworkPolicy::None,
+            &[],
         )
         .unwrap();
         let args = conf.bwrap_args();
@@ -551,6 +569,7 @@ mod tests {
             Path::new("/usr/lib/arlen/runtime"),
             Path::new("/home/u/x.html"),
             NetworkPolicy::Unrestricted,
+            &[],
         )
         .unwrap();
         // With a manifest-declared network policy, the net namespace stays up.
