@@ -109,12 +109,20 @@ async fn store_variants(id: String) -> Result<Vec<Variant>, String> {
     }
 }
 
-/// A validated install handoff: the id + resolved variant the caller drives
-/// through the consent friction-ladder. The backend does not install here.
+/// A validated install handoff: the id, the resolved variant, and what that
+/// variant's installer needs to be told. The caller drives it through the consent
+/// friction-ladder; the backend does not install here.
 #[derive(Serialize)]
 struct InstallHandoff {
     id: String,
     variant: SourceLayer,
+    /// The Debian package name, Flatpak ref or forage recipe id for this variant.
+    ///
+    /// `None` when the catalog knows none, which the frontend must surface as
+    /// "cannot install this variant" - deriving one from the component id is
+    /// right for Flathub by convention and wrong for apt, where the package name
+    /// is a separate field precisely because it differs.
+    install_handle: Option<String>,
 }
 
 /// Validate + resolve an install target. When `variant` is absent (the primary
@@ -139,8 +147,8 @@ async fn store_install(
         },
     };
     match ask(Request::Install { id: ComponentId(id), variant }).await? {
-        Response::InstallResolved { id, variant } => {
-            Ok(InstallHandoff { id: id.0, variant })
+        Response::InstallResolved { id, variant, install_handle } => {
+            Ok(InstallHandoff { id: id.0, variant, install_handle })
         }
         Response::Error(e) => Err(e),
         other => Err(format!("unexpected store response: {other:?}")),
