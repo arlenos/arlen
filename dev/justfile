@@ -518,3 +518,27 @@ reclaim-disk:
     freed=$(( (after - before) / 1024 / 1024 ))
     echo "reclaimed ~${freed} GiB; df now:"; df -h "{{ROOT}}" | tail -1
     echo "NB the cleaned crates rebuild on next cargo build / just dev."
+
+# One dependency added to a shared crate leaves every standalone lockfile that
+# depends on it behind, and nothing notices because a normal build just rewrites
+# the lock. Six had drifted that way. This is minutes, not seconds, so it is its
+# own recipe rather than part of `lint`.
+check-locks:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cd "{{ROOT}}"
+    stale=()
+    for lk in $(git ls-files '*Cargo.lock'); do
+        d=$(dirname "$lk")
+        out=$(cargo metadata --locked --offline --format-version 1 --manifest-path "$d/Cargo.toml" 2>&1 >/dev/null)
+        # An uncached crate is an offline artefact, not a stale lock; only the
+        # refusal to rewrite means the lock no longer describes the manifest.
+        if grep -q 'because --locked was passed' <<<"$out"; then stale+=("$d"); fi
+    done
+    if [ ${#stale[@]} -gt 0 ]; then
+        printf 'lockfile no longer describes its manifest:\n'
+        printf '  - %s\n' "${stale[@]}"
+        printf 'run `cargo update --workspace` in each, then test and commit the lock\n'
+        exit 1
+    fi
+    echo "every tracked lockfile still describes its manifest"
