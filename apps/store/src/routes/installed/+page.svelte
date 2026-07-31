@@ -91,7 +91,7 @@
     border: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     border-radius: var(--radius-card);
     background: color-mix(in srgb, var(--color-fg-primary) 2%, transparent);
-    text-align: left;
+    text-align: start;
     cursor: pointer;
     transition: background var(--duration-fast, 150ms) ease;
   }

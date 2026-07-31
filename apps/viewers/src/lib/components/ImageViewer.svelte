@@ -297,7 +297,7 @@
     color: var(--color-fg-secondary, #a1a1aa);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
-    margin-left: 8px;
+    margin-inline-start: 8px;
   }
   .dock .sep {
     width: 1px;

@@ -107,7 +107,7 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    border-left: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+    border-inline-start: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
     overflow: hidden;
   }
   /* The drag strip sits over the left border. */

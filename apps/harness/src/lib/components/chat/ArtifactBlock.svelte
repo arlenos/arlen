@@ -44,7 +44,7 @@
   :global(.ab-trigger) {
     display: block;
     width: 100%;
-    text-align: left;
+    text-align: start;
   }
   .ab {
     margin: 0;

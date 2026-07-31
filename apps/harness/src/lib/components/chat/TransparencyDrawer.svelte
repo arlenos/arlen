@@ -192,7 +192,7 @@
     display: flex;
     flex-direction: column;
     background: var(--color-bg-app, #0f0f0f);
-    border-left: 1px solid var(--color-border);
+    border-inline-start: 1px solid var(--color-border);
     box-shadow: -12px 0 40px rgba(0, 0, 0, 0.4);
     font-size: var(--text-base);
     color: var(--foreground, #fafafa);

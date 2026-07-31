@@ -37,7 +37,7 @@
     flex-direction: column;
     gap: 0.6rem;
     padding: 0.75rem 0.9rem;
-    border-left: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+    border-inline-start: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     overflow-y: auto;
   }
   .kn-detail-head {
