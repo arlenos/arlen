@@ -626,6 +626,13 @@ check-ignores:
 check-protos:
     python3 "{{ROOT}}/dev/scripts/check-proto-drift.py"
 
+# Every D-Bus method must be able to see who called it, or be listed with the
+# reason it need not. NOT in `checks`: it currently fails on installd, whose
+# whole interface resolves no caller, and acknowledging those to get a green
+# would be the wrong way round. Run it by hand; wire it in once that is decided.
+check-dbus:
+    python3 "{{ROOT}}/dev/scripts/check-dbus-callers.py"
+
 # Some on-disk files are written by one crate and read by another, each with its
 # own struct because they cannot share a type. A writer that renames a field the
 # reader needs breaks nothing loudly: the parse fails, the reader returns empty by
