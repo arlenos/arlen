@@ -15,11 +15,13 @@ use crate::host::PlanSink;
 use crate::interpret::UpsertPlan;
 use serde_json::{Map, Value};
 
+use crate::retry::FailureKind;
+
 /// The persistence operations the KG sink performs, both keyed by stable
 /// external keys for idempotent re-sync. The real impl wraps the os-sdk graph
 /// client (`upsert_entity` + the edge write) and blocks on it from the sync
-/// host; tests use a recording mock. An error is a human-readable string (the
-/// [`PlanSink`] contract), never the raw transport error.
+/// host; tests use a recording mock. An error carries a message for the human
+/// and a [`FailureKind`] for the host, never the raw transport error.
 pub trait EntityWriter {
     /// Upsert (create-or-strengthen) a node of `qualified_type` keyed by
     /// `external_key`, with `fields`. Idempotent: a re-sync of the same key
@@ -34,7 +36,7 @@ pub trait EntityWriter {
         external_key: &str,
         fields: &Map<String, Value>,
         origin_ref: Option<&str>,
-    ) -> Result<(), String>;
+    ) -> Result<(), WriteFailure>;
 
     /// Create an `edge` from the node `(from_type, from_key)` to the node
     /// `(to_type, to_key)`, both addressed by their stable external keys (the
@@ -47,7 +49,41 @@ pub trait EntityWriter {
         from_key: &str,
         to_type: &str,
         to_key: &str,
-    ) -> Result<(), String>;
+    ) -> Result<(), WriteFailure>;
+}
+
+/// A failed write: what to tell the user, and whether trying again could help.
+///
+/// The kind is carried rather than derived later on purpose. Only the writer
+/// knows why a write failed; by the time an error is a string, deciding whether
+/// to retry means matching on its text, which breaks the first time a message is
+/// reworded and fails in the direction that keeps retrying a permanently broken
+/// bridge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteFailure {
+    /// Human-readable, for the log line and the health report.
+    pub message: String,
+    /// Whether a later attempt could plausibly succeed.
+    pub kind: FailureKind,
+}
+
+impl WriteFailure {
+    /// A failure that could pass later: the daemon was down, the socket blinked.
+    pub fn transient(message: impl Into<String>) -> Self {
+        Self { message: message.into(), kind: FailureKind::Transient }
+    }
+
+    /// A failure that will repeat until something changes: a refused grant, a
+    /// mapping the daemon rejects.
+    pub fn hard(message: impl Into<String>) -> Self {
+        Self { message: message.into(), kind: FailureKind::Hard }
+    }
+}
+
+impl std::fmt::Display for WriteFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
 }
 
 /// A [`PlanSink`] that persists each plan through an [`EntityWriter`].
@@ -71,12 +107,14 @@ impl<W: EntityWriter> KgPlanSink<W> {
 impl<W: EntityWriter> PlanSink for KgPlanSink<W> {
     fn write_plan(&mut self, _bridge: &str, plan: &UpsertPlan) -> Result<(), String> {
         // Upsert the node first; idempotent, so the edges below can reference it.
-        self.writer.upsert(
-            &plan.qualified_type,
-            &plan.external_key,
-            &plan.fields,
-            plan.origin_ref.as_deref(),
-        )?;
+        self.writer
+            .upsert(
+                &plan.qualified_type,
+                &plan.external_key,
+                &plan.fields,
+                plan.origin_ref.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
         // Then each edge. Both endpoints take this plan's entity type: the
         // bridge.toml link rule names no target type, so the lead case links
         // within one type (note -> note); a future cross-type link adds a
@@ -89,7 +127,8 @@ impl<W: EntityWriter> PlanSink for KgPlanSink<W> {
                 &link.from_key,
                 &plan.qualified_type,
                 &link.to_key,
-            )?;
+            )
+            .map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -118,9 +157,9 @@ mod tests {
             external_key: &str,
             _fields: &Map<String, Value>,
             origin_ref: Option<&str>,
-        ) -> Result<(), String> {
+        ) -> Result<(), WriteFailure> {
             if self.fail_upsert {
-                return Err("upsert refused".to_string());
+                return Err(WriteFailure::hard("upsert refused"));
             }
             self.origin_refs.push(origin_ref.map(str::to_string));
             self.upserts
@@ -135,9 +174,9 @@ mod tests {
             from_key: &str,
             _to_type: &str,
             to_key: &str,
-        ) -> Result<(), String> {
+        ) -> Result<(), WriteFailure> {
             if self.fail_link {
-                return Err("link refused".to_string());
+                return Err(WriteFailure::hard("link refused"));
             }
             self.links
                 .push((edge.to_string(), from_key.to_string(), to_key.to_string()));
