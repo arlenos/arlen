@@ -43,6 +43,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # The matrix below is hand-kept and its comment claims every [package] is
+      # listed. Nothing checked that, and the justfile copy of the same list had
+      # already fallen nine crates behind. Runs here because this job is
+      # unconditional: drift can arrive in a commit that touches no rust at all.
+      - name: crate lists agree with the tree
+        run: python3 dev/scripts/check-crate-coverage.py
       - id: detect
         env:
           EVENT_NAME: ${{ github.event_name }}
