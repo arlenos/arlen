@@ -231,27 +231,27 @@
     <ContextMenu.Content class="shell-popover">
       {#if dev.connected}
         <ContextMenu.Item onclick={() => disconnect(dev.path)}>
-          <Unplug size={14} class="mr-2" />Disconnect
+          <Unplug size={14} class="me-2" />Disconnect
         </ContextMenu.Item>
       {:else}
         <ContextMenu.Item onclick={() => connect(dev.path)}>
-          <Plug size={14} class="mr-2" />Connect
+          <Plug size={14} class="me-2" />Connect
         </ContextMenu.Item>
       {/if}
       <ContextMenu.Separator />
       {#if dev.trusted}
         <ContextMenu.Item onclick={() => setTrusted(dev.path, false)}>
-          <ShieldOff size={14} class="mr-2" />Don't Auto-Connect
+          <ShieldOff size={14} class="me-2" />Don't Auto-Connect
         </ContextMenu.Item>
       {:else}
         <ContextMenu.Item onclick={() => setTrusted(dev.path, true)}>
-          <ShieldCheck size={14} class="mr-2" />Auto-Connect
+          <ShieldCheck size={14} class="me-2" />Auto-Connect
         </ContextMenu.Item>
       {/if}
       {#if dev.paired}
         <ContextMenu.Separator />
         <ContextMenu.Item onclick={() => remove(dev.path)} class="text-[var(--color-error)]">
-          <Trash2 size={14} class="mr-2" />Forget Device
+          <Trash2 size={14} class="me-2" />Forget Device
         </ContextMenu.Item>
       {/if}
     </ContextMenu.Content>

@@ -54,7 +54,7 @@
     <ContextMenu.Sub>
       <ContextMenu.SubTrigger disabled={!item.enabled}>
         {#if item.checked}
-          <Check class="mr-2 h-4 w-4" />
+          <Check class="me-2 h-4 w-4" />
         {/if}
         {item.label}
       </ContextMenu.SubTrigger>
@@ -67,7 +67,7 @@
   {:else}
     <ContextMenu.Item disabled={!item.enabled} onclick={() => handleClick(item)}>
       {#if item.checked}
-        <Check class="mr-2 h-4 w-4" />
+        <Check class="me-2 h-4 w-4" />
       {/if}
       {item.label}
     </ContextMenu.Item>
