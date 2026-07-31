@@ -185,11 +185,12 @@ const EPHEMERAL_WRITABLE: &[&str] = &["/home", "/tmp", "/run"];
 fn run_ephemeral(app_id: &str, file: &std::path::Path, program: &[String]) -> ExitCode {
     // The merged-`/usr` root-level compat paths that actually exist here, so a
     // dynamically-linked viewer finds its ELF interpreter inside the sandbox.
-    let compat: Vec<&std::path::Path> = ["/lib64", "/lib", "/bin", "/sbin"]
-        .iter()
-        .map(std::path::Path::new)
-        .filter(|p| p.exists())
-        .collect();
+    // Shared with the confiner rather than restated: the command path had this
+    // list missing entirely, which is how `run_command` came to be unable to run
+    // any dynamically linked program.
+    let compat_owned = arlen_confiner::merged_usr_compat_roots();
+    let compat: Vec<&std::path::Path> =
+        compat_owned.iter().map(std::path::Path::new).collect();
     let confinement = match arlen_confiner::ephemeral_profile(
         std::path::Path::new("/usr"),
         file,
