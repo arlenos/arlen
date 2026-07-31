@@ -5,9 +5,14 @@
 //! baseline: a string already in the baseline is accepted, a NEW one fails the
 //! run. The point is to stop the i18n debt growing while the UI is built;
 //! retrofitting the baselined strings into the MF2 catalogs is the later
-//! extraction sweep (I18N-R4), and a frontend `t()` binding does not exist yet,
-//! so a baseline-diff (not a "route through i18n" check) is the only honest gate
-//! today.
+//! extraction sweep (I18N-R4).
+//!
+//! The kit's `t()` binding does exist (`@arlen/ui-kit` i18n), so the reason this
+//! is a baseline-diff rather than a "route through i18n" check is no longer that
+//! there is nothing to route through. It is that most user-facing strings are
+//! still literals: a gate demanding every one go through `t()` would fail on
+//! the first run and stay failing until the extraction sweep finishes. The
+//! baseline holds the line where it is until then.
 //!
 //! The detector is heuristic by design (no full Svelte parse): it skips
 //! `<script>`/`<style>` blocks, HTML comments and `{...}` expressions, then flags
