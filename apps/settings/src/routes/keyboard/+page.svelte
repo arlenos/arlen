@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import {
@@ -51,6 +52,11 @@
   /// behind `xkb_config.layouts` — users can hand-edit any identifier
   /// `/usr/share/X11/xkb/rules/evdev.lst` accepts. Kept short for the
   /// chooser to stay usable without a search box.
+  // Deliberately NOT routed through the catalog. These are xkb layout
+  // descriptions, and xkeyboard-config already ships translations of them; hand
+  // writing a German name for each here would be inventing data that has a
+  // canonical source. The right fix reads the localised description from
+  // `evdev.lst` rather than translating this list. Noted in `coder-reports.md`.
   const LAYOUT_CHOICES: { value: string; label: string }[] = [
     { value: "us", label: "English (US)" },
     { value: "gb", label: "English (UK)" },
@@ -77,37 +83,36 @@
     return LAYOUT_CHOICES.find((c) => c.value === code)?.label ?? code;
   }
 
+  // `$derived`, not `const`: the translator is a store, so a constant would hold
+  // English from import onward and a locale switch would never reach these rows.
   const COMMON_OPTIONS: { value: string; label: string; description: string }[] =
-    [
+    $derived([
       {
         value: "caps:escape",
-        label: "Caps Lock as Escape",
-        description: "Every Caps Lock press sends Escape. No Caps Lock.",
+        label: $t("s.kbd.capsEscape"),
+        description: $t("s.kbd.capsEscapeDesc"),
       },
       {
         value: "caps:swapescape",
-        label: "Swap Caps Lock and Escape",
-        description: "Escape acts as Caps Lock and vice versa.",
+        label: $t("s.kbd.capsSwap"),
+        description: $t("s.kbd.capsSwapDesc"),
       },
       {
         value: "grp:alt_shift_toggle",
-        label: "Alt+Shift switches layout",
-        description:
-          "XKB-level shortcut. Works independently of Arlen keybindings.",
+        label: $t("s.kbd.altShift"),
+        description: $t("s.kbd.altShiftDesc"),
       },
       {
         value: "terminate:ctrl_alt_bksp",
-        label: "Ctrl+Alt+Backspace terminates X",
-        description:
-          "Not meaningful on Wayland; exposed for xwayland sessions.",
+        label: $t("s.kbd.terminateX"),
+        description: $t("s.kbd.terminateXDesc"),
       },
       {
         value: "compose:ralt",
-        label: "Right Alt as Compose key",
-        description:
-          "Enables dead-key sequences for accents and special characters.",
+        label: $t("s.kbd.compose"),
+        description: $t("s.kbd.composeDesc"),
       },
-    ];
+    ]);
 
   function parseOptions(s: string): Set<string> {
     return new Set(
@@ -254,8 +259,8 @@
 </script>
 
 <Page
-  title="Keyboard"
-  description="Layouts, options, and key-repeat behaviour. Shortcuts are managed separately."
+  title={$t("s.kbd.title")}
+  description={$t("s.kbd.desc")}
 >
   <SectionGrid>
   <!-- Navigation card pointing at the shortcut editor. Hash anchors
@@ -263,8 +268,8 @@
        switch shortcut` link see the relevant bindings. -->
   <LinkCard
     href="/keyboard/shortcuts#cat-keyboard"
-    title="Shortcuts"
-    description="Rebind window management, workspaces, apps, and shell actions."
+    title={$t("s.kbd.shortcuts")}
+    description={$t("s.kbd.shortcutsDesc")}
   >
     {#snippet icon()}<KeyboardIcon size={20} strokeWidth={1.75} />{/snippet}
   </LinkCard>
@@ -274,11 +279,11 @@
       class="span-full rounded-[var(--radius-chip)] border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
       title={lastError}
     >
-      Could not save the keyboard change. The previous setting still applies.
+      {$t("s.kbd.saveFailed")}
     </div>
   {/if}
 
-  <Section label="Layouts">
+  <Section label={$t("s.kbd.layouts")}>
     <div class="flex flex-col divide-y divide-border">
       {#each layouts as layout, i (layout + ":" + i)}
         <div class="flex items-center gap-2 px-4 py-2.5">
@@ -290,9 +295,9 @@
               {#if i === 0}
                 <span
                   class="rounded-[var(--radius-chip)] bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary"
-                  title="This is the layout active after login. Actions change the primary at runtime."
+                  title={$t("s.kbd.primaryHint")}
                 >
-                  Primary
+                  {$t("s.kbd.primary")}
                 </span>
               {/if}
             </div>
@@ -305,7 +310,7 @@
             size="icon"
             onclick={() => moveLayout(i, i - 1)}
             disabled={i === 0 || loading}
-            aria-label="Move up"
+            aria-label={$t("s.kbd.moveUp")}
           >
             <ArrowUp class="h-3.5 w-3.5" />
           </Button>
@@ -314,7 +319,7 @@
             size="icon"
             onclick={() => moveLayout(i, i + 1)}
             disabled={i === layouts.length - 1 || loading}
-            aria-label="Move down"
+            aria-label={$t("s.kbd.moveDown")}
           >
             <ArrowDown class="h-3.5 w-3.5" />
           </Button>
@@ -323,7 +328,7 @@
             size="icon"
             onclick={() => removeLayout(i)}
             disabled={layouts.length <= 1 || loading}
-            aria-label="Remove layout"
+            aria-label={$t("s.kbd.removeLayout")}
           >
             <Trash2 class="h-3.5 w-3.5" />
           </Button>
@@ -335,7 +340,7 @@
             value=""
             options={addableLayouts}
             onchange={addLayout}
-            placeholder="Select a layout to add…"
+            placeholder={$t("s.kbd.selectLayout")}
             width="100%"
           />
         {:else}
@@ -346,22 +351,22 @@
             disabled={addableLayouts.length === 0 || loading}
           >
             <Plus class="me-1 h-3.5 w-3.5" />
-            Add layout
+            {$t("s.kbd.addLayout")}
           </Button>
         {/if}
       </div>
     </div>
   </Section>
 
-  <Section label="Primary variant">
+  <Section label={$t("s.kbd.primaryVariant")}>
     <Row
-      label="Variant"
+      label={$t("s.kbd.variant")}
       description="Optional variant for the primary layout, e.g. 'dvorak' or 'colemak'."
     >
       {#snippet control()}
         <Input
           value={variants[0] ?? ""}
-          placeholder="(none)"
+          placeholder={$t("s.kbd.noneVariant")}
           oninput={(e: Event) => {
             const v = (e.target as HTMLInputElement).value;
             const next = [...variants];
@@ -381,7 +386,7 @@
     </Row>
   </Section>
 
-  <Section label="Options">
+  <Section label={$t("s.kbd.options")}>
     {#each COMMON_OPTIONS as opt (opt.value)}
       <Row label={opt.label} description={opt.description}>
         {#snippet control()}
@@ -395,15 +400,15 @@
     {/each}
   </Section>
 
-  <Section label="Key Repeat">
+  <Section label={$t("s.kbd.keyRepeat")}>
     <!-- Both rows share the same NumberInput width so their triggers
          form a clean vertical grid. 180px fits the longer unit label
          ("chars/s") plus a four-digit value without cropping, and
          leaves the shorter "ms" row looking intentional rather than
          orphaned. -->
     <Row
-      label="Repeat rate"
-      description="Characters per second after the initial delay."
+      label={$t("s.kbd.repeatRate")}
+      description={$t("s.kbd.repeatRateDesc")}
     >
       {#snippet control()}
         <NumberInput
@@ -413,14 +418,14 @@
           step={1}
           unit="chars/s"
           disabled={loading}
-          ariaLabel="Repeat rate"
+          ariaLabel={$t("s.kbd.repeatRate")}
           onchange={setRepeatRate}
         />
       {/snippet}
     </Row>
     <Row
-      label="Repeat delay"
-      description="Time before a held key starts repeating."
+      label={$t("s.kbd.repeatDelay")}
+      description={$t("s.kbd.repeatDelayDesc")}
     >
       {#snippet control()}
         <NumberInput
@@ -430,7 +435,7 @@
           step={10}
           unit="ms"
           disabled={loading}
-          ariaLabel="Repeat delay"
+          ariaLabel={$t("s.kbd.repeatDelay")}
           onchange={setRepeatDelay}
         />
       {/snippet}
