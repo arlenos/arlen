@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// One editable theme field with the shared override language: the control
   /// always shows the resolved active value at full contrast; when the user has
   /// overridden it, an accent bar sits in the left gutter (VS Code's modified
@@ -37,8 +38,8 @@
       <button
         type="button"
         class="or-reset"
-        title="Reset to the theme's value"
-        aria-label={`Reset ${label} to the theme's value`}
+        title={$t("s.pv.resetToTheme")}
+        aria-label={$t("s.pv.resetNamed", { name: label })}
         onclick={onreset}
       >
         <RotateCcw size={13} strokeWidth={2} />

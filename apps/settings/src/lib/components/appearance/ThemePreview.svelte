@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// A live preview: real @arlen/ui-kit primitives on a themed surface, scoped to
   /// the theme's EFFECTIVE tokens. Editing a role sets this container's own
   /// --color-* variables, which cascade through the app's shadcn aliases
@@ -53,27 +54,27 @@
 <div class="pv" style={vars}>
   <div class="pv-surface">
     <div class="pv-copy">
-      <span class="pv-h">The quick brown fox</span>
-      <span class="pv-p">Secondary text sits a little quieter than the heading.</span>
+      <span class="pv-h">{$t("s.typo.sampleHead")}</span>
+      <span class="pv-p">{$t("s.pv.secondaryText")}</span>
     </div>
 
     <div class="pv-row">
-      <Button>Primary</Button>
-      <Button variant="secondary">Secondary</Button>
-      <Button variant="outline">Outline</Button>
+      <Button>{$t("s.pv.primary")}</Button>
+      <Button variant="secondary">{$t("s.pv.secondary")}</Button>
+      <Button variant="outline">{$t("s.pv.outline")}</Button>
     </div>
 
-    <Input placeholder="Text input" readonly tabindex={-1} />
+    <Input placeholder={$t("s.pv.textInput")} readonly tabindex={-1} />
 
     <div class="pv-list">
-      <div class="pv-item pv-selected">Selected item</div>
-      <div class="pv-item">List item</div>
+      <div class="pv-item pv-selected">{$t("s.pv.selectedItem")}</div>
+      <div class="pv-item">{$t("s.pv.listItem")}</div>
     </div>
 
     <div class="pv-badges">
-      <Badge>Default</Badge>
-      <Badge variant="success">Success</Badge>
-      <Badge variant="warn">Warning</Badge>
+      <Badge>{$t("s.pv.badgeDefault")}</Badge>
+      <Badge variant="success">{$t("s.pv.badgeSuccess")}</Badge>
+      <Badge variant="warn">{$t("s.pv.badgeWarning")}</Badge>
     </div>
   </div>
 </div>
