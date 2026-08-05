@@ -152,16 +152,26 @@ def has_top_bar(png):
 
 
 def consent_dialog_present(png):
-    """True if the consent card is on screen, detected by its amber severity bar -
-    a distinctive bright-amber strip across the top of the centered card that
-    nothing else on the dark desktop paints. Used to confirm a real DISMISSAL after
-    a decision click (a raw frame-diff is fooled by the backdrop dimming and the
-    cursor appearing, so it cannot tell "resolved" from "still up")."""
+    """True if anything of the consent card is still on screen.
+
+    Used to confirm a real DISMISSAL after a decision click, so it has to be hard
+    to fool: a raw frame-diff is fooled by the backdrop dimming and the cursor
+    moving, and an amber-strip probe (what this used to be, alone) is fooled by a
+    card caught half-faded, whose amber has dropped below any threshold while the
+    whole card is still plainly readable. That produced a PASS on a boot where the
+    card was still sitting there, which is the worst thing a gate can do.
+
+    So the real question is asked instead: has the area the card occupies gone back
+    to being desktop? An empty desktop is flat - a few adjacent values - while a
+    card, at any opacity above nothing, is not. Compare the card's area against a
+    patch of plain desktop beside it and call it present if it is still carrying
+    contrast. The amber probe stays as a cheap first answer for a fully opaque
+    card.
+    """
     from PIL import Image
     img = Image.open(png).convert("RGB")
     w, h = img.size
-    # The card is centered; its top strip sits a little above mid-height. Scan a
-    # band there for an amber pixel (high R, mid G, low B).
+    # The card is centered; its top strip sits a little above mid-height.
     y0, y1 = int(h * 0.32), int(h * 0.38)
     x0, x1 = int(w * 0.32), int(w * 0.68)
     for y in range(y0, y1):
@@ -169,7 +179,20 @@ def consent_dialog_present(png):
             r, g, b = img.getpixel((x, y))
             if r > 170 and 90 < g < 210 and b < 90 and r > b + 80:
                 return True
-    return False
+
+    def spread(bx0, by0, bx1, by1):
+        vals = [v for y in range(by0, by1, 2) for x in range(bx0, bx1, 2)
+                for v in img.getpixel((x, y))]
+        return max(vals) - min(vals)
+
+    # The card's own box, and a same-height strip of desktop to its left that it
+    # never covers. Left is safe: the card is centred and the bar is at the top.
+    card = spread(int(w * 0.33), int(h * 0.34), int(w * 0.67), int(h * 0.66))
+    desktop = spread(int(w * 0.06), int(h * 0.34), int(w * 0.26), int(h * 0.66))
+    # A generous margin over the desktop's own noise, so a gradient wallpaper does
+    # not read as a dialog, while a ghost card (which spans most of the range)
+    # does.
+    return card > desktop + 40
 
 
 def frame_change(a, b):
