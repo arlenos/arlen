@@ -709,6 +709,7 @@ check-protos:
 check-executor:
     python3 "{{ROOT}}/dev/scripts/check-executor-gate.py"
     python3 "{{ROOT}}/dev/scripts/check-shipped-units.py"
+    node "{{ROOT}}/dev/scripts/check-catalogs.mjs"
 
 check-smoke:
     python3 "{{ROOT}}/dev/scripts/check-smoke-coverage.py"
