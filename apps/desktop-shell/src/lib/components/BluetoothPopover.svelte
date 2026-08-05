@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Bluetooth popover: device list with context menus, scan, power toggle.
 
   import { activePopover } from "$lib/stores/activePopover.js";
@@ -206,11 +207,11 @@
             <span class="bt-device-name">{dev.name}</span>
             <span class="bt-device-detail">
               {#if connectingTo === dev.path}
-                Connecting...
+                {$t("sh.bt.connecting")}
               {:else if dev.connected}
-                Connected
+                {$t("sh.bt.connected")}
               {:else if dev.paired}
-                Paired
+                {$t("sh.bt.paired")}
               {/if}
               {#if dev.battery_percentage != null}
                 <span
@@ -231,27 +232,27 @@
     <ContextMenu.Content class="shell-popover">
       {#if dev.connected}
         <ContextMenu.Item onclick={() => disconnect(dev.path)}>
-          <Unplug size={14} class="me-2" />Disconnect
+          <Unplug size={14} class="me-2" />{$t("sh.bt.disconnect")}
         </ContextMenu.Item>
       {:else}
         <ContextMenu.Item onclick={() => connect(dev.path)}>
-          <Plug size={14} class="me-2" />Connect
+          <Plug size={14} class="me-2" />{$t("sh.bt.connect")}
         </ContextMenu.Item>
       {/if}
       <ContextMenu.Separator />
       {#if dev.trusted}
         <ContextMenu.Item onclick={() => setTrusted(dev.path, false)}>
-          <ShieldOff size={14} class="me-2" />Don't Auto-Connect
+          <ShieldOff size={14} class="me-2" />{$t("sh.bt.noAutoConnect")}
         </ContextMenu.Item>
       {:else}
         <ContextMenu.Item onclick={() => setTrusted(dev.path, true)}>
-          <ShieldCheck size={14} class="me-2" />Auto-Connect
+          <ShieldCheck size={14} class="me-2" />{$t("sh.bt.autoConnect")}
         </ContextMenu.Item>
       {/if}
       {#if dev.paired}
         <ContextMenu.Separator />
         <ContextMenu.Item onclick={() => remove(dev.path)} class="text-[var(--color-error)]">
-          <Trash2 size={14} class="me-2" />Forget Device
+          <Trash2 size={14} class="me-2" />{$t("sh.bt.forget")}
         </ContextMenu.Item>
       {/if}
     </ContextMenu.Content>
@@ -262,7 +263,7 @@
   {#snippet header()}
     <PopoverHeader
       icon={Bluetooth}
-      title="Bluetooth"
+      title={$t("sh.bt.title")}
       toggled={btState?.powered ?? false}
       onToggle={togglePower}
     />
@@ -274,19 +275,19 @@
     {:else}
       <div class="bt-msg">
         <Bluetooth size={32} strokeWidth={1} />
-        <span>Loading...</span>
+        <span>{$t("sh.bt.loading")}</span>
       </div>
     {/if}
   {:else if !btState.available}
     <div class="bt-msg">
       <BluetoothOff size={32} strokeWidth={1} />
-      <span>Bluetooth is not available on this device</span>
+      <span>{$t("sh.bt.unavailable")}</span>
     </div>
   {:else if !btState.powered}
     <div class="bt-msg">
       <BluetoothOff size={32} strokeWidth={1} />
-      <span>Bluetooth is off</span>
-      <span class="bt-hint">Turn Bluetooth back on with the switch above</span>
+      <span>{$t("sh.bt.off")}</span>
+      <span class="bt-hint">{$t("sh.bt.offHint")}</span>
     </div>
   {:else}
     {#if error}
@@ -294,7 +295,7 @@
     {/if}
 
     {#if connectedDevices.length > 0}
-      <div class="bt-section-label">Connected</div>
+      <div class="bt-section-label">{$t("sh.bt.connectedSection")}</div>
       {#each connectedDevices as dev (dev.address)}
         {@render deviceItem(dev)}
       {/each}
@@ -302,7 +303,7 @@
     {/if}
 
     {#if pairedDevices.length > 0}
-      <div class="bt-section-label">Paired Devices</div>
+      <div class="bt-section-label">{$t("sh.bt.pairedDevices")}</div>
       {#each pairedDevices as dev (dev.address)}
         {@render deviceItem(dev)}
       {/each}
@@ -310,7 +311,7 @@
     {/if}
 
     {#if btState.discovering && availableDevices.length > 0}
-      <div class="bt-section-label">Available</div>
+      <div class="bt-section-label">{$t("sh.bt.available")}</div>
       {#each availableDevices as dev (dev.address)}
         {@render deviceItem(dev)}
       {/each}
