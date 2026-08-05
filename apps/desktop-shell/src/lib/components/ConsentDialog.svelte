@@ -69,6 +69,11 @@
     void invoke("set_consent_input_region", { active: shown }).catch(() => {});
   });
 
+  /// One line into the journal. The shell has no devtools on the image, so this is
+  /// the only way a frontend fact becomes visible to a boot log.
+  const say = (msg: string, level = "info") =>
+    void invoke("frontend_log", { level, msg }).catch(() => {});
+
   // Never take away a node that is still painting.
   //
   // On the image, removing the card outright leaves its pixels on the screen: the
@@ -128,6 +133,15 @@
         requestAnimationFrame(() => {
           root.style.opacity = "";
         });
+        say("consent: page repaint nudged after the card came down");
+        // DIAGNOSTIC, out once it has answered. A full-page composite did not
+        // clear the ghost either. Reloading rebuilds every layer from scratch, so
+        // if THAT does not clear it, nothing available to the page can, and the
+        // stale pixels live below WebKit - which is a different search entirely.
+        setTimeout(() => {
+          say("consent: reloading to see whether anything in the page can clear it");
+          location.reload();
+        }, 2000);
       };
       requestAnimationFrame(() => requestAnimationFrame(finish));
       setTimeout(finish, 200);
@@ -157,8 +171,6 @@
     // quiet: silence then means either a clean teardown or a check that never ran,
     // and those want opposite fixes. The first boot with this in place said
     // nothing, which is exactly that dead end.
-    const say = (msg: string, level = "info") =>
-      void invoke("frontend_log", { level, msg }).catch(() => {});
     say(`consent: request ${answeredId} answered, checking that the card came down`);
     // After a frame, so a teardown that merely runs late is not called stuck.
     setTimeout(() => {
