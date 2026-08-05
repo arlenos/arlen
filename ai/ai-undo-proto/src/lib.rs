@@ -89,6 +89,16 @@ pub enum Request {
         /// The entry to look up.
         op_id: String,
     },
+    /// The most recent entries with their state, newest first, for a
+    /// recent-actions surface. Distinct from [`Request::LiveEntries`], which is
+    /// the recovery read and drops anything terminal: a history has to keep the
+    /// entries that already finished, because a completed undo is the evidence
+    /// the user came to look for.
+    ListRecent {
+        /// How many to return at most. A history shows a page; the log does not
+        /// end.
+        limit: u32,
+    },
     /// Enumerate every entry still in a non-terminal state - what a restarting
     /// consumer re-arms so a persisted compensation survives (no fields).
     LiveEntries,
@@ -130,6 +140,16 @@ impl Request {
             | Request::LookupEntry { op_id } => {
                 check("op_id", op_id, MAX_OP_ID_LEN)?;
             }
+            // A page, not the whole ledger: an unbounded limit would let one
+            // request ask for a response the frame cannot carry, which fails as a
+            // confusing framing error rather than as the too-large request it is.
+            Request::ListRecent { limit } => {
+                if *limit == 0 || *limit as usize > MAX_RECENT {
+                    return Err(ProtoError::Invalid(format!(
+                        "limit {limit} out of range (1..={MAX_RECENT})"
+                    )));
+                }
+            }
             // No caller-supplied field to bound; the frame length already caps
             // the response the signer streams back.
             Request::LiveEntries | Request::CompensatingEntries => {}
@@ -162,8 +182,26 @@ pub enum Response {
     Entry(Option<UndoEntry>),
     /// The result of a [`Request::LiveEntries`]: the entries still non-terminal.
     Entries(Vec<UndoEntry>),
+    /// The result of a [`Request::ListRecent`]: entries paired with the state
+    /// their record chain folds to, newest first.
+    Recent(Vec<RecentEntry>),
     /// The request was rejected or failed; the message is a coarse reason.
     Error(String),
+}
+
+/// The most entries one [`Request::ListRecent`] may ask for. Chosen so a full
+/// page comfortably fits a frame with room for the largest inverse receipts.
+pub const MAX_RECENT: usize = 200;
+
+/// One entry of a recent-actions read: what was done, and where its lifecycle
+/// stands. The state travels WITH the entry because a surface that shows an
+/// "undo" button has to know whether the undo already happened.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecentEntry {
+    /// The sealed entry.
+    pub entry: UndoEntry,
+    /// The folded lifecycle state.
+    pub state: UndoState,
 }
 
 /// Read one length-prefixed frame: a 4-byte big-endian length, then that many
@@ -243,6 +281,18 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_recent_listing_must_ask_for_a_bounded_page() {
+        use super::*;
+        // Zero is meaningless and an unbounded limit invites a response the frame
+        // cannot carry, which would surface as a confusing framing failure rather
+        // than as the too-large request it actually is.
+        assert!(Request::ListRecent { limit: 0 }.validate().is_err());
+        assert!(Request::ListRecent { limit: MAX_RECENT as u32 + 1 }.validate().is_err());
+        assert!(Request::ListRecent { limit: 1 }.validate().is_ok());
+        assert!(Request::ListRecent { limit: MAX_RECENT as u32 }.validate().is_ok());
+    }
+
     use super::*;
     use arlen_ai_undo_core::effect_model::{CanonicalPath, InverseReceipt};
 

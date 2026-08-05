@@ -65,6 +65,7 @@ pub fn dispatch(store: &mut SignerStore, request: Request) -> Response {
         }
         Request::LookupEntry { op_id } => Response::Entry(store.entry(&op_id).cloned()),
         Request::LiveEntries => Response::Entries(store.live_entries()),
+        Request::ListRecent { limit } => Response::Recent(store.recent_entries(limit as usize)),
         Request::CompensatingEntries => Response::Entries(store.compensating_entries()),
     }
 }
