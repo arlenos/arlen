@@ -12,21 +12,6 @@ apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Digits enter
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	PIN
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	PIN code
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Passkey
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Auto-Connect
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Available
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Bluetooth
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Bluetooth is not available on this device
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Bluetooth is off
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Connect
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Connected
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Connecting...
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Disconnect
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Don't Auto-Connect
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Forget Device
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Loading...
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Paired
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Paired Devices
-apps/desktop-shell/src/lib/components/BluetoothPopover.svelte	Turn Bluetooth back on with the switch above
 apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Float
 apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Gaps
 apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Layout
