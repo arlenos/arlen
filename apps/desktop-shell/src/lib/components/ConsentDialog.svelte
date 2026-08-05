@@ -60,15 +60,27 @@
     const cleared = wasShown && !shown;
     wasShown = shown;
     if (!cleared) return;
-    // After a frame, so a teardown that merely runs late is not reported as stuck.
+    // Report BOTH outcomes, and report that the check started at all. A check that
+    // only speaks when it finds something wrong is worthless the moment it stays
+    // quiet: silence then means either a clean teardown or a check that never ran,
+    // and those want opposite fixes. The first boot with this in place said
+    // nothing, which is exactly that dead end.
+    const say = (msg: string, level = "info") =>
+      void invoke("frontend_log", { level, msg }).catch(() => {});
+    say("consent: request answered, checking that the card came down");
+    // After a frame, so a teardown that merely runs late is not called stuck.
     setTimeout(() => {
       const left = document.querySelectorAll(".arlen-consent-card").length;
-      if (left === 0) return;
-      void invoke("frontend_log", {
-        level: "error",
-        msg: `consent: request answered but ${left} card(s) still in the DOM; `
-          + "the dialog is stuck on screen",
-      }).catch(() => {});
+      const others = document.querySelectorAll('[data-slot="dialog-content"]').length;
+      if (left === 0) {
+        say(`consent: card is out of the DOM (${others} dialog node(s) remain)`);
+        return;
+      }
+      say(
+        `consent: request answered but ${left} card(s) still in the DOM `
+          + `(${others} dialog node(s) total); the dialog is stuck on screen`,
+        "error",
+      );
     }, 250);
   });
 
