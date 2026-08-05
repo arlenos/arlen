@@ -28,6 +28,10 @@
   /// cheap. Replace with the broker signal when the control protocol grows one.
   const POLL_MS = 1000;
 
+  /// How long to leave the card mounted after the request clears, so the
+  /// primitive's close animation can play (and repaint the area it leaves).
+  const CLOSE_MS = 250;
+
   // The broker has no push channel, so the dialog has to ask. Fetching only once
   // on mount made the whole surface inert in practice: a Confirm arrives when the
   // assistant proposes something, which is always AFTER the shell started, so the
@@ -43,17 +47,33 @@
     return () => clearInterval(timer);
   });
 
-  // Answering a request must take the card off the screen. It does in Chromium and
-  // it does not on the image, where the store clears (the shell drops its
-  // full-surface input region, which only the store's subscriber can do), the
-  // broker answers ok=true, and the card keeps painting - a webview proven live,
-  // because Quick Settings still opens beside it. The card lives in a portal on
-  // document.body, outside this component, so nothing in the subtree can notice.
+  // The card is closed THROUGH the primitive, not by destroying it. Removing the
+  // node in one step leaves the pixels it occupied on screen: on the image the
+  // DOM goes clean (the check below reports zero cards) while the card is still
+  // painted, because nothing damages the area it vacated. Quick Settings opening
+  // beside it paints fine - new content carries its own damage - which is what
+  // made this look for a while like a live orphaned node rather than a stale one.
   //
+  // Driving `open` instead lets bits-ui run its close: the fade-and-zoom repaints
+  // the region frame by frame and ends on an empty one, so the area is damaged by
+  // the animation itself. `view` lags the store so the markup still has a request
+  // to render while that close plays out, and is dropped once it has.
+  let view = $state<PendingView | null>(null);
+  $effect(() => {
+    const pending = $current;
+    if (pending) {
+      view = pending;
+      return;
+    }
+    if (view === null) return;
+    const t = setTimeout(() => { view = null; }, CLOSE_MS);
+    return () => clearTimeout(t);
+  });
+
   // A dialog the user cannot dismiss is the worst failure this surface has: it
-  // covers the desktop and every later request queues behind it. So check, and say
-  // so in the journal rather than leaving the next boot to guess between a click
-  // that never landed, a broker that never answered and a card that never left.
+  // covers the desktop and every later request queues behind it, so answering one
+  // is checked rather than assumed. The card renders into a portal on
+  // document.body, outside this component, so nothing in the subtree can see it.
   let wasShown = false;
   $effect(() => {
     const shown = $current !== null;
@@ -84,9 +104,9 @@
     }, 250);
   });
 
-  // A pending request must always be deniable by Escape. The dialog's `open` is
-  // controlled (static true; the request clears via the store), which does not
-  // reliably fire the primitive's escape-close, so deny explicitly here.
+  // A pending request must always be deniable by Escape. `open` is controlled by
+  // the store, and a controlled dialog does not reliably fire the primitive's
+  // escape-close, so deny explicitly here.
   function onWindowKeydown(e: KeyboardEvent): void {
     if (e.key !== "Escape") return;
     const p = get(current);
@@ -169,8 +189,8 @@
 
 <svelte:window onkeydown={onWindowKeydown} />
 
-{#if $current}
-  {@const p = $current}
+{#if view}
+  {@const p = view}
   <!-- The gate is reversibility, not impact (system-dialog-plan.md): reversible
        actions get the generous remember (it carries autonomous authority);
        only the genuinely irreversible confirm per instance. Destructive is NOT
@@ -271,9 +291,12 @@
   {/snippet}
 
   <Dialog.Root
-    open={true}
+    open={$current !== null}
     onOpenChange={(open) => {
-      if (!open) deny(p);
+      // Only a real dismissal by the user is a denial. Our own close - the store
+      // already answered - drives `open` false too, and denying then would send a
+      // second verdict for a request that is gone.
+      if (!open && $current !== null) deny(p);
     }}
   >
     <!-- The marker the teardown self-check below looks for. The card renders into
