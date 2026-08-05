@@ -136,7 +136,12 @@ export async function pollConsent(): Promise<void> {
 export async function resolve(id: number, outcome: ConsentOutcome): Promise<void> {
   current.set(null);
   try {
-    await invoke("consent_resolve", { id, outcome });
+    // The Rust `ConsentOutcome` is `#[serde(tag = "outcome")]`, so it
+    // deserializes from `{"outcome": "allowed_once"}` and NOT from the bare
+    // string. Sending the string made Tauri fail to deserialize the argument and
+    // never call the command at all - no broker request, no Rust log, and the
+    // dialog reappearing on the next poll, which is what "the dialog stands" was.
+    await invoke("consent_resolve", { id, outcome: { outcome } });
   } catch (e) {
     // Under vite there is no broker and this is expected; on a real session it
     // means the answer did not reach the broker.
