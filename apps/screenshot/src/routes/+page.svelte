@@ -34,26 +34,28 @@
   // click -> annotate); the annotate surface stays mounted so its canvas is ready.
   let phase = $state<"thumbnail" | "annotate" | "dismissed">("thumbnail");
 
+  // `label` is a message KEY, resolved with $t where it renders: a top-level
+  // const would capture the locale at import and never follow a switch.
   const TOOLS: { kind: ToolKind; label: string; icon: typeof Crop; key: string }[] = [
-    { kind: "select", label: "Select", icon: MousePointer2, key: "V" },
-    { kind: "crop", label: "Crop", icon: Crop, key: "C" },
-    { kind: "arrow", label: "Arrow", icon: ArrowUpRight, key: "A" },
-    { kind: "box", label: "Box", icon: Square, key: "R" },
-    { kind: "ellipse", label: "Ellipse", icon: Circle, key: "E" },
-    { kind: "text", label: "Text", icon: Type, key: "T" },
-    { kind: "pen", label: "Pen", icon: Pencil, key: "P" },
-    { kind: "highlight", label: "Highlighter", icon: Highlighter, key: "H" },
-    { kind: "blur", label: "Blur / redact", icon: SquareDashedBottom, key: "B" },
-    { kind: "number", label: "Step", icon: ListOrdered, key: "N" },
+    { kind: "select", label: "s.tool.select", icon: MousePointer2, key: "V" },
+    { kind: "crop", label: "s.tool.crop", icon: Crop, key: "C" },
+    { kind: "arrow", label: "s.tool.arrow", icon: ArrowUpRight, key: "A" },
+    { kind: "box", label: "s.tool.box", icon: Square, key: "R" },
+    { kind: "ellipse", label: "s.tool.ellipse", icon: Circle, key: "E" },
+    { kind: "text", label: "s.tool.text", icon: Type, key: "T" },
+    { kind: "pen", label: "s.tool.pen", icon: Pencil, key: "P" },
+    { kind: "highlight", label: "s.tool.highlight", icon: Highlighter, key: "H" },
+    { kind: "blur", label: "s.tool.blur", icon: SquareDashedBottom, key: "B" },
+    { kind: "number", label: "s.tool.number", icon: ListOrdered, key: "N" },
   ];
   // The annotation palette is the house semantic set (there is no house blue);
   // resolved from the tokens on mount so the canvas gets concrete hex.
   const SWATCH_TOKENS = ["--color-error", "--color-warning", "--color-success", "--color-fg-primary", "--color-fg-inverse"];
   let swatches = $state<{ token: string; hex: string }[]>([]);
   const SIZES = [
-    { v: 2, label: "Thin", dot: 4 },
-    { v: 4, label: "Medium", dot: 7 },
-    { v: 6, label: "Thick", dot: 10 },
+    { v: 2, label: "s.size.thin", dot: 4 },
+    { v: 4, label: "s.size.medium", dot: 7 },
+    { v: 6, label: "s.size.thick", dot: 10 },
   ];
 
   let tool = $state<ToolKind>("arrow");
@@ -341,9 +343,11 @@
   </div>
 
   <div class="palette">
-    {#each TOOLS as t (t.kind)}
-      <Button variant={tool === t.kind ? "secondary" : "ghost"} size="icon-sm" title={`${t.label} (${t.key})`} aria-label={t.label} onclick={() => (tool = t.kind)}>
-        <t.icon size={16} strokeWidth={1.75} />
+    <!-- The loop variable is not `t`: that is the translator store, and shadowing
+         it here made `$t` resolve to the tool instead. -->
+    {#each TOOLS as tl (tl.kind)}
+      <Button variant={tool === tl.kind ? "secondary" : "ghost"} size="icon-sm" title={`${$t(tl.label)} (${tl.key})`} aria-label={$t(tl.label)} onclick={() => (tool = tl.kind)}>
+        <tl.icon size={16} strokeWidth={1.75} />
       </Button>
     {/each}
 
@@ -356,7 +360,7 @@
     </div>
 
     {#each SIZES as sz (sz.v)}
-      <Button variant={size === sz.v ? "secondary" : "ghost"} size="icon-sm" title={sz.label} aria-label={sz.label} onclick={() => (size = sz.v)}>
+      <Button variant={size === sz.v ? "secondary" : "ghost"} size="icon-sm" title={$t(sz.label)} aria-label={$t(sz.label)} onclick={() => (size = sz.v)}>
         <span class="size-bar" style={`height:${sz.v}px`}></span>
       </Button>
     {/each}

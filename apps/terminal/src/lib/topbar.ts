@@ -9,6 +9,7 @@ import { toolbar } from "@arlen/tauri-plugin-shell";
 import { tauriAvailable } from "$lib/tauri";
 import { newSession } from "$lib/stores/sessions";
 import { historyPaletteOpen } from "$lib/stores/history";
+import { t } from "$lib/i18n/messages";
 
 // Idempotent: a remount or HMR must not double the actions.
 let started = false;
@@ -24,10 +25,15 @@ export async function initTopbar(): Promise<void> {
   }
   if (!present) return;
 
-  await toolbar.setQuickActions([
-    { icon: "plus", action: "new-session", tooltip: "New session (Ctrl+T)" },
-    { icon: "history", action: "history", tooltip: "History (Ctrl+R)" },
-  ]);
+  // Pushed on every translator change, not once: these tooltips live in the
+  // compositor's topbar, so a locale switch has to re-send them or they keep
+  // whichever language was active when the terminal started.
+  t.subscribe((tr) => {
+    void toolbar.setQuickActions([
+      { icon: "plus", action: "new-session", tooltip: tr("term.qa.newSession") },
+      { icon: "history", action: "history", tooltip: tr("term.qa.history") },
+    ]);
+  });
   await toolbar.onAction(({ action }) => {
     if (action === "new-session") {
       void newSession();

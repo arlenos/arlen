@@ -262,19 +262,6 @@ apps/knowledge/src/lib/stores/timeline.ts	Website redesign
 apps/meetings/src/lib/stores/meeting.ts	Editor and meeting-notes direction
 apps/meetings/src/lib/stores/meeting.ts	Sovereignty review
 apps/meetings/src/lib/stores/meeting.ts	Weekly standup
-apps/screenshot/src/routes/+page.svelte	Arrow
-apps/screenshot/src/routes/+page.svelte	Blur / redact
-apps/screenshot/src/routes/+page.svelte	Box
-apps/screenshot/src/routes/+page.svelte	Crop
-apps/screenshot/src/routes/+page.svelte	Ellipse
-apps/screenshot/src/routes/+page.svelte	Highlighter
-apps/screenshot/src/routes/+page.svelte	Medium
-apps/screenshot/src/routes/+page.svelte	Pen
-apps/screenshot/src/routes/+page.svelte	Select
-apps/screenshot/src/routes/+page.svelte	Step
-apps/screenshot/src/routes/+page.svelte	Text
-apps/screenshot/src/routes/+page.svelte	Thick
-apps/screenshot/src/routes/+page.svelte	Thin
 apps/settings/src/lib/components/AddProviderDialog.svelte	Anthropic
 apps/settings/src/lib/components/AddProviderDialog.svelte	Gemini
 apps/settings/src/lib/components/AddProviderDialog.svelte	OpenAI
@@ -853,8 +840,6 @@ apps/system-monitor/src/lib/stores/perf.ts	CPU
 apps/system-monitor/src/lib/stores/perf.ts	Disk
 apps/system-monitor/src/lib/stores/perf.ts	Memory
 apps/system-monitor/src/lib/stores/perf.ts	Network
-apps/terminal/src/lib/topbar.ts	History (Ctrl+R)
-apps/terminal/src/lib/topbar.ts	New session (Ctrl+T)
 apps/terminal/src/routes/_chrometest/+page.svelte	A header bar per block redraws cwd · git as chrome; result + actions always on.
 apps/terminal/src/routes/_chrometest/+page.svelte	A · Styled
 apps/terminal/src/routes/_chrometest/+page.svelte	B · Classic
