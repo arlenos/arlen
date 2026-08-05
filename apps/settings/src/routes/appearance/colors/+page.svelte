@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Colours: the theme's palette, editable per role. The common roles carry the
   /// everyday look; the full 18 sit behind an expander. Each role is an
   /// override-row (resolved value at full contrast; an accent bar + reset when
@@ -45,13 +46,13 @@
 </script>
 
 <Page
-  title="Colours"
-  description="The theme's palette. Each colour shows the active theme's value; change one and it overrides just that role, on top of the theme."
+  title={$t("s.col.title")}
+  description={$t("s.col.desc")}
 >
   <SectionGrid>
     <div class="editor span-full">
     <div class="controls">
-      <Section label="Contrast">
+      <Section label={$t("s.col.contrast")}>
         {#each CONTRAST_PAIRS as pair (pair.label)}
           {@const ratio = contrastRatio($effective[pair.fg], $effective[pair.bg])}
           {@const pass = ratio >= 4.5}
@@ -65,7 +66,7 @@
         {/each}
       </Section>
 
-      <Section label="Colours">
+      <Section label={$t("s.col.section")}>
         {#each common as role (role.key)}
           <OverrideRow
             label={role.label}
@@ -84,7 +85,7 @@
       <Collapsible class="all-roles">
         <CollapsibleTrigger class="all-trigger">
           <ChevronRight size={15} strokeWidth={2} />
-          All roles
+          {$t("s.col.allRoles")}
         </CollapsibleTrigger>
         <CollapsibleContent>
           <Section>
@@ -108,7 +109,7 @@
 
     <aside class="preview-col">
       <div class="preview-sticky">
-        <span class="preview-label">Live preview</span>
+        <span class="preview-label">{$t("s.col.preview")}</span>
         <ThemePreview colors={$effective} />
       </div>
     </aside>
@@ -121,7 +122,7 @@
 {#snippet colorControl(role: ColorRole)}
   {@const val = $effective[role.key]}
   <span class="cf">
-    <label class="cf-swatch" style={`background:${val}`} title="Pick a colour">
+    <label class="cf-swatch" style={`background:${val}`} title={$t("s.col.pick")}>
       <input
         type="color"
         value={val}
