@@ -2,9 +2,11 @@
 /// the host, plus the two quiet KG spots (Projects, Searches) —
 /// graph-backed lists rendered only when they have content.
 
-import { writable } from "svelte/store";
+import { derived, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { Place, PlaceGroup } from "@arlen/ui-kit/components/browser";
+
+import { t } from "$lib/i18n/messages";
 
 interface Project {
   id: string;
@@ -38,7 +40,20 @@ const deviceNodes = new Map<string, string>();
 /// mounts it first, then navigates into the new mountpoint.
 const unmountedDevices = new Set<string>();
 
-export const placeGroups = writable<PlaceGroup[]>([]);
+/// The loaded groups, whose `label` holds a message KEY for the four section
+/// headings the file manager owns. Consumers read [`placeGroups`], which resolves
+/// them; the raw store is what the loader writes.
+const placeGroupsRaw = writable<PlaceGroup[]>([]);
+
+/// The sidebar's groups with their headings translated.
+///
+/// Derived rather than translated in the loader: the loader runs once when the
+/// sidebar mounts, so translating there would pin the headings to whichever
+/// locale was active then. The place entries inside each group keep their real
+/// names - a device or bookmark label is data, not chrome.
+export const placeGroups = derived([placeGroupsRaw, t], ([$groups, $t]) =>
+  $groups.map((g) => ({ ...g, label: $t(g.label) })),
+);
 
 /// Pin a folder to the sidebar and refresh the groups.
 export async function addBookmark(path: string): Promise<void> {
@@ -114,7 +129,7 @@ export async function loadPlaces(): Promise<void> {
     const places = await invoke<{ orte: Place[]; geraete: Place[] }>("files_places");
     const home = places.orte.find((p) => p.icon === "home");
     if (home) homePath.set(home.path);
-    groups.push({ label: "Places", places: places.orte });
+    groups.push({ label: "f.places.places", places: places.orte });
     // Devices: the host's base entry (System) plus the real mounted volumes
     // from lsblk (removable drives + extra data mounts). Removable ones carry
     // the hover affordance, routed to eject by `removePlace` via deviceNodes.
@@ -149,14 +164,14 @@ export async function loadPlaces(): Promise<void> {
     } catch {
       // lsblk unavailable: just the host base entries.
     }
-    groups.push({ label: "Devices", places: [...places.geraete, ...devicePlaces] });
+    groups.push({ label: "f.places.devices", places: [...places.geraete, ...devicePlaces] });
   } catch {
     // Unreachable backend: the sidebar stays empty rather than fake.
   }
   try {
     const bookmarks = await invoke<Place[]>("files_bookmarks");
     groups.push({
-      label: "Bookmarks",
+      label: "f.places.bookmarks",
       railHidden: true,
       places: bookmarks.map((b) => ({ ...b, removable: true })),
     });
@@ -166,7 +181,7 @@ export async function loadPlaces(): Promise<void> {
   try {
     const projects = await invoke<Project[]>("files_projects");
     groups.push({
-      label: "Projects",
+      label: "f.places.projects",
       // The rail would show two identical glyphs; the group only
       // makes sense expanded.
       railHidden: true,
@@ -179,7 +194,7 @@ export async function loadPlaces(): Promise<void> {
   } catch {
     // No graph yet: the group simply does not render.
   }
-  placeGroups.set(groups);
+  placeGroupsRaw.set(groups);
 
   try {
     savedSearches.set(await invoke<SavedSearch[]>("files_saved_searches"));

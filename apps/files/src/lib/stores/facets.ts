@@ -11,8 +11,10 @@
 /// (flagged) — until they land the bar still drives navigation and the counts
 /// simply stay absent.
 
-import { get, writable } from "svelte/store";
+import { derived, get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+
+import { t } from "$lib/i18n/messages";
 
 /// The facet groups, in the deterministic order they serialize and render.
 export type FacetGroup = "project" | "type" | "time" | "touched";
@@ -56,22 +58,26 @@ export const SINGLE_SELECT: Record<FacetGroup, boolean> = {
 };
 
 /// The intrinsic type facet: file kinds derived from the extension, no graph.
-export const TYPE_VALUES: FacetValue[] = [
-  { value: "document", label: "Documents" },
-  { value: "image", label: "Images" },
-  { value: "audio", label: "Audio" },
-  { value: "video", label: "Video" },
-  { value: "archive", label: "Archives" },
-  { value: "code", label: "Code" },
-];
+///
+/// A derived store, like the graph-loaded sets below, so every facet group has the
+/// same shape at the call site and these labels follow a locale switch. A plain
+/// array would freeze them at import.
+export const typeValues = derived(t, ($t) => [
+  { value: "document", label: $t("f.facet.type.document") },
+  { value: "image", label: $t("f.facet.type.image") },
+  { value: "audio", label: $t("f.facet.type.audio") },
+  { value: "video", label: $t("f.facet.type.video") },
+  { value: "archive", label: $t("f.facet.type.archive") },
+  { value: "code", label: $t("f.facet.type.code") },
+] satisfies FacetValue[]);
 
 /// The intrinsic time facet: a single recency cutoff.
-export const TIME_VALUES: FacetValue[] = [
-  { value: "day", label: "Today" },
-  { value: "week", label: "Last 7 days" },
-  { value: "month", label: "Last 30 days" },
-  { value: "older", label: "Older than 30 days" },
-];
+export const timeValues = derived(t, ($t) => [
+  { value: "day", label: $t("f.facet.time.day") },
+  { value: "week", label: $t("f.facet.time.week") },
+  { value: "month", label: $t("f.facet.time.month") },
+  { value: "older", label: $t("f.facet.time.older") },
+] satisfies FacetValue[]);
 
 /// Graph-loaded option sets (empty until `loadFacetOptions` runs, or when the
 /// graph has none — the dropdown then reads as having nothing to offer).
