@@ -8,6 +8,10 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 
 const messages: Catalogs = {
   en: {
+    "k.menu.timeline": "Timeline",
+    "k.menu.export": "Export recorded activity…",
+    "k.menu.deleteToday": "Delete today's activity…",
+    "k.menu.deleteAll": "Delete everything recorded…",
     "k.title": "Knowledge",
     "k.sample": "Example data - not your real graph yet.",
     "k.section.explore": "Explore",
@@ -108,6 +112,10 @@ const messages: Catalogs = {
     "k.detail.recent": "Recent activity",
   },
   de: {
+    "k.menu.timeline": "Zeitleiste",
+    "k.menu.export": "Aufgezeichnete Aktivität exportieren…",
+    "k.menu.deleteToday": "Heutige Aktivität löschen…",
+    "k.menu.deleteAll": "Alles Aufgezeichnete löschen…",
     "k.title": "Wissen",
     "k.sample": "Beispieldaten - noch nicht dein echter Graph.",
     "k.section.explore": "Erkunden",

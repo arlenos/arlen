@@ -54,10 +54,12 @@
     return h > 0 ? `${h}h ${m}min` : `${m}min`;
   }
 
+  // `label` is a message KEY, resolved with $t where it renders: a top-level
+  // const captures the locale at import and would never follow a switch.
   const PROFILES: { id: string; label: string; icon: typeof Leaf }[] = [
-    { id: "power-saver", label: "Power Saver", icon: Leaf },
-    { id: "balanced", label: "Balanced", icon: Scale },
-    { id: "performance", label: "Performance", icon: Zap },
+    { id: "power-saver", label: "sh.bat.powerSaver", icon: Leaf },
+    { id: "balanced", label: "sh.bat.balanced", icon: Scale },
+    { id: "performance", label: "sh.bat.performance", icon: Zap },
   ];
 </script>
 
@@ -100,7 +102,7 @@
                 {...props}
                 class="bat-pill"
                 class:active={powerProfile === p.id}
-                aria-label={p.label}
+                aria-label={$t(p.label)}
                 onclick={(e) => { e.stopPropagation(); setProfile(p.id); }}
               >
                 <p.icon size={14} strokeWidth={1.5} />
@@ -108,7 +110,7 @@
             {/snippet}
           </Tooltip.Trigger>
           <Tooltip.TooltipContent side="bottom">
-            {p.label}
+            {$t(p.label)}
           </Tooltip.TooltipContent>
         </Tooltip.Root>
       {/each}
