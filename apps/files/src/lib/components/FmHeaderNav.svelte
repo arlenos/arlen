@@ -11,7 +11,7 @@
   import { Breadcrumb, type BrowserState } from "@arlen/ui-kit/components/browser";
   import { placeGroups } from "$lib/stores/places";
   import { locationLabel } from "$lib/locations";
-  import { AS_OF_OPTIONS, viewAsOfChoice } from "$lib/asof";
+  import { asOfOptions, viewAsOfChoice } from "$lib/asof";
   import { t } from "$lib/i18n/messages";
 
   let {
@@ -78,7 +78,7 @@
   <div class="hn-asof">
     <PopoverSelect
       value={$viewAsOfChoice}
-      options={AS_OF_OPTIONS}
+      options={$asOfOptions}
       ariaLabel={$t("f.nav.asOfAria")}
       width="9.5rem"
       onchange={onAsOf}

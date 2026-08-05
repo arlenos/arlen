@@ -14,6 +14,11 @@ const P = (input: string, one: string, other: string) =>
 
 const messages: Catalogs = {
   en: {
+    "f.asof.now": "Now",
+    "f.asof.1d": "1 day ago",
+    "f.asof.1w": "1 week ago",
+    "f.asof.1m": "1 month ago",
+    "f.asof.3m": "3 months ago",
     // Shared
     "f.dismiss": "Dismiss",
     "f.save": "Save",
@@ -244,6 +249,11 @@ const messages: Catalogs = {
     "f.rename.confirm": P("changing", "Rename {$changing} file", "Rename {$changing} files"),
   },
   de: {
+    "f.asof.now": "Jetzt",
+    "f.asof.1d": "vor 1 Tag",
+    "f.asof.1w": "vor 1 Woche",
+    "f.asof.1m": "vor 1 Monat",
+    "f.asof.3m": "vor 3 Monaten",
     "f.dismiss": "Schließen",
     "f.save": "Speichern",
 
