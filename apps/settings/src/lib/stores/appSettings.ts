@@ -6,7 +6,13 @@
 /// exercises every declared type so the renderer is fully visible.
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettingsPage, WriteAnswer, SettingOption, ValueSource } from "$lib/appSettings";
+import type {
+  AppSettingsPage,
+  WriteAnswer,
+  SettingOption,
+  ResolvedOptions,
+  ValueSource,
+} from "$lib/appSettings";
 
 /// The loaded page for the open app, or null before the read settles.
 export const appPage = writable<AppSettingsPage | null>(null);
@@ -206,7 +212,15 @@ export async function writeRaw(key: string, text: string): Promise<string | null
 /// the honest could-not-ask line.
 export async function resolveOptions(source: ValueSource): Promise<SettingOption[]> {
   try {
-    return await invoke<SettingOption[]>("settings_resolve_options", { source });
+    // The command returns an envelope, not a bare array. Annotating it as
+    // `SettingOption[]` handed the widget the envelope object, and its `.map`
+    // over the "list" threw at render - past the catch below, so the honest
+    // could-not-ask line never appeared either.
+    const res = await invoke<ResolvedOptions>("settings_resolve_options", { source });
+    if (!res.available) {
+      throw new Error(res.reason || "unresolved");
+    }
+    return res.options;
   } catch {
     const fixture = RESOLVE_FIXTURE[source];
     if (!fixture) throw new Error("unresolved");

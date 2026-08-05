@@ -30,6 +30,15 @@ export interface SettingOption {
   description: string;
 }
 
+/// What `settings_resolve_options` actually returns: an envelope, not a bare
+/// list. `available` is false when the source could not be consulted at all, and
+/// `reason` says why; an available source may still legitimately offer nothing.
+export interface ResolvedOptions {
+  available: boolean;
+  options: SettingOption[];
+  reason: string;
+}
+
 /// Where an enum's choices come from when the package cannot know them.
 export type ValueSource = "audio_outputs" | "audio_inputs" | "installed_themes" | "locales" | "browsers";
 
