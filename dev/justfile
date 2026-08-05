@@ -708,6 +708,7 @@ check-protos:
 # notices, because the flag being off is exactly when nobody looks.
 check-executor:
     python3 "{{ROOT}}/dev/scripts/check-executor-gate.py"
+    python3 "{{ROOT}}/dev/scripts/check-shipped-units.py"
 
 check-smoke:
     python3 "{{ROOT}}/dev/scripts/check-smoke-coverage.py"
