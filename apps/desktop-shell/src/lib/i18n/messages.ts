@@ -235,6 +235,23 @@ const messages: Catalogs = {
     "sh.wp.hintWeb": "? web search",
     "sh.wp.hintProjects": "p: projects",
     "sh.wp.hintAgent": "Tab ask the agent",
+
+    // User row and power flyout
+    "sh.user.settings": "Settings",
+    "sh.user.lock": "Lock",
+    "sh.user.logOut": "Log Out",
+    "sh.user.restart": "Restart",
+    "sh.user.shutDown": "Shut Down",
+    "sh.user.switchToLight": "Switch to light",
+    "sh.user.switchToDark": "Switch to dark",
+    "sh.user.accountPower": "Account / power",
+
+    // Zoom toolbar
+    "sh.zoom.out": "Zoom out",
+    "sh.zoom.in": "Zoom in",
+    "sh.zoom.step": "Zoom step",
+    "sh.zoom.movement": "Zoom movement",
+    "sh.zoom.turnOff": "Turn off zoom",
   },
   de: {
     "sh.net.title": "Netzwerk",
@@ -442,6 +459,21 @@ const messages: Catalogs = {
     "sh.wp.hintWeb": "? Websuche",
     "sh.wp.hintProjects": "p: Projekte",
     "sh.wp.hintAgent": "Tab fragt den Agenten",
+
+    "sh.user.settings": "Einstellungen",
+    "sh.user.lock": "Sperren",
+    "sh.user.logOut": "Abmelden",
+    "sh.user.restart": "Neu starten",
+    "sh.user.shutDown": "Herunterfahren",
+    "sh.user.switchToLight": "Auf hell wechseln",
+    "sh.user.switchToDark": "Auf dunkel wechseln",
+    "sh.user.accountPower": "Konto / Energie",
+
+    "sh.zoom.out": "Verkleinern",
+    "sh.zoom.in": "Vergr\u00f6\u00dfern",
+    "sh.zoom.step": "Zoomschritt",
+    "sh.zoom.movement": "Zoombewegung",
+    "sh.zoom.turnOff": "Zoom ausschalten",
   },
 };
 
