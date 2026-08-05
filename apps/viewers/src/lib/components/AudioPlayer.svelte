@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The audio face (quickview-plan.md): a compact fixed window, no cover. The
   /// waveform is the file's face + scrubber; the title/artist from tags sit
   /// above it. Below, a centred transport cluster - prev / play-pause / next -
@@ -50,7 +51,7 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="player" role="application" aria-label="Audio player" onpointermove={wake}>
+<div class="player" role="application" aria-label={$t("v.audioPlayer")} onpointermove={wake}>
   <div class="winctl" class:visible={controlsVisible}>
     <WindowButtons showMaximize={false} />
   </div>

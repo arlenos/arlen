@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The viewer routes one window to one file by media type. When launched on a
   /// real file (`viewer <path>`, the `.desktop` `%f`, or a double-click) it loads
   /// it through the decode backend on mount; absent a real file it falls back to
@@ -98,7 +99,7 @@
 {:else if loaded?.kind === "audio"}
   <div class="fill"><AudioPlayer file={loaded.file} /></div>
 {:else if loadError}
-  <div class="fill err">Could not open this file: {loadError}</div>
+  <div class="fill err">{$t("v.couldNotOpen", { reason: loadError })}</div>
 {:else if framed}
   <div class="frame" style="width:{w}px;height:{h}px">
     {@render face(demo)}

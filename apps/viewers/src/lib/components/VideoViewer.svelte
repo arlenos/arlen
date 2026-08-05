@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The video face (quickview-plan.md): the frame fills the window edge-to-edge
   /// like the image, plus one auto-hide bottom dock holding the progress slider
   /// (the kit `FillSlider`, click/drag/keys = seek) over a `Toolbar` control row:
@@ -70,7 +71,7 @@
   class="viewer"
   class:chrome={chromeVisible}
   role="application"
-  aria-label="Video player"
+  aria-label={$t("v.videoPlayer")}
   onpointermove={wake}
 >
   <!-- The frame fills the window. A gradient still stands in for decoded video. -->
@@ -88,15 +89,15 @@
   </div>
 
   {#if !playing}
-    <button class="centerplay" aria-label="Play" onclick={() => (playing = true)}>
+    <button class="centerplay" aria-label={$t("v.play")} onclick={() => (playing = true)}>
       <Play class="size-7" strokeWidth={1.5} fill="currentColor" />
     </button>
   {/if}
 
-  <button class="edge left" aria-label="Previous file" onclick={() => onprev?.()}>
+  <button class="edge left" aria-label={$t("v.prevFile")} onclick={() => onprev?.()}>
     <ChevronLeft size={30} strokeWidth={2} />
   </button>
-  <button class="edge right" aria-label="Next file" onclick={() => onnext?.()}>
+  <button class="edge right" aria-label={$t("v.nextFile")} onclick={() => onnext?.()}>
     <ChevronRight size={30} strokeWidth={2} />
   </button>
 
@@ -104,7 +105,7 @@
     <FillSlider
       value={progress * 100}
       size="sm"
-      ariaLabel="Seek"
+      ariaLabel={$t("v.seek")}
       oninput={(v) => (progress = v / 100)}
     />
 
@@ -126,7 +127,7 @@
       {/snippet}
       {#snippet end()}
         <span class="meta">{file.name}<span class="dot">·</span>{file.index} / {file.total}</span>
-        <Button variant="ghost" size="icon-sm" aria-label="Fullscreen">
+        <Button variant="ghost" size="icon-sm" aria-label={$t("v.fullscreen")}>
           <Maximize class="size-[16px]" strokeWidth={2} />
         </Button>
       {/snippet}
