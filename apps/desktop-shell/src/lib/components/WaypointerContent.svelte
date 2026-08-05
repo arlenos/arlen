@@ -1161,7 +1161,7 @@
                   } else if (result.action.type === "open_url") {
                     try { await invoke("open_url", { url: result.action.url }); } catch {}
                   } else if (result.action.type === "execute") {
-                    try { await invoke("execute_shell_command", { command: result.action.command }); } catch {}
+                    try { await invoke("execute_shell_command", { command: result.action.command, inTerminal: false }); } catch {}
                   }
                   closeWaypointer();
                 }}

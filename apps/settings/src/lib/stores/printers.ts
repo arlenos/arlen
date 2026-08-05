@@ -309,9 +309,9 @@ export async function addByUri(uri: string, name: string): Promise<void> {
   await addPrinter({ name, uri, makeModel: null, destination, driverless: false });
 }
 
-export async function cancelJob(id: number): Promise<void> {
+export async function cancelJob(printer: string, id: number): Promise<void> {
   try {
-    await invoke("print_job_cancel", { id });
+    await invoke("print_job_cancel", { printer, jobId: id });
   } catch {
     // optimistic
   }
@@ -342,9 +342,9 @@ export async function clearCompleted(): Promise<void> {
   }));
 }
 
-export async function testPage(name: string): Promise<void> {
+export async function testPage(printer: string): Promise<void> {
   try {
-    await invoke("printers_test_page", { name });
+    await invoke("printers_test_page", { printer });
   } catch {
     // a test page is a no-op in the mock
   }

@@ -277,7 +277,7 @@
       <span class="ctl">
         <span class="job-state" data-state={job.state}>{jobStateText(job)}</span>
         {#if job.state === "processing" || job.state === "pending"}
-          <Button variant="ghost" size="sm" onclick={() => cancelJob(job.id)}>{$t("s.pr.cancel")}</Button>
+          <Button variant="ghost" size="sm" onclick={() => cancelJob(job.printer, job.id)}>{$t("s.pr.cancel")}</Button>
         {:else if job.state === "held" || job.state === "stopped"}
           <Button variant="ghost" size="sm" onclick={() => retryJob(job.id)}>{$t("s.pr.resume")}</Button>
         {/if}
