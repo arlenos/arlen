@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Quick Settings panel orchestrator.
   ///
   /// Reads the user's `~/.config/arlen/quicksettings.toml` layout via
@@ -157,6 +158,9 @@
     }}
   >
     {#if resolvedTiles.length === 0}
+      <!-- The sentence below wraps a <button> mid-sentence, so one whole message
+           cannot carry it. Same pending question as the sites listed in
+           `coder-reports.md`; deliberately not split into pre/post fragments. -->
       <div class="qs-empty">
         No tiles enabled. Open
         <button
@@ -189,13 +193,13 @@
         }}
       ></div>
       <div class="qs-help">
-        <h3>Keyboard</h3>
+        <h3>{$t("sh.qs.keyboard")}</h3>
         <ul>
-          <li><kbd>↑↓←→</kbd> / <kbd>hjkl</kbd> &nbsp;Navigate tiles</li>
-          <li><kbd>Enter</kbd> / <kbd>Space</kbd> &nbsp;Activate</li>
-          <li><kbd>Tab</kbd> &nbsp;Next focusable</li>
-          <li><kbd>?</kbd> &nbsp;Toggle this help</li>
-          <li><kbd>Esc</kbd> &nbsp;Close panel</li>
+          <li><kbd>↑↓←→</kbd> / <kbd>hjkl</kbd> &nbsp;{$t("sh.qs.navigateTiles")}</li>
+          <li><kbd>Enter</kbd> / <kbd>Space</kbd> &nbsp;{$t("sh.qs.activate")}</li>
+          <li><kbd>Tab</kbd> &nbsp;{$t("sh.qs.nextFocusable")}</li>
+          <li><kbd>?</kbd> &nbsp;{$t("sh.qs.toggleHelp")}</li>
+          <li><kbd>Esc</kbd> &nbsp;{$t("sh.qs.closePanel")}</li>
         </ul>
       </div>
     {/if}

@@ -36,46 +36,13 @@ apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Tile
 apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Title Bars
 apps/desktop-shell/src/lib/components/LayoutPopover.svelte	px
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Airplane Mode is on
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Available Networks
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Cancel
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Connect
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Connect to "
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Connected
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Connection Info
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Copy Password
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	DNS
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Disconnect
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Disconnected
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Forget Network
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Gateway
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	IP
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	MAC
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Network
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	No networks found
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Password
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Refresh
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Refresh networks
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Scanning...
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Show details
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Turn WiFi back on with the switch above
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	VPN
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	WiFi is off
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	Wireless connections are disabled
-apps/desktop-shell/src/lib/components/NetworkPopover.svelte	active
 apps/desktop-shell/src/lib/components/NotificationItem.svelte	Dismiss
 apps/desktop-shell/src/lib/components/NotificationPanel.svelte	Clear
 apps/desktop-shell/src/lib/components/NotificationPanel.svelte	Clear all notifications
 apps/desktop-shell/src/lib/components/NotificationPanel.svelte	No notifications
 apps/desktop-shell/src/lib/components/NotificationPanel.svelte	Notifications
-apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	&nbsp;Activate
-apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	&nbsp;Close panel
-apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	&nbsp;Navigate tiles
-apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	&nbsp;Next focusable
-apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	&nbsp;Toggle this help
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Enter
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Esc
-apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Keyboard
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	No tiles enabled. Open
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Settings → Quick Settings
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
