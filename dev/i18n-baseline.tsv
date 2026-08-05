@@ -75,17 +75,6 @@ apps/desktop-shell/src/lib/components/topbar/badges/NightLightBadge.svelte	Night
 apps/desktop-shell/src/lib/components/topbar/badges/RecordingBadge.svelte	Recording in progress. Click to stop.
 apps/desktop-shell/src/lib/components/waypointer/WaypointerInlinePreview.svelte	Copy
 apps/desktop-shell/src/lib/components/workspace/IndicatorStrip.svelte	Workspaces
-apps/desktop-shell/src/lib/components/workspace/WindowCardMenu.svelte	Close
-apps/desktop-shell/src/lib/components/workspace/WindowCardMenu.svelte	Close All (
-apps/desktop-shell/src/lib/components/workspace/WindowCardMenu.svelte	Minimize
-apps/desktop-shell/src/lib/components/workspace/WindowCardMenu.svelte	Minimize All
-apps/desktop-shell/src/lib/components/workspace/WindowCardMenu.svelte	Move All to
-apps/desktop-shell/src/lib/components/workspace/WindowCardMenu.svelte	Move to
-apps/desktop-shell/src/lib/components/workspace/WindowCardMenu.svelte	Restore
-apps/desktop-shell/src/lib/components/workspace/WindowCardMenu.svelte	Restore All
-apps/desktop-shell/src/lib/components/workspace/WindowCardMenu.svelte	Tile Left
-apps/desktop-shell/src/lib/components/workspace/WindowCardMenu.svelte	Tile Right
-apps/desktop-shell/src/lib/components/workspace/WindowCardMenu.svelte	Tile Side by Side
 apps/desktop-shell/src/lib/components/workspace/WorkspaceColumn.svelte	Minimized
 apps/desktop-shell/src/lib/components/workspace/WorkspaceColumn.svelte	No open windows
 apps/desktop-shell/src/lib/components/workspace/WorkspaceOverlay.svelte	Workspace overview
