@@ -304,6 +304,7 @@ apps/settings/src/routes/appearance/system/+page.svelte	error:
 apps/settings/src/routes/appearance/system/+page.svelte	src
 apps/settings/src/routes/appearance/system/+page.svelte	warning:
 apps/settings/src/routes/appearance/system/+page.svelte	~/src
+apps/settings/src/routes/appearance/typography/+page.svelte	const answer = 42;
 apps/settings/src/routes/extensions/+page.svelte	forage install
 apps/settings/src/routes/keyboard/+page.svelte	(none)
 apps/settings/src/routes/keyboard/+page.svelte	Add layout
