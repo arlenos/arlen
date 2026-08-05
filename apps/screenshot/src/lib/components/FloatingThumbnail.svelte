@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The macOS-style floating-thumbnail handoff (screenshot-capture-plan.md §2):
   /// after a capture a thumbnail floats briefly in a corner. Ignore it and it
   /// auto-saves; click it to open the annotate surface. This resolves the tension
@@ -68,25 +69,25 @@
   class="thumb"
   role="button"
   tabindex="0"
-  aria-label="Open the capture to annotate"
+  aria-label={$t("s.openToAnnotate")}
   onmouseenter={pause}
   onmouseleave={resume}
   onclick={() => onAnnotate?.()}
   onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onAnnotate?.()}
 >
-  {#if src}<img class="thumb-img" {src} alt="Screen capture" />{/if}
+  {#if src}<img class="thumb-img" {src} alt={$t("s.screenCapture")} />{/if}
 
-  <div class="thumb-actions" role="group" aria-label="Capture actions">
-    <button class="thumb-btn" title="Annotate" aria-label="Annotate" onclick={(e) => { stop(e); onAnnotate?.(); }}>
+  <div class="thumb-actions" role="group" aria-label={$t("s.captureActions")}>
+    <button class="thumb-btn" title={$t("s.annotate")} aria-label={$t("s.annotate")} onclick={(e) => { stop(e); onAnnotate?.(); }}>
       <Pencil size={15} strokeWidth={2} />
     </button>
-    <button class="thumb-btn" title="Copy" aria-label="Copy" onclick={(e) => { stop(e); onCopy?.(); }}>
+    <button class="thumb-btn" title={$t("s.copy")} aria-label={$t("s.copy")} onclick={(e) => { stop(e); onCopy?.(); }}>
       <Copy size={15} strokeWidth={2} />
     </button>
-    <button class="thumb-btn" title="Save" aria-label="Save" onclick={(e) => { stop(e); onSave?.(); }}>
+    <button class="thumb-btn" title={$t("s.save")} aria-label={$t("s.save")} onclick={(e) => { stop(e); onSave?.(); }}>
       <Download size={15} strokeWidth={2} />
     </button>
-    <button class="thumb-btn" title="Dismiss" aria-label="Dismiss" onclick={(e) => { stop(e); onDismiss?.(); }}>
+    <button class="thumb-btn" title={$t("s.dismiss")} aria-label={$t("s.dismiss")} onclick={(e) => { stop(e); onDismiss?.(); }}>
       <X size={15} strokeWidth={2} />
     </button>
   </div>
