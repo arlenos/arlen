@@ -126,8 +126,8 @@
             <Section>
               {#each SOUND_EVENTS as ev (ev.key)}
                 <OverrideRow
-                  label={ev.label}
-                  hint={ev.hint}
+                  label={$t(ev.label)}
+                  hint={$t(ev.hint)}
                   overridden={isOverridden($overrides, ev.key)}
                   onreset={() => resetSys(ev.key)}
                   id={`sys-${ev.key}`}
@@ -136,7 +136,7 @@
                     <!-- A play-preview belongs here; it returns when a Settings
                          command can ask the daemon to play a cue. Until then no
                          dead button. -->
-                    <PopoverSelect value={String($effective[ev.key])} options={SOUND_NAMES} ariaLabel={`${ev.label} sound`} onchange={(v) => setSys(ev.key, v)} />
+                    <PopoverSelect value={String($effective[ev.key])} options={SOUND_NAMES} ariaLabel={$t("s.snd.pickAria", { event: $t(ev.label) })} onchange={(v) => setSys(ev.key, v)} />
                   {/snippet}
                 </OverrideRow>
               {/each}
@@ -153,9 +153,9 @@
                 class="ts-swatch"
                 class:overridden={isOverridden($overrides, a.key)}
                 style={`background:${$effective[a.key]}`}
-                title={a.label}
+                title={$t(a.label)}
               >
-                <input type="color" value={String($effective[a.key])} oninput={(e) => setSys(a.key, e.currentTarget.value)} aria-label={a.label} />
+                <input type="color" value={String($effective[a.key])} oninput={(e) => setSys(a.key, e.currentTarget.value)} aria-label={$t(a.label)} />
               </label>
             {/each}
           </div>
