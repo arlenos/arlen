@@ -47,6 +47,23 @@ jobs:
       # listed. Nothing checked that, and the justfile copy of the same list had
       # already fallen nine crates behind. Runs here because this job is
       # unconditional: drift can arrive in a commit that touches no rust at all.
+      # The catalog gate compiles every MessageFormat source string, so it needs
+      # the same formatter the UI runs. This job has no app node_modules and node
+      # resolves a bare import from the importing file, so install that one
+      # package at the version the apps declare. Deliberately not made skippable:
+      # a gate that goes quiet when its dependency is missing is a gate that stops
+      # running the day someone changes the layout, and nobody finds out.
+      - name: messageformat for the catalog gate
+        run: |
+          want=$(node -e "console.log(require('./sdk/ui-kit/package.json').dependencies.messageformat)")
+          echo "installing messageformat@$want (as declared by sdk/ui-kit)"
+          # --prefix is not optional: with no package.json at the repo root npm
+          # walks UP to the nearest one and installs there instead, which on a
+          # developer machine is $HOME and here would be wherever the runner's
+          # checkout sits. Pin it to the checkout so the gate's resolution finds it.
+          npm install --prefix "$PWD" --no-save --no-audit --no-fund "messageformat@$want"
+          node -e "require('./node_modules/messageformat/package.json')" \
+            || { echo "messageformat did not land in the checkout"; exit 1; }
       - name: structural checks
         # The seven build-free checks, run directly rather than through `just`,
         # which the runner does not have. Each is deterministic file reading with
