@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The Performance tab (Windows-Performance shape): a device list on the left
   /// (name + current value + a mini live sparkline), the selected device's big live
   /// graph + its current figures on the right.
@@ -10,7 +11,7 @@
 </script>
 
 <div class="perf">
-  <div class="devices" role="tablist" aria-label="Devices">
+  <div class="devices" role="tablist" aria-label={$t("tm.perf.devices")}>
     {#each DEVICES as d (d.key)}
       <button
         type="button"
