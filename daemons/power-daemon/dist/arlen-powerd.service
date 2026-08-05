@@ -56,6 +56,17 @@ RestrictNamespaces=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
 NoNewPrivileges=yes
+
+# The capability an alarm needs to wake a suspended machine. A user unit does not
+# inherit it from the seat the way a local-seat session does, so it has to be
+# named here or `timerfd_create(CLOCK_REALTIME_ALARM)` is refused and the daemon
+# degrades to timers that only fire while awake.
+#
+# Whether this LANDS is version-dependent - systemd v255 broke AmbientCapabilities
+# outright - so the daemon does not trust the unit: it asks the kernel at startup
+# and reports what it actually got. If this line is inert on some systemd, the
+# failure is a visible "alarms will not wake this machine", not a silent one.
+AmbientCapabilities=CAP_WAKE_ALARM
 UMask=0077
 
 [Install]
