@@ -92,7 +92,13 @@ impl ReadServer {
         };
         match self
             .reader
-            .read_structural(req.from, req.to, req.limit, req.project_id.as_deref())
+            .read_structural(
+                req.from,
+                req.to,
+                req.limit,
+                req.project_id.as_deref(),
+                req.call_chain_id.as_deref(),
+            )
             .await
         {
             Ok(entries) => {
@@ -104,7 +110,10 @@ impl ReadServer {
                 // impossible 0 under a populated page, preserving the
                 // invariant `head >= max(returned index) + 1`.
                 let fallback_head = entries.last().map_or(0, |e| e.index + 1);
-                let head = match self.reader.head(req.project_id.as_deref()).await {
+                let head = match self
+                    .reader
+                    .head(req.project_id.as_deref(), req.call_chain_id.as_deref())
+                    .await {
                     Ok(h) => h.max(fallback_head),
                     Err(e) => {
                         tracing::warn!("read head probe failed: {e}");
@@ -198,6 +207,7 @@ mod tests {
             to: u64::MAX,
             limit: 100,
             project_id: None,
+            call_chain_id: None,
         };
         write_frame(&mut client, &serde_json::to_vec(&req).unwrap())
             .await

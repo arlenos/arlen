@@ -51,6 +51,32 @@ impl ReadClient {
         }
     }
 
+    /// Every ledger entry stamped with `call_chain_id`, newest-first order not
+    /// guaranteed (the daemon returns ascending by index, which is chronological).
+    ///
+    /// This is the audit side of an undo: the signer's inverse receipt carries the
+    /// same value as its `correlation_id`, so given a receipt this answers "what
+    /// did the system record about the action this would undo" - the gate
+    /// decision, the execution, the outcome. Bounded by `limit` like any read;
+    /// one action's chain is small, so a single page is the normal case.
+    pub async fn for_call_chain(
+        &self,
+        call_chain_id: &str,
+        limit: u64,
+    ) -> Result<ReadPage, ReadClientError> {
+        let req = ReadRequest {
+            from: 0,
+            to: u64::MAX,
+            limit,
+            project_id: None,
+            call_chain_id: Some(call_chain_id.to_string()),
+        };
+        match tokio::time::timeout(READ_TIMEOUT, self.exchange(&req)).await {
+            Ok(result) => result,
+            Err(_elapsed) => Err(ReadClientError::Timeout),
+        }
+    }
+
     /// Read one page: entries with index in `[from, to)`, ascending,
     /// capped at `limit` (the daemon clamps to its own ceiling),
     /// optionally filtered to `project_id`. The returned [`ReadPage`]
@@ -67,6 +93,7 @@ impl ReadClient {
             to,
             limit,
             project_id: project_id.map(|s| s.to_string()),
+            call_chain_id: None,
         };
         match tokio::time::timeout(READ_TIMEOUT, self.exchange(&req)).await {
             Ok(result) => result,

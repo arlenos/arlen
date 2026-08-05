@@ -404,12 +404,18 @@ impl LedgerReader {
     /// global ledger volume. For an unfiltered read this is the global
     /// `MAX(idx) + 1` (the total entry count, since indices are
     /// contiguous from 0).
-    pub async fn head(&self, project_id: Option<&str>) -> Result<u64> {
+    pub async fn head(
+        &self,
+        project_id: Option<&str>,
+        call_chain_id: Option<&str>,
+    ) -> Result<u64> {
         let row = sqlx::query(
             "SELECT MAX(idx) AS max_idx FROM audit_entries
-             WHERE (?1 IS NULL OR project_id = ?1)",
+             WHERE (?1 IS NULL OR project_id = ?1)
+               AND (?2 IS NULL OR call_chain_id = ?2)",
         )
         .bind(project_id)
+        .bind(call_chain_id)
         .fetch_one(&self.pool)
         .await
         .map_err(map_sqlx)?;
@@ -431,6 +437,7 @@ impl LedgerReader {
         to: u64,
         limit: u64,
         project_id: Option<&str>,
+        call_chain_id: Option<&str>,
     ) -> Result<Vec<StructuralView>> {
         // `idx` is a SQLite INTEGER (i64); clamp the u64 bounds so a
         // value past i64::MAX (e.g. `to = u64::MAX` for "everything")
@@ -445,11 +452,13 @@ impl LedgerReader {
              FROM audit_entries
              WHERE idx >= ?1 AND idx < ?2
                AND (?3 IS NULL OR project_id = ?3)
-             ORDER BY idx ASC LIMIT ?4",
+               AND (?4 IS NULL OR call_chain_id = ?4)
+             ORDER BY idx ASC LIMIT ?5",
         )
         .bind(from)
         .bind(to)
         .bind(project_id)
+        .bind(call_chain_id)
         .bind(capped)
         .fetch_all(&self.pool)
         .await
@@ -1058,7 +1067,7 @@ mod tests {
         let reader = LedgerReader::open(&dir.path().join("ledger.db"))
             .await
             .unwrap();
-        let page = reader.read_structural(1, 4, 100, None).await.unwrap();
+        let page = reader.read_structural(1, 4, 100, None, None).await.unwrap();
         let indices: Vec<u64> = page.iter().map(|e| e.index).collect();
         assert_eq!(indices, vec![1, 2, 3]);
     }
@@ -1073,7 +1082,7 @@ mod tests {
         let reader = LedgerReader::open(&dir.path().join("ledger.db"))
             .await
             .unwrap();
-        assert_eq!(reader.head(None).await.unwrap(), 4);
+        assert_eq!(reader.head(None, None).await.unwrap(), 4);
     }
 
     #[tokio::test]
@@ -1086,7 +1095,7 @@ mod tests {
         let reader = LedgerReader::open(&dir.path().join("ledger.db"))
             .await
             .unwrap();
-        assert_eq!(reader.head(None).await.unwrap(), 0);
+        assert_eq!(reader.head(None, None).await.unwrap(), 0);
     }
 
     #[tokio::test]
@@ -1102,12 +1111,12 @@ mod tests {
             .await
             .unwrap();
         // Unfiltered head sees the whole ledger.
-        assert_eq!(reader.head(None).await.unwrap(), 5);
+        assert_eq!(reader.head(None, None).await.unwrap(), 5);
         // Project-scoped head is one past the highest matching index
         // (1), never disclosing the global volume.
-        assert_eq!(reader.head(Some("p")).await.unwrap(), 2);
+        assert_eq!(reader.head(Some("p"), None).await.unwrap(), 2);
         // A project with no entries reports head 0, not the global count.
-        assert_eq!(reader.head(Some("absent")).await.unwrap(), 0);
+        assert_eq!(reader.head(Some("absent"), None).await.unwrap(), 0);
     }
 
     #[tokio::test]
@@ -1120,7 +1129,7 @@ mod tests {
         let reader = LedgerReader::open(&dir.path().join("ledger.db"))
             .await
             .unwrap();
-        let page = reader.read_structural(0, u64::MAX, 2, None).await.unwrap();
+        let page = reader.read_structural(0, u64::MAX, 2, None, None).await.unwrap();
         assert_eq!(page.len(), 2, "the page must honour the limit");
     }
 
@@ -1135,7 +1144,7 @@ mod tests {
             .await
             .unwrap();
         // `to = u64::MAX` must not wrap to a negative SQLite bound.
-        let page = reader.read_structural(0, u64::MAX, 100, None).await.unwrap();
+        let page = reader.read_structural(0, u64::MAX, 100, None, None).await.unwrap();
         assert_eq!(page.len(), 3);
     }
 
@@ -1152,7 +1161,7 @@ mod tests {
             .await
             .unwrap();
         let only_a = reader
-            .read_structural(0, u64::MAX, 100, Some("proj-a"))
+            .read_structural(0, u64::MAX, 100, Some("proj-a"), None)
             .await
             .unwrap();
         assert_eq!(only_a.len(), 2);
@@ -1160,7 +1169,51 @@ mod tests {
             .iter()
             .all(|e| e.project_id.as_deref() == Some("proj-a")));
         // No filter returns all six.
-        let all = reader.read_structural(0, u64::MAX, 100, None).await.unwrap();
+        let all = reader.read_structural(0, u64::MAX, 100, None, None).await.unwrap();
         assert_eq!(all.len(), 6);
+    }
+
+    #[tokio::test]
+    async fn a_call_chain_read_returns_only_that_action_and_scopes_its_head() {
+        // The undo join: one action's gate decision, execution and outcome share a
+        // call-chain id, and the undo signer stores that same value on the inverse
+        // receipt. Asking for it must return that action's entries and nothing else -
+        // and the head must be scoped too, or a filtered read would disclose how many
+        // entries the whole ledger holds.
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut ledger = open_temp(dir.path(), key()).await;
+            for chain in ["run-1", "run-2", "run-1"] {
+                ledger
+                    .append(
+                        AuditKind::Query,
+                        "ai-daemon",
+                        &structural("ok"),
+                        None,
+                        Some(chain),
+                        None,
+                    )
+                    .await
+                    .unwrap();
+            }
+            append_n(&mut ledger, 1, None).await;
+        }
+        let reader = LedgerReader::open(&dir.path().join("ledger.db"))
+            .await
+            .unwrap();
+
+        let mine = reader
+            .read_structural(0, u64::MAX, 100, None, Some("run-1"))
+            .await
+            .unwrap();
+        assert_eq!(mine.len(), 2, "only the two run-1 entries");
+        assert!(mine
+            .iter()
+            .all(|e| e.call_chain_id.as_deref() == Some("run-1")));
+
+        assert_eq!(reader.head(None, Some("run-1")).await.unwrap(), 3);
+        assert_eq!(reader.head(None, Some("absent")).await.unwrap(), 0);
+        // Unfiltered still sees everything, so the filter narrows rather than hides.
+        assert_eq!(reader.head(None, None).await.unwrap(), 4);
     }
 }
