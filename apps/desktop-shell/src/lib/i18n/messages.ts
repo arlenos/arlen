@@ -96,6 +96,22 @@ const messages: Catalogs = {
     "sh.print.twoSidedFlip": "Two-sided (flip)",
     "sh.print.colorColour": "Colour",
     "sh.print.colorMono": "Black & white",
+
+    // Consent dialog. This copy tells someone what they are agreeing to, so the
+    // German is a first pass that wants a review by whoever owns the wording -
+    // the stakes here are not those of a button label.
+    "sh.consent.to": "To",
+    "sh.consent.preview": "Preview",
+    "sh.consent.total": "{$count} total",
+    "sh.consent.external": "Started by another app or document. Only continue if you expected this.",
+    "sh.consent.standing": "To let {$app} do this on its own, allow it in App access.",
+    "sh.consent.undoTrash": "You can undo this from the Trash.",
+    "sh.consent.reversible": "Reversible. Revoke anytime from App access.",
+    "sh.consent.cancel": "Cancel",
+    "sh.consent.deny": "Deny",
+    "sh.consent.sendOnce": "Send once",
+    "sh.consent.allowOnce": "Allow once",
+    "sh.consent.alwaysAllow": "Always allow",
   },
   de: {
     "sh.net.title": "Netzwerk",
@@ -177,6 +193,19 @@ const messages: Catalogs = {
     "sh.print.twoSidedFlip": "Beidseitig (gewendet)",
     "sh.print.colorColour": "Farbe",
     "sh.print.colorMono": "Schwarzwei\u00df",
+
+    "sh.consent.to": "An",
+    "sh.consent.preview": "Vorschau",
+    "sh.consent.total": "{$count} insgesamt",
+    "sh.consent.external": "Von einer anderen App oder einem Dokument ausgel\u00f6st. Fahr nur fort, wenn du das erwartet hast.",
+    "sh.consent.standing": "Damit {$app} das selbst\u00e4ndig tun darf, erlaub es unter App-Zugriff.",
+    "sh.consent.undoTrash": "Das l\u00e4sst sich aus dem Papierkorb r\u00fcckg\u00e4ngig machen.",
+    "sh.consent.reversible": "Umkehrbar. Jederzeit unter App-Zugriff widerrufbar.",
+    "sh.consent.cancel": "Abbrechen",
+    "sh.consent.deny": "Ablehnen",
+    "sh.consent.sendOnce": "Einmal senden",
+    "sh.consent.allowOnce": "Einmal erlauben",
+    "sh.consent.alwaysAllow": "Immer erlauben",
   },
 };
 

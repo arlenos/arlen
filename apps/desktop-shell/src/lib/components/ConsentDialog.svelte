@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The unified consent dialog (system-dialog-plan.md): one polymorphic surface
   /// every permission request routes into, the sibling of the App-access page.
   /// Mounted once in +layout, inert when nothing is pending.
@@ -275,12 +276,12 @@
   {#snippet body()}
     {#if p.class === "external_send"}
       <div class="cd-field">
-        <span class="cd-field-label">To</span>
+        <span class="cd-field-label">{$t("sh.consent.to")}</span>
         <span class="cd-field-val">{p.recipient ?? p.scope}</span>
       </div>
       {#if p.preview}
         <div class="cd-preview">
-          <span class="cd-field-label">Preview</span>
+          <span class="cd-field-label">{$t("sh.consent.preview")}</span>
           <pre class="cd-preview-body">{p.preview}</pre>
         </div>
       {/if}
@@ -294,7 +295,7 @@
         {/each}
       </ul>
       {#if p.total}
-        <p class="cd-meta">{p.total} total</p>
+        <p class="cd-meta">{$t("sh.consent.total", { count: p.total })}</p>
       {/if}
     {:else if p.scope}
       <div class="cd-field">
@@ -306,24 +307,24 @@
     {#if p.triggeredExternally}
       <div class="cd-warn tone-caution">
         <AlertTriangle size={14} strokeWidth={2} aria-hidden="true" />
-        Started by another app or document. Only continue if you expected this.
+        {$t("sh.consent.external")}
       </div>
     {/if}
 
     {#if standingElsewhere}
       <p class="cd-note">
-        To let {friendly(p.requester)} do this on its own, allow it in App access.
+        {$t("sh.consent.standing", { app: friendly(p.requester) })}
       </p>
     {:else if reversibleDestructive}
-      <p class="cd-note">You can undo this from the Trash.</p>
+      <p class="cd-note">{$t("sh.consent.undoTrash")}</p>
     {:else if plainReversible}
-      <p class="cd-note">Reversible. Revoke anytime from App access.</p>
+      <p class="cd-note">{$t("sh.consent.reversible")}</p>
     {/if}
   {/snippet}
 
   {#snippet footer()}
     {#if holdDestructive}
-      <Button variant="outline" onclick={() => deny(p)}>Cancel</Button>
+      <Button variant="outline" onclick={() => deny(p)}>{$t("sh.consent.cancel")}</Button>
       <span class="cd-spacer"></span>
       <button
         type="button"
@@ -340,24 +341,24 @@
         </span>
       </button>
     {:else if standingElsewhere}
-      <Button variant="outline" onclick={() => deny(p)}>Deny</Button>
+      <Button variant="outline" onclick={() => deny(p)}>{$t("sh.consent.deny")}</Button>
       <span class="cd-spacer"></span>
       {#if p.class === "external_send"}
         <Button onclick={() => allowOnce(p)}>
-          <Send size={14} strokeWidth={2} aria-hidden="true" /> Send once
+          <Send size={14} strokeWidth={2} aria-hidden="true" /> {$t("sh.consent.sendOnce")}
         </Button>
       {:else}
-        <Button onclick={() => allowOnce(p)}>Allow once</Button>
+        <Button onclick={() => allowOnce(p)}>{$t("sh.consent.allowOnce")}</Button>
       {/if}
     {:else if irreversibleOther}
-      <Button variant="outline" onclick={() => deny(p)}>Deny</Button>
+      <Button variant="outline" onclick={() => deny(p)}>{$t("sh.consent.deny")}</Button>
       <span class="cd-spacer"></span>
-      <Button onclick={() => allowOnce(p)}>Allow once</Button>
+      <Button onclick={() => allowOnce(p)}>{$t("sh.consent.allowOnce")}</Button>
     {:else}
-      <Button variant="outline" onclick={() => deny(p)}>Deny</Button>
+      <Button variant="outline" onclick={() => deny(p)}>{$t("sh.consent.deny")}</Button>
       <span class="cd-spacer"></span>
-      <Button variant="ghost" onclick={() => allowRemember(p)}>Always allow</Button>
-      <Button onclick={() => allowOnce(p)}>Allow once</Button>
+      <Button variant="ghost" onclick={() => allowRemember(p)}>{$t("sh.consent.alwaysAllow")}</Button>
+      <Button onclick={() => allowOnce(p)}>{$t("sh.consent.allowOnce")}</Button>
     {/if}
   {/snippet}
 
