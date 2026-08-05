@@ -143,7 +143,7 @@
 
 <Row label={$t("s.monitor.active")} description="{monitor.make} {monitor.model}">
   {#snippet control()}
-    <Switch value={isActive} onchange={setEnabled} />
+    <Switch value={isActive} onchange={setEnabled} ariaLabel={$t("s.monitor.active")} />
   {/snippet}
 </Row>
 

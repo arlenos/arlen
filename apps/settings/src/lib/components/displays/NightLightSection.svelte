@@ -173,7 +173,7 @@
     description={$t("s.night.active.desc")}
   >
     {#snippet control()}
-      <Switch value={cfg.enabled} onchange={setEnabled} />
+      <Switch value={cfg.enabled} onchange={setEnabled} ariaLabel={$t("s.night.active")} />
     {/snippet}
   </Row>
 

@@ -206,7 +206,7 @@
         id="kg-max-depth"
       >
         {#snippet control()}
-          <NumberInput value={maxDepth} min={1} max={10} onchange={setMaxDepth} />
+          <NumberInput value={maxDepth} min={1} max={10} onchange={setMaxDepth} ariaLabel={$t("s.know.depth")} />
         {/snippet}
       </Row>
       <Row
@@ -215,7 +215,7 @@
         id="kg-promote"
       >
         {#snippet control()}
-          <NumberInput value={promoteThreshold} min={1} max={20} onchange={setPromoteThreshold} />
+          <NumberInput value={promoteThreshold} min={1} max={20} onchange={setPromoteThreshold} ariaLabel={$t("s.know.promote")} />
         {/snippet}
       </Row>
       {#if projectDirty}
