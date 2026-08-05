@@ -28,24 +28,10 @@ apps/desktop-shell/src/lib/components/TopBar.svelte	Switch project
 apps/desktop-shell/src/lib/components/TrayPopover.svelte	Background Apps
 apps/desktop-shell/src/lib/components/TrayPopover.svelte	Loading...
 apps/desktop-shell/src/lib/components/TrayPopover.svelte	No background apps
-apps/desktop-shell/src/lib/components/WaypointerContent.svelte	# manual
-apps/desktop-shell/src/lib/components/WaypointerContent.svelte	&gt; command
-apps/desktop-shell/src/lib/components/WaypointerContent.svelte	? web search
-apps/desktop-shell/src/lib/components/WaypointerContent.svelte	Clear clipboard history
-apps/desktop-shell/src/lib/components/WaypointerContent.svelte	Enter quits the app
-apps/desktop-shell/src/lib/components/WaypointerContent.svelte	No results found.
-apps/desktop-shell/src/lib/components/WaypointerContent.svelte	Remove from history
-apps/desktop-shell/src/lib/components/WaypointerContent.svelte	Shift+Enter force-quits
-apps/desktop-shell/src/lib/components/WaypointerContent.svelte	p: projects
 apps/desktop-shell/src/lib/components/WindowHeader.svelte	Close
 apps/desktop-shell/src/lib/components/WindowHeader.svelte	Maximize
 apps/desktop-shell/src/lib/components/WindowHeader.svelte	Minimize
 apps/desktop-shell/src/lib/components/WindowHeader.svelte	Window tabs
-apps/desktop-shell/src/lib/components/ZoomToolbar.svelte	Turn off zoom
-apps/desktop-shell/src/lib/components/ZoomToolbar.svelte	Zoom in
-apps/desktop-shell/src/lib/components/ZoomToolbar.svelte	Zoom movement
-apps/desktop-shell/src/lib/components/ZoomToolbar.svelte	Zoom out
-apps/desktop-shell/src/lib/components/ZoomToolbar.svelte	Zoom step
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	Auto-disabled:
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	Extensions
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	Loading...
@@ -73,14 +59,6 @@ apps/desktop-shell/src/lib/quicksettings/tiles/BrightnessTile.svelte	Brightness
 apps/desktop-shell/src/lib/quicksettings/tiles/DndTile.svelte	Do Not Disturb
 apps/desktop-shell/src/lib/quicksettings/tiles/KnowledgeTile.svelte	Knowledge
 apps/desktop-shell/src/lib/quicksettings/tiles/NetworkTile.svelte	Network
-apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	Account / power
-apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	Lock
-apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	Log Out
-apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	Restart
-apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	Settings
-apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	Shut Down
-apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	TK
-apps/desktop-shell/src/lib/quicksettings/tiles/UserRowTile.svelte	Tim Kicker
 apps/files/src/routes/+page.svelte	Ctrl+C
 apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
