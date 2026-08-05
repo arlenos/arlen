@@ -28,9 +28,10 @@
   /// cheap. Replace with the broker signal when the control protocol grows one.
   const POLL_MS = 1000;
 
-  /// How long to leave the card mounted after the request clears, so the
-  /// primitive's close animation can play (and repaint the area it leaves).
-  const CLOSE_MS = 250;
+  /// Backstop for dropping the card if its close animation never reports ending
+  /// (no animation configured, or the event is missed). Comfortably longer than
+  /// the fade, because ending the wait EARLY is the failure this exists to avoid.
+  const CLOSE_FALLBACK_MS = 1000;
 
   // The broker has no push channel, so the dialog has to ask. Fetching only once
   // on mount made the whole surface inert in practice: a Confirm arrives when the
@@ -47,17 +48,27 @@
     return () => clearInterval(timer);
   });
 
-  // The card is closed THROUGH the primitive, not by destroying it. Removing the
-  // node in one step leaves the pixels it occupied on screen: on the image the
-  // DOM goes clean (the check below reports zero cards) while the card is still
-  // painted, because nothing damages the area it vacated. Quick Settings opening
-  // beside it paints fine - new content carries its own damage - which is what
-  // made this look for a while like a live orphaned node rather than a stale one.
+  // Never take away a node that is still painting.
   //
-  // Driving `open` instead lets bits-ui run its close: the fade-and-zoom repaints
-  // the region frame by frame and ends on an empty one, so the area is damaged by
-  // the animation itself. `view` lags the store so the markup still has a request
-  // to render while that close plays out, and is dropped once it has.
+  // On the image, removing the card outright leaves its pixels on the screen: the
+  // DOM goes clean (the check below reports zero cards) and the card is still
+  // there. Whatever the surface does with the damage for an element that ceases to
+  // exist, it does not repaint what it vacated - while ordinary changes in the same
+  // area do arrive, which is why the fade is visible at all and why Quick Settings
+  // opening beside it paints perfectly.
+  //
+  // So the close is driven through the primitive, and the node is made to PAINT
+  // itself empty before it is taken away. A first attempt dropped it 250ms after
+  // the answer, past the fade's own 167ms, and the card still froze half-faded:
+  // the animation had finished logically, but on a software-rendered VM the last
+  // frames of it never reached the screen, and once the node was gone nothing
+  // redrew that area again. Waiting for `animationend` alone has the same hole,
+  // only narrower.
+  //
+  // Hiding it explicitly closes the hole from the other side. Whatever the fade
+  // managed to paint, the card is then painted once more as nothing, and only a
+  // node that is already invisible on screen is removed - so a missing repaint on
+  // removal costs nothing.
   let view = $state<PendingView | null>(null);
   $effect(() => {
     const pending = $current;
@@ -66,8 +77,26 @@
       return;
     }
     if (view === null) return;
-    const t = setTimeout(() => { view = null; }, CLOSE_MS);
-    return () => clearTimeout(t);
+    let dropped = false;
+    const drop = () => {
+      if (dropped) return;
+      dropped = true;
+      const card = document.querySelector<HTMLElement>(".arlen-consent-card");
+      const overlay = document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]');
+      for (const el of [card, overlay]) {
+        if (el) el.style.visibility = "hidden";
+      }
+      // Two frames, so the hidden state is painted and reaches the screen before
+      // the node it belongs to stops existing.
+      requestAnimationFrame(() => requestAnimationFrame(() => { view = null; }));
+    };
+    const card = document.querySelector(".arlen-consent-card");
+    card?.addEventListener("animationend", drop, { once: true });
+    const timer = setTimeout(drop, CLOSE_FALLBACK_MS);
+    return () => {
+      card?.removeEventListener("animationend", drop);
+      clearTimeout(timer);
+    };
   });
 
   // A dialog the user cannot dismiss is the worst failure this surface has: it
