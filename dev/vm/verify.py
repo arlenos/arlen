@@ -151,48 +151,88 @@ def has_top_bar(png):
     return bar != desk, bar, desk
 
 
-def consent_dialog_present(png):
-    """True if anything of the consent card is still on screen.
-
-    Used to confirm a real DISMISSAL after a decision click, so it has to be hard
-    to fool: a raw frame-diff is fooled by the backdrop dimming and the cursor
-    moving, and an amber-strip probe (what this used to be, alone) is fooled by a
-    card caught half-faded, whose amber has dropped below any threshold while the
-    whole card is still plainly readable. That produced a PASS on a boot where the
-    card was still sitting there, which is the worst thing a gate can do.
-
-    So the real question is asked instead: has the area the card occupies gone back
-    to being desktop? An empty desktop is flat - a few adjacent values - while a
-    card, at any opacity above nothing, is not. Compare the card's area against a
-    patch of plain desktop beside it and call it present if it is still carrying
-    contrast. The amber probe stays as a cheap first answer for a fully opaque
-    card.
-    """
-    from PIL import Image
-    img = Image.open(png).convert("RGB")
-    w, h = img.size
-    # The card is centered; its top strip sits a little above mid-height.
-    y0, y1 = int(h * 0.32), int(h * 0.38)
-    x0, x1 = int(w * 0.32), int(w * 0.68)
-    for y in range(y0, y1):
-        for x in range(x0, x1, 3):
+def _amber_strip(img, w, h):
+    """True if the card's opaque amber header strip is on screen. Card-specific
+    and definitive when present, but a card caught mid-fade drops below it, so it
+    is only ever a cheap YES, never a NO."""
+    for y in range(int(h * 0.32), int(h * 0.38)):
+        for x in range(int(w * 0.32), int(w * 0.68), 3):
             r, g, b = img.getpixel((x, y))
             if r > 170 and 90 < g < 210 and b < 90 and r > b + 80:
                 return True
+    return False
 
-    def spread(bx0, by0, bx1, by1):
-        vals = [v for y in range(by0, by1, 2) for x in range(bx0, bx1, 2)
-                for v in img.getpixel((x, y))]
-        return max(vals) - min(vals)
 
-    # The card's own box, and a same-height strip of desktop to its left that it
-    # never covers. Left is safe: the card is centred and the bar is at the top.
-    card = spread(int(w * 0.33), int(h * 0.34), int(w * 0.67), int(h * 0.66))
-    desktop = spread(int(w * 0.06), int(h * 0.34), int(w * 0.26), int(h * 0.66))
-    # A generous margin over the desktop's own noise, so a gradient wallpaper does
-    # not read as a dialog, while a ghost card (which spans most of the range)
-    # does.
-    return card > desktop + 40
+def _spread(img, bx0, by0, bx1, by1):
+    """Value range over a box - a flat desktop is a few adjacent values, anything
+    drawn over it is not."""
+    vals = [v for y in range(by0, by1, 2) for x in range(bx0, bx1, 2)
+            for v in img.getpixel((x, y))]
+    return max(vals) - min(vals)
+
+
+def consent_dialog_state(before_png, after_png):
+    """Did the consent card go away between the two frames? Returns
+    (verdict, detail) with verdict one of `present`, `dismissed`, `inconclusive`.
+
+    Both wrong answers this gate can give are expensive, so it is built to say
+    "I do not know" rather than guess:
+
+    - A false `dismissed` lets a regression through - the shell stopped resolving
+      requests and the gate says fine.
+    - A false `present` condemns a working build.
+
+    The predecessor was a bool from the after-frame alone, comparing the card's
+    contrast against a strip of plain desktop beside it. That asks "is the middle
+    of the screen busier than the left edge", which is true of ANY window, so an
+    approve that LAUNCHES something reads as the card never leaving. That is the
+    observed failure: a frame with 84.5% of its pixels changed - the whole screen
+    turned over - was still called "still up".
+
+    The comparison itself is sound; what was missing is a check that its baseline
+    still holds. The left strip is desktop the centred card never covers, so:
+
+    1. The opaque amber header is card-specific: seeing it is a definitive yes.
+    2. If that strip has stopped being desktop - something is drawn over it - the
+       baseline is gone and no contrast comparison on this frame means anything.
+       Say so instead of answering. Judged against the before-frame's own strip,
+       not an absolute, because a photo wallpaper is legitimately busy and
+       dismissing the modal un-dims it (a brightness change, not a new window).
+    3. Otherwise compare, which is what the check always did and does correctly
+       while the surroundings really are still desktop.
+    """
+    from PIL import Image
+    before = Image.open(before_png).convert("RGB")
+    after = Image.open(after_png).convert("RGB")
+    w, h = after.size
+    if before.size != after.size:
+        return "inconclusive", f"frame size changed {before.size} -> {after.size}"
+
+    if _amber_strip(after, w, h):
+        return "present", "the card's amber header is on screen"
+
+    card_box = (int(w * 0.33), int(h * 0.34), int(w * 0.67), int(h * 0.66))
+    desk_box = (int(w * 0.06), int(h * 0.34), int(w * 0.26), int(h * 0.66))
+    desk_before = _spread(before, *desk_box)
+    desk_after = _spread(after, *desk_box)
+
+    # Un-dimming a wallpaper scales its range (the modal blends toward black, so
+    # losing it is under 2x); a window appearing there multiplies it. The floor
+    # keeps small numbers from tripping the ratio.
+    if desk_after > 60 and desk_after > desk_before * 4:
+        return ("inconclusive",
+                f"the strip of desktop beside the card is no longer desktop "
+                f"(spread {desk_before} -> {desk_after}), so nothing on this "
+                f"frame can say whether the card is still there")
+
+    card_after = _spread(after, *card_box)
+    if card_after > desk_after + 40:
+        return ("present",
+                f"the card's area still carries contrast "
+                f"(spread {card_after} vs desktop {desk_after})")
+    return ("dismissed",
+            f"the card's area is desktop again "
+            f"(spread {card_after} vs desktop {desk_after})")
 
 
 def frame_change(a, b):
@@ -563,10 +603,14 @@ def main():
         # Best-effort: did the shell actually RENDER the dialog? OCR of the frame
         # for the request copy. llvmpipe UI-font OCR is unreliable, so this is
         # reported, never gated (the serial markers are the gate).
-        dialog_shown = any(s in lower for s in ("sandbox", "run a shell", "uname"))
+        # OCR of the thin UI font under llvmpipe misses text that is plainly on
+        # screen - it has already reported `absent` for a rendered dialog. So it
+        # is never phrased as a verdict: a hit is worth something, a miss says
+        # nothing at all, and the wording has to make that impossible to misread.
+        ocr_hit = any(s in lower for s in ("sandbox", "run a shell", "uname"))
         print(f"consent: raised={'ok' if raised else 'absent'}, "
               f"queued={'ok' if queued else 'absent'}, "
-              f"dialog-ocr={'present' if dialog_shown else 'absent'}"
+              f"dialog-ocr={'read the request copy' if ocr_hit else 'no text read (says nothing - llvmpipe OCR misses rendered text)'}"
               + (" (dogfood skipped it)" if skipped else ""))
         if not raised:
             print("VERIFY FAIL: the release consent path is not live "
@@ -579,14 +623,20 @@ def main():
             if not (os.path.exists(denied) and os.path.getsize(denied) > 0):
                 print("VERIFY FAIL: --deny-consent captured no after-Escape frame")
                 return 1
-            still_up = consent_dialog_present(denied)
-            print(f"consent deny: press Escape -> dialog "
-                  f"{'STILL UP' if still_up else 'dismissed'} -> {denied}")
-            if still_up:
+            verdict, why = consent_dialog_state(out, denied)
+            print(f"consent deny: press Escape -> dialog {verdict} "
+                  f"({why}) -> {denied}")
+            if verdict == "present":
                 print("VERIFY FAIL: Escape did not dismiss the consent dialog (the "
                       "main shell window is not grabbing the keyboard while a "
                       "request is up, so Escape-to-deny never reaches it)")
                 print(f"  serial log: {serial}")
+                return 1
+            if verdict == "inconclusive":
+                print("VERIFY FAIL: the gate cannot tell whether Escape dismissed "
+                      "the dialog. Not a verdict on the build - look at the frame. "
+                      "A gate that guesses here is worse than one that stops.")
+                print(f"  frame: {denied}")
                 return 1
         if args.approve_consent:
             approved = out + ".approved.png"
@@ -599,16 +649,23 @@ def main():
             # not on a raw frame-diff (the backdrop dimming + the cursor appearing
             # change most of the frame even when the dialog is still up, so a diff
             # threshold false-passes).
-            still_up = consent_dialog_present(approved)
+            verdict, why = consent_dialog_state(out, approved)
             frac = frame_change(out, approved)
-            print(f"consent resolve: click 'Allow once' -> dialog "
-                  f"{'STILL UP' if still_up else 'dismissed'} "
-                  f"({frac*100:.1f}% of pixels changed) -> {approved}")
-            if still_up:
+            print(f"consent resolve: click 'Allow once' -> dialog {verdict} "
+                  f"({why}; {frac*100:.1f}% of the whole frame changed) "
+                  f"-> {approved}")
+            if verdict == "present":
                 print("VERIFY FAIL: the consent dialog did not dismiss after "
                       "'Allow once' (the click did not resolve the request - the "
                       "shell -> broker Resolve leg, or the click landing, is off)")
                 print(f"  serial log: {serial}")
+                return 1
+            if verdict == "inconclusive":
+                print("VERIFY FAIL: the gate cannot tell whether 'Allow once' "
+                      "dismissed the dialog - an approve that launches something "
+                      "repaints the screen the card sat on. Look at the frame; a "
+                      "guess either way is a wrong verdict on a real build.")
+                print(f"  frame: {approved}")
                 return 1
     print("VERIFY OK: " + ("the full desktop rendered (compositor + shell bar)"
                            if bar_present else "the compositor rendered a frame"))
