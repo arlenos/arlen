@@ -11,11 +11,26 @@ apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	to enable some.
 apps/desktop-shell/src/routes/_mpristest/+page.svelte	Click an album-art thumb to open the mini-player.
 apps/desktop-shell/src/routes/_printtest/+page.svelte	Print dialog look-mock. The dialog opens over this page.
 apps/desktop-shell/src/routes/_undotest/+page.svelte	topbar strip
+apps/files/src/lib/components/FmBatchRename.svelte	&rarr;
 apps/files/src/routes/+page.svelte	Ctrl+C
 apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
 apps/files/src/routes/+page.svelte	Del
 apps/files/src/routes/+page.svelte	F2
+apps/files/src/routes/_asktest/+page.svelte	Arlen could not draft a filter for that. Try naming a type, a time, or a project.
+apps/files/src/routes/_asktest/+page.svelte	Location
+apps/files/src/routes/_asktest/+page.svelte	Modified
+apps/files/src/routes/_asktest/+page.svelte	Name
+apps/files/src/routes/_facettest/+page.svelte	Active filter + result
+apps/files/src/routes/_facettest/+page.svelte	Location
+apps/files/src/routes/_facettest/+page.svelte	Modified
+apps/files/src/routes/_facettest/+page.svelte	Name
+apps/files/src/routes/_rendertest/+page.svelte	File: related + as-of
+apps/files/src/routes/_rendertest/+page.svelte	Folder
+apps/files/src/routes/_rendertest/+page.svelte	Image: EXIF + permissions
+apps/files/src/routes/_rendertest/+page.svelte	Provenance halo (live shape, PH-R2)
+apps/files/src/routes/_rendertest/+page.svelte	Provenance halo (no backend)
+apps/files/src/routes/_rendertest/+page.svelte	Symlink
 apps/greeter/src/lib/components/A11yMenu.svelte	Accessibility
 apps/greeter/src/lib/components/A11yMenu.svelte	Reading the screen aloud starts when assistive support is available.
 apps/greeter/src/lib/components/AuthPanel.svelte	Switch user
@@ -98,6 +113,7 @@ apps/settings/src/routes/system-actions/+page.svelte	shell:brightness_up
 apps/settings/src/routes/system-actions/+page.svelte	shell:event_name
 apps/settings/src/routes/system-actions/+page.svelte	spawn:command
 apps/settings/src/routes/topbar/+page.svelte	Arlen
+apps/store/src/routes/updates/+page.svelte	&rarr;
 apps/terminal/src/routes/_chrometest/+page.svelte	A header bar per block redraws cwd · git as chrome; result + actions always on.
 apps/terminal/src/routes/_chrometest/+page.svelte	A · Styled
 apps/terminal/src/routes/_chrometest/+page.svelte	B · Classic

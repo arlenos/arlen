@@ -46,7 +46,7 @@
     <span class="app-title">{$t("tm.title")}</span>
   </header>
 
-  <nav class="tabs" aria-label="Views">
+  <nav class="tabs" aria-label={$t("tm.views")}>
     {#each TABS as tb (tb.key)}
       <button type="button" class="tab" class:active={tab === tb.key} onclick={() => (tab = tb.key)}>
         {$t(tb.id)}

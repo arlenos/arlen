@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The per-process detail pane. Standard tabs (Statistics / Memory / Open files)
   /// plus the Arlen-native ACCESS tab: what the process holds + the KG capability
   /// scopes it holds, revocable right here. The sovereign angle as per-process
@@ -54,7 +55,7 @@
     </span>
     <div class="dp-id">
       <span class="dp-name">{process.name}</span>
-      <span class="dp-pid">PID {detail.pid}</span>
+      <span class="dp-pid">{$t("tm.dp.pid", { pid: detail.pid })}</span>
     </div>
     <button
       type="button"
@@ -65,7 +66,7 @@
     >
       {confirmQuit ? "Force quit?" : "Force Quit"}
     </button>
-    <button type="button" class="dp-close" aria-label="Close" onclick={onClose}><X size={15} strokeWidth={2} /></button>
+    <button type="button" class="dp-close" aria-label={$t("tm.dp.close")} onclick={onClose}><X size={15} strokeWidth={2} /></button>
   </header>
 
   <nav class="dp-tabs">
@@ -80,9 +81,13 @@
         {#if detail.access.camera || detail.access.mic}
           {#if detail.access.camera}<Camera size={15} strokeWidth={2} />{/if}
           {#if detail.access.mic}<Mic size={15} strokeWidth={2} />{/if}
-          <span>Using your {[detail.access.camera && "camera", detail.access.mic && "microphone"].filter(Boolean).join(" and ")} right now.</span>
+          <span>{detail.access.camera && detail.access.mic
+            ? $t("tm.dp.usingBoth")
+            : detail.access.camera
+              ? $t("tm.dp.usingCamera")
+              : $t("tm.dp.usingMic")}</span>
         {:else}
-          <span>Not using your camera, microphone, or screen.</span>
+          <span>{$t("tm.dp.usingNothing")}</span>
         {/if}
       </div>
 
@@ -90,7 +95,7 @@
 
       {#if detail.access.scopes.length > 0}
         <div class="acc-scopes">
-          <h3 class="acc-h">Knowledge access</h3>
+          <h3 class="acc-h">{$t("tm.dp.knowledgeAccess")}</h3>
           <div class="acc-chips">
             {#each detail.access.scopes as s (s.label)}
               <ScopeChip label={s.label} />
@@ -99,7 +104,7 @@
         </div>
       {/if}
 
-      <button type="button" class="acc-manage" onclick={() => {}}>Manage in App access</button>
+      <button type="button" class="acc-manage" onclick={() => {}}>{$t("tm.dp.manageInAppAccess")}</button>
     {:else if tab === "Statistics"}
       <dl class="stats">
         {#each STATE_ROWS as [k, v] (k)}
@@ -108,16 +113,16 @@
       </dl>
     {:else if tab === "Memory"}
       <dl class="stats">
-        <div class="stat"><dt>Resident (RSS)</dt><dd>{mem(detail.rssMB)}</dd></div>
-        <div class="stat"><dt>Proportional (PSS)</dt><dd>{mem(detail.pssMB)}</dd></div>
-        <div class="stat"><dt>Shared</dt><dd>{mem(detail.sharedMB)}</dd></div>
+        <div class="stat"><dt>{$t("tm.dp.rss")}</dt><dd>{mem(detail.rssMB)}</dd></div>
+        <div class="stat"><dt>{$t("tm.dp.pss")}</dt><dd>{mem(detail.pssMB)}</dd></div>
+        <div class="stat"><dt>{$t("tm.dp.shared")}</dt><dd>{mem(detail.sharedMB)}</dd></div>
       </dl>
     {:else}
       <div class="files">
         {#each detail.openFiles as f (f)}<div class="fline">{f}</div>{/each}
         {#each detail.connections as c (c)}<div class="fline conn">{c}</div>{/each}
         {#if detail.openFiles.length === 0 && detail.connections.length === 0}
-          <p class="empty">No open files or connections.</p>
+          <p class="empty">{$t("tm.dp.noOpenFiles")}</p>
         {/if}
       </div>
     {/if}
