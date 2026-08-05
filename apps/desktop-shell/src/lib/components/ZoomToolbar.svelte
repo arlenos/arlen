@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
     import {
         zoom,
         zoomIncrease,
@@ -47,13 +48,13 @@
 
 {#if $zoom.visible}
     <div class="zoom-toolbar shell-surface">
-        <button class="zoom-btn" onclick={zoomDecrease} aria-label="Zoom out">
+        <button class="zoom-btn" onclick={zoomDecrease} aria-label={$t("sh.zoom.out")}>
             <Minus size={14} strokeWidth={2} />
         </button>
 
         <span class="zoom-level">{formatLevel($zoom.level)}</span>
 
-        <button class="zoom-btn" onclick={zoomIncrease} aria-label="Zoom in">
+        <button class="zoom-btn" onclick={zoomIncrease} aria-label={$t("sh.zoom.in")}>
             <Plus size={14} strokeWidth={2} />
         </button>
 
@@ -62,7 +63,7 @@
         <div class="zoom-popover-container">
             <button
                 class="zoom-btn zoom-text-btn"
-                aria-label="Zoom step"
+                aria-label={$t("sh.zoom.step")}
                 aria-haspopup="menu"
                 aria-expanded={incrementOpen}
                 onclick={() => { incrementOpen = !incrementOpen; movementOpen = false; }}
@@ -87,7 +88,7 @@
         <div class="zoom-popover-container">
             <button
                 class="zoom-btn"
-                aria-label="Zoom movement"
+                aria-label={$t("sh.zoom.movement")}
                 aria-haspopup="menu"
                 aria-expanded={movementOpen}
                 onclick={() => { movementOpen = !movementOpen; incrementOpen = false; }}
@@ -118,7 +119,7 @@
 
         <div class="zoom-separator"></div>
 
-        <button class="zoom-btn" onclick={zoomClose} aria-label="Turn off zoom">
+        <button class="zoom-btn" onclick={zoomClose} aria-label={$t("sh.zoom.turnOff")}>
             <X size={14} strokeWidth={2} />
         </button>
     </div>

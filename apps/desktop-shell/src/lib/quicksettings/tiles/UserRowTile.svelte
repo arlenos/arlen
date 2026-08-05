@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Quick Settings footer row.
   ///
   /// Rendered as the last "tile" in the panel grid but visually a
@@ -64,7 +65,7 @@
     class="user-identity"
     role="button"
     tabindex="0"
-    title="Account / power"
+    title={$t("sh.user.accountPower")}
     onclick={(e) => {
       e.stopPropagation();
       powerOpen = !powerOpen;
@@ -77,7 +78,7 @@
   <div class="user-actions">
     <button
       class="user-icon"
-      title={isDark ? "Switch to light" : "Switch to dark"}
+      title={isDark ? $t("sh.user.switchToLight") : $t("sh.user.switchToDark")}
       onclick={(e) => {
         e.stopPropagation();
         cycleTheme();
@@ -91,7 +92,7 @@
     </button>
     <button
       class="user-icon"
-      title="Settings"
+      title={$t("sh.user.settings")}
       onclick={(e) => {
         e.stopPropagation();
         openSettings();
@@ -105,17 +106,17 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="user-power" onclick={(e) => e.stopPropagation()}>
       <button onclick={() => runQuickAction("qa.lock_screen")}>
-        <Lock size={14} strokeWidth={1.5} /><span>Lock</span>
+        <Lock size={14} strokeWidth={1.5} /><span>{$t("sh.user.lock")}</span>
       </button>
       <button onclick={() => runQuickAction("qa.logout")}>
-        <LogOut size={14} strokeWidth={1.5} /><span>Log Out</span>
+        <LogOut size={14} strokeWidth={1.5} /><span>{$t("sh.user.logOut")}</span>
       </button>
       <div class="user-sep"></div>
       <button onclick={() => runQuickAction("qa.reboot")}>
-        <RotateCcw size={14} strokeWidth={1.5} /><span>Restart</span>
+        <RotateCcw size={14} strokeWidth={1.5} /><span>{$t("sh.user.restart")}</span>
       </button>
       <button class="danger" onclick={() => runQuickAction("qa.shutdown")}>
-        <Power size={14} strokeWidth={1.5} /><span>Shut Down</span>
+        <Power size={14} strokeWidth={1.5} /><span>{$t("sh.user.shutDown")}</span>
       </button>
     </div>
   {/if}
