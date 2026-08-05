@@ -54,7 +54,7 @@
     <span
       class="px-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/55 group-data-[collapsible=icon]:hidden"
     >
-      Terminal
+      {$t("term.sidebar.title")}
     </span>
     <DropdownMenu.Root>
       <DropdownMenu.Trigger>
@@ -67,11 +67,11 @@
       <DropdownMenu.Content align="end" class="w-52">
         <DropdownMenu.Item onclick={() => newSession()}>
           {$t("term.sidebar.newSession")}
-          <DropdownMenu.Shortcut>Ctrl+T</DropdownMenu.Shortcut>
+          <DropdownMenu.Shortcut>{$t("term.sidebar.newHint")}</DropdownMenu.Shortcut>
         </DropdownMenu.Item>
         <DropdownMenu.Item onclick={() => openQuickConnect()}>
           {$t("term.sidebar.sshQuickConnect")}
-          <DropdownMenu.Shortcut>Ctrl+Shift+R</DropdownMenu.Shortcut>
+          <DropdownMenu.Shortcut>{$t("term.sidebar.sshHint")}</DropdownMenu.Shortcut>
         </DropdownMenu.Item>
       </DropdownMenu.Content>
     </DropdownMenu.Root>
@@ -98,7 +98,7 @@
         {/if}
         {#if $sessionsLoaded && $sessions.length === 0}
           <div class="ts-empty group-data-[collapsible=icon]:hidden">
-            No open sessions. Start one with the plus button or Ctrl+T.
+            {$t("term.sidebar.noSessions")}
           </div>
         {/if}
         {#each $sessions as s (s.id)}
@@ -137,7 +137,7 @@
       onclick={() => openHistoryPalette()}
     >
       <span>{$t("term.sidebar.history")}</span>
-      <span class="ts-footer-hint">Ctrl+R</span>
+      <span class="ts-footer-hint">{$t("term.sidebar.historyHint")}</span>
     </button>
   </SidebarFooter>
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The remote-session header pill (terminal.md §4.12): folded into the window
   /// header, not a second bar. The pill states the host + the honest blocks-or-plain
   /// status; a click opens a popover with the enforced scope (reach, jump host,
@@ -24,11 +25,11 @@
       <span class="rsp-badge"></span>
       <span class="rsp-host">{r.label}</span>
       {#if r.bootstrap === "blocks"}
-        <span class="rsp-status ok">Blocks</span>
+        <span class="rsp-status ok">{$t("term.rsp.blocks")}</span>
       {:else if r.bootstrap === "plain"}
-        <span class="rsp-status">Plain</span>
+        <span class="rsp-status">{$t("term.rsp.plain")}</span>
       {:else}
-        <span class="rsp-status">Connecting</span>
+        <span class="rsp-status">{$t("term.rsp.connecting")}</span>
       {/if}
       <ChevronDown class="rsp-caret" size={13} strokeWidth={2} />
     </Popover.Trigger>
@@ -37,18 +38,18 @@
       {#if r.project}<div class="rsp-sub">{r.project}</div>{/if}
 
       <div class="rsp-facts">
-        <div class="rsp-fact"><span class="rsp-key">reach</span> {r.reach.join(", ")}</div>
-        {#if r.via}<div class="rsp-fact"><span class="rsp-key">via</span> {r.via}</div>{/if}
-        {#if r.recorded}<div class="rsp-fact"><Radio size={12} strokeWidth={2} /> recorded to your timeline</div>{/if}
-        {#if r.keyInBroker}<div class="rsp-fact"><ShieldCheck size={12} strokeWidth={2} /> the terminal never sees your key</div>{/if}
+        <div class="rsp-fact"><span class="rsp-key">{$t("term.rsp.reach")}</span> {r.reach.join(", ")}</div>
+        {#if r.via}<div class="rsp-fact"><span class="rsp-key">{$t("term.rsp.via")}</span> {r.via}</div>{/if}
+        {#if r.recorded}<div class="rsp-fact"><Radio size={12} strokeWidth={2} /> {$t("term.rsp.recorded")}</div>{/if}
+        {#if r.keyInBroker}<div class="rsp-fact"><ShieldCheck size={12} strokeWidth={2} /> {$t("term.rsp.keyStaysOut")}</div>{/if}
       </div>
 
       {#if r.bootstrap === "plain"}
-        <div class="rsp-note">Plain terminal. This host does not support the block shell integration.</div>
+        <div class="rsp-note">{$t("term.rsp.plainNote")}</div>
       {/if}
 
       <button class="rsp-revoke" onclick={disconnect}>
-        <LogOut size={13} strokeWidth={2} /> Disconnect
+        <LogOut size={13} strokeWidth={2} /> {$t("term.rsp.disconnect")}
       </button>
     </Popover.Content>
   </Popover.Root>

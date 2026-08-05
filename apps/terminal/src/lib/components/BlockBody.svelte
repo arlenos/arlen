@@ -136,7 +136,7 @@
     />
   </OutputFrame>
 {:else if block.body_kind === "widget"}
-  <div class="bb-inert">Interactive widgets are not available yet.</div>
+  <div class="bb-inert">{$t("term.block.noWidgets")}</div>
 {:else}
   <!-- A GUI kind whose payload did not match its shape: fall back
        to the reserved grid so the raw text remains reachable. -->
