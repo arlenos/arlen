@@ -112,7 +112,23 @@
       // have its frame callbacks throttled indefinitely, which would strand the
       // node mounted for good, so a timer finishes the job if the frames do not.
       let done = false;
-      const finish = () => { if (!done) { done = true; view = null; } };
+      const finish = () => {
+        if (done) return;
+        done = true;
+        view = null;
+        // Make the PAGE repaint, not the window. A red band painted from the GTK
+        // draw handler never reached the screen while full-window redraws were
+        // demonstrably running, so the webview presents its own buffer over
+        // anything the window paints and nothing outside the page can repair a
+        // stale pixel. Touching the root element's opacity forces a whole-page
+        // composite, which is the one lever that reaches the buffer the screen
+        // actually shows.
+        const root = document.documentElement;
+        root.style.opacity = "0.999";
+        requestAnimationFrame(() => {
+          root.style.opacity = "";
+        });
+      };
       requestAnimationFrame(() => requestAnimationFrame(finish));
       setTimeout(finish, 200);
     };
