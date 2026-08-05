@@ -184,29 +184,31 @@
 
   type ResetKind = "all" | "builtin" | "modules";
 
+  // `$derived`: the copy reads the translator, so a plain constant would hold the
+  // locale that was active when this component initialised.
   const RESET_COPY: Record<
     ResetKind,
     { title: string; message: string; confirmLabel: string }
-  > = {
+  > = $derived({
     all: {
-      title: "Reset all keybindings?",
+      title: $t("s.sc.reset.all.title"),
       message:
-        "Every user-defined binding is replaced with the compositor defaults.",
-      confirmLabel: "Reset all",
+        $t("s.sc.reset.all.msg"),
+      confirmLabel: $t("s.sc.resetAll"),
     },
     builtin: {
-      title: "Use compositor defaults?",
+      title: $t("s.sc.reset.builtin.title"),
       message:
-        "The whole [keybindings] section is removed from compositor.toml so the compositor falls back to its built-in defaults. Custom bindings will be lost.",
-      confirmLabel: "Use defaults",
+        $t("s.sc.reset.builtin.msg"),
+      confirmLabel: $t("s.sc.reset.builtin.confirm"),
     },
     modules: {
-      title: "Reset module shortcuts?",
+      title: $t("s.sc.reset.modules.title"),
       message:
-        "Every installed module's keybinding fragment is deleted. Reinstall the owning module to get its shortcuts back.",
-      confirmLabel: "Remove fragments",
+        $t("s.sc.reset.modules.msg"),
+      confirmLabel: $t("s.sc.reset.modules.confirm"),
     },
-  };
+  });
 
   let pendingReset = $state<ResetKind | null>(null);
 
@@ -232,8 +234,8 @@
 </script>
 
 <Page
-  title="Shortcuts"
-  description="Bindings for window management, workspaces, apps, and shell actions."
+  title={$t("s.sc.title")}
+  description={$t("s.sc.desc")}
 >
   <SectionGrid>
   <div class="span-full sc-column">
@@ -244,29 +246,29 @@
       />
       <Input
         bind:value={query}
-        placeholder="Search bindings…"
+        placeholder={$t("s.sc.search")}
         class="ps-9"
       />
     </div>
     <Button variant="outline" onclick={() => (addOpen = true)}>
-      <Plus class="me-1 h-4 w-4" /> Add custom
+      <Plus class="me-1 h-4 w-4" /> {$t("s.sc.addCustom")}
     </Button>
     <Button variant="ghost" onclick={() => (pendingReset = "all")}>
-      Reset all
+      {$t("s.sc.resetAll")}
     </Button>
     <Button
       variant="ghost"
       onclick={() => (pendingReset = "builtin")}
-      title="Remove the [keybindings] section entirely so compositor defaults apply"
+      title={$t("s.sc.useDefaultsHint")}
     >
-      Use compositor defaults
+      {$t("s.sc.useDefaults")}
     </Button>
     <Button
       variant="ghost"
       onclick={() => (pendingReset = "modules")}
-      title="Delete every installed module's keybinding fragment"
+      title={$t("s.sc.resetModulesHint")}
     >
-      Reset module shortcuts
+      {$t("s.sc.resetModules")}
     </Button>
   </div>
 

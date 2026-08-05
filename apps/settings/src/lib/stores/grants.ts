@@ -154,18 +154,19 @@ export type Family =
   | "system"
   | "automation";
 
-/// The families in display order, with their headings. "Knowledge graph" names
+/// The families in display order. `label` is a message KEY, resolved where the
+/// heading renders. "Knowledge graph" names
 /// the KG data family so it does not read as the same thing as on-disk "Files
 /// and folders" (the exact wording is settled with Tim at the screenshot).
 export const FAMILIES: { key: Family; label: string }[] = [
-  { key: "data", label: "Knowledge graph" },
-  { key: "network", label: "Network" },
-  { key: "files", label: "Files and folders" },
-  { key: "devices", label: "Devices" },
-  { key: "clipboard", label: "Clipboard" },
-  { key: "notifications", label: "Notifications" },
-  { key: "system", label: "System" },
-  { key: "automation", label: "Automation" },
+  { key: "data", label: "s.fam.data" },
+  { key: "network", label: "s.fam.network" },
+  { key: "files", label: "s.fam.files" },
+  { key: "devices", label: "s.fam.devices" },
+  { key: "clipboard", label: "s.fam.clipboard" },
+  { key: "notifications", label: "s.fam.notifications" },
+  { key: "system", label: "s.fam.system" },
+  { key: "automation", label: "s.fam.automation" },
 ];
 
 // Normalize a consent-class / dimension token so the backend's snake_case
