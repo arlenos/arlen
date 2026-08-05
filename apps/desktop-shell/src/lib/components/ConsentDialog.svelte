@@ -74,11 +74,12 @@
   // covers the desktop and every later request queues behind it, so answering one
   // is checked rather than assumed. The card renders into a portal on
   // document.body, outside this component, so nothing in the subtree can see it.
-  let wasShown = false;
+  let lastId: number | null = null;
   $effect(() => {
-    const shown = $current !== null;
-    const cleared = wasShown && !shown;
-    wasShown = shown;
+    const pending = $current;
+    const cleared = lastId !== null && pending === null;
+    const answeredId = lastId;
+    lastId = pending?.id ?? null;
     if (!cleared) return;
     // Report BOTH outcomes, and report that the check started at all. A check that
     // only speaks when it finds something wrong is worthless the moment it stays
@@ -87,17 +88,17 @@
     // nothing, which is exactly that dead end.
     const say = (msg: string, level = "info") =>
       void invoke("frontend_log", { level, msg }).catch(() => {});
-    say("consent: request answered, checking that the card came down");
+    say(`consent: request ${answeredId} answered, checking that the card came down`);
     // After a frame, so a teardown that merely runs late is not called stuck.
     setTimeout(() => {
       const left = document.querySelectorAll(".arlen-consent-card").length;
       const others = document.querySelectorAll('[data-slot="dialog-content"]').length;
       if (left === 0) {
-        say(`consent: card is out of the DOM (${others} dialog node(s) remain)`);
+        say(`consent: card for ${answeredId} is out of the DOM (${others} dialog node(s) remain)`);
         return;
       }
       say(
-        `consent: request answered but ${left} card(s) still in the DOM `
+        `consent: request ${answeredId} answered but ${left} card(s) still in the DOM `
           + `(${others} dialog node(s) total); the dialog is stuck on screen`,
         "error",
       );
