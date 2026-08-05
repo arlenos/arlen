@@ -275,6 +275,10 @@ integration-smoke:
     set -euo pipefail
     cargo build --manifest-path "{{ROOT}}/daemons/event-bus/Cargo.toml"
     cargo build --manifest-path "{{ROOT}}/daemons/knowledge/Cargo.toml"
+    # Cheap to build and it carries a scenario, so the fast smoke covers the store
+    # too; the heavier daemons stay in `integration-nightly` and their scenarios
+    # skip themselves with a note when their binary is absent.
+    cargo build --manifest-path "{{ROOT}}/store-backend/Cargo.toml"
     cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml" \
         --test integration_backend_smoke -- --ignored
 
