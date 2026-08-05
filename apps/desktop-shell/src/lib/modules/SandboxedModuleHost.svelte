@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Sandboxed Tier 2 module host (ds#77 path).
   ///
   /// Mounts the module as an iframe served over `module://`. The
@@ -240,7 +241,7 @@
   <button
     class="mod-failed"
     type="button"
-    title="Module failed; click to retry"
+    title={$t("sh.module.failed")}
     onclick={async () => {
       try {
         await invoke("retry_module", { moduleId: module.id });

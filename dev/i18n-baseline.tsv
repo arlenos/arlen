@@ -1,4 +1,5 @@
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
+apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	&nbsp;
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Enter
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Esc
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	No tiles enabled. Open
@@ -7,22 +8,9 @@ apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Tab
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	hjkl
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	to enable some.
-apps/desktop-shell/src/lib/components/SniContextMenuContent.svelte	Couldn't load this menu
-apps/desktop-shell/src/lib/components/SniContextMenuContent.svelte	Loading...
-apps/desktop-shell/src/lib/components/SniContextMenuContent.svelte	No actions
-apps/desktop-shell/src/lib/components/TopBar.svelte	Exit Focus Mode
-apps/desktop-shell/src/lib/components/TopBar.svelte	Switch project
-apps/desktop-shell/src/lib/components/TrayPopover.svelte	Background Apps
-apps/desktop-shell/src/lib/components/TrayPopover.svelte	Loading...
-apps/desktop-shell/src/lib/components/TrayPopover.svelte	No background apps
-apps/desktop-shell/src/lib/components/settings/PermissionScope.svelte	None
-apps/desktop-shell/src/lib/components/shared/PopoverHeader.svelte	Settings
-apps/desktop-shell/src/lib/components/waypointer/WaypointerInlinePreview.svelte	Copy
-apps/desktop-shell/src/lib/components/workspace/IndicatorStrip.svelte	Workspaces
-apps/desktop-shell/src/lib/components/workspace/WorkspaceColumn.svelte	Minimized
-apps/desktop-shell/src/lib/components/workspace/WorkspaceColumn.svelte	No open windows
-apps/desktop-shell/src/lib/components/workspace/WorkspaceOverlay.svelte	Workspace overview
-apps/desktop-shell/src/lib/modules/SandboxedModuleHost.svelte	Module failed; click to retry
+apps/desktop-shell/src/routes/_mpristest/+page.svelte	Click an album-art thumb to open the mini-player.
+apps/desktop-shell/src/routes/_printtest/+page.svelte	Print dialog look-mock. The dialog opens over this page.
+apps/desktop-shell/src/routes/_undotest/+page.svelte	topbar strip
 apps/files/src/routes/+page.svelte	Ctrl+C
 apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X

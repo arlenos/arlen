@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   import { onMount, onDestroy, setContext, type Component } from "svelte";
   import { writable } from "svelte/store";
   import type { Readable } from "svelte/store";
@@ -296,12 +297,12 @@
           <ContextMenu.Content class="shell-popover">
             <ContextMenu.Item onclick={openProjectSwitcher}>
               <FolderSearch size={14} strokeWidth={1.5} />
-              <span>Switch project</span>
+              <span>{$t("sh.top.switchProject")}</span>
             </ContextMenu.Item>
             <ContextMenu.Separator />
             <ContextMenu.Item onclick={() => deactivateFocus()}>
               <X size={14} strokeWidth={1.5} />
-              <span>Exit Focus Mode</span>
+              <span>{$t("sh.top.exitFocus")}</span>
             </ContextMenu.Item>
           </ContextMenu.Content>
         </ContextMenu.Root>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The voice HUD: a calm bottom-centre overlay for the push-to-talk moment. It
   /// shows Listening (a live level meter) -> your transcript -> the agent Thinking ->
   /// its reply, and carries the sovereign line - on-device, held-key only, audited -
@@ -18,10 +19,10 @@
             <span class="vh-meter" aria-hidden="true">
               {#each Array(5) as _, i (i)}<span class="bar" style="--i: {i}"></span>{/each}
             </span>
-            <span class="vh-label">Listening</span>
+            <span class="vh-label">{$t("sh.voice.listening")}</span>
           {:else}
             <span class="vh-pulse" aria-hidden="true"></span>
-            <span class="vh-label">Thinking</span>
+            <span class="vh-label">{$t("sh.voice.thinking")}</span>
           {/if}
         </div>
       {/if}
@@ -35,7 +36,7 @@
 
       <div class="vh-foot">
         <span class="vh-dot" class:on={v.phase === "listening"}></span>
-        On this device and in your audit log.
+        {$t("sh.voice.staysLocal")}
       </div>
     </div>
   </div>

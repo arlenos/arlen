@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// System tray popover: lists registered SNI items with context menu support.
 
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
@@ -53,13 +54,13 @@
 
 <ShellPopover id="tray" width={260} right={140}>
   {#snippet header()}
-    <PopoverHeader icon={Layers} title="Background Apps" />
+    <PopoverHeader icon={Layers} title={$t("sh.tray.title")} />
   {/snippet}
 
   {#if loading}
-    <div class="tray-empty">Loading...</div>
+    <div class="tray-empty">{$t("sh.tray.loading")}</div>
   {:else if items.length === 0}
-    <div class="tray-empty">No background apps</div>
+    <div class="tray-empty">{$t("sh.tray.empty")}</div>
   {:else}
     <div class="tray-list themed-scroll">
       {#each items as item}

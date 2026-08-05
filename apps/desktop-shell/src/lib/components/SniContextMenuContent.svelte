@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Async-loaded context menu content for SNI tray items.
   /// Fetches the com.canonical.dbusmenu layout on mount and renders
   /// via shadcn ContextMenu primitives with submenu support.
@@ -76,11 +77,11 @@
 
 <ContextMenu.Content class="shell-popover min-w-[180px]">
   {#if loading}
-    <ContextMenu.Item disabled>Loading...</ContextMenu.Item>
+    <ContextMenu.Item disabled>{$t("sh.sni.loading")}</ContextMenu.Item>
   {:else if failed}
-    <ContextMenu.Item disabled>Couldn't load this menu</ContextMenu.Item>
+    <ContextMenu.Item disabled>{$t("sh.sni.failed")}</ContextMenu.Item>
   {:else if items.length === 0}
-    <ContextMenu.Item disabled>No actions</ContextMenu.Item>
+    <ContextMenu.Item disabled>{$t("sh.sni.noActions")}</ContextMenu.Item>
   {:else}
     {#each items.filter((i) => i.visible) as item}
       {@render menuItem(item)}
