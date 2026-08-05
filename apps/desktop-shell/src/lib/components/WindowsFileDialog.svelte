@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The open-a-Windows-file dialog (windows-apps-plan.md §41-60): a sovereign trust
   /// moment when a .exe/.msi is opened, not a setup wall. A sibling of the consent
   /// dialog - same chrome, same calm density: identity, one question, one honest
@@ -31,11 +32,13 @@
 
   // The tier is a tag, not a sentence; only "untested" earns one short line
   // (the consequence the tag alone does not carry).
-  const TIER_LABELS: Record<PendingWindowsFile["tier"], string> = {
-    verified: "Verified",
-    "should-work": "Should work",
-    untested: "Untested",
-  };
+  // `$derived`, not `const`: a constant would capture English at import and never
+  // follow a locale switch. See `check-i18n-reactivity.mjs`.
+  const TIER_LABELS: Record<PendingWindowsFile["tier"], string> = $derived({
+    verified: $t("sh.wf.tierVerified"),
+    "should-work": $t("sh.wf.tierShouldWork"),
+    untested: $t("sh.wf.tierUntested"),
+  });
 
   // The sovereign preview: the permission profile this open would mint, shown
   // BEFORE the decision. Closed by default, one click away.
@@ -63,31 +66,31 @@
              sentence would otherwise repeat. -->
         <div class="wf-head">
           <span class="wf-avatar">{p.appName.charAt(0)}</span>
-          <h2 class="wf-title">Open {p.appName}?</h2>
+          <h2 class="wf-title">{$t("sh.wf.open", { app: p.appName })}</h2>
         </div>
         <div class="wf-tags">
-          <span class="wf-tag">Windows app</span>
+          <span class="wf-tag">{$t("sh.wf.windowsApp")}</span>
           <span class="wf-tag tier-{p.tier}">{TIER_LABELS[p.tier]}</span>
         </div>
         {#if p.tier === "untested"}
-          <p class="wf-status">It might not run properly.</p>
+          <p class="wf-status">{$t("sh.wf.mightNotRun")}</p>
         {/if}
 
         <!-- The sovereign preview: the profile this open mints, one click away. -->
         <div class="wf-access">
           <button type="button" class="wf-access-head" class:open={accessOpen} onclick={() => (accessOpen = !accessOpen)}>
             <ChevronRight size={13} strokeWidth={2} />
-            What it can access
+            {$t("sh.wf.whatItCanAccess")}
           </button>
           {#if accessOpen}
             <div class="wf-access-body">
               {#each p.access as scope (scope)}
                 <div class="wf-scope">
-                  <span class="wf-scope-verb">reaches</span>
+                  <span class="wf-scope-verb">{$t("sh.wf.reaches")}</span>
                   <span class="wf-scope-object">{scope}</span>
                 </div>
               {/each}
-              <p class="wf-access-note">Changeable later in App access.</p>
+              <p class="wf-access-note">{$t("sh.wf.changeableLater")}</p>
             </div>
           {/if}
         </div>
@@ -96,24 +99,24 @@
           <!-- First run: the runtime fetch is a progress step in the same
                dialog, never a setup wall. -->
           <div class="wf-fetch">
-            <span class="wf-fetch-label">Getting {p.fetch.runtime} for this app</span>
+            <span class="wf-fetch-label">{$t("sh.wf.getting", { runtime: p.fetch.runtime })}</span>
             <div class="wf-fetch-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p.fetch.progress * 100)}>
               <span class="wf-fetch-fill" style={`width:${Math.round(p.fetch.progress * 100)}%`}></span>
             </div>
           </div>
           <div class="wf-foot">
-            <Button variant="outline" onclick={cancel}>Cancel</Button>
+            <Button variant="outline" onclick={cancel}>{$t("sh.wf.cancel")}</Button>
           </div>
         {:else}
           <div class="wf-foot">
-            <Button variant="outline" onclick={cancel}>Cancel</Button>
+            <Button variant="outline" onclick={cancel}>{$t("sh.wf.cancel")}</Button>
             <span class="wf-spacer"></span>
             {#if isInstaller}
-              <Button variant="ghost" onclick={() => run(p.id)}>Run once</Button>
-              <Button onclick={() => install(p.id)}><Download size={14} strokeWidth={2} /> Install</Button>
+              <Button variant="ghost" onclick={() => run(p.id)}>{$t("sh.wf.runOnce")}</Button>
+              <Button onclick={() => install(p.id)}><Download size={14} strokeWidth={2} /> {$t("sh.wf.install")}</Button>
             {:else}
-              <Button variant="ghost" onclick={() => install(p.id)}>Install</Button>
-              <Button onclick={() => run(p.id)}><Play size={14} strokeWidth={2} /> Run</Button>
+              <Button variant="ghost" onclick={() => install(p.id)}>{$t("sh.wf.install")}</Button>
+              <Button onclick={() => run(p.id)}><Play size={14} strokeWidth={2} /> {$t("sh.wf.run")}</Button>
             {/if}
           </div>
         {/if}
