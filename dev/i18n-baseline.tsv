@@ -250,15 +250,6 @@ apps/settings/src/lib/components/appearance/ModuleCard.svelte	Settings
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Disabled
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Enabled (auto)
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Flipped
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Flipped 180°
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Flipped 270°
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Flipped 90°
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Force always-on
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Independent
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Normal
 apps/settings/src/lib/components/displays/NightLightSection.svelte	Custom hours
 apps/settings/src/lib/components/displays/NightLightSection.svelte	Off (manual toggle only)
 apps/settings/src/lib/components/displays/NightLightSection.svelte	Sunset to sunrise
@@ -513,16 +504,6 @@ apps/settings/src/lib/stores/modules.ts	Other
 apps/settings/src/lib/stores/modules.ts	Settings Panels
 apps/settings/src/lib/stores/modules.ts	Top Bar Extensions
 apps/settings/src/lib/stores/modules.ts	Waypointer Extensions
-apps/settings/src/lib/stores/notifications.ts	Alarms Only
-apps/settings/src/lib/stores/notifications.ts	All notifications are shown.
-apps/settings/src/lib/stores/notifications.ts	Follow the time schedule below.
-apps/settings/src/lib/stores/notifications.ts	Nothing is shown except always-allow apps.
-apps/settings/src/lib/stores/notifications.ts	Off
-apps/settings/src/lib/stores/notifications.ts	Only alarm and reminder notifications.
-apps/settings/src/lib/stores/notifications.ts	Only critical notifications break through.
-apps/settings/src/lib/stores/notifications.ts	Priority Only
-apps/settings/src/lib/stores/notifications.ts	Scheduled
-apps/settings/src/lib/stores/notifications.ts	Total Silence
 apps/settings/src/lib/stores/theme.ts	Fira Code
 apps/settings/src/lib/stores/theme.ts	Inter
 apps/settings/src/lib/stores/theme.ts	JetBrains Mono
