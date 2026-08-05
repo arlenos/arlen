@@ -2390,3 +2390,97 @@ async fn an_enforcing_bus_delivers_only_the_subscribed_event_type() {
          enforced (delivered: {seen:?})"
     );
 }
+
+/// The store composes a catalog from what the machine has, and serves cards that
+/// say honestly what can be done with them.
+///
+/// This is the assembled path the store app uses: the real daemon, discovering a
+/// real MetaInfo directory, answered through the SAME client crate the app links
+/// rather than hand-rolled framing. It is hermetic because
+/// `ARLEN_STORE_METAINFO_DIR` replaces the discovered roots - without it the
+/// daemon would read `/usr/share/metainfo` and this assertion would depend on
+/// whatever the developer happens to have installed.
+///
+/// A distribution-installed app is the interesting case: it is PRESENT (its
+/// MetaInfo exists because the app is on the machine) and NOT INSTALLABLE (the
+/// store has no route to a pacman or dnf package), and both halves have to reach
+/// the surface or it offers a button that cannot work.
+#[tokio::test]
+#[ignore]
+async fn the_store_serves_a_distribution_app_as_present_but_not_installable() {
+    if !arlen_integration::binary_built("store-backend", "arlen-store-backend") {
+        eprintln!(
+            "SKIP the_store_serves_a_distribution_app_as_present_but_not_installable: \
+             arlen-store-backend not built (run `just integration-nightly`)"
+        );
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+
+    // One app, so the assertion is about this catalog and not the host's.
+    let metainfo = stack.config_home().join("metainfo");
+    std::fs::create_dir_all(&metainfo).expect("fixture dir");
+    std::fs::write(
+        metainfo.join("com.example.Solo.metainfo.xml"),
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.example.Solo</id>
+  <name>Solo</name>
+  <summary>An app the distribution installed</summary>
+  <description>
+    <p>The English paragraph.</p>
+    <p xml:lang="ar">The Arabic paragraph.</p>
+  </description>
+</component>
+"#,
+    )
+    .expect("write the fixture");
+
+    stack
+        .spawn(
+            "store-backend",
+            "arlen-store-backend",
+            &[("ARLEN_STORE_METAINFO_DIR", metainfo.to_str().unwrap())],
+        )
+        .expect("spawn store-backend");
+    // The store binds under the `arlen/` subdir of the runtime root, like the
+    // audit daemon does, rather than at its top level.
+    let socket = stack
+        .wait_socket("arlen/store.sock", Duration::from_secs(20))
+        .expect("store socket");
+
+    let cards = match arlen_store_backend::client::request(
+        &socket,
+        &arlen_store_backend::query::Request::Search {
+            query: String::new(),
+            facets: vec![],
+            sort: Default::default(),
+        },
+    )
+    .await
+    .expect("the store answers a search")
+    {
+        arlen_store_backend::query::Response::Cards(cards) => cards,
+        other => panic!("expected cards, got {other:?}"),
+    };
+
+    assert_eq!(cards.len(), 1, "the fixture is the whole catalog: {cards:?}");
+    // Flattened the way the store app flattens it: `store_card` is what turns a
+    // merged card into the row the surface renders, so asserting on its output
+    // covers the mapping too, not just the daemon's answer. The installed set is
+    // empty because installd installed nothing here - which is the point, since
+    // the app must still read as present.
+    let card = arlen_store_backend::view::store_card(&cards[0], &Default::default());
+    assert_eq!(card.id, "com.example.Solo");
+    assert_eq!(card.name, "Solo");
+    assert!(card.installed, "MetaInfo exists because the app is on the machine");
+    assert!(!card.installable, "the store has no route to a distribution package");
+    // The localized paragraph must not have been concatenated into the English
+    // one, which is what the card read like before the description filter was
+    // fixed at both levels.
+    let description = card.description.clone().unwrap_or_default();
+    assert!(
+        description.contains("English") && !description.contains("Arabic"),
+        "the description should be the unlocalized text only: {description:?}"
+    );
+}

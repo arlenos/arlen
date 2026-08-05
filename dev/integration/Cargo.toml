@@ -23,6 +23,9 @@ tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v7"] }
 os-sdk = { path = "../../sdk/os-sdk" }
 arlen-capsule = { path = "../../contracts/capsule" }
+# The store scenario speaks the store socket through the client the app links,
+# rather than hand-rolling its framing.
+arlen-store-backend = { path = "../../store-backend" }
 audit-proto = { path = "../../contracts/audit-proto" }
 # The go-live undo rehearsal drives the agent's `org.arlen.AIAgent1` D-Bus
 # interface (completed_actions -> compensate) and parses its JSON replies.
