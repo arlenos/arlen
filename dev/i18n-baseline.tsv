@@ -531,14 +531,6 @@ apps/settings/src/lib/stores/theme.ts	System Mono
 apps/settings/src/lib/stores/themeColors.ts	On-accent text
 apps/settings/src/lib/stores/themeColors.ts	Text on background
 apps/settings/src/lib/stores/themeColors.ts	Text on surface
-apps/settings/src/lib/stores/themeMotionDepth.ts	Ease
-apps/settings/src/lib/stores/themeMotionDepth.ts	Linear
-apps/settings/src/lib/stores/themeMotionDepth.ts	None
-apps/settings/src/lib/stores/themeMotionDepth.ts	Normal
-apps/settings/src/lib/stores/themeMotionDepth.ts	Snappy
-apps/settings/src/lib/stores/themeMotionDepth.ts	Soft
-apps/settings/src/lib/stores/themeMotionDepth.ts	Spring
-apps/settings/src/lib/stores/themeMotionDepth.ts	Strong
 apps/settings/src/lib/stores/themeOverrides.ts	Colours
 apps/settings/src/lib/stores/themeOverrides.ts	Geometry
 apps/settings/src/lib/stores/themeOverrides.ts	Motion & Depth

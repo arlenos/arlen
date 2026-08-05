@@ -30,8 +30,8 @@
     isOverridden,
     setMd,
     resetMd,
-    EASING_PRESETS,
-    SHADOW_PRESETS,
+    easingPresets,
+    shadowPresets,
     easingBezier,
     shadowCss,
   } from "$lib/stores/themeMotionDepth";
@@ -127,7 +127,7 @@
           id="md-easing"
         >
           {#snippet control()}
-            <SegmentedControl value={easing} options={EASING_PRESETS} ariaLabel="Easing" onchange={(v) => setMd("easing", v)} />
+            <SegmentedControl value={easing} options={$easingPresets} ariaLabel={$t("s.md.easingAria")} onchange={(v) => setMd("easing", v)} />
           {/snippet}
         </OverrideRow>
       </Section>
@@ -141,7 +141,7 @@
           id="md-shadow"
         >
           {#snippet control()}
-            <SegmentedControl value={shadow} options={SHADOW_PRESETS} ariaLabel={$t("s.md.shadows")} onchange={(v) => setMd("shadow", v)} />
+            <SegmentedControl value={shadow} options={$shadowPresets} ariaLabel={$t("s.md.shadows")} onchange={(v) => setMd("shadow", v)} />
           {/snippet}
         </OverrideRow>
         <OverrideRow
