@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Windows apps / Compatibility (windows-apps-plan.md). Windows apps run in a
   /// managed compatibility layer that is auto-configured for known apps, so the
   /// default view is thin: the installed apps with their honest compat tier
@@ -83,20 +84,19 @@
 </script>
 
 <Page
-  title="Windows apps"
-  description="Windows apps run in a managed compatibility layer. Known apps are set up for you, so you rarely need to touch anything here."
+  title={$t("s.wa.title")}
+  description={$t("s.wa.desc")}
 >
   <SectionGrid>
     {#if $winApps.mocked}
       <p class="note span-full">
-        Showing example apps. Your installed Windows apps appear here once the
-        compatibility runtime is set up.
+        {$t("s.wa.mocked")}
       </p>
     {/if}
 
-    <Section label="Installed apps" class="span-full">
+    <Section label={$t("s.wa.installed")} class="span-full">
       {#if $winApps.bottles.length === 0}
-        <p class="empty">No Windows apps installed yet. Add one below.</p>
+        <p class="empty">{$t("s.wa.none")}</p>
       {/if}
       {#each $winApps.bottles as b (b.id)}
         <Row label={b.appName} description={compatLine(b)}>
@@ -105,7 +105,7 @@
           {/snippet}
           {#snippet control()}
             <Button variant="ghost" size="sm" onclick={() => toggle(b.id)}>
-              Advanced
+              {$t("s.wa.advanced")}
               <ChevronDown size={13} strokeWidth={2} class={`wa-chev ${expanded.has(b.id) ? "wa-rot" : ""}`} />
             </Button>
           {/snippet}
@@ -116,22 +116,22 @@
                 <Collapsible class="wa-col" open={true}>
                   <CollapsibleTrigger class="wa-sec-trigger">
                     <ChevronRight size={14} strokeWidth={2} />
-                    Access
+                    {$t("s.wa.access")}
                   </CollapsibleTrigger>
                   <CollapsibleContent class="wa-sec-content">
                     <p class="wa-access">{accessLine(b)}</p>
                     <div class="wa-row">
-                      <span class="wa-label">Follow the Arlen theme</span>
+                      <span class="wa-label">{$t("s.wa.followTheme")}</span>
                       <Switch
                         value={b.followsTheme}
-                        ariaLabel="Follow the Arlen theme"
+                        ariaLabel={$t("s.wa.followTheme")}
                         onchange={(v) => patchBottle(b.id, { followsTheme: v })}
                       />
                     </div>
                     <div class="wa-row">
-                      <span class="wa-label">Manage what this app can reach</span>
+                      <span class="wa-label">{$t("s.wa.manageReach")}</span>
                       <Button variant="outline" size="sm" onclick={() => navigateTo("privacy", `app-${b.appId}`)}>
-                        Manage access
+                        {$t("s.wa.manageAccess")}
                       </Button>
                     </div>
                   </CollapsibleContent>
@@ -140,53 +140,53 @@
                 <Collapsible class="wa-col">
                   <CollapsibleTrigger class="wa-sec-trigger">
                     <ChevronRight size={14} strokeWidth={2} />
-                    Compatibility
+                    {$t("s.wa.compat")}
                   </CollapsibleTrigger>
                   <CollapsibleContent class="wa-sec-content">
                     <div class="wa-row">
-                      <span class="wa-label">Compatibility version</span>
+                      <span class="wa-label">{$t("s.wa.compatVersion")}</span>
                       <PopoverSelect
                         value={b.wineVersion}
                         options={versionOptions}
-                        ariaLabel="Compatibility version"
+                        ariaLabel={$t("s.wa.compatVersion")}
                         onchange={(v) => patchBottle(b.id, { wineVersion: v })}
                       />
                     </div>
                     <div class="wa-row">
-                      <span class="wa-label">Windows version</span>
+                      <span class="wa-label">{$t("s.wa.winVersion")}</span>
                       <SegmentedControl
                         value={b.windowsVersion}
                         options={winVersionOptions}
-                        ariaLabel="Windows version"
+                        ariaLabel={$t("s.wa.winVersion")}
                         onchange={(v) => patchBottle(b.id, { windowsVersion: v as Bottle["windowsVersion"] })}
                       />
                     </div>
                     <div class="wa-row">
-                      <span class="wa-label">Direct3D to Vulkan (DXVK)</span>
+                      <span class="wa-label">{$t("s.wa.dxvk")}</span>
                       <Switch
                         value={b.dxvk}
-                        ariaLabel="Direct3D to Vulkan"
+                        ariaLabel={$t("s.wa.dxvkAria")}
                         onchange={(v) => patchBottle(b.id, { dxvk: v })}
                       />
                     </div>
                     <div class="wa-row">
-                      <span class="wa-label">Display scaling</span>
+                      <span class="wa-label">{$t("s.wa.scaling")}</span>
                       <NumberInput
                         value={b.scaling}
                         min={100}
                         max={300}
                         step={25}
                         unit="%"
-                        ariaLabel="Display scaling"
+                        ariaLabel={$t("s.wa.scaling")}
                         onchange={(v) => patchBottle(b.id, { scaling: v })}
                       />
                     </div>
                     <div class="wa-row">
-                      <span class="wa-label">Window mode</span>
+                      <span class="wa-label">{$t("s.wa.windowMode")}</span>
                       <SegmentedControl
                         value={b.windowMode}
                         options={windowModeOptions}
-                        ariaLabel="Window mode"
+                        ariaLabel={$t("s.wa.windowMode")}
                         onchange={(v) => patchBottle(b.id, { windowMode: v as Bottle["windowMode"] })}
                       />
                     </div>
@@ -196,34 +196,34 @@
                 <Collapsible class="wa-col">
                   <CollapsibleTrigger class="wa-sec-trigger">
                     <ChevronRight size={14} strokeWidth={2} />
-                    Launch
+                    {$t("s.wa.launch")}
                   </CollapsibleTrigger>
                   <CollapsibleContent class="wa-sec-content">
                     <div class="wa-row">
-                      <span class="wa-label">Arguments</span>
+                      <span class="wa-label">{$t("s.wa.args")}</span>
                       <span class="wa-input">
                         <Input
                           value={b.launchArgs}
-                          placeholder="e.g. --safe-mode"
+                          placeholder={$t("s.wa.argsHint")}
                           oninput={(e) => patchBottle(b.id, { launchArgs: e.currentTarget.value })}
                         />
                       </span>
                     </div>
                     <div class="wa-row">
-                      <span class="wa-label">Working directory</span>
+                      <span class="wa-label">{$t("s.wa.workDir")}</span>
                       <span class="wa-input">
                         <Input
                           value={b.workingDir}
-                          placeholder="Default"
+                          placeholder={$t("s.wa.default")}
                           oninput={(e) => patchBottle(b.id, { workingDir: e.currentTarget.value })}
                         />
                       </span>
                     </div>
                     <div class="wa-field">
-                      <span class="wa-label">Environment variables</span>
+                      <span class="wa-label">{$t("s.wa.env")}</span>
                       <ChipList
                         items={b.envVars}
-                        placeholder="KEY=value"
+                        placeholder={$t("s.wa.envHint")}
                         onchange={(items) => patchBottle(b.id, { envVars: items })}
                       />
                     </div>
@@ -233,22 +233,22 @@
                 <Collapsible class="wa-col">
                   <CollapsibleTrigger class="wa-sec-trigger">
                     <ChevronRight size={14} strokeWidth={2} />
-                    Tweaks
+                    {$t("s.wa.tweaks")}
                   </CollapsibleTrigger>
                   <CollapsibleContent class="wa-sec-content">
                     <div class="wa-field">
-                      <span class="wa-label">DLL overrides</span>
+                      <span class="wa-label">{$t("s.wa.dll")}</span>
                       <ChipList
                         items={b.dllOverrides}
-                        placeholder="Add a DLL override"
+                        placeholder={$t("s.wa.dllHint")}
                         onchange={(items) => patchBottle(b.id, { dllOverrides: items })}
                       />
                     </div>
                     <div class="wa-field">
-                      <span class="wa-label">Winetricks</span>
+                      <span class="wa-label">{$t("s.wa.winetricks")}</span>
                       <ChipList
                         items={b.winetricks}
-                        placeholder="Add a winetricks verb"
+                        placeholder={$t("s.wa.winetricksHint")}
                         onchange={(items) => patchBottle(b.id, { winetricks: items })}
                       />
                     </div>
@@ -258,17 +258,17 @@
                 <Collapsible class="wa-col">
                   <CollapsibleTrigger class="wa-sec-trigger">
                     <ChevronRight size={14} strokeWidth={2} />
-                    Files
+                    {$t("s.wa.files")}
                   </CollapsibleTrigger>
                   <CollapsibleContent class="wa-sec-content">
                     <div class="wa-row">
-                      <span class="wa-label">Storage used, {b.diskUsage}</span>
+                      <span class="wa-label">{$t("s.wa.storageUsed", { size: b.diskUsage })}</span>
                       <span class="wa-btns">
                         <Button variant="outline" size="sm" onclick={() => browseFiles(b.id)}>
-                          <FolderOpen size={14} strokeWidth={2} /> Browse files
+                          <FolderOpen size={14} strokeWidth={2} /> {$t("s.wa.browse")}
                         </Button>
                         <Button variant="ghost" size="sm" onclick={() => clearCaches(b.id)}>
-                          <Eraser size={14} strokeWidth={2} /> Clear caches
+                          <Eraser size={14} strokeWidth={2} /> {$t("s.wa.clearCaches")}
                         </Button>
                       </span>
                     </div>
@@ -277,7 +277,7 @@
 
                 <div class="wa-adv-foot">
                   <button type="button" class="wa-delete" onclick={() => (confirmDelete = b)}>
-                    <Trash2 size={14} strokeWidth={2} /> Delete this app
+                    <Trash2 size={14} strokeWidth={2} /> {$t("s.wa.deleteApp")}
                   </button>
                 </div>
               </div>
@@ -287,16 +287,16 @@
       {/each}
     </Section>
 
-    <Section label="Add an app" class="span-full">
-      <Row label="Install a Windows app" description="Pick a Windows installer, like a .exe or .msi, and the compatibility layer sets it up.">
+    <Section label={$t("s.wa.addApp")} class="span-full">
+      <Row label={$t("s.wa.installApp")} description={$t("s.wa.installAppDesc")}>
         {#snippet control()}
-          <Button variant="default" size="sm" onclick={installExe}>Choose an installer</Button>
+          <Button variant="default" size="sm" onclick={installExe}>{$t("s.wa.chooseInstaller")}</Button>
         {/snippet}
       </Row>
     </Section>
 
-    <Section label="Defaults" class="span-full">
-      <Row label="Default compatibility version" description="New apps start on this Wine or Proton version.">
+    <Section label={$t("s.wa.defaults")} class="span-full">
+      <Row label={$t("s.wa.defaultVersion")} description={$t("s.wa.defaultVersionDesc")}>
         {#snippet control()}
           <PopoverSelect
             value={$defaults.version}
@@ -306,23 +306,23 @@
           />
         {/snippet}
       </Row>
-      <Row label="New apps get" description="A private bottle keeps each app isolated. A shared one saves disk space.">
+      <Row label={$t("s.wa.newAppsGet")} description={$t("s.wa.newAppsGetDesc")}>
         {#snippet control()}
           <SegmentedControl
             value={$defaults.bottleMode}
             options={bottleModeOptions}
-            ariaLabel="New apps get"
+            ariaLabel={$t("s.wa.newAppsGet")}
             onchange={(v) => patchDefaults({ bottleMode: v as "per-app" | "shared" })}
           />
         {/snippet}
       </Row>
       {#each $defaults.runtimes as r (r.name)}
-        <Row label={r.name} description={r.installed ? "Installed" : "Available to install"}>
+        <Row label={r.name} description={r.installed ? $t("s.wa.runtimeInstalled") : $t("s.wa.runtimeAvailable")}>
           {#snippet control()}
             {#if r.installed}
-              <span class="wa-installed">Installed</span>
+              <span class="wa-installed">{$t("s.wa.runtimeInstalled")}</span>
             {:else}
-              <Button variant="outline" size="sm">Install</Button>
+              <Button variant="outline" size="sm">{$t("s.wa.install")}</Button>
             {/if}
           {/snippet}
         </Row>
@@ -333,9 +333,9 @@
 
 <ConfirmDialog
   open={confirmDelete !== null}
-  title="Delete this app?"
-  message={`"${confirmDelete?.appName ?? ""}" and its files will be removed from this machine. This cannot be undone.`}
-  confirmLabel="Delete"
+  title={$t("s.wa.confirmTitle")}
+  message={$t("s.wa.confirmMsg", { name: confirmDelete?.appName ?? "" })}
+  confirmLabel={$t("s.wa.confirmLabel")}
   variant="destructive"
   onConfirm={async () => {
     if (confirmDelete) await deleteBottle(confirmDelete.id);
