@@ -292,6 +292,18 @@ apps/settings/src/routes/appearance/quicksettings/+page.svelte	Reset Quick Setti
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	Reset to defaults
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	installed by other modules are part of your layout but not editable here. They are preserved on save.
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	tile
+apps/settings/src/routes/appearance/system/+page.svelte	$ ls --color
+apps/settings/src/routes/appearance/system/+page.svelte	README.md
+apps/settings/src/routes/appearance/system/+page.svelte	arlen@desktop
+apps/settings/src/routes/appearance/system/+page.svelte	build
+apps/settings/src/routes/appearance/system/+page.svelte	build failed
+apps/settings/src/routes/appearance/system/+page.svelte	call
+apps/settings/src/routes/appearance/system/+page.svelte	deprecated
+apps/settings/src/routes/appearance/system/+page.svelte	docs
+apps/settings/src/routes/appearance/system/+page.svelte	error:
+apps/settings/src/routes/appearance/system/+page.svelte	src
+apps/settings/src/routes/appearance/system/+page.svelte	warning:
+apps/settings/src/routes/appearance/system/+page.svelte	~/src
 apps/settings/src/routes/extensions/+page.svelte	forage install
 apps/settings/src/routes/keyboard/+page.svelte	(none)
 apps/settings/src/routes/keyboard/+page.svelte	Add layout
