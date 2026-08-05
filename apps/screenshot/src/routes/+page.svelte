@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The screenshot annotate surface (SC-R2). A captured image on one canvas with
   /// a floating tool palette; annotate directly on it, then copy on Enter or save.
   /// Satty/Flameshot model, on the @arlen/ui-kit tool archetype, flat house style.
@@ -333,7 +334,7 @@
           bind:value={textEdit.value}
           onblur={commitText}
           rows="1"
-          placeholder="Type…"
+          placeholder={$t("s.typePlaceholder")}
         ></textarea>
       {/if}
     </div>
@@ -362,13 +363,13 @@
 
     <span class="sep" aria-hidden="true"></span>
 
-    <Button variant="ghost" size="icon-sm" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={shapes.length === 0} onclick={undo}><Undo2 size={16} strokeWidth={1.75} /></Button>
-    <Button variant="ghost" size="icon-sm" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled={redoStack.length === 0} onclick={redo}><Redo2 size={16} strokeWidth={1.75} /></Button>
+    <Button variant="ghost" size="icon-sm" title={$t("s.undoHint")} aria-label={$t("s.undo")} disabled={shapes.length === 0} onclick={undo}><Undo2 size={16} strokeWidth={1.75} /></Button>
+    <Button variant="ghost" size="icon-sm" title={$t("s.redoHint")} aria-label={$t("s.redo")} disabled={redoStack.length === 0} onclick={redo}><Redo2 size={16} strokeWidth={1.75} /></Button>
 
     <span class="sep" aria-hidden="true"></span>
 
-    <Button variant="outline" size="sm" title="Copy (Enter)" onclick={copy}><Copy size={15} strokeWidth={1.75} /> Copy</Button>
-    <Button variant="default" size="sm" title="Save" onclick={save}><Download size={15} strokeWidth={1.75} /> Save</Button>
+    <Button variant="outline" size="sm" title={$t("s.copyHint")} onclick={copy}><Copy size={15} strokeWidth={1.75} /> {$t("s.copy")}</Button>
+    <Button variant="default" size="sm" title={$t("s.save")} onclick={save}><Download size={15} strokeWidth={1.75} /> {$t("s.save")}</Button>
   </div>
 </div>
 
@@ -381,7 +382,7 @@
     onDismiss={autoSaveAndDismiss}
   />
 {:else if phase === "dismissed"}
-  <div class="dismissed">Saved to Pictures.</div>
+  <div class="dismissed">{$t("s.savedToPictures")}</div>
 {/if}
 
 <style>
