@@ -332,6 +332,48 @@ pub enum IrreversibilityReason {
     NoSnapshotCapableFilesystem,
 }
 
+impl InverseReceipt {
+    /// A stable identifier for what undo would DO, for a recent-actions surface
+    /// to label the row with. Deliberately an identifier and not prose: the label
+    /// a user reads is the UI's catalog entry, so this stays translatable rather
+    /// than shipping English out of a daemon.
+    pub fn inverse_kind(&self) -> &'static str {
+        match self {
+            InverseReceipt::RestorePath { .. } => "restore-path",
+            InverseReceipt::RestoreFromTrash { .. } => "restore-from-trash",
+            InverseReceipt::RestoreValue { .. } => "restore-value",
+            InverseReceipt::DeleteCreated { .. } => "delete-created",
+            InverseReceipt::TrashCreated { .. } => "trash-created",
+            InverseReceipt::RestoreSnapshot { .. } => "restore-snapshot",
+            InverseReceipt::RetractGraphEdge { .. } => "retract-graph-edge",
+        }
+    }
+
+    /// What the action acted ON, as the user would recognise it. This is why the
+    /// audit join can stay a join rather than a copy: the audit ledger is
+    /// content-free by design and never names the object, but the captured
+    /// inverse must name it or it could not be replayed, so the object is
+    /// already in hand wherever a receipt is.
+    pub fn object(&self) -> String {
+        match self {
+            InverseReceipt::RestorePath { now, .. } => now.as_str().to_string(),
+            InverseReceipt::RestoreFromTrash { original, .. } => original.as_str().to_string(),
+            InverseReceipt::RestoreValue { target, .. } => {
+                format!("{}:{}", target.file(), target.key())
+            }
+            InverseReceipt::DeleteCreated { created }
+            | InverseReceipt::TrashCreated { created } => created.path().as_str().to_string(),
+            InverseReceipt::RestoreSnapshot { scope, .. } => scope.as_str().to_string(),
+            InverseReceipt::RetractGraphEdge {
+                from_id,
+                relation_type,
+                to_id,
+                ..
+            } => format!("{from_id} -{relation_type}-> {to_id}"),
+        }
+    }
+}
+
 /// The static, predict-time reversibility class an effect declares (§3.2): the
 /// ONE source of truth for "may the gate lift this, and how must it be reported".
 /// Two consumers read this same field (the lift bit and the audit-honest kind),

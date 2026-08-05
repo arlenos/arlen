@@ -94,6 +94,10 @@ pub mod undo_enact;
 /// log so a graph compensation survives a restart.
 pub mod undo_signer;
 
+/// The recent-actions read: undo entries joined to the audit ledger by call
+/// chain, so a surface can name who acted and offer the undo.
+pub mod undo_history;
+
 /// The pi engine sidecar: the confined `pi --mode rpc` spawn (argv builder).
 pub mod sidecar;
 
