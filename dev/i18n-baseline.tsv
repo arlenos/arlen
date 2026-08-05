@@ -481,14 +481,6 @@ apps/settings/src/lib/stores/capsules.ts	Project Atlas notes
 apps/settings/src/lib/stores/capsules.ts	Reading list
 apps/settings/src/lib/stores/capsules.ts	Recipe collection
 apps/settings/src/lib/stores/capsules.ts	Trip 2026
-apps/settings/src/lib/stores/grants.ts	Automation
-apps/settings/src/lib/stores/grants.ts	Clipboard
-apps/settings/src/lib/stores/grants.ts	Devices
-apps/settings/src/lib/stores/grants.ts	Files and folders
-apps/settings/src/lib/stores/grants.ts	Knowledge graph
-apps/settings/src/lib/stores/grants.ts	Network
-apps/settings/src/lib/stores/grants.ts	Notifications
-apps/settings/src/lib/stores/grants.ts	System
 apps/settings/src/lib/stores/models.ts	Answers your questions.
 apps/settings/src/lib/stores/models.ts	Background work
 apps/settings/src/lib/stores/models.ts	Balanced
@@ -580,21 +572,8 @@ apps/settings/src/routes/keyboard/+page.svelte	Russian
 apps/settings/src/routes/keyboard/+page.svelte	Spanish
 apps/settings/src/routes/keyboard/+page.svelte	Swedish
 apps/settings/src/routes/keyboard/+page.svelte	Swiss
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Add custom
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Delete every installed module's keybinding fragment
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Loading…
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	No bindings match "
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Remove fragments
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Remove the [keybindings] section entirely so compositor defaults apply
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Reset all
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Reset all keybindings?
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Reset module shortcuts
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Reset module shortcuts?
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Search bindings…
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Shortcuts
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Use compositor defaults
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Use compositor defaults?
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Use defaults
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	bound to:
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	conflict
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	detected

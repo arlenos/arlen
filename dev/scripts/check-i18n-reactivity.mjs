@@ -65,9 +65,17 @@ for (const base of [join(ROOT, "apps"), join(ROOT, "sdk")]) {
       }
 
       // Top level in a Svelte `<script>` is two spaces; a function body is deeper.
-      const decl = line.match(/^ {2}(?:const|let)\s+(\w+)[^=]*=\s*(.*)$/);
+      // The `=` may be several lines down when the type annotation is a multi-line
+      // generic, so a declaration without one on its own line is still a candidate:
+      // that shape is how a `Record<\n  Kind,\n  {...}\n> = {` table slipped past
+      // the first version of this check.
+      const decl = line.match(/^ {2}(?:const|let)\s+(\w+)[^=]*=\s*(.*)$/)
+        ?? line.match(/^ {2}(?:const|let)\s+(\w+)\s*:[^=]*$/)?.concat([""]);
       if (!decl) return;
-      const initialiser = [decl[2], ...lines.slice(i + 1, i + 30)].join("\n");
+      const rest = lines.slice(i + 1, i + 30).join("\n");
+      const initialiser = decl[2]
+        ? [decl[2], rest].join("\n")
+        : rest.slice(rest.indexOf("=") + 1);
       // `$derived` may sit on the next line when the type annotation is long.
       if (initialiser.trimStart().startsWith("$derived")) return;
       const end = initialiser.indexOf(";");

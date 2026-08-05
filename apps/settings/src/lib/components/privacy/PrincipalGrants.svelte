@@ -51,7 +51,7 @@
     {@const FamIcon = familyIcon(fam.key)}
     <div class="fam-sub" class:flush={!showHead}>
       <span class="fam-sub-icon"><FamIcon size={13} strokeWidth={1.75} /></span>
-      <span class="fam-sub-label">{fam.label}</span>
+      <span class="fam-sub-label">{$t(fam.label)}</span>
     </div>
     <div class="lines" class:flush={!showHead}>
       {#each fam.lines as line (line.key)}
