@@ -207,8 +207,6 @@ apps/harness/src/lib/components/transparency/AccessSection.svelte	no data
 apps/harness/src/lib/components/transparency/ActivitySection.svelte	See everything it did
 apps/harness/src/lib/components/transparency/MemorySection.svelte	This is the shape of what it holds, never the contents of your files.
 apps/harness/src/lib/components/transparency/OffSwitchSection.svelte	You are always in control. You can turn the AI off completely in Settings. When it is off, it does nothing at all, and you can remove it. The rest of your desktop keeps working without it.
-apps/settings/src/lib/components/appearance/AppPicker.svelte	Add this name as a custom entry
-apps/settings/src/lib/components/appearance/AppPicker.svelte	Every known app is already listed above. Type a custom name to add it manually.
 apps/settings/src/lib/components/appearance/AppPicker.svelte	No apps have sent notifications yet. Send one with
 apps/settings/src/lib/components/appearance/AppPicker.svelte	No matches for "
 apps/settings/src/lib/components/appearance/AppPicker.svelte	Use "
