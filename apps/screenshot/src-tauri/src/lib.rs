@@ -119,6 +119,24 @@ fn now_timestamp() -> String {
     now.format(fmt).unwrap_or_else(|_| "capture".to_string())
 }
 
+// The WebKit renderer sandbox is NOT enabled here, and the reason is a measured
+// one rather than a decision to skip it.
+//
+// `WebContext::set_sandbox_enabled(true)` from a Tauri `.setup()` hook aborts the
+// process outright:
+//
+//     ERROR: Sandboxing cannot be changed after subprocesses were spawned.
+//
+// It is not a warning and not a no-op - WebKit calls `g_error`, which kills the
+// app at startup. By the time `.setup()` runs the webview exists and its web
+// process is already up, so the only window for that call is before any webview
+// is created, which Tauri does not currently give us a hook for.
+//
+// So enabling the renderer sandbox needs a route that does not depend on calling
+// the setter at all - an environment variable read at WebKit init, or a wry-level
+// `WebContext` supplied before the first webview. Investigated in the report
+// rather than left as a plausible-looking call that would take the app down.
+
 /// Run the screenshot app.
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
