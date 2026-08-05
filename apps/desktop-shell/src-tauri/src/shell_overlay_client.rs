@@ -223,6 +223,35 @@ fn update_input_region(app: &tauri::AppHandle) {
         consent, menu, popover, notif, mode,
     );
     set_input_region(app, mode);
+    // An overlay that CLOSES leaves its pixels on the screen. The shell's main
+    // window is a fullscreen transparent layer surface, and measurements on the
+    // image show the same thing on two unrelated surfaces: the consent card,
+    // answered by a click, and the Quick Settings panel, dismissed by Escape,
+    // both freeze part-way through their fade while a tooltip appearing at the
+    // same instant paints crisply. Content that arrives is drawn; content that
+    // leaves is not repainted over, so the region it vacated keeps the last frame
+    // that reached the screen.
+    //
+    // Every overlay change passes through here, which makes this the one place
+    // that knows the surface just gained or lost something. Asking GTK to redraw
+    // the whole window damages the vacated region along with everything else. It
+    // compensates for a missing repaint rather than explaining it - the reason a
+    // shrinking transparent client area is never damaged is still open - but it
+    // is one call in one place instead of a workaround in every surface.
+    redraw_main_window(app);
+}
+
+/// Force a full redraw of the shell's main window.
+fn redraw_main_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else { return };
+    let _ = window.with_webview(|webview| {
+        use gtk::prelude::{Cast, WidgetExt};
+        if let Some(toplevel) = webview.inner().toplevel() {
+            if let Ok(gtk_window) = toplevel.downcast::<gtk::Window>() {
+                gtk_window.queue_draw();
+            }
+        }
+    });
 }
 
 /// Called when a context menu opens or closes.
