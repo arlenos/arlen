@@ -121,27 +121,14 @@
         if (done) return;
         done = true;
         view = null;
-        // Make the PAGE repaint, not the window. A red band painted from the GTK
-        // draw handler never reached the screen while full-window redraws were
-        // demonstrably running, so the webview presents its own buffer over
-        // anything the window paints and nothing outside the page can repair a
-        // stale pixel. Touching the root element's opacity forces a whole-page
-        // composite, which is the one lever that reaches the buffer the screen
-        // actually shows.
-        const root = document.documentElement;
-        root.style.opacity = "0.999";
-        requestAnimationFrame(() => {
-          root.style.opacity = "";
-        });
-        say("consent: page repaint nudged after the card came down");
-        // DIAGNOSTIC, out once it has answered. A full-page composite did not
-        // clear the ghost either. Reloading rebuilds every layer from scratch, so
-        // if THAT does not clear it, nothing available to the page can, and the
-        // stale pixels live below WebKit - which is a different search entirely.
-        setTimeout(() => {
-          say("consent: reloading to see whether anything in the page can clear it");
-          location.reload();
-        }, 2000);
+        // Nothing here can repair the pixels the card leaves behind, and that is
+        // measured rather than assumed: a forced whole-page composite did not
+        // clear them, and neither did a full `location.reload()` given fifteen
+        // seconds to finish - the bar came back repainted and the card stayed.
+        // A red band painted from the GTK draw handler never reached the screen
+        // either. So the stale region is below both the page and the window, in
+        // how the webview's surface is presented or in the compositor, and any
+        // further attempt from this component would be superstition.
       };
       requestAnimationFrame(() => requestAnimationFrame(finish));
       setTimeout(finish, 200);
