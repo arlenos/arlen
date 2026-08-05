@@ -28,8 +28,19 @@ pub async fn consent_fetch() -> Result<Option<PendingView>, String> {
 /// grant for an always-allow.
 #[tauri::command]
 pub async fn consent_resolve(id: u64, outcome: ConsentOutcome) -> Result<bool, String> {
-    tokio::task::spawn_blocking(move || ControlClient::at_default_path()?.resolve(id, outcome))
+    // Logged on the RUST side on purpose. The webview's `console.error` does not
+    // reach the journal on the image, so a failure in the click path was
+    // indistinguishable from a click that never happened - the dialog simply
+    // stood there. This line proves the invoke ARRIVED; its absence proves it did
+    // not, which is the one thing the boot evidence could not tell apart.
+    log::info!("consent_resolve: id={id} outcome={outcome:?}");
+    let result = tokio::task::spawn_blocking(move || ControlClient::at_default_path()?.resolve(id, outcome))
         .await
         .map_err(|e| format!("consent resolve task failed: {e}"))?
-        .map_err(|e| format!("consent resolve: {e}"))
+        .map_err(|e| format!("consent resolve: {e}"));
+    match &result {
+        Ok(ok) => log::info!("consent_resolve: broker answered ok={ok}"),
+        Err(e) => log::error!("consent_resolve: {e}"),
+    }
+    result
 }
