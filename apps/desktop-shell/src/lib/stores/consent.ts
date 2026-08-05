@@ -84,20 +84,15 @@ const MOCK_PENDING: PendingView[] = [
 /// The request on screen now, or null when nothing is pending.
 export const current = writable<PendingView | null>(null);
 
-// Keep the shell's input region in sync with the dialog. The consent card is a
-// centered modal in the main shell window, whose default region is the top bar
-// only, so without expanding it the dialog is visible but click-through (a mouse
-// click on Allow/Deny falls to the desktop). Expand to full-surface while a
-// request is on screen, restore when it clears - exactly how the popover surfaces
-// drive set_popover_input_region. Only fire on the show/hide transition; the
-// invoke is swallowed under vite (no Tauri host).
-let regionShown = false;
-current.subscribe((pending) => {
-  const shown = pending !== null;
-  if (shown === regionShown) return;
-  regionShown = shown;
-  invoke("set_consent_input_region", { active: shown }).catch(() => {});
-});
+// The shell's input region follows the CARD, not the request, and the dialog
+// component owns it (see ConsentDialog). The card is a centered modal in a window
+// whose default region is the top bar only, so without expanding it the dialog is
+// visible but click-through and a click on Allow lands on the desktop.
+//
+// It used to be driven from here, off this store, which meant the region and the
+// keyboard grab were dropped the instant a request was answered - while the card
+// was still fading. Ownership belongs with whatever knows when the card is really
+// gone, and that is the component.
 
 // `?consentmock=<n>` (DEV only) pins which fixture request renders, so the
 // screenshot loop can address every state by URL; without it the first one

@@ -48,6 +48,27 @@
     return () => clearInterval(timer);
   });
 
+  // The shell's full-surface input region follows the CARD, not the request. The
+  // window's default region is the top bar only, so while the card is up the
+  // region must cover the surface or a click on Allow falls through to the
+  // desktop; the keyboard grab rides along for Escape-to-deny.
+  //
+  // It matters that this releases LATE. Driven off the request (which is how it
+  // used to work, from the store) it fired the moment the answer landed, changing
+  // the layer surface's input shape and keyboard mode while the card was still
+  // fading - and on the image the fade stops delivering frames at about that
+  // point, leaving the card frozen half-drawn. Whether or not that is the cause,
+  // holding the region until the card is really gone is the correct order on its
+  // own terms: the surface stays interactive for exactly as long as something
+  // interactive is on it.
+  let regionShown = false;
+  $effect(() => {
+    const shown = view !== null;
+    if (shown === regionShown) return;
+    regionShown = shown;
+    void invoke("set_consent_input_region", { active: shown }).catch(() => {});
+  });
+
   // Never take away a node that is still painting.
   //
   // On the image, removing the card outright leaves its pixels on the screen: the
