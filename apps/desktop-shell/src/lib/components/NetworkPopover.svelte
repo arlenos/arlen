@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Network popover: WiFi list with context menus, VPN, power toggle.
   /// Structure mirrors BluetoothPopover: Header > Sections > Items with ContextMenu.
 
@@ -148,49 +149,49 @@
     <ContextMenu.Content class="shell-popover">
       {#if net.is_connected}
         <ContextMenu.Item onclick={() => handleConnect(net)}>
-          <WifiOff size={14} class="me-2" />Disconnect
+          <WifiOff size={14} class="me-2" />{$t("sh.net.disconnect")}
         </ContextMenu.Item>
       {:else}
         <ContextMenu.Item onclick={() => handleConnect(net)}>
-          <Wifi size={14} class="me-2" />Connect
+          <Wifi size={14} class="me-2" />{$t("sh.net.connect")}
         </ContextMenu.Item>
       {/if}
       {#if net.is_known}
         <ContextMenu.Item onclick={() => copyPassword(net.ssid)}>
-          <Copy size={14} class="me-2" />Copy Password
+          <Copy size={14} class="me-2" />{$t("sh.net.copyPassword")}
         </ContextMenu.Item>
       {/if}
       {#if net.is_connected}
         <ContextMenu.Separator />
         <ContextMenu.Sub>
           <ContextMenu.SubTrigger>
-            <Info size={14} class="me-2" />Connection Info
+            <Info size={14} class="me-2" />{$t("sh.net.connectionInfo")}
           </ContextMenu.SubTrigger>
           <ContextMenu.SubContent class="shell-popover">
             {#if connDetails}
               {#if connDetails.ip}
                 <ContextMenu.Item onclick={() => copyText(connDetails!.ip)}>
-                  <span class="ctx-label">IP</span><span class="ctx-value">{connDetails.ip}</span>
+                  <span class="ctx-label">{$t("sh.net.ip")}</span><span class="ctx-value">{connDetails.ip}</span>
                 </ContextMenu.Item>
               {/if}
               {#if connDetails.gateway}
                 <ContextMenu.Item onclick={() => copyText(connDetails!.gateway)}>
-                  <span class="ctx-label">Gateway</span><span class="ctx-value">{connDetails.gateway}</span>
+                  <span class="ctx-label">{$t("sh.net.gateway")}</span><span class="ctx-value">{connDetails.gateway}</span>
                 </ContextMenu.Item>
               {/if}
               {#if connDetails.dns}
                 <ContextMenu.Item onclick={() => copyText(connDetails!.dns)}>
-                  <span class="ctx-label">DNS</span><span class="ctx-value">{connDetails.dns}</span>
+                  <span class="ctx-label">{$t("sh.net.dns")}</span><span class="ctx-value">{connDetails.dns}</span>
                 </ContextMenu.Item>
               {/if}
               {#if connDetails.mac}
                 <ContextMenu.Item onclick={() => copyText(connDetails!.mac)}>
-                  <span class="ctx-label">MAC</span><span class="ctx-value">{connDetails.mac}</span>
+                  <span class="ctx-label">{$t("sh.net.mac")}</span><span class="ctx-value">{connDetails.mac}</span>
                 </ContextMenu.Item>
               {/if}
             {:else}
               <ContextMenu.Item onclick={() => loadConnDetails(net.ssid)}>
-                Show details
+                {$t("sh.net.showDetails")}
               </ContextMenu.Item>
             {/if}
           </ContextMenu.SubContent>
@@ -199,7 +200,7 @@
       {#if net.is_known}
         <ContextMenu.Separator />
         <ContextMenu.Item onclick={() => forgetNetwork(net.ssid)} class="text-[var(--color-error)]">
-          <Trash2 size={14} class="me-2" />Forget Network
+          <Trash2 size={14} class="me-2" />{$t("sh.net.forget")}
         </ContextMenu.Item>
       {/if}
     </ContextMenu.Content>
@@ -208,20 +209,20 @@
 
 <ShellPopover id="network" width={280} right={110} bodyPadding="12px" bodyGap="6px">
   {#snippet header()}
-    <PopoverHeader icon={Wifi} title="Network" toggled={wifiEnabled && !airplaneMode} onToggle={toggleWifi} />
+    <PopoverHeader icon={Wifi} title={$t("sh.net.title")} toggled={wifiEnabled && !airplaneMode} onToggle={toggleWifi} />
   {/snippet}
 
   {#if airplaneMode}
     <div class="net-msg">
       <Plane size={32} strokeWidth={1} />
-      <span class="net-msg-title">Airplane Mode is on</span>
-      <span class="net-msg-hint">Wireless connections are disabled</span>
+      <span class="net-msg-title">{$t("sh.net.airplaneOn")}</span>
+      <span class="net-msg-hint">{$t("sh.net.airplaneHint")}</span>
     </div>
   {:else if !wifiEnabled}
     <div class="net-msg">
       <WifiOff size={32} strokeWidth={1} />
-      <span class="net-msg-title">WiFi is off</span>
-      <span class="net-msg-hint">Turn WiFi back on with the switch above</span>
+      <span class="net-msg-title">{$t("sh.net.wifiOff")}</span>
+      <span class="net-msg-hint">{$t("sh.net.wifiOffHint")}</span>
     </div>
   {:else}
     {#if error}
@@ -239,7 +240,10 @@
           {/if}
         </div>
         <div class="net-status-info">
-          <span class="net-status-name">{status.name ?? "Connected"}</span>
+          <span class="net-status-name">{status.name ?? $t("sh.net.connected")}</span>
+          <!-- A comma-joined value list, not a sentence: the parts are a percentage
+               and the names Ethernet / WiFi / VPN, which read the same in any
+               language. Only the punctuation is composed here. -->
           <span class="net-status-detail">
             {#if status.signal_strength != null}{status.signal_strength}%, {/if}{status.connection_type === "ethernet" ? "Ethernet" : "WiFi"}{#if status.vpn_active}, VPN{/if}
           </span>
@@ -250,7 +254,7 @@
       <div class="net-status">
         <div class="net-status-icon net-off"><WifiOff size={18} strokeWidth={1.5} /></div>
         <div class="net-status-info">
-          <span class="net-status-name">Disconnected</span>
+          <span class="net-status-name">{$t("sh.net.disconnected")}</span>
         </div>
       </div>
       <Separator class="opacity-10" />
@@ -258,40 +262,40 @@
 
     {#if showPasswordFor}
       <div class="pw-section">
-        <span class="pw-title">Connect to "{showPasswordFor}"</span>
-        <input type="password" class="pw-input" bind:value={passwordInput} placeholder="Password"
+        <span class="pw-title">{$t("sh.net.connectTo", { name: showPasswordFor })}</span>
+        <input type="password" class="pw-input" bind:value={passwordInput} placeholder={$t("sh.net.password")}
           onkeydown={(e) => { if (e.key === "Enter") handlePasswordSubmit(); }} />
         <div class="pw-actions">
-          <button class="pw-btn" onclick={(e) => { e.stopPropagation(); showPasswordFor = null; }}>Cancel</button>
-          <button class="pw-btn pw-btn-primary" onclick={(e) => { e.stopPropagation(); handlePasswordSubmit(); }}>Connect</button>
+          <button class="pw-btn" onclick={(e) => { e.stopPropagation(); showPasswordFor = null; }}>{$t("sh.net.cancel")}</button>
+          <button class="pw-btn pw-btn-primary" onclick={(e) => { e.stopPropagation(); handlePasswordSubmit(); }}>{$t("sh.net.connect")}</button>
         </div>
       </div>
     {:else if loading}
-      <div class="net-loading">Scanning...</div>
+      <div class="net-loading">{$t("sh.net.scanning")}</div>
     {:else}
       <div class="net-list-header">
-        <span>Available Networks</span>
+        <span>{$t("sh.net.available")}</span>
         <Tooltip.Root>
           <Tooltip.Trigger>
             {#snippet child({ props })}
               <button
                 {...props}
                 class="net-refresh"
-                aria-label="Refresh networks"
+                aria-label={$t("sh.net.refreshAria")}
                 onclick={(e) => { e.stopPropagation(); loadNetworks(); }}
               >
                 <RefreshCw size={12} strokeWidth={2} />
               </button>
             {/snippet}
           </Tooltip.Trigger>
-          <Tooltip.TooltipContent side="bottom">Refresh</Tooltip.TooltipContent>
+          <Tooltip.TooltipContent side="bottom">{$t("sh.net.refresh")}</Tooltip.TooltipContent>
         </Tooltip.Root>
       </div>
       <div class="net-list themed-scroll">
         {#each otherNets as net (net.ssid)}
           {@render networkItem(net)}
         {:else}
-          <div class="net-empty">No networks found</div>
+          <div class="net-empty">{$t("sh.net.noNetworks")}</div>
         {/each}
       </div>
     {/if}
@@ -301,7 +305,7 @@
       <div class="net-ethernet">
         <Cable size={14} strokeWidth={1.5} />
         <span>{status.name ?? "Ethernet"}</span>
-        <span class="net-ethernet-badge">Connected</span>
+        <span class="net-ethernet-badge">{$t("sh.net.connected")}</span>
       </div>
     {/if}
 
@@ -310,9 +314,9 @@
       <button class="vpn-header" onclick={(e) => { e.stopPropagation(); vpnExpanded = !vpnExpanded; }}>
         <ChevronRight size={12} strokeWidth={2} class={vpnExpanded ? "vpn-chevron-open" : ""} />
         <Shield size={14} strokeWidth={1.5} />
-        <span>VPN</span>
+        <span>{$t("sh.net.vpn")}</span>
         {#if activeVpnCount > 0}
-          <span class="vpn-badge">{activeVpnCount} active</span>
+          <span class="vpn-badge">{$t("sh.net.vpnActive", { count: activeVpnCount })}</span>
         {/if}
       </button>
       {#if vpnExpanded}
