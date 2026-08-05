@@ -24,8 +24,8 @@
     setInverted,
     setColorFilter,
     ZOOM_DEFAULTS,
-    ZOOM_MOVEMENT_OPTIONS,
-    COLOR_FILTER_OPTIONS,
+    zoomMovementOptions,
+    colorFilterOptions,
     type ZoomMovement,
     type ColorFilterLabel,
   } from "$lib/stores/accessibility";
@@ -129,7 +129,7 @@
       {#snippet control()}
         <PopoverSelect
           value={viewMoves}
-          options={ZOOM_MOVEMENT_OPTIONS as unknown as { value: string; label: string }[]}
+          options={$zoomMovementOptions as unknown as { value: string; label: string }[]}
           ariaLabel={$t("s.a11y.movement.aria")}
           onchange={setViewMoves}
         />
@@ -188,7 +188,7 @@
       {#snippet control()}
         <PopoverSelect
           value={colorFilter}
-          options={COLOR_FILTER_OPTIONS as unknown as { value: string; label: string }[]}
+          options={$colorFilterOptions as unknown as { value: string; label: string }[]}
           ariaLabel={$t("s.a11y.colorBlind")}
           onchange={(v) => setColorFilter(v as ColorFilterLabel)}
         />

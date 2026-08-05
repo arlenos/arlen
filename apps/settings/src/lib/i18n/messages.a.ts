@@ -5,6 +5,14 @@ import type { Catalogs } from "@arlen/ui-kit/i18n";
 
 export const a: Catalogs = {
   en: {
+    "s.a11y.zoom.continuously": "Continuously",
+    "s.a11y.zoom.onEdge": "On edge",
+    "s.a11y.zoom.centered": "Centered",
+    "s.a11y.filter.none": "None",
+    "s.a11y.filter.greyscale": "Greyscale",
+    "s.a11y.filter.protanopia": "Protanopia (red weakness)",
+    "s.a11y.filter.deuteranopia": "Deuteranopia (green weakness)",
+    "s.a11y.filter.tritanopia": "Tritanopia (blue weakness)",
     "s.sc.title": "Shortcuts",
     "s.sc.desc": "Bindings for window management, workspaces, apps, and shell actions.",
     "s.sc.search": "Search bindings…",
@@ -361,6 +369,14 @@ export const a: Catalogs = {
     "s.profile.deleteAction": "Delete",
   },
   de: {
+    "s.a11y.zoom.continuously": "Fortlaufend",
+    "s.a11y.zoom.onEdge": "Am Rand",
+    "s.a11y.zoom.centered": "Zentriert",
+    "s.a11y.filter.none": "Keiner",
+    "s.a11y.filter.greyscale": "Graustufen",
+    "s.a11y.filter.protanopia": "Protanopie (Rotschwäche)",
+    "s.a11y.filter.deuteranopia": "Deuteranopie (Grünschwäche)",
+    "s.a11y.filter.tritanopia": "Tritanopie (Blauschwäche)",
     "s.sc.title": "Tastenkürzel",
     "s.sc.desc": "Belegungen für Fensterverwaltung, Arbeitsflächen, Apps und Shell-Aktionen.",
     "s.sc.search": "Belegungen durchsuchen…",
