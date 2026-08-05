@@ -3,16 +3,23 @@
 /// bitemporal in the graph, so a past cutoff is the meaningful slice; other
 /// locations read live regardless.
 
-import { writable } from "svelte/store";
+import { derived, writable } from "svelte/store";
+
+import { t } from "$lib/i18n/messages";
 
 /// The preset choices, relative to now. "now" is the live read.
-export const AS_OF_OPTIONS = [
-  { value: "now", label: "Now" },
-  { value: "1d", label: "1 day ago" },
-  { value: "1w", label: "1 week ago" },
-  { value: "1m", label: "1 month ago" },
-  { value: "3m", label: "3 months ago" },
-];
+///
+/// A derived store rather than a plain array: the labels are shown to the user,
+/// and a module-level constant would hold whatever the translator said at import
+/// and never follow a locale switch. Deriving keeps the generic select that
+/// renders these ignorant of i18n - it still receives plain `{value, label}`.
+export const asOfOptions = derived(t, ($t) => [
+  { value: "now", label: $t("f.asof.now") },
+  { value: "1d", label: $t("f.asof.1d") },
+  { value: "1w", label: $t("f.asof.1w") },
+  { value: "1m", label: $t("f.asof.1m") },
+  { value: "3m", label: $t("f.asof.3m") },
+]);
 
 const DAY_MICROS = 86_400_000_000;
 const AS_OF_DELTAS: Record<string, number> = {

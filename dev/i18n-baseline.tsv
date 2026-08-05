@@ -49,11 +49,6 @@ apps/desktop-shell/src/routes/_mpristest/+page.svelte	Click an album-art thumb t
 apps/desktop-shell/src/routes/_mpristest/+page.svelte	Lateralus
 apps/desktop-shell/src/routes/_printtest/+page.svelte	Print dialog look-mock. The dialog opens over this page.
 apps/desktop-shell/src/routes/_undotest/+page.svelte	topbar strip
-apps/files/src/lib/asof.ts	1 day ago
-apps/files/src/lib/asof.ts	1 month ago
-apps/files/src/lib/asof.ts	1 week ago
-apps/files/src/lib/asof.ts	3 months ago
-apps/files/src/lib/asof.ts	Now
 apps/files/src/lib/components/FmBatchRename.svelte	&rarr;
 apps/files/src/lib/stores/facets.ts	Archives
 apps/files/src/lib/stores/facets.ts	Audio

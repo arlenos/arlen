@@ -15,7 +15,7 @@
   } from "@arlen/ui-kit/components/browser";
   import { openPath } from "$lib/adapter";
   import ProvenanceHalo from "$lib/components/ProvenanceHalo.svelte";
-  import { AS_OF_OPTIONS, choiceToMicros } from "$lib/asof";
+  import { asOfOptions, choiceToMicros } from "$lib/asof";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
@@ -120,7 +120,7 @@
   });
 
   const asOfLabel = $derived(
-    AS_OF_OPTIONS.find((o) => o.value === asOfChoice)?.label ?? "Now",
+    $asOfOptions.find((o) => o.value === asOfChoice)?.label ?? $t("f.asof.now"),
   );
 
   // ---- Permissions, as plain per-role access ------------------------------
@@ -292,7 +292,7 @@
             <span class="asof-key">{$t("f.info.asOf")}</span>
             <PopoverSelect
               value={asOfChoice}
-              options={AS_OF_OPTIONS}
+              options={$asOfOptions}
               width="8rem"
               ariaLabel={$t("f.info.asOfAria")}
               onchange={setAsOf}
