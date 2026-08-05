@@ -162,6 +162,21 @@ impl SignerStore {
         self.log.live_entries().into_iter().cloned().collect()
     }
 
+    /// The most recent sealed entries with their folded state, newest first,
+    /// bounded by `limit`. The read behind a recent-actions surface; unlike
+    /// [`live_entries`](Self::live_entries) it keeps terminal entries, because a
+    /// finished undo is what a history is for.
+    pub fn recent_entries(&self, limit: usize) -> Vec<arlen_ai_undo_proto::RecentEntry> {
+        self.log
+            .recent_entries(limit)
+            .into_iter()
+            .map(|(entry, state)| arlen_ai_undo_proto::RecentEntry {
+                entry: entry.clone(),
+                state,
+            })
+            .collect()
+    }
+
     /// The sealed entries a crash caught mid-reversal, for a restarting consumer
     /// to replay to completion. A subset of [`Self::live_entries`], separated
     /// because the two want opposite handling: these must be finished, not
