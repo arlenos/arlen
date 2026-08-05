@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   import { RotateCcw, Trash2, AlertTriangle } from "lucide-svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import type { KeybindingEntry } from "$lib/stores/keybindings";
@@ -45,7 +46,7 @@
     {/if}
     {#if showsModuleOverride}
       <div class="kb-desc">
-        Overrides module default
+        {$t("s.bind.overridesDefault")}
         {#if entry.defaultBinding}
           <span class="kb-mono">{entry.defaultBinding}</span>
         {/if}
@@ -58,7 +59,7 @@
     size="sm"
     class="kb-pill"
     onclick={() => onRebind(entry)}
-    aria-label="Change binding for {entry.label}"
+    aria-label={$t("s.bind.changeFor", { name: entry.label })}
   >
     {entry.binding ?? "Not set"}
   </Button>
@@ -68,15 +69,15 @@
       variant="ghost"
       size="icon"
       onclick={() => onReset(entry)}
-      aria-label="Reset to default"
-      title="Reset to default ({entry.defaultBinding})"
+      aria-label={$t("s.bind.resetDefault")}
+      title={$t("s.bind.resetDefaultTo", { binding: entry.defaultBinding })}
     >
       <RotateCcw size={14} strokeWidth={2} />
     </Button>
   {/if}
 
   {#if canRemove}
-    <Button variant="ghost" size="icon" onclick={() => onRemove(entry)} aria-label="Remove binding">
+    <Button variant="ghost" size="icon" onclick={() => onRemove(entry)} aria-label={$t("s.bind.removeBinding")}>
       <Trash2 size={14} strokeWidth={2} />
     </Button>
   {/if}

@@ -249,26 +249,6 @@ apps/settings/src/lib/components/quicksettings/HiddenDrawer.svelte	Hidden tiles
 apps/settings/src/lib/components/quicksettings/HiddenDrawer.svelte	Show in panel
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Hide tile
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Size:
-apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Add
-apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Add custom binding
-apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Binding
-apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Cancel
-apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Shell event
-apps/settings/src/lib/components/settings/KeyCapture.svelte	Already bound to
-apps/settings/src/lib/components/settings/KeyCapture.svelte	Cancel
-apps/settings/src/lib/components/settings/KeyCapture.svelte	Checking for conflicts…
-apps/settings/src/lib/components/settings/KeyCapture.svelte	Confirm
-apps/settings/src/lib/components/settings/KeyCapture.svelte	No conflicts detected.
-apps/settings/src/lib/components/settings/KeyCapture.svelte	Press a key combination
-apps/settings/src/lib/components/settings/KeyCapture.svelte	Recapture
-apps/settings/src/lib/components/settings/KeyCapture.svelte	Use anyway
-apps/settings/src/lib/components/settings/KeybindingRow.svelte	Overrides module default
-apps/settings/src/lib/components/settings/KeybindingRow.svelte	Remove binding
-apps/settings/src/lib/components/settings/KeybindingRow.svelte	Reset to default
-apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	Cancel
-apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	Edit
-apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	Reset to default
-apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	Save
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Action
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Add Rule
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Add Window Rule
@@ -281,17 +261,6 @@ apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Toolkit-d
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	e.g. Preferences
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	e.g. firefox|chromium
 apps/settings/src/routes/about/+page.svelte	Arlen OS
-apps/settings/src/routes/appearance/+page.svelte	Accent
-apps/settings/src/routes/appearance/+page.svelte	Appearance
-apps/settings/src/routes/appearance/+page.svelte	Roundness
-apps/settings/src/routes/appearance/+page.svelte	Theme
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Layout
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Module tiles
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Quick Settings
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Reset Quick Settings layout?
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Reset to defaults
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	installed by other modules are part of your layout but not editable here. They are preserved on save.
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	tile
 apps/settings/src/routes/appearance/system/+page.svelte	$ ls --color
 apps/settings/src/routes/appearance/system/+page.svelte	README.md
 apps/settings/src/routes/appearance/system/+page.svelte	arlen@desktop
@@ -306,24 +275,6 @@ apps/settings/src/routes/appearance/system/+page.svelte	warning:
 apps/settings/src/routes/appearance/system/+page.svelte	~/src
 apps/settings/src/routes/appearance/typography/+page.svelte	const answer = 42;
 apps/settings/src/routes/extensions/+page.svelte	forage install
-apps/settings/src/routes/keyboard/+page.svelte	(none)
-apps/settings/src/routes/keyboard/+page.svelte	Add layout
-apps/settings/src/routes/keyboard/+page.svelte	Could not save the keyboard change. The previous setting still applies.
-apps/settings/src/routes/keyboard/+page.svelte	Key Repeat
-apps/settings/src/routes/keyboard/+page.svelte	Keyboard
-apps/settings/src/routes/keyboard/+page.svelte	Layouts
-apps/settings/src/routes/keyboard/+page.svelte	Move down
-apps/settings/src/routes/keyboard/+page.svelte	Move up
-apps/settings/src/routes/keyboard/+page.svelte	Options
-apps/settings/src/routes/keyboard/+page.svelte	Primary
-apps/settings/src/routes/keyboard/+page.svelte	Primary variant
-apps/settings/src/routes/keyboard/+page.svelte	Remove layout
-apps/settings/src/routes/keyboard/+page.svelte	Repeat delay
-apps/settings/src/routes/keyboard/+page.svelte	Repeat rate
-apps/settings/src/routes/keyboard/+page.svelte	Select a layout to add…
-apps/settings/src/routes/keyboard/+page.svelte	Shortcuts
-apps/settings/src/routes/keyboard/+page.svelte	This is the layout active after login. Actions change the primary at runtime.
-apps/settings/src/routes/keyboard/+page.svelte	Variant
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Add custom
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Delete every installed module's keybinding fragment
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Loading…
@@ -338,48 +289,7 @@ apps/settings/src/routes/keyboard/shortcuts/+page.svelte	bound to:
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	conflict
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	detected
 apps/settings/src/routes/notifications/+page.svelte	Active until
-apps/settings/src/routes/notifications/+page.svelte	Add app...
-apps/settings/src/routes/notifications/+page.svelte	Add rule for app...
-apps/settings/src/routes/notifications/+page.svelte	Always allow
-apps/settings/src/routes/notifications/+page.svelte	Always suppress
-apps/settings/src/routes/notifications/+page.svelte	Animation
-apps/settings/src/routes/notifications/+page.svelte	Auto-collapse after
-apps/settings/src/routes/notifications/+page.svelte	Clear
-apps/settings/src/routes/notifications/+page.svelte	Clear all history
-apps/settings/src/routes/notifications/+page.svelte	Critical
-apps/settings/src/routes/notifications/+page.svelte	Days
-apps/settings/src/routes/notifications/+page.svelte	Do Not Disturb
-apps/settings/src/routes/notifications/+page.svelte	Failed to load notifications config:
-apps/settings/src/routes/notifications/+page.svelte	For 1 hour
-apps/settings/src/routes/notifications/+page.svelte	From
-apps/settings/src/routes/notifications/+page.svelte	Group by app
-apps/settings/src/routes/notifications/+page.svelte	Grouping
-apps/settings/src/routes/notifications/+page.svelte	High
-apps/settings/src/routes/notifications/+page.svelte	High priority duration
-apps/settings/src/routes/notifications/+page.svelte	History
-apps/settings/src/routes/notifications/+page.svelte	Keep history
-apps/settings/src/routes/notifications/+page.svelte	Lists
-apps/settings/src/routes/notifications/+page.svelte	Loading…
-apps/settings/src/routes/notifications/+page.svelte	Max visible
-apps/settings/src/routes/notifications/+page.svelte	Maximum age
-apps/settings/src/routes/notifications/+page.svelte	Maximum count
-apps/settings/src/routes/notifications/+page.svelte	Normal
-apps/settings/src/routes/notifications/+page.svelte	Normal duration
-apps/settings/src/routes/notifications/+page.svelte	Notifications
-apps/settings/src/routes/notifications/+page.svelte	Per-App Rules
-apps/settings/src/routes/notifications/+page.svelte	Position
-apps/settings/src/routes/notifications/+page.svelte	Schedule mode
-apps/settings/src/routes/notifications/+page.svelte	Stack similar
-apps/settings/src/routes/notifications/+page.svelte	Suppress when fullscreen
-apps/settings/src/routes/notifications/+page.svelte	Test notification
-apps/settings/src/routes/notifications/+page.svelte	Timing
-apps/settings/src/routes/notifications/+page.svelte	Toast Appearance
-apps/settings/src/routes/notifications/+page.svelte	Until
-apps/settings/src/routes/notifications/+page.svelte	Until tomorrow
-apps/settings/src/routes/notifications/+page.svelte	Width
 apps/settings/src/routes/system-actions/+page.svelte	/bin/sh -c
-apps/settings/src/routes/system-actions/+page.svelte	Reset all to defaults
-apps/settings/src/routes/system-actions/+page.svelte	active
 apps/settings/src/routes/system-actions/+page.svelte	dispatches a shell-overlay event (e.g.
 apps/settings/src/routes/system-actions/+page.svelte	for compatibility.
 apps/settings/src/routes/system-actions/+page.svelte	runs a shell command. Bare strings are also accepted and run via
@@ -387,16 +297,6 @@ apps/settings/src/routes/system-actions/+page.svelte	shell:brightness_up
 apps/settings/src/routes/system-actions/+page.svelte	shell:event_name
 apps/settings/src/routes/system-actions/+page.svelte	spawn:command
 apps/settings/src/routes/topbar/+page.svelte	Arlen
-apps/settings/src/routes/workspaces/+page.svelte	Inner gap
-apps/settings/src/routes/workspaces/+page.svelte	Layout direction
-apps/settings/src/routes/workspaces/+page.svelte	Outer gap
-apps/settings/src/routes/workspaces/+page.svelte	Per-app rules
-apps/settings/src/routes/workspaces/+page.svelte	Smart gaps
-apps/settings/src/routes/workspaces/+page.svelte	Tiled window headers
-apps/settings/src/routes/workspaces/+page.svelte	Tiling
-apps/settings/src/routes/workspaces/+page.svelte	Window Rules
-apps/settings/src/routes/workspaces/+page.svelte	Workspace Layout
-apps/settings/src/routes/workspaces/+page.svelte	Workspaces & Tiling
 apps/terminal/src/lib/components/BlockBody.svelte	Interactive widgets are not available yet.
 apps/terminal/src/lib/components/BlockStream.svelte	Jump to latest
 apps/terminal/src/lib/components/HistoryPalette.svelte	exit

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Modal overlay that captures the next key combination the user
   /// presses. Two-stage UX:
   ///
@@ -135,7 +136,7 @@
       class="w-full max-w-md rounded-[var(--radius-input)] border border-border bg-card p-6 shadow-lg"
     >
       <h2 id="keycapture-title" class="mb-2 text-base font-semibold">
-        Press a key combination
+        {$t("s.bind.pressCombo")}
       </h2>
       <p class="mb-4 text-sm text-muted-foreground">
         {captured
@@ -153,7 +154,7 @@
         <div class="mt-4">
           {#if checking}
             <p class="text-xs text-muted-foreground">
-              Checking for conflicts…
+              {$t("s.bind.checking")}
             </p>
           {:else if hasConflict && conflicts}
             <div
@@ -164,9 +165,7 @@
               />
               <div class="text-destructive">
                 <div class="font-medium">
-                  Already bound to {conflicts.length === 1
-                    ? "another action"
-                    : `${conflicts.length} other actions`}:
+                  {$t("s.bind.alreadyBound", { count: conflicts.length })}
                 </div>
                 <ul class="mt-1 list-disc ps-4">
                   {#each conflicts as c (c.existingAction)}
@@ -182,20 +181,20 @@
             </div>
           {:else if conflicts !== null}
             <p class="text-xs text-muted-foreground">
-              No conflicts detected.
+              {$t("s.bind.noConflicts")}
             </p>
           {/if}
 
           <div class="mt-4 flex justify-end gap-2">
-            <Button variant="ghost" onclick={recapture}>Recapture</Button>
-            <Button variant="ghost" onclick={onCancel}>Cancel</Button>
+            <Button variant="ghost" onclick={recapture}>{$t("s.bind.recapture")}</Button>
+            <Button variant="ghost" onclick={onCancel}>{$t("s.bind.cancel")}</Button>
             {#if hasConflict}
               <Button variant="destructive" onclick={confirm}>
-                Use anyway
+                {$t("s.bind.useAnyway")}
               </Button>
             {:else}
               <Button onclick={confirm} disabled={checking}>
-                Confirm
+                {$t("s.bind.confirm")}
               </Button>
             {/if}
           </div>
