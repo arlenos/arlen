@@ -140,6 +140,18 @@ pub fn init(window: tauri::WebviewWindow) -> Result<(), tauri::Error> {
                         cr.set_operator(Operator::Source);
                         cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
                         let _ = cr.paint();
+                        // DIAGNOSTIC, remove once it has answered. Full-window
+                        // redraws demonstrably run while a closed overlay is still
+                        // on the screen, so either the webview blits that overlay
+                        // back from a stale backing store, or these draws never
+                        // reach the display at all. A band of solid red in an empty
+                        // part of the desktop, painted by this handler, separates
+                        // them: if it shows, GTK's drawing reaches the screen and
+                        // the ghost is painted after it; if it never shows, the
+                        // draws are not what the compositor is showing.
+                        cr.rectangle(40.0, 700.0, 200.0, 40.0);
+                        cr.set_source_rgba(1.0, 0.0, 0.0, 1.0);
+                        let _ = cr.fill();
                         cr.set_operator(Operator::Over);
                         glib::Propagation::Proceed
                     });
