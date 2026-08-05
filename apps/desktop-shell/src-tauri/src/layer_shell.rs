@@ -92,6 +92,33 @@ pub fn init(window: tauri::WebviewWindow) -> Result<(), tauri::Error> {
                     let bar = Region::create_rectangle(&RectangleInt::new(0, 0, 32767, 36));
                     gtk_window.input_shape_combine_region(Some(&bar));
                 }
+                // Clear the window to nothing before its children draw.
+                //
+                // A transparent window is `app_paintable`, which in GTK3's drawing
+                // model means GTK stops painting the background and the application
+                // owns it. Nothing owned it. The webview paints where it has
+                // content, so an overlay APPEARS correctly and then, when it goes
+                // away, nobody paints over the area it occupied and its last frame
+                // stays on the desktop. Measured on the image: the consent card
+                // answered by a click and the Quick Settings panel dismissed by
+                // Escape both freeze part-way through their fade, while a tooltip
+                // shown at the same moment paints crisply. Every shell overlay had
+                // this, not one of them.
+                //
+                // `Operator::Source` REPLACES rather than blends, so the surface is
+                // reset to fully transparent instead of having transparent painted
+                // over stale pixels, which composites to no change at all. Then back
+                // to the default operator so the children blend normally.
+                {
+                    use gtk::cairo::Operator;
+                    gtk_window.connect_draw(|_, cr| {
+                        cr.set_operator(Operator::Source);
+                        cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
+                        let _ = cr.paint();
+                        cr.set_operator(Operator::Over);
+                        glib::Propagation::Proceed
+                    });
+                }
                 log::info!("layer_shell: window shown via gtk show_all");
                 gtk_window.queue_draw();
                 if let Some(display) = gtk::gdk::Display::default() {
