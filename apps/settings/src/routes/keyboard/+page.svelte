@@ -394,6 +394,7 @@
             value={activeOptions.has(opt.value)}
             onchange={(v) => setOption(opt.value, v)}
             disabled={loading}
+            ariaLabel={opt.label}
           />
         {/snippet}
       </Row>
