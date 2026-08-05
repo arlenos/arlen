@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tracing::{info, warn};
 
 use crate::logind::{self, PowerAction};
@@ -33,6 +33,15 @@ pub struct PowerInterface {
     /// bus was unavailable at startup, refreshed on the next action. An action
     /// for which a connection cannot be obtained fails closed.
     system_bus: Arc<RwLock<Option<zbus::Connection>>>,
+    /// The wake this daemon currently holds armed, if any. It lives here because
+    /// the timer is the open file descriptor: dropping it disarms, so a scheduled
+    /// wake that is not held is a wake that silently never happens. One slot, so
+    /// scheduling again replaces the previous alarm rather than quietly leaking
+    /// timers a caller can no longer reach.
+    armed_wake: Arc<Mutex<Option<crate::wake::ArmedWake>>>,
+    /// Answered once at startup by asking the kernel, not by assuming a systemd
+    /// version. See `wake::probe`.
+    wake_capability: crate::wake::WakeCapability,
 }
 
 impl PowerInterface {
@@ -42,9 +51,16 @@ impl PowerInterface {
     /// demand, so a momentarily-unavailable bus at boot does not permanently
     /// disable the action surface.
     pub fn new(state: SharedState, system_bus: Option<zbus::Connection>) -> Self {
+        // Ask the kernel once, here, rather than at each call: the answer cannot
+        // change for the life of the process, and a caller reading the property
+        // should not pay a syscall for it.
+        let wake_capability = crate::wake::probe();
+        tracing::info!(capability = wake_capability.describe(), "wake capability probed");
         Self {
             state,
             system_bus: Arc::new(RwLock::new(system_bus)),
+            armed_wake: Arc::new(Mutex::new(None)),
+            wake_capability,
         }
     }
 
@@ -116,6 +132,17 @@ impl PowerInterface {
     }
 
     /// Active power profile: "performance"|"balanced"|"power-saver"|"unknown".
+    /// Whether an alarm scheduled here would actually wake a suspended machine.
+    ///
+    /// Exposed as its own property so a caller can TELL the user before they rely
+    /// on it. The clock and the calendar both rest on this working; silently
+    /// scheduling an alarm that cannot wake the machine is the failure mode worth
+    /// designing against.
+    #[zbus(property)]
+    async fn wake_capability(&self) -> String {
+        self.wake_capability.describe().to_string()
+    }
+
     #[zbus(property)]
     async fn profile(&self) -> String {
         self.state.read().await.profile.clone()
@@ -171,6 +198,43 @@ impl PowerInterface {
 
     /// Change the active power profile ("performance"|"balanced"|"power-saver").
     /// Gated on the caller's `[system.power] set_profile` grant (PWR-R7).
+    /// Arm a wake for an absolute wall-clock time, replacing any previous one.
+    ///
+    /// Absolute seconds rather than a delay: the machine may suspend between this
+    /// call and the deadline, and a relative timer stops counting while suspended,
+    /// which is exactly what an alarm must not do.
+    ///
+    /// Gated on the same grant as suspend. Waking a machine and suspending it are
+    /// the same authority over the same thing, and a caller that may not put the
+    /// machine to sleep has no business deciding when it comes back.
+    ///
+    /// Returns what the alarm will actually do, so a caller cannot arm one and
+    /// assume it wakes the machine when this session lacks the capability.
+    async fn schedule_wake(
+        &self,
+        unix_seconds: u64,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
+        let power = self.caller_power_grant(&header, connection).await?;
+        if !power.suspend {
+            return Err(zbus::fdo::Error::AccessDenied(
+                "caller lacks the system.power suspend grant".into(),
+            ));
+        }
+        let armed = crate::wake::arm_at(unix_seconds, self.wake_capability)
+            .map_err(|e| zbus::fdo::Error::InvalidArgs(e.to_string()))?;
+        let capability = armed.capability;
+        // Held, not dropped: the fd IS the timer.
+        *self.armed_wake.lock().await = Some(armed);
+        tracing::info!(
+            at = unix_seconds,
+            capability = capability.describe(),
+            "wake scheduled"
+        );
+        Ok(capability.describe().to_string())
+    }
+
     async fn set_profile(
         &self,
         profile: String,
