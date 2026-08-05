@@ -98,14 +98,11 @@ apps/settings/src/routes/system-actions/+page.svelte	shell:brightness_up
 apps/settings/src/routes/system-actions/+page.svelte	shell:event_name
 apps/settings/src/routes/system-actions/+page.svelte	spawn:command
 apps/settings/src/routes/topbar/+page.svelte	Arlen
-apps/terminal/src/lib/components/BlockBody.svelte	Interactive widgets are not available yet.
-apps/terminal/src/lib/components/BlockStream.svelte	Jump to latest
-apps/terminal/src/lib/components/HistoryPalette.svelte	exit
-apps/terminal/src/lib/components/OutputFrame.svelte	from the output
-apps/terminal/src/lib/components/StreamBlock.svelte	table
-apps/terminal/src/lib/components/TerminalSidebar.svelte	Ctrl+R
-apps/terminal/src/lib/components/TerminalSidebar.svelte	No open sessions. Start one with the plus button or Ctrl+T.
-apps/terminal/src/lib/components/TerminalSidebar.svelte	Terminal
+apps/terminal/src/routes/_chrometest/+page.svelte	A header bar per block redraws cwd · git as chrome; result + actions always on.
+apps/terminal/src/routes/_chrometest/+page.svelte	A · Styled
+apps/terminal/src/routes/_chrometest/+page.svelte	B · Classic
+apps/terminal/src/routes/_chrometest/+page.svelte	Shell prints prompt + command + output; chrome only on hover / focus.
+apps/terminal/src/routes/_chrometest/+page.svelte	recommended
 apps/viewers/src/lib/components/ViewerMenu.svelte	Commentary
 apps/viewers/src/lib/components/ViewerMenu.svelte	English
 apps/viewers/src/lib/components/ViewerMenu.svelte	English (stereo)

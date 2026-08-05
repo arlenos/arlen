@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The block stream: the session's command history as quiet blocks,
   /// newest at the bottom like a terminal. The live prompt (the
   /// composer) rides along as the last row — at the top of an empty
@@ -60,7 +61,7 @@
 
 {#if !pinnedToBottom}
   <div class="jump-wrap">
-    <button class="jump-btn" onclick={jumpToLatest}>Jump to latest</button>
+    <button class="jump-btn" onclick={jumpToLatest}>{$t("term.stream.jumpToLatest")}</button>
   </div>
 {/if}
 

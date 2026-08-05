@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// One block in the stream: wires the contract block onto the kit
   /// ConsoleBlock and owns the per-block view state — today that is
   /// the table lens (off by default; a quiet word toggle in the
@@ -48,7 +49,7 @@
         aria-pressed={tableLens}
         onclick={() => (tableLens = !tableLens)}
       >
-        table
+        {$t("term.sb.tableLens")}
       </button>
     {/if}
   {/snippet}

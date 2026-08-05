@@ -148,7 +148,7 @@
               <span class="hp-meta">
                 {shortPath(b.cwd)}
                 {#if b.exit_code !== null && b.exit_code !== 0}
-                  <span class="hp-exit">exit {b.exit_code}</span>
+                  <span class="hp-exit">{$t("term.hp.exitCode", { code: b.exit_code })}</span>
                 {/if}
               </span>
             </CommandItem>

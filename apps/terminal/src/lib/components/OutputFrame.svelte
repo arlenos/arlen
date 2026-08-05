@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The containment frame every GUI-from-output sits in
   /// (terminal.md §6: output may paint a photograph, never a
   /// switch). The subtle border plus the corner tag say "this came
@@ -10,7 +11,7 @@
 </script>
 
 <div class="output-frame">
-  <span class="of-tag">from the output</span>
+  <span class="of-tag">{$t("term.of.fromOutput")}</span>
   <div class="of-content">
     {@render children()}
   </div>
