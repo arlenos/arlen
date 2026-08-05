@@ -540,16 +540,7 @@ apps/settings/src/routes/appearance/+page.svelte	System
 apps/settings/src/routes/appearance/+page.svelte	Toolkits
 apps/settings/src/routes/appearance/+page.svelte	Typography
 apps/settings/src/routes/appearance/+page.svelte	Wallpaper
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Airplane Mode
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Bluetooth
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Brightness
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Do Not Disturb
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Knowledge Graph
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Network
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Project Context
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	Quick Settings layout restored to defaults.
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	Sound
-apps/settings/src/routes/appearance/quicksettings/+page.svelte	User Row
 apps/settings/src/routes/appearance/system/+page.svelte	$ ls --color
 apps/settings/src/routes/appearance/system/+page.svelte	README.md
 apps/settings/src/routes/appearance/system/+page.svelte	arlen@desktop
