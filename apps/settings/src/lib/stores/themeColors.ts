@@ -22,25 +22,27 @@ export interface ColorRole {
 
 /// The 18 semantic colour roles (mirrors sdk/theme `ColorTokens`). The ~8 common
 /// ones carry the everyday look; the rest are the full set behind an expander.
+/// `label` and `hint` hold message KEYS, resolved with `$t` at the row: this is a
+/// module-level table, so holding the text would pin it to the import-time locale.
 export const COLOR_ROLES: ColorRole[] = [
-  { key: "bg_app", label: "Background", hint: "The main window background", tier: "common" },
-  { key: "bg_card", label: "Surface", hint: "Cards, popovers, panels", tier: "common" },
-  { key: "accent", label: "Accent", hint: "Primary actions and highlights", tier: "common" },
-  { key: "fg_primary", label: "Text", hint: "Primary text", tier: "common" },
-  { key: "border_default", label: "Border", hint: "Dividers and outlines", tier: "common" },
-  { key: "success", label: "Success", hint: "Positive state", tier: "common" },
-  { key: "warning", label: "Warning", hint: "Caution state", tier: "common" },
-  { key: "error", label: "Error", hint: "Destructive or failed state", tier: "common" },
-  { key: "bg_shell", label: "Shell background", hint: "The desktop shell ground", tier: "full" },
-  { key: "bg_overlay", label: "Overlay", hint: "Menus and overlays", tier: "full" },
-  { key: "bg_input", label: "Input", hint: "Text fields and controls", tier: "full" },
-  { key: "fg_secondary", label: "Secondary text", hint: "Muted and helper text", tier: "full" },
-  { key: "fg_disabled", label: "Disabled text", hint: "Inactive controls", tier: "full" },
-  { key: "fg_inverse", label: "On-accent text", hint: "Text sitting on the accent", tier: "full" },
-  { key: "accent_hover", label: "Accent hover", hint: "Accent, hovered", tier: "full" },
-  { key: "accent_pressed", label: "Accent pressed", hint: "Accent, pressed", tier: "full" },
-  { key: "info", label: "Info", hint: "Informational state", tier: "full" },
-  { key: "border_strong", label: "Strong border", hint: "Emphasised outlines", tier: "full" },
+  { key: "bg_app", label: "s.color.bg_app.label", hint: "s.color.bg_app.hint", tier: "common" },
+  { key: "bg_card", label: "s.color.bg_card.label", hint: "s.color.bg_card.hint", tier: "common" },
+  { key: "accent", label: "s.color.accent.label", hint: "s.color.accent.hint", tier: "common" },
+  { key: "fg_primary", label: "s.color.fg_primary.label", hint: "s.color.fg_primary.hint", tier: "common" },
+  { key: "border_default", label: "s.color.border_default.label", hint: "s.color.border_default.hint", tier: "common" },
+  { key: "success", label: "s.color.success.label", hint: "s.color.success.hint", tier: "common" },
+  { key: "warning", label: "s.color.warning.label", hint: "s.color.warning.hint", tier: "common" },
+  { key: "error", label: "s.color.error.label", hint: "s.color.error.hint", tier: "common" },
+  { key: "bg_shell", label: "s.color.bg_shell.label", hint: "s.color.bg_shell.hint", tier: "full" },
+  { key: "bg_overlay", label: "s.color.bg_overlay.label", hint: "s.color.bg_overlay.hint", tier: "full" },
+  { key: "bg_input", label: "s.color.bg_input.label", hint: "s.color.bg_input.hint", tier: "full" },
+  { key: "fg_secondary", label: "s.color.fg_secondary.label", hint: "s.color.fg_secondary.hint", tier: "full" },
+  { key: "fg_disabled", label: "s.color.fg_disabled.label", hint: "s.color.fg_disabled.hint", tier: "full" },
+  { key: "fg_inverse", label: "s.color.fg_inverse.label", hint: "s.color.fg_inverse.hint", tier: "full" },
+  { key: "accent_hover", label: "s.color.accent_hover.label", hint: "s.color.accent_hover.hint", tier: "full" },
+  { key: "accent_pressed", label: "s.color.accent_pressed.label", hint: "s.color.accent_pressed.hint", tier: "full" },
+  { key: "info", label: "s.color.info.label", hint: "s.color.info.hint", tier: "full" },
+  { key: "border_strong", label: "s.color.border_strong.label", hint: "s.color.border_strong.hint", tier: "full" },
 ];
 
 // The active theme's resolved values (fixture: the dark house palette).

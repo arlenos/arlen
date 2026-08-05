@@ -557,44 +557,9 @@ apps/settings/src/lib/stores/theme.ts	Inter
 apps/settings/src/lib/stores/theme.ts	JetBrains Mono
 apps/settings/src/lib/stores/theme.ts	System Default
 apps/settings/src/lib/stores/theme.ts	System Mono
-apps/settings/src/lib/stores/themeColors.ts	Accent
-apps/settings/src/lib/stores/themeColors.ts	Accent hover
-apps/settings/src/lib/stores/themeColors.ts	Accent pressed
-apps/settings/src/lib/stores/themeColors.ts	Accent, hovered
-apps/settings/src/lib/stores/themeColors.ts	Accent, pressed
-apps/settings/src/lib/stores/themeColors.ts	Background
-apps/settings/src/lib/stores/themeColors.ts	Border
-apps/settings/src/lib/stores/themeColors.ts	Cards, popovers, panels
-apps/settings/src/lib/stores/themeColors.ts	Caution state
-apps/settings/src/lib/stores/themeColors.ts	Destructive or failed state
-apps/settings/src/lib/stores/themeColors.ts	Disabled text
-apps/settings/src/lib/stores/themeColors.ts	Dividers and outlines
-apps/settings/src/lib/stores/themeColors.ts	Emphasised outlines
-apps/settings/src/lib/stores/themeColors.ts	Error
-apps/settings/src/lib/stores/themeColors.ts	Inactive controls
-apps/settings/src/lib/stores/themeColors.ts	Info
-apps/settings/src/lib/stores/themeColors.ts	Informational state
-apps/settings/src/lib/stores/themeColors.ts	Input
-apps/settings/src/lib/stores/themeColors.ts	Menus and overlays
-apps/settings/src/lib/stores/themeColors.ts	Muted and helper text
 apps/settings/src/lib/stores/themeColors.ts	On-accent text
-apps/settings/src/lib/stores/themeColors.ts	Overlay
-apps/settings/src/lib/stores/themeColors.ts	Positive state
-apps/settings/src/lib/stores/themeColors.ts	Primary actions and highlights
-apps/settings/src/lib/stores/themeColors.ts	Primary text
-apps/settings/src/lib/stores/themeColors.ts	Secondary text
-apps/settings/src/lib/stores/themeColors.ts	Shell background
-apps/settings/src/lib/stores/themeColors.ts	Strong border
-apps/settings/src/lib/stores/themeColors.ts	Success
-apps/settings/src/lib/stores/themeColors.ts	Surface
-apps/settings/src/lib/stores/themeColors.ts	Text
-apps/settings/src/lib/stores/themeColors.ts	Text fields and controls
 apps/settings/src/lib/stores/themeColors.ts	Text on background
 apps/settings/src/lib/stores/themeColors.ts	Text on surface
-apps/settings/src/lib/stores/themeColors.ts	Text sitting on the accent
-apps/settings/src/lib/stores/themeColors.ts	The desktop shell ground
-apps/settings/src/lib/stores/themeColors.ts	The main window background
-apps/settings/src/lib/stores/themeColors.ts	Warning
 apps/settings/src/lib/stores/themeMotionDepth.ts	Ease
 apps/settings/src/lib/stores/themeMotionDepth.ts	Linear
 apps/settings/src/lib/stores/themeMotionDepth.ts	None

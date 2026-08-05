@@ -69,8 +69,8 @@
       <Section label={$t("s.col.section")}>
         {#each common as role (role.key)}
           <OverrideRow
-            label={role.label}
-            hint={role.hint}
+            label={$t(role.label)}
+            hint={$t(role.hint)}
             overridden={isOverridden($overrides, role.key)}
             onreset={() => resetColorOverride(role.key)}
             id={`color-${role.key}`}
@@ -91,8 +91,8 @@
           <Section>
             {#each full as role (role.key)}
               <OverrideRow
-                label={role.label}
-                hint={role.hint}
+                label={$t(role.label)}
+                hint={$t(role.hint)}
                 overridden={isOverridden($overrides, role.key)}
                 onreset={() => resetColorOverride(role.key)}
                 id={`color-${role.key}`}
@@ -127,7 +127,7 @@
         type="color"
         value={val}
         oninput={(e) => setColorOverride(role.key, e.currentTarget.value)}
-        aria-label={`${role.label} colour`}
+        aria-label={$t("s.color.swatchAria", { role: $t(role.label) })}
       />
     </label>
     <input
@@ -135,7 +135,7 @@
       type="text"
       value={val}
       spellcheck="false"
-      aria-label={`${role.label} hex value`}
+      aria-label={$t("s.color.hexAria", { role: $t(role.label) })}
       onchange={(e) => onHexInput(role, e.currentTarget.value)}
     />
   </span>
