@@ -200,6 +200,25 @@ const messages: Catalogs = {
     "sh.wf.runOnce": "Run once",
     "sh.wf.install": "Install",
     "sh.wf.run": "Run",
+
+    // Battery popover
+    "sh.bat.title": "Power",
+    "sh.bat.charging": "Charging",
+    "sh.bat.chargingEta": "Charging ({$time})",
+    "sh.bat.remaining": "{$time} remaining",
+    "sh.bat.onBattery": "On battery",
+    "sh.bat.noBattery": "No battery found",
+    "sh.bat.powerMode": "Power Mode",
+
+    // Layout popover
+    "sh.layout.title": "Layout",
+    "sh.layout.float": "Float",
+    "sh.layout.tile": "Tile",
+    "sh.layout.single": "Single",
+    "sh.layout.gaps": "Gaps",
+    "sh.layout.gapValue": "{$px}px",
+    "sh.layout.smartGaps": "Smart Gaps",
+    "sh.layout.titleBars": "Title Bars",
   },
   de: {
     "sh.net.title": "Netzwerk",
@@ -377,6 +396,23 @@ const messages: Catalogs = {
     "sh.wf.runOnce": "Einmal ausf\u00fchren",
     "sh.wf.install": "Installieren",
     "sh.wf.run": "Ausf\u00fchren",
+
+    "sh.bat.title": "Energie",
+    "sh.bat.charging": "L\u00e4dt",
+    "sh.bat.chargingEta": "L\u00e4dt ({$time})",
+    "sh.bat.remaining": "noch {$time}",
+    "sh.bat.onBattery": "Im Akkubetrieb",
+    "sh.bat.noBattery": "Kein Akku gefunden",
+    "sh.bat.powerMode": "Energiemodus",
+
+    "sh.layout.title": "Anordnung",
+    "sh.layout.float": "Schwebend",
+    "sh.layout.tile": "Gekachelt",
+    "sh.layout.single": "Einzeln",
+    "sh.layout.gaps": "L\u00fccken",
+    "sh.layout.gapValue": "{$px} px",
+    "sh.layout.smartGaps": "Kluge L\u00fccken",
+    "sh.layout.titleBars": "Titelleisten",
   },
 };
 

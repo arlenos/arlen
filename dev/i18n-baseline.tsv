@@ -2,24 +2,10 @@ apps/desktop-shell/src/lib/components/AudioPopover.svelte	Apps (
 apps/desktop-shell/src/lib/components/AudioPopover.svelte	Input
 apps/desktop-shell/src/lib/components/AudioPopover.svelte	Output
 apps/desktop-shell/src/lib/components/AudioPopover.svelte	Sound
-apps/desktop-shell/src/lib/components/BatteryPopover.svelte	Charging
-apps/desktop-shell/src/lib/components/BatteryPopover.svelte	No battery found
-apps/desktop-shell/src/lib/components/BatteryPopover.svelte	On battery
-apps/desktop-shell/src/lib/components/BatteryPopover.svelte	Power
-apps/desktop-shell/src/lib/components/BatteryPopover.svelte	Power Mode
-apps/desktop-shell/src/lib/components/BatteryPopover.svelte	remaining
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Digits entered on device
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	PIN
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	PIN code
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Passkey
-apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Float
-apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Gaps
-apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Layout
-apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Single
-apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Smart Gaps
-apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Tile
-apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Title Bars
-apps/desktop-shell/src/lib/components/LayoutPopover.svelte	px
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
 apps/desktop-shell/src/lib/components/NotificationItem.svelte	Dismiss
 apps/desktop-shell/src/lib/components/NotificationPanel.svelte	Clear
