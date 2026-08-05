@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The Activity/Jobs zone (job-progress-surface.md): the top zone of the
   /// notifications popover, showing live long-running work with a per-job progress
   /// bar, real-unit counts, a coarse ETA, cancel/pause driven by capability flags,
@@ -43,13 +44,13 @@
 {#if ordered.length > 0}
   <div class="jobs-zone">
     <div class="jobs-head">
-      <span class="jobs-title">Activity</span>
+      <span class="jobs-title">{$t("sh.job.title")}</span>
       <span class="jobs-count">{ordered.length}</span>
     </div>
     {#if $mocked}
       <!-- These carry titles, per-file names, an ETA and a Cancel button: without
            this they read as work actually in flight on this machine. -->
-      <p class="jobs-sample">Example activity - no background work is actually running.</p>
+      <p class="jobs-sample">{$t("sh.job.mocked")}</p>
     {/if}
     {#if $lastError}
       <!-- A refused action already restored the feed; this says why, so a failed
@@ -64,41 +65,41 @@
           <span class="job-title">{j.title}</span>
           <span class="job-actions">
             {#if j.suspendable && j.state === "running"}
-              <button class="job-btn" aria-label="Pause" title="Pause" onclick={() => pauseJob(j.id)}><Pause size={14} strokeWidth={2} /></button>
+              <button class="job-btn" aria-label={$t("sh.job.pause")} title={$t("sh.job.pause")} onclick={() => pauseJob(j.id)}><Pause size={14} strokeWidth={2} /></button>
             {:else if j.suspendable && j.state === "paused"}
-              <button class="job-btn" aria-label="Resume" title="Resume" onclick={() => resumeJob(j.id)}><Play size={14} strokeWidth={2} /></button>
+              <button class="job-btn" aria-label={$t("sh.job.resume")} title={$t("sh.job.resume")} onclick={() => resumeJob(j.id)}><Play size={14} strokeWidth={2} /></button>
             {/if}
             {#if j.state === "error_recoverable"}
-              <button class="job-btn" aria-label="Retry" title="Retry" onclick={() => resumeJob(j.id)}><RotateCw size={14} strokeWidth={2} /></button>
+              <button class="job-btn" aria-label={$t("sh.job.retry")} title={$t("sh.job.retry")} onclick={() => resumeJob(j.id)}><RotateCw size={14} strokeWidth={2} /></button>
             {/if}
             {#if j.killable && j.state !== "done"}
-              <button class="job-btn" aria-label="Cancel" title="Cancel" onclick={() => cancelJob(j.id)}><X size={14} strokeWidth={2} /></button>
+              <button class="job-btn" aria-label={$t("sh.job.cancel")} title={$t("sh.job.cancel")} onclick={() => cancelJob(j.id)}><X size={14} strokeWidth={2} /></button>
             {/if}
           </span>
         </div>
 
         {#if j.state === "done"}
-          <div class="job-doneline"><Check size={13} strokeWidth={2} /> Done</div>
+          <div class="job-doneline"><Check size={13} strokeWidth={2} /> {$t("sh.job.done")}</div>
         {:else}
           <Progress value={j.fraction * 100} />
           <div class="job-meta">
             <span class="job-metrics">
               {#each j.metrics as m (m.unit)}
-                <span>{m.processed} of {m.total} {m.unit}</span>
+                <span>{$t("sh.job.metric", { processed: m.processed, total: m.total, unit: m.unit })}</span>
               {/each}
             </span>
             {#if j.state === "running" && j.etaText}
-              <span class="job-eta">{j.etaText} left</span>
+              <span class="job-eta">{$t("sh.job.eta", { eta: j.etaText })}</span>
             {:else if j.state === "paused"}
-              <span class="job-eta">Paused</span>
+              <span class="job-eta">{$t("sh.job.paused")}</span>
             {:else if j.state === "impeded"}
-              <span class="job-eta">Waiting</span>
+              <span class="job-eta">{$t("sh.job.waiting")}</span>
             {/if}
           </div>
         {/if}
 
         {#if j.egressHost}
-          <div class="job-egress">Reaches {j.egressHost}</div>
+          <div class="job-egress">{$t("sh.job.reaches", { host: j.egressHost })}</div>
         {/if}
         {#if isError(j) && j.error}
           <div class="job-error">{j.error}</div>
