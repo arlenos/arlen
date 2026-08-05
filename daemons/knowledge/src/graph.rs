@@ -1059,10 +1059,18 @@ fn create_schema(conn: &Connection) -> Result<()> {
             superseded        BOOL,
             last_exercised_at INT64,
             use_count         INT64,
+            reissued_at       INT64,
             PRIMARY KEY(id)
         )",
     )
     .map_err(|e| anyhow!("create Grant table: {e}"))?;
+
+    // The most recent mint that resolved to this same (app, pid, ceiling) node.
+    // `issued_at` stays the FIRST time the process held this reach, so the pair
+    // reads as the interval it held it for rather than only its latest moment.
+    // Convergent ADD IF NOT EXISTS for already-initialized DBs.
+    conn.query("ALTER TABLE Grant ADD IF NOT EXISTS reissued_at INT64")
+        .map_err(|e| anyhow!("ensure Grant.reissued_at column: {e}"))?;
 
     // Consent grants share the LCG Grant node (system-dialog-plan.md, decided
     // Option A): one see+revoke surface for capability-token and consent grants

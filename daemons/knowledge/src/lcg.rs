@@ -61,12 +61,13 @@ fn declared_ceiling_json(token: &CapabilityToken) -> String {
 /// mint replaces them; a revoked node stays terminal). The new node is born
 /// `live`; the restart sweep and `permission.changed` move it stale later.
 pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Result<()> {
-    let id = token.id.to_string();
+    let ceiling = declared_ceiling_json(token);
+    let id = token_grant_id(token, &ceiling);
     let id_esc = escape_cypher(&id);
     let app_esc = escape_cypher(&token.app_id);
     let issued = time::dt_to_micros(&token.issued_at);
     let expires = token.expires_at.as_ref().map(time::dt_to_micros).unwrap_or(0);
-    let ceiling_esc = escape_cypher(&declared_ceiling_json(token));
+    let ceiling_esc = escape_cypher(&ceiling);
 
     // The whole projection runs as ONE transaction, so a mid-emit failure rolls
     // back rather than leaving a partial projection (a Grant with no reach edges,
@@ -90,9 +91,9 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
          g.pid = {pid}, g.issued_at = {issued}, \
          g.expires_at = {expires}, g.declared_ceiling = '{ceiling_esc}', \
          g.required = false, g.identity_verified = false, g.live = true, \
-         g.revoked = false, g.superseded = false, g.last_exercised_at = 0, g.use_count = 0 \
-         ON MATCH SET g.pid = {pid}, g.issued_at = {issued}, g.expires_at = {expires}, \
-         g.declared_ceiling = '{ceiling_esc}'",
+         g.revoked = false, g.superseded = false, g.last_exercised_at = 0, g.use_count = 0, \
+         g.reissued_at = {issued} \
+         ON MATCH SET g.expires_at = {expires}, g.reissued_at = {issued}",
         pid = token.pid,
     ));
 
@@ -191,10 +192,35 @@ pub async fn persist_consent_grant(
     graph.transaction(stmts).await
 }
 
+/// The deterministic id for a capability-token grant: one node per
+/// (app, pid, ceiling), so a process that keeps holding the same reach keeps ONE
+/// node however many times it is minted.
+///
+/// It used to be the token's UUID, which meant a fresh node per request - a
+/// long-running app writing to the graph produced thousands of Grant nodes that
+/// differed in nothing but their id and their timestamp, each superseding the
+/// last. The retention question that raised ("how do we prune these") was really
+/// a question about why they were being written at all.
+///
+/// The pid is IN the key, not collapsed away: `live` is recomputed per read from
+/// whether that process is still running, so folding two processes of one app
+/// into a single node would make one instance's liveness answer for the other.
+/// The ceiling is in the key so a change of reach still starts a new node - that
+/// boundary is the part of this record anyone would actually ask about.
+fn token_grant_id(token: &CapabilityToken, ceiling: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(ceiling.as_bytes());
+    let digest = h.finalize();
+    // `token:` namespaces it away from `<dim>:<app>` declared grant ids, and the
+    // ceiling is hashed so an id stays short whatever the profile carries.
+    format!("token:{}:{}:{:x}", token.app_id, token.pid, digest)
+}
+
 /// The deterministic id for an app's declared grant in dimension `dim_key`: one
 /// grant per (dimension, app), so a re-emit strengthens the single node.
 /// Namespaced (`<dim>:<app>`) so it can never collide with a token-derived grant
-/// id (a UUID) nor another dimension's grant.
+/// id (which carries a `token:` prefix) nor another dimension's grant.
 fn declared_grant_id(dim_key: &str, app_id: &str) -> String {
     format!("{dim_key}:{app_id}")
 }
@@ -611,13 +637,69 @@ mod tests {
         CapabilityToken::new(app.into(), 7, scopes, vec![], vec![], InstanceScope::Own)
     }
 
+    /// The Grant node a token projects onto - derived, not the token's own id.
+    fn node_id(token: &CapabilityToken) -> String {
+        token_grant_id(token, &declared_ceiling_json(token))
+    }
+
+    /// The reason the node id is derived at all: a process that keeps holding the
+    /// same reach must keep ONE node, however many tokens are minted for it. The
+    /// mint runs per write request, so keying the node on the token's id wrote a
+    /// fresh Grant per request - thousands of nodes differing in nothing but an id
+    /// and a timestamp, each superseding the last.
+    #[tokio::test]
+    async fn repeated_mints_of_one_reach_keep_one_grant_node() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        // Five mints, as five write requests from one process would produce.
+        for _ in 0..5 {
+            let token = token_for("com.x", &["system.File"]);
+            emit_grant_node(&graph, &token).await.unwrap();
+        }
+        let rows = graph
+            .query_rows("MATCH (g:Grant {app_id:'com.x'}) RETURN g.id".to_string())
+            .await
+            .unwrap()
+            .rows;
+        assert_eq!(rows.len(), 1, "one node for one unchanged reach, got {rows:?}");
+
+        // The interval is what the node is for: first issue stays put, the latest
+        // mint moves reissued_at, so the pair says how long the reach was held.
+        let first = token_for("com.x", &["system.File"]);
+        let times = graph
+            .query_rows(format!(
+                "MATCH (g:Grant {{id:'{}'}}) RETURN g.issued_at, g.reissued_at",
+                node_id(&first)
+            ))
+            .await
+            .unwrap()
+            .rows;
+        let (issued, reissued) = (times[0][0].as_i64(), times[0][1].as_i64());
+        assert!(issued > 0 && reissued >= issued,
+                "issued {issued:?} then reissued {reissued:?}");
+
+        // A CHANGE of reach is the boundary worth recording, so it still starts a
+        // new node and closes the old one.
+        let wider = token_for("com.x", &["system.File", "system.Project"]);
+        emit_grant_node(&graph, &wider).await.unwrap();
+        let rows = graph
+            .query_rows("MATCH (g:Grant {app_id:'com.x'}) RETURN g.id, g.live".to_string())
+            .await
+            .unwrap()
+            .rows;
+        assert_eq!(rows.len(), 2, "a changed ceiling starts a second node");
+        let live: Vec<_> = rows.iter().filter(|r| r[1].as_bool()).collect();
+        assert_eq!(live.len(), 1, "exactly one of them is live: {rows:?}");
+    }
+
     #[tokio::test]
     async fn emit_creates_a_live_grant_and_a_re_mint_supersedes_the_prior() {
         let tmp = tempfile::TempDir::new().unwrap();
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
 
         let token1 = token_for("com.x", &["system.File", "system.Project"]);
-        let id1 = token1.id.to_string();
+        let id1 = node_id(&token1);
         emit_grant_node(&graph, &token1).await.unwrap();
 
         // The fresh grant is live and projects its reach one hop.
@@ -660,7 +742,7 @@ mod tests {
         let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
 
         let token = token_for("com.x", &["system.File"]);
-        let id = token.id.to_string();
+        let id = node_id(&token);
         emit_grant_node(&graph, &token).await.unwrap();
 
         // Simulate a revoke having marked this grant terminal.
