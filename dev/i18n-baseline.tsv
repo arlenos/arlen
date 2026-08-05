@@ -1,6 +1,3 @@
-apps/desktop-shell/src/lib/components/BatteryPopover.svelte	Balanced
-apps/desktop-shell/src/lib/components/BatteryPopover.svelte	Performance
-apps/desktop-shell/src/lib/components/BatteryPopover.svelte	Power Saver
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	A4
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	Legal
@@ -215,10 +212,6 @@ apps/harness/src/routes/_rendertest/+page.svelte	Transform pipeline
 apps/harness/src/routes/_rendertest/+page.svelte	Two files
 apps/harness/src/routes/_rendertest/+page.svelte	You
 apps/harness/src/routes/_rendertest/+page.svelte	pipeline(items, opts)
-apps/knowledge/src/lib/menu.ts	Delete everything recorded…
-apps/knowledge/src/lib/menu.ts	Delete today's activity…
-apps/knowledge/src/lib/menu.ts	Export recorded activity…
-apps/knowledge/src/lib/menu.ts	Timeline
 apps/knowledge/src/lib/stores/capsules.ts	Thesis slice
 apps/knowledge/src/lib/stores/library.ts	Attention Is All You Need
 apps/knowledge/src/lib/stores/library.ts	Conference registration confirmed

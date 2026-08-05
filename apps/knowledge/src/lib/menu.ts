@@ -8,17 +8,21 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { pendingMenuAction } from "$lib/stores/timeline";
+import { t } from "$lib/i18n/messages";
 
 const APP_ID = "org.arlen.knowledge";
 
-const MENU = [
+/// Built per translator value, not once: the menu lives in the shell's process,
+/// so a locale switch has to re-register it or the app menu keeps whichever
+/// language was active when the app started.
+const menuFor = (tr: (k: string) => string) => [
   {
-    label: "Timeline",
+    label: tr("k.menu.timeline"),
     items: [
-      { label: "Export recorded activity…", action: "timeline.export", type: "item" },
+      { label: tr("k.menu.export"), action: "timeline.export", type: "item" },
       { label: "", action: "", type: "separator" },
-      { label: "Delete today's activity…", action: "timeline.delete-today", type: "item" },
-      { label: "Delete everything recorded…", action: "timeline.delete-all", type: "item" },
+      { label: tr("k.menu.deleteToday"), action: "timeline.delete-today", type: "item" },
+      { label: tr("k.menu.deleteAll"), action: "timeline.delete-all", type: "item" },
     ],
   },
 ];
@@ -32,11 +36,11 @@ const ACTIONS: Record<string, "export" | "deleteToday" | "deleteAll"> = {
 /// Register the menu and route dispatched actions into the timeline store.
 /// Idempotent enough for one mount; failures are silent by design (no shell).
 export async function initAppMenu(): Promise<void> {
-  try {
-    await invoke("register_menu", { appId: APP_ID, items: MENU });
-  } catch {
-    // No shell relay yet: the menu is simply absent.
-  }
+  t.subscribe((tr) => {
+    void invoke("register_menu", { appId: APP_ID, items: menuFor(tr) }).catch(() => {
+      // No shell relay yet: the menu is simply absent.
+    });
+  });
   try {
     await listen<{ app_id: string; action: string }>("arlen://menu-action", ({ payload }) => {
       if (payload.app_id !== APP_ID) return;

@@ -13,6 +13,9 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 
 const messages: Catalogs = {
   en: {
+    "sh.bat.powerSaver": "Power Saver",
+    "sh.bat.balanced": "Balanced",
+    "sh.bat.performance": "Performance",
     // Network popover
     "sh.net.title": "Network",
     "sh.net.airplaneOn": "Airplane Mode is on",
@@ -352,6 +355,9 @@ const messages: Catalogs = {
     "sh.module.failed": "Module failed; click to retry",
   },
   de: {
+    "sh.bat.powerSaver": "Energiesparen",
+    "sh.bat.balanced": "Ausgewogen",
+    "sh.bat.performance": "Leistung",
     "sh.net.title": "Netzwerk",
     "sh.net.airplaneOn": "Der Flugmodus ist an",
     "sh.net.airplaneHint": "Drahtlosverbindungen sind abgeschaltet",
