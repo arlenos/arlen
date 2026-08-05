@@ -33,6 +33,7 @@
   import { initZoomListeners } from "$lib/stores/zoom";
   import { initWindowHeaderListeners } from "$lib/stores/windowHeaders";
   import { initProjects } from "$lib/stores/projects.js";
+  import { initConsoleBridge } from "$lib/stores/consoleBridge";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import TabBar from "$lib/components/TabBar.svelte";
   import Indicator from "$lib/components/Indicator.svelte";
@@ -139,6 +140,8 @@
     // unmount, preventing the "every HMR adds another listener" leak
     // that was making the shell slower with time.
     const disposers: Array<() => void> = [
+      // First, so a failure in any init below is logged rather than swallowed.
+      initConsoleBridge(),
       initWindowListeners(),
       initContextMenuListeners(),
       initNotifications(),
