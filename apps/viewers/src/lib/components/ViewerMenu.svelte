@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The viewer's right-click menu (quickview-plan.md "The menus"), per file
   /// type, text-only on the flat @arlen/ui-kit ContextMenu canon (matching the
   /// FM folder right-click - no icons, no web/native menu). Wraps the viewer
@@ -48,27 +49,29 @@
   <ContextMenu.Content class="w-56">
     {#if kind !== "image"}
       <ContextMenu.Item>
-        Play / Pause
+        {$t("v.playPause")}
         <ContextMenu.Shortcut>Space</ContextMenu.Shortcut>
       </ContextMenu.Item>
       <ContextMenu.Separator />
       <ContextMenu.Item>
-        Next file
+        {$t("v.nextFile")}
         <ContextMenu.Shortcut>→</ContextMenu.Shortcut>
       </ContextMenu.Item>
       <ContextMenu.Item>
-        Previous file
+        {$t("v.prevFile")}
         <ContextMenu.Shortcut>←</ContextMenu.Shortcut>
       </ContextMenu.Item>
 
       {#if kind === "video"}
         <ContextMenu.Item>
-          Fullscreen
+          {$t("v.fullscreen")}
           <ContextMenu.Shortcut>F</ContextMenu.Shortcut>
         </ContextMenu.Item>
         <ContextMenu.Sub>
-          <ContextMenu.SubTrigger>Audio track</ContextMenu.SubTrigger>
+          <ContextMenu.SubTrigger>{$t("v.audioTrack")}</ContextMenu.SubTrigger>
           <ContextMenu.SubContent class="w-52">
+            <!-- Placeholder track list: these names are hardcoded, not read from the
+                 file. Left untranslated so they do not read as a real track listing. -->
             <ContextMenu.RadioGroup bind:value={audioTrack}>
               <ContextMenu.RadioItem value="0">English (stereo)</ContextMenu.RadioItem>
               <ContextMenu.RadioItem value="1">Commentary</ContextMenu.RadioItem>
@@ -76,37 +79,39 @@
           </ContextMenu.SubContent>
         </ContextMenu.Sub>
         <ContextMenu.Sub>
-          <ContextMenu.SubTrigger>Subtitles</ContextMenu.SubTrigger>
+          <ContextMenu.SubTrigger>{$t("v.subtitles")}</ContextMenu.SubTrigger>
           <ContextMenu.SubContent class="w-52">
+            <!-- Same: the language entries below are sample data, not the file's
+                 actual subtitle tracks. Only "Off" is real UI copy. -->
             <ContextMenu.RadioGroup bind:value={subtitles}>
-              <ContextMenu.RadioItem value="off">Off</ContextMenu.RadioItem>
+              <ContextMenu.RadioItem value="off">{$t("v.off")}</ContextMenu.RadioItem>
               <ContextMenu.RadioItem value="en">English</ContextMenu.RadioItem>
               <ContextMenu.RadioItem value="de">German</ContextMenu.RadioItem>
               <ContextMenu.RadioItem value="srt">film.en.srt</ContextMenu.RadioItem>
             </ContextMenu.RadioGroup>
             <ContextMenu.Separator />
-            <ContextMenu.Item>Load subtitle file…</ContextMenu.Item>
+            <ContextMenu.Item>{$t("v.loadSubtitleFile")}</ContextMenu.Item>
           </ContextMenu.SubContent>
         </ContextMenu.Sub>
       {/if}
 
       {#if kind === "audio"}
         <ContextMenu.Sub>
-          <ContextMenu.SubTrigger>Repeat</ContextMenu.SubTrigger>
+          <ContextMenu.SubTrigger>{$t("v.repeat")}</ContextMenu.SubTrigger>
           <ContextMenu.SubContent class="w-44">
             <ContextMenu.RadioGroup bind:value={repeat}>
-              <ContextMenu.RadioItem value="off">Off</ContextMenu.RadioItem>
-              <ContextMenu.RadioItem value="file">This file</ContextMenu.RadioItem>
-              <ContextMenu.RadioItem value="folder">Folder</ContextMenu.RadioItem>
+              <ContextMenu.RadioItem value="off">{$t("v.off")}</ContextMenu.RadioItem>
+              <ContextMenu.RadioItem value="file">{$t("v.repeatThisFile")}</ContextMenu.RadioItem>
+              <ContextMenu.RadioItem value="folder">{$t("v.repeatFolder")}</ContextMenu.RadioItem>
             </ContextMenu.RadioGroup>
           </ContextMenu.SubContent>
         </ContextMenu.Sub>
-        <ContextMenu.CheckboxItem bind:checked={shuffle}>Shuffle folder</ContextMenu.CheckboxItem>
-        <ContextMenu.CheckboxItem bind:checked={autoplay}>Autoplay next</ContextMenu.CheckboxItem>
+        <ContextMenu.CheckboxItem bind:checked={shuffle}>{$t("v.shuffleFolder")}</ContextMenu.CheckboxItem>
+        <ContextMenu.CheckboxItem bind:checked={autoplay}>{$t("v.autoplayNext")}</ContextMenu.CheckboxItem>
       {/if}
 
       <ContextMenu.Sub>
-        <ContextMenu.SubTrigger>Playback speed</ContextMenu.SubTrigger>
+        <ContextMenu.SubTrigger>{$t("v.playbackSpeed")}</ContextMenu.SubTrigger>
         <ContextMenu.SubContent class="w-40">
           <ContextMenu.RadioGroup bind:value={speed}>
             {#each SPEEDS as [v, label] (v)}
@@ -118,18 +123,18 @@
 
       {#if kind === "video"}
         <ContextMenu.Sub>
-          <ContextMenu.SubTrigger>Loop</ContextMenu.SubTrigger>
+          <ContextMenu.SubTrigger>{$t("v.loop")}</ContextMenu.SubTrigger>
           <ContextMenu.SubContent class="w-44">
             <ContextMenu.RadioGroup bind:value={loop}>
-              <ContextMenu.RadioItem value="off">Off</ContextMenu.RadioItem>
-              <ContextMenu.RadioItem value="file">This file</ContextMenu.RadioItem>
-              <ContextMenu.RadioItem value="folder">Folder</ContextMenu.RadioItem>
+              <ContextMenu.RadioItem value="off">{$t("v.off")}</ContextMenu.RadioItem>
+              <ContextMenu.RadioItem value="file">{$t("v.repeatThisFile")}</ContextMenu.RadioItem>
+              <ContextMenu.RadioItem value="folder">{$t("v.repeatFolder")}</ContextMenu.RadioItem>
             </ContextMenu.RadioGroup>
           </ContextMenu.SubContent>
         </ContextMenu.Sub>
         <ContextMenu.Separator />
         <ContextMenu.Item>
-          Snapshot frame
+          {$t("v.snapshotFrame")}
           <ContextMenu.Shortcut>S</ContextMenu.Shortcut>
         </ContextMenu.Item>
       {/if}
@@ -138,12 +143,12 @@
     {/if}
 
     <ContextMenu.Item>
-      Details…
+      {$t("v.details")}
       <ContextMenu.Shortcut>I</ContextMenu.Shortcut>
     </ContextMenu.Item>
     <ContextMenu.Separator />
-    <ContextMenu.Item>Open with…</ContextMenu.Item>
-    <ContextMenu.Item>Show in Files</ContextMenu.Item>
-    <ContextMenu.Item>Copy</ContextMenu.Item>
+    <ContextMenu.Item>{$t("v.openWith")}</ContextMenu.Item>
+    <ContextMenu.Item>{$t("v.showInFiles")}</ContextMenu.Item>
+    <ContextMenu.Item>{$t("v.copy")}</ContextMenu.Item>
   </ContextMenu.Content>
 </ContextMenu.Root>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The audio file's face: one custom canvas that is visualizer, progress and
   /// scrubber at once (quickview-plan.md). The played span is bright
   /// (`--color-fg-primary`), the rest low-alpha (the terminal-hover idiom); a
@@ -134,7 +135,7 @@
   class="wave"
   role="slider"
   tabindex="0"
-  aria-label="Seek"
+  aria-label={$t("v.seek")}
   aria-valuemin={0}
   aria-valuemax={100}
   aria-valuenow={Math.round(progress * 100)}

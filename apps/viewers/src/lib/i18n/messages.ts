@@ -1,0 +1,76 @@
+/// The viewers message catalog, authored in MessageFormat 2.0. English is the source
+/// of truth; German proves the reactive locale switch. Same template as the settings,
+/// desktop-shell, system-monitor and files catalogs (I18N-R4).
+import { createTranslator, type Catalogs } from "@arlen/ui-kit/i18n";
+
+/// Re-exported so the app and a future language switcher drive the same shared store
+/// instance the catalog is bound to.
+export { locale, dir } from "@arlen/ui-kit/i18n";
+
+const messages: Catalogs = {
+  en: {
+    "v.audioPlayer": "Audio player",
+    "v.imageViewer": "Image viewer",
+    "v.videoPlayer": "Video player",
+    "v.prevFile": "Previous file",
+    "v.nextFile": "Next file",
+    "v.zoomOut": "Zoom out",
+    "v.resetToFit": "Reset to fit",
+    "v.zoomIn": "Zoom in",
+    "v.play": "Play",
+    "v.playPause": "Play / Pause",
+    "v.fullscreen": "Fullscreen",
+    "v.seek": "Seek",
+    "v.audioTrack": "Audio track",
+    "v.subtitles": "Subtitles",
+    "v.off": "Off",
+    "v.loadSubtitleFile": "Load subtitle file…",
+    "v.repeat": "Repeat",
+    "v.repeatThisFile": "This file",
+    "v.repeatFolder": "Folder",
+    "v.shuffleFolder": "Shuffle folder",
+    "v.autoplayNext": "Autoplay next",
+    "v.playbackSpeed": "Playback speed",
+    "v.loop": "Loop",
+    "v.snapshotFrame": "Snapshot frame",
+    "v.details": "Details…",
+    "v.openWith": "Open with…",
+    "v.showInFiles": "Show in Files",
+    "v.copy": "Copy",
+    "v.couldNotOpen": "Could not open this file: {$reason}",
+  },
+  de: {
+    "v.audioPlayer": "Audioplayer",
+    "v.imageViewer": "Bildbetrachter",
+    "v.videoPlayer": "Videoplayer",
+    "v.prevFile": "Vorherige Datei",
+    "v.nextFile": "Nächste Datei",
+    "v.zoomOut": "Verkleinern",
+    "v.resetToFit": "Auf Fenstergröße zurücksetzen",
+    "v.zoomIn": "Vergrößern",
+    "v.play": "Abspielen",
+    "v.playPause": "Abspielen / Pause",
+    "v.fullscreen": "Vollbild",
+    "v.seek": "Spulen",
+    "v.audioTrack": "Tonspur",
+    "v.subtitles": "Untertitel",
+    "v.off": "Aus",
+    "v.loadSubtitleFile": "Untertiteldatei laden…",
+    "v.repeat": "Wiederholen",
+    "v.repeatThisFile": "Diese Datei",
+    "v.repeatFolder": "Ordner",
+    "v.shuffleFolder": "Ordner mischen",
+    "v.autoplayNext": "Nächste automatisch abspielen",
+    "v.playbackSpeed": "Abspielgeschwindigkeit",
+    "v.loop": "Schleife",
+    "v.snapshotFrame": "Einzelbild aufnehmen",
+    "v.details": "Details…",
+    "v.openWith": "Öffnen mit…",
+    "v.showInFiles": "In Dateien zeigen",
+    "v.copy": "Kopieren",
+    "v.couldNotOpen": "Diese Datei konnte nicht geöffnet werden: {$reason}",
+  },
+};
+
+/// The bound translator: `$t("v.key", params?)`, reactive to `locale`.
+export const t = createTranslator(messages);

@@ -106,3 +106,9 @@ apps/terminal/src/lib/components/StreamBlock.svelte	table
 apps/terminal/src/lib/components/TerminalSidebar.svelte	Ctrl+R
 apps/terminal/src/lib/components/TerminalSidebar.svelte	No open sessions. Start one with the plus button or Ctrl+T.
 apps/terminal/src/lib/components/TerminalSidebar.svelte	Terminal
+apps/viewers/src/lib/components/ViewerMenu.svelte	Commentary
+apps/viewers/src/lib/components/ViewerMenu.svelte	English
+apps/viewers/src/lib/components/ViewerMenu.svelte	English (stereo)
+apps/viewers/src/lib/components/ViewerMenu.svelte	German
+apps/viewers/src/lib/components/ViewerMenu.svelte	Space
+apps/viewers/src/lib/components/ViewerMenu.svelte	film.en.srt

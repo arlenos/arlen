@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The image face (quickview-plan.md): the window IS the image - it fills the
   /// window edge-to-edge, frameless. All chrome auto-hides; mouse activity
   /// reveals it over faint scrims (legible on any image): the window controls
@@ -118,7 +119,7 @@
   class:chrome={chromeVisible}
   class:zoomed={zoom > 1}
   role="application"
-  aria-label="Image viewer"
+  aria-label={$t("v.imageViewer")}
   onpointermove={onPointerMove}
   onpointerdown={onPointerDown}
   onpointerup={onPointerUp}
@@ -144,10 +145,10 @@
     <WindowButtons showMaximize={false} />
   </div>
 
-  <button class="edge left" aria-label="Previous file" onclick={() => onprev?.()}>
+  <button class="edge left" aria-label={$t("v.prevFile")} onclick={() => onprev?.()}>
     <ChevronLeft size={30} strokeWidth={2} />
   </button>
-  <button class="edge right" aria-label="Next file" onclick={() => onnext?.()}>
+  <button class="edge right" aria-label={$t("v.nextFile")} onclick={() => onnext?.()}>
     <ChevronRight size={30} strokeWidth={2} />
   </button>
 
@@ -155,13 +156,13 @@
     <span class="name">{file.name}</span>
     <span class="pos">{file.index} / {file.total}</span>
     <span class="sep"></span>
-    <Button variant="ghost" size="icon-sm" aria-label="Zoom out" onclick={() => setZoom(zoom / 1.25)}>
+    <Button variant="ghost" size="icon-sm" aria-label={$t("v.zoomOut")} onclick={() => setZoom(zoom / 1.25)}>
       <ZoomOut class="size-[16px]" strokeWidth={2} />
     </Button>
-    <Button variant="ghost" size="sm" class="level" aria-label="Reset to fit" onclick={resetFit}>
+    <Button variant="ghost" size="sm" class="level" aria-label={$t("v.resetToFit")} onclick={resetFit}>
       {pct}%
     </Button>
-    <Button variant="ghost" size="icon-sm" aria-label="Zoom in" onclick={() => setZoom(zoom * 1.25)}>
+    <Button variant="ghost" size="icon-sm" aria-label={$t("v.zoomIn")} onclick={() => setZoom(zoom * 1.25)}>
       <ZoomIn class="size-[16px]" strokeWidth={2} />
     </Button>
   </div>
