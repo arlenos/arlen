@@ -103,7 +103,15 @@ fn app_shortcut_invoke(app_id: String, window_id: String, action: String) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::init();
+    // Default to `info`, not env_logger's `error`. On the image the shell is
+    // started by `arlen-session` with no RUST_LOG, so a bare `init()` silenced
+    // every `log::info!` and `log::warn!` in this binary - the shell was mute in
+    // the journal, and every diagnostic anyone had already placed here (the
+    // consent input-region trace among them) produced nothing. That is a large
+    // part of why the boot consent hang resisted diagnosis: the component in the
+    // middle could not be heard. RUST_LOG still overrides, so a noisy session can
+    // be turned down without a rebuild.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     // Created before Builder so they can be both managed and moved into start().
     let overlay_sender = Arc::new(shell_overlay_client::ShellOverlaySender::new());
