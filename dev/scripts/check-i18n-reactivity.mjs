@@ -45,7 +45,15 @@ function svelteFiles(dir, out = []) {
 const problems = [];
 let scanned = 0;
 
-for (const base of [join(ROOT, "apps"), join(ROOT, "sdk")]) {
+// A directory argument scans that tree instead of the repo's. Only the fixture
+// runner passes one; CI passes nothing and gets the trees below. The check has
+// twice been wrong about which shapes it sees, so it needs to be runnable
+// against inputs chosen to fool it.
+const BASES = process.argv[2]
+  ? [process.argv[2]]
+  : [join(ROOT, "apps"), join(ROOT, "sdk")];
+
+for (const base of BASES) {
   if (!existsSync(base)) continue;
   for (const file of svelteFiles(base)) {
     const text = readFileSync(file, "utf8");
