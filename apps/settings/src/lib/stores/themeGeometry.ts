@@ -30,22 +30,26 @@ export interface GeomField {
 }
 
 /// Every geometry field, grouped. Radii `full` is categorical and not editable.
+///
+/// `label` and `hint` hold message KEYS, resolved with `$t` where the row renders:
+/// a module-level table would capture the locale at import. An empty `hint` stays
+/// empty - the row simply has no second line.
 export const GEOM_FIELDS: GeomField[] = [
-  { key: "intensity", label: "Roundness", hint: "Rounds every corner at once", group: "roundness", tier: "common", min: 0, max: 200, step: 5, unit: "%", scale: 100 },
-  { key: "r_chip", label: "Chip radius", hint: "Tags, badges, dots", group: "roundness", tier: "full", min: 0, max: 24, step: 1, unit: "px" },
-  { key: "r_button", label: "Button radius", hint: "Buttons", group: "roundness", tier: "full", min: 0, max: 24, step: 1, unit: "px" },
-  { key: "r_input", label: "Input radius", hint: "Text fields and selects", group: "roundness", tier: "full", min: 0, max: 24, step: 1, unit: "px" },
-  { key: "r_card", label: "Card radius", hint: "Cards, popovers, panels", group: "roundness", tier: "full", min: 0, max: 32, step: 1, unit: "px" },
-  { key: "r_modal", label: "Modal radius", hint: "Dialogs and sheets", group: "roundness", tier: "full", min: 0, max: 32, step: 1, unit: "px" },
-  { key: "window_corner", label: "Window corners", hint: "The rounding of window corners", group: "window", tier: "common", min: 0, max: 24, step: 1, unit: "px" },
-  { key: "border_width", label: "Border width", hint: "The window outline thickness", group: "window", tier: "common", min: 0, max: 4, step: 1, unit: "px" },
-  { key: "density", label: "Density", hint: "Scales the space between things", group: "spacing", tier: "common", min: 50, max: 150, step: 5, unit: "%", scale: 100 },
-  { key: "s_xs", label: "Space, tight", hint: "The tightest step", group: "spacing", tier: "full", min: 0, max: 16, step: 1, unit: "px" },
-  { key: "s_sm", label: "Space, small", hint: "", group: "spacing", tier: "full", min: 0, max: 24, step: 1, unit: "px" },
-  { key: "s_md", label: "Space, medium", hint: "", group: "spacing", tier: "full", min: 0, max: 40, step: 1, unit: "px" },
-  { key: "s_lg", label: "Space, large", hint: "", group: "spacing", tier: "full", min: 0, max: 56, step: 1, unit: "px" },
-  { key: "s_xl", label: "Space, widest", hint: "The widest step", group: "spacing", tier: "full", min: 0, max: 72, step: 1, unit: "px" },
-  { key: "gap", label: "Gaps", hint: "Space between tiled windows", group: "gaps", tier: "common", min: 0, max: 24, step: 1, unit: "px" },
+  { key: "intensity", label: "s.geom.intensity.label", hint: "s.geom.intensity.hint", group: "roundness", tier: "common", min: 0, max: 200, step: 5, unit: "%", scale: 100 },
+  { key: "r_chip", label: "s.geom.r_chip.label", hint: "s.geom.r_chip.hint", group: "roundness", tier: "full", min: 0, max: 24, step: 1, unit: "px" },
+  { key: "r_button", label: "s.geom.r_button.label", hint: "s.geom.r_button.hint", group: "roundness", tier: "full", min: 0, max: 24, step: 1, unit: "px" },
+  { key: "r_input", label: "s.geom.r_input.label", hint: "s.geom.r_input.hint", group: "roundness", tier: "full", min: 0, max: 24, step: 1, unit: "px" },
+  { key: "r_card", label: "s.geom.r_card.label", hint: "s.geom.r_card.hint", group: "roundness", tier: "full", min: 0, max: 32, step: 1, unit: "px" },
+  { key: "r_modal", label: "s.geom.r_modal.label", hint: "s.geom.r_modal.hint", group: "roundness", tier: "full", min: 0, max: 32, step: 1, unit: "px" },
+  { key: "window_corner", label: "s.geom.window_corner.label", hint: "s.geom.window_corner.hint", group: "window", tier: "common", min: 0, max: 24, step: 1, unit: "px" },
+  { key: "border_width", label: "s.geom.border_width.label", hint: "s.geom.border_width.hint", group: "window", tier: "common", min: 0, max: 4, step: 1, unit: "px" },
+  { key: "density", label: "s.geom.density.label", hint: "s.geom.density.hint", group: "spacing", tier: "common", min: 50, max: 150, step: 5, unit: "%", scale: 100 },
+  { key: "s_xs", label: "s.geom.s_xs.label", hint: "s.geom.s_xs.hint", group: "spacing", tier: "full", min: 0, max: 16, step: 1, unit: "px" },
+  { key: "s_sm", label: "s.geom.s_sm.label", hint: "", group: "spacing", tier: "full", min: 0, max: 24, step: 1, unit: "px" },
+  { key: "s_md", label: "s.geom.s_md.label", hint: "", group: "spacing", tier: "full", min: 0, max: 40, step: 1, unit: "px" },
+  { key: "s_lg", label: "s.geom.s_lg.label", hint: "", group: "spacing", tier: "full", min: 0, max: 56, step: 1, unit: "px" },
+  { key: "s_xl", label: "s.geom.s_xl.label", hint: "s.geom.s_xl.hint", group: "spacing", tier: "full", min: 0, max: 72, step: 1, unit: "px" },
+  { key: "gap", label: "s.geom.gap.label", hint: "s.geom.gap.hint", group: "gaps", tier: "common", min: 0, max: 24, step: 1, unit: "px" },
 ];
 
 /// The active theme's resolved geometry values (fixture: the house defaults).

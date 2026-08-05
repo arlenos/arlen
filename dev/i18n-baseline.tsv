@@ -612,33 +612,6 @@ apps/settings/src/lib/stores/themeColors.ts	Text sitting on the accent
 apps/settings/src/lib/stores/themeColors.ts	The desktop shell ground
 apps/settings/src/lib/stores/themeColors.ts	The main window background
 apps/settings/src/lib/stores/themeColors.ts	Warning
-apps/settings/src/lib/stores/themeGeometry.ts	Border width
-apps/settings/src/lib/stores/themeGeometry.ts	Button radius
-apps/settings/src/lib/stores/themeGeometry.ts	Buttons
-apps/settings/src/lib/stores/themeGeometry.ts	Card radius
-apps/settings/src/lib/stores/themeGeometry.ts	Cards, popovers, panels
-apps/settings/src/lib/stores/themeGeometry.ts	Chip radius
-apps/settings/src/lib/stores/themeGeometry.ts	Density
-apps/settings/src/lib/stores/themeGeometry.ts	Dialogs and sheets
-apps/settings/src/lib/stores/themeGeometry.ts	Gaps
-apps/settings/src/lib/stores/themeGeometry.ts	Input radius
-apps/settings/src/lib/stores/themeGeometry.ts	Modal radius
-apps/settings/src/lib/stores/themeGeometry.ts	Roundness
-apps/settings/src/lib/stores/themeGeometry.ts	Rounds every corner at once
-apps/settings/src/lib/stores/themeGeometry.ts	Scales the space between things
-apps/settings/src/lib/stores/themeGeometry.ts	Space between tiled windows
-apps/settings/src/lib/stores/themeGeometry.ts	Space, large
-apps/settings/src/lib/stores/themeGeometry.ts	Space, medium
-apps/settings/src/lib/stores/themeGeometry.ts	Space, small
-apps/settings/src/lib/stores/themeGeometry.ts	Space, tight
-apps/settings/src/lib/stores/themeGeometry.ts	Space, widest
-apps/settings/src/lib/stores/themeGeometry.ts	Tags, badges, dots
-apps/settings/src/lib/stores/themeGeometry.ts	Text fields and selects
-apps/settings/src/lib/stores/themeGeometry.ts	The rounding of window corners
-apps/settings/src/lib/stores/themeGeometry.ts	The tightest step
-apps/settings/src/lib/stores/themeGeometry.ts	The widest step
-apps/settings/src/lib/stores/themeGeometry.ts	The window outline thickness
-apps/settings/src/lib/stores/themeGeometry.ts	Window corners
 apps/settings/src/lib/stores/themeMotionDepth.ts	Ease
 apps/settings/src/lib/stores/themeMotionDepth.ts	Linear
 apps/settings/src/lib/stores/themeMotionDepth.ts	None
