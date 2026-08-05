@@ -10,7 +10,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use arlen_ai_undo_core::undo_log::{UndoEntry, UndoState};
-use arlen_ai_undo_proto::{read_response, write_request, Request, Response, StateReply};
+use arlen_ai_undo_proto::{read_response, write_request, RecentEntry, Request, Response, StateReply};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
@@ -124,6 +124,44 @@ pub async fn fetch_live(socket: &Path) -> Result<Vec<UndoEntry>, String> {
     match tokio::time::timeout(SUBMIT_TIMEOUT, fetch).await {
         Ok(result) => result,
         Err(_) => Err(format!("signer live-entries fetch timed out after {SUBMIT_TIMEOUT:?}")),
+    }
+}
+
+/// Fetch the most recent entries with their folded state, newest first, over an
+/// already-connected `stream`. This is the read a recent-actions surface makes:
+/// unlike [`fetch_live_on`] it keeps terminal entries, because a completed undo
+/// is the evidence the user came to look for.
+pub async fn fetch_recent_on<S>(stream: &mut S, limit: u32) -> Result<Vec<RecentEntry>, String>
+where
+    S: AsyncReadExt + AsyncWriteExt + Unpin,
+{
+    write_request(stream, &Request::ListRecent { limit })
+        .await
+        .map_err(|e| format!("write: {e}"))?;
+    match read_response(stream)
+        .await
+        .map_err(|e| format!("read: {e}"))?
+    {
+        Response::Recent(entries) => Ok(entries),
+        other => Err(format!("signer did not return recent entries: {other:?}")),
+    }
+}
+
+/// Connect to the signer at `socket` and fetch its recent entries, bounded by
+/// [`SUBMIT_TIMEOUT`]. Best-effort like the other reads: an unreachable signer
+/// leaves the surface empty rather than failing it.
+pub async fn fetch_recent(socket: &Path, limit: u32) -> Result<Vec<RecentEntry>, String> {
+    let fetch = async {
+        let mut stream = UnixStream::connect(socket)
+            .await
+            .map_err(|e| format!("connect {}: {e}", socket.display()))?;
+        fetch_recent_on(&mut stream, limit).await
+    };
+    match tokio::time::timeout(SUBMIT_TIMEOUT, fetch).await {
+        Ok(result) => result,
+        Err(_) => Err(format!(
+            "signer recent-entries fetch timed out after {SUBMIT_TIMEOUT:?}"
+        )),
     }
 }
 
