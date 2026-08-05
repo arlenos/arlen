@@ -234,19 +234,21 @@ export function findConflict(
 // Derived slices for the UI
 // -----------------------------------------------------------------------
 
+/// `label` holds a message KEY; `id` stays as it is, because the page groups and
+/// expands by id and the config file keys off it.
 export const CATEGORIES = [
-  { id: "window", label: "Window Management" },
-  { id: "focus", label: "Focus" },
-  { id: "move", label: "Move Window" },
-  { id: "tiling", label: "Tiling" },
-  { id: "workspace", label: "Workspaces" },
-  { id: "workspace_move", label: "Move to Workspace" },
-  { id: "workspace_map", label: "Workspace Map" },
-  { id: "keyboard", label: "Keyboard" },
-  { id: "shell", label: "Shell" },
-  { id: "apps", label: "Apps & Launchers" },
-  { id: "custom", label: "Custom" },
-  { id: "module", label: "Modules" },
+  { id: "window", label: "s.kb.cat.window" },
+  { id: "focus", label: "s.kb.cat.focus" },
+  { id: "move", label: "s.kb.cat.move" },
+  { id: "tiling", label: "s.kb.cat.tiling" },
+  { id: "workspace", label: "s.kb.cat.workspace" },
+  { id: "workspace_move", label: "s.kb.cat.workspace_move" },
+  { id: "workspace_map", label: "s.kb.cat.workspace_map" },
+  { id: "keyboard", label: "s.kb.cat.keyboard" },
+  { id: "shell", label: "s.kb.cat.shell" },
+  { id: "apps", label: "s.kb.cat.apps" },
+  { id: "custom", label: "s.kb.cat.custom" },
+  { id: "module", label: "s.kb.cat.module" },
 ] as const;
 
 /// Internal Workspace Map keybindings — handled entirely by the
@@ -266,25 +268,25 @@ export interface WorkspaceMapInternalBinding {
 
 export const WORKSPACE_MAP_INTERNAL_BINDINGS: WorkspaceMapInternalBinding[] = [
   // Navigation
-  { keys: "h / ←", label: "Previous workspace", group: "navigation" },
-  { keys: "l / →", label: "Next workspace", group: "navigation" },
-  { keys: "k / ↑", label: "Previous window in column", group: "navigation" },
-  { keys: "j / ↓", label: "Next window in column", group: "navigation" },
-  { keys: "Tab", label: "Next window (cycle)", group: "navigation" },
-  { keys: "Shift+Tab", label: "Previous window", group: "navigation" },
-  { keys: "1-9", label: "Focus workspace N", group: "navigation" },
-  { keys: "g then 1-9", label: "Go to workspace N and close Map", group: "navigation" },
+  { keys: "h / ←", label: "s.kb.wm.prevWorkspace", group: "navigation" },
+  { keys: "l / →", label: "s.kb.wm.nextWorkspace", group: "navigation" },
+  { keys: "k / ↑", label: "s.kb.wm.prevInColumn", group: "navigation" },
+  { keys: "j / ↓", label: "s.kb.wm.nextInColumn", group: "navigation" },
+  { keys: "Tab", label: "s.kb.wm.nextCycle", group: "navigation" },
+  { keys: "Shift+Tab", label: "s.kb.wm.prevWindow", group: "navigation" },
+  { keys: "1-9", label: "s.kb.wm.focusWsN", group: "navigation" },
+  { keys: "g then 1-9", label: "s.kb.wm.gotoWsN", group: "navigation" },
   // Single-window actions
-  { keys: "Enter", label: "Activate / restore focused window and close Map", group: "actions" },
-  { keys: "Escape", label: "Clear selection, then close Map", group: "actions" },
-  { keys: "d / Delete", label: "Close focused window", group: "actions" },
-  { keys: "m", label: "Toggle minimize / restore on focused window", group: "actions" },
-  { keys: "f", label: "Toggle fullscreen on focused window", group: "actions" },
-  { keys: "Space", label: "Toggle selection on focused window", group: "actions" },
+  { keys: "Enter", label: "s.kb.wm.activate", group: "actions" },
+  { keys: "Escape", label: "s.kb.wm.clearSel", group: "actions" },
+  { keys: "d / Delete", label: "s.kb.wm.closeFocused", group: "actions" },
+  { keys: "m", label: "s.kb.wm.minFocused", group: "actions" },
+  { keys: "f", label: "s.kb.wm.fullFocused", group: "actions" },
+  { keys: "Space", label: "s.kb.wm.selFocused", group: "actions" },
   // Multi-select actions
-  { keys: "Ctrl/Cmd+Click", label: "Toggle selection", group: "multi" },
-  { keys: "d / Delete", label: "Close all selected", group: "multi" },
-  { keys: "m", label: "Minimize / restore all selected", group: "multi" },
+  { keys: "Ctrl/Cmd+Click", label: "s.kb.wm.toggleSel", group: "multi" },
+  { keys: "d / Delete", label: "s.kb.wm.closeAllSel", group: "multi" },
+  { keys: "m", label: "s.kb.wm.minAllSel", group: "multi" },
 ];
 
 export type CategoryId = (typeof CATEGORIES)[number]["id"];

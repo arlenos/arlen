@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { t } from "$lib/i18n/messages";
   import { AlertTriangle, ChevronRight, Plus, Search } from "lucide-svelte";
 
   import { Input } from "@arlen/ui-kit/components/ui/input";
@@ -321,7 +322,7 @@
               class="h-3.5 w-3.5 transition-transform"
               style={expanded ? "transform: rotate(90deg);" : ""}
             />
-            <span class="flex-1">{category.label}</span>
+            <span class="flex-1">{$t(category.label)}</span>
             <span class="text-xs font-normal normal-case text-muted-foreground">
               {entries.length +
                 (isWorkspaceMap ? WORKSPACE_MAP_INTERNAL_BINDINGS.length : 0)}
@@ -349,7 +350,7 @@
                 -->
                 {#each WORKSPACE_MAP_INTERNAL_BINDINGS as row (row.keys + row.label)}
                   <ReadOnlyKeybindingRow
-                    label={row.label}
+                    label={$t(row.label)}
                     keys={row.keys}
                   />
                 {/each}

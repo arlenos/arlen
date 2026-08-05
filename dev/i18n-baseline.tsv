@@ -498,35 +498,6 @@ apps/settings/src/lib/stores/grants.ts	Knowledge graph
 apps/settings/src/lib/stores/grants.ts	Network
 apps/settings/src/lib/stores/grants.ts	Notifications
 apps/settings/src/lib/stores/grants.ts	System
-apps/settings/src/lib/stores/keybindings.ts	Activate / restore focused window and close Map
-apps/settings/src/lib/stores/keybindings.ts	Apps & Launchers
-apps/settings/src/lib/stores/keybindings.ts	Clear selection, then close Map
-apps/settings/src/lib/stores/keybindings.ts	Close all selected
-apps/settings/src/lib/stores/keybindings.ts	Close focused window
-apps/settings/src/lib/stores/keybindings.ts	Custom
-apps/settings/src/lib/stores/keybindings.ts	Focus
-apps/settings/src/lib/stores/keybindings.ts	Focus workspace N
-apps/settings/src/lib/stores/keybindings.ts	Go to workspace N and close Map
-apps/settings/src/lib/stores/keybindings.ts	Keyboard
-apps/settings/src/lib/stores/keybindings.ts	Minimize / restore all selected
-apps/settings/src/lib/stores/keybindings.ts	Modules
-apps/settings/src/lib/stores/keybindings.ts	Move Window
-apps/settings/src/lib/stores/keybindings.ts	Move to Workspace
-apps/settings/src/lib/stores/keybindings.ts	Next window (cycle)
-apps/settings/src/lib/stores/keybindings.ts	Next window in column
-apps/settings/src/lib/stores/keybindings.ts	Next workspace
-apps/settings/src/lib/stores/keybindings.ts	Previous window
-apps/settings/src/lib/stores/keybindings.ts	Previous window in column
-apps/settings/src/lib/stores/keybindings.ts	Previous workspace
-apps/settings/src/lib/stores/keybindings.ts	Shell
-apps/settings/src/lib/stores/keybindings.ts	Tiling
-apps/settings/src/lib/stores/keybindings.ts	Toggle fullscreen on focused window
-apps/settings/src/lib/stores/keybindings.ts	Toggle minimize / restore on focused window
-apps/settings/src/lib/stores/keybindings.ts	Toggle selection
-apps/settings/src/lib/stores/keybindings.ts	Toggle selection on focused window
-apps/settings/src/lib/stores/keybindings.ts	Window Management
-apps/settings/src/lib/stores/keybindings.ts	Workspace Map
-apps/settings/src/lib/stores/keybindings.ts	Workspaces
 apps/settings/src/lib/stores/models.ts	Answers your questions.
 apps/settings/src/lib/stores/models.ts	Background work
 apps/settings/src/lib/stores/models.ts	Balanced
