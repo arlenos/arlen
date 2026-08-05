@@ -60,6 +60,8 @@
   /// into a runtime extension of this map; until then,
   /// catalog-unknown ids round-trip silently in the file but
   /// don't render in the preview.
+  // `label` holds a message KEY. The two derived lists below resolve it, so they
+  // depend on the translator and rebuild when the locale changes.
   const SYSTEM_CATALOG: Record<
     string,
     {
@@ -78,63 +80,63 @@
     }
   > = {
     "system.project-context": {
-      label: "Project Context",
+      label: "s.qs.tile.project",
       iconName: "folder",
       allowed: ["one_by_one", "two_by_one"],
       defaultSize: "one_by_one",
       bodyVariant: "status",
     },
     "system.knowledge": {
-      label: "Knowledge Graph",
+      label: "s.qs.tile.knowledge",
       iconName: "brain",
       allowed: ["one_by_one", "two_by_one"],
       defaultSize: "one_by_one",
       bodyVariant: "chart",
     },
     "system.network": {
-      label: "Network",
+      label: "s.qs.tile.network",
       iconName: "wifi",
       allowed: ["one_by_one"],
       defaultSize: "one_by_one",
       bodyVariant: "status",
     },
     "system.bluetooth": {
-      label: "Bluetooth",
+      label: "s.qs.tile.bluetooth",
       iconName: "bluetooth",
       allowed: ["one_by_one"],
       defaultSize: "one_by_one",
       bodyVariant: "status",
     },
     "system.dnd": {
-      label: "Do Not Disturb",
+      label: "s.qs.tile.dnd",
       iconName: "bell-off",
       allowed: ["one_by_one"],
       defaultSize: "one_by_one",
       bodyVariant: "status",
     },
     "system.airplane": {
-      label: "Airplane Mode",
+      label: "s.qs.tile.airplane",
       iconName: "plane",
       allowed: ["one_by_one"],
       defaultSize: "one_by_one",
       bodyVariant: "status",
     },
     "system.brightness": {
-      label: "Brightness",
+      label: "s.qs.tile.brightness",
       iconName: "sun",
       allowed: ["two_by_one"],
       defaultSize: "two_by_one",
       bodyVariant: "slider",
     },
     "system.audio": {
-      label: "Sound",
+      label: "s.qs.tile.audio",
       iconName: "volume-2",
       allowed: ["two_by_one", "two_by_two"],
       defaultSize: "two_by_one",
       bodyVariant: "slider",
     },
     "system.user-row": {
-      label: "User Row",
+      label: "s.qs.tile.userRow",
       iconName: "user",
       allowed: ["two_by_one"],
       defaultSize: "two_by_one",
@@ -237,7 +239,7 @@
         const meta = SYSTEM_CATALOG[e.id]!;
         return {
           id: e.id,
-          label: meta.label,
+          label: $t(meta.label),
           iconName: meta.iconName,
           size: e.size,
           allowedSizes: meta.allowed,
@@ -255,7 +257,7 @@
       .known.filter((e) => !e.visible && !SYSTEM_CATALOG[e.id]?.pinned)
       .map((e) => {
         const meta = SYSTEM_CATALOG[e.id]!;
-        return { id: e.id, label: meta.label, iconName: meta.iconName };
+        return { id: e.id, label: $t(meta.label), iconName: meta.iconName };
       });
   });
 

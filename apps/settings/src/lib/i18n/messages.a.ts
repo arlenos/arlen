@@ -5,6 +5,15 @@ import type { Catalogs } from "@arlen/ui-kit/i18n";
 
 export const a: Catalogs = {
   en: {
+    "s.qs.tile.project": "Project Context",
+    "s.qs.tile.knowledge": "Knowledge Graph",
+    "s.qs.tile.network": "Network",
+    "s.qs.tile.bluetooth": "Bluetooth",
+    "s.qs.tile.dnd": "Do Not Disturb",
+    "s.qs.tile.airplane": "Airplane Mode",
+    "s.qs.tile.brightness": "Brightness",
+    "s.qs.tile.audio": "Sound",
+    "s.qs.tile.userRow": "User Row",
     "s.mon.tr.normal": "Normal",
     "s.mon.tr.flipped": "Flipped",
     "s.mon.tr.flipped90": "Flipped 90°",
@@ -326,6 +335,15 @@ export const a: Catalogs = {
     "s.profile.deleteAction": "Delete",
   },
   de: {
+    "s.qs.tile.project": "Projektkontext",
+    "s.qs.tile.knowledge": "Wissensgraph",
+    "s.qs.tile.network": "Netzwerk",
+    "s.qs.tile.bluetooth": "Bluetooth",
+    "s.qs.tile.dnd": "Nicht stören",
+    "s.qs.tile.airplane": "Flugmodus",
+    "s.qs.tile.brightness": "Helligkeit",
+    "s.qs.tile.audio": "Ton",
+    "s.qs.tile.userRow": "Benutzerzeile",
     "s.mon.tr.normal": "Normal",
     "s.mon.tr.flipped": "Gespiegelt",
     "s.mon.tr.flipped90": "Gespiegelt 90°",
