@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// System: cursor, icons, sounds, and the terminal palette. The terminal's
   /// 16-ANSI IS live-previewable (a mini terminal); cursor / icons / sounds are
   /// OS-level and can't be faked in a Settings webview, so they show the control +
@@ -48,27 +49,27 @@
 </script>
 
 <Page
-  title="System"
-  description="Cursor, icons, sounds, and the terminal colours. Change one and it overrides just that value, on top of the theme."
+  title={$t("s.sys.title")}
+  description={$t("s.sys.desc")}
 >
   <SectionGrid>
     <div class="editor span-full">
     <div class="controls">
-      <Section label="Cursor">
+      <Section label={$t("s.sys.cursor")}>
         <OverrideRow
-          label="Theme"
-          hint="The pointer style across the desktop"
+          label={$t("s.sys.theme")}
+          hint={$t("s.sys.cursorThemeHint")}
           overridden={isOverridden($overrides, "cursorTheme")}
           onreset={() => resetSys("cursorTheme")}
           id="sys-cursorTheme"
         >
           {#snippet control()}
-            <PopoverSelect value={String($effective.cursorTheme)} options={CURSOR_THEMES} ariaLabel="Cursor theme" onchange={(v) => setSys("cursorTheme", v)} />
+            <PopoverSelect value={String($effective.cursorTheme)} options={CURSOR_THEMES} ariaLabel={$t("s.sys.cursorTheme")} onchange={(v) => setSys("cursorTheme", v)} />
           {/snippet}
         </OverrideRow>
         <OverrideRow
-          label="Size"
-          hint="The pointer size"
+          label={$t("s.sys.size")}
+          hint={$t("s.sys.sizeHint")}
           overridden={isOverridden($overrides, "cursorSize")}
           onreset={() => resetSys("cursorSize")}
           id="sys-cursorSize"
@@ -79,9 +80,9 @@
         </OverrideRow>
       </Section>
 
-      <Section label="Icons">
+      <Section label={$t("s.sys.icons")}>
         <OverrideRow
-          label="Theme"
+          label={$t("s.sys.theme")}
           hint="The icon set across your apps"
           overridden={isOverridden($overrides, "iconTheme")}
           onreset={() => resetSys("iconTheme")}
@@ -93,10 +94,10 @@
         </OverrideRow>
       </Section>
 
-      <Section label="Sounds">
+      <Section label={$t("s.sys.sounds")}>
         <OverrideRow
-          label="System sounds"
-          hint="Play a sound on system events"
+          label={$t("s.sys.sysSounds")}
+          hint={$t("s.sys.sysSoundsHint")}
           overridden={isOverridden($overrides, "soundsEnabled")}
           onreset={() => resetSys("soundsEnabled")}
           id="sys-soundsEnabled"
@@ -106,8 +107,8 @@
           {/snippet}
         </OverrideRow>
         <OverrideRow
-          label="Sound theme"
-          hint="The set of system sounds"
+          label={$t("s.sys.soundTheme")}
+          hint={$t("s.sys.soundThemeHint")}
           overridden={isOverridden($overrides, "soundTheme")}
           onreset={() => resetSys("soundTheme")}
           id="sys-soundTheme"
@@ -119,7 +120,7 @@
         <Collapsible class="expander">
           <CollapsibleTrigger class="exp-trigger">
             <ChevronRight size={15} strokeWidth={2} />
-            All sounds
+            {$t("s.sys.allSounds")}
           </CollapsibleTrigger>
           <CollapsibleContent>
             <Section>
@@ -144,7 +145,7 @@
         </Collapsible>
       </Section>
 
-      <Section label="Terminal">
+      <Section label={$t("s.sys.terminal")}>
         <div class="term-editor">
           <div class="term-grid">
             {#each ANSI_META as a (a.key)}
@@ -159,16 +160,16 @@
             {/each}
           </div>
           <div class="term-fgbg">
-            <label class="ts-swatch wide" class:overridden={isOverridden($overrides, "termFg")} style={`background:${termFg}`} title="Foreground">
-              <input type="color" value={termFg} oninput={(e) => setSys("termFg", e.currentTarget.value)} aria-label="Terminal foreground" />
+            <label class="ts-swatch wide" class:overridden={isOverridden($overrides, "termFg")} style={`background:${termFg}`} title={$t("s.sys.foreground")}>
+              <input type="color" value={termFg} oninput={(e) => setSys("termFg", e.currentTarget.value)} aria-label={$t("s.sys.termFg")} />
             </label>
-            <span class="fgbg-label">Text</span>
-            <label class="ts-swatch wide" class:overridden={isOverridden($overrides, "termBg")} style={`background:${termBg}`} title="Background">
-              <input type="color" value={termBg} oninput={(e) => setSys("termBg", e.currentTarget.value)} aria-label="Terminal background" />
+            <span class="fgbg-label">{$t("s.sys.text")}</span>
+            <label class="ts-swatch wide" class:overridden={isOverridden($overrides, "termBg")} style={`background:${termBg}`} title={$t("s.sys.background")}>
+              <input type="color" value={termBg} oninput={(e) => setSys("termBg", e.currentTarget.value)} aria-label={$t("s.sys.termBg")} />
             </label>
-            <span class="fgbg-label">Background</span>
+            <span class="fgbg-label">{$t("s.sys.background")}</span>
             {#if termOverridden}
-              <button class="term-reset" type="button" onclick={resetTerminal}>Reset colours</button>
+              <button class="term-reset" type="button" onclick={resetTerminal}>{$t("s.sys.resetColours")}</button>
             {/if}
           </div>
         </div>
@@ -177,8 +178,12 @@
 
     <aside class="preview-col">
       <div class="preview-sticky">
-        <span class="preview-label">Live preview</span>
+        <span class="preview-label">{$t("s.sys.preview")}</span>
 
+        <!-- The sample below is deliberately not translated: it demonstrates the
+             colours, and the text it imitates - a prompt, `ls` output, a compiler
+             error - is what a real terminal prints, in English, whatever the UI
+             language. It is listed in `dev/i18n-baseline.tsv` so the gate agrees. -->
         <div class="term-preview" style={`background:${termBg}; color:${termFg}`}>
           <div class="tp-line">
             <span style={`color:${$effective.ansi2}`}>arlen@desktop</span><span>:</span><span style={`color:${$effective.ansi4}`}>~/src</span><span>$ ls --color</span>
@@ -199,7 +204,7 @@
         <div class="sys-indicators">
           <div class="ind">
             <MousePointer2 size={cursorSize} strokeWidth={1.75} />
-            <span class="ind-note">Cursor, {cursorSize}px</span>
+            <span class="ind-note">{$t("s.sys.indCursor", { size: cursorSize })}</span>
           </div>
           <div class="ind">
             <span class="icon-tiles">
@@ -207,7 +212,7 @@
               <span class="icon-tile"><Image size={16} strokeWidth={1.75} /></span>
               <span class="icon-tile"><Image size={16} strokeWidth={1.75} /></span>
             </span>
-            <span class="ind-note">Icons: {iconTheme}, applied to the desktop</span>
+            <span class="ind-note">{$t("s.sys.indIcons", { theme: iconTheme })}</span>
           </div>
         </div>
       </div>
