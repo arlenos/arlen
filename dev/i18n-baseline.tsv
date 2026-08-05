@@ -68,20 +68,6 @@ apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	Re-enable
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	errors | Last:
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	errors. Last:
 apps/desktop-shell/src/lib/components/settings/PermissionScope.svelte	None
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	Allowed Domains
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	App Permissions
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	Custom Paths
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	Event Bus Publish
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	Event Bus Subscribe
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	Filesystem
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	Graph Read
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	Graph Write
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	Knowledge Graph
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	Loading...
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	Network
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	No permission profiles found
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	Other
-apps/desktop-shell/src/lib/components/settings/PermissionsPanel.svelte	scopes
 apps/desktop-shell/src/lib/components/shared/PopoverHeader.svelte	Settings
 apps/desktop-shell/src/lib/components/topbar/badges/AirplaneBadge.svelte	Airplane Mode. Click to disable.
 apps/desktop-shell/src/lib/components/topbar/badges/CaffeineBadge.svelte	Caffeine on. Click to disable.
