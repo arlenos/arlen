@@ -94,6 +94,15 @@ pub fn init(window: tauri::WebviewWindow) -> Result<(), tauri::Error> {
                 }
                 // Clear the window to nothing before its children draw.
                 //
+                // NB this does NOT reach the screen, and that was worth measuring:
+                // a solid red band painted from here never appeared while the log
+                // showed full 1280x800 redraws running. The webview covers the
+                // whole window and presents its own buffer over anything the
+                // window paints, so nothing at this level can repair a stale
+                // pixel. The clear is kept because an app_paintable window with no
+                // background owner is wrong on its own terms, not because it fixes
+                // the ghost.
+                //
                 // A transparent window is `app_paintable`, which in GTK3's drawing
                 // model means GTK stops painting the background and the application
                 // owns it. Nothing owned it. The webview paints where it has
@@ -140,18 +149,6 @@ pub fn init(window: tauri::WebviewWindow) -> Result<(), tauri::Error> {
                         cr.set_operator(Operator::Source);
                         cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
                         let _ = cr.paint();
-                        // DIAGNOSTIC, remove once it has answered. Full-window
-                        // redraws demonstrably run while a closed overlay is still
-                        // on the screen, so either the webview blits that overlay
-                        // back from a stale backing store, or these draws never
-                        // reach the display at all. A band of solid red in an empty
-                        // part of the desktop, painted by this handler, separates
-                        // them: if it shows, GTK's drawing reaches the screen and
-                        // the ghost is painted after it; if it never shows, the
-                        // draws are not what the compositor is showing.
-                        cr.rectangle(40.0, 700.0, 200.0, 40.0);
-                        cr.set_source_rgba(1.0, 0.0, 0.0, 1.0);
-                        let _ = cr.fill();
                         cr.set_operator(Operator::Over);
                         glib::Propagation::Proceed
                     });
