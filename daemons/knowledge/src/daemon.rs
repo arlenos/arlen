@@ -1103,7 +1103,7 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
          OPTIONAL MATCH (g)-[:GRANTS]->(t:EntityType) \
          RETURN g.id, g.app_id, g.declared_ceiling, g.required, g.identity_verified, \
          g.live, g.revoked, g.superseded, g.pid, g.issued_at, t.label, \
-         g.source, g.consent_class, g.consent_scope, g.expires_at \
+         g.source, g.consent_class, g.consent_scope, g.expires_at, t.id \
          LIMIT {ACCESS_GRANTS_ROW_CAP}"
     );
     let rows = match graph.query_rows(cypher).await {
@@ -1112,9 +1112,11 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
     };
 
     let mut views: Vec<GrantView> = Vec::new();
+    // Parallel to `views`: the namespaced types behind each view's reach labels.
+    let mut reach_types: Vec<Vec<String>> = Vec::new();
     let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for row in rows {
-        if row.len() < 15 {
+        if row.len() < 16 {
             continue;
         }
         let id = row[0].as_str().to_string();
@@ -1168,6 +1170,7 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
                 last_used_at: 0,
                 used_capability_count: 0,
             });
+            reach_types.push(Vec::new());
             views.len() - 1
         });
         // Append this row's reach label (OPTIONAL MATCH yields an empty string
@@ -1179,6 +1182,20 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
                 reach.push(label.to_string());
             }
         }
+        // The FULL type behind that label, kept beside the view for the use
+        // overlay only. `reach` stays labels because that is what a surface
+        // shows; the tally is keyed on the namespaced type, and reconstructing
+        // one from the other works for `system.*` and silently fails for anything
+        // else - a bridge's `md.obsidian.Note` has the label `Note`, so a
+        // `system.` prefix would look up a capability that does not exist and
+        // report a used grant as unused.
+        let full_type = row[15].as_str();
+        if !full_type.is_empty() {
+            let types = &mut reach_types[slot];
+            if !types.iter().any(|s| s == full_type) {
+                types.push(full_type.to_string());
+            }
+        }
     }
     // Overlay the use tally. A SEPARATE query rather than a join: the grant reach
     // is keyed on `EntityType.id` (the full `system.File`) while the row above
@@ -1188,7 +1205,7 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
     // advisory: a failed read leaves the counts at zero, which the field's own
     // contract already covers ("no use recorded"), so a hiccup in a projection
     // never fails the grant list itself.
-    overlay_capability_use(graph, &scope_app, &mut views).await;
+    overlay_capability_use(graph, &scope_app, &mut views, &reach_types).await;
 
     serde_json::to_string(&views).unwrap_or_else(|_| "[]".to_string())
 }
@@ -1200,6 +1217,7 @@ async fn overlay_capability_use(
     graph: &GraphHandle,
     scope_app: &Option<String>,
     views: &mut [GrantView],
+    reach_types: &[Vec<String>],
 ) {
     if views.is_empty() {
         return;
@@ -1228,14 +1246,9 @@ async fn overlay_capability_use(
             row[2].as_i64(),
         );
     }
-    for view in views.iter_mut() {
-        for label in &view.reach {
-            // The reach carries the display label; the tally carries the
-            // namespaced type it came from. `system.` is what
-            // `readable_system_labels` strips to make the label, so this puts it
-            // back rather than guessing.
-            let capability = format!("system.{label}");
-            if let Some(last) = used.get(&(view.app_id.clone(), capability)) {
+    for (i, view) in views.iter_mut().enumerate() {
+        for capability in reach_types.get(i).into_iter().flatten() {
+            if let Some(last) = used.get(&(view.app_id.clone(), capability.clone())) {
                 view.used_capability_count += 1;
                 view.last_used_at = view.last_used_at.max(*last);
             }
@@ -4610,6 +4623,46 @@ mod tests {
             "one of the two reachable types has been exercised"
         );
         assert_eq!(after[0]["last_used_at"], 4_242);
+    }
+
+    /// The overlay keys on the FULL type, not on the display label with `system.`
+    /// put back in front of it. A bridge type has the label `Note` and the
+    /// capability `md.obsidian.Note`, so reconstructing the key would look up
+    /// `system.Note`, find nothing, and report a used grant as never used - the
+    /// exact direction that hides a live grant from the revoke prompt.
+    #[tokio::test]
+    async fn a_non_system_capability_is_matched_by_its_full_type() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        let token = crate::token::CapabilityToken::new(
+            "com.bridge".to_string(),
+            std::process::id(),
+            vec![crate::token::EntityScope {
+                entity_type: "md.obsidian.Note".into(),
+                fields: Some(vec!["title".into()]),
+                exclude_fields: vec![],
+            }],
+            vec![],
+            vec![],
+            crate::token::InstanceScope::Own,
+        );
+        crate::lcg::emit_grant_node(&graph, &token).await.unwrap();
+        crate::lcg::flush_capability_use(
+            &graph,
+            &[("com.bridge".into(), "md.obsidian.Note".into(), 1, 777)],
+        )
+        .await
+        .unwrap();
+
+        let view: serde_json::Value =
+            serde_json::from_str(&handle_access_grants("com.bridge", &graph).await).unwrap();
+        assert_eq!(view[0]["reach"][0], "Note", "the label is what a surface shows");
+        assert_eq!(
+            view[0]["used_capability_count"], 1,
+            "and the use is found by the type behind it"
+        );
+        assert_eq!(view[0]["last_used_at"], 777);
     }
 
     #[tokio::test]
