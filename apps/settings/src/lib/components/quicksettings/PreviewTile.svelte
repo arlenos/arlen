@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Schematic tile rendered inside the QS layout editor preview.
   ///
   /// Mimics the `BaseTile` / `SliderTile` shape but replaces every
@@ -170,7 +171,7 @@
             <ContextMenu.SubTrigger>
               {@const SizeIcon = sizeIcon(size)}
               <SizeIcon size={14} strokeWidth={1.5} />
-              <span>Size: {sizeLabel(size)}</span>
+              <span>{$t("s.qst.size", { size: sizeLabel(size) })}</span>
             </ContextMenu.SubTrigger>
             <ContextMenu.SubContent>
               {#each allowedSizes as opt (opt)}
@@ -189,7 +190,7 @@
         {/if}
         <ContextMenu.Item onclick={() => onHide?.(id)}>
           <EyeOff size={14} strokeWidth={1.5} />
-          <span>Hide tile</span>
+          <span>{$t("s.qst.hideTile")}</span>
         </ContextMenu.Item>
       </ContextMenu.Content>
     {/if}

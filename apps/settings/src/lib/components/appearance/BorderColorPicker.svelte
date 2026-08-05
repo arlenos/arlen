@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Compact color picker for window border colours. Offers a sentinel
   /// pill ("Use Accent" / "Use Subtle") plus a custom color chip. The
   /// sentinel is stored as `$accent` / `$border` so the compositor can
@@ -75,10 +76,10 @@
       type="button"
       class="chip"
       class:selected={isCustom}
-      aria-label="Custom color"
+      aria-label={$t("s.rule.customColour")}
       aria-pressed={isCustom}
       aria-expanded={pickerOpen}
-      title="Custom color"
+      title={$t("s.rule.customColour")}
       style={isCustom ? `background-color: ${value};` : undefined}
       onclick={openPicker}
     >
