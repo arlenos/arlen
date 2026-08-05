@@ -1,0 +1,33 @@
+#!/bin/sh
+# Phase 8 (CHROOT): the undo signer (arlen-ai-undo-signer). Not an optional
+# extra: apps/files, apps/trash-rm and the AI file executor all submit their
+# inverse receipts to this daemon's socket already, so with it absent from the
+# image every one of those undo records is written into a socket nobody is
+# listening on. The signer holds the HMAC key, the chained log and the head
+# checkpoint that make an undo record tamper-evident.
+#
+# Built like the other Debian-native daemons; its own cargo workspace, so its
+# own target dir in the persistent cache.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-undo-signer"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the undo signer (arlen-ai-undo-signer) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path ai/ai-undo-signer/Cargo.toml
+
+# Its dist unit's ExecStart is /usr/lib/arlen/libexec/arlen-ai-undo-signer.
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-ai-undo-signer" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-ai-undo-signer"
+echo ">> staged arlen-ai-undo-signer into the image"

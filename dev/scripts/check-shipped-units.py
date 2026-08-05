@@ -30,11 +30,6 @@ BUILD_STEPS = ROOT / "dev/mkosi/mkosi.build.d"
 # wrong, it is wrong somewhere a reader can see it. "Unreviewed" is an honest
 # entry; an invented rationale is not.
 NOT_YET_DEPLOYED: dict[str, str] = {
-    "arlen-ai-undo-signer.service": (
-        "built and unreviewed for deployment. NOTE this one has live consequence: "
-        "apps/files, apps/trash-rm and the AI file executor all submit inverses to "
-        "its socket today, so while it is absent their undo records go nowhere"
-    ),
     "arlen-accountsd.service": "online-accounts is not part of the image scope yet",
     "arlen-connectionsd.service": "connections daemon is not part of the image scope yet",
     "arlen-transferd.service": "transfer daemon is not part of the image scope yet",
