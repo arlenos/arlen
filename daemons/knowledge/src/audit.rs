@@ -134,6 +134,40 @@ pub fn capability_change_event(
     }
 }
 
+/// Build the content-free audit record for a capability grant being ISSUED: an
+/// app was minted a token carrying a reach it did not already hold.
+///
+/// Our posture is that capability grants are audited, and until this existed only
+/// *changes to a profile* were - revoke and restore, via
+/// [`capability_change_event`]. The granting itself left no ledger entry at all,
+/// so the only per-issuance record anywhere was the Grant node in the browse
+/// graph, which is a projection and prunable rather than a ledger.
+///
+/// Emitted on a NEW or CHANGED grant, never per mint. A token is minted per write
+/// request, so auditing every mint would write thousands of identical entries for
+/// one unchanged grant into an append-only ledger that never prunes - the same
+/// duplication that the Grant node used to carry, in the one place it cannot be
+/// collapsed afterwards. The reach ride-along is authority metadata, not user
+/// content, exactly as in [`capability_change_event`].
+pub fn grant_issued_event(app_id: &str, reach_summary: &str) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::CapabilityChange,
+        structural: StructuralRecord {
+            subject: "capability.granted".to_string(),
+            node_types: vec![app_id.to_string()],
+            relations: Vec::new(),
+            result_count: None,
+            duration_ms: None,
+            outcome: reach_summary.to_string(),
+            depth: None,
+            capability_change: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
 /// Build the content-free audit record for one app-tier entity upsert. The
 /// bridge app and the qualified entity type are coarse identifiers
 /// (`node_types`); `outcome` is `ok` (authorised, about to persist) or an

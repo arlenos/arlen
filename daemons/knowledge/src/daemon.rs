@@ -1581,8 +1581,25 @@ async fn handle_write_request(
     // graph-access peer's minted token into the browse graph. The auth lock is
     // already released; failure is logged and swallowed so a graph hiccup never
     // fails a validly-issued token (the projection degrades, the write does not).
-    if let Err(e) = crate::lcg::emit_grant_node(graph, &token).await {
-        tracing::warn!("emit_grant_node failed (capability projection degraded): {e}");
+    match crate::lcg::emit_grant_node(graph, &token).await {
+        // A NEW or CHANGED grant is an issuance and belongs in the ledger; a
+        // repeat of a reach the process already holds is not an event. Without
+        // this, granting was the one capability action with no audit record at
+        // all - only revoke and restore were written.
+        Ok(true) => {
+            if let Some(sink) = audit {
+                let _ = sink
+                    .submit(crate::audit::grant_issued_event(
+                        &token.app_id,
+                        &crate::lcg::reach_summary(&token),
+                    ))
+                    .await;
+            }
+        }
+        Ok(false) => {}
+        Err(e) => {
+            tracing::warn!("emit_grant_node failed (capability projection degraded): {e}");
+        }
     }
 
     // What this request exercises, in the same vocabulary the grant's reach is
@@ -2766,8 +2783,19 @@ async fn handle_client(
         if let Some(p) = &peer {
             let minted = auth.lock().await.issue_token_for_pid(p.pid).ok();
             if let Some(token) = minted {
-                if let Err(e) = crate::lcg::emit_grant_node(&graph, &token).await {
-                    warn!(app_id = %app_id, "connect-time grant emit failed: {e}");
+                match crate::lcg::emit_grant_node(&graph, &token).await {
+                    Ok(true) => {
+                        let _ = audit
+                            .submit(crate::audit::grant_issued_event(
+                                &token.app_id,
+                                &crate::lcg::reach_summary(&token),
+                            ))
+                            .await;
+                    }
+                    Ok(false) => {}
+                    Err(e) => {
+                        warn!(app_id = %app_id, "connect-time grant emit failed: {e}");
+                    }
                 }
             }
         }
