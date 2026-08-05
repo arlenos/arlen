@@ -55,7 +55,11 @@ impl PowerInterface {
         // change for the life of the process, and a caller reading the property
         // should not pay a syscall for it.
         let wake_capability = crate::wake::probe();
-        tracing::info!(capability = wake_capability.describe(), "wake capability probed");
+        tracing::info!(
+            capability = wake_capability.describe(),
+            sets = %crate::wake::capability_sets(),
+            "wake capability probed"
+        );
         Self {
             state,
             system_bus: Arc::new(RwLock::new(system_bus)),
