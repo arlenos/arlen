@@ -6,9 +6,10 @@
 /// (`~/.local/state/cosmic-comp/a11y_screen_filter.ron`) and go
 /// through the dedicated `accessibility_filter_set/get` commands.
 
-import { writable, type Readable } from "svelte/store";
+import { derived, writable, type Readable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { compositor } from "./workspaces";
+import { t } from "$lib/i18n/messages";
 export { compositor };
 
 export type ZoomMovement = "OnEdge" | "Centered" | "Continuously";
@@ -29,11 +30,13 @@ export const ZOOM_DEFAULTS: Required<AccessibilityZoomConfig> = {
   enable_mouse_zoom_shortcuts: true,
 };
 
-export const ZOOM_MOVEMENT_OPTIONS: { value: ZoomMovement; label: string }[] = [
-  { value: "Continuously", label: "Continuously" },
-  { value: "OnEdge", label: "On edge" },
-  { value: "Centered", label: "Centered" },
-];
+/// Derived: these feed a generic select, and the `value` side is the compositor's
+/// own enum, so only the label moves.
+export const zoomMovementOptions = derived(t, ($t) => [
+  { value: "Continuously" as ZoomMovement, label: $t("s.a11y.zoom.continuously") },
+  { value: "OnEdge" as ZoomMovement, label: $t("s.a11y.zoom.onEdge") },
+  { value: "Centered" as ZoomMovement, label: $t("s.a11y.zoom.centered") },
+]);
 
 /// Color filter labels mirror compositor `ColorFilter` variant
 /// names. The dedicated `accessibility_filter_set` command maps
@@ -48,14 +51,13 @@ export type ColorFilterLabel =
 /// Visible labels include a colloquial hint for the colour-
 /// blindness filters so the user can pick the right one without
 /// medical knowledge.
-export const COLOR_FILTER_OPTIONS: { value: ColorFilterLabel; label: string }[] =
-  [
-    { value: "None", label: "None" },
-    { value: "Greyscale", label: "Greyscale" },
-    { value: "Protanopia", label: "Protanopia (red weakness)" },
-    { value: "Deuteranopia", label: "Deuteranopia (green weakness)" },
-    { value: "Tritanopia", label: "Tritanopia (blue weakness)" },
-  ];
+export const colorFilterOptions = derived(t, ($t) => [
+    { value: "None" as ColorFilterLabel, label: $t("s.a11y.filter.none") },
+    { value: "Greyscale" as ColorFilterLabel, label: $t("s.a11y.filter.greyscale") },
+    { value: "Protanopia" as ColorFilterLabel, label: $t("s.a11y.filter.protanopia") },
+    { value: "Deuteranopia" as ColorFilterLabel, label: $t("s.a11y.filter.deuteranopia") },
+    { value: "Tritanopia" as ColorFilterLabel, label: $t("s.a11y.filter.tritanopia") },
+  ]);
 
 export interface ScreenFilterState {
   inverted: boolean;

@@ -425,14 +425,6 @@ apps/settings/src/lib/search/settings-registry.ts	Workspace Layout
 apps/settings/src/lib/search/settings-registry.ts	Workspace Shortcuts
 apps/settings/src/lib/search/settings-registry.ts	Zoom Increment
 apps/settings/src/lib/search/settings-registry.ts	Zoom Movement
-apps/settings/src/lib/stores/accessibility.ts	Centered
-apps/settings/src/lib/stores/accessibility.ts	Continuously
-apps/settings/src/lib/stores/accessibility.ts	Deuteranopia (green weakness)
-apps/settings/src/lib/stores/accessibility.ts	Greyscale
-apps/settings/src/lib/stores/accessibility.ts	None
-apps/settings/src/lib/stores/accessibility.ts	On edge
-apps/settings/src/lib/stores/accessibility.ts	Protanopia (red weakness)
-apps/settings/src/lib/stores/accessibility.ts	Tritanopia (blue weakness)
 apps/settings/src/lib/stores/appSettings.ts	Accent colour
 apps/settings/src/lib/stores/appSettings.ts	Advanced
 apps/settings/src/lib/stores/appSettings.ts	Appearance
