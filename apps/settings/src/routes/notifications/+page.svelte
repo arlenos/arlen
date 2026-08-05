@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Notifications panel.
   ///
   /// Reads/writes:
@@ -275,22 +276,22 @@
 </script>
 
 <Page
-  title="Notifications"
-  description="Control how Arlen delivers notifications, when to stay quiet, and which apps get special treatment."
+  title={$t("s.notif.title")}
+  description={$t("s.notif.desc")}
 >
   <SectionGrid>
   <div class="span-full notif-column">
 
   {#if $notifications.loading && !$notifications.data}
-    <div class="status">Loading…</div>
+    <div class="status">{$t("s.notif.loading")}</div>
   {:else if $notifications.error && !$notifications.data}
     <div class="error">
-      Failed to load notifications config: {$notifications.error}
+      {$t("s.notif.loadFailed", { error: $notifications.error })}
     </div>
   {:else}
     <div class="groups">
       <!-- ── DO NOT DISTURB ────────────────────────────────── -->
-      <Section label="Do Not Disturb">
+      <Section label={$t("s.notif.dnd")}>
         <div class="dnd-section">
           <div class="dnd-pills">
             {#each DND_PILLS as pill}
@@ -316,9 +317,13 @@
           {#if expiresLabel}
             <div class="expires-banner">
               <Sparkles size={12} strokeWidth={2.25} />
+              <!-- Left hardcoded on purpose. Making this whole - the rule the
+                   catalog follows - means one message with the time inside it,
+                   which drops the <strong> around the timestamp. That is a visual
+                   change, so it is arlen-ui's call, not an extraction. -->
               <span>Active until <strong>{expiresLabel}</strong></span>
               <button type="button" class="link" onclick={clearDndExpiry}
-                >Clear</button
+                >{$t("s.notif.clear")}</button
               >
             </div>
           {/if}
@@ -326,45 +331,45 @@
           <div class="quick-actions">
             <Button variant="outline" size="sm" onclick={dndForOneHour}>
               <Coffee size={12} strokeWidth={2} />
-              For 1 hour
+              {$t("s.notif.forOneHour")}
             </Button>
             <Button variant="outline" size="sm" onclick={dndUntilMorning}>
               <Sunrise size={12} strokeWidth={2} />
-              Until tomorrow
+              {$t("s.notif.untilTomorrow")}
             </Button>
           </div>
         </div>
 
         {#if dndMode === "scheduled"}
-          <Row label="Schedule mode">
+          <Row label={$t("s.notif.scheduleMode")}>
             {#snippet control()}
               <SegmentedControl
                 value={schedule.mode ?? "priority"}
                 options={SCHEDULE_MODE_OPTIONS}
-                ariaLabel="Schedule mode"
+                ariaLabel={$t("s.notif.scheduleMode")}
                 onchange={(v) => setDndScheduleMode(v as ScheduleMode)}
               />
             {/snippet}
           </Row>
-          <Row label="From">
+          <Row label={$t("s.notif.from")}>
             {#snippet control()}
               <TimeInput
                 value={schedule.start ?? "22:00"}
                 onchange={setScheduleStart}
-                ariaLabel="Start"
+                ariaLabel={$t("s.notif.start")}
               />
             {/snippet}
           </Row>
-          <Row label="Until">
+          <Row label={$t("s.notif.until")}>
             {#snippet control()}
               <TimeInput
                 value={schedule.end ?? "07:00"}
                 onchange={setScheduleEnd}
-                ariaLabel="End"
+                ariaLabel={$t("s.notif.end")}
               />
             {/snippet}
           </Row>
-          <Row label="Days">
+          <Row label={$t("s.notif.days")}>
             {#snippet control()}
               <DaysPicker
                 value={schedule.days ?? []}
@@ -374,26 +379,26 @@
           </Row>
         {/if}
 
-        <Row label="Suppress when fullscreen" id="suppress-fullscreen">
+        <Row label={$t("s.notif.suppressFs")} id="suppress-fullscreen">
           {#snippet control()}
             <Switch
               value={dnd.suppress_fullscreen ?? true}
               onchange={setSuppressFullscreen}
-              ariaLabel="Suppress when fullscreen"
+              ariaLabel={$t("s.notif.suppressFs")}
             />
           {/snippet}
         </Row>
       </Section>
 
       <!-- ── LISTS ────────────────────────────────── -->
-      <Section label="Lists">
-        <Row label="Always allow" id="always-allow">
+      <Section label={$t("s.notif.lists")}>
+        <Row label={$t("s.notif.alwaysAllow")} id="always-allow">
           {#snippet control()}
             <div class="list-control">
               <AppPicker
                 knownApps={knownAppsForPicker}
                 excluded={alwaysAllow}
-                placeholder="Add app..."
+                placeholder={$t("s.notif.addApp")}
                 onpick={addAlwaysAllow}
               />
               {#if alwaysAllow.length > 0}
@@ -410,13 +415,13 @@
             </div>
           {/snippet}
         </Row>
-        <Row label="Always suppress" id="always-suppress">
+        <Row label={$t("s.notif.alwaysSuppress")} id="always-suppress">
           {#snippet control()}
             <div class="list-control">
               <AppPicker
                 knownApps={knownAppsForPicker}
                 excluded={alwaysSuppress}
-                placeholder="Add app..."
+                placeholder={$t("s.notif.addApp")}
                 onpick={addAlwaysSuppress}
               />
               {#if alwaysSuppress.length > 0}
@@ -437,8 +442,8 @@
       </Section>
 
       <!-- ── TOAST APPEARANCE ────────────────────────────────── -->
-      <Section label="Toast Appearance">
-        <Row label="Position" id="toast-position">
+      <Section label={$t("s.notif.toastAppearance")}>
+        <Row label={$t("s.notif.position")} id="toast-position">
           {#snippet control()}
             <PositionPicker
               value={toast.position ?? "top-right"}
@@ -446,7 +451,7 @@
             />
           {/snippet}
         </Row>
-        <Row label="Width" id="toast-width">
+        <Row label={$t("s.notif.width")} id="toast-width">
           {#snippet control()}
             <ValueSlider
               value={toast.width ?? 380}
@@ -454,12 +459,12 @@
               max={500}
               step={10}
               unit="px"
-              ariaLabel="Toast width"
+              ariaLabel={$t("s.notif.toastWidth")}
               onchange={setToastWidth}
             />
           {/snippet}
         </Row>
-        <Row label="Animation" id="toast-animation">
+        <Row label={$t("s.notif.animation")} id="toast-animation">
           {#snippet control()}
             <div class="seg">
               {#each ["slide", "fade", "none"] as a (a)}
@@ -478,8 +483,8 @@
       </Section>
 
       <!-- ── TIMING ────────────────────────────────── -->
-      <Section label="Timing">
-        <Row label="Normal duration" id="toast-duration-normal">
+      <Section label={$t("s.notif.timing")}>
+        <Row label={$t("s.notif.durNormal")} id="toast-duration-normal">
           {#snippet control()}
             <ValueSlider
               value={general.toast_duration_normal ?? 4000}
@@ -487,12 +492,12 @@
               max={15000}
               step={500}
               unit="ms"
-              ariaLabel="Normal duration"
+              ariaLabel={$t("s.notif.durNormal")}
               onchange={(v) => setGeneral("toast_duration_normal", v)}
             />
           {/snippet}
         </Row>
-        <Row label="High priority duration" id="toast-duration-high">
+        <Row label={$t("s.notif.durHigh")} id="toast-duration-high">
           {#snippet control()}
             <ValueSlider
               value={general.toast_duration_high ?? 8000}
@@ -500,12 +505,12 @@
               max={30000}
               step={1000}
               unit="ms"
-              ariaLabel="High priority duration"
+              ariaLabel={$t("s.notif.durHigh")}
               onchange={(v) => setGeneral("toast_duration_high", v)}
             />
           {/snippet}
         </Row>
-        <Row label="Max visible" id="max-visible">
+        <Row label={$t("s.notif.maxVisible")} id="max-visible">
           {#snippet control()}
             <ValueSlider
               value={general.max_visible_toasts ?? 5}
@@ -513,43 +518,43 @@
               max={10}
               step={1}
               unit=""
-              ariaLabel="Max visible toasts"
+              ariaLabel={$t("s.notif.maxVisibleAria")}
               onchange={(v) => setGeneral("max_visible_toasts", v)}
             />
           {/snippet}
         </Row>
-        <Row label="Test notification">
+        <Row label={$t("s.notif.test")}>
           {#snippet control()}
             <div class="test-row">
-              <Button variant="outline" size="sm" onclick={() => fireTest("normal")}>Normal</Button>
-              <Button variant="outline" size="sm" onclick={() => fireTest("high")}>High</Button>
-              <Button variant="destructive" size="sm" onclick={() => fireTest("critical")}>Critical</Button>
+              <Button variant="outline" size="sm" onclick={() => fireTest("normal")}>{$t("s.notif.normal")}</Button>
+              <Button variant="outline" size="sm" onclick={() => fireTest("high")}>{$t("s.notif.high")}</Button>
+              <Button variant="destructive" size="sm" onclick={() => fireTest("critical")}>{$t("s.notif.critical")}</Button>
             </div>
           {/snippet}
         </Row>
       </Section>
 
       <!-- ── GROUPING ────────────────────────────────── -->
-      <Section label="Grouping">
-        <Row label="Group by app" id="group-by-app">
+      <Section label={$t("s.notif.grouping")}>
+        <Row label={$t("s.notif.groupByApp")} id="group-by-app">
           {#snippet control()}
             <Switch
               value={grouping.by_app ?? true}
               onchange={(v) => setGrouping("by_app", v)}
-              ariaLabel="Group by app"
+              ariaLabel={$t("s.notif.groupByApp")}
             />
           {/snippet}
         </Row>
-        <Row label="Stack similar" id="stack-similar">
+        <Row label={$t("s.notif.stackSimilar")} id="stack-similar">
           {#snippet control()}
             <Switch
               value={grouping.stack_similar ?? true}
               onchange={(v) => setGrouping("stack_similar", v)}
-              ariaLabel="Stack similar"
+              ariaLabel={$t("s.notif.stackSimilar")}
             />
           {/snippet}
         </Row>
-        <Row label="Auto-collapse after" id="auto-collapse">
+        <Row label={$t("s.notif.autoCollapse")} id="auto-collapse">
           {#snippet control()}
             <ValueSlider
               value={grouping.auto_collapse_after ?? 3}
@@ -557,7 +562,7 @@
               max={10}
               step={1}
               unit=""
-              ariaLabel="Auto-collapse after"
+              ariaLabel={$t("s.notif.autoCollapse")}
               onchange={(v) => setGrouping("auto_collapse_after", v)}
             />
           {/snippet}
@@ -565,17 +570,17 @@
       </Section>
 
       <!-- ── HISTORY ────────────────────────────────── -->
-      <Section label="History">
-        <Row label="Keep history" id="history-enabled">
+      <Section label={$t("s.notif.history")}>
+        <Row label={$t("s.notif.keepHistory")} id="history-enabled">
           {#snippet control()}
             <Switch
               value={history.enabled ?? true}
               onchange={(v) => setHistory("enabled", v)}
-              ariaLabel="Keep history"
+              ariaLabel={$t("s.notif.keepHistory")}
             />
           {/snippet}
         </Row>
-        <Row label="Maximum age" id="history-max-age">
+        <Row label={$t("s.notif.maxAge")} id="history-max-age">
           {#snippet control()}
             <ValueSlider
               value={history.max_age_days ?? 30}
@@ -583,12 +588,12 @@
               max={90}
               step={1}
               unit=" days"
-              ariaLabel="Maximum age"
+              ariaLabel={$t("s.notif.maxAge")}
               onchange={(v) => setHistory("max_age_days", v)}
             />
           {/snippet}
         </Row>
-        <Row label="Maximum count" id="history-max-count">
+        <Row label={$t("s.notif.maxCount")} id="history-max-count">
           {#snippet control()}
             <ValueSlider
               value={history.max_count ?? 1000}
@@ -596,30 +601,30 @@
               max={5000}
               step={100}
               unit=""
-              ariaLabel="Maximum count"
+              ariaLabel={$t("s.notif.maxCount")}
               onchange={(v) => setHistory("max_count", v)}
             />
           {/snippet}
         </Row>
-        <Row label="Clear all history">
+        <Row label={$t("s.notif.clearHistory")}>
           {#snippet control()}
             <Button variant="destructive" size="sm" onclick={clearHistory}>
               <Trash2 size={12} strokeWidth={2.25} />
-              {confirmingClear ? "Click again to confirm" : "Clear history"}
+              {confirmingClear ? $t("s.notif.confirmAgain") : $t("s.notif.clearHistoryBtn")}
             </Button>
           {/snippet}
         </Row>
       </Section>
 
       <!-- ── PER-APP ────────────────────────────────── -->
-      <Section label="Per-App Rules">
+      <Section label={$t("s.notif.perApp")}>
         <div class="apps-section">
           <div class="apps-toolbar">
-            <Input placeholder="Filter rules…" bind:value={appFilter} />
+            <Input placeholder={$t("s.notif.filterRules")} bind:value={appFilter} />
             <AppPicker
               knownApps={knownAppsForPicker}
               excluded={appNames}
-              placeholder="Add rule for app..."
+              placeholder={$t("s.notif.addRule")}
               onpick={addAppRule}
             />
           </div>
