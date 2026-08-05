@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Appearance landing: the 80%-user hub. Pick a theme, nudge the two or three
   /// high-leverage knobs, step into the six deep pages for full control, and see
   /// everything you have changed in one place. The quick knobs write the SAME
@@ -81,66 +82,66 @@
 </script>
 
 <Page
-  title="Appearance"
-  description="Pick a theme, adjust the essentials, or step into the full controls. Everything you change layers on top of the theme, and you can reset it any time."
+  title={$t("s.appr.title")}
+  description={$t("s.appr.desc")}
 >
   <SectionGrid>
-    <div class="theme-label span-full">Theme</div>
+    <div class="theme-label span-full">{$t("s.appr.theme")}</div>
     <div class="grid span-full">
-      {#each $themes as t (t.id)}
-        {@const active = t.id === $activeThemeId}
-        <button type="button" class="theme-card" class:active aria-pressed={active} onclick={() => setActiveTheme(t.id)}>
-          <span class="preview" style={`background:${t.swatch[0]}`} aria-hidden="true">
-            <span class="pv-window" style={`background:${t.swatch[1]}`}>
-              <span class="pv-accent" style={`background:${t.swatch[2]}`}></span>
+      {#each $themes as theme (theme.id)}
+        {@const active = theme.id === $activeThemeId}
+        <button type="button" class="theme-card" class:active aria-pressed={active} onclick={() => setActiveTheme(theme.id)}>
+          <span class="preview" style={`background:${theme.swatch[0]}`} aria-hidden="true">
+            <span class="pv-window" style={`background:${theme.swatch[1]}`}>
+              <span class="pv-accent" style={`background:${theme.swatch[2]}`}></span>
               <span class="pv-dots">
-                <span class="pv-dot" style={`background:${t.swatch[4]}`}></span>
-                <span class="pv-dot" style={`background:${t.swatch[3]}`}></span>
+                <span class="pv-dot" style={`background:${theme.swatch[4]}`}></span>
+                <span class="pv-dot" style={`background:${theme.swatch[3]}`}></span>
               </span>
             </span>
           </span>
           <span class="card-foot">
-            <span class="name">{t.name}</span>
-            {#if active}<span class="active-mark"><Check size={13} strokeWidth={2.5} /> Active</span>{/if}
+            <span class="name">{theme.name}</span>
+            {#if active}<span class="active-mark"><Check size={13} strokeWidth={2.5} /> {$t("s.appr.active")}</span>{/if}
           </span>
         </button>
       {/each}
     </div>
     <div class="actions span-full">
       <Button variant="ghost" class="justify-start gap-2 px-3 font-normal text-muted-foreground hover:text-foreground" onclick={() => installThemeFile()}>
-        <Upload size={15} strokeWidth={1.75} /> Install a theme file…
+        <Upload size={15} strokeWidth={1.75} /> {$t("s.appr.install")}
       </Button>
       <Button variant="ghost" class="justify-start gap-2 px-3 font-normal text-muted-foreground hover:text-foreground" onclick={() => importScheme("base16")}>
-        <Sparkles size={15} strokeWidth={1.75} /> Import a scheme
+        <Sparkles size={15} strokeWidth={1.75} /> {$t("s.appr.import")}
       </Button>
       <Button variant="ghost" class="justify-start gap-2 px-3 font-normal text-muted-foreground hover:text-foreground" onclick={() => exportTheme()}>
-        <Download size={15} strokeWidth={1.75} /> Export current theme
+        <Download size={15} strokeWidth={1.75} /> {$t("s.appr.export")}
       </Button>
     </div>
 
-    <Section label="Quick adjustments" class="span-full">
-      <OverrideRow label="Accent" hint="The primary highlight colour" overridden={isColOv($coloursOv, "accent")} onreset={() => resetColorOverride("accent")} id="quick-accent">
+    <Section label={$t("s.appr.quick")} class="span-full">
+      <OverrideRow label={$t("s.appr.accent")} hint={$t("s.appr.accentHint")} overridden={isColOv($coloursOv, "accent")} onreset={() => resetColorOverride("accent")} id="quick-accent">
         {#snippet control()}
           <span class="cf">
-            <label class="cf-swatch" style={`background:${accent}`} title="Pick an accent">
-              <input type="color" value={accent} oninput={(e) => setColorOverride("accent", e.currentTarget.value)} aria-label="Accent colour" />
+            <label class="cf-swatch" style={`background:${accent}`} title={$t("s.appr.pickAccent")}>
+              <input type="color" value={accent} oninput={(e) => setColorOverride("accent", e.currentTarget.value)} aria-label={$t("s.appr.accentColour")} />
             </label>
           </span>
         {/snippet}
       </OverrideRow>
-      <OverrideRow label="Roundness" hint="How rounded corners are" overridden={isGeomOv($geomOv, "intensity")} onreset={() => resetGeom("intensity")} id="quick-roundness">
+      <OverrideRow label={$t("s.appr.round")} hint={$t("s.appr.roundHint")} overridden={isGeomOv($geomOv, "intensity")} onreset={() => resetGeom("intensity")} id="quick-roundness">
         {#snippet control()}
-          <ValueSlider value={roundness} min={0} max={200} step={5} unit="%" ariaLabel="Roundness" onchange={(v) => setGeom("intensity", v / 100)} />
+          <ValueSlider value={roundness} min={0} max={200} step={5} unit="%" ariaLabel={$t("s.appr.round")} onchange={(v) => setGeom("intensity", v / 100)} />
         {/snippet}
       </OverrideRow>
-      <OverrideRow label="Text size" hint="The base text size" overridden={isTypoOv($typoOv, "sizeBase")} onreset={() => resetTypo("sizeBase")} id="quick-textsize">
+      <OverrideRow label={$t("s.appr.textSize")} hint={$t("s.appr.textSizeHint")} overridden={isTypoOv($typoOv, "sizeBase")} onreset={() => resetTypo("sizeBase")} id="quick-textsize">
         {#snippet control()}
-          <ValueSlider value={textSize} min={12} max={18} step={1} unit="px" ariaLabel="Text size" onchange={(v) => setTypo("sizeBase", v)} />
+          <ValueSlider value={textSize} min={12} max={18} step={1} unit="px" ariaLabel={$t("s.appr.textSize")} onchange={(v) => setTypo("sizeBase", v)} />
         {/snippet}
       </OverrideRow>
     </Section>
 
-    <div class="cust-label span-full">Customise</div>
+    <div class="cust-label span-full">{$t("s.appr.customise")}</div>
     <div class="cust-grid span-full">
       {#each CUSTOMISE as c (c.href)}
         {@const Icon = c.icon}
@@ -150,21 +151,21 @@
       {/each}
     </div>
 
-    <Section label="My customisations" class="span-full">
+    <Section label={$t("s.appr.mine")} class="span-full">
       {#if $overrideSummary.total === 0}
-        <p class="empty">Nothing changed yet. This lists everything you set on top of the theme.</p>
+        <p class="empty">{$t("s.appr.empty")}</p>
       {:else}
         {#each $overrideSummary.pages.filter((p) => p.count > 0) as p (p.key)}
-          <Row label={p.label} description={`${p.count} change${p.count === 1 ? "" : "s"}`} id={`custo-${p.key}`}>
+          <Row label={p.label} description={$t("s.appr.changeCount", { count: p.count })} id={`custo-${p.key}`}>
             {#snippet control()}
-              <Button variant="outline" size="sm" onclick={() => goto(p.href)}>Review</Button>
+              <Button variant="outline" size="sm" onclick={() => goto(p.href)}>{$t("s.appr.review")}</Button>
             {/snippet}
           </Row>
         {/each}
         <div class="reset-all">
-          <span class="reset-total">{$overrideSummary.total} change{$overrideSummary.total === 1 ? "" : "s"} in all</span>
+          <span class="reset-total">{$t("s.appr.totalCount", { count: $overrideSummary.total })}</span>
           <Button variant="outline" size="sm" onclick={() => resetAll()}>
-            <RotateCcw size={13} strokeWidth={2} /> Reset all
+            <RotateCcw size={13} strokeWidth={2} /> {$t("s.appr.resetAll")}
           </Button>
         </div>
       {/if}
