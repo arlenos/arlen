@@ -60,7 +60,7 @@ fn declared_ceiling_json(token: &CapabilityToken) -> String {
 /// update. Marks the app's prior non-revoked Grant nodes superseded (a fresher
 /// mint replaces them; a revoked node stays terminal). The new node is born
 /// `live`; the restart sweep and `permission.changed` move it stale later.
-pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Result<()> {
+pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Result<bool> {
     let ceiling = declared_ceiling_json(token);
     let id = token_grant_id(token, &ceiling);
     let id_esc = escape_cypher(&id);
@@ -68,6 +68,17 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
     let issued = time::dt_to_micros(&token.issued_at);
     let expires = token.expires_at.as_ref().map(time::dt_to_micros).unwrap_or(0);
     let ceiling_esc = escape_cypher(&ceiling);
+
+    // Whether this reach is NEW for this process, read before the projection
+    // writes it. The caller audits an issuance on a new or changed grant and
+    // stays quiet on a repeat: a token is minted per write request, so auditing
+    // every mint would fill an append-only ledger with identical entries for one
+    // unchanged grant. A point lookup on the primary key, on the same serial
+    // graph thread as the transaction that follows it.
+    let existing = graph
+        .query_rows(format!("MATCH (g:Grant {{id: '{id_esc}'}}) RETURN g.id"))
+        .await?;
+    let is_new = existing.rows.is_empty();
 
     // The whole projection runs as ONE transaction, so a mid-emit failure rolls
     // back rather than leaving a partial projection (a Grant with no reach edges,
@@ -125,7 +136,8 @@ pub async fn emit_grant_node(graph: &GraphHandle, token: &CapabilityToken) -> Re
         crate::cypher::match_node_by_field("g", "Grant", "app_id", &token.app_id)
     ));
 
-    graph.transaction(stmts).await
+    graph.transaction(stmts).await?;
+    Ok(is_new)
 }
 
 /// Persist (MERGE) a consent grant into the SHARED LCG Grant node (system-dialog-
@@ -190,6 +202,16 @@ pub async fn persist_consent_grant(
         ),
     ];
     graph.transaction(stmts).await
+}
+
+/// A short, content-free summary of what a token reaches, for the audit record's
+/// outcome field: the count of entity types it can touch and its instance scope.
+/// Type NAMES are authority metadata and already ride on the Grant node, but the
+/// ledger entry keeps to a shape so an issuance record can never become a place
+/// user content leaks through.
+pub fn reach_summary(token: &CapabilityToken) -> String {
+    let types = reachable_types(token).len();
+    format!("granted:{types}-types:{:?}", token.instance_scope).to_lowercase()
 }
 
 /// The deterministic id for a capability-token grant: one node per
@@ -640,6 +662,32 @@ mod tests {
     /// The Grant node a token projects onto - derived, not the token's own id.
     fn node_id(token: &CapabilityToken) -> String {
         token_grant_id(token, &declared_ceiling_json(token))
+    }
+
+    /// The signal the audit wiring keys on. Granting had no ledger entry at all
+    /// until now, but a token is minted per write request, so the record has to
+    /// be "this app gained a reach", not "this app made a request" - otherwise an
+    /// append-only ledger that never prunes fills with identical entries.
+    #[tokio::test]
+    async fn only_a_new_or_changed_reach_reports_an_issuance() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        let token = token_for("com.x", &["system.File"]);
+        assert!(emit_grant_node(&graph, &token).await.unwrap(), "first is an issuance");
+        for _ in 0..3 {
+            let repeat = token_for("com.x", &["system.File"]);
+            assert!(
+                !emit_grant_node(&graph, &repeat).await.unwrap(),
+                "a reach the process already holds is not a new issuance"
+            );
+        }
+
+        let wider = token_for("com.x", &["system.File", "system.Project"]);
+        assert!(
+            emit_grant_node(&graph, &wider).await.unwrap(),
+            "gaining a reach is an issuance again"
+        );
     }
 
     /// The reason the node id is derived at all: a process that keeps holding the
