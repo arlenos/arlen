@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Card showing a single discovered module.
   /// Expandable: collapsed shows icon + name + toggle; expanded shows
   /// description, badges, warnings and the uninstall button.
@@ -59,12 +60,15 @@
             <span class="version">v{module.version}</span>
           {/if}
           {#if module.source === "builtin"}
-            <span class="badge builtin">Built-in</span>
+            <span class="badge builtin">{$t("s.mod.builtin")}</span>
           {:else if module.source === "system"}
-            <span class="badge system">System</span>
+            <span class="badge system">{$t("s.mod.system")}</span>
           {:else}
-            <span class="badge">User</span>
+            <span class="badge">{$t("s.mod.user")}</span>
           {/if}
+          <!-- The three badges below name Arlen's extension points, which is what a
+               module manifest declares them as. They read the same in any UI language,
+               like a product name. -->
           {#if module.hasWaypointer}
             <span class="badge ext"><Search size={9} strokeWidth={2.5} /> Waypointer</span>
           {/if}
@@ -91,16 +95,16 @@
       {#if module.description}
         <p class="desc">{module.description}</p>
       {:else}
-        <p class="desc muted">No description provided.</p>
+        <p class="desc muted">{$t("s.mod.noDescription")}</p>
       {/if}
 
       <div class="rows">
         <div class="row">
-          <span class="row-label">ID</span>
+          <span class="row-label">{$t("s.mod.id")}</span>
           <span class="row-value mono">{module.id}</span>
         </div>
         <div class="row">
-          <span class="row-label">Trust level</span>
+          <span class="row-label">{$t("s.mod.trustLevel")}</span>
           <span class="row-value">{module.moduleType}</span>
         </div>
         <div class="row">
