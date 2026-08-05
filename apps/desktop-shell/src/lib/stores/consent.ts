@@ -121,12 +121,26 @@ export async function pollConsent(): Promise<void> {
 }
 
 /// Answer the request and clear it. Live: `consent_resolve`.
+///
+/// The optimistic clear makes the dialog feel instant, but it also means a
+/// FAILED resolve is invisible: the request is still pending in the broker, the
+/// next poll fetches it again, and the dialog reappears looking like it was never
+/// answered. That is precisely the boot symptom - a dialog that "stands" while the
+/// broker logs a queued request and no verdict - and swallowing the error is what
+/// made it undiagnosable. It is logged now, with the id and the reason, so the
+/// journal says whether the click reached the broker and what it answered.
+///
+/// The error is still not surfaced to the user, because there is nothing useful
+/// for them to do with it and the reappearing dialog is itself the signal that
+/// the answer did not take.
 export async function resolve(id: number, outcome: ConsentOutcome): Promise<void> {
   current.set(null);
   try {
     await invoke("consent_resolve", { id, outcome });
-  } catch {
-    // No broker under vite: the optimistic clear stands.
+  } catch (e) {
+    // Under vite there is no broker and this is expected; on a real session it
+    // means the answer did not reach the broker.
+    console.error(`[consent] resolve failed for id=${id} outcome=${outcome}:`, e);
   }
 }
 
