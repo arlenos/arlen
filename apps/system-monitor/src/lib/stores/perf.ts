@@ -12,13 +12,17 @@ import { writable } from "svelte/store";
 /// A monitored device.
 export type Device = "cpu" | "memory" | "disk" | "network" | "ai";
 
-/// The devices, in list order, with their axis scale.
+/// The devices, in list order, with their axis scale. `label` is a message KEY,
+/// resolved with `$t` where it renders: a module-level constant captures whatever
+/// the translator held at import, so the names would never follow a locale switch.
+/// The first four reuse the process table's column keys rather than duplicating
+/// the same four words in a second place.
 export const DEVICES: { key: Device; label: string; max: number }[] = [
-  { key: "cpu", label: "CPU", max: 100 },
-  { key: "memory", label: "Memory", max: 100 },
-  { key: "disk", label: "Disk", max: 200 },
-  { key: "network", label: "Network", max: 100 },
-  { key: "ai", label: "AI compute", max: 120 },
+  { key: "cpu", label: "tm.col.cpu", max: 100 },
+  { key: "memory", label: "tm.col.memory", max: 100 },
+  { key: "disk", label: "tm.col.disk", max: 200 },
+  { key: "network", label: "tm.col.network", max: 100 },
+  { key: "ai", label: "tm.dev.ai", max: 120 },
 ];
 
 const CAP = 60;

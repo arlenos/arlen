@@ -22,7 +22,7 @@
         onclick={() => (selected = d.key)}
       >
         <div class="dev-info">
-          <span class="dev-name">{d.label}</span>
+          <span class="dev-name">{$t(d.label)}</span>
           <span class="dev-val">{$stats[d.key].value}</span>
         </div>
         <div class="dev-spark">
@@ -34,7 +34,7 @@
 
   <div class="main">
     <div class="main-head">
-      <h2 class="main-title">{sel.label}</h2>
+      <h2 class="main-title">{$t(sel.label)}</h2>
       <span class="main-val">{$stats[selected].value}</span>
     </div>
     <div class="main-graph">
