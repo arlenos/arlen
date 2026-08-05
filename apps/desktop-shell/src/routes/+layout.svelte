@@ -40,6 +40,17 @@
   import WindowHeader from "$lib/components/WindowHeader.svelte";
   import BluetoothPairingDialog from "$lib/components/BluetoothPairingDialog.svelte";
   import ConsentDialog from "$lib/components/ConsentDialog.svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+
+  // Which window this document is. Under vite there is no Tauri host and the call
+  // throws, so the surfaces render for screenshots exactly as before.
+  const isMainWindow = (() => {
+    try {
+      return getCurrentWindow().label === "main";
+    } catch {
+      return true;
+    }
+  })();
   import SourcePicker from "$lib/components/SourcePicker.svelte";
   import WindowsFileDialog from "$lib/components/WindowsFileDialog.svelte";
   import PrintDialog from "$lib/components/PrintDialog.svelte";
@@ -171,7 +182,18 @@
 <ZoomToolbar />
 <WindowHeader />
 <BluetoothPairingDialog />
-<ConsentDialog />
+<!-- One window, not every window. There is a single root layout and no route of
+     its own for the waypointer, so every shell window - the bar, one extra bar per
+     additional output, and the fullscreen waypointer - was mounting the consent
+     dialog, polling the broker each second and rendering its own copy of the card.
+     A boot showed the same request answered twice, once per window, and the hidden
+     window's card then sat in its DOM for good. A system-modal request belongs to
+     exactly one surface.
+     The sibling modals below have the same shape and are NOT yet narrowed; that is
+     a follow-up, kept separate so this boot stays attributable. -->
+{#if isMainWindow}
+  <ConsentDialog />
+{/if}
 <SourcePicker />
 <WindowsFileDialog />
 <PrintDialog />

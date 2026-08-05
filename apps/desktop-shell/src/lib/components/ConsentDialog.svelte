@@ -87,8 +87,13 @@
         if (el) el.style.visibility = "hidden";
       }
       // Two frames, so the hidden state is painted and reaches the screen before
-      // the node it belongs to stops existing.
-      requestAnimationFrame(() => requestAnimationFrame(() => { view = null; }));
+      // the node it belongs to stops existing. A window that is not animating can
+      // have its frame callbacks throttled indefinitely, which would strand the
+      // node mounted for good, so a timer finishes the job if the frames do not.
+      let done = false;
+      const finish = () => { if (!done) { done = true; view = null; } };
+      requestAnimationFrame(() => requestAnimationFrame(finish));
+      setTimeout(finish, 200);
     };
     const card = document.querySelector(".arlen-consent-card");
     card?.addEventListener("animationend", drop, { once: true });
