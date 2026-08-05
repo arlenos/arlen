@@ -85,15 +85,14 @@
   {#if modifiedCount > 0}
     <div class="header-actions span-full">
       <span class="modified-badge">
-        {modifiedCount}
-        {modifiedCount === 1 ? "override" : "overrides"} active
+        {$t("s.sysact.overrideCount", { count: modifiedCount })}
       </span>
       <Button
         variant="ghost"
         size="sm"
         onclick={() => (resetAllOpen = true)}
       >
-        Reset all to defaults
+        {$t("s.sysact.resetAll")}
       </Button>
     </div>
   {/if}
@@ -120,6 +119,10 @@
     </Section>
   {/each}
 
+  <!-- The sentence below is left hardcoded: it wraps literal tokens in <code>,
+       and one whole message cannot carry that markup, so translating it would
+       lose the monospace. Second instance of the same open question as the
+       notifications timestamp - see `coder-reports.md`. -->
   <div class="footer-note span-full">
     <strong>{$t("s.sysact.grammar")}</strong>
     <code>shell:event_name</code> dispatches a shell-overlay event

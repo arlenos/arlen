@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Workspaces & Tiling settings page (Sprint B).
   ///
   /// Configures `compositor.toml [workspaces]` and `[layout]` via
@@ -101,31 +102,31 @@
 </script>
 
 <Page
-  title="Workspaces & Tiling"
-  description="Workspace layout direction, default tiling gaps, and per-app window rules."
+  title={$t("s.ws.title")}
+  description={$t("s.ws.desc")}
 >
   <SectionGrid>
-    <Section label="Workspace Layout">
+    <Section label={$t("s.ws.layout")}>
     <Row
-      label="Layout direction"
-      description="Vertical stacks workspaces top-to-bottom; Horizontal arranges them left-to-right."
+      label={$t("s.ws.direction")}
+      description={$t("s.ws.directionDesc")}
       id="workspace-layout"
     >
       {#snippet control()}
         <PopoverSelect
           value={workspaceLayout}
           options={LAYOUT_OPTIONS}
-          ariaLabel="Workspace layout"
+          ariaLabel={$t("s.ws.layoutAria")}
           onchange={setWorkspaceLayout}
         />
       {/snippet}
     </Row>
   </Section>
 
-  <Section label="Tiling">
+  <Section label={$t("s.ws.tiling")}>
     <Row
-      label="Inner gap"
-      description="Pixels between adjacent tiled windows."
+      label={$t("s.ws.innerGap")}
+      description={$t("s.ws.innerGapDesc")}
       id="inner-gap"
     >
       {#snippet control()}
@@ -135,15 +136,15 @@
           max={32}
           step={1}
           unit="px"
-          ariaLabel="Inner gap"
+          ariaLabel={$t("s.ws.innerGap")}
           onchange={setInnerGap}
         />
       {/snippet}
     </Row>
 
     <Row
-      label="Outer gap"
-      description="Pixels between tiled windows and the screen edge."
+      label={$t("s.ws.outerGap")}
+      description={$t("s.ws.outerGapDesc")}
       id="outer-gap"
     >
       {#snippet control()}
@@ -153,51 +154,50 @@
           max={32}
           step={1}
           unit="px"
-          ariaLabel="Outer gap"
+          ariaLabel={$t("s.ws.outerGap")}
           onchange={setOuterGap}
         />
       {/snippet}
     </Row>
 
     <Row
-      label="Smart gaps"
-      description="Hide gaps when only one window is tiled on a workspace."
+      label={$t("s.ws.smartGaps")}
+      description={$t("s.ws.smartGapsDesc")}
       id="smart-gaps"
     >
       {#snippet control()}
         <Switch
           value={smartGaps}
-          ariaLabel="Smart gaps"
+          ariaLabel={$t("s.ws.smartGaps")}
           onchange={setSmartGaps}
         />
       {/snippet}
     </Row>
 
     <Row
-      label="Tiled window headers"
-      description="Show window-control headers on single tiled windows. Off matches i3/sway/hyprland convention; stacks always keep their tab-bar header."
+      label={$t("s.ws.headers")}
+      description={$t("s.ws.headersDesc")}
       id="tiled-headers"
     >
       {#snippet control()}
         <Switch
           value={tiledHeaders}
-          ariaLabel="Tiled window headers"
+          ariaLabel={$t("s.ws.headers")}
           onchange={setTiledHeaders}
         />
       {/snippet}
     </Row>
   </Section>
 
-  <Section label="Window Rules">
+  <Section label={$t("s.ws.rules")}>
     <Row
-      label="Per-app rules"
-      description="Force specific apps to float or tile based on app_id, title, or window type. Patterns are regular expressions."
+      label={$t("s.ws.perApp")}
+      description={$t("s.ws.perAppDesc")}
       id="window-rules"
     >
       {#snippet control()}
         <span class="rule-count">
-          {windowRules.length}
-          {windowRules.length === 1 ? "rule" : "rules"}
+          {$t("s.ws.ruleCount", { count: windowRules.length })}
         </span>
       {/snippet}
     </Row>
