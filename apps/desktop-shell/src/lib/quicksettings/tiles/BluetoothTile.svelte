@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// QS tile: Bluetooth adapter + connected device.
   ///
   /// Single-click toggles the adapter on/off. Right-click opens the
@@ -64,7 +65,7 @@
 
 {#if state.available}
   <BaseTile
-    label="Bluetooth"
+    label={$t("sh.tile.bluetooth")}
     statusText={subtitle}
     active={state.powered}
     onclick={handleClick}

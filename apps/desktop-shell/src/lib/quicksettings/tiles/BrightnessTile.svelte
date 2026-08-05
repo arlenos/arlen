@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// QS tile: Display brightness slider.
   ///
   /// Reads the live hardware fraction on mount, listens for the
@@ -62,7 +63,7 @@
 
 {#if supported}
   <SliderTile
-    label="Brightness"
+    label={$t("sh.tile.brightness")}
     value={percent}
     min={0}
     max={100}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// QS tile: WiFi / Cable / Airplane status.
   ///
   /// Single-click toggles WiFi on/off (the most likely action for
@@ -75,7 +76,7 @@
 </script>
 
 <BaseTile
-  label="Network"
+  label={$t("sh.tile.network")}
   statusText={subtitle}
   {active}
   onclick={handleClick}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// QS tile: Do Not Disturb toggle.
   ///
   /// Toggles `dnd_mode` between `off` and `on` via the notifications
@@ -26,7 +27,7 @@
 </script>
 
 <BaseTile
-  label="Do Not Disturb"
+  label={$t("sh.tile.dnd")}
   statusText={subtitle}
   active={$dndState.mode !== "off"}
   onclick={handleClick}

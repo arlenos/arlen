@@ -311,6 +311,24 @@ const messages: Catalogs = {
     "sh.hdr.minimize": "Minimize",
     "sh.hdr.maximize": "Maximize",
     "sh.hdr.close": "Close",
+
+    // Quick Settings tiles
+    "sh.tile.airplane": "Airplane Mode",
+    "sh.tile.sound": "Sound",
+    "sh.tile.muteHint": "Toggle mute (right-click for output picker)",
+    "sh.tile.bluetooth": "Bluetooth",
+    "sh.tile.brightness": "Brightness",
+    "sh.tile.dnd": "Do Not Disturb",
+    "sh.tile.knowledge": "Knowledge",
+    "sh.tile.network": "Network",
+
+    // Top-bar status badges
+    "sh.badge.airplane": "Airplane Mode. Click to disable.",
+    "sh.badge.caffeine": "Caffeine on. Click to disable.",
+    "sh.badge.nightLight": "Night Light on. Click to disable.",
+    "sh.badge.recording": "Recording in progress. Click to stop.",
+    "sh.badge.dictating": "Dictating",
+    "sh.badge.dictatingInto": "Dictating into {$target}. Click to stop.",
   },
   de: {
     "sh.net.title": "Netzwerk",
@@ -583,6 +601,22 @@ const messages: Catalogs = {
     "sh.hdr.minimize": "Minimieren",
     "sh.hdr.maximize": "Maximieren",
     "sh.hdr.close": "Schlie\u00dfen",
+
+    "sh.tile.airplane": "Flugmodus",
+    "sh.tile.sound": "Ton",
+    "sh.tile.muteHint": "Stummschalten umschalten (Rechtsklick f\u00fcr die Ausgabewahl)",
+    "sh.tile.bluetooth": "Bluetooth",
+    "sh.tile.brightness": "Helligkeit",
+    "sh.tile.dnd": "Nicht st\u00f6ren",
+    "sh.tile.knowledge": "Wissen",
+    "sh.tile.network": "Netzwerk",
+
+    "sh.badge.airplane": "Flugmodus. Zum Abschalten klicken.",
+    "sh.badge.caffeine": "Wachhalten ist an. Zum Abschalten klicken.",
+    "sh.badge.nightLight": "Nachtlicht ist an. Zum Abschalten klicken.",
+    "sh.badge.recording": "Aufnahme l\u00e4uft. Zum Stoppen klicken.",
+    "sh.badge.dictating": "Diktiert",
+    "sh.badge.dictatingInto": "Diktiert in {$target}. Zum Stoppen klicken.",
   },
 };
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// QS tile: Output volume slider + secondary tap to AudioPopover.
   ///
   /// Slider is inline. The leading icon button opens the existing
@@ -68,7 +69,7 @@
 
 <div class="audio-tile-wrap">
   <SliderTile
-    label="Sound"
+    label={$t("sh.tile.sound")}
     statusText={subtitle}
     value={sliderValue}
     min={0}
@@ -85,7 +86,7 @@
           e.stopPropagation();
           toggleMute();
         }}
-        title="Toggle mute (right-click for output picker)"
+        title={$t("sh.tile.muteHint")}
       >
         {#if status.muted || status.volume === 0}
           <VolumeX size={16} strokeWidth={1.75} />

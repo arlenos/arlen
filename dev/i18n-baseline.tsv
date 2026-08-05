@@ -1,7 +1,3 @@
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Digits entered on device
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	PIN
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	PIN code
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Passkey
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Enter
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Esc
@@ -19,30 +15,14 @@ apps/desktop-shell/src/lib/components/TopBar.svelte	Switch project
 apps/desktop-shell/src/lib/components/TrayPopover.svelte	Background Apps
 apps/desktop-shell/src/lib/components/TrayPopover.svelte	Loading...
 apps/desktop-shell/src/lib/components/TrayPopover.svelte	No background apps
-apps/desktop-shell/src/lib/components/WindowHeader.svelte	Close
-apps/desktop-shell/src/lib/components/WindowHeader.svelte	Maximize
-apps/desktop-shell/src/lib/components/WindowHeader.svelte	Minimize
-apps/desktop-shell/src/lib/components/WindowHeader.svelte	Window tabs
 apps/desktop-shell/src/lib/components/settings/PermissionScope.svelte	None
 apps/desktop-shell/src/lib/components/shared/PopoverHeader.svelte	Settings
-apps/desktop-shell/src/lib/components/topbar/badges/AirplaneBadge.svelte	Airplane Mode. Click to disable.
-apps/desktop-shell/src/lib/components/topbar/badges/CaffeineBadge.svelte	Caffeine on. Click to disable.
-apps/desktop-shell/src/lib/components/topbar/badges/NightLightBadge.svelte	Night Light on. Click to disable.
-apps/desktop-shell/src/lib/components/topbar/badges/RecordingBadge.svelte	Recording in progress. Click to stop.
 apps/desktop-shell/src/lib/components/waypointer/WaypointerInlinePreview.svelte	Copy
 apps/desktop-shell/src/lib/components/workspace/IndicatorStrip.svelte	Workspaces
 apps/desktop-shell/src/lib/components/workspace/WorkspaceColumn.svelte	Minimized
 apps/desktop-shell/src/lib/components/workspace/WorkspaceColumn.svelte	No open windows
 apps/desktop-shell/src/lib/components/workspace/WorkspaceOverlay.svelte	Workspace overview
 apps/desktop-shell/src/lib/modules/SandboxedModuleHost.svelte	Module failed; click to retry
-apps/desktop-shell/src/lib/quicksettings/tiles/AirplaneTile.svelte	Airplane Mode
-apps/desktop-shell/src/lib/quicksettings/tiles/AudioTile.svelte	Sound
-apps/desktop-shell/src/lib/quicksettings/tiles/AudioTile.svelte	Toggle mute (right-click for output picker)
-apps/desktop-shell/src/lib/quicksettings/tiles/BluetoothTile.svelte	Bluetooth
-apps/desktop-shell/src/lib/quicksettings/tiles/BrightnessTile.svelte	Brightness
-apps/desktop-shell/src/lib/quicksettings/tiles/DndTile.svelte	Do Not Disturb
-apps/desktop-shell/src/lib/quicksettings/tiles/KnowledgeTile.svelte	Knowledge
-apps/desktop-shell/src/lib/quicksettings/tiles/NetworkTile.svelte	Network
 apps/files/src/routes/+page.svelte	Ctrl+C
 apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X

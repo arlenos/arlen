@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Top-bar Recording badge.
   ///
   /// Visible only while a screen recording is in progress. Renders
@@ -63,7 +64,7 @@
   active={active}
   pulsate
   label={label}
-  title="Recording in progress. Click to stop."
+  title={$t("sh.badge.recording")}
   onclick={handleClick}
 >
   {#snippet icon()}

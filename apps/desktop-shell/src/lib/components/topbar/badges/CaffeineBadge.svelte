@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Top-bar Caffeine badge.
   ///
   /// Visible only while caffeine is on. Click toggles via the
@@ -34,7 +35,7 @@
 <StatusBadge
   visible={active}
   active={active}
-  title="Caffeine on. Click to disable."
+  title={$t("sh.badge.caffeine")}
   onclick={handleClick}
 >
   {#snippet icon()}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// QS tile: Airplane Mode (rfkill).
   ///
   /// rfkill blocks/unblocks all radios in one go. Toggling here also
@@ -34,7 +35,7 @@
 </script>
 
 <BaseTile
-  label="Airplane Mode"
+  label={$t("sh.tile.airplane")}
   statusText={on ? "Radios off" : "Available"}
   active={on}
   onclick={handleClick}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// QS tile: Knowledge Graph activity sparkline.
   ///
   /// 1×1 tile next to the Project tile. Renders a small inline SVG
@@ -97,7 +98,7 @@
 </script>
 
 <div class="kg-tile-wrap">
-  <BaseTile label="Knowledge" active={hasData} onclick={openSettings}>
+  <BaseTile label={$t("sh.tile.knowledge")} active={hasData} onclick={openSettings}>
     {#snippet icon()}
       <Brain size={16} strokeWidth={1.75} />
     {/snippet}
