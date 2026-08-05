@@ -63,6 +63,7 @@
         <button
           class="sr-col sr-col-{col.key}"
           role="columnheader"
+          aria-label={$t(col.labelKey)}
           onclick={() => setSearchSort(col.key)}
           aria-sort={$searchSortKey === col.key
             ? $searchAscending

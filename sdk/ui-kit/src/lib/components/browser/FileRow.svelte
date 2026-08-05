@@ -123,6 +123,7 @@
   class:hidden-entry={entry.is_hidden}
   role="row"
   tabindex={-1}
+  aria-label={entry.name}
   aria-selected={selected}
   onclick={onrowclick}
   ondblclick={onrowdblclick}
