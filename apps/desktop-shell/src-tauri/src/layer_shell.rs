@@ -111,7 +111,15 @@ pub fn init(window: tauri::WebviewWindow) -> Result<(), tauri::Error> {
                 // to the default operator so the children blend normally.
                 {
                     use gtk::cairo::Operator;
+                    use std::sync::atomic::{AtomicBool, Ordering};
+                    // Say so once. A clear that never runs and a clear that runs
+                    // and does not help look identical from outside, and only one
+                    // of them says the hypothesis is wrong.
+                    static ANNOUNCED: AtomicBool = AtomicBool::new(false);
                     gtk_window.connect_draw(|_, cr| {
+                        if !ANNOUNCED.swap(true, Ordering::Relaxed) {
+                            log::info!("layer_shell: window clear handler is running");
+                        }
                         cr.set_operator(Operator::Source);
                         cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
                         let _ = cr.paint();
