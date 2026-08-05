@@ -451,12 +451,27 @@ pub fn answer(catalog: &Catalog, request: Request) -> Response {
         },
         Request::Install { id, variant } => match catalog.card(&id) {
             Some(card) if card.variants.iter().any(|v| v.layer == variant) => {
-                let install_handle = card
+                match card
                     .variants
                     .iter()
                     .find(|v| v.layer == variant)
-                    .and_then(|v| v.install_handle.clone());
-                Response::InstallResolved { id, variant, install_handle }
+                    .and_then(|v| v.install_handle.clone())
+                {
+                    Some(install_handle) => Response::InstallResolved {
+                        id,
+                        variant,
+                        install_handle: Some(install_handle),
+                    },
+                    // A variant with no handle cannot be installed, so answering
+                    // with a RESOLVED response carrying nothing hands the caller a
+                    // success it then has to notice is empty. The two neighbouring
+                    // impossibilities (unknown app, no such variant) both answer
+                    // Error; this is the same kind of answer and now says so.
+                    None => Response::Error(format!(
+                        "{} has no install route from {variant:?}",
+                        id.0
+                    )),
+                }
             }
             Some(_) => Response::Error(format!("no {variant:?} variant for {}", id.0)),
             None => Response::Error(format!("unknown app: {}", id.0)),
@@ -477,6 +492,48 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
     use crate::catalog::{merge_catalog, CapabilityFootprint, CatalogEntry, DisplayMeta, ItemKind};
+
+    /// Asking to install something with no install route is refused, not resolved.
+    /// A `Response::InstallResolved` carrying `None` reads as success at every
+    /// layer above - the store app hands it straight to the frontend as an
+    /// `InstallHandoff` - and the caller only discovers the emptiness by
+    /// inspecting it.
+    #[test]
+    fn installing_a_variant_with_no_route_is_an_error_not_an_empty_success() {
+        let mut e = entry("com.example.App", SourceLayer::Native, "App", &[]);
+        e.install_handle = None;
+        let catalog = Catalog::new(merge_catalog(vec![e]));
+
+        let refused = answer(
+            &catalog,
+            Request::Install {
+                id: ComponentId("com.example.App".into()),
+                variant: SourceLayer::Native,
+            },
+        );
+        match refused {
+            Response::Error(msg) => assert!(
+                msg.contains("no install route"),
+                "the refusal should say why: {msg}"
+            ),
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+
+        // And a variant that CAN be installed still resolves, so the check is not
+        // simply refusing everything.
+        let ok = entry("com.example.Other", SourceLayer::Flatpak, "Other", &[]);
+        let catalog = Catalog::new(merge_catalog(vec![ok]));
+        assert!(matches!(
+            answer(
+                &catalog,
+                Request::Install {
+                    id: ComponentId("com.example.Other".into()),
+                    variant: SourceLayer::Flatpak,
+                },
+            ),
+            Response::InstallResolved { install_handle: Some(_), .. }
+        ));
+    }
 
     /// A distribution-installed app has no install route, so it must never appear
     /// in the update list - the store would be offering to do something it cannot.
