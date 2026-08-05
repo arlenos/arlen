@@ -15,6 +15,7 @@
   /// routine one.
   import { onMount } from "svelte";
   import { get } from "svelte/store";
+  import { invoke } from "@tauri-apps/api/core";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { AlertTriangle, Send, Trash2 } from "lucide-svelte";
@@ -40,6 +41,35 @@
     void pollConsent();
     const timer = setInterval(() => void pollConsent(), POLL_MS);
     return () => clearInterval(timer);
+  });
+
+  // Answering a request must take the card off the screen. It does in Chromium and
+  // it does not on the image, where the store clears (the shell drops its
+  // full-surface input region, which only the store's subscriber can do), the
+  // broker answers ok=true, and the card keeps painting - a webview proven live,
+  // because Quick Settings still opens beside it. The card lives in a portal on
+  // document.body, outside this component, so nothing in the subtree can notice.
+  //
+  // A dialog the user cannot dismiss is the worst failure this surface has: it
+  // covers the desktop and every later request queues behind it. So check, and say
+  // so in the journal rather than leaving the next boot to guess between a click
+  // that never landed, a broker that never answered and a card that never left.
+  let wasShown = false;
+  $effect(() => {
+    const shown = $current !== null;
+    const cleared = wasShown && !shown;
+    wasShown = shown;
+    if (!cleared) return;
+    // After a frame, so a teardown that merely runs late is not reported as stuck.
+    setTimeout(() => {
+      const left = document.querySelectorAll(".arlen-consent-card").length;
+      if (left === 0) return;
+      void invoke("frontend_log", {
+        level: "error",
+        msg: `consent: request answered but ${left} card(s) still in the DOM; `
+          + "the dialog is stuck on screen",
+      }).catch(() => {});
+    }, 250);
   });
 
   // A pending request must always be deniable by Escape. The dialog's `open` is
@@ -234,7 +264,10 @@
       if (!open) deny(p);
     }}
   >
-    <Dialog.Content>
+    <!-- The marker the teardown self-check below looks for. The card renders into
+         a portal on document.body, outside this component's subtree, so there is
+         no other way to ask whether it actually went away. -->
+    <Dialog.Content class="arlen-consent-card">
       <ConsentCard
         requesterName={friendly(p.requester)}
         requesterId={p.requester}

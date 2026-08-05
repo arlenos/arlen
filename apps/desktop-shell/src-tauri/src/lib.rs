@@ -338,6 +338,7 @@ pub fn run() {
             harness_launch::open_harness_session,
             consent::consent_fetch,
             consent::consent_resolve,
+            consent::frontend_log,
             modulesd_commands::modulesd_list_modules,
             modulesd_commands::mint_iframe,
             modulesd_commands::module_host_call,
