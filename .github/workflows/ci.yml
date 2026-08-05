@@ -356,6 +356,15 @@ jobs:
                 npm test
               fi
             fi
+            # GATING, and not covered by anything above: `npm run check` is
+            # svelte-check (types), which passes on an app that cannot be BUILT.
+            # apps/meetings sat in exactly that state - a dynamic route inheriting
+            # `prerender = true`, which SvelteKit only rejects when it crawls at
+            # build time - and the first sign was the mkosi image build dying
+            # minutes in, because that is the only place `npm run build` ran.
+            if [ "$(npm pkg get scripts.build)" != "{}" ]; then
+              npm run build
+            fi
           else
             echo "no package.json, skipping"
           fi
