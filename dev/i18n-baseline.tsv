@@ -1,4 +1,10 @@
+apps/desktop-shell/src/lib/components/BatteryPopover.svelte	Balanced
+apps/desktop-shell/src/lib/components/BatteryPopover.svelte	Performance
+apps/desktop-shell/src/lib/components/BatteryPopover.svelte	Power Saver
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
+apps/desktop-shell/src/lib/components/PrintDialog.svelte	A4
+apps/desktop-shell/src/lib/components/PrintDialog.svelte	Legal
+apps/desktop-shell/src/lib/components/PrintDialog.svelte	Letter
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	&nbsp;
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Enter
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Esc
@@ -8,31 +14,94 @@ apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Tab
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	hjkl
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	to enable some.
+apps/desktop-shell/src/lib/stores/consent.ts	connect to its sync service
+apps/desktop-shell/src/lib/stores/consent.ts	install system software with admin rights
+apps/desktop-shell/src/lib/stores/consent.ts	move 8 files to the Trash
+apps/desktop-shell/src/lib/stores/consent.ts	open one file you pick
+apps/desktop-shell/src/lib/stores/consent.ts	permanently delete 3 files
+apps/desktop-shell/src/lib/stores/consent.ts	read your notes and their tags
+apps/desktop-shell/src/lib/stores/consent.ts	send an email on your behalf
+apps/desktop-shell/src/lib/stores/jobs.ts	Converting clip.mp4
+apps/desktop-shell/src/lib/stores/jobs.ts	Copied 18 files to Documents
+apps/desktop-shell/src/lib/stores/jobs.ts	Copying 240 photos to USB
+apps/desktop-shell/src/lib/stores/jobs.ts	Downloading the language model
+apps/desktop-shell/src/lib/stores/jobs.ts	Sending files to your laptop
+apps/desktop-shell/src/lib/stores/menuPalette.ts	Close Window
+apps/desktop-shell/src/lib/stores/menuPalette.ts	Edit
+apps/desktop-shell/src/lib/stores/menuPalette.ts	Enter Full Screen
+apps/desktop-shell/src/lib/stores/menuPalette.ts	Export
+apps/desktop-shell/src/lib/stores/menuPalette.ts	File
+apps/desktop-shell/src/lib/stores/menuPalette.ts	Find…
+apps/desktop-shell/src/lib/stores/menuPalette.ts	New Window
+apps/desktop-shell/src/lib/stores/menuPalette.ts	Open…
+apps/desktop-shell/src/lib/stores/menuPalette.ts	PDF…
+apps/desktop-shell/src/lib/stores/menuPalette.ts	PNG…
+apps/desktop-shell/src/lib/stores/menuPalette.ts	Redo
+apps/desktop-shell/src/lib/stores/menuPalette.ts	Save
+apps/desktop-shell/src/lib/stores/menuPalette.ts	Show Sidebar
+apps/desktop-shell/src/lib/stores/menuPalette.ts	Undo
+apps/desktop-shell/src/lib/stores/menuPalette.ts	View
+apps/desktop-shell/src/lib/stores/printDialog.ts	Quarterly report.pdf
+apps/desktop-shell/src/lib/stores/sourcePicker.ts	Arlen OS - Wikipedia
+apps/desktop-shell/src/lib/stores/sourcePicker.ts	Documents
+apps/desktop-shell/src/lib/stores/sourcePicker.ts	tim@arlen: ~/work
 apps/desktop-shell/src/routes/_mpristest/+page.svelte	Click an album-art thumb to open the mini-player.
+apps/desktop-shell/src/routes/_mpristest/+page.svelte	Lateralus
 apps/desktop-shell/src/routes/_printtest/+page.svelte	Print dialog look-mock. The dialog opens over this page.
 apps/desktop-shell/src/routes/_undotest/+page.svelte	topbar strip
+apps/files/src/lib/asof.ts	1 day ago
+apps/files/src/lib/asof.ts	1 month ago
+apps/files/src/lib/asof.ts	1 week ago
+apps/files/src/lib/asof.ts	3 months ago
+apps/files/src/lib/asof.ts	Now
 apps/files/src/lib/components/FmBatchRename.svelte	&rarr;
+apps/files/src/lib/stores/facets.ts	Archives
+apps/files/src/lib/stores/facets.ts	Audio
+apps/files/src/lib/stores/facets.ts	Code
+apps/files/src/lib/stores/facets.ts	Documents
+apps/files/src/lib/stores/facets.ts	Images
+apps/files/src/lib/stores/facets.ts	Last 30 days
+apps/files/src/lib/stores/facets.ts	Last 7 days
+apps/files/src/lib/stores/facets.ts	Older than 30 days
+apps/files/src/lib/stores/facets.ts	Today
+apps/files/src/lib/stores/facets.ts	Video
+apps/files/src/lib/stores/places.ts	Bookmarks
+apps/files/src/lib/stores/places.ts	Devices
+apps/files/src/lib/stores/places.ts	Places
+apps/files/src/lib/stores/places.ts	Projects
 apps/files/src/routes/+page.svelte	Ctrl+C
 apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
 apps/files/src/routes/+page.svelte	Del
 apps/files/src/routes/+page.svelte	F2
 apps/files/src/routes/_asktest/+page.svelte	Arlen could not draft a filter for that. Try naming a type, a time, or a project.
+apps/files/src/routes/_asktest/+page.svelte	Files
 apps/files/src/routes/_asktest/+page.svelte	Location
 apps/files/src/routes/_asktest/+page.svelte	Modified
 apps/files/src/routes/_asktest/+page.svelte	Name
 apps/files/src/routes/_facettest/+page.svelte	Active filter + result
+apps/files/src/routes/_facettest/+page.svelte	Files
+apps/files/src/routes/_facettest/+page.svelte	Image viewer
 apps/files/src/routes/_facettest/+page.svelte	Location
 apps/files/src/routes/_facettest/+page.svelte	Modified
 apps/files/src/routes/_facettest/+page.svelte	Name
+apps/files/src/routes/_facettest/+page.svelte	Terminal
+apps/files/src/routes/_rendertest/+page.svelte	Accessed by
+apps/files/src/routes/_rendertest/+page.svelte	Also accessed by
 apps/files/src/routes/_rendertest/+page.svelte	File: related + as-of
 apps/files/src/routes/_rendertest/+page.svelte	Folder
 apps/files/src/routes/_rendertest/+page.svelte	Image: EXIF + permissions
+apps/files/src/routes/_rendertest/+page.svelte	Part of
 apps/files/src/routes/_rendertest/+page.svelte	Provenance halo (live shape, PH-R2)
 apps/files/src/routes/_rendertest/+page.svelte	Provenance halo (no backend)
+apps/files/src/routes/_rendertest/+page.svelte	Sunset over the Inn
 apps/files/src/routes/_rendertest/+page.svelte	Symlink
 apps/greeter/src/lib/components/A11yMenu.svelte	Accessibility
+apps/greeter/src/lib/components/A11yMenu.svelte	High contrast
+apps/greeter/src/lib/components/A11yMenu.svelte	Larger text
+apps/greeter/src/lib/components/A11yMenu.svelte	On-screen keyboard
 apps/greeter/src/lib/components/A11yMenu.svelte	Reading the screen aloud starts when assistive support is available.
+apps/greeter/src/lib/components/A11yMenu.svelte	Screen reader
 apps/greeter/src/lib/components/AuthPanel.svelte	Switch user
 apps/greeter/src/lib/components/FactorRow.svelte	Touch your security key
 apps/greeter/src/lib/components/FactorRow.svelte	Use a security key
@@ -45,6 +114,9 @@ apps/greeter/src/lib/components/OnScreenKeyboard.svelte	Space
 apps/greeter/src/lib/components/PasswordField.svelte	Password
 apps/greeter/src/lib/components/PasswordField.svelte	Sign in
 apps/greeter/src/lib/components/PowerMenu.svelte	Power
+apps/greeter/src/lib/components/PowerMenu.svelte	Restart
+apps/greeter/src/lib/components/PowerMenu.svelte	Shut down
+apps/greeter/src/lib/components/PowerMenu.svelte	Suspend
 apps/greeter/src/lib/components/ProfileRow.svelte	Choose a profile
 apps/greeter/src/routes/+page.svelte	Login is not reachable right now.
 apps/greeter/src/routes/+page.svelte	No profiles are set up on this device.
@@ -60,11 +132,153 @@ apps/harness/src/lib/components/agent/ActivityTimeline.svelte	This record failed
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	of
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	out of date
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	shown
+apps/harness/src/lib/components/artifact/ArtifactView.svelte	). Live rendering is coming.
+apps/harness/src/lib/components/artifact/ArtifactView.svelte	Diagram source (
+apps/harness/src/lib/components/chat/AutonomyDial.svelte	Manage in Transparency
+apps/harness/src/lib/components/chat/FileRefMenu.svelte	Copy path
+apps/harness/src/lib/components/chat/FileRefMenu.svelte	Copy relative path
+apps/harness/src/lib/components/chat/FileRefMenu.svelte	Open
+apps/harness/src/lib/components/chat/FileRefMenu.svelte	Open with…
+apps/harness/src/lib/components/chat/FileRefMenu.svelte	Reveal in Files
+apps/harness/src/lib/components/chat/GateCard.svelte	Always allow
+apps/harness/src/lib/components/chat/GateCard.svelte	Auto
+apps/harness/src/lib/components/chat/GateCard.svelte	Only in this project
+apps/harness/src/lib/components/chat/GateCard.svelte	This action type generally
+apps/harness/src/lib/components/chat/GateCard.svelte	Undo
+apps/harness/src/lib/components/chat/GateCard.svelte	files
+apps/harness/src/lib/components/chat/GateCard.svelte	via
+apps/harness/src/lib/components/chat/ImportDialog.svelte	A .json file exported from a chat
+apps/harness/src/lib/components/chat/ImportDialog.svelte	Import chat
+apps/harness/src/lib/components/chat/ImportDialog.svelte	Open a chat you exported as JSON. It is added as a new conversation, so it never overwrites one you have.
+apps/harness/src/lib/components/chat/ModelPicker.svelte	unavailable
+apps/harness/src/lib/components/mint/MintFlow.svelte	, readable by
+apps/harness/src/lib/components/mint/MintFlow.svelte	A share always expires. There is no permanent share.
+apps/harness/src/lib/components/mint/MintFlow.svelte	Checking what this share would include…
+apps/harness/src/lib/components/mint/MintFlow.svelte	Example data - these are not your real notes and projects.
+apps/harness/src/lib/components/mint/MintFlow.svelte	Expires
+apps/harness/src/lib/components/mint/MintFlow.svelte	Good for
+apps/harness/src/lib/components/mint/MintFlow.svelte	How many times the recipient can open it.
+apps/harness/src/lib/components/mint/MintFlow.svelte	Pick a named thing to share. You share a snapshot of it as it is now, never a live feed.
+apps/harness/src/lib/components/mint/MintFlow.svelte	Share created
+apps/harness/src/lib/components/mint/MintFlow.svelte	Sharing
+apps/harness/src/lib/components/mint/MintFlow.svelte	Step
+apps/harness/src/lib/components/mint/MintFlow.svelte	This share includes
+apps/harness/src/lib/components/mint/MintFlow.svelte	Who can open it
+apps/harness/src/lib/components/mint/MintFlow.svelte	You can see it and revoke it any time under Settings, Privacy, Shared context. Revoking stops any further reads.
+apps/harness/src/lib/components/mint/MintFlow.svelte	across
+apps/harness/src/lib/components/mint/MintFlow.svelte	follows these connections. Drop any you do not want to include.
+apps/harness/src/lib/components/mint/MintFlow.svelte	is now shared with
+apps/harness/src/lib/components/mint/MintFlow.svelte	items
+apps/harness/src/lib/components/mint/MintFlow.svelte	of 3
+apps/harness/src/lib/components/mint/MintFlow.svelte	until it expires.
 apps/harness/src/lib/components/transparency/AccessSection.svelte	While the AI is off, none of this access is active.
 apps/harness/src/lib/components/transparency/AccessSection.svelte	no data
 apps/harness/src/lib/components/transparency/ActivitySection.svelte	See everything it did
+apps/harness/src/lib/components/transparency/CostSection.svelte	. Cloud use has a cost; check your provider for the rate.
+apps/harness/src/lib/components/transparency/CostSection.svelte	Cloud use has a cost. The running count is not available right now.
+apps/harness/src/lib/components/transparency/CostSection.svelte	There is no usage cost
 apps/harness/src/lib/components/transparency/MemorySection.svelte	This is the shape of what it holds, never the contents of your files.
 apps/harness/src/lib/components/transparency/OffSwitchSection.svelte	You are always in control. You can turn the AI off completely in Settings. When it is off, it does nothing at all, and you can remove it. The rest of your desktop keeps working without it.
+apps/harness/src/lib/components/transparency/ReadsSection.svelte	more
+apps/harness/src/lib/components/transparency/ReadsSection.svelte	recorded.
+apps/harness/src/lib/export.test.ts	Notes
+apps/harness/src/lib/ledger.ts	Blocked
+apps/harness/src/lib/ledger.ts	Confirmed
+apps/harness/src/lib/ledger.ts	Graph
+apps/harness/src/lib/ledger.ts	Network
+apps/harness/src/lib/ledger.ts	Permission
+apps/harness/src/lib/ledger.ts	Query
+apps/harness/src/lib/ledger.ts	Tool call
+apps/harness/src/lib/menu.ts	Chat
+apps/harness/src/lib/menu.ts	Import chat…
+apps/harness/src/lib/menu.ts	New chat
+apps/harness/src/lib/sanitize.test.ts	Notes
+apps/harness/src/lib/stores/conversation.ts	Standup bullets
+apps/harness/src/lib/stores/conversation.ts	What changed in my week plan
+apps/harness/src/lib/stores/mint.ts	12 notes you saved to read
+apps/harness/src/lib/stores/mint.ts	3 items you have open
+apps/harness/src/lib/stores/mint.ts	8 places and their links
+apps/harness/src/lib/stores/mint.ts	Current selection
+apps/harness/src/lib/stores/mint.ts	Project Atlas
+apps/harness/src/lib/stores/mint.ts	Reading list
+apps/harness/src/lib/stores/mint.ts	Trip 2026
+apps/harness/src/lib/stores/mint.ts	notes they mention
+apps/harness/src/lib/stores/mint.ts	the people who wrote them
+apps/harness/src/lib/stores/mint.ts	the project and its files
+apps/harness/src/lib/stores/mint.ts	their tags
+apps/harness/src/routes/_difftest/+page.svelte	Add a theme corner radius
+apps/harness/src/routes/_difftest/+page.svelte	Applied receipt (you approved): with per-change Undo
+apps/harness/src/routes/_difftest/+page.svelte	Auto-applied (no gate, under a standing grant): still a diff + Undo, never silent
+apps/harness/src/routes/_difftest/+page.svelte	Edit parser.rs
+apps/harness/src/routes/_difftest/+page.svelte	Proposed change (multiple files): collapsed per file
+apps/harness/src/routes/_difftest/+page.svelte	Proposed change (single file): the diff is the approve step
+apps/harness/src/routes/_gatetest/+page.svelte	Ask about your files, projects, or activity
+apps/harness/src/routes/_gatetest/+page.svelte	Move report.pdf
+apps/harness/src/routes/_gatetest/+page.svelte	Move report.pdf into Documents/Projects
+apps/harness/src/routes/_gatetest/+page.svelte	Tag 3 files as part of the Arlen project
+apps/harness/src/routes/_reftest/+page.svelte	Assistant message with file references
+apps/harness/src/routes/_reftest/+page.svelte	Hover a pill for the affordance; right-click for the menu. The missing path reads muted.
+apps/harness/src/routes/_rendertest/+page.svelte	. It returns the transformed list, leaving the input untouched. The full source is in the pane on the right.
+apps/harness/src/routes/_rendertest/+page.svelte	Activity by day
+apps/harness/src/routes/_rendertest/+page.svelte	Add helper, chart activity, list two files, and write the pipeline.
+apps/harness/src/routes/_rendertest/+page.svelte	Arlen OS
+apps/harness/src/routes/_rendertest/+page.svelte	Assistant
+apps/harness/src/routes/_rendertest/+page.svelte	Blocked
+apps/harness/src/routes/_rendertest/+page.svelte	Call it with your list and the options:
+apps/harness/src/routes/_rendertest/+page.svelte	Here you go:
+apps/harness/src/routes/_rendertest/+page.svelte	Looks good. Can you make the chart a line chart instead?
+apps/harness/src/routes/_rendertest/+page.svelte	Perfect, thanks. One more: how do I run the pipeline?
+apps/harness/src/routes/_rendertest/+page.svelte	References
+apps/harness/src/routes/_rendertest/+page.svelte	Sure, switched it to a line. Everything else stays the same.
+apps/harness/src/routes/_rendertest/+page.svelte	Transform pipeline
+apps/harness/src/routes/_rendertest/+page.svelte	Two files
+apps/harness/src/routes/_rendertest/+page.svelte	You
+apps/harness/src/routes/_rendertest/+page.svelte	pipeline(items, opts)
+apps/knowledge/src/lib/menu.ts	Delete everything recorded…
+apps/knowledge/src/lib/menu.ts	Delete today's activity…
+apps/knowledge/src/lib/menu.ts	Export recorded activity…
+apps/knowledge/src/lib/menu.ts	Timeline
+apps/knowledge/src/lib/stores/capsules.ts	Thesis slice
+apps/knowledge/src/lib/stores/library.ts	Attention Is All You Need
+apps/knowledge/src/lib/stores/library.ts	Conference registration confirmed
+apps/knowledge/src/lib/stores/library.ts	Deep Residual Learning for Image Recognition
+apps/knowledge/src/lib/stores/library.ts	Deep work
+apps/knowledge/src/lib/stores/library.ts	Designing Data-Intensive Applications
+apps/knowledge/src/lib/stores/library.ts	Re: review notes
+apps/knowledge/src/lib/stores/library.ts	Scaling Laws for Neural Language Models
+apps/knowledge/src/lib/stores/library.ts	The Rust Programming Language
+apps/knowledge/src/lib/stores/library.ts	Thesis outline
+apps/knowledge/src/lib/stores/search.ts	Arlen OS
+apps/knowledge/src/lib/stores/search.ts	Arlen OS, 9:30 am to 12:15 pm
+apps/knowledge/src/lib/stores/search.ts	Attention Is All You Need
+apps/knowledge/src/lib/stores/search.ts	Deep work
+apps/knowledge/src/lib/stores/search.ts	Re: review notes
+apps/knowledge/src/lib/stores/search.ts	The Rust Programming Language
+apps/knowledge/src/lib/stores/search.ts	Thesis
+apps/knowledge/src/lib/stores/search.ts	Website redesign
+apps/knowledge/src/lib/stores/search.ts	Website redesign, 2:10 pm to 4:40 pm
+apps/knowledge/src/lib/stores/timeline.ts	Arlen OS
+apps/knowledge/src/lib/stores/timeline.ts	Website redesign
+apps/meetings/src/lib/stores/meeting.ts	Editor and meeting-notes direction
+apps/meetings/src/lib/stores/meeting.ts	Sovereignty review
+apps/meetings/src/lib/stores/meeting.ts	Weekly standup
+apps/screenshot/src/routes/+page.svelte	Arrow
+apps/screenshot/src/routes/+page.svelte	Blur / redact
+apps/screenshot/src/routes/+page.svelte	Box
+apps/screenshot/src/routes/+page.svelte	Crop
+apps/screenshot/src/routes/+page.svelte	Ellipse
+apps/screenshot/src/routes/+page.svelte	Highlighter
+apps/screenshot/src/routes/+page.svelte	Medium
+apps/screenshot/src/routes/+page.svelte	Pen
+apps/screenshot/src/routes/+page.svelte	Select
+apps/screenshot/src/routes/+page.svelte	Step
+apps/screenshot/src/routes/+page.svelte	Text
+apps/screenshot/src/routes/+page.svelte	Thick
+apps/screenshot/src/routes/+page.svelte	Thin
+apps/settings/src/lib/components/AddProviderDialog.svelte	Anthropic
+apps/settings/src/lib/components/AddProviderDialog.svelte	Gemini
+apps/settings/src/lib/components/AddProviderDialog.svelte	OpenAI
+apps/settings/src/lib/components/AddProviderDialog.svelte	https://api.example.com/v1
 apps/settings/src/lib/components/appearance/AppPicker.svelte	No apps have sent notifications yet. Send one with
 apps/settings/src/lib/components/appearance/AppPicker.svelte	No matches for "
 apps/settings/src/lib/components/appearance/AppPicker.svelte	Use "
@@ -75,8 +289,467 @@ apps/settings/src/lib/components/appearance/ModuleCard.svelte	Settings
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Disabled
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Enabled (auto)
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Flipped
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Flipped 180°
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Flipped 270°
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Flipped 90°
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Force always-on
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Independent
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Normal
+apps/settings/src/lib/components/displays/NightLightSection.svelte	Custom hours
+apps/settings/src/lib/components/displays/NightLightSection.svelte	Off (manual toggle only)
+apps/settings/src/lib/components/displays/NightLightSection.svelte	Sunset to sunrise
 apps/settings/src/lib/components/displays/RevertConfirmModal.svelte	The new layout has been applied. If you can read this clearly, confirm to keep it. Otherwise we'll roll back automatically in
+apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Open Waypointer
+apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Toggle Waypointer
+apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Float
+apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Invalid regex
+apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Tile
+apps/settings/src/lib/search/settings-registry.ts	AI behaviours
+apps/settings/src/lib/search/settings-registry.ts	AI model provider
+apps/settings/src/lib/search/settings-registry.ts	Accent Color
+apps/settings/src/lib/search/settings-registry.ts	Add a discovered printer or one by IP address.
+apps/settings/src/lib/search/settings-registry.ts	Add a printer
+apps/settings/src/lib/search/settings-registry.ts	Alarms Only
+apps/settings/src/lib/search/settings-registry.ts	Allow small, reversible changes without per-action prompts
+apps/settings/src/lib/search/settings-registry.ts	App access
+apps/settings/src/lib/search/settings-registry.ts	Apps silenced by Focus Mode regardless of project
+apps/settings/src/lib/search/settings-registry.ts	Arlen Version
+apps/settings/src/lib/search/settings-registry.ts	Assistant service status
+apps/settings/src/lib/search/settings-registry.ts	Auto-Promote Threshold
+apps/settings/src/lib/search/settings-registry.ts	Auto-enable the magnifier on session start
+apps/settings/src/lib/search/settings-registry.ts	Base font size for the interface
+apps/settings/src/lib/search/settings-registry.ts	Border Width
+apps/settings/src/lib/search/settings-registry.ts	Bottom Left
+apps/settings/src/lib/search/settings-registry.ts	Bottom Right
+apps/settings/src/lib/search/settings-registry.ts	Brightness Keys
+apps/settings/src/lib/search/settings-registry.ts	Brightness up / down commands for laptop Fn-row keys
+apps/settings/src/lib/search/settings-registry.ts	Browse the timeline and project graph (Phase 8)
+apps/settings/src/lib/search/settings-registry.ts	Centered
+apps/settings/src/lib/search/settings-registry.ts	Choose which model answers your queries (Ollama, ...)
+apps/settings/src/lib/search/settings-registry.ts	Color Blindness Filter
+apps/settings/src/lib/search/settings-registry.ts	Color of inactive window borders
+apps/settings/src/lib/search/settings-registry.ts	Color of the active window border
+apps/settings/src/lib/search/settings-registry.ts	Compensation for protanopia, deuteranopia, tritanopia
+apps/settings/src/lib/search/settings-registry.ts	Content follows finger direction
+apps/settings/src/lib/search/settings-registry.ts	Continuously
+apps/settings/src/lib/search/settings-registry.ts	Control which notifications can break through
+apps/settings/src/lib/search/settings-registry.ts	Daemon Status
+apps/settings/src/lib/search/settings-registry.ts	Dark
+apps/settings/src/lib/search/settings-registry.ts	Database size, graph size, FUSE mount status
+apps/settings/src/lib/search/settings-registry.ts	Default Suppressed Apps
+apps/settings/src/lib/search/settings-registry.ts	Disable While Typing
+apps/settings/src/lib/search/settings-registry.ts	Display
+apps/settings/src/lib/search/settings-registry.ts	Do Not Disturb
+apps/settings/src/lib/search/settings-registry.ts	Enable AI features
+apps/settings/src/lib/search/settings-registry.ts	Entry and exit animation for toasts
+apps/settings/src/lib/search/settings-registry.ts	Extensions
+apps/settings/src/lib/search/settings-registry.ts	Fade
+apps/settings/src/lib/search/settings-registry.ts	Files-per-session before an inferred project gets promoted
+apps/settings/src/lib/search/settings-registry.ts	Focused Window Border
+apps/settings/src/lib/search/settings-registry.ts	Font Size
+apps/settings/src/lib/search/settings-registry.ts	Font used for code and terminal text
+apps/settings/src/lib/search/settings-registry.ts	Font used for labels, menus, and UI text
+apps/settings/src/lib/search/settings-registry.ts	Force apps to float or tile based on app_id, title, or type
+apps/settings/src/lib/search/settings-registry.ts	Group by App
+apps/settings/src/lib/search/settings-registry.ts	Group notifications by their source application
+apps/settings/src/lib/search/settings-registry.ts	Hide gaps when only one window is tiled
+apps/settings/src/lib/search/settings-registry.ts	Hide gaps when only one window is visible
+apps/settings/src/lib/search/settings-registry.ts	High-contrast inverted display
+apps/settings/src/lib/search/settings-registry.ts	History Maximum Age
+apps/settings/src/lib/search/settings-registry.ts	Horizontal
+apps/settings/src/lib/search/settings-registry.ts	Horizontal or vertical workspace arrangement
+apps/settings/src/lib/search/settings-registry.ts	How deep the watcher recurses below each watch directory
+apps/settings/src/lib/search/settings-registry.ts	How long high-priority notifications stay visible
+apps/settings/src/lib/search/settings-registry.ts	How long normal notifications stay visible
+apps/settings/src/lib/search/settings-registry.ts	How much cursor speed scales with finger velocity
+apps/settings/src/lib/search/settings-registry.ts	How much cursor speed scales with movement velocity
+apps/settings/src/lib/search/settings-registry.ts	How much each zoom step changes magnification
+apps/settings/src/lib/search/settings-registry.ts	How quickly a held key repeats
+apps/settings/src/lib/search/settings-registry.ts	How the magnified region tracks the cursor
+apps/settings/src/lib/search/settings-registry.ts	Ignore touchpad input briefly after each keystroke
+apps/settings/src/lib/search/settings-registry.ts	Inner Gap
+apps/settings/src/lib/search/settings-registry.ts	Installed Waypointer plugins, top-bar applets, modules
+apps/settings/src/lib/search/settings-registry.ts	Interface Font
+apps/settings/src/lib/search/settings-registry.ts	Invert Colors
+apps/settings/src/lib/search/settings-registry.ts	Keep Notification History
+apps/settings/src/lib/search/settings-registry.ts	Key Repeat Rate
+apps/settings/src/lib/search/settings-registry.ts	Keyboard
+apps/settings/src/lib/search/settings-registry.ts	Keyboard Layout
+apps/settings/src/lib/search/settings-registry.ts	Keyboard Shortcuts
+apps/settings/src/lib/search/settings-registry.ts	Knowledge App
+apps/settings/src/lib/search/settings-registry.ts	Knowledge Graph Stats
+apps/settings/src/lib/search/settings-registry.ts	Knowledge, Notification, Event Bus, Install daemon health
+apps/settings/src/lib/search/settings-registry.ts	Layout, repeat rate, numlock
+apps/settings/src/lib/search/settings-registry.ts	Left-Handed Mouse
+apps/settings/src/lib/search/settings-registry.ts	Let the assistant make small changes
+apps/settings/src/lib/search/settings-registry.ts	Light
+apps/settings/src/lib/search/settings-registry.ts	Manage printers, set the default, and print options.
+apps/settings/src/lib/search/settings-registry.ts	Max Visible Toasts
+apps/settings/src/lib/search/settings-registry.ts	Maximum number of toasts shown at once
+apps/settings/src/lib/search/settings-registry.ts	Media Keys
+apps/settings/src/lib/search/settings-registry.ts	Merge near-duplicate notifications from the same app
+apps/settings/src/lib/search/settings-registry.ts	Monitors, resolution, refresh rate, scale, night light
+apps/settings/src/lib/search/settings-registry.ts	Monospace Font
+apps/settings/src/lib/search/settings-registry.ts	Mouse Acceleration
+apps/settings/src/lib/search/settings-registry.ts	Mouse Zoom Shortcuts
+apps/settings/src/lib/search/settings-registry.ts	Natural Scroll (Mouse)
+apps/settings/src/lib/search/settings-registry.ts	Natural Scroll (Touchpad)
+apps/settings/src/lib/search/settings-registry.ts	None
+apps/settings/src/lib/search/settings-registry.ts	Off
+apps/settings/src/lib/search/settings-registry.ts	On edge
+apps/settings/src/lib/search/settings-registry.ts	Outer Gap
+apps/settings/src/lib/search/settings-registry.ts	Pin the active project name when Focus Mode is on
+apps/settings/src/lib/search/settings-registry.ts	Pixels between adjacent tiled windows
+apps/settings/src/lib/search/settings-registry.ts	Pixels between tiled windows and the screen edge
+apps/settings/src/lib/search/settings-registry.ts	Play / pause / next / previous track commands
+apps/settings/src/lib/search/settings-registry.ts	Primary XKB layout (US, German, French, etc.)
+apps/settings/src/lib/search/settings-registry.ts	Primary accent colour used across the shell and apps
+apps/settings/src/lib/search/settings-registry.ts	Print queue
+apps/settings/src/lib/search/settings-registry.ts	Printers
+apps/settings/src/lib/search/settings-registry.ts	Priority Only
+apps/settings/src/lib/search/settings-registry.ts	Project Watch Directories
+apps/settings/src/lib/search/settings-registry.ts	Queue notifications while a fullscreen app is active
+apps/settings/src/lib/search/settings-registry.ts	Quick Settings tile layout
+apps/settings/src/lib/search/settings-registry.ts	Rebind shortcuts for windows, workspaces, and apps
+apps/settings/src/lib/search/settings-registry.ts	Recursion Depth
+apps/settings/src/lib/search/settings-registry.ts	Register taps on the touchpad as primary clicks
+apps/settings/src/lib/search/settings-registry.ts	Release tag and kernel version
+apps/settings/src/lib/search/settings-registry.ts	Remove notifications older than this many days
+apps/settings/src/lib/search/settings-registry.ts	Reset Quick Settings to defaults
+apps/settings/src/lib/search/settings-registry.ts	Reset Shortcuts to Defaults
+apps/settings/src/lib/search/settings-registry.ts	Restore every keybinding to its built-in default
+apps/settings/src/lib/search/settings-registry.ts	Restore the bundled order, sizes, and visibility for tiles.
+apps/settings/src/lib/search/settings-registry.ts	Roundness
+apps/settings/src/lib/search/settings-registry.ts	Scheduled
+apps/settings/src/lib/search/settings-registry.ts	Scroll by dragging two fingers on the touchpad
+apps/settings/src/lib/search/settings-registry.ts	Scroll direction follows wheel movement
+apps/settings/src/lib/search/settings-registry.ts	See active, held, and finished print jobs; cancel or resume.
+apps/settings/src/lib/search/settings-registry.ts	Show Project Name in Top Bar
+apps/settings/src/lib/search/settings-registry.ts	Show window-control headers on single tiled windows
+apps/settings/src/lib/search/settings-registry.ts	Slide
+apps/settings/src/lib/search/settings-registry.ts	Smart Gaps
+apps/settings/src/lib/search/settings-registry.ts	Space between tiled windows
+apps/settings/src/lib/search/settings-registry.ts	Stack Similar
+apps/settings/src/lib/search/settings-registry.ts	Start Zoom on Login
+apps/settings/src/lib/search/settings-registry.ts	Store notifications in a history panel
+apps/settings/src/lib/search/settings-registry.ts	Super+Scroll to zoom in / out
+apps/settings/src/lib/search/settings-registry.ts	Suppress in Fullscreen
+apps/settings/src/lib/search/settings-registry.ts	Swap left and right mouse buttons
+apps/settings/src/lib/search/settings-registry.ts	Switch and move windows between workspaces
+apps/settings/src/lib/search/settings-registry.ts	Switch between light and dark theme
+apps/settings/src/lib/search/settings-registry.ts	System Keys
+apps/settings/src/lib/search/settings-registry.ts	Tap to Click
+apps/settings/src/lib/search/settings-registry.ts	Theme Mode
+apps/settings/src/lib/search/settings-registry.ts	Thickness of window borders
+apps/settings/src/lib/search/settings-registry.ts	Tiled Window Headers
+apps/settings/src/lib/search/settings-registry.ts	Tiling Shortcuts
+apps/settings/src/lib/search/settings-registry.ts	Toast Animation
+apps/settings/src/lib/search/settings-registry.ts	Toast Duration (High Priority)
+apps/settings/src/lib/search/settings-registry.ts	Toast Duration (Normal)
+apps/settings/src/lib/search/settings-registry.ts	Toast Position
+apps/settings/src/lib/search/settings-registry.ts	Toggle tiling mode, monocle, scratchpad, and floating windows
+apps/settings/src/lib/search/settings-registry.ts	Top Center
+apps/settings/src/lib/search/settings-registry.ts	Top Left
+apps/settings/src/lib/search/settings-registry.ts	Top Right
+apps/settings/src/lib/search/settings-registry.ts	Total Silence
+apps/settings/src/lib/search/settings-registry.ts	Touchpad Acceleration
+apps/settings/src/lib/search/settings-registry.ts	Turn the AI assistant on or off
+apps/settings/src/lib/search/settings-registry.ts	Two-Finger Scroll
+apps/settings/src/lib/search/settings-registry.ts	Unfocused Window Border
+apps/settings/src/lib/search/settings-registry.ts	Vertical
+apps/settings/src/lib/search/settings-registry.ts	Volume Keys
+apps/settings/src/lib/search/settings-registry.ts	Volume up / down / mute / mute microphone commands
+apps/settings/src/lib/search/settings-registry.ts	What the assistant may do on its own, per behaviour
+apps/settings/src/lib/search/settings-registry.ts	Where notification toasts appear on screen
+apps/settings/src/lib/search/settings-registry.ts	Where the daemon scans for project markers
+apps/settings/src/lib/search/settings-registry.ts	Whether the assistant service and network gate are running
+apps/settings/src/lib/search/settings-registry.ts	Which apps can reach your data, and what you have allowed
+apps/settings/src/lib/search/settings-registry.ts	Window Gaps
+apps/settings/src/lib/search/settings-registry.ts	Window Rules
+apps/settings/src/lib/search/settings-registry.ts	Workspace Layout
+apps/settings/src/lib/search/settings-registry.ts	Workspace Shortcuts
+apps/settings/src/lib/search/settings-registry.ts	Zoom Increment
+apps/settings/src/lib/search/settings-registry.ts	Zoom Movement
+apps/settings/src/lib/stores/accessibility.ts	Centered
+apps/settings/src/lib/stores/accessibility.ts	Continuously
+apps/settings/src/lib/stores/accessibility.ts	Deuteranopia (green weakness)
+apps/settings/src/lib/stores/accessibility.ts	Greyscale
+apps/settings/src/lib/stores/accessibility.ts	None
+apps/settings/src/lib/stores/accessibility.ts	On edge
+apps/settings/src/lib/stores/accessibility.ts	Protanopia (red weakness)
+apps/settings/src/lib/stores/accessibility.ts	Tritanopia (blue weakness)
+apps/settings/src/lib/stores/appSettings.ts	Accent colour
+apps/settings/src/lib/stores/appSettings.ts	Advanced
+apps/settings/src/lib/stores/appSettings.ts	Appearance
+apps/settings/src/lib/stores/appSettings.ts	Arranged in the app's own window
+apps/settings/src/lib/stores/appSettings.ts	Backup folder
+apps/settings/src/lib/stores/appSettings.ts	Built-in speakers
+apps/settings/src/lib/stores/appSettings.ts	CRLF, for files shared with Windows tools
+apps/settings/src/lib/stores/appSettings.ts	Command palette
+apps/settings/src/lib/stores/appSettings.ts	Connected over Bluetooth
+apps/settings/src/lib/stores/appSettings.ts	Deutsch (Österreich)
+apps/settings/src/lib/stores/appSettings.ts	Editing
+apps/settings/src/lib/stores/appSettings.ts	Editor theme
+apps/settings/src/lib/stores/appSettings.ts	Engine flags
+apps/settings/src/lib/stores/appSettings.ts	English (United States)
+apps/settings/src/lib/stores/appSettings.ts	Fast reparse of only what changed
+apps/settings/src/lib/stores/appSettings.ts	Files
+apps/settings/src/lib/stores/appSettings.ts	Files the search and the sidebar skip
+apps/settings/src/lib/stores/appSettings.ts	Font size
+apps/settings/src/lib/stores/appSettings.ts	Full
+apps/settings/src/lib/stores/appSettings.ts	German with Austrian formats
+apps/settings/src/lib/stores/appSettings.ts	Headphones
+apps/settings/src/lib/stores/appSettings.ts	How the editor behaves while you type.
+apps/settings/src/lib/stores/appSettings.ts	Ignored patterns
+apps/settings/src/lib/stores/appSettings.ts	Incremental
+apps/settings/src/lib/stores/appSettings.ts	Irregular tuning values this page cannot express as controls
+apps/settings/src/lib/stores/appSettings.ts	Keep as found
+apps/settings/src/lib/stores/appSettings.ts	LF, the norm everywhere but Windows
+apps/settings/src/lib/stores/appSettings.ts	Legacy usage pings
+apps/settings/src/lib/stores/appSettings.ts	Line endings
+apps/settings/src/lib/stores/appSettings.ts	Parser engine
+apps/settings/src/lib/stores/appSettings.ts	Reparse the whole file each edit; slower, simpler
+apps/settings/src/lib/stores/appSettings.ts	Save after
+apps/settings/src/lib/stores/appSettings.ts	Save automatically
+apps/settings/src/lib/stores/appSettings.ts	Session windows
+apps/settings/src/lib/stores/appSettings.ts	Sync token
+apps/settings/src/lib/stores/appSettings.ts	Tab width
+apps/settings/src/lib/stores/appSettings.ts	The credential for the optional sync service
+apps/settings/src/lib/stores/appSettings.ts	The laptop's own output
+apps/settings/src/lib/stores/appSettings.ts	The system default
+apps/settings/src/lib/stores/appSettings.ts	Unix
+apps/settings/src/lib/stores/appSettings.ts	Whatever the file already uses
+apps/settings/src/lib/stores/appSettings.ts	Where timed backups land
+apps/settings/src/lib/stores/appSettings.ts	Windows
+apps/settings/src/lib/stores/appSettings.ts	Write changes to disk as you type
+apps/settings/src/lib/stores/capsules.ts	Project Atlas notes
+apps/settings/src/lib/stores/capsules.ts	Reading list
+apps/settings/src/lib/stores/capsules.ts	Recipe collection
+apps/settings/src/lib/stores/capsules.ts	Trip 2026
+apps/settings/src/lib/stores/grants.ts	Automation
+apps/settings/src/lib/stores/grants.ts	Clipboard
+apps/settings/src/lib/stores/grants.ts	Devices
+apps/settings/src/lib/stores/grants.ts	Files and folders
+apps/settings/src/lib/stores/grants.ts	Knowledge graph
+apps/settings/src/lib/stores/grants.ts	Network
+apps/settings/src/lib/stores/grants.ts	Notifications
+apps/settings/src/lib/stores/grants.ts	System
+apps/settings/src/lib/stores/keybindings.ts	Activate / restore focused window and close Map
+apps/settings/src/lib/stores/keybindings.ts	Apps & Launchers
+apps/settings/src/lib/stores/keybindings.ts	Clear selection, then close Map
+apps/settings/src/lib/stores/keybindings.ts	Close all selected
+apps/settings/src/lib/stores/keybindings.ts	Close focused window
+apps/settings/src/lib/stores/keybindings.ts	Custom
+apps/settings/src/lib/stores/keybindings.ts	Focus
+apps/settings/src/lib/stores/keybindings.ts	Focus workspace N
+apps/settings/src/lib/stores/keybindings.ts	Go to workspace N and close Map
+apps/settings/src/lib/stores/keybindings.ts	Keyboard
+apps/settings/src/lib/stores/keybindings.ts	Minimize / restore all selected
+apps/settings/src/lib/stores/keybindings.ts	Modules
+apps/settings/src/lib/stores/keybindings.ts	Move Window
+apps/settings/src/lib/stores/keybindings.ts	Move to Workspace
+apps/settings/src/lib/stores/keybindings.ts	Next window (cycle)
+apps/settings/src/lib/stores/keybindings.ts	Next window in column
+apps/settings/src/lib/stores/keybindings.ts	Next workspace
+apps/settings/src/lib/stores/keybindings.ts	Previous window
+apps/settings/src/lib/stores/keybindings.ts	Previous window in column
+apps/settings/src/lib/stores/keybindings.ts	Previous workspace
+apps/settings/src/lib/stores/keybindings.ts	Shell
+apps/settings/src/lib/stores/keybindings.ts	Tiling
+apps/settings/src/lib/stores/keybindings.ts	Toggle fullscreen on focused window
+apps/settings/src/lib/stores/keybindings.ts	Toggle minimize / restore on focused window
+apps/settings/src/lib/stores/keybindings.ts	Toggle selection
+apps/settings/src/lib/stores/keybindings.ts	Toggle selection on focused window
+apps/settings/src/lib/stores/keybindings.ts	Window Management
+apps/settings/src/lib/stores/keybindings.ts	Workspace Map
+apps/settings/src/lib/stores/keybindings.ts	Workspaces
+apps/settings/src/lib/stores/models.ts	Answers your questions.
+apps/settings/src/lib/stores/models.ts	Background work
+apps/settings/src/lib/stores/models.ts	Balanced
+apps/settings/src/lib/stores/models.ts	Best quality
+apps/settings/src/lib/stores/models.ts	Chat
+apps/settings/src/lib/stores/models.ts	Chat titles
+apps/settings/src/lib/stores/models.ts	Fast
+apps/settings/src/lib/stores/models.ts	Names new chats. A small local model is plenty.
+apps/settings/src/lib/stores/models.ts	Runs the tasks you have turned on.
+apps/settings/src/lib/stores/models.ts	Your machine can run models up to about 8B at a good speed.
+apps/settings/src/lib/stores/modules.ts	Built-in Plugins
+apps/settings/src/lib/stores/modules.ts	Other
+apps/settings/src/lib/stores/modules.ts	Settings Panels
+apps/settings/src/lib/stores/modules.ts	Top Bar Extensions
+apps/settings/src/lib/stores/modules.ts	Waypointer Extensions
+apps/settings/src/lib/stores/notifications.ts	Alarms Only
+apps/settings/src/lib/stores/notifications.ts	All notifications are shown.
+apps/settings/src/lib/stores/notifications.ts	Follow the time schedule below.
+apps/settings/src/lib/stores/notifications.ts	Nothing is shown except always-allow apps.
+apps/settings/src/lib/stores/notifications.ts	Off
+apps/settings/src/lib/stores/notifications.ts	Only alarm and reminder notifications.
+apps/settings/src/lib/stores/notifications.ts	Only critical notifications break through.
+apps/settings/src/lib/stores/notifications.ts	Priority Only
+apps/settings/src/lib/stores/notifications.ts	Scheduled
+apps/settings/src/lib/stores/notifications.ts	Total Silence
+apps/settings/src/lib/stores/systemActions.ts	Brightness down
+apps/settings/src/lib/stores/systemActions.ts	Brightness up
+apps/settings/src/lib/stores/systemActions.ts	Default browser
+apps/settings/src/lib/stores/systemActions.ts	Home folder
+apps/settings/src/lib/stores/systemActions.ts	Lock screen
+apps/settings/src/lib/stores/systemActions.ts	Log out
+apps/settings/src/lib/stores/systemActions.ts	Mute microphone
+apps/settings/src/lib/stores/systemActions.ts	Mute output
+apps/settings/src/lib/stores/systemActions.ts	Next track
+apps/settings/src/lib/stores/systemActions.ts	Open launcher
+apps/settings/src/lib/stores/systemActions.ts	Play / pause
+apps/settings/src/lib/stores/systemActions.ts	Power off
+apps/settings/src/lib/stores/systemActions.ts	Previous track
+apps/settings/src/lib/stores/systemActions.ts	Screenshot
+apps/settings/src/lib/stores/systemActions.ts	Suspend
+apps/settings/src/lib/stores/systemActions.ts	Volume down
+apps/settings/src/lib/stores/systemActions.ts	Volume up
+apps/settings/src/lib/stores/theme.ts	Fira Code
+apps/settings/src/lib/stores/theme.ts	Inter
+apps/settings/src/lib/stores/theme.ts	JetBrains Mono
+apps/settings/src/lib/stores/theme.ts	System Default
+apps/settings/src/lib/stores/theme.ts	System Mono
+apps/settings/src/lib/stores/themeColors.ts	Accent
+apps/settings/src/lib/stores/themeColors.ts	Accent hover
+apps/settings/src/lib/stores/themeColors.ts	Accent pressed
+apps/settings/src/lib/stores/themeColors.ts	Accent, hovered
+apps/settings/src/lib/stores/themeColors.ts	Accent, pressed
+apps/settings/src/lib/stores/themeColors.ts	Background
+apps/settings/src/lib/stores/themeColors.ts	Border
+apps/settings/src/lib/stores/themeColors.ts	Cards, popovers, panels
+apps/settings/src/lib/stores/themeColors.ts	Caution state
+apps/settings/src/lib/stores/themeColors.ts	Destructive or failed state
+apps/settings/src/lib/stores/themeColors.ts	Disabled text
+apps/settings/src/lib/stores/themeColors.ts	Dividers and outlines
+apps/settings/src/lib/stores/themeColors.ts	Emphasised outlines
+apps/settings/src/lib/stores/themeColors.ts	Error
+apps/settings/src/lib/stores/themeColors.ts	Inactive controls
+apps/settings/src/lib/stores/themeColors.ts	Info
+apps/settings/src/lib/stores/themeColors.ts	Informational state
+apps/settings/src/lib/stores/themeColors.ts	Input
+apps/settings/src/lib/stores/themeColors.ts	Menus and overlays
+apps/settings/src/lib/stores/themeColors.ts	Muted and helper text
+apps/settings/src/lib/stores/themeColors.ts	On-accent text
+apps/settings/src/lib/stores/themeColors.ts	Overlay
+apps/settings/src/lib/stores/themeColors.ts	Positive state
+apps/settings/src/lib/stores/themeColors.ts	Primary actions and highlights
+apps/settings/src/lib/stores/themeColors.ts	Primary text
+apps/settings/src/lib/stores/themeColors.ts	Secondary text
+apps/settings/src/lib/stores/themeColors.ts	Shell background
+apps/settings/src/lib/stores/themeColors.ts	Strong border
+apps/settings/src/lib/stores/themeColors.ts	Success
+apps/settings/src/lib/stores/themeColors.ts	Surface
+apps/settings/src/lib/stores/themeColors.ts	Text
+apps/settings/src/lib/stores/themeColors.ts	Text fields and controls
+apps/settings/src/lib/stores/themeColors.ts	Text on background
+apps/settings/src/lib/stores/themeColors.ts	Text on surface
+apps/settings/src/lib/stores/themeColors.ts	Text sitting on the accent
+apps/settings/src/lib/stores/themeColors.ts	The desktop shell ground
+apps/settings/src/lib/stores/themeColors.ts	The main window background
+apps/settings/src/lib/stores/themeColors.ts	Warning
+apps/settings/src/lib/stores/themeGeometry.ts	Border width
+apps/settings/src/lib/stores/themeGeometry.ts	Button radius
+apps/settings/src/lib/stores/themeGeometry.ts	Buttons
+apps/settings/src/lib/stores/themeGeometry.ts	Card radius
+apps/settings/src/lib/stores/themeGeometry.ts	Cards, popovers, panels
+apps/settings/src/lib/stores/themeGeometry.ts	Chip radius
+apps/settings/src/lib/stores/themeGeometry.ts	Density
+apps/settings/src/lib/stores/themeGeometry.ts	Dialogs and sheets
+apps/settings/src/lib/stores/themeGeometry.ts	Gaps
+apps/settings/src/lib/stores/themeGeometry.ts	Input radius
+apps/settings/src/lib/stores/themeGeometry.ts	Modal radius
+apps/settings/src/lib/stores/themeGeometry.ts	Roundness
+apps/settings/src/lib/stores/themeGeometry.ts	Rounds every corner at once
+apps/settings/src/lib/stores/themeGeometry.ts	Scales the space between things
+apps/settings/src/lib/stores/themeGeometry.ts	Space between tiled windows
+apps/settings/src/lib/stores/themeGeometry.ts	Space, large
+apps/settings/src/lib/stores/themeGeometry.ts	Space, medium
+apps/settings/src/lib/stores/themeGeometry.ts	Space, small
+apps/settings/src/lib/stores/themeGeometry.ts	Space, tight
+apps/settings/src/lib/stores/themeGeometry.ts	Space, widest
+apps/settings/src/lib/stores/themeGeometry.ts	Tags, badges, dots
+apps/settings/src/lib/stores/themeGeometry.ts	Text fields and selects
+apps/settings/src/lib/stores/themeGeometry.ts	The rounding of window corners
+apps/settings/src/lib/stores/themeGeometry.ts	The tightest step
+apps/settings/src/lib/stores/themeGeometry.ts	The widest step
+apps/settings/src/lib/stores/themeGeometry.ts	The window outline thickness
+apps/settings/src/lib/stores/themeGeometry.ts	Window corners
+apps/settings/src/lib/stores/themeMotionDepth.ts	Ease
+apps/settings/src/lib/stores/themeMotionDepth.ts	Linear
+apps/settings/src/lib/stores/themeMotionDepth.ts	None
+apps/settings/src/lib/stores/themeMotionDepth.ts	Normal
+apps/settings/src/lib/stores/themeMotionDepth.ts	Snappy
+apps/settings/src/lib/stores/themeMotionDepth.ts	Soft
+apps/settings/src/lib/stores/themeMotionDepth.ts	Spring
+apps/settings/src/lib/stores/themeMotionDepth.ts	Strong
+apps/settings/src/lib/stores/themeOverrides.ts	Colours
+apps/settings/src/lib/stores/themeOverrides.ts	Geometry
+apps/settings/src/lib/stores/themeOverrides.ts	Motion & Depth
+apps/settings/src/lib/stores/themeOverrides.ts	System
+apps/settings/src/lib/stores/themeOverrides.ts	Toolkits
+apps/settings/src/lib/stores/themeOverrides.ts	Typography
+apps/settings/src/lib/stores/themeSystem.ts	A caution prompt
+apps/settings/src/lib/stores/themeSystem.ts	A new notification arrives
+apps/settings/src/lib/stores/themeSystem.ts	Action
+apps/settings/src/lib/stores/themeSystem.ts	Adwaita
+apps/settings/src/lib/stores/themeSystem.ts	An action completes
+apps/settings/src/lib/stores/themeSystem.ts	Bell
+apps/settings/src/lib/stores/themeSystem.ts	Bibata
+apps/settings/src/lib/stores/themeSystem.ts	Black
+apps/settings/src/lib/stores/themeSystem.ts	Blue
+apps/settings/src/lib/stores/themeSystem.ts	Bright black
+apps/settings/src/lib/stores/themeSystem.ts	Bright blue
+apps/settings/src/lib/stores/themeSystem.ts	Bright cyan
+apps/settings/src/lib/stores/themeSystem.ts	Bright green
+apps/settings/src/lib/stores/themeSystem.ts	Bright magenta
+apps/settings/src/lib/stores/themeSystem.ts	Bright red
+apps/settings/src/lib/stores/themeSystem.ts	Bright white
+apps/settings/src/lib/stores/themeSystem.ts	Bright yellow
+apps/settings/src/lib/stores/themeSystem.ts	Capitaine
+apps/settings/src/lib/stores/themeSystem.ts	Chime
+apps/settings/src/lib/stores/themeSystem.ts	Click
+apps/settings/src/lib/stores/themeSystem.ts	Cyan
+apps/settings/src/lib/stores/themeSystem.ts	Default
+apps/settings/src/lib/stores/themeSystem.ts	Error
+apps/settings/src/lib/stores/themeSystem.ts	Green
+apps/settings/src/lib/stores/themeSystem.ts	Magenta
+apps/settings/src/lib/stores/themeSystem.ts	Message
+apps/settings/src/lib/stores/themeSystem.ts	None
+apps/settings/src/lib/stores/themeSystem.ts	Notification
+apps/settings/src/lib/stores/themeSystem.ts	Numix
+apps/settings/src/lib/stores/themeSystem.ts	Papirus
+apps/settings/src/lib/stores/themeSystem.ts	Pop
+apps/settings/src/lib/stores/themeSystem.ts	Red
+apps/settings/src/lib/stores/themeSystem.ts	Soft
+apps/settings/src/lib/stores/themeSystem.ts	Something failed
+apps/settings/src/lib/stores/themeSystem.ts	Tela
+apps/settings/src/lib/stores/themeSystem.ts	Warning
+apps/settings/src/lib/stores/themeSystem.ts	White
+apps/settings/src/lib/stores/themeSystem.ts	Yellow
+apps/settings/src/lib/stores/themeToolkits.ts	Colours only
+apps/settings/src/lib/stores/themeToolkits.ts	Full
 apps/settings/src/routes/about/+page.svelte	Arlen OS
+apps/settings/src/routes/appearance/+page.svelte	Colours
+apps/settings/src/routes/appearance/+page.svelte	Geometry
+apps/settings/src/routes/appearance/+page.svelte	Motion & Depth
+apps/settings/src/routes/appearance/+page.svelte	System
+apps/settings/src/routes/appearance/+page.svelte	Toolkits
+apps/settings/src/routes/appearance/+page.svelte	Typography
+apps/settings/src/routes/appearance/+page.svelte	Wallpaper
+apps/settings/src/routes/appearance/quicksettings/+page.svelte	Airplane Mode
+apps/settings/src/routes/appearance/quicksettings/+page.svelte	Bluetooth
+apps/settings/src/routes/appearance/quicksettings/+page.svelte	Brightness
+apps/settings/src/routes/appearance/quicksettings/+page.svelte	Do Not Disturb
+apps/settings/src/routes/appearance/quicksettings/+page.svelte	Knowledge Graph
+apps/settings/src/routes/appearance/quicksettings/+page.svelte	Network
+apps/settings/src/routes/appearance/quicksettings/+page.svelte	Project Context
+apps/settings/src/routes/appearance/quicksettings/+page.svelte	Quick Settings layout restored to defaults.
+apps/settings/src/routes/appearance/quicksettings/+page.svelte	Sound
+apps/settings/src/routes/appearance/quicksettings/+page.svelte	User Row
 apps/settings/src/routes/appearance/system/+page.svelte	$ ls --color
 apps/settings/src/routes/appearance/system/+page.svelte	README.md
 apps/settings/src/routes/appearance/system/+page.svelte	arlen@desktop
@@ -89,22 +762,58 @@ apps/settings/src/routes/appearance/system/+page.svelte	error:
 apps/settings/src/routes/appearance/system/+page.svelte	src
 apps/settings/src/routes/appearance/system/+page.svelte	warning:
 apps/settings/src/routes/appearance/system/+page.svelte	~/src
+apps/settings/src/routes/appearance/typography/+page.svelte	Body text
+apps/settings/src/routes/appearance/typography/+page.svelte	Bold
+apps/settings/src/routes/appearance/typography/+page.svelte	Emphasis and labels
+apps/settings/src/routes/appearance/typography/+page.svelte	Headings
+apps/settings/src/routes/appearance/typography/+page.svelte	Medium
+apps/settings/src/routes/appearance/typography/+page.svelte	Normal
 apps/settings/src/routes/appearance/typography/+page.svelte	const answer = 42;
 apps/settings/src/routes/extensions/+page.svelte	forage install
+apps/settings/src/routes/keyboard/+page.svelte	Czech
+apps/settings/src/routes/keyboard/+page.svelte	Danish
+apps/settings/src/routes/keyboard/+page.svelte	Dutch
+apps/settings/src/routes/keyboard/+page.svelte	English (UK)
+apps/settings/src/routes/keyboard/+page.svelte	English (US)
+apps/settings/src/routes/keyboard/+page.svelte	Finnish
+apps/settings/src/routes/keyboard/+page.svelte	French
+apps/settings/src/routes/keyboard/+page.svelte	German
+apps/settings/src/routes/keyboard/+page.svelte	German (no dead keys)
+apps/settings/src/routes/keyboard/+page.svelte	Hungarian
+apps/settings/src/routes/keyboard/+page.svelte	Italian
+apps/settings/src/routes/keyboard/+page.svelte	Japanese
+apps/settings/src/routes/keyboard/+page.svelte	Norwegian
+apps/settings/src/routes/keyboard/+page.svelte	Polish
+apps/settings/src/routes/keyboard/+page.svelte	Portuguese
+apps/settings/src/routes/keyboard/+page.svelte	Russian
+apps/settings/src/routes/keyboard/+page.svelte	Spanish
+apps/settings/src/routes/keyboard/+page.svelte	Swedish
+apps/settings/src/routes/keyboard/+page.svelte	Swiss
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Add custom
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Delete every installed module's keybinding fragment
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Loading…
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	No bindings match "
+apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Remove fragments
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Remove the [keybindings] section entirely so compositor defaults apply
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Reset all
+apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Reset all keybindings?
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Reset module shortcuts
+apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Reset module shortcuts?
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Search bindings…
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Shortcuts
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Use compositor defaults
+apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Use compositor defaults?
+apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Use defaults
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	bound to:
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	conflict
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	detected
 apps/settings/src/routes/notifications/+page.svelte	Active until
+apps/settings/src/routes/notifications/+page.svelte	Alarms
+apps/settings/src/routes/notifications/+page.svelte	Priority
+apps/settings/src/routes/notifications/+page.svelte	Total
+apps/settings/src/routes/printers/+page.svelte	A4
+apps/settings/src/routes/printers/+page.svelte	Legal
+apps/settings/src/routes/printers/+page.svelte	Letter
 apps/settings/src/routes/system-actions/+page.svelte	/bin/sh -c
 apps/settings/src/routes/system-actions/+page.svelte	dispatches a shell-overlay event (e.g.
 apps/settings/src/routes/system-actions/+page.svelte	for compatibility.
@@ -113,7 +822,39 @@ apps/settings/src/routes/system-actions/+page.svelte	shell:brightness_up
 apps/settings/src/routes/system-actions/+page.svelte	shell:event_name
 apps/settings/src/routes/system-actions/+page.svelte	spawn:command
 apps/settings/src/routes/topbar/+page.svelte	Arlen
+apps/settings/src/routes/windows-apps/+page.svelte	A shared bottle
+apps/settings/src/routes/windows-apps/+page.svelte	Fullscreen
+apps/settings/src/routes/windows-apps/+page.svelte	Its own bottle
+apps/settings/src/routes/windows-apps/+page.svelte	Windowed
+apps/settings/src/routes/workspaces/+page.svelte	Horizontal
+apps/settings/src/routes/workspaces/+page.svelte	Vertical
+apps/store/src/lib/stores/catalog.ts	A calm player for radio streams and podcast feeds you bring yourself.
+apps/store/src/lib/stores/catalog.ts	A focused mail client
+apps/store/src/lib/stores/catalog.ts	Countdowns, intervals and a gentle chime at the end.
+apps/store/src/lib/stores/catalog.ts	EPUB reading, comfortably
+apps/store/src/lib/stores/catalog.ts	Freehand drawing with pressure support
+apps/store/src/lib/stores/catalog.ts	IMAP and SMTP, threaded conversations, offline archive.
+apps/store/src/lib/stores/catalog.ts	Internet radio and podcasts
+apps/store/src/lib/stores/catalog.ts	Layers, brushes and a canvas that keeps up with a pen. Files save as ORA.
+apps/store/src/lib/stores/catalog.ts	Open a CSV, get a chart. Export as SVG or PNG.
+apps/store/src/lib/stores/catalog.ts	Plain notes that never leave the machine
+apps/store/src/lib/stores/catalog.ts	Quick charts from CSV files
+apps/store/src/lib/stores/catalog.ts	The next hours and days, from a single forecast source you can see.
+apps/store/src/lib/stores/catalog.ts	Timers and focus sessions
+apps/store/src/lib/stores/catalog.ts	Typography-first EPUB reading with margins that breathe.
+apps/store/src/lib/stores/catalog.ts	Weather at a glance
 apps/store/src/routes/updates/+page.svelte	&rarr;
+apps/system-monitor/src/lib/stores/detail.ts	read and write the graph
+apps/system-monitor/src/lib/stores/detail.ts	read recent files
+apps/system-monitor/src/lib/stores/detail.ts	read the knowledge graph
+apps/system-monitor/src/lib/stores/detail.ts	read your notes
+apps/system-monitor/src/lib/stores/perf.ts	AI compute
+apps/system-monitor/src/lib/stores/perf.ts	CPU
+apps/system-monitor/src/lib/stores/perf.ts	Disk
+apps/system-monitor/src/lib/stores/perf.ts	Memory
+apps/system-monitor/src/lib/stores/perf.ts	Network
+apps/terminal/src/lib/topbar.ts	History (Ctrl+R)
+apps/terminal/src/lib/topbar.ts	New session (Ctrl+T)
 apps/terminal/src/routes/_chrometest/+page.svelte	A header bar per block redraws cwd · git as chrome; result + actions always on.
 apps/terminal/src/routes/_chrometest/+page.svelte	A · Styled
 apps/terminal/src/routes/_chrometest/+page.svelte	B · Classic
@@ -125,3 +866,70 @@ apps/viewers/src/lib/components/ViewerMenu.svelte	English (stereo)
 apps/viewers/src/lib/components/ViewerMenu.svelte	German
 apps/viewers/src/lib/components/ViewerMenu.svelte	Space
 apps/viewers/src/lib/components/ViewerMenu.svelte	film.en.srt
+apps/viewers/src/lib/mock.ts	Nightswim
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Add a tag
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Bold
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Buttons and badges
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Cancel
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Choices
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Kit a11y fixture
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Name
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	New
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Redo
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Save
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Sliders and switches
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Text fields
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Toolbar
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Undo
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Your name
+sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	toggled:
+sdk/ui-kit/src/lib/components/browser/Breadcrumb.svelte	Path
+sdk/ui-kit/src/lib/components/browser/FileGrid.svelte	Files
+sdk/ui-kit/src/lib/components/browser/FileList.svelte	Files
+sdk/ui-kit/src/lib/components/browser/FileRow.svelte	New name
+sdk/ui-kit/src/lib/components/browser/MillerColumns.svelte	Empty
+sdk/ui-kit/src/lib/components/browser/MillerColumns.svelte	Folder columns
+sdk/ui-kit/src/lib/components/console/ConsoleBlock.svelte	Still running
+sdk/ui-kit/src/lib/components/console/ConsoleBlock.svelte	exit
+sdk/ui-kit/src/lib/components/console/ConsoleBlock.svelte	running
+sdk/ui-kit/src/lib/components/ui/about-dialog/about-dialog.svelte	Arlen OS &middot;
+sdk/ui-kit/src/lib/components/ui/about-dialog/about-dialog.svelte	Close
+sdk/ui-kit/src/lib/components/ui/add-remove-list/add-remove-list.svelte	Remove
+sdk/ui-kit/src/lib/components/ui/color-picker/ColorPicker.svelte	Hex colour
+sdk/ui-kit/src/lib/components/ui/color-picker/ColorPicker.svelte	Hue
+sdk/ui-kit/src/lib/components/ui/confirm-dialog/confirm-dialog.svelte	Cancel
+sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Days of week
+sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Fr
+sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Mo
+sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Sa
+sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Su
+sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Th
+sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Tu
+sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	We
+sdk/ui-kit/src/lib/components/ui/media-transport/media-transport.svelte	Next
+sdk/ui-kit/src/lib/components/ui/media-transport/media-transport.svelte	Previous
+sdk/ui-kit/src/lib/components/ui/position-picker/position-picker.svelte	Toast position
+sdk/ui-kit/src/lib/components/ui/sidebar/SidebarRail.svelte	Toggle Sidebar
+sdk/ui-kit/src/lib/components/ui/sidebar/SidebarTrigger.svelte	Toggle Sidebar
+sdk/ui-kit/src/lib/components/ui/window-controls/WindowButtons.svelte	Close
+sdk/ui-kit/src/lib/components/ui/window-controls/WindowButtons.svelte	Maximize
+sdk/ui-kit/src/lib/components/ui/window-controls/WindowButtons.svelte	Minimize
+sdk/ui-kit/src/lib/components/ui/window-controls/WindowControls.svelte	Close
+sdk/ui-kit/src/lib/components/ui/window-controls/WindowControls.svelte	Maximize
+sdk/ui-kit/src/lib/components/ui/window-controls/WindowControls.svelte	Minimize
+sdk/ui-kit/src/routes/+page.svelte	All colors come from theme.toml via CSS custom properties.
+sdk/ui-kit/src/routes/+page.svelte	App surface
+sdk/ui-kit/src/routes/+page.svelte	Arlen ui-kit
+sdk/ui-kit/src/routes/+page.svelte	Badges
+sdk/ui-kit/src/routes/+page.svelte	Buttons
+sdk/ui-kit/src/routes/+page.svelte	Cards
+sdk/ui-kit/src/routes/+page.svelte	Dark shell, light apps. The default Arlen theme.
+sdk/ui-kit/src/routes/+page.svelte	Default
+sdk/ui-kit/src/routes/+page.svelte	Destructive
+sdk/ui-kit/src/routes/+page.svelte	Ghost
+sdk/ui-kit/src/routes/+page.svelte	Outline
+sdk/ui-kit/src/routes/+page.svelte	Panda Theme
+sdk/ui-kit/src/routes/+page.svelte	Secondary
+sdk/ui-kit/src/routes/+page.svelte	Shared component library for Arlen first-party apps. Built with shadcn-svelte, Tailwind v4, and Arlen Surface Tokens.
+sdk/ui-kit/src/routes/+page.svelte	Shell surface
+sdk/ui-kit/src/routes/+page.svelte	Surface Tokens
