@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
     import {
         windowHeaders,
         draggingSurfaces,
@@ -89,7 +90,7 @@
               region in windowHeaders.ts covers both the tab strip
               and the button strip.
             -->
-        <div class="header-tabs" role="tablist" aria-label="Window tabs">
+        <div class="header-tabs" role="tablist" aria-label={$t("sh.hdr.tabs")}>
             {#each tabs as tab (tab.index)}
                 <button
                     type="button"
@@ -110,7 +111,7 @@
                 <button
                     class="header-btn minimize"
                     onclick={() => headerAction(hdr.surface_id, HEADER_ACTION_MINIMIZE)}
-                    aria-label="Minimize"
+                    aria-label={$t("sh.hdr.minimize")}
                 >
                     <Minus size={14} strokeWidth={2} />
                 </button>
@@ -119,7 +120,7 @@
                 <button
                     class="header-btn maximize"
                     onclick={() => headerAction(hdr.surface_id, HEADER_ACTION_MAXIMIZE)}
-                    aria-label="Maximize"
+                    aria-label={$t("sh.hdr.maximize")}
                 >
                     <Square size={12} strokeWidth={2} />
                 </button>
@@ -127,7 +128,7 @@
             <button
                 class="header-btn close"
                 onclick={() => headerAction(hdr.surface_id, HEADER_ACTION_CLOSE)}
-                aria-label="Close"
+                aria-label={$t("sh.hdr.close")}
             >
                 <X size={14} strokeWidth={2} />
             </button>

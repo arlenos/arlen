@@ -299,6 +299,18 @@ const messages: Catalogs = {
     // Media indicator
     "sh.mpris.nowPlaying": "Now playing",
     "sh.mpris.openPlayer": "Open the player",
+
+    // Bluetooth pairing dialog
+    "sh.pair.digitsEntered": "Digits entered on device",
+    "sh.pair.pin": "PIN",
+    "sh.pair.pinCode": "PIN code",
+    "sh.pair.passkey": "Passkey",
+
+    // Window header
+    "sh.hdr.tabs": "Window tabs",
+    "sh.hdr.minimize": "Minimize",
+    "sh.hdr.maximize": "Maximize",
+    "sh.hdr.close": "Close",
   },
   de: {
     "sh.net.title": "Netzwerk",
@@ -561,6 +573,16 @@ const messages: Catalogs = {
 
     "sh.mpris.nowPlaying": "L\u00e4uft gerade",
     "sh.mpris.openPlayer": "Player \u00f6ffnen",
+
+    "sh.pair.digitsEntered": "Am Ger\u00e4t eingegebene Ziffern",
+    "sh.pair.pin": "PIN",
+    "sh.pair.pinCode": "PIN-Code",
+    "sh.pair.passkey": "Kennschl\u00fcssel",
+
+    "sh.hdr.tabs": "Fensterreiter",
+    "sh.hdr.minimize": "Minimieren",
+    "sh.hdr.maximize": "Maximieren",
+    "sh.hdr.close": "Schlie\u00dfen",
   },
 };
 

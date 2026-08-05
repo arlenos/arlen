@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// BlueZ Agent1 pairing requests, rendered through the shared `ConsentCard`
   /// so the whole permission cluster reads as one dialog (system-dialog-plan.md).
   /// The requester is the DEVICE (name + address, not a system-attested app id,
@@ -181,7 +182,7 @@
       <div
         class="entered-progress"
         role="progressbar"
-        aria-label="Digits entered on device"
+        aria-label={$t("sh.pair.digitsEntered")}
         aria-valuemin={0}
         aria-valuemax={6}
         aria-valuenow={request.entered}
@@ -192,7 +193,7 @@
       </div>
     {:else if request.kind === "pinCodeInput"}
       <div class="input-row">
-        <Input bind:value={pinInput} maxlength={16} autofocus placeholder="PIN" aria-label="PIN code" />
+        <Input bind:value={pinInput} maxlength={16} autofocus placeholder={$t("sh.pair.pin")} aria-label={$t("sh.pair.pinCode")} />
       </div>
     {:else if request.kind === "passkeyInput"}
       <div class="input-row">
@@ -202,7 +203,7 @@
           maxlength={6}
           autofocus
           placeholder="000000"
-          aria-label="Passkey"
+          aria-label={$t("sh.pair.passkey")}
           oninput={() => {
             passkeyInput = passkeyInput.replace(/[^0-9]/g, "");
           }}
