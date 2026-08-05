@@ -84,6 +84,7 @@ jobs:
           node dev/scripts/check-catalogs.mjs
           node dev/scripts/check-i18n-reactivity.mjs
           python3 dev/scripts/check-invoke-shape.py
+          node dev/scripts/test-check-fixtures.mjs
           bash dev/scripts/check-packaged-units.sh
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then

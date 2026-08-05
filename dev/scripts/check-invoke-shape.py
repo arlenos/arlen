@@ -398,7 +398,14 @@ def check_returns(root: Path) -> tuple[int, list[str], list[str]]:
 
 
 def main() -> int:
-    commands = rust_commands(ROOT)
+    # A directory argument scans that tree instead of the repo's. Only the
+    # fixture runner passes one; CI passes nothing. This check has produced false
+    # findings twice (a command map shared across apps, and a payload reader that
+    # stopped at the first `}` of a `${...}`), so it has to be runnable against
+    # inputs picked to fool it.
+    root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT
+
+    commands = rust_commands(root)
     if not commands:
         print("found no #[tauri::command] functions; the check needs updating")
         return 2
@@ -406,7 +413,7 @@ def main() -> int:
     problems = []
     checked = 0
     total = sum(len(v) for v in commands.values())
-    for app, path, line, cmd, keys in invoke_calls(ROOT):
+    for app, path, line, cmd, keys in invoke_calls(root):
         own = commands.get(app, {})
         if cmd not in own or cmd in EXCUSED or keys is None:
             continue
@@ -425,7 +432,7 @@ def main() -> int:
                 f"not pass; the command fails to deserialize its arguments"
             )
 
-    ret_checked, ret_problems, ret_known = check_returns(ROOT)
+    ret_checked, ret_problems, ret_known = check_returns(root)
     problems.extend(ret_problems)
 
     print(
