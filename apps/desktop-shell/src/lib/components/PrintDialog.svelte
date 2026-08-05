@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The first-party print dialog (printing-plan.md PRN-R3): the print-a-document
   /// moment, portal-mediated so the app never touches the printer directly. Mounted
   /// once in the shell layout beside the other request dialogs; a preview on the
@@ -28,25 +29,27 @@
 
   // The option value sets mirror the Printers panel so the two surfaces speak one
   // vocabulary; the coder maps to the portal/GTK strings at submit.
-  const DUPLEX_OPTIONS = [
-    { value: "one-sided", label: "One-sided" },
-    { value: "two-sided-long", label: "Two-sided" },
-    { value: "two-sided-short", label: "Two-sided (flip)" },
-  ];
-  const COLOR_OPTIONS = [
-    { value: "color", label: "Colour" },
-    { value: "mono", label: "Black & white" },
-  ];
+  // `$derived`, not `const`: the translator is a store, so a constant would freeze
+  // English at import and a locale switch would leave these controls behind.
+  const DUPLEX_OPTIONS = $derived([
+    { value: "one-sided", label: $t("sh.print.oneSided") },
+    { value: "two-sided-long", label: $t("sh.print.twoSided") },
+    { value: "two-sided-short", label: $t("sh.print.twoSidedFlip") },
+  ]);
+  const COLOR_OPTIONS = $derived([
+    { value: "color", label: $t("sh.print.colorColour") },
+    { value: "mono", label: $t("sh.print.colorMono") },
+  ]);
   const PAPER_OPTIONS = [
     { value: "a4", label: "A4" },
     { value: "letter", label: "Letter" },
     { value: "legal", label: "Legal" },
   ];
-  const RANGE_OPTIONS = [
-    { value: "all", label: "All" },
-    { value: "current", label: "Current" },
-    { value: "range", label: "Range" },
-  ];
+  const RANGE_OPTIONS = $derived([
+    { value: "all", label: $t("sh.print.rangeAll") },
+    { value: "current", label: $t("sh.print.rangeCurrent") },
+    { value: "range", label: $t("sh.print.rangeRange") },
+  ]);
 
   let printer = $state("");
   let copies = $state(1);
@@ -94,8 +97,8 @@
         <header class="pd-head">
           <PrinterIcon size={18} strokeWidth={2} aria-hidden="true" />
           <div class="pd-head-text">
-            <h2 class="pd-title">Print</h2>
-            <p class="pd-sub">{req.title}, from {req.appName}</p>
+            <h2 class="pd-title">{$t("sh.print.title")}</h2>
+            <p class="pd-sub">{$t("sh.print.subtitle", { doc: req.title, app: req.appName })}</p>
           </div>
         </header>
 
@@ -106,15 +109,15 @@
                  raster replaces this glyph (render_print_preview). -->
             <div class="pd-sheet" class:mono={color === "mono"} style={`aspect-ratio:${sheetRatio}`}>
               <FileText size={34} strokeWidth={1.5} aria-hidden="true" />
-              <span class="pd-sheet-label">Preview</span>
+              <span class="pd-sheet-label">{$t("sh.print.preview")}</span>
             </div>
             {#if req.pageCount > 1}
               <div class="pd-pager">
-                <button type="button" class="pd-page-btn" disabled={page <= 1} onclick={() => (page = Math.max(1, page - 1))} aria-label="Previous page">
+                <button type="button" class="pd-page-btn" disabled={page <= 1} onclick={() => (page = Math.max(1, page - 1))} aria-label={$t("sh.print.prevPage")}>
                   <ChevronLeft size={15} strokeWidth={2} />
                 </button>
-                <span class="pd-page-num">Page {page} of {req.pageCount}</span>
-                <button type="button" class="pd-page-btn" disabled={page >= req.pageCount} onclick={() => (page = Math.min(req.pageCount, page + 1))} aria-label="Next page">
+                <span class="pd-page-num">{$t("sh.print.pageOf", { page, total: req.pageCount })}</span>
+                <button type="button" class="pd-page-btn" disabled={page >= req.pageCount} onclick={() => (page = Math.min(req.pageCount, page + 1))} aria-label={$t("sh.print.nextPage")}>
                   <ChevronRight size={15} strokeWidth={2} />
                 </button>
               </div>
@@ -123,51 +126,51 @@
 
           <div class="pd-controls">
             {#if $printersMocked}
-              <p class="pd-note">Example printers - not the real ones on this machine.</p>
+              <p class="pd-note">{$t("sh.print.mocked")}</p>
             {/if}
 
             <div class="pd-field">
-              <span class="pd-label">Printer</span>
-              <PopoverSelect value={printer} options={printerOptions} width="100%" ariaLabel="Printer" onchange={(v) => (printer = v)} />
+              <span class="pd-label">{$t("sh.print.printer")}</span>
+              <PopoverSelect value={printer} options={printerOptions} width="100%" ariaLabel={$t("sh.print.printer")} onchange={(v) => (printer = v)} />
               {#if netHost}
-                <span class="pd-dest">Network, {netHost}</span>
+                <span class="pd-dest">{$t("sh.print.networkHost", { host: netHost })}</span>
               {/if}
             </div>
 
             <div class="pd-field">
-              <span class="pd-label">Copies</span>
-              <NumberInput value={copies} min={1} max={999} ariaLabel="Copies" onchange={(v) => (copies = v)} />
+              <span class="pd-label">{$t("sh.print.copies")}</span>
+              <NumberInput value={copies} min={1} max={999} ariaLabel={$t("sh.print.copies")} onchange={(v) => (copies = v)} />
             </div>
 
             <div class="pd-field">
-              <span class="pd-label">Range</span>
-              <SegmentedControl value={rangeMode} options={RANGE_OPTIONS} ariaLabel="Range" onchange={(v) => (rangeMode = v as RangeMode)} />
+              <span class="pd-label">{$t("sh.print.range")}</span>
+              <SegmentedControl value={rangeMode} options={RANGE_OPTIONS} ariaLabel={$t("sh.print.range")} onchange={(v) => (rangeMode = v as RangeMode)} />
               {#if rangeMode === "range"}
-                <Input value={rangeText} placeholder="e.g. 1-5, 8" aria-label="Page range" oninput={(e) => (rangeText = e.currentTarget.value)} />
+                <Input value={rangeText} placeholder={$t("sh.print.rangeHint")} aria-label={$t("sh.print.pageRange")} oninput={(e) => (rangeText = e.currentTarget.value)} />
               {/if}
             </div>
 
             <div class="pd-field">
-              <span class="pd-label">Sides</span>
-              <SegmentedControl value={duplex} options={DUPLEX_OPTIONS} ariaLabel="Sides" onchange={(v) => (duplex = v as Duplex)} />
+              <span class="pd-label">{$t("sh.print.sides")}</span>
+              <SegmentedControl value={duplex} options={DUPLEX_OPTIONS} ariaLabel={$t("sh.print.sides")} onchange={(v) => (duplex = v as Duplex)} />
             </div>
 
             <div class="pd-field">
-              <span class="pd-label">Colour</span>
-              <SegmentedControl value={color} options={COLOR_OPTIONS} ariaLabel="Colour" onchange={(v) => (color = v as Color)} />
+              <span class="pd-label">{$t("sh.print.colour")}</span>
+              <SegmentedControl value={color} options={COLOR_OPTIONS} ariaLabel={$t("sh.print.colour")} onchange={(v) => (color = v as Color)} />
             </div>
 
             <div class="pd-field">
-              <span class="pd-label">Paper</span>
-              <PopoverSelect value={paper} options={PAPER_OPTIONS} width="9rem" ariaLabel="Paper size" onchange={(v) => (paper = v as Paper)} />
+              <span class="pd-label">{$t("sh.print.paper")}</span>
+              <PopoverSelect value={paper} options={PAPER_OPTIONS} width="9rem" ariaLabel={$t("sh.print.paperSize")} onchange={(v) => (paper = v as Paper)} />
             </div>
           </div>
         </div>
 
         <footer class="pd-foot">
-          <Button variant="outline" onclick={() => cancelPrint()}>Cancel</Button>
+          <Button variant="outline" onclick={() => cancelPrint()}>{$t("sh.print.cancel")}</Button>
           <span class="pd-spacer"></span>
-          <Button onclick={doPrint} disabled={!printer}>Print</Button>
+          <Button onclick={doPrint} disabled={!printer}>{$t("sh.print.submit")}</Button>
         </footer>
       </div>
     </Dialog.Content>
