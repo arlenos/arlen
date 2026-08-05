@@ -111,14 +111,31 @@ pub fn init(window: tauri::WebviewWindow) -> Result<(), tauri::Error> {
                 // to the default operator so the children blend normally.
                 {
                     use gtk::cairo::Operator;
-                    use std::sync::atomic::{AtomicBool, Ordering};
+                    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
                     // Say so once. A clear that never runs and a clear that runs
                     // and does not help look identical from outside, and only one
                     // of them says the hypothesis is wrong.
                     static ANNOUNCED: AtomicBool = AtomicBool::new(false);
+                    static BIG_DRAWS: AtomicUsize = AtomicUsize::new(0);
                     gtk_window.connect_draw(|_, cr| {
                         if !ANNOUNCED.swap(true, Ordering::Relaxed) {
                             log::info!("layer_shell: window clear handler is running");
+                        }
+                        // The context is clipped to whatever was invalidated, so
+                        // the clear can only reach that. Report the substantial
+                        // redraws, capped, to see whether one covers the area an
+                        // overlay vacated at the moment it closes - which is the
+                        // difference between "nothing was invalidated" and
+                        // "something was, and it did not include that area".
+                        if let Ok((x1, y1, x2, y2)) = cr.clip_extents() {
+                            let (w, h) = (x2 - x1, y2 - y1);
+                            if w > 100.0 && h > 100.0 && BIG_DRAWS.fetch_add(1, Ordering::Relaxed) < 40
+                            {
+                                log::info!(
+                                    "layer_shell: draw clip {:.0}x{:.0} at {:.0},{:.0}",
+                                    w, h, x1, y1,
+                                );
+                            }
                         }
                         cr.set_operator(Operator::Source);
                         cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
