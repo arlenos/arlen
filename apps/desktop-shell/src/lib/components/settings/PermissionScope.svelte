@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Reusable permission scope display component.
   /// Shows a category name with a list of items (patterns, booleans, domains).
 
@@ -36,7 +37,7 @@
       {/each}
     </div>
   {:else if !booleans}
-    <span class="scope-none">None</span>
+    <span class="scope-none">{$t("sh.scope.none")}</span>
   {/if}
 </div>
 

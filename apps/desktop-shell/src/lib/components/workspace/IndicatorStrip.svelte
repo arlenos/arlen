@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The topbar workspace strip. Three densities, picked by the
   /// host from the workspace count: pills (≤5), dots (≤9), and a
   /// plain "n / total" text readout beyond that.
@@ -21,7 +22,7 @@
 </script>
 
 {#if mode === "pills"}
-  <div class="indicator" role="group" aria-label="Workspaces">
+  <div class="indicator" role="group" aria-label={$t("sh.ws.workspaces")}>
     {#each workspaces as ws, i (ws.id)}
       <button
         class="pill"
@@ -35,7 +36,7 @@
     {/each}
   </div>
 {:else if mode === "dots"}
-  <div class="indicator" role="group" aria-label="Workspaces">
+  <div class="indicator" role="group" aria-label={$t("sh.ws.workspaces")}>
     {#each workspaces as ws, i (ws.id)}
       <button
         class="dot-btn"
@@ -48,7 +49,7 @@
     {/each}
   </div>
 {:else}
-  <div class="indicator" role="group" aria-label="Workspaces">
+  <div class="indicator" role="group" aria-label={$t("sh.ws.workspaces")}>
     <span class="ws-text">
       {activeIndex >= 0 ? activeIndex + 1 : 1} / {workspaces.length}
     </span>

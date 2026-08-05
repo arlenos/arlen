@@ -18,6 +18,7 @@
 </script>
 
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The inline result card above the scrollable list: calculator /
   /// unit / date evaluations and the prefix-mode echoes (shell, man,
   /// web search, url).
@@ -78,7 +79,7 @@
       {/if}
     </span>
     <span id="wp-inline-result" class="wp-inline-result"></span>
-    <span id="wp-inline-hint" class="wp-inline-hint">Copy</span>
+    <span id="wp-inline-hint" class="wp-inline-hint">{$t("sh.inline.copy")}</span>
   </div>
 </div>
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Shared popover header with icon, title, optional toggle, and an
   /// optional settings shortcut.
   ///
@@ -49,7 +50,7 @@
           </button>
         {/snippet}
       </Tooltip.Trigger>
-      <Tooltip.TooltipContent side="bottom">Settings</Tooltip.TooltipContent>
+      <Tooltip.TooltipContent side="bottom">{$t("sh.popover.settings")}</Tooltip.TooltipContent>
     </Tooltip.Root>
   {/if}
 </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// One workspace column in the overview overlay: number, project
   /// label, the active-windows section and (when present or needed
   /// as a drop hint) the minimized section. The column is the drop
@@ -116,7 +117,7 @@
     data-ws-section="active"
   >
     {#if slice.shown.length === 0}
-      <div class="ws-empty">No open windows</div>
+      <div class="ws-empty">{$t("sh.ws.noWindows")}</div>
     {:else}
       <div class="ws-cards">
         {#each slice.shown as win (win.id)}
@@ -171,7 +172,7 @@
       class:ws-section-minimized-empty={wsMinimized.length === 0}
       data-ws-section="minimized"
     >
-      <div class="ws-minimized-label">Minimized</div>
+      <div class="ws-minimized-label">{$t("sh.ws.minimized")}</div>
       <div class="ws-cards">
         {#each wsMinimized as m (m.windowId)}
           <WindowCard

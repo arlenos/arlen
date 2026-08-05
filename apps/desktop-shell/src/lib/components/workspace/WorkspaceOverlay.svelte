@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The horizontal workspace overview overlay (spec §2.2–2.4): one
   /// column per workspace on this output, hanging below the topbar
   /// indicator. Visibility, hover lifecycle and the engines live in
@@ -70,7 +71,7 @@
   class="overlay"
   class:overlay-visible={visible}
   role="dialog"
-  aria-label="Workspace overview"
+  aria-label={$t("sh.ws.overview")}
   aria-modal="false"
   tabindex="-1"
   onmouseenter={onOverlayEnter}
