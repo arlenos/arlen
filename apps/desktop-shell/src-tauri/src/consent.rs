@@ -44,3 +44,21 @@ pub async fn consent_resolve(id: u64, outcome: ConsentOutcome) -> Result<bool, S
     }
     result
 }
+
+/// Route a log line from the shell's frontend into the Rust logger, so it lands in
+/// the journal beside the backend lines.
+///
+/// The shell is the one surface with no way to open devtools on the image, and its
+/// `console.error` goes nowhere a boot log can see. That gap is what made the
+/// standing consent dialog undiagnosable for several boots: the click path could
+/// have failed at four different places and every one of them looked identical
+/// from outside. `apps/files` and `apps/harness` already carry this command; the
+/// shell, which needs it most, did not.
+#[tauri::command]
+pub fn frontend_log(level: String, msg: String) {
+    match level.as_str() {
+        "warn" => log::warn!("[frontend] {msg}"),
+        "error" => log::error!("[frontend] {msg}"),
+        _ => log::info!("[frontend] {msg}"),
+    }
+}
