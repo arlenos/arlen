@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Toolkits: the honest cross-toolkit surface. One Arlen theme drives GTK / Qt /
   /// Terminal / Wine; this states per toolkit how far it reaches (the fidelity
   /// ceiling), whether it is on, and a per-toolkit override. A flat list, never an
@@ -34,8 +35,8 @@
 </script>
 
 <Page
-  title="Toolkits"
-  description="One theme drives every toolkit. Here is how far it reaches on each, whether it is on, and where you can override it. Coverage is ragged and honest: some toolkits take the full look, some only the colours."
+  title={$t("s.tk.title")}
+  description={$t("s.tk.desc")}
 >
   <SectionGrid>
     <div class="tk-list span-full">
@@ -49,9 +50,9 @@
             <Badge variant={badge.tone}>{badge.label}</Badge>
           </div>
           {#if tk.native}
-            <span class="tk-always">Always on</span>
+            <span class="tk-always">{$t("s.tk.alwaysOn")}</span>
           {:else}
-            <Switch value={on} ariaLabel={`Apply the theme to ${tk.name}`} onchange={(v) => setEnabled(tk.id, v)} />
+            <Switch value={on} ariaLabel={$t("s.tk.applyTo", { name: tk.name })} onchange={(v) => setEnabled(tk.id, v)} />
           {/if}
         </div>
 
@@ -64,34 +65,34 @@
           <Collapsible class="tk-override">
             <CollapsibleTrigger class="ovr-trigger">
               <ChevronRight size={14} strokeWidth={2} />
-              Override
+              {$t("s.tk.override")}
               {#if hasAccentOverride($accentOverrides, tk.id)}<span class="ovr-dot"></span>{/if}
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div class="ovr-body">
                 <div class="ovr-row">
-                  <span class="ovr-label">Accent for {tk.name}</span>
+                  <span class="ovr-label">{$t("s.tk.accentFor", { name: tk.name })}</span>
                   <span class="ovr-accent">
                     {#if hasAccentOverride($accentOverrides, tk.id)}
-                      <button class="ovr-reset" type="button" aria-label="Reset accent" title="Back to the theme accent" onclick={() => resetAccentOverride(tk.id)}>
+                      <button class="ovr-reset" type="button" aria-label={$t("s.tk.resetAccent")} title={$t("s.tk.backToTheme")} onclick={() => resetAccentOverride(tk.id)}>
                         <RotateCcw size={12} strokeWidth={2} />
                       </button>
                     {/if}
                     <label
                       class="ovr-swatch"
                       style={`background:${$accentOverrides[tk.id] ?? hubAccent}`}
-                      title="Pick an accent for this toolkit"
+                      title={$t("s.tk.pickAccent")}
                     >
                       <input
                         type="color"
                         value={$accentOverrides[tk.id] ?? hubAccent}
                         oninput={(e) => setAccentOverride(tk.id, e.currentTarget.value)}
-                        aria-label={`Accent for ${tk.name}`}
+                        aria-label={$t("s.tk.accentFor", { name: tk.name })}
                       />
                     </label>
                   </span>
                 </div>
-                <p class="ovr-note">Overrides the theme accent for {tk.name} only. Everything else follows the theme.</p>
+                <p class="ovr-note">{$t("s.tk.note", { name: tk.name })}</p>
               </div>
             </CollapsibleContent>
           </Collapsible>

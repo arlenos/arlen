@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Quick Settings layout customisation page.
   ///
   /// WYSIWYG editor: renders a faithful preview of the desktop-
@@ -375,8 +376,8 @@
 </script>
 
 <Page
-  title="Quick Settings"
-  description="Reorder, hide, and resize the tiles inside the Quick Settings panel. Drag to rearrange. Right-click a tile for size and visibility controls."
+  title={$t("s.qs.title")}
+  description={$t("s.qs.desc")}
 >
   <SectionGrid>
   <div class="span-full qs-column">
@@ -388,7 +389,7 @@
       disabled={busy}
     >
       <RotateCcw size={14} strokeWidth={1.5} />
-      Reset to defaults
+      {$t("s.qs.resetDefaults")}
     </Button>
   </div>
 
@@ -399,7 +400,7 @@
     </div>
   {/if}
 
-  <Section label="Layout">
+  <Section label={$t("s.qs.layout")}>
     <div class="qs-layout-row" id="qs-layout-list">
       <div class="qs-layout-stage">
         <PanelPreview
@@ -415,12 +416,10 @@
   </Section>
 
   {#if unknownEntries.length > 0}
-    <Section label="Module tiles">
+    <Section label={$t("s.qs.moduleTiles")}>
       <div class="qs-unknown-row">
         <p>
-          {unknownEntries.length} tile{unknownEntries.length === 1 ? "" : "s"}
-          installed by other modules are part of your layout but not editable
-          here. They are preserved on save.
+          {$t("s.qs.moduleNote", { count: unknownEntries.length })}
         </p>
         <ul>
           {#each unknownEntries as e (e.id)}
@@ -436,9 +435,9 @@
 
 <ConfirmDialog
   open={confirmResetOpen}
-  title="Reset Quick Settings layout?"
-  message="This restores the bundled tile order, sizes, and visibility. Your customisation will be lost."
-  confirmLabel="Reset"
+  title={$t("s.qs.confirmTitle")}
+  message={$t("s.qs.confirmMsg")}
+  confirmLabel={$t("s.qs.confirmLabel")}
   variant="destructive"
   onConfirm={resetAll}
   onCancel={() => (confirmResetOpen = false)}
