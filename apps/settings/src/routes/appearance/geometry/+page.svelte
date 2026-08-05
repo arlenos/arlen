@@ -144,8 +144,8 @@
 <!-- One slider field with the shared override language. -->
 {#snippet sliderRow(f: GeomField)}
   <OverrideRow
-    label={f.label}
-    hint={f.hint}
+    label={$t(f.label)}
+    hint={f.hint ? $t(f.hint) : ""}
     overridden={isOverridden($overrides, f.key)}
     onreset={() => resetGeom(f.key)}
     id={`geom-${f.key}`}
@@ -157,7 +157,7 @@
         max={f.max}
         step={f.step}
         unit={f.unit}
-        ariaLabel={f.label}
+        ariaLabel={$t(f.label)}
         onchange={(v) => onSlide(f, v)}
       />
     {/snippet}
