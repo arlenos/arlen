@@ -27,6 +27,7 @@ mod mpris;
 mod network;
 mod night_light;
 mod output_bars;
+mod session_user;
 mod shell_config;
 mod power;
 mod knowledge;
@@ -465,6 +466,7 @@ pub fn run() {
             shell_runner::open_url,
             app_index::get_apps,
             app_index::search_apps,
+            session_user::session_user,
             app_index::launch_app,
             waypointer_plugins::evaluate_waypointer_input,
             app_history::record_app_launch,

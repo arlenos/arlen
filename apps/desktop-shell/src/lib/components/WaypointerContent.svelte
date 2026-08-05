@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   import { writable } from "$lib/stores/svelteRe.js";
   import { invoke } from "@tauri-apps/api/core";
   import { waypointerVisible, initWaypointerListeners, closeWaypointer } from "$lib/stores/waypointer.js";
@@ -807,7 +808,7 @@
           autofocus
         />
         {#if $askMode}
-          <span class="wp-ask-chip"><Badge variant="outline">Agent</Badge></span>
+          <span class="wp-ask-chip"><Badge variant="outline">{$t("sh.wp.agent")}</Badge></span>
         {/if}
       </div>
 
@@ -834,7 +835,7 @@
              cmdk always reports 0 internal matches. Use our own check
              across all provider stores instead. -->
         {#if !$inlineResult && $searchResults.length === 0 && $windowResults.length === 0 && $settingsResults.length === 0 && $unicodeResults.length === 0 && $powerResults.length === 0 && $quickActionResults.length === 0 && $fileResults.length === 0 && $clipboardResults.length === 0 && $dictResults.length === 0 && filteredProjects.length === 0 && $recentAppsStore.length === 0 && $recentFilesStore.length === 0 && query.trim().length > 0}
-          <div class="wp-empty">No results found.</div>
+          <div class="wp-empty">{$t("sh.wp.noResults")}</div>
         {/if}
 
         <!-- Power actions from the `core.power` plugin. Placed above
@@ -1053,7 +1054,7 @@
                   {#snippet trailing()}
                     <button
                       class="wp-inline-btn"
-                      aria-label="Remove from history"
+                      aria-label={$t("sh.wp.removeFromHistory")}
                       onclick={(e) => { e.stopPropagation(); deleteClipboardEntry(entry); }}
                     >
                       <Trash2 size={12} strokeWidth={1.5} />
@@ -1070,8 +1071,8 @@
                 <WaypointerResult
                   icon={Trash2}
                   emphasis={60}
-                  title="Clear clipboard history"
-                  description="Removes the entire history"
+                  title={$t("sh.wp.clearClipboard")}
+                  description={$t("sh.wp.clearClipboardDesc")}
                 />
               </CommandItem>
             {/if}
@@ -1185,16 +1186,16 @@
         <!-- The ask pane carries its own footer. -->
       {:else if $specialMode === "kill"}
         <div class="wp-footer">
-          <span>Enter quits the app</span>
-          <span>Shift+Enter force-quits</span>
+          <span>{$t("sh.wp.killEnter")}</span>
+          <span>{$t("sh.wp.killShiftEnter")}</span>
         </div>
       {:else if query.trim().length === 0}
         <div class="wp-footer">
-          <span>&gt; command</span>
-          <span># manual</span>
-          <span>? web search</span>
-          <span>p: projects</span>
-          <span>Tab ask the agent</span>
+          <span>{$t("sh.wp.hintCommand")}</span>
+          <span>{$t("sh.wp.hintManual")}</span>
+          <span>{$t("sh.wp.hintWeb")}</span>
+          <span>{$t("sh.wp.hintProjects")}</span>
+          <span>{$t("sh.wp.hintAgent")}</span>
         </div>
       {/if}
     </Command>

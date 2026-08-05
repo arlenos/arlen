@@ -16,9 +16,15 @@
   import { onMount } from "svelte";
 
   let powerOpen = $state(false);
+  /// The logged-in account. Until the backend answers, the row shows nothing rather
+  /// than a placeholder name: a wrong name reads as fact, an empty one as loading.
+  let user = $state<{ display_name: string; initials: string } | null>(null);
   let isDark = $state(true);
 
   onMount(() => {
+    invoke<{ display_name: string; initials: string }>("session_user")
+      .then((u) => (user = u))
+      .catch(() => {});
     refreshTheme();
     let stop: UnlistenFn | null = null;
     listen("arlen://theme-changed", refreshTheme).then((u) => (stop = u));
@@ -64,8 +70,8 @@
       powerOpen = !powerOpen;
     }}
   >
-    <span class="user-avatar">TK</span>
-    <span class="user-name">Tim Kicker</span>
+    <span class="user-avatar">{user?.initials ?? ""}</span>
+    <span class="user-name">{user?.display_name ?? ""}</span>
   </div>
 
   <div class="user-actions">
