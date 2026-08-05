@@ -219,6 +219,22 @@ const messages: Catalogs = {
     "sh.layout.gapValue": "{$px}px",
     "sh.layout.smartGaps": "Smart Gaps",
     "sh.layout.titleBars": "Title Bars",
+
+    // Waypointer. In the footer hints the leading sigil is a key the user actually
+    // types (">", "#", "?", "p:", "Tab") and must survive translation unchanged;
+    // only the word after it describes what the key does.
+    "sh.wp.agent": "Agent",
+    "sh.wp.noResults": "No results found.",
+    "sh.wp.removeFromHistory": "Remove from history",
+    "sh.wp.clearClipboard": "Clear clipboard history",
+    "sh.wp.clearClipboardDesc": "Removes the entire history",
+    "sh.wp.killEnter": "Enter quits the app",
+    "sh.wp.killShiftEnter": "Shift+Enter force-quits",
+    "sh.wp.hintCommand": "> command",
+    "sh.wp.hintManual": "# manual",
+    "sh.wp.hintWeb": "? web search",
+    "sh.wp.hintProjects": "p: projects",
+    "sh.wp.hintAgent": "Tab ask the agent",
   },
   de: {
     "sh.net.title": "Netzwerk",
@@ -413,6 +429,19 @@ const messages: Catalogs = {
     "sh.layout.gapValue": "{$px} px",
     "sh.layout.smartGaps": "Kluge L\u00fccken",
     "sh.layout.titleBars": "Titelleisten",
+
+    "sh.wp.agent": "Agent",
+    "sh.wp.noResults": "Keine Treffer.",
+    "sh.wp.removeFromHistory": "Aus dem Verlauf entfernen",
+    "sh.wp.clearClipboard": "Zwischenablageverlauf leeren",
+    "sh.wp.clearClipboardDesc": "Entfernt den gesamten Verlauf",
+    "sh.wp.killEnter": "Enter beendet die App",
+    "sh.wp.killShiftEnter": "Umschalt+Enter erzwingt das Beenden",
+    "sh.wp.hintCommand": "> Befehl",
+    "sh.wp.hintManual": "# Handbuch",
+    "sh.wp.hintWeb": "? Websuche",
+    "sh.wp.hintProjects": "p: Projekte",
+    "sh.wp.hintAgent": "Tab fragt den Agenten",
   },
 };
 
