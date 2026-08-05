@@ -400,6 +400,13 @@ fn outcome_marks_terminal(outcome: crate::undo_enact::EnactOutcome) -> bool {
 /// ledger will not record it (never an unaudited destructive act); then retract
 /// exactly this write's own op-id-stamped edge. The receipt is cloned out and the
 /// lock dropped before the awaits.
+/// Deliberately gated on `executor_live` ALONE, not on `may_act` (the master
+/// switch AND the executor gate) that every acting executor uses. Undo is the
+/// opposite of acting: it removes something the assistant already did. Someone
+/// who switches the AI off and then reaches for undo is cleaning up after it, and
+/// refusing them because the thing they just turned off is off would be hostile.
+/// The `executor_live` check stays because a receipt only exists when the
+/// executor was live, so it costs nothing and keeps the surface fail-safe.
 async fn run_compensate(
     executor_live: bool,
     caller: &str,
