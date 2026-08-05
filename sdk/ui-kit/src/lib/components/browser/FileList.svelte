@@ -122,6 +122,7 @@
           class="fl-col"
           class:right={col.align === "right"}
           role="columnheader"
+          aria-label={col.label}
           onclick={() => col.key && onsort?.(col.key)}
           aria-sort={sortKey === col.key ? (ascending ? "ascending" : "descending") : undefined}
         >
@@ -135,7 +136,7 @@
           {/if}
         </button>
       {:else}
-        <span class="fl-col static" class:right={col.align === "right"} role="columnheader">
+        <span class="fl-col static" class:right={col.align === "right"} role="columnheader" aria-label={col.label}>
           {col.label}
         </span>
       {/if}

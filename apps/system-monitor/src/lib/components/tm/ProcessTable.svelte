@@ -199,27 +199,27 @@
 
 <div class="pt" role="grid" aria-label={$t("tm.grid.label", { count: procIds.length })} bind:this={rootEl}>
   <div class="head" role="row">
-    <button class="h name" class:sorted={sortKey === "name"} role="columnheader" aria-sort={ariaSort("name")} onclick={() => sortBy("name")}>
+    <button class="h name" class:sorted={sortKey === "name"} role="columnheader" aria-label={$t("tm.col.name")} aria-sort={ariaSort("name")} onclick={() => sortBy("name")}>
       {$t("tm.col.name")}
       {#if sortKey === "name"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}
     </button>
-    <button class="h" class:sorted={sortKey === "status"} role="columnheader" aria-sort={ariaSort("status")} onclick={() => sortBy("status")}>
+    <button class="h" class:sorted={sortKey === "status"} role="columnheader" aria-label={$t("tm.col.status")} aria-sort={ariaSort("status")} onclick={() => sortBy("status")}>
       {$t("tm.col.status")}
     </button>
-    <span class="h access" role="columnheader">{$t("tm.col.access")}</span>
-    <button class="h num" class:sorted={sortKey === "cpu"} role="columnheader" aria-sort={ariaSort("cpu")} onclick={() => sortBy("cpu")}>
+    <span class="h access" role="columnheader" aria-label={$t("tm.col.access")}>{$t("tm.col.access")}</span>
+    <button class="h num" class:sorted={sortKey === "cpu"} role="columnheader" aria-label={$t("tm.col.withTotal", { col: $t("tm.col.cpu"), total: totals.cpu.toFixed(0) + "%" })} aria-sort={ariaSort("cpu")} onclick={() => sortBy("cpu")}>
       <span class="h-label">{$t("tm.col.cpu")} {#if sortKey === "cpu"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{totals.cpu.toFixed(0)}%</span>
     </button>
-    <button class="h num" class:sorted={sortKey === "memMB"} role="columnheader" aria-sort={ariaSort("memMB")} onclick={() => sortBy("memMB")}>
+    <button class="h num" class:sorted={sortKey === "memMB"} role="columnheader" aria-label={$t("tm.col.withTotal", { col: $t("tm.col.memory"), total: mem(totals.memMB) })} aria-sort={ariaSort("memMB")} onclick={() => sortBy("memMB")}>
       <span class="h-label">{$t("tm.col.memory")} {#if sortKey === "memMB"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{mem(totals.memMB)}</span>
     </button>
-    <button class="h num" class:sorted={sortKey === "diskKBs"} role="columnheader" aria-sort={ariaSort("diskKBs")} onclick={() => sortBy("diskKBs")}>
+    <button class="h num" class:sorted={sortKey === "diskKBs"} role="columnheader" aria-label={$t("tm.col.withTotal", { col: $t("tm.col.disk"), total: rate(totals.diskKBs) || "0" })} aria-sort={ariaSort("diskKBs")} onclick={() => sortBy("diskKBs")}>
       <span class="h-label">{$t("tm.col.disk")} {#if sortKey === "diskKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{rate(totals.diskKBs) || "0"}</span>
     </button>
-    <button class="h num" class:sorted={sortKey === "netKBs"} role="columnheader" aria-sort={ariaSort("netKBs")} onclick={() => sortBy("netKBs")}>
+    <button class="h num" class:sorted={sortKey === "netKBs"} role="columnheader" aria-label={$t("tm.col.withTotal", { col: $t("tm.col.network"), total: rate(totals.netKBs) || "0" })} aria-sort={ariaSort("netKBs")} onclick={() => sortBy("netKBs")}>
       <span class="h-label">{$t("tm.col.network")} {#if sortKey === "netKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
       <span class="h-total">{rate(totals.netKBs) || "0"}</span>
     </button>
@@ -237,6 +237,7 @@
           class:child={it.depth > 0}
           class:selected={p.id === selectedId}
           role="row"
+          aria-label={p.name}
           data-pid={p.id}
           tabindex={p.id === activeRowId ? 0 : -1}
           onclick={() => {

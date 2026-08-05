@@ -31,9 +31,21 @@ import urllib.request
 
 DRIVER = "http://127.0.0.1:4494"
 
-# Things a user can reach with Tab and act on. A named element is one whose accessible
-# name is non-empty; that is the whole test.
-FOCUSABLE = "button, a[href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
+# Things a user can reach with Tab and act on, plus the two header roles. A named
+# element is one whose accessible name is non-empty; that is the whole test.
+#
+# The header roles are in the list because WebKit - which is the engine our apps
+# actually run in - computes no name from a `columnheader`'s contents, only from
+# `aria-label`/`aria-labelledby`. Probed directly: `<button role="columnheader">Name`
+# reports an empty name while the same button without the role reports "Name". So a
+# sortable column header written the obvious way labels its column for a sighted user
+# and for nobody else. `row` and `gridcell` behave the same way but are containers a
+# reader may fall back to reading the contents of, so they are left out rather than
+# reported on a guess.
+FOCUSABLE = (
+    "button, a[href], input, select, textarea, [tabindex]:not([tabindex='-1']), "
+    "[role='columnheader'], [role='rowheader']"
+)
 
 
 def req(method, path, body=None):
