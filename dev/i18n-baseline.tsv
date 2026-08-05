@@ -32,13 +32,6 @@ apps/desktop-shell/src/lib/components/WindowHeader.svelte	Close
 apps/desktop-shell/src/lib/components/WindowHeader.svelte	Maximize
 apps/desktop-shell/src/lib/components/WindowHeader.svelte	Minimize
 apps/desktop-shell/src/lib/components/WindowHeader.svelte	Window tabs
-apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	Auto-disabled:
-apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	Extensions
-apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	Loading...
-apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	No modules installed
-apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	Re-enable
-apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	errors | Last:
-apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	errors. Last:
 apps/desktop-shell/src/lib/components/settings/PermissionScope.svelte	None
 apps/desktop-shell/src/lib/components/shared/PopoverHeader.svelte	Settings
 apps/desktop-shell/src/lib/components/topbar/badges/AirplaneBadge.svelte	Airplane Mode. Click to disable.

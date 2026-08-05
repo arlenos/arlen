@@ -252,6 +252,29 @@ const messages: Catalogs = {
     "sh.zoom.step": "Zoom step",
     "sh.zoom.movement": "Zoom movement",
     "sh.zoom.turnOff": "Turn off zoom",
+
+    // Modules panel
+    "sh.mods.title": "Extensions",
+    "sh.mods.loading": "Loading...",
+    "sh.mods.none": "No modules installed",
+    "sh.mods.reEnable": "Re-enable",
+    "sh.mods.autoDisabled": ".input {$count :number}\n.match $count\none {{Auto-disabled: {$count} error. Last: {$last}}}\n*   {{Auto-disabled: {$count} errors. Last: {$last}}}",
+    "sh.mods.errorInfo": ".input {$count :number}\n.match $count\none {{{$count} error | Last: {$last}}}\n*   {{{$count} errors | Last: {$last}}}",
+
+    // Waypointer ask pane. The leading key names are typed, not translated.
+    "sh.ask.unreachable": "The agent isn't reachable right now.",
+    "sh.ask.escBackToSearch": "Esc back to search",
+    "sh.ask.enterAsk": "Enter ask",
+    "sh.ask.enterFollowUp": "Enter follow-up",
+    "sh.ask.ctrlJContinue": "Ctrl+J continue in agent",
+    "sh.ask.escBack": "Esc back",
+
+    // Undo popover
+    "sh.undo.title": "Recent actions",
+    "sh.undo.mocked": "Example actions - nothing here really ran.",
+    "sh.undo.empty": "Nothing to take back right now.",
+    "sh.undo.irreversible": "Cannot be undone",
+    "sh.undo.done": "Done",
   },
   de: {
     "sh.net.title": "Netzwerk",
@@ -474,6 +497,26 @@ const messages: Catalogs = {
     "sh.zoom.step": "Zoomschritt",
     "sh.zoom.movement": "Zoombewegung",
     "sh.zoom.turnOff": "Zoom ausschalten",
+
+    "sh.mods.title": "Erweiterungen",
+    "sh.mods.loading": "Wird geladen\u2026",
+    "sh.mods.none": "Keine Module installiert",
+    "sh.mods.reEnable": "Wieder aktivieren",
+    "sh.mods.autoDisabled": ".input {$count :number}\n.match $count\none {{Automatisch deaktiviert: {$count} Fehler. Zuletzt: {$last}}}\n*   {{Automatisch deaktiviert: {$count} Fehler. Zuletzt: {$last}}}",
+    "sh.mods.errorInfo": ".input {$count :number}\n.match $count\none {{{$count} Fehler | Zuletzt: {$last}}}\n*   {{{$count} Fehler | Zuletzt: {$last}}}",
+
+    "sh.ask.unreachable": "Der Agent ist gerade nicht erreichbar.",
+    "sh.ask.escBackToSearch": "Esc zur\u00fcck zur Suche",
+    "sh.ask.enterAsk": "Enter fragen",
+    "sh.ask.enterFollowUp": "Enter nachfragen",
+    "sh.ask.ctrlJContinue": "Strg+J im Agenten fortsetzen",
+    "sh.ask.escBack": "Esc zur\u00fcck",
+
+    "sh.undo.title": "Letzte Aktionen",
+    "sh.undo.mocked": "Beispielaktionen \u2013 hier ist nichts wirklich gelaufen.",
+    "sh.undo.empty": "Gerade nichts zur\u00fcckzunehmen.",
+    "sh.undo.irreversible": "Nicht r\u00fcckg\u00e4ngig zu machen",
+    "sh.undo.done": "Erledigt",
   },
 };
 
