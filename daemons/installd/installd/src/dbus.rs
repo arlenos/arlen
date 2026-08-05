@@ -50,16 +50,20 @@ impl InstallDaemon {
 /// the ability to install.
 const INSTALL_CALLERS: &[&str] = &["store"];
 
-/// Whether a resolved caller may change what is installed.
+/// The same two callers as they resolve in a development build, where the
+/// resolver reports `dev.<bin-name>` for a cargo-run binary.
 ///
-/// A `dev.`-prefixed id is a cargo-run binary and is admitted in debug builds
-/// only, the same allowance the audit daemon's ingest and the undo signer make so
-/// a development session works without weakening the shipped gate.
+/// Exact ids, not a `dev.` prefix: the audit daemon's ingest carried the broad
+/// prefix and it was deliberately narrowed to an exact producer list, because a
+/// prefix admits every binary anyone happens to be running from a target
+/// directory. Repeating the loose form here would undo that lesson one daemon
+/// over.
+const DEV_INSTALL_CALLERS: &[&str] = &["dev.arlen-store", "dev.forage"];
+
+/// Whether a resolved caller may change what is installed.
 fn caller_may_mutate(app_id: &str) -> bool {
-    if INSTALL_CALLERS.contains(&app_id) {
-        return true;
-    }
-    cfg!(debug_assertions) && app_id.starts_with("dev.")
+    INSTALL_CALLERS.contains(&app_id)
+        || (cfg!(debug_assertions) && DEV_INSTALL_CALLERS.contains(&app_id))
 }
 
 /// Resolve the calling program's app id from its connection's pid.
@@ -294,12 +298,18 @@ impl InstallDaemon {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> u32 {
-        // Zero deleted is the refusal. Emptying the trash is destructive and
-        // permanent, so it is gated with the rest even though the timer that
-        // normally drives it runs as this same user.
-        if authorise_mutation("CleanupTrash", &header, connection).await.is_err() {
-            return 0;
-        }
+        // NOT gated, and the reason is worth keeping. Its only driver is
+        // `arlen-trash-cleanup.service`, whose ExecStart is
+        // `busctl --user call ... CleanupTrash` - and `busctl` is a generic tool
+        // that resolves to no app id at all, so a caller gate here would refuse
+        // the timer and silently stop trash cleanup while returning "0 expired",
+        // which reads like nothing needed doing. Admitting `busctl` instead would
+        // admit every program that can spawn it, which is every program.
+        //
+        // The exposure this leaves is small: cleanup only removes entries already
+        // past the 30-day window, which the daemon also does on startup. Gating it
+        // would buy that and cost a working timer.
+        let _ = (&header, connection);
         crate::trash::cleanup_trash() as u32
     }
 
@@ -446,7 +456,7 @@ mod tests {
     }
 
     #[test]
-    fn a_cargo_run_binary_is_admitted_in_debug_only() {
+    fn the_named_dev_binaries_are_admitted_in_debug_only() {
         // A development session runs the store and forage from `target/debug`,
         // where the resolver reports `dev.<bin-name>`. The shipped gate must not
         // carry that allowance, so this asserts the build-dependent behaviour
@@ -456,10 +466,11 @@ mod tests {
     }
 
     #[test]
-    fn a_dev_prefix_is_not_a_wildcard_for_the_real_names() {
-        // `dev.` is a prefix on the resolver's own dev ids, not a way to claim a
-        // production principal: `developer` must not pass on a `dev` substring.
+    fn an_unnamed_dev_binary_is_refused_even_in_a_debug_build() {
+        // The point of listing the dev ids exactly: any other binary someone
+        // happens to be running from a target directory is not an install caller.
+        assert!(!caller_may_mutate("dev.arlen-harness"));
+        assert!(!caller_may_mutate("dev.whatever"));
         assert!(!caller_may_mutate("developer"));
-        assert!(!caller_may_mutate("notdev.store"));
     }
 }
