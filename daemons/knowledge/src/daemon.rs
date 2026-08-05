@@ -3797,6 +3797,14 @@ fn cypher_label_tokens(cypher: &str) -> Vec<String> {
 /// names the grant projection uses (`system.File`), so a count here joins the
 /// `GRANTS` -> `EntityType` reach on the card.
 ///
+/// Rebuilding the type by putting `system.` back in front of the label is only
+/// sound HERE, and it is worth saying why, because the same move is a bug on the
+/// reading side. `readable_system_labels` accepts a scope only if it starts with
+/// `system.`, and makes the label by stripping exactly that, so every label in a
+/// readable set has a `system.` type behind it and no other. The `access_grants`
+/// overlay cannot assume that - a grant may reach `md.obsidian.Note`, whose label
+/// is `Note` - so it carries the full type instead of reconstructing it.
+///
 /// The GRANTED casing is bound, never the caller's: the gate matches labels
 /// case-insensitively, so a caller asking for `file` must not mint a second
 /// capability row distinct from the `system.File` it was granted. Same rule the
