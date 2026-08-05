@@ -216,6 +216,39 @@ impl UndoLog {
         live
     }
 
+    /// The most recently created entries with their folded state, newest first.
+    ///
+    /// This is the READ behind a recent-actions surface, and it differs from
+    /// [`live_entries`](Self::live_entries) in the one way that matters to a
+    /// person looking at a history: it keeps TERMINAL entries. An undo that has
+    /// already been enacted is exactly what the user wants to see - it is the
+    /// evidence their reversal happened - so filtering to non-terminal would make
+    /// the surface forget things the moment they succeed.
+    ///
+    /// Bounded by `limit`, because a history panel shows a page and a log grows
+    /// without end. An entry whose record chain folds to an illegal sequence is
+    /// skipped rather than guessed at, the same fail-closed rule the other
+    /// readers use: a surface that offers to undo something it cannot describe is
+    /// worse than one that omits it.
+    pub fn recent_entries(&self, limit: usize) -> Vec<(&UndoEntry, UndoState)> {
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for record in self.records.iter().rev() {
+            if out.len() >= limit {
+                break;
+            }
+            if let LogRecord::Created(entry) = record {
+                if !seen.insert(entry.op_id.as_str()) {
+                    continue;
+                }
+                if let Some(Ok(state)) = self.current_state(&entry.op_id) {
+                    out.push((entry, state));
+                }
+            }
+        }
+        out
+    }
+
     /// Every created entry whose folded state is exactly [`UndoState::Compensating`]:
     /// an undo that STARTED but was interrupted by a crash before it reached
     /// [`UndoState::Compensated`]. A restarting undo consumer re-drives these through
@@ -412,6 +445,11 @@ impl FileUndoLog {
     /// The created entries stuck mid-reversal (see
     /// [`UndoLog::compensating_entries`]) - a crash-interrupted compensation the
     /// consumer re-drives to completion on restart through the idempotent enact.
+    /// See [`UndoLog::recent_entries`].
+    pub fn recent_entries(&self, limit: usize) -> Vec<(&UndoEntry, UndoState)> {
+        self.log.recent_entries(limit)
+    }
+
     pub fn compensating_entries(&self) -> Vec<&UndoEntry> {
         self.log.compensating_entries()
     }
@@ -462,6 +500,53 @@ pub fn verify_chain(key: &[u8], records: &[(Vec<u8>, [u8; 32])]) -> Option<usize
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn recent_entries_are_newest_first_and_bounded() {
+        let mut log = UndoLog::new();
+        for op in ["a", "b", "c"] {
+            log.append_created(entry(op));
+        }
+        let recent = log.recent_entries(2);
+        assert_eq!(
+            recent.iter().map(|(e, _)| e.op_id.as_str()).collect::<Vec<_>>(),
+            vec!["c", "b"],
+            "a history reads newest first and stops at the page size"
+        );
+    }
+
+    #[test]
+    fn a_finished_entry_is_still_listed_with_its_state() {
+        // The difference from live_entries, and the reason this exists: an undo
+        // that already happened is the evidence the user came to look for.
+        let mut log = UndoLog::new();
+        log.append_created(entry("a"));
+        log.append_transition("a", UndoState::Committed);
+        log.append_transition("a", UndoState::Compensating);
+        log.append_transition("a", UndoState::Compensated);
+        assert!(log.live_entries().is_empty(), "terminal, so not live");
+        let recent = log.recent_entries(10);
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].1, UndoState::Compensated);
+    }
+
+    #[test]
+    fn an_entry_whose_chain_folds_illegally_is_omitted_not_guessed() {
+        let mut log = UndoLog::new();
+        log.append_created(entry("good"));
+        log.append_created(entry("bad"));
+        // Compensated without ever being Committed: an illegal sequence.
+        log.append_transition("bad", UndoState::Compensated);
+        log.append_transition("bad", UndoState::Committed);
+        let ops: Vec<_> = log
+            .recent_entries(10)
+            .iter()
+            .map(|(e, _)| e.op_id.clone())
+            .collect();
+        assert_eq!(ops, vec!["good".to_string()]);
+    }
+
     use super::*;
     use UndoState::*;
 
