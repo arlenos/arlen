@@ -5,6 +5,15 @@ import type { Catalogs } from "@arlen/ui-kit/i18n";
 
 export const a: Catalogs = {
   en: {
+    "s.md.easing.ease": "Ease",
+    "s.md.easing.linear": "Linear",
+    "s.md.easing.snappy": "Snappy",
+    "s.md.easing.spring": "Spring",
+    "s.md.shadow.none": "None",
+    "s.md.shadow.soft": "Soft",
+    "s.md.shadow.normal": "Normal",
+    "s.md.shadow.strong": "Strong",
+    "s.md.easingAria": "Easing",
     "s.kb.cat.window": "Window Management",
     "s.kb.cat.focus": "Focus",
     "s.kb.cat.move": "Move Window",
@@ -298,6 +307,15 @@ export const a: Catalogs = {
     "s.profile.deleteAction": "Delete",
   },
   de: {
+    "s.md.easing.ease": "Weich",
+    "s.md.easing.linear": "Linear",
+    "s.md.easing.snappy": "Zackig",
+    "s.md.easing.spring": "Federnd",
+    "s.md.shadow.none": "Keine",
+    "s.md.shadow.soft": "Sanft",
+    "s.md.shadow.normal": "Normal",
+    "s.md.shadow.strong": "Stark",
+    "s.md.easingAria": "Übergangskurve",
     "s.kb.cat.window": "Fensterverwaltung",
     "s.kb.cat.focus": "Fokus",
     "s.kb.cat.move": "Fenster verschieben",

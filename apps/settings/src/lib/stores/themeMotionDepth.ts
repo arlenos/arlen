@@ -9,6 +9,8 @@
 
 import { writable, derived } from "svelte/store";
 
+import { t } from "$lib/i18n/messages";
+
 /// The active theme's resolved values (fixture: the house defaults).
 export const MD_DEFAULTS: Record<string, string | number | boolean> = {
   durationFast: 100,
@@ -21,12 +23,15 @@ export const MD_DEFAULTS: Record<string, string | number | boolean> = {
 };
 
 /// Easing presets → the cubic-bezier the runtime uses.
-export const EASING_PRESETS = [
-  { value: "ease", label: "Ease" },
-  { value: "linear", label: "Linear" },
-  { value: "snappy", label: "Snappy" },
-  { value: "spring", label: "Spring" },
-];
+/// Derived, because these go straight into a generic segmented control as
+/// `{value, label}` pairs: the control renders the label and has no business
+/// knowing about the catalog, and a plain array would freeze at import.
+export const easingPresets = derived(t, ($t) => [
+  { value: "ease", label: $t("s.md.easing.ease") },
+  { value: "linear", label: $t("s.md.easing.linear") },
+  { value: "snappy", label: $t("s.md.easing.snappy") },
+  { value: "spring", label: $t("s.md.easing.spring") },
+]);
 const EASING_BEZIER: Record<string, string> = {
   ease: "cubic-bezier(0.4, 0, 0.2, 1)",
   linear: "linear",
@@ -39,12 +44,12 @@ export function easingBezier(key: string): string {
 }
 
 /// Shadow elevation presets → a CSS box-shadow.
-export const SHADOW_PRESETS = [
-  { value: "none", label: "None" },
-  { value: "soft", label: "Soft" },
-  { value: "normal", label: "Normal" },
-  { value: "strong", label: "Strong" },
-];
+export const shadowPresets = derived(t, ($t) => [
+  { value: "none", label: $t("s.md.shadow.none") },
+  { value: "soft", label: $t("s.md.shadow.soft") },
+  { value: "normal", label: $t("s.md.shadow.normal") },
+  { value: "strong", label: $t("s.md.shadow.strong") },
+]);
 const SHADOW_CSS: Record<string, string> = {
   none: "none",
   soft: "0 1px 3px rgba(0, 0, 0, 0.28)",
