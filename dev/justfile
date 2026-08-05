@@ -711,6 +711,7 @@ check-executor:
     python3 "{{ROOT}}/dev/scripts/check-shipped-units.py"
     node "{{ROOT}}/dev/scripts/check-catalogs.mjs"
     node "{{ROOT}}/dev/scripts/check-i18n-reactivity.mjs"
+    python3 "{{ROOT}}/dev/scripts/check-invoke-shape.py"
 
 check-smoke:
     python3 "{{ROOT}}/dev/scripts/check-smoke-coverage.py"
