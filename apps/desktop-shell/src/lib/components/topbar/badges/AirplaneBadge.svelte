@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Top-bar Airplane Mode badge.
   ///
   /// Visible while rfkill has all radios blocked.
@@ -33,7 +34,7 @@
 <StatusBadge
   visible={active}
   active={active}
-  title="Airplane Mode. Click to disable."
+  title={$t("sh.badge.airplane")}
   onclick={handleClick}
 >
   {#snippet icon()}

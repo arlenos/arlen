@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Top-bar Night Light badge.
   ///
   /// Visible while the warm-tint compositor effect is active. Reads
@@ -40,7 +41,7 @@
 <StatusBadge
   visible={active}
   active={active}
-  title="Night Light on. Click to disable."
+  title={$t("sh.badge.nightLight")}
   onclick={handleClick}
 >
   {#snippet icon()}

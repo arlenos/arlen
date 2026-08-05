@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Top-bar dictation indicator (shell-voice-plan.md): the mic-as-audited signal
   /// while you dictate speech into a field. Shown only while dictation runs; a click
   /// stops it. On-device, on only while dictating, audited. Mirrors CaptureBadge.
@@ -52,8 +53,8 @@
   visible={active}
   active={active}
   pulsate
-  label="Dictating"
-  title={`Dictating into ${target}. Click to stop.`}
+  label={$t("sh.badge.dictating")}
+  title={$t("sh.badge.dictatingInto", { target })}
   onclick={handleClick}
 >
   {#snippet icon()}
