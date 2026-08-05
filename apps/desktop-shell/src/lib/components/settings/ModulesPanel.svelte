@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Module management panel: list, enable/disable, error status.
 
   import { invoke } from "@tauri-apps/api/core";
@@ -91,13 +92,13 @@
 <div class="mod-panel">
   <div class="mod-header">
     <Puzzle size={20} strokeWidth={1.5} />
-    <h2>Extensions</h2>
+    <h2>{$t("sh.mods.title")}</h2>
   </div>
 
   {#if loading}
-    <div class="mod-empty">Loading...</div>
+    <div class="mod-empty">{$t("sh.mods.loading")}</div>
   {:else if modules.length === 0}
-    <div class="mod-empty">No modules installed</div>
+    <div class="mod-empty">{$t("sh.mods.none")}</div>
   {:else}
     <div class="mod-list">
       {#each modules as mod_item}
@@ -119,7 +120,7 @@
               {#if isAutoDisabled}
                 <button class="mod-reenable" onclick={() => reEnable(mod_item.id)}>
                   <RefreshCw size={12} strokeWidth={2} />
-                  Re-enable
+                  {$t("sh.mods.reEnable")}
                 </button>
               {:else}
                 <Switch
@@ -144,7 +145,7 @@
           {#if isAutoDisabled}
             <div class="mod-warning">
               <AlertTriangle size={12} strokeWidth={2} />
-              <span>Auto-disabled: {err?.error_count} errors. Last: {err?.last_error}</span>
+              <span>{$t("sh.mods.autoDisabled", { count: err?.error_count ?? 0, last: err?.last_error ?? "" })}</span>
             </div>
           {/if}
 
@@ -163,7 +164,7 @@
               {/if}
               {#if err && err.error_count > 0}
                 <div class="mod-error-info">
-                  {err.error_count} errors | Last: {err.last_error}
+                  {$t("sh.mods.errorInfo", { count: err.error_count, last: err.last_error })}
                 </div>
               {/if}
             </div>

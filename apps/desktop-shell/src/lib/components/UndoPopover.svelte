@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The unified recent-actions panel (CAH-4): every producer's reversible
   /// acts in one list, newest first - action + its inverse, and a marked
   /// point of no return where there is none. "Undo last" takes back the
@@ -22,15 +23,15 @@
 
 <ShellPopover id="undo" width={380} right={116} bodyPadding="12px" bodyGap="8px">
   {#snippet header()}
-    <PopoverHeader icon={Undo2} title="Recent actions" />
+    <PopoverHeader icon={Undo2} title="{$t("sh.undo.title")}" />
   {/snippet}
 
   {#if $undoMocked}
-    <p class="undo-sample">Example actions - nothing here really ran.</p>
+    <p class="undo-sample">{$t("sh.undo.mocked")}</p>
   {/if}
 
   {#if $undoHistory && $undoHistory.length === 0}
-    <p class="undo-empty">Nothing to take back right now.</p>
+    <p class="undo-empty">{$t("sh.undo.empty")}</p>
   {:else if $undoHistory}
     <div class="undo-list">
       {#each $undoHistory as e (e.opId)}
@@ -40,11 +41,11 @@
             <span class="undo-object">{e.object}</span>
           </span>
           {#if e.reversibility === "irreversible"}
-            <span class="undo-ponr">Cannot be undone</span>
+            <span class="undo-ponr">{$t("sh.undo.irreversible")}</span>
           {:else if e.state === "done"}
             <span class="undo-done">
               <Check size={13} strokeWidth={2} />
-              Done
+              {$t("sh.undo.done")}
             </span>
           {:else}
             <button class="undo-act" disabled={e.state === "enacting"} onclick={() => void enact(e.opId)}>

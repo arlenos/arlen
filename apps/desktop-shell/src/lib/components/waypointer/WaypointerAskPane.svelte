@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The inline quick-ask pane (waypointer-ai-prompt.md): shown instead of the
   /// result list while the launcher is in Ask mode. The capability line under
   /// the input, the turns scroller, and the escalation footer. Plain text only -
@@ -43,20 +44,20 @@
       </div>
     {/if}
     {#if $askUnreachable}
-      <p class="ask-note">The agent isn't reachable right now.</p>
+      <p class="ask-note">{$t("sh.ask.unreachable")}</p>
     {/if}
   {/if}
 
   <div class="ask-footer">
     {#if !enabled}
-      <span>Esc back to search</span>
+      <span>{$t("sh.ask.escBackToSearch")}</span>
     {:else if $askTurns.length === 0}
-      <span>Enter ask</span>
-      <span>Esc back to search</span>
+      <span>{$t("sh.ask.enterAsk")}</span>
+      <span>{$t("sh.ask.escBackToSearch")}</span>
     {:else}
-      <span>Enter follow-up</span>
-      <span>Ctrl+J continue in agent</span>
-      <span>Esc back</span>
+      <span>{$t("sh.ask.enterFollowUp")}</span>
+      <span>{$t("sh.ask.ctrlJContinue")}</span>
+      <span>{$t("sh.ask.escBack")}</span>
     {/if}
   </div>
 </div>
