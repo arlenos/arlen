@@ -40,17 +40,6 @@
   import WindowHeader from "$lib/components/WindowHeader.svelte";
   import BluetoothPairingDialog from "$lib/components/BluetoothPairingDialog.svelte";
   import ConsentDialog from "$lib/components/ConsentDialog.svelte";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
-
-  // Which window this document is. Under vite there is no Tauri host and the call
-  // throws, so the surfaces render for screenshots exactly as before.
-  const isMainWindow = (() => {
-    try {
-      return getCurrentWindow().label === "main";
-    } catch {
-      return true;
-    }
-  })();
   import SourcePicker from "$lib/components/SourcePicker.svelte";
   import WindowsFileDialog from "$lib/components/WindowsFileDialog.svelte";
   import PrintDialog from "$lib/components/PrintDialog.svelte";
@@ -62,6 +51,14 @@
   import { initToastBridge } from "$lib/stores/toastBridge.js";
   import { initToolbarStore } from "$lib/stores/toolbarStore";
   import { initAppStateStores } from "$lib/stores/appStateStores";
+
+  // Which window this document is, read straight off the Tauri host object: the
+  // label is the only thing needed and this needs no import and no throwing path.
+  // Absent host (vite) reads as the main window, so every surface still renders for
+  // the screenshot loop.
+  const isMainWindow =
+    ((globalThis as Record<string, any>).__TAURI_INTERNALS__?.metadata?.currentWindow
+      ?.label ?? "main") === "main";
 
   /// Top of the QS / Notifications popover panels. Matches their
   /// CSS `top: 40px` so the math here stays in lock-step with where
