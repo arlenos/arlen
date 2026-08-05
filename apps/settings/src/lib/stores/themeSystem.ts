@@ -16,14 +16,14 @@ export interface SysOption {
 }
 
 export const CURSOR_THEMES: SysOption[] = [
-  { value: "Default", label: "Default" },
+  { value: "Default", label: "s.sys.default" },
   { value: "Adwaita", label: "Adwaita" },
   { value: "Bibata", label: "Bibata" },
   { value: "Capitaine", label: "Capitaine" },
 ];
 
 export const ICON_THEMES: SysOption[] = [
-  { value: "Default", label: "Default" },
+  { value: "Default", label: "s.sys.default" },
   { value: "Papirus", label: "Papirus" },
   { value: "Adwaita", label: "Adwaita" },
   { value: "Numix", label: "Numix" },
@@ -31,13 +31,13 @@ export const ICON_THEMES: SysOption[] = [
 ];
 
 export const SOUND_THEMES: SysOption[] = [
-  { value: "None", label: "None" },
+  { value: "None", label: "s.sys.none" },
   { value: "Chime", label: "Chime" },
   { value: "Soft", label: "Soft" },
 ];
 
 export const SOUND_NAMES: SysOption[] = [
-  { value: "None", label: "None" },
+  { value: "None", label: "s.sys.none" },
   { value: "Message", label: "Message" },
   { value: "Bell", label: "Bell" },
   { value: "Click", label: "Click" },
@@ -47,30 +47,33 @@ export const SOUND_NAMES: SysOption[] = [
 
 /// The four system sound events.
 export const SOUND_EVENTS = [
-  { key: "sndNotification", label: "Notification", hint: "A new notification arrives" },
-  { key: "sndError", label: "Error", hint: "Something failed" },
-  { key: "sndWarning", label: "Warning", hint: "A caution prompt" },
-  { key: "sndAction", label: "Action", hint: "An action completes" },
+  { key: "sndNotification", label: "s.snd.sndNotification.label", hint: "s.snd.sndNotification.hint" },
+  { key: "sndError", label: "s.snd.sndError.label", hint: "s.snd.sndError.hint" },
+  { key: "sndWarning", label: "s.snd.sndWarning.label", hint: "s.snd.sndWarning.hint" },
+  { key: "sndAction", label: "s.snd.sndAction.label", hint: "s.snd.sndAction.hint" },
 ];
 
-/// The 16 ANSI slots (normal 0-7, bright 8-15), with plain labels.
+/// The 16 ANSI slots (normal 0-7, bright 8-15). `label` holds a message KEY,
+/// resolved where the swatch renders. The theme and sound-file options above keep
+/// their real names - "Papirus" is what the icon theme is called, in any language -
+/// and only the generic "Default" and "None" choices carry a key.
 export const ANSI_META: { key: string; label: string }[] = [
-  { key: "ansi0", label: "Black" },
-  { key: "ansi1", label: "Red" },
-  { key: "ansi2", label: "Green" },
-  { key: "ansi3", label: "Yellow" },
-  { key: "ansi4", label: "Blue" },
-  { key: "ansi5", label: "Magenta" },
-  { key: "ansi6", label: "Cyan" },
-  { key: "ansi7", label: "White" },
-  { key: "ansi8", label: "Bright black" },
-  { key: "ansi9", label: "Bright red" },
-  { key: "ansi10", label: "Bright green" },
-  { key: "ansi11", label: "Bright yellow" },
-  { key: "ansi12", label: "Bright blue" },
-  { key: "ansi13", label: "Bright magenta" },
-  { key: "ansi14", label: "Bright cyan" },
-  { key: "ansi15", label: "Bright white" },
+  { key: "ansi0", label: "s.ansi.ansi0" },
+  { key: "ansi1", label: "s.ansi.ansi1" },
+  { key: "ansi2", label: "s.ansi.ansi2" },
+  { key: "ansi3", label: "s.ansi.ansi3" },
+  { key: "ansi4", label: "s.ansi.ansi4" },
+  { key: "ansi5", label: "s.ansi.ansi5" },
+  { key: "ansi6", label: "s.ansi.ansi6" },
+  { key: "ansi7", label: "s.ansi.ansi7" },
+  { key: "ansi8", label: "s.ansi.ansi8" },
+  { key: "ansi9", label: "s.ansi.ansi9" },
+  { key: "ansi10", label: "s.ansi.ansi10" },
+  { key: "ansi11", label: "s.ansi.ansi11" },
+  { key: "ansi12", label: "s.ansi.ansi12" },
+  { key: "ansi13", label: "s.ansi.ansi13" },
+  { key: "ansi14", label: "s.ansi.ansi14" },
+  { key: "ansi15", label: "s.ansi.ansi15" },
 ];
 
 /// The active theme's resolved system values (fixture: the house defaults).

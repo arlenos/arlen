@@ -574,44 +574,18 @@ apps/settings/src/lib/stores/themeOverrides.ts	Motion & Depth
 apps/settings/src/lib/stores/themeOverrides.ts	System
 apps/settings/src/lib/stores/themeOverrides.ts	Toolkits
 apps/settings/src/lib/stores/themeOverrides.ts	Typography
-apps/settings/src/lib/stores/themeSystem.ts	A caution prompt
-apps/settings/src/lib/stores/themeSystem.ts	A new notification arrives
-apps/settings/src/lib/stores/themeSystem.ts	Action
 apps/settings/src/lib/stores/themeSystem.ts	Adwaita
-apps/settings/src/lib/stores/themeSystem.ts	An action completes
 apps/settings/src/lib/stores/themeSystem.ts	Bell
 apps/settings/src/lib/stores/themeSystem.ts	Bibata
-apps/settings/src/lib/stores/themeSystem.ts	Black
-apps/settings/src/lib/stores/themeSystem.ts	Blue
-apps/settings/src/lib/stores/themeSystem.ts	Bright black
-apps/settings/src/lib/stores/themeSystem.ts	Bright blue
-apps/settings/src/lib/stores/themeSystem.ts	Bright cyan
-apps/settings/src/lib/stores/themeSystem.ts	Bright green
-apps/settings/src/lib/stores/themeSystem.ts	Bright magenta
-apps/settings/src/lib/stores/themeSystem.ts	Bright red
-apps/settings/src/lib/stores/themeSystem.ts	Bright white
-apps/settings/src/lib/stores/themeSystem.ts	Bright yellow
 apps/settings/src/lib/stores/themeSystem.ts	Capitaine
 apps/settings/src/lib/stores/themeSystem.ts	Chime
 apps/settings/src/lib/stores/themeSystem.ts	Click
-apps/settings/src/lib/stores/themeSystem.ts	Cyan
-apps/settings/src/lib/stores/themeSystem.ts	Default
-apps/settings/src/lib/stores/themeSystem.ts	Error
-apps/settings/src/lib/stores/themeSystem.ts	Green
-apps/settings/src/lib/stores/themeSystem.ts	Magenta
 apps/settings/src/lib/stores/themeSystem.ts	Message
-apps/settings/src/lib/stores/themeSystem.ts	None
-apps/settings/src/lib/stores/themeSystem.ts	Notification
 apps/settings/src/lib/stores/themeSystem.ts	Numix
 apps/settings/src/lib/stores/themeSystem.ts	Papirus
 apps/settings/src/lib/stores/themeSystem.ts	Pop
-apps/settings/src/lib/stores/themeSystem.ts	Red
 apps/settings/src/lib/stores/themeSystem.ts	Soft
-apps/settings/src/lib/stores/themeSystem.ts	Something failed
 apps/settings/src/lib/stores/themeSystem.ts	Tela
-apps/settings/src/lib/stores/themeSystem.ts	Warning
-apps/settings/src/lib/stores/themeSystem.ts	White
-apps/settings/src/lib/stores/themeSystem.ts	Yellow
 apps/settings/src/lib/stores/themeToolkits.ts	Colours only
 apps/settings/src/lib/stores/themeToolkits.ts	Full
 apps/settings/src/routes/about/+page.svelte	Arlen OS
