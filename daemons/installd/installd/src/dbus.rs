@@ -23,12 +23,104 @@ impl InstallDaemon {
     }
 }
 
+/// The principals allowed to change what is installed.
+///
+/// installd owns its name on the SESSION bus, so any same-uid process can reach
+/// it, and it then presents the root `InstallHelper1` with an identity that
+/// helper's allowlist admits. The helper is carefully guarded; installd was not
+/// guarded at all, which made it a confused deputy on the one path that ends in
+/// root install and delete.
+///
+/// A uid check does not close that: `enroll_system_app` can demand uid 0 because
+/// root is a different principal, but every same-uid caller of the mutating
+/// methods shares one uid, so uid tells them apart not at all. The question has
+/// to be WHICH program is calling, which is what `app_id_from_pid` answers.
+///
+/// This is the interim, not the keystone. It stands at the call site the full
+/// caller-identity work needs and uses the resolver that work will strengthen
+/// (the inode registry today, AppArmor later), so it gets stronger where it
+/// stands rather than being unpicked.
+///
+/// `store` is the only packaged caller. The other real client is the `forage`
+/// CLI, which today resolves to `UnknownBinary` at every plausible path and is
+/// not installed by any image build - so in a debug build it arrives as
+/// `dev.forage` and is admitted by the dev rule below, and in a release build it
+/// does not exist yet. **Packaging forage means adding its canonical path to
+/// `path_to_app_id` and its id here in the same change**, or the CLI will lose
+/// the ability to install.
+const INSTALL_CALLERS: &[&str] = &["store"];
+
+/// Whether a resolved caller may change what is installed.
+///
+/// A `dev.`-prefixed id is a cargo-run binary and is admitted in debug builds
+/// only, the same allowance the audit daemon's ingest and the undo signer make so
+/// a development session works without weakening the shipped gate.
+fn caller_may_mutate(app_id: &str) -> bool {
+    if INSTALL_CALLERS.contains(&app_id) {
+        return true;
+    }
+    cfg!(debug_assertions) && app_id.starts_with("dev.")
+}
+
+/// Resolve the calling program's app id from its connection's pid.
+///
+/// Fails closed: no sender, an unreachable bus daemon, a dead pid or a binary the
+/// resolver does not recognise all yield an error, and the caller refuses.
+async fn caller_app_id(
+    header: &zbus::message::Header<'_>,
+    connection: &zbus::Connection,
+) -> Result<String, String> {
+    let sender = header
+        .sender()
+        .ok_or_else(|| "no sender in message".to_string())?;
+    let proxy = zbus::fdo::DBusProxy::new(connection)
+        .await
+        .map_err(|e| format!("DBusProxy: {e}"))?;
+    let pid = proxy
+        .get_connection_unix_process_id(sender.clone().into())
+        .await
+        .map_err(|e| format!("get pid: {e}"))?;
+    arlen_permissions::identity::app_id_from_pid(pid).map_err(|e| format!("resolve caller: {e}"))
+}
+
+/// Resolve and authorise the caller of a mutating method, logging a refusal.
+///
+/// Returns the app id on success so the caller can name it in its own log line.
+async fn authorise_mutation(
+    method: &str,
+    header: &zbus::message::Header<'_>,
+    connection: &zbus::Connection,
+) -> Result<String, String> {
+    match caller_app_id(header, connection).await {
+        Ok(id) if caller_may_mutate(&id) => Ok(id),
+        Ok(id) => {
+            tracing::warn!("refused {method} from {id}: not an install caller");
+            Err(format!("{id} may not change what is installed"))
+        }
+        Err(e) => {
+            tracing::warn!("refused {method}: {e}");
+            Err(e)
+        }
+    }
+}
+
 #[interface(name = "org.arlen.InstallDaemon1")]
 impl InstallDaemon {
     /// Install a .lunpkg package from a local file path.
     ///
     /// Returns a job_id that can be used to track progress via signals.
-    async fn install_package(&self, path: String) -> String {
+    async fn install_package(
+        &self,
+        path: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> String {
+        if authorise_mutation("InstallPackage", &header, connection).await.is_err() {
+            // An empty job id is the refusal: there is no error channel on a
+            // method whose result arrives later on a signal, and inventing one
+            // would change the interface for every caller.
+            return String::new();
+        }
         let job_id = self.queue.enqueue(JobKind::InstallPackage { path });
         tracing::info!("enqueued install job {job_id}");
         job_id
@@ -44,7 +136,18 @@ impl InstallDaemon {
     ///
     /// Returns a job_id; the outcome arrives on `JobCompleted`, and a widened
     /// update also emits `ConsentRequired` naming what it newly wants.
-    async fn update(&self, path: String) -> String {
+    async fn update(
+        &self,
+        path: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> String {
+        if authorise_mutation("Update", &header, connection).await.is_err() {
+            // An empty job id is the refusal: there is no error channel on a
+            // method whose result arrives later on a signal, and inventing one
+            // would change the interface for every caller.
+            return String::new();
+        }
         let job_id = self.queue.enqueue(JobKind::Upgrade { path });
         tracing::info!("enqueued upgrade job {job_id}");
         job_id
@@ -53,7 +156,19 @@ impl InstallDaemon {
     /// Install a Flatpak app.
     ///
     /// `remote` defaults to "flathub" if empty. Returns a job_id.
-    async fn install_flatpak(&self, app_id: String, remote: String) -> String {
+    async fn install_flatpak(
+        &self,
+        app_id: String,
+        remote: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> String {
+        if authorise_mutation("InstallFlatpak", &header, connection).await.is_err() {
+            // An empty job id is the refusal: there is no error channel on a
+            // method whose result arrives later on a signal, and inventing one
+            // would change the interface for every caller.
+            return String::new();
+        }
         let job_id = self.queue.enqueue(JobKind::InstallFlatpak { app_id, remote });
         tracing::info!("enqueued flatpak install job {job_id}");
         job_id
@@ -62,7 +177,18 @@ impl InstallDaemon {
     /// Uninstall an app by app_id (.lunpkg source).
     ///
     /// Returns a job_id.
-    async fn uninstall(&self, app_id: String) -> String {
+    async fn uninstall(
+        &self,
+        app_id: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> String {
+        if authorise_mutation("Uninstall", &header, connection).await.is_err() {
+            // An empty job id is the refusal: there is no error channel on a
+            // method whose result arrives later on a signal, and inventing one
+            // would change the interface for every caller.
+            return String::new();
+        }
         let job_id = self.queue.enqueue(JobKind::Uninstall { app_id });
         tracing::info!("enqueued uninstall job {job_id}");
         job_id
@@ -71,7 +197,18 @@ impl InstallDaemon {
     /// Uninstall a Flatpak app.
     ///
     /// Returns a job_id.
-    async fn uninstall_flatpak(&self, app_id: String) -> String {
+    async fn uninstall_flatpak(
+        &self,
+        app_id: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> String {
+        if authorise_mutation("UninstallFlatpak", &header, connection).await.is_err() {
+            // An empty job id is the refusal: there is no error channel on a
+            // method whose result arrives later on a signal, and inventing one
+            // would change the interface for every caller.
+            return String::new();
+        }
         let job_id = self.queue.enqueue(JobKind::UninstallFlatpak { app_id });
         tracing::info!("enqueued flatpak uninstall job {job_id}");
         job_id
@@ -117,7 +254,15 @@ impl InstallDaemon {
     /// Restore a previously uninstalled app from the 30-day trash.
     ///
     /// Returns (success, error_message).
-    async fn restore_app(&self, app_id: String) -> (bool, String) {
+    async fn restore_app(
+        &self,
+        app_id: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> (bool, String) {
+        if let Err(e) = authorise_mutation("RestoreApp", &header, connection).await {
+            return (false, e);
+        }
         match crate::trash::restore_app(&app_id) {
             Ok(()) => {
                 tracing::info!("restored {app_id} from trash");
@@ -144,7 +289,17 @@ impl InstallDaemon {
     ///
     /// Called by the systemd timer and on daemon startup. Returns the
     /// number of entries permanently deleted.
-    async fn cleanup_trash(&self) -> u32 {
+    async fn cleanup_trash(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> u32 {
+        // Zero deleted is the refusal. Emptying the trash is destructive and
+        // permanent, so it is gated with the rest even though the timer that
+        // normally drives it runs as this same user.
+        if authorise_mutation("CleanupTrash", &header, connection).await.is_err() {
+            return 0;
+        }
         crate::trash::cleanup_trash() as u32
     }
 
@@ -273,4 +428,38 @@ async fn caller_uid(
         .get_connection_unix_user(sender.clone().into())
         .await
         .map_err(|e| format!("get uid: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_store_may_change_what_is_installed() {
+        assert!(caller_may_mutate("store"));
+        // The shell, the agent and any other same-uid peer are not install
+        // callers, which is the whole point: uid does not tell them apart.
+        assert!(!caller_may_mutate("desktop-shell"));
+        assert!(!caller_may_mutate("ai-agent"));
+        assert!(!caller_may_mutate("settings"));
+        assert!(!caller_may_mutate(""));
+    }
+
+    #[test]
+    fn a_cargo_run_binary_is_admitted_in_debug_only() {
+        // A development session runs the store and forage from `target/debug`,
+        // where the resolver reports `dev.<bin-name>`. The shipped gate must not
+        // carry that allowance, so this asserts the build-dependent behaviour
+        // rather than one arm of it.
+        assert_eq!(caller_may_mutate("dev.forage"), cfg!(debug_assertions));
+        assert_eq!(caller_may_mutate("dev.arlen-store"), cfg!(debug_assertions));
+    }
+
+    #[test]
+    fn a_dev_prefix_is_not_a_wildcard_for_the_real_names() {
+        // `dev.` is a prefix on the resolver's own dev ids, not a way to claim a
+        // production principal: `developer` must not pass on a `dev` substring.
+        assert!(!caller_may_mutate("developer"));
+        assert!(!caller_may_mutate("notdev.store"));
+    }
 }
