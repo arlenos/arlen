@@ -112,9 +112,28 @@ if (import.meta.env.DEV && typeof location !== "undefined") {
 /// answers, the fixture is served ONLY under vite (dev) so the surface renders
 /// for screenshots; on a real boot a broker failure shows nothing rather than
 /// covering the desktop with a mock request every session.
+/// Requests this shell has already answered, so a poll reply that was in flight
+/// when the user clicked cannot put the dialog back.
+///
+/// The poll runs every second and `resolve` clears the dialog optimistically, so
+/// a fetch issued a moment BEFORE the click returns a still-pending view a moment
+/// after it and re-sets the store - the dialog reappears for up to a second,
+/// looking exactly like an answer that did not take. Cleared whenever the broker
+/// says nothing is pending, so it cannot grow.
+const answered = new Set<number>();
+
 export async function pollConsent(): Promise<void> {
   try {
-    current.set(await invoke<PendingView | null>("consent_fetch"));
+    const view = await invoke<PendingView | null>("consent_fetch");
+    if (view === null) {
+      answered.clear();
+      current.set(null);
+      return;
+    }
+    if (answered.has(view.id)) {
+      return; // A reply that predates our answer; the next poll has the truth.
+    }
+    current.set(view);
   } catch {
     current.set(import.meta.env.DEV ? MOCK_PENDING[mockIndex % MOCK_PENDING.length] : null);
   }
@@ -134,6 +153,7 @@ export async function pollConsent(): Promise<void> {
 /// for them to do with it and the reappearing dialog is itself the signal that
 /// the answer did not take.
 export async function resolve(id: number, outcome: ConsentOutcome): Promise<void> {
+  answered.add(id);
   current.set(null);
   try {
     // The Rust `ConsentOutcome` is `#[serde(tag = "outcome")]`, so it
