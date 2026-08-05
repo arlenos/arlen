@@ -797,6 +797,8 @@ export const b: Catalogs = {
     "s.revert.reverting": "Reverting\u2026",
     "s.revert.now": "Revert now",
     "s.revert.keep": "Keep changes ({$seconds}s)",
+    "s.apick.allListed": "Every known app is already listed above. Type a custom name to add it manually.",
+    "s.apick.addCustom": "Add this name as a custom entry",
   },
   de: {
     "s.wallpaper.title": "Hintergrund",
@@ -1588,5 +1590,7 @@ export const b: Catalogs = {
     "s.revert.reverting": "Wird zur\u00fcckgenommen\u2026",
     "s.revert.now": "Jetzt zur\u00fccknehmen",
     "s.revert.keep": "\u00c4nderungen behalten ({$seconds} s)",
+    "s.apick.allListed": "Alle bekannten Apps stehen bereits oben. Tipp einen eigenen Namen, um ihn von Hand hinzuzuf\u00fcgen.",
+    "s.apick.addCustom": "Diesen Namen als eigenen Eintrag hinzuf\u00fcgen",
   },
 };
