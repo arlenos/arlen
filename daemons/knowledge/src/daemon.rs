@@ -1032,6 +1032,21 @@ struct GrantView {
     consent_class: String,
     /// The concrete consent scope, when `source == "consent"` (else empty).
     consent_scope: String,
+    /// When one of this grant's reachable capabilities was last actually
+    /// exercised, or `0` for never. Read off `CapabilityUse`, which is keyed on
+    /// (app, capability) rather than on a token instance, so it survives the
+    /// re-mint that replaces a Grant node on every request.
+    ///
+    /// `0` means NOT MEASURED as much as it means unused: nothing recorded uses
+    /// before this was built, and the tally flushes coarsely, so a grant
+    /// exercised seconds ago can still read zero. A surface that offers to revoke
+    /// what is unused must say "no use recorded", never "you have never used
+    /// this".
+    last_used_at: i64,
+    /// How many of this grant's reachable capabilities have ever been exercised.
+    /// With `reach.len()` it answers the question the revoke prompt asks: this
+    /// grant reaches five things and you have used one.
+    used_capability_count: usize,
 }
 
 /// The uniform `access_grants` failure shape.
@@ -1063,6 +1078,10 @@ const ACCESS_GRANTS_ROW_CAP: usize = 5000;
 /// is the only way these nodes are ever served.
 async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
     let privileged = is_privileged_authority_reader(app_id) || is_settings_principal(app_id);
+    // The same scoping the grant query uses, kept as a value so the use overlay
+    // below cannot drift from it: whatever this list is scoped to, the use
+    // numbers on it are scoped to as well.
+    let scope_app = (!privileged).then(|| app_id.to_string());
     let scope = if privileged {
         // Whole-system view (gated false until F3).
         String::new()
@@ -1146,6 +1165,8 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
                 source: source.to_string(),
                 consent_class: row[12].as_str().to_string(),
                 consent_scope: row[13].as_str().to_string(),
+                last_used_at: 0,
+                used_capability_count: 0,
             });
             views.len() - 1
         });
@@ -1159,7 +1180,67 @@ async fn handle_access_grants(app_id: &str, graph: &GraphHandle) -> String {
             }
         }
     }
+    // Overlay the use tally. A SEPARATE query rather than a join: the grant reach
+    // is keyed on `EntityType.id` (the full `system.File`) while the row above
+    // returns `t.label` for display, and `CapabilityUse.id` is `<app>:<capability>`
+    // - joining those inside Cypher means string concatenation in a MATCH, which
+    // buys nothing over folding two bounded reads in Rust. The overlay is
+    // advisory: a failed read leaves the counts at zero, which the field's own
+    // contract already covers ("no use recorded"), so a hiccup in a projection
+    // never fails the grant list itself.
+    overlay_capability_use(graph, &scope_app, &mut views).await;
+
     serde_json::to_string(&views).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// Fill each view's use fields from `CapabilityUse`, scoped exactly as the grant
+/// query was: one app for an ordinary caller, every app for the privileged
+/// whole-machine reader (which no caller is yet).
+async fn overlay_capability_use(
+    graph: &GraphHandle,
+    scope_app: &Option<String>,
+    views: &mut [GrantView],
+) {
+    if views.is_empty() {
+        return;
+    }
+    let filter = match scope_app {
+        Some(app) => format!(" {{app_id: '{}'}}", crate::utils::escape_cypher(app)),
+        None => String::new(),
+    };
+    let cypher = format!(
+        "MATCH (u:CapabilityUse{filter}) \
+         RETURN u.app_id, u.capability, u.last_observed \
+         LIMIT {ACCESS_GRANTS_ROW_CAP}"
+    );
+    let Ok(rs) = graph.query_rows(cypher).await else {
+        return;
+    };
+    // (app, capability) -> last observed.
+    let mut used: std::collections::HashMap<(String, String), i64> =
+        std::collections::HashMap::new();
+    for row in &rs.rows {
+        if row.len() < 3 {
+            continue;
+        }
+        used.insert(
+            (row[0].as_str().to_string(), row[1].as_str().to_string()),
+            row[2].as_i64(),
+        );
+    }
+    for view in views.iter_mut() {
+        for label in &view.reach {
+            // The reach carries the display label; the tally carries the
+            // namespaced type it came from. `system.` is what
+            // `readable_system_labels` strips to make the label, so this puts it
+            // back rather than guessing.
+            let capability = format!("system.{label}");
+            if let Some(last) = used.get(&(view.app_id.clone(), capability)) {
+                view.used_capability_count += 1;
+                view.last_used_at = view.last_used_at.max(*last);
+            }
+        }
+    }
 }
 
 /// The app ids permitted to invoke a revoke (living-capability-graph.md §6.2,
@@ -4475,6 +4556,60 @@ mod tests {
             .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&rows).unwrap();
         assert_eq!(parsed["rows"][0][0], 0, "a refused typed read counted nothing");
+    }
+
+    /// A grant says whether its reach has actually been exercised, so a surface
+    /// can offer to revoke what is unused. The count is per (app, capability) on
+    /// `CapabilityUse`, which is why it survives the Grant node being replaced on
+    /// every request.
+    #[tokio::test]
+    async fn access_grants_reports_which_reach_has_been_used() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        let token = crate::token::CapabilityToken::new(
+            "com.use".to_string(),
+            std::process::id(),
+            vec![
+                crate::token::EntityScope {
+                    entity_type: "system.File".into(),
+                    fields: Some(vec!["path".into()]),
+                    exclude_fields: vec![],
+                },
+                crate::token::EntityScope {
+                    entity_type: "system.Project".into(),
+                    fields: Some(vec!["name".into()]),
+                    exclude_fields: vec![],
+                },
+            ],
+            vec![],
+            vec![],
+            crate::token::InstanceScope::Own,
+        );
+        crate::lcg::emit_grant_node(&graph, &token).await.unwrap();
+
+        // Before any use: reach of two, nothing exercised.
+        let before: serde_json::Value =
+            serde_json::from_str(&handle_access_grants("com.use", &graph).await).unwrap();
+        assert_eq!(before[0]["reach"].as_array().unwrap().len(), 2);
+        assert_eq!(before[0]["used_capability_count"], 0);
+        assert_eq!(before[0]["last_used_at"], 0);
+
+        // One capability exercised and flushed.
+        crate::lcg::flush_capability_use(
+            &graph,
+            &[("com.use".into(), "system.File".into(), 3, 4_242)],
+        )
+        .await
+        .unwrap();
+
+        let after: serde_json::Value =
+            serde_json::from_str(&handle_access_grants("com.use", &graph).await).unwrap();
+        assert_eq!(
+            after[0]["used_capability_count"], 1,
+            "one of the two reachable types has been exercised"
+        );
+        assert_eq!(after[0]["last_used_at"], 4_242);
     }
 
     #[tokio::test]
