@@ -32,29 +32,31 @@ export interface SystemActionDef {
   default: string;
 }
 
+/// `label` holds a message KEY, resolved with `$t` at the row: this table is
+/// module-level, so storing the text would pin it to the locale at import.
 export const SYSTEM_ACTIONS: SystemActionDef[] = [
   // ── Volume ────────────────────────────────────────────────────────
   {
     key: "VolumeRaise",
-    label: "Volume up",
+    label: "s.sysact.VolumeRaise",
     category: "Volume",
     default: "spawn:wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+",
   },
   {
     key: "VolumeLower",
-    label: "Volume down",
+    label: "s.sysact.VolumeLower",
     category: "Volume",
     default: "spawn:wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-",
   },
   {
     key: "Mute",
-    label: "Mute output",
+    label: "s.sysact.Mute",
     category: "Volume",
     default: "spawn:wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
   },
   {
     key: "MuteMic",
-    label: "Mute microphone",
+    label: "s.sysact.MuteMic",
     category: "Volume",
     default: "spawn:wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle",
   },
@@ -62,7 +64,7 @@ export const SYSTEM_ACTIONS: SystemActionDef[] = [
   // ── Brightness ─────────────────────────────────────────────────────
   {
     key: "BrightnessUp",
-    label: "Brightness up",
+    label: "s.sysact.BrightnessUp",
     description:
       "Routed through the shell so the gamma-corrected step worker handles it.",
     category: "Brightness",
@@ -70,7 +72,7 @@ export const SYSTEM_ACTIONS: SystemActionDef[] = [
   },
   {
     key: "BrightnessDown",
-    label: "Brightness down",
+    label: "s.sysact.BrightnessDown",
     description:
       "Routed through the shell so the gamma-corrected step worker handles it.",
     category: "Brightness",
@@ -80,19 +82,19 @@ export const SYSTEM_ACTIONS: SystemActionDef[] = [
   // ── Media ──────────────────────────────────────────────────────────
   {
     key: "PlayPause",
-    label: "Play / pause",
+    label: "s.sysact.PlayPause",
     category: "Media",
     default: "spawn:playerctl play-pause",
   },
   {
     key: "PlayNext",
-    label: "Next track",
+    label: "s.sysact.PlayNext",
     category: "Media",
     default: "spawn:playerctl next",
   },
   {
     key: "PlayPrev",
-    label: "Previous track",
+    label: "s.sysact.PlayPrev",
     category: "Media",
     default: "spawn:playerctl previous",
   },
@@ -100,49 +102,49 @@ export const SYSTEM_ACTIONS: SystemActionDef[] = [
   // ── System ─────────────────────────────────────────────────────────
   {
     key: "LockScreen",
-    label: "Lock screen",
+    label: "s.sysact.LockScreen",
     category: "System",
     default: "spawn:loginctl lock-session",
   },
   {
     key: "Suspend",
-    label: "Suspend",
+    label: "s.sysact.Suspend",
     category: "System",
     default: "spawn:systemctl suspend",
   },
   {
     key: "PowerOff",
-    label: "Power off",
+    label: "s.sysact.PowerOff",
     category: "System",
     default: "spawn:systemctl poweroff",
   },
   {
     key: "LogOut",
-    label: "Log out",
+    label: "s.sysact.LogOut",
     category: "System",
     default: "spawn:loginctl terminate-session $XDG_SESSION_ID",
   },
   {
     key: "HomeFolder",
-    label: "Home folder",
+    label: "s.sysact.HomeFolder",
     category: "System",
     default: "spawn:xdg-open ~",
   },
   {
     key: "WebBrowser",
-    label: "Default browser",
+    label: "s.sysact.WebBrowser",
     category: "System",
     default: "spawn:xdg-open https:",
   },
   {
     key: "Launcher",
-    label: "Open launcher",
+    label: "s.sysact.Launcher",
     category: "System",
     default: "shell:waypointer_open",
   },
   {
     key: "Screenshot",
-    label: "Screenshot",
+    label: "s.sysact.Screenshot",
     category: "System",
     default: "spawn:grim",
   },

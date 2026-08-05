@@ -552,23 +552,6 @@ apps/settings/src/lib/stores/notifications.ts	Only critical notifications break 
 apps/settings/src/lib/stores/notifications.ts	Priority Only
 apps/settings/src/lib/stores/notifications.ts	Scheduled
 apps/settings/src/lib/stores/notifications.ts	Total Silence
-apps/settings/src/lib/stores/systemActions.ts	Brightness down
-apps/settings/src/lib/stores/systemActions.ts	Brightness up
-apps/settings/src/lib/stores/systemActions.ts	Default browser
-apps/settings/src/lib/stores/systemActions.ts	Home folder
-apps/settings/src/lib/stores/systemActions.ts	Lock screen
-apps/settings/src/lib/stores/systemActions.ts	Log out
-apps/settings/src/lib/stores/systemActions.ts	Mute microphone
-apps/settings/src/lib/stores/systemActions.ts	Mute output
-apps/settings/src/lib/stores/systemActions.ts	Next track
-apps/settings/src/lib/stores/systemActions.ts	Open launcher
-apps/settings/src/lib/stores/systemActions.ts	Play / pause
-apps/settings/src/lib/stores/systemActions.ts	Power off
-apps/settings/src/lib/stores/systemActions.ts	Previous track
-apps/settings/src/lib/stores/systemActions.ts	Screenshot
-apps/settings/src/lib/stores/systemActions.ts	Suspend
-apps/settings/src/lib/stores/systemActions.ts	Volume down
-apps/settings/src/lib/stores/systemActions.ts	Volume up
 apps/settings/src/lib/stores/theme.ts	Fira Code
 apps/settings/src/lib/stores/theme.ts	Inter
 apps/settings/src/lib/stores/theme.ts	JetBrains Mono
