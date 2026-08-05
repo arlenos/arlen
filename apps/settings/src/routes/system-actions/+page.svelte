@@ -98,10 +98,10 @@
   {/if}
 
   {#each SYSTEM_ACTION_CATEGORIES as category (category)}
-    <Section label={category}>
+    <Section label={$t(`s.sysact.cat.${category.toLowerCase()}`)}>
       {#each actionsByCategory(category) as action (action.key)}
         <Row
-          label={action.label}
+          label={$t(action.label)}
           description={action.description}
           id={`action-${action.key}`}
         >
