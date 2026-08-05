@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Context-menu content shared by the active-window cards and the
   /// minimized-window cards. Branches three ways based on the
   /// current selection:
@@ -79,18 +80,18 @@
   {@const twoActive = selWindows.length === 2 && selWindows.every((w) => !w.minimized)}
 
   <ContextMenu.Item onclick={closeAllSelected}>
-    Close All ({sel.length})
+    {$t("sh.win.closeAll", { count: sel.length })}
   </ContextMenu.Item>
   {#if anyActive}
-    <ContextMenu.Item onclick={minimizeAllSelected}>Minimize All</ContextMenu.Item>
+    <ContextMenu.Item onclick={minimizeAllSelected}>{$t("sh.win.minimizeAll")}</ContextMenu.Item>
   {/if}
   {#if anyMinimized}
-    <ContextMenu.Item onclick={restoreAllSelectedAndClose}>Restore All</ContextMenu.Item>
+    <ContextMenu.Item onclick={restoreAllSelectedAndClose}>{$t("sh.win.restoreAll")}</ContextMenu.Item>
   {/if}
   {#if moveTargets.length > 0}
     <ContextMenu.Separator />
     <ContextMenu.Sub>
-      <ContextMenu.SubTrigger>Move All to</ContextMenu.SubTrigger>
+      <ContextMenu.SubTrigger>{$t("sh.win.moveAllTo")}</ContextMenu.SubTrigger>
       <ContextMenu.Portal>
         <ContextMenu.SubContent class="shell-popover">
           {#each moveTargets as ws, i (ws.id)}
@@ -105,20 +106,20 @@
   {#if twoActive}
     <ContextMenu.Separator />
     <ContextMenu.Item onclick={() => tileSideBySideAndClose([sel[0], sel[1]])}>
-      Tile Side by Side
+      {$t("sh.win.tileSideBySide")}
     </ContextMenu.Item>
   {/if}
 {:else if isMinimized}
   <ContextMenu.Item onclick={() => { restoreWindow(windowId); hideOverlay(); }}>
-    Restore
+    {$t("sh.win.restore")}
   </ContextMenu.Item>
   <ContextMenu.Item onclick={() => closeMinimizedWindow(windowId)}>
-    Close
+    {$t("sh.win.close")}
   </ContextMenu.Item>
   {#if moveTargets.length > 0}
     <ContextMenu.Separator />
     <ContextMenu.Sub>
-      <ContextMenu.SubTrigger>Move to</ContextMenu.SubTrigger>
+      <ContextMenu.SubTrigger>{$t("sh.win.moveTo")}</ContextMenu.SubTrigger>
       <ContextMenu.Portal>
         <ContextMenu.SubContent class="shell-popover">
           {#each moveTargets as ws, i (ws.id)}
@@ -131,12 +132,12 @@
     </ContextMenu.Sub>
   {/if}
 {:else}
-  <ContextMenu.Item onclick={() => closeWindowAction(windowId)}>Close</ContextMenu.Item>
-  <ContextMenu.Item onclick={() => minimizeWindow(windowId)}>Minimize</ContextMenu.Item>
+  <ContextMenu.Item onclick={() => closeWindowAction(windowId)}>{$t("sh.win.close")}</ContextMenu.Item>
+  <ContextMenu.Item onclick={() => minimizeWindow(windowId)}>{$t("sh.win.minimize")}</ContextMenu.Item>
   {#if moveTargets.length > 0}
     <ContextMenu.Separator />
     <ContextMenu.Sub>
-      <ContextMenu.SubTrigger>Move to</ContextMenu.SubTrigger>
+      <ContextMenu.SubTrigger>{$t("sh.win.moveTo")}</ContextMenu.SubTrigger>
       <ContextMenu.Portal>
         <ContextMenu.SubContent class="shell-popover">
           {#each moveTargets as ws, i (ws.id)}
@@ -150,10 +151,10 @@
   {/if}
   <ContextMenu.Separator />
   <ContextMenu.Item onclick={() => tileWindowAction(windowId, "left")}>
-    Tile Left
+    {$t("sh.win.tileLeft")}
   </ContextMenu.Item>
   <ContextMenu.Item onclick={() => tileWindowAction(windowId, "right")}>
-    Tile Right
+    {$t("sh.win.tileRight")}
   </ContextMenu.Item>
   <ContextMenu.Item
     onclick={() => fullscreenWindowAction(windowId, win?.fullscreen ?? false)}

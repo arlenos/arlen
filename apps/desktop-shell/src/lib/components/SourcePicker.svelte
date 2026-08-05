@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The screencast source-picker (screenshot-capture-plan.md §3): a consent-framed
   /// chooser for "what do I share" when an app requests a screencast. Deny is
   /// first-class, only what you pick is sent, remembering is off by default. Mounted
@@ -28,18 +29,18 @@
     <Dialog.Content>
       <div class="sp">
         <header class="sp-head">
-          <h2 class="sp-title">{req.requesterLabel} wants to share your screen</h2>
-          <p class="sp-sub">Choose what to share. Only what you pick is sent.</p>
+          <h2 class="sp-title">{$t("sh.share.wants", { app: req.requesterLabel })}</h2>
+          <p class="sp-sub">{$t("sh.share.choose")}</p>
         </header>
 
         <div class="sp-scroll">
           {#if $sourcesMocked}
             <!-- Picking one of these is a privacy decision; they must not pass
                  as this machine's real screens and windows. -->
-            <p class="sp-sample">Example screens and windows - not the real ones on this machine.</p>
+            <p class="sp-sample">{$t("sh.share.mocked")}</p>
           {/if}
           {#if $sources.monitors.length > 0}
-            <div class="sp-group">Screens</div>
+            <div class="sp-group">{$t("sh.share.screens")}</div>
             <div class="sp-monitors">
               {#each $sources.monitors as m (m.id)}
                 <button type="button" class="sp-mon" class:on={isPicked("monitor", m.id)} onclick={() => pick("monitor", m.id)}>
@@ -52,7 +53,7 @@
           {/if}
 
           {#if $sources.windows.length > 0}
-            <div class="sp-group">Windows</div>
+            <div class="sp-group">{$t("sh.share.windows")}</div>
             <div class="sp-wins">
               {#each $sources.windows as w (w.id)}
                 <button type="button" class="sp-win" class:on={isPicked("window", w.id)} onclick={() => pick("window", w.id)}>
@@ -66,27 +67,27 @@
             </div>
           {/if}
 
-          <div class="sp-group">Region</div>
+          <div class="sp-group">{$t("sh.share.region")}</div>
           <button type="button" class="sp-region" class:on={isPicked("region", "region")} onclick={() => pick("region", "region")}>
-            Choose a region to share
+            {$t("sh.share.chooseRegion")}
           </button>
         </div>
 
         <div class="sp-toggles">
           <div class="sp-toggle">
-            <Checkbox id="sp-cursor" bind:checked={showCursor} ariaLabel="Show my cursor" />
-            <label for="sp-cursor">Show my cursor</label>
+            <Checkbox id="sp-cursor" bind:checked={showCursor} ariaLabel={$t("sh.share.showCursor")} />
+            <label for="sp-cursor">{$t("sh.share.showCursor")}</label>
           </div>
           <div class="sp-toggle">
-            <Checkbox id="sp-remember" bind:checked={remember} ariaLabel={`Remember for ${req.requesterLabel}`} />
-            <label for="sp-remember">Remember for {req.requesterLabel}</label>
+            <Checkbox id="sp-remember" bind:checked={remember} ariaLabel={$t("sh.share.rememberFor", { app: req.requesterLabel })} />
+            <label for="sp-remember">{$t("sh.share.rememberFor", { app: req.requesterLabel })}</label>
           </div>
         </div>
 
         <footer class="sp-foot">
-          <Button variant="outline" onclick={() => cancel()}>Don't share</Button>
+          <Button variant="outline" onclick={() => cancel()}>{$t("sh.share.deny")}</Button>
           <span class="sp-spacer"></span>
-          <Button onclick={doShare} disabled={!selected}>Share</Button>
+          <Button onclick={doShare} disabled={!selected}>{$t("sh.share.allow")}</Button>
         </footer>
       </div>
     </Dialog.Content>
