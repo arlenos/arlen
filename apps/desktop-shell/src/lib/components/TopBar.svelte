@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, setContext } from "svelte";
+  import { onMount, onDestroy, setContext, type Component } from "svelte";
   import { writable } from "svelte/store";
   import type { Readable } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
@@ -87,6 +87,43 @@
   const isPrimary = $derived(
     outputInfo === null ? initialIsPrimary : outputInfo.primary,
   );
+
+  // The arrangeable middle of the right cluster, keyed by the ids
+  // `topbar_items` uses. Clock and Quick Settings are deliberately NOT here:
+  // the bar's own design rule fixes the trenner-clock-settings triplet, while
+  // the inventory still offers both as arrangeable. That contradiction is a
+  // product call and not one to settle by quietly picking a side in a render,
+  // so those two stay where the design put them.
+  const ARRANGEABLE: Record<string, Component<Record<string, never>, {}, string>> = {
+    notifications: NotificationsTrigger,
+    undo: UndoIndicator,
+    audio: AudioIndicator,
+    network: NetworkIndicator,
+    bluetooth: BluetoothIndicator,
+    battery: BatteryIndicator,
+    layout: LayoutIndicator,
+  };
+
+  /// The saved order, or the default one. Starts at the default so the bar is
+  /// never briefly empty, and stays there if the inventory cannot be read: a
+  /// backend hiccup must not cost the user their status icons.
+  const DEFAULT_ORDER = Object.keys(ARRANGEABLE);
+  let arrangedApplets = $state(DEFAULT_ORDER);
+
+  onMount(async () => {
+    if (!isPrimary) return;
+    try {
+      const items = await invoke<{ id: string; shown: boolean }[]>("topbar_items");
+      const arranged = items
+        .filter((i) => i.shown && i.id in ARRANGEABLE)
+        .map((i) => i.id);
+      // An inventory that names none of these is a mismatch, not a request for
+      // an empty bar, so the default stands rather than blanking the cluster.
+      if (arranged.length > 0) arrangedApplets = arranged;
+    } catch {
+      // Keep the default order.
+    }
+  });
 
   // Per-output context published to children (WorkspaceIndicator,
   // GlobalMenuBar). The connector is `null` until the
@@ -307,13 +344,10 @@
     <div class="flex items-center gap-0.5">
       {#if isPrimary}
         <div class="topbar-sep"></div>
-        <NotificationsTrigger />
-        <UndoIndicator />
-        <AudioIndicator />
-        <NetworkIndicator />
-        <BluetoothIndicator />
-        <BatteryIndicator />
-        <LayoutIndicator />
+        {#each arrangedApplets as id (id)}
+          {@const Applet = ARRANGEABLE[id]}
+          <Applet />
+        {/each}
         <div class="topbar-sep"></div>
       {/if}
       <ClockIndicator />
