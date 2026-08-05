@@ -50,7 +50,7 @@
   <SectionGrid>
     <Section label={$t("s.topbar.preview")} class="span-full">
       <div class="tb-preview" aria-label={$t("s.topbar.previewAria")}>
-        <span class="tb-pv-left">Arlen</span>
+        <span class="tb-pv-left">Arlen</span><!-- product name, not translated -->
         <span class="tb-pv-spacer"></span>
         {#each $shownItems as item (item.id)}
           {@const Icon = iconFor(item)}
@@ -75,9 +75,9 @@
                 </button>
                 <span class="tb-icon"><Icon size={16} strokeWidth={1.75} /></span>
                 <span class="tb-name">{it.name}</span>
-                {#if it.kind === "tray"}<span class="tb-tag">tray</span>{/if}
+                {#if it.kind === "tray"}<span class="tb-tag">{$t("s.topbar.tray")}</span>{/if}
                 <span class="tb-spacer"></span>
-                <span class="tb-state">{it.shown ? "Shown" : "Overflow"}</span>
+                <span class="tb-state">{it.shown ? $t("s.topbar.shown") : $t("s.topbar.overflow")}</span>
                 <Switch value={it.shown} onchange={(v) => setShown(it.id, v)} />
               </div>
             {/if}
@@ -88,7 +88,7 @@
 
     {#if $topbar.error}
       <div class="span-full tb-error" title={$topbar.error}>
-        Can't read the topbar arrangement right now. Changes are paused.
+        {$t("s.topbar.readFailed")}
       </div>
     {/if}
   </SectionGrid>
