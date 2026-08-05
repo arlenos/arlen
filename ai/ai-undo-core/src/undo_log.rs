@@ -442,14 +442,14 @@ impl FileUndoLog {
         self.log.live_entries()
     }
 
-    /// The created entries stuck mid-reversal (see
-    /// [`UndoLog::compensating_entries`]) - a crash-interrupted compensation the
-    /// consumer re-drives to completion on restart through the idempotent enact.
     /// See [`UndoLog::recent_entries`].
     pub fn recent_entries(&self, limit: usize) -> Vec<(&UndoEntry, UndoState)> {
         self.log.recent_entries(limit)
     }
 
+    /// The created entries stuck mid-reversal (see
+    /// [`UndoLog::compensating_entries`]) - a crash-interrupted compensation the
+    /// consumer re-drives to completion on restart through the idempotent enact.
     pub fn compensating_entries(&self) -> Vec<&UndoEntry> {
         self.log.compensating_entries()
     }
