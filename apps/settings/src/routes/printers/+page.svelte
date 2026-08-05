@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Printers panel (printing-plan.md PRN-R4): the printer list, the print
   /// queue, and add-a-printer, on the settings-panel archetype - built on the
   /// kit `Row` (leading status column, right-aligned control cluster, full-width
@@ -52,31 +53,34 @@
   let addName = $state("");
   let addUri = $state("");
 
-  const PRINTER_STATE_LABEL: Record<PrinterState, string> = {
-    idle: "Ready",
-    processing: "Printing",
-    stopped: "Paused",
-    unknown: "Unknown",
-  };
-  const JOB_STATE_LABEL: Record<JobState, string> = {
-    pending: "Queued",
-    held: "Held",
-    processing: "Printing",
-    stopped: "Stopped",
-    canceled: "Canceled",
-    aborted: "Failed",
-    completed: "Done",
-    unknown: "Unknown",
-  };
-  const DUPLEX_OPTIONS = [
-    { value: "one-sided", label: "One-sided" },
-    { value: "two-sided-long", label: "Two-sided" },
-    { value: "two-sided-short", label: "Two-sided (flip)" },
-  ];
-  const COLOR_OPTIONS = [
-    { value: "color", label: "Colour" },
-    { value: "mono", label: "Black & white" },
-  ];
+  // These are `$derived`, not `const`, on purpose: the translator is a store, so a
+  // module-level constant captures English at import and a locale switch would leave
+  // every dropdown behind. See `coder-reports.md` on the script-block blind spot.
+  const PRINTER_STATE_LABEL: Record<PrinterState, string> = $derived({
+    idle: $t("s.pr.stIdle"),
+    processing: $t("s.pr.stPrinting"),
+    stopped: $t("s.pr.stPaused"),
+    unknown: $t("s.pr.stUnknown"),
+  });
+  const JOB_STATE_LABEL: Record<JobState, string> = $derived({
+    pending: $t("s.pr.jbQueued"),
+    held: $t("s.pr.jbHeld"),
+    processing: $t("s.pr.stPrinting"),
+    stopped: $t("s.pr.jbStopped"),
+    canceled: $t("s.pr.jbCanceled"),
+    aborted: $t("s.pr.jbFailed"),
+    completed: $t("s.pr.jbDone"),
+    unknown: $t("s.pr.stUnknown"),
+  });
+  const DUPLEX_OPTIONS = $derived([
+    { value: "one-sided", label: $t("s.pr.oneSided") },
+    { value: "two-sided-long", label: $t("s.pr.twoSided") },
+    { value: "two-sided-short", label: $t("s.pr.twoSidedFlip") },
+  ]);
+  const COLOR_OPTIONS = $derived([
+    { value: "color", label: $t("s.pr.colour") },
+    { value: "mono", label: $t("s.pr.mono") },
+  ]);
   const PAPER_OPTIONS = [
     { value: "a4", label: "A4" },
     { value: "letter", label: "Letter" },
@@ -133,25 +137,25 @@
   }
 </script>
 
-<Page title="Printers" description="Manage printers, the print queue, and add new devices.">
+<Page title={$t("s.pr.title")} description={$t("s.pr.desc")}>
   <SectionGrid>
     {#if $printers.mocked}
       <p class="note">
-        Showing example data. Live printers appear once the print service is connected.
+        {$t("s.pr.mocked")}
       </p>
     {/if}
 
-    <Section label="Printers">
+    <Section label={$t("s.pr.printers")}>
       {#if $printers.printers.length === 0}
-        <p class="empty">No printers yet. Add one below.</p>
+        <p class="empty">{$t("s.pr.none")}</p>
       {:else}
-        <Row label="Default printer" description="Used unless an app picks another.">
+        <Row label={$t("s.pr.defaultPrinter")} description={$t("s.pr.defaultPrinterDesc")}>
           {#snippet control()}
             <PopoverSelect
               value={$printers.defaultName ?? ""}
               options={defaultOptions}
-              placeholder="None"
-              ariaLabel="Default printer"
+              placeholder={$t("s.pr.noneOption")}
+              ariaLabel={$t("s.pr.defaultPrinter")}
               onchange={setDefault}
             />
           {/snippet}
@@ -162,41 +166,41 @@
       {/each}
     </Section>
 
-    <Section label="Print queue">
+    <Section label={$t("s.pr.queue")}>
       {#if $printers.queue.length === 0}
-        <p class="empty">No jobs in the queue.</p>
+        <p class="empty">{$t("s.pr.queueEmpty")}</p>
       {:else}
         {#each $printers.queue as job (job.id)}
           {@render jobRow(job)}
         {/each}
         <div class="foot">
-          <Button variant="ghost" size="sm" onclick={clearCompleted}>Clear finished</Button>
+          <Button variant="ghost" size="sm" onclick={clearCompleted}>{$t("s.pr.clearFinished")}</Button>
         </div>
       {/if}
     </Section>
 
-    <Section label="Add a printer">
+    <Section label={$t("s.pr.addPrinter")}>
       {#each $printers.discovered as d (d.uri)}
         {@render discoveredRow(d)}
       {/each}
       {#if $printers.discovered.length === 0}
-        <p class="empty">No printers discovered.</p>
+        <p class="empty">{$t("s.pr.noneDiscovered")}</p>
       {/if}
       <div class="foot">
         <Button variant="ghost" size="sm" onclick={discover}>
           <RefreshCw />
-          Rescan
+          {$t("s.pr.rescan")}
         </Button>
         <Button variant="ghost" size="sm" onclick={() => (addOpen = !addOpen)}>
           <Plus />
-          Add by IP or URI
+          {$t("s.pr.addByUri")}
         </Button>
       </div>
       {#if addOpen}
         <div class="manual">
-          <Input placeholder="Name (optional)" bind:value={addName} aria-label="Printer name" />
-          <Input placeholder="ipp://10.0.0.20/ipp/print" bind:value={addUri} aria-label="Printer address" />
-          <Button variant="default" size="sm" disabled={!addUri.trim()} onclick={submitManual}>Add</Button>
+          <Input placeholder={$t("s.pr.namePlaceholder")} bind:value={addName} aria-label={$t("s.pr.printerName")} />
+          <Input placeholder={$t("s.pr.uriPlaceholder")} bind:value={addUri} aria-label={$t("s.pr.printerAddress")} />
+          <Button variant="default" size="sm" disabled={!addUri.trim()} onclick={submitManual}>{$t("s.pr.add")}</Button>
         </div>
       {/if}
     </Section>
@@ -214,13 +218,13 @@
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label="Print options"
+          aria-label={$t("s.pr.printOptions")}
           aria-expanded={expanded === p.name}
           onclick={() => (expanded = expanded === p.name ? null : p.name)}
         >
           <SlidersHorizontal />
         </Button>
-        <Button variant="ghost" size="icon-sm" aria-label="Remove printer" onclick={() => (confirmRemove = p)}>
+        <Button variant="ghost" size="icon-sm" aria-label={$t("s.pr.removePrinter")} onclick={() => (confirmRemove = p)}>
           <Trash2 />
         </Button>
       </span>
@@ -229,34 +233,34 @@
       {#if expanded === p.name}
         <div class="options">
           <label class="opt">
-            <span>Sides</span>
+            <span>{$t("s.pr.sides")}</span>
             <SegmentedControl
-              ariaLabel="Sides"
+              ariaLabel={$t("s.pr.sides")}
               value={opts.duplex}
               options={DUPLEX_OPTIONS}
               onchange={(v) => commitOptions(p.name, { duplex: v as PrinterOptions["duplex"] })}
             />
           </label>
           <label class="opt">
-            <span>Colour</span>
+            <span>{$t("s.pr.colourLabel")}</span>
             <SegmentedControl
-              ariaLabel="Colour"
+              ariaLabel={$t("s.pr.colourLabel")}
               value={opts.color}
               options={COLOR_OPTIONS}
               onchange={(v) => commitOptions(p.name, { color: v as PrinterOptions["color"] })}
             />
           </label>
           <label class="opt">
-            <span>Paper</span>
+            <span>{$t("s.pr.paper")}</span>
             <PopoverSelect
-              ariaLabel="Paper size"
+              ariaLabel={$t("s.pr.paperSize")}
               value={opts.paper}
               options={PAPER_OPTIONS}
               onchange={(v) => commitOptions(p.name, { paper: v as PrinterOptions["paper"] })}
             />
           </label>
           <div class="opt-actions">
-            <Button variant="ghost" size="sm" onclick={() => testPage(p.name)}>Print test page</Button>
+            <Button variant="ghost" size="sm" onclick={() => testPage(p.name)}>{$t("s.pr.testPage")}</Button>
           </div>
         </div>
       {/if}
@@ -273,9 +277,9 @@
       <span class="ctl">
         <span class="job-state" data-state={job.state}>{jobStateText(job)}</span>
         {#if job.state === "processing" || job.state === "pending"}
-          <Button variant="ghost" size="sm" onclick={() => cancelJob(job.id)}>Cancel</Button>
+          <Button variant="ghost" size="sm" onclick={() => cancelJob(job.id)}>{$t("s.pr.cancel")}</Button>
         {:else if job.state === "held" || job.state === "stopped"}
-          <Button variant="ghost" size="sm" onclick={() => retryJob(job.id)}>Resume</Button>
+          <Button variant="ghost" size="sm" onclick={() => retryJob(job.id)}>{$t("s.pr.resume")}</Button>
         {/if}
       </span>
     {/snippet}
@@ -285,22 +289,24 @@
 {#snippet discoveredRow(d: DiscoveredPrinter)}
   <Row
     label={d.makeModel ?? d.name}
-    description={`${d.destination === "network" ? "Network" : transportOf(d.uri)}${d.driverless ? " · driverless" : ""}`}
+    description={d.driverless
+      ? $t("s.pr.discDriverless", { transport: d.destination === "network" ? $t("s.pr.network") : transportOf(d.uri) })
+      : d.destination === "network" ? $t("s.pr.network") : transportOf(d.uri)}
   >
     {#snippet leading()}
       <span class="dot ghost" aria-hidden="true"></span>
     {/snippet}
     {#snippet control()}
-      <Button variant="outline" size="sm" onclick={() => addPrinter(d)}>Add</Button>
+      <Button variant="outline" size="sm" onclick={() => addPrinter(d)}>{$t("s.pr.add")}</Button>
     {/snippet}
   </Row>
 {/snippet}
 
 <ConfirmDialog
   open={confirmRemove !== null}
-  title="Remove this printer?"
-  message={`"${confirmRemove ? displayName(confirmRemove) : ""}" will be removed from this machine. Jobs in its queue are cancelled.`}
-  confirmLabel="Remove"
+  title={$t("s.pr.confirmTitle")}
+  message={$t("s.pr.confirmMsg", { name: confirmRemove ? displayName(confirmRemove) : "" })}
+  confirmLabel={$t("s.pr.confirmLabel")}
   variant="destructive"
   onConfirm={async () => {
     if (confirmRemove) await removePrinter(confirmRemove.name);
