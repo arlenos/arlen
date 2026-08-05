@@ -60,6 +60,17 @@ pub struct ReadRequest {
     /// of the project-scoped export.
     #[serde(default)]
     pub project_id: Option<String>,
+    /// When set, only entries stamped with this call-chain id.
+    ///
+    /// This is the id that ties one action's records together: the gate
+    /// decision, the execution and the outcome all carry it, and the undo
+    /// signer stores the same value on the inverse receipt as its
+    /// `correlation_id`. Without this filter, answering "what does the ledger
+    /// say about the action I am about to undo" means paging the whole ledger
+    /// and matching client-side, which is a scan where the question is a
+    /// lookup. `serde(default)` keeps old and new peers compatible.
+    #[serde(default)]
+    pub call_chain_id: Option<String>,
 }
 
 /// The reply to a [`ReadRequest`].
