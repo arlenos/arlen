@@ -136,7 +136,7 @@
       <h2>{$t("s.revert.keep")}</h2>
       <p class="body">
         {#if pendingRevertId}
-          Reverting…
+          {$t("s.revert.reverting")}
         {:else}
           The new layout has been applied. If you can read this clearly,
           confirm to keep it. Otherwise we'll roll back automatically in
@@ -156,10 +156,10 @@
           onclick={() => revert("cancel")}
           disabled={busy}
         >
-          Revert now
+          {$t("s.revert.now")}
         </Button>
         <Button onclick={keep} disabled={busy}>
-          Keep changes ({secondsLeft}s)
+          {$t("s.revert.keep", { seconds: secondsLeft })}
         </Button>
       </div>
     </div>

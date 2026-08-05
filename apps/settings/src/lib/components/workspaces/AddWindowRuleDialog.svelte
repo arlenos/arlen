@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Modal dialog for adding a new window rule.
   ///
   /// V1 scope (Sprint B): regex matchers for `app_id` and `title`,
@@ -114,36 +115,35 @@
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}
     >
-      <h2 id="window-rule-title" class="title">Add Window Rule</h2>
+      <h2 id="window-rule-title" class="title">{$t("s.wrule.title")}</h2>
       <p class="description">
-        At least one matcher must be set. Patterns are regular
-        expressions matched against the window's app_id / title.
+        {$t("s.wrule.description")}
       </p>
 
       <div class="field">
-        <label for="rule-app-id">App ID pattern</label>
+        <label for="rule-app-id">{$t("s.wrule.appIdPattern")}</label>
         <Input
           id="rule-app-id"
           bind:value={appIdPattern}
-          placeholder="e.g. firefox|chromium"
+          placeholder={$t("s.wrule.appIdHint")}
         />
         {#if appIdError}<div class="field-error">{appIdError}</div>{/if}
       </div>
 
       <div class="field">
-        <label for="rule-title">Title pattern</label>
+        <label for="rule-title">{$t("s.wrule.titlePattern")}</label>
         <Input
           id="rule-title"
           bind:value={titlePattern}
-          placeholder="e.g. Preferences"
+          placeholder={$t("s.wrule.titleHint")}
         />
         {#if titleError}<div class="field-error">{titleError}</div>{/if}
       </div>
 
       <div class="field-toggle">
         <label for="rule-dialog">
-          <span>Match dialog windows</span>
-          <span class="hint">Toolkit-declared dialog hint (xdg-decoration)</span>
+          <span>{$t("s.wrule.matchDialogs")}</span>
+          <span class="hint">{$t("s.wrule.matchDialogsHint")}</span>
         </label>
         <Switch
           value={matchDialog}
@@ -153,7 +153,7 @@
       </div>
 
       <div class="field">
-        <span class="label-static">Action</span>
+        <span class="label-static">{$t("s.wrule.action")}</span>
         <SegmentedControl
           value={action}
           options={ACTION_OPTIONS}
@@ -163,8 +163,8 @@
       </div>
 
       <div class="footer">
-        <Button variant="ghost" onclick={cancel}>Cancel</Button>
-        <Button disabled={!canSubmit} onclick={submit}>Add Rule</Button>
+        <Button variant="ghost" onclick={cancel}>{$t("s.wrule.cancel")}</Button>
+        <Button disabled={!canSubmit} onclick={submit}>{$t("s.wrule.add")}</Button>
       </div>
     </div>
   </div>

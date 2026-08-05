@@ -214,33 +214,12 @@ apps/settings/src/lib/components/appearance/AppPicker.svelte	No matches for "
 apps/settings/src/lib/components/appearance/AppPicker.svelte	Use "
 apps/settings/src/lib/components/appearance/AppPicker.svelte	notify-send
 apps/settings/src/lib/components/appearance/AppPicker.svelte	or type a name below.
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	Built-in
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	ID
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Manifest warnings
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	No description provided.
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Settings
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	System
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	Trust level
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	User
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
-apps/settings/src/lib/components/displays/RevertConfirmModal.svelte	Keep changes (
-apps/settings/src/lib/components/displays/RevertConfirmModal.svelte	Revert now
-apps/settings/src/lib/components/displays/RevertConfirmModal.svelte	Reverting…
 apps/settings/src/lib/components/displays/RevertConfirmModal.svelte	The new layout has been applied. If you can read this clearly, confirm to keep it. Otherwise we'll roll back automatically in
-apps/settings/src/lib/components/displays/RevertConfirmModal.svelte	s)
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Action
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Add Rule
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Add Window Rule
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	App ID pattern
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	At least one matcher must be set. Patterns are regular expressions matched against the window's app_id / title.
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Cancel
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Match dialog windows
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Title pattern
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Toolkit-declared dialog hint (xdg-decoration)
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	e.g. Preferences
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	e.g. firefox|chromium
 apps/settings/src/routes/about/+page.svelte	Arlen OS
 apps/settings/src/routes/appearance/system/+page.svelte	$ ls --color
 apps/settings/src/routes/appearance/system/+page.svelte	README.md
