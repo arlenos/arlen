@@ -70,6 +70,26 @@ fn create_timerfd(alarm: bool) -> io::Result<RawFd> {
     Ok(fd)
 }
 
+/// What the kernel says this process is actually allowed, from `/proc/self/status`.
+///
+/// Reported alongside the probe because "refused" alone does not say WHY, and the
+/// two reasons have different remedies: an empty bounding set means the privilege
+/// never reached this process and no unit file here can conjure it, while a
+/// permitted-but-not-ambient set would mean it is present and merely not raised.
+pub fn capability_sets() -> String {
+    let Ok(status) = std::fs::read_to_string("/proc/self/status") else {
+        return "unreadable".to_string();
+    };
+    status
+        .lines()
+        .filter(|l| l.starts_with("CapInh:") || l.starts_with("CapPrm:")
+            || l.starts_with("CapEff:") || l.starts_with("CapBnd:")
+            || l.starts_with("CapAmb:"))
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(""))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Ask the kernel, at startup, whether this process may arm a waking alarm.
 ///
 /// Creates and immediately drops an alarm timerfd. `EPERM` is the answer that
