@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Drawer for tiles the user has hidden from the QS panel.
   ///
   /// Collapsible section under the panel preview. Each hidden
@@ -66,7 +67,7 @@
         strokeWidth={1.75}
         class={open ? "drawer-chev open" : "drawer-chev"}
       />
-      <span>Hidden tiles</span>
+      <span>{$t("s.qst.hiddenTiles")}</span>
       <span class="drawer-count">{tiles.length}</span>
     </button>
     {#if open}
@@ -90,7 +91,7 @@
             <ContextMenu.Content>
               <ContextMenu.Item onclick={() => onShow(tile.id)}>
                 <Eye size={14} strokeWidth={1.5} />
-                <span>Show in panel</span>
+                <span>{$t("s.qst.showInPanel")}</span>
               </ContextMenu.Item>
             </ContextMenu.Content>
           </ContextMenu.Root>

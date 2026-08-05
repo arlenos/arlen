@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Compact accent color picker. Nine swatches in a single row
   /// (8 presets + custom). The active preset is clearly marked with
   /// an outer ring and an inset check icon.
@@ -83,9 +84,9 @@
     type="button"
     class="swatch swatch-mono"
     class:selected={isMono}
-    aria-label="Monochrome"
+    aria-label={$t("s.rule.monochrome")}
     aria-pressed={isMono}
-    title="Monochrome"
+    title={$t("s.rule.monochrome")}
     onclick={() => onchange(MONO_SENTINEL)}
   >
     {#if isMono}
@@ -100,10 +101,10 @@
       type="button"
       class="swatch swatch-custom"
       class:selected={isCustom}
-      aria-label="Custom color"
+      aria-label={$t("s.rule.customColour")}
       aria-pressed={isCustom}
       aria-expanded={pickerOpen}
-      title="Custom color"
+      title={$t("s.rule.customColour")}
       style={isCustom ? `background-color: ${value};` : undefined}
       onclick={openPicker}
     >

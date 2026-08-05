@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Per-app notification rule card. Expandable row that exposes the
   /// four daemon-supported overrides (`enabled`, `suppress`,
   /// `bypass_dnd`, `priority`) plus an optional toast duration.
@@ -44,19 +45,19 @@
       <ChevronRight size={12} strokeWidth={2.5} class="card-chev" />
       <span class="title">{appName}</span>
       {#if isCustomised}
-        <span class="badge">Custom</span>
+        <span class="badge">{$t("s.rule.custom")}</span>
       {/if}
       {#if rule.enabled === false}
-        <span class="badge muted">Blocked</span>
+        <span class="badge muted">{$t("s.rule.blocked")}</span>
       {:else if rule.suppress === true}
-        <span class="badge muted">Silent</span>
+        <span class="badge muted">{$t("s.rule.silent")}</span>
       {/if}
     </button>
     <button
       type="button"
       class="remove"
-      title="Remove rule"
-      aria-label="Remove rule"
+      title={$t("s.rule.remove")}
+      aria-label={$t("s.rule.remove")}
       onclick={onremove}
     >
       <X size={12} strokeWidth={2.5} />
@@ -67,44 +68,44 @@
     <div class="body">
       <div class="row">
         <span class="row-label">
-          Notifications enabled
-          <span class="row-hint">Off blocks the app entirely.</span>
+          {$t("s.rule.enabled")}
+          <span class="row-hint">{$t("s.rule.enabledHint")}</span>
         </span>
         <Switch
           value={rule.enabled !== false}
           onchange={(v) => onchange({ enabled: v ? undefined : false })}
-          ariaLabel="Notifications enabled"
+          ariaLabel={$t("s.rule.enabled")}
         />
       </div>
 
       <div class="row">
         <span class="row-label">
-          Silent
-          <span class="row-hint">Stored in history but no toast.</span>
+          {$t("s.rule.silent")}
+          <span class="row-hint">{$t("s.rule.silentHint")}</span>
         </span>
         <Switch
           value={rule.suppress === true}
           onchange={(v) => onchange({ suppress: v ? true : undefined })}
-          ariaLabel="Silent"
+          ariaLabel={$t("s.rule.silent")}
         />
       </div>
 
       <div class="row">
         <span class="row-label">
-          Bypass Do Not Disturb
-          <span class="row-hint">Notifications break through any DND mode.</span>
+          {$t("s.rule.bypass")}
+          <span class="row-hint">{$t("s.rule.bypassHint")}</span>
         </span>
         <Switch
           value={rule.bypass_dnd === true}
           onchange={(v) => onchange({ bypass_dnd: v ? true : undefined })}
-          ariaLabel="Bypass DND"
+          ariaLabel={$t("s.rule.bypassAria")}
         />
       </div>
 
       <div class="row">
         <span class="row-label">
-          Force priority
-          <span class="row-hint">Override the priority the app reports.</span>
+          {$t("s.rule.forcePriority")}
+          <span class="row-hint">{$t("s.rule.forcePriorityHint")}</span>
         </span>
         <div class="prio-pills">
           <button
@@ -113,7 +114,7 @@
             class:selected={rule.priority === undefined}
             onclick={() => onchange({ priority: undefined })}
           >
-            Auto
+            {$t("s.rule.auto")}
           </button>
           {#each PRIORITIES as p}
             <button
