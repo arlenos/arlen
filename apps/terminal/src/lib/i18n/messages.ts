@@ -11,6 +11,8 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "term.commandInput": "Command input",
+    "term.qa.newSession": "New session (Ctrl+T)",
+    "term.qa.history": "History (Ctrl+R)",
     "term.output.placeholder": "terminal output",
     "term.output.rows": ".input {$rows :number}\n.match $rows\none {{terminal output, {$rows} line}}\n*   {{terminal output, {$rows} lines}}",
     "term.escCloses": "Esc closes",
@@ -79,6 +81,8 @@ const messages: Catalogs = {
     "term.menu.ask": "Ask the agent about this block…",
   },
   de: {
+    "term.qa.newSession": "Neue Sitzung (Strg+T)",
+    "term.qa.history": "Verlauf (Strg+R)",
     "term.commandInput": "Befehlseingabe",
     "term.output.placeholder": "Terminal-Ausgabe",
     "term.output.rows": ".input {$rows :number}\n.match $rows\none {{Terminal-Ausgabe, {$rows} Zeile}}\n*   {{Terminal-Ausgabe, {$rows} Zeilen}}",
