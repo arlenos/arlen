@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Modal to add a custom binding. Three modes:
   /// * App:    user types a command (becomes `spawn:<cmd>`)
   /// * Command: same as App, but presented as raw shell input
@@ -86,7 +87,7 @@
     <div
       class="w-full max-w-md rounded-[var(--radius-input)] border border-border bg-card p-6 shadow-lg"
     >
-      <h2 class="mb-4 text-base font-semibold">Add custom binding</h2>
+      <h2 class="mb-4 text-base font-semibold">{$t("s.bind.addCustom")}</h2>
 
       <div class="mb-4 flex gap-1 rounded-[var(--radius-chip)] bg-muted p-1">
         {#each ["app", "command", "shell"] as const as tab (tab)}
@@ -115,20 +116,20 @@
       {:else}
         <label class="mb-4 block">
           <span class="mb-1 block text-xs text-muted-foreground">
-            Shell event
+            {$t("s.bind.shellEvent")}
           </span>
           <PopoverSelect
             value={shellEvent}
             options={SHELL_EVENTS}
             onchange={(v) => (shellEvent = v)}
-            ariaLabel="Shell event"
+            ariaLabel={$t("s.bind.shellEvent")}
             width="100%"
           />
         </label>
       {/if}
 
       <label class="mb-4 block">
-        <span class="mb-1 block text-xs text-muted-foreground">Binding</span>
+        <span class="mb-1 block text-xs text-muted-foreground">{$t("s.bind.binding")}</span>
         <button
           type="button"
           class="inline-flex min-h-10 w-full items-center justify-center rounded-[var(--radius-chip)] border border-border bg-background px-3 py-2 font-mono text-sm transition-colors hover:bg-muted"
@@ -143,8 +144,8 @@
       {/if}
 
       <div class="flex justify-end gap-2">
-        <Button variant="ghost" onclick={cancel}>Cancel</Button>
-        <Button onclick={save}>Add</Button>
+        <Button variant="ghost" onclick={cancel}>{$t("s.bind.cancel")}</Button>
+        <Button onclick={save}>{$t("s.bind.add")}</Button>
       </div>
     </div>
   </div>

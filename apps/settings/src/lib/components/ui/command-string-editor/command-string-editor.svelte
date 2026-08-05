@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Inline editor for system-action command strings.
   ///
   /// Read-only display by default with a pencil-edit affordance.
@@ -109,11 +110,11 @@
     <div class="buttons">
       <Button variant="ghost" size="sm" onclick={cancel}>
         <X size={14} />
-        Cancel
+        {$t("s.bind.cancel")}
       </Button>
       <Button size="sm" onclick={save}>
         <Check size={14} />
-        Save
+        {$t("s.bind.save")}
       </Button>
     </div>
   </div>
@@ -126,8 +127,8 @@
           variant="ghost"
           size="icon-sm"
           onclick={reset}
-          aria-label="Reset to default"
-          title="Reset to default"
+          aria-label={$t("s.bind.resetDefault")}
+          title={$t("s.bind.resetDefault")}
         >
           <RotateCcw size={14} />
         </Button>
@@ -136,7 +137,7 @@
         variant="ghost"
         size="icon-sm"
         onclick={startEdit}
-        aria-label="Edit"
+        aria-label={$t("s.bind.edit")}
       >
         <Pencil size={14} />
       </Button>
