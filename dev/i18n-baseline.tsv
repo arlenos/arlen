@@ -835,11 +835,6 @@ apps/system-monitor/src/lib/stores/detail.ts	read and write the graph
 apps/system-monitor/src/lib/stores/detail.ts	read recent files
 apps/system-monitor/src/lib/stores/detail.ts	read the knowledge graph
 apps/system-monitor/src/lib/stores/detail.ts	read your notes
-apps/system-monitor/src/lib/stores/perf.ts	AI compute
-apps/system-monitor/src/lib/stores/perf.ts	CPU
-apps/system-monitor/src/lib/stores/perf.ts	Disk
-apps/system-monitor/src/lib/stores/perf.ts	Memory
-apps/system-monitor/src/lib/stores/perf.ts	Network
 apps/terminal/src/routes/_chrometest/+page.svelte	A header bar per block redraws cwd · git as chrome; result + actions always on.
 apps/terminal/src/routes/_chrometest/+page.svelte	A · Styled
 apps/terminal/src/routes/_chrometest/+page.svelte	B · Classic
