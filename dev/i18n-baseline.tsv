@@ -50,20 +50,6 @@ apps/desktop-shell/src/routes/_mpristest/+page.svelte	Lateralus
 apps/desktop-shell/src/routes/_printtest/+page.svelte	Print dialog look-mock. The dialog opens over this page.
 apps/desktop-shell/src/routes/_undotest/+page.svelte	topbar strip
 apps/files/src/lib/components/FmBatchRename.svelte	&rarr;
-apps/files/src/lib/stores/facets.ts	Archives
-apps/files/src/lib/stores/facets.ts	Audio
-apps/files/src/lib/stores/facets.ts	Code
-apps/files/src/lib/stores/facets.ts	Documents
-apps/files/src/lib/stores/facets.ts	Images
-apps/files/src/lib/stores/facets.ts	Last 30 days
-apps/files/src/lib/stores/facets.ts	Last 7 days
-apps/files/src/lib/stores/facets.ts	Older than 30 days
-apps/files/src/lib/stores/facets.ts	Today
-apps/files/src/lib/stores/facets.ts	Video
-apps/files/src/lib/stores/places.ts	Bookmarks
-apps/files/src/lib/stores/places.ts	Devices
-apps/files/src/lib/stores/places.ts	Places
-apps/files/src/lib/stores/places.ts	Projects
 apps/files/src/routes/+page.svelte	Ctrl+C
 apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X

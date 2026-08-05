@@ -15,8 +15,8 @@
   import {
     FACET_GROUPS,
     GROUP_LABEL,
-    TYPE_VALUES,
-    TIME_VALUES,
+    typeValues,
+    timeValues,
     projectValues,
     touchedValues,
     selectedFacets,
@@ -43,8 +43,8 @@
   // The value set offered by each group: type and time are static, project and
   // touched come from the graph (empty until loaded, or when there are none).
   const valuesFor = (group: FacetGroup): FacetValue[] => {
-    if (group === "type") return TYPE_VALUES;
-    if (group === "time") return TIME_VALUES;
+    if (group === "type") return $typeValues;
+    if (group === "time") return $timeValues;
     if (group === "project") return $projectValues;
     return $touchedValues;
   };
