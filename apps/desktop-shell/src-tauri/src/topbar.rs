@@ -35,6 +35,12 @@ pub struct TopbarItem {
 /// orders and hides by; it matches the applet keys the shell renderer uses.
 const APPLETS: &[(&str, &str, &str)] = &[
     ("notifications", "Notifications", "Bell"),
+    // Between notifications and audio because that is where the bar draws it.
+    // It was missing entirely, so the arrangement panel could neither show nor
+    // move the one indicator that offers to undo what just happened - the list
+    // has to match what the bar renders, or it quietly arranges a different
+    // desktop than the one on screen.
+    ("undo", "Recent actions", "Undo2"),
     ("audio", "Audio", "Volume2"),
     ("network", "Network", "Wifi"),
     ("bluetooth", "Bluetooth", "Bluetooth"),
@@ -129,6 +135,28 @@ pub fn topbar_items(sni: tauri::State<'_, SniItems>) -> Result<Vec<TopbarItem>, 
 
 #[cfg(test)]
 mod tests {
+    /// The inventory is what the arrangement panel offers, so an applet the bar
+    /// draws and the list omits is an applet the user cannot arrange - which is
+    /// how `undo` came to be invisible to the panel while sitting on the bar.
+    #[test]
+    fn every_first_party_applet_the_bar_draws_is_listed() {
+        use super::APPLETS;
+        let ids: Vec<&str> = APPLETS.iter().map(|(id, _, _)| *id).collect();
+        for expected in [
+            "notifications",
+            "undo",
+            "audio",
+            "network",
+            "bluetooth",
+            "battery",
+            "layout",
+            "clock",
+            "quick-settings",
+        ] {
+            assert!(ids.contains(&expected), "{expected} is on the bar but not in the inventory");
+        }
+    }
+
     use super::*;
 
     #[test]
