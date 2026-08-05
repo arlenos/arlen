@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Typography: the theme's fonts, size, line height, and weights. The everyday
   /// fonts + size up front; the weights behind an expander. Same two-column split,
   /// override-row and live preview as the other suite pages. A dedicated type
@@ -47,16 +48,16 @@
 </script>
 
 <Page
-  title="Typography"
-  description="The theme's fonts, size, line height, and weights. Change one and it overrides just that value, on top of the theme."
+  title={$t("s.typo.title")}
+  description={$t("s.typo.desc")}
 >
   <SectionGrid>
     <div class="editor span-full">
     <div class="controls">
-      <Section label="Fonts">
+      <Section label={$t("s.typo.fonts")}>
         <OverrideRow
-          label="Interface"
-          hint="The font for the desktop and apps"
+          label={$t("s.typo.interface")}
+          hint={$t("s.typo.interfaceHint")}
           overridden={isOverridden($overrides, "fontSans")}
           onreset={() => resetTypo("fontSans")}
           id="typo-fontSans"
@@ -71,8 +72,8 @@
           {/snippet}
         </OverrideRow>
         <OverrideRow
-          label="Monospace"
-          hint="The font for code and the terminal"
+          label={$t("s.typo.mono")}
+          hint={$t("s.typo.monoHint")}
           overridden={isOverridden($overrides, "fontMono")}
           onreset={() => resetTypo("fontMono")}
           id="typo-fontMono"
@@ -88,10 +89,10 @@
         </OverrideRow>
       </Section>
 
-      <Section label="Size">
+      <Section label={$t("s.typo.size")}>
         <OverrideRow
-          label="Base size"
-          hint="The base text size"
+          label={$t("s.typo.baseSize")}
+          hint={$t("s.typo.baseSizeHint")}
           overridden={isOverridden($overrides, "sizeBase")}
           onreset={() => resetTypo("sizeBase")}
           id="typo-sizeBase"
@@ -109,8 +110,8 @@
           {/snippet}
         </OverrideRow>
         <OverrideRow
-          label="Line height"
-          hint="The space between lines of text"
+          label={$t("s.typo.lineHeight")}
+          hint={$t("s.typo.lineHeightHint")}
           overridden={isOverridden($overrides, "lineHeight")}
           onreset={() => resetTypo("lineHeight")}
           id="typo-lineHeight"
@@ -131,7 +132,7 @@
       <Collapsible class="expander">
         <CollapsibleTrigger class="exp-trigger">
           <ChevronRight size={15} strokeWidth={2} />
-          Weights
+          {$t("s.typo.weights")}
         </CollapsibleTrigger>
         <CollapsibleContent>
           <Section>
@@ -162,7 +163,7 @@
 
     <aside class="preview-col">
       <div class="preview-sticky">
-        <span class="preview-label">Live preview</span>
+        <span class="preview-label">{$t("s.typo.preview")}</span>
         <div style={`font-family:'${sans}', ui-sans-serif, system-ui, sans-serif`}>
           <ThemePreview colors={$colorsEffective} />
         </div>
@@ -170,12 +171,14 @@
           class="type-sample"
           style={`font-family:'${sans}', ui-sans-serif, system-ui, sans-serif; font-size:${size}px; line-height:${lh}`}
         >
-          <div class="ts-h" style={`font-weight:${wBold}`}>The quick brown fox</div>
+          <div class="ts-h" style={`font-weight:${wBold}`}>{$t("s.typo.sampleHead")}</div>
           <p class="ts-p" style={`font-weight:${wNormal}`}>
-            Jumps over the lazy dog. Pack my box with five dozen liquor jugs. This
-            paragraph shows the body size and the line height together.
+            {$t("s.typo.sampleBody")}
           </p>
-          <div class="ts-med" style={`font-weight:${wMedium}`}>Medium weight label</div>
+          <div class="ts-med" style={`font-weight:${wMedium}`}>{$t("s.typo.sampleMedium")}</div>
+          <!-- Left untranslated on purpose: this shows the monospace face, and
+               code looks the same whatever the UI language. Listed in the i18n
+               baseline so the gate agrees. -->
           <code class="ts-mono" style={`font-family:'${mono}', ui-monospace, monospace`}>
             const answer = 42;
           </code>

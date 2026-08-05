@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Motion & Depth: the theme's transition speed + easing (with the real
   /// reduce-motion switch), and the shadow elevation + blur. The quiet tier, its
   /// own page. Same two-column split, override-row and live preview; a moving
@@ -51,16 +52,16 @@
 </script>
 
 <Page
-  title="Motion & Depth"
-  description="How things move and lift: transition speed, easing, shadows, and blur. Change one and it overrides just that value, on top of the theme."
+  title={$t("s.md.title")}
+  description={$t("s.md.desc")}
 >
   <SectionGrid>
     <div class="editor span-full">
     <div class="controls">
-      <Section label="Motion">
+      <Section label={$t("s.md.motion")}>
         <OverrideRow
-          label="Reduce motion"
-          hint="Turn off animation across the desktop"
+          label={$t("s.md.reduce")}
+          hint={$t("s.md.reduceHint")}
           overridden={isOverridden($overrides, "reduceMotion")}
           onreset={() => resetMd("reduceMotion")}
           id="md-reduceMotion"
@@ -70,8 +71,8 @@
           {/snippet}
         </OverrideRow>
         <OverrideRow
-          label="Speed"
-          hint="The base transition duration"
+          label={$t("s.md.speed")}
+          hint={$t("s.md.speedHint")}
           overridden={isOverridden($overrides, "durationNormal")}
           onreset={() => resetMd("durationNormal")}
           id="md-durationNormal"
@@ -91,12 +92,12 @@
         <Collapsible class="expander">
           <CollapsibleTrigger class="exp-trigger">
             <ChevronRight size={15} strokeWidth={2} />
-            All durations
+            {$t("s.md.allDurations")}
           </CollapsibleTrigger>
           <CollapsibleContent>
             <OverrideRow
-              label="Fast"
-              hint="Quick feedback, like a hover"
+              label={$t("s.md.fast")}
+              hint={$t("s.md.fastHint")}
               overridden={isOverridden($overrides, "durationFast")}
               onreset={() => resetMd("durationFast")}
               id="md-durationFast"
@@ -106,8 +107,8 @@
               {/snippet}
             </OverrideRow>
             <OverrideRow
-              label="Slow"
-              hint="Larger movements, like a panel"
+              label={$t("s.md.slow")}
+              hint={$t("s.md.slowHint")}
               overridden={isOverridden($overrides, "durationSlow")}
               onreset={() => resetMd("durationSlow")}
               id="md-durationSlow"
@@ -119,8 +120,8 @@
           </CollapsibleContent>
         </Collapsible>
         <OverrideRow
-          label="Easing"
-          hint="The curve a movement follows"
+          label={$t("s.md.easing")}
+          hint={$t("s.md.easingHint")}
           overridden={isOverridden($overrides, "easing")}
           onreset={() => resetMd("easing")}
           id="md-easing"
@@ -131,21 +132,21 @@
         </OverrideRow>
       </Section>
 
-      <Section label="Depth">
+      <Section label={$t("s.md.depth")}>
         <OverrideRow
-          label="Shadows"
-          hint="How much things lift off the surface"
+          label={$t("s.md.shadows")}
+          hint={$t("s.md.shadowsHint")}
           overridden={isOverridden($overrides, "shadow")}
           onreset={() => resetMd("shadow")}
           id="md-shadow"
         >
           {#snippet control()}
-            <SegmentedControl value={shadow} options={SHADOW_PRESETS} ariaLabel="Shadows" onchange={(v) => setMd("shadow", v)} />
+            <SegmentedControl value={shadow} options={SHADOW_PRESETS} ariaLabel={$t("s.md.shadows")} onchange={(v) => setMd("shadow", v)} />
           {/snippet}
         </OverrideRow>
         <OverrideRow
-          label="Blur"
-          hint="Frost behind menus and overlays"
+          label={$t("s.md.blur")}
+          hint={$t("s.md.blurHint")}
           overridden={isOverridden($overrides, "blurEnabled")}
           onreset={() => resetMd("blurEnabled")}
           id="md-blurEnabled"
@@ -159,11 +160,11 @@
 
     <aside class="preview-col">
       <div class="preview-sticky">
-        <span class="preview-label">Live preview</span>
+        <span class="preview-label">{$t("s.md.preview")}</span>
         <ThemePreview colors={$colorsEffective} />
 
         <div class="md-sample">
-          <span class="ms-caption">Motion{reduce ? " (reduced)" : ""}</span>
+          <span class="ms-caption">{reduce ? $t("s.md.capMotionReduced") : $t("s.md.capMotion")}</span>
           <span class="ms-track">
             <span
               class="ms-dot"
@@ -173,13 +174,13 @@
         </div>
 
         <div class="md-sample md-depth">
-          <span class="ms-caption">Depth</span>
+          <span class="ms-caption">{$t("s.md.capDepth")}</span>
           <span class="ds-stage">
             <span
               class="ds-card"
               style={`box-shadow:${shadowCss(shadow)}; ${blur ? "backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);" : ""}`}
             >
-              Card
+              {$t("s.md.card")}
             </span>
           </span>
         </div>

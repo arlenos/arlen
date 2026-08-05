@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Geometry: the theme's shape. A master Roundness knob up front; the per-radius
   /// bases, window corners, spacing and tiling gaps follow, with the granular
   /// per-token overrides behind expanders. Same two-column split, override-row and
@@ -59,18 +60,18 @@
 </script>
 
 <Page
-  title="Geometry"
-  description="The theme's shape: roundness, window corners, spacing, and the gaps between tiled windows. Change one and it overrides just that value, on top of the theme."
+  title={$t("s.geom.title")}
+  description={$t("s.geom.desc")}
 >
   <SectionGrid>
     <div class="editor span-full">
     <div class="controls">
-      <Section label="Roundness">
+      <Section label={$t("s.geom.round")}>
         {@render sliderRow(field("intensity"))}
         <Collapsible class="expander">
           <CollapsibleTrigger class="exp-trigger">
             <ChevronRight size={15} strokeWidth={2} />
-            All radii
+            {$t("s.geom.allRadii")}
           </CollapsibleTrigger>
           <CollapsibleContent>
             {#each roundnessFull as f (f.key)}
@@ -80,17 +81,17 @@
         </Collapsible>
       </Section>
 
-      <Section label="Window">
+      <Section label={$t("s.geom.window")}>
         {@render sliderRow(field("window_corner"))}
         {@render sliderRow(field("border_width"))}
       </Section>
 
-      <Section label="Spacing">
+      <Section label={$t("s.geom.spacing")}>
         {@render sliderRow(field("density"))}
         <Collapsible class="expander">
           <CollapsibleTrigger class="exp-trigger">
             <ChevronRight size={15} strokeWidth={2} />
-            All steps
+            {$t("s.geom.allSteps")}
           </CollapsibleTrigger>
           <CollapsibleContent>
             {#each spacingFull as f (f.key)}
@@ -100,11 +101,11 @@
         </Collapsible>
       </Section>
 
-      <Section label="Tiling gaps">
+      <Section label={$t("s.geom.gaps")}>
         {@render sliderRow(field("gap"))}
         <OverrideRow
-          label="Smart gaps"
-          hint="Drop the gap when a window is the only one on screen"
+          label={$t("s.geom.smart")}
+          hint={$t("s.geom.smartHint")}
           overridden={$smartGapsOverridden}
           onreset={resetSmartGaps}
           id="geom-smart-gaps"
@@ -118,7 +119,7 @@
 
     <aside class="preview-col">
       <div class="preview-sticky">
-        <span class="preview-label">Live preview</span>
+        <span class="preview-label">{$t("s.geom.preview")}</span>
         <div style={previewRadiusVars($effective)}>
           <ThemePreview colors={$colorsEffective} />
         </div>
@@ -127,7 +128,7 @@
             class="gs-window"
             style={`border-radius:${$effective.window_corner}px; border-width:${Math.max($effective.border_width, 1)}px; opacity:${$effective.border_width === 0 ? 0.45 : 1}`}
           >
-            Window corners
+            {$t("s.geom.winCorners")}
           </div>
           <div class="gs-tiling" style={`gap:${Math.max($effective.gap, 1)}px`}>
             <span></span>
