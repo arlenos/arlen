@@ -28,7 +28,11 @@ const ROOT = new URL("../..", import.meta.url).pathname;
 // already depend on and load it by path - no new install, and it is by
 // construction the same version the UI runs.
 async function loadMessageFormat() {
-  const homes = ["sdk/ui-kit", "apps/settings", "apps/system-monitor", "apps/store"];
+  // The repo root comes first: CI's structural-checks job has no app
+  // node_modules, so it installs this one package at the version the apps
+  // declare. A developer running this locally hits an app copy instead, which is
+  // the same version by construction.
+  const homes = ["", "sdk/ui-kit", "apps/settings", "apps/system-monitor", "apps/store"];
   for (const home of homes) {
     const entry = join(ROOT, home, "node_modules/messageformat/lib/index.js");
     if (existsSync(entry)) return (await import(pathToFileURL(entry).href)).MessageFormat;

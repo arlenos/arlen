@@ -40,3 +40,8 @@ mutants.out.old/
 # run, so an unignored one lands in whatever commit is made next.
 __pycache__/
 *.pyc
+
+# The catalog gate's one dependency, installed at the repo root by CI (and by
+# anyone reproducing that job). Each app ignores its own copy; the root had no
+# rule because nothing used to install here.
+/node_modules/
