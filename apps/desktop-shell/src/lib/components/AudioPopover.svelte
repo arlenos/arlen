@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Audio popover: output/input volume, device selection, per-app volume, DND.
 
   import { activePopover } from "$lib/stores/activePopover.js";
@@ -96,11 +97,11 @@
 
 <ShellPopover id="audio" width={280} right={80} bodyPadding="12px" bodyGap="8px">
   {#snippet header()}
-    <PopoverHeader icon={Volume2} title="Sound" toggled={!dndEnabled} onToggle={toggleDnd} />
+    <PopoverHeader icon={Volume2} title={$t("sh.audio.title")} toggled={!dndEnabled} onToggle={toggleDnd} />
   {/snippet}
 
   <!-- Output Section -->
-  <div class="section-label">Output</div>
+  <div class="section-label">{$t("sh.audio.output")}</div>
   <div class="vol-row">
     <button class="vol-icon-btn" onclick={(e) => { e.stopPropagation(); toggleMute(); }}
       aria-label={muted ? "Unmute" : "Mute"}>
@@ -136,10 +137,10 @@
 
   <!-- Input Section -->
   {#if inputs.length > 0}
-    <div class="section-label">Input</div>
+    <div class="section-label">{$t("sh.audio.input")}</div>
     <div class="vol-row">
       <button class="vol-icon-btn" onclick={(e) => { e.stopPropagation(); toggleInputMute(); }}
-        aria-label={inputMuted ? "Unmute microphone" : "Mute microphone"}>
+        aria-label={inputMuted ? $t("sh.audio.unmuteMic") : $t("sh.audio.muteMic")}>
         {#if inputMuted}
           <MicOff size={16} strokeWidth={1.5} />
         {:else}
@@ -175,7 +176,7 @@
   {#if apps.length > 0}
     <button class="apps-header" onclick={(e) => { e.stopPropagation(); appsExpanded = !appsExpanded; }}>
       <ChevronRight size={12} strokeWidth={2} class={appsExpanded ? "apps-chevron-open" : ""} />
-      <span>Apps ({apps.length})</span>
+      <span>{$t("sh.audio.appCount", { count: apps.length })}</span>
     </button>
     {#if appsExpanded}
       <div class="apps-list">

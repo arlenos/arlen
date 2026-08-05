@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The app-menu context popup (tier-c-gaps-plan.md §2): the active window's menu as
   /// a floating, searchable command-palette, so any menu item is reachable by
   /// keyboard. On the kit command primitive like the terminal history palette; the
@@ -48,14 +49,14 @@
       class="mp-card"
       role="dialog"
       aria-modal="true"
-      aria-label="App menu"
+      aria-label={$t("sh.menu.title")}
       tabindex="-1"
       use:trapFocus
     >
       <Command>
-        <CommandInput placeholder="Search this app's menu" autofocus bind:value={query} />
+        <CommandInput placeholder={$t("sh.menu.search")} autofocus bind:value={query} />
         <CommandList class="mp-list">
-          <CommandEmpty>No matching menu items.</CommandEmpty>
+          <CommandEmpty>{$t("sh.menu.noMatches")}</CommandEmpty>
           {#each $paletteItems as it (it.action + it.label)}
             <CommandItem
               value={`${it.label} ${it.path.join(" ")}`}
