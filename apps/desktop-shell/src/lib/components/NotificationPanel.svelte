@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Notifications list inside the NotificationsPopover.
   ///
   /// Grouped by app name. The section header shows "Notifications"
@@ -38,7 +39,7 @@
   <!-- Section header: title + count + clear-all -->
   <div class="notif-section-header">
     <div class="notif-section-title-row">
-      <span class="notif-section-title">Notifications</span>
+      <span class="notif-section-title">{$t("sh.notif.title")}</span>
       {#if $notifications.length > 0}
         <span class="notif-section-count">{$notifications.length}</span>
       {/if}
@@ -47,10 +48,10 @@
       <button
         class="notif-clear-btn"
         onclick={() => clearAll()}
-        aria-label="Clear all notifications"
+        aria-label={$t("sh.notif.clearAllAria")}
       >
         <Trash2 size={14} strokeWidth={1.75} />
-        <span>Clear</span>
+        <span>{$t("sh.notif.clear")}</span>
       </button>
     {/if}
   </div>
@@ -58,7 +59,7 @@
   {#if $notifications.length === 0}
     <div class="notif-empty">
       <Bell size={28} strokeWidth={1.25} />
-      <span>No notifications</span>
+      <span>{$t("sh.notif.empty")}</span>
     </div>
   {:else}
     <div class="notif-list">

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Single notification item card.
   ///
   /// macOS-style notification card: subtle filled bg + border so the
@@ -64,7 +65,7 @@
       </div>
     {/if}
   </div>
-  <button class="notif-dismiss" onclick={handleDismiss} aria-label="Dismiss">
+  <button class="notif-dismiss" onclick={handleDismiss} aria-label={$t("sh.notif.dismiss")}>
     <X size={14} strokeWidth={2} />
   </button>
 </div>

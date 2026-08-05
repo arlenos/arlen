@@ -1,17 +1,8 @@
-apps/desktop-shell/src/lib/components/AudioPopover.svelte	Apps (
-apps/desktop-shell/src/lib/components/AudioPopover.svelte	Input
-apps/desktop-shell/src/lib/components/AudioPopover.svelte	Output
-apps/desktop-shell/src/lib/components/AudioPopover.svelte	Sound
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Digits entered on device
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	PIN
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	PIN code
 apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Passkey
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
-apps/desktop-shell/src/lib/components/NotificationItem.svelte	Dismiss
-apps/desktop-shell/src/lib/components/NotificationPanel.svelte	Clear
-apps/desktop-shell/src/lib/components/NotificationPanel.svelte	Clear all notifications
-apps/desktop-shell/src/lib/components/NotificationPanel.svelte	No notifications
-apps/desktop-shell/src/lib/components/NotificationPanel.svelte	Notifications
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Enter
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Esc
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	No tiles enabled. Open

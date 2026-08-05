@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The inline "Now Playing" applet: an album-art tile (click → the mini-player
   /// popup) plus one small play/pause, in the topbar-applet register with a
   /// unified hover over the whole element. A composite (two clickables - art →
@@ -22,12 +23,12 @@
     class:open={isOpen}
     onmouseenter={() => hoverPopover("mpris")}
     role="group"
-    aria-label="Now playing"
+    aria-label={$t("sh.mpris.nowPlaying")}
   >
     <button
       class="mpris-art"
       title={tip}
-      aria-label="Open the player"
+      aria-label={$t("sh.mpris.openPlayer")}
       onclick={() => togglePopover("mpris")}
     >
       {#if n.artUrl}

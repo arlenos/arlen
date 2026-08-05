@@ -275,6 +275,30 @@ const messages: Catalogs = {
     "sh.undo.empty": "Nothing to take back right now.",
     "sh.undo.irreversible": "Cannot be undone",
     "sh.undo.done": "Done",
+
+    // Audio popover
+    "sh.audio.title": "Sound",
+    "sh.audio.output": "Output",
+    "sh.audio.input": "Input",
+    "sh.audio.unmuteMic": "Unmute microphone",
+    "sh.audio.muteMic": "Mute microphone",
+    "sh.audio.appCount": ".input {$count :number}\n.match $count\none {{Apps ({$count})}}\n*   {{Apps ({$count})}}",
+
+    // Notification panel
+    "sh.notif.title": "Notifications",
+    "sh.notif.clearAllAria": "Clear all notifications",
+    "sh.notif.clear": "Clear",
+    "sh.notif.empty": "No notifications",
+    "sh.notif.dismiss": "Dismiss",
+
+    // Menu palette
+    "sh.menu.title": "App menu",
+    "sh.menu.search": "Search this app's menu",
+    "sh.menu.noMatches": "No matching menu items.",
+
+    // Media indicator
+    "sh.mpris.nowPlaying": "Now playing",
+    "sh.mpris.openPlayer": "Open the player",
   },
   de: {
     "sh.net.title": "Netzwerk",
@@ -517,6 +541,26 @@ const messages: Catalogs = {
     "sh.undo.empty": "Gerade nichts zur\u00fcckzunehmen.",
     "sh.undo.irreversible": "Nicht r\u00fcckg\u00e4ngig zu machen",
     "sh.undo.done": "Erledigt",
+
+    "sh.audio.title": "Ton",
+    "sh.audio.output": "Ausgabe",
+    "sh.audio.input": "Eingabe",
+    "sh.audio.unmuteMic": "Mikrofon einschalten",
+    "sh.audio.muteMic": "Mikrofon stummschalten",
+    "sh.audio.appCount": ".input {$count :number}\n.match $count\none {{Apps ({$count})}}\n*   {{Apps ({$count})}}",
+
+    "sh.notif.title": "Mitteilungen",
+    "sh.notif.clearAllAria": "Alle Mitteilungen l\u00f6schen",
+    "sh.notif.clear": "L\u00f6schen",
+    "sh.notif.empty": "Keine Mitteilungen",
+    "sh.notif.dismiss": "Schlie\u00dfen",
+
+    "sh.menu.title": "App-Men\u00fc",
+    "sh.menu.search": "Im Men\u00fc dieser App suchen",
+    "sh.menu.noMatches": "Keine passenden Men\u00fceintr\u00e4ge.",
+
+    "sh.mpris.nowPlaying": "L\u00e4uft gerade",
+    "sh.mpris.openPlayer": "Player \u00f6ffnen",
   },
 };
 
