@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Layout popover: mode selection, gaps, smart gaps.
 
   import { activePopover } from "$lib/stores/activePopover.js";
@@ -76,7 +77,7 @@
 
 <ShellPopover id="layout" width={260} right={50} bodyPadding="12px" bodyGap="10px">
   {#snippet header()}
-    <PopoverHeader icon={LayoutPanelLeft} title="Layout" />
+    <PopoverHeader icon={LayoutPanelLeft} title={$t("sh.layout.title")} />
   {/snippet}
 
   <!-- Mode Selector. The pills carry their own text labels, so no
@@ -90,7 +91,7 @@
         onclick={() => setMode("floating")}
       >
         <Layers size={16} strokeWidth={1.5} />
-        <span>Float</span>
+        <span>{$t("sh.layout.float")}</span>
       </button>
       <button
         class="mode-pill"
@@ -98,7 +99,7 @@
         onclick={() => setMode("tiling")}
       >
         <LayoutPanelLeft size={16} strokeWidth={1.5} />
-        <span>Tile</span>
+        <span>{$t("sh.layout.tile")}</span>
       </button>
       <button
         class="mode-pill"
@@ -106,7 +107,7 @@
         onclick={() => setMode("monocle")}
       >
         <Maximize size={16} strokeWidth={1.5} />
-        <span>Single</span>
+        <span>{$t("sh.layout.single")}</span>
       </button>
     </div>
   </div>
@@ -115,7 +116,7 @@
 
   <!-- Gaps -->
   <div class="gap-row">
-    <span class="gap-label">Gaps</span>
+    <span class="gap-label">{$t("sh.layout.gaps")}</span>
     <div class="gap-slider-wrap">
       <FillSlider
         value={state.inner_gap}
@@ -127,16 +128,16 @@
         oninput={(v) => setGap(v)}
       />
     </div>
-    <span class="gap-value">{state.inner_gap}px</span>
+    <span class="gap-value">{$t("sh.layout.gapValue", { px: state.inner_gap })}</span>
   </div>
 
   <!-- Smart Gaps -->
   <div class="toggle-row">
-    <span class="toggle-label">Smart Gaps</span>
+    <span class="toggle-label">{$t("sh.layout.smartGaps")}</span>
     <Switch
       value={state.smart_gaps}
       onchange={toggleSmartGaps}
-      ariaLabel="Smart Gaps"
+      ariaLabel={$t("sh.layout.smartGaps")}
     />
   </div>
 
@@ -149,7 +150,7 @@
   -->
   {#if state.mode === "tiling" || state.mode === "monocle"}
     <div class="toggle-row">
-      <span class="toggle-label">Title Bars</span>
+      <span class="toggle-label">{$t("sh.layout.titleBars")}</span>
       <Switch
         value={state.tiled_headers}
         onchange={toggleTiledHeaders}

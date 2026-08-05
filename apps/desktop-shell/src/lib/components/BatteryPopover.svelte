@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Battery popover: status + power profiles.
 
   import { activePopover } from "$lib/stores/activePopover.js";
@@ -62,7 +63,7 @@
 
 <ShellPopover id="battery" width={240} right={50} bodyPadding="12px" bodyGap="8px">
   {#snippet header()}
-    <PopoverHeader icon={Battery} title="Power" />
+    <PopoverHeader icon={Battery} title={$t("sh.bat.title")} />
   {/snippet}
 
   {#if status}
@@ -70,24 +71,26 @@
       <span class="bat-pct">{status.percentage}%</span>
       <span class="bat-detail">
         {#if status.charging}
-          <Zap size={12} strokeWidth={2} />Charging{#if status.time_remaining_minutes} ({timeStr(status.time_remaining_minutes)}){/if}
+          <Zap size={12} strokeWidth={2} />{status.time_remaining_minutes
+            ? $t("sh.bat.chargingEta", { time: timeStr(status.time_remaining_minutes) })
+            : $t("sh.bat.charging")}
         {:else if status.time_remaining_minutes}
-          {timeStr(status.time_remaining_minutes)} remaining
+          {$t("sh.bat.remaining", { time: timeStr(status.time_remaining_minutes) })}
         {:else}
-          On battery
+          {$t("sh.bat.onBattery")}
         {/if}
       </span>
     </div>
   {:else if polled}
     <div class="bat-status">
-      <span class="bat-detail">No battery found</span>
+      <span class="bat-detail">{$t("sh.bat.noBattery")}</span>
     </div>
   {/if}
 
   <Separator class="opacity-10" />
 
   <div class="bat-section">
-    <span class="bat-heading">Power Mode</span>
+    <span class="bat-heading">{$t("sh.bat.powerMode")}</span>
     <div class="bat-profiles">
       {#each PROFILES as p (p.id)}
         <Tooltip.Root>
