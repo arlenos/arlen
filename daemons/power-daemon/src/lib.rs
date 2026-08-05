@@ -24,3 +24,4 @@ pub mod power;
 pub mod profiles;
 pub mod query_socket;
 pub mod sleep;
+pub mod wake;
