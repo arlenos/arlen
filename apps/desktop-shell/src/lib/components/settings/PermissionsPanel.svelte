@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Permissions panel: lists apps and their permission scopes.
   /// Currently read-only. Write support requires D-Bus integration
   /// with org.arlen.PermissionHelper1.
@@ -63,10 +64,13 @@
     return ShieldAlert;
   }
 
-  function tierLabel(tier: string): string {
-    if (tier === "system") return "System";
-    if (tier === "first-party") return "First Party";
-    return "Third Party";
+  /// Returns the message KEY, not the text: reading the translator store inside a
+  /// plain function would not be a tracked dependency, so the rendered label would
+  /// keep its first locale. The markup calls `$t` on the result instead.
+  function tierLabelKey(tier: string): string {
+    if (tier === "system") return "sh.perm.tierSystem";
+    if (tier === "first-party") return "sh.perm.tierFirstParty";
+    return "sh.perm.tierThirdParty";
   }
 
   function permissionCount(app: AppSummary): number {
@@ -84,23 +88,23 @@
 <div class="perm-panel">
   <div class="perm-header">
     <Shield size={20} strokeWidth={1.5} />
-    <h2>App Permissions</h2>
+    <h2>{$t("sh.perm.title")}</h2>
   </div>
 
   {#if loading}
-    <div class="perm-empty">Loading...</div>
+    <div class="perm-empty">{$t("sh.perm.loading")}</div>
   {:else if apps.length === 0}
-    <div class="perm-empty">No permission profiles found</div>
+    <div class="perm-empty">{$t("sh.perm.none")}</div>
   {:else}
     <div class="perm-list">
       {#each apps as app}
         <div class="perm-app" class:expanded={expandedApp === app.app_id}>
           <button class="perm-app-row" onclick={() => toggleApp(app.app_id)}>
             <span class="perm-tier-badge" class:system={app.tier === "system"} class:first-party={app.tier === "first-party"}>
-              {tierLabel(app.tier)}
+              {$t(tierLabelKey(app.tier))}
             </span>
             <span class="perm-app-name">{app.app_id}</span>
-            <span class="perm-count">{permissionCount(app)} scopes</span>
+            <span class="perm-count">{$t("sh.perm.scopeCount", { count: permissionCount(app) })}</span>
             {#if expandedApp === app.app_id}
               <ChevronUp size={14} strokeWidth={1.5} />
             {:else}
@@ -112,55 +116,55 @@
             <div class="perm-detail">
               {#if detail.graph.read.length > 0 || detail.graph.write.length > 0}
                 <PermissionScope
-                  title="Knowledge Graph"
+                  title={$t("sh.perm.graph")}
                   booleans={[
-                    { label: "App Isolated", value: detail.graph.app_isolated },
+                    { label: $t("sh.perm.appIsolated"), value: detail.graph.app_isolated },
                   ]}
                 />
                 {#if detail.graph.read.length > 0}
-                  <PermissionScope title="Graph Read" items={detail.graph.read} />
+                  <PermissionScope title={$t("sh.perm.graphRead")} items={detail.graph.read} />
                 {/if}
                 {#if detail.graph.write.length > 0}
-                  <PermissionScope title="Graph Write" items={detail.graph.write} />
+                  <PermissionScope title={$t("sh.perm.graphWrite")} items={detail.graph.write} />
                 {/if}
               {/if}
 
               {#if detail.event_bus.publish.length > 0 || detail.event_bus.subscribe.length > 0}
-                <PermissionScope title="Event Bus Publish" items={detail.event_bus.publish} />
-                <PermissionScope title="Event Bus Subscribe" items={detail.event_bus.subscribe} />
+                <PermissionScope title={$t("sh.perm.busPublish")} items={detail.event_bus.publish} />
+                <PermissionScope title={$t("sh.perm.busSubscribe")} items={detail.event_bus.subscribe} />
               {/if}
 
               <PermissionScope
-                title="Filesystem"
+                title={$t("sh.perm.filesystem")}
                 booleans={[
-                  { label: "Home", value: detail.filesystem.home },
-                  { label: "Documents", value: detail.filesystem.documents },
-                  { label: "Downloads", value: detail.filesystem.downloads },
-                  { label: "Pictures", value: detail.filesystem.pictures },
-                  { label: "Music", value: detail.filesystem.music },
-                  { label: "Videos", value: detail.filesystem.videos },
+                  { label: $t("sh.perm.home"), value: detail.filesystem.home },
+                  { label: $t("sh.perm.documents"), value: detail.filesystem.documents },
+                  { label: $t("sh.perm.downloads"), value: detail.filesystem.downloads },
+                  { label: $t("sh.perm.pictures"), value: detail.filesystem.pictures },
+                  { label: $t("sh.perm.music"), value: detail.filesystem.music },
+                  { label: $t("sh.perm.videos"), value: detail.filesystem.videos },
                 ]}
               />
               {#if detail.filesystem.custom.length > 0}
-                <PermissionScope title="Custom Paths" items={detail.filesystem.custom} />
+                <PermissionScope title={$t("sh.perm.customPaths")} items={detail.filesystem.custom} />
               {/if}
 
               <PermissionScope
-                title="Network"
-                booleans={[{ label: "Allow All", value: detail.network.allow_all }]}
+                title={$t("sh.perm.network")}
+                booleans={[{ label: $t("sh.perm.allowAll"), value: detail.network.allow_all }]}
               />
               {#if detail.network.allowed_domains.length > 0}
-                <PermissionScope title="Allowed Domains" items={detail.network.allowed_domains} />
+                <PermissionScope title={$t("sh.perm.allowedDomains")} items={detail.network.allowed_domains} />
               {/if}
 
               <PermissionScope
-                title="Other"
+                title={$t("sh.perm.other")}
                 booleans={[
-                  { label: "Notifications", value: detail.notifications },
-                  { label: "Clipboard Read", value: detail.clipboard.read },
-                  { label: "Clipboard Write", value: detail.clipboard.write },
-                  { label: "Autostart", value: detail.system.autostart },
-                  { label: "Background", value: detail.system.background },
+                  { label: $t("sh.perm.notifications"), value: detail.notifications },
+                  { label: $t("sh.perm.clipboardRead"), value: detail.clipboard.read },
+                  { label: $t("sh.perm.clipboardWrite"), value: detail.clipboard.write },
+                  { label: $t("sh.perm.autostart"), value: detail.system.autostart },
+                  { label: $t("sh.perm.background"), value: detail.system.background },
                 ]}
               />
             </div>
