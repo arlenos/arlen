@@ -100,22 +100,26 @@
   // Static option lists for the unified PopoverSelect dropdowns.
   // Resolution and refresh derive their options dynamically from the
   // current monitor; rotation and VRR are fixed enums.
-  const TRANSFORM_OPTIONS = [
-    { value: "normal", label: "Normal" },
+  // `$derived`, not `const`: these feed a generic select as plain {value,label}
+  // pairs, so they are translated here rather than in the control - and a plain
+  // constant would hold the import-time locale forever. The bare angle options
+  // are degrees, which read the same in every language.
+  const TRANSFORM_OPTIONS = $derived([
+    { value: "normal", label: $t("s.mon.tr.normal") },
     { value: "rotate-90", label: "90°" },
     { value: "rotate-180", label: "180°" },
     { value: "rotate-270", label: "270°" },
-    { value: "flipped", label: "Flipped" },
-    { value: "flipped-90", label: "Flipped 90°" },
-    { value: "flipped-180", label: "Flipped 180°" },
-    { value: "flipped-270", label: "Flipped 270°" },
-  ];
+    { value: "flipped", label: $t("s.mon.tr.flipped") },
+    { value: "flipped-90", label: $t("s.mon.tr.flipped90") },
+    { value: "flipped-180", label: $t("s.mon.tr.flipped180") },
+    { value: "flipped-270", label: $t("s.mon.tr.flipped270") },
+  ]);
 
-  const VRR_OPTIONS = [
-    { value: "enabled", label: "Enabled (auto)" },
-    { value: "disabled", label: "Disabled" },
-    { value: "force", label: "Force always-on" },
-  ];
+  const VRR_OPTIONS = $derived([
+    { value: "enabled", label: $t("s.mon.vrr.enabled") },
+    { value: "disabled", label: $t("s.mon.vrr.disabled") },
+    { value: "force", label: $t("s.mon.vrr.force") },
+  ]);
 
   const resolutionOptions = $derived(
     resolutions.map((r) => ({
@@ -136,7 +140,7 @@
   );
 
   const mirrorOptions = $derived([
-    { value: "__none__", label: "Independent" },
+    { value: "__none__", label: $t("s.mon.independent") },
     ...others.map((o) => ({ value: o.connector, label: o.connector })),
   ]);
 </script>

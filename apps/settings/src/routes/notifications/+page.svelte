@@ -308,8 +308,8 @@
                 <span class="dnd-pill-icon"
                   ><Icon size={14} strokeWidth={2} /></span
                 >
-                <span class="dnd-pill-title">{meta.title}</span>
-                <span class="dnd-pill-hint">{meta.hint}</span>
+                <span class="dnd-pill-title">{$t(meta.title)}</span>
+                <span class="dnd-pill-hint">{$t(meta.hint)}</span>
               </button>
             {/each}
           </div>

@@ -70,28 +70,28 @@ export interface NotificationsConfig {
 export const notifications: ConfigStore<NotificationsConfig> =
   createConfigStore<NotificationsConfig>("notifications");
 
-/// Localised labels for the German UI (kept inline because there is
-/// no i18n layer in the settings app yet — falls direkt mit dem
-/// existierenden English-Pattern aus dem Appearance-Panel).
+/// The Do-Not-Disturb modes as message KEYS, resolved with `$t` at the pill.
+/// This used to carry the text inline, with a comment saying the settings app had
+/// no i18n layer; it has one now.
 export const DND_MODE_LABELS: Record<DndMode, { title: string; hint: string }> = {
   off: {
-    title: "Off",
-    hint: "All notifications are shown.",
+    title: "s.dnd.off.title",
+    hint: "s.dnd.off.hint",
   },
   priority: {
-    title: "Priority Only",
-    hint: "Only critical notifications break through.",
+    title: "s.dnd.priority.title",
+    hint: "s.dnd.priority.hint",
   },
   alarms: {
-    title: "Alarms Only",
-    hint: "Only alarm and reminder notifications.",
+    title: "s.dnd.alarms.title",
+    hint: "s.dnd.alarms.hint",
   },
   total: {
-    title: "Total Silence",
-    hint: "Nothing is shown except always-allow apps.",
+    title: "s.dnd.total.title",
+    hint: "s.dnd.total.hint",
   },
   scheduled: {
-    title: "Scheduled",
-    hint: "Follow the time schedule below.",
+    title: "s.dnd.scheduled.title",
+    hint: "s.dnd.scheduled.hint",
   },
 };
