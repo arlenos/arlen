@@ -109,6 +109,17 @@ pub struct GrantView {
     /// The concrete consent scope, when `source == "consent"` (else empty).
     #[serde(default)]
     pub consent_scope: String,
+
+    /// When one of this grant's reachable capabilities was last exercised, or `0`
+    /// for nothing recorded. `0` means NOT MEASURED as much as unused: the daemon
+    /// flushes its tally coarsely, so a capability used seconds ago can still read
+    /// zero, and nothing was recorded at all before the counter existed. A surface
+    /// offering to revoke the unused must say "no use recorded".
+    #[serde(default)]
+    pub last_used_at: i64,
+    /// How many of `reach` have ever been exercised. Read against `reach.len()`.
+    #[serde(default)]
+    pub used_capability_count: usize,
 }
 
 /// Largest response frame the client will allocate for the legacy text path.
