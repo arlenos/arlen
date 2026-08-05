@@ -28,10 +28,16 @@ and reports keys the command does not declare, plus required parameters the call
 omits. Both names are normalised to snake_case first, so the camelCase
 convention is accepted rather than flagged.
 
-Deliberately not checked here: the RETURN shape. That needs the Rust struct and
-the TypeScript interface resolved and compared field by field, which is a
-different and larger job; the return-shape mismatch that motivated this
-(`store_trust_signals`) is named in the report rather than caught here.
+The return direction is checked too, conservatively. For a call annotated
+`invoke<T>("cmd")` where `T` resolves to a TypeScript interface in the same app
+and the command returns a struct this can find, any field the interface declares
+that the struct does not produce is reported: that field arrives `undefined` and
+the surface renders a blank, a zero or a crash, with nothing thrown. The reverse
+(a field the backend sends and the interface omits) is not a defect - the
+frontend simply ignores it - so it is not reported.
+
+Both sides are compared in snake_case, since `#[serde(rename_all = "camelCase")]`
+is the house convention and both spellings mean the same field.
 """
 
 import re
@@ -50,6 +56,26 @@ INJECTED = re.compile(
 # today; the set is here so one can be excused with a reason rather than by
 # weakening the check for everyone.
 EXCUSED: dict[str, str] = {}
+
+# Return-shape mismatches that are real and belong to someone else's lane. Listed
+# with a reason rather than skipped silently: the check still prints them, it just
+# does not fail on them, so the debt stays visible and attributed. Keyed by
+# command name; remove the entry when the owner fixes it and the gate holds it shut.
+KNOWN_RETURN_MISMATCHES: dict[str, str] = {
+    "ai_models_search_hf": (
+        "the model picker's `Model` is the merged card shape the page builds from "
+        "several sources; the Hugging Face hit is only one of them. Reworking it is "
+        "arlen-ui's model-picker job, and its route is their live work."
+    ),
+    "store_search": (
+        "install variants are arlen-ui's store design item; the card model changes "
+        "with it."
+    ),
+    "store_outdated": (
+        "the pending-updates surface is arlen-ui's; the backend `PendingUpdate` and "
+        "the frontend one are different shapes that have not been reconciled yet."
+    ),
+}
 
 
 def snake(name: str) -> str:
@@ -209,6 +235,168 @@ def object_keys(body: str) -> set[str] | None:
     return out
 
 
+# Rust primitives and containers that carry no named struct to compare against.
+OPAQUE_RETURN = re.compile(
+    r"^(String|bool|u\d+|i\d+|f\d+|usize|isize|char|serde_json::Value|Value|\(\))$"
+)
+
+
+def rust_return_types(root: Path) -> dict[str, dict[str, str]]:
+    """Map app to command name to the bare name of the type it returns."""
+    out: dict[str, dict[str, str]] = {}
+    for path in root.glob("apps/*/src-tauri/src/**/*.rs"):
+        app = path.relative_to(root).parts[1]
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for m in re.finditer(
+            r"#\[tauri::command[^\]]*\]\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*\([^)]*\)"
+            r"\s*->\s*([^{;]+)",
+            text,
+            re.S,
+        ):
+            out.setdefault(app, {})[m.group(1)] = bare_type(m.group(2))
+    return out
+
+
+def bare_type(ret: str) -> str:
+    """Strip Result/Option/Vec wrappers down to the payload type's name."""
+    t = ret.strip().rstrip("{").strip()
+    for _ in range(6):
+        m = re.match(r"^(?:Result|Option|Vec)\s*<\s*(.+)$", t)
+        if not m:
+            break
+        inner = m.group(1)
+        depth, cut = 0, len(inner)
+        for i, ch in enumerate(inner):
+            if ch == "<":
+                depth += 1
+            elif ch == ">":
+                if depth == 0:
+                    cut = i
+                    break
+                depth -= 1
+            elif ch == "," and depth == 0:
+                cut = i
+                break
+        t = inner[:cut].strip()
+    return t.split("::")[-1].strip()
+
+
+def rust_struct_fields(root: Path) -> dict[str, set[str]]:
+    """Map struct name to its field names, for every struct in the tree.
+
+    Field names only, in snake_case. A struct name defined twice is dropped
+    rather than guessed at: comparing against the wrong one is how the argument
+    half produced its first round of false findings.
+    """
+    fields: dict[str, set[str]] = {}
+    seen_twice: set[str] = set()
+    for path in root.rglob("*.rs"):
+        if "target" in path.parts or "node_modules" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for m in re.finditer(r"struct\s+(\w+)\s*\{([^}]*)\}", text, re.S):
+            name, body = m.group(1), m.group(2)
+            got = set()
+            for line in body.splitlines():
+                line = line.strip()
+                if not line or line.startswith(("#", "//", "///")):
+                    continue
+                fm = re.match(r"(?:pub\s+)?(\w+)\s*:", line)
+                if fm:
+                    got.add(snake(fm.group(1)))
+            if name in fields and fields[name] != got:
+                seen_twice.add(name)
+            fields[name] = got
+    for name in seen_twice:
+        fields.pop(name, None)
+    return fields
+
+
+def ts_interfaces(root: Path) -> dict[str, dict[str, set[str]]]:
+    """Map app to interface name to its declared field names, ambiguity dropped."""
+    out: dict[str, dict[str, set[str]]] = {}
+    twice: dict[str, set[str]] = {}
+    for path in (root / "apps").rglob("*"):
+        if path.suffix not in (".ts", ".svelte") or not path.is_file():
+            continue
+        if "node_modules" in path.parts or ".svelte-kit" in path.parts:
+            continue
+        app = path.relative_to(root).parts[1]
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for m in re.finditer(r"interface\s+(\w+)\s*\{([^}]*)\}", text, re.S):
+            name, body = m.group(1), m.group(2)
+            got = set()
+            for line in body.splitlines():
+                line = line.strip()
+                if not line or line.startswith(("//", "/*", "*", "///")):
+                    continue
+                # Only fields the interface declares as REQUIRED. A `field?:` is
+                # the frontend saying it already handles absence - the print queue's
+                # `progress?` is exactly that, and reporting it would be noise.
+                fm = re.match(r"(\w+)\s*:", line)
+                if fm:
+                    got.add(snake(fm.group(1)))
+            bucket = out.setdefault(app, {})
+            if name in bucket and bucket[name] != got:
+                twice.setdefault(app, set()).add(name)
+            bucket[name] = got
+    for app, names in twice.items():
+        for n in names:
+            out[app].pop(n, None)
+    return out
+
+
+def annotated_calls(root: Path):
+    """Yield (app, file, line, type name, command) for `invoke<T>("cmd")` calls."""
+    for path in (root / "apps").rglob("*"):
+        if path.suffix not in (".ts", ".svelte") or not path.is_file():
+            continue
+        if "node_modules" in path.parts or ".svelte-kit" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for m in re.finditer(
+            r'invoke\s*<\s*(\w+)(?:\[\])?\s*>\s*\(\s*"([a-z_0-9]+)"', text
+        ):
+            yield (
+                path.relative_to(root).parts[1],
+                path.relative_to(root),
+                text[: m.start()].count("\n") + 1,
+                m.group(1),
+                m.group(2),
+            )
+
+
+def check_returns(root: Path) -> tuple[int, list[str], list[str]]:
+    """Report interface fields the command's return struct does not produce."""
+    returns = rust_return_types(root)
+    structs = rust_struct_fields(root)
+    interfaces = ts_interfaces(root)
+    problems: list[str] = []
+    known: list[str] = []
+    checked = 0
+    for app, path, line, tsname, cmd in annotated_calls(root):
+        rust_name = returns.get(app, {}).get(cmd)
+        if not rust_name or OPAQUE_RETURN.match(rust_name):
+            continue
+        produced = structs.get(rust_name)
+        declared = interfaces.get(app, {}).get(tsname)
+        if produced is None or declared is None or not produced or not declared:
+            continue
+        checked += 1
+        missing = declared - produced
+        if not missing:
+            continue
+        text = (
+            f"{path}:{line}: `{cmd}` returns `{rust_name}`, which does not produce "
+            f"{sorted(missing)}; `{tsname}` declares them, so they arrive undefined"
+        )
+        if cmd in KNOWN_RETURN_MISMATCHES:
+            known.append(f"{text}\n      routed: {KNOWN_RETURN_MISMATCHES[cmd]}")
+        else:
+            problems.append(text)
+    return checked, problems, known
+
+
 def main() -> int:
     commands = rust_commands(ROOT)
     if not commands:
@@ -237,13 +425,23 @@ def main() -> int:
                 f"not pass; the command fails to deserialize its arguments"
             )
 
-    print(f"{checked} invoke call(s) checked against {total} command(s)")
+    ret_checked, ret_problems, ret_known = check_returns(ROOT)
+    problems.extend(ret_problems)
+
+    print(
+        f"{checked} invoke call(s) checked against {total} command(s); "
+        f"{ret_checked} annotated return type(s) compared"
+    )
     if problems:
-        print("\narguments that do not match the command they are sent to:\n")
+        print("\nshapes that do not match the command on the other side:\n")
         for p in problems:
             print(f"  - {p}")
         return 1
-    print("every call passes the arguments its command declares")
+    if ret_known:
+        print("\nknown return mismatches, routed to their owners:\n")
+        for k in ret_known:
+            print(f"  - {k}")
+    print("\nevery call passes the arguments its command declares")
     return 0
 
 
