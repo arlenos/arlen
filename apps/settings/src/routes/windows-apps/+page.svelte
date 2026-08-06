@@ -58,12 +58,12 @@
     { value: "11", label: "11" },
   ];
   const windowModeOptions = [
-    { value: "windowed", label: "Windowed" },
-    { value: "fullscreen", label: "Fullscreen" },
+    { value: "windowed", label: $t("s.wa.windowed") },
+    { value: "fullscreen", label: $t("s.wa.fullscreen") },
   ];
   const bottleModeOptions = [
-    { value: "per-app", label: "Its own bottle" },
-    { value: "shared", label: "A shared bottle" },
+    { value: "per-app", label: $t("s.wa.ownBottle") },
+    { value: "shared", label: $t("s.wa.sharedBottle") },
   ];
 
   // The compat tier as honest prose, never a "just works" promise.

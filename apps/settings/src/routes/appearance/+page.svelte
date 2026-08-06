@@ -67,13 +67,13 @@
   onMount(loadThemes);
 
   const CUSTOMISE = [
-    { href: "/appearance/wallpaper", title: "Wallpaper", desc: "The desktop background", icon: Image },
-    { href: "/appearance/colors", title: "Colours", desc: "The full palette, per role", icon: Palette },
-    { href: "/appearance/geometry", title: "Geometry", desc: "Radii, corners, spacing, gaps", icon: Frame },
-    { href: "/appearance/typography", title: "Typography", desc: "Fonts, size, weight", icon: Type },
-    { href: "/appearance/motion-depth", title: "Motion & Depth", desc: "Speed, easing, shadows", icon: Zap },
-    { href: "/appearance/system", title: "System", desc: "Cursor, icons, sounds, terminal", icon: Terminal },
-    { href: "/appearance/toolkits", title: "Toolkits", desc: "GTK, Qt, terminal, Wine coverage", icon: LayoutGrid },
+    { href: "/appearance/wallpaper", titleKey: "s.appr.card.wallpaper", descKey: "s.appr.card.wallpaper.desc", icon: Image },
+    { href: "/appearance/colors", titleKey: "s.appr.card.colors", descKey: "s.appr.card.colors.desc", icon: Palette },
+    { href: "/appearance/geometry", titleKey: "s.appr.card.geometry", descKey: "s.appr.card.geometry.desc", icon: Frame },
+    { href: "/appearance/typography", titleKey: "s.appr.card.typography", descKey: "s.appr.card.typography.desc", icon: Type },
+    { href: "/appearance/motion-depth", titleKey: "s.appr.card.motiondepth", descKey: "s.appr.card.motiondepth.desc", icon: Zap },
+    { href: "/appearance/system", titleKey: "s.appr.card.system", descKey: "s.appr.card.system.desc", icon: Terminal },
+    { href: "/appearance/toolkits", titleKey: "s.appr.card.toolkits", descKey: "s.appr.card.toolkits.desc", icon: LayoutGrid },
   ];
 
   const accent = $derived(String($coloursEff.accent));
@@ -145,7 +145,7 @@
     <div class="cust-grid span-full">
       {#each CUSTOMISE as c (c.href)}
         {@const Icon = c.icon}
-        <LinkCard href={c.href} title={c.title} description={c.desc}>
+        <LinkCard href={c.href} title={$t(c.titleKey)} description={$t(c.descKey)}>
           {#snippet icon()}<Icon size={20} strokeWidth={1.75} />{/snippet}
         </LinkCard>
       {/each}
