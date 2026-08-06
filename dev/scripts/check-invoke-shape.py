@@ -349,12 +349,21 @@ DEAD_INVOKES: dict[str, str] = {
     "ai_edit": "apps/text-editor has no src-tauri; the app has no Rust side to define them in",
     "project_of": "apps/text-editor has no src-tauri; the app has no Rust side to define them in",
     "related_of": "apps/text-editor has no src-tauri; the app has no Rust side to define them in",
-    # the shell's job list; no producer identified yet - unattributed, needs triage
-    "list_jobs": "the shell's job list; no producer identified yet",
-    # the waypointer's ask-the-AI entry; no backend - unattributed, needs triage
-    "waypointer_ask": "the waypointer's ask-the-AI entry; no backend",
-    # cross-app navigation from knowledge into Settings; no mechanism yet - unattributed
-    "open_settings_route": "cross-app navigation from knowledge into Settings; no mechanism yet",
+    # These three read as unattributed from the call site and are not: each
+    # surface's own header names the plan and says it is fixture-backed until the
+    # command lands. Read the file, not just the line.
+    #
+    # job-progress-surface.md: the Activity/Jobs feed. The JobView server (the
+    # notification daemon extended into a KDE-JobViewV3 mirror) plus the producers
+    # reporting progress are the coder seam; `list_jobs` is its query - coder
+    "list_jobs": "job-progress-surface.md; the JobView server and its producers are not built",
+    # waypointer-ai-prompt.md: Tab flips the launcher into Ask mode. The call is a
+    # read-tier single completion over org.arlen.AIAgent1 - coder
+    "waypointer_ask": "waypointer-ai-prompt.md; the read-tier completion call is not built",
+    # The capability browser lives in Settings/Privacy (decision 6), so knowledge
+    # links out rather than re-hosting it. Needs a cross-app open mechanism, which
+    # nothing provides yet - coder, and it is a mechanism rather than one command
+    "open_settings_route": "no cross-app open mechanism exists; knowledge links out to Settings/Privacy",
 }
 
 def rust_return_types(root: Path) -> dict[str, dict[str, str]]:
