@@ -1,5 +1,7 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
+  import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
+  import { mark } from "@arlen/ui-kit/i18n";
   /// Notifications panel.
   ///
   /// Reads/writes:
@@ -317,11 +319,15 @@
           {#if expiresLabel}
             <div class="expires-banner">
               <Sparkles size={12} strokeWidth={2.25} />
-              <!-- Left hardcoded on purpose. Making this whole - the rule the
-                   catalog follows - means one message with the time inside it,
-                   which drops the <strong> around the timestamp. That is a visual
-                   change, so it is arlen-ui's call, not an extraction. -->
-              <span>Active until <strong>{expiresLabel}</strong></span>
+              <!-- The note here used to say this could not be one message
+                   without dropping the <strong> around the timestamp. `Rich`
+                   keeps it: the message marks a spot and the snippet renders the
+                   same markup, so nothing about the look changes. -->
+              <span>
+                <Rich text={$t("s.notif.activeUntil", { time: mark("time") })}>
+                  {#snippet time()}<strong>{expiresLabel}</strong>{/snippet}
+                </Rich>
+              </span>
               <button type="button" class="link" onclick={clearDndExpiry}
                 >{$t("s.notif.clear")}</button
               >
