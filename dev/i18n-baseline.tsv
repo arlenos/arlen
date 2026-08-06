@@ -653,9 +653,6 @@ sdk/ui-kit/src/lib/components/ui/media-transport/media-transport.svelte	Previous
 sdk/ui-kit/src/lib/components/ui/position-picker/position-picker.svelte	Toast position
 sdk/ui-kit/src/lib/components/ui/sidebar/SidebarRail.svelte	Toggle Sidebar
 sdk/ui-kit/src/lib/components/ui/sidebar/SidebarTrigger.svelte	Toggle Sidebar
-sdk/ui-kit/src/lib/components/ui/window-controls/WindowButtons.svelte	Close
-sdk/ui-kit/src/lib/components/ui/window-controls/WindowButtons.svelte	Maximize
-sdk/ui-kit/src/lib/components/ui/window-controls/WindowButtons.svelte	Minimize
 sdk/ui-kit/src/lib/components/ui/window-controls/WindowControls.svelte	Close
 sdk/ui-kit/src/lib/components/ui/window-controls/WindowControls.svelte	Maximize
 sdk/ui-kit/src/lib/components/ui/window-controls/WindowControls.svelte	Minimize

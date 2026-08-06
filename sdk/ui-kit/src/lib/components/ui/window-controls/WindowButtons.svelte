@@ -5,6 +5,7 @@
   /// of its slim CSD header; the full-width shell-overlay variant with its
   /// own drag region is `WindowControls.svelte`.
   import { Minus, Square, X } from "@lucide/svelte";
+  import { kt } from "../../../i18n/messages.kit";
   import { getCurrentWindow } from "@tauri-apps/api/window";
 
   let {
@@ -43,7 +44,7 @@
       type="button"
       class="wb-btn"
       onclick={minimize}
-      aria-label="Minimize"
+      aria-label={$kt("k.window.minimize")}
     >
       <Minus size={12} strokeWidth={2} />
     </button>
@@ -53,7 +54,7 @@
       type="button"
       class="wb-btn"
       onclick={toggleMaximize}
-      aria-label="Maximize"
+      aria-label={$kt("k.window.maximize")}
     >
       <Square size={10} strokeWidth={2} />
     </button>
@@ -62,7 +63,7 @@
     type="button"
     class="wb-btn wb-close"
     onclick={close}
-    aria-label="Close"
+    aria-label={$kt("k.window.close")}
   >
     <X size={12} strokeWidth={2} />
   </button>
