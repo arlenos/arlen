@@ -9,6 +9,7 @@
 /// coder seams - under vite the fixture stands in and edits apply locally.
 import { writable, get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { locale } from "$lib/i18n/messages";
 import type { MeetingNote, Transcript, TranscriptSegment } from "$lib/contract";
 
 /// A captured meeting: your notes (the anchor) + the produced note.
@@ -186,7 +187,11 @@ export async function updateItem(index: number, patch: { owner?: string; done?: 
 
 /// A short meeting date for the list.
 export function fmtDate(ms: number): string {
-  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(new Date(ms));
+  // The chosen language, not `undefined` - which means the system locale, and
+  // that is a different setting the user did not touch here.
+  return new Intl.DateTimeFormat(get(locale), { day: "numeric", month: "short" }).format(
+    new Date(ms),
+  );
 }
 
 /// Fold adjacent same-speaker segments into utterances (mirrors the contract's
