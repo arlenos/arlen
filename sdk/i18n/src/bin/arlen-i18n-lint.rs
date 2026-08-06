@@ -330,12 +330,17 @@ fn user_facing_text(lit: &str) -> Option<String> {
 
 /// Scan TypeScript or JavaScript for hardcoded user-facing strings.
 ///
-/// One forward pass. Line comments, block comments and template literals are
-/// skipped (a template literal carrying prose is a separate, rarer shape and
-/// reporting it well needs its interpolations understood). At every quoted
-/// literal the preceding non-space characters decide whether the position is
-/// user-facing: a `prop:` from [`USER_FACING_PROPS`] or a call head from
+/// One forward pass. Line comments and block comments are skipped. At every
+/// quoted literal the preceding non-space characters decide whether the position
+/// is user-facing: a `prop:` from [`USER_FACING_PROPS`] or a call head from
 /// [`USER_FACING_CALLS`].
+///
+/// Template literals were skipped wholesale on the grounds that prose inside one
+/// is a rarer shape. It is not rarer, and it is the worse one: `` `Unpin ${name}` ``
+/// is a sentence built by concatenation, which is exactly what cannot be translated
+/// into a language that orders those parts differently. Two of them sat in the kit
+/// unnoticed because the gate could not see them. They are now reported with each
+/// interpolation shown as `{}`, so the finding reads as the shape it is.
 fn scan_script(src: &str) -> Vec<Finding> {
     let chars: Vec<char> = src.chars().collect();
     let n = chars.len();
@@ -371,16 +376,71 @@ fn scan_script(src: &str) -> Vec<Finding> {
             i += 2;
             continue;
         }
-        // Template literal: skipped wholesale, including any nested braces.
+        // Template literal: walk it, keeping the static segments and stepping over
+        // each `${...}`.
         if c == '`' {
+            let start_line = line;
             i += 1;
+            // Segments in order, with interpolations rendered as `{}` so the report
+            // shows the shape rather than a sentence with a hole in it.
+            let mut shape = String::new();
+            let mut segments: Vec<String> = Vec::new();
+            let mut current = String::new();
             while i < n && chars[i] != '`' {
+                if chars[i] == '\\' && i + 1 < n {
+                    // An escape contributes its escaped character, not the slash.
+                    i += 1;
+                    if chars[i] == '\n' {
+                        line += 1;
+                    }
+                    current.push(chars[i]);
+                    i += 1;
+                    continue;
+                }
+                if chars[i] == '$' && i + 1 < n && chars[i + 1] == '{' {
+                    segments.push(std::mem::take(&mut current));
+                    shape.push_str("{}");
+                    // Brace depth, so an object literal or a nested template inside
+                    // the interpolation does not end it early.
+                    let mut depth = 0usize;
+                    i += 1;
+                    while i < n {
+                        match chars[i] {
+                            '{' => depth += 1,
+                            '}' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    i += 1;
+                                    break;
+                                }
+                            }
+                            '\n' => line += 1,
+                            _ => {}
+                        }
+                        i += 1;
+                    }
+                    continue;
+                }
                 if chars[i] == '\n' {
                     line += 1;
                 }
+                current.push(chars[i]);
+                shape.push(chars[i]);
                 i += 1;
             }
+            segments.push(current);
             i += 1;
+            // A template with no interpolation is an ordinary string that happens to
+            // use backticks, and the whole thing is the text. With interpolations the
+            // question is whether any static segment is prose, because that is the
+            // concatenation an i18n gate exists to catch: it cannot be reordered for a
+            // language that wants the value first.
+            if position_is_user_facing(&prefix) && segments.iter().any(|seg| user_facing_text(seg).is_some())
+            {
+                if let Some(t) = meaningful(&shape) {
+                    out.push(Finding { line: start_line, text: t });
+                }
+            }
             prefix.clear();
             continue;
         }
@@ -739,10 +799,37 @@ mod tests {
     }
 
     #[test]
-    fn comments_and_template_literals_are_skipped() {
+    fn comments_are_skipped() {
         assert!(script_texts(r#"// label: "A comment is not code""#).is_empty());
         assert!(script_texts("/* label: \"Nor a block comment\" */").is_empty());
+        // A template in a position nobody displays stays quiet, so the quoted string
+        // inside it is not mistaken for a label.
         assert!(script_texts("const t = `label: \"Not scanned\"`;").is_empty());
+    }
+
+    #[test]
+    fn prose_in_a_template_literal_is_reported_with_its_shape() {
+        // The shape this exists for: a sentence assembled by concatenation, which
+        // cannot be reordered for a language that wants the value elsewhere.
+        assert_eq!(script_texts("{ label: `Unpin ${place.label}` }"), vec!["Unpin {}"]);
+        assert_eq!(
+            script_texts("{ tooltip: `${p.label} (not connected)` }"),
+            vec!["{} (not connected)"],
+        );
+        // Braces inside the interpolation must not end it early.
+        assert_eq!(
+            script_texts("{ title: `Saved ${fmt({ n: 2 })} files` }"),
+            vec!["Saved {} files"],
+        );
+    }
+
+    #[test]
+    fn a_template_without_prose_or_without_a_display_position_is_quiet() {
+        // Not a displayed position.
+        assert!(script_texts("const cls = `chip-${kind}`;").is_empty());
+        // Displayed, but every static segment is identifier-shaped rather than prose:
+        // a class name or a unit suffix glued to a value is not a sentence.
+        assert!(script_texts("{ label: `${n}-${m}` }").is_empty());
     }
 
     #[test]

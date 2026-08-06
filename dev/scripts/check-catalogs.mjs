@@ -102,19 +102,28 @@ for (const file of catalogFiles()) {
     // The source declares its own types (`.input {$n :number}`), so read them
     // rather than guessing from the parameter's name: a guess feeds a numeric
     // selector a string and reports the checker's mistake as the catalog's.
+    // `[^}]*` because MF2 allows options after the function name
+    // (`:number minimumFractionDigits=2`). Requiring `:number}` exactly made the
+    // checker feed a string to a declared number, and the formatter logged that and
+    // carried on, so the run still said the catalog was fine.
     const numeric = new Set(
-      [...text.matchAll(/\.input\s*\{\$(\w+)\s*:number\}/g)].map((m) => m[1]),
+      [...text.matchAll(/\.input\s*\{\$(\w+)\s*:number[^}]*\}/g)].map((m) => m[1]),
     );
     const params = {};
     for (const p of text.matchAll(/\{\$(\w+)[\s:}]/g)) {
       params[p[1]] = numeric.has(p[1]) ? 1 : "x";
     }
     try {
+      // Formatting errors are reported to an `onError` callback and otherwise only
+      // logged, so without this the gate prints a complaint to stderr and exits 0.
+      const onError = (e) => {
+        throw e;
+      };
       const mf = new MessageFormat(locale, text);
-      mf.format(params);
+      mf.format(params, onError);
       // Exercise the other plural arm too: a source that names only `one` still
       // formats fine at 1 and fails the user at 2.
-      for (const n of numeric) mf.format({ ...params, [n]: 2 });
+      for (const n of numeric) mf.format({ ...params, [n]: 2 }, onError);
     } catch (e) {
       broken.push(`${file.slice(ROOT.length)} [${locale}] ${id}: ${e.message}`);
     }

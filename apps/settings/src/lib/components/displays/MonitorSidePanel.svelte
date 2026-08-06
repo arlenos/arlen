@@ -135,7 +135,7 @@
       )?.refreshOptions ?? []
     ).map((opt) => ({
       value: String(opt.refreshMhz),
-      label: `${(opt.refreshMhz / 1000).toFixed(2)} Hz`,
+      label: $t("s.display.refreshHz", { rate: opt.refreshMhz / 1000 }),
     })),
   );
 
