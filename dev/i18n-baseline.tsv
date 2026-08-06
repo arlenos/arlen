@@ -111,18 +111,6 @@ apps/harness/src/lib/components/chat/ImportDialog.svelte	A .json file exported f
 apps/harness/src/lib/components/chat/ImportDialog.svelte	Import chat
 apps/harness/src/lib/components/chat/ImportDialog.svelte	Open a chat you exported as JSON. It is added as a new conversation, so it never overwrites one you have.
 apps/harness/src/lib/components/chat/ModelPicker.svelte	unavailable
-apps/harness/src/lib/components/mint/MintFlow.svelte	A share always expires. There is no permanent share.
-apps/harness/src/lib/components/mint/MintFlow.svelte	Checking what this share would include…
-apps/harness/src/lib/components/mint/MintFlow.svelte	Example data - these are not your real notes and projects.
-apps/harness/src/lib/components/mint/MintFlow.svelte	Expires
-apps/harness/src/lib/components/mint/MintFlow.svelte	Good for
-apps/harness/src/lib/components/mint/MintFlow.svelte	How many times the recipient can open it.
-apps/harness/src/lib/components/mint/MintFlow.svelte	Pick a named thing to share. You share a snapshot of it as it is now, never a live feed.
-apps/harness/src/lib/components/mint/MintFlow.svelte	Share created
-apps/harness/src/lib/components/mint/MintFlow.svelte	Step
-apps/harness/src/lib/components/mint/MintFlow.svelte	Who can open it
-apps/harness/src/lib/components/mint/MintFlow.svelte	You can see it and revoke it any time under Settings, Privacy, Shared context. Revoking stops any further reads.
-apps/harness/src/lib/components/mint/MintFlow.svelte	of 3
 apps/harness/src/lib/components/transparency/AccessSection.svelte	While the AI is off, none of this access is active.
 apps/harness/src/lib/components/transparency/AccessSection.svelte	no data
 apps/harness/src/lib/components/transparency/ActivitySection.svelte	See everything it did
