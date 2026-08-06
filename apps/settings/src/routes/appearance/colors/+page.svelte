@@ -53,11 +53,11 @@
     <div class="editor span-full">
     <div class="controls">
       <Section label={$t("s.col.contrast")}>
-        {#each CONTRAST_PAIRS as pair (pair.label)}
+        {#each CONTRAST_PAIRS as pair (pair.labelKey)}
           {@const ratio = contrastRatio($effective[pair.fg], $effective[pair.bg])}
           {@const pass = ratio >= 4.5}
           <div class="contrast-row">
-            <span class="contrast-label">{pair.label}</span>
+            <span class="contrast-label">{$t(pair.labelKey)}</span>
             <span class="contrast-value">
               <span class="contrast-num">{ratio.toFixed(1)}:1</span>
               <Badge variant={pass ? "success" : "warn"}>{pass ? "Passes" : "Low"}</Badge>

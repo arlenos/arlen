@@ -35,10 +35,10 @@ export const TOOLKITS: Toolkit[] = [
 ];
 
 /// Coverage tier → the badge label + tone.
-export function coverageBadge(c: Coverage): { label: string; tone: "success" | "outline" | "warn" } {
-  if (c === "full") return { label: "Full", tone: "success" };
-  if (c === "colours") return { label: "Colours only", tone: "outline" };
-  return { label: "Best-effort", tone: "warn" };
+export function coverageBadge(c: Coverage): { labelKey: string; tone: "success" | "outline" | "warn" } {
+  if (c === "full") return { labelKey: "s.toolkit.full", tone: "success" };
+  if (c === "colours") return { labelKey: "s.toolkit.coloursOnly", tone: "outline" };
+  return { labelKey: "s.toolkit.bestEffort", tone: "warn" };
 }
 
 /// Toolkits the user has switched off (theme not emitted there). Default: none.
