@@ -176,6 +176,11 @@ const messages: Catalogs = {
     // German is a first pass that wants a review by whoever owns the wording -
     // the stakes here are not those of a button label.
     "sh.consent.to": "To",
+    "sh.consent.target": "Target",
+    "sh.consent.host": "Host",
+    "sh.consent.scope": "Scope",
+    "sh.consent.holdToDeleteNamed": "Hold to delete {$name}",
+    "sh.consent.holdToDelete": "Hold to delete",
     "sh.consent.preview": "Preview",
     "sh.consent.total": "{$count} total",
     "sh.consent.external": "Started by another app or document. Only continue if you expected this.",
@@ -584,6 +589,11 @@ const messages: Catalogs = {
     "sh.print.colorMono": "Schwarzwei\u00df",
 
     "sh.consent.to": "An",
+    "sh.consent.target": "Ziel",
+    "sh.consent.host": "Host",
+    "sh.consent.scope": "Umfang",
+    "sh.consent.holdToDeleteNamed": "Zum Löschen von {$name} gedrückt halten",
+    "sh.consent.holdToDelete": "Zum Löschen gedrückt halten",
     "sh.consent.preview": "Vorschau",
     "sh.consent.total": "{$count} insgesamt",
     "sh.consent.external": "Von einer anderen App oder einem Dokument ausgel\u00f6st. Fahr nur fort, wenn du das erwartet hast.",
