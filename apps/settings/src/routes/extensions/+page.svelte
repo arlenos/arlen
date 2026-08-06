@@ -45,6 +45,7 @@
     if (!q) return $moduleGroups;
     return $moduleGroups
       .map((g) => ({
+        id: g.id,
         label: g.label,
         items: g.items.filter(
           (m) =>
@@ -122,7 +123,7 @@
     </div>
 
     <div class="groups">
-      {#each filteredGroups as group (group.label)}
+      {#each filteredGroups as group (group.id)}
         <Section label={group.label}>
           <div class="group-inner">
             {#each group.items as m (m.id)}

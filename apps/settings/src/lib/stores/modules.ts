@@ -14,7 +14,8 @@
 /// where a row came from. Toggle routing picks the right Tauri command
 /// based on `source`.
 
-import { writable, derived, type Readable } from "svelte/store";
+import { writable, derived, get, type Readable } from "svelte/store";
+import { t, locale } from "$lib/i18n/messages";
 import { invoke } from "@tauri-apps/api/core";
 
 export type ModuleSource = "system" | "user" | "builtin";
@@ -163,13 +164,22 @@ export const modules = createStore();
 /// get their own group to make the difference between shipped-with-OS
 /// and user-installed obvious at a glance.
 export interface ModuleGroup {
+  /// Stable across a language switch, so the list keys on identity rather than
+  /// on a heading that changes wording.
+  id: string;
   label: string;
   items: ModuleSummary[];
 }
 
+/// Derived over `locale` as well as the module list: the headings are resolved
+/// here, and a store that read the translator once would keep whichever language
+/// was current when it first ran. The same shape that had the Files sidebar
+/// showing one heading in each language.
 export const moduleGroups: Readable<ModuleGroup[]> = derived(
-  modules,
-  ($m) => {
+  [modules, locale],
+  ([$m, $loc]) => {
+    const tr = (id: string) => get(t)(id);
+    void $loc;
     const builtins: ModuleSummary[] = [];
     const waypointer: ModuleSummary[] = [];
     const topbar: ModuleSummary[] = [];
@@ -186,14 +196,14 @@ export const moduleGroups: Readable<ModuleGroup[]> = derived(
 
     const groups: ModuleGroup[] = [];
     if (builtins.length > 0)
-      groups.push({ label: "Built-in Plugins", items: builtins });
+      groups.push({ id: "builtin", label: tr("s.mod.group.builtin"), items: builtins });
     if (waypointer.length > 0)
-      groups.push({ label: "Waypointer Extensions", items: waypointer });
+      groups.push({ id: "waypointer", label: tr("s.mod.group.waypointer"), items: waypointer });
     if (topbar.length > 0)
-      groups.push({ label: "Top Bar Extensions", items: topbar });
+      groups.push({ id: "topbar", label: tr("s.mod.group.topbar"), items: topbar });
     if (settings.length > 0)
-      groups.push({ label: "Settings Panels", items: settings });
-    if (other.length > 0) groups.push({ label: "Other", items: other });
+      groups.push({ id: "settings", label: tr("s.mod.group.settings"), items: settings });
+    if (other.length > 0) groups.push({ id: "other", label: tr("s.mod.group.other"), items: other });
     return groups;
   },
 );

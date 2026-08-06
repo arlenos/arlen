@@ -193,11 +193,6 @@ apps/settings/src/lib/stores/models.ts	Fast
 apps/settings/src/lib/stores/models.ts	Names new chats. A small local model is plenty.
 apps/settings/src/lib/stores/models.ts	Runs the tasks you have turned on.
 apps/settings/src/lib/stores/models.ts	Your machine can run models up to about 8B at a good speed.
-apps/settings/src/lib/stores/modules.ts	Built-in Plugins
-apps/settings/src/lib/stores/modules.ts	Other
-apps/settings/src/lib/stores/modules.ts	Settings Panels
-apps/settings/src/lib/stores/modules.ts	Top Bar Extensions
-apps/settings/src/lib/stores/modules.ts	Waypointer Extensions
 apps/settings/src/lib/stores/theme.ts	Fira Code
 apps/settings/src/lib/stores/theme.ts	Inter
 apps/settings/src/lib/stores/theme.ts	JetBrains Mono
