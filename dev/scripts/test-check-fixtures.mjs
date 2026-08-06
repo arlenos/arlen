@@ -398,7 +398,28 @@ function catalogFixtures() {
     `exit ${r3.code}: ${r3.out.trim()}`,
   );
 
-  for (const d of [good, broken, empty]) rmSync(d, { recursive: true, force: true });
+  // A duplicate id: both lines are valid MessageFormat, so every check that looks
+  // at one message at a time passes it. The later one wins, and whatever used the
+  // earlier id silently starts showing the other text. This happened - a mint
+  // sentence landed on top of a "Done" button label.
+  const dup = tree({
+    "alpha/src/lib/i18n/messages.ts": `const messages: Catalogs = {
+  en: {
+    "a.done": "Done",
+    "a.other": "Something else",
+    "a.done": "{$what} is now shared.",
+  },
+};
+`,
+  });
+  const r4 = run("check-catalogs.mjs", dup);
+  check(
+    "a duplicate message id is reported",
+    r4.code === 1 && r4.out.includes("a.done") && r4.out.includes("duplicate"),
+    `exit ${r4.code}: ${r4.out.trim()}`,
+  );
+
+  for (const d of [good, broken, empty, dup]) rmSync(d, { recursive: true, force: true });
 }
 
 catalogFixtures();

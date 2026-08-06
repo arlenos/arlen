@@ -65,6 +65,12 @@ function catalogFiles() {
 
 let checked = 0;
 const broken = [];
+// A duplicate id is invisible to everything else: this reader takes the last one,
+// the bundler's object literal takes the last one, and the app silently shows that
+// message wherever the earlier id was used. It cost a real one - a new
+// `h.mint.done` sentence landed on top of the existing "Done" button label, and
+// only `svelte-check` noticed. Seen ids are per (file, locale).
+const seen = new Map();
 
 for (const file of catalogFiles()) {
   let locale = null;
@@ -78,6 +84,12 @@ for (const file of catalogFiles()) {
     const kv = line.match(/^    "([^"]+)": "(.*)",$/);
     if (!kv || !locale) continue;
     const [, id, raw] = kv;
+    const scope = `${file}\u0000${locale}`;
+    if (!seen.has(scope)) seen.set(scope, new Set());
+    if (seen.get(scope).has(id)) {
+      broken.push(`${file.slice(ROOT.length)} [${locale}] ${id}: duplicate id, the later one wins and the earlier use silently changes`);
+    }
+    seen.get(scope).add(id);
     let text;
     try {
       text = JSON.parse(`"${raw}"`);
