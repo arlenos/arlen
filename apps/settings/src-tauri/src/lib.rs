@@ -115,6 +115,7 @@ pub fn run() {
             commands::theme::theme_set_accent,
             commands::theme::get_available_themes,
             commands::values::settings_resolve_options,
+            commands::layouts::settings_keyboard_layouts,
             commands::app_facts::settings_app_meta,
             commands::app_facts::settings_app_general,
             commands::app_facts::settings_app_clear_cache,
