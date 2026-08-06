@@ -7,8 +7,11 @@
 /// and is read by Waypointer at query time without having to start the
 /// Settings app.
 
+import { get } from "svelte/store";
+
 import { SETTINGS_REGISTRY, type SettingDefinition } from "./settings-registry";
 import { invoke } from "@tauri-apps/api/core";
+import { CATALOGS, SOURCE_LOCALE, t } from "$lib/i18n/messages";
 
 // ---------------------------------------------------------------------------
 // Search
@@ -17,6 +20,19 @@ import { invoke } from "@tauri-apps/api/core";
 export interface SearchResult {
   setting: SettingDefinition;
   score: number;
+}
+
+/// The source-language text for a message, whatever the UI is showing.
+///
+/// Somebody who learned a setting as "night light" in English goes looking for it
+/// by that name in a German UI, so a query has to reach the setting through either
+/// language. Only the id form can do this: a prose snapshot has already thrown the
+/// other string away.
+function sourceText(id: string): string {
+  // A direct catalog read, not the translator: the translator is bound to the
+  // live locale and would hand back whatever the UI is currently showing, which
+  // is the one thing this must not do.
+  return CATALOGS[SOURCE_LOCALE]?.[id] ?? "";
 }
 
 /// Case-insensitive, all-terms-must-match search over the registry.
@@ -28,18 +44,19 @@ export function search(query: string, limit = 10): SearchResult[] {
     .filter((t) => t.length > 0);
   if (terms.length === 0) return [];
 
+  const tr = get(t);
   const results: SearchResult[] = [];
 
   for (const setting of SETTINGS_REGISTRY) {
-    const titleLower = setting.title.toLowerCase();
-    const sectionLower = setting.section.toLowerCase();
-    const descLower = setting.description.toLowerCase();
-    const haystack = [
-      titleLower,
-      sectionLower,
-      descLower,
-      ...setting.keywords,
-    ].join(" ");
+    const titleLower = tr(setting.titleKey).toLowerCase();
+    const sectionLower = tr(setting.sectionKey).toLowerCase();
+    const descLower = tr(setting.descKey).toLowerCase();
+    const keywords = tr(setting.keywordsKey).toLowerCase();
+    // Both languages, so an English name finds a German setting and the reverse.
+    const source = [setting.titleKey, setting.sectionKey, setting.descKey, setting.keywordsKey]
+      .map((id) => sourceText(id).toLowerCase())
+      .join(" ");
+    const haystack = [titleLower, sectionLower, descLower, keywords, source].join(" ");
 
     if (!terms.every((t) => haystack.includes(t))) continue;
 
@@ -48,7 +65,7 @@ export function search(query: string, limit = 10): SearchResult[] {
       if (titleLower.includes(term)) score += 10;
       if (sectionLower.includes(term)) score += 5;
       if (descLower.includes(term)) score += 3;
-      if (setting.keywords.some((k) => k.includes(term))) score += 2;
+      if (keywords.includes(term)) score += 2;
     }
     results.push({ setting, score });
   }
@@ -63,11 +80,11 @@ export function search(query: string, limit = 10): SearchResult[] {
 
 interface ExportedSetting {
   id: string;
-  title: string;
-  description: string;
-  keywords: string[];
+  titleKey: string;
+  descKey: string;
+  keywordsKey: string;
   panel: string;
-  section: string;
+  sectionKey: string;
   deepLink: string;
   inlineAction?: {
     type: string;
@@ -84,20 +101,46 @@ interface ExportedSetting {
 interface SettingsIndex {
   version: number;
   generatedAt: string;
+  /// The catalog the ids below resolve against.
+  catalog: string;
   settings: ExportedSetting[];
 }
 
+/// A message the index can carry: plain text, no inputs.
+///
+/// The reader substring-matches these, and a selector is a pattern rather than a
+/// string - `.match $n one {{...}} * {{...}}` has no single text to search. Titles
+/// and sections have no placeholders today, so requiring it now costs nothing and
+/// stops the first one arriving unnoticed and being indexed as its own source.
+function assertPlain(id: string): void {
+  const src = CATALOGS[SOURCE_LOCALE]?.[id];
+  if (src === undefined) throw new Error(`settings index: no message for ${id}`);
+  if (src.includes("{$") || src.includes(".match") || src.includes(".input")) {
+    throw new Error(
+      `settings index: ${id} takes inputs, so it cannot be searched as text. ` +
+        `Split the indexed part into a plain message.`,
+    );
+  }
+}
+
 function buildExportPayload(): SettingsIndex {
+  for (const s of SETTINGS_REGISTRY) {
+    for (const id of [s.titleKey, s.descKey, s.keywordsKey, s.sectionKey]) assertPlain(id);
+  }
   return {
-    version: 1,
+    version: 2,
     generatedAt: new Date().toISOString(),
+    /// Which catalog resolves the ids below. A reader loads it for its own locale.
+    catalog: "settings",
     settings: SETTINGS_REGISTRY.map((s) => ({
       id: s.id,
-      title: s.title,
-      description: s.description,
-      keywords: s.keywords,
+      // Ids, never prose: the reader resolves them against `catalog` in its own
+      // locale. See `SettingDefinition` for why a snapshot is the wrong shape.
+      titleKey: s.titleKey,
+      descKey: s.descKey,
+      keywordsKey: s.keywordsKey,
       panel: s.panel,
-      section: s.section,
+      sectionKey: s.sectionKey,
       deepLink: `arlen-settings://${s.panel}#${s.anchor}`,
       inlineAction: s.inlineAction
         ? {

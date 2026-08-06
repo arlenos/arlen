@@ -176,172 +176,26 @@ apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Toggle Waypoin
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Float
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Invalid regex
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Tile
-apps/settings/src/lib/search/settings-registry.ts	AI behaviours
-apps/settings/src/lib/search/settings-registry.ts	AI model provider
-apps/settings/src/lib/search/settings-registry.ts	Accent Color
-apps/settings/src/lib/search/settings-registry.ts	Add a discovered printer or one by IP address.
-apps/settings/src/lib/search/settings-registry.ts	Add a printer
 apps/settings/src/lib/search/settings-registry.ts	Alarms Only
-apps/settings/src/lib/search/settings-registry.ts	Allow small, reversible changes without per-action prompts
-apps/settings/src/lib/search/settings-registry.ts	App access
-apps/settings/src/lib/search/settings-registry.ts	Apps silenced by Focus Mode regardless of project
-apps/settings/src/lib/search/settings-registry.ts	Arlen Version
-apps/settings/src/lib/search/settings-registry.ts	Assistant service status
-apps/settings/src/lib/search/settings-registry.ts	Auto-Promote Threshold
-apps/settings/src/lib/search/settings-registry.ts	Auto-enable the magnifier on session start
-apps/settings/src/lib/search/settings-registry.ts	Base font size for the interface
-apps/settings/src/lib/search/settings-registry.ts	Border Width
 apps/settings/src/lib/search/settings-registry.ts	Bottom Left
 apps/settings/src/lib/search/settings-registry.ts	Bottom Right
-apps/settings/src/lib/search/settings-registry.ts	Brightness Keys
-apps/settings/src/lib/search/settings-registry.ts	Brightness up / down commands for laptop Fn-row keys
-apps/settings/src/lib/search/settings-registry.ts	Browse the timeline and project graph (Phase 8)
 apps/settings/src/lib/search/settings-registry.ts	Centered
-apps/settings/src/lib/search/settings-registry.ts	Choose which model answers your queries (Ollama, ...)
-apps/settings/src/lib/search/settings-registry.ts	Color Blindness Filter
-apps/settings/src/lib/search/settings-registry.ts	Color of inactive window borders
-apps/settings/src/lib/search/settings-registry.ts	Color of the active window border
-apps/settings/src/lib/search/settings-registry.ts	Compensation for protanopia, deuteranopia, tritanopia
-apps/settings/src/lib/search/settings-registry.ts	Content follows finger direction
 apps/settings/src/lib/search/settings-registry.ts	Continuously
-apps/settings/src/lib/search/settings-registry.ts	Control which notifications can break through
-apps/settings/src/lib/search/settings-registry.ts	Daemon Status
 apps/settings/src/lib/search/settings-registry.ts	Dark
-apps/settings/src/lib/search/settings-registry.ts	Database size, graph size, FUSE mount status
-apps/settings/src/lib/search/settings-registry.ts	Default Suppressed Apps
-apps/settings/src/lib/search/settings-registry.ts	Disable While Typing
-apps/settings/src/lib/search/settings-registry.ts	Display
-apps/settings/src/lib/search/settings-registry.ts	Do Not Disturb
-apps/settings/src/lib/search/settings-registry.ts	Enable AI features
-apps/settings/src/lib/search/settings-registry.ts	Entry and exit animation for toasts
-apps/settings/src/lib/search/settings-registry.ts	Extensions
 apps/settings/src/lib/search/settings-registry.ts	Fade
-apps/settings/src/lib/search/settings-registry.ts	Files-per-session before an inferred project gets promoted
-apps/settings/src/lib/search/settings-registry.ts	Focused Window Border
-apps/settings/src/lib/search/settings-registry.ts	Font Size
-apps/settings/src/lib/search/settings-registry.ts	Font used for code and terminal text
-apps/settings/src/lib/search/settings-registry.ts	Font used for labels, menus, and UI text
-apps/settings/src/lib/search/settings-registry.ts	Force apps to float or tile based on app_id, title, or type
-apps/settings/src/lib/search/settings-registry.ts	Group by App
-apps/settings/src/lib/search/settings-registry.ts	Group notifications by their source application
-apps/settings/src/lib/search/settings-registry.ts	Hide gaps when only one window is tiled
-apps/settings/src/lib/search/settings-registry.ts	Hide gaps when only one window is visible
-apps/settings/src/lib/search/settings-registry.ts	High-contrast inverted display
-apps/settings/src/lib/search/settings-registry.ts	History Maximum Age
 apps/settings/src/lib/search/settings-registry.ts	Horizontal
-apps/settings/src/lib/search/settings-registry.ts	Horizontal or vertical workspace arrangement
-apps/settings/src/lib/search/settings-registry.ts	How deep the watcher recurses below each watch directory
-apps/settings/src/lib/search/settings-registry.ts	How long high-priority notifications stay visible
-apps/settings/src/lib/search/settings-registry.ts	How long normal notifications stay visible
-apps/settings/src/lib/search/settings-registry.ts	How much cursor speed scales with finger velocity
-apps/settings/src/lib/search/settings-registry.ts	How much cursor speed scales with movement velocity
-apps/settings/src/lib/search/settings-registry.ts	How much each zoom step changes magnification
-apps/settings/src/lib/search/settings-registry.ts	How quickly a held key repeats
-apps/settings/src/lib/search/settings-registry.ts	How the magnified region tracks the cursor
-apps/settings/src/lib/search/settings-registry.ts	Ignore touchpad input briefly after each keystroke
-apps/settings/src/lib/search/settings-registry.ts	Inner Gap
-apps/settings/src/lib/search/settings-registry.ts	Installed Waypointer plugins, top-bar applets, modules
-apps/settings/src/lib/search/settings-registry.ts	Interface Font
-apps/settings/src/lib/search/settings-registry.ts	Invert Colors
-apps/settings/src/lib/search/settings-registry.ts	Keep Notification History
-apps/settings/src/lib/search/settings-registry.ts	Key Repeat Rate
-apps/settings/src/lib/search/settings-registry.ts	Keyboard
-apps/settings/src/lib/search/settings-registry.ts	Keyboard Layout
-apps/settings/src/lib/search/settings-registry.ts	Keyboard Shortcuts
-apps/settings/src/lib/search/settings-registry.ts	Knowledge App
-apps/settings/src/lib/search/settings-registry.ts	Knowledge Graph Stats
-apps/settings/src/lib/search/settings-registry.ts	Knowledge, Notification, Event Bus, Install daemon health
-apps/settings/src/lib/search/settings-registry.ts	Layout, repeat rate, numlock
-apps/settings/src/lib/search/settings-registry.ts	Left-Handed Mouse
-apps/settings/src/lib/search/settings-registry.ts	Let the assistant make small changes
 apps/settings/src/lib/search/settings-registry.ts	Light
-apps/settings/src/lib/search/settings-registry.ts	Manage printers, set the default, and print options.
-apps/settings/src/lib/search/settings-registry.ts	Max Visible Toasts
-apps/settings/src/lib/search/settings-registry.ts	Maximum number of toasts shown at once
-apps/settings/src/lib/search/settings-registry.ts	Media Keys
-apps/settings/src/lib/search/settings-registry.ts	Merge near-duplicate notifications from the same app
-apps/settings/src/lib/search/settings-registry.ts	Monitors, resolution, refresh rate, scale, night light
-apps/settings/src/lib/search/settings-registry.ts	Monospace Font
-apps/settings/src/lib/search/settings-registry.ts	Mouse Acceleration
-apps/settings/src/lib/search/settings-registry.ts	Mouse Zoom Shortcuts
-apps/settings/src/lib/search/settings-registry.ts	Natural Scroll (Mouse)
-apps/settings/src/lib/search/settings-registry.ts	Natural Scroll (Touchpad)
 apps/settings/src/lib/search/settings-registry.ts	None
 apps/settings/src/lib/search/settings-registry.ts	Off
 apps/settings/src/lib/search/settings-registry.ts	On edge
-apps/settings/src/lib/search/settings-registry.ts	Outer Gap
-apps/settings/src/lib/search/settings-registry.ts	Pin the active project name when Focus Mode is on
-apps/settings/src/lib/search/settings-registry.ts	Pixels between adjacent tiled windows
-apps/settings/src/lib/search/settings-registry.ts	Pixels between tiled windows and the screen edge
-apps/settings/src/lib/search/settings-registry.ts	Play / pause / next / previous track commands
-apps/settings/src/lib/search/settings-registry.ts	Primary XKB layout (US, German, French, etc.)
-apps/settings/src/lib/search/settings-registry.ts	Primary accent colour used across the shell and apps
-apps/settings/src/lib/search/settings-registry.ts	Print queue
-apps/settings/src/lib/search/settings-registry.ts	Printers
 apps/settings/src/lib/search/settings-registry.ts	Priority Only
-apps/settings/src/lib/search/settings-registry.ts	Project Watch Directories
-apps/settings/src/lib/search/settings-registry.ts	Queue notifications while a fullscreen app is active
-apps/settings/src/lib/search/settings-registry.ts	Quick Settings tile layout
-apps/settings/src/lib/search/settings-registry.ts	Rebind shortcuts for windows, workspaces, and apps
-apps/settings/src/lib/search/settings-registry.ts	Recursion Depth
-apps/settings/src/lib/search/settings-registry.ts	Register taps on the touchpad as primary clicks
-apps/settings/src/lib/search/settings-registry.ts	Release tag and kernel version
-apps/settings/src/lib/search/settings-registry.ts	Remove notifications older than this many days
-apps/settings/src/lib/search/settings-registry.ts	Reset Quick Settings to defaults
-apps/settings/src/lib/search/settings-registry.ts	Reset Shortcuts to Defaults
-apps/settings/src/lib/search/settings-registry.ts	Restore every keybinding to its built-in default
-apps/settings/src/lib/search/settings-registry.ts	Restore the bundled order, sizes, and visibility for tiles.
-apps/settings/src/lib/search/settings-registry.ts	Roundness
 apps/settings/src/lib/search/settings-registry.ts	Scheduled
-apps/settings/src/lib/search/settings-registry.ts	Scroll by dragging two fingers on the touchpad
-apps/settings/src/lib/search/settings-registry.ts	Scroll direction follows wheel movement
-apps/settings/src/lib/search/settings-registry.ts	See active, held, and finished print jobs; cancel or resume.
-apps/settings/src/lib/search/settings-registry.ts	Show Project Name in Top Bar
-apps/settings/src/lib/search/settings-registry.ts	Show window-control headers on single tiled windows
 apps/settings/src/lib/search/settings-registry.ts	Slide
-apps/settings/src/lib/search/settings-registry.ts	Smart Gaps
-apps/settings/src/lib/search/settings-registry.ts	Space between tiled windows
-apps/settings/src/lib/search/settings-registry.ts	Stack Similar
-apps/settings/src/lib/search/settings-registry.ts	Start Zoom on Login
-apps/settings/src/lib/search/settings-registry.ts	Store notifications in a history panel
-apps/settings/src/lib/search/settings-registry.ts	Super+Scroll to zoom in / out
-apps/settings/src/lib/search/settings-registry.ts	Suppress in Fullscreen
-apps/settings/src/lib/search/settings-registry.ts	Swap left and right mouse buttons
-apps/settings/src/lib/search/settings-registry.ts	Switch and move windows between workspaces
-apps/settings/src/lib/search/settings-registry.ts	Switch between light and dark theme
-apps/settings/src/lib/search/settings-registry.ts	System Keys
-apps/settings/src/lib/search/settings-registry.ts	Tap to Click
-apps/settings/src/lib/search/settings-registry.ts	Theme Mode
-apps/settings/src/lib/search/settings-registry.ts	Thickness of window borders
-apps/settings/src/lib/search/settings-registry.ts	Tiled Window Headers
-apps/settings/src/lib/search/settings-registry.ts	Tiling Shortcuts
-apps/settings/src/lib/search/settings-registry.ts	Toast Animation
-apps/settings/src/lib/search/settings-registry.ts	Toast Duration (High Priority)
-apps/settings/src/lib/search/settings-registry.ts	Toast Duration (Normal)
-apps/settings/src/lib/search/settings-registry.ts	Toast Position
-apps/settings/src/lib/search/settings-registry.ts	Toggle tiling mode, monocle, scratchpad, and floating windows
 apps/settings/src/lib/search/settings-registry.ts	Top Center
 apps/settings/src/lib/search/settings-registry.ts	Top Left
 apps/settings/src/lib/search/settings-registry.ts	Top Right
 apps/settings/src/lib/search/settings-registry.ts	Total Silence
-apps/settings/src/lib/search/settings-registry.ts	Touchpad Acceleration
-apps/settings/src/lib/search/settings-registry.ts	Turn the AI assistant on or off
-apps/settings/src/lib/search/settings-registry.ts	Two-Finger Scroll
-apps/settings/src/lib/search/settings-registry.ts	Unfocused Window Border
 apps/settings/src/lib/search/settings-registry.ts	Vertical
-apps/settings/src/lib/search/settings-registry.ts	Volume Keys
-apps/settings/src/lib/search/settings-registry.ts	Volume up / down / mute / mute microphone commands
-apps/settings/src/lib/search/settings-registry.ts	What the assistant may do on its own, per behaviour
-apps/settings/src/lib/search/settings-registry.ts	Where notification toasts appear on screen
-apps/settings/src/lib/search/settings-registry.ts	Where the daemon scans for project markers
-apps/settings/src/lib/search/settings-registry.ts	Whether the assistant service and network gate are running
-apps/settings/src/lib/search/settings-registry.ts	Which apps can reach your data, and what you have allowed
-apps/settings/src/lib/search/settings-registry.ts	Window Gaps
-apps/settings/src/lib/search/settings-registry.ts	Window Rules
-apps/settings/src/lib/search/settings-registry.ts	Workspace Layout
-apps/settings/src/lib/search/settings-registry.ts	Workspace Shortcuts
-apps/settings/src/lib/search/settings-registry.ts	Zoom Increment
-apps/settings/src/lib/search/settings-registry.ts	Zoom Movement
 apps/settings/src/lib/stores/appSettings.ts	Accent colour
 apps/settings/src/lib/stores/appSettings.ts	Advanced
 apps/settings/src/lib/stores/appSettings.ts	Appearance

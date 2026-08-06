@@ -16,5 +16,16 @@ const messages: Catalogs = {
   de: { ...a.de, ...b.de },
 };
 
+/// The language the catalog is authored in.
+///
+/// Exported because search matches against it as well as the shown language:
+/// somebody who learned a setting's English name goes looking for it by that name
+/// in a German UI. A lookup in this locale's entries is the source text.
+export const SOURCE_LOCALE = "en";
+
+/// The raw catalog, for the few consumers that need a specific locale's text
+/// rather than the reactive translator.
+export const CATALOGS = messages;
+
 /// The bound translator: `$t("s.key", params?)`, reactive to `locale`.
 export const t = createTranslator(messages);
