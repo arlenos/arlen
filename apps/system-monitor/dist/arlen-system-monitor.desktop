@@ -12,3 +12,10 @@ Categories=System;Monitor;
 Keywords=process;cpu;memory;load;task;
 Keywords[de]=prozess;speicher;last;
 StartupNotify=true
+# The identity the permission system keys on. The resolver maps a canonical
+# /usr/bin/arlen-{name} binary to {name}, so the profile, the audit actor and
+# every capability check for this app say `system-monitor` - while the desktop-id this
+# file would otherwise imply is its basename, `arlen-system-monitor`. Stating it here
+# keeps the launcher's idea of who this app is identical to the daemons',
+# rather than two names for one app that only diverge under confinement.
+X-Arlen-AppId=system-monitor
