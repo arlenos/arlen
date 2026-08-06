@@ -35,6 +35,9 @@
 
 use std::path::PathBuf;
 
+/// Where the shared vector table lives, relative to this file.
+const VECTOR_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../dev/fixtures/sensing-vectors");
+
 /// The file holding the user's switch positions.
 ///
 /// User intent rather than machine state - somebody flicked a switch - so it
@@ -288,5 +291,46 @@ mod file_tests {
             None => unsafe { std::env::remove_var("XDG_CONFIG_HOME") },
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod vector_tests {
+    use super::*;
+
+    /// Every implementation of this predicate runs against the same table of
+    /// files, held at `dev/fixtures/sensing-vectors/`. The copies are not merged -
+    /// a cross-repo release dependency for four lines costs more than it buys -
+    /// so what keeps them from diverging is that all three answer this table.
+    ///
+    /// The expected reading is the part of each filename before `__`, so a case is
+    /// added by dropping in a file and no code changes anywhere.
+    #[test]
+    fn every_reader_agrees_with_the_shared_vector_table() {
+        let dir = std::path::Path::new(VECTOR_DIR);
+        let entries: Vec<_> = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("vector table missing at {}: {e}", dir.display()))
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "toml"))
+            .collect();
+        assert!(entries.len() >= 12, "the table lost cases: {} left", entries.len());
+
+        for entry in entries {
+            let path = entry.path();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            let (want, _) = name.split_once("__").unwrap_or_else(|| {
+                panic!("vector {name} is not named <expected>__<case>.toml")
+            });
+            let text = std::fs::read_to_string(&path).unwrap();
+            let got = read_key(&text, "screen_capture");
+            let expected = match want {
+                "off" => Reading::Off,
+                "on" => Reading::On,
+                "not-stated" => Reading::NotStated,
+                "unreadable" => Reading::Unreadable,
+                other => panic!("vector {name} claims an answer nobody defines: {other}"),
+            };
+            assert_eq!(got, expected, "{name}");
+        }
     }
 }
