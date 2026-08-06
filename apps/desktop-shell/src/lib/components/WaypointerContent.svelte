@@ -885,8 +885,10 @@
               >
                 <WaypointerResult
                   icon={Settings2}
-                  title={qa.title}
-                  description={qa.description}
+                  title={qa.title_key ? $t(qa.title_key) : qa.title}
+                  description={qa.description_key
+                    ? $t(qa.description_key)
+                    : qa.description}
                 />
               </CommandItem>
             {/each}

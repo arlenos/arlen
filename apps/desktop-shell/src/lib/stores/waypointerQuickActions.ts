@@ -14,6 +14,10 @@ import { invoke } from "@tauri-apps/api/core";
 
 export interface QuickActionResult {
   id: string;
+  /// Message ids, because the plugin runs where the reader's language is
+  /// unknown. Absent for a third-party plugin's own words.
+  title_key?: string | null;
+  description_key?: string | null;
   title: string;
   description: string | null;
   icon: string | null;

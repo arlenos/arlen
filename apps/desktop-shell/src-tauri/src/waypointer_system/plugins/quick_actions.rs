@@ -26,8 +26,6 @@ struct QuickAction {
     /// Stable identifier shipped to the frontend in `Action::Custom.data.id`.
     /// `quick_action_run` switches on this string.
     id: &'static str,
-    title: &'static str,
-    description: &'static str,
     /// freedesktop icon name. Frontend resolves through the
     /// existing `lucide-svelte` icon set when possible.
     icon: &'static str,
@@ -45,57 +43,41 @@ const ACTIONS: &[QuickAction] = &[
     // Codex review's audit of cascading state).
     QuickAction {
         id: "qa.dnd_enable",
-        title: "Enable Do Not Disturb",
-        description: "Suppress notifications until disabled",
         icon: "bell-off",
         keywords: &["dnd", "do not disturb", "silent", "mute notifications", "enable"],
     },
     QuickAction {
         id: "qa.dnd_disable",
-        title: "Disable Do Not Disturb",
-        description: "Resume normal notifications",
         icon: "bell",
         keywords: &["dnd", "do not disturb", "disable", "resume", "unmute"],
     },
     QuickAction {
         id: "qa.toggle_night_light",
-        title: "Toggle Night Light",
-        description: "Warm-tint screen for evening reading",
         icon: "moon",
         keywords: &["night", "light", "warm", "evening", "blue light"],
     },
     QuickAction {
         id: "qa.toggle_airplane",
-        title: "Toggle Airplane Mode",
-        description: "Disable WiFi and Bluetooth",
         icon: "plane",
         keywords: &["airplane", "flight", "plane", "offline"],
     },
     QuickAction {
         id: "qa.toggle_wifi",
-        title: "Toggle WiFi",
-        description: "Enable or disable wireless networking",
         icon: "wifi",
         keywords: &["wifi", "wireless", "network"],
     },
     QuickAction {
         id: "qa.toggle_bluetooth",
-        title: "Toggle Bluetooth",
-        description: "Enable or disable the Bluetooth adapter",
         icon: "bluetooth",
         keywords: &["bluetooth", "bt"],
     },
     QuickAction {
         id: "qa.toggle_caffeine",
-        title: "Toggle Caffeine",
-        description: "Prevent the system from sleeping",
         icon: "coffee",
         keywords: &["caffeine", "sleep", "stay awake", "presentation"],
     },
     QuickAction {
         id: "qa.toggle_recording",
-        title: "Toggle Screen Recording",
-        description: "Start or stop wf-recorder",
         icon: "video",
         keywords: &["screen", "recording", "record", "video", "capture"],
     },
@@ -103,15 +85,11 @@ const ACTIONS: &[QuickAction] = &[
     // ── Theme switches (explicit, not toggle) ────────────────────────
     QuickAction {
         id: "qa.theme_dark",
-        title: "Switch to Dark Theme",
-        description: "Apply the built-in dark theme",
         icon: "moon",
         keywords: &["dark", "theme", "night mode"],
     },
     QuickAction {
         id: "qa.theme_light",
-        title: "Switch to Light Theme",
-        description: "Apply the built-in light theme",
         icon: "sun",
         keywords: &["light", "theme", "day mode"],
     },
@@ -119,43 +97,31 @@ const ACTIONS: &[QuickAction] = &[
     // ── Settings launchers ───────────────────────────────────────────
     QuickAction {
         id: "qa.open_settings",
-        title: "Open Settings",
-        description: "Launch the Arlen Settings app",
         icon: "settings",
         keywords: &["settings", "preferences", "config"],
     },
     QuickAction {
         id: "qa.open_settings_appearance",
-        title: "Settings: Appearance",
-        description: "Theme, accent color, fonts",
         icon: "palette",
         keywords: &["appearance", "theme", "color", "fonts"],
     },
     QuickAction {
         id: "qa.open_settings_display",
-        title: "Settings: Display",
-        description: "Monitors, resolution, night light",
         icon: "monitor",
         keywords: &["display", "monitor", "resolution", "night light"],
     },
     QuickAction {
         id: "qa.open_settings_keyboard",
-        title: "Settings: Keyboard",
-        description: "Layout and shortcuts",
         icon: "keyboard",
         keywords: &["keyboard", "shortcut", "layout"],
     },
     QuickAction {
         id: "qa.open_settings_focus",
-        title: "Settings: Focus Mode",
-        description: "Project detection and suppressed apps",
         icon: "crosshair",
         keywords: &["focus", "project", "concentration", "do not disturb"],
     },
     QuickAction {
         id: "qa.open_settings_notifications",
-        title: "Settings: Notifications",
-        description: "DND, per-app rules, toast appearance",
         icon: "bell",
         keywords: &["notifications", "alerts", "dnd", "toast"],
     },
@@ -203,11 +169,15 @@ impl WaypointerPlugin for QuickActionsPlugin {
         results
             .into_iter()
             .map(|(score, action)| SearchResult {
-                title_key: None,
-                description_key: None,
+                // Ids: the name and the one-liner are ours, and this process
+                // does not know the reader's language. `qa.toggle_wifi` becomes
+                // `s.wp.qa.toggle_wifi`, so the action list is the message list.
+                title_key: Some(format!("s.wp.{}", action.id)),
+                description_key: Some(format!("s.wp.{}.desc", action.id)),
                 id: action.id.into(),
-                title: action.title.into(),
-                description: Some(action.description.into()),
+                // Only reached if the shell's catalog is missing the message.
+                title: action.id.into(),
+                description: None,
                 icon: Some(action.icon.into()),
                 relevance: score,
                 action: Action::Custom {
@@ -263,6 +233,27 @@ mod tests {
     /// Catalog-coverage smoke: a dozen common queries each return
     /// at least one matching action. Catches regressions when a
     /// keyword gets removed or renamed.
+    /// Every quick action must have a name and a one-liner in the shell catalog.
+    ///
+    /// Nothing here breaks if one is missing; the Waypointer would list
+    /// `s.wp.qa.toggle_wifi` as a result. The id-scanner cannot catch it, because
+    /// the id is minted in Rust and appears in no Svelte file.
+    #[test]
+    fn every_quick_action_has_a_name_in_the_catalog() {
+        let catalog = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../src/lib/i18n/messages.ts"
+        ))
+        .expect("the shell catalog");
+
+        let missing: Vec<String> = ACTIONS
+            .iter()
+            .flat_map(|a| [format!("s.wp.{}", a.id), format!("s.wp.{}.desc", a.id)])
+            .filter(|key| !catalog.contains(&format!("\"{key}\":")))
+            .collect();
+        assert!(missing.is_empty(), "no message for: {missing:?}");
+    }
+
     #[test]
     fn catalog_covers_common_keywords() {
         let p = QuickActionsPlugin;
