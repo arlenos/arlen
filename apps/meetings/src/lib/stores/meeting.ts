@@ -128,7 +128,16 @@ export async function openMeeting(id: string): Promise<void> {
   speakerNames.set({});
   try {
     const note = await invoke<MeetingNote>("meeting_note", { id });
-    meeting.set({ humanNotes: "", note, mocked: false });
+    // Without the user's own lines the two-voice merge silently degrades to a
+    // flat AI summary, so load them alongside the note; an app that never
+    // stored any gets an empty string either way.
+    let humanNotes = "";
+    try {
+      humanNotes = await invoke<string>("meeting_human_notes", { id });
+    } catch {
+      // The note still renders; every claim falls into the unanchored bucket.
+    }
+    meeting.set({ humanNotes, note, mocked: false });
   } catch {
     meeting.set({ humanNotes: FIXTURE.humanNotes, note: FIXTURE.note, mocked: true });
   }

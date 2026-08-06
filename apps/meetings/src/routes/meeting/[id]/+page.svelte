@@ -6,7 +6,7 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
-  import { ArrowLeft, SquareArrowOutUpRight } from "lucide-svelte";
+  import { SquareArrowOutUpRight } from "lucide-svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import MeetingShell from "$lib/components/MeetingShell.svelte";
   import NotesMerged from "$lib/components/NotesMerged.svelte";
@@ -35,15 +35,10 @@
     {@const m = $meeting}
     <MeetingShell>
       {#snippet head()}
+        <!-- The inset header names the note; this head carries only the meta
+             and the actions, so the title is said once. -->
         <div class="note-head">
-          <button type="button" class="back" id="back" onclick={() => goto("/")}>
-            <ArrowLeft size={15} strokeWidth={2} />
-            {$t("mt.back")}
-          </button>
-          <div class="head-text">
-            <h1 class="title">{m.note.title}</h1>
-            <p class="meta">{m.note.participants.join(", ")}</p>
-          </div>
+          <p class="meta">{m.note.participants.join(", ")}</p>
           <Button variant="ghost" size="sm" class="text-muted-foreground" id="open-editor" onclick={openInEditor}>
             <SquareArrowOutUpRight size={14} strokeWidth={1.75} />
             {$t("mt.open")}
@@ -92,38 +87,10 @@
     align-items: center;
     gap: 1rem;
   }
-  .back {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-shrink: 0;
-    padding: 0.3rem 0.6rem;
-    border: none;
-    border-radius: var(--radius-input);
-    background: transparent;
-    font-size: var(--text-xs);
-    color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
-    cursor: pointer;
-  }
-  .back:hover {
-    background: color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
-    color: var(--color-fg-primary);
-  }
-  .head-text {
+  .meta {
+    margin: 0;
     flex: 1;
     min-width: 0;
-  }
-  .title {
-    margin: 0;
-    font-size: var(--text-base);
-    font-weight: 600;
-    color: var(--color-fg-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .meta {
-    margin: 0.1rem 0 0;
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
