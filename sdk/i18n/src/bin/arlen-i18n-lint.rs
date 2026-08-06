@@ -590,7 +590,7 @@ fn collect_svelte(root: &Path, out: &mut Vec<PathBuf>) {
                 continue;
             }
             collect_svelte(&path, out);
-        } else if is_scannable(&name) {
+        } else if is_scannable(&name) && !is_kit_dev_surface(&path) {
             out.push(path);
         }
     }
@@ -611,6 +611,56 @@ fn is_scannable(name: &str) -> bool {
         || name.ends_with(".spec.ts")
         || name.ends_with(".test.svelte")
         || name.ends_with(".d.ts"))
+}
+
+/// The kit's own dev surfaces, which render for a developer and not for a user.
+///
+/// Weaker ground than the test-file rule above, and the difference matters. A test
+/// file can never be built into an app; that is a property of what it is. These are
+/// ordinary routes in a shipped package, skipped only because no app imports them
+/// TODAY. That is a fact about the current tree rather than about the files, and it
+/// can change without anyone noticing, at which point the exclusion is hiding real
+/// user-facing strings.
+///
+/// So [`kit_dev_surfaces_are_unimported`] checks the premise on every run: if an app
+/// ever imports one of these, the exclusion fails loudly instead of quietly
+/// covering less.
+const KIT_DEV_SURFACES: &[&str] = &[
+    "sdk/ui-kit/src/routes/",
+    "sdk/ui-kit/src/lib/components/a11y-kitchen.svelte",
+];
+
+fn is_kit_dev_surface(path: &Path) -> bool {
+    let p = path.to_string_lossy().replace('\\', "/");
+    KIT_DEV_SURFACES.iter().any(|s| p.contains(s))
+}
+
+/// What an app would have to write to reach one of the skipped surfaces. The kit is
+/// consumed as `@arlen/ui-kit/...`, and its routes are not part of that surface at
+/// all, so any of these appearing in an app is the premise breaking.
+const KIT_DEV_IMPORTS: &[&str] = &["a11y-kitchen", "ui-kit/src/routes", "@arlen/ui-kit/routes"];
+
+/// Fail if an app imports a surface the scan skips.
+///
+/// Returns the offending (file, marker) pairs. Empty is the healthy state and the
+/// only one in which skipping those files is honest.
+fn kit_dev_surfaces_are_unimported(files: &[PathBuf]) -> Vec<(String, &'static str)> {
+    let mut out = Vec::new();
+    for path in files {
+        let rel = path.to_string_lossy().replace('\\', "/");
+        // Only apps can break the premise. The kit importing its own dev route is
+        // what a dev route is for.
+        if !rel.contains("apps/") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(path) else { continue };
+        for marker in KIT_DEV_IMPORTS {
+            if text.contains(marker) {
+                out.push((rel.clone(), *marker));
+            }
+        }
+    }
+    out
 }
 
 /// The baseline key for a finding: `relative/path.svelte\ttext`. Line is excluded
@@ -667,6 +717,22 @@ fn main() -> ExitCode {
         collect_svelte(root, &mut files);
     }
     files.sort();
+
+    // The scan skips the kit's dev routes on the premise that no app pulls one in.
+    // Check it rather than assume it: an exclusion that quietly stops being true is
+    // a gate covering less than its output claims.
+    let imported = kit_dev_surfaces_are_unimported(&files);
+    if !imported.is_empty() {
+        eprintln!(
+            "arlen-i18n-lint: an app reaches a ui-kit dev surface, which the scan skips.\n\
+             Those files are excluded only because nothing ships them. Either drop the\n\
+             import, or remove the path from KIT_DEV_SURFACES so its strings are checked:"
+        );
+        for (file, marker) in &imported {
+            eprintln!("  {file}: {marker}");
+        }
+        return ExitCode::from(2);
+    }
 
     let mut current: BTreeSet<String> = BTreeSet::new();
     let mut report: Vec<(String, usize, String)> = Vec::new();

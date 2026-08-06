@@ -1,3 +1,10 @@
+apps/desktop-shell/src/lib/components/AudioPopover.svelte	Audio input device
+apps/desktop-shell/src/lib/components/AudioPopover.svelte	Audio output device
+apps/desktop-shell/src/lib/components/AudioPopover.svelte	Input volume
+apps/desktop-shell/src/lib/components/AudioPopover.svelte	Output volume
+apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Inner gap
+apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Title bars on tiled windows
+apps/desktop-shell/src/lib/components/MprisPopover.svelte	Seek
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	A4
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	Legal
@@ -11,6 +18,7 @@ apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Tab
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	hjkl
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	to enable some.
+apps/desktop-shell/src/lib/components/UndoIndicator.svelte	Recent actions and undo
 apps/desktop-shell/src/lib/components/WorkspaceIndicator.svelte	[overlay] scheduleClose blocked (ctxOpen={} domMenu={})
 apps/desktop-shell/src/lib/stores/consent.ts	connect to its sync service
 apps/desktop-shell/src/lib/stores/consent.ts	install system software with admin rights
@@ -99,6 +107,7 @@ apps/greeter/src/lib/components/PowerMenu.svelte	Restart
 apps/greeter/src/lib/components/PowerMenu.svelte	Shut down
 apps/greeter/src/lib/components/PowerMenu.svelte	Suspend
 apps/greeter/src/lib/components/ProfileRow.svelte	Choose a profile
+apps/greeter/src/lib/components/SessionSelect.svelte	Choose a session
 apps/greeter/src/routes/+page.svelte	Login is not reachable right now.
 apps/greeter/src/routes/+page.svelte	No profiles are set up on this device.
 apps/greeter/src/routes/+page.svelte	Starting
@@ -238,15 +247,29 @@ apps/settings/src/lib/components/appearance/ModuleCard.svelte	Manifest warnings
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Settings
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
+apps/settings/src/lib/components/displays/BrightnessSection.svelte	Brightness
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Adaptive sync
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Mirror target
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Refresh rate
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Resolution
+apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Rotation
+apps/settings/src/lib/components/displays/NightLightSection.svelte	Color temperature
+apps/settings/src/lib/components/displays/NightLightSection.svelte	Custom end time
 apps/settings/src/lib/components/displays/NightLightSection.svelte	Custom hours
+apps/settings/src/lib/components/displays/NightLightSection.svelte	Custom start time
+apps/settings/src/lib/components/displays/NightLightSection.svelte	Latitude
+apps/settings/src/lib/components/displays/NightLightSection.svelte	Longitude
+apps/settings/src/lib/components/displays/NightLightSection.svelte	Night light schedule
 apps/settings/src/lib/components/displays/NightLightSection.svelte	Off (manual toggle only)
 apps/settings/src/lib/components/displays/NightLightSection.svelte	Sunset to sunrise
 apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Open Waypointer
 apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Toggle Waypointer
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Float
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Invalid regex
+apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Match dialog windows
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Tile
+apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Window rule action
 apps/settings/src/lib/search/settings-registry.ts	AI behaviours
 apps/settings/src/lib/search/settings-registry.ts	AI model provider
 apps/settings/src/lib/search/settings-registry.ts	Accent Color
@@ -499,9 +522,17 @@ apps/settings/src/routes/appearance/+page.svelte	System
 apps/settings/src/routes/appearance/+page.svelte	Toolkits
 apps/settings/src/routes/appearance/+page.svelte	Typography
 apps/settings/src/routes/appearance/+page.svelte	Wallpaper
+apps/settings/src/routes/appearance/geometry/+page.svelte	Smart gaps
+apps/settings/src/routes/appearance/motion-depth/+page.svelte	Blur
+apps/settings/src/routes/appearance/motion-depth/+page.svelte	Fast
+apps/settings/src/routes/appearance/motion-depth/+page.svelte	Reduce motion
+apps/settings/src/routes/appearance/motion-depth/+page.svelte	Slow
+apps/settings/src/routes/appearance/motion-depth/+page.svelte	Speed
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	Quick Settings layout restored to defaults.
 apps/settings/src/routes/appearance/system/+page.svelte	$ ls --color
+apps/settings/src/routes/appearance/system/+page.svelte	Cursor size
 apps/settings/src/routes/appearance/system/+page.svelte	README.md
+apps/settings/src/routes/appearance/system/+page.svelte	System sounds
 apps/settings/src/routes/appearance/system/+page.svelte	arlen@desktop
 apps/settings/src/routes/appearance/system/+page.svelte	build
 apps/settings/src/routes/appearance/system/+page.svelte	build failed
@@ -512,10 +543,12 @@ apps/settings/src/routes/appearance/system/+page.svelte	error:
 apps/settings/src/routes/appearance/system/+page.svelte	src
 apps/settings/src/routes/appearance/system/+page.svelte	warning:
 apps/settings/src/routes/appearance/system/+page.svelte	~/src
+apps/settings/src/routes/appearance/typography/+page.svelte	Base size
 apps/settings/src/routes/appearance/typography/+page.svelte	Body text
 apps/settings/src/routes/appearance/typography/+page.svelte	Bold
 apps/settings/src/routes/appearance/typography/+page.svelte	Emphasis and labels
 apps/settings/src/routes/appearance/typography/+page.svelte	Headings
+apps/settings/src/routes/appearance/typography/+page.svelte	Line height
 apps/settings/src/routes/appearance/typography/+page.svelte	Medium
 apps/settings/src/routes/appearance/typography/+page.svelte	Normal
 apps/settings/src/routes/appearance/typography/+page.svelte	const answer = 42;
@@ -557,6 +590,7 @@ apps/settings/src/routes/system-actions/+page.svelte	shell:event_name
 apps/settings/src/routes/system-actions/+page.svelte	spawn:command
 apps/settings/src/routes/topbar/+page.svelte	Arlen
 apps/settings/src/routes/windows-apps/+page.svelte	A shared bottle
+apps/settings/src/routes/windows-apps/+page.svelte	Default compatibility version
 apps/settings/src/routes/windows-apps/+page.svelte	Fullscreen
 apps/settings/src/routes/windows-apps/+page.svelte	Its own bottle
 apps/settings/src/routes/windows-apps/+page.svelte	Windowed
@@ -594,3 +628,7 @@ apps/viewers/src/lib/components/ViewerMenu.svelte	German
 apps/viewers/src/lib/components/ViewerMenu.svelte	Space
 apps/viewers/src/lib/components/ViewerMenu.svelte	film.en.srt
 apps/viewers/src/lib/mock.ts	Nightswim
+sdk/ui-kit/src/lib/components/ui/chip-list/chip-list.svelte	Add…
+sdk/ui-kit/src/lib/components/ui/confirm-dialog/confirm-dialog.svelte	Confirm
+sdk/ui-kit/src/lib/components/ui/directory-picker/directory-picker.svelte	Choose Folder
+sdk/ui-kit/src/lib/components/ui/popover-select/popover-select.svelte	None
