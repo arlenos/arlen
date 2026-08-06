@@ -23,6 +23,7 @@ pub mod picker;
 pub mod printers;
 pub mod privacy;
 pub mod search;
+pub mod sensing;
 pub mod theme;
 pub mod url;
 pub mod values;
