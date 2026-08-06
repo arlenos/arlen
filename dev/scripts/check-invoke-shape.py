@@ -269,7 +269,11 @@ BUILD_DIRS = {"target", "node_modules", "mkosi.builddir", ".git", ".svelte-kit",
 # unattributed entry is not a pass, it is a triage item that has been seen.
 DEAD_INVOKES: dict[str, str] = {
     # the recent-actions panel; the shell-side read + enact over the undo signer. coder owes it - fetch_recent and join_rows (2 Aug) are most of the read
-    "undo_read": "the recent-actions panel; the shell-side read + enact over the undo signer. coder owes it",
+    # The backend half exists and is declared unreached from the other side:
+    # `daemons/ai-engine-daemon/undo_history` sits in `KNOWN_UNREACHED` in
+    # dev/integration because nothing calls it, and nothing calls it because this
+    # command does not exist. Implementing it must delete BOTH entries.
+    "undo_read": "the recent-actions panel; fetch_recent + join_rows are most of the read, waiting on ids-not-prose",
     "undo_enact": "the recent-actions panel; the shell-side read + enact over the undo signer. coder owes it",
     # capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet - coder, target build
     "list_capture_sources": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
