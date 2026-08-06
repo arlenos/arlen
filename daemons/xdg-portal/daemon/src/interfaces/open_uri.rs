@@ -179,7 +179,17 @@ fn file_uri_authorized_with_prefix(
     let Ok(path) = parse_file_uri(uri) else {
         return false;
     };
-    path.starts_with(mount)
+    // `starts_with` alone is a string comparison, and a symlink INSIDE the mount
+    // pointing outside it satisfies it while resolving anywhere on the host. So
+    // both sides are resolved before comparing: the mount too, because a
+    // canonical path measured against a symlinked mount prefix would wrongly
+    // fail. Either resolution failing - the file is gone, a component is not
+    // traversable, the mount does not exist - refuses; a path we cannot resolve
+    // is a path we cannot vouch for.
+    let (Ok(real_path), Ok(real_mount)) = (path.canonicalize(), mount.canonicalize()) else {
+        return false;
+    };
+    real_path.starts_with(real_mount)
 }
 
 /// Sandbox-authorisation gate for `file://` URIs. See the
@@ -621,28 +631,92 @@ mod tests {
         ));
     }
 
-    /// Sandboxed callers (Flatpak, Snap) only get `file://` URIs
-    /// that resolve inside the Document Portal mount. Tested
-    /// through the pure helper with an explicit mount path.
+    /// Sandboxed callers (Flatpak, Snap) only get `file://` URIs that resolve
+    /// inside the Document Portal mount.
+    ///
+    /// Against a REAL directory, because the check resolves both sides: a test
+    /// over invented paths would pass against a version that never looks at the
+    /// filesystem, which is precisely the version that missed the symlink below.
     #[test]
     fn file_uri_sandboxed_only_doc_portal() {
         let id = CallerIdentity::Flatpak {
             app_id: "org.gnome.Calculator".into(),
         };
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join("doc");
+        std::fs::create_dir_all(mount.join("abc")).unwrap();
+        let inside = mount.join("abc/report.pdf");
+        std::fs::write(&inside, b"report").unwrap();
+        let outside = dir.path().join("secret.txt");
+        std::fs::write(&outside, b"not for the app").unwrap();
+
         assert!(file_uri_authorized_with_prefix(
-            "file:///run/user/1000/doc/abc/report.pdf",
+            &format!("file://{}", inside.display()),
             &id,
-            doc_mount()
+            Some(&mount)
         ));
         assert!(!file_uri_authorized_with_prefix(
-            "file:///home/user/Documents/report.pdf",
+            &format!("file://{}", outside.display()),
             &id,
-            doc_mount()
+            Some(&mount)
         ));
         assert!(!file_uri_authorized_with_prefix(
             "file:///etc/passwd",
             &id,
-            doc_mount()
+            Some(&mount)
+        ));
+    }
+
+    /// The reason the check resolves rather than compares strings: a symlink
+    /// sitting inside the mount, pointing out of it. Its NAME is under the mount
+    /// and satisfies any prefix test; what it opens is not. The Document Portal
+    /// hands out app-scoped paths, so a link placed there is exactly the shape an
+    /// escape would take.
+    #[test]
+    fn a_symlink_inside_the_mount_cannot_reach_outside_it() {
+        let id = CallerIdentity::Flatpak {
+            app_id: "org.gnome.Calculator".into(),
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join("doc");
+        std::fs::create_dir_all(&mount).unwrap();
+        let secret = dir.path().join("secret.txt");
+        std::fs::write(&secret, b"not for the app").unwrap();
+
+        let escape = mount.join("looks-innocent.txt");
+        std::os::unix::fs::symlink(&secret, &escape).unwrap();
+        // The name really is under the mount, so the old string test said yes.
+        assert!(escape.starts_with(&mount));
+
+        assert!(
+            !file_uri_authorized_with_prefix(
+                &format!("file://{}", escape.display()),
+                &id,
+                Some(&mount)
+            ),
+            "a link out of the mount must not be authorised by its name"
+        );
+    }
+
+    /// And a symlink that stays inside the mount is still fine - resolving must
+    /// not turn into refusing every link.
+    #[test]
+    fn a_symlink_within_the_mount_is_still_authorised() {
+        let id = CallerIdentity::Flatpak {
+            app_id: "org.gnome.Calculator".into(),
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join("doc");
+        std::fs::create_dir_all(mount.join("abc")).unwrap();
+        let real = mount.join("abc/report.pdf");
+        std::fs::write(&real, b"report").unwrap();
+        let link = mount.join("shortcut.pdf");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        assert!(file_uri_authorized_with_prefix(
+            &format!("file://{}", link.display()),
+            &id,
+            Some(&mount)
         ));
     }
 
