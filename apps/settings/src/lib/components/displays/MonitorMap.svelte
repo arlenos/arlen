@@ -16,6 +16,8 @@
   import { get } from "svelte/store";
   import { Star } from "lucide-svelte";
   import { t } from "$lib/i18n/messages";
+  import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
+  import { mark } from "@arlen/ui-kit/i18n/rich";
 
   interface Props {
     /** Per-connector draft config the panel is currently editing. */
@@ -235,7 +237,9 @@
   {#if $monitorsStore.length === 0}
     <div class="empty">
       <p class="empty-text">
-        {$t("s.monitor.noDisplays.pre")} <code>wlr-output-management</code> {$t("s.monitor.noDisplays.post")}
+        <Rich text={$t("s.monitor.noDisplays", { proto: mark("proto") })}>
+          {#snippet proto()}<code>wlr-output-management</code>{/snippet}
+        </Rich>
       </p>
     </div>
   {:else}

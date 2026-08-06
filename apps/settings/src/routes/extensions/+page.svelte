@@ -19,6 +19,8 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { IconAction } from "@arlen/ui-kit/components/ui/icon-action";
   import { t } from "$lib/i18n/messages";
+  import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
+  import { mark } from "@arlen/ui-kit/i18n/rich";
   import ModuleCard from "$lib/components/appearance/ModuleCard.svelte";
   import { modules, moduleGroups } from "$lib/stores/modules";
 
@@ -95,7 +97,10 @@
       </div>
       <h2>{$t("s.ext.noModules")}</h2>
       <p>
-        {$t("s.ext.install.pre")} <code>forage install</code>{$t("s.ext.install.mid")}<code>{USER_MODULES_DIR}</code>{$t("s.ext.install.post")}
+        <Rich text={$t("s.ext.install", { cmd: mark("cmd"), dir: mark("dir") })}>
+          {#snippet cmd()}<code>forage install</code>{/snippet}
+          {#snippet dir()}<code>{USER_MODULES_DIR}</code>{/snippet}
+        </Rich>
       </p>
       <a
         class="empty-link"
@@ -133,7 +138,9 @@
 
       {#if filter && filteredGroups.length === 0}
         <div class="empty small">
-          {$t("s.ext.noMatchPre")}<strong>{filter}</strong>{$t("s.ext.noMatchPost")}
+          <Rich text={$t("s.ext.noMatch", { term: mark("term") })}>
+            {#snippet term()}<strong>{filter}</strong>{/snippet}
+          </Rich>
         </div>
       {/if}
     </div>
