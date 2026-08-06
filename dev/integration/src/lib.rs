@@ -1296,6 +1296,15 @@ mod module_reachability {
         // instead of a `String`, so the writer says whether an error is
         // transient rather than leaving the host to guess from its text.
         "daemons/bridge-ingest/auth",
+        // The undo/audit join built 2 Aug: `fetch_recent` reads the signer's
+        // recent entries, `join_rows` pairs them with the audit ledger by call
+        // chain. Nothing reaches it because the shell-side `undo_read` does not
+        // exist - it is an entry on the dead-invoke list in
+        // `dev/scripts/check-invoke-shape.py`, waiting on the decision that the
+        // command returns ids for the panel to translate rather than prose.
+        // Two gates now point at this same gap from opposite directions, which is
+        // the reason not to wire it hastily to turn one of them green.
+        "daemons/ai-engine-daemon/undo_history",
         // Surfaced once the matcher stopped taking another crate's module name
         // as evidence. Each is real work waiting on the piece that would call
         // it, named here rather than deleted, because deleting a tested core to
