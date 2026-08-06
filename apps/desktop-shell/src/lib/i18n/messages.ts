@@ -126,6 +126,23 @@ const messages: Catalogs = {
     "sh.bt.pairedDevices": "Paired Devices",
     "sh.bt.available": "Available",
 
+    // BlueZ pairing. The device name is the device's own, never translated.
+    "sh.bt.pair.confirmTitle": "Pair with {$device}?",
+    "sh.bt.pair.pinTitle": "Enter PIN for {$device}",
+    "sh.bt.pair.passkeyTitle": "Enter passkey for {$device}",
+    "sh.bt.pair.displayTitle": "Pair with {$device}",
+    "sh.bt.pair.serviceTitle": "Allow {$device} to use {$service}?",
+    "sh.bt.pair.confirmBody": "Confirm that the same code is shown on the other device.",
+    "sh.bt.pair.pinBody": "1 to 16 characters. The PIN is set on the device itself.",
+    "sh.bt.pair.displayPinBody": "Type this PIN on the device.",
+    "sh.bt.pair.displayPasskeyBody": "Type this code on the device.",
+    "sh.bt.pair.authorizationBody": "An incoming pairing request without security verification.",
+    "sh.bt.pair.serviceBody": "Allow this service for as long as the device stays paired.",
+    "sh.bt.pair.pair": "Pair",
+    "sh.bt.pair.allow": "Allow",
+    "sh.bt.pair.deny": "Deny",
+    "sh.bt.pair.cancel": "Cancel",
+
     // Print dialog
     "sh.print.title": "Print",
     "sh.print.subtitle": "{$doc}, from {$app}",
@@ -519,6 +536,24 @@ const messages: Catalogs = {
     "sh.bt.connectedSection": "Verbunden",
     "sh.bt.pairedDevices": "Gekoppelte Ger\u00e4te",
     "sh.bt.available": "Verf\u00fcgbar",
+
+    "sh.bt.pair.confirmTitle": "Mit {$device} koppeln?",
+    "sh.bt.pair.pinTitle": "PIN f\u00fcr {$device} eingeben",
+    "sh.bt.pair.passkeyTitle": "Schl\u00fcssel f\u00fcr {$device} eingeben",
+    "sh.bt.pair.displayTitle": "Mit {$device} koppeln",
+    "sh.bt.pair.serviceTitle": "{$device} erlauben, {$service} zu nutzen?",
+    "sh.bt.pair.confirmBody": "Pr\u00fcf, ob auf dem anderen Ger\u00e4t derselbe Code steht.",
+    "sh.bt.pair.pinBody": "1 bis 16 Zeichen. Die PIN steht am Ger\u00e4t selbst.",
+    "sh.bt.pair.displayPinBody": "Gib diese PIN am Ger\u00e4t ein.",
+    "sh.bt.pair.displayPasskeyBody": "Gib diesen Code am Ger\u00e4t ein.",
+    "sh.bt.pair.authorizationBody":
+      "Eine eingehende Kopplungsanfrage ohne Sicherheitspr\u00fcfung.",
+    "sh.bt.pair.serviceBody":
+      "Diesen Dienst erlauben, solange das Ger\u00e4t gekoppelt bleibt.",
+    "sh.bt.pair.pair": "Koppeln",
+    "sh.bt.pair.allow": "Erlauben",
+    "sh.bt.pair.deny": "Ablehnen",
+    "sh.bt.pair.cancel": "Abbrechen",
 
     "sh.print.title": "Drucken",
     "sh.print.subtitle": "{$doc}, aus {$app}",

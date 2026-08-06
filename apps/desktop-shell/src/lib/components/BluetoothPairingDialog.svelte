@@ -54,40 +54,45 @@
     }
   });
 
+  // The device name goes in as a value, never concatenated: a title is one
+  // sentence per case, so a language that puts the device first can say so.
   function titleFor(req: PairRequest): string {
     switch (req.kind) {
       case "confirmation":
       case "authorization":
-        return `Pair with ${req.deviceName}?`;
+        return $t("sh.bt.pair.confirmTitle", { device: req.deviceName });
       case "pinCodeInput":
-        return `Enter PIN for ${req.deviceName}`;
+        return $t("sh.bt.pair.pinTitle", { device: req.deviceName });
       case "passkeyInput":
-        return `Enter passkey for ${req.deviceName}`;
+        return $t("sh.bt.pair.passkeyTitle", { device: req.deviceName });
       case "displayPinCode":
       case "displayPasskey":
-        return `Pair with ${req.deviceName}`;
+        return $t("sh.bt.pair.displayTitle", { device: req.deviceName });
       case "authorizeService":
-        return `Allow ${req.deviceName} to use ${req.uuidLabel}?`;
+        return $t("sh.bt.pair.serviceTitle", {
+          device: req.deviceName,
+          service: req.uuidLabel,
+        });
     }
   }
 
   function descriptionFor(req: PairRequest): string {
     switch (req.kind) {
       case "confirmation":
-        return "Confirm that the same code is shown on the other device.";
+        return $t("sh.bt.pair.confirmBody");
       case "pinCodeInput":
-        return "1 to 16 characters. The PIN is set on the device itself.";
+        return $t("sh.bt.pair.pinBody");
       case "passkeyInput":
         // The input's placeholder already shows the shape; no line needed.
         return "";
       case "displayPinCode":
-        return "Type this PIN on the device.";
+        return $t("sh.bt.pair.displayPinBody");
       case "displayPasskey":
-        return "Type this code on the device.";
+        return $t("sh.bt.pair.displayPasskeyBody");
       case "authorization":
-        return "An incoming pairing request without security verification.";
+        return $t("sh.bt.pair.authorizationBody");
       case "authorizeService":
-        return "Allow this service for as long as the device stays paired.";
+        return $t("sh.bt.pair.serviceBody");
     }
   }
 
@@ -138,10 +143,10 @@
       case "displayPasskey":
       case "pinCodeInput":
       case "passkeyInput":
-        return "Pair";
+        return $t("sh.bt.pair.pair");
       case "authorization":
       case "authorizeService":
-        return "Allow";
+        return $t("sh.bt.pair.allow");
     }
   }
 
@@ -151,7 +156,9 @@
   // kinds are a permission being refused - those keep Deny, matching the
   // consent dialogs.
   function rejectLabel(req: PairRequest): string {
-    return req.kind === "authorization" || req.kind === "authorizeService" ? "Deny" : "Cancel";
+    return req.kind === "authorization" || req.kind === "authorizeService"
+      ? $t("sh.bt.pair.deny")
+      : $t("sh.bt.pair.cancel");
   }
 
   function showsConfirmButton(req: PairRequest): boolean {

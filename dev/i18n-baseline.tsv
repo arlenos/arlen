@@ -1,19 +1,4 @@
 apps/desktop-shell/src/lib/components/BatteryIndicator.svelte	Battery
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	1 to 16 characters. The PIN is set on the device itself.
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Allow
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Allow this service for as long as the device stays paired.
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Allow {} to use {}?
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	An incoming pairing request without security verification.
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Cancel
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Confirm that the same code is shown on the other device.
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Deny
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Enter PIN for {}
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Enter passkey for {}
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Pair
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Pair with {}
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Pair with {}?
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Type this PIN on the device.
-apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Type this code on the device.
 apps/desktop-shell/src/lib/components/ConsentDialog.svelte	Hold to delete
 apps/desktop-shell/src/lib/components/ConsentDialog.svelte	Hold to delete {}
 apps/desktop-shell/src/lib/components/ConsentDialog.svelte	Host
