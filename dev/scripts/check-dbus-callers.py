@@ -141,6 +141,12 @@ ACKNOWLEDGED: dict[str, tuple[set[str], str]] = {
             "time_to_full_seconds",
             "lid_state",
             "profile",
+            # Added after this list was written, and the same kind as the rest: a
+            # property describing what the MACHINE can do (whether an RTC alarm can
+            # wake it), identical for every caller and carrying nothing about the
+            # user. The clock and calendar read it to tell someone before they rely
+            # on a wake that will not happen.
+            "wake_capability",
         },
         "read-only power state, published to the session on purpose; the two "
         "actuators (suspend, set_profile) both resolve the caller and check its "
