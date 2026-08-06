@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
+  import { formatDecimal } from "@arlen/ui-kit/i18n";
   /// The per-process detail pane. Standard tabs (Statistics / Memory / Open files)
   /// plus the Arlen-native ACCESS tab: what the process holds + the KG capability
   /// scopes it holds, revocable right here. The sovereign angle as per-process
@@ -39,10 +40,12 @@
     ["Threads", String(detail.threads)],
     ["State", detail.state],
     ["Priority", String(detail.priority)],
-    ["Context switches", detail.ctxSwitches.toLocaleString()],
+    ["Context switches", formatDecimal(detail.ctxSwitches, 0, $locale)],
   ]);
   function mem(mb: number): string {
-    return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
+    return mb >= 1024
+      ? `${formatDecimal(mb / 1024, 1, $locale)} GB`
+      : `${formatDecimal(mb, 0, $locale)} MB`;
   }
 </script>
 
