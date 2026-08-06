@@ -1,5 +1,7 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
+  import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
+  import { mark } from "@arlen/ui-kit/i18n";
   /// Quick Settings panel orchestrator.
   ///
   /// Reads the user's `~/.config/arlen/quicksettings.toml` layout via
@@ -158,19 +160,21 @@
     }}
   >
     {#if resolvedTiles.length === 0}
-      <!-- The sentence below wraps a <button> mid-sentence, so one whole message
-           cannot carry it. Same pending question as the sites listed in
-           `coder-reports.md`; deliberately not split into pre/post fragments. -->
+      <!-- One whole sentence with the button marked inside it, rather than a
+           pre/post pair: German puts the verb elsewhere, and fragments cannot
+           move. The link text is the navigation path, so it is a message too. -->
       <div class="qs-empty">
-        No tiles enabled. Open
-        <button
-          class="qs-link"
-          onclick={() =>
-            invoke("quick_action_run", { id: "qa.open_settings_appearance" }).catch(() => {})}
-        >
-          Settings → Quick Settings
-        </button>
-        to enable some.
+        <Rich text={$t("sh.qs.noTiles", { link: mark("link") })}>
+          {#snippet link()}
+            <button
+              class="qs-link"
+              onclick={() =>
+                invoke("quick_action_run", { id: "qa.open_settings_appearance" }).catch(() => {})}
+            >
+              {$t("sh.qs.tilesPath")}
+            </button>
+          {/snippet}
+        </Rich>
       </div>
     {:else}
       <div class="qs-grid">
