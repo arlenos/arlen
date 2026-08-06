@@ -255,13 +255,6 @@ apps/settings/src/lib/stores/themeSystem.ts	Pop
 apps/settings/src/lib/stores/themeSystem.ts	Soft
 apps/settings/src/lib/stores/themeSystem.ts	Tela
 apps/settings/src/routes/about/+page.svelte	Arlen OS
-apps/settings/src/routes/appearance/+page.svelte	Colours
-apps/settings/src/routes/appearance/+page.svelte	Geometry
-apps/settings/src/routes/appearance/+page.svelte	Motion & Depth
-apps/settings/src/routes/appearance/+page.svelte	System
-apps/settings/src/routes/appearance/+page.svelte	Toolkits
-apps/settings/src/routes/appearance/+page.svelte	Typography
-apps/settings/src/routes/appearance/+page.svelte	Wallpaper
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	Quick Settings layout restored to defaults.
 apps/settings/src/routes/appearance/system/+page.svelte	$ ls --color
 apps/settings/src/routes/appearance/system/+page.svelte	README.md
@@ -313,10 +306,6 @@ apps/settings/src/routes/system-actions/+page.svelte	shell:brightness_up
 apps/settings/src/routes/system-actions/+page.svelte	shell:event_name
 apps/settings/src/routes/system-actions/+page.svelte	spawn:command
 apps/settings/src/routes/topbar/+page.svelte	Arlen
-apps/settings/src/routes/windows-apps/+page.svelte	A shared bottle
-apps/settings/src/routes/windows-apps/+page.svelte	Fullscreen
-apps/settings/src/routes/windows-apps/+page.svelte	Its own bottle
-apps/settings/src/routes/windows-apps/+page.svelte	Windowed
 apps/settings/src/routes/workspaces/+page.svelte	Horizontal
 apps/settings/src/routes/workspaces/+page.svelte	Vertical
 apps/store/src/lib/stores/catalog.ts	A calm player for radio streams and podcast feeds you bring yourself.
