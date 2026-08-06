@@ -186,12 +186,16 @@ export async function updateItem(index: number, patch: { owner?: string; done?: 
 }
 
 /// A short meeting date for the list.
-export function fmtDate(ms: number): string {
+export function fmtDate(ms: number, loc = get(locale)): string {
   // The chosen language, not `undefined` - which means the system locale, and
   // that is a different setting the user did not touch here.
-  return new Intl.DateTimeFormat(get(locale), { day: "numeric", month: "short" }).format(
-    new Date(ms),
-  );
+  //
+  // The locale is a parameter, not just a read: a template calling `fmtDate(x)`
+  // has no reactive dependency on the store, so it renders once with whatever
+  // was current and keeps it. Passing `$locale` at the call site is what makes
+  // the list re-render when the language changes - and what stops it showing
+  // "Jul 2" under a German heading because the read beat the startup fetch.
+  return new Intl.DateTimeFormat(loc, { day: "numeric", month: "short" }).format(new Date(ms));
 }
 
 /// Fold adjacent same-speaker segments into utterances (mirrors the contract's

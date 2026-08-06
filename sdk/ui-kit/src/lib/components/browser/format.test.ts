@@ -37,4 +37,14 @@ describe("formatModified", () => {
     expect(formatModified(null, NOW, "en")).toBe("");
     expect(formatSize(null)).toBe("");
   });
+
+  it("writes a size with the reader's decimal mark", () => {
+    // `toFixed` always writes a point. German writes a comma, and a file
+    // manager showing "2.4 MB" beside "12. Mai" is half-translated in one row.
+    expect(formatSize(2_400_000, "en")).toBe("2.4 MB");
+    expect(formatSize(2_400_000, "de")).toBe("2,4 MB");
+    // Whole numbers carry no separator either way, and the unit is not a word.
+    expect(formatSize(18_000, "de")).toBe("18 KB");
+    expect(formatSize(512, "de")).toBe("512 B");
+  });
 });

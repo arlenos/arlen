@@ -31,6 +31,7 @@
   import { Plus } from "lucide-svelte";
   import { t, dir } from "$lib/i18n/messages";
   import { meetings, loadMeetings, meeting, fmtDate } from "$lib/stores/meeting";
+  import { locale } from "$lib/i18n/messages";
 
   let { children } = $props();
 
@@ -109,7 +110,7 @@
                   onclick={() => goto(`/meeting/${m.id}`)}
                 >
                   <span class="truncate">{m.title}</span>
-                  <span class="ms-auto shrink-0 text-xs text-sidebar-foreground/50">{fmtDate(m.date_ms)}</span>
+                  <span class="ms-auto shrink-0 text-xs text-sidebar-foreground/50">{fmtDate(m.date_ms, $locale)}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             {/each}
