@@ -5,7 +5,8 @@
   import { ChevronRight, Cog, Cpu, Camera, Mic, Brain } from "lucide-svelte";
   import type { Process, ProcGroup, ProcStatus, SortKey } from "$lib/stores/processes";
   import { sensorsFor } from "$lib/stores/detail";
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
+  import { formatDecimal } from "@arlen/ui-kit/i18n";
 
   let {
     list,
@@ -172,12 +173,19 @@
     return { cpu, memMB, diskKBs, netKBs };
   });
 
+  // `$locale` rather than the default, so the table re-renders on a language
+  // switch: a template calling a function that reads the store internally has no
+  // dependency on it and would keep the first render's convention.
   function mem(mb: number): string {
-    return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+    return mb >= 1024
+      ? `${formatDecimal(mb / 1024, 1, $locale)} GB`
+      : `${formatDecimal(Math.round(mb), 0, $locale)} MB`;
   }
   function rate(kbs: number): string {
     if (kbs === 0) return "";
-    return kbs >= 1024 ? `${(kbs / 1024).toFixed(1)} MB/s` : `${Math.round(kbs)} KB/s`;
+    return kbs >= 1024
+      ? `${formatDecimal(kbs / 1024, 1, $locale)} MB/s`
+      : `${formatDecimal(Math.round(kbs), 0, $locale)} KB/s`;
   }
   // Heat intensity 0..1 for a cell, by a per-column scale.
   function heat(v: number, scale: number): number {
@@ -207,9 +215,9 @@
       {$t("tm.col.status")}
     </button>
     <span class="h access" role="columnheader" aria-label={$t("tm.col.access")}>{$t("tm.col.access")}</span>
-    <button class="h num" class:sorted={sortKey === "cpu"} role="columnheader" aria-label={$t("tm.col.withTotal", { col: $t("tm.col.cpu"), total: totals.cpu.toFixed(0) + "%" })} aria-sort={ariaSort("cpu")} onclick={() => sortBy("cpu")}>
+    <button class="h num" class:sorted={sortKey === "cpu"} role="columnheader" aria-label={$t("tm.col.withTotal", { col: $t("tm.col.cpu"), total: formatDecimal(totals.cpu, 0, $locale) + "%" })} aria-sort={ariaSort("cpu")} onclick={() => sortBy("cpu")}>
       <span class="h-label">{$t("tm.col.cpu")} {#if sortKey === "cpu"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
-      <span class="h-total">{totals.cpu.toFixed(0)}%</span>
+      <span class="h-total">{formatDecimal(totals.cpu, 0, $locale)}%</span>
     </button>
     <button class="h num" class:sorted={sortKey === "memMB"} role="columnheader" aria-label={$t("tm.col.withTotal", { col: $t("tm.col.memory"), total: mem(totals.memMB) })} aria-sort={ariaSort("memMB")} onclick={() => sortBy("memMB")}>
       <span class="h-label">{$t("tm.col.memory")} {#if sortKey === "memMB"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
@@ -287,7 +295,7 @@
             {#if sensors.mic}<Mic size={13} strokeWidth={2} />{/if}
             {#if sensors.knowledge}<span class="kg-glyph"><Brain size={13} strokeWidth={2} /></span>{/if}
           </div>
-          <div class="cell num" role="gridcell" style="--heat: {dispHeat(p)}">{dispCpu(p).toFixed(1)}%</div>
+          <div class="cell num" role="gridcell" style="--heat: {dispHeat(p)}">{formatDecimal(dispCpu(p), 1, $locale)}%</div>
           <div class="cell num" role="gridcell" style="--heat: {heat(p.memMB, 2200)}">{mem(p.memMB)}</div>
           <div class="cell num muted" role="gridcell">{rate(p.diskKBs)}</div>
           <div class="cell num muted" role="gridcell">{rate(p.netKBs)}</div>
