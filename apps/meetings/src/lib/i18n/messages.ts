@@ -11,6 +11,8 @@ const messages: Catalogs = {
   en: {
     "mt.title": "Meetings",
     "mt.start": "Start a meeting",
+    "mt.newMeeting": "New meeting",
+    "mt.pickHint": "Pick a meeting from the list or start a new one.",
     "mt.empty": "No meetings yet. Start one to capture it on this device.",
     "mt.open": "Open in editor",
     "mt.sample.list": "Example meetings - not your real history.",
@@ -43,6 +45,8 @@ const messages: Catalogs = {
   de: {
     "mt.title": "Besprechungen",
     "mt.start": "Besprechung starten",
+    "mt.newMeeting": "Neue Besprechung",
+    "mt.pickHint": "Wähle eine Besprechung aus der Liste oder starte eine neue.",
     "mt.empty": "Noch keine Besprechungen. Starte eine, um sie auf diesem Gerät aufzunehmen.",
     "mt.open": "Im Editor öffnen",
     "mt.sample.list": "Beispiel-Meetings - nicht dein echter Verlauf.",
