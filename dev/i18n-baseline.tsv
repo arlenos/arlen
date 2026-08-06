@@ -239,9 +239,6 @@ apps/settings/src/routes/printers/+page.svelte	A4
 apps/settings/src/routes/printers/+page.svelte	Legal
 apps/settings/src/routes/printers/+page.svelte	Letter
 apps/settings/src/routes/system-actions/+page.svelte	/bin/sh -c
-apps/settings/src/routes/system-actions/+page.svelte	dispatches a shell-overlay event (e.g.
-apps/settings/src/routes/system-actions/+page.svelte	for compatibility.
-apps/settings/src/routes/system-actions/+page.svelte	runs a shell command. Bare strings are also accepted and run via
 apps/settings/src/routes/system-actions/+page.svelte	shell:brightness_up
 apps/settings/src/routes/system-actions/+page.svelte	shell:event_name
 apps/settings/src/routes/system-actions/+page.svelte	spawn:command
