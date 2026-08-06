@@ -267,6 +267,9 @@ fn build_result(
     let definition = truncate_chars(syn.gloss.definition.trim(), DESC_MAX_CHARS);
     let title = format!("{lemma} [{pos_tag}]");
     SearchResult {
+        // A dictionary entry, in whatever language was looked up.
+        title_key: None,
+        description_key: None,
         id: format!("dict-{}-{}-{}", lemma, pos.to_char(), syn.id.offset),
         title,
         description: Some(definition),
@@ -421,6 +424,8 @@ mod tests {
     fn execute_is_noop() {
         let p = DictPlugin::new();
         let r = SearchResult {
+            title_key: None,
+            description_key: None,
             id: "dict-happy-a-1".into(),
             title: "happy [adj]".into(),
             description: Some("having a feeling of great pleasure".into()),

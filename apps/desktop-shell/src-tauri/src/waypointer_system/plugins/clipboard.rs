@@ -96,6 +96,9 @@ fn build_result(entry: &ClipboardEntry, order: usize) -> SearchResult {
     let title = make_title(&entry.content);
     let description = make_description(entry);
     SearchResult {
+        // The clipboard's own contents.
+        title_key: None,
+        description_key: None,
         id: format!("clip-{}", entry.id),
         title,
         // Relevance decays gently by list position so freshest entry
@@ -257,6 +260,8 @@ mod tests {
     fn execute_rejects_wrong_action() {
         let plugin = mk_plugin(true);
         let r = SearchResult {
+            title_key: None,
+            description_key: None,
             id: "clip-1".into(),
             title: "x".into(),
             description: None,
@@ -272,6 +277,8 @@ mod tests {
     fn execute_rejects_missing_id() {
         let plugin = mk_plugin(true);
         let r = SearchResult {
+            title_key: None,
+            description_key: None,
             id: "clip-1".into(),
             title: "x".into(),
             description: None,
@@ -290,6 +297,8 @@ mod tests {
     fn execute_rejects_unknown_id() {
         let plugin = mk_plugin(true);
         let r = SearchResult {
+            title_key: None,
+            description_key: None,
             id: "clip-1".into(),
             title: "x".into(),
             description: None,

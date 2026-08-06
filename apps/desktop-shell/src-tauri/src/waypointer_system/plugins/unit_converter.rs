@@ -20,6 +20,9 @@ impl WaypointerPlugin for UnitConverterPlugin {
     fn search(&self, query: &str) -> Vec<SearchResult> {
         match try_convert(query) {
             Some(r) => vec![SearchResult {
+                // A computed value.
+                title_key: None,
+                description_key: None,
                 id: "unit-result".into(),
                 title: r.display.clone(),
                 description: Some("Unit conversion".into()),

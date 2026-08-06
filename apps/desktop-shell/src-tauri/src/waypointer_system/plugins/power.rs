@@ -8,7 +8,6 @@
 /// Waypointer's "Escape to cancel" muscle memory) or a description
 /// warning (ignored after the first use). macOS and GNOME ship the
 /// same no-confirmation model for Spotlight / GNOME Shell search.
-
 use std::process::{Command, Stdio};
 
 use crate::waypointer_system::plugin::*;
@@ -23,15 +22,20 @@ struct PowerAction {
     /// Stable id used in `SearchResult.id` and as the `handler` in
     /// `Action::Custom`. `power.sleep`, `power.lock`, …
     id: &'static str,
-    /// Display title (capitalised, user-facing).
-    title: &'static str,
-    /// One-line description shown below the title.
-    description: &'static str,
+
     /// freedesktop icon name. `system-suspend`, `system-lock-screen`,
     /// `system-reboot`, `system-shutdown`, `system-log-out`.
     icon: &'static str,
     /// Keywords that trigger this action. First entry is the canonical
     /// name; the rest are aliases. All matched case-insensitive.
+    ///
+    /// **English only, and that is a gap, not a decision.** Typing
+    /// "ruhezustand" finds nothing. Matching happens here, in a process with no
+    /// catalog on disk to read: the shell's messages live in TypeScript and only
+    /// the Settings app exports catalogs for a Rust reader today. Closing it
+    /// means exporting the shell's catalog the same way and resolving a keyword
+    /// message per locale, which is the same shape as the settings index and is
+    /// its own piece of work.
     keywords: &'static [&'static str],
     /// Command + args to run on execute. An empty argv signals the
     /// special "terminate session" path handled in `execute_action`
@@ -44,40 +48,30 @@ struct PowerAction {
 const ACTIONS: &[PowerAction] = &[
     PowerAction {
         id: "power.sleep",
-        title: "Sleep",
-        description: "Suspend to RAM",
         icon: "system-suspend",
         keywords: &["sleep", "suspend"],
         command: &["systemctl", "suspend"],
     },
     PowerAction {
         id: "power.lock",
-        title: "Lock Screen",
-        description: "Lock the current session",
         icon: "system-lock-screen",
         keywords: &["lock", "screen"],
         command: &["loginctl", "lock-session"],
     },
     PowerAction {
         id: "power.restart",
-        title: "Restart",
-        description: "Reboot the system",
         icon: "system-reboot",
         keywords: &["restart", "reboot"],
         command: &["systemctl", "reboot"],
     },
     PowerAction {
         id: "power.shutdown",
-        title: "Shut Down",
-        description: "Power off the system",
         icon: "system-shutdown",
         keywords: &["shutdown", "poweroff"],
         command: &["systemctl", "poweroff"],
     },
     PowerAction {
         id: "power.logout",
-        title: "Log Out",
-        description: "End the current session",
         icon: "system-log-out",
         // Empty command = handled specially via XDG_SESSION_ID.
         keywords: &["logout", "sign out"],
@@ -86,16 +80,24 @@ const ACTIONS: &[PowerAction] = &[
 ];
 
 impl WaypointerPlugin for PowerPlugin {
-    fn id(&self) -> &str { "core.power" }
-    fn name(&self) -> &str { "Power" }
+    fn id(&self) -> &str {
+        "core.power"
+    }
+    fn name(&self) -> &str {
+        "Power"
+    }
     fn description(&self) -> &str {
         "Sleep, lock, restart, shut down, or log out from the keyboard."
     }
     // Priority 0 puts Power on par with App Search; the relevance-first
     // sort in the manager ensures an exact keyword match (relevance 1.0)
     // wins over a partial app match (~0.7).
-    fn priority(&self) -> u32 { 0 }
-    fn max_results(&self) -> usize { 5 }
+    fn priority(&self) -> u32 {
+        0
+    }
+    fn max_results(&self) -> usize {
+        5
+    }
 
     fn search(&self, query: &str) -> Vec<SearchResult> {
         let q = query.trim().to_lowercase();
@@ -119,8 +121,15 @@ impl WaypointerPlugin for PowerPlugin {
             .into_iter()
             .map(|(score, action)| SearchResult {
                 id: action.id.into(),
-                title: action.title.into(),
-                description: Some(action.description.into()),
+                // Ids: this process cannot know what language the reader wants,
+                // and the Waypointer holds the live locale. `power.sleep` becomes
+                // `s.wp.power.sleep`, so the id list is the message list.
+                title_key: Some(format!("s.wp.{}", action.id)),
+                // Only shown if the shell's catalog is missing the message; the
+                // action id is at least true then.
+                title: action.id.into(),
+                description_key: Some(format!("s.wp.{}.desc", action.id)),
+                description: None,
                 icon: Some(action.icon.into()),
                 relevance: score,
                 action: Action::Custom {
@@ -218,9 +227,7 @@ fn spawn(argv: &[&str]) -> Result<(), PluginError> {
         .stderr(Stdio::null())
         .spawn()
         .map(|_| ())
-        .map_err(|e| {
-            PluginError::ExecuteFailed(format!("power: spawn {} failed: {e}", argv[0]))
-        })
+        .map_err(|e| PluginError::ExecuteFailed(format!("power: spawn {} failed: {e}", argv[0])))
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
@@ -252,10 +259,34 @@ mod tests {
         let p = PowerPlugin;
         let r = p.search("suspend");
         assert_eq!(r[0].id, "power.sleep");
-        assert_eq!(r[0].title, "Sleep");
+        // The name is a message id now; the shell resolves it in the reader's
+        // language, and this process does not know what that is.
+        assert_eq!(r[0].title_key.as_deref(), Some("s.wp.power.sleep"));
 
         let r = p.search("reboot");
         assert_eq!(r[0].id, "power.restart");
+    }
+
+    /// Every power action must have a name in the shell's catalog.
+    ///
+    /// The prose is no longer here, so nothing in this file breaks if the message
+    /// is missing: the Waypointer would show `s.wp.power.sleep` in its results.
+    /// The id-scanner cannot catch that one, because the id is minted in Rust and
+    /// appears in no Svelte file.
+    #[test]
+    fn every_power_action_has_a_name_in_the_catalog() {
+        let catalog = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../src/lib/i18n/messages.ts"
+        ))
+        .expect("the shell catalog");
+
+        let missing: Vec<String> = ACTIONS
+            .iter()
+            .flat_map(|a| [format!("s.wp.{}", a.id), format!("s.wp.{}.desc", a.id)])
+            .filter(|key| !catalog.contains(&format!("\"{key}\":")))
+            .collect();
+        assert!(missing.is_empty(), "no message for: {missing:?}");
     }
 
     #[test]
@@ -303,6 +334,8 @@ mod tests {
     fn execute_rejects_missing_action_field() {
         let p = PowerPlugin;
         let result = SearchResult {
+            title_key: None,
+            description_key: None,
             id: "power.sleep".into(),
             title: "Sleep".into(),
             description: None,
@@ -321,6 +354,8 @@ mod tests {
     fn execute_rejects_unknown_action_id() {
         let p = PowerPlugin;
         let result = SearchResult {
+            title_key: None,
+            description_key: None,
             id: "power.fly".into(),
             title: "Fly".into(),
             description: None,

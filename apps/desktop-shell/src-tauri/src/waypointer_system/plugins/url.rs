@@ -23,6 +23,9 @@ impl WaypointerPlugin for UrlPlugin {
         };
 
         vec![SearchResult {
+            // The URL the user typed.
+            title_key: None,
+            description_key: None,
             id: "url-open".into(),
             title: format!("Open {q}"),
             description: Some(url.clone()),

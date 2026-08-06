@@ -52,6 +52,9 @@ impl WaypointerPlugin for AppSearchPlugin {
             };
 
             results.push(SearchResult {
+                // An app's own name, from its .desktop file. Not ours to translate.
+                title_key: None,
+                description_key: None,
                 id: format!("app-{}", entry.exec),
                 title: entry.name.clone(),
                 description: if entry.description.is_empty() {

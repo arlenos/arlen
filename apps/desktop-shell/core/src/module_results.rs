@@ -120,7 +120,12 @@ impl ModuleEntry {
         use module_sdk::waypointer::{Action, SearchResult};
         SearchResult {
             id: self.id.clone(),
+            // No keys: a module's result text is the module's own words, in
+            // whatever language it shipped. Arlen has no catalog for it and
+            // inventing an id would only produce a missing message.
+            title_key: None,
             title: self.title.clone(),
+            description_key: None,
             description: self.description.clone(),
             icon: None,
             relevance: MODULE_RELEVANCE,

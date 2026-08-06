@@ -24,6 +24,10 @@ import { invoke } from "@tauri-apps/api/core";
 /// object is round-tripped back to Rust via `waypointer_execute`.
 export interface PowerActionResult {
     id: string;
+    /// Message ids, because the plugin runs in a process that does not know the
+    /// reader's language. Absent for a third-party plugin's own words.
+    title_key?: string | null;
+    description_key?: string | null;
     title: string;
     description: string | null;
     icon: string | null;

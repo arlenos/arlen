@@ -75,6 +75,9 @@ impl WaypointerPlugin for ProcessKillPlugin {
                 .unwrap_or(0);
 
             results.push(SearchResult {
+                // A process's own name.
+                title_key: None,
+                description_key: None,
                 id: format!("kill-{pid}"),
                 title: format!("{name} (PID {pid})"),
                 description: Some(format!("{:.1} MB", mem_kb as f64 / 1024.0)),

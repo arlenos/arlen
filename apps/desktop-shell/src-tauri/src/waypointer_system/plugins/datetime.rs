@@ -23,6 +23,9 @@ impl WaypointerPlugin for DateTimePlugin {
     fn search(&self, query: &str) -> Vec<SearchResult> {
         match try_evaluate(query) {
             Some(r) => vec![SearchResult {
+                // A formatted date from the locale-aware formatter.
+                title_key: None,
+                description_key: None,
                 id: "datetime-result".into(),
                 title: r.display.clone(),
                 description: Some("Date & Time".into()),

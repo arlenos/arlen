@@ -18,6 +18,9 @@ impl WaypointerPlugin for ManPlugin {
         }
 
         vec![SearchResult {
+            // A man page's own title.
+            title_key: None,
+            description_key: None,
             id: "man-open".into(),
             title: format!("man {page}"),
             description: Some("Open man page in terminal".into()),

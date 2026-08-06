@@ -67,6 +67,9 @@ impl WaypointerPlugin for WindowSwitcherPlugin {
             };
 
             results.push(SearchResult {
+                // A window's own title, set by the app.
+                title_key: None,
+                description_key: None,
                 id: format!("win-{}", win.id),
                 title: display_title,
                 description: Some(win.app_id.clone()),

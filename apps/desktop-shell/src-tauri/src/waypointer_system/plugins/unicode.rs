@@ -25,6 +25,8 @@ impl WaypointerPlugin for UnicodePlugin {
                     .map(|n| n.to_string())
                     .unwrap_or_else(|| format!("U+{cp:04X}"));
                 return vec![SearchResult {
+                    title_key: None,
+                    description_key: None,
                     id: format!("u-{cp:04X}"),
                     title: format!("{ch}  {name}"),
                     description: Some(format!("U+{cp:04X}")),
@@ -51,6 +53,9 @@ impl WaypointerPlugin for UnicodePlugin {
             if name_str.contains(&q_upper) {
                 let Some(ch) = char::from_u32(cp) else { continue };
                 results.push(SearchResult {
+                    // The Unicode character's own name.
+                    title_key: None,
+                    description_key: None,
                     id: format!("u-{cp:04X}"),
                     title: format!("{ch}  {name_str}"),
                     description: Some(format!("U+{cp:04X}")),
