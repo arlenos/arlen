@@ -1,6 +1,7 @@
 <script lang="ts">
   import "../app.css";
   import { page } from "$app/stores";
+  import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -117,11 +118,18 @@
     // Deep link navigation from CLI args. The backend stashes them
     // in a static and we pull them here, guaranteed to run after
     // mount, so the DOM is ready and no race is possible.
-    invoke<{ panel: string; anchor: string | null } | null>(
+    invoke<{ panel: string; anchor: string | null; app: string | null } | null>(
       "get_launch_args",
     ).then((target) => {
       if (!target) return;
-      console.log("[deep-link] launch args:", target.panel, target.anchor);
+      console.log("[deep-link] launch args:", target.panel, target.anchor, target.app);
+      // An app id addresses a page that is not in the panel table, so it cannot
+      // go through `navigateTo` - that resolves against the table and drops
+      // anything absent, which would be a deep link that quietly does nothing.
+      if (target.app) {
+        void goto(`/apps/${encodeURIComponent(target.app)}`);
+        return;
+      }
       navigateTo(target.panel as PanelId).then(() => {
         if (!target.anchor) return;
         pollForElement(target.anchor, 2000).then((el) => {
