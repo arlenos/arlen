@@ -309,7 +309,26 @@ const info = await invoke<Info>("app_info");
     `exit ${r6.code}: ${r6.out.trim()}`,
   );
 
-  for (const d of [sameName, interpolated, wrong, renamed, nested, reallyMissing]) {
+  // A command invoked with no implementation anywhere is a call that cannot
+  // succeed, and the check used to skip exactly those - `cmd not in own` reads an
+  // absent command as "not ours" and moves on, so it verified the argument shape
+  // of calls into the void. Undeclared ones are now findings.
+  const undeclared = tree({
+    "apps/alpha/src-tauri/src/lib.rs": `#[tauri::command]
+pub fn real_one() {}
+`,
+    "apps/alpha/src/lib/x.ts": `await invoke("real_one");
+await invoke("no_such_command");
+`,
+  });
+  const r7 = run("check-invoke-shape.py", undeclared);
+  check(
+    "a command invoked with no implementation is reported",
+    r7.code === 1 && r7.out.includes("no_such_command"),
+    `exit ${r7.code}: ${r7.out.trim()}`,
+  );
+
+  for (const d of [sameName, interpolated, wrong, renamed, nested, reallyMissing, undeclared]) {
     rmSync(d, { recursive: true, force: true });
   }
 }

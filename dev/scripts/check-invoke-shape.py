@@ -253,6 +253,102 @@ OPAQUE_RETURN = re.compile(
 BUILD_DIRS = {"target", "node_modules", "mkosi.builddir", ".git", ".svelte-kit", "build", "dist"}
 
 
+
+# Commands the frontend invokes that no `#[tauri::command]` in the tree defines.
+# Each one is a call that cannot succeed - but a pile of 64 says nothing about
+# which are deliberate and which are rot, and that ambiguity IS the problem. So
+# every one is either implemented or declared here with a reason and an owner,
+# the same shape `check-shipped-units.py` uses for units the image does not carry.
+#
+# arlen-ui builds a surface against its intended contract and reports the missing
+# command rather than writing the Rust, so "ui built ahead" is a legitimate entry -
+# it names work owed, which an undeclared call does not.
+#
+# The list rots in both directions: implementing a command must delete its entry,
+# and an entry for a command nothing invokes any more is equally an error. An
+# unattributed entry is not a pass, it is a triage item that has been seen.
+DEAD_INVOKES: dict[str, str] = {
+    # the recent-actions panel; the shell-side read + enact over the undo signer. coder owes it - fetch_recent and join_rows (2 Aug) are most of the read
+    "undo_read": "the recent-actions panel; the shell-side read + enact over the undo signer. coder owes it",
+    "undo_enact": "the recent-actions panel; the shell-side read + enact over the undo signer. coder owes it",
+    # capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet - coder, target build
+    "list_capture_sources": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
+    "start_screencast": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
+    "cancel_screencast": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
+    "capture_status": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
+    "stop_capture": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
+    # the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not - coder
+    "poll_print_request": "the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not",
+    "submit_print": "the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not",
+    "cancel_print": "the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not",
+    # the Settings printers page against the same backend - coder
+    "printers_discover": "the Settings printers page against the same backend",
+    "printers_add": "the Settings printers page against the same backend",
+    "printers_remove": "the Settings printers page against the same backend",
+    "printers_set_default": "the Settings printers page against the same backend",
+    "printers_set_options": "the Settings printers page against the same backend",
+    "print_job_retry": "the Settings printers page against the same backend",
+    # dictation has no backend at all yet; the badge was built against the intended contract - needs a decision on whether dictation is in scope
+    "dictation_status": "dictation has no backend at all yet; the badge was built against the intended contract",
+    "stop_dictation": "dictation has no backend at all yet; the badge was built against the intended contract",
+    # the modules panel against modulesd; the daemon exists, the shell commands do not - coder
+    "list_modules": "the modules panel against modulesd; the daemon exists, the shell commands do not",
+    "get_module_errors": "the modules panel against modulesd; the daemon exists, the shell commands do not",
+    "set_module_enabled": "the modules panel against modulesd; the daemon exists, the shell commands do not",
+    "reset_module_errors": "the modules panel against modulesd; the daemon exists, the shell commands do not",
+    # the Windows-app (bottles) surface; no backend in the tree - needs a decision on whether this ships before the surface is finished
+    "windows_file_request": "the Windows-app (bottles) surface; no backend in the tree",
+    "windows_file_run": "the Windows-app (bottles) surface; no backend in the tree",
+    "windows_file_install": "the Windows-app (bottles) surface; no backend in the tree",
+    "list_bottles": "the Windows-app (bottles) surface; no backend in the tree",
+    "delete_bottle": "the Windows-app (bottles) surface; no backend in the tree",
+    "set_bottle_config": "the Windows-app (bottles) surface; no backend in the tree",
+    "browse_bottle_files": "the Windows-app (bottles) surface; no backend in the tree",
+    "clear_bottle_caches": "the Windows-app (bottles) surface; no backend in the tree",
+    "install_windows_app": "the Windows-app (bottles) surface; no backend in the tree",
+    "set_windows_defaults": "the Windows-app (bottles) surface; no backend in the tree",
+    # the Settings sentinel page against the anomaly detector; the daemon exists, the settings commands do not - coder
+    "sentinel_get_state": "the Settings sentinel page against the anomaly detector; the daemon exists, the settings commands do not",
+    "sentinel_set_alerts": "the Settings sentinel page against the anomaly detector; the daemon exists, the settings commands do not",
+    "sentinel_set_detector": "the Settings sentinel page against the anomaly detector; the daemon exists, the settings commands do not",
+    "sentinel_set_sensitivity": "the Settings sentinel page against the anomaly detector; the daemon exists, the settings commands do not",
+    "sentinel_fix_posture": "the Settings sentinel page against the anomaly detector; the daemon exists, the settings commands do not",
+    # the wallpaper surface against wallpaperd; the daemon exists, these commands do not - coder
+    "list_wallpapers": "the wallpaper surface against wallpaperd; the daemon exists, these commands do not",
+    "add_wallpaper": "the wallpaper surface against wallpaperd; the daemon exists, these commands do not",
+    "set_wallpaper": "the wallpaper surface against wallpaperd; the daemon exists, these commands do not",
+    "greeter_wallpaper": "the wallpaper surface against wallpaperd; the daemon exists, these commands do not",
+    # the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer - coder, and the biggest single block on this list
+    "knowledge_list": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    "knowledge_library": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    "knowledge_search": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    "knowledge_search_save": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    "knowledge_projects_list": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    "knowledge_provenance": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    "knowledge_timeline": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    "knowledge_timeline_pause": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    "knowledge_timeline_delete": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    "knowledge_timeline_export": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    "knowledge_capsules": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    "knowledge_capsule_mint": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    "knowledge_capsule_revoke": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    "knowledge_capsule_preview": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    # the store's update actions against installd - arlen-ui's surface, coder owes the commands
+    "store_update": "the store's update actions against installd",
+    "store_uninstall": "the store's update actions against installd",
+    "store_update_all_routine": "the store's update actions against installd",
+    # the text-editor's AI edit and its project/related lens - coder
+    "ai_edit": "the text-editor's AI edit and its project/related lens",
+    "project_of": "the text-editor's AI edit and its project/related lens",
+    "related_of": "the text-editor's AI edit and its project/related lens",
+    # the shell's job list; no producer identified yet - unattributed, needs triage
+    "list_jobs": "the shell's job list; no producer identified yet",
+    # the waypointer's ask-the-AI entry; no backend - unattributed, needs triage
+    "waypointer_ask": "the waypointer's ask-the-AI entry; no backend",
+    # cross-app navigation from knowledge into Settings; no mechanism yet - unattributed
+    "open_settings_route": "cross-app navigation from knowledge into Settings; no mechanism yet",
+}
+
 def rust_return_types(root: Path) -> dict[str, dict[str, str]]:
     """Map app to command name to the bare name of the type it returns."""
     out: dict[str, dict[str, str]] = {}
@@ -468,6 +564,35 @@ def main() -> int:
     problems = []
     checked = 0
     total = sum(len(v) for v in commands.values())
+
+    # Every command any app defines, so a call into a command that exists
+    # elsewhere reads as a scoping question rather than a dead call.
+    defined_anywhere = {c for app_cmds in commands.values() for c in app_cmds}
+    invoked_nowhere: dict[str, str] = {}
+    for app, path, line, cmd, keys in invoke_calls(root):
+        if cmd not in defined_anywhere and cmd not in EXCUSED:
+            invoked_nowhere.setdefault(cmd, f"{path}:{line}")
+
+    for cmd, where in sorted(invoked_nowhere.items()):
+        if cmd not in DEAD_INVOKES:
+            problems.append(
+                f"{where}: `{cmd}` is invoked and no #[tauri::command] in the tree "
+                f"defines it, so the call cannot succeed. Implement it, or declare it "
+                f"in DEAD_INVOKES with a reason and an owner"
+            )
+    # The table describes THIS repo, so its rot checks only mean anything when
+    # scanning it. A fixture tree invokes none of the 64 and would report every
+    # entry as stale.
+    for cmd in sorted(DEAD_INVOKES if root == ROOT else {}):
+        if cmd in defined_anywhere:
+            problems.append(
+                f"`{cmd}` is declared dead but a command now defines it; delete the entry"
+            )
+        elif cmd not in invoked_nowhere:
+            problems.append(
+                f"`{cmd}` is declared dead but nothing invokes it any more; delete the entry"
+            )
+
     for app, path, line, cmd, keys in invoke_calls(root):
         own = commands.get(app, {})
         if cmd not in own or cmd in EXCUSED or keys is None:
@@ -492,7 +617,8 @@ def main() -> int:
 
     print(
         f"{checked} invoke call(s) checked against {total} command(s); "
-        f"{ret_checked} annotated return type(s) compared"
+        f"{ret_checked} annotated return type(s) compared; "
+        f"{len(DEAD_INVOKES)} command(s) invoked with no implementation, each declared"
     )
     if problems:
         print("\nshapes that do not match the command on the other side:\n")
