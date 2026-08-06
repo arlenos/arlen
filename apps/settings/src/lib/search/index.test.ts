@@ -5,7 +5,11 @@
 import { describe, expect, it } from "vitest";
 
 import { search } from "./index";
-import { locale } from "$lib/i18n/messages";
+import { get } from "svelte/store";
+
+import { locale, t } from "$lib/i18n/messages";
+
+const tr = (id: string) => get(t)(id);
 
 /// `s.idx.display.panel.*` is translated, so these say something about the
 /// mechanism rather than about the German catalog being empty: if the source-locale
@@ -23,6 +27,16 @@ describe("settings search", () => {
     const byGerman = search("nachtlicht").map((r) => r.setting.id);
     expect(byGerman).toContain("display.panel");
     locale.set("en");
+  });
+
+  it("shows the German title once the locale is German", () => {
+    // Not just "a result came back": the text a user reads has to change.
+    locale.set("de");
+    const de = search("tastatur").map((r) => tr(r.setting.titleKey));
+    expect(de).toContain("Tastaturbelegung");
+    locale.set("en");
+    const en = search("keyboard layout").map((r) => tr(r.setting.titleKey));
+    expect(en).toContain("Keyboard Layout");
   });
 
   it("still finds it in the source language when that is what is shown", () => {
