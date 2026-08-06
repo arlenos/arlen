@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
+  import { durationText } from "$lib/duration";
   /// Battery popover: status + power profiles.
 
   import { activePopover } from "$lib/stores/activePopover.js";
@@ -47,12 +48,6 @@
     await poll();
   }
 
-  function timeStr(mins: number | null): string {
-    if (!mins || mins <= 0) return "";
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return h > 0 ? `${h}h ${m}min` : `${m}min`;
-  }
 
   // `label` is a message KEY, resolved with $t where it renders: a top-level
   // const captures the locale at import and would never follow a switch.
@@ -74,10 +69,10 @@
       <span class="bat-detail">
         {#if status.charging}
           <Zap size={12} strokeWidth={2} />{status.time_remaining_minutes
-            ? $t("sh.bat.chargingEta", { time: timeStr(status.time_remaining_minutes) })
+            ? $t("sh.bat.chargingEta", { time: durationText($t, status.time_remaining_minutes) })
             : $t("sh.bat.charging")}
         {:else if status.time_remaining_minutes}
-          {$t("sh.bat.remaining", { time: timeStr(status.time_remaining_minutes) })}
+          {$t("sh.bat.remaining", { time: durationText($t, status.time_remaining_minutes) })}
         {:else}
           {$t("sh.bat.onBattery")}
         {/if}

@@ -18,6 +18,8 @@
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { togglePopover, hoverPopover, activePopover } from "$lib/stores/activePopover.js";
+  import { t } from "$lib/i18n/messages";
+  import { durationText } from "$lib/duration";
   import { Applet, type AppletState } from "@arlen/ui-kit/components/topbar";
   import {
     BatteryCharging,
@@ -96,24 +98,21 @@
             : undefined,
   );
 
+  // One whole sentence per case rather than a level with clauses appended: the
+  // charge clause is a phrase German puts in a different place ("noch 2 Std."),
+  // so a translator needs the whole line, not the tail of one.
   const tooltip = $derived.by(() => {
-    if (!status) return "Battery";
-    let text = `Battery: ${status.percentage}%`;
-    if (
-      status.time_remaining_minutes !== null &&
-      status.time_remaining_minutes > 0
-    ) {
-      const h = Math.floor(status.time_remaining_minutes / 60);
-      const m = status.time_remaining_minutes % 60;
-      if (h > 0) {
-        text += `, ${h}h ${m}min ${status.charging ? "until full" : "remaining"}`;
-      } else {
-        text += `, ${m}min ${status.charging ? "until full" : "remaining"}`;
-      }
-    } else if (status.charging) {
-      text += ", charging";
+    if (!status) return $t("sh.bat.tip.plain");
+    const pct = status.percentage;
+    const time = durationText($t, status.time_remaining_minutes);
+    if (time) {
+      return $t(status.charging ? "sh.bat.tip.untilFull" : "sh.bat.tip.remaining", {
+        pct,
+        time,
+      });
     }
-    return text;
+    if (status.charging) return $t("sh.bat.tip.charging", { pct });
+    return $t("sh.bat.tip.level", { pct });
   });
 
   const isOpen = $derived($activePopover === "battery");
