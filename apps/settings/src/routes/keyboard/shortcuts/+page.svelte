@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { t } from "$lib/i18n/messages";
+  import { Rich, mark } from "@arlen/ui-kit/i18n";
   import { AlertTriangle, ChevronRight, Plus, Search } from "lucide-svelte";
 
   import { Input } from "@arlen/ui-kit/components/ui/input";
@@ -279,16 +280,14 @@
       <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
       <div>
         <div class="font-medium text-destructive">
-          {$keybindings.conflicts.length} conflict{$keybindings.conflicts
-            .length === 1
-            ? ""
-            : "s"} detected
+          {$t("s.sc.conflicts", { n: $keybindings.conflicts.length })}
         </div>
         <div class="mt-0.5 text-muted-foreground">
           {#each $keybindings.conflicts as c (c.binding)}
             <div>
-              <span class="font-mono">{c.binding}</span>
-              bound to: {c.actions.join(", ")}
+              <Rich text={$t("s.sc.boundTo", { binding: mark("binding"), actions: c.actions.join(", ") })}>
+                {#snippet binding()}<span class="font-mono">{c.binding}</span>{/snippet}
+              </Rich>
             </div>
           {/each}
         </div>
