@@ -6,7 +6,7 @@
   /// same everywhere. `--search-radius` lets a concentric context (the settings
   /// sidebar corner) derive its radius without forking the component.
   import { Search } from "@lucide/svelte";
-  import { cn } from "$lib/utils";
+  import { cn } from "../../../utils.js";
   import type { HTMLInputAttributes } from "svelte/elements";
 
   /// Named rather than written inline at the destructure, which is not a style

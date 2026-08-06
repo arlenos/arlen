@@ -1,6 +1,6 @@
 <script lang="ts">
   import { kt } from "../../../i18n/messages.kit";
-  import { cn } from "$lib/utils";
+  import { cn } from "../../../utils.js";
   import { useSidebar } from "./context.svelte";
 
   let { class: className }: { class?: string } = $props();

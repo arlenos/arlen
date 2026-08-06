@@ -3,22 +3,22 @@
   /// way a consumer should (labels supplied, realistic props). The gate renders
   /// this once and runs axe over the whole tree, so a regression in any covered
   /// primitive trips the build. NOT shipped - imported only by `a11y.test.ts`.
-  import { Button } from "$lib/components/ui/button";
-  import { Badge } from "$lib/components/ui/badge";
-  import { Input } from "$lib/components/ui/input";
-  import { NumberInput } from "$lib/components/ui/number-input";
-  import { TimeInput } from "$lib/components/ui/time-input";
-  import { ValueSlider } from "$lib/components/ui/value-slider";
-  import { FillSlider } from "$lib/components/ui/fill-slider";
-  import { SegmentedControl } from "$lib/components/ui/segmented-control";
-  import { ChoiceList } from "$lib/components/ui/choice-list";
-  import { ChipList } from "$lib/components/ui/chip-list";
-  import { Toolbar } from "$lib/components/ui/toolbar";
-  import { ColorPicker } from "$lib/components/ui/color-picker";
-  import { Switch } from "$lib/components/ui/switch";
-  import { Toggle } from "$lib/components/ui/toggle";
-  import { Checkbox } from "$lib/components/ui/checkbox";
-  import { PopoverSelect } from "$lib/components/ui/popover-select";
+  import { Button } from "./ui/button";
+  import { Badge } from "./ui/badge";
+  import { Input } from "./ui/input";
+  import { NumberInput } from "./ui/number-input";
+  import { TimeInput } from "./ui/time-input";
+  import { ValueSlider } from "./ui/value-slider";
+  import { FillSlider } from "./ui/fill-slider";
+  import { SegmentedControl } from "./ui/segmented-control";
+  import { ChoiceList } from "./ui/choice-list";
+  import { ChipList } from "./ui/chip-list";
+  import { Toolbar } from "./ui/toolbar";
+  import { ColorPicker } from "./ui/color-picker";
+  import { Switch } from "./ui/switch";
+  import { Toggle } from "./ui/toggle";
+  import { Checkbox } from "./ui/checkbox";
+  import { PopoverSelect } from "./ui/popover-select";
 
   let chips = $state(["alpha", "beta"]);
   let toggled = $state(false);

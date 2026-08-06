@@ -7,7 +7,7 @@
   /// a list row's "default" marker), instead of hand-rolled glyphs.
   import { Checkbox as CheckboxPrimitive } from "bits-ui";
   import { Check } from "@lucide/svelte";
-  import { cn } from "$lib/utils.js";
+  import { cn } from "../../../utils.js";
 
   let {
     checked = $bindable(false),
