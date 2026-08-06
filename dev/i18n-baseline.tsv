@@ -1,5 +1,9 @@
+apps/desktop-shell/src/lib/components/AudioPopover.svelte	Mute
+apps/desktop-shell/src/lib/components/AudioPopover.svelte	Unmute
 apps/desktop-shell/src/lib/components/Indicator.svelte	Grow
 apps/desktop-shell/src/lib/components/Indicator.svelte	Shrink
+apps/desktop-shell/src/lib/components/MprisIndicator.svelte	Pause
+apps/desktop-shell/src/lib/components/MprisIndicator.svelte	Play
 apps/desktop-shell/src/lib/components/NetworkIndicator.svelte	Ethernet: {}
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	A4
@@ -11,9 +15,16 @@ apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Esc
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Tab
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	hjkl
+apps/desktop-shell/src/lib/components/ToolbarSlot.svelte	Progress
+apps/desktop-shell/src/lib/components/WaypointerContent.svelte	Ask the agent...
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	First Party
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	System
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	Third Party
+apps/desktop-shell/src/lib/quicksettings/tiles/AirplaneTile.svelte	Available
+apps/desktop-shell/src/lib/quicksettings/tiles/AirplaneTile.svelte	Radios off
+apps/desktop-shell/src/lib/quicksettings/tiles/ProjectTile.svelte	Focus Mode
+apps/desktop-shell/src/lib/quicksettings/tiles/ProjectTile.svelte	Start a project
+apps/desktop-shell/src/lib/quicksettings/tiles/ProjectTile.svelte	Tap to pick
 apps/desktop-shell/src/lib/stores/consent.ts	connect to its sync service
 apps/desktop-shell/src/lib/stores/consent.ts	install system software with admin rights
 apps/desktop-shell/src/lib/stores/consent.ts	move 8 files to the Trash
@@ -74,10 +85,13 @@ apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
 apps/files/src/routes/+page.svelte	Del
 apps/files/src/routes/+page.svelte	F2
+apps/greeter/src/lib/components/PasswordField.svelte	Hide password
+apps/greeter/src/lib/components/PasswordField.svelte	Show password
 apps/greeter/src/routes/+page.svelte	No profile selected.
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Refresh
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	). Live rendering is coming.
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	Diagram source (
+apps/harness/src/lib/components/artifact/ArtifactView.svelte	Image artifact
 apps/harness/src/lib/components/artifact/types.ts	Chart
 apps/harness/src/lib/components/artifact/types.ts	Code
 apps/harness/src/lib/components/artifact/types.ts	Diagram
@@ -90,6 +104,8 @@ apps/harness/src/lib/components/chat/AgentActions.svelte	Something went wrong re
 apps/harness/src/lib/components/chat/AgentActions.svelte	That action is no longer available.
 apps/harness/src/lib/components/chat/AgentActions.svelte	Turn on live actions in the composer to apply this.
 apps/harness/src/lib/components/chat/AutonomyDial.svelte	Manage in Transparency
+apps/harness/src/lib/components/chat/ChatMessage.svelte	Bookmark
+apps/harness/src/lib/components/chat/ChatMessage.svelte	Remove bookmark
 apps/harness/src/lib/components/chat/FileRefMenu.svelte	Copy path
 apps/harness/src/lib/components/chat/FileRefMenu.svelte	Copy relative path
 apps/harness/src/lib/components/chat/FileRefMenu.svelte	Open
@@ -182,10 +198,15 @@ apps/settings/src/lib/components/AddProviderDialog.svelte	Anthropic
 apps/settings/src/lib/components/AddProviderDialog.svelte	Gemini
 apps/settings/src/lib/components/AddProviderDialog.svelte	OpenAI
 apps/settings/src/lib/components/AddProviderDialog.svelte	https://api.example.com/v1
+apps/settings/src/lib/components/appearance/AppPicker.svelte	Close
+apps/settings/src/lib/components/appearance/AppPicker.svelte	Open
 apps/settings/src/lib/components/appearance/AppPicker.svelte	notify-send
+apps/settings/src/lib/components/appearance/ModuleCard.svelte	Disable module
+apps/settings/src/lib/components/appearance/ModuleCard.svelte	Enable module
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
+apps/settings/src/lib/components/displays/NightLightSection.svelte	Set both coordinates to enable sunset/sunrise mode.
 apps/settings/src/lib/components/displays/ProfileSection.svelte	just now
 apps/settings/src/lib/components/displays/ProfileSection.svelte	never applied
 apps/settings/src/lib/components/displays/ProfileSection.svelte	{} d ago
@@ -194,6 +215,7 @@ apps/settings/src/lib/components/displays/ProfileSection.svelte	{} min ago
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Large
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Standard
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Wide
+apps/settings/src/lib/components/settings/AddCustomBinding.svelte	pkill -USR1 waybar
 apps/settings/src/lib/components/settings/KeyCapture.svelte	Space
 apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	Empty command
 apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	shell: needs an event name
@@ -352,12 +374,16 @@ apps/system-monitor/src/lib/stores/detail.ts	read your notes
 apps/system-monitor/src/lib/stores/detail.ts	tcp 140.82.121.4:443 ESTABLISHED
 apps/system-monitor/src/lib/stores/detail.ts	udp 224.0.0.251:5353 mdns
 apps/system-monitor/src/lib/stores/perf.ts	8 cores, 16 threads
+apps/terminal/src/lib/components/StreamBlock.svelte	Show as table
+apps/terminal/src/lib/components/StreamBlock.svelte	Show the plain text
 apps/terminal/src/lib/components/TerminalSidebar.svelte	{} (last command exited {})
 apps/terminal/src/routes/_chrometest/+page.svelte	A header bar per block redraws cwd · git as chrome; result + actions always on.
 apps/terminal/src/routes/_chrometest/+page.svelte	A · Styled
 apps/terminal/src/routes/_chrometest/+page.svelte	B · Classic
 apps/terminal/src/routes/_chrometest/+page.svelte	Shell prints prompt + command + output; chrome only on hover / focus.
 apps/terminal/src/routes/_chrometest/+page.svelte	recommended
+apps/viewers/src/lib/components/VideoViewer.svelte	Pause
+apps/viewers/src/lib/components/VideoViewer.svelte	Play
 apps/viewers/src/lib/components/ViewerMenu.svelte	Commentary
 apps/viewers/src/lib/components/ViewerMenu.svelte	English
 apps/viewers/src/lib/components/ViewerMenu.svelte	English (stereo)
@@ -367,3 +393,7 @@ apps/viewers/src/lib/components/ViewerMenu.svelte	film.en.srt
 apps/viewers/src/lib/mock.ts	Nightswim
 sdk/ui-kit/src/lib/components/browser/Breadcrumb.svelte	Home
 sdk/ui-kit/src/lib/components/browser/format.ts	{} PB
+sdk/ui-kit/src/lib/components/ui/media-transport/media-transport.svelte	Pause
+sdk/ui-kit/src/lib/components/ui/media-transport/media-transport.svelte	Play
+sdk/ui-kit/src/lib/components/ui/number-input/number-input.svelte	Decrease
+sdk/ui-kit/src/lib/components/ui/number-input/number-input.svelte	Increase

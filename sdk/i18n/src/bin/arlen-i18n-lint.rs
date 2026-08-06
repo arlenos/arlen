@@ -242,8 +242,26 @@ fn scan_svelte(src: &str) -> Vec<Finding> {
                             }
                         }
                     } else if i < n && chars[i] == '{' {
-                        // expression-valued attribute: skip the {...}
-                        skip_expr(&chars, &mut i, &mut line);
+                        // Expression-valued attribute. Its literals are still
+                        // copy when the attribute is one that renders, and the
+                        // expression is JavaScript, so the script scanner's own
+                        // positions apply inside it too.
+                        let vline = line;
+                        let body = take_expr(&chars, &mut i, &mut line);
+                        if is_displayed_attr(&attr) {
+                            for lit in expr_literals(&body) {
+                                if let Some(t) = user_facing_text(&lit) {
+                                    out.push(Finding {
+                                        line: vline,
+                                        text: t,
+                                    });
+                                }
+                            }
+                        }
+                        out.extend(scan_script(&body).into_iter().map(|f| Finding {
+                            line: vline + f.line - 1,
+                            text: f.text,
+                        }));
                     }
                     attr.clear();
                     continue;
@@ -304,9 +322,21 @@ fn scan_svelte(src: &str) -> Vec<Finding> {
 /// tracked, and quotes (`'`, `"`, backtick) inside the expression are honored so
 /// a brace inside a string literal does not close the region early.
 fn skip_expr(chars: &[char], i: &mut usize, line: &mut usize) {
+    take_expr(chars, i, line);
+}
+
+/// Step over a `{...}` and return what was inside, braces excluded.
+///
+/// Skipping was right for markup - `{count}` is a value, not copy - but it also
+/// discarded `statusText={on ? "Radios off" : "Available"}`, and a conditional
+/// prop is how a Svelte component usually picks between two labels. Every tile in
+/// the shell's quick settings said its state that way and the gate reported the
+/// whole directory clean.
+fn take_expr(chars: &[char], i: &mut usize, line: &mut usize) -> String {
     let n = chars.len();
     let mut depth = 0usize;
     let mut quote: Option<char> = None;
+    let start = *i;
     while *i < n {
         let ch = chars[*i];
         if ch == '\n' {
@@ -330,14 +360,16 @@ fn skip_expr(chars: &[char], i: &mut usize, line: &mut usize) {
                 } else if ch == '}' {
                     depth -= 1;
                     if depth == 0 {
+                        let body: String = chars[start + 1..*i].iter().collect();
                         *i += 1;
-                        return;
+                        return body;
                     }
                 }
             }
         }
         *i += 1;
     }
+    chars[start.min(n)..n].iter().collect()
 }
 
 /// The property names and call sinks whose string argument reaches the user.
@@ -350,6 +382,10 @@ fn skip_expr(chars: &[char], i: &mut usize, line: &mut usize) {
 const USER_FACING_PROPS: &[&str] = &[
     "label", "title", "placeholder", "description", "ariaLabel", "tooltip", "message",
     "summary", "heading", "hint", "caption", "confirmLabel", "cancelLabel",
+    // A tile's state line, which is its whole second row of text. Added on a
+    // measured miss: every quick-settings tile said its state through this prop
+    // and the gate called the directory clean.
+    "statusText",
 ];
 
 /// Deliberately absent: `name`, `text` and `body`.
@@ -368,6 +404,48 @@ const USER_FACING_PROPS: &[&str] = &[
 const USER_FACING_CALLS: &[&str] = &[
     "toast", "toast.success", "toast.error", "toast.info", "toast.warning", "alert", "confirm",
 ];
+
+/// Whether an attribute or component prop puts its value on screen.
+///
+/// The HTML attributes plus the prop names, because a Svelte component takes
+/// `statusText={…}` where an element would take `title="…"` and both end up as
+/// text the reader sees.
+fn is_displayed_attr(name: &str) -> bool {
+    is_user_facing_attr(name)
+        || USER_FACING_PROPS
+            .iter()
+            .any(|p| p.eq_ignore_ascii_case(name))
+}
+
+/// Every quoted literal in an expression, unescaped, in order.
+///
+/// Only the string bodies: what is around them (a ternary, a call, an object)
+/// decides nothing here, because the attribute name has already said this
+/// position is displayed.
+fn expr_literals(src: &str) -> Vec<String> {
+    let chars: Vec<char> = src.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '"' || c == '\'' {
+            i += 1;
+            let mut lit = String::new();
+            while i < chars.len() && chars[i] != c {
+                if chars[i] == '\\' && i + 1 < chars.len() {
+                    i += 1;
+                }
+                lit.push(chars[i]);
+                i += 1;
+            }
+            i += 1;
+            out.push(lit);
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
 
 /// Whether a string is a fragment of another language rather than copy.
 ///
@@ -1391,6 +1469,45 @@ const SECOND = [
     fn does_not_flag_class_or_data_attrs() {
         let src = r#"<div class="card big" data-id="home" id="main">Content here</div>"#;
         assert_eq!(texts(src), vec!["Content here"]);
+    }
+
+    #[test]
+    fn a_conditional_accessible_name_is_a_finding() {
+        // The shape that hid every one of them: two names picked by a ternary
+        // inside the attribute expression, which the markup scanner skipped
+        // wholesale because `{...}` is usually a value rather than copy.
+        assert_eq!(
+            texts(r#"<button aria-label={muted ? "Unmute" : "Mute"}>x</button>"#),
+            vec!["Unmute", "Mute"]
+        );
+        assert_eq!(
+            texts(r#"<Tile statusText={on ? "Radios off" : "Available"} />"#),
+            vec!["Radios off", "Available"]
+        );
+    }
+
+    #[test]
+    fn an_expression_in_a_structural_attribute_is_not() {
+        // `class` and the like carry the same shape and none of the meaning.
+        assert!(texts(r#"<div class={big ? "card-lg" : "card-sm"}>x</div>"#).is_empty());
+        assert!(texts(r#"<div style={wide ? "width: 40rem" : "width: 20rem"}>x</div>"#).is_empty());
+    }
+
+    #[test]
+    fn a_key_comparison_inside_a_handler_is_not() {
+        // `onkeydown` is not a displayed attribute, and the literal is a
+        // comparison rather than a label, so neither path should claim it.
+        assert!(texts(r#"<input onkeydown={(e) => e.key === "Enter" && go()} />"#).is_empty());
+    }
+
+    #[test]
+    fn a_call_inside_an_expression_is_still_scanned() {
+        // The expression is JavaScript, so the script scanner's positions hold
+        // inside it too.
+        assert_eq!(
+            texts(r#"<button onclick={() => toast("Saved to Documents")}>x</button>"#),
+            vec!["Saved to Documents"]
+        );
     }
 
     #[test]
