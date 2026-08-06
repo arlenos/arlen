@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../../i18n/messages.kit";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Minus, Square, X } from "@lucide/svelte";
   import { Button } from "../button/index.js";
@@ -53,7 +54,7 @@
       size="icon"
       class="control-btn"
       onclick={minimize}
-      aria-label="Minimize"
+      aria-label={$kt("k.window.minimize")}
     >
       <Minus size={12} strokeWidth={2} />
     </Button>
@@ -64,7 +65,7 @@
         size="icon"
         class="control-btn"
         onclick={maximize}
-        aria-label="Maximize"
+        aria-label={$kt("k.window.maximize")}
       >
         <Square size={10} strokeWidth={2} />
       </Button>
@@ -75,7 +76,7 @@
       size="icon"
       class="control-btn close-btn"
       onclick={close}
-      aria-label="Close"
+      aria-label={$kt("k.window.close")}
     >
       <X size={12} strokeWidth={2} />
     </Button>

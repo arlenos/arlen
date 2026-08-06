@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../../i18n/messages.kit";
   import { cn } from "$lib/utils";
   import { useSidebar } from "./context.svelte";
 
@@ -10,7 +11,7 @@
   type="button"
   data-slot="sidebar-rail"
   data-sidebar="rail"
-  aria-label="Toggle Sidebar"
+  aria-label={$kt("k.sidebar.toggle")}
   tabindex={-1}
   onclick={() => sidebar.toggle()}
   title="Toggle Sidebar"

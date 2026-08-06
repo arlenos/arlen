@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../../i18n/messages.kit";
   /// The shared media transport cluster: previous / play-pause / next, on the
   /// kit `Button` (ghost sides, a secondary play at `lg`) with the filled
   /// Rewind / Play / Pause / FastForward glyphs. One component for every player
@@ -42,7 +43,7 @@
     size={btnSize}
     class={sideBtn}
     disabled={!canControl || !canPrev}
-    aria-label="Previous"
+    aria-label={$kt("k.media.previous")}
     onclick={() => onprev?.()}
   >
     <SkipBack class={sideGlyph} strokeWidth={1.5} fill="currentColor" />
@@ -66,7 +67,7 @@
     size={btnSize}
     class={sideBtn}
     disabled={!canControl || !canNext}
-    aria-label="Next"
+    aria-label={$kt("k.media.next")}
     onclick={() => onnext?.()}
   >
     <SkipForward class={sideGlyph} strokeWidth={1.5} fill="currentColor" />

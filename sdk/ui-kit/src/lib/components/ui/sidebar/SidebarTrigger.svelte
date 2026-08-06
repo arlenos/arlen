@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../../i18n/messages.kit";
   import { cn } from "$lib/utils";
   import { PanelLeft } from "@lucide/svelte";
   import { useSidebar } from "./context.svelte";
@@ -11,7 +12,7 @@
   type="button"
   data-slot="sidebar-trigger"
   data-sidebar="trigger"
-  aria-label="Toggle Sidebar"
+  aria-label={$kt("k.sidebar.toggle")}
   onclick={() => sidebar.toggle()}
   class={cn(
     "inline-flex size-7 items-center justify-center rounded-input text-muted-foreground hover:bg-muted hover:text-foreground transition-colors",

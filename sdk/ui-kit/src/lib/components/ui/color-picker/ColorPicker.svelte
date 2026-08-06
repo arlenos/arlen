@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../../i18n/messages.kit";
   /// Arlen Color Picker (Tier 1: HSV pad + hue slider + hex input).
   ///
   /// Replaces the native `<input type="color">` which on Wayland +
@@ -206,7 +207,7 @@
       value={h}
       oninput={(e) => commitHsv(parseFloat(e.currentTarget.value), s, v)}
       class="cp-hue"
-      aria-label="Hue"
+      aria-label={$kt("k.colour.hue")}
     />
   </div>
 
@@ -225,7 +226,7 @@
       class="cp-hex"
       maxlength="7"
       spellcheck="false"
-      aria-label="Hex colour"
+      aria-label={$kt("k.colour.hex")}
     />
   </div>
 </div>

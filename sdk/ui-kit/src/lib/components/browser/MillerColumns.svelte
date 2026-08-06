@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../i18n/messages.kit";
   /// Miller columns: every level from the root to the current folder
   /// as its own column (Finder/ranger style). Ancestor listings come
   /// from the controller's cache (one prefetch per level, then one
@@ -99,7 +100,7 @@
   class="miller"
   bind:this={scroller}
   role="grid"
-  aria-label="Folder columns"
+  aria-label={$kt("k.browser.columns")}
   onscroll={() => (scrolledLeft = (scroller?.scrollLeft ?? 0) > 4)}
 >
   {#each $ancestors as column (column.path)}
@@ -121,7 +122,7 @@
         </button>
       {/each}
       {#if column.entries.length === 0}
-        <div class="mc-empty">Empty</div>
+        <div class="mc-empty">{$kt("k.browser.empty")}</div>
       {/if}
     </div>
   {/each}
@@ -148,7 +149,7 @@
       </button>
     {/each}
     {#if $entries.length === 0}
-      <div class="mc-empty">Empty</div>
+      <div class="mc-empty">{$kt("k.browser.empty")}</div>
     {/if}
   </div>
 </div>

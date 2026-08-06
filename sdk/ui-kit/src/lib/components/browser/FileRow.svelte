@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../i18n/messages.kit";
   /// One listing row in the detail view: icon, name, size, modified.
   /// Dumb by design — selection, cursor and events come from the
   /// list. Hidden entries speak at the secondary dim; a symlink shows
@@ -155,7 +156,7 @@
         bind:this={inputRef}
         bind:value={draft}
         class="fr-rename"
-        aria-label="New name"
+        aria-label={$kt("k.browser.newName")}
         spellcheck="false"
         onkeydown={onRenameKeydown}
         onblur={commit}
