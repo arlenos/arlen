@@ -33,7 +33,7 @@
     <Switch
       value={toggled ?? false}
       onchange={() => onToggle?.()}
-      ariaLabel="Turn {title} on or off"
+      ariaLabel={$t("sh.popover.toggleNamed", { name: title })}
     />
   {/if}
   {#if onSettings}

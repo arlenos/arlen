@@ -1,10 +1,3 @@
-apps/desktop-shell/src/lib/components/AudioPopover.svelte	Audio input device
-apps/desktop-shell/src/lib/components/AudioPopover.svelte	Audio output device
-apps/desktop-shell/src/lib/components/AudioPopover.svelte	Input volume
-apps/desktop-shell/src/lib/components/AudioPopover.svelte	Output volume
-apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Inner gap
-apps/desktop-shell/src/lib/components/LayoutPopover.svelte	Title bars on tiled windows
-apps/desktop-shell/src/lib/components/MprisPopover.svelte	Seek
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	A4
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	Legal
@@ -18,7 +11,6 @@ apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Tab
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	hjkl
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	to enable some.
-apps/desktop-shell/src/lib/components/UndoIndicator.svelte	Recent actions and undo
 apps/desktop-shell/src/lib/components/WorkspaceIndicator.svelte	[overlay] scheduleClose blocked (ctxOpen={} domMenu={})
 apps/desktop-shell/src/lib/stores/consent.ts	connect to its sync service
 apps/desktop-shell/src/lib/stores/consent.ts	install system software with admin rights

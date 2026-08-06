@@ -118,7 +118,7 @@
         max={100}
         step={1}
         size="sm"
-        ariaLabel="Output volume"
+        ariaLabel={$t("sh.audio.outputVolume")}
         oninput={(v) => setVolume(v)}
       />
     </div>
@@ -129,7 +129,7 @@
     value={currentOutputId}
     options={outputOptions}
     onchange={selectOutput}
-    ariaLabel="Audio output device"
+    ariaLabel={$t("sh.audio.outputDevice")}
     width="100%"
   />
 
@@ -154,7 +154,7 @@
           max={100}
           step={1}
           size="sm"
-          ariaLabel="Input volume"
+          ariaLabel={$t("sh.audio.inputVolume")}
           oninput={(v) => setInputVol(v)}
         />
       </div>
@@ -165,7 +165,7 @@
       value={currentInputId}
       options={inputOptions}
       onchange={selectInput}
-      ariaLabel="Audio input device"
+      ariaLabel={$t("sh.audio.inputDevice")}
       width="100%"
     />
 
@@ -197,7 +197,7 @@
                 max={100}
                 step={1}
                 size="sm"
-                ariaLabel="{app.name} volume"
+                ariaLabel={$t("sh.audio.appVolume", { app: app.name })}
                 oninput={(v) => setAppVol(app.id, v)}
               />
             </div>
