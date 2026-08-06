@@ -16,6 +16,12 @@ use notify::{Event, EventKind, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter, Runtime};
 
 /// The language the messages are authored in, and the floor of every fallback.
+///
+/// This predicate also lives in `arlen_i18n::chosen`, which the desktop shell and
+/// the daemons use. Not shared from there: `sdk/i18n` declares its own workspace
+/// and this plugin is an `sdk` member, so a path dependency is a "multiple
+/// workspace roots" error rather than a link. Both sides carry the same tests, so
+/// a change to the rule that lands on one shows up as a failure on the other.
 const SOURCE_LOCALE: &str = "en";
 
 /// `~/.config/arlen/locale.toml`.

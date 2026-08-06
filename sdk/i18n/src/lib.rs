@@ -13,9 +13,11 @@ pub mod model;
 pub mod parse;
 
 pub mod catalog;
+pub mod chosen;
 pub mod rtl;
 
 pub use catalog::{Catalog, CatalogError, Localizer, fallback_chain};
+pub use chosen::{chosen_locale, is_locale_tag, locale_config_path, SOURCE_LOCALE};
 /// The locale tag type, re-exported so a consumer of the catalog loader does not
 /// depend on the locale crate directly. The formatter under this crate is meant to
 /// be swappable; a caller that reaches past it to ICU would break on that swap.

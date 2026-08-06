@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { initTheme } from "$lib/theme";
+  import { initArlenLocale } from "@arlen/ui-kit/i18n";
   import { activePopover, closePopover } from "$lib/stores/activePopover.js";
   import "../app.css";
 
@@ -163,6 +164,7 @@
     // `listen()` lives for the lifetime of the page — it has no init/
     // dispose pair because the theme store is module-scoped state.
     initTheme().catch(() => {});
+    void initArlenLocale();
 
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
     return () => {

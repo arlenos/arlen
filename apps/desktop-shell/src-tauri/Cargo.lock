@@ -251,11 +251,13 @@ version = "0.1.0"
 name = "arlen-i18n"
 version = "0.1.0"
 dependencies = [
+ "dirs 6.0.0",
  "fixed_decimal",
  "icu_decimal",
  "icu_locale_core",
  "icu_plurals",
  "serde_json",
+ "toml 0.9.12+spec-1.1.0",
 ]
 
 [[package]]
