@@ -69,6 +69,22 @@ def main() -> int:
     rust_just = listed("RUST_CRATES", jf, r'RUST_CRATES := "(.*?)"')
     front_just = listed("FRONTENDS", jf, r'FRONTENDS := "(.*?)"')
 
+    # Four empty lists agree with each other perfectly, and with an empty tree, so
+    # without this the check reports "0 rust, 0 frontend, tree fully covered" and
+    # exits 0 the day a regex stops matching - a renamed variable, a reformatted
+    # array, a moved justfile. That is the failure this gate is least able to
+    # survive, because a matrix that lists nothing builds nothing and every
+    # downstream job goes green by having no work.
+    for label, got in (
+        ("RUST_ALL", rust_ci),
+        ("FRONT_ALL", front_ci_list),
+        ("RUST_CRATES", rust_just),
+        ("FRONTENDS", front_just),
+    ):
+        if not got:
+            print(f"{label} came back empty; the list moved or its pattern stopped matching")
+            return 2
+
     problems: list[str] = []
 
     for label, a, b in (
