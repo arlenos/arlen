@@ -14,6 +14,7 @@
   import { X } from "@lucide/svelte";
   import { placeIcon } from "./icons";
   import type { Place, PlaceGroup } from "./types";
+  import { kt } from "../../i18n/messages.kit";
 
   let {
     groups,
@@ -42,7 +43,7 @@
           <SidebarMenuItem>
             <SidebarMenuButton
               isActive={activePath === place.path}
-              tooltip={place.offline ? `${place.label} (not connected)` : place.path}
+              tooltip={place.offline ? $kt("k.browser.offline", { place: place.label }) : place.path}
               onclick={() => onnavigate?.(place)}
             >
               <Icon />
@@ -57,7 +58,7 @@
                   class="ps-remove ms-auto group-data-[collapsible=icon]:hidden"
                   role="button"
                   tabindex="-1"
-                  aria-label={`Unpin ${place.label}`}
+                  aria-label={$kt("k.browser.unpin", { place: place.label })}
                   onclick={(e) => {
                     e.stopPropagation();
                     onremove?.(place);
