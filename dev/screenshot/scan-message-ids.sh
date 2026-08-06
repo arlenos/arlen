@@ -17,7 +17,10 @@
 # in common wherever it goes wrong is that it ends up in the rendered text, so that is
 # what this looks at.
 #
-#   dev/screenshot/scan-message-ids.sh http://localhost:5173 / /appearance /keyboard
+#   dev/screenshot/scan-message-ids.sh http://localhost:1421 / /appearance /keyboard
+#
+# The port is the app's, from its vite config - settings is 1421, not the 5173 a
+# SvelteKit app uses by default.
 #
 # Exits non-zero if any route showed an id. Start the app's dev server first.
 set -uo pipefail
@@ -33,7 +36,7 @@ case "$base" in
   http://*|https://*|file://*) ;;
   *)
     echo "scan-message-ids.sh: '$base' is not a base URL." >&2
-    echo "Pass where the app is actually served, e.g. http://localhost:5173" >&2
+    echo "Pass where the app is actually served, e.g. http://localhost:1421" >&2
     exit 2
     ;;
 esac
@@ -43,7 +46,6 @@ shift
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 inject="$(mktemp /tmp/scan-ids-XXXXXX.js)"
 shot="$(mktemp /tmp/scan-ids-XXXXXX.png)"
-trap 'rm -f "$inject" "$shot"' EXIT
 
 # Match against the actual catalog keys rather than guessing at the shape of an id.
 # The first cut used a dotted-lowercase pattern and flagged `org.arlen.files` and
@@ -73,6 +75,39 @@ if (body.trim().length === 0 && attrs.length === 0) return JSON.stringify(["<pag
 const text = body + "\n" + attrs;
 return JSON.stringify([...keys].filter((k) => text.includes(k)));
 JS
+
+# The positive control, run before anything is believed.
+#
+# On 6 August this script reported every route clean for a whole session while
+# loading no page at all. It was internally consistent, exited 0, and printed a
+# sentence that read like a finding; nothing about reading it would have shown the
+# bug. What found it was planting a message id and noticing it was not caught.
+#
+# So it now plants one on itself, every run. A page carrying a real catalog id in
+# body text and in an aria-label must come back with both. If it does not, this
+# script cannot see what it exists to see, and it says so rather than going on to
+# report clean routes. A checker is not trusted until it has been shown to fail.
+control_id="${keys%%,*}"
+control="$(mktemp -d /tmp/scan-ids-ctl-XXXXXX)"
+trap 'rm -f "$inject" "$shot"; rm -rf "$control"' EXIT
+cat > "$control/index.html" <<HTML
+<!doctype html><meta charset="utf-8"><title>positive control</title>
+<p>$control_id</p>
+<button aria-label="$control_id">x</button>
+HTML
+
+ctl=$("$here/shoot.sh" "file://$control/index.html" "$shot" "$inject" 2>&1 | sed -n 's/^inject result: //p')
+case "$ctl" in
+  *"$control_id"*) ;;
+  *)
+    echo "scan-message-ids.sh: the positive control was not caught." >&2
+    echo "  planted: $control_id (in body text and in an aria-label)" >&2
+    echo "  got:     ${ctl:-<no result>}" >&2
+    echo "This script cannot see a message id on a page, so a clean result from it" >&2
+    echo "would mean nothing. Fix the scan before trusting any route." >&2
+    exit 2
+    ;;
+esac
 
 failed=0
 for path in "$@"; do
