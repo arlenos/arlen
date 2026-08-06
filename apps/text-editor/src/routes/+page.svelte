@@ -10,6 +10,8 @@
   import { proposal, proposeEdit, dismiss } from "$lib/stores/aiEdit";
   import { t, dir } from "$lib/i18n/messages";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
+  import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Sun, PanelRight, Hash } from "lucide-svelte";
 
   // The AI edit is invoked by keyboard (Cmd/Ctrl+K), never a bolted-on titlebar
@@ -91,12 +93,44 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   $effect(() => {
     loadLens(file.name);
   });
+
+  // Window chrome: the toolbar doubles as the drag region (explicit
+  // startDragging - the drag attribute is unreliable on Wayland in Tauri v2),
+  // guarded so vite still renders.
+  function isInteractive(e: Event): boolean {
+    const target = e.target as HTMLElement | null;
+    return !!target?.closest("button, a, input, [role='button']");
+  }
+  async function startDrag(e: PointerEvent): Promise<void> {
+    if (e.button !== 0 || e.pointerType !== "mouse") return;
+    if (isInteractive(e)) return;
+    try {
+      await getCurrentWindow().startDragging();
+    } catch {
+      // No Tauri runtime under vite: the toolbar is a static bar.
+    }
+  }
+  async function toggleMax(e: MouseEvent): Promise<void> {
+    if (isInteractive(e)) return;
+    try {
+      const w = getCurrentWindow();
+      if (await w.isMaximized()) await w.unmaximize();
+      else await w.maximize();
+    } catch {
+      // Same guard as above.
+    }
+  }
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 
 <div class="app" dir={$dir}>
-  <header class="titlebar">
+  <!-- The toolbar is a drag surface (a non-keyboard pointer interaction); its
+       actual controls are accessible buttons inside it, so the
+       static-interaction lint is a false positive here. Same treatment as the
+       knowledge and store headers. -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <header class="titlebar" onpointerdown={startDrag} ondblclick={toggleMax}>
     <PopoverSelect
       value={String(fileIdx)}
       options={fileOptions}
@@ -138,6 +172,7 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
     >
       <PanelRight size={15} strokeWidth={2} />
     </button>
+    <WindowButtons />
   </header>
 
   <div class="body">
