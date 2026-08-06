@@ -117,6 +117,7 @@ pub fn run() {
             commands::values::settings_resolve_options,
             commands::layouts::settings_keyboard_layouts,
             commands::app_facts::settings_apps_list,
+            commands::app_lifecycle::settings_app_uninstall,
             commands::app_facts::settings_app_meta,
             commands::app_facts::settings_app_general,
             commands::app_facts::settings_app_clear_cache,
