@@ -535,14 +535,6 @@ apps/settings/src/routes/appearance/system/+page.svelte	error:
 apps/settings/src/routes/appearance/system/+page.svelte	src
 apps/settings/src/routes/appearance/system/+page.svelte	warning:
 apps/settings/src/routes/appearance/system/+page.svelte	~/src
-apps/settings/src/routes/appearance/typography/+page.svelte	Base size
-apps/settings/src/routes/appearance/typography/+page.svelte	Body text
-apps/settings/src/routes/appearance/typography/+page.svelte	Bold
-apps/settings/src/routes/appearance/typography/+page.svelte	Emphasis and labels
-apps/settings/src/routes/appearance/typography/+page.svelte	Headings
-apps/settings/src/routes/appearance/typography/+page.svelte	Line height
-apps/settings/src/routes/appearance/typography/+page.svelte	Medium
-apps/settings/src/routes/appearance/typography/+page.svelte	Normal
 apps/settings/src/routes/appearance/typography/+page.svelte	const answer = 42;
 apps/settings/src/routes/extensions/+page.svelte	forage install
 apps/settings/src/routes/keyboard/+page.svelte	Czech

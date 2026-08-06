@@ -42,9 +42,9 @@
   const wBold = $derived(Number($effective.weightBold));
 
   const WEIGHTS = [
-    { key: "weightNormal", label: "Normal", hint: "Body text" },
-    { key: "weightMedium", label: "Medium", hint: "Emphasis and labels" },
-    { key: "weightBold", label: "Bold", hint: "Headings" },
+    { key: "weightNormal", labelKey: "s.typo.weightNormal", hintKey: "s.typo.weightNormalHint" },
+    { key: "weightMedium", labelKey: "s.typo.weightMedium", hintKey: "s.typo.weightMediumHint" },
+    { key: "weightBold", labelKey: "s.typo.weightBold", hintKey: "s.typo.weightBoldHint" },
   ];
 </script>
 
@@ -105,7 +105,7 @@
               max={18}
               step={1}
               unit="px"
-              ariaLabel="Base size"
+              ariaLabel={$t("s.typo.baseSize")}
               onchange={(v) => setTypo("sizeBase", v)}
             />
           {/snippet}
@@ -123,7 +123,7 @@
               min={1.1}
               max={1.9}
               step={0.05}
-              ariaLabel="Line height"
+              ariaLabel={$t("s.typo.lineHeight")}
               onchange={(v) => setTypo("lineHeight", v)}
             />
           {/snippet}
@@ -139,8 +139,8 @@
           <Section>
             {#each WEIGHTS as w (w.key)}
               <OverrideRow
-                label={w.label}
-                hint={w.hint}
+                label={$t(w.labelKey)}
+                hint={$t(w.hintKey)}
                 overridden={isOverridden($overrides, w.key)}
                 onreset={() => resetTypo(w.key)}
                 id={`typo-${w.key}`}
@@ -151,7 +151,7 @@
                     min={300}
                     max={900}
                     step={100}
-                    ariaLabel={`${w.label} weight`}
+                    ariaLabel={$t("s.typo.weightAria", { name: $t(w.labelKey) })}
                     onchange={(v) => setTypo(w.key, v)}
                   />
                 {/snippet}
