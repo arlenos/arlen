@@ -93,6 +93,12 @@ fn files_breadcrumb(path: String) -> Vec<Crumb> {
 /// path). The icon key is resolved by the UI's icon map.
 #[derive(Serialize, Clone)]
 struct Place {
+    /// The message id for the place's name. The icon id doubles as the key
+    /// (`home` -> `f.place.home`), so the list of places is the list of
+    /// messages; a device carries its own name instead and leaves this `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_key: Option<String>,
+    /// What to show when there is no `label_key`: a volume's own label.
     label: String,
     icon: String,
     path: String,
@@ -109,27 +115,32 @@ struct Places {
 #[tauri::command]
 fn files_places() -> Places {
     let mut orte = Vec::new();
-    let mut push = |label: &str, icon: &str, dir: Option<std::path::PathBuf>| {
+    // The XDG user dirs. `dirs::` gives the real path, which on a German system
+    // is `~/Dokumente`; the name shown beside it is the translated one, so the
+    // two agree. The icon id is the key, so there is no second list.
+    let mut push = |icon: &str, dir: Option<std::path::PathBuf>| {
         if let Some(p) = dir {
             if p.is_dir() {
                 orte.push(Place {
-                    label: label.to_string(),
+                    label_key: Some(format!("f.place.{icon}")),
+                    label: icon.to_string(),
                     icon: icon.to_string(),
                     path: p.to_string_lossy().into_owned(),
                 });
             }
         }
     };
-    push("Home", "home", dirs::home_dir());
-    push("Documents", "documents", dirs::document_dir());
-    push("Downloads", "downloads", dirs::download_dir());
-    push("Pictures", "pictures", dirs::picture_dir());
-    push("Music", "music", dirs::audio_dir());
-    push("Videos", "videos", dirs::video_dir());
-    push("Desktop", "desktop", dirs::desktop_dir());
+    push("home", dirs::home_dir());
+    push("documents", dirs::document_dir());
+    push("downloads", dirs::download_dir());
+    push("pictures", dirs::picture_dir());
+    push("music", dirs::audio_dir());
+    push("videos", dirs::video_dir());
+    push("desktop", dirs::desktop_dir());
 
     let geraete = vec![Place {
-        label: "System".to_string(),
+        label_key: Some("f.place.system".to_string()),
+        label: "system".to_string(),
         icon: "system".to_string(),
         path: "/".to_string(),
     }];
@@ -156,6 +167,8 @@ fn files_templates() -> Vec<Place> {
             path.file_name()
                 .and_then(|n| n.to_str())
                 .map(|name| Place {
+                    // A template file's own name.
+                    label_key: None,
                     label: name.to_string(),
                     icon: "file".to_string(),
                     path: path.to_string_lossy().into_owned(),
@@ -1471,6 +1484,8 @@ fn files_bookmarks() -> Vec<Place> {
         .bookmarks
         .iter()
         .map(|p| Place {
+            // A bookmarked folder's own name.
+            label_key: None,
             label: Path::new(p)
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())

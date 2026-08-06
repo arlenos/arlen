@@ -83,6 +83,10 @@ export interface BrowserAdapter {
 /// icon key resolves through the kit icon map; `offline` renders the
 /// gray status dot.
 export interface Place {
+  /// A message id for the name, resolved by the app before it reaches here: the
+  /// kit cannot resolve an app's catalog. Absent for a place that carries its
+  /// own name (a volume, a bookmarked folder).
+  labelKey?: string | null;
   label: string;
   icon: string;
   path: string;
