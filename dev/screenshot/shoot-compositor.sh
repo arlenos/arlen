@@ -78,6 +78,25 @@ CC_BIN="$COMPOSITOR_PATH/target/debug/cosmic-comp"
 [ -x "$CC_BIN" ] || { echo "no cosmic-comp at $CC_BIN (build it, or set COMPOSITOR_PATH)" >&2; exit 1; }
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+# The sensing master switch, stated rather than assumed. The compositor refuses
+# every capture while it is off, so this harness would otherwise depend on the
+# switch being absent on the machine that runs it - and a switch our own tooling
+# quietly walks around is a switch an app walks around. Setting it on turns that
+# dependency into a statement: this run captures because the switch permits it.
+#
+# Written into a private config dir so it can never touch the user's own switch.
+# Set ARLEN_SENSING_HOME to point at a config tree with the switch OFF to watch
+# the refusal instead; the run then fails at grim, which is the correct outcome.
+if [ -z "${ARLEN_SENSING_HOME:-}" ]; then
+  SENSING_HOME="$(mktemp -d)"
+  mkdir -p "$SENSING_HOME/arlen"
+  printf 'screen_capture = true\n' > "$SENSING_HOME/arlen/sensing.toml"
+  trap 'rm -rf "$SENSING_HOME"' EXIT
+else
+  SENSING_HOME="$ARLEN_SENSING_HOME"
+fi
+export XDG_CONFIG_HOME="$SENSING_HOME"
 SETTLE="${SHOOT_SETTLE:-5}"
 DISP="${SHOOT_DISPLAY:-:99}"
 LOG="$(mktemp)"
