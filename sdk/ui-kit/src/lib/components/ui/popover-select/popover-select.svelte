@@ -2,6 +2,9 @@
   export interface PopoverSelectOption {
     value: string;
     label: string;
+    /// Optional one-line explanation, shown muted under the label in the open
+    /// list only - the collapsed trigger stays a single line.
+    description?: string;
   }
 </script>
 
@@ -217,6 +220,11 @@
         <span class="ps-label">
           {#if renderLabel}
             {@render renderLabel(opt, selected)}
+          {:else if opt.description}
+            <span class="ps-opt">
+              <span>{opt.label}</span>
+              <span class="ps-desc">{opt.description}</span>
+            </span>
           {:else}
             {opt.label}
           {/if}
@@ -348,6 +356,24 @@
 
   .item.selected {
     background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  }
+
+  /* A described option stacks label over its muted line; the row grows and
+     regains vertical padding the single-line rows get from min-height. */
+  .ps-opt {
+    display: flex;
+    flex-direction: column;
+    gap: 0.0625rem;
+    padding: 0.3125rem 0;
+    min-width: 0;
+    text-align: start;
+  }
+  .ps-desc {
+    font-size: var(--text-2xs);
+    font-weight: 400;
+    color: color-mix(in srgb, var(--foreground) 50%, transparent);
+    white-space: normal;
+    line-height: 1.35;
   }
 
   :global(.ps-check) {
