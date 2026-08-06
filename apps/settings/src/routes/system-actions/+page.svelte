@@ -11,6 +11,8 @@
   /// compositor picks the default again. Reset-all confirms first.
 
   import { onMount } from "svelte";
+  import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
+  import { mark } from "@arlen/ui-kit/i18n";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Page } from "@arlen/ui-kit/components/ui/page";
@@ -119,17 +121,24 @@
     </Section>
   {/each}
 
-  <!-- The sentence below is left hardcoded: it wraps literal tokens in <code>,
-       and one whole message cannot carry that markup, so translating it would
-       lose the monospace. Second instance of the same open question as the
-       notifications timestamp - see `coder-reports.md`. -->
+  <!-- One message with the four literal tokens marked inside it. The tokens are
+       syntax and stay as written; the sentence around them is not, and German
+       puts its verbs elsewhere, so a pre/post split could not carry it. -->
   <div class="footer-note span-full">
     <strong>{$t("s.sysact.grammar")}</strong>
-    <code>shell:event_name</code> dispatches a shell-overlay event
-    (e.g. <code>shell:brightness_up</code>),
-    <code>spawn:command</code> runs a shell command. Bare strings
-    are also accepted and run via <code>/bin/sh -c</code> for
-    compatibility.
+    <Rich
+      text={$t("s.sysact.grammarBody", {
+        event: mark("event"),
+        example: mark("example"),
+        spawn: mark("spawn"),
+        sh: mark("sh"),
+      })}
+    >
+      {#snippet event()}<code>shell:event_name</code>{/snippet}
+      {#snippet example()}<code>shell:brightness_up</code>{/snippet}
+      {#snippet spawn()}<code>spawn:command</code>{/snippet}
+      {#snippet sh()}<code>/bin/sh -c</code>{/snippet}
+    </Rich>
   </div>
   </SectionGrid>
 </Page>
