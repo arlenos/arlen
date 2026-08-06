@@ -123,7 +123,7 @@ function assertPlain(id: string): void {
   }
 }
 
-function buildExportPayload(): SettingsIndex {
+export function buildExportPayload(): SettingsIndex {
   for (const s of SETTINGS_REGISTRY) {
     for (const id of [s.titleKey, s.descKey, s.keywordsKey, s.sectionKey]) assertPlain(id);
   }

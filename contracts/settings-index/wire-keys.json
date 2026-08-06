@@ -1,0 +1,8 @@
+{
+  "comment": "The field names in settings-index.json, as one table both sides answer. Settings writes it (apps/settings/src/lib/search/index.ts), the shell parses it (apps/desktop-shell/src-tauri/src/settings_provider.rs). Each side had its own idea of the shape once, in two languages, and they disagreed in production while both test suites stayed green: the writer moved to message ids, the reader still required prose, serde failed on the missing field and Waypointer's settings search returned nothing behind a warn line. Neither suite could see the other. This is the thing they now both read.",
+  "version": 2,
+  "top": ["version", "generatedAt", "catalog", "settings"],
+  "setting": ["id", "titleKey", "descKey", "keywordsKey", "panel", "sectionKey", "deepLink", "inlineAction"],
+  "inlineAction": ["type", "configFile", "configKey", "options", "min", "max", "step", "unit"],
+  "selectOption": ["value", "labelKey"]
+}

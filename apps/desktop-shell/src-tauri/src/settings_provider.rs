@@ -562,7 +562,18 @@ mod tests {
         ]
     }
 
+    /// These tests share one global cache, so they take turns.
+    ///
+    /// Without this they interleave: one finishes and clears the cache while
+    /// another is mid-search, which reads as an empty result and a failure that
+    /// does not reproduce. I saw it once and six clean runs afterwards, which is
+    /// exactly the evidence a race gives you.
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
     fn with_index<F: FnOnce()>(settings: Vec<IndexedSetting>, f: F) {
+        // A panicking test poisons the lock; the state it guards is replaced on
+        // entry anyway, so recovering keeps one failure from cascading.
+        let _turn = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let loaded = settings
             .into_iter()
             .map(|shown| {
@@ -586,6 +597,61 @@ mod tests {
     }
 
     // ── The index format ─────────────────────────────────────────────
+    /// The shared wire-key table, from the Arlen tree.
+    const WIRE_KEYS: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../contracts/settings-index/wire-keys.json"
+    );
+
+    /// This reader and the Settings writer answer one table of field names.
+    ///
+    /// They are two implementations in two languages, each with a green test
+    /// suite, and on 6 August they disagreed anyway: the writer moved to message
+    /// ids, this side still required prose, and the empty result that came back
+    /// was indistinguishable from a machine where Settings had never run. Neither
+    /// suite could see the other. A shared table is what closes that, the same way
+    /// the sensing vectors hold three copies of one predicate to one answer.
+    #[test]
+    fn the_parsed_fields_match_the_shared_wire_table() {
+        let table: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(WIRE_KEYS).expect("wire-keys.json"))
+                .expect("wire-keys.json parses");
+
+        assert_eq!(
+            table["version"].as_u64(),
+            Some(INDEX_VERSION as u64),
+            "this build reads a different index version than the table declares"
+        );
+
+        // Serde would accept a document missing a field it does not know about, so
+        // asking "does it parse" proves nothing. Build a document from the table's
+        // own names and require it to parse: a rename on either side then breaks
+        // here rather than in production.
+        let names: Vec<String> = table["setting"]
+            .as_array()
+            .expect("setting keys")
+            .iter()
+            .map(|k| k.as_str().unwrap().to_string())
+            .collect();
+        let mut entry = serde_json::Map::new();
+        for name in &names {
+            // `inlineAction` is optional and shaped; the rest are plain strings.
+            if name == "inlineAction" {
+                continue;
+            }
+            entry.insert(name.clone(), serde_json::Value::String("x".into()));
+        }
+        let doc = serde_json::json!({
+            "version": INDEX_VERSION,
+            "catalog": "settings",
+            "settings": [entry],
+        });
+        let parsed: SettingsIndex = serde_json::from_value(doc)
+            .expect("a document built from the shared table must parse here");
+        assert_eq!(parsed.settings.len(), 1);
+    }
+
+
 
     /// Write an index plus its catalogs the way the Settings app does, and hand
     /// back the index path.
