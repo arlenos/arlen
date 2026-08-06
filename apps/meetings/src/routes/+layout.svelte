@@ -8,6 +8,8 @@
   /// guarded so vite still renders.
   import "../app.css";
   import { onMount } from "svelte";
+  import { initArlenTheme } from "@arlen/ui-kit/theme";
+  import { initArlenLocale } from "@arlen/ui-kit/i18n";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -32,7 +34,14 @@
 
   let { children } = $props();
 
-  onMount(loadMeetings);
+  onMount(() => {
+    void loadMeetings();
+    // The chosen language and the live theme, the same two lines every other app
+    // runs. This app embeds the plugin and has the permission; it just never
+    // asked, so it stayed English on a German desktop.
+    void initArlenLocale();
+    void initArlenTheme();
+  });
 
   const path = $derived($page.url.pathname);
   const activeId = $derived(path.startsWith("/meeting/") ? path.slice("/meeting/".length) : null);

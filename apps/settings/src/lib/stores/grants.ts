@@ -18,7 +18,8 @@
 /// zero as "never" - usage is "not measured yet" until an audit feed exists.
 
 import { invoke } from "@tauri-apps/api/core";
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
+import { locale } from "$lib/i18n/messages";
 
 /// One capability grant, mirroring `GrantView` in `sdk/os-sdk/src/graph.rs`.
 export interface GrantView {
@@ -348,8 +349,14 @@ function setDefault(
 // The provenance line for a grant, from its source: an app declares reach at
 // install; the user allows a consent grant in context (with a date); some reach
 // is system-managed and not yet per-app revocable.
+/// A date in the language the user chose.
+///
+/// It was pinned to `en-US`, so a German build read "you allowed on Mar 22, 2026"
+/// - a US month-day order in a sentence nobody else on that page was writing in
+/// English. The kit's file-browser formatter learned the same lesson earlier and
+/// its comment still records it.
 function fmtDate(micros: number): string {
-  return new Date(micros / 1000).toLocaleDateString("en-US", {
+  return new Date(micros / 1000).toLocaleDateString(get(locale), {
     month: "short",
     day: "numeric",
     year: "numeric",
