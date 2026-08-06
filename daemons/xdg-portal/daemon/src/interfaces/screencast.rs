@@ -297,6 +297,16 @@ impl ScreenCast {
                 error_results("caller is not the xdg-desktop-portal frontend"),
             );
         }
+        // The master switch subtracts from every principal at once, so it is
+        // checked before the session's own ownership: a caller whose session is
+        // perfectly in order still gets no stream while capture is off. Checked
+        // here rather than at CreateSession because this is where capture is
+        // exercised - preparing a session captures nothing, and a switch flicked
+        // between the two must still stop the stream.
+        if crate::sensing::screen_capture_is_off() {
+            tracing::info!(app_id, "ScreenCast.Start refused: screen capture is switched off");
+            return (response::OTHER, error_results(crate::sensing::SCREEN_CAPTURE_OFF));
+        }
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(handle.into());
         let key = session_handle.as_str().to_string();
