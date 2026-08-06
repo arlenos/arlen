@@ -556,9 +556,6 @@ apps/settings/src/routes/keyboard/+page.svelte	Swedish
 apps/settings/src/routes/keyboard/+page.svelte	Swiss
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Loading…
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	No bindings match "
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	bound to:
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	conflict
-apps/settings/src/routes/keyboard/shortcuts/+page.svelte	detected
 apps/settings/src/routes/notifications/+page.svelte	Active until
 apps/settings/src/routes/notifications/+page.svelte	Alarms
 apps/settings/src/routes/notifications/+page.svelte	Priority
@@ -647,5 +644,8 @@ sdk/ui-kit/src/routes/+page.svelte	Shell surface
 sdk/ui-kit/src/routes/+page.svelte	Surface Tokens
 sdk/ui-kit/src/routes/_i18n/+page.svelte	Kit chrome &mdash; locale
 sdk/ui-kit/src/routes/_i18n/+page.svelte	about dialog
+sdk/ui-kit/src/routes/_i18n/+page.svelte	arlen install
 sdk/ui-kit/src/routes/_i18n/+page.svelte	console block
 sdk/ui-kit/src/routes/_i18n/+page.svelte	days picker
+sdk/ui-kit/src/routes/_i18n/+page.svelte	rich sentence
+sdk/ui-kit/src/routes/_i18n/+page.svelte	~/.local/share/arlen

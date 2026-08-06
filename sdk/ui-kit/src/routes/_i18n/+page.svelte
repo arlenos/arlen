@@ -23,7 +23,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 -->
 <script lang="ts">
   import { onMount } from "svelte";
-  import { locale } from "$lib/i18n";
+  import { locale, Rich, mark } from "$lib/i18n";
   import { DaysPicker } from "$lib/components/ui/days-picker";
   import { ConsoleBlock } from "$lib/components/console";
   import { AboutDialog } from "$lib/components/ui/about-dialog";
@@ -56,6 +56,23 @@ SPDX-License-Identifier: AGPL-3.0-only
     <h2>console block</h2>
     <ConsoleBlock command="cargo build" exitCode={1} durationMs={2400} />
     <ConsoleBlock command="cargo test" running={true} />
+  </section>
+
+  <section>
+    <h2>rich sentence</h2>
+    <!-- `Rich` is unit-tested on its part splitting but had never rendered in a
+         browser, and a snippet passed as a rest prop is exactly the kind of thing
+         that typechecks and then does not run. -->
+    <p>
+      <Rich text={"Run " + mark("cmd") + " or drop a file into " + mark("dir") + "."}>
+        {#snippet cmd()}<code>arlen install</code>{/snippet}
+        {#snippet dir()}<code>~/.local/share/arlen</code>{/snippet}
+      </Rich>
+    </p>
+    <p>
+      <!-- A name with no snippet must render the name, not vanish. -->
+      <Rich text={"missing snippet renders as " + mark("absent")} />
+    </p>
   </section>
 
   <section>
