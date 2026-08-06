@@ -1,3 +1,14 @@
+# What this backend tells the frontend it can serve. The frontend routes a
+# request here on the strength of this line and nothing else, so an interface
+# listed but unserviceable is not a degraded feature - it is a file dialog that
+# opens and fails, which reads to a user as a broken app rather than a missing
+# portal.
+#
+# FileChooser needs the picker-ui binary at
+# /usr/lib/arlen/libexec/xdg-desktop-portal-arlen-picker; the daemon warns at
+# startup when it is absent. If the daemon is ever staged into an image ahead of
+# the picker, drop FileChooser from this list for that image rather than shipping
+# a promise it cannot keep.
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.arlen
 Interfaces=org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.OpenURI;org.freedesktop.impl.portal.Screenshot;

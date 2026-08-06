@@ -43,7 +43,14 @@ NOT_YET_DEPLOYED: dict[str, str] = {
     "installd.service": "the install path is not exercised on the appliance image",
     "install-helper.service": "the install path is not exercised on the appliance image",
     "permission-helper.service": "the install path is not exercised on the appliance image",
-    "xdg-desktop-portal-arlen.service": "the portal is not staged into the image yet",
+    "xdg-desktop-portal-arlen.service": (
+        "the portal is not staged into the image yet, so the security fixes it now "
+        "carries are not in effect: the OpenFile descriptor TOCTOU, the resolved "
+        "mount containment, the picker peer-credential check. Not urgent - nothing "
+        "on the image routes through the portal yet - but this is a deferral of "
+        "shipped fixes, not of scaffolding. The expensive half is the picker-ui, a "
+        "Tauri app, so staging is a frontend build rather than a plain daemon step"
+    ),
 }
 
 
