@@ -14,6 +14,7 @@
   import { Applet, AppletBadge } from "@arlen/ui-kit/components/topbar";
   import { Wifi, WifiOff, Cable, Shield, Plane } from "lucide-svelte";
   import { listen } from "@tauri-apps/api/event";
+  import { t } from "$lib/i18n/messages";
   import { onMount } from "svelte";
 
   interface NetworkStatus {
@@ -76,13 +77,17 @@
       : 1,
   );
 
+  // Ethernet, WiFi and VPN stay as they are, and so does the percentage: the
+  // same call the popover's detail line makes, where it is written down. What
+  // is translated is the words - the two states, and the unnamed-network
+  // fallback.
   const tooltip = $derived.by(() => {
-    if (airplaneMode) return "Airplane Mode";
-    if (!status || !status.connected) return "Disconnected";
+    if (airplaneMode) return $t("sh.net.tip.airplane");
+    if (!status || !status.connected) return $t("sh.net.disconnected");
     if (status.connection_type === "ethernet") {
-      return `Ethernet: ${status.name ?? "Connected"}`;
+      return `Ethernet: ${status.name ?? $t("sh.net.connected")}`;
     }
-    let text = `WiFi: ${status.name ?? "Connected"}`;
+    let text = `WiFi: ${status.name ?? $t("sh.net.connected")}`;
     if (status.signal_strength != null) {
       text += ` (${status.signal_strength}%)`;
     }
