@@ -86,6 +86,16 @@ if [ "$drift" -ne 0 ]; then
   gate_failed=1
 fi
 
+# Zero units found is not a tree with no packaged units, it is a find that stopped
+# finding: mkosi.extra moved, was renamed, or the layout under it changed. Without
+# this the gate prints "OK: 0 packaged unit(s) match" and passes, which is the one
+# result it must never give - it exists precisely because the packaged copy drifts
+# from the canonical one silently.
+if [ "$((checked + skipped))" -eq 0 ]; then
+  echo "FAIL: found no packaged units under dev/mkosi/mkosi.extra; the check needs updating."
+  gate_failed=1
+fi
+
 echo "OK: $checked packaged unit(s) match their dist/ canonical; $skipped mkosi-only unit(s) skipped."
 
 # --- Second check: a sandbox-spawning daemon must not be denied AF_NETLINK -----
