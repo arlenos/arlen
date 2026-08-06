@@ -9,6 +9,7 @@
 </script>
 
 <script lang="ts">
+  import { kt } from "../../../i18n/messages.kit";
   /// Generic popover-based dropdown.
   ///
   /// Canonical source lives in `sdk/ui-kit`; consuming apps
@@ -63,7 +64,7 @@
     options,
     ariaLabel,
     width = "var(--control-width, var(--width-row-control, 200px))",
-    placeholder = "None",
+    placeholder,
     onchange,
     disabled = false,
     renderLabel,
@@ -191,7 +192,7 @@
       {:else if current}
         {current.label}
       {:else}
-        {placeholder}
+        {placeholder ?? $kt("k.select.none")}
       {/if}
     </span>
     <ChevronDown size={12} strokeWidth={2} class="ps-chev" />

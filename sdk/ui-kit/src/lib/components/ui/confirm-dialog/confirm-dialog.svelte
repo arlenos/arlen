@@ -21,7 +21,7 @@
     open: boolean;
     title: string;
     message: string;
-    /// Button label on the confirm side. Defaults to "Confirm".
+    /// Button label on the confirm side. Falls back to the kit's own "Confirm".
     confirmLabel?: string;
     /// Visual intent for the confirm button. `destructive` styles it
     /// in the error colour to signal irreversibility.
@@ -34,7 +34,7 @@
     open,
     title,
     message,
-    confirmLabel = "Confirm",
+    confirmLabel,
     variant = "default",
     onConfirm,
     onCancel,
@@ -81,7 +81,7 @@
         onclick={handleConfirm}
         disabled={busy}
       >
-        {busy ? "Working…" : confirmLabel}
+        {busy ? $kt("k.confirm.working") : (confirmLabel ?? $kt("k.confirm.confirm"))}
       </Button>
     </div>
   </div>

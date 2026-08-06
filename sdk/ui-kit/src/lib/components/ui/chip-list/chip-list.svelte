@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../../i18n/messages.kit";
   /// Add/remove list of short string chips (app-id allow/suppress lists,
   /// autonomous-apps, tags). Canonical replacement for the bespoke `chips` +
   /// inline add/remove markup. Self-contained text-add by default; bindable
@@ -6,7 +7,7 @@
   /// identifiers this compact chip form fits a settings row.
   let {
     items = $bindable([]),
-    placeholder = "Add…",
+    placeholder,
     id,
     disabled = false,
     onchange,
@@ -66,7 +67,7 @@
     <input
       class="chip-input"
       bind:value={draft}
-      {placeholder}
+      placeholder={placeholder ?? $kt("k.chip.add")}
       onkeydown={onkeydown} />
   {/if}
 </div>

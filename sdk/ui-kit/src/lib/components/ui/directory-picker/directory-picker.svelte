@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../../i18n/messages.kit";
   /// Filesystem directory picker.
   ///
   /// Renders as a single Button. On click, invokes the backend
@@ -19,7 +20,7 @@
   let {
     onpick,
     startPath,
-    label = "Choose Folder",
+    label,
     disabled = false,
     variant = "outline",
     size = "sm",
@@ -58,5 +59,5 @@
 
 <Button {variant} {size} disabled={disabled || pending} onclick={pick}>
   <FolderOpen size={14} />
-  {label}
+  {label ?? $kt("k.picker.chooseFolder")}
 </Button>

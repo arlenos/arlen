@@ -628,7 +628,3 @@ apps/viewers/src/lib/components/ViewerMenu.svelte	German
 apps/viewers/src/lib/components/ViewerMenu.svelte	Space
 apps/viewers/src/lib/components/ViewerMenu.svelte	film.en.srt
 apps/viewers/src/lib/mock.ts	Nightswim
-sdk/ui-kit/src/lib/components/ui/chip-list/chip-list.svelte	Add…
-sdk/ui-kit/src/lib/components/ui/confirm-dialog/confirm-dialog.svelte	Confirm
-sdk/ui-kit/src/lib/components/ui/directory-picker/directory-picker.svelte	Choose Folder
-sdk/ui-kit/src/lib/components/ui/popover-select/popover-select.svelte	None
