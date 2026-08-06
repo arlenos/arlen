@@ -84,9 +84,9 @@ const body = document.body.innerText;
 // Under a plain vite server there is no Tauri, so every command throws and
 // everything those commands feed is simply absent from the page. The scan then
 // finds no ids for the best possible reason and the worst: there was nothing to
-// look at. On 6 August the Files sidebar was showing a raw id as a group
-// heading, and a scan of that very route came back clean, because the sidebar
-// had rendered nothing at all. Saying "ok" there is a lie of omission.
+// look at. On 6 August a raw id was planted as a Files sidebar heading and a
+// scan of that very route came back clean, because the sidebar had rendered
+// nothing at all. Saying "ok" there is a lie of omission.
 const tauri = typeof window.__TAURI_INTERNALS__ !== "undefined";
 // An empty document scans clean for the same reason a missing one does. Say so
 // rather than pass: this is the shape that made a whole session's runs vacuous.
