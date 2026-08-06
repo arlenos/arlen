@@ -9,6 +9,21 @@
   import { cn } from "$lib/utils";
   import type { HTMLInputAttributes } from "svelte/elements";
 
+  /// Named rather than written inline at the destructure, which is not a style
+  /// preference. Written inline, the identical intersection resolved `size` to
+  /// `never`, so `size = "control"` below failed with "Type 'string' is not
+  /// assignable to type 'never'" - the field's own `size` (28px row or 36px hero)
+  /// collides with the input element's numeric `size`, which the `Omit` is there
+  /// to remove. Moving the same types into a named alias resolves it. The types
+  /// are unchanged, so the cause is in how the annotation is processed rather
+  /// than in the types; keep it named.
+  type Props = Omit<HTMLInputAttributes, "size"> & {
+    ref?: HTMLInputElement | null;
+    value?: string;
+    /// "control" is the 28px row height; "prominent" the 36px hero field.
+    size?: "control" | "prominent";
+  };
+
   let {
     ref = $bindable(null),
     value = $bindable(""),
@@ -16,12 +31,7 @@
     size = "control",
     class: className,
     ...rest
-  }: Omit<HTMLInputAttributes, "size"> & {
-    ref?: HTMLInputElement | null;
-    value?: string;
-    /// "control" is the 28px row height; "prominent" the 36px hero field.
-    size?: "control" | "prominent";
-  } = $props();
+  }: Props = $props();
 </script>
 
 <div class={cn("sf", size === "prominent" && "sf-prominent", className)}>
