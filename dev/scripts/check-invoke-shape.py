@@ -241,6 +241,18 @@ OPAQUE_RETURN = re.compile(
 )
 
 
+# Directories that hold code we did not write. `target` was here from the start;
+# `mkosi.builddir` was not, and it holds a whole cargo registry - thousands of
+# vendored crates. A dependency defining its own `struct Process` or `struct Info`
+# collided with ours, the ambiguity rule dropped the name, and the check then
+# SKIPPED those types entirely while printing a clean pass. It hid two real bugs
+# on every machine that had built the image, and only CI - which has no build
+# directory - saw them. A scan that quietly covers less on a developer's machine
+# than in CI is worse than one that covers less everywhere, because the developer
+# is the one who could still fix it cheaply.
+BUILD_DIRS = {"target", "node_modules", "mkosi.builddir", ".git", ".svelte-kit", "build", "dist"}
+
+
 def rust_return_types(root: Path) -> dict[str, dict[str, str]]:
     """Map app to command name to the bare name of the type it returns."""
     out: dict[str, dict[str, str]] = {}
@@ -291,25 +303,78 @@ def rust_struct_fields(root: Path) -> dict[str, set[str]]:
     fields: dict[str, set[str]] = {}
     seen_twice: set[str] = set()
     for path in root.rglob("*.rs"):
-        if "target" in path.parts or "node_modules" in path.parts:
+        if BUILD_DIRS & set(path.parts):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         for m in re.finditer(r"struct\s+(\w+)\s*\{([^}]*)\}", text, re.S):
             name, body = m.group(1), m.group(2)
             got = set()
+            renamed: str | None = None
             for line in body.splitlines():
                 line = line.strip()
-                if not line or line.startswith(("#", "//", "///")):
+                if not line:
+                    continue
+                # `#[serde(rename = "memMB")]` is what the field is called ON THE
+                # WIRE, which is the only name the frontend ever sees. Skipping
+                # attribute lines meant comparing the Rust identifier `mem_mb`
+                # against the TS `memMB`, whose snake form is `mem_m_b` - a
+                # mismatch reported against two sides that agree exactly.
+                rm = re.search(r'serde\s*\(\s*rename\s*=\s*"([^"]+)"', line)
+                if rm:
+                    renamed = rm.group(1)
+                    continue
+                if line.startswith(("#", "//", "///")):
                     continue
                 fm = re.match(r"(?:pub\s+)?(\w+)\s*:", line)
                 if fm:
-                    got.add(snake(fm.group(1)))
+                    got.add(snake(renamed or fm.group(1)))
+                    renamed = None
             if name in fields and fields[name] != got:
                 seen_twice.add(name)
             fields[name] = got
     for name in seen_twice:
         fields.pop(name, None)
     return fields
+
+
+def balanced_body(text: str, open_at: int) -> str:
+    """The text between `text[open_at] == '{'` and its matching close.
+
+    A regex stopping at the first `}` reads a nested object as the end of the
+    whole block. `Info` declares `conventional: { kind, size, mode, ... }`, and
+    reading it that way promoted four of `conventional`'s fields to fields of
+    `Info` itself, then reported the Rust side for not producing them. It does
+    produce them - one level down, where they belong.
+    """
+    depth = 0
+    for i in range(open_at, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[open_at + 1 : i]
+    return ""
+
+
+def top_level_fields(body: str) -> set[str]:
+    """The field names a body declares at ITS level, skipping nested objects."""
+    got: set[str] = set()
+    depth = 0
+    for raw in body.splitlines():
+        line = raw.strip()
+        opens, closes = line.count("{"), line.count("}")
+        if depth == 0 and line and not line.startswith(("//", "/*", "*", "///")):
+            # Only fields the interface declares as REQUIRED. A `field?:` is the
+            # frontend saying it already handles absence - the print queue's
+            # `progress?` is exactly that, and reporting it would be noise.
+            fm = re.match(r"(\w+)\s*:", line)
+            if fm:
+                got.add(snake(fm.group(1)))
+        depth += opens - closes
+        if depth < 0:
+            depth = 0
+    return got
 
 
 def ts_interfaces(root: Path) -> dict[str, dict[str, set[str]]]:
@@ -323,19 +388,9 @@ def ts_interfaces(root: Path) -> dict[str, dict[str, set[str]]]:
             continue
         app = path.relative_to(root).parts[1]
         text = path.read_text(encoding="utf-8", errors="replace")
-        for m in re.finditer(r"interface\s+(\w+)\s*\{([^}]*)\}", text, re.S):
-            name, body = m.group(1), m.group(2)
-            got = set()
-            for line in body.splitlines():
-                line = line.strip()
-                if not line or line.startswith(("//", "/*", "*", "///")):
-                    continue
-                # Only fields the interface declares as REQUIRED. A `field?:` is
-                # the frontend saying it already handles absence - the print queue's
-                # `progress?` is exactly that, and reporting it would be noise.
-                fm = re.match(r"(\w+)\s*:", line)
-                if fm:
-                    got.add(snake(fm.group(1)))
+        for m in re.finditer(r"interface\s+(\w+)\s*\{", text):
+            name = m.group(1)
+            got = top_level_fields(balanced_body(text, m.end() - 1))
             bucket = out.setdefault(app, {})
             if name in bucket and bucket[name] != got:
                 twice.setdefault(app, set()).add(name)

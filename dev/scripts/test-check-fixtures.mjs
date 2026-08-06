@@ -226,7 +226,92 @@ pub fn read_dir(path: String) {}
     `exit ${r3.code}: ${r3.out.trim()}`,
   );
 
-  for (const d of [sameName, interpolated, wrong]) rmSync(d, { recursive: true, force: true });
+  // A serde rename is what the field is CALLED on the wire, and the wire name is
+  // the only one the frontend sees. Reading past the attribute compared the Rust
+  // identifier against the TS spelling and reported two sides that agree.
+  const renamed = tree({
+    "apps/alpha/src-tauri/src/lib.rs": `#[derive(Serialize)]
+pub struct Row {
+    pub id: u32,
+    #[serde(rename = "memMB")]
+    pub mem_mb: f64,
+}
+
+#[tauri::command]
+pub fn list_rows() -> Vec<Row> { vec![] }
+`,
+    "apps/alpha/src/lib/rows.ts": `export interface Row {
+  id: number;
+  memMB: number;
+}
+const rows = await invoke<Row[]>("list_rows");
+`,
+  });
+  const r4 = run("check-invoke-shape.py", renamed);
+  check(
+    "a serde-renamed field is compared by its wire name",
+    r4.code === 0,
+    `exit ${r4.code}: ${r4.out.trim()}`,
+  );
+
+  // A nested object is ONE field of the outer interface. Reading to the first `}`
+  // promoted the inner fields to the outer level and then reported the Rust side
+  // for not producing them at a level where they do not belong.
+  const nested = tree({
+    "apps/alpha/src-tauri/src/lib.rs": `#[derive(Serialize)]
+pub struct Info {
+    pub conventional: Properties,
+}
+
+#[tauri::command]
+pub fn app_info() -> Info { todo!() }
+`,
+    "apps/alpha/src/lib/info.ts": `export interface Info {
+  conventional: {
+    kind: string;
+    size: number;
+  };
+}
+const info = await invoke<Info>("app_info");
+`,
+  });
+  const r5 = run("check-invoke-shape.py", nested);
+  check(
+    "a nested object counts as one field of the outer interface",
+    r5.code === 0,
+    `exit ${r5.code}: ${r5.out.trim()}`,
+  );
+
+  // And a genuinely missing top-level field must still be reported, so the two
+  // passes above are not the parser having given up.
+  const reallyMissing = tree({
+    "apps/alpha/src-tauri/src/lib.rs": `#[derive(Serialize)]
+pub struct Info {
+    pub conventional: Properties,
+}
+
+#[tauri::command]
+pub fn app_info() -> Info { todo!() }
+`,
+    "apps/alpha/src/lib/info.ts": `export interface Info {
+  conventional: {
+    kind: string;
+  };
+  owner: string;
+}
+const info = await invoke<Info>("app_info");
+`,
+  });
+  const r6 = run("check-invoke-shape.py", reallyMissing);
+  check(
+    "a field the struct really lacks is still reported",
+    r6.code === 1 && r6.out.includes("owner"),
+    `exit ${r6.code}: ${r6.out.trim()}`,
+  );
+
+  for (const d of [sameName, interpolated, wrong, renamed, nested, reallyMissing]) {
+    rmSync(d, { recursive: true, force: true });
+  }
 }
 
 invokeShapeFixtures();
