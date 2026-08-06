@@ -91,7 +91,13 @@ fn files_breadcrumb(path: String) -> Vec<Crumb> {
 
 /// A navigable place in the sidebar (contract shape: label, icon key,
 /// path). The icon key is resolved by the UI's icon map.
+// camelCase on the wire: the kit's `Place` type declares `labelKey`, and a
+// `label_key` arriving beside it reads as undefined, which falls through to the
+// fallback text. That is not a compile error on either side - the TypeScript
+// field is optional - so it shows up as the wrong words on screen and nowhere
+// else. Caught by scanning the running app, which is the only place it appears.
 #[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct Place {
     /// The message id for the place's name. The icon id doubles as the key
     /// (`home` -> `f.place.home`), so the list of places is the list of
