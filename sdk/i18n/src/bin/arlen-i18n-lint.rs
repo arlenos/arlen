@@ -369,12 +369,41 @@ const USER_FACING_CALLS: &[&str] = &[
     "toast", "toast.success", "toast.error", "toast.info", "toast.warning", "alert", "confirm",
 ];
 
+/// Whether a string is a fragment of another language rather than copy.
+///
+/// A helper returning `` `<span class="tok-kw">${w}</span>` `` or a transition
+/// returning `opacity: 0; transform: scale(0.98);` is building markup or CSS. It
+/// has spaces and letters like a sentence does, so nothing else here separates
+/// it, and putting either in the baseline would list syntax as translation work.
+///
+/// Deliberately four narrow shapes rather than a parser: an opening tag, a
+/// custom property, a declaration list, and an attribute selector. Prose does not
+/// carry `<div` or `--`, rarely carries a colon and a semicolon at once, and does
+/// not carry a bracket pair.
+///
+/// The selector shape earns its place: `button, a, input, [role='button']` is the
+/// focus-trap query, it is returned from a helper in nine components, and it has
+/// commas and lowercase words like a list of nouns.
+fn is_syntax(t: &str) -> bool {
+    let opens_a_tag = t
+        .as_bytes()
+        .windows(2)
+        .any(|w| w[0] == b'<' && (w[1].is_ascii_alphabetic() || w[1] == b'/'));
+    opens_a_tag
+        || t.contains("--")
+        || (t.contains(':') && t.contains(';'))
+        || (t.contains('[') && t.contains(']'))
+}
+
 /// Whether a literal in a user-facing position reads as prose rather than an
 /// identifier. Catalog keys, CSS classes, MIME types and dotted paths all land in
 /// these positions legitimately (`label: "chevron-down"` on an icon prop), and
 /// flagging them would train people to ignore the lint.
 fn user_facing_text(lit: &str) -> Option<String> {
     let t = meaningful(lit)?;
+    if is_syntax(&t) {
+        return None;
+    }
     let has_space = t.contains(' ');
     // An identifier-shaped single token: a dotted key, a path, a MIME type, a
     // kebab or snake name. Prose has spaces or at least starts with a capital.
@@ -410,6 +439,13 @@ fn scan_script(src: &str) -> Vec<Finding> {
     let mut i = 0usize;
     // The last token seen before the current position, used to classify it.
     let mut prefix = String::new();
+    // Whether a `return` is still open. The single-token lookbehind sees
+    // `return "x"` but not `return cond ? "a" : "b"`, and that ternary is how a
+    // helper usually picks between two sentences - `compatLine` in the
+    // Windows-apps page is exactly it, and stayed invisible after `return` was
+    // added as a position. Cleared at the `;` or `}` that ends the statement,
+    // not at a newline: a returned ternary is normally wrapped across lines.
+    let mut in_return = false;
 
     while i < n {
         let c = chars[i];
@@ -496,7 +532,13 @@ fn scan_script(src: &str) -> Vec<Finding> {
             // question is whether any static segment is prose, because that is the
             // concatenation an i18n gate exists to catch: it cannot be reordered for a
             // language that wants the value first.
-            if position_is_user_facing(&prefix) && segments.iter().any(|seg| user_facing_text(seg).is_some())
+            // The shape is judged too, not only the segments. `color-mix(in srgb,
+            // var(--foreground) ${n}%, transparent)` splits so that the CSS marker
+            // lands in the first segment and the second reads as ordinary words,
+            // and the finding a human then sees is the whole shape - which is CSS.
+            if (in_return || position_is_user_facing(&prefix))
+                && !is_syntax(&shape)
+                && segments.iter().any(|seg| user_facing_text(seg).is_some())
             {
                 if let Some(t) = meaningful(&shape) {
                     out.push(Finding { line: start_line, text: t });
@@ -521,7 +563,7 @@ fn scan_script(src: &str) -> Vec<Finding> {
                 i += 1;
             }
             i += 1;
-            if position_is_user_facing(&prefix) {
+            if in_return || position_is_user_facing(&prefix) {
                 if let Some(t) = user_facing_text(&lit) {
                     out.push(Finding { line: start_line, text: t });
                 }
@@ -544,8 +586,16 @@ fn scan_script(src: &str) -> Vec<Finding> {
             if prefix.len() > 64 {
                 prefix.drain(..prefix.len() - 64);
             }
-        } else if !c.is_whitespace() {
-            prefix.clear();
+        } else {
+            if trailing_name(&prefix) == "return" {
+                in_return = true;
+            }
+            if c == ';' || c == '}' {
+                in_return = false;
+            }
+            if !c.is_whitespace() {
+                prefix.clear();
+            }
         }
         i += 1;
     }
@@ -579,6 +629,20 @@ fn position_is_user_facing(prefix: &str) -> bool {
     }
     if let Some(head) = prefix.strip_suffix('(') {
         return USER_FACING_CALLS.iter().any(|c| head.ends_with(c));
+    }
+    // `return "sentence"`. A helper that picks a phrase per case is one of the
+    // commonest ways prose enters a component, and it was invisible here: the
+    // whole `compatLine`/`accessLine` pair in the Windows-apps page sat in the
+    // source with the gate reporting no new findings, because a return is not a
+    // prop and not a call argument.
+    //
+    // Measured before adopting, the way `name` was measured before declining:
+    // 94 findings, of which 9 were a function returning CSS or a markup fragment
+    // and the other 85 were plain English sentences shown to the user. The 9 are
+    // filtered by shape in `user_facing_text`, since a CSS declaration is not
+    // prose wherever it appears.
+    if prefix == "return" {
+        return true;
     }
     false
 }
@@ -1327,5 +1391,90 @@ const SECOND = [
     fn does_not_flag_class_or_data_attrs() {
         let src = r#"<div class="card big" data-id="home" id="main">Content here</div>"#;
         assert_eq!(texts(src), vec!["Content here"]);
+    }
+
+    #[test]
+    fn a_returned_sentence_is_a_finding() {
+        // The shape that hid `compatLine` and `accessLine` in the Windows-apps
+        // page: prose picked per case by a helper, returned rather than assigned.
+        let src = r#"
+            function accessLine(b) {
+              if (!b.network) return "Limited access. It cannot reach your network.";
+              return "Broad access. It can reach your network.";
+            }"#;
+        assert_eq!(
+            script_texts(src),
+            vec![
+                "Limited access. It cannot reach your network.",
+                "Broad access. It can reach your network.",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_returned_identifier_is_not() {
+        // The reason `return` could not simply be added: helpers return keys,
+        // classes and paths far more often than sentences, and the existing shape
+        // test is what keeps those out.
+        assert!(script_texts(r#"return "chevron-down";"#).is_empty());
+        assert!(script_texts(r#"return "text/plain";"#).is_empty());
+        assert!(script_texts(r#"return "s.wa.windowed";"#).is_empty());
+    }
+
+    #[test]
+    fn a_returned_css_or_markup_fragment_is_not() {
+        // Both have letters and spaces, so only their syntax separates them from
+        // copy. Listing either in the baseline would read as translation work.
+        assert!(script_texts(r#"return "opacity: 0; transform: scale(0.98);";"#).is_empty());
+        assert!(script_texts(r#"return `<span class="tok-kw">${w}</span>`;"#).is_empty());
+        assert!(
+            script_texts(r#"return `color-mix(in srgb, var(--fg) ${p}%, transparent)`;"#)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_returned_ternary_reports_both_branches() {
+        // `compatLine`: the branch is the sentence, so the lookbehind on its own
+        // sees a `?` and a `:` and nothing else.
+        let src = r#"
+            function compatLine(b) {
+              return b.tier === "curated"
+                ? `Curated and verified, using the ${b.recipe}`
+                : "Best effort on the default setup, it may not run perfectly";
+            }"#;
+        assert_eq!(
+            script_texts(src),
+            vec![
+                "Curated and verified, using the {}",
+                "Best effort on the default setup, it may not run perfectly",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_returned_selector_is_not_copy() {
+        let src = r#"return "button, a, input, [role='button']";"#;
+        assert!(script_texts(src).is_empty());
+    }
+
+    #[test]
+    fn a_return_does_not_leak_past_its_statement() {
+        // The flag has to close, or every literal after the first return in a
+        // file is judged as though it were being returned.
+        let src = r#"
+            function f() { return "A sentence here."; }
+            const icon = { name: "Another sentence here." };"#;
+        assert_eq!(script_texts(src), vec!["A sentence here."]);
+    }
+
+    #[test]
+    fn a_sentence_with_a_colon_is_still_copy() {
+        // The declaration-list test needs both marks, because prose uses a colon
+        // on its own: "Active task: {}" is a sentence, not CSS.
+        assert_eq!(
+            script_texts(r#"return `Active task: ${name}.`;"#),
+            vec!["Active task: {}."]
+        );
     }
 }

@@ -1,13 +1,43 @@
+apps/desktop-shell/src/lib/components/BatteryIndicator.svelte	Battery
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	1 to 16 characters. The PIN is set on the device itself.
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Allow
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Allow this service for as long as the device stays paired.
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Allow {} to use {}?
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	An incoming pairing request without security verification.
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Cancel
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Confirm that the same code is shown on the other device.
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Deny
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Enter PIN for {}
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Enter passkey for {}
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Pair
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Pair with {}
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Pair with {}?
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Type this PIN on the device.
+apps/desktop-shell/src/lib/components/BluetoothPairingDialog.svelte	Type this code on the device.
+apps/desktop-shell/src/lib/components/ConsentDialog.svelte	Hold to delete
+apps/desktop-shell/src/lib/components/ConsentDialog.svelte	Hold to delete {}
+apps/desktop-shell/src/lib/components/ConsentDialog.svelte	Host
+apps/desktop-shell/src/lib/components/ConsentDialog.svelte	Scope
+apps/desktop-shell/src/lib/components/ConsentDialog.svelte	Target
+apps/desktop-shell/src/lib/components/ConsentDialog.svelte	To
+apps/desktop-shell/src/lib/components/Indicator.svelte	Grow
+apps/desktop-shell/src/lib/components/Indicator.svelte	Shrink
+apps/desktop-shell/src/lib/components/NetworkIndicator.svelte	Airplane Mode
+apps/desktop-shell/src/lib/components/NetworkIndicator.svelte	Disconnected
+apps/desktop-shell/src/lib/components/NetworkIndicator.svelte	Ethernet: {}
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	A4
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	Legal
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	Letter
+apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	.audio-tile-wrap, .user-row-tile
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Enter
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Esc
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Tab
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	hjkl
-apps/desktop-shell/src/lib/components/WorkspaceIndicator.svelte	[overlay] scheduleClose blocked (ctxOpen={} domMenu={})
+apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	First Party
+apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	System
+apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	Third Party
 apps/desktop-shell/src/lib/stores/consent.ts	connect to its sync service
 apps/desktop-shell/src/lib/stores/consent.ts	install system software with admin rights
 apps/desktop-shell/src/lib/stores/consent.ts	move 8 files to the Trash
@@ -39,20 +69,50 @@ apps/desktop-shell/src/lib/stores/printDialog.ts	Quarterly report.pdf
 apps/desktop-shell/src/lib/stores/sourcePicker.ts	Arlen OS - Wikipedia
 apps/desktop-shell/src/lib/stores/sourcePicker.ts	Documents
 apps/desktop-shell/src/lib/stores/sourcePicker.ts	tim@arlen: ~/work
-apps/desktop-shell/src/lib/workspace/drag.svelte.ts	[overlay] right-click card={} selectionSize={}
-apps/desktop-shell/src/lib/workspace/drag.svelte.ts	[overlay] toggleSelection card={}
+apps/desktop-shell/src/lib/stores/waypointerAsk.ts	AI is off. The agent won't read or answer anything.
+apps/desktop-shell/src/lib/stores/waypointerAsk.ts	The agent isn't reachable right now.
+apps/desktop-shell/src/lib/stores/waypointerProcesses.ts	{} GB
+apps/desktop-shell/src/lib/stores/waypointerProcesses.ts	{} KB
+apps/desktop-shell/src/lib/stores/waypointerProcesses.ts	{} MB
+apps/desktop-shell/src/lib/workspace/format.ts	Workspace {}
 apps/desktop-shell/src/routes/_mpristest/+page.svelte	Click an album-art thumb to open the mini-player.
 apps/desktop-shell/src/routes/_mpristest/+page.svelte	Lateralus
 apps/desktop-shell/src/routes/_printtest/+page.svelte	Print dialog look-mock. The dialog opens over this page.
 apps/desktop-shell/src/routes/_undotest/+page.svelte	topbar strip
+apps/files/src/lib/locations.ts	Filtered
+apps/files/src/lib/locations.ts	Recent
+apps/files/src/lib/locations.ts	Search
+apps/files/src/lib/locations.ts	Search: {}
+apps/files/src/lib/locations.ts	Trash
+apps/files/src/lib/stores/provenance.ts	Arlen recorded this as yours, {}.
+apps/files/src/lib/stores/provenance.ts	Deeper history isn't available yet.
+apps/files/src/lib/stores/provenance.ts	The assistant asserted this from its reasoning, {}.
+apps/files/src/lib/stores/provenance.ts	The idle curator consolidated this, {}.
+apps/files/src/lib/stores/provenance.ts	Verified as from {}, {}, by a content credential.
+apps/files/src/lib/stores/provenance.ts	a process
+apps/files/src/lib/stores/provenance.ts	the focused window
+apps/files/src/lib/stores/provenance.ts	{} {}, {}. Recorded from what Arlen observed.
+apps/files/src/lib/stores/provenance.ts	{}, {}. Arlen did not verify this.
 apps/files/src/routes/+page.svelte	Ctrl+C
 apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
 apps/files/src/routes/+page.svelte	Del
 apps/files/src/routes/+page.svelte	F2
+apps/greeter/src/routes/+page.svelte	No profile selected.
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Refresh
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	). Live rendering is coming.
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	Diagram source (
+apps/harness/src/lib/components/artifact/types.ts	Chart
+apps/harness/src/lib/components/artifact/types.ts	Code
+apps/harness/src/lib/components/artifact/types.ts	Diagram
+apps/harness/src/lib/components/artifact/types.ts	Document
+apps/harness/src/lib/components/artifact/types.ts	Image
+apps/harness/src/lib/components/artifact/types.ts	Links
+apps/harness/src/lib/components/artifact/types.ts	Table
+apps/harness/src/lib/components/artifact/types.ts	Widget
+apps/harness/src/lib/components/chat/AgentActions.svelte	Something went wrong reaching the agent.
+apps/harness/src/lib/components/chat/AgentActions.svelte	That action is no longer available.
+apps/harness/src/lib/components/chat/AgentActions.svelte	Turn on live actions in the composer to apply this.
 apps/harness/src/lib/components/chat/AutonomyDial.svelte	Manage in Transparency
 apps/harness/src/lib/components/chat/FileRefMenu.svelte	Copy path
 apps/harness/src/lib/components/chat/FileRefMenu.svelte	Copy relative path
@@ -70,12 +130,15 @@ apps/harness/src/lib/components/chat/ImportDialog.svelte	A .json file exported f
 apps/harness/src/lib/components/chat/ImportDialog.svelte	Import chat
 apps/harness/src/lib/components/chat/ImportDialog.svelte	Open a chat you exported as JSON. It is added as a new conversation, so it never overwrites one you have.
 apps/harness/src/lib/components/chat/ModelPicker.svelte	unavailable
+apps/harness/src/lib/components/chat/ModelPicker.svelte	{}k ctx
 apps/harness/src/lib/components/transparency/AccessSection.svelte	While the AI is off, none of this access is active.
 apps/harness/src/lib/components/transparency/AccessSection.svelte	no data
 apps/harness/src/lib/components/transparency/ActivitySection.svelte	See everything it did
 apps/harness/src/lib/components/transparency/CostSection.svelte	. Cloud use has a cost; check your provider for the rate.
 apps/harness/src/lib/components/transparency/CostSection.svelte	Cloud use has a cost. The running count is not available right now.
 apps/harness/src/lib/components/transparency/CostSection.svelte	There is no usage cost
+apps/harness/src/lib/components/transparency/CostSection.svelte	{} {} used so far
+apps/harness/src/lib/components/transparency/MemorySection.svelte	Active task: {}{}.
 apps/harness/src/lib/components/transparency/MemorySection.svelte	This is the shape of what it holds, never the contents of your files.
 apps/harness/src/lib/components/transparency/OffSwitchSection.svelte	You are always in control. You can turn the AI off completely in Settings. When it is off, it does nothing at all, and you can remove it. The rest of your desktop keeps working without it.
 apps/harness/src/lib/components/transparency/ReadsSection.svelte	more
@@ -90,7 +153,9 @@ apps/harness/src/lib/ledger.ts	Tool call
 apps/harness/src/lib/menu.ts	Chat
 apps/harness/src/lib/menu.ts	Import chat…
 apps/harness/src/lib/menu.ts	New chat
+apps/harness/src/lib/stores/conversation.ts	Referenced files:{}{}
 apps/harness/src/lib/stores/conversation.ts	Standup bullets
+apps/harness/src/lib/stores/conversation.ts	Summarize what changed in week-plan.md since Monday
 apps/harness/src/lib/stores/conversation.ts	What changed in my week plan
 apps/harness/src/lib/stores/mint.ts	12 notes you saved to read
 apps/harness/src/lib/stores/mint.ts	3 items you have open
@@ -103,6 +168,11 @@ apps/harness/src/lib/stores/mint.ts	notes they mention
 apps/harness/src/lib/stores/mint.ts	the people who wrote them
 apps/harness/src/lib/stores/mint.ts	the project and its files
 apps/harness/src/lib/stores/mint.ts	their tags
+apps/harness/src/lib/time.ts	a minute ago
+apps/harness/src/lib/time.ts	just now
+apps/harness/src/lib/time.ts	{} d ago
+apps/harness/src/lib/time.ts	{} h ago
+apps/harness/src/lib/time.ts	{} min ago
 apps/knowledge/src/lib/stores/capsules.ts	Thesis slice
 apps/knowledge/src/lib/stores/library.ts	Attention Is All You Need
 apps/knowledge/src/lib/stores/library.ts	Conference registration confirmed
@@ -113,6 +183,7 @@ apps/knowledge/src/lib/stores/library.ts	Re: review notes
 apps/knowledge/src/lib/stores/library.ts	Scaling Laws for Neural Language Models
 apps/knowledge/src/lib/stores/library.ts	The Rust Programming Language
 apps/knowledge/src/lib/stores/library.ts	Thesis outline
+apps/knowledge/src/lib/stores/provenance.ts	captured from activity
 apps/knowledge/src/lib/stores/search.ts	Arlen OS
 apps/knowledge/src/lib/stores/search.ts	Arlen OS, 9:30 am to 12:15 pm
 apps/knowledge/src/lib/stores/search.ts	Attention Is All You Need
@@ -123,7 +194,11 @@ apps/knowledge/src/lib/stores/search.ts	Thesis
 apps/knowledge/src/lib/stores/search.ts	Website redesign
 apps/knowledge/src/lib/stores/search.ts	Website redesign, 2:10 pm to 4:40 pm
 apps/knowledge/src/lib/stores/timeline.ts	Arlen OS
+apps/knowledge/src/lib/stores/timeline.ts	Gestern
+apps/knowledge/src/lib/stores/timeline.ts	Heute
+apps/knowledge/src/lib/stores/timeline.ts	Today
 apps/knowledge/src/lib/stores/timeline.ts	Website redesign
+apps/knowledge/src/lib/stores/timeline.ts	Yesterday
 apps/meetings/src/lib/stores/meeting.ts	Editor and meeting-notes direction
 apps/meetings/src/lib/stores/meeting.ts	Sovereignty review
 apps/meetings/src/lib/stores/meeting.ts	Weekly standup
@@ -135,6 +210,18 @@ apps/settings/src/lib/components/appearance/AppPicker.svelte	notify-send
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
+apps/settings/src/lib/components/displays/ProfileSection.svelte	just now
+apps/settings/src/lib/components/displays/ProfileSection.svelte	never applied
+apps/settings/src/lib/components/displays/ProfileSection.svelte	{} d ago
+apps/settings/src/lib/components/displays/ProfileSection.svelte	{} h ago
+apps/settings/src/lib/components/displays/ProfileSection.svelte	{} min ago
+apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Large
+apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Standard
+apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Wide
+apps/settings/src/lib/components/settings/KeyCapture.svelte	Space
+apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	Empty command
+apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	shell: needs an event name
+apps/settings/src/lib/components/ui/command-string-editor/command-string-editor.svelte	spawn: needs a command
 apps/settings/src/lib/stores/appSettings.ts	Accent colour
 apps/settings/src/lib/stores/appSettings.ts	Advanced
 apps/settings/src/lib/stores/appSettings.ts	Appearance
@@ -183,6 +270,18 @@ apps/settings/src/lib/stores/capsules.ts	Project Atlas notes
 apps/settings/src/lib/stores/capsules.ts	Reading list
 apps/settings/src/lib/stores/capsules.ts	Recipe collection
 apps/settings/src/lib/stores/capsules.ts	Trip 2026
+apps/settings/src/lib/stores/displays.ts	{} × {} @ {} Hz
+apps/settings/src/lib/stores/grants.ts	All
+apps/settings/src/lib/stores/grants.ts	Managed by the system, not revocable here.
+apps/settings/src/lib/stores/grants.ts	Own
+apps/settings/src/lib/stores/grants.ts	Removing this needs the service's reach descriptor, coming with the backend.
+apps/settings/src/lib/stores/grants.ts	Sees only {}, not the full contents.
+apps/settings/src/lib/stores/grants.ts	This app needs this to work.
+apps/settings/src/lib/stores/grants.ts	declared at install
+apps/settings/src/lib/stores/grants.ts	its own data
+apps/settings/src/lib/stores/grants.ts	managed by the system
+apps/settings/src/lib/stores/grants.ts	reads and changes
+apps/settings/src/lib/stores/grants.ts	you allowed on {}
 apps/settings/src/lib/stores/models.ts	Answers your questions.
 apps/settings/src/lib/stores/models.ts	Background work
 apps/settings/src/lib/stores/models.ts	Balanced
@@ -193,6 +292,9 @@ apps/settings/src/lib/stores/models.ts	Fast
 apps/settings/src/lib/stores/models.ts	Names new chats. A small local model is plenty.
 apps/settings/src/lib/stores/models.ts	Runs the tasks you have turned on.
 apps/settings/src/lib/stores/models.ts	Your machine can run models up to about 8B at a good speed.
+apps/settings/src/lib/stores/modules.ts	Arlen
+apps/settings/src/lib/stores/modules.ts	built-in, prefix "{}"
+apps/settings/src/lib/stores/printers.ts	Network
 apps/settings/src/lib/stores/theme.ts	Fira Code
 apps/settings/src/lib/stores/theme.ts	Inter
 apps/settings/src/lib/stores/theme.ts	JetBrains Mono
@@ -223,9 +325,14 @@ apps/settings/src/routes/appearance/system/+page.svelte	src
 apps/settings/src/routes/appearance/system/+page.svelte	warning:
 apps/settings/src/routes/appearance/system/+page.svelte	~/src
 apps/settings/src/routes/appearance/typography/+page.svelte	const answer = 42;
+apps/settings/src/routes/apps/[id]/+page.svelte	{} GB
+apps/settings/src/routes/apps/[id]/+page.svelte	{} MB
 apps/settings/src/routes/extensions/+page.svelte	forage install
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Loading…
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	No bindings match "
+apps/settings/src/routes/knowledge/+page.svelte	{} GB
+apps/settings/src/routes/knowledge/+page.svelte	{} KB
+apps/settings/src/routes/knowledge/+page.svelte	{} MB
 apps/settings/src/routes/notifications/+page.svelte	Alarms
 apps/settings/src/routes/notifications/+page.svelte	Priority
 apps/settings/src/routes/notifications/+page.svelte	Total
@@ -254,10 +361,22 @@ apps/store/src/lib/stores/catalog.ts	The next hours and days, from a single fore
 apps/store/src/lib/stores/catalog.ts	Timers and focus sessions
 apps/store/src/lib/stores/catalog.ts	Typography-first EPUB reading with margins that breathe.
 apps/store/src/lib/stores/catalog.ts	Weather at a glance
+apps/store/src/lib/stores/catalog.ts	knowledge graph
+apps/system-monitor/src/lib/components/tm/DetailPane.svelte	{} GB
+apps/system-monitor/src/lib/components/tm/DetailPane.svelte	{} MB
+apps/system-monitor/src/lib/components/tm/ProcessTable.svelte	{} GB
+apps/system-monitor/src/lib/components/tm/ProcessTable.svelte	{} MB
+apps/system-monitor/src/lib/stores/detail.ts	Running
+apps/system-monitor/src/lib/stores/detail.ts	Stopped
+apps/system-monitor/src/lib/stores/detail.ts	Uninterruptible sleep
 apps/system-monitor/src/lib/stores/detail.ts	read and write the graph
 apps/system-monitor/src/lib/stores/detail.ts	read recent files
 apps/system-monitor/src/lib/stores/detail.ts	read the knowledge graph
 apps/system-monitor/src/lib/stores/detail.ts	read your notes
+apps/system-monitor/src/lib/stores/detail.ts	tcp 140.82.121.4:443 ESTABLISHED
+apps/system-monitor/src/lib/stores/detail.ts	udp 224.0.0.251:5353 mdns
+apps/system-monitor/src/lib/stores/perf.ts	8 cores, 16 threads
+apps/terminal/src/lib/components/TerminalSidebar.svelte	{} (last command exited {})
 apps/terminal/src/routes/_chrometest/+page.svelte	A header bar per block redraws cwd · git as chrome; result + actions always on.
 apps/terminal/src/routes/_chrometest/+page.svelte	A · Styled
 apps/terminal/src/routes/_chrometest/+page.svelte	B · Classic
@@ -270,3 +389,5 @@ apps/viewers/src/lib/components/ViewerMenu.svelte	German
 apps/viewers/src/lib/components/ViewerMenu.svelte	Space
 apps/viewers/src/lib/components/ViewerMenu.svelte	film.en.srt
 apps/viewers/src/lib/mock.ts	Nightswim
+sdk/ui-kit/src/lib/components/browser/Breadcrumb.svelte	Home
+sdk/ui-kit/src/lib/components/browser/format.ts	{} PB
