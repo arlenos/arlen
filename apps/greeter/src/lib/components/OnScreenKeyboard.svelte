@@ -4,6 +4,8 @@
   /// directly by id and dispatches the input/keydown events Svelte's
   /// binding listens for, so it stays decoupled from the field component.
   /// Alphanumeric plus a common-symbol row and a caps shift; Enter submits.
+  import { t } from "$lib/i18n/messages";
+
   let { targetId = "greeter-password" }: { targetId?: string } = $props();
 
   let shift = $state(false);
@@ -46,7 +48,7 @@
   }
 </script>
 
-<div class="osk" role="group" aria-label="On-screen keyboard">
+<div class="osk" role="group" aria-label={$t("g.a11y.onScreenKeyboard")}>
   {#each ROWS as row, r (r)}
     <div class="krow">
       {#if r === 3}
@@ -55,7 +57,7 @@
           class="key wide"
           class:active={shift}
           aria-pressed={shift}
-          aria-label="Shift"
+          aria-label={$t("g.osk.shift")}
           onclick={() => (shift = !shift)}>⇧</button>
       {/if}
       {#each row as k (k)}
@@ -64,13 +66,13 @@
         </button>
       {/each}
       {#if r === 3}
-        <button type="button" class="key wide" aria-label="Backspace" onclick={backspace}>⌫</button>
+        <button type="button" class="key wide" aria-label={$t("g.osk.backspace")} onclick={backspace}>⌫</button>
       {/if}
     </div>
   {/each}
   <div class="krow">
-    <button type="button" class="key space" aria-label="Space" onclick={() => type(" ")}></button>
-    <button type="button" class="key enter" aria-label="Enter" onclick={enter}>Enter</button>
+    <button type="button" class="key space" aria-label={$t("g.osk.space")} onclick={() => type(" ")}></button>
+    <button type="button" class="key enter" aria-label={$t("g.osk.enter")} onclick={enter}>{$t("g.osk.enter")}</button>
   </div>
 </div>
 

@@ -18,6 +18,7 @@
     type AuthResult,
   } from "$lib/greeter";
   import { a11y } from "$lib/a11y";
+  import { t } from "$lib/i18n/messages";
   import GreeterBackground from "$lib/components/GreeterBackground.svelte";
   import Clock from "$lib/components/Clock.svelte";
   import ProfileRow from "$lib/components/ProfileRow.svelte";
@@ -83,11 +84,11 @@
 
   <div class="center">
     {#if !loaded}
-      <p class="state">Starting</p>
+      <p class="state">{$t("g.starting")}</p>
     {:else if profiles === null}
-      <p class="state">Login is not reachable right now.</p>
+      <p class="state">{$t("g.unreachable")}</p>
     {:else if profiles.length === 0}
-      <p class="state">No profiles are set up on this device.</p>
+      <p class="state">{$t("g.noProfiles")}</p>
     {:else if picked && pickedProfile}
       <AuthPanel
         profile={pickedProfile}

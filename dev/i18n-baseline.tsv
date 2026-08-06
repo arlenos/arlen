@@ -50,14 +50,6 @@ apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
 apps/files/src/routes/+page.svelte	Del
 apps/files/src/routes/+page.svelte	F2
-apps/greeter/src/lib/components/OnScreenKeyboard.svelte	Backspace
-apps/greeter/src/lib/components/OnScreenKeyboard.svelte	Enter
-apps/greeter/src/lib/components/OnScreenKeyboard.svelte	On-screen keyboard
-apps/greeter/src/lib/components/OnScreenKeyboard.svelte	Shift
-apps/greeter/src/lib/components/OnScreenKeyboard.svelte	Space
-apps/greeter/src/routes/+page.svelte	Login is not reachable right now.
-apps/greeter/src/routes/+page.svelte	No profiles are set up on this device.
-apps/greeter/src/routes/+page.svelte	Starting
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Refresh
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	). Live rendering is coming.
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	Diagram source (
