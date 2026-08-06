@@ -9,7 +9,8 @@
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
+  import { formatDecimal } from "@arlen/ui-kit/i18n";
   import { mouse, load, set } from "$lib/stores/mouse";
 
   onMount(() => {
@@ -48,7 +49,7 @@
                 oninput={(v) => set("acceleration", tickToAccel(v))}
               />
             </div>
-            <span class="slider-value">{$mouse.config.acceleration.toFixed(2)}</span>
+            <span class="slider-value">{formatDecimal($mouse.config.acceleration, 2, $locale)}</span>
           </div>
         {/snippet}
       </Row>
@@ -86,7 +87,7 @@
                 oninput={(v) => set("scroll_speed", v / 100)}
               />
             </div>
-            <span class="slider-value">{$mouse.config.scroll_speed.toFixed(1)}×</span>
+            <span class="slider-value">{formatDecimal($mouse.config.scroll_speed, 1, $locale)}×</span>
           </div>
         {/snippet}
       </Row>

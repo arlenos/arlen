@@ -31,7 +31,8 @@
   import { ChipList } from "@arlen/ui-kit/components/ui/chip-list";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
+  import { formatDecimal } from "@arlen/ui-kit/i18n";
   import { graph, PROJECTS_DEFAULTS } from "$lib/stores/projectsConfig";
 
   interface KnowledgeStats {
@@ -116,10 +117,10 @@
     if (bytes === null) return $t("s.know.unknown");
     if (bytes < 1024) return `${bytes} B`;
     const kb = bytes / 1024;
-    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    if (kb < 1024) return `${formatDecimal(kb, 1, $locale)} KB`;
     const mb = kb / 1024;
-    if (mb < 1024) return `${mb.toFixed(1)} MB`;
-    return `${(mb / 1024).toFixed(2)} GB`;
+    if (mb < 1024) return `${formatDecimal(mb, 1, $locale)} MB`;
+    return `${formatDecimal(mb / 1024, 2, $locale)} GB`;
   }
 </script>
 

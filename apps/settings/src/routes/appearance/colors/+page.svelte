@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
+  import { formatDecimal } from "@arlen/ui-kit/i18n";
   /// Colours: the theme's palette, editable per role. The common roles carry the
   /// everyday look; the full 18 sit behind an expander. Each role is an
   /// override-row (resolved value at full contrast; an accent bar + reset when
@@ -59,7 +60,7 @@
           <div class="contrast-row">
             <span class="contrast-label">{$t(pair.labelKey)}</span>
             <span class="contrast-value">
-              <span class="contrast-num">{ratio.toFixed(1)}:1</span>
+              <span class="contrast-num">{formatDecimal(ratio, 1, $locale)}:1</span>
               <Badge variant={pass ? "success" : "warn"}>{pass ? "Passes" : "Low"}</Badge>
             </span>
           </div>
