@@ -8,6 +8,7 @@
   import { X } from "lucide-svelte";
   import { Search, Sparkles } from "@lucide/svelte";
   import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import FmFilterMenu from "$lib/components/FmFilterMenu.svelte";
   import { t } from "$lib/i18n/messages";
@@ -93,11 +94,10 @@
         }}
       />
     {:else}
-      <Input
+      <SearchField
         id="files-search-input"
         bind:ref={inputRef}
         bind:value={$searchQuery}
-        class="h-7 text-xs"
         placeholder={$t("f.search.searchPlaceholder")}
         aria-label={$t("f.search.search")}
         oninput={() => queueSearch(path)}

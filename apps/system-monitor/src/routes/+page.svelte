@@ -10,7 +10,8 @@
   import { processes, mocked, lastError, load, startProcessPolling, stopProcessPolling, stop, pause, resume, limit, unlimit, type Process } from "$lib/stores/processes";
   import { startPerf, stopPerf } from "$lib/stores/perf";
   import { t, dir } from "$lib/i18n/messages";
-  import { Rows3, Layers, Search } from "lucide-svelte";
+  import { Rows3, Layers } from "lucide-svelte";
+  import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
 
   const TABS = [
     { key: "Processes", id: "tm.tab.processes" },
@@ -67,9 +68,7 @@
     {/if}
     <div class="toolbar">
       <span class="filter">
-        <Search size={14} strokeWidth={2} class="filter-icon" />
-        <input
-          class="filter-input"
+        <SearchField
           placeholder={$t("tm.filter.placeholder")}
           bind:value={filter}
           aria-label={$t("tm.filter.aria")}
@@ -215,30 +214,7 @@
     flex-shrink: 0;
   }
   .filter {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
     width: 16rem;
-    padding: 0.35rem 0.6rem;
-    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 14%, transparent);
-    border-radius: var(--radius-input, 8px);
-    background: color-mix(in srgb, var(--color-fg-primary) 4%, transparent);
-  }
-  .filter :global(.filter-icon) {
-    flex-shrink: 0;
-    color: color-mix(in srgb, var(--color-fg-primary) 40%, transparent);
-  }
-  .filter-input {
-    flex: 1;
-    min-width: 0;
-    border: none;
-    background: transparent;
-    color: var(--color-fg-primary);
-    font-size: var(--text-sm);
-    outline: none;
-  }
-  .filter-input::placeholder {
-    color: color-mix(in srgb, var(--color-fg-primary) 38%, transparent);
   }
   .spacer {
     flex: 1;

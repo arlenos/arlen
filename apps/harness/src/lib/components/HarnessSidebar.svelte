@@ -21,6 +21,7 @@
     SidebarRail,
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import * as DropdownMenu from "@arlen/ui-kit/components/ui/dropdown-menu";
   import {
@@ -32,7 +33,6 @@
     Pin,
     PinOff,
     Plus,
-    Search,
     Share2,
     Trash2,
   } from "@lucide/svelte";
@@ -130,20 +130,13 @@
         </SidebarMenuItem>
       </SidebarMenu>
       {#if $orderedSessions.length > 0}
-        <div class="relative mb-1 mt-1">
-          <Search
-            size={13}
-            strokeWidth={2}
-            class="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 opacity-50"
-          />
-          <Input
-            id="harness-session-search"
-            class="ps-7"
-            bind:value={query}
-            placeholder={$t("h.sidebar.search")}
-            aria-label={$t("h.sidebar.search")}
-          />
-        </div>
+        <SearchField
+          id="harness-session-search"
+          class="mb-1 mt-1"
+          bind:value={query}
+          placeholder={$t("h.sidebar.search")}
+          aria-label={$t("h.sidebar.search")}
+        />
       {/if}
       {#if $orderedSessions.length === 0}
         <p class="px-2 py-2 text-xs leading-relaxed text-sidebar-foreground/55">

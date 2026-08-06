@@ -16,8 +16,8 @@
   import { PANELS, navigateTo } from "$lib/stores/navigation";
   import { t } from "$lib/i18n/messages";
   import { search, type SearchResult } from "$lib/search/index";
+  import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
   import {
-    Search,
     Palette,
     Keyboard,
     Command,
@@ -198,15 +198,10 @@
       the popup themed in both dark and light modes.
     -->
     <div class="settings-search-wrap">
-      <Search
-        size={14}
-        strokeWidth={2}
-        class="search-icon"
-      />
-      <input
-        type="text"
-        bind:this={inputEl}
+      <SearchField
+        bind:ref={inputEl}
         bind:value={query}
+        size="prominent"
         onkeydown={onKey}
         onmousedown={onSearchClick}
         onfocus={() => {
@@ -215,7 +210,6 @@
         placeholder={collapsed ? "" : $t("s.search.placeholder")}
         aria-label={$t("s.search.aria")}
         readonly={collapsed}
-        class="search-input"
       />
       {#if results.length > 0}
         <div
@@ -298,30 +292,10 @@
     margin-top: 0.5rem;
   }
 
-  :global(.settings-search-wrap .search-icon) {
-    position: absolute;
-    left: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: color-mix(in srgb, var(--color-fg-app) 55%, transparent);
-    pointer-events: none;
-  }
-
-  .search-input {
-    width: 100%;
-    height: var(--height-control-prominent, 36px);
-    padding: 4px 10px 4px 30px;
-    background: color-mix(in srgb, var(--color-fg-app) 6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-fg-app) 8%, transparent);
-    border-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
-    color: var(--color-fg-app);
-    font-size: var(--text-base);
-    outline: none;
-    transition:
-      background 120ms ease,
-      border-color 120ms ease,
-      width 120ms ease,
-      padding 120ms ease;
+  .settings-search-wrap {
+    /* The shared SearchField derives its radius from the window corner here
+       (concentric), instead of the flat --radius-input default. */
+    --search-radius: max(0px, calc(var(--container-radius) - var(--container-inset)));
   }
 
   /* In icon-collapsed mode the SidebarHeader gives us the actual
@@ -338,7 +312,7 @@
   :global([data-collapsible="icon"]) .settings-search-wrap {
     margin-top: 0;
   }
-  :global([data-collapsible="icon"]) .search-input {
+  :global([data-collapsible="icon"] .settings-search-wrap .sf-input) {
     /* In icon mode the search joins the nav register: a borderless square
        icon button, not a squeezed input box. */
     height: auto;
@@ -347,22 +321,14 @@
     border: none;
     background: transparent;
   }
-  :global([data-collapsible="icon"]) .search-input:hover {
+  :global([data-collapsible="icon"] .settings-search-wrap .sf-input:hover) {
     background: color-mix(in srgb, var(--color-fg-app) 10%, transparent);
   }
 
-  :global([data-collapsible="icon"] .settings-search-wrap .search-icon) {
-    left: 50%;
+  :global([data-collapsible="icon"] .settings-search-wrap .sf-icon) {
+    inset-inline-start: 50%;
     transform: translate(-50%, -50%);
-  }
-
-  .search-input:focus {
-    background: color-mix(in srgb, var(--color-fg-app) 10%, transparent);
-    border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
-  }
-
-  .search-input::placeholder {
-    color: color-mix(in srgb, var(--color-fg-app) 50%, transparent);
+    top: 50%;
   }
 
   .search-popup {

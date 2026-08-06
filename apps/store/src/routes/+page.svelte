@@ -5,7 +5,7 @@
   /// stars, search runs local.
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import { Input } from "@arlen/ui-kit/components/ui/input";
+  import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
   import StoreHeader from "$lib/components/StoreHeader.svelte";
   import StoreRail from "$lib/components/StoreRail.svelte";
   import AppCard from "$lib/components/AppCard.svelte";
@@ -74,7 +74,7 @@
     {/if}
 
     <div class="search">
-      <Input bind:value={query} placeholder={$t("st.search")} aria-label={$t("st.search")} id="store-search" />
+      <SearchField bind:value={query} placeholder={$t("st.search")} aria-label={$t("st.search")} id="store-search" />
     </div>
 
     <div class="facets" role="group" aria-label={$t("st.search")}>
