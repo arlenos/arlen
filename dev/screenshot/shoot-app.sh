@@ -27,6 +27,10 @@ export SHOOT_TYPE="${3:-}"
 # screenshotting. A heavy SvelteKit app under WebKitGTK + Xvfb needs more than the
 # 3s default, or `.console` is not mounted yet and the shot races the paint.
 export SHOOT_SETTLE="${4:-}"
+# A JS file to run in the page, its return value printed as `inject result: ...`.
+# The vite-served scan cannot see anything a Tauri command supplies, because there
+# is no Tauri there; this harness runs the real binary, so it can.
+export SHOOT_INJECT="${SHOOT_INJECT:-}"
 # The binary is an argument here, so building it is the caller's job - but its age
 # is not their memory. On 6 August the compositor harness screenshotted a binary
 # six weeks old and reported a pass, so any harness that runs a prebuilt artifact
@@ -79,5 +83,6 @@ xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
   [ -n "${SHOOT_GRAB:-}" ] && args+=(--grab-x)
   [ -n "${SHOOT_EXEC:-}" ] && args+=(--exec "$SHOOT_EXEC")
   [ -n "${SHOOT_EXPECT:-}" ] && args+=(--expect "$SHOOT_EXPECT")
+  [ -n "${SHOOT_INJECT:-}" ] && args+=(--inject "$SHOOT_INJECT")
   python3 "$SHOOT_HERE/shoot_app.py" "${args[@]}"
 '
