@@ -392,6 +392,37 @@ impl OpenUri {
             );
         }
 
+        // The containment check above ran on the name this fd resolved to. Confirm
+        // the name STILL leads to that same file before handing it to a process
+        // that will resolve it again; fail closed if it does not, or if we cannot
+        // tell.
+        match fd_still_points_at(&fd, &path) {
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::warn!(
+                    request = %req.path,
+                    app_id,
+                    path = %path.display(),
+                    "OpenFile refused - the path no longer resolves to the descriptor that was authorised"
+                );
+                return (
+                    response::OTHER,
+                    error_results("fd target changed between the check and the open"),
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    request = %req.path,
+                    app_id,
+                    "OpenFile refused - could not re-confirm the fd target: {e}"
+                );
+                return (
+                    response::OTHER,
+                    error_results("could not confirm the fd target"),
+                );
+            }
+        }
+
         tracing::info!(
             request = %req.path,
             app_id,
@@ -413,6 +444,34 @@ fn resolve_fd_to_path(fd: &Fd<'_>) -> Result<PathBuf, std::io::Error> {
     let raw = std::os::fd::AsRawFd::as_raw_fd(&owned);
     let proc_path = format!("/proc/self/fd/{raw}");
     std::fs::read_link(proc_path)
+}
+
+/// Does `path` still name the very file the caller handed us?
+///
+/// `xdg-open` takes a URI, not a descriptor, so the fd the caller passed cannot
+/// be handed onward - the name gets resolved a second time, by another process,
+/// after we have decided. Between our decision and that resolution the name can
+/// be pointed somewhere else, and the authorisation we granted for the fd's
+/// inode would be spent on a different file.
+///
+/// So the name is checked against the fd it came from, immediately before the
+/// spawn: same device, same inode, following symlinks exactly as `xdg-open`
+/// will. A swapped target no longer matches and the call is refused.
+///
+/// This narrows the window rather than closing it - the name is still resolved
+/// once more inside `xdg-open`, and nothing here can hold a lock across another
+/// process's `open`. Closing it entirely needs a handler that accepts the
+/// descriptor itself. What this removes is the wide window between resolving
+/// the fd, running the containment check and spawning, and it makes a swap in
+/// that window detectable rather than silent.
+fn fd_still_points_at(fd: &Fd<'_>, path: &Path) -> Result<bool, std::io::Error> {
+    use std::os::unix::fs::MetadataExt;
+    let owned = fd.as_fd().try_clone_to_owned()?;
+    let from_fd = std::fs::File::from(owned).metadata()?;
+    // `metadata`, not `symlink_metadata`: xdg-open follows symlinks, so the
+    // question is what the name resolves TO, not what the last component is.
+    let from_name = std::fs::metadata(path)?;
+    Ok(from_fd.dev() == from_name.dev() && from_fd.ino() == from_name.ino())
 }
 
 /// Spawn `xdg-open` for the given URI, fire-and-forget. xdg-open
@@ -438,6 +497,52 @@ async fn spawn_xdg_open(uri: &str) -> (u32, HashMap<String, OwnedValue>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The swap this check exists for: the caller hands a descriptor to a file
+    /// inside the mount, we authorise it by name, and the name is then pointed at
+    /// something else before the opener resolves it. The descriptor still holds
+    /// the original inode, so the two stop agreeing and the call is refused.
+    #[test]
+    fn a_path_pointed_elsewhere_no_longer_matches_its_descriptor() {
+        use std::os::fd::AsFd;
+
+        let dir = tempfile::tempdir().unwrap();
+        let authorised = dir.path().join("authorised.txt");
+        let attacker = dir.path().join("attacker.txt");
+        std::fs::write(&authorised, b"the file the caller handed us").unwrap();
+        std::fs::write(&attacker, b"something else entirely").unwrap();
+
+        let file = std::fs::File::open(&authorised).unwrap();
+        let fd = Fd::from(file.as_fd());
+
+        assert!(
+            fd_still_points_at(&fd, &authorised).unwrap(),
+            "the untouched path is the descriptor's own file"
+        );
+
+        // The swap. The descriptor keeps the original inode open; the NAME now
+        // leads somewhere else, which is what the opener would follow.
+        std::fs::rename(&attacker, &authorised).unwrap();
+        assert!(
+            !fd_still_points_at(&fd, &authorised).unwrap(),
+            "a path pointed at another file must stop matching"
+        );
+    }
+
+    /// A path that has gone entirely is an error, not a pass. Fail closed.
+    #[test]
+    fn a_vanished_path_cannot_be_confirmed() {
+        use std::os::fd::AsFd;
+
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target.txt");
+        std::fs::write(&target, b"x").unwrap();
+        let file = std::fs::File::open(&target).unwrap();
+        let fd = Fd::from(file.as_fd());
+        std::fs::remove_file(&target).unwrap();
+
+        assert!(fd_still_points_at(&fd, &target).is_err());
+    }
 
     /// http(s), mailto, tel, sms classify as Passthrough.
     #[test]
