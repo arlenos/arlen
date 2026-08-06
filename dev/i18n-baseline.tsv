@@ -2,15 +2,11 @@ apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	A4
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	Legal
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	Letter
-apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	&nbsp;
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Enter
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Esc
-apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	No tiles enabled. Open
-apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Settings → Quick Settings
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Tab
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	hjkl
-apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	to enable some.
 apps/desktop-shell/src/lib/components/WorkspaceIndicator.svelte	[overlay] scheduleClose blocked (ctxOpen={} domMenu={})
 apps/desktop-shell/src/lib/stores/consent.ts	connect to its sync service
 apps/desktop-shell/src/lib/stores/consent.ts	install system software with admin rights
@@ -49,7 +45,6 @@ apps/desktop-shell/src/routes/_mpristest/+page.svelte	Click an album-art thumb t
 apps/desktop-shell/src/routes/_mpristest/+page.svelte	Lateralus
 apps/desktop-shell/src/routes/_printtest/+page.svelte	Print dialog look-mock. The dialog opens over this page.
 apps/desktop-shell/src/routes/_undotest/+page.svelte	topbar strip
-apps/files/src/lib/components/FmBatchRename.svelte	&rarr;
 apps/files/src/routes/+page.svelte	Ctrl+C
 apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
@@ -323,7 +318,6 @@ apps/store/src/lib/stores/catalog.ts	The next hours and days, from a single fore
 apps/store/src/lib/stores/catalog.ts	Timers and focus sessions
 apps/store/src/lib/stores/catalog.ts	Typography-first EPUB reading with margins that breathe.
 apps/store/src/lib/stores/catalog.ts	Weather at a glance
-apps/store/src/routes/updates/+page.svelte	&rarr;
 apps/system-monitor/src/lib/stores/detail.ts	read and write the graph
 apps/system-monitor/src/lib/stores/detail.ts	read recent files
 apps/system-monitor/src/lib/stores/detail.ts	read the knowledge graph

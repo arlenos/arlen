@@ -63,6 +63,8 @@ const messages: Catalogs = {
     "sh.qs.nextFocusable": "Next focusable",
     "sh.qs.toggleHelp": "Toggle this help",
     "sh.qs.closePanel": "Close panel",
+    "sh.qs.noTiles": "No tiles enabled. Open {$link} to enable some.",
+    "sh.qs.tilesPath": "Settings \u2192 Quick Settings",
 
     // Bluetooth popover
     "sh.bt.title": "Bluetooth",
@@ -414,6 +416,8 @@ const messages: Catalogs = {
     "sh.qs.nextFocusable": "N\u00e4chstes Element",
     "sh.qs.toggleHelp": "Diese Hilfe ein-/ausblenden",
     "sh.qs.closePanel": "Panel schlie\u00dfen",
+    "sh.qs.noTiles": "Keine Kacheln aktiv. \u00d6ffne {$link}, um welche zu aktivieren.",
+    "sh.qs.tilesPath": "Einstellungen \u2192 Schnelleinstellungen",
 
     "sh.bt.title": "Bluetooth",
     "sh.bt.connecting": "Wird verbunden\u2026",
