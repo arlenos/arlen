@@ -241,19 +241,13 @@ apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
 apps/settings/src/lib/components/displays/NightLightSection.svelte	Custom hours
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Custom start time
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Latitude
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Longitude
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Night light schedule
 apps/settings/src/lib/components/displays/NightLightSection.svelte	Off (manual toggle only)
 apps/settings/src/lib/components/displays/NightLightSection.svelte	Sunset to sunrise
 apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Open Waypointer
 apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Toggle Waypointer
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Float
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Invalid regex
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Match dialog windows
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Tile
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Window rule action
 apps/settings/src/lib/search/settings-registry.ts	AI behaviours
 apps/settings/src/lib/search/settings-registry.ts	AI model provider
 apps/settings/src/lib/search/settings-registry.ts	Accent Color
@@ -506,17 +500,9 @@ apps/settings/src/routes/appearance/+page.svelte	System
 apps/settings/src/routes/appearance/+page.svelte	Toolkits
 apps/settings/src/routes/appearance/+page.svelte	Typography
 apps/settings/src/routes/appearance/+page.svelte	Wallpaper
-apps/settings/src/routes/appearance/geometry/+page.svelte	Smart gaps
-apps/settings/src/routes/appearance/motion-depth/+page.svelte	Blur
-apps/settings/src/routes/appearance/motion-depth/+page.svelte	Fast
-apps/settings/src/routes/appearance/motion-depth/+page.svelte	Reduce motion
-apps/settings/src/routes/appearance/motion-depth/+page.svelte	Slow
-apps/settings/src/routes/appearance/motion-depth/+page.svelte	Speed
 apps/settings/src/routes/appearance/quicksettings/+page.svelte	Quick Settings layout restored to defaults.
 apps/settings/src/routes/appearance/system/+page.svelte	$ ls --color
-apps/settings/src/routes/appearance/system/+page.svelte	Cursor size
 apps/settings/src/routes/appearance/system/+page.svelte	README.md
-apps/settings/src/routes/appearance/system/+page.svelte	System sounds
 apps/settings/src/routes/appearance/system/+page.svelte	arlen@desktop
 apps/settings/src/routes/appearance/system/+page.svelte	build
 apps/settings/src/routes/appearance/system/+page.svelte	build failed
@@ -566,7 +552,6 @@ apps/settings/src/routes/system-actions/+page.svelte	shell:event_name
 apps/settings/src/routes/system-actions/+page.svelte	spawn:command
 apps/settings/src/routes/topbar/+page.svelte	Arlen
 apps/settings/src/routes/windows-apps/+page.svelte	A shared bottle
-apps/settings/src/routes/windows-apps/+page.svelte	Default compatibility version
 apps/settings/src/routes/windows-apps/+page.svelte	Fullscreen
 apps/settings/src/routes/windows-apps/+page.svelte	Its own bottle
 apps/settings/src/routes/windows-apps/+page.svelte	Windowed
