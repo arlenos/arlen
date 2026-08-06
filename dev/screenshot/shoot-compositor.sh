@@ -75,6 +75,23 @@ shift
 
 COMPOSITOR_PATH="${COMPOSITOR_PATH:-$HOME/Repositories/compositor}"
 CC_BIN="$COMPOSITOR_PATH/target/debug/cosmic-comp"
+
+# Build before capturing, rather than running whatever binary happens to be on
+# disk. This script used to skip straight to the check below, and on 6 August it
+# screenshotted a compositor built on 29 June: a change was verified against six
+# weeks of other code, and the screenshot said it passed. A harness that silently
+# verifies the wrong artifact is worse than one that fails, because its output
+# looks exactly like evidence.
+#
+# Cheap in the normal case - an up-to-date tree links in a few seconds - and the
+# cost is only ever paid where it is about to be wrong. Set COMPOSITOR_SKIP_BUILD
+# to run a binary you built deliberately.
+if [ -z "${COMPOSITOR_SKIP_BUILD:-}" ]; then
+  echo "building cosmic-comp (COMPOSITOR_SKIP_BUILD=1 to skip)" >&2
+  ( cd "$COMPOSITOR_PATH" && cargo build --bin cosmic-comp ) >&2 \
+    || { echo "compositor build failed; refusing to screenshot a stale binary" >&2; exit 1; }
+fi
+
 [ -x "$CC_BIN" ] || { echo "no cosmic-comp at $CC_BIN (build it, or set COMPOSITOR_PATH)" >&2; exit 1; }
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
