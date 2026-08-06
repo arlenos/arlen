@@ -429,6 +429,9 @@ fn build_result(row: &FileRow, relevance: f32, now: i64) -> SearchResult {
     let icon = icon_for_path(&row.path);
 
     SearchResult {
+        // A file's own name.
+        title_key: None,
+        description_key: None,
         id: format!("file-{}", row.path),
         title: basename,
         description: Some(description),
@@ -716,6 +719,8 @@ mod tests {
     fn execute_rejects_wrong_action_variant() {
         let p = FilesPlugin::new();
         let r = SearchResult {
+            title_key: None,
+            description_key: None,
             id: "file-x".into(),
             title: "x".into(),
             description: None,
@@ -731,6 +736,8 @@ mod tests {
     fn execute_rejects_missing_file() {
         let p = FilesPlugin::new();
         let r = SearchResult {
+            title_key: None,
+            description_key: None,
             id: "file-x".into(),
             title: "x".into(),
             description: None,

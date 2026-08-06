@@ -18,6 +18,8 @@ impl WaypointerPlugin for ShellPlugin {
         }
         vec![
             SearchResult {
+                title_key: None,
+                description_key: None,
                 id: "shell-run".into(),
                 title: format!("Run: {cmd}"),
                 description: Some("Execute in shell".into()),
@@ -27,6 +29,9 @@ impl WaypointerPlugin for ShellPlugin {
                 plugin_id: String::new(),
             },
             SearchResult {
+                // The command the user typed.
+                title_key: None,
+                description_key: None,
                 id: "shell-terminal".into(),
                 title: format!("Run in terminal: {cmd}"),
                 description: Some("Open in terminal emulator".into()),

@@ -22,9 +22,20 @@ use thiserror::Error;
 pub struct SearchResult {
     /// Unique ID within this plugin's results.
     pub id: String,
-    /// Primary display text.
+    /// A message id for the title, when the plugin ships a catalog the shell can
+    /// resolve. First-party plugins set this; a third-party plugin normally does
+    /// not, because its words are its own and Arlen has no catalog for them.
+    ///
+    /// Additive and defaulted, so a plugin built before this field keeps working
+    /// and keeps its `title` shown as written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_key: Option<String>,
+    /// Primary display text, shown when there is no `title_key`.
     pub title: String,
-    /// Optional secondary text.
+    /// A message id for the description. Same rule as `title_key`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description_key: Option<String>,
+    /// Optional secondary text, shown when there is no `description_key`.
     pub description: Option<String>,
     /// Lucide icon name or file path.
     pub icon: Option<String>,

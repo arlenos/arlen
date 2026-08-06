@@ -107,6 +107,9 @@ impl WaypointerPlugin for AppShortcutsPlugin {
             };
 
             results.push(SearchResult {
+                // The .desktop file's own action names.
+                title_key: None,
+                description_key: None,
                 id: format!("{}::{}", app_id, sc.action),
                 title: sc.label.clone(),
                 description: Some(subtitle),

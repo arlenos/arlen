@@ -55,6 +55,9 @@ impl WaypointerPlugin for ProjectsPlugin {
             .into_iter()
             .take(self.max_results())
             .map(|p| SearchResult {
+                // A project's own name.
+                title_key: None,
+                description_key: None,
                 id: format!("project-{}", p.id),
                 title: p.name.clone(),
                 description: Some(p.root_path.clone()),

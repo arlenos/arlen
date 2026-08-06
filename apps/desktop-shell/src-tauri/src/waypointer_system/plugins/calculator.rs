@@ -24,6 +24,9 @@ impl WaypointerPlugin for CalculatorPlugin {
         // the has_math heuristic and evaluate directly.
         match evaluate_expression(query) {
             Some(v) => vec![SearchResult {
+                // A computed value, not copy.
+                title_key: None,
+                description_key: None,
                 id: "calc-result".into(),
                 title: v.copy_value.clone(),
                 description: Some(format!("{query} =")),

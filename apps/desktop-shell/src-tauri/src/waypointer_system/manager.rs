@@ -189,6 +189,8 @@ mod tests {
         fn priority(&self) -> u32 { self.prio }
         fn search(&self, query: &str) -> Vec<SearchResult> {
             vec![SearchResult {
+                title_key: None,
+                description_key: None,
                 id: "e1".into(), title: format!("Echo: {query}"),
                 description: None, icon: None, relevance: 0.5,
                 action: Action::Copy { text: query.into() },
@@ -207,6 +209,8 @@ mod tests {
         fn priority(&self) -> u32 { 0 }
         fn search(&self, query: &str) -> Vec<SearchResult> {
             vec![SearchResult {
+                title_key: None,
+                description_key: None,
                 id: "c1".into(), title: format!("= {query}"),
                 description: None, icon: None, relevance: 1.0,
                 action: Action::Copy { text: query.into() },
@@ -265,6 +269,8 @@ mod tests {
             fn priority(&self) -> u32 { 10 }
             fn search(&self, _: &str) -> Vec<SearchResult> {
                 vec![SearchResult {
+                    title_key: None,
+                    description_key: None,
                     id: "h1".into(), title: "High".into(),
                     description: None, icon: None, relevance: 0.5,
                     action: Action::Copy { text: "h".into() },

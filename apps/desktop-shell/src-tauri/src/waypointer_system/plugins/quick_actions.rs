@@ -203,6 +203,8 @@ impl WaypointerPlugin for QuickActionsPlugin {
         results
             .into_iter()
             .map(|(score, action)| SearchResult {
+                title_key: None,
+                description_key: None,
                 id: action.id.into(),
                 title: action.title.into(),
                 description: Some(action.description.into()),
@@ -354,6 +356,8 @@ mod tests {
     fn execute_is_noop_success() {
         let p = QuickActionsPlugin;
         let stub = SearchResult {
+            title_key: None,
+            description_key: None,
             id: "qa.toggle_dnd".into(),
             title: "Toggle DND".into(),
             description: None,

@@ -855,8 +855,10 @@
               >
                 <WaypointerResult
                   icon={ActionIcon}
-                  title={action.title}
-                  description={action.description}
+                  title={action.title_key ? $t(action.title_key) : action.title}
+                  description={action.description_key
+                    ? $t(action.description_key)
+                    : action.description}
                 />
               </CommandItem>
             {/each}
