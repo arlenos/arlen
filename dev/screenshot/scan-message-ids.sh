@@ -23,6 +23,20 @@
 set -uo pipefail
 
 base="${1:?usage: scan-message-ids.sh <base-url> <path> [path...]}"
+
+# The first argument is a BASE URL, not an app name. Passing "settings" makes every
+# load "settings/appearance/..." - not a URL, no page, and an empty document that
+# reports zero message ids. On 6 August every run in this session was that: a clean
+# result from a page that never existed. A check whose happy path is
+# indistinguishable from never running is worse than no check.
+case "$base" in
+  http://*|https://*|file://*) ;;
+  *)
+    echo "scan-message-ids.sh: '$base' is not a base URL." >&2
+    echo "Pass where the app is actually served, e.g. http://localhost:5173" >&2
+    exit 2
+    ;;
+esac
 shift
 [ "$#" -gt 0 ] || { echo "give at least one path" >&2; exit 2; }
 
@@ -45,7 +59,18 @@ keys="$(grep -rhoE '^\s*"[a-z][A-Za-z0-9]*\.[A-Za-z0-9._]+":' \
 # Returned rather than drawn, so the caller reads text instead of a picture.
 cat > "$inject" <<JS
 const keys = new Set("$keys".split(","));
-const text = document.body.innerText;
+// Visible text AND the attributes that are read aloud or shown on hover. An
+// untranslated aria-label is invisible to innerText, so the shell's ten hardcoded
+// accessible names could never have been caught here - a screen reader would have
+// been the only way to notice, which is exactly the user this check is for.
+const attrs = [...document.querySelectorAll("[aria-label],[title],[placeholder],[alt]")]
+  .flatMap((el) => ["aria-label", "title", "placeholder", "alt"].map((a) => el.getAttribute(a) || ""))
+  .join("\n");
+const body = document.body.innerText;
+// An empty document scans clean for the same reason a missing one does. Say so
+// rather than pass: this is the shape that made a whole session's runs vacuous.
+if (body.trim().length === 0 && attrs.length === 0) return JSON.stringify(["<page rendered nothing>"]);
+const text = body + "\n" + attrs;
 return JSON.stringify([...keys].filter((k) => text.includes(k)));
 JS
 
@@ -53,7 +78,16 @@ failed=0
 for path in "$@"; do
   out=$("$here/shoot.sh" "$base$path" "$shot" "$inject" 2>&1 | sed -n 's/^inject result: //p')
   case "$out" in
-    ""|"[]"|"null")
+    "")
+      # No result at all means the injected script did not run: a throw, a page
+      # that never loaded, a harness change. It does NOT mean the page was clean,
+      # and reporting it as clean is how this check quietly stops checking. It
+      # read as ok until 6 August, when a planted id in an aria-label came back
+      # clean and the reason turned out to be an empty result, not a clean page.
+      echo "FAIL  $path -> the page returned no result; the check did not run"
+      failed=1
+      ;;
+    "[]"|"null")
       echo "ok    $path"
       ;;
     *)
