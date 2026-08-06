@@ -8,7 +8,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import AppSidebar from "$lib/components/AppSidebar.svelte";
   import SiteHeader from "$lib/components/SiteHeader.svelte";
-  import { dir } from "$lib/i18n/messages";
+  import { dir, locale } from "$lib/i18n/messages";
   import {
     SidebarProvider,
     SidebarInset,
@@ -99,6 +99,19 @@
 
     // Export the settings search index so Waypointer always has an
     // up-to-date copy at ~/.local/share/arlen/settings-index.json.
+    // Adopt the chosen language before anything renders in the wrong one.
+    //
+    // The Language page used to be the only reader, so Settings came up English
+    // unless you happened to visit that page - every other app reads at startup
+    // and this one, which writes the file, did not.
+    invoke<string>("config_get", { file: "locale", key: "locale.ui" })
+      .then((ui) => {
+        if (typeof ui === "string" && ui) locale.set(ui);
+      })
+      .catch(() => {
+        // No file yet: the default stands until somebody chooses.
+      });
+
     exportSettingsIndex();
 
     // Show the window now that the DOM is rendered with the correct

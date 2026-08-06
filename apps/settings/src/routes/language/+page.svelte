@@ -33,12 +33,11 @@
   let chosen = $state(SOURCE_LOCALE);
 
   onMount(async () => {
+    // The layout already adopted the choice at startup; this page only needs to
+    // show which one is current.
     try {
       const ui = await invoke<string>("config_get", { file: "locale", key: "locale.ui" });
-      if (typeof ui === "string" && ui) {
-        chosen = ui;
-        locale.set(ui);
-      }
+      if (typeof ui === "string" && ui) chosen = ui;
     } catch {
       // No file yet: the default stands, and choosing writes one.
     }

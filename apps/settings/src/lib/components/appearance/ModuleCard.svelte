@@ -76,7 +76,7 @@
             <span class="badge ext"><LayoutDashboard size={9} strokeWidth={2.5} /> TopBar</span>
           {/if}
           {#if module.hasSettings}
-            <span class="badge ext"><Settings2 size={9} strokeWidth={2.5} /> Settings</span>
+            <span class="badge ext"><Settings2 size={9} strokeWidth={2.5} /> {$t("s.nav.settingsApp")}</span>
           {/if}
         </span>
       </div>
@@ -119,7 +119,7 @@
         <div class="warnings">
           <div class="warnings-head">
             <AlertTriangle size={12} strokeWidth={2.25} />
-            <span>Manifest warnings</span>
+            <span>{$t("s.mod.manifestWarnings")}</span>
           </div>
           <ul>
             {#each module.warnings as w}

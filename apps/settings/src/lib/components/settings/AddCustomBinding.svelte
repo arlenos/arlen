@@ -29,10 +29,12 @@
 
   /// `value`/`label` shape matches the ui-kit Select component so we
   /// can bind the list straight to it without a mapping step.
-  const SHELL_EVENTS = [
-    { value: "waypointer_open", label: "Open Waypointer" },
-    { value: "waypointer_toggle", label: "Toggle Waypointer" },
-  ];
+  /// The verb is ours, the name is not: "Waypointer" is what the thing is called
+  /// in every language. `$derived` so the labels follow a language switch.
+  const SHELL_EVENTS = $derived([
+    { value: "waypointer_open", label: $t("s.bind.waypointerOpen") },
+    { value: "waypointer_toggle", label: $t("s.bind.waypointerToggle") },
+  ]);
 
   function reset(): void {
     mode = "app";

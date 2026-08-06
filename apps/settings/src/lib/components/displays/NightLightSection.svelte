@@ -53,11 +53,13 @@
   let cfg = $state<NightLightConfig>({ ...DEFAULT_CONFIG });
   let unlistenChanged: UnlistenFn | null = null;
 
-  const SCHEDULE_OPTIONS = [
-    { value: "manual", label: "Off (manual toggle only)" },
-    { value: "sunset_sunrise", label: "Sunset to sunrise" },
-    { value: "custom", label: "Custom hours" },
-  ];
+  /// Resolved here rather than at the push site, so the list follows a language
+  /// switch: `$t` is reactive, a `get(t)` in a const is not.
+  const SCHEDULE_OPTIONS = $derived([
+    { value: "manual", label: $t("s.nl.manual") },
+    { value: "sunset_sunrise", label: $t("s.nl.sunsetSunrise") },
+    { value: "custom", label: $t("s.nl.customHours") },
+  ]);
 
   async function reloadFromDisk() {
     try {
