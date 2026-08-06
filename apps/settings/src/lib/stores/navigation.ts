@@ -14,6 +14,7 @@ export type PanelId =
   | "display"
   | "workspaces"
   | "topbar"
+  | "language"
   | "notifications"
   | "printers"
   | "windows-apps"
@@ -48,6 +49,7 @@ export const PANELS: PanelMeta[] = [
   { id: "notifications", title: "s.nav.notifications", icon: "Bell", enabled: true, href: "/notifications" },
   { id: "printers", title: "s.nav.printers", icon: "Printer", enabled: true, href: "/printers" },
   { id: "windows-apps", title: "s.nav.windowsApps", icon: "Wine", enabled: true, href: "/windows-apps" },
+  { id: "language", title: "s.nav.language", icon: "Languages", enabled: true, href: "/language" },
   { id: "about", title: "s.nav.about", icon: "Info", enabled: true, href: "/about" },
 
   // Personal

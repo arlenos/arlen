@@ -41,6 +41,7 @@
     Printer,
     Wine,
     AppWindow,
+    Languages,
   } from "lucide-svelte";
 
   let query = $state("");
@@ -100,6 +101,7 @@
 
   const ICONS: Record<string, typeof Palette> = {
     Palette,
+    Languages,
     Keyboard,
     Command,
     Monitor,
@@ -130,7 +132,7 @@
   const SECTIONS = [
     {
       label: "s.section.system",
-      panelIds: ["display", "workspaces", "topbar", "notifications", "printers", "windows-apps", "about"] as const,
+      panelIds: ["display", "workspaces", "topbar", "notifications", "printers", "windows-apps", "language", "about"] as const,
     },
     {
       label: "s.section.personal",

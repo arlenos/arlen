@@ -41,6 +41,13 @@ pub enum ConfigFile {
     /// can be overridden here. The Appearance suite's per-field overrides write
     /// this file; the running shell re-resolves on change.
     Customization,
+    /// The UI language (`locale.toml`). Schema: `[locale] ui = "de"`.
+    ///
+    /// Its own file rather than a corner of `appearance.toml`, because every
+    /// surface reads it - the shell, each app, and eventually the greeter before
+    /// anyone has logged in - and a file about one thing can be read by all of
+    /// them without dragging the theme along.
+    Locale,
 }
 
 impl ConfigFile {
@@ -55,6 +62,7 @@ impl ConfigFile {
             Self::QuickSettings => "quicksettings.toml",
             Self::Ai => "ai.toml",
             Self::Customization => "theme.toml",
+            Self::Locale => "locale.toml",
         }
     }
 
@@ -380,6 +388,7 @@ fn default_for(file: ConfigFile) -> toml::Value {
         ConfigFile::Appearance => DEFAULT_APPEARANCE,
         ConfigFile::Notifications => DEFAULT_NOTIFICATIONS,
         ConfigFile::Ai => DEFAULT_AI,
+        ConfigFile::Locale => DEFAULT_LOCALE,
         _ => return toml::Value::Table(toml::map::Map::new()),
     };
     toml::from_str::<toml::Value>(raw)
@@ -394,6 +403,15 @@ fn default_for(file: ConfigFile) -> toml::Value {
 /// narrows if they want, rather than starting blind and having to loosen
 /// it to use it. The sovereignty guarantee is the audit + capability-scope
 /// + local-only + visible/revocable reads, not a tiny default scope.
+/// English, because that is the language the messages are authored in and the
+/// floor of every fallback chain. A machine nobody has told otherwise gets the
+/// source language rather than a guess from `LANG`, which would silently switch
+/// the UI on a system whose locale was set for something else entirely.
+const DEFAULT_LOCALE: &str = r##"
+[locale]
+ui = "en"
+"##;
+
 const DEFAULT_AI: &str = r##"
 [ai]
 enabled = false
