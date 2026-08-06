@@ -99,6 +99,31 @@ def qmp_click(f, px, py, w, h):
         {"type": "btn", "data": {"down": False, "button": "left"}}])
 
 
+def capture(f, path, x_display=None):
+    """Write the guest's current frame to `path`.
+
+    Two ways in, because the two rendering paths cannot share one. On the
+    software device QMP `screendump` reads the CPU-side framebuffer directly. Under
+    virgl there is no such surface - QEMU answers `no surface` - so the guest's
+    scanout only exists inside QEMU's own GTK window, and the way to a PNG is to
+    grab that window off the X display QEMU is drawing on.
+
+    Returns the QMP reply for the software path, or None for the X path (where
+    there is no reply to check; the caller checks the file).
+    """
+    if x_display is None:
+        return qmp(f, "screendump", filename=path, format="png")
+    # -window root rather than by name: QEMU's window title varies with the
+    # machine and version, and the Xvfb display holds nothing else.
+    subprocess.run(
+        ["import", "-window", "root", path],
+        env={**os.environ, "DISPLAY": x_display},
+        check=False,
+        capture_output=True,
+    )
+    return None
+
+
 def inspect(png):
     """Return (rendered, summary) for the captured frame."""
     from PIL import Image
@@ -328,6 +353,19 @@ def main():
         stdout=subprocess.DEVNULL,
     )
 
+    # The virgl path has no CPU-side framebuffer for QMP to dump, so QEMU must
+    # draw into something we can grab: an Xvfb of our own, with QEMU's GTK display
+    # and GL on. Software rendering keeps the old headless path untouched.
+    x_display = None
+    xvfb = None
+    if args.gpu:
+        x_display = ":%d" % (90 + os.getpid() % 8)
+        xvfb = subprocess.Popen(
+            ["Xvfb", x_display, "-screen", "0", "1280x800x24"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        time.sleep(2)
+
     qemu = [
         # 4 GiB + 4 vCPUs: the baked llama-server loads a ~0.8 GB GGUF and runs CPU
         # inference alongside the compositor + shell + the AI daemons, which 2 GiB /
@@ -361,7 +399,7 @@ def main():
         # egl-headless renders through the host's render node and still lets
         # screendump read the scanout, which -display gtk,gl=on would not do
         # headlessly. Without gl the virgl device has nothing to render on.
-        "-display", "egl-headless" if args.gpu else "none",
+        "-display", "gtk,gl=on,window-close=off" if args.gpu else "none",
         "-qmp", f"unix:{qmp_path},server,nowait",
         "-serial", f"file:{serial}",
         "-no-reboot",
@@ -374,7 +412,9 @@ def main():
     if args.app:
         qemu += ["-smbios", f"type=1,sku={args.app}"]
     print("+ " + " ".join(qemu))
-    proc = subprocess.Popen(qemu, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    qemu_env = {**os.environ, "DISPLAY": x_display} if x_display else None
+    proc = subprocess.Popen(qemu, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL, env=qemu_env)
     try:
         sock, f = qmp_connect(qmp_path, time.monotonic() + 30)
         print(f"QMP connected; letting the session come up ({args.wait}s)...")
@@ -391,7 +431,7 @@ def main():
             deadline = time.monotonic() + args.wait
             appeared_at = None
             while time.monotonic() < deadline:
-                shot = qmp(f, "screendump", filename=out, format="png")
+                shot = capture(f, out, x_display)
                 if "error" not in shot:
                     for _ in range(50):
                         if os.path.exists(out) and os.path.getsize(out) > 0:
@@ -416,8 +456,10 @@ def main():
             # press Escape so a launched app window is not hidden behind it.
             qmp_key(f, "esc")
             time.sleep(1.5)
-        res = qmp(f, "screendump", filename=out, format="png")
-        if "error" in res:
+        res = capture(f, out, x_display)
+        # Only the QMP path has a reply to inspect; the X grab reports through the
+        # file, which the wait below already checks.
+        if res is not None and "error" in res:
             sys.exit(f"screendump failed: {res['error']}")
         # screendump is async-completed on older QEMU; give it a moment + settle.
         for _ in range(50):
@@ -425,10 +467,26 @@ def main():
                 break
             time.sleep(0.1)
         if args.press_super:
+            # Shoot the same screen twice before touching anything. The dismissal
+            # verdict below is a diff against this pre-open frame, so it is only
+            # meaningful if the screen had stopped changing on its own - a boot
+            # that is still settling (a consent dialog about to appear, the shell
+            # finishing its first paint) moves more pixels than any ghost, and the
+            # number then reports the boot rather than the overlay. Measured: a 70s
+            # wait gave "84.3% still differs" on a frame that was visibly clean.
+            settle = out + ".settle.png"
+            time.sleep(2)
+            capture(f, settle, x_display)
+            for _ in range(50):
+                if os.path.exists(settle) and os.path.getsize(settle) > 0:
+                    break
+                time.sleep(0.1)
+            settled = frame_change(out, settle) if os.path.exists(settle) else 1.0
+
             after = out + ".after.png"
             qmp_key(f, "meta_l")            # Super: the compositor's waypointer toggle
             time.sleep(2)
-            qmp(f, "screendump", filename=after, format="png")
+            capture(f, after, x_display)
             for _ in range(50):
                 if os.path.exists(after) and os.path.getsize(after) > 0:
                     break
@@ -441,11 +499,25 @@ def main():
             dismissed = out + ".dismissed.png"
             qmp_key(f, "meta_l")
             time.sleep(3)
-            qmp(f, "screendump", filename=dismissed, format="png")
+            capture(f, dismissed, x_display)
             for _ in range(50):
                 if os.path.exists(dismissed) and os.path.getsize(dismissed) > 0:
                     break
                 time.sleep(0.1)
+            # And once more, because the frame being STILL now is not the same as
+            # nothing having moved during the measurement. A consent request that
+            # lands while the overlay is open changes the screen for its own reasons
+            # and the diff below then reports that instead of the overlay. Two
+            # post-frames that agree is the evidence that nothing else was in flight.
+            confirm = out + ".confirm.png"
+            time.sleep(3)
+            capture(f, confirm, x_display)
+            for _ in range(50):
+                if os.path.exists(confirm) and os.path.getsize(confirm) > 0:
+                    break
+                time.sleep(0.1)
+            still_moving = (frame_change(dismissed, confirm)
+                            if os.path.exists(confirm) else 1.0)
         if args.deny_consent:
             # Press Escape (the dialog's always-available deny) and capture an
             # after-shot, so the dismissal check confirms the keyboard path reaches
@@ -454,7 +526,7 @@ def main():
             denied = out + ".denied.png"
             qmp_key(f, "esc")
             time.sleep(3)
-            qmp(f, "screendump", filename=denied, format="png")
+            capture(f, denied, x_display)
             for _ in range(50):
                 if os.path.exists(denied) and os.path.getsize(denied) > 0:
                     break
@@ -468,7 +540,7 @@ def main():
             fw, fh = Image.open(out).size
             qmp_click(f, round(fw * 797 / 1280), round(fh * 489 / 800), fw, fh)
             time.sleep(3)                  # let the shell poll + hide the resolved dialog
-            qmp(f, "screendump", filename=approved, format="png")
+            capture(f, approved, x_display)
             for _ in range(50):
                 if os.path.exists(approved) and os.path.getsize(approved) > 0:
                     break
@@ -479,6 +551,15 @@ def main():
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
+        # The Xvfb only exists to give QEMU somewhere to draw; leaving it running
+        # would leak a display server per --gpu run and the next run would pick the
+        # same number.
+        if xvfb is not None:
+            xvfb.terminate()
+            try:
+                xvfb.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                xvfb.kill()
 
     # Persist the serial BEFORE the screendump-failure exit, so a black or failed
     # boot still saves its log - that is exactly the run whose last init_egl stage
@@ -508,10 +589,18 @@ def main():
             # the overlay was closed: near zero means it was cleaned up, anything
             # like the open-time figure means its last frame is still there.
             left = frame_change(out, dismissed)
-            verdict = ("the overlay's frame is still on screen" if left > 0.02
-                       else "the screen returned to the desktop")
-            print(f"Super dismissal: {verdict} "
-                  f"({left*100:.1f}% still differs, open was {frac*100:.1f}%) -> {dismissed}")
+            if settled > 0.02 or still_moving > 0.02:
+                print(f"Super dismissal: NOT MEASURED - the screen was still "
+                      f"changing on its own before the overlay opened "
+                      f"({settled*100:.1f}% before, {still_moving*100:.1f}% after, "
+                      f"between frames that should have been identical). Give it a "
+                      f"longer --wait; a diff against an unsettled baseline says "
+                      f"nothing about the overlay.")
+            else:
+                verdict = ("the overlay's frame is still on screen" if left > 0.02
+                           else "the screen returned to the desktop")
+                print(f"Super dismissal: {verdict} "
+                      f"({left*100:.1f}% still differs, open was {frac*100:.1f}%) -> {dismissed}")
     # A frame full of kernel-console / login text means cosmic-comp never took the
     # scanout (VT/DRM-master conflict) - the getty/console is still on screen, not
     # the compositor. Treat that as failure even though it is "non-black".
