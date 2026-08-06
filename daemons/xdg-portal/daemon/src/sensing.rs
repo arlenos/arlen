@@ -17,6 +17,14 @@
 //! live today, because the portal implements ScreenCast and Screenshot and there
 //! is no camera or microphone portal yet - those switches ship with those portals.
 //!
+//! **An absent file and an unreadable one are opposite states.** No file means
+//! nobody configured anything, so capture works. A file that exists but cannot be
+//! read - truncated, corrupted, unreadable - means somebody stated an intent that
+//! can no longer be read, and the safe reading of an unreadable intent is the
+//! protective one. Collapsing the two would let a corrupted file silently resume
+//! capture for a user whose whole belief is that they switched it off, which is
+//! the one failure a master switch must not have.
+//!
 //! **Read on every check, never cached.** The intent is "off, right now", so a
 //! value read once at startup would keep sensing alive for whatever remains of
 //! the session. The read is a small file and the checks are per-request, not
@@ -42,22 +50,53 @@ fn switch_file() -> Option<PathBuf> {
         .map(|c| c.join("arlen/sensing.toml"))
 }
 
+/// What the file says about one key.
+///
+/// Three answers rather than a boolean, because "the file does not say" and "the
+/// file is not sayable" need opposite treatment and a `bool` collapses them.
+#[derive(Debug, PartialEq)]
+enum Reading {
+    /// The key is stated off.
+    Off,
+    /// The key is stated on.
+    On,
+    /// The key is not stated, but the file does state other settings. It is a
+    /// switch file for something else and this capability is unconfigured.
+    NotStated,
+    /// Nothing in the file parses as a setting, or the key's value is neither
+    /// `true` nor `false`. Someone wrote something here and it cannot be read.
+    Unreadable,
+}
+
 /// Read one boolean key from the flat switch file.
 ///
 /// A hand parser rather than a TOML dependency for one file of booleans, and
-/// deliberately strict: only an exact `false` turns something off, so a typo, a
-/// truncated write or a comment can never silently disable capture. Every other
-/// outcome - absent file, absent key, unparsable line - leaves the capability on,
-/// because the default state of a system with no switch file is working.
-fn key_is_false(text: &str, key: &str) -> bool {
+/// strict about values: only exact `true` and `false` are readable, so a write
+/// truncated to `screen_capture = fal` is an unreadable intent rather than a
+/// silent "not off".
+///
+/// The distinction that earns the enum: a file truncated to nothing parses
+/// cleanly and mentions no key, which is indistinguishable from a file about a
+/// different switch unless the parser also reports whether it read ANY setting.
+fn read_key(text: &str, key: &str) -> Reading {
+    let mut saw_a_setting = false;
     for line in text.lines() {
         let line = line.split('#').next().unwrap_or("").trim();
         let Some((name, value)) = line.split_once('=') else { continue };
-        if name.trim() == key {
-            return value.trim() == "false";
+        let (name, value) = (name.trim(), value.trim());
+        if name.is_empty() {
+            continue;
+        }
+        saw_a_setting = true;
+        if name == key {
+            return match value {
+                "false" => Reading::Off,
+                "true" => Reading::On,
+                _ => Reading::Unreadable,
+            };
         }
     }
-    false
+    if saw_a_setting { Reading::NotStated } else { Reading::Unreadable }
 }
 
 /// Whether screen capture is switched off system-wide.
@@ -69,8 +108,21 @@ fn key_is_false(text: &str, key: &str) -> bool {
 /// the absence of permission.
 pub fn screen_capture_is_off() -> bool {
     let Some(path) = switch_file() else { return false };
-    let Ok(text) = std::fs::read_to_string(path) else { return false };
-    key_is_false(&text, "screen_capture")
+    match std::fs::read_to_string(&path) {
+        Ok(text) => matches!(
+            read_key(&text, "screen_capture"),
+            Reading::Off | Reading::Unreadable
+        ),
+        // No file: nobody configured anything, and a system nobody configured is
+        // a working system.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        // A file that exists and cannot be read is the case this branch exists
+        // for. Somebody wrote an intent here; the only safe reading of an intent
+        // nobody can read is the protective one. Keyed on the error kind rather
+        // than a second `exists()` call, which would answer about a different
+        // moment than the read did.
+        Err(_) => true,
+    }
 }
 
 /// What a caller is told when the switch is off.
@@ -85,34 +137,61 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_an_explicit_false_switches_a_capability_off() {
-        assert!(key_is_false("screen_capture = false", "screen_capture"));
-        assert!(key_is_false("screen_capture=false\n", "screen_capture"));
-        assert!(!key_is_false("screen_capture = true", "screen_capture"));
+    fn a_stated_value_is_read_as_stated() {
+        assert_eq!(read_key("screen_capture = false", "screen_capture"), Reading::Off);
+        assert_eq!(read_key("screen_capture=false\n", "screen_capture"), Reading::Off);
+        assert_eq!(read_key("screen_capture = true", "screen_capture"), Reading::On);
     }
 
     #[test]
-    fn a_file_that_says_nothing_about_it_leaves_it_on() {
-        // The failure that matters: a truncated or half-written file must not
-        // read as "off" for one capability and leave the others alone by luck.
-        assert!(!key_is_false("", "screen_capture"));
-        assert!(!key_is_false("microphone = false", "screen_capture"));
-        assert!(!key_is_false("screen_capture", "screen_capture"));
-        assert!(!key_is_false("screen_capture = fals", "screen_capture"));
+    fn a_file_about_other_switches_leaves_this_one_unconfigured() {
+        // Not `Unreadable`: the file parses, it simply is not about this
+        // capability. Treating it as off would switch screen capture off the day
+        // a microphone switch ships.
+        assert_eq!(read_key("microphone = false", "screen_capture"), Reading::NotStated);
+    }
+
+    #[test]
+    fn a_file_that_parses_as_nothing_is_unreadable_rather_than_silent() {
+        // The failure this whole enum exists for: a write truncated to empty, to
+        // the header comment, or to half a key name. Each of these was "not off"
+        // before, so a corrupted file resumed capture without telling anyone.
+        assert_eq!(read_key("", "screen_capture"), Reading::Unreadable);
+        assert_eq!(read_key("# Sensing master switches.\n", "screen_capture"), Reading::Unreadable);
+        assert_eq!(read_key("screen_captu", "screen_capture"), Reading::Unreadable);
+        assert_eq!(read_key("= false\n", "screen_capture"), Reading::Unreadable);
+    }
+
+    #[test]
+    fn a_value_truncated_mid_word_is_unreadable_rather_than_not_false() {
+        // `fal` is not `false`, and a parser that only asked "is it false" would
+        // read this as on. It is a half-written off.
+        assert_eq!(read_key("screen_capture = fal", "screen_capture"), Reading::Unreadable);
+        assert_eq!(read_key("screen_capture = ", "screen_capture"), Reading::Unreadable);
+        assert_eq!(read_key("screen_capture = FALSE", "screen_capture"), Reading::Unreadable);
     }
 
     #[test]
     fn a_comment_is_not_a_setting() {
-        assert!(!key_is_false("# screen_capture = false", "screen_capture"));
-        assert!(key_is_false("screen_capture = false # turned off in the meeting", "screen_capture"));
+        assert_eq!(read_key("# screen_capture = false", "screen_capture"), Reading::Unreadable);
+        assert_eq!(
+            read_key("screen_capture = false # turned off in the meeting", "screen_capture"),
+            Reading::Off
+        );
     }
 
     #[test]
     fn the_first_statement_of_a_key_wins() {
         // Whichever way this goes it must be decided rather than incidental; a
         // later line silently overriding an earlier one hides a duplicated key.
-        assert!(key_is_false("screen_capture = false\nscreen_capture = true", "screen_capture"));
-        assert!(!key_is_false("screen_capture = true\nscreen_capture = false", "screen_capture"));
+        assert_eq!(
+            read_key("screen_capture = false\nscreen_capture = true", "screen_capture"),
+            Reading::Off
+        );
+        assert_eq!(
+            read_key("screen_capture = true\nscreen_capture = false", "screen_capture"),
+            Reading::On
+        );
     }
 }
 
@@ -127,9 +206,19 @@ mod fixture_tests {
     /// directory's README - and this is what keeps the copies honest.
     const OFF_FIXTURE: &str = include_str!("../../../../dev/fixtures/sensing-off.toml");
 
+
+    /// The truncated file, shared for the same reason as the off one: the rule
+    /// that an unreadable intent reads as off lives in two copies now.
+    const TRUNCATED_FIXTURE: &str = include_str!("../../../../dev/fixtures/sensing-truncated.toml");
+
+    #[test]
+    fn the_shared_truncated_file_reads_as_off_on_this_side_too() {
+        assert_eq!(read_key(TRUNCATED_FIXTURE, "screen_capture"), Reading::Unreadable);
+    }
+
     #[test]
     fn the_file_settings_writes_reads_as_off() {
-        assert!(key_is_false(OFF_FIXTURE, "screen_capture"));
+        assert_eq!(read_key(OFF_FIXTURE, "screen_capture"), Reading::Off);
     }
 
     #[test]
@@ -138,13 +227,14 @@ mod fixture_tests {
         // matched the first mention would call every file off, including one
         // whose value says true, so the fixture is the guard against that too.
         let on = OFF_FIXTURE.replace("screen_capture = false", "screen_capture = true");
-        assert!(!key_is_false(&on, "screen_capture"));
+        assert_eq!(read_key(&on, "screen_capture"), Reading::On);
     }
 }
 
 #[cfg(test)]
 mod file_tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
 
     /// The parser tests prove the rule; this proves the wiring, which is the half
     /// that would otherwise be assumed. A switch whose file is never actually read
@@ -176,6 +266,22 @@ mod file_tests {
         // "off, right now" has to mean "on, right now" too.
         std::fs::write(dir.join("arlen/sensing.toml"), "screen_capture = true\n").unwrap();
         assert!(!screen_capture_is_off(), "the value is re-read, not cached");
+
+        // A file that exists but says nothing readable: this is the corrupted
+        // write, and it must NOT read as the absent case two lines above.
+        std::fs::write(dir.join("arlen/sensing.toml"), "").unwrap();
+        assert!(screen_capture_is_off(), "a truncated file must not resume capture");
+
+        // Unreadable rather than unparseable, which reaches the other branch: the
+        // read fails with a kind that is not NotFound. Skipped under a uid that
+        // ignores the mode, where the premise does not hold.
+        std::fs::write(dir.join("arlen/sensing.toml"), "screen_capture = true\n").unwrap();
+        let locked = dir.join("arlen/sensing.toml");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read_to_string(&locked).is_err() {
+            assert!(screen_capture_is_off(), "an unreadable file must not resume capture");
+        }
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o644)).unwrap();
 
         match previous {
             Some(v) => unsafe { std::env::set_var("XDG_CONFIG_HOME", v) },
