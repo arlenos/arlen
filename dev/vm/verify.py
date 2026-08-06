@@ -491,6 +491,22 @@ def main():
                 if os.path.exists(after) and os.path.getsize(after) > 0:
                     break
                 time.sleep(0.1)
+            # Type into the open overlay and shoot again. The dismissal check below
+            # asks whether a CLOSED overlay leaves its frame behind; this asks the
+            # other half - whether an overlay that REDRAWS leaves the previous frame
+            # under the new one. The doubled "Applications" group someone found in a
+            # waypointer shot is that shape: the shell renders one such heading, so
+            # two on screen means an intermediate frame survived a repaint.
+            typed = out + ".typed.png"
+            for qcode in ("f", "i"):
+                qmp_key(f, qcode)
+                time.sleep(0.4)
+            time.sleep(2)
+            capture(f, typed, x_display)
+            for _ in range(50):
+                if os.path.exists(after) and os.path.getsize(after) > 0:
+                    break
+                time.sleep(0.1)
             # Close it again and capture a third frame. The overlay ghost (PR-20)
             # is a CLOSE-time artifact - the last delivered frame stays on screen -
             # so opening one proves nothing about it. Toggling back and comparing
