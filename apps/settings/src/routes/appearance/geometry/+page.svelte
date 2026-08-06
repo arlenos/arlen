@@ -111,7 +111,7 @@
           id="geom-smart-gaps"
         >
           {#snippet control()}
-            <Switch value={$smartGaps} ariaLabel="Smart gaps" onchange={toggleSmartGaps} />
+            <Switch value={$smartGaps} ariaLabel={$t("s.geo.smartGaps")} onchange={toggleSmartGaps} />
           {/snippet}
         </OverrideRow>
       </Section>

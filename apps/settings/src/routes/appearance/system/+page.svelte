@@ -76,7 +76,7 @@
           id="sys-cursorSize"
         >
           {#snippet control()}
-            <ValueSlider value={cursorSize} min={16} max={48} step={2} unit="px" ariaLabel="Cursor size" onchange={(v) => setSys("cursorSize", v)} />
+            <ValueSlider value={cursorSize} min={16} max={48} step={2} unit="px" ariaLabel={$t("s.sys.cursorSize")} onchange={(v) => setSys("cursorSize", v)} />
           {/snippet}
         </OverrideRow>
       </Section>
@@ -104,7 +104,7 @@
           id="sys-soundsEnabled"
         >
           {#snippet control()}
-            <Switch value={soundsOn} ariaLabel="System sounds" onchange={(v) => setSys("soundsEnabled", v)} />
+            <Switch value={soundsOn} ariaLabel={$t("s.sys.sounds")} onchange={(v) => setSys("soundsEnabled", v)} />
           {/snippet}
         </OverrideRow>
         <OverrideRow

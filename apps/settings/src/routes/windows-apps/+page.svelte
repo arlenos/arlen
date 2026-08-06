@@ -301,7 +301,7 @@
           <PopoverSelect
             value={$defaults.version}
             options={versionOptions}
-            ariaLabel="Default compatibility version"
+            ariaLabel={$t("s.wa.defaultCompat")}
             onchange={(v) => patchDefaults({ version: v })}
           />
         {/snippet}

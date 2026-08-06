@@ -147,7 +147,7 @@
         </label>
         <Switch
           value={matchDialog}
-          ariaLabel="Match dialog windows"
+          ariaLabel={$t("s.rule.matchDialogs")}
           onchange={(v) => (matchDialog = v)}
         />
       </div>
@@ -157,7 +157,7 @@
         <SegmentedControl
           value={action}
           options={ACTION_OPTIONS}
-          ariaLabel="Window rule action"
+          ariaLabel={$t("s.rule.action")}
           onchange={(v) => (action = v as WindowRuleAction)}
         />
       </div>

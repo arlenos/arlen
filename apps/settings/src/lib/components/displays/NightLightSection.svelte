@@ -201,7 +201,7 @@
       <PopoverSelect
         value={cfg.schedule}
         options={SCHEDULE_OPTIONS}
-        ariaLabel="Night light schedule"
+        ariaLabel={$t("s.night.scheduleAria")}
         onchange={setSchedule}
       />
     {/snippet}
@@ -212,7 +212,7 @@
       {#snippet control()}
         <TimeInput
           value={formatHhmm(cfg.custom_start)}
-          ariaLabel="Custom start time"
+          ariaLabel={$t("s.night.customStart")}
           onchange={setCustomStart}
         />
       {/snippet}
@@ -241,7 +241,7 @@
           min={-90}
           max={90}
           step={0.0001}
-          ariaLabel="Latitude"
+          ariaLabel={$t("s.night.latitude")}
           onchange={setLatitude}
         />
       {/snippet}
@@ -253,7 +253,7 @@
           min={-180}
           max={180}
           step={0.0001}
-          ariaLabel="Longitude"
+          ariaLabel={$t("s.night.longitude")}
           onchange={setLongitude}
         />
       {/snippet}
