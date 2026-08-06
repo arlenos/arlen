@@ -16,6 +16,7 @@ mod picker_ipc;
 mod picker_lifecycle;
 mod request;
 mod sandbox;
+mod sensing;
 mod state;
 
 use std::time::Duration;

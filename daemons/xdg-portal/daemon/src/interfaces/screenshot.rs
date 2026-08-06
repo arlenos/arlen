@@ -147,6 +147,12 @@ impl Screenshot {
                 error_results("caller is not the xdg-desktop-portal frontend"),
             );
         }
+        // A screenshot is capture the moment it is taken, so the master switch is
+        // checked before anything is read off the screen.
+        if crate::sensing::screen_capture_is_off() {
+            tracing::info!(app_id, "Screenshot refused: screen capture is switched off");
+            return (response::OTHER, error_results(crate::sensing::SCREEN_CAPTURE_OFF));
+        }
         let _guard = self.state.track_request();
         let req = RequestHandle::from_object_path(handle.into());
         let interactive = options
