@@ -64,6 +64,13 @@ fn is_user_facing_attr(name: &str) -> bool {
             | "aria-description"
             | "aria-placeholder"
             | "aria-valuetext"
+            // The camelCase spellings our own components take as props. The
+            // hyphenated forms are the HTML attributes; a component that forwards
+            // one names it `ariaLabel`, and having only the HTML spelling here
+            // made every component's accessible name invisible to the lint.
+            | "arialabel"
+            | "ariadescription"
+            | "ariaplaceholder"
     )
 }
 
@@ -303,6 +310,18 @@ const USER_FACING_PROPS: &[&str] = &[
     "summary", "heading", "hint", "caption", "confirmLabel", "cancelLabel",
 ];
 
+/// Deliberately absent: `name`, `text` and `body`.
+///
+/// `{ value: "#6366f1", name: "Indigo" }` is a swatch's accessible name and was a
+/// genuine miss, so adding `name` looks obviously right. Measured, it produced 129
+/// findings against 3 for the rest of this list, and nearly all of them were mock
+/// records standing in for a backend: project names, saved-search names, a meeting
+/// transcript. Those must NOT be translated - they are the user's data, in a
+/// fixture until the daemon behind them lands - so the lint would be wrong 97% of
+/// the time on its loudest rule. `name` is the commonest field in any data record,
+/// and no shape test separates our word for a thing from the user's name for it.
+/// The swatch case is fixed at its source instead.
+
 /// Call heads whose first string argument is shown to the user.
 const USER_FACING_CALLS: &[&str] = &[
     "toast", "toast.success", "toast.error", "toast.info", "toast.warning", "alert", "confirm",
@@ -470,7 +489,15 @@ fn scan_script(src: &str) -> Vec<Finding> {
         }
         // Build the preceding-token context. Whitespace before a `(` or `:` is
         // common, so spaces are dropped rather than clearing the prefix.
-        if c.is_alphanumeric() || c == '_' || c == '$' || c == '.' || c == ':' || c == '(' {
+        if c.is_alphanumeric()
+            || c == '_'
+            || c == '$'
+            || c == '.'
+            || c == ':'
+            || c == '('
+            || c == '='
+            || c == '!'
+        {
             prefix.push(c);
             if prefix.len() > 64 {
                 prefix.drain(..prefix.len() - 64);
@@ -487,7 +514,23 @@ fn scan_script(src: &str) -> Vec<Finding> {
 /// position: `someProp:` or a known call head's `(`.
 fn position_is_user_facing(prefix: &str) -> bool {
     if let Some(head) = prefix.strip_suffix(':') {
-        let name = head.rsplit(|c: char| !(c.is_alphanumeric() || c == '_')).next().unwrap_or("");
+        let name = trailing_name(head);
+        if USER_FACING_PROPS.iter().any(|p| p.eq_ignore_ascii_case(name)) {
+            return true;
+        }
+    }
+    // `prop="text"`: a Svelte component attribute, and a plain assignment to a
+    // named variable. This shape was invisible until an `ariaLabel="Interface
+    // font"` sat two lines from an `ariaLabel={$t(..)}` and only the second one
+    // was a finding. The object-only props are excluded here on purpose.
+    if let Some(head) = prefix.strip_suffix('=') {
+        // Not a comparison: `a == "x"`, `a !== "x"` and `=>` are all conditions or
+        // arrows rather than positions, and the first would otherwise read the
+        // operand as a prop name.
+        if head.ends_with(['=', '!', '<', '>']) {
+            return false;
+        }
+        let name = trailing_name(head);
         if USER_FACING_PROPS.iter().any(|p| p.eq_ignore_ascii_case(name)) {
             return true;
         }
@@ -496,6 +539,12 @@ fn position_is_user_facing(prefix: &str) -> bool {
         return USER_FACING_CALLS.iter().any(|c| head.ends_with(c));
     }
     false
+}
+
+/// The identifier at the end of a prefix, which is the prop or variable name.
+fn trailing_name(head: &str) -> &str {
+    let cut = head.rfind(|c: char| !(c.is_alphanumeric() || c == '_')).map_or(0, |i| i + 1);
+    &head[cut..]
 }
 
 /// The `<script>` bodies of a Svelte component, so the script scanner sees them.
@@ -541,10 +590,27 @@ fn collect_svelte(root: &Path, out: &mut Vec<PathBuf>) {
                 continue;
             }
             collect_svelte(&path, out);
-        } else if name.ends_with(".svelte") || name.ends_with(".ts") {
+        } else if is_scannable(&name) {
             out.push(path);
         }
     }
+}
+
+/// Whether a file is part of the product's surface.
+///
+/// Tests are excluded, and that is the point rather than a convenience: a test
+/// asserts on fixed strings, so `expect(msg).toBe("daemon down")` is a literal in
+/// a `message:` position that must never be a catalog entry. Translating it would
+/// break the test it belongs to. Sixty of the first hundred findings from the
+/// attribute shape were test fixtures, which would have taught people to skim.
+fn is_scannable(name: &str) -> bool {
+    if !(name.ends_with(".svelte") || name.ends_with(".ts")) {
+        return false;
+    }
+    !(name.ends_with(".test.ts")
+        || name.ends_with(".spec.ts")
+        || name.ends_with(".test.svelte")
+        || name.ends_with(".d.ts"))
 }
 
 /// The baseline key for a finding: `relative/path.svelte\ttext`. Line is excluded
@@ -805,6 +871,38 @@ mod tests {
         // A template in a position nobody displays stays quiet, so the quoted string
         // inside it is not mistaken for a label.
         assert!(script_texts("const t = `label: \"Not scanned\"`;").is_empty());
+    }
+
+    #[test]
+    fn an_attribute_and_a_prop_default_are_positions_too() {
+        // The shape that was invisible: a Svelte attribute and a `$props()`
+        // default both end in `=`, so the prefix was cleared before it could be
+        // read. An unoverridden default is what renders, so it counts.
+        let hits = scan_script("let { placeholder = \"Add app...\" } = $props();");
+        assert_eq!(hits.iter().map(|h| h.text.as_str()).collect::<Vec<_>>(), vec!["Add app..."]);
+        // Markup goes through the other scanner, which keeps its own attribute
+        // list. It had `aria-label` but not the camelCase `ariaLabel` our own
+        // components take, so every component's accessible name was invisible.
+        let attr = scan_svelte("<X ariaLabel=\"Interface font\" />");
+        assert_eq!(attr.iter().map(|h| h.text.as_str()).collect::<Vec<_>>(), vec!["Interface font"]);
+    }
+
+    #[test]
+    fn a_comparison_is_not_a_position() {
+        // `=` also ends every comparison, and reading the left operand as a prop
+        // name would make `label == "Files"` a finding about a condition.
+        assert!(scan_script("if (label == \"Files\") {}").is_empty());
+        assert!(scan_script("if (title !== \"Home page\") {}").is_empty());
+    }
+
+    #[test]
+    fn a_test_file_is_not_a_surface() {
+        // A test asserts on fixed strings; translating one breaks the test.
+        assert!(!is_scannable("export.test.ts"));
+        assert!(!is_scannable("engine.spec.ts"));
+        assert!(!is_scannable("types.d.ts"));
+        assert!(is_scannable("store.ts"));
+        assert!(is_scannable("Page.svelte"));
     }
 
     #[test]
