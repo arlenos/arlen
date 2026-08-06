@@ -141,6 +141,10 @@ fn now_timestamp() -> String {
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     tauri::Builder::default()
+        // The shared shell plugin: the live theme and the chosen language, the
+        // same two the other Arlen apps get. Without it this window kept the
+        // built-in defaults whatever the user picked.
+        .plugin(tauri_plugin_arlen_shell::init())
         .invoke_handler(tauri::generate_handler![
             capture_available,
             list_outputs,
