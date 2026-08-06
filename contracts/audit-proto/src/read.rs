@@ -113,6 +113,19 @@ pub enum ReadResponse {
         /// back to forward paging).
         #[serde(default)]
         head: u64,
+        /// How many entries match this page's filter, whatever `limit` returned.
+        ///
+        /// `head` is a seek position and not this: indices are global, so a
+        /// filtered read's head is one past that scope's highest GLOBAL index,
+        /// which for an app that acted once early in a busy ledger is a large
+        /// number and not the number one. A page that wants to say "this app has
+        /// N recorded actions" needs the count, and paging to exhaustion to
+        /// derive it would read the whole ledger to answer a question the
+        /// database can answer directly. Scoped by the same filter, so it
+        /// discloses no more than the page does. `serde(default)` keeps old and
+        /// new peers compatible; an old daemon reports 0.
+        #[serde(default)]
+        matching: u64,
     },
     /// The query could not be served.
     Error {
@@ -136,6 +149,10 @@ pub struct ReadPage {
     /// the most recent entries; 0 from a daemon that predates this
     /// field.
     pub head: u64,
+    /// How many entries match the request's filter, whatever `limit` returned.
+    /// Distinct from `head`, which is a position in the global index and not a
+    /// number of rows; 0 from a daemon that predates this field.
+    pub matching: u64,
 }
 
 /// Resolve the read socket path:
