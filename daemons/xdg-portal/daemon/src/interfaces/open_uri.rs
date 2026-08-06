@@ -476,6 +476,11 @@ fn resolve_fd_to_path(fd: &Fd<'_>) -> Result<PathBuf, std::io::Error> {
 /// that window detectable rather than silent.
 fn fd_still_points_at(fd: &Fd<'_>, path: &Path) -> Result<bool, std::io::Error> {
     use std::os::unix::fs::MetadataExt;
+    // The dup is ours; dropping the `File` below closes the copy, not the
+    // caller's descriptor. And `fstat` is permitted on an `O_PATH` handle - which
+    // this may well be, since that is how the portal opens files itself - so the
+    // metadata read does not refuse the very descriptors it is meant to check.
+    // Verified rather than assumed: an O_PATH fd reports dev/ino here.
     let owned = fd.as_fd().try_clone_to_owned()?;
     let from_fd = std::fs::File::from(owned).metadata()?;
     // `metadata`, not `symlink_metadata`: xdg-open follows symlinks, so the
