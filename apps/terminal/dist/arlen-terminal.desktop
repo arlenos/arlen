@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Terminal
+Name[de]=Terminal
+Comment=Run commands in a shell
+Comment[de]=Befehle in einer Shell ausführen
+Exec=arlen-terminal
+Icon=arlen-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=shell;command;prompt;console;
+Keywords[de]=shell;befehl;konsole;
+StartupNotify=true
