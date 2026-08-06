@@ -18,6 +18,11 @@
 
   let { entry, hasConflict, onRebind, onReset, onRemove }: Props = $props();
 
+  /// The action's name: resolved from the catalogue's message id, or the text the
+  /// backend derived for a custom or module binding, which is not ours to
+  /// translate (it names somebody's command or a module's own action).
+  const name = $derived(entry.labelKey ? $t(entry.labelKey) : entry.label);
+
   const hasDefault = $derived(entry.defaultBinding !== null);
   const isModified = $derived(
     entry.binding !== (entry.defaultBinding ?? null)
@@ -36,13 +41,13 @@
 <div class="kb-row" class:conflict={hasConflict}>
   <div class="kb-label">
     <div class="kb-title-line">
-      <span class="kb-title">{entry.label}</span>
+      <span class="kb-title">{name}</span>
       {#if hasConflict}
         <AlertTriangle size={14} strokeWidth={2} class="kb-conflict-icon" />
       {/if}
     </div>
-    {#if entry.description}
-      <div class="kb-desc">{entry.description}</div>
+    {#if entry.descriptionKey}
+      <div class="kb-desc">{$t(entry.descriptionKey)}</div>
     {/if}
     {#if showsModuleOverride}
       <div class="kb-desc">
@@ -59,7 +64,7 @@
     size="sm"
     class="kb-pill"
     onclick={() => onRebind(entry)}
-    aria-label={$t("s.bind.changeFor", { name: entry.label })}
+    aria-label={$t("s.bind.changeFor", { name })}
   >
     {entry.binding ?? "Not set"}
   </Button>

@@ -14,8 +14,13 @@ export interface KeybindingEntry {
   defaultBinding: string | null;
   isCustom: boolean;
   category: string;
+  /// The message id for a catalogue action's name, or `null` for an entry whose
+  /// text is derived at runtime (a custom binding, a module's own action).
+  labelKey: string | null;
+  /// What to show when there is no `labelKey`.
   label: string;
-  description: string | null;
+  /// The message id for a one-line explanation, where there is one.
+  descriptionKey: string | null;
   /// Owning module id for entries coming from
   /// compositor.d/keybindings.d/ fragments.
   moduleId: string | null;
@@ -41,8 +46,9 @@ interface RawEntry {
   default_binding: string | null;
   is_custom: boolean;
   category: string;
+  label_key?: string | null;
   label: string;
-  description: string | null;
+  description_key?: string | null;
   module_id?: string | null;
 }
 
@@ -54,8 +60,9 @@ function fromRaw(r: RawEntry): KeybindingEntry {
     defaultBinding: r.default_binding,
     isCustom: r.is_custom,
     category: r.category,
+    labelKey: r.label_key ?? null,
     label: r.label,
-    description: r.description,
+    descriptionKey: r.description_key ?? null,
     moduleId: r.module_id ?? null,
   };
 }

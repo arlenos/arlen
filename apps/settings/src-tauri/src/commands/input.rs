@@ -96,10 +96,21 @@ pub struct KeybindingEntry {
     pub is_custom: bool,
     /// Grouping key used by the UI to render collapsible sections.
     pub category: String,
-    /// Human-readable label (English for now).
+    /// The message id for a catalogue action's name, or `None` for entries
+    /// whose text is derived at runtime (a custom `spawn:`/`shell:` binding, or
+    /// a module's own action).
+    ///
+    /// Ids rather than words, because a catalogue action's name is ours and this
+    /// process has no idea what language the reader wants. The page resolves it,
+    /// the same way the category headings above it already do.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_key: Option<String>,
+    /// The text to show when there is no `label_key`: a derived label for a
+    /// custom or module action, or the action id as a last resort.
     pub label: String,
-    /// Optional one-line explanation.
-    pub description: Option<String>,
+    /// The message id for a one-line explanation, where the catalogue has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description_key: Option<String>,
     /// Owning module id for entries coming from
     /// `compositor.d/keybindings.d/*.toml` fragments. `None` for
     /// catalogue, custom, and user entries.
@@ -116,9 +127,32 @@ pub struct Conflict {
 struct CatalogueRow {
     action: &'static str,
     category: &'static str,
-    label: &'static str,
-    description: Option<&'static str>,
     default_binding: Option<&'static str>,
+}
+
+/// The message id for a catalogue action's name.
+///
+/// Derived from the action rather than listed, because the action id is already
+/// the stable key and a second list would be a second thing to keep in step.
+/// `:` appears in `shell:` and `module:` actions and is not id-safe, so it maps
+/// to a dot.
+fn catalogue_label_key(action: &str) -> String {
+    format!("s.kb.act.{}", action.replace(':', "."))
+}
+
+/// The message id for a catalogue action's one-line explanation, for the three
+/// actions that have one. Listed rather than derived: asking the catalog whether
+/// a message exists is not something this side can do, and inventing an id for
+/// the other forty-two would put forty-two missing-message ids on screen.
+fn catalogue_description_key(action: &str) -> Option<String> {
+    const DESCRIBED: &[&str] = &[
+        "shell:brightness_up",
+        "shell:brightness_down",
+        "shell:workspace_map_open",
+    ];
+    DESCRIBED
+        .contains(&action)
+        .then(|| format!("{}.desc", catalogue_label_key(action)))
 }
 
 /// Curated list of actions the Settings UI shows, whether or not they
@@ -130,280 +164,202 @@ const CATALOGUE: &[CatalogueRow] = &[
     CatalogueRow {
         action: "close_window",
         category: "window",
-        label: "Close window",
-        description: None,
         default_binding: Some("Super+Q"),
     },
     CatalogueRow {
         action: "fullscreen",
         category: "window",
-        label: "Toggle fullscreen",
-        description: None,
         default_binding: Some("Super+F"),
     },
     CatalogueRow {
         action: "maximize",
         category: "window",
-        label: "Toggle maximize",
-        description: None,
         default_binding: None,
     },
     CatalogueRow {
         action: "minimize",
         category: "window",
-        label: "Minimize window",
-        description: None,
         default_binding: None,
     },
     // Focus
     CatalogueRow {
         action: "focus_left",
         category: "focus",
-        label: "Focus window to the left",
-        description: None,
         default_binding: Some("Super+H"),
     },
     CatalogueRow {
         action: "focus_right",
         category: "focus",
-        label: "Focus window to the right",
-        description: None,
         default_binding: Some("Super+L"),
     },
     CatalogueRow {
         action: "focus_up",
         category: "focus",
-        label: "Focus window above",
-        description: None,
         default_binding: Some("Super+K"),
     },
     CatalogueRow {
         action: "focus_down",
         category: "focus",
-        label: "Focus window below",
-        description: None,
         default_binding: Some("Super+J"),
     },
     // Move
     CatalogueRow {
         action: "move_left",
         category: "move",
-        label: "Move window left",
-        description: None,
         default_binding: Some("Super+Shift+H"),
     },
     CatalogueRow {
         action: "move_right",
         category: "move",
-        label: "Move window right",
-        description: None,
         default_binding: Some("Super+Shift+L"),
     },
     CatalogueRow {
         action: "move_up",
         category: "move",
-        label: "Move window up",
-        description: None,
         default_binding: Some("Super+Shift+K"),
     },
     CatalogueRow {
         action: "move_down",
         category: "move",
-        label: "Move window down",
-        description: None,
         default_binding: Some("Super+Shift+J"),
     },
     // Tiling
     CatalogueRow {
         action: "toggle_tiling",
         category: "tiling",
-        label: "Toggle tiling mode",
-        description: None,
         default_binding: Some("Super+T"),
     },
     CatalogueRow {
         action: "toggle_window_floating",
         category: "tiling",
-        label: "Toggle window floating",
-        description: None,
         default_binding: Some("Super+Shift+Space"),
     },
     CatalogueRow {
         action: "toggle_monocle",
         category: "tiling",
-        label: "Toggle monocle mode",
-        description: None,
         default_binding: Some("Super+M"),
     },
     CatalogueRow {
         action: "scratchpad_toggle",
         category: "tiling",
-        label: "Toggle scratchpad",
-        description: None,
         default_binding: Some("Super+Minus"),
     },
     CatalogueRow {
         action: "scratchpad_move",
         category: "tiling",
-        label: "Move window to scratchpad",
-        description: None,
         default_binding: Some("Super+Shift+Minus"),
     },
     CatalogueRow {
         action: "swap_window",
         category: "tiling",
-        label: "Swap windows",
-        description: None,
         default_binding: None,
     },
     // Workspace switch
     CatalogueRow {
         action: "workspace_switch:1",
         category: "workspace",
-        label: "Switch to workspace 1",
-        description: None,
         default_binding: Some("Super+1"),
     },
     CatalogueRow {
         action: "workspace_switch:2",
         category: "workspace",
-        label: "Switch to workspace 2",
-        description: None,
         default_binding: Some("Super+2"),
     },
     CatalogueRow {
         action: "workspace_switch:3",
         category: "workspace",
-        label: "Switch to workspace 3",
-        description: None,
         default_binding: Some("Super+3"),
     },
     CatalogueRow {
         action: "workspace_switch:4",
         category: "workspace",
-        label: "Switch to workspace 4",
-        description: None,
         default_binding: Some("Super+4"),
     },
     CatalogueRow {
         action: "workspace_switch:5",
         category: "workspace",
-        label: "Switch to workspace 5",
-        description: None,
         default_binding: Some("Super+5"),
     },
     CatalogueRow {
         action: "workspace_switch:6",
         category: "workspace",
-        label: "Switch to workspace 6",
-        description: None,
         default_binding: Some("Super+6"),
     },
     CatalogueRow {
         action: "workspace_switch:7",
         category: "workspace",
-        label: "Switch to workspace 7",
-        description: None,
         default_binding: Some("Super+7"),
     },
     CatalogueRow {
         action: "workspace_switch:8",
         category: "workspace",
-        label: "Switch to workspace 8",
-        description: None,
         default_binding: Some("Super+8"),
     },
     CatalogueRow {
         action: "workspace_switch:9",
         category: "workspace",
-        label: "Switch to workspace 9",
-        description: None,
         default_binding: Some("Super+9"),
     },
     CatalogueRow {
         action: "workspace_next",
         category: "workspace",
-        label: "Next workspace",
-        description: None,
         default_binding: None,
     },
     CatalogueRow {
         action: "workspace_prev",
         category: "workspace",
-        label: "Previous workspace",
-        description: None,
         default_binding: None,
     },
     // Workspace move
     CatalogueRow {
         action: "workspace_move:1",
         category: "workspace_move",
-        label: "Move window to workspace 1",
-        description: None,
         default_binding: Some("Super+Shift+1"),
     },
     CatalogueRow {
         action: "workspace_move:2",
         category: "workspace_move",
-        label: "Move window to workspace 2",
-        description: None,
         default_binding: Some("Super+Shift+2"),
     },
     CatalogueRow {
         action: "workspace_move:3",
         category: "workspace_move",
-        label: "Move window to workspace 3",
-        description: None,
         default_binding: Some("Super+Shift+3"),
     },
     CatalogueRow {
         action: "workspace_move:4",
         category: "workspace_move",
-        label: "Move window to workspace 4",
-        description: None,
         default_binding: Some("Super+Shift+4"),
     },
     CatalogueRow {
         action: "workspace_move:5",
         category: "workspace_move",
-        label: "Move window to workspace 5",
-        description: None,
         default_binding: Some("Super+Shift+5"),
     },
     CatalogueRow {
         action: "workspace_move:6",
         category: "workspace_move",
-        label: "Move window to workspace 6",
-        description: None,
         default_binding: Some("Super+Shift+6"),
     },
     CatalogueRow {
         action: "workspace_move:7",
         category: "workspace_move",
-        label: "Move window to workspace 7",
-        description: None,
         default_binding: Some("Super+Shift+7"),
     },
     CatalogueRow {
         action: "workspace_move:8",
         category: "workspace_move",
-        label: "Move window to workspace 8",
-        description: None,
         default_binding: Some("Super+Shift+8"),
     },
     CatalogueRow {
         action: "workspace_move:9",
         category: "workspace_move",
-        label: "Move window to workspace 9",
-        description: None,
         default_binding: Some("Super+Shift+9"),
     },
     // Shell + apps (baseline)
     CatalogueRow {
         action: "shell:waypointer_open",
         category: "shell",
-        label: "Open Waypointer",
-        description: Some("Launcher and inline command palette"),
         default_binding: Some("Super+Space"),
     },
     // Hardware Fn-row keys. The compositor catches XF86 keysyms
@@ -416,39 +372,21 @@ const CATALOGUE: &[CatalogueRow] = &[
     CatalogueRow {
         action: "shell:brightness_up",
         category: "shell",
-        label: "Brightness up",
-        description: Some(
-            "Step the internal display backlight by +5 %. Bound by \
-             default to the laptop's hardware brightness key.",
-        ),
         default_binding: Some("XF86MonBrightnessUp"),
     },
     CatalogueRow {
         action: "shell:brightness_down",
         category: "shell",
-        label: "Brightness down",
-        description: Some(
-            "Step the internal display backlight by -5 %. Bound by \
-             default to the laptop's hardware brightness key.",
-        ),
         default_binding: Some("XF86MonBrightnessDown"),
     },
     CatalogueRow {
         action: "shell:workspace_map_open",
         category: "workspace_map",
-        label: "Open Workspace Map",
-        description: Some(
-            "Horizontal overview of all workspaces with window cards; \
-             cycles focus on repeat. Inside the Map, see the \
-             \"Workspace Map\" category for navigation keys.",
-        ),
         default_binding: Some("Super+Tab"),
     },
     CatalogueRow {
         action: "spawn:foot",
         category: "apps",
-        label: "Open terminal (foot)",
-        description: None,
         default_binding: Some("Super+Return"),
     },
     // Keyboard layout switching. No default — the common accelerators
@@ -459,15 +397,11 @@ const CATALOGUE: &[CatalogueRow] = &[
     CatalogueRow {
         action: "keyboard_layout_next",
         category: "keyboard",
-        label: "Next keyboard layout",
-        description: Some("Cycle to the next configured XKB layout"),
         default_binding: None,
     },
     CatalogueRow {
         action: "keyboard_layout_prev",
         category: "keyboard",
-        label: "Previous keyboard layout",
-        description: Some("Cycle to the previous configured XKB layout"),
         default_binding: None,
     },
 ];
@@ -576,8 +510,11 @@ pub fn keybindings_get_all() -> Result<Vec<KeybindingEntry>, String> {
             default_binding: row.default_binding.map(|s| s.to_string()),
             is_custom,
             category: row.category.to_string(),
-            label: row.label.to_string(),
-            description: row.description.map(|s| s.to_string()),
+            label_key: Some(catalogue_label_key(row.action)),
+            // Never shown for a catalogue row unless the catalog is missing the
+            // message; the action id is at least true when that happens.
+            label: row.action.to_string(),
+            description_key: catalogue_description_key(row.action),
             module_id: None,
         });
     }
@@ -604,8 +541,9 @@ pub fn keybindings_get_all() -> Result<Vec<KeybindingEntry>, String> {
             default_binding: None,
             is_custom: true,
             category: classify_custom(action).to_string(),
+            label_key: None,
             label: label_for_custom(action),
-            description: None,
+            description_key: None,
             module_id: None,
         });
     }
@@ -663,8 +601,9 @@ fn scan_fragments() -> Vec<KeybindingEntry> {
                 default_binding: Some(binding.clone()),
                 is_custom: false,
                 category: "module".to_string(),
+                label_key: None,
                 label: label_for_module_action(action_str, &module_id),
-                description: None,
+                description_key: None,
                 module_id: Some(module_id.clone()),
             });
         }
@@ -809,8 +748,11 @@ pub fn keybindings_get_defaults() -> Result<Vec<KeybindingEntry>, String> {
             default_binding: row.default_binding.map(|s| s.to_string()),
             is_custom: false,
             category: row.category.to_string(),
-            label: row.label.to_string(),
-            description: row.description.map(|s| s.to_string()),
+            label_key: Some(catalogue_label_key(row.action)),
+            // Never shown for a catalogue row unless the catalog is missing the
+            // message; the action id is at least true when that happens.
+            label: row.action.to_string(),
+            description_key: catalogue_description_key(row.action),
             module_id: None,
         })
         .collect())
@@ -1289,6 +1231,50 @@ mod tests {
         assert_eq!(classify_custom("spawn:foo"), "apps");
         assert_eq!(classify_custom("shell:waypointer_open"), "shell");
         assert_eq!(classify_custom("something_else"), "custom");
+    }
+
+    /// Every catalogue action must have a name in the settings catalog.
+    ///
+    /// The label is no longer here, so nothing in this file breaks if the message
+    /// is missing - the page just shows `s.kb.act.close_window` to the user. That
+    /// is the failure the id-scanner exists for, and it cannot see this one,
+    /// because the id is minted in Rust and never appears in any Svelte file.
+    #[test]
+    fn every_catalogue_action_has_a_name_in_the_catalog() {
+        let catalog = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../src/lib/i18n/messages.a.ts"
+        ))
+        .expect("the settings catalog");
+
+        let missing: Vec<String> = CATALOGUE
+            .iter()
+            .map(|row| catalogue_label_key(row.action))
+            .filter(|key| !catalog.contains(&format!("\"{key}\":")))
+            .collect();
+        assert!(missing.is_empty(), "no message for: {missing:?}");
+
+        let missing_desc: Vec<String> = CATALOGUE
+            .iter()
+            .filter_map(|row| catalogue_description_key(row.action))
+            .filter(|key| !catalog.contains(&format!("\"{key}\":")))
+            .collect();
+        assert!(missing_desc.is_empty(), "no description message for: {missing_desc:?}");
+    }
+
+    #[test]
+    fn a_label_key_is_id_safe() {
+        // `shell:brightness_up` carries a colon, which is not id-safe and would
+        // land in the catalog as a key nothing can look up.
+        assert_eq!(catalogue_label_key("close_window"), "s.kb.act.close_window");
+        assert_eq!(
+            catalogue_label_key("shell:brightness_up"),
+            "s.kb.act.shell.brightness_up"
+        );
+        assert!(catalogue_label_key("module:x:y").chars().all(|c| c.is_ascii_alphanumeric()
+            || c == '.'
+            || c == '_'
+            || c == '-'));
     }
 
     #[test]
