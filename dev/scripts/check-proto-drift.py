@@ -57,6 +57,16 @@ def main() -> int:
         ["git", "ls-files", "*.proto"], cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout.split()
 
+    # A scan that found nothing cannot report agreement. `git ls-files` returning
+    # empty is not a repo without protos, it is a discovery that broke - a rename,
+    # a move out of the index, a wrong working directory - and the summary line
+    # below would have said "0 proto file(s) ... no disagreement" and exited 0.
+    # Eight copies of the event wire format agreeing is the whole point of this
+    # check; claiming it over nothing is the one answer it must never give.
+    if not files:
+        print("found no .proto files; the check needs updating")
+        return 2
+
     # message -> field -> number -> the files that say so
     seen: dict[str, dict[str, dict[int, list[str]]]] = collections.defaultdict(
         lambda: collections.defaultdict(lambda: collections.defaultdict(list))
@@ -97,6 +107,10 @@ def main() -> int:
             print(f"  - {p}")
         print("\na field's number is part of the wire format; copies must agree on it")
         return 1
+
+    if not seen:
+        print("found .proto files but no messages in them; the check needs updating")
+        return 2
 
     shared = sum(1 for m, fs in seen.items() for f in fs.values() if len(f) >= 1)
     print(f"{len(files)} proto file(s), {len(seen)} message(s), {shared} field(s), no disagreement")
