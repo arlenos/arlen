@@ -66,7 +66,12 @@ pub struct ActivityPage {
     pub available: bool,
     /// The daemon reports its ledger tampered.
     pub tampered: bool,
-    /// Total entries matching the read (one past the highest index).
+    /// How many entries match the read.
+    ///
+    /// The count, not the head. For an unfiltered read the two coincide, because
+    /// indices run contiguously from 0; for a filtered one they do not, and a
+    /// head reported as a total says an app acted as many times as the ledger is
+    /// long.
     pub total: u64,
 }
 
@@ -171,10 +176,48 @@ impl ReadClient {
             first
         };
 
-        let total = page.head;
+        let total = page.matching;
         let tampered = page.tampered;
         let mut entries: Vec<ActivityEntry> = page.entries.iter().map(to_entry).collect();
         // The API returns ascending by index; activity views want newest first.
+        entries.reverse();
+
+        ActivityPage {
+            entries,
+            available: true,
+            tampered,
+            total,
+        }
+    }
+
+    /// The most recent `limit` entries recorded by one actor, newest first.
+    ///
+    /// The per-app provenance view: what the ledger says this app did, and how
+    /// many times in total. Filtered daemon-side rather than by reading
+    /// everything and discarding, so a caller asking about one app never
+    /// receives another's entries, and `total` is that app's count rather than
+    /// the ledger's length. Advisory like [`recent`](Self::recent).
+    pub async fn recent_for_actor(&self, actor: &str, limit: u64) -> ActivityPage {
+        let limit = limit.clamp(1, MAX_ACTIVITY_LIMIT);
+
+        let first = match self.for_actor(actor, 0, limit).await {
+            Ok(page) => page,
+            Err(_) => return ActivityPage::unavailable(),
+        };
+        // Seek toward the tail when this actor has more than one page. `head` is
+        // the right seek position here (an index), while `matching` is the count;
+        // using the count as a `from` would land in the wrong place entirely on a
+        // ledger where the actor is not the only writer.
+        let page = if first.matching > limit && first.head > limit {
+            let from = first.head - limit;
+            self.for_actor(actor, from, limit).await.unwrap_or(first)
+        } else {
+            first
+        };
+
+        let total = page.matching;
+        let tampered = page.tampered;
+        let mut entries: Vec<ActivityEntry> = page.entries.iter().map(to_entry).collect();
         entries.reverse();
 
         ActivityPage {

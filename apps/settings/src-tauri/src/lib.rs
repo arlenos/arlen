@@ -93,6 +93,7 @@ pub fn run() {
             commands::ai::ai_provider_set_enabled,
             commands::ai::ai_provider_test,
             commands::activity::ai_activity_recent,
+            commands::activity::settings_app_audit,
             commands::config::config_get,
             commands::config::config_set,
             commands::config::ai_defaults_set,
