@@ -32,6 +32,7 @@
     CURSOR_THEMES,
     ICON_THEMES,
     SOUND_THEMES,
+    sysOptions,
     SOUND_NAMES,
     SOUND_EVENTS,
     ANSI_META,
@@ -64,7 +65,7 @@
           id="sys-cursorTheme"
         >
           {#snippet control()}
-            <PopoverSelect value={String($effective.cursorTheme)} options={CURSOR_THEMES} ariaLabel={$t("s.sys.cursorTheme")} onchange={(v) => setSys("cursorTheme", v)} />
+            <PopoverSelect value={String($effective.cursorTheme)} options={sysOptions(CURSOR_THEMES, $t)} ariaLabel={$t("s.sys.cursorTheme")} onchange={(v) => setSys("cursorTheme", v)} />
           {/snippet}
         </OverrideRow>
         <OverrideRow
@@ -89,7 +90,7 @@
           id="sys-iconTheme"
         >
           {#snippet control()}
-            <PopoverSelect value={iconTheme} options={ICON_THEMES} ariaLabel="Icon theme" onchange={(v) => setSys("iconTheme", v)} />
+            <PopoverSelect value={iconTheme} options={sysOptions(ICON_THEMES, $t)} ariaLabel={$t("s.sys.iconTheme")} onchange={(v) => setSys("iconTheme", v)} />
           {/snippet}
         </OverrideRow>
       </Section>
@@ -114,7 +115,7 @@
           id="sys-soundTheme"
         >
           {#snippet control()}
-            <PopoverSelect value={String($effective.soundTheme)} options={SOUND_THEMES} ariaLabel="Sound theme" onchange={(v) => setSys("soundTheme", v)} />
+            <PopoverSelect value={String($effective.soundTheme)} options={sysOptions(SOUND_THEMES, $t)} ariaLabel={$t("s.sys.soundTheme")} onchange={(v) => setSys("soundTheme", v)} />
           {/snippet}
         </OverrideRow>
         <Collapsible class="expander">
@@ -136,7 +137,7 @@
                     <!-- A play-preview belongs here; it returns when a Settings
                          command can ask the daemon to play a cue. Until then no
                          dead button. -->
-                    <PopoverSelect value={String($effective[ev.key])} options={SOUND_NAMES} ariaLabel={$t("s.snd.pickAria", { event: $t(ev.label) })} onchange={(v) => setSys(ev.key, v)} />
+                    <PopoverSelect value={String($effective[ev.key])} options={sysOptions(SOUND_NAMES, $t)} ariaLabel={$t("s.snd.pickAria", { event: $t(ev.label) })} onchange={(v) => setSys(ev.key, v)} />
                   {/snippet}
                 </OverrideRow>
               {/each}

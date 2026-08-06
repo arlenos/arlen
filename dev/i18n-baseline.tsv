@@ -642,3 +642,7 @@ sdk/ui-kit/src/routes/+page.svelte	Secondary
 sdk/ui-kit/src/routes/+page.svelte	Shared component library for Arlen first-party apps. Built with shadcn-svelte, Tailwind v4, and Arlen Surface Tokens.
 sdk/ui-kit/src/routes/+page.svelte	Shell surface
 sdk/ui-kit/src/routes/+page.svelte	Surface Tokens
+sdk/ui-kit/src/routes/_i18n/+page.svelte	Kit chrome &mdash; locale
+sdk/ui-kit/src/routes/_i18n/+page.svelte	about dialog
+sdk/ui-kit/src/routes/_i18n/+page.svelte	console block
+sdk/ui-kit/src/routes/_i18n/+page.svelte	days picker

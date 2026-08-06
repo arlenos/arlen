@@ -10,20 +10,42 @@
 import { writable, derived } from "svelte/store";
 
 /// A selectable option.
+///
+/// Two fields rather than one because the list mixes kinds. Most entries are the
+/// artifact's own name - "Papirus" is what the icon theme is called in any language
+/// - while the generic "Default" and "None" choices are ordinary UI text and have to
+/// be translated. Overloading `label` to sometimes hold a message id made the id
+/// render verbatim in four dropdowns, because the select renders `label` as text and
+/// nothing resolved it. A separate field cannot be mistaken for one.
 export interface SysOption {
   value: string;
-  label: string;
+  /// The literal name, for entries that have one.
+  label?: string;
+  /// A message id, for entries whose text is ours rather than the artifact's.
+  labelKey?: string;
+}
+
+/// Resolve an option list for display. `t` is the caller's translator, so this stays
+/// a plain function rather than a store.
+export function sysOptions(
+  opts: SysOption[],
+  t: (id: string) => string,
+): { value: string; label: string }[] {
+  return opts.map((o) => ({
+    value: o.value,
+    label: o.labelKey ? t(o.labelKey) : (o.label ?? o.value),
+  }));
 }
 
 export const CURSOR_THEMES: SysOption[] = [
-  { value: "Default", label: "s.sys.default" },
+  { value: "Default", labelKey: "s.sys.default" },
   { value: "Adwaita", label: "Adwaita" },
   { value: "Bibata", label: "Bibata" },
   { value: "Capitaine", label: "Capitaine" },
 ];
 
 export const ICON_THEMES: SysOption[] = [
-  { value: "Default", label: "s.sys.default" },
+  { value: "Default", labelKey: "s.sys.default" },
   { value: "Papirus", label: "Papirus" },
   { value: "Adwaita", label: "Adwaita" },
   { value: "Numix", label: "Numix" },
@@ -31,13 +53,13 @@ export const ICON_THEMES: SysOption[] = [
 ];
 
 export const SOUND_THEMES: SysOption[] = [
-  { value: "None", label: "s.sys.none" },
+  { value: "None", labelKey: "s.sys.none" },
   { value: "Chime", label: "Chime" },
   { value: "Soft", label: "Soft" },
 ];
 
 export const SOUND_NAMES: SysOption[] = [
-  { value: "None", label: "s.sys.none" },
+  { value: "None", labelKey: "s.sys.none" },
   { value: "Message", label: "Message" },
   { value: "Bell", label: "Bell" },
   { value: "Click", label: "Click" },
