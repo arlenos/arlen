@@ -16,7 +16,7 @@
 //! or an unreadable directory must degrade to "not known" rather than to a zero
 //! that reads as a measurement.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// Identity facts shown in the page head.
@@ -195,6 +195,98 @@ fn meta_from_entry(entry: &str) -> AppMeta {
     }
 }
 
+/// One row of the installed-apps list.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppRow {
+    /// The id the per-app page is addressed by.
+    pub app_id: String,
+    /// The app's display name.
+    pub name: String,
+    /// Version and publisher where the entry states them.
+    pub version: Option<String>,
+    pub publisher: Option<String>,
+}
+
+/// The directories desktop entries are installed into, user first so a local
+/// entry shadows a system one of the same name.
+fn application_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(data) = xdg_dir("XDG_DATA_HOME", ".local/share") {
+        dirs.push(data.join("applications"));
+    }
+    dirs.push(PathBuf::from("/usr/share/applications"));
+    dirs
+}
+
+/// The app id an entry claims, or the desktop id its filename gives it.
+///
+/// The same rule the shell's index uses, so an app is addressed by one id
+/// wherever it appears rather than by one id in the launcher and another here.
+fn entry_app_id(file_stem: &str, entry: &str) -> String {
+    entry_key(entry, "X-Arlen-AppId").unwrap_or_else(|| file_stem.to_owned())
+}
+
+/// Whether an entry describes something a person would call an installed app.
+///
+/// `NoDisplay` marks entries that exist to register a MIME handler or a
+/// D-Bus service, and listing those would offer settings pages for machinery.
+fn is_listable(entry: &str) -> bool {
+    entry_key(entry, "Type").as_deref().unwrap_or("Application") == "Application"
+        && entry_key(entry, "NoDisplay").as_deref() != Some("true")
+        && entry_key(entry, "Hidden").as_deref() != Some("true")
+}
+
+/// Build the list from entries already read, keyed by app id.
+///
+/// Takes the pairs rather than reading a directory so the ordering and the
+/// shadowing rule can be tested without installing anything.
+fn rows_from_entries(entries: Vec<(String, String)>) -> Vec<AppRow> {
+    let mut byid: BTreeMap<String, AppRow> = BTreeMap::new();
+    for (stem, text) in entries {
+        if !is_listable(&text) {
+            continue;
+        }
+        let app_id = entry_app_id(&stem, &text);
+        if !is_safe_app_id(&app_id) {
+            continue;
+        }
+        // First wins, and the caller hands user entries over first, so a local
+        // entry shadows the system one rather than the other way round.
+        byid.entry(app_id.clone()).or_insert_with(|| AppRow {
+            name: entry_key(&text, "Name").unwrap_or_else(|| app_id.clone()),
+            version: entry_key(&text, "X-Arlen-Version"),
+            publisher: entry_key(&text, "X-Arlen-Publisher"),
+            app_id,
+        });
+    }
+    byid.into_values().collect()
+}
+
+/// Every installed app, whatever it has been granted.
+///
+/// Derived from installed entries rather than from the grant ledger: an app that
+/// ships a settings schema and holds no grant still has settings, and a page you
+/// cannot reach is indistinguishable from an app that has none. Grants are a
+/// property of a row, not the reason a row exists.
+#[tauri::command]
+pub async fn settings_apps_list() -> Result<Vec<AppRow>, String> {
+    let mut entries = Vec::new();
+    for dir in application_dirs() {
+        let Ok(read) = std::fs::read_dir(&dir) else { continue };
+        for entry in read.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("desktop") {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            entries.push((stem.to_owned(), text));
+        }
+    }
+    Ok(rows_from_entries(entries))
+}
+
 /// One app's identity facts, or `None` when nothing on the system knows it.
 #[tauri::command]
 pub async fn settings_app_meta(app_id: String) -> Result<Option<AppMeta>, String> {
@@ -285,6 +377,44 @@ pub async fn settings_app_clear_cache(app_id: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_list_is_built_from_installed_entries_not_from_grants() {
+        // The bug this replaces: an app that ships settings and holds no grant was
+        // invisible, so its page could not be reached at all.
+        let rows = rows_from_entries(vec![
+            ("org.arlen.files".into(), "[Desktop Entry]\nType=Application\nName=Files\nX-Arlen-Version=1.0\n".into()),
+            ("com.example.quiet".into(), "[Desktop Entry]\nType=Application\nName=Quiet\n".into()),
+        ]);
+        let ids: Vec<&str> = rows.iter().map(|r| r.app_id.as_str()).collect();
+        assert_eq!(ids, vec!["com.example.quiet", "org.arlen.files"]);
+        assert_eq!(rows[1].name, "Files");
+        assert_eq!(rows[1].version.as_deref(), Some("1.0"));
+        assert_eq!(rows[0].version, None, "absent is absent, not empty");
+    }
+
+    #[test]
+    fn machinery_is_not_offered_a_settings_page() {
+        let rows = rows_from_entries(vec![
+            ("a.handler".into(), "[Desktop Entry]\nType=Application\nName=H\nNoDisplay=true\n".into()),
+            ("a.link".into(), "[Desktop Entry]\nType=Link\nName=L\n".into()),
+            ("a.hidden".into(), "[Desktop Entry]\nType=Application\nName=X\nHidden=true\n".into()),
+            ("a.real".into(), "[Desktop Entry]\nType=Application\nName=R\n".into()),
+        ]);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].app_id, "a.real");
+    }
+
+    #[test]
+    fn a_declared_app_id_wins_over_the_filename_and_a_user_entry_shadows_the_system() {
+        let rows = rows_from_entries(vec![
+            ("arlen-files".into(), "[Desktop Entry]\nType=Application\nName=Local\nX-Arlen-AppId=org.arlen.files\n".into()),
+            ("org.arlen.files".into(), "[Desktop Entry]\nType=Application\nName=System\n".into()),
+        ]);
+        assert_eq!(rows.len(), 1, "both entries describe the same app");
+        assert_eq!(rows[0].app_id, "org.arlen.files");
+        assert_eq!(rows[0].name, "Local", "the entry handed over first wins");
+    }
 
     #[test]
     fn an_app_id_that_could_leave_its_directory_is_refused() {
