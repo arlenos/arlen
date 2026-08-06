@@ -52,7 +52,11 @@ shot="$(mktemp /tmp/scan-ids-XXXXXX.png)"
 # `api.openai.com` - an app id and a provider host, both of which the UI is supposed
 # to show. There is no pattern that separates our ids from reverse-DNS by looking at
 # them, and there does not need to be: the set of ids is known exactly.
-keys="$(grep -rhoE '^\s*"[a-z][A-Za-z0-9]*\.[A-Za-z0-9._]+":' \
+# `-` belongs in the class: `s.idx.system-actions.volume.title` is a real id, and
+# without it twelve of them were invisible to this scan - the same character class
+# hid four registry ids and twelve catalog entries from me the same evening. An id
+# this cannot see is an id it can never report on screen.
+keys="$(grep -rhoE '^\s*"[a-z][A-Za-z0-9]*\.[A-Za-z0-9._-]+":' \
           "$here/../../apps"/*/src/lib/i18n/messages*.ts \
           "$here/../../sdk/ui-kit/src/lib/i18n"/messages*.ts 2>/dev/null \
         | tr -d ' "' | sed 's/:$//' | sort -u | paste -sd, -)"
