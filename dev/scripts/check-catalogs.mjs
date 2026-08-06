@@ -45,7 +45,12 @@ const MessageFormat = await loadMessageFormat();
 /// Every `messages*.ts` under an app's or the kit's `lib/i18n`.
 function catalogFiles() {
   const out = [];
-  for (const base of [join(ROOT, "apps"), join(ROOT, "sdk")]) {
+  // A directory argument scans that tree instead of the repo's; only the fixture
+  // runner passes one. This gate was red all evening for the right reason (it
+  // refuses when it cannot check), but nothing had ever shown it going RED for a
+  // catalog that genuinely does not format - which is the case it exists for.
+  const bases = process.argv[2] ? [process.argv[2]] : [join(ROOT, "apps"), join(ROOT, "sdk")];
+  for (const base of bases) {
     if (!existsSync(base)) continue;
     for (const app of readdirSync(base)) {
       const dir = join(base, app, "src/lib/i18n");

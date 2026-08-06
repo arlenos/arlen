@@ -316,6 +316,74 @@ const info = await invoke<Info>("app_info");
 
 invokeShapeFixtures();
 
+// ---------------------------------------------------------------------------
+// check-catalogs.mjs
+//
+// This gate spent an evening red for the right reason - it refuses when it
+// cannot check - but nothing had ever shown it going red for the case it exists
+// for: a message whose MessageFormat 2.0 source does not compile or format. The
+// selector syntax inside a catalog string is never parsed until the message is
+// first formatted, which for a locale nobody on the team reads is in front of a
+// user.
+// ---------------------------------------------------------------------------
+function catalogFixtures() {
+  console.log("\ncheck-catalogs:");
+
+  const good = tree({
+    "alpha/src/lib/i18n/messages.ts": `const messages: Catalogs = {
+  en: {
+    "a.plain": "Save changes",
+    "a.count": ".input {$n :number} .match $n one {{One file}} * {{{$n} files}}",
+  },
+  de: {
+    "a.plain": "Änderungen speichern",
+    "a.count": ".input {$n :number} .match $n one {{Eine Datei}} * {{{$n} Dateien}}",
+  },
+};
+`,
+  });
+  const r1 = run("check-catalogs.mjs", good);
+  check(
+    "catalogs that compile and format pass",
+    r1.code === 0 && r1.out.includes("compile and format"),
+    `exit ${r1.code}: ${r1.out.trim()}`,
+  );
+
+  // A selector with no catch-all arm: legal-looking, and it throws the moment a
+  // value falls outside the arms it does list. In the locale that has it.
+  const broken = tree({
+    "alpha/src/lib/i18n/messages.ts": `const messages: Catalogs = {
+  en: {
+    "a.count": ".input {$n :number} .match $n one {{One file}} * {{{$n} files}}",
+  },
+  de: {
+    "a.count": ".input {$n :number} .match $n one {{Eine Datei}}",
+  },
+};
+`,
+  });
+  const r2 = run("check-catalogs.mjs", broken);
+  check(
+    "a message that does not format is reported",
+    r2.code === 1 && r2.out.includes("a.count"),
+    `exit ${r2.code}: ${r2.out.trim()}`,
+  );
+
+  // And a tree with no catalogs at all must fail rather than pass: a gate that
+  // silently checks nothing is the shape this whole file exists to prevent.
+  const empty = tree({ "alpha/src/lib/notes.md": "no catalogs here\n" });
+  const r3 = run("check-catalogs.mjs", empty);
+  check(
+    "finding no catalog messages fails rather than passing",
+    r3.code === 2,
+    `exit ${r3.code}: ${r3.out.trim()}`,
+  );
+
+  for (const d of [good, broken, empty]) rmSync(d, { recursive: true, force: true });
+}
+
+catalogFixtures();
+
 if (failures.length) {
   console.log(`\n${failures.length} fixture(s) failed: ${failures.join(", ")}`);
   process.exit(1);
