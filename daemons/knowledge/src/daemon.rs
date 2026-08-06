@@ -402,8 +402,7 @@ async fn handle_graph_event(
 ) {
     match event {
         GraphEvent::PermissionChanged { app_id } => {
-            info!("permission changed for {app_id}, invalidating token");
-            auth.lock().await.invalidate(&app_id);
+            info!("permission changed for {app_id}");
             if profile_exists(&app_id) {
                 // A narrowing/edit: the prior live reach no longer verifies, so
                 // mark it stale; the next connection re-mints at the new ceiling.
@@ -429,8 +428,7 @@ async fn handle_graph_event(
             }
         }
         GraphEvent::AiLevelChanged => {
-            info!("AI level changed, invalidating ai-daemon token");
-            auth.lock().await.invalidate("ai-daemon");
+            info!("AI level changed");
             mark_app_grants_stale(graph, "ai-daemon").await;
         }
         GraphEvent::SchemaRegistered { app_id } => {

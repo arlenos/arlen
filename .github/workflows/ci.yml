@@ -249,6 +249,18 @@ jobs:
             daemons/installd|daemons/knowledge) extra="-- --test-threads=1" ;;
           esac
           cargo test --manifest-path ${{ matrix.component }}/Cargo.toml --no-fail-fast $extra
+      - name: born-translatable lint
+        # Runs on the sdk/i18n leg only: the toolchain and the crate's own build
+        # are already warm there, so arming this costs one `cargo run` rather than
+        # a Rust setup in the build-free structural job. It compares against
+        # `dev/i18n-baseline.tsv` and fails only on a string that is NOT already
+        # accepted, so it passes today and bites on the next new hardcoded one.
+        # An unarmed gate rots: by the time it would catch something, nobody
+        # trusts it.
+        if: ${{ matrix.component == 'sdk/i18n' }}
+        run: |
+          cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- \
+            --root apps --root sdk/ui-kit --baseline dev/i18n-baseline.tsv
 
   integration:
     name: integration (EphemeralStack backend smoke)

@@ -18,23 +18,23 @@
 //! next person reaches for it again.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)] // see the per-variant notes
 pub enum CallerIdentity {
     /// Flatpak-confined caller. `app_id` is the Flatpak application
     /// id (`org.gnome.Calculator`, `com.spotify.Client`, ...).
     Flatpak { app_id: String },
-    /// Snap-confined caller. `name` is the Snap package name.
-    ///
-    /// Not constructed today: only the removed cgroup detector produced it, and
-    /// the frontend hands every confined caller through as an `app_id`. Kept
-    /// because the distinction is real and a future frontend field may carry it;
-    /// scoped `allow` rather than a module-wide one, so the next unused item
-    /// still shows up.
-    Snap { name: String },
     /// Anything else: native binary, systemd service, container we
     /// have not explicitly detected. The caller can do whatever the
     /// invoking user can do regardless of what app_id they pass.
     Unconfined,
+    /// Not constructed today, and kept deliberately rather than deleted with
+    /// `Snap`: two live guards read it - `open_uri`'s `file_uri_authorized`
+    /// refuses on it and `file_chooser` gates on `is_known()`. Removing the
+    /// variant means removing those, and they are the fail-closed branches on an
+    /// authorisation path. They do not fire because a caller we cannot attest is
+    /// refused earlier by the sender-is-the-frontend check, so this is a second
+    /// line rather than dead weight - and a second line whose cost is one
+    /// `#[allow]`.
+    #[allow(dead_code)]
     /// Identity could not be determined: D-Bus message had no
     /// sender header, `org.freedesktop.DBus` was unreachable, or
     /// PID-to-cgroup lookup failed. Authorization decisions that
@@ -59,13 +59,12 @@ impl CallerIdentity {
     pub fn app_id(&self) -> Option<&str> {
         match self {
             CallerIdentity::Flatpak { app_id } => Some(app_id),
-            CallerIdentity::Snap { name } => Some(name),
             CallerIdentity::Unconfined | CallerIdentity::Unknown => None,
         }
     }
 
     /// True when sandbox detection produced a definite answer
-    /// (Flatpak / Snap / Unconfined). False only for Unknown.
+    /// (Flatpak / Unconfined). False only for Unknown.
     /// Callers that need to fail-closed on identity-resolution
     /// failures gate on this.
     pub fn is_known(&self) -> bool {
