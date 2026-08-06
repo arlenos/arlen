@@ -451,6 +451,15 @@ go-live-rehearsal:
 i18n-lint:
     cd "{{ROOT}}" && cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- --root apps --root sdk/ui-kit --baseline dev/i18n-baseline.tsv
 
+# Render every app's routes and report any message id that reached the screen.
+#
+# Each app's dev server is started, scanned and stopped in turn (several share a
+# port). Reports "frontend only" per route, because a vite server has no Tauri and
+# anything a command supplies is simply absent - that is coverage this cannot give,
+# and it says so rather than printing a bare ok.
+i18n-screen *apps:
+    "{{ROOT}}/dev/screenshot/scan-all-apps.sh" {{apps}}
+
 # Drop baseline entries the scanner can no longer reproduce, and only those. Safe
 # to run with new findings outstanding, unlike `i18n-baseline`: it never accepts a
 # new string, so the gate can only get stricter. The check that it behaved is that

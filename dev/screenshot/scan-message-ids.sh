@@ -63,8 +63,14 @@ keys="$(grep -rhoE '^\s*"[a-z][A-Za-z0-9]*\.[A-Za-z0-9._-]+":' \
 [ -n "$keys" ] || { echo "found no catalog keys to match against" >&2; exit 2; }
 
 # Returned rather than drawn, so the caller reads text instead of a picture.
-cat > "$inject" <<JS
-const keys = new Set("$keys".split(","));
+#
+# The delimiter is quoted, so nothing in here is shell. It was not, and a pair of
+# backticks around a message id in a comment below became a command substitution:
+# the shell tried to run `f.places.places` on every invocation. Prose in this file
+# is full of backticked identifiers, so the only durable fix is to stop the shell
+# reading the block at all and substitute the one value afterwards.
+cat > "$inject" <<'JS'
+const keys = new Set("__KEYS__".split(","));
 // Visible text AND the attributes that are read aloud or shown on hover. An
 // untranslated aria-label is invisible to innerText, so the shell's ten hardcoded
 // accessible names could never have been caught here - a screen reader would have
@@ -73,12 +79,25 @@ const attrs = [...document.querySelectorAll("[aria-label],[title],[placeholder],
   .flatMap((el) => ["aria-label", "title", "placeholder", "alt"].map((a) => el.getAttribute(a) || ""))
   .join("\n");
 const body = document.body.innerText;
+// Whether the app's backend was reachable at all.
+//
+// Under a plain vite server there is no Tauri, so every command throws and
+// everything those commands feed is simply absent from the page. The scan then
+// finds no ids for the best possible reason and the worst: there was nothing to
+// look at. On 6 August the Files sidebar was showing a raw id as a group
+// heading, and a scan of that very route came back clean, because the sidebar
+// had rendered nothing at all. Saying "ok" there is a lie of omission.
+const tauri = typeof window.__TAURI_INTERNALS__ !== "undefined";
 // An empty document scans clean for the same reason a missing one does. Say so
 // rather than pass: this is the shape that made a whole session's runs vacuous.
-if (body.trim().length === 0 && attrs.length === 0) return JSON.stringify(["<page rendered nothing>"]);
+if (body.trim().length === 0 && attrs.length === 0)
+  return JSON.stringify({ tauri: false, ids: ["<page rendered nothing>"] });
 const text = body + "\n" + attrs;
-return JSON.stringify([...keys].filter((k) => text.includes(k)));
+return JSON.stringify({ tauri, ids: [...keys].filter((k) => text.includes(k)) });
 JS
+# `|` as the delimiter: a catalog key cannot contain one, and keys are the only
+# thing being substituted.
+sed -i "s|__KEYS__|$keys|" "$inject"
 
 # The positive control, run before anything is believed.
 #
@@ -123,6 +142,8 @@ for spec in "$@"; do
   open="${spec#*::}"
   [ "$open" = "$spec" ] && open=""
   out=$(SHOOT_OPEN="$open" "$here/shoot.sh" "$base$path" "$shot" "$inject" 2>&1 | sed -n 's/^inject result: //p')
+  ids="$(printf '%s' "$out" | sed -n 's/.*"ids":\[\(.*\)\]}/\1/p')"
+  tauri="$(printf '%s' "$out" | grep -c '"tauri":true')"
   case "$out" in
     "")
       # No result at all means the injected script did not run: a throw, a page
@@ -133,11 +154,18 @@ for spec in "$@"; do
       echo "FAIL  $spec -> the page returned no result; the check did not run"
       failed=1
       ;;
-    "[]"|"null")
-      echo "ok    $spec"
+    *'"ids":[]'*|"null")
+      if [ "$tauri" -eq 1 ]; then
+        echo "ok    $spec"
+      else
+        # Clean, but only about what was on the page. Anything a Tauri command
+        # would have supplied is missing here, so this route is under-covered
+        # rather than proven, and it says which.
+        echo "ok    $spec  (frontend only; no Tauri, command-fed content unseen)"
+      fi
       ;;
     *)
-      echo "IDS   $spec -> $out"
+      echo "IDS   $spec -> [$ids]"
       failed=1
       ;;
   esac
