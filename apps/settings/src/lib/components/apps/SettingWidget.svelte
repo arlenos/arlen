@@ -72,8 +72,15 @@
   const numVal = $derived(typeof value === "number" ? value : Number(value ?? item.default ?? 0));
 
   // enum: declared options, or the broker-resolved list for a dynamic source.
+  // Resolution state clears when the rendered item changes, so a re-used
+  // component instance never shows the previous key's choices.
   let resolved = $state<SettingOption[] | null>(null);
   let resolveFailed = $state(false);
+  $effect(() => {
+    void item;
+    resolved = null;
+    resolveFailed = false;
+  });
   $effect(() => {
     if (item.type === "enum" && item.options_from && !unavailableReason && (item.options ?? []).length === 0) {
       resolveOptions(item.options_from)
@@ -84,7 +91,11 @@
   const enumOptions = $derived<SettingOption[]>(
     (item.options ?? []).length > 0 ? (item.options as SettingOption[]) : (resolved ?? [])
   );
-  const selectOptions = $derived<PopoverSelectOption[]>(enumOptions.map((o) => ({ value: o.value, label: o.label })));
+  // The per-option description is mandatory by contract and the list renders
+  // it; the collapsed trigger stays one line (the kit handles both).
+  const selectOptions = $derived<PopoverSelectOption[]>(
+    enumOptions.map((o) => ({ value: o.value, label: o.label, description: o.description }))
+  );
   const enumBlocked = $derived(Boolean(unavailableReason) || resolveFailed);
 
   // keybind: focus the field, press the combo; Esc cancels the capture.
@@ -278,6 +289,10 @@
           <ExternalLink size={14} strokeWidth={1.75} />
           {$t("s.apps.handoffOpen")}
         </Button>
+      {:else if item.type !== "string_list" && item.type !== "raw"}
+        <!-- A type this Settings build does not know renders as an honest
+             statement, never a silently empty cell. -->
+        <span class="unknown-type">{$t("s.apps.unknownType")}</span>
       {/if}
     </div>
   {/snippet}
@@ -420,6 +435,10 @@
   .secret-state {
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 60%, transparent);
+  }
+  .unknown-type {
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--foreground) 45%, transparent);
   }
   .secret-state.unset {
     color: color-mix(in srgb, var(--foreground) 40%, transparent);

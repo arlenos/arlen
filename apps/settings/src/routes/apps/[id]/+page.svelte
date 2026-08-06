@@ -29,6 +29,12 @@
     appPageMocked,
     writeErrors,
     loadAppSettings,
+    appMeta,
+    appMetaMocked,
+    loadAppMeta,
+    appGeneral,
+    loadAppGeneral,
+    clearAppCache,
   } from "$lib/stores/appSettings";
   import { orderedSections, orphanKeys } from "$lib/appSettings";
   import AppAvatar from "$lib/components/privacy/AppAvatar.svelte";
@@ -40,7 +46,11 @@
 
   onMount(loadGrants);
   $effect(() => {
-    if (appId) loadAppSettings(appId);
+    if (appId) {
+      loadAppSettings(appId);
+      loadAppMeta(appId);
+      loadAppGeneral(appId);
+    }
   });
 
   const principal = $derived(byApp($grants).find((p) => p.appId === appId));
@@ -48,7 +58,16 @@
   const unverified = $derived(principal ? !principal.identityVerified : false);
   const sections = $derived($appPage ? orderedSections($appPage.schema) : []);
   const orphans = $derived($appPage ? orphanKeys($appPage) : []);
-  const mocked = $derived($appPageMocked || $grantsMocked);
+  const mocked = $derived($appPageMocked || $grantsMocked || $appMetaMocked);
+
+  // Version and publisher share one quiet identity line; either may be absent.
+  const metaLine = $derived([$appMeta?.version, $appMeta?.publisher].filter(Boolean).join(", "));
+
+  function fmtBytes(n: number): string {
+    if (n < 1_000_000) return `${Math.max(1, Math.round(n / 1_000))} kB`;
+    if (n < 1_000_000_000) return `${Math.round(n / 1_000_000)} MB`;
+    return `${(n / 1_000_000_000).toFixed(1)} GB`;
+  }
 
   // The per-line remove, same confirm as the privacy browser; the full
   // management surface (undo, remove-all, by-data) stays over there.
@@ -81,6 +100,9 @@
         <span class="head-name">{label}</span>
         {#if label !== appId}
           <span class="head-id">{appId}</span>
+        {/if}
+        {#if metaLine}
+          <span class="head-meta">{metaLine}</span>
         {/if}
       </div>
       <div class="head-actions">
@@ -127,9 +149,13 @@
     {/if}
 
     {#if principal}
-      <Section label={$t("s.apps.reach")} class="span-full">
-        <PrincipalGrants {principal} split showHead={false} onRemoveScope={askScope} />
-      </Section>
+      <div class="sect span-full">
+        <Section label={$t("s.apps.reach")}>
+          <PrincipalGrants {principal} split showHead={false} onRemoveScope={askScope} />
+        </Section>
+        <!-- Declared, not observed: honest until the audit feed exists. -->
+        <p class="sect-desc">{$t("s.apps.usageNote")}</p>
+      </div>
       <div class="span-full">
         <LinkCard href="/privacy" title={$t("s.apps.allApps")} description={$t("s.apps.allAppsDesc")}>
           {#snippet icon()}<Shield size={20} strokeWidth={1.75} />{/snippet}
@@ -137,12 +163,46 @@
       </div>
     {/if}
 
-    {#if $appPage}
+    {#if $appGeneral}
+      {@const g = $appGeneral}
+      <Section label={$t("s.apps.general")} class="span-full">
+        {#if g.opens.length > 0}
+          <Row label={$t("s.apps.opens")} description={g.opens.join(", ")} />
+        {/if}
+        {#if g.appBytes != null || g.cacheBytes != null}
+          <Row
+            id={`${appId}.storage`}
+            label={$t("s.apps.storage")}
+            description={$t("s.apps.storageVal", {
+              app: fmtBytes(g.appBytes ?? 0),
+              cache: fmtBytes(g.cacheBytes ?? 0),
+            })}
+          >
+            {#snippet control()}
+              <Button variant="outline" size="sm" onclick={() => clearAppCache(appId)}>
+                {$t("s.apps.clearCache")}
+              </Button>
+            {/snippet}
+          </Row>
+        {/if}
+        {#if g.defaultFor.length > 0}
+          <Row label={$t("s.apps.defaultFor")} description={g.defaultFor.join(", ")} />
+        {/if}
+      </Section>
+    {/if}
+
+    {#if $appPage || $appMeta}
       <Section label={$t("s.apps.aboutApp")} class="span-full">
         <Row
-          label={$t("s.apps.schemaVersion")}
-          description={$t("s.apps.schemaVersionVal", { n: $appPage.schema.version })}
+          label={$t("s.apps.source")}
+          description={$appMeta?.storeComponent ? $t("s.apps.sourceStore") : $t("s.apps.sourceLocal")}
         />
+        {#if $appPage}
+          <Row
+            label={$t("s.apps.schemaVersion")}
+            description={$t("s.apps.schemaVersionVal", { n: $appPage.schema.version })}
+          />
+        {/if}
       </Section>
     {/if}
   </SectionGrid>
@@ -186,6 +246,10 @@
   .head-id {
     font-size: var(--text-xs);
     color: color-mix(in srgb, var(--foreground) 45%, transparent);
+  }
+  .head-meta {
+    font-size: var(--text-xs);
+    color: color-mix(in srgb, var(--foreground) 55%, transparent);
   }
   .head-actions {
     margin-inline-start: auto;
