@@ -6,6 +6,8 @@
   /// once in the layout, opened from the sidebar. Fixture-backed; mint is a human
   /// act, never an agent path.
   import { t } from "$lib/i18n/messages";
+  import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
+  import { mark } from "@arlen/ui-kit/i18n/rich";
   import Dialog from "@arlen/ui-kit/components/ui/dialog/dialog.svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
@@ -99,7 +101,11 @@
       {#if $mintResult}
         <div class="mint-result">
           <span class="mint-result-icon"><ShieldCheck size={20} strokeWidth={1.75} /></span>
-          <p class="mint-lead"><strong>{$mintResult}</strong> is now shared with {audienceLabel.toLowerCase()}.</p>
+          <p class="mint-lead">
+            <Rich text={$t("h.mint.shared", { what: mark("what"), audience: audienceLabel.toLowerCase() })}>
+              {#snippet what()}<strong>{$mintResult}</strong>{/snippet}
+            </Rich>
+          </p>
           <p class="mint-hint">
             You can see it and revoke it any time under Settings, Privacy, Shared
             context. Revoking stops any further reads.
@@ -142,21 +148,22 @@
         <p class="mint-lead">Checking what this share would include…</p>
       {:else}
         <p class="mint-lead">
-          Sharing <strong>{scopeLabel}</strong> follows these connections. Drop any
-          you do not want to include.
+          <Rich text={$t("h.mint.follows", { scope: mark("scope") })}>
+            {#snippet scope()}<strong>{scopeLabel}</strong>{/snippet}
+          </Rich>
         </p>
         <div class="rel-list">
           <div class="rel">
             <Checkbox checked disabled ariaLabel={scopeLabel} />
             <span class="rel-what">{scopeLabel}</span>
-            <span class="rel-reach">{$preview.baseCount} items</span>
+            <span class="rel-reach">{$t("h.mint.itemCount", { n: $preview.baseCount })}</span>
           </div>
           {#each $preview.relations as r (r.type)}
             {@const on = !$mintForm.dropped.includes(r.type)}
             <label class="rel" class:off={!on}>
               <Checkbox checked={on} onchange={() => toggleRelation(r.type)} ariaLabel={`Include ${r.label}`} />
               <span class="rel-what">{r.label}</span>
-              <span class="rel-reach">{r.reach.toLocaleString()} {r.reach === 1 ? "item" : "items"}</span>
+              <span class="rel-reach">{$t("h.mint.itemCount", { n: r.reach })}</span>
             </label>
           {/each}
         </div>
@@ -165,10 +172,15 @@
           <span>{$t("h.mint.includeSensitiveHint")}</span>
         </label>
         <p class="mint-summary">
-          This share includes <strong>{totalItems.toLocaleString()} items</strong>
-          across {includedRelations.length}
-          {includedRelations.length === 1 ? "connection" : "connections"}, readable
-          by {audienceLabel.toLowerCase()} until it expires.
+          <Rich
+            text={$t("h.mint.summary", {
+              items: mark("items"),
+              conns: includedRelations.length,
+              audience: audienceLabel.toLowerCase(),
+            })}
+          >
+            {#snippet items()}<strong>{$t("h.mint.itemCount", { n: totalItems })}</strong>{/snippet}
+          </Rich>
         </p>
       {/if}
     </div>
