@@ -240,11 +240,7 @@ apps/settings/src/lib/components/AddProviderDialog.svelte	Anthropic
 apps/settings/src/lib/components/AddProviderDialog.svelte	Gemini
 apps/settings/src/lib/components/AddProviderDialog.svelte	OpenAI
 apps/settings/src/lib/components/AddProviderDialog.svelte	https://api.example.com/v1
-apps/settings/src/lib/components/appearance/AppPicker.svelte	No apps have sent notifications yet. Send one with
-apps/settings/src/lib/components/appearance/AppPicker.svelte	No matches for "
-apps/settings/src/lib/components/appearance/AppPicker.svelte	Use "
 apps/settings/src/lib/components/appearance/AppPicker.svelte	notify-send
-apps/settings/src/lib/components/appearance/AppPicker.svelte	or type a name below.
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Manifest warnings
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Settings
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
