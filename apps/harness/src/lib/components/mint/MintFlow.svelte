@@ -81,9 +81,9 @@
   <div class="mint">
     <header class="mint-head">
       {#if $mintResult}
-        <h2 class="mint-title">Share created</h2>
+        <h2 class="mint-title">{$t("h.mint.created")}</h2>
       {:else}
-        <span class="mint-eyebrow">Step {$mintStep + 1} of 3</span>
+        <span class="mint-eyebrow">{$t("h.mint.stepOf", { n: $mintStep + 1, total: STEPS.length })}</span>
         <h2 class="mint-title">{STEPS[$mintStep]}</h2>
       {/if}
     </header>
@@ -96,7 +96,7 @@
       {#if $mintMocked && !$mintResult}
         <!-- The scope menu and its reach numbers are invented, so the user would
              be choosing what to share out of data that is not theirs. -->
-        <p class="mint-note">Example data - these are not your real notes and projects.</p>
+        <p class="mint-note">{$t("h.mint.exampleData")}</p>
       {/if}
       {#if $mintResult}
         <div class="mint-result">
@@ -106,16 +106,10 @@
               {#snippet what()}<strong>{$mintResult}</strong>{/snippet}
             </Rich>
           </p>
-          <p class="mint-hint">
-            You can see it and revoke it any time under Settings, Privacy, Shared
-            context. Revoking stops any further reads.
-          </p>
+          <p class="mint-hint">{$t("h.mint.revokeHint")}</p>
         </div>
       {:else if $mintStep === 0}
-        <p class="mint-lead">
-          Pick a named thing to share. You share a snapshot of it as it is now,
-          never a live feed.
-        </p>
+        <p class="mint-lead">{$t("h.mint.pickLead")}</p>
         <ChoiceList
           value={$mintForm.scopeId ?? ""}
           options={$scopeOptions.map((o) => ({ value: o.id, label: o.label, description: o.description }))}
@@ -124,7 +118,7 @@
         />
       {:else if $mintStep === 1}
         <div class="mint-field">
-          <span class="mint-label">Who can open it</span>
+          <span class="mint-label">{$t("h.mint.whoCanOpen")}</span>
           <ChoiceList
             value={$mintForm.audience}
             options={AUDIENCE}
@@ -134,18 +128,18 @@
         </div>
         <div class="mint-row2">
           <div class="mint-field">
-            <span class="mint-label">Expires</span>
+            <span class="mint-label">{$t("h.mint.expires")}</span>
             <PopoverSelect value={$mintForm.expiry} options={EXPIRY} ariaLabel={$t("h.mint.expiry")} onchange={(v) => setForm({ expiry: v })} />
-            <span class="mint-hint">A share always expires. There is no permanent share.</span>
+            <span class="mint-hint">{$t("h.mint.expiryHint")}</span>
           </div>
           <div class="mint-field">
-            <span class="mint-label">Good for</span>
+            <span class="mint-label">{$t("h.mint.goodFor")}</span>
             <PopoverSelect value={$mintForm.opCount} options={OPCOUNT} ariaLabel={$t("h.mint.reads")} onchange={(v) => setForm({ opCount: v })} />
-            <span class="mint-hint">How many times the recipient can open it.</span>
+            <span class="mint-hint">{$t("h.mint.goodForHint")}</span>
           </div>
         </div>
       {:else if $preview === null}
-        <p class="mint-lead">Checking what this share would include…</p>
+        <p class="mint-lead">{$t("h.mint.checking")}</p>
       {:else}
         <p class="mint-lead">
           <Rich text={$t("h.mint.follows", { scope: mark("scope") })}>
