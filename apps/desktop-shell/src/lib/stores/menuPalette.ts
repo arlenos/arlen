@@ -27,6 +27,9 @@ export interface FlatMenuItem {
   disabled?: boolean;
 }
 
+// i18n-foreign: another app's menu, as dbusmenu hands it over. A GTK app names
+// its own items in its own locale and the palette shows them unchanged; there
+// is nothing here for us to translate, in the fixture or in production.
 const MOCK_MENU: MenuGroup[] = [
   {
     label: "File",

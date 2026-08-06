@@ -38,6 +38,8 @@ const daysAgo = (d: number, h = 12): number => {
   return Math.floor(dd.getTime() / 1000) - d * 86400;
 };
 
+// i18n-foreign: the user's own documents - paper titles, note names, mail
+// subjects. Content, not interface. Translating it would be a mistranslation.
 const FIXTURE: LibrarySource[] = [
   {
     key: "papers",
