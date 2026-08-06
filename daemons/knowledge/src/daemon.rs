@@ -281,14 +281,13 @@ async fn listen_queries(
     // /run/arlen and the desktop user's uid is whatever `useradd` picked. A unit
     // hardcoding 1000 is a guess that fails silently in the wrong direction: it
     // would refuse the real user and leave the graph unreachable.
-    let owner_uid = std::env::var("ARLEN_OWNER_UID")
-        .ok()
-        .and_then(|s| s.trim().parse::<u32>().ok())
-        .or_else(|| {
-            std::env::var("ARLEN_OWNER_USER")
-                .ok()
-                .and_then(|name| crate::utils::uid_for_user(name.trim()))
-        });
+    let uid_env = std::env::var("ARLEN_OWNER_UID").ok();
+    let user_env = std::env::var("ARLEN_OWNER_USER").ok();
+    let owner_uid = crate::utils::resolve_owner_uid(
+        uid_env.as_deref(),
+        user_env.as_deref(),
+        crate::utils::uid_for_user,
+    );
     if owner_uid.is_none() && std::env::var_os("ARLEN_OWNER_USER").is_some() {
         // Naming an owner that cannot be resolved is a deployment mistake, and
         // silently serving every cross-uid peer is the opposite of what was asked

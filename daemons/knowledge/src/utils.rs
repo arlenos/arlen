@@ -245,9 +245,47 @@ pub(crate) fn uid_for_user(name: &str) -> Option<u32> {
     Some(pwd.pw_uid)
 }
 
+/// Resolve the configured graph owner from the two env forms, preferring the
+/// explicit uid and falling back to a name looked up through `lookup`.
+///
+/// Pure so the precedence is testable: this decides whether a cross-uid peer is
+/// admitted at all, and on the image - where the socket is the shared
+/// `/run/arlen/knowledge.sock` - it is the only thing standing between another
+/// human's uid and the whole graph. `None` means no restriction.
+pub(crate) fn resolve_owner_uid(
+    uid_env: Option<&str>,
+    user_env: Option<&str>,
+    lookup: impl Fn(&str) -> Option<u32>,
+) -> Option<u32> {
+    if let Some(uid) = uid_env.and_then(|s| s.trim().parse::<u32>().ok()) {
+        return Some(uid);
+    }
+    user_env.map(str::trim).filter(|s| !s.is_empty()).and_then(lookup)
+}
+
 #[cfg(test)]
 mod owner_user_tests {
-    use super::uid_for_user;
+    use super::{resolve_owner_uid, uid_for_user};
+
+    #[test]
+    fn an_explicit_uid_wins_and_a_name_is_the_fallback() {
+        let lookup = |n: &str| (n == "arlen").then_some(1000);
+        assert_eq!(resolve_owner_uid(Some("42"), Some("arlen"), lookup), Some(42));
+        assert_eq!(resolve_owner_uid(None, Some("arlen"), lookup), Some(1000));
+        assert_eq!(resolve_owner_uid(Some(" 7 "), None, lookup), Some(7));
+    }
+
+    #[test]
+    fn an_unusable_setting_leaves_the_owner_unset_rather_than_guessing() {
+        // Every one of these has to mean "no owner configured", never uid 0: a
+        // malformed value that silently became root would admit no cross-uid peer
+        // at all and read as the graph being down.
+        let lookup = |n: &str| (n == "arlen").then_some(1000);
+        assert_eq!(resolve_owner_uid(Some("not-a-uid"), None, lookup), None);
+        assert_eq!(resolve_owner_uid(Some(""), Some("  "), lookup), None);
+        assert_eq!(resolve_owner_uid(None, Some("nobody-here"), lookup), None);
+        assert_eq!(resolve_owner_uid(None, None, lookup), None);
+    }
 
     #[test]
     fn an_empty_or_unknown_name_resolves_to_nothing() {
