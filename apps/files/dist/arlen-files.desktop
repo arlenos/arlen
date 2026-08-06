@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Files
+Name[de]=Dateien
+Comment=Browse, search and organise your files
+Comment[de]=Dateien durchsuchen und ordnen
+Exec=arlen-files
+Icon=arlen-files
+Terminal=false
+Categories=System;FileTools;FileManager;
+Keywords=file;manager;folder;browse;
+Keywords[de]=datei;ordner;verwalten;
+StartupNotify=true

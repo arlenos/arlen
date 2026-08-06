@@ -47,4 +47,12 @@ out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-terminal' 2>/dev/n
         | head -1)
 [ -n "$out" ] || { echo "!! arlen-terminal not found after build" >&2; exit 1; }
 install -Dm755 "$out" "$DESTDIR/usr/bin/arlen-terminal"
+# The launcher enumerates /usr/share/applications; without an entry there the
+# app is installed and undiscoverable, which reads as a broken launcher rather
+# than a missing file. The entry and the icon live with the app, so they are
+# staged by the same step that stages the binary and cannot drift from it.
+install -Dm644 "$SRCDIR/arlen/apps/terminal/dist/arlen-terminal.desktop" \
+        "$DESTDIR/usr/share/applications/arlen-terminal.desktop"
+install -Dm644 "$SRCDIR/arlen/apps/terminal/src-tauri/icons/128x128.png" \
+        "$DESTDIR/usr/share/icons/hicolor/128x128/apps/arlen-terminal.png"
 echo ">> staged arlen-terminal into the image"

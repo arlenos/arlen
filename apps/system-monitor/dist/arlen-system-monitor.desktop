@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=System Monitor
+Name[de]=Systemmonitor
+Comment=Watch processes, memory and load
+Comment[de]=Prozesse, Speicher und Last beobachten
+Exec=arlen-system-monitor
+Icon=arlen-system-monitor
+Terminal=false
+Categories=System;Monitor;
+Keywords=process;cpu;memory;load;task;
+Keywords[de]=prozess;speicher;last;
+StartupNotify=true

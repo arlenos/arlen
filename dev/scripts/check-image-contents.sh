@@ -104,6 +104,22 @@ if [ -n "$orphans" ]; then
 fi
 echo "every shipped arlen binary has its unit staged"
 
+# Desktop entries were an open question until it was settled that the image ships
+# them: the shell's app index already parses /usr/share/applications, apps
+# arriving via apt or forage bring their own, and discovering first-party apps by
+# some other route would be a second store of the same facts. So zero entries
+# alongside shipped app binaries is now a defect rather than a curiosity.
+entries=$(echo "$out" | sed -n '/=== desktop entries/,/^=== /p' | grep -E '^[0-9]+$' | head -1)
+apps_shipped=$(echo "$img_bins" | grep -cE '^arlen-(files|terminal|meetings|system-monitor)$' || true)
+
+echo
+if [ "${entries:-0}" -eq 0 ] && [ "${apps_shipped:-0}" -gt 0 ]; then
+  echo "the image ships $apps_shipped app binaries and no desktop entries, so the launcher"
+  echo "  enumerates nothing - rebuild after staging them (apps/*/dist/*.desktop)"
+  exit 1
+fi
+echo "desktop entries present: ${entries:-0}"
+
 echo
 if [ -n "$missing" ]; then
   echo "a unit names an arlen binary the image does not ship:"

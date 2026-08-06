@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Meetings
+Name[de]=Besprechungen
+Comment=Record meetings and keep their notes
+Comment[de]=Besprechungen aufzeichnen und Notizen behalten
+Exec=arlen-meetings
+Icon=arlen-meetings
+Terminal=false
+Categories=Office;
+Keywords=meeting;notes;transcript;recording;
+Keywords[de]=besprechung;notizen;transkript;
+StartupNotify=true
