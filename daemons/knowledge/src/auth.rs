@@ -8,9 +8,8 @@
 use crate::identity::{app_id_from_cgroup, app_id_from_pid, process_alive, IdentityError};
 use arlen_permissions::{load_profile, PermissionError, PermissionProfile};
 
-use crate::permission::{profile_mtime, GraphScopeExt};
+use crate::permission::GraphScopeExt;
 use crate::token::{CapabilityToken, TokenSigner};
-use crate::token_cache::TokenCache;
 
 use thiserror::Error;
 
@@ -34,7 +33,6 @@ pub enum AuthError {
 /// Manages token issuing, caching, and verification.
 pub struct Authenticator {
     signer: TokenSigner,
-    cache: TokenCache,
 }
 
 /// A debug-only caller-id fallback for a same-uid peer whose `/proc/<pid>/exe`
@@ -67,7 +65,6 @@ impl Authenticator {
     pub fn new() -> Self {
         Self {
             signer: TokenSigner::new(),
-            cache: TokenCache::new(),
         }
     }
 
@@ -139,10 +136,6 @@ impl Authenticator {
 
         self.signer.sign(&mut token);
 
-        let mtime = profile_mtime(app_id).ok();
-        self.cache
-            .insert(app_id.to_string(), token.clone(), mtime);
-
         Ok(token)
     }
 
@@ -160,16 +153,6 @@ impl Authenticator {
             return Err(AuthError::ProcessDead(token.pid));
         }
         Ok(())
-    }
-
-    /// Invalidate a cached token for an app (on `permission.changed` event).
-    pub fn invalidate(&mut self, app_id: &str) {
-        self.cache.invalidate(app_id);
-    }
-
-    /// Invalidate all cached tokens (key rotation, daemon restart).
-    pub fn invalidate_all(&mut self) {
-        self.cache.invalidate_all();
     }
 
     /// Get a reference to the signer (for testing).
@@ -391,17 +374,29 @@ allow = ["~/Documents"]
         ));
     }
 
+    /// Authority is derived per request, never held: `issue_token_for_app` reads
+    /// the profile from disk on every mint, so a narrowed profile is in force on
+    /// the very next call. There used to be a `TokenCache` here, written on every
+    /// mint and read nowhere, which made the daemon look like it cached authority
+    /// and expired it carefully. It did not, and that appearance nearly justified
+    /// wiring the cache in - which would have handed an app a token outliving its
+    /// own grant, since tokens carry no expiry and their delegation set depends on
+    /// which apps are installed rather than on the profile alone.
     #[test]
-    fn test_invalidate_cache() {
-        let profile = load_profile("[graph]\nread = [\"system.File\"]\n");
+    fn a_narrowed_profile_is_in_force_on_the_next_mint() {
+        let wide = load_profile("[graph]\nread = [\"system.File\", \"system.Project\"]\n");
+        let narrow = load_profile("[graph]\nread = [\"system.File\"]\n");
 
         let mut auth = Authenticator::new();
-        let _ = auth
-            .issue_token_from_profile("com.cache", std::process::id(), &profile)
+        let before = auth
+            .issue_token_from_profile("com.cache", std::process::id(), &wide)
+            .unwrap();
+        let after = auth
+            .issue_token_from_profile("com.cache", std::process::id(), &narrow)
             .unwrap();
 
-        assert!(auth.cache.get("com.cache").is_some());
-        auth.invalidate("com.cache");
-        assert!(auth.cache.get("com.cache").is_none());
+        assert!(before.read_scopes.len() > after.read_scopes.len());
+        assert!(after.can_read("system.File"));
+        assert!(!after.can_read("system.Project"));
     }
 }
