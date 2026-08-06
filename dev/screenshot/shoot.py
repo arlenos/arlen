@@ -32,6 +32,11 @@ def main():
     ap.add_argument("--width", type=int, default=1280)
     ap.add_argument("--height", type=int, default=800)
     ap.add_argument("--settle", type=float, default=1.5, help="seconds to wait after load")
+    # An injection that drives the page - stubbing an IPC shim and re-navigating so a
+    # data-bearing view re-mounts through it - needs longer than a repaint. Without
+    # this the shot lands mid-navigation and reads as "the page is broken".
+    ap.add_argument("--after", type=float, default=0.8,
+                    help="seconds to wait after the injection, before the screenshot")
     args = ap.parse_args()
 
     base = f"http://localhost:{args.port}"
@@ -47,7 +52,7 @@ def main():
             res = rq(base, "POST", f"/session/{sid}/execute/sync",
                      {"script": script, "args": []})
             print("inject result:", res.get("value"), file=sys.stderr)
-            time.sleep(0.8)
+            time.sleep(args.after)
         shot = rq(base, "GET", f"/session/{sid}/screenshot")["value"]
         with open(args.out, "wb") as f:
             f.write(base64.b64decode(shot))
