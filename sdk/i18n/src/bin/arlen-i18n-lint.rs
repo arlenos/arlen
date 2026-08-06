@@ -86,7 +86,49 @@ fn meaningful(raw: &str) -> Option<String> {
     if !collapsed.chars().any(|c| c.is_alphabetic()) {
         return None;
     }
+    // An entity is markup wearing letters. `&nbsp;` and `&rarr;` are spacing and a
+    // glyph, and reporting them put three of them in the baseline where they read
+    // as unpaid translation work forever. Strip entities and ask again: `A &amp; B`
+    // still has letters and is still copy, `&nbsp;` has none left and is not.
+    if !strip_entities(&collapsed).chars().any(|c| c.is_alphabetic()) {
+        return None;
+    }
     Some(collapsed)
+}
+
+/// `text` with HTML character references removed.
+///
+/// Deliberately loose about what a valid entity is: this only decides whether
+/// anything is left over, so over-matching a `&word;` that is not a real entity
+/// costs nothing (the surrounding copy still has letters), while under-matching
+/// would put markup back in the baseline.
+fn strip_entities(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '&' {
+            if let Some(end) = chars[i + 1..]
+                .iter()
+                .take(12)
+                .position(|c| *c == ';')
+                .map(|p| i + 1 + p)
+            {
+                let body = &chars[i + 1..end];
+                let entity = !body.is_empty()
+                    && body
+                        .iter()
+                        .all(|c| c.is_ascii_alphanumeric() || *c == '#');
+                if entity {
+                    i = end + 1;
+                    continue;
+                }
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
 }
 
 /// Whether `chars[i..]` begins with `pat` (ASCII, case-insensitive).
@@ -1076,6 +1118,22 @@ mod tests {
         // name would make `label == "Files"` a finding about a condition.
         assert!(scan_script("if (label == \"Files\") {}").is_empty());
         assert!(scan_script("if (title !== \"Home page\") {}").is_empty());
+    }
+
+    #[test]
+    fn an_entity_only_text_node_is_markup_not_copy() {
+        assert_eq!(meaningful("&nbsp;"), None);
+        assert_eq!(meaningful("&rarr;"), None);
+        assert_eq!(meaningful("&#8594;"), None);
+        assert_eq!(meaningful(" &nbsp; &nbsp; "), None);
+    }
+
+    #[test]
+    fn copy_around_an_entity_is_still_copy() {
+        // The boundary that matters: stripping entities must not swallow the
+        // sentence they sit in.
+        assert_eq!(meaningful("Fish &amp; chips"), Some("Fish &amp; chips".into()));
+        assert_eq!(meaningful("Save &rarr; Export"), Some("Save &rarr; Export".into()));
     }
 
     #[test]
