@@ -14,6 +14,7 @@ mod event_bus;
 mod gtk_menu_bridge;
 mod harness_launch;
 mod layer_shell;
+mod locale;
 mod layout;
 mod menu_store;
 mod minimized_windows;
@@ -193,6 +194,10 @@ pub fn run() {
         .manage(clipboard_state)
         .manage(Arc::clone(&modulesd_client))
         .setup(move |app| {
+            // Follow the language choice, so a switch in Settings reaches the
+            // shell without a restart. The frontend reads it once at startup.
+            locale::spawn_locale_watcher(app.handle().clone());
+
             // Best-effort connect to arlen-modulesd. Failure is
             // non-fatal: third-party modules just stay unavailable
             // until the daemon comes up.
@@ -506,6 +511,7 @@ pub fn run() {
             notifications::notification_get_history,
             notifications::notification_get_known_apps,
             settings_provider::settings_reload_index,
+            locale::locale_get,
             settings_provider::settings_search,
             settings_provider::settings_get_value,
             settings_provider::settings_set_value,

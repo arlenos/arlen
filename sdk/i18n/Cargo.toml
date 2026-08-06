@@ -16,6 +16,9 @@ icu_locale_core = "2"
 icu_plurals = { version = "2", features = ["compiled_data"] }
 serde_json = "1"
 
+dirs = "6"
+toml = "0.9"
+
 [dev-dependencies]
 tempfile = "3.27.0"
 

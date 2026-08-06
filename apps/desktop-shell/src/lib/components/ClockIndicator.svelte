@@ -8,18 +8,23 @@
   /// drift.
 
   import { Applet } from "@arlen/ui-kit/components/topbar";
+  import { locale } from "@arlen/ui-kit/i18n";
 
   let time = $state("");
   let weekday = $state("");
 
-  const locale = navigator.language || "en";
-  const timeFormatter = new Intl.DateTimeFormat(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const weekdayFormatter = new Intl.DateTimeFormat(locale, {
-    weekday: "short",
-  });
+  /// Formatted in the language the user chose, not `navigator.language`.
+  ///
+  /// The webview reports the system locale, which is where this got "Thu" beside
+  /// a German shell. One choice drives both today; a separate regional-formats
+  /// setting (pick German, keep English dates) is a real thing other desktops
+  /// offer and would be its own row, not a reason to ignore the one we have.
+  const timeFormatter = $derived(
+    new Intl.DateTimeFormat($locale, { hour: "2-digit", minute: "2-digit" }),
+  );
+  const weekdayFormatter = $derived(
+    new Intl.DateTimeFormat($locale, { weekday: "short" }),
+  );
 
   function update() {
     const now = new Date();
@@ -46,12 +51,14 @@
     };
   });
 
-  const dateFormatter = new Intl.DateTimeFormat(locale, {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  const dateFormatter = $derived(
+    new Intl.DateTimeFormat($locale, {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }),
+  );
   // `time` is the reactive dependency: the full-date tooltip
   // re-derives on every minute tick, so it rolls over at midnight
   // instead of freezing at mount.
