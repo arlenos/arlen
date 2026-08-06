@@ -268,6 +268,12 @@ BUILD_DIRS = {"target", "node_modules", "mkosi.builddir", ".git", ".svelte-kit",
 # and an entry for a command nothing invokes any more is equally an error. An
 # unattributed entry is not a pass, it is a triage item that has been seen.
 DEAD_INVOKES: dict[str, str] = {
+    # per-app settings (per-app-settings-plan.md 4.6); the page landed fixture-backed and
+    # catches the absent command to set `appMetaMocked`, so the frontend is deliberately
+    # ahead of the broker reads. coder owes the three settings_app_* commands
+    "settings_app_meta": "per-app settings 4.6; the page is fixture-backed until the broker reads land. coder owes it",
+    "settings_app_general": "per-app settings 4.6; the page is fixture-backed until the broker reads land. coder owes it",
+    "settings_app_clear_cache": "per-app settings 4.6; the page is fixture-backed until the broker reads land. coder owes it",
     # the recent-actions panel; the shell-side read + enact over the undo signer. coder owes it - fetch_recent and join_rows (2 Aug) are most of the read
     # The backend half exists and is declared unreached from the other side:
     # `daemons/ai-engine-daemon/undo_history` sits in `KNOWN_UNREACHED` in
