@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../../i18n/messages.kit";
   /// Generic confirm dialog.
   ///
   /// Canonical source lives in `sdk/ui-kit`; consuming apps keep file
@@ -74,7 +75,7 @@
     </h2>
     <p class="mb-6 text-sm text-muted-foreground">{message}</p>
     <div class="flex justify-end gap-2">
-      <Button variant="ghost" onclick={onCancel} disabled={busy}>Cancel</Button>
+      <Button variant="ghost" onclick={onCancel} disabled={busy}>{$kt("k.action.cancel")}</Button>
       <Button
         variant={variant === "destructive" ? "destructive" : "default"}
         onclick={handleConfirm}

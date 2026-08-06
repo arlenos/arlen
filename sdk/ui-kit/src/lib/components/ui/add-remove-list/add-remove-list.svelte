@@ -1,4 +1,5 @@
 <script lang="ts" generics="T">
+  import { kt } from "../../../i18n/messages.kit";
   /// Generic editable list for settings pages.
   ///
   /// Renders one row per item via the `itemSnippet`, plus a footer
@@ -52,7 +53,7 @@
           <button
             type="button"
             class="remove"
-            aria-label="Remove"
+            aria-label={$kt("k.action.remove")}
             {disabled}
             onclick={() => onremove(i)}
           >

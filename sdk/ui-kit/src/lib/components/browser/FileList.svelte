@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../i18n/messages.kit";
   /// The detail view: a sortable header row over FileRows. Sorting
   /// goes through the controller (the backend sorts, the view only
   /// asks). Rows are windowed against the scrolling host, so a
@@ -114,7 +115,7 @@
   });
 </script>
 
-<div class="file-list" role="grid" aria-label="Files" aria-rowcount={entries.length}>
+<div class="file-list" role="grid" aria-label={$kt("k.browser.files")} aria-rowcount={entries.length}>
   <div class="fl-header" class:cols-location={columns.middle === "location"} role="row">
     {#each cols as col (col.label)}
       {#if col.sortable && col.key}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../i18n/messages.kit";
   /// The path bar: clickable crumbs, and an editable path field
   /// behind Ctrl+L (the host toggles `editing`). A `homePath` prop
   /// collapses the home prefix into one "Home" crumb so deep paths
@@ -126,13 +127,13 @@
     bind:this={inputRef}
     bind:value={draft}
     class="bc-input"
-    aria-label="Path"
+    aria-label={$kt("k.browser.path")}
     spellcheck="false"
     onkeydown={onkeydown}
     onblur={() => (editing = false)}
   />
 {:else}
-  <nav class="bc" class:tight aria-label="Path" bind:this={navEl}>
+  <nav class="bc" class:tight aria-label={$kt("k.browser.path")} bind:this={navEl}>
     {#if crumbs.length > 0}
       <button
         class="bc-crumb"

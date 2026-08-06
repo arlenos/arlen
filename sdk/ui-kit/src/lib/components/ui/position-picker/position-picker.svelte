@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { kt } from "../../../i18n/messages.kit";
   /// Visual 3x3 grid showing the five valid toast anchor corners.
   /// Center column only has a top-center slot; bottom-center is
   /// intentionally omitted because svelte-sonner does not anchor
@@ -35,7 +36,7 @@
   ];
 </script>
 
-<div class="grid" role="radiogroup" aria-label="Toast position">
+<div class="grid" role="radiogroup" aria-label={$kt("k.toast.position")}>
   {#each SLOTS as slot, i (i)}
     {#if slot}
       {@const selected = value === slot}

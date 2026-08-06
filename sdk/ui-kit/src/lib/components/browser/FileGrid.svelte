@@ -1,4 +1,5 @@
 <script module lang="ts">
+  import { kt } from "../../i18n/messages.kit";
   /// The grid's layout metric, shared with FileBrowser's keyboard
   /// stride, cursor scrolling and marquee: windowed tiles are
   /// off-DOM, so geometry must come from arithmetic, not rects.
@@ -130,7 +131,7 @@
   }
 </script>
 
-<div class="file-grid" role="grid" aria-label="Files" bind:this={gridEl}>
+<div class="file-grid" role="grid" aria-label={$kt("k.browser.files")} bind:this={gridEl}>
   {#if padTop > 0}
     <div class="fg-spacer" style:height="{padTop}px"></div>
   {/if}
