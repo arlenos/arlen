@@ -685,6 +685,81 @@ fn is_guarded_fixture(path: &Path) -> bool {
     guard.contains("$app/environment") && guard.contains("error(404")
 }
 
+/// The line ranges of constants declared foreign, and the reason given for each.
+///
+/// A third of what is left in the baseline is fixture data, and it splits in two.
+/// Some of it stands in for data that arrives at runtime from somebody else - a
+/// third-party app's setting schema, another app's dbusmenu, a store listing from
+/// a server. Those strings are not ours in the fixture for the same reason they
+/// are not ours in production: the surface renders supplier text verbatim and
+/// cannot translate an arbitrary app's words. The rest stands in for data our own
+/// daemons will send, which IS ours, and counting it as paid would hide real debt.
+///
+/// No regex can tell those apart, because the difference is who owns the data at
+/// runtime. So it is declared, above the constant, with a reason:
+///
+/// ```text
+/// // i18n-foreign: a third-party app's labels arrive from the broker as data.
+/// const FIXTURE: AppSettingsPage = { ... };
+/// ```
+///
+/// This annotates, it never suppresses. A foreign string still enters the
+/// baseline and still counts as new if it appears - only the summary separates
+/// it. That is deliberate: a marker that could hide a finding would be reached
+/// for whenever a string was awkward, and the gate would quietly stop checking.
+/// All this buys is that the headline number means what it says.
+///
+/// Errs when a marker carries no reason. "i18n-foreign:" alone is the form that
+/// gets copied to the next constant without anybody re-deciding.
+fn foreign_ranges(src: &str) -> Result<Vec<(usize, usize, String)>, String> {
+    let lines: Vec<&str> = src.lines().collect();
+    let mut out = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        if !line.starts_with("const ") {
+            continue;
+        }
+        // Walk up the contiguous comment block directly above the declaration.
+        let mut reason = None;
+        let mut j = i;
+        while j > 0 {
+            let above = lines[j - 1].trim_start();
+            if !above.starts_with("//") {
+                break;
+            }
+            if let Some((_, rest)) = above.split_once("i18n-foreign:") {
+                reason = Some(rest.trim().to_string());
+                break;
+            }
+            j -= 1;
+        }
+        let Some(reason) = reason else { continue };
+        if reason.is_empty() {
+            return Err(format!(
+                "line {}: an i18n-foreign marker with no reason. Say whose data it is\n  \
+                 and why the surface cannot translate it, or drop the marker.",
+                j
+            ));
+        }
+        // Ends at the next thing that starts a declaration or a comment at column
+        // zero. Over-running would wrongly mark the next constant's strings, so the
+        // rule stops early rather than late: the cost of stopping early is a string
+        // counted as debt, which is the safe direction.
+        let mut end = lines.len() + 1;
+        for (k, l) in lines.iter().enumerate().skip(i + 1) {
+            let starts_decl = ["const ", "let ", "var ", "function ", "export ", "class ",
+                               "interface ", "type ", "declare ", "//"]
+                .iter()
+                .any(|p| l.starts_with(p));
+            if starts_decl {
+                end = k + 1;
+                break;
+            }
+        }
+        out.push((i + 1, end, reason));
+    }
+    Ok(out)
+}
+
 /// The baseline key for a finding: `relative/path.svelte\ttext`. Line is excluded
 /// so a string that moves within a file is not a new finding.
 fn key(rel: &str, text: &str) -> String {
@@ -757,7 +832,8 @@ fn main() -> ExitCode {
     }
 
     let mut current: BTreeSet<String> = BTreeSet::new();
-    let mut report: Vec<(String, usize, String)> = Vec::new();
+    let mut report: Vec<(String, usize, String, bool)> = Vec::new();
+    let mut foreign_count = 0usize;
     for path in &files {
         let src = match std::fs::read_to_string(path) {
             Ok(s) => s,
@@ -783,10 +859,21 @@ fn main() -> ExitCode {
         } else {
             found.extend(scan_script(&src));
         }
+        let ranges = match foreign_ranges(&src) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("arlen-i18n-lint: {rel}: {e}");
+                return ExitCode::from(2);
+            }
+        };
         for f in found {
             let k = key(&rel, &f.text);
             if current.insert(k.clone()) {
-                report.push((rel.clone(), f.line, f.text));
+                let foreign = ranges.iter().any(|(a, b, _)| f.line >= *a && f.line < *b);
+                if foreign {
+                    foreign_count += 1;
+                }
+                report.push((rel.clone(), f.line, f.text, foreign));
             }
         }
     }
@@ -848,14 +935,19 @@ fn main() -> ExitCode {
         Err(_) => BTreeSet::new(), // missing baseline => everything is new
     };
 
-    let new: Vec<&(String, usize, String)> = report
+    let new: Vec<&(String, usize, String, bool)> = report
         .iter()
-        .filter(|(rel, _, text)| !baseline.contains(&key(rel, text)))
+        .filter(|(rel, _, text, _)| !baseline.contains(&key(rel, text)))
         .collect();
 
     if new.is_empty() {
+        // The split is the point of the marker: without it the headline counts
+        // another party's words as our unpaid work, and a number that overstates
+        // what it measures stops being read.
+        let ours = current.len() - foreign_count;
         println!(
-            "arlen-i18n-lint: ok, {} known user-facing strings, no new ones",
+            "arlen-i18n-lint: ok, {} known user-facing strings, no new ones\n  \
+             {ours} ours, {foreign_count} declared foreign data",
             current.len()
         );
         return ExitCode::SUCCESS;
@@ -866,8 +958,11 @@ fn main() -> ExitCode {
          or run with --update if intentionally non-translatable:",
         new.len()
     );
-    for (rel, line, text) in new {
-        eprintln!("  {rel}:{line}: {text}");
+    for (rel, line, text, foreign) in new {
+        // Labelled, not excused: a new string inside a foreign fixture is still a
+        // finding, because it might be one of ours put in the wrong place.
+        let tag = if *foreign { " [foreign fixture]" } else { "" };
+        eprintln!("  {rel}:{line}: {text}{tag}");
     }
     ExitCode::from(1)
 }
@@ -981,6 +1076,59 @@ mod tests {
         // name would make `label == "Files"` a finding about a condition.
         assert!(scan_script("if (label == \"Files\") {}").is_empty());
         assert!(scan_script("if (title !== \"Home page\") {}").is_empty());
+    }
+
+    #[test]
+    fn a_declared_foreign_constant_covers_its_own_lines_and_no_more() {
+        let src = "\
+// i18n-foreign: a third-party app's labels arrive as data.
+const FIXTURE = [
+  { label: \"Save automatically\" },
+];
+
+const OURS = [
+  { label: \"Show sidebar\" },
+];
+";
+        let r = foreign_ranges(src).unwrap();
+        assert_eq!(r.len(), 1);
+        let (start, end, reason) = &r[0];
+        assert!(reason.contains("third-party"));
+        // The fixture's label is inside; the constant after it is not. Over-running
+        // here would launder our own strings as somebody else's.
+        assert!((*start..*end).contains(&3), "fixture label at line 3 not covered");
+        assert!(!(*start..*end).contains(&8), "the next constant was swallowed");
+    }
+
+    #[test]
+    fn an_unmarked_constant_is_ours() {
+        let src = "const OURS = [\n  { label: \"Show sidebar\" },\n];\n";
+        assert!(foreign_ranges(src).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_marker_without_a_reason_is_refused() {
+        // The form that gets copied to the next constant without anybody deciding
+        // again. If it passed, the marker would spread and the count would drift
+        // back to meaning nothing.
+        let src = "// i18n-foreign:\nconst FIXTURE = [\n  { label: \"x\" },\n];\n";
+        assert!(foreign_ranges(src).is_err());
+    }
+
+    #[test]
+    fn the_marker_must_sit_on_the_constant_it_describes() {
+        // A marker separated by code belongs to nothing, and honouring it at a
+        // distance is how one justification ends up covering a whole file.
+        let src = "\
+// i18n-foreign: the store's own listings.
+const FIRST = [];
+const SECOND = [
+  { label: \"Save\" },
+];
+";
+        let r = foreign_ranges(src).unwrap();
+        assert_eq!(r.len(), 1);
+        assert!(!(r[0].0..r[0].1).contains(&4), "the marker reached past its constant");
     }
 
     #[test]

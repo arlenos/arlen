@@ -21,6 +21,10 @@ export const appPageMocked = writable(false);
 /// Per-key broker refusals, shown quietly at the row that caused them.
 export const writeErrors = writable<Record<string, string>>({});
 
+// i18n-foreign: a third-party app's own setting labels. They arrive from the
+// broker as data and are rendered verbatim, because this page cannot hold a
+// catalog for an arbitrary app's words. The fixture is not ours for the same
+// reason the real schema is not.
 const FIXTURE: AppSettingsPage = {
   appId: "com.example.editor",
   schema: {
@@ -228,6 +232,11 @@ export async function resolveOptions(source: ValueSource): Promise<SettingOption
   }
 }
 
+// i18n-foreign: what `settings_resolve_options` returns - device names from
+// PipeWire, locales from the system database. Supplier text, rendered as it
+// comes. The locale rows are the arguable ones: a tag plus Intl.DisplayNames
+// would render them in the reader's language, and that is a change to what
+// the broker returns rather than a string to translate here.
 const RESOLVE_FIXTURE: Partial<Record<ValueSource, SettingOption[]>> = {
   audio_outputs: [
     { value: "alsa_output.pci-0000_00_1f.3", label: "Built-in speakers", description: "The laptop's own output" },
