@@ -363,11 +363,17 @@ jobs:
       # plugin (TS2307: cannot find '@tauri-apps/api/core'). Build each shared
       # plugin first - installing its own deps + producing dist/ - so it is already
       # resolved by the time an app links it.
-      - name: build shared tauri plugins
+      - name: install shared linked packages
+        # Everything an app links by `file:` needs its OWN dependencies installed
+        # first, because npm does not install a file: dependency's build deps for
+        # it. That was true of the tauri plugins and it is equally true of the kit:
+        # `sdk/ui-kit` brings its own `@sveltejs/adapter-static`, `messageformat`
+        # and `@lucide/svelte`, and without this step an app that links it fails to
+        # resolve them - the same defect one level over, in a second place.
         run: |
-          for p in sdk/tauri-plugin-*; do
+          for p in sdk/tauri-plugin-* sdk/ui-kit; do
             if [ -f "$p/package.json" ]; then
-              echo "== build $p =="
+              echo "== install $p =="
               (cd "$p" && npm install)
             fi
           done
