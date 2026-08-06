@@ -90,7 +90,7 @@ interface ExportedSetting {
     type: string;
     configFile: string;
     configKey: string;
-    options?: { value: string; label: string }[];
+    options?: { value: string; labelKey: string }[];
     min?: number;
     max?: number;
     step?: number;

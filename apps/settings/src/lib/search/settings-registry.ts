@@ -20,7 +20,9 @@ export type InlineActionType = "toggle" | "select" | "slider";
 
 export interface SelectOption {
   value: string;
-  label: string;
+  /// A message id, for the same reason the entry's other text is: the Waypointer
+  /// renders these and resolves them in its own locale.
+  labelKey: string;
 }
 
 export interface InlineAction {
@@ -68,36 +70,31 @@ export interface SettingDefinition {
 
 export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // ── Appearance: Theme ──────────────────────────────────────────────
-  {    id: "appearance.theme.mode",
+  {
+    id: "appearance.theme.mode",
     titleKey: "s.idx.appearance.theme.mode.title",
-
     descKey: "s.idx.appearance.theme.mode.desc",
-
     keywordsKey: "s.idx.appearance.theme.mode.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.theme",
-
     anchor: "theme-mode",
     inlineAction: {
       type: "select",
       configFile: "appearance",
       configKey: "theme.mode",
       options: [
-        { value: "light", label: "Light" },
-        { value: "dark", label: "Dark" },
+        { value: "light", labelKey: "s.idx.appearance.theme.mode.opt.light" },
+        { value: "dark", labelKey: "s.idx.appearance.theme.mode.opt.dark" },
       ],
     },
   },
   {
     id: "appearance.accent",
     titleKey: "s.idx.appearance.accent.title",
-
     descKey: "s.idx.appearance.accent.desc",
-
     keywordsKey: "s.idx.appearance.accent.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.theme",
-
     anchor: "accent-color",
   },
 
@@ -105,25 +102,19 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "quicksettings.layout",
     titleKey: "s.idx.quicksettings.layout.title",
-
     descKey: "s.idx.quicksettings.layout.desc",
-
     keywordsKey: "s.idx.quicksettings.layout.keywords",
     panel: "quicksettings",
     sectionKey: "s.idx.section.layout",
-
     anchor: "qs-layout-list",
   },
   {
     id: "quicksettings.layout.reset",
     titleKey: "s.idx.quicksettings.layout.reset.title",
-
     descKey: "s.idx.quicksettings.layout.reset.desc",
-
     keywordsKey: "s.idx.quicksettings.layout.reset.keywords",
     panel: "quicksettings",
     sectionKey: "s.idx.section.layout",
-
     anchor: "qs-layout-list",
   },
 
@@ -131,37 +122,28 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "printers.manage",
     titleKey: "s.idx.printers.manage.title",
-
     descKey: "s.idx.printers.manage.desc",
-
     keywordsKey: "s.idx.printers.manage.keywords",
     panel: "printers",
     sectionKey: "s.idx.section.printers",
-
     anchor: "printers-list",
   },
   {
     id: "printers.queue",
     titleKey: "s.idx.printers.queue.title",
-
     descKey: "s.idx.printers.queue.desc",
-
     keywordsKey: "s.idx.printers.queue.keywords",
     panel: "printers",
     sectionKey: "s.idx.section.printqueue",
-
     anchor: "print-queue",
   },
   {
     id: "printers.add",
     titleKey: "s.idx.printers.add.title",
-
     descKey: "s.idx.printers.add.desc",
-
     keywordsKey: "s.idx.printers.add.keywords",
     panel: "printers",
     sectionKey: "s.idx.section.addaprinter",
-
     anchor: "add-printer",
   },
 
@@ -169,13 +151,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "appearance.overrides.radius_intensity",
     titleKey: "s.idx.appearance.overrides.radius.intensity.title",
-
     descKey: "s.idx.appearance.overrides.radius.intensity.desc",
-
     keywordsKey: "s.idx.appearance.overrides.radius.intensity.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.window",
-
     anchor: "radius-intensity",
     inlineAction: {
       type: "slider",
@@ -190,13 +169,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "appearance.window.border_width",
     titleKey: "s.idx.appearance.window.border.width.title",
-
     descKey: "s.idx.appearance.window.border.width.desc",
-
     keywordsKey: "s.idx.appearance.window.border.width.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.window",
-
     anchor: "border-width",
     inlineAction: {
       type: "slider",
@@ -211,13 +187,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "appearance.window.gaps",
     titleKey: "s.idx.appearance.window.gaps.title",
-
     descKey: "s.idx.appearance.window.gaps.desc",
-
     keywordsKey: "s.idx.appearance.window.gaps.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.window",
-
     anchor: "gaps",
     inlineAction: {
       type: "slider",
@@ -232,13 +205,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "appearance.window.smart_gaps",
     titleKey: "s.idx.appearance.window.smart.gaps.title",
-
     descKey: "s.idx.appearance.window.smart.gaps.desc",
-
     keywordsKey: "s.idx.appearance.window.smart.gaps.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.window",
-
     anchor: "smart-gaps",
     inlineAction: {
       type: "toggle",
@@ -251,25 +221,19 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "appearance.window.border.focused",
     titleKey: "s.idx.appearance.window.border.focused.title",
-
     descKey: "s.idx.appearance.window.border.focused.desc",
-
     keywordsKey: "s.idx.appearance.window.border.focused.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.windowborders",
-
     anchor: "border-focused",
   },
   {
     id: "appearance.window.border.unfocused",
     titleKey: "s.idx.appearance.window.border.unfocused.title",
-
     descKey: "s.idx.appearance.window.border.unfocused.desc",
-
     keywordsKey: "s.idx.appearance.window.border.unfocused.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.windowborders",
-
     anchor: "border-unfocused",
   },
 
@@ -277,37 +241,28 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "appearance.fonts.interface",
     titleKey: "s.idx.appearance.fonts.interface.title",
-
     descKey: "s.idx.appearance.fonts.interface.desc",
-
     keywordsKey: "s.idx.appearance.fonts.interface.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.typography",
-
     anchor: "font-interface",
   },
   {
     id: "appearance.fonts.monospace",
     titleKey: "s.idx.appearance.fonts.monospace.title",
-
     descKey: "s.idx.appearance.fonts.monospace.desc",
-
     keywordsKey: "s.idx.appearance.fonts.monospace.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.typography",
-
     anchor: "font-monospace",
   },
   {
     id: "appearance.fonts.size",
     titleKey: "s.idx.appearance.fonts.size.title",
-
     descKey: "s.idx.appearance.fonts.size.desc",
-
     keywordsKey: "s.idx.appearance.fonts.size.keywords",
     panel: "appearance",
     sectionKey: "s.idx.section.typography",
-
     anchor: "font-size",
     inlineAction: {
       type: "slider",
@@ -324,37 +279,31 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "notifications.dnd.mode",
     titleKey: "s.idx.notifications.dnd.mode.title",
-
     descKey: "s.idx.notifications.dnd.mode.desc",
-
     keywordsKey: "s.idx.notifications.dnd.mode.keywords",
     panel: "notifications",
     sectionKey: "s.idx.section.donotdisturb",
-
     anchor: "dnd-mode",
     inlineAction: {
       type: "select",
       configFile: "notifications",
       configKey: "dnd.mode",
       options: [
-        { value: "off", label: "Off" },
-        { value: "priority", label: "Priority Only" },
-        { value: "alarms", label: "Alarms Only" },
-        { value: "total", label: "Total Silence" },
-        { value: "scheduled", label: "Scheduled" },
+        { value: "off", labelKey: "s.idx.notifications.dnd.mode.opt.off" },
+        { value: "priority", labelKey: "s.idx.notifications.dnd.mode.opt.priority" },
+        { value: "alarms", labelKey: "s.idx.notifications.dnd.mode.opt.alarms" },
+        { value: "total", labelKey: "s.idx.notifications.dnd.mode.opt.total" },
+        { value: "scheduled", labelKey: "s.idx.notifications.dnd.mode.opt.scheduled" },
       ],
     },
   },
   {
     id: "notifications.dnd.suppress_fullscreen",
     titleKey: "s.idx.notifications.dnd.suppress.fullscreen.title",
-
     descKey: "s.idx.notifications.dnd.suppress.fullscreen.desc",
-
     keywordsKey: "s.idx.notifications.dnd.suppress.fullscreen.keywords",
     panel: "notifications",
     sectionKey: "s.idx.section.donotdisturb",
-
     anchor: "suppress-fullscreen",
     inlineAction: {
       type: "toggle",
@@ -367,13 +316,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "notifications.general.toast_duration_normal",
     titleKey: "s.idx.notifications.general.toast.duration.normal.title",
-
     descKey: "s.idx.notifications.general.toast.duration.normal.desc",
-
     keywordsKey: "s.idx.notifications.general.toast.duration.normal.keywords",
     panel: "notifications",
     sectionKey: "s.idx.section.timing",
-
     anchor: "toast-duration-normal",
     inlineAction: {
       type: "slider",
@@ -388,25 +334,19 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "notifications.general.toast_duration_high",
     titleKey: "s.idx.notifications.general.toast.duration.high.title",
-
     descKey: "s.idx.notifications.general.toast.duration.high.desc",
-
     keywordsKey: "s.idx.notifications.general.toast.duration.high.keywords",
     panel: "notifications",
     sectionKey: "s.idx.section.timing",
-
     anchor: "toast-duration-high",
   },
   {
     id: "notifications.general.max_visible_toasts",
     titleKey: "s.idx.notifications.general.max.visible.toasts.title",
-
     descKey: "s.idx.notifications.general.max.visible.toasts.desc",
-
     keywordsKey: "s.idx.notifications.general.max.visible.toasts.keywords",
     panel: "notifications",
     sectionKey: "s.idx.section.timing",
-
     anchor: "max-visible",
   },
 
@@ -414,46 +354,40 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "notifications.toast.position",
     titleKey: "s.idx.notifications.toast.position.title",
-
     descKey: "s.idx.notifications.toast.position.desc",
-
     keywordsKey: "s.idx.notifications.toast.position.keywords",
     panel: "notifications",
     sectionKey: "s.idx.section.toastappearance",
-
     anchor: "toast-position",
     inlineAction: {
       type: "select",
       configFile: "shell",
       configKey: "toast.position",
       options: [
-        { value: "top-right", label: "Top Right" },
-        { value: "top-left", label: "Top Left" },
-        { value: "top-center", label: "Top Center" },
-        { value: "bottom-right", label: "Bottom Right" },
-        { value: "bottom-left", label: "Bottom Left" },
+        { value: "top-right", labelKey: "s.idx.notifications.toast.position.opt.topright" },
+        { value: "top-left", labelKey: "s.idx.notifications.toast.position.opt.topleft" },
+        { value: "top-center", labelKey: "s.idx.notifications.toast.position.opt.topcenter" },
+        { value: "bottom-right", labelKey: "s.idx.notifications.toast.position.opt.bottomright" },
+        { value: "bottom-left", labelKey: "s.idx.notifications.toast.position.opt.bottomleft" },
       ],
     },
   },
   {
     id: "notifications.toast.animation",
     titleKey: "s.idx.notifications.toast.animation.title",
-
     descKey: "s.idx.notifications.toast.animation.desc",
-
     keywordsKey: "s.idx.notifications.toast.animation.keywords",
     panel: "notifications",
     sectionKey: "s.idx.section.toastappearance",
-
     anchor: "toast-animation",
     inlineAction: {
       type: "select",
       configFile: "shell",
       configKey: "toast.animation",
       options: [
-        { value: "slide", label: "Slide" },
-        { value: "fade", label: "Fade" },
-        { value: "none", label: "None" },
+        { value: "slide", labelKey: "s.idx.notifications.toast.animation.opt.slide" },
+        { value: "fade", labelKey: "s.idx.notifications.toast.animation.opt.fade" },
+        { value: "none", labelKey: "s.idx.notifications.toast.animation.opt.none" },
       ],
     },
   },
@@ -462,13 +396,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "notifications.grouping.by_app",
     titleKey: "s.idx.notifications.grouping.by.app.title",
-
     descKey: "s.idx.notifications.grouping.by.app.desc",
-
     keywordsKey: "s.idx.notifications.grouping.by.app.keywords",
     panel: "notifications",
     sectionKey: "s.idx.section.grouping",
-
     anchor: "group-by-app",
     inlineAction: {
       type: "toggle",
@@ -479,13 +410,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "notifications.grouping.stack_similar",
     titleKey: "s.idx.notifications.grouping.stack.similar.title",
-
     descKey: "s.idx.notifications.grouping.stack.similar.desc",
-
     keywordsKey: "s.idx.notifications.grouping.stack.similar.keywords",
     panel: "notifications",
     sectionKey: "s.idx.section.grouping",
-
     anchor: "stack-similar",
     inlineAction: {
       type: "toggle",
@@ -498,13 +426,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "notifications.history.enabled",
     titleKey: "s.idx.notifications.history.enabled.title",
-
     descKey: "s.idx.notifications.history.enabled.desc",
-
     keywordsKey: "s.idx.notifications.history.enabled.keywords",
     panel: "notifications",
     sectionKey: "s.idx.section.history",
-
     anchor: "history-enabled",
     inlineAction: {
       type: "toggle",
@@ -515,13 +440,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "notifications.history.max_age_days",
     titleKey: "s.idx.notifications.history.max.age.days.title",
-
     descKey: "s.idx.notifications.history.max.age.days.desc",
-
     keywordsKey: "s.idx.notifications.history.max.age.days.keywords",
     panel: "notifications",
     sectionKey: "s.idx.section.history",
-
     anchor: "history-max-age",
   },
 
@@ -529,25 +451,19 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "keyboard.layout",
     titleKey: "s.idx.keyboard.layout.title",
-
     descKey: "s.idx.keyboard.layout.desc",
-
     keywordsKey: "s.idx.keyboard.layout.keywords",
     panel: "keyboard",
     sectionKey: "s.idx.section.layout",
-
     anchor: "search",
   },
   {
     id: "keyboard.repeat",
     titleKey: "s.idx.keyboard.repeat.title",
-
     descKey: "s.idx.keyboard.repeat.desc",
-
     keywordsKey: "s.idx.keyboard.repeat.keywords",
     panel: "keyboard",
     sectionKey: "s.idx.section.keyrepeat",
-
     anchor: "search",
   },
 
@@ -555,49 +471,37 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "shortcuts.all",
     titleKey: "s.idx.shortcuts.all.title",
-
     descKey: "s.idx.shortcuts.all.desc",
-
     keywordsKey: "s.idx.shortcuts.all.keywords",
     panel: "shortcuts",
     sectionKey: "s.idx.section.shortcuts",
-
     anchor: "search",
   },
   {
     id: "shortcuts.reset_all",
     titleKey: "s.idx.shortcuts.reset.all.title",
-
     descKey: "s.idx.shortcuts.reset.all.desc",
-
     keywordsKey: "s.idx.shortcuts.reset.all.keywords",
     panel: "shortcuts",
     sectionKey: "s.idx.section.shortcuts",
-
     anchor: "search",
   },
   {
     id: "shortcuts.workspace",
     titleKey: "s.idx.shortcuts.workspace.title",
-
     descKey: "s.idx.shortcuts.workspace.desc",
-
     keywordsKey: "s.idx.shortcuts.workspace.keywords",
     panel: "shortcuts",
     sectionKey: "s.idx.section.workspaces",
-
     anchor: "cat-workspace",
   },
   {
     id: "shortcuts.tiling",
     titleKey: "s.idx.shortcuts.tiling.title",
-
     descKey: "s.idx.shortcuts.tiling.desc",
-
     keywordsKey: "s.idx.shortcuts.tiling.keywords",
     panel: "shortcuts",
     sectionKey: "s.idx.section.tiling",
-
     anchor: "cat-tiling",
   },
 
@@ -605,13 +509,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "mouse.acceleration",
     titleKey: "s.idx.mouse.acceleration.title",
-
     descKey: "s.idx.mouse.acceleration.desc",
-
     keywordsKey: "s.idx.mouse.acceleration.keywords",
     panel: "mouse",
     sectionKey: "s.idx.section.behavior",
-
     anchor: "mouse-acceleration",
     inlineAction: {
       type: "slider",
@@ -625,13 +526,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "mouse.natural_scroll",
     titleKey: "s.idx.mouse.natural.scroll.title",
-
     descKey: "s.idx.mouse.natural.scroll.desc",
-
     keywordsKey: "s.idx.mouse.natural.scroll.keywords",
     panel: "mouse",
     sectionKey: "s.idx.section.behavior",
-
     anchor: "mouse-natural-scroll",
     inlineAction: {
       type: "toggle",
@@ -642,13 +540,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "mouse.left_handed",
     titleKey: "s.idx.mouse.left.handed.title",
-
     descKey: "s.idx.mouse.left.handed.desc",
-
     keywordsKey: "s.idx.mouse.left.handed.keywords",
     panel: "mouse",
     sectionKey: "s.idx.section.behavior",
-
     anchor: "mouse-left-handed",
     inlineAction: {
       type: "toggle",
@@ -661,13 +556,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "touchpad.tap_to_click",
     titleKey: "s.idx.touchpad.tap.to.click.title",
-
     descKey: "s.idx.touchpad.tap.to.click.desc",
-
     keywordsKey: "s.idx.touchpad.tap.to.click.keywords",
     panel: "touchpad",
     sectionKey: "s.idx.section.clicking",
-
     anchor: "touchpad-tap",
     inlineAction: {
       type: "toggle",
@@ -678,13 +570,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "touchpad.natural_scroll",
     titleKey: "s.idx.touchpad.natural.scroll.title",
-
     descKey: "s.idx.touchpad.natural.scroll.desc",
-
     keywordsKey: "s.idx.touchpad.natural.scroll.keywords",
     panel: "touchpad",
     sectionKey: "s.idx.section.scrolling",
-
     anchor: "touchpad-natural-scroll",
     inlineAction: {
       type: "toggle",
@@ -695,13 +584,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "touchpad.two_finger_scroll",
     titleKey: "s.idx.touchpad.two.finger.scroll.title",
-
     descKey: "s.idx.touchpad.two.finger.scroll.desc",
-
     keywordsKey: "s.idx.touchpad.two.finger.scroll.keywords",
     panel: "touchpad",
     sectionKey: "s.idx.section.scrolling",
-
     anchor: "touchpad-two-finger",
     inlineAction: {
       type: "toggle",
@@ -712,13 +598,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "touchpad.disable_while_typing",
     titleKey: "s.idx.touchpad.disable.while.typing.title",
-
     descKey: "s.idx.touchpad.disable.while.typing.desc",
-
     keywordsKey: "s.idx.touchpad.disable.while.typing.keywords",
     panel: "touchpad",
     sectionKey: "s.idx.section.clicking",
-
     anchor: "touchpad-dwt",
     inlineAction: {
       type: "toggle",
@@ -729,13 +612,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "touchpad.acceleration",
     titleKey: "s.idx.touchpad.acceleration.title",
-
     descKey: "s.idx.touchpad.acceleration.desc",
-
     keywordsKey: "s.idx.touchpad.acceleration.keywords",
     panel: "touchpad",
     sectionKey: "s.idx.section.pointer",
-
     anchor: "touchpad-acceleration",
     inlineAction: {
       type: "slider",
@@ -751,34 +631,28 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "workspaces.layout",
     titleKey: "s.idx.workspaces.layout.title",
-
     descKey: "s.idx.workspaces.layout.desc",
-
     keywordsKey: "s.idx.workspaces.layout.keywords",
     panel: "workspaces",
     sectionKey: "s.idx.section.workspacelayout",
-
     anchor: "workspace-layout",
     inlineAction: {
       type: "select",
       configFile: "compositor",
       configKey: "workspaces.workspace_layout",
       options: [
-        { value: "Horizontal", label: "Horizontal" },
-        { value: "Vertical", label: "Vertical" },
+        { value: "Horizontal", labelKey: "s.idx.workspaces.layout.opt.horizontal" },
+        { value: "Vertical", labelKey: "s.idx.workspaces.layout.opt.vertical" },
       ],
     },
   },
   {
     id: "tiling.inner_gap",
     titleKey: "s.idx.tiling.inner.gap.title",
-
     descKey: "s.idx.tiling.inner.gap.desc",
-
     keywordsKey: "s.idx.tiling.inner.gap.keywords",
     panel: "workspaces",
     sectionKey: "s.idx.section.tiling",
-
     anchor: "inner-gap",
     inlineAction: {
       type: "slider",
@@ -793,13 +667,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "tiling.outer_gap",
     titleKey: "s.idx.tiling.outer.gap.title",
-
     descKey: "s.idx.tiling.outer.gap.desc",
-
     keywordsKey: "s.idx.tiling.outer.gap.keywords",
     panel: "workspaces",
     sectionKey: "s.idx.section.tiling",
-
     anchor: "outer-gap",
     inlineAction: {
       type: "slider",
@@ -814,13 +685,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "tiling.smart_gaps",
     titleKey: "s.idx.tiling.smart.gaps.title",
-
     descKey: "s.idx.tiling.smart.gaps.desc",
-
     keywordsKey: "s.idx.tiling.smart.gaps.keywords",
     panel: "workspaces",
     sectionKey: "s.idx.section.tiling",
-
     anchor: "smart-gaps",
     inlineAction: {
       type: "toggle",
@@ -831,13 +699,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "tiling.tiled_headers",
     titleKey: "s.idx.tiling.tiled.headers.title",
-
     descKey: "s.idx.tiling.tiled.headers.desc",
-
     keywordsKey: "s.idx.tiling.tiled.headers.keywords",
     panel: "workspaces",
     sectionKey: "s.idx.section.tiling",
-
     anchor: "tiled-headers",
     inlineAction: {
       type: "toggle",
@@ -848,13 +713,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "tiling.window_rules",
     titleKey: "s.idx.tiling.window.rules.title",
-
     descKey: "s.idx.tiling.window.rules.desc",
-
     keywordsKey: "s.idx.tiling.window.rules.keywords",
     panel: "workspaces",
     sectionKey: "s.idx.section.windowrules",
-
     anchor: "window-rules",
   },
 
@@ -865,49 +727,37 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "system-actions.volume",
     titleKey: "s.idx.system-actions.volume.title",
-
     descKey: "s.idx.system-actions.volume.desc",
-
     keywordsKey: "s.idx.system-actions.volume.keywords",
     panel: "system-actions",
     sectionKey: "s.idx.section.volume",
-
     anchor: "action-VolumeRaise",
   },
   {
     id: "system-actions.brightness",
     titleKey: "s.idx.system-actions.brightness.title",
-
     descKey: "s.idx.system-actions.brightness.desc",
-
     keywordsKey: "s.idx.system-actions.brightness.keywords",
     panel: "system-actions",
     sectionKey: "s.idx.section.brightness",
-
     anchor: "action-BrightnessUp",
   },
   {
     id: "system-actions.media",
     titleKey: "s.idx.system-actions.media.title",
-
     descKey: "s.idx.system-actions.media.desc",
-
     keywordsKey: "s.idx.system-actions.media.keywords",
     panel: "system-actions",
     sectionKey: "s.idx.section.media",
-
     anchor: "action-PlayPause",
   },
   {
     id: "system-actions.system",
     titleKey: "s.idx.system-actions.system.title",
-
     descKey: "s.idx.system-actions.system.desc",
-
     keywordsKey: "s.idx.system-actions.system.keywords",
     panel: "system-actions",
     sectionKey: "s.idx.section.system",
-
     anchor: "action-LockScreen",
   },
 
@@ -915,13 +765,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "accessibility.zoom.shortcuts",
     titleKey: "s.idx.accessibility.zoom.shortcuts.title",
-
     descKey: "s.idx.accessibility.zoom.shortcuts.desc",
-
     keywordsKey: "s.idx.accessibility.zoom.shortcuts.keywords",
     panel: "accessibility",
     sectionKey: "s.idx.section.screenmagnifier",
-
     anchor: "zoom-shortcuts",
     inlineAction: {
       type: "toggle",
@@ -932,13 +779,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "accessibility.zoom.increment",
     titleKey: "s.idx.accessibility.zoom.increment.title",
-
     descKey: "s.idx.accessibility.zoom.increment.desc",
-
     keywordsKey: "s.idx.accessibility.zoom.increment.keywords",
     panel: "accessibility",
     sectionKey: "s.idx.section.screenmagnifier",
-
     anchor: "zoom-increment",
     inlineAction: {
       type: "slider",
@@ -953,35 +797,29 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "accessibility.zoom.movement",
     titleKey: "s.idx.accessibility.zoom.movement.title",
-
     descKey: "s.idx.accessibility.zoom.movement.desc",
-
     keywordsKey: "s.idx.accessibility.zoom.movement.keywords",
     panel: "accessibility",
     sectionKey: "s.idx.section.screenmagnifier",
-
     anchor: "zoom-movement",
     inlineAction: {
       type: "select",
       configFile: "compositor",
       configKey: "accessibility_zoom.view_moves",
       options: [
-        { value: "Continuously", label: "Continuously" },
-        { value: "OnEdge", label: "On edge" },
-        { value: "Centered", label: "Centered" },
+        { value: "Continuously", labelKey: "s.idx.accessibility.zoom.movement.opt.continuously" },
+        { value: "OnEdge", labelKey: "s.idx.accessibility.zoom.movement.opt.onedge" },
+        { value: "Centered", labelKey: "s.idx.accessibility.zoom.movement.opt.centered" },
       ],
     },
   },
   {
     id: "accessibility.zoom.start_on_login",
     titleKey: "s.idx.accessibility.zoom.start.on.login.title",
-
     descKey: "s.idx.accessibility.zoom.start.on.login.desc",
-
     keywordsKey: "s.idx.accessibility.zoom.start.on.login.keywords",
     panel: "accessibility",
     sectionKey: "s.idx.section.screenmagnifier",
-
     anchor: "zoom-start-on-login",
     inlineAction: {
       type: "toggle",
@@ -992,25 +830,19 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "accessibility.invert",
     titleKey: "s.idx.accessibility.invert.title",
-
     descKey: "s.idx.accessibility.invert.desc",
-
     keywordsKey: "s.idx.accessibility.invert.keywords",
     panel: "accessibility",
     sectionKey: "s.idx.section.colorfilters",
-
     anchor: "invert-colors",
   },
   {
     id: "accessibility.color_blindness",
     titleKey: "s.idx.accessibility.color.blindness.title",
-
     descKey: "s.idx.accessibility.color.blindness.desc",
-
     keywordsKey: "s.idx.accessibility.color.blindness.keywords",
     panel: "accessibility",
     sectionKey: "s.idx.section.colorfilters",
-
     anchor: "color-blindness-filter",
   },
 
@@ -1018,13 +850,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "focus.show_project_name",
     titleKey: "s.idx.focus.show.project.name.title",
-
     descKey: "s.idx.focus.show.project.name.desc",
-
     keywordsKey: "s.idx.focus.show.project.name.keywords",
     panel: "focus",
     sectionKey: "s.idx.section.topbarindicator",
-
     anchor: "focus-show-project-name",
     inlineAction: {
       type: "toggle",
@@ -1035,25 +864,19 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "focus.suppressed_apps",
     titleKey: "s.idx.focus.suppressed.apps.title",
-
     descKey: "s.idx.focus.suppressed.apps.desc",
-
     keywordsKey: "s.idx.focus.suppressed.apps.keywords",
     panel: "focus",
     sectionKey: "s.idx.section.defaultsuppressedapps",
-
     anchor: "focus-suppressed-apps",
   },
   {
     id: "knowledge.promote_threshold",
     titleKey: "s.idx.knowledge.promote.threshold.title",
-
     descKey: "s.idx.knowledge.promote.threshold.desc",
-
     keywordsKey: "s.idx.knowledge.promote.threshold.keywords",
     panel: "knowledge",
     sectionKey: "s.idx.section.projectdetection",
-
     anchor: "kg-promote",
     inlineAction: {
       type: "slider",
@@ -1068,25 +891,19 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "knowledge.watch_dirs",
     titleKey: "s.idx.knowledge.watch.dirs.title",
-
     descKey: "s.idx.knowledge.watch.dirs.desc",
-
     keywordsKey: "s.idx.knowledge.watch.dirs.keywords",
     panel: "knowledge",
     sectionKey: "s.idx.section.projectdetection",
-
     anchor: "kg-watch-dirs",
   },
   {
     id: "knowledge.max_depth",
     titleKey: "s.idx.knowledge.max.depth.title",
-
     descKey: "s.idx.knowledge.max.depth.desc",
-
     keywordsKey: "s.idx.knowledge.max.depth.keywords",
     panel: "knowledge",
     sectionKey: "s.idx.section.projectdetection",
-
     anchor: "kg-max-depth",
     inlineAction: {
       type: "slider",
@@ -1103,25 +920,19 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "knowledge.app",
     titleKey: "s.idx.knowledge.app.title",
-
     descKey: "s.idx.knowledge.app.desc",
-
     keywordsKey: "s.idx.knowledge.app.keywords",
     panel: "knowledge",
     sectionKey: "s.idx.section.knowledgeapp",
-
     anchor: "kg-app-link",
   },
   {
     id: "knowledge.stats",
     titleKey: "s.idx.knowledge.stats.title",
-
     descKey: "s.idx.knowledge.stats.desc",
-
     keywordsKey: "s.idx.knowledge.stats.keywords",
     panel: "knowledge",
     sectionKey: "s.idx.section.stats",
-
     anchor: "kg-daemon-status",
   },
 
@@ -1135,13 +946,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "display.panel",
     titleKey: "s.idx.display.panel.title",
-
     descKey: "s.idx.display.panel.desc",
-
     keywordsKey: "s.idx.display.panel.keywords",
     panel: "display",
     sectionKey: "s.idx.section.display",
-
     anchor: "",
   },
 
@@ -1152,13 +960,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "keyboard.panel",
     titleKey: "s.idx.keyboard.panel.title",
-
     descKey: "s.idx.keyboard.panel.desc",
-
     keywordsKey: "s.idx.keyboard.panel.keywords",
     panel: "keyboard",
     sectionKey: "s.idx.section.keyboard",
-
     anchor: "",
   },
 
@@ -1166,13 +971,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "privacy.panel",
     titleKey: "s.idx.privacy.panel.title",
-
     descKey: "s.idx.privacy.panel.desc",
-
     keywordsKey: "s.idx.privacy.panel.keywords",
     panel: "privacy",
     sectionKey: "s.idx.section.privacy",
-
     anchor: "",
   },
 
@@ -1180,13 +982,10 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "extensions.panel",
     titleKey: "s.idx.extensions.panel.title",
-
     descKey: "s.idx.extensions.panel.desc",
-
     keywordsKey: "s.idx.extensions.panel.keywords",
     panel: "extensions",
     sectionKey: "s.idx.section.modules",
-
     anchor: "",
   },
 
@@ -1194,25 +993,19 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "about.version",
     titleKey: "s.idx.about.version.title",
-
     descKey: "s.idx.about.version.desc",
-
     keywordsKey: "s.idx.about.version.keywords",
     panel: "about",
     sectionKey: "s.idx.section.arlenos",
-
     anchor: "arlen-version",
   },
   {
     id: "about.daemons",
     titleKey: "s.idx.about.daemons.title",
-
     descKey: "s.idx.about.daemons.desc",
-
     keywordsKey: "s.idx.about.daemons.keywords",
     panel: "about",
     sectionKey: "s.idx.section.daemons",
-
     anchor: "daemon-knowledge-graph",
   },
 
@@ -1220,61 +1013,46 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   {
     id: "ai.enable",
     titleKey: "s.idx.ai.enable.title",
-
     descKey: "s.idx.ai.enable.desc",
-
     keywordsKey: "s.idx.ai.enable.keywords",
     panel: "ai",
     sectionKey: "s.idx.section.ailayer",
-
     anchor: "ai-enable",
   },
   {
     id: "ai.provider",
     titleKey: "s.idx.ai.provider.title",
-
     descKey: "s.idx.ai.provider.desc",
-
     keywordsKey: "s.idx.ai.provider.keywords",
     panel: "ai",
     sectionKey: "s.idx.section.provider",
-
     anchor: "ai-provider",
   },
   {
     id: "ai.status",
     titleKey: "s.idx.ai.status.title",
-
     descKey: "s.idx.ai.status.desc",
-
     keywordsKey: "s.idx.ai.status.keywords",
     panel: "ai",
     sectionKey: "s.idx.section.status",
-
     anchor: "ai-daemon-status",
   },
   {
     id: "ai.behaviours",
     titleKey: "s.idx.ai.behaviours.title",
-
     descKey: "s.idx.ai.behaviours.desc",
-
     keywordsKey: "s.idx.ai.behaviours.keywords",
     panel: "ai",
     sectionKey: "s.idx.section.behaviours",
-
     anchor: "ai-behaviours",
   },
   {
     id: "ai.executor",
     titleKey: "s.idx.ai.executor.title",
-
     descKey: "s.idx.ai.executor.desc",
-
     keywordsKey: "s.idx.ai.executor.keywords",
     panel: "ai",
     sectionKey: "s.idx.section.execution",
-
     anchor: "ai-executor-live",
   },
 

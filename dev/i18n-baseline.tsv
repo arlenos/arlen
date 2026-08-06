@@ -176,26 +176,6 @@ apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Toggle Waypoin
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Float
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Invalid regex
 apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Tile
-apps/settings/src/lib/search/settings-registry.ts	Alarms Only
-apps/settings/src/lib/search/settings-registry.ts	Bottom Left
-apps/settings/src/lib/search/settings-registry.ts	Bottom Right
-apps/settings/src/lib/search/settings-registry.ts	Centered
-apps/settings/src/lib/search/settings-registry.ts	Continuously
-apps/settings/src/lib/search/settings-registry.ts	Dark
-apps/settings/src/lib/search/settings-registry.ts	Fade
-apps/settings/src/lib/search/settings-registry.ts	Horizontal
-apps/settings/src/lib/search/settings-registry.ts	Light
-apps/settings/src/lib/search/settings-registry.ts	None
-apps/settings/src/lib/search/settings-registry.ts	Off
-apps/settings/src/lib/search/settings-registry.ts	On edge
-apps/settings/src/lib/search/settings-registry.ts	Priority Only
-apps/settings/src/lib/search/settings-registry.ts	Scheduled
-apps/settings/src/lib/search/settings-registry.ts	Slide
-apps/settings/src/lib/search/settings-registry.ts	Top Center
-apps/settings/src/lib/search/settings-registry.ts	Top Left
-apps/settings/src/lib/search/settings-registry.ts	Top Right
-apps/settings/src/lib/search/settings-registry.ts	Total Silence
-apps/settings/src/lib/search/settings-registry.ts	Vertical
 apps/settings/src/lib/stores/appSettings.ts	Accent colour
 apps/settings/src/lib/stores/appSettings.ts	Advanced
 apps/settings/src/lib/stores/appSettings.ts	Appearance
