@@ -3,6 +3,7 @@
   /// Arlen session, so a single session renders as a plain label, not a
   /// control. More than one falls back to the kit PopoverSelect.
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
+  import { t } from "$lib/i18n/messages";
   import type { Session } from "$lib/greeter";
 
   let {
@@ -27,7 +28,7 @@
     {value}
     {options}
     {onchange}
-    ariaLabel="Choose a session"
+    ariaLabel={$t("g.chooseSession")}
     width="11rem"
   />
 {/if}

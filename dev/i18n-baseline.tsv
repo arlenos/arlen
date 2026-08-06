@@ -50,29 +50,11 @@ apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
 apps/files/src/routes/+page.svelte	Del
 apps/files/src/routes/+page.svelte	F2
-apps/greeter/src/lib/components/A11yMenu.svelte	Accessibility
-apps/greeter/src/lib/components/A11yMenu.svelte	High contrast
-apps/greeter/src/lib/components/A11yMenu.svelte	Larger text
-apps/greeter/src/lib/components/A11yMenu.svelte	On-screen keyboard
-apps/greeter/src/lib/components/A11yMenu.svelte	Reading the screen aloud starts when assistive support is available.
-apps/greeter/src/lib/components/A11yMenu.svelte	Screen reader
-apps/greeter/src/lib/components/AuthPanel.svelte	Switch user
-apps/greeter/src/lib/components/FactorRow.svelte	Touch your security key
-apps/greeter/src/lib/components/FactorRow.svelte	Use a security key
-apps/greeter/src/lib/components/FactorRow.svelte	Use password instead
 apps/greeter/src/lib/components/OnScreenKeyboard.svelte	Backspace
 apps/greeter/src/lib/components/OnScreenKeyboard.svelte	Enter
 apps/greeter/src/lib/components/OnScreenKeyboard.svelte	On-screen keyboard
 apps/greeter/src/lib/components/OnScreenKeyboard.svelte	Shift
 apps/greeter/src/lib/components/OnScreenKeyboard.svelte	Space
-apps/greeter/src/lib/components/PasswordField.svelte	Password
-apps/greeter/src/lib/components/PasswordField.svelte	Sign in
-apps/greeter/src/lib/components/PowerMenu.svelte	Power
-apps/greeter/src/lib/components/PowerMenu.svelte	Restart
-apps/greeter/src/lib/components/PowerMenu.svelte	Shut down
-apps/greeter/src/lib/components/PowerMenu.svelte	Suspend
-apps/greeter/src/lib/components/ProfileRow.svelte	Choose a profile
-apps/greeter/src/lib/components/SessionSelect.svelte	Choose a session
 apps/greeter/src/routes/+page.svelte	Login is not reachable right now.
 apps/greeter/src/routes/+page.svelte	No profiles are set up on this device.
 apps/greeter/src/routes/+page.svelte	Starting

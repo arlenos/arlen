@@ -6,6 +6,7 @@
   /// calls and, on success, greetd takes over. A failed attempt shakes,
   /// clears, and announces over aria-live, never leaving the profile.
   import { onMount, tick } from "svelte";
+  import { t } from "$lib/i18n/messages";
   import { Avatar, AvatarImage, AvatarFallback } from "@arlen/ui-kit/components/ui/avatar";
   import type { AuthResult, Profile } from "$lib/greeter";
   import PasswordField from "./PasswordField.svelte";
@@ -96,7 +97,7 @@
 
   {#if canSwitch && !waiting}
     <button type="button" class="switch" id="greeter-switch-user" onclick={() => onswitch?.()}>
-      Switch user
+      {$t("g.switchUser")}
     </button>
   {/if}
 </div>

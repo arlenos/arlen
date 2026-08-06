@@ -5,6 +5,7 @@
   /// arrows move, Enter or Space selects. Flat and monochrome, the house
   /// avatar treatment (squircle, foreground-tinted fill, no gradient).
   import { Avatar, AvatarImage, AvatarFallback } from "@arlen/ui-kit/components/ui/avatar";
+  import { t } from "$lib/i18n/messages";
   import type { Profile } from "$lib/greeter";
 
   let {
@@ -35,7 +36,7 @@
   }
 </script>
 
-<div class="row" role="radiogroup" aria-label="Choose a profile">
+<div class="row" role="radiogroup" aria-label={$t("g.chooseProfile")}>
   {#each profiles as p, i (p.id)}
     <button
       type="button"

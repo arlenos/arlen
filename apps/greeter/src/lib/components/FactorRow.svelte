@@ -6,6 +6,7 @@
   /// (lockscreen-plan.md Decided §5). When a hardware login is in flight the
   /// row is a quiet waiting prompt with a flat opacity pulse, no glow.
   import { KeyRound } from "@lucide/svelte";
+  import { t } from "$lib/i18n/messages";
 
   let {
     available = false,
@@ -23,15 +24,15 @@
 {#if waiting}
   <div class="waiting" role="status" aria-live="polite">
     <span class="pulse"><KeyRound size={16} strokeWidth={1.5} /></span>
-    <span class="prompt">Touch your security key</span>
+    <span class="prompt">{$t("g.factor.touchKey")}</span>
     <button type="button" class="link" id="greeter-factor-cancel" onclick={oncancel}>
-      Use password instead
+      {$t("g.factor.usePassword")}
     </button>
   </div>
 {:else if available}
   <button type="button" class="trigger" id="greeter-factor-begin" onclick={onbegin}>
     <KeyRound size={15} strokeWidth={1.5} />
-    Use a security key
+    {$t("g.factor.useKey")}
   </button>
 {/if}
 
