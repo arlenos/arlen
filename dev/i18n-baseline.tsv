@@ -158,19 +158,9 @@ apps/settings/src/lib/components/AddProviderDialog.svelte	Gemini
 apps/settings/src/lib/components/AddProviderDialog.svelte	OpenAI
 apps/settings/src/lib/components/AddProviderDialog.svelte	https://api.example.com/v1
 apps/settings/src/lib/components/appearance/AppPicker.svelte	notify-send
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	Manifest warnings
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	Settings
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Custom hours
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Off (manual toggle only)
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Sunset to sunrise
-apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Open Waypointer
-apps/settings/src/lib/components/settings/AddCustomBinding.svelte	Toggle Waypointer
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Float
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Invalid regex
-apps/settings/src/lib/components/workspaces/AddWindowRuleDialog.svelte	Tile
 apps/settings/src/lib/stores/appSettings.ts	Accent colour
 apps/settings/src/lib/stores/appSettings.ts	Advanced
 apps/settings/src/lib/stores/appSettings.ts	Appearance

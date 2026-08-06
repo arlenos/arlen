@@ -17,10 +17,12 @@
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import type { WindowRule, WindowRuleAction } from "$lib/stores/workspaces";
 
-  const ACTION_OPTIONS = [
-    { value: "float", label: "Float" },
-    { value: "tile", label: "Tile" },
-  ];
+  /// `$derived`, so the two labels follow a language switch. A plain const would
+  /// capture the language that happened to be current when the module loaded.
+  const ACTION_OPTIONS = $derived([
+    { value: "float", label: $t("s.wr.float") },
+    { value: "tile", label: $t("s.wr.tile") },
+  ]);
 
   let {
     open,
@@ -45,7 +47,8 @@
       new RegExp(pattern);
       return null;
     } catch (e) {
-      return e instanceof Error ? e.message : "Invalid regex";
+      // The engine's own message when it has one; ours only when it does not.
+      return e instanceof Error ? e.message : $t("s.wr.invalidRegex");
     }
   }
 
