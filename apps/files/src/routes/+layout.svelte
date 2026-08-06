@@ -27,6 +27,7 @@
   import { homePath } from "$lib/stores/places";
   import { initTopbar, shellPresent } from "$lib/stores/topbar";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
+  import { initArlenLocale } from "@arlen/ui-kit/i18n";
   import { onMount } from "svelte";
   import { infoOpen, pathEditing } from "$lib/stores/ui";
   import { closeSearch, searchOpen } from "$lib/stores/search";
@@ -54,6 +55,7 @@
     void initTopbar();
     // Live-reskin on a desktop-wide theme switch (GAP-20).
     void initArlenTheme();
+    void initArlenLocale();
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
     return () => {
       document.removeEventListener("contextmenu", suppressBrowserContextMenu);

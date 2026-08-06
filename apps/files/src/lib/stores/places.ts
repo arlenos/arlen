@@ -6,7 +6,7 @@ import { derived, get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { Place, PlaceGroup } from "@arlen/ui-kit/components/browser";
 
-import { t } from "$lib/i18n/messages";
+import { t, locale } from "$lib/i18n/messages";
 
 interface Project {
   id: string;
@@ -137,6 +137,26 @@ const tr = (id: string) => get(t)(id);
 /// its own name and arrives without a key.
 const named = (p: Place): Place =>
   p.labelKey ? { ...p, label: tr(p.labelKey) } : p;
+
+/// Reload when the language changes.
+///
+/// The headings and the standard places are resolved as they are pushed, which
+/// freezes whichever language was current at that moment. `initArlenLocale()` is
+/// a round-trip, so on a German desktop the first load beat it and the sidebar
+/// came up with "PLACES" in English next to "GERÄTE" in German - one heading each
+/// side of the race, in the same list. Re-running on a change settles both, and
+/// gives a live switch for free.
+let known: string | null = null;
+locale.subscribe((tag) => {
+  if (known === null) {
+    known = tag;
+    return;
+  }
+  if (tag !== known) {
+    known = tag;
+    void loadPlaces();
+  }
+});
 
 export async function loadPlaces(): Promise<void> {
   const groups: PlaceGroup[] = [];

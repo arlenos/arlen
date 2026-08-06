@@ -41,6 +41,7 @@
 /// variable before constructing the Tauri builder.
 
 mod commands;
+pub mod locale;
 pub mod theme;
 
 use std::collections::HashMap;
@@ -193,6 +194,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::ambient_set,
             commands::ambient_clear,
             theme::theme_get,
+            locale::locale_get,
         ])
         .setup(|app, _api| {
             // Default the bus identity to the app's bundle identifier (the
@@ -206,6 +208,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             // injects the initial theme via `theme_get` + listens for
             // `arlen://theme-v2-changed`, which this watcher emits.
             theme::spawn_theme_watcher(app.app_handle().clone());
+            // Same shape for the language: read once, then follow the file.
+            locale::spawn_locale_watcher(app.app_handle().clone());
             Ok(())
         })
         .on_event(|app, event| {

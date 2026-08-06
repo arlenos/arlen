@@ -6,6 +6,7 @@
   import "../app.css";
   import { onMount } from "svelte";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
+  import { initArlenLocale } from "@arlen/ui-kit/i18n";
 
   let { children } = $props();
 
@@ -16,6 +17,7 @@
 
   onMount(() => {
     void initArlenTheme();
+    void initArlenLocale();
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
     return () => document.removeEventListener("contextmenu", suppressBrowserContextMenu);
   });
