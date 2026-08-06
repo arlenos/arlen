@@ -27,6 +27,14 @@ export SHOOT_TYPE="${3:-}"
 # screenshotting. A heavy SvelteKit app under WebKitGTK + Xvfb needs more than the
 # 3s default, or `.console` is not mounted yet and the shot races the paint.
 export SHOOT_SETTLE="${4:-}"
+# The binary is an argument here, so building it is the caller's job - but its age
+# is not their memory. On 6 August the compositor harness screenshotted a binary
+# six weeks old and reported a pass, so any harness that runs a prebuilt artifact
+# says how old it is. Visible beats silent; the reader can judge.
+if [ -e "$SHOOT_APP" ]; then
+  echo "app binary: $SHOOT_APP (built $(date -r "$SHOOT_APP" '+%Y-%m-%d %H:%M'))" >&2
+fi
+
 export SHOOT_PORT=4444
 export SHOOT_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export NATIVE="$(command -v WebKitWebDriver || echo /usr/bin/WebKitWebDriver)"

@@ -327,6 +327,13 @@ def main():
         args.require_consent = True
 
     image = os.path.abspath(args.image)
+    # Say how old the image is. A VM check reports on whatever was last built into
+    # the image, which is not necessarily the tree in front of you - the compositor
+    # harness screenshotted a six-week-old binary on 6 August and called it a pass.
+    if os.path.exists(image):
+        built = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(image)))
+        age_h = (time.time() - os.path.getmtime(image)) / 3600
+        print(f"image: {image} (built {built}, {age_h:.1f}h ago)", flush=True)
     if not os.path.exists(image):
         sys.exit(f"image not found: {image} (run dev/mkosi/build-image.sh first)")
 
