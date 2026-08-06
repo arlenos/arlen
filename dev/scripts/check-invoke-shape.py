@@ -318,29 +318,34 @@ DEAD_INVOKES: dict[str, str] = {
     "add_wallpaper": "the wallpaper surface against wallpaperd; the daemon exists, these commands do not",
     "set_wallpaper": "the wallpaper surface against wallpaperd; the daemon exists, these commands do not",
     "greeter_wallpaper": "the wallpaper surface against wallpaperd; the daemon exists, these commands do not",
-    # the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer - coder, and the biggest single block on this list
-    "knowledge_list": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
-    "knowledge_library": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
-    "knowledge_search": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
-    "knowledge_search_save": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
-    "knowledge_projects_list": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
-    "knowledge_provenance": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
-    "knowledge_timeline": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
-    "knowledge_timeline_pause": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
-    "knowledge_timeline_delete": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
-    "knowledge_timeline_export": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
-    "knowledge_capsules": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
-    "knowledge_capsule_mint": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
-    "knowledge_capsule_revoke": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
-    "knowledge_capsule_preview": "the knowledge app against the graph daemon and capsuled; every read op exists daemon-side, none is wired into the app's Tauri layer",
+    # apps/knowledge has NO src-tauri at all: it is a SvelteKit frontend calling
+    # into a host that does not exist, which is why 14 commands are dead rather
+    # than 14 commands being unwritten. The daemon-side read ops all exist and the
+    # os-sdk has clients for them, so the missing piece is the app's Rust side -
+    # or a decision that this app is hosted some other way. Needs a decision
+    "knowledge_list": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_library": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_search": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_search_save": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_projects_list": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_provenance": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_timeline": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_timeline_pause": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_timeline_delete": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_timeline_export": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_capsules": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_capsule_mint": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_capsule_revoke": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_capsule_preview": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
     # the store's update actions against installd - arlen-ui's surface, coder owes the commands
     "store_update": "the store's update actions against installd",
     "store_uninstall": "the store's update actions against installd",
     "store_update_all_routine": "the store's update actions against installd",
-    # the text-editor's AI edit and its project/related lens - coder
-    "ai_edit": "the text-editor's AI edit and its project/related lens",
-    "project_of": "the text-editor's AI edit and its project/related lens",
-    "related_of": "the text-editor's AI edit and its project/related lens",
+    # apps/text-editor is the same shape as apps/knowledge: a frontend with no
+    # src-tauri, so these three have nowhere to live yet - needs the same decision
+    "ai_edit": "apps/text-editor has no src-tauri; the app has no Rust side to define them in",
+    "project_of": "apps/text-editor has no src-tauri; the app has no Rust side to define them in",
+    "related_of": "apps/text-editor has no src-tauri; the app has no Rust side to define them in",
     # the shell's job list; no producer identified yet - unattributed, needs triage
     "list_jobs": "the shell's job list; no producer identified yet",
     # the waypointer's ask-the-AI entry; no backend - unattributed, needs triage
