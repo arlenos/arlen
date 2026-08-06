@@ -50,6 +50,7 @@ export { PopoverSelect, type PopoverSelectOption } from "./popover-select";
 export { PositionPicker } from "./position-picker";
 export { Row } from "./row";
 export { SectionGrid } from "./section-grid";
+export { SearchField } from "./search-field";
 export { SegmentedControl } from "./segmented-control";
 export { StatGrid, StatTile } from "./stat-grid";
 export { TimeInput } from "./time-input";
