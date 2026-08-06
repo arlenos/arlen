@@ -8,6 +8,7 @@ import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { activeController } from "$lib/stores/tabs";
 import { type RenameRule } from "$lib/bulk-rename";
+import { t } from "$lib/i18n/messages";
 
 export type OpKind =
   | "copy"
@@ -36,23 +37,29 @@ export const conflict = writable<{
 } | null>(null);
 
 /// Lay-readable label for the progress surface.
+///
+/// One message per operation rather than a verb joined to a count phrase. The old
+/// shape built "Copying " + ("1 item" | "N items"), which is two English
+/// assumptions at once: that the sentence can be cut after the verb, and that a
+/// plural splits at one. Each message now carries its own plural selector, so the
+/// language decides both.
 function busyLabel(kind: OpKind, count: number): string {
-  const things = count === 1 ? "1 item" : `${count} items`;
+  const tr = get(t);
   switch (kind) {
     case "copy":
-      return `Copying ${things}`;
+      return tr("f.op.copying", { n: count });
     case "move":
-      return `Moving ${things}`;
+      return tr("f.op.moving", { n: count });
     case "trash":
-      return `Moving ${things} to the trash`;
+      return tr("f.op.trashing", { n: count });
     case "delete":
-      return `Deleting ${things}`;
+      return tr("f.op.deleting", { n: count });
     case "duplicate":
-      return `Duplicating ${things}`;
+      return tr("f.op.duplicating", { n: count });
     case "rename":
-      return "Renaming";
+      return tr("f.op.renaming");
     case "new_folder":
-      return "Creating the folder";
+      return tr("f.op.newFolder");
   }
 }
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Top-bar trigger for the Notifications popover.
   ///
   /// Wraps the shared `Applet` primitive — the icon, hover-state,
@@ -25,12 +26,8 @@
 
 <Applet
   appletId="notifications"
-  tooltip={hasUnread
-    ? `${$unreadCount} unread ${$unreadCount === 1 ? "notification" : "notifications"}`
-    : "Notifications"}
-  ariaLabel={hasUnread
-    ? `${$unreadCount} unread notifications`
-    : "Notifications"}
+  tooltip={hasUnread ? $t("sh.notif.unread", { n: $unreadCount }) : $t("sh.notif.title")}
+  ariaLabel={hasUnread ? $t("sh.notif.unread", { n: $unreadCount }) : $t("sh.notif.title")}
   popoverOpen={isOpen}
   dimmed={!hasUnread && !isOpen}
   onclick={() => togglePopover("notifications")}

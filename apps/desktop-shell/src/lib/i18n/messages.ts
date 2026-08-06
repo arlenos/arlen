@@ -24,6 +24,7 @@ const messages: Catalogs = {
     "sh.audio.inputVolume": "Input volume",
     "sh.audio.inputDevice": "Audio input device",
     "sh.audio.appVolume": "Volume for {$app}",
+    "sh.notif.unread": ".input {$n :number}\n.match $n\none {{{$n} unread notification}}\n* {{{$n} unread notifications}}",
     "sh.popover.toggleNamed": "Turn {$name} on or off",
     "sh.bat.performance": "Performance",
     // Network popover
@@ -376,6 +377,7 @@ const messages: Catalogs = {
     "sh.audio.inputVolume": "Aufnahmelautstärke",
     "sh.audio.inputDevice": "Aufnahmegerät",
     "sh.audio.appVolume": "Lautstärke für {$app}",
+    "sh.notif.unread": ".input {$n :number}\n.match $n\none {{{$n} ungelesene Benachrichtigung}}\n* {{{$n} ungelesene Benachrichtigungen}}",
     "sh.popover.toggleNamed": "{$name} ein- oder ausschalten",
     "sh.bat.performance": "Leistung",
     "sh.net.title": "Netzwerk",
