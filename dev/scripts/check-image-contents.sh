@@ -66,6 +66,44 @@ echo "$out"
 missing=$(echo "$out" | sed -n '/=== units naming a missing binary/,/^=== /p' \
   | grep -E "^/" | grep -E "arlen" || true)
 
+# The staging step has now fallen behind the build step three times - fifteen
+# units, the settings binary, every desktop entry. The pattern is that an
+# artifact's real home is next to its crate and the image carries a
+# hand-maintained copy, so anything added crate-side has to be added image-side
+# too and nothing notices when it is not.
+#
+# A blunt "every repo unit must be staged" rule would be wrong: most unstaged
+# units belong to daemons the image deliberately does not ship, and they are
+# absent consistently. The defect worth failing on is the INCONSISTENT case - the
+# image ships the binary but not the unit that starts it, so the daemon is
+# present and can never run.
+repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
+img_bins=$(echo "$out" | sed -n '/=== arlen binaries shipped/,/^=== /p' | sed 's|.*/||' | grep -E '^arlen' || true)
+staged=$(ls "$repo_root"/dev/mkosi/mkosi.extra/usr/lib/systemd/system \
+            "$repo_root"/dev/mkosi/mkosi.extra/usr/lib/systemd/user \
+            "$repo_root"/dev/mkosi/mkosi.extra/usr/share/dbus-1/services 2>/dev/null | sort -u)
+
+orphans=""
+while read -r unit; do
+  [ -n "$unit" ] || continue
+  base=$(basename "$unit")
+  echo "$staged" | grep -qx "$base" && continue
+  exec_line=$(grep -hoE '^(ExecStart|Exec)=[+!-]*[^ ]+' "$unit" 2>/dev/null | head -1 | sed 's/^[A-Za-z]*=[+!-]*//')
+  [ -n "$exec_line" ] || continue
+  echo "$img_bins" | grep -qx "$(basename "$exec_line")" || continue
+  orphans="$orphans  $base (starts $(basename "$exec_line"), which the image ships)\n"
+done <<EOF
+$(cd "$repo_root" && git ls-files '*.service' | grep -vE 'mkosi|node_modules')
+EOF
+
+echo
+if [ -n "$orphans" ]; then
+  echo "the image ships these binaries but not the unit that starts them:"
+  printf "%b" "$orphans"
+  exit 1
+fi
+echo "every shipped arlen binary has its unit staged"
+
 echo
 if [ -n "$missing" ]; then
   echo "a unit names an arlen binary the image does not ship:"
