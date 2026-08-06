@@ -1495,3 +1495,64 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod shipped_desktop_entry_tests {
+    use super::path_to_app_id;
+    use std::path::{Path, PathBuf};
+
+    /// The repo root, from this crate's manifest dir.
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .expect("sdk/permissions sits two levels below the repo root")
+            .to_path_buf()
+    }
+
+    /// Every shipped desktop entry must name the identity the resolver actually
+    /// derives from the binary it launches.
+    ///
+    /// The launcher takes an app's id from `X-Arlen-AppId` and the permission
+    /// system takes it from the binary's path, so these are two statements of one
+    /// fact and nothing else compares them. They disagree by default: the
+    /// desktop-id convention would make `arlen-files.desktop` mean `arlen-files`,
+    /// while `/usr/bin/arlen-files` resolves to `files`. A drift here is invisible
+    /// until a confined launch looks for a profile under the wrong name.
+    #[test]
+    fn a_shipped_entry_names_the_id_the_resolver_derives() {
+        let root = repo_root();
+        let mut checked = 0;
+        for app in std::fs::read_dir(root.join("apps")).expect("apps/ exists").flatten() {
+            let dist = app.path().join("dist");
+            if !dist.is_dir() {
+                continue;
+            }
+            for entry in std::fs::read_dir(&dist).expect("readable dist").flatten() {
+                let p = entry.path();
+                if p.extension().and_then(|e| e.to_str()) != Some("desktop") {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&p).expect("readable entry");
+                let declared = text
+                    .lines()
+                    .find_map(|l| l.strip_prefix("X-Arlen-AppId="))
+                    .unwrap_or_else(|| panic!("{} has no X-Arlen-AppId", p.display()))
+                    .trim();
+                let stem = p.file_stem().and_then(|s| s.to_str()).expect("utf-8 stem");
+                let resolved = path_to_app_id(&PathBuf::from(format!("/usr/bin/{stem}")))
+                    .unwrap_or_else(|e| panic!("{} does not resolve: {e:?}", p.display()));
+                assert_eq!(
+                    declared,
+                    resolved,
+                    "{} declares {declared} but /usr/bin/{stem} resolves to {resolved}",
+                    p.display()
+                );
+                checked += 1;
+            }
+        }
+        // An empty sweep would pass silently, and this test exists precisely
+        // because nothing else looks at these files.
+        assert!(checked > 0, "no shipped desktop entries were found to check");
+    }
+}
