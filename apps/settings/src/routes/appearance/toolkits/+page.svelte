@@ -47,7 +47,7 @@
         <div class="tk-head">
           <div class="tk-title">
             <span class="tk-name">{tk.name}</span>
-            <Badge variant={badge.tone}>{badge.label}</Badge>
+            <Badge variant={badge.tone}>{$t(badge.labelKey)}</Badge>
           </div>
           {#if tk.native}
             <span class="tk-always">{$t("s.tk.alwaysOn")}</span>

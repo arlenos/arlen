@@ -479,15 +479,6 @@ apps/settings/src/lib/stores/modules.ts	Waypointer Extensions
 apps/settings/src/lib/stores/theme.ts	Fira Code
 apps/settings/src/lib/stores/theme.ts	Inter
 apps/settings/src/lib/stores/theme.ts	JetBrains Mono
-apps/settings/src/lib/stores/themeColors.ts	On-accent text
-apps/settings/src/lib/stores/themeColors.ts	Text on background
-apps/settings/src/lib/stores/themeColors.ts	Text on surface
-apps/settings/src/lib/stores/themeOverrides.ts	Colours
-apps/settings/src/lib/stores/themeOverrides.ts	Geometry
-apps/settings/src/lib/stores/themeOverrides.ts	Motion & Depth
-apps/settings/src/lib/stores/themeOverrides.ts	System
-apps/settings/src/lib/stores/themeOverrides.ts	Toolkits
-apps/settings/src/lib/stores/themeOverrides.ts	Typography
 apps/settings/src/lib/stores/themeSystem.ts	Adwaita
 apps/settings/src/lib/stores/themeSystem.ts	Bell
 apps/settings/src/lib/stores/themeSystem.ts	Bibata
@@ -500,8 +491,6 @@ apps/settings/src/lib/stores/themeSystem.ts	Papirus
 apps/settings/src/lib/stores/themeSystem.ts	Pop
 apps/settings/src/lib/stores/themeSystem.ts	Soft
 apps/settings/src/lib/stores/themeSystem.ts	Tela
-apps/settings/src/lib/stores/themeToolkits.ts	Colours only
-apps/settings/src/lib/stores/themeToolkits.ts	Full
 apps/settings/src/routes/about/+page.svelte	Arlen OS
 apps/settings/src/routes/appearance/+page.svelte	Colours
 apps/settings/src/routes/appearance/+page.svelte	Geometry

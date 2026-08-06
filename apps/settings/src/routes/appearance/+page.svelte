@@ -156,7 +156,7 @@
         <p class="empty">{$t("s.appr.empty")}</p>
       {:else}
         {#each $overrideSummary.pages.filter((p) => p.count > 0) as p (p.key)}
-          <Row label={p.label} description={$t("s.appr.changeCount", { count: p.count })} id={`custo-${p.key}`}>
+          <Row label={$t(p.labelKey)} description={$t("s.appr.changeCount", { count: p.count })} id={`custo-${p.key}`}>
             {#snippet control()}
               <Button variant="outline" size="sm" onclick={() => goto(p.href)}>{$t("s.appr.review")}</Button>
             {/snippet}

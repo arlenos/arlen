@@ -130,10 +130,10 @@ export function contrastRatio(a: string, b: string): number {
 
 /// The key legibility pairs to check live (foreground on its ground). Each is a
 /// pair of role keys; the page renders the ratio + a pass/fail against 4.5:1.
-export const CONTRAST_PAIRS: { label: string; fg: string; bg: string }[] = [
-  { label: "Text on background", fg: "fg_primary", bg: "bg_app" },
-  { label: "Text on surface", fg: "fg_primary", bg: "bg_card" },
-  { label: "On-accent text", fg: "fg_inverse", bg: "accent" },
+export const CONTRAST_PAIRS: { labelKey: string; fg: string; bg: string }[] = [
+  { labelKey: "s.contrast.onBackground", fg: "fg_primary", bg: "bg_app" },
+  { labelKey: "s.contrast.onSurface", fg: "fg_primary", bg: "bg_card" },
+  { labelKey: "s.contrast.onAccent", fg: "fg_inverse", bg: "accent" },
 ];
 
 /// A rough hex validity check for the input.
