@@ -37,6 +37,11 @@ def main():
     # this the shot lands mid-navigation and reads as "the page is broken".
     ap.add_argument("--after", type=float, default=0.8,
                     help="seconds to wait after the injection, before the screenshot")
+    # Anything behind a click was outside every check built on this: the id scan
+    # reported a dialog's routes clean while never opening the dialog. One click
+    # before the inject is the cheapest thing that reaches that half of the UI.
+    ap.add_argument("--open", dest="open_selector", default=None,
+                    help="CSS selector to click after load, before the injection")
     args = ap.parse_args()
 
     base = f"http://localhost:{args.port}"
@@ -47,6 +52,19 @@ def main():
            {"width": args.width, "height": args.height, "x": 0, "y": 0})
         rq(base, "POST", f"/session/{sid}/url", {"url": args.url})
         time.sleep(args.settle)
+        if args.open_selector:
+            clicked = rq(base, "POST", f"/session/{sid}/execute/sync", {
+                "script": "const el = document.querySelector(arguments[0]);"
+                          " if (!el) return false; el.click(); return true;",
+                "args": [args.open_selector],
+            })["value"]
+            # Say so rather than carry on: a selector that matches nothing means the
+            # rest of the run reports on a page that never opened, which is the
+            # exact shape of every false green this harness has produced.
+            if not clicked:
+                print(f"open selector matched nothing: {args.open_selector}", file=sys.stderr)
+                sys.exit(3)
+            time.sleep(args.after)
         if args.inject:
             script = open(args.inject).read()
             res = rq(base, "POST", f"/session/{sid}/execute/sync",
