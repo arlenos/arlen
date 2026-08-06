@@ -590,7 +590,7 @@ fn collect_svelte(root: &Path, out: &mut Vec<PathBuf>) {
                 continue;
             }
             collect_svelte(&path, out);
-        } else if is_scannable(&name) && !is_kit_dev_surface(&path) {
+        } else if is_scannable(&name) && !is_kit_dev_surface(&path) && !is_guarded_fixture(&path) {
             out.push(path);
         }
     }
@@ -661,6 +661,28 @@ fn kit_dev_surfaces_are_unimported(files: &[PathBuf]) -> Vec<(String, &'static s
         }
     }
     out
+}
+
+/// An app's own screenshot fixture, skipped only while it provably cannot ship.
+///
+/// `apps/*/src/routes/_*` render mock data for the screenshot harness. They are
+/// ordinary routes, so SvelteKit builds them into the app - eleven of them were
+/// sitting in the built bundles, reachable by URL - and each now carries a
+/// `+page.ts` that 404s unless `dev`.
+///
+/// That guard is what this reads. A fixture is skipped BECAUSE the tree contains
+/// the thing that stops it reaching a user, not because of a convention about the
+/// leading underscore. Delete the guard and its strings come back as findings,
+/// which is the correct outcome: an unguarded fixture ships, so its strings are
+/// user-facing.
+fn is_guarded_fixture(path: &Path) -> bool {
+    let p = path.to_string_lossy().replace('\\', "/");
+    if !p.contains("/routes/_") {
+        return false;
+    }
+    let Some(dir) = path.parent() else { return false };
+    let Ok(guard) = std::fs::read_to_string(dir.join("+page.ts")) else { return false };
+    guard.contains("$app/environment") && guard.contains("error(404")
 }
 
 /// The baseline key for a finding: `relative/path.svelte\ttext`. Line is excluded
@@ -959,6 +981,29 @@ mod tests {
         // name would make `label == "Files"` a finding about a condition.
         assert!(scan_script("if (label == \"Files\") {}").is_empty());
         assert!(scan_script("if (title !== \"Home page\") {}").is_empty());
+    }
+
+    #[test]
+    fn a_fixture_route_is_skipped_only_while_it_is_guarded() {
+        let root = std::env::temp_dir().join(format!("arlen-i18n-fx-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let guarded = root.join("apps/x/src/routes/_shown");
+        let bare = root.join("apps/x/src/routes/_ships");
+        std::fs::create_dir_all(&guarded).unwrap();
+        std::fs::create_dir_all(&bare).unwrap();
+        std::fs::write(guarded.join("+page.svelte"), "<p>Fixture copy</p>").unwrap();
+        std::fs::write(
+            guarded.join("+page.ts"),
+            "import { dev } from \"$app/environment\";\nexport const load = () => { if (!dev) error(404); };",
+        )
+        .unwrap();
+        // Same shape, no guard: this one is built into the app, so its strings
+        // are a user's problem and must still be scanned.
+        std::fs::write(bare.join("+page.svelte"), "<p>Fixture copy</p>").unwrap();
+
+        assert!(is_guarded_fixture(&guarded.join("+page.svelte")));
+        assert!(!is_guarded_fixture(&bare.join("+page.svelte")));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
