@@ -45,18 +45,49 @@ fn index_path() -> PathBuf {
         .join("settings-index.json")
 }
 
-/// Write the settings search index to disk. Called from the frontend
-/// at startup with the pre-built JSON payload.
+/// Where the exported catalogs live: `<locale>.json` per locale, the layout
+/// `arlen_i18n::Localizer::load_dir` reads.
+fn catalog_dir() -> PathBuf {
+    index_path()
+        .parent()
+        .unwrap_or(&PathBuf::from("/tmp"))
+        .join("catalogs")
+        .join("settings")
+}
+
+/// Write the settings search index and the catalogs it points at.
+///
+/// The index carries message ids, not prose, so a reader holding only the index
+/// has nothing to show; the catalogs travel with it. Both come from one call, and
+/// **the catalogs are written first**: a reader that sees a new index can then
+/// always resolve it, where the other order leaves a window in which the index
+/// names messages that are not on disk yet.
 #[tauri::command]
-pub fn export_settings_index(json: String) -> Result<(), String> {
+pub fn export_settings_index(json: String, catalogs: String) -> Result<(), String> {
+    let by_locale: std::collections::BTreeMap<String, serde_json::Value> =
+        serde_json::from_str(&catalogs).map_err(|e| format!("catalogs: {e}"))?;
+
+    let dir = catalog_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create catalog dir: {e}"))?;
+    for (locale, messages) in &by_locale {
+        // A locale is a filename here, so it may not steer the write anywhere else.
+        if locale.is_empty() || !locale.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return Err(format!("catalogs: `{locale}` is not a locale"));
+        }
+        let body = serde_json::to_string(messages).map_err(|e| format!("catalogs: {e}"))?;
+        std::fs::write(dir.join(format!("{locale}.json")), body)
+            .map_err(|e| format!("write catalog {locale}: {e}"))?;
+    }
+
     let path = index_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("create dir: {e}"))?;
     }
     std::fs::write(&path, &json).map_err(|e| format!("write: {e}"))?;
     log::info!(
-        "settings index exported ({} bytes) to {}",
+        "settings index exported ({} bytes, {} catalog(s)) to {}",
         json.len(),
+        by_locale.len(),
         path.display()
     );
     Ok(())
