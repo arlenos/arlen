@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
+  import { sysOptions } from "$lib/stores/themeSystem";
   /// Typography: the theme's fonts, size, line height, and weights. The everyday
   /// fonts + size up front; the weights behind an expander. Same two-column split,
   /// override-row and live preview as the other suite pages. A dedicated type
@@ -65,8 +66,8 @@
           {#snippet control()}
             <FontSelect
               value={sans}
-              options={FONT_OPTIONS}
-              ariaLabel="Interface font"
+              options={sysOptions(FONT_OPTIONS, $t)}
+              ariaLabel={$t("s.typo.interface")}
               onchange={(v) => setTypo("fontSans", v)}
             />
           {/snippet}
@@ -81,8 +82,8 @@
           {#snippet control()}
             <FontSelect
               value={mono}
-              options={MONO_FONT_OPTIONS}
-              ariaLabel="Monospace font"
+              options={sysOptions(MONO_FONT_OPTIONS, $t)}
+              ariaLabel={$t("s.typo.mono")}
               onchange={(v) => setTypo("fontMono", v)}
             />
           {/snippet}

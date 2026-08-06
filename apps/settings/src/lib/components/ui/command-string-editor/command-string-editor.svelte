@@ -21,7 +21,7 @@
     value,
     defaultValue,
     onchange,
-    placeholder = "shell:event_name or spawn:command",
+    placeholder,
   }: {
     value: string;
     /// When supplied, a reset button appears once `value !== defaultValue`.
@@ -100,7 +100,7 @@
   <div class="editor">
     <Input
       bind:value={draft}
-      {placeholder}
+      placeholder={placeholder ?? $t("s.cmdEditor.placeholder")}
       onkeydown={onKeydown}
       autofocus
     />
