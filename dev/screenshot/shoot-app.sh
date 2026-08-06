@@ -83,6 +83,11 @@ xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
   [ -n "${SHOOT_GRAB:-}" ] && args+=(--grab-x)
   [ -n "${SHOOT_EXEC:-}" ] && args+=(--exec "$SHOOT_EXEC")
   [ -n "${SHOOT_EXPECT:-}" ] && args+=(--expect "$SHOOT_EXPECT")
-  [ -n "${SHOOT_INJECT:-}" ] && args+=(--inject "$SHOOT_INJECT")
+  # Colon-separated, so a caller can move the app then ask about where it went.
+  if [ -n "${SHOOT_INJECT:-}" ]; then
+    IFS=':' read -ra injects <<< "$SHOOT_INJECT"
+    for f in "${injects[@]}"; do args+=(--inject "$f"); done
+  fi
+  [ -n "${SHOOT_INJECT_SETTLE:-}" ] && args+=(--inject-settle "$SHOOT_INJECT_SETTLE")
   python3 "$SHOOT_HERE/shoot_app.py" "${args[@]}"
 '
