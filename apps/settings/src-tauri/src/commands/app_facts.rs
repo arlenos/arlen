@@ -186,18 +186,46 @@ fn default_handler_types(app_id: &str) -> Vec<String> {
     out.into_iter().collect()
 }
 
+/// The identity facts carried by one desktop entry.
+fn meta_from_entry(entry: &str) -> AppMeta {
+    AppMeta {
+        version: entry_key(entry, "X-Arlen-Version"),
+        publisher: entry_key(entry, "X-Arlen-Publisher"),
+        store_component: entry_key(entry, "X-AppStream-Component"),
+    }
+}
+
 /// One app's identity facts, or `None` when nothing on the system knows it.
 #[tauri::command]
 pub async fn settings_app_meta(app_id: String) -> Result<Option<AppMeta>, String> {
     if !is_safe_app_id(&app_id) {
         return Err("not an app id".to_owned());
     }
-    let Some(entry) = read_desktop_entry(&app_id) else { return Ok(None) };
-    Ok(Some(AppMeta {
-        version: entry_key(&entry, "X-Arlen-Version"),
-        publisher: entry_key(&entry, "X-Arlen-Publisher"),
-        store_component: entry_key(&entry, "X-AppStream-Component"),
-    }))
+    Ok(read_desktop_entry(&app_id).as_deref().map(meta_from_entry))
+}
+
+/// Assemble the general facts from pieces already located.
+///
+/// Taking the directories rather than the app id keeps the environment lookup in
+/// the command and leaves this testable without setting `XDG_*` on a process the
+/// test runner shares with every other test.
+fn general_from(
+    entry: Option<&str>,
+    data_dir: Option<&Path>,
+    cache_dir: Option<&Path>,
+    default_for: Vec<String>,
+) -> Option<AppGeneral> {
+    let general = AppGeneral {
+        opens: entry.map(declared_mime_types).unwrap_or_default(),
+        app_bytes: data_dir.and_then(dir_bytes),
+        cache_bytes: cache_dir.and_then(dir_bytes),
+        default_for,
+    };
+    let known = !general.opens.is_empty()
+        || general.app_bytes.is_some()
+        || general.cache_bytes.is_some()
+        || !general.default_for.is_empty();
+    known.then_some(general)
 }
 
 /// What one app opens and what it is storing.
@@ -210,34 +238,20 @@ pub async fn settings_app_general(app_id: String) -> Result<Option<AppGeneral>, 
     if !is_safe_app_id(&app_id) {
         return Err("not an app id".to_owned());
     }
-    let entry = read_desktop_entry(&app_id);
-    let general = AppGeneral {
-        opens: entry.as_deref().map(declared_mime_types).unwrap_or_default(),
-        app_bytes: app_data_dir(&app_id).as_deref().and_then(dir_bytes),
-        cache_bytes: app_cache_dir(&app_id).as_deref().and_then(dir_bytes),
-        default_for: default_handler_types(&app_id),
-    };
-    let known = !general.opens.is_empty()
-        || general.app_bytes.is_some()
-        || general.cache_bytes.is_some()
-        || !general.default_for.is_empty();
-    Ok(known.then_some(general))
+    Ok(general_from(
+        read_desktop_entry(&app_id).as_deref(),
+        app_data_dir(&app_id).as_deref(),
+        app_cache_dir(&app_id).as_deref(),
+        default_handler_types(&app_id),
+    ))
 }
 
-/// Empty one app's cache directory, leaving the directory itself.
-///
-/// Idempotent, including when the directory does not exist, because the button
-/// offers no confirm and a second press must not become an error.
-#[tauri::command]
-pub async fn settings_app_clear_cache(app_id: String) -> Result<(), String> {
-    if !is_safe_app_id(&app_id) {
-        return Err("not an app id".to_owned());
-    }
-    let Some(dir) = app_cache_dir(&app_id) else { return Ok(()) };
+/// Remove everything inside `dir`, leaving `dir`. A missing directory is success.
+fn empty_dir(dir: &Path) -> Result<(), String> {
     if !dir.is_dir() {
         return Ok(());
     }
-    let entries = std::fs::read_dir(&dir).map_err(|e| e.to_string())?;
+    let entries = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
     for entry in entries.flatten() {
         let path = entry.path();
         // Metadata of the entry itself: a symlink is removed as a link, never
@@ -251,6 +265,21 @@ pub async fn settings_app_clear_cache(app_id: String) -> Result<(), String> {
         removed.map_err(|e| format!("{}: {e}", path.display()))?;
     }
     Ok(())
+}
+
+/// Empty one app's cache directory, leaving the directory itself.
+///
+/// Idempotent, including when the directory does not exist, because the button
+/// offers no confirm and a second press must not become an error.
+#[tauri::command]
+pub async fn settings_app_clear_cache(app_id: String) -> Result<(), String> {
+    if !is_safe_app_id(&app_id) {
+        return Err("not an app id".to_owned());
+    }
+    match app_cache_dir(&app_id) {
+        Some(dir) => empty_dir(&dir),
+        None => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -296,9 +325,61 @@ mod tests {
         assert!(declared_mime_types("[Desktop Entry]\nName=x\n").is_empty());
     }
 
+    /// A private directory for one test, so two running at once cannot collide.
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("arlen-appfacts-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn the_general_facts_assemble_from_a_real_entry_and_real_directories() {
+        let root = scratch("general");
+        let data = root.join("data");
+        let cache = root.join("cache");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::write(data.join("db"), vec![0u8; 100]).unwrap();
+        std::fs::write(cache.join("thumb"), vec![0u8; 40]).unwrap();
+
+        let entry = "[Desktop Entry]\nName=Editor\nMimeType=text/markdown;text/plain;\n";
+        let g = general_from(Some(entry), Some(&data), Some(&cache), vec!["text/plain".to_owned()])
+            .expect("something is known, so a value comes back");
+        assert_eq!(g.opens, vec!["text/markdown", "text/plain"]);
+        assert_eq!(g.app_bytes, Some(100));
+        assert_eq!(g.cache_bytes, Some(40));
+        assert_eq!(g.default_for, vec!["text/plain"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_app_nothing_is_known_about_yields_no_section() {
+        let missing = std::env::temp_dir().join("arlen-appfacts-nonexistent");
+        assert!(general_from(None, Some(&missing), Some(&missing), Vec::new()).is_none());
+    }
+
+    #[test]
+    fn clearing_a_cache_empties_it_without_removing_it_and_repeats_cleanly() {
+        let dir = scratch("clear");
+        std::fs::write(dir.join("a"), b"x").unwrap();
+        std::fs::create_dir_all(dir.join("sub/deeper")).unwrap();
+        std::fs::write(dir.join("sub/deeper/b"), b"y").unwrap();
+
+        empty_dir(&dir).unwrap();
+        assert!(dir.is_dir(), "the directory itself stays");
+        assert_eq!(dir_bytes(&dir), Some(0));
+        // The button offers no confirm, so a second press must not error.
+        empty_dir(&dir).unwrap();
+        // And an absent directory is success rather than a failure to report.
+        let gone = dir.join("never");
+        empty_dir(&gone).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_missing_directory_is_unmeasured_and_an_empty_one_is_zero() {
-        let tmp = std::env::temp_dir().join(format!("arlen-appfacts-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("arlen-appfacts-{}-bytes", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         assert_eq!(dir_bytes(&tmp), None, "absent must not read as measured zero");
         std::fs::create_dir_all(&tmp).unwrap();
