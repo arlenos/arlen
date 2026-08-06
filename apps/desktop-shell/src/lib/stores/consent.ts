@@ -67,6 +67,15 @@ export interface PendingView {
 
 // One representative request per tier/class so the design language + the
 // high-stakes treatments render under vite.
+//
+// i18n-foreign: each `summary` stands in for a sentence the REQUESTING APP
+// sends over the wire (`RequestBody.summary`), so it is not ours to translate
+// and the shell cannot translate it either - it arrives as prose, in whatever
+// language that app was written in. Which means the one dialog a user must
+// understand to answer safely is the one sentence we cannot put in their
+// language. That is a contract question rather than a fixture question, and it
+// is worse than an i18n gap: an app also chooses its own wording for a security
+// prompt. Recorded in coder-reports.md, 7 August.
 const MOCK_PENDING: PendingView[] = [
   { id: 1, requester: "org.arlen.files", class: "portal", tier: "standard", summary: "open one file you pick", scope: null, reversibility: "reversible" },
   { id: 2, requester: "com.example.notes", class: "capability_grant", tier: "standard", summary: "read your notes and their tags", scope: "your notes", reversibility: "reversible" },

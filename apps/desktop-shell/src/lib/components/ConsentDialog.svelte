@@ -216,18 +216,19 @@
     return "neutral";
   }
   function scopeLabel(p: PendingView): string {
-    if (p.class === "external_send") return "To";
-    if (p.class === "destructive") return "Target";
-    if (p.class === "network_access") return "Host";
-    return "Scope";
+    if (p.class === "external_send") return $t("sh.consent.to");
+    if (p.class === "destructive") return $t("sh.consent.target");
+    if (p.class === "network_access") return $t("sh.consent.host");
+    return $t("sh.consent.scope");
   }
   // Habituation defeat: with a single target the confirm names it, so the button
   // reads differently each time and cannot be answered from muscle memory. With
   // several, the list above already names them - the button stays plain rather
   // than repeat the count.
   function holdLabel(p: PendingView): string {
-    if (p.targets && p.targets.length === 1) return `Hold to delete ${p.targets[0].name}`;
-    return "Hold to delete";
+    if (p.targets && p.targets.length === 1)
+      return $t("sh.consent.holdToDeleteNamed", { name: p.targets[0].name });
+    return $t("sh.consent.holdToDelete");
   }
 
   function deny(p: PendingView) {

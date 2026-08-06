@@ -1,10 +1,4 @@
 apps/desktop-shell/src/lib/components/BatteryIndicator.svelte	Battery
-apps/desktop-shell/src/lib/components/ConsentDialog.svelte	Hold to delete
-apps/desktop-shell/src/lib/components/ConsentDialog.svelte	Hold to delete {}
-apps/desktop-shell/src/lib/components/ConsentDialog.svelte	Host
-apps/desktop-shell/src/lib/components/ConsentDialog.svelte	Scope
-apps/desktop-shell/src/lib/components/ConsentDialog.svelte	Target
-apps/desktop-shell/src/lib/components/ConsentDialog.svelte	To
 apps/desktop-shell/src/lib/components/Indicator.svelte	Grow
 apps/desktop-shell/src/lib/components/Indicator.svelte	Shrink
 apps/desktop-shell/src/lib/components/NetworkIndicator.svelte	Airplane Mode
