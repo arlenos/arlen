@@ -154,7 +154,6 @@ apps/harness/src/lib/components/transparency/MemorySection.svelte	This is the sh
 apps/harness/src/lib/components/transparency/OffSwitchSection.svelte	You are always in control. You can turn the AI off completely in Settings. When it is off, it does nothing at all, and you can remove it. The rest of your desktop keeps working without it.
 apps/harness/src/lib/components/transparency/ReadsSection.svelte	more
 apps/harness/src/lib/components/transparency/ReadsSection.svelte	recorded.
-apps/harness/src/lib/export.test.ts	Notes
 apps/harness/src/lib/ledger.ts	Blocked
 apps/harness/src/lib/ledger.ts	Confirmed
 apps/harness/src/lib/ledger.ts	Graph
@@ -165,7 +164,6 @@ apps/harness/src/lib/ledger.ts	Tool call
 apps/harness/src/lib/menu.ts	Chat
 apps/harness/src/lib/menu.ts	Import chat…
 apps/harness/src/lib/menu.ts	New chat
-apps/harness/src/lib/sanitize.test.ts	Notes
 apps/harness/src/lib/stores/conversation.ts	Standup bullets
 apps/harness/src/lib/stores/conversation.ts	What changed in my week plan
 apps/harness/src/lib/stores/mint.ts	12 notes you saved to read
@@ -481,8 +479,6 @@ apps/settings/src/lib/stores/modules.ts	Waypointer Extensions
 apps/settings/src/lib/stores/theme.ts	Fira Code
 apps/settings/src/lib/stores/theme.ts	Inter
 apps/settings/src/lib/stores/theme.ts	JetBrains Mono
-apps/settings/src/lib/stores/theme.ts	System Default
-apps/settings/src/lib/stores/theme.ts	System Mono
 apps/settings/src/lib/stores/themeColors.ts	On-accent text
 apps/settings/src/lib/stores/themeColors.ts	Text on background
 apps/settings/src/lib/stores/themeColors.ts	Text on surface
@@ -609,43 +605,3 @@ apps/viewers/src/lib/components/ViewerMenu.svelte	German
 apps/viewers/src/lib/components/ViewerMenu.svelte	Space
 apps/viewers/src/lib/components/ViewerMenu.svelte	film.en.srt
 apps/viewers/src/lib/mock.ts	Nightswim
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Add a tag
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Bold
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Buttons and badges
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Cancel
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Choices
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Kit a11y fixture
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Name
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	New
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Redo
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Save
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Sliders and switches
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Text fields
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Toolbar
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Undo
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Your name
-sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	toggled:
-sdk/ui-kit/src/lib/components/ui/sidebar/SidebarRail.svelte	Toggle Sidebar
-sdk/ui-kit/src/routes/+page.svelte	All colors come from theme.toml via CSS custom properties.
-sdk/ui-kit/src/routes/+page.svelte	App surface
-sdk/ui-kit/src/routes/+page.svelte	Arlen ui-kit
-sdk/ui-kit/src/routes/+page.svelte	Badges
-sdk/ui-kit/src/routes/+page.svelte	Buttons
-sdk/ui-kit/src/routes/+page.svelte	Cards
-sdk/ui-kit/src/routes/+page.svelte	Dark shell, light apps. The default Arlen theme.
-sdk/ui-kit/src/routes/+page.svelte	Default
-sdk/ui-kit/src/routes/+page.svelte	Destructive
-sdk/ui-kit/src/routes/+page.svelte	Ghost
-sdk/ui-kit/src/routes/+page.svelte	Outline
-sdk/ui-kit/src/routes/+page.svelte	Panda Theme
-sdk/ui-kit/src/routes/+page.svelte	Secondary
-sdk/ui-kit/src/routes/+page.svelte	Shared component library for Arlen first-party apps. Built with shadcn-svelte, Tailwind v4, and Arlen Surface Tokens.
-sdk/ui-kit/src/routes/+page.svelte	Shell surface
-sdk/ui-kit/src/routes/+page.svelte	Surface Tokens
-sdk/ui-kit/src/routes/_i18n/+page.svelte	Kit chrome &mdash; locale
-sdk/ui-kit/src/routes/_i18n/+page.svelte	about dialog
-sdk/ui-kit/src/routes/_i18n/+page.svelte	arlen install
-sdk/ui-kit/src/routes/_i18n/+page.svelte	console block
-sdk/ui-kit/src/routes/_i18n/+page.svelte	days picker
-sdk/ui-kit/src/routes/_i18n/+page.svelte	rich sentence
-sdk/ui-kit/src/routes/_i18n/+page.svelte	~/.local/share/arlen
