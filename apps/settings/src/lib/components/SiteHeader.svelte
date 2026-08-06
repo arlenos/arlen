@@ -60,18 +60,25 @@
       class="flex items-center gap-1.5 text-sm text-muted-foreground"
       aria-label={$t("s.header.breadcrumb")}
     >
-      {#each $breadcrumbs as segment, i (segment + i)}
-        {#if i > 0}
-          <ChevronRight size={14} class="opacity-50" />
-        {/if}
-        <span
-          class={i === $breadcrumbs.length - 1
-            ? "font-medium text-foreground"
-            : ""}
-        >
-          {$t(segment)}
-        </span>
-      {/each}
+      {#if $breadcrumbs.length <= 1}
+        <!-- A single segment is the panel name, which the page's own H1
+             already says right below - the bar carries the app identity
+             instead of repeating it. -->
+        <span>{$t("s.header.appName")}</span>
+      {:else}
+        {#each $breadcrumbs as segment, i (segment + i)}
+          {#if i > 0}
+            <ChevronRight size={14} class="opacity-50" />
+          {/if}
+          <span
+            class={i === $breadcrumbs.length - 1
+              ? "font-medium text-foreground"
+              : ""}
+          >
+            {$t(segment)}
+          </span>
+        {/each}
+      {/if}
     </nav>
   </div>
 

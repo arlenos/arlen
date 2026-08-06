@@ -221,7 +221,7 @@ export const a: Catalogs = {
     "s.geom.gap.label": "Gaps",
     "s.geom.gap.hint": "Space between tiled windows",
     // Shared chrome: nav panel titles
-    "s.nav.display": "Display",
+    "s.nav.display": "Displays",
     "s.nav.workspaces": "Workspaces & Tiling",
     "s.nav.topbar": "Topbar",
     "s.topbar.tray": "tray",
@@ -258,6 +258,7 @@ export const a: Catalogs = {
     "s.search.placeholder": "Search settings...",
     "s.search.aria": "Search settings",
     "s.header.breadcrumb": "Breadcrumb",
+    "s.header.appName": "Settings",
     // Shared
     "s.err.readPaused": "Can't read these settings right now. Changes are paused.",
     // Mouse
@@ -610,7 +611,7 @@ export const a: Catalogs = {
     "s.geom.s_xl.hint": "Die weiteste Stufe",
     "s.geom.gap.label": "Abstände",
     "s.geom.gap.hint": "Abstand zwischen gekachelten Fenstern",
-    "s.nav.display": "Anzeige",
+    "s.nav.display": "Anzeigen",
     "s.nav.workspaces": "Arbeitsbereiche & Kacheln",
     "s.nav.topbar": "Topbar",
     "s.topbar.tray": "Ablage",
@@ -645,6 +646,7 @@ export const a: Catalogs = {
     "s.search.placeholder": "Einstellungen suchen…",
     "s.search.aria": "Einstellungen suchen",
     "s.header.breadcrumb": "Breadcrumb",
+    "s.header.appName": "Einstellungen",
     "s.err.readPaused": "Diese Einstellungen können gerade nicht gelesen werden. Änderungen sind pausiert.",
     "s.mouse.title": "Maus",
     "s.mouse.desc": "Zeigerbeschleunigung und Scrollrichtung für externe Mäuse.",
