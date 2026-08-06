@@ -10,7 +10,8 @@
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
+  import { formatDecimal } from "@arlen/ui-kit/i18n";
   import { touchpad, load, set } from "$lib/stores/touchpad";
 
   const CLICK_METHODS = $derived([
@@ -110,7 +111,7 @@
                 oninput={(v) => set("acceleration", tickToAccel(v))}
               />
             </div>
-            <span class="slider-value">{$touchpad.config.acceleration.toFixed(2)}</span>
+            <span class="slider-value">{formatDecimal($touchpad.config.acceleration, 2, $locale)}</span>
           </div>
         {/snippet}
       </Row>

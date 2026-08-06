@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
+import { formatDecimal, locale } from "@arlen/ui-kit/i18n";
 
 export interface ProcessInfo {
     pid: number;
@@ -42,6 +43,7 @@ export async function killProcess(pid: number, force: boolean): Promise<void> {
 export function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    if (bytes < 1024 * 1024 * 1024)
+      return `${formatDecimal(bytes / (1024 * 1024), 1, get(locale))} MB`;
+    return `${formatDecimal(bytes / (1024 * 1024 * 1024), 1, get(locale))} GB`;
 }

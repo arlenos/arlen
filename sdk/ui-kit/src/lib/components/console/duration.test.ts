@@ -26,4 +26,10 @@ describe("formatDuration", () => {
     // 59.6s would naively format as "60s"; it must become "1m 00s".
     expect(formatDuration(59600)).toBe("1m 00s");
   });
+
+  it("writes the fractional second the reader's way", () => {
+    // The only place a separator appears; German writes a comma.
+    expect(formatDuration(1500, "en")).toBe("1.5s");
+    expect(formatDuration(1500, "de")).toBe("1,5s");
+  });
 });
