@@ -1,5 +1,11 @@
 //! File watcher for live theme updates.
 //!
+//! No consumer in THIS repo: the shell and Settings each run their own
+//! `appearance.toml` watcher, so nothing here constructs a `ThemeWatcher`. Do
+//! not read that as dead code and delete it - the compositor depends on this
+//! crate by git from a separate repository and is the one plausible caller.
+//! Check there before removing.
+//!
 //! The watcher signals "something changed, re-resolve". Re-resolution
 //! (loading the bundled bytes + reading user-theme + customization
 //! files + computing the merged `ArlenTheme`) is the caller's
