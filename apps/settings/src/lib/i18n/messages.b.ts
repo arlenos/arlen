@@ -795,6 +795,9 @@ export const b: Catalogs = {
     "s.revert.now": "Revert now",
     "s.revert.keep": "Keep changes ({$seconds}s)",
     "s.apick.allListed": "Every known app is already listed above. Type a custom name to add it manually.",
+    "s.apick.noneYet": "No apps have sent notifications yet. Send one with {$cmd} or type a name below.",
+    "s.apick.noMatch": "No matches for \"{$term}\".",
+    "s.apick.useCustom": "Use \"{$term}\"",
     "s.apick.addCustom": "Add this name as a custom entry",
   },
   de: {
@@ -1585,6 +1588,9 @@ export const b: Catalogs = {
     "s.revert.now": "Jetzt zur\u00fccknehmen",
     "s.revert.keep": "\u00c4nderungen behalten ({$seconds} s)",
     "s.apick.allListed": "Alle bekannten Apps stehen bereits oben. Tipp einen eigenen Namen, um ihn von Hand hinzuzuf\u00fcgen.",
+    "s.apick.noneYet": "Noch keine App hat Benachrichtigungen gesendet. Sende eine mit {$cmd} oder tipp unten einen Namen ein.",
+    "s.apick.noMatch": "Keine Treffer f\u00fcr \u201E{$term}\u201C.",
+    "s.apick.useCustom": "\u201E{$term}\u201C verwenden",
     "s.apick.addCustom": "Diesen Namen als eigenen Eintrag hinzuf\u00fcgen",
   },
 };

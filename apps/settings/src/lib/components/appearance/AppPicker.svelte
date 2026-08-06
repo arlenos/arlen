@@ -1,5 +1,7 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
+  import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
+  import { mark } from "@arlen/ui-kit/i18n/rich";
   /// Combobox-style app picker.
   ///
   /// Always shows the daemon-known apps (sourced from the SQLite
@@ -128,19 +130,20 @@
   {#if open}
     <div bind:this={menuRef} class="menu" role="listbox">
       {#if filtered.length === 0 && !trimmed}
-        <!-- The two sentences with inline <code>/<strong> below are the pending
-             markup-in-a-sentence question, see `coder-reports.md`. -->
         <div class="empty">
           {#if knownApps.length === 0}
-            No apps have sent notifications yet. Send one with
-            <code>notify-send</code> or type a name below.
+            <Rich text={$t("s.apick.noneYet", { cmd: mark("cmd") })}>
+              {#snippet cmd()}<code>notify-send</code>{/snippet}
+            </Rich>
           {:else}
             {$t("s.apick.allListed")}
           {/if}
         </div>
       {:else if filtered.length === 0}
         <div class="empty">
-          No matches for "<strong>{trimmed}</strong>".
+          <Rich text={$t("s.apick.noMatch", { term: mark("term") })}>
+            {#snippet term()}<strong>{trimmed}</strong>{/snippet}
+          </Rich>
         </div>
       {:else}
         {#each filtered as app}
@@ -165,7 +168,11 @@
           title={$t("s.apick.addCustom")}
         >
           <Plus size={12} strokeWidth={2.5} class="custom-icon" />
-          <span>Use "<strong>{trimmed}</strong>"</span>
+          <span>
+            <Rich text={$t("s.apick.useCustom", { term: mark("term") })}>
+              {#snippet term()}<strong>{trimmed}</strong>{/snippet}
+            </Rich>
+          </span>
         </button>
       {/if}
     </div>
