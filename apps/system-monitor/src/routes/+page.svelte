@@ -12,6 +12,8 @@
   import { t, dir } from "$lib/i18n/messages";
   import { Rows3, Layers } from "lucide-svelte";
   import { SearchField } from "@arlen/ui-kit/components/ui/search-field";
+  import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
 
   const TABS = [
     { key: "Processes", id: "tm.tab.processes" },
@@ -40,11 +42,44 @@
     else stopProcessPolling();
     return stopProcessPolling;
   });
+
+  // Window chrome: explicit startDragging (data-tauri-drag-region is
+  // unreliable on Wayland in Tauri v2), guarded so vite still renders.
+  function isInteractive(e: Event): boolean {
+    const target = e.target as HTMLElement | null;
+    return !!target?.closest("button, a, input, [role='button']");
+  }
+  async function startDrag(e: PointerEvent): Promise<void> {
+    if (e.button !== 0 || e.pointerType !== "mouse") return;
+    if (isInteractive(e)) return;
+    try {
+      await getCurrentWindow().startDragging();
+    } catch {
+      // No Tauri runtime under vite: the header is a static bar.
+    }
+  }
+  async function toggleMax(e: MouseEvent): Promise<void> {
+    if (isInteractive(e)) return;
+    try {
+      const w = getCurrentWindow();
+      if (await w.isMaximized()) await w.unmaximize();
+      else await w.maximize();
+    } catch {
+      // Same guard as above.
+    }
+  }
 </script>
 
 <div class="app" dir={$dir}>
-  <header class="titlebar">
+  <!-- The header is a drag surface (a non-keyboard pointer interaction); its
+       actual controls are the accessible WindowButtons inside it, so the
+       static-interaction lint is a false positive here. Same treatment as the
+       knowledge and store headers. -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <header class="titlebar" onpointerdown={startDrag} ondblclick={toggleMax}>
     <span class="app-title">{$t("tm.title")}</span>
+    <span class="titlebar-spacer"></span>
+    <WindowButtons />
   </header>
 
   <nav class="tabs" aria-label={$t("tm.views")}>
@@ -151,17 +186,26 @@
     background: var(--color-bg-app, #0f0f0f);
     color: var(--color-fg-primary, #fafafa);
   }
+  /* The knowledge/store header recipe: 2.75rem, title, spacer, window
+     controls, drag region. No bottom border here - the tabs nav right below
+     already draws the one hairline, and two rules 2.1rem apart read as a
+     mistake. */
   .titlebar {
     display: flex;
     align-items: center;
-    height: 2.5rem;
-    padding: 0 1.25rem;
+    height: 2.75rem;
+    padding: 0 0.35rem 0 0.9rem;
     flex-shrink: 0;
+    user-select: none;
+    -webkit-user-select: none;
   }
   .app-title {
     font-size: var(--text-sm);
     font-weight: 600;
-    color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
+    color: var(--color-fg-primary);
+  }
+  .titlebar-spacer {
+    flex: 1;
   }
   .tabs {
     display: flex;
