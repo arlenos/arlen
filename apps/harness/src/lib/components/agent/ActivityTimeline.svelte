@@ -112,18 +112,18 @@
     {#if !activity?.available}
       {""}
     {:else if filtered}
-      {entries.length} of {activity.entries.length} shown
+      {$t("h.activity.shownOf", { n: entries.length, total: activity.entries.length })}
     {:else if activity.total > activity.entries.length}
-      Latest {activity.entries.length} of {activity.total}
+      {$t("h.activity.latestOf", { n: activity.entries.length, total: activity.total })}
     {:else}
-      {activity.total} {activity.total === 1 ? "entry" : "entries"}
+      {$t("h.activity.entryCount", { n: activity.total })}
     {/if}
     {#if liveStale}
       <span
         class="stale"
         title={$t("h.filter.stale")}
       >
-        <ShieldAlert size={12} strokeWidth={2} />out of date
+        <ShieldAlert size={12} strokeWidth={2} />{$t("h.activity.stale")}
       </span>
     {/if}
   </p>
@@ -157,19 +157,17 @@
 </div>
 
 {#if activity?.tampered}
-  <AlertBanner>
-    This record failed a safety check. Entries may have been changed outside the app.
-  </AlertBanner>
+  <AlertBanner>{$t("h.activity.tampered")}</AlertBanner>
 {/if}
 
 {#if error || (activity && !activity.available)}
-  <p class="empty">Can't read the activity record right now.</p>
+  <p class="empty">{$t("h.activity.unreadable")}</p>
 {:else if !activity}
-  <p class="empty">Loading activity</p>
+  <p class="empty">{$t("h.activity.loading")}</p>
 {:else if activity.entries.length === 0}
-  <p class="empty">No activity yet. When the AI does something for you, it appears here.</p>
+  <p class="empty">{$t("h.activity.empty")}</p>
 {:else if entries.length === 0}
-  <p class="empty">Nothing matches these filters.</p>
+  <p class="empty">{$t("h.activity.noMatch")}</p>
 {:else}
   <ul class="list">
     {#each entries as entry (entry.entryRef)}
@@ -189,7 +187,7 @@
   {#if !filtered && activity.total > activity.entries.length}
     <div class="more">
       <Button variant="ghost" size="sm" disabled={loading} onclick={onmore}>
-        Show older entries
+        {$t("h.activity.showOlder")}
       </Button>
     </div>
   {/if}
