@@ -41,22 +41,40 @@ fn switch_file() -> Option<PathBuf> {
         .map(|c| c.join("arlen/sensing.toml"))
 }
 
-/// Whether the file switches a key off. Mirrors the portal's reader exactly:
-/// only an explicit `false` is off, everything else is on.
+/// What the file says about one key. Mirrors the portal's reader exactly,
+/// including the distinction between a key nobody stated and a file nobody can
+/// read.
 ///
-/// Deliberately a second copy of four lines rather than a shared crate for one
-/// predicate. The two sides must agree, and the thing that keeps them agreeing is
-/// the test below asserting this side's answers, not a dependency edge between an
-/// app and a daemon.
-fn key_is_false(text: &str, key: &str) -> bool {
+/// Deliberately a second copy rather than a shared crate for one predicate. The
+/// two sides must agree, and what keeps them agreeing is the shared fixture and
+/// the tests below, not a dependency edge between an app and a daemon.
+#[derive(Debug, PartialEq)]
+enum Reading {
+    Off,
+    On,
+    NotStated,
+    Unreadable,
+}
+
+fn read_key(text: &str, key: &str) -> Reading {
+    let mut saw_a_setting = false;
     for line in text.lines() {
         let line = line.split('#').next().unwrap_or("").trim();
         let Some((name, value)) = line.split_once('=') else { continue };
-        if name.trim() == key {
-            return value.trim() == "false";
+        let (name, value) = (name.trim(), value.trim());
+        if name.is_empty() {
+            continue;
+        }
+        saw_a_setting = true;
+        if name == key {
+            return match value {
+                "false" => Reading::Off,
+                "true" => Reading::On,
+                _ => Reading::Unreadable,
+            };
         }
     }
-    false
+    if saw_a_setting { Reading::NotStated } else { Reading::Unreadable }
 }
 
 /// Render the whole file from state.
@@ -76,10 +94,20 @@ fn render(state: &SensingState) -> String {
 /// Where the switches stand.
 #[tauri::command]
 pub async fn settings_sensing_state() -> SensingState {
-    let off = switch_file()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .map(|t| key_is_false(&t, "screen_capture"))
-        .unwrap_or(false);
+    // The same three-way reading the portal enforces, because a page that shows
+    // "on" while the portal denies every capture is worse than no page: the user
+    // would go looking for the app that broke rather than the file that did.
+    let off = match switch_file() {
+        None => false,
+        Some(path) => match std::fs::read_to_string(&path) {
+            Ok(text) => matches!(
+                read_key(&text, "screen_capture"),
+                Reading::Off | Reading::Unreadable
+            ),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+            Err(_) => true,
+        },
+    };
     SensingState {
         screen_capture: !off,
     }
@@ -128,6 +156,16 @@ mod tests {
     /// rather than shared.
     const OFF_FIXTURE: &str = include_str!("../../../../../dev/fixtures/sensing-off.toml");
 
+
+    /// The truncated file, shared for the same reason as the off one: the rule
+    /// that an unreadable intent reads as off lives in two copies now.
+    const TRUNCATED_FIXTURE: &str = include_str!("../../../../../dev/fixtures/sensing-truncated.toml");
+
+    #[test]
+    fn the_shared_truncated_file_reads_as_off_on_this_side_too() {
+        assert_eq!(read_key(TRUNCATED_FIXTURE, "screen_capture"), Reading::Unreadable);
+    }
+
     #[test]
     fn the_off_file_is_rendered_exactly_as_the_portal_expects_it() {
         // The other tests check this side against its own parser, which would
@@ -141,10 +179,10 @@ mod tests {
         // The two sides have separate copies of the predicate, so the round trip
         // is the thing that keeps them honest. If either drifts, this fails.
         let off = render(&SensingState { screen_capture: false });
-        assert!(key_is_false(&off, "screen_capture"));
+        assert_eq!(read_key(&off, "screen_capture"), Reading::Off);
 
         let on = render(&SensingState { screen_capture: true });
-        assert!(!key_is_false(&on, "screen_capture"));
+        assert_eq!(read_key(&on, "screen_capture"), Reading::On);
     }
 
     #[test]
@@ -153,7 +191,7 @@ mod tests {
         // first line mentioning it would read every file as switched off.
         let on = render(&SensingState { screen_capture: true });
         assert!(on.contains('#'));
-        assert!(!key_is_false(&on, "screen_capture"));
+        assert_eq!(read_key(&on, "screen_capture"), Reading::On);
     }
 
     #[test]
@@ -169,7 +207,8 @@ mod tests {
             std::fs::write(&tmp, &body).unwrap();
             std::fs::rename(&tmp, &path).unwrap();
             let read = std::fs::read_to_string(&path).unwrap();
-            assert_eq!(key_is_false(&read, "screen_capture"), !allowed);
+            let want = if allowed { Reading::On } else { Reading::Off };
+            assert_eq!(read_key(&read, "screen_capture"), want);
             // Two statements of the key would make the file's meaning depend on
             // which one a reader takes first.
             assert_eq!(read.matches("screen_capture =").count(), 1);

@@ -1,0 +1,4 @@
+# A sensing switch file truncated mid-write. Somebody stated an intent here and
+# it can no longer be read, so both sides must treat it as off rather than as
+# "not off". Shared so neither copy of the reader can lose that rule alone.
+screen_captu
