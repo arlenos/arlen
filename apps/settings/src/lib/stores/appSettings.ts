@@ -251,3 +251,85 @@ function getValue(key: string): unknown {
   appPage.subscribe((p) => (v = p?.values[key]))();
   return v;
 }
+
+/// Identity and provenance metadata for one app: version, publisher and the
+/// store entry. Live: `settings_app_meta` (a seam - not in src-tauri yet);
+/// under vite the fixture stands in for the demo app only.
+export interface AppMeta {
+  version: string | null;
+  publisher: string | null;
+  /// The AppStream component id of the store entry, null when the app did not
+  /// come from the store.
+  storeComponent: string | null;
+}
+
+/// The open app's metadata, or null while unknown.
+export const appMeta = writable<AppMeta | null>(null);
+/// True while the metadata is the FIXTURE.
+export const appMetaMocked = writable(false);
+
+const META_FIXTURE: AppMeta = {
+  version: "3.2.1",
+  publisher: "Example Software",
+  storeComponent: "com.example.editor",
+};
+
+/// Load one app's metadata; absent command or unknown app resolves to null so
+/// the page simply omits what it cannot state.
+export async function loadAppMeta(appId: string): Promise<void> {
+  appMeta.set(null);
+  try {
+    appMeta.set(await invoke<AppMeta | null>("settings_app_meta", { appId }));
+    appMetaMocked.set(false);
+  } catch {
+    appMeta.set(appId === FIXTURE.appId ? { ...META_FIXTURE } : null);
+    appMetaMocked.set(true);
+  }
+}
+
+/// The general facts about one app (per-app-settings-plan.md §4.6): what it
+/// opens, its storage footprint and the default-app roles it holds. Live:
+/// `settings_app_general` + `settings_app_clear_cache` (seams); fixture under
+/// vite for the demo app.
+export interface AppGeneral {
+  /// File types and link kinds the app registered handlers for.
+  opens: string[];
+  /// App data size in bytes, null when not yet measured.
+  appBytes: number | null;
+  /// Cache size in bytes, null when not yet measured.
+  cacheBytes: number | null;
+  /// Roles this app is the system default for.
+  defaultFor: string[];
+}
+
+/// The open app's general facts, or null while unknown.
+export const appGeneral = writable<AppGeneral | null>(null);
+
+const GENERAL_FIXTURE: AppGeneral = {
+  opens: ["Markdown", "Plain text", "Web links"],
+  appBytes: 38_000_000,
+  cacheBytes: 112_000_000,
+  defaultFor: ["Text files"],
+};
+
+/// Load one app's general facts; absent command or unknown app resolves to
+/// null and the section stays away.
+export async function loadAppGeneral(appId: string): Promise<void> {
+  appGeneral.set(null);
+  try {
+    appGeneral.set(await invoke<AppGeneral | null>("settings_app_general", { appId }));
+  } catch {
+    appGeneral.set(appId === FIXTURE.appId ? structuredClone(GENERAL_FIXTURE) : null);
+  }
+}
+
+/// Clear the app's cache. Idempotent: clearing an already-empty cache is a
+/// no-op, so the button never needs a confirm.
+export async function clearAppCache(appId: string): Promise<void> {
+  appGeneral.update((g) => (g ? { ...g, cacheBytes: 0 } : g));
+  try {
+    await invoke("settings_app_clear_cache", { appId });
+  } catch {
+    // Seam unwired: the local zero stands for the session.
+  }
+}

@@ -26,7 +26,12 @@
       <p class="note span-full">{$t("s.apps.sample")}</p>
     {/if}
 
-    {#if $grantsLoaded && apps.length === 0}
+    {#if !$grantsLoaded && apps.length === 0}
+      <!-- The read is quick, but a blank page reads as broken; one quiet line. -->
+      <Section class="span-full">
+        <p class="note pad">{$t("s.apps.loading")}</p>
+      </Section>
+    {:else if $grantsLoaded && apps.length === 0}
       <Section class="span-full">
         <p class="note pad">{$t("s.apps.empty")}</p>
       </Section>
