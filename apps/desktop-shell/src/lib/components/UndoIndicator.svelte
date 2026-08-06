@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// Recent-actions indicator for the top bar (CAH-4): the entry point to the
   /// unified undo panel. Deliberately quiet - no standing count badge; the
   /// history is a safety net, not a notification stream.
@@ -16,7 +17,7 @@
 <Applet
   appletId="undo"
   tooltip="Recent actions"
-  ariaLabel="Recent actions and undo"
+  ariaLabel={$t("sh.undo.indicator")}
   popoverOpen={$activePopover === "undo"}
   {onclick}
   onmouseenter={() => hoverPopover("undo")}

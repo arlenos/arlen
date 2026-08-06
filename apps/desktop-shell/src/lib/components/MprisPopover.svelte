@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n/messages";
   /// The "Now Playing" mini-player popup: a hero (album art + title/artist), the
   /// transport, an interpolated scrubber, and a thin switcher of the other
   /// players. One control surface for every MPRIS producer. No volume (the
@@ -64,7 +65,7 @@
             max={Math.max(1, n.length)}
             step={1}
             size="sm"
-            ariaLabel="Seek"
+            ariaLabel={$t("sh.mpris.seek")}
             oninput={(v) => seek(v)}
           />
           <div class="np-times">

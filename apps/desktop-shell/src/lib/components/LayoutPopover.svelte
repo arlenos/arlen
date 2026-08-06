@@ -124,7 +124,7 @@
         max={24}
         step={1}
         size="sm"
-        ariaLabel="Inner gap"
+        ariaLabel={$t("sh.layout.innerGap")}
         oninput={(v) => setGap(v)}
       />
     </div>
@@ -154,7 +154,7 @@
       <Switch
         value={state.tiled_headers}
         onchange={toggleTiledHeaders}
-        ariaLabel="Title bars on tiled windows"
+        ariaLabel={$t("sh.layout.tiledTitleBars")}
       />
     </div>
   {/if}
