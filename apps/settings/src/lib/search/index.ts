@@ -158,13 +158,32 @@ function buildExportPayload(): SettingsIndex {
   };
 }
 
+/// The catalogs the index's ids resolve against, one per locale we hold.
+///
+/// Shipped with the index because the index carries ids, so a reader that has
+/// only the index has nothing to show. Emitted verbatim from the same module the
+/// Settings UI itself resolves against, so the two cannot say different things -
+/// unlike a snapshot of resolved prose, which is a second rendering of the same
+/// strings and drifts the moment one side is edited.
+function catalogPayload(): Record<string, Record<string, string>> {
+  const out: Record<string, Record<string, string>> = {};
+  for (const [locale, messages] of Object.entries(CATALOGS)) {
+    out[locale] = { ...messages };
+  }
+  return out;
+}
+
 /// Write the settings index to disk via Tauri command. Called once at
 /// app startup so Waypointer always has an up-to-date copy.
 export async function exportSettingsIndex(): Promise<void> {
   const payload = buildExportPayload();
   try {
+    // One call, so the index and the catalogs it points at are written in one
+    // pass. The Rust side writes catalogs first and the index last, so a reader
+    // that sees a new index can always resolve it.
     await invoke("export_settings_index", {
       json: JSON.stringify(payload, null, 2),
+      catalogs: JSON.stringify(catalogPayload()),
     });
   } catch (e) {
     console.error("[search] failed to export settings index:", e);

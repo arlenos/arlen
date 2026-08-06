@@ -6,6 +6,8 @@
 
 import { writable, type Readable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { get } from "svelte/store";
+import { locale } from "@arlen/ui-kit/i18n";
 
 export interface SelectOption {
   value: string;
@@ -43,7 +45,10 @@ export const settingsResults: Readable<SettingsResult[]> = { subscribe };
 /// Reload the index from disk. Called when Waypointer opens.
 export async function reloadSettingsIndex(): Promise<void> {
   try {
-    await invoke("settings_reload_index");
+    // The backend falls back to LANG, which is the session's language rather than
+    // the one the user chose in Settings. This store knows the live choice, so it
+    // passes it and a language switch takes effect without a restart.
+    await invoke("settings_reload_index", { locale: get(locale) });
   } catch {
     // Index file missing — no settings results, silent.
   }
@@ -59,6 +64,7 @@ export async function searchSettings(query: string): Promise<void> {
     const results = await invoke<SettingsResult[]>("settings_search", {
       query,
       limit: 5,
+      locale: get(locale),
     });
     set(results);
   } catch {
