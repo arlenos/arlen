@@ -244,20 +244,24 @@ theme.subscribe((state) => {
 
 /// Preset accent swatches shown in the UI. Value = hex, matches defaults
 /// used by the desktop-shell built-in themes.
-export const ACCENT_PRESETS: { value: string; name: string }[] = [
-  { value: "#6366f1", name: "Indigo" },
-  { value: "#3b82f6", name: "Blue" },
-  { value: "#06b6d4", name: "Cyan" },
-  { value: "#10b981", name: "Green" },
-  { value: "#f59e0b", name: "Amber" },
-  { value: "#ef4444", name: "Red" },
-  { value: "#ec4899", name: "Pink" },
-  { value: "#a855f7", name: "Purple" },
+/// `nameKey` rather than a name: these are the swatches' accessible names and
+/// tooltips, so they are read aloud and hovered, and a colour is one of the few
+/// things every language has its own word for. Unlike a font or an icon theme,
+/// "Indigo" is not the thing's own name.
+export const ACCENT_PRESETS: { value: string; nameKey: string }[] = [
+  { value: "#6366f1", nameKey: "s.accent.indigo" },
+  { value: "#3b82f6", nameKey: "s.accent.blue" },
+  { value: "#06b6d4", nameKey: "s.accent.cyan" },
+  { value: "#10b981", nameKey: "s.accent.green" },
+  { value: "#f59e0b", nameKey: "s.accent.amber" },
+  { value: "#ef4444", nameKey: "s.accent.red" },
+  { value: "#ec4899", nameKey: "s.accent.pink" },
+  { value: "#a855f7", nameKey: "s.accent.purple" },
 ];
 
 export const FONT_OPTIONS = [
   { value: "Inter Variable", label: "Inter" },
-  { value: "system-ui", label: "System Default" },
+  { value: "system-ui", labelKey: "s.type.systemDefault" },
   { value: "JetBrains Mono", label: "JetBrains Mono" },
   { value: "Fira Code", label: "Fira Code" },
 ];
@@ -265,5 +269,5 @@ export const FONT_OPTIONS = [
 export const MONO_FONT_OPTIONS = [
   { value: "JetBrains Mono", label: "JetBrains Mono" },
   { value: "Fira Code", label: "Fira Code" },
-  { value: "ui-monospace", label: "System Mono" },
+  { value: "ui-monospace", labelKey: "s.type.systemMono" },
 ];

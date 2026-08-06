@@ -15,7 +15,7 @@
   let {
     knownApps,
     excluded = [],
-    placeholder = "Add app...",
+    placeholder,
     onpick,
   }: {
     knownApps: string[];
@@ -111,7 +111,7 @@
       type="text"
       class="input"
       value={query}
-      {placeholder}
+      placeholder={placeholder ?? $t("s.appPicker.placeholder")}
       oninput={(e) => (query = (e.currentTarget as HTMLInputElement).value)}
       onfocus={() => (open = true)}
       onkeydown={onKey}

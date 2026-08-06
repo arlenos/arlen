@@ -68,9 +68,9 @@
       type="button"
       class="swatch"
       class:selected
-      aria-label={preset.name}
+      aria-label={$t(preset.nameKey)}
       aria-pressed={selected}
-      title={preset.name}
+      title={$t(preset.nameKey)}
       style="background-color: {preset.value};"
       onclick={() => onchange(preset.value)}
     >
