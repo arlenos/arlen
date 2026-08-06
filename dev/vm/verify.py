@@ -433,6 +433,19 @@ def main():
                 if os.path.exists(after) and os.path.getsize(after) > 0:
                     break
                 time.sleep(0.1)
+            # Close it again and capture a third frame. The overlay ghost (PR-20)
+            # is a CLOSE-time artifact - the last delivered frame stays on screen -
+            # so opening one proves nothing about it. Toggling back and comparing
+            # against the pre-open desktop is what makes the ghost visible: if the
+            # overlay's pixels are still there, the compositor kept them.
+            dismissed = out + ".dismissed.png"
+            qmp_key(f, "meta_l")
+            time.sleep(3)
+            qmp(f, "screendump", filename=dismissed, format="png")
+            for _ in range(50):
+                if os.path.exists(dismissed) and os.path.getsize(dismissed) > 0:
+                    break
+                time.sleep(0.1)
         if args.deny_consent:
             # Press Escape (the dialog's always-available deny) and capture an
             # after-shot, so the dismissal check confirms the keyboard path reaches
@@ -489,6 +502,16 @@ def main():
         frac = frame_change(out, after)
         verb = "changed the screen" if frac > 0.02 else "had no visible effect"
         print(f"Super press: {verb} ({frac*100:.1f}% of pixels differ) -> {after}")
+        if os.path.exists(dismissed) and os.path.getsize(dismissed) > 0:
+            # The ghost, stated as a number rather than an impression. `left` is
+            # how much of the screen still differs from the pre-open desktop AFTER
+            # the overlay was closed: near zero means it was cleaned up, anything
+            # like the open-time figure means its last frame is still there.
+            left = frame_change(out, dismissed)
+            verdict = ("the overlay's frame is still on screen" if left > 0.02
+                       else "the screen returned to the desktop")
+            print(f"Super dismissal: {verdict} "
+                  f"({left*100:.1f}% still differs, open was {frac*100:.1f}%) -> {dismissed}")
     # A frame full of kernel-console / login text means cosmic-comp never took the
     # scanout (VT/DRM-master conflict) - the getty/console is still on screen, not
     # the compositor. Treat that as failure even though it is "non-black".
