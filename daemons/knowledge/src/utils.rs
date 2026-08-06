@@ -211,3 +211,56 @@ mod escape_cypher_tests {
         assert_eq!(escape_cypher("/home/u/file.rs"), "/home/u/file.rs");
     }
 }
+
+/// The uid of a named user, through `getpwnam_r`. `None` when the name is empty
+/// or has no passwd entry.
+///
+/// This backs `ARLEN_OWNER_USER`, the owner restriction on the read socket. It
+/// takes a name rather than a uid because the deployment that needs it - the
+/// image's system-service drop-in, where the socket is the shared
+/// `/run/arlen/knowledge.sock` rather than a per-user runtime dir - does not know
+/// the desktop user's uid at unit-authoring time.
+pub(crate) fn uid_for_user(name: &str) -> Option<u32> {
+    if name.is_empty() {
+        return None;
+    }
+    let c_name = std::ffi::CString::new(name).ok()?;
+    let mut buf = vec![0u8; 4096];
+    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut result: *mut libc::passwd = std::ptr::null_mut();
+    // SAFETY: standard getpwnam_r call with a sufficiently large buffer; `result`
+    // is null on not-found or error, checked before any field is read.
+    let rc = unsafe {
+        libc::getpwnam_r(
+            c_name.as_ptr(),
+            &mut pwd,
+            buf.as_mut_ptr() as *mut libc::c_char,
+            buf.len(),
+            &mut result,
+        )
+    };
+    if rc != 0 || result.is_null() {
+        return None;
+    }
+    Some(pwd.pw_uid)
+}
+
+#[cfg(test)]
+mod owner_user_tests {
+    use super::uid_for_user;
+
+    #[test]
+    fn an_empty_or_unknown_name_resolves_to_nothing() {
+        // Both fail closed to `None`, which the caller turns into "no owner
+        // restriction" plus a warning - never into uid 0.
+        assert_eq!(uid_for_user(""), None);
+        assert_eq!(uid_for_user("no-such-user-cbe1f0"), None);
+    }
+
+    #[test]
+    fn root_resolves_to_zero() {
+        // Every Unix has root at 0, so this is the one name that can be asserted
+        // without knowing the machine.
+        assert_eq!(uid_for_user("root"), Some(0));
+    }
+}
