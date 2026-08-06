@@ -153,10 +153,12 @@ impl ReadClient {
                 entries,
                 tampered,
                 head,
+                matching,
             } => Ok(ReadPage {
                 entries,
                 tampered,
                 head,
+                matching,
             }),
             ReadResponse::Error { reason } => Err(ReadClientError::Server(reason)),
         }

@@ -376,6 +376,7 @@ mod tests {
                 entries: vec![],
                 tampered: false,
                 head: 0,
+                matching: 0,
             }))
         }
     }
@@ -404,10 +405,12 @@ mod tests {
 
     fn page(entries: Vec<StructuralView>, tampered: bool) -> Result<ReadPage, ReadClientError> {
         let head = entries.last().map_or(0, |e| e.index + 1);
+        let matching = entries.len() as u64;
         Ok(ReadPage {
             entries,
             tampered,
             head,
+            matching,
         })
     }
 

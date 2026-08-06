@@ -432,6 +432,34 @@ impl LedgerReader {
         Ok(max_idx.map_or(0, |m| m as u64 + 1))
     }
 
+    /// How many entries match a filter, whatever a page's limit returned.
+    ///
+    /// Carries every filter the page carries, so it discloses no more than the
+    /// page does. Unlike [`Self::head`] this is a count of rows rather than a
+    /// position in the global index, which is what a caller means by "how many
+    /// times has this app been recorded".
+    pub async fn count(
+        &self,
+        project_id: Option<&str>,
+        call_chain_id: Option<&str>,
+        actor: Option<&str>,
+    ) -> Result<u64> {
+        let row = sqlx::query(
+            "SELECT COUNT(*) AS n FROM audit_entries
+             WHERE (?1 IS NULL OR project_id = ?1)
+               AND (?2 IS NULL OR call_chain_id = ?2)
+               AND (?3 IS NULL OR actor = ?3)",
+        )
+        .bind(project_id)
+        .bind(call_chain_id)
+        .bind(actor)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        let n: i64 = row.try_get("n").map_err(map_sqlx)?;
+        Ok(n.max(0) as u64)
+    }
+
     /// Read a page of entries as Structural-tier views.
     ///
     /// Returns entries with index in `[from, to)`, ascending, capped
@@ -1265,5 +1293,50 @@ mod tests {
         // disclose the global volume through the seek position.
         assert_eq!(reader.head(None, None, Some("com.example.absent")).await.unwrap(), 0);
         assert_eq!(reader.head(None, None, None).await.unwrap(), 4);
+    }
+
+    #[tokio::test]
+    async fn a_count_is_rows_and_a_head_is_a_position() {
+        // The distinction this exists for. One app acts twice, early, in a ledger
+        // that then fills with someone else's work: its head is near the end of
+        // the ledger and its count is two. Reporting the head as "how many times
+        // this app acted" would be wrong by the width of everyone else's activity.
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut ledger = open_temp(dir.path(), key()).await;
+            // Someone else fills the ledger first, so the app's two entries sit
+            // at high global indices. With the app acting first the two numbers
+            // would coincide and the test would pass while showing nothing.
+            for _ in 0..8 {
+                ledger
+                    .append(AuditKind::Query, "ai-daemon", &structural("ok"), None, None, None)
+                    .await
+                    .unwrap();
+            }
+            for _ in 0..2 {
+                ledger
+                    .append(
+                        AuditKind::Query,
+                        "org.arlen.files",
+                        &structural("ok"),
+                        None,
+                        None,
+                        None,
+                    )
+                    .await
+                    .unwrap();
+            }
+        }
+        let reader = LedgerReader::open(&dir.path().join("ledger.db")).await.unwrap();
+
+        let app = Some("org.arlen.files");
+        assert_eq!(reader.count(None, None, app).await.unwrap(), 2, "two rows");
+        assert_eq!(
+            reader.head(None, None, app).await.unwrap(),
+            10,
+            "one past its last GLOBAL index, which is not a count of its rows",
+        );
+        assert_eq!(reader.count(None, None, None).await.unwrap(), 10);
+        assert_eq!(reader.count(None, None, Some("com.example.absent")).await.unwrap(), 0);
     }
 }

@@ -125,10 +125,29 @@ impl ReadServer {
                         fallback_head
                     }
                 };
+                // A count failure degrades to the page's own length rather than
+                // to 0, which under a populated page would claim the app has no
+                // records while showing some.
+                let matching = match self
+                    .reader
+                    .count(
+                        req.project_id.as_deref(),
+                        req.call_chain_id.as_deref(),
+                        req.actor.as_deref(),
+                    )
+                    .await
+                {
+                    Ok(n) => n,
+                    Err(e) => {
+                        tracing::warn!("read count probe failed: {e}");
+                        entries.len() as u64
+                    }
+                };
                 ReadResponse::Page {
                     entries,
                     tampered: self.tampered.load(std::sync::atomic::Ordering::SeqCst),
                     head,
+                    matching,
                 }
             }
             Err(e) => ReadResponse::Error {
@@ -225,6 +244,7 @@ mod tests {
                 entries,
                 tampered,
                 head,
+                matching,
             } => {
                 assert_eq!(entries.len(), 3);
                 assert_eq!(entries[0].index, 0);
