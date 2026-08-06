@@ -21,6 +21,8 @@
   } from "$lib/stores/displays";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { t } from "$lib/i18n/messages";
+  import Rich from "@arlen/ui-kit/i18n/Rich.svelte";
+  import { mark } from "@arlen/ui-kit/i18n/rich";
 
   interface Props {
     /** When true, the modal is visible and the countdown runs. */
@@ -138,9 +140,9 @@
         {#if pendingRevertId}
           {$t("s.revert.reverting")}
         {:else}
-          The new layout has been applied. If you can read this clearly,
-          confirm to keep it. Otherwise we'll roll back automatically in
-          <strong>{secondsLeft}s</strong>.
+          <Rich text={$t("s.revert.countdown", { left: mark("left") })}>
+            {#snippet left()}<strong>{$t("s.revert.seconds", { n: secondsLeft })}</strong>{/snippet}
+          </Rich>
         {/if}
       </p>
 
