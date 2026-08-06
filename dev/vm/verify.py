@@ -258,6 +258,8 @@ def main():
                          "with the temp dir). Used by the black-screen multi-boot "
                          "characterisation to read which init_egl stage marker was "
                          "last before a black boot.")
+    ap.add_argument("--gpu", action="store_true",
+                    help="render through the host GPU (virgl + egl-headless) instead of llvmpipe")
     ap.add_argument("--require-bar", action="store_true",
                     help="fail unless the shell's top bar is present (full-desktop gate)")
     ap.add_argument("--super", dest="press_super", action="store_true",
@@ -345,12 +347,21 @@ def main():
         # single virtio-gpu, no default VGA: cosmic-comp gets one DRM device with a
         # render node + GBM, and screendump captures that scanout. No gl=on, so the
         # framebuffer is CPU-readable (llvmpipe does the GL).
-        "-vga", "none", "-device", "virtio-gpu-pci",
+        # --gpu swaps llvmpipe for the host GPU through virgl. It exists for one
+        # question: the shell overlays leave their last frame on screen when they
+        # close, and whether that is a software-rasteriser artifact or something
+        # every user would see decides how serious it is. A ghost that survives
+        # this switch is not a VM artifact.
+        "-vga", "none",
+        "-device", "virtio-gpu-gl-pci" if args.gpu else "virtio-gpu-pci",
         # An absolute pointing device so QMP input-send-event abs clicks land
         # (the default q35 mouse is PS/2 relative, which has no fixed origin to
         # click a known pixel). Harmless when no click is driven.
         "-device", "virtio-tablet-pci",
-        "-display", "none",
+        # egl-headless renders through the host's render node and still lets
+        # screendump read the scanout, which -display gtk,gl=on would not do
+        # headlessly. Without gl the virgl device has nothing to render on.
+        "-display", "egl-headless" if args.gpu else "none",
         "-qmp", f"unix:{qmp_path},server,nowait",
         "-serial", f"file:{serial}",
         "-no-reboot",
