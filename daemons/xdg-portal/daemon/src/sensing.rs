@@ -117,6 +117,32 @@ mod tests {
 }
 
 #[cfg(test)]
+mod fixture_tests {
+    use super::*;
+
+    /// The bytes Settings writes for the off position, held once at
+    /// `dev/fixtures/` so neither side can change the format without the other
+    /// noticing. Settings asserts it renders exactly this; this asserts it reads
+    /// as off. The predicate is copied on both sides deliberately - see that
+    /// directory's README - and this is what keeps the copies honest.
+    const OFF_FIXTURE: &str = include_str!("../../../../dev/fixtures/sensing-off.toml");
+
+    #[test]
+    fn the_file_settings_writes_reads_as_off() {
+        assert!(key_is_false(OFF_FIXTURE, "screen_capture"));
+    }
+
+    #[test]
+    fn the_fixtures_header_does_not_do_the_switching() {
+        // The header names the key in prose on both comment lines. A reader that
+        // matched the first mention would call every file off, including one
+        // whose value says true, so the fixture is the guard against that too.
+        let on = OFF_FIXTURE.replace("screen_capture = false", "screen_capture = true");
+        assert!(!key_is_false(&on, "screen_capture"));
+    }
+}
+
+#[cfg(test)]
 mod file_tests {
     use super::*;
 
