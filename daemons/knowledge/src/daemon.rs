@@ -276,9 +276,25 @@ async fn listen_queries(
     // human user cannot reach this user's graph even via a canonical binary.
     // Unset = single-user default: any first-party/system cross-uid peer (the
     // local user's AI layer) is served.
+    // A name is preferred over a number because the unit that needs this most is
+    // the image's system-service drop-in, where the socket sits at the shared
+    // /run/arlen and the desktop user's uid is whatever `useradd` picked. A unit
+    // hardcoding 1000 is a guess that fails silently in the wrong direction: it
+    // would refuse the real user and leave the graph unreachable.
     let owner_uid = std::env::var("ARLEN_OWNER_UID")
         .ok()
-        .and_then(|s| s.parse::<u32>().ok());
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .or_else(|| {
+            std::env::var("ARLEN_OWNER_USER")
+                .ok()
+                .and_then(|name| crate::utils::uid_for_user(name.trim()))
+        });
+    if owner_uid.is_none() && std::env::var_os("ARLEN_OWNER_USER").is_some() {
+        // Naming an owner that cannot be resolved is a deployment mistake, and
+        // silently serving every cross-uid peer is the opposite of what was asked
+        // for. Say so; the operator sees it in the journal on the first boot.
+        tracing::warn!("ARLEN_OWNER_USER is set but does not resolve to a user; serving any first-party cross-uid peer");
+    }
 
     loop {
         match listener.accept().await {
