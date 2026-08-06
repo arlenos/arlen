@@ -81,17 +81,7 @@ apps/greeter/src/lib/components/SessionSelect.svelte	Choose a session
 apps/greeter/src/routes/+page.svelte	Login is not reachable right now.
 apps/greeter/src/routes/+page.svelte	No profiles are set up on this device.
 apps/greeter/src/routes/+page.svelte	Starting
-apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Can't read the activity record right now.
-apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Latest
-apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Loading activity
-apps/harness/src/lib/components/agent/ActivityTimeline.svelte	No activity yet. When the AI does something for you, it appears here.
-apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Nothing matches these filters.
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Refresh
-apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Show older entries
-apps/harness/src/lib/components/agent/ActivityTimeline.svelte	This record failed a safety check. Entries may have been changed outside the app.
-apps/harness/src/lib/components/agent/ActivityTimeline.svelte	of
-apps/harness/src/lib/components/agent/ActivityTimeline.svelte	out of date
-apps/harness/src/lib/components/agent/ActivityTimeline.svelte	shown
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	). Live rendering is coming.
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	Diagram source (
 apps/harness/src/lib/components/chat/AutonomyDial.svelte	Manage in Transparency
