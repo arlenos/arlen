@@ -9,18 +9,21 @@
   import { Switch } from "@arlen/ui-kit/components/ui/switch";
   import CornerPopover from "./CornerPopover.svelte";
   import { a11y, toggleA11y, type A11yState } from "$lib/a11y";
+  import { t } from "$lib/i18n/messages";
 
-  const ROWS: { key: keyof A11yState; label: string; id: string }[] = [
-    { key: "highContrast", label: "High contrast", id: "greeter-a11y-contrast" },
-    { key: "largeText", label: "Larger text", id: "greeter-a11y-text" },
-    { key: "onScreenKeyboard", label: "On-screen keyboard", id: "greeter-a11y-osk" },
-    { key: "screenReader", label: "Screen reader", id: "greeter-a11y-reader" },
-  ];
+  // `$derived`, so the labels follow a language switch: a plain const resolves
+  // once at module load and keeps whatever was current then.
+  const ROWS: { key: keyof A11yState; label: string; id: string }[] = $derived([
+    { key: "highContrast", label: $t("g.a11y.highContrast"), id: "greeter-a11y-contrast" },
+    { key: "largeText", label: $t("g.a11y.largerText"), id: "greeter-a11y-text" },
+    { key: "onScreenKeyboard", label: $t("g.a11y.onScreenKeyboard"), id: "greeter-a11y-osk" },
+    { key: "screenReader", label: $t("g.a11y.screenReader"), id: "greeter-a11y-reader" },
+  ]);
 </script>
 
-<CornerPopover icon={Accessibility} label="Accessibility" align="left" id="greeter-a11y">
+<CornerPopover icon={Accessibility} label={$t("g.a11y")} align="left" id="greeter-a11y">
   {#snippet children()}
-    <p class="title">Accessibility</p>
+    <p class="title">{$t("g.a11y")}</p>
     {#each ROWS as row (row.key)}
       <div class="row">
         <span class="label">{row.label}</span>
@@ -32,7 +35,7 @@
       </div>
     {/each}
     {#if $a11y.screenReader}
-      <p class="hint">Reading the screen aloud starts when assistive support is available.</p>
+      <p class="hint">{$t("g.a11y.readerHint")}</p>
     {/if}
   {/snippet}
 </CornerPopover>

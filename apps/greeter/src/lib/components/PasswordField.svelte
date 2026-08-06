@@ -6,13 +6,14 @@
   /// stays plain and unambiguous. A wrong password shakes once and clears;
   /// the parent owns the error flag and the aria-live message.
   import { ArrowRight, Eye, EyeOff, Loader2 } from "@lucide/svelte";
+  import { t } from "$lib/i18n/messages";
 
   let {
     value = $bindable(""),
     disabled = false,
     busy = false,
     error = false,
-    placeholder = "Password",
+    placeholder = $t("g.password"),
     id = "greeter-password",
     onsubmit,
   }: {
@@ -51,7 +52,7 @@
     disabled={disabled || busy}
     autocomplete="current-password"
     spellcheck="false"
-    aria-label="Password"
+    aria-label={$t("g.password")}
     aria-invalid={error}
     {onkeydown}
   />
@@ -75,7 +76,7 @@
     type="button"
     class="icon submit"
     id="greeter-password-submit"
-    aria-label="Sign in"
+    aria-label={$t("g.signIn")}
     disabled={disabled || busy || value.length === 0}
     onclick={onsubmit}
   >

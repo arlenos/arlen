@@ -6,17 +6,18 @@
   import { Power, Moon, RotateCcw, PowerOff } from "@lucide/svelte";
   import CornerPopover from "./CornerPopover.svelte";
   import type { PowerAction } from "$lib/greeter";
+  import { t } from "$lib/i18n/messages";
 
   let { onaction }: { onaction: (a: PowerAction) => void } = $props();
 
-  const ITEMS: { action: PowerAction; label: string; icon: typeof Moon; id: string }[] = [
-    { action: "suspend", label: "Suspend", icon: Moon, id: "greeter-power-suspend" },
-    { action: "reboot", label: "Restart", icon: RotateCcw, id: "greeter-power-reboot" },
-    { action: "power-off", label: "Shut down", icon: PowerOff, id: "greeter-power-off" },
-  ];
+  const ITEMS: { action: PowerAction; label: string; icon: typeof Moon; id: string }[] = $derived([
+    { action: "suspend", label: $t("g.power.suspend"), icon: Moon, id: "greeter-power-suspend" },
+    { action: "reboot", label: $t("g.power.restart"), icon: RotateCcw, id: "greeter-power-reboot" },
+    { action: "power-off", label: $t("g.power.shutDown"), icon: PowerOff, id: "greeter-power-off" },
+  ]);
 </script>
 
-<CornerPopover icon={Power} label="Power" align="right" id="greeter-power">
+<CornerPopover icon={Power} label={$t("g.power")} align="right" id="greeter-power">
   {#snippet children(close: () => void)}
     {#each ITEMS as it (it.action)}
       <button
