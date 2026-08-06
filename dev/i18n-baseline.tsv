@@ -55,28 +55,6 @@ apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
 apps/files/src/routes/+page.svelte	Del
 apps/files/src/routes/+page.svelte	F2
-apps/files/src/routes/_asktest/+page.svelte	Arlen could not draft a filter for that. Try naming a type, a time, or a project.
-apps/files/src/routes/_asktest/+page.svelte	Files
-apps/files/src/routes/_asktest/+page.svelte	Location
-apps/files/src/routes/_asktest/+page.svelte	Modified
-apps/files/src/routes/_asktest/+page.svelte	Name
-apps/files/src/routes/_facettest/+page.svelte	Active filter + result
-apps/files/src/routes/_facettest/+page.svelte	Files
-apps/files/src/routes/_facettest/+page.svelte	Image viewer
-apps/files/src/routes/_facettest/+page.svelte	Location
-apps/files/src/routes/_facettest/+page.svelte	Modified
-apps/files/src/routes/_facettest/+page.svelte	Name
-apps/files/src/routes/_facettest/+page.svelte	Terminal
-apps/files/src/routes/_rendertest/+page.svelte	Accessed by
-apps/files/src/routes/_rendertest/+page.svelte	Also accessed by
-apps/files/src/routes/_rendertest/+page.svelte	File: related + as-of
-apps/files/src/routes/_rendertest/+page.svelte	Folder
-apps/files/src/routes/_rendertest/+page.svelte	Image: EXIF + permissions
-apps/files/src/routes/_rendertest/+page.svelte	Part of
-apps/files/src/routes/_rendertest/+page.svelte	Provenance halo (live shape, PH-R2)
-apps/files/src/routes/_rendertest/+page.svelte	Provenance halo (no backend)
-apps/files/src/routes/_rendertest/+page.svelte	Sunset over the Inn
-apps/files/src/routes/_rendertest/+page.svelte	Symlink
 apps/greeter/src/lib/components/A11yMenu.svelte	Accessibility
 apps/greeter/src/lib/components/A11yMenu.svelte	High contrast
 apps/greeter/src/lib/components/A11yMenu.svelte	Larger text
@@ -178,34 +156,6 @@ apps/harness/src/lib/stores/mint.ts	notes they mention
 apps/harness/src/lib/stores/mint.ts	the people who wrote them
 apps/harness/src/lib/stores/mint.ts	the project and its files
 apps/harness/src/lib/stores/mint.ts	their tags
-apps/harness/src/routes/_difftest/+page.svelte	Add a theme corner radius
-apps/harness/src/routes/_difftest/+page.svelte	Applied receipt (you approved): with per-change Undo
-apps/harness/src/routes/_difftest/+page.svelte	Auto-applied (no gate, under a standing grant): still a diff + Undo, never silent
-apps/harness/src/routes/_difftest/+page.svelte	Edit parser.rs
-apps/harness/src/routes/_difftest/+page.svelte	Proposed change (multiple files): collapsed per file
-apps/harness/src/routes/_difftest/+page.svelte	Proposed change (single file): the diff is the approve step
-apps/harness/src/routes/_gatetest/+page.svelte	Ask about your files, projects, or activity
-apps/harness/src/routes/_gatetest/+page.svelte	Move report.pdf
-apps/harness/src/routes/_gatetest/+page.svelte	Move report.pdf into Documents/Projects
-apps/harness/src/routes/_gatetest/+page.svelte	Tag 3 files as part of the Arlen project
-apps/harness/src/routes/_reftest/+page.svelte	Assistant message with file references
-apps/harness/src/routes/_reftest/+page.svelte	Hover a pill for the affordance; right-click for the menu. The missing path reads muted.
-apps/harness/src/routes/_rendertest/+page.svelte	. It returns the transformed list, leaving the input untouched. The full source is in the pane on the right.
-apps/harness/src/routes/_rendertest/+page.svelte	Activity by day
-apps/harness/src/routes/_rendertest/+page.svelte	Add helper, chart activity, list two files, and write the pipeline.
-apps/harness/src/routes/_rendertest/+page.svelte	Arlen OS
-apps/harness/src/routes/_rendertest/+page.svelte	Assistant
-apps/harness/src/routes/_rendertest/+page.svelte	Blocked
-apps/harness/src/routes/_rendertest/+page.svelte	Call it with your list and the options:
-apps/harness/src/routes/_rendertest/+page.svelte	Here you go:
-apps/harness/src/routes/_rendertest/+page.svelte	Looks good. Can you make the chart a line chart instead?
-apps/harness/src/routes/_rendertest/+page.svelte	Perfect, thanks. One more: how do I run the pipeline?
-apps/harness/src/routes/_rendertest/+page.svelte	References
-apps/harness/src/routes/_rendertest/+page.svelte	Sure, switched it to a line. Everything else stays the same.
-apps/harness/src/routes/_rendertest/+page.svelte	Transform pipeline
-apps/harness/src/routes/_rendertest/+page.svelte	Two files
-apps/harness/src/routes/_rendertest/+page.svelte	You
-apps/harness/src/routes/_rendertest/+page.svelte	pipeline(items, opts)
 apps/knowledge/src/lib/stores/capsules.ts	Thesis slice
 apps/knowledge/src/lib/stores/library.ts	Attention Is All You Need
 apps/knowledge/src/lib/stores/library.ts	Conference registration confirmed
