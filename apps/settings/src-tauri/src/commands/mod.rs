@@ -2,6 +2,7 @@
 
 pub mod about;
 pub mod app_facts;
+pub mod app_lifecycle;
 pub mod layouts;
 pub mod mo;
 pub mod app_settings;
