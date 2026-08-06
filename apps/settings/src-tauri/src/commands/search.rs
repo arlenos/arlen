@@ -13,13 +13,18 @@ static LAUNCH_ARGS: Mutex<Option<LaunchTarget>> = Mutex::new(None);
 pub struct LaunchTarget {
     pub panel: String,
     pub anchor: Option<String>,
+    /// An app id, when the caller wants one app's own settings page rather than a
+    /// panel. Separate from `panel` because the frontend resolves a panel against
+    /// its table of known panels and drops anything absent - a path smuggled
+    /// through that field would navigate nowhere, silently.
+    pub app: Option<String>,
 }
 
 /// Store the parsed CLI args so `get_launch_args` can return them.
 /// Called once from `lib.rs` setup before the frontend mounts.
 pub fn store_launch_args() {
-    if let Some((panel, anchor)) = parse_cli_args() {
-        *LAUNCH_ARGS.lock().unwrap() = Some(LaunchTarget { panel, anchor });
+    if let Some((panel, anchor, app)) = parse_cli_args() {
+        *LAUNCH_ARGS.lock().unwrap() = Some(LaunchTarget { panel, anchor, app });
     }
 }
 
@@ -57,16 +62,27 @@ pub fn export_settings_index(json: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Parse CLI arguments into a navigation target. Returns `(panel, anchor)`
-/// if the user passed `--panel <id>` and optionally `--section <name>`.
+/// Parse CLI arguments into a navigation target.
 ///
-/// Called from setup() and the result is emitted as a Tauri event so
-/// the frontend can navigate on mount.
-pub fn parse_cli_args() -> Option<(String, Option<String>)> {
+/// `--panel <id>`, optionally `--section <name>`, and optionally `--app <app-id>`
+/// for one app's own settings page. `--app` implies the apps panel, so an app
+/// linking to its own settings does not have to know which panel holds them
+/// (per-app-settings-plan.md 4b: every app's header menu points at its page).
+///
+/// Called from setup() and the result is handed to the frontend so it can
+/// navigate on mount.
+pub fn parse_cli_args() -> Option<(String, Option<String>, Option<String>)> {
     let args: Vec<String> = std::env::args().collect();
+    parse_args(&args)
+}
 
+/// The parsing itself, over a slice. Separate from the process arguments so the
+/// defaulting rules can be tested; `std::env::args` is not something a test can
+/// set without affecting every other test in the binary.
+fn parse_args(args: &[String]) -> Option<(String, Option<String>, Option<String>)> {
     let mut panel: Option<String> = None;
     let mut section: Option<String> = None;
+    let mut app: Option<String> = None;
 
     let mut i = 1; // skip binary name
     while i < args.len() {
@@ -79,11 +95,65 @@ pub fn parse_cli_args() -> Option<(String, Option<String>)> {
                 section = Some(args[i + 1].clone());
                 i += 2;
             }
+            "--app" if i + 1 < args.len() => {
+                app = Some(args[i + 1].clone());
+                i += 2;
+            }
             _ => {
                 i += 1;
             }
         }
     }
 
-    panel.map(|p| (p, section))
+    // An app id names its page well enough on its own, so `--app` alone is a
+    // complete request and defaults the panel to the list it belongs to.
+    match (panel, app) {
+        (p, Some(a)) => Some((p.unwrap_or_else(|| "apps".to_owned()), section, Some(a))),
+        (Some(p), None) => Some((p, section, None)),
+        (None, None) => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(rest: &[&str]) -> Vec<String> {
+        std::iter::once("arlen-settings").chain(rest.iter().copied()).map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn a_panel_and_a_section_parse_as_before() {
+        assert_eq!(
+            parse_args(&args(&["--panel", "keyboard", "--section", "repeat"])),
+            Some(("keyboard".to_owned(), Some("repeat".to_owned()), None)),
+        );
+        assert_eq!(parse_args(&args(&[])), None, "no arguments is no navigation");
+    }
+
+    #[test]
+    fn an_app_id_alone_is_a_complete_request() {
+        // So an app linking to its own settings does not have to know which panel
+        // holds the list it belongs to.
+        assert_eq!(
+            parse_args(&args(&["--app", "org.arlen.files"])),
+            Some(("apps".to_owned(), None, Some("org.arlen.files".to_owned()))),
+        );
+    }
+
+    #[test]
+    fn an_explicit_panel_is_kept_alongside_an_app() {
+        assert_eq!(
+            parse_args(&args(&["--panel", "privacy", "--app", "org.arlen.files"])),
+            Some(("privacy".to_owned(), None, Some("org.arlen.files".to_owned()))),
+        );
+    }
+
+    #[test]
+    fn a_flag_with_no_value_is_ignored_rather_than_swallowing_the_next_one() {
+        // `--app` last with nothing after it must not consume the terminator or
+        // report an empty id the router would turn into `/apps/`.
+        assert_eq!(parse_args(&args(&["--panel", "display", "--app"])),
+            Some(("display".to_owned(), None, None)));
+    }
 }
