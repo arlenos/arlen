@@ -157,7 +157,7 @@
       <PopoverSelect
         value={currentMode ? `${currentMode.width}x${currentMode.height}` : ""}
         options={resolutionOptions}
-        ariaLabel="Resolution"
+        ariaLabel={$t("s.disp.resolution")}
         onchange={(v) => {
           const [w, h] = v.split("x").map(Number);
           if (w && h) pickResolution(w, h);
@@ -171,7 +171,7 @@
       <PopoverSelect
         value={currentMode ? String(currentMode.refreshMhz) : ""}
         options={refreshOptions}
-        ariaLabel="Refresh rate"
+        ariaLabel={$t("s.disp.refreshRate")}
         onchange={(v) => pickRefresh(Number(v))}
       />
     {/snippet}
@@ -199,7 +199,7 @@
       <PopoverSelect
         value={draft.transform}
         options={TRANSFORM_OPTIONS}
-        ariaLabel="Rotation"
+        ariaLabel={$t("s.disp.rotation")}
         onchange={(v) => setTransform(v as Transform)}
       />
     {/snippet}
@@ -213,7 +213,7 @@
       <PopoverSelect
         value={draft.vrr}
         options={VRR_OPTIONS}
-        ariaLabel="Adaptive sync"
+        ariaLabel={$t("s.disp.adaptiveSync")}
         onchange={(v) => setVrr(v as VrrState)}
       />
     {/snippet}
@@ -225,7 +225,7 @@
         <PopoverSelect
           value={mirrorTarget ?? "__none__"}
           options={mirrorOptions}
-          ariaLabel="Mirror target"
+          ariaLabel={$t("s.disp.mirrorTarget")}
           onchange={setMirror}
         />
       {/snippet}
