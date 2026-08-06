@@ -375,6 +375,16 @@ jobs:
             if [ -f "$p/package.json" ]; then
               echo "== install $p =="
               (cd "$p" && npm install)
+              # A SvelteKit package's tsconfig extends ./.svelte-kit/tsconfig.json,
+              # which `svelte-kit sync` generates and .gitignore excludes. Installing
+              # the kit's deps is what makes vite resolve INTO its tsconfig at all, so
+              # this step created the need for the sync: without it every app that
+              # links the kit dies with `failed to resolve "extends"`. Locally the
+              # file is already there from any previous `npm run check`, which is
+              # exactly why the gap only appears on a clean checkout.
+              if [ -f "$p/svelte.config.js" ]; then
+                (cd "$p" && npx svelte-kit sync)
+              fi
             fi
           done
       # The apps use npm (package-lock.json). Skip where there is none.
