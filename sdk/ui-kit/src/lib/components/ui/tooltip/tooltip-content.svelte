@@ -4,7 +4,7 @@
   /// exported for surfaces that bring their own styling (the topbar
   /// Applet).
   import { Tooltip as TooltipPrimitive } from "bits-ui";
-  import { cn } from "$lib/utils";
+  import { cn } from "../../../utils.js";
 
   let {
     ref = $bindable(null),

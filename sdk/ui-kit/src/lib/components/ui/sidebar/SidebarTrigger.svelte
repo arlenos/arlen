@@ -1,6 +1,6 @@
 <script lang="ts">
   import { kt } from "../../../i18n/messages.kit";
-  import { cn } from "$lib/utils";
+  import { cn } from "../../../utils.js";
   import { PanelLeft } from "@lucide/svelte";
   import { useSidebar } from "./context.svelte";
 

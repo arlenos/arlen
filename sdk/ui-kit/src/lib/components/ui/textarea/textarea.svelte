@@ -3,7 +3,7 @@
   /// radius, and focus ring as `Input`, growing with content between the
   /// `rows` minimum and `maxRows`. For chat composers and note fields.
   import type { HTMLTextareaAttributes } from "svelte/elements";
-  import { cn } from "$lib/utils";
+  import { cn } from "../../../utils.js";
 
   let {
     ref = $bindable(null),

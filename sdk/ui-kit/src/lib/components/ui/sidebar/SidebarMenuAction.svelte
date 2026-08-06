@@ -6,7 +6,7 @@
   /// (e.g. `pe-7`) so long labels truncate under it.
   import type { Snippet } from "svelte";
   import type { HTMLButtonAttributes } from "svelte/elements";
-  import { cn } from "$lib/utils";
+  import { cn } from "../../../utils.js";
 
   let {
     class: className,

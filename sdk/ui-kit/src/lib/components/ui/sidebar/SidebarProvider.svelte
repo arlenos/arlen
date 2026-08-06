@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import { untrack } from "svelte";
-  import { cn } from "$lib/utils";
+  import { cn } from "../../../utils.js";
   import {
     SIDEBAR_WIDTH,
     SIDEBAR_WIDTH_ICON,
