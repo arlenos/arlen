@@ -339,6 +339,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn collapse_grant_history_drops_only_the_middle_of_a_run() {
+        // The pure grouping is unit-tested above; this is the half that can be
+        // wrong in a way no unit test sees. The pass reads with
+        // `g.revoked = false`, so a Grant whose `revoked` came back NULL rather
+        // than false would match nothing and the whole tier would be silently
+        // inert - a retention rule that quietly retains everything.
+        let (graph, _tmp) = setup().await;
+
+        for (i, id) in ["a1", "a2", "a3"].iter().enumerate() {
+            graph
+                .write(format!(
+                    "CREATE (:Grant {{id: '{id}', app_id: 'com.a', pid: 1, \
+                     issued_at: {}, declared_ceiling: 'A', required: false, \
+                     identity_verified: false, live: false, revoked: false, \
+                     superseded: true, use_count: 0}})",
+                    100 + i as i64
+                ))
+                .await
+                .unwrap();
+        }
+        // A live grant of the same ceiling, which is current state and must stay.
+        graph
+            .write(
+                "CREATE (:Grant {id: 'live', app_id: 'com.a', pid: 1, issued_at: 400, \
+                 declared_ceiling: 'A', required: false, identity_verified: false, \
+                 live: true, revoked: false, superseded: false, use_count: 0})"
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+
+        collapse_grant_history(&graph).await.unwrap();
+
+        let left = graph
+            .query_rows("MATCH (g:Grant) RETURN g.id ORDER BY g.id".to_string())
+            .await
+            .unwrap();
+        let ids: Vec<&str> = left.rows.iter().map(|r| r[0].as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["a1", "a3", "live"],
+            "the ends of the run and the live grant survive, the middle goes"
+        );
+    }
+
+    #[tokio::test]
     async fn compact_app_files_summarises_old_files_and_deletes_them() {
         // Coverage for the Tier-2 compaction (a core graph-write path): an old
         // File accessed by an app is folded into a Summary node carrying its
