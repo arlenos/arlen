@@ -41,11 +41,21 @@ export interface InlineAction {
 
 export interface SettingDefinition {
   id: string;
-  title: string;
-  description: string;
-  keywords: string[];
+  /// Message ids, never prose.
+  ///
+  /// The exported `settings-index.json` names a catalog and carries these; the
+  /// Waypointer resolves them against its own locale. Prose here would be correct
+  /// in one language, baked at build time, and a second copy of every string that
+  /// can drift from the catalog with nothing to notice - and a third-party app
+  /// under the per-app settings plan has to be searchable in a language it never
+  /// shipped a snapshot for.
+  titleKey: string;
+  descKey: string;
+  /// One message holding the keywords, comma-separated. They are copy like any
+  /// other: somebody searching in German should reach a setting by German words.
+  keywordsKey: string;
   panel: PanelId;
-  section: string;
+  sectionKey: string;
   /// Anchor fragment used in deep links. The frontend scrolls to the
   /// DOM element with `id={anchor}` and briefly highlights it.
   anchor: string;
@@ -58,13 +68,15 @@ export interface SettingDefinition {
 
 export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // ── Appearance: Theme ──────────────────────────────────────────────
-  {
-    id: "appearance.theme.mode",
-    title: "Theme Mode",
-    description: "Switch between light and dark theme",
-    keywords: ["dark", "light", "theme", "mode", "color scheme", "night"],
+  {    id: "appearance.theme.mode",
+    titleKey: "s.idx.appearance.theme.mode.title",
+
+    descKey: "s.idx.appearance.theme.mode.desc",
+
+    keywordsKey: "s.idx.appearance.theme.mode.keywords",
     panel: "appearance",
-    section: "Theme",
+    sectionKey: "s.idx.section.theme",
+
     anchor: "theme-mode",
     inlineAction: {
       type: "select",
@@ -78,92 +90,92 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "appearance.accent",
-    title: "Accent Color",
-    description: "Primary accent colour used across the shell and apps",
-    keywords: ["accent", "color", "colour", "tint", "primary", "indigo", "blue"],
+    titleKey: "s.idx.appearance.accent.title",
+
+    descKey: "s.idx.appearance.accent.desc",
+
+    keywordsKey: "s.idx.appearance.accent.keywords",
     panel: "appearance",
-    section: "Theme",
+    sectionKey: "s.idx.section.theme",
+
     anchor: "accent-color",
   },
 
   // ── Quick Settings: layout ────────────────────────────────────────
   {
     id: "quicksettings.layout",
-    title: "Quick Settings tile layout",
-    description:
-      "Reorder, hide, and resize the tiles in the Quick Settings panel.",
-    keywords: [
-      "quick settings",
-      "control center",
-      "tiles",
-      "layout",
-      "panel",
-      "reorder",
-      "hide",
-      "show",
-      "resize",
-    ],
+    titleKey: "s.idx.quicksettings.layout.title",
+
+    descKey: "s.idx.quicksettings.layout.desc",
+
+    keywordsKey: "s.idx.quicksettings.layout.keywords",
     panel: "quicksettings",
-    section: "Layout",
+    sectionKey: "s.idx.section.layout",
+
     anchor: "qs-layout-list",
   },
   {
     id: "quicksettings.layout.reset",
-    title: "Reset Quick Settings to defaults",
-    description: "Restore the bundled order, sizes, and visibility for tiles.",
-    keywords: ["reset", "defaults", "quick settings", "restore"],
+    titleKey: "s.idx.quicksettings.layout.reset.title",
+
+    descKey: "s.idx.quicksettings.layout.reset.desc",
+
+    keywordsKey: "s.idx.quicksettings.layout.reset.keywords",
     panel: "quicksettings",
-    section: "Layout",
+    sectionKey: "s.idx.section.layout",
+
     anchor: "qs-layout-list",
   },
 
   // ── Printers ───────────────────────────────────────────────────────
   {
     id: "printers.manage",
-    title: "Printers",
-    description: "Manage printers, set the default, and print options.",
-    keywords: ["printer", "printers", "print", "cups", "default printer", "paper", "duplex", "colour", "ipp"],
+    titleKey: "s.idx.printers.manage.title",
+
+    descKey: "s.idx.printers.manage.desc",
+
+    keywordsKey: "s.idx.printers.manage.keywords",
     panel: "printers",
-    section: "Printers",
+    sectionKey: "s.idx.section.printers",
+
     anchor: "printers-list",
   },
   {
     id: "printers.queue",
-    title: "Print queue",
-    description: "See active, held, and finished print jobs; cancel or resume.",
-    keywords: ["print queue", "jobs", "cancel print", "resume", "spooler"],
+    titleKey: "s.idx.printers.queue.title",
+
+    descKey: "s.idx.printers.queue.desc",
+
+    keywordsKey: "s.idx.printers.queue.keywords",
     panel: "printers",
-    section: "Print queue",
+    sectionKey: "s.idx.section.printqueue",
+
     anchor: "print-queue",
   },
   {
     id: "printers.add",
-    title: "Add a printer",
-    description: "Add a discovered printer or one by IP address.",
-    keywords: ["add printer", "new printer", "discover", "driverless", "ip printer", "network printer"],
+    titleKey: "s.idx.printers.add.title",
+
+    descKey: "s.idx.printers.add.desc",
+
+    keywordsKey: "s.idx.printers.add.keywords",
     panel: "printers",
-    section: "Add a printer",
+    sectionKey: "s.idx.section.addaprinter",
+
     anchor: "add-printer",
   },
 
   // ── Appearance: Window ─────────────────────────────────────────────
   {
     id: "appearance.overrides.radius_intensity",
-    title: "Roundness",
-    description:
-      "Global radius multiplier (0% sharp / 100% theme default / 200% max round)",
-    keywords: [
-      "corner",
-      "radius",
-      "rounded",
-      "round",
-      "square",
-      "intensity",
-      "border-radius",
-      "roundness",
-    ],
+    titleKey: "s.idx.appearance.overrides.radius.intensity.title",
+
+    descKey: "s.idx.appearance.overrides.radius.intensity.desc",
+
+    keywordsKey: "s.idx.appearance.overrides.radius.intensity.keywords",
     panel: "appearance",
-    section: "Window",
+    sectionKey: "s.idx.section.window",
+
     anchor: "radius-intensity",
     inlineAction: {
       type: "slider",
@@ -177,11 +189,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "appearance.window.border_width",
-    title: "Border Width",
-    description: "Thickness of window borders",
-    keywords: ["border", "width", "thickness", "outline"],
+    titleKey: "s.idx.appearance.window.border.width.title",
+
+    descKey: "s.idx.appearance.window.border.width.desc",
+
+    keywordsKey: "s.idx.appearance.window.border.width.keywords",
     panel: "appearance",
-    section: "Window",
+    sectionKey: "s.idx.section.window",
+
     anchor: "border-width",
     inlineAction: {
       type: "slider",
@@ -195,11 +210,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "appearance.window.gaps",
-    title: "Window Gaps",
-    description: "Space between tiled windows",
-    keywords: ["gap", "gaps", "space", "spacing", "tiling", "padding"],
+    titleKey: "s.idx.appearance.window.gaps.title",
+
+    descKey: "s.idx.appearance.window.gaps.desc",
+
+    keywordsKey: "s.idx.appearance.window.gaps.keywords",
     panel: "appearance",
-    section: "Window",
+    sectionKey: "s.idx.section.window",
+
     anchor: "gaps",
     inlineAction: {
       type: "slider",
@@ -213,11 +231,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "appearance.window.smart_gaps",
-    title: "Smart Gaps",
-    description: "Hide gaps when only one window is visible",
-    keywords: ["smart", "gaps", "single", "auto"],
+    titleKey: "s.idx.appearance.window.smart.gaps.title",
+
+    descKey: "s.idx.appearance.window.smart.gaps.desc",
+
+    keywordsKey: "s.idx.appearance.window.smart.gaps.keywords",
     panel: "appearance",
-    section: "Window",
+    sectionKey: "s.idx.section.window",
+
     anchor: "smart-gaps",
     inlineAction: {
       type: "toggle",
@@ -229,49 +250,64 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // ── Appearance: Window Borders ─────────────────────────────────────
   {
     id: "appearance.window.border.focused",
-    title: "Focused Window Border",
-    description: "Color of the active window border",
-    keywords: ["focus", "focused", "border", "active", "highlight", "window"],
+    titleKey: "s.idx.appearance.window.border.focused.title",
+
+    descKey: "s.idx.appearance.window.border.focused.desc",
+
+    keywordsKey: "s.idx.appearance.window.border.focused.keywords",
     panel: "appearance",
-    section: "Window Borders",
+    sectionKey: "s.idx.section.windowborders",
+
     anchor: "border-focused",
   },
   {
     id: "appearance.window.border.unfocused",
-    title: "Unfocused Window Border",
-    description: "Color of inactive window borders",
-    keywords: ["unfocused", "inactive", "border", "window"],
+    titleKey: "s.idx.appearance.window.border.unfocused.title",
+
+    descKey: "s.idx.appearance.window.border.unfocused.desc",
+
+    keywordsKey: "s.idx.appearance.window.border.unfocused.keywords",
     panel: "appearance",
-    section: "Window Borders",
+    sectionKey: "s.idx.section.windowborders",
+
     anchor: "border-unfocused",
   },
 
   // ── Appearance: Typography ─────────────────────────────────────────
   {
     id: "appearance.fonts.interface",
-    title: "Interface Font",
-    description: "Font used for labels, menus, and UI text",
-    keywords: ["font", "interface", "sans", "text", "typeface", "inter"],
+    titleKey: "s.idx.appearance.fonts.interface.title",
+
+    descKey: "s.idx.appearance.fonts.interface.desc",
+
+    keywordsKey: "s.idx.appearance.fonts.interface.keywords",
     panel: "appearance",
-    section: "Typography",
+    sectionKey: "s.idx.section.typography",
+
     anchor: "font-interface",
   },
   {
     id: "appearance.fonts.monospace",
-    title: "Monospace Font",
-    description: "Font used for code and terminal text",
-    keywords: ["font", "mono", "monospace", "code", "terminal", "jetbrains"],
+    titleKey: "s.idx.appearance.fonts.monospace.title",
+
+    descKey: "s.idx.appearance.fonts.monospace.desc",
+
+    keywordsKey: "s.idx.appearance.fonts.monospace.keywords",
     panel: "appearance",
-    section: "Typography",
+    sectionKey: "s.idx.section.typography",
+
     anchor: "font-monospace",
   },
   {
     id: "appearance.fonts.size",
-    title: "Font Size",
-    description: "Base font size for the interface",
-    keywords: ["font", "size", "text", "large", "small", "zoom"],
+    titleKey: "s.idx.appearance.fonts.size.title",
+
+    descKey: "s.idx.appearance.fonts.size.desc",
+
+    keywordsKey: "s.idx.appearance.fonts.size.keywords",
     panel: "appearance",
-    section: "Typography",
+    sectionKey: "s.idx.section.typography",
+
     anchor: "font-size",
     inlineAction: {
       type: "slider",
@@ -287,20 +323,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // ── Notifications: DND ─────────────────────────────────────────────
   {
     id: "notifications.dnd.mode",
-    title: "Do Not Disturb",
-    description: "Control which notifications can break through",
-    keywords: [
-      "dnd",
-      "disturb",
-      "quiet",
-      "silent",
-      "focus",
-      "mute",
-      "priority",
-      "alarms",
-    ],
+    titleKey: "s.idx.notifications.dnd.mode.title",
+
+    descKey: "s.idx.notifications.dnd.mode.desc",
+
+    keywordsKey: "s.idx.notifications.dnd.mode.keywords",
     panel: "notifications",
-    section: "Do Not Disturb",
+    sectionKey: "s.idx.section.donotdisturb",
+
     anchor: "dnd-mode",
     inlineAction: {
       type: "select",
@@ -317,11 +347,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "notifications.dnd.suppress_fullscreen",
-    title: "Suppress in Fullscreen",
-    description: "Queue notifications while a fullscreen app is active",
-    keywords: ["fullscreen", "suppress", "quiet", "game", "video"],
+    titleKey: "s.idx.notifications.dnd.suppress.fullscreen.title",
+
+    descKey: "s.idx.notifications.dnd.suppress.fullscreen.desc",
+
+    keywordsKey: "s.idx.notifications.dnd.suppress.fullscreen.keywords",
     panel: "notifications",
-    section: "Do Not Disturb",
+    sectionKey: "s.idx.section.donotdisturb",
+
     anchor: "suppress-fullscreen",
     inlineAction: {
       type: "toggle",
@@ -333,11 +366,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // ── Notifications: Timing ──────────────────────────────────────────
   {
     id: "notifications.general.toast_duration_normal",
-    title: "Toast Duration (Normal)",
-    description: "How long normal notifications stay visible",
-    keywords: ["toast", "duration", "time", "timeout", "notification"],
+    titleKey: "s.idx.notifications.general.toast.duration.normal.title",
+
+    descKey: "s.idx.notifications.general.toast.duration.normal.desc",
+
+    keywordsKey: "s.idx.notifications.general.toast.duration.normal.keywords",
     panel: "notifications",
-    section: "Timing",
+    sectionKey: "s.idx.section.timing",
+
     anchor: "toast-duration-normal",
     inlineAction: {
       type: "slider",
@@ -351,40 +387,40 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "notifications.general.toast_duration_high",
-    title: "Toast Duration (High Priority)",
-    description: "How long high-priority notifications stay visible",
-    keywords: ["toast", "duration", "high", "urgent", "important"],
+    titleKey: "s.idx.notifications.general.toast.duration.high.title",
+
+    descKey: "s.idx.notifications.general.toast.duration.high.desc",
+
+    keywordsKey: "s.idx.notifications.general.toast.duration.high.keywords",
     panel: "notifications",
-    section: "Timing",
+    sectionKey: "s.idx.section.timing",
+
     anchor: "toast-duration-high",
   },
   {
     id: "notifications.general.max_visible_toasts",
-    title: "Max Visible Toasts",
-    description: "Maximum number of toasts shown at once",
-    keywords: ["max", "visible", "toasts", "stack", "limit"],
+    titleKey: "s.idx.notifications.general.max.visible.toasts.title",
+
+    descKey: "s.idx.notifications.general.max.visible.toasts.desc",
+
+    keywordsKey: "s.idx.notifications.general.max.visible.toasts.keywords",
     panel: "notifications",
-    section: "Timing",
+    sectionKey: "s.idx.section.timing",
+
     anchor: "max-visible",
   },
 
   // ── Notifications: Toast Appearance ────────────────────────────────
   {
     id: "notifications.toast.position",
-    title: "Toast Position",
-    description: "Where notification toasts appear on screen",
-    keywords: [
-      "position",
-      "toast",
-      "location",
-      "corner",
-      "top",
-      "bottom",
-      "left",
-      "right",
-    ],
+    titleKey: "s.idx.notifications.toast.position.title",
+
+    descKey: "s.idx.notifications.toast.position.desc",
+
+    keywordsKey: "s.idx.notifications.toast.position.keywords",
     panel: "notifications",
-    section: "Toast Appearance",
+    sectionKey: "s.idx.section.toastappearance",
+
     anchor: "toast-position",
     inlineAction: {
       type: "select",
@@ -401,11 +437,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "notifications.toast.animation",
-    title: "Toast Animation",
-    description: "Entry and exit animation for toasts",
-    keywords: ["animation", "toast", "slide", "fade", "motion"],
+    titleKey: "s.idx.notifications.toast.animation.title",
+
+    descKey: "s.idx.notifications.toast.animation.desc",
+
+    keywordsKey: "s.idx.notifications.toast.animation.keywords",
     panel: "notifications",
-    section: "Toast Appearance",
+    sectionKey: "s.idx.section.toastappearance",
+
     anchor: "toast-animation",
     inlineAction: {
       type: "select",
@@ -422,11 +461,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // ── Notifications: Grouping ────────────────────────────────────────
   {
     id: "notifications.grouping.by_app",
-    title: "Group by App",
-    description: "Group notifications by their source application",
-    keywords: ["group", "app", "application", "bundle"],
+    titleKey: "s.idx.notifications.grouping.by.app.title",
+
+    descKey: "s.idx.notifications.grouping.by.app.desc",
+
+    keywordsKey: "s.idx.notifications.grouping.by.app.keywords",
     panel: "notifications",
-    section: "Grouping",
+    sectionKey: "s.idx.section.grouping",
+
     anchor: "group-by-app",
     inlineAction: {
       type: "toggle",
@@ -436,11 +478,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "notifications.grouping.stack_similar",
-    title: "Stack Similar",
-    description: "Merge near-duplicate notifications from the same app",
-    keywords: ["stack", "similar", "merge", "deduplicate", "combine"],
+    titleKey: "s.idx.notifications.grouping.stack.similar.title",
+
+    descKey: "s.idx.notifications.grouping.stack.similar.desc",
+
+    keywordsKey: "s.idx.notifications.grouping.stack.similar.keywords",
     panel: "notifications",
-    section: "Grouping",
+    sectionKey: "s.idx.section.grouping",
+
     anchor: "stack-similar",
     inlineAction: {
       type: "toggle",
@@ -452,11 +497,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // ── Notifications: History ─────────────────────────────────────────
   {
     id: "notifications.history.enabled",
-    title: "Keep Notification History",
-    description: "Store notifications in a history panel",
-    keywords: ["history", "keep", "save", "log", "record", "notification"],
+    titleKey: "s.idx.notifications.history.enabled.title",
+
+    descKey: "s.idx.notifications.history.enabled.desc",
+
+    keywordsKey: "s.idx.notifications.history.enabled.keywords",
     panel: "notifications",
-    section: "History",
+    sectionKey: "s.idx.section.history",
+
     anchor: "history-enabled",
     inlineAction: {
       type: "toggle",
@@ -466,80 +514,104 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "notifications.history.max_age_days",
-    title: "History Maximum Age",
-    description: "Remove notifications older than this many days",
-    keywords: ["history", "age", "days", "retention", "cleanup", "expire"],
+    titleKey: "s.idx.notifications.history.max.age.days.title",
+
+    descKey: "s.idx.notifications.history.max.age.days.desc",
+
+    keywordsKey: "s.idx.notifications.history.max.age.days.keywords",
     panel: "notifications",
-    section: "History",
+    sectionKey: "s.idx.section.history",
+
     anchor: "history-max-age",
   },
 
   // ── Keyboard: layout ───────────────────────────────────────────────
   {
     id: "keyboard.layout",
-    title: "Keyboard Layout",
-    description: "Primary XKB layout (US, German, French, etc.)",
-    keywords: ["layout", "xkb", "keymap", "language", "qwerty", "qwertz"],
+    titleKey: "s.idx.keyboard.layout.title",
+
+    descKey: "s.idx.keyboard.layout.desc",
+
+    keywordsKey: "s.idx.keyboard.layout.keywords",
     panel: "keyboard",
-    section: "Layout",
+    sectionKey: "s.idx.section.layout",
+
     anchor: "search",
   },
   {
     id: "keyboard.repeat",
-    title: "Key Repeat Rate",
-    description: "How quickly a held key repeats",
-    keywords: ["repeat", "rate", "delay", "autokey", "xkb"],
+    titleKey: "s.idx.keyboard.repeat.title",
+
+    descKey: "s.idx.keyboard.repeat.desc",
+
+    keywordsKey: "s.idx.keyboard.repeat.keywords",
     panel: "keyboard",
-    section: "Key Repeat",
+    sectionKey: "s.idx.section.keyrepeat",
+
     anchor: "search",
   },
 
   // ── Keyboard: shortcuts ────────────────────────────────────────────
   {
     id: "shortcuts.all",
-    title: "Keyboard Shortcuts",
-    description: "Rebind shortcuts for windows, workspaces, and apps",
-    keywords: ["keybinding", "shortcut", "hotkey", "key", "bind", "keymap"],
+    titleKey: "s.idx.shortcuts.all.title",
+
+    descKey: "s.idx.shortcuts.all.desc",
+
+    keywordsKey: "s.idx.shortcuts.all.keywords",
     panel: "shortcuts",
-    section: "Shortcuts",
+    sectionKey: "s.idx.section.shortcuts",
+
     anchor: "search",
   },
   {
     id: "shortcuts.reset_all",
-    title: "Reset Shortcuts to Defaults",
-    description: "Restore every keybinding to its built-in default",
-    keywords: ["reset", "default", "restore", "keybinding", "shortcut"],
+    titleKey: "s.idx.shortcuts.reset.all.title",
+
+    descKey: "s.idx.shortcuts.reset.all.desc",
+
+    keywordsKey: "s.idx.shortcuts.reset.all.keywords",
     panel: "shortcuts",
-    section: "Shortcuts",
+    sectionKey: "s.idx.section.shortcuts",
+
     anchor: "search",
   },
   {
     id: "shortcuts.workspace",
-    title: "Workspace Shortcuts",
-    description: "Switch and move windows between workspaces",
-    keywords: ["workspace", "desktop", "super", "switch", "move"],
+    titleKey: "s.idx.shortcuts.workspace.title",
+
+    descKey: "s.idx.shortcuts.workspace.desc",
+
+    keywordsKey: "s.idx.shortcuts.workspace.keywords",
     panel: "shortcuts",
-    section: "Workspaces",
+    sectionKey: "s.idx.section.workspaces",
+
     anchor: "cat-workspace",
   },
   {
     id: "shortcuts.tiling",
-    title: "Tiling Shortcuts",
-    description: "Toggle tiling mode, monocle, scratchpad, and floating windows",
-    keywords: ["tile", "tiling", "monocle", "float", "scratchpad"],
+    titleKey: "s.idx.shortcuts.tiling.title",
+
+    descKey: "s.idx.shortcuts.tiling.desc",
+
+    keywordsKey: "s.idx.shortcuts.tiling.keywords",
     panel: "shortcuts",
-    section: "Tiling",
+    sectionKey: "s.idx.section.tiling",
+
     anchor: "cat-tiling",
   },
 
   // ── Mouse ──────────────────────────────────────────────────────────
   {
     id: "mouse.acceleration",
-    title: "Mouse Acceleration",
-    description: "How much cursor speed scales with movement velocity",
-    keywords: ["mouse", "pointer", "speed", "accel", "acceleration", "sensitivity"],
+    titleKey: "s.idx.mouse.acceleration.title",
+
+    descKey: "s.idx.mouse.acceleration.desc",
+
+    keywordsKey: "s.idx.mouse.acceleration.keywords",
     panel: "mouse",
-    section: "Behavior",
+    sectionKey: "s.idx.section.behavior",
+
     anchor: "mouse-acceleration",
     inlineAction: {
       type: "slider",
@@ -552,11 +624,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "mouse.natural_scroll",
-    title: "Natural Scroll (Mouse)",
-    description: "Scroll direction follows wheel movement",
-    keywords: ["mouse", "scroll", "natural", "reverse", "direction"],
+    titleKey: "s.idx.mouse.natural.scroll.title",
+
+    descKey: "s.idx.mouse.natural.scroll.desc",
+
+    keywordsKey: "s.idx.mouse.natural.scroll.keywords",
     panel: "mouse",
-    section: "Behavior",
+    sectionKey: "s.idx.section.behavior",
+
     anchor: "mouse-natural-scroll",
     inlineAction: {
       type: "toggle",
@@ -566,11 +641,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "mouse.left_handed",
-    title: "Left-Handed Mouse",
-    description: "Swap left and right mouse buttons",
-    keywords: ["mouse", "left", "handed", "button", "swap"],
+    titleKey: "s.idx.mouse.left.handed.title",
+
+    descKey: "s.idx.mouse.left.handed.desc",
+
+    keywordsKey: "s.idx.mouse.left.handed.keywords",
     panel: "mouse",
-    section: "Behavior",
+    sectionKey: "s.idx.section.behavior",
+
     anchor: "mouse-left-handed",
     inlineAction: {
       type: "toggle",
@@ -582,11 +660,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // ── Touchpad ───────────────────────────────────────────────────────
   {
     id: "touchpad.tap_to_click",
-    title: "Tap to Click",
-    description: "Register taps on the touchpad as primary clicks",
-    keywords: ["touchpad", "tap", "click", "trackpad"],
+    titleKey: "s.idx.touchpad.tap.to.click.title",
+
+    descKey: "s.idx.touchpad.tap.to.click.desc",
+
+    keywordsKey: "s.idx.touchpad.tap.to.click.keywords",
     panel: "touchpad",
-    section: "Clicking",
+    sectionKey: "s.idx.section.clicking",
+
     anchor: "touchpad-tap",
     inlineAction: {
       type: "toggle",
@@ -596,11 +677,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "touchpad.natural_scroll",
-    title: "Natural Scroll (Touchpad)",
-    description: "Content follows finger direction",
-    keywords: ["touchpad", "scroll", "natural", "trackpad"],
+    titleKey: "s.idx.touchpad.natural.scroll.title",
+
+    descKey: "s.idx.touchpad.natural.scroll.desc",
+
+    keywordsKey: "s.idx.touchpad.natural.scroll.keywords",
     panel: "touchpad",
-    section: "Scrolling",
+    sectionKey: "s.idx.section.scrolling",
+
     anchor: "touchpad-natural-scroll",
     inlineAction: {
       type: "toggle",
@@ -610,11 +694,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "touchpad.two_finger_scroll",
-    title: "Two-Finger Scroll",
-    description: "Scroll by dragging two fingers on the touchpad",
-    keywords: ["touchpad", "two finger", "scroll", "trackpad"],
+    titleKey: "s.idx.touchpad.two.finger.scroll.title",
+
+    descKey: "s.idx.touchpad.two.finger.scroll.desc",
+
+    keywordsKey: "s.idx.touchpad.two.finger.scroll.keywords",
     panel: "touchpad",
-    section: "Scrolling",
+    sectionKey: "s.idx.section.scrolling",
+
     anchor: "touchpad-two-finger",
     inlineAction: {
       type: "toggle",
@@ -624,11 +711,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "touchpad.disable_while_typing",
-    title: "Disable While Typing",
-    description: "Ignore touchpad input briefly after each keystroke",
-    keywords: ["touchpad", "typing", "disable", "palm", "rejection"],
+    titleKey: "s.idx.touchpad.disable.while.typing.title",
+
+    descKey: "s.idx.touchpad.disable.while.typing.desc",
+
+    keywordsKey: "s.idx.touchpad.disable.while.typing.keywords",
     panel: "touchpad",
-    section: "Clicking",
+    sectionKey: "s.idx.section.clicking",
+
     anchor: "touchpad-dwt",
     inlineAction: {
       type: "toggle",
@@ -638,11 +728,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "touchpad.acceleration",
-    title: "Touchpad Acceleration",
-    description: "How much cursor speed scales with finger velocity",
-    keywords: ["touchpad", "accel", "acceleration", "speed", "trackpad"],
+    titleKey: "s.idx.touchpad.acceleration.title",
+
+    descKey: "s.idx.touchpad.acceleration.desc",
+
+    keywordsKey: "s.idx.touchpad.acceleration.keywords",
     panel: "touchpad",
-    section: "Pointer",
+    sectionKey: "s.idx.section.pointer",
+
     anchor: "touchpad-acceleration",
     inlineAction: {
       type: "slider",
@@ -657,18 +750,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // ── Workspaces & Tiling (Sprint B) ─────────────────────────────────
   {
     id: "workspaces.layout",
-    title: "Workspace Layout",
-    description: "Horizontal or vertical workspace arrangement",
-    keywords: [
-      "workspace",
-      "layout",
-      "horizontal",
-      "vertical",
-      "direction",
-      "arrange",
-    ],
+    titleKey: "s.idx.workspaces.layout.title",
+
+    descKey: "s.idx.workspaces.layout.desc",
+
+    keywordsKey: "s.idx.workspaces.layout.keywords",
     panel: "workspaces",
-    section: "Workspace Layout",
+    sectionKey: "s.idx.section.workspacelayout",
+
     anchor: "workspace-layout",
     inlineAction: {
       type: "select",
@@ -682,11 +771,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "tiling.inner_gap",
-    title: "Inner Gap",
-    description: "Pixels between adjacent tiled windows",
-    keywords: ["gap", "spacing", "tile", "tiling", "inner"],
+    titleKey: "s.idx.tiling.inner.gap.title",
+
+    descKey: "s.idx.tiling.inner.gap.desc",
+
+    keywordsKey: "s.idx.tiling.inner.gap.keywords",
     panel: "workspaces",
-    section: "Tiling",
+    sectionKey: "s.idx.section.tiling",
+
     anchor: "inner-gap",
     inlineAction: {
       type: "slider",
@@ -700,11 +792,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "tiling.outer_gap",
-    title: "Outer Gap",
-    description: "Pixels between tiled windows and the screen edge",
-    keywords: ["gap", "spacing", "tile", "tiling", "outer", "margin"],
+    titleKey: "s.idx.tiling.outer.gap.title",
+
+    descKey: "s.idx.tiling.outer.gap.desc",
+
+    keywordsKey: "s.idx.tiling.outer.gap.keywords",
     panel: "workspaces",
-    section: "Tiling",
+    sectionKey: "s.idx.section.tiling",
+
     anchor: "outer-gap",
     inlineAction: {
       type: "slider",
@@ -718,11 +813,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "tiling.smart_gaps",
-    title: "Smart Gaps",
-    description: "Hide gaps when only one window is tiled",
-    keywords: ["gap", "smart", "tile", "tiling", "single", "window"],
+    titleKey: "s.idx.tiling.smart.gaps.title",
+
+    descKey: "s.idx.tiling.smart.gaps.desc",
+
+    keywordsKey: "s.idx.tiling.smart.gaps.keywords",
     panel: "workspaces",
-    section: "Tiling",
+    sectionKey: "s.idx.section.tiling",
+
     anchor: "smart-gaps",
     inlineAction: {
       type: "toggle",
@@ -732,19 +830,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "tiling.tiled_headers",
-    title: "Tiled Window Headers",
-    description: "Show window-control headers on single tiled windows",
-    keywords: [
-      "tiled",
-      "headers",
-      "title bar",
-      "decoration",
-      "i3",
-      "sway",
-      "hyprland",
-    ],
+    titleKey: "s.idx.tiling.tiled.headers.title",
+
+    descKey: "s.idx.tiling.tiled.headers.desc",
+
+    keywordsKey: "s.idx.tiling.tiled.headers.keywords",
     panel: "workspaces",
-    section: "Tiling",
+    sectionKey: "s.idx.section.tiling",
+
     anchor: "tiled-headers",
     inlineAction: {
       type: "toggle",
@@ -754,20 +847,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "tiling.window_rules",
-    title: "Window Rules",
-    description: "Force apps to float or tile based on app_id, title, or type",
-    keywords: [
-      "window",
-      "rules",
-      "float",
-      "tile",
-      "regex",
-      "match",
-      "exception",
-      "app",
-    ],
+    titleKey: "s.idx.tiling.window.rules.title",
+
+    descKey: "s.idx.tiling.window.rules.desc",
+
+    keywordsKey: "s.idx.tiling.window.rules.keywords",
     panel: "workspaces",
-    section: "Window Rules",
+    sectionKey: "s.idx.section.windowrules",
+
     anchor: "window-rules",
   },
 
@@ -777,92 +864,64 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // who want to change them open the panel via deepLink.
   {
     id: "system-actions.volume",
-    title: "Volume Keys",
-    description: "Volume up / down / mute / mute microphone commands",
-    keywords: [
-      "volume",
-      "wpctl",
-      "audio",
-      "mute",
-      "key",
-      "fn",
-      "hardware",
-    ],
+    titleKey: "s.idx.system-actions.volume.title",
+
+    descKey: "s.idx.system-actions.volume.desc",
+
+    keywordsKey: "s.idx.system-actions.volume.keywords",
     panel: "system-actions",
-    section: "Volume",
+    sectionKey: "s.idx.section.volume",
+
     anchor: "action-VolumeRaise",
   },
   {
     id: "system-actions.brightness",
-    title: "Brightness Keys",
-    description: "Brightness up / down commands for laptop Fn-row keys",
-    keywords: [
-      "brightness",
-      "screen",
-      "fn",
-      "hardware",
-      "key",
-      "backlight",
-      "laptop",
-    ],
+    titleKey: "s.idx.system-actions.brightness.title",
+
+    descKey: "s.idx.system-actions.brightness.desc",
+
+    keywordsKey: "s.idx.system-actions.brightness.keywords",
     panel: "system-actions",
-    section: "Brightness",
+    sectionKey: "s.idx.section.brightness",
+
     anchor: "action-BrightnessUp",
   },
   {
     id: "system-actions.media",
-    title: "Media Keys",
-    description: "Play / pause / next / previous track commands",
-    keywords: [
-      "media",
-      "playerctl",
-      "play",
-      "pause",
-      "next",
-      "previous",
-      "track",
-      "music",
-      "spotify",
-    ],
+    titleKey: "s.idx.system-actions.media.title",
+
+    descKey: "s.idx.system-actions.media.desc",
+
+    keywordsKey: "s.idx.system-actions.media.keywords",
     panel: "system-actions",
-    section: "Media",
+    sectionKey: "s.idx.section.media",
+
     anchor: "action-PlayPause",
   },
   {
     id: "system-actions.system",
-    title: "System Keys",
-    description:
-      "Lock screen, suspend, power off, log out, launcher, screenshot",
-    keywords: [
-      "lock",
-      "suspend",
-      "power",
-      "off",
-      "logout",
-      "launcher",
-      "screenshot",
-      "system",
-    ],
+    titleKey: "s.idx.system-actions.system.title",
+
+    descKey: "s.idx.system-actions.system.desc",
+
+    keywordsKey: "s.idx.system-actions.system.keywords",
     panel: "system-actions",
-    section: "System",
+    sectionKey: "s.idx.section.system",
+
     anchor: "action-LockScreen",
   },
 
   // ── Accessibility (Sprint C) ───────────────────────────────────────
   {
     id: "accessibility.zoom.shortcuts",
-    title: "Mouse Zoom Shortcuts",
-    description: "Super+Scroll to zoom in / out",
-    keywords: [
-      "zoom",
-      "magnifier",
-      "magnify",
-      "accessibility",
-      "a11y",
-      "shortcut",
-    ],
+    titleKey: "s.idx.accessibility.zoom.shortcuts.title",
+
+    descKey: "s.idx.accessibility.zoom.shortcuts.desc",
+
+    keywordsKey: "s.idx.accessibility.zoom.shortcuts.keywords",
     panel: "accessibility",
-    section: "Screen Magnifier",
+    sectionKey: "s.idx.section.screenmagnifier",
+
     anchor: "zoom-shortcuts",
     inlineAction: {
       type: "toggle",
@@ -872,11 +931,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "accessibility.zoom.increment",
-    title: "Zoom Increment",
-    description: "How much each zoom step changes magnification",
-    keywords: ["zoom", "step", "magnifier", "accessibility"],
+    titleKey: "s.idx.accessibility.zoom.increment.title",
+
+    descKey: "s.idx.accessibility.zoom.increment.desc",
+
+    keywordsKey: "s.idx.accessibility.zoom.increment.keywords",
     panel: "accessibility",
-    section: "Screen Magnifier",
+    sectionKey: "s.idx.section.screenmagnifier",
+
     anchor: "zoom-increment",
     inlineAction: {
       type: "slider",
@@ -890,11 +952,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "accessibility.zoom.movement",
-    title: "Zoom Movement",
-    description: "How the magnified region tracks the cursor",
-    keywords: ["zoom", "movement", "cursor", "magnifier", "edge", "centered"],
+    titleKey: "s.idx.accessibility.zoom.movement.title",
+
+    descKey: "s.idx.accessibility.zoom.movement.desc",
+
+    keywordsKey: "s.idx.accessibility.zoom.movement.keywords",
     panel: "accessibility",
-    section: "Screen Magnifier",
+    sectionKey: "s.idx.section.screenmagnifier",
+
     anchor: "zoom-movement",
     inlineAction: {
       type: "select",
@@ -909,11 +974,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "accessibility.zoom.start_on_login",
-    title: "Start Zoom on Login",
-    description: "Auto-enable the magnifier on session start",
-    keywords: ["zoom", "magnifier", "login", "boot", "startup"],
+    titleKey: "s.idx.accessibility.zoom.start.on.login.title",
+
+    descKey: "s.idx.accessibility.zoom.start.on.login.desc",
+
+    keywordsKey: "s.idx.accessibility.zoom.start.on.login.keywords",
     panel: "accessibility",
-    section: "Screen Magnifier",
+    sectionKey: "s.idx.section.screenmagnifier",
+
     anchor: "zoom-start-on-login",
     inlineAction: {
       type: "toggle",
@@ -923,39 +991,40 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "accessibility.invert",
-    title: "Invert Colors",
-    description: "High-contrast inverted display",
-    keywords: ["invert", "contrast", "colors", "accessibility", "dark"],
+    titleKey: "s.idx.accessibility.invert.title",
+
+    descKey: "s.idx.accessibility.invert.desc",
+
+    keywordsKey: "s.idx.accessibility.invert.keywords",
     panel: "accessibility",
-    section: "Color Filters",
+    sectionKey: "s.idx.section.colorfilters",
+
     anchor: "invert-colors",
   },
   {
     id: "accessibility.color_blindness",
-    title: "Color Blindness Filter",
-    description: "Compensation for protanopia, deuteranopia, tritanopia",
-    keywords: [
-      "color",
-      "blindness",
-      "protanopia",
-      "deuteranopia",
-      "tritanopia",
-      "greyscale",
-      "accessibility",
-    ],
+    titleKey: "s.idx.accessibility.color.blindness.title",
+
+    descKey: "s.idx.accessibility.color.blindness.desc",
+
+    keywordsKey: "s.idx.accessibility.color.blindness.keywords",
     panel: "accessibility",
-    section: "Color Filters",
+    sectionKey: "s.idx.section.colorfilters",
+
     anchor: "color-blindness-filter",
   },
 
   // ── Focus Mode (Sprint C) ──────────────────────────────────────────
   {
     id: "focus.show_project_name",
-    title: "Show Project Name in Top Bar",
-    description: "Pin the active project name when Focus Mode is on",
-    keywords: ["focus", "project", "topbar", "indicator", "name"],
+    titleKey: "s.idx.focus.show.project.name.title",
+
+    descKey: "s.idx.focus.show.project.name.desc",
+
+    keywordsKey: "s.idx.focus.show.project.name.keywords",
     panel: "focus",
-    section: "Top Bar Indicator",
+    sectionKey: "s.idx.section.topbarindicator",
+
     anchor: "focus-show-project-name",
     inlineAction: {
       type: "toggle",
@@ -965,27 +1034,26 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "focus.suppressed_apps",
-    title: "Default Suppressed Apps",
-    description: "Apps silenced by Focus Mode regardless of project",
-    keywords: ["focus", "suppress", "apps", "notifications", "default", "mute"],
+    titleKey: "s.idx.focus.suppressed.apps.title",
+
+    descKey: "s.idx.focus.suppressed.apps.desc",
+
+    keywordsKey: "s.idx.focus.suppressed.apps.keywords",
     panel: "focus",
-    section: "Default Suppressed Apps",
+    sectionKey: "s.idx.section.defaultsuppressedapps",
+
     anchor: "focus-suppressed-apps",
   },
   {
     id: "knowledge.promote_threshold",
-    title: "Auto-Promote Threshold",
-    description: "Files-per-session before an inferred project gets promoted",
-    keywords: [
-      "promote",
-      "project",
-      "threshold",
-      "detection",
-      "auto",
-      "files",
-    ],
+    titleKey: "s.idx.knowledge.promote.threshold.title",
+
+    descKey: "s.idx.knowledge.promote.threshold.desc",
+
+    keywordsKey: "s.idx.knowledge.promote.threshold.keywords",
     panel: "knowledge",
-    section: "Project Detection",
+    sectionKey: "s.idx.section.projectdetection",
+
     anchor: "kg-promote",
     inlineAction: {
       type: "slider",
@@ -999,27 +1067,26 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   },
   {
     id: "knowledge.watch_dirs",
-    title: "Project Watch Directories",
-    description: "Where the daemon scans for project markers",
-    keywords: [
-      "watch",
-      "directories",
-      "folders",
-      "project",
-      "scan",
-      "detection",
-    ],
+    titleKey: "s.idx.knowledge.watch.dirs.title",
+
+    descKey: "s.idx.knowledge.watch.dirs.desc",
+
+    keywordsKey: "s.idx.knowledge.watch.dirs.keywords",
     panel: "knowledge",
-    section: "Project Detection",
+    sectionKey: "s.idx.section.projectdetection",
+
     anchor: "kg-watch-dirs",
   },
   {
     id: "knowledge.max_depth",
-    title: "Recursion Depth",
-    description: "How deep the watcher recurses below each watch directory",
-    keywords: ["depth", "recursion", "scan", "project", "detection"],
+    titleKey: "s.idx.knowledge.max.depth.title",
+
+    descKey: "s.idx.knowledge.max.depth.desc",
+
+    keywordsKey: "s.idx.knowledge.max.depth.keywords",
     panel: "knowledge",
-    section: "Project Detection",
+    sectionKey: "s.idx.section.projectdetection",
+
     anchor: "kg-max-depth",
     inlineAction: {
       type: "slider",
@@ -1035,20 +1102,26 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // ── Knowledge Graph (Sprint C) ─────────────────────────────────────
   {
     id: "knowledge.app",
-    title: "Knowledge App",
-    description: "Browse the timeline and project graph (Phase 8)",
-    keywords: ["knowledge", "timeline", "graph", "browse", "app"],
+    titleKey: "s.idx.knowledge.app.title",
+
+    descKey: "s.idx.knowledge.app.desc",
+
+    keywordsKey: "s.idx.knowledge.app.keywords",
     panel: "knowledge",
-    section: "Knowledge App",
+    sectionKey: "s.idx.section.knowledgeapp",
+
     anchor: "kg-app-link",
   },
   {
     id: "knowledge.stats",
-    title: "Knowledge Graph Stats",
-    description: "Database size, graph size, FUSE mount status",
-    keywords: ["stats", "size", "fuse", "mount", "knowledge", "graph"],
+    titleKey: "s.idx.knowledge.stats.title",
+
+    descKey: "s.idx.knowledge.stats.desc",
+
+    keywordsKey: "s.idx.knowledge.stats.keywords",
     panel: "knowledge",
-    section: "Stats",
+    sectionKey: "s.idx.section.stats",
+
     anchor: "kg-daemon-status",
   },
 
@@ -1061,24 +1134,14 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // review MEDIUM 2).
   {
     id: "display.panel",
-    title: "Display",
-    description: "Monitors, resolution, refresh rate, scale, night light",
-    keywords: [
-      "display",
-      "monitor",
-      "resolution",
-      "refresh",
-      "scale",
-      "rotation",
-      "primary",
-      "hidpi",
-      "1080p",
-      "1440p",
-      "4k",
-      "hz",
-    ],
+    titleKey: "s.idx.display.panel.title",
+
+    descKey: "s.idx.display.panel.desc",
+
+    keywordsKey: "s.idx.display.panel.keywords",
     panel: "display",
-    section: "Display",
+    sectionKey: "s.idx.section.display",
+
     anchor: "",
   },
 
@@ -1088,132 +1151,130 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
   // covers search; per-row deepLinks are a follow-up.
   {
     id: "keyboard.panel",
-    title: "Keyboard",
-    description: "Layout, repeat rate, numlock",
-    keywords: [
-      "keyboard",
-      "layout",
-      "xkb",
-      "variant",
-      "dvorak",
-      "colemak",
-      "repeat",
-      "delay",
-      "rate",
-      "numlock",
-      "german",
-      "english",
-    ],
+    titleKey: "s.idx.keyboard.panel.title",
+
+    descKey: "s.idx.keyboard.panel.desc",
+
+    keywordsKey: "s.idx.keyboard.panel.keywords",
     panel: "keyboard",
-    section: "Keyboard",
+    sectionKey: "s.idx.section.keyboard",
+
     anchor: "",
   },
 
   // ── App access (the permission browser) ────────────────────────────
   {
     id: "privacy.panel",
-    title: "App access",
-    description: "Which apps can reach your data, and what you have allowed",
-    keywords: [
-      "privacy",
-      "permissions",
-      "access",
-      "grants",
-      "capabilities",
-      "revoke",
-      "camera",
-      "microphone",
-      "clipboard",
-      "knowledge graph",
-    ],
+    titleKey: "s.idx.privacy.panel.title",
+
+    descKey: "s.idx.privacy.panel.desc",
+
+    keywordsKey: "s.idx.privacy.panel.keywords",
     panel: "privacy",
-    section: "Privacy",
+    sectionKey: "s.idx.section.privacy",
+
     anchor: "",
   },
 
   // ── Extensions (Sprint D coverage) ─────────────────────────────────
   {
     id: "extensions.panel",
-    title: "Extensions",
-    description: "Installed Waypointer plugins, top-bar applets, modules",
-    keywords: [
-      "extensions",
-      "modules",
-      "plugins",
-      "waypointer",
-      "install",
-      "forage",
-      "lunpkg",
-    ],
+    titleKey: "s.idx.extensions.panel.title",
+
+    descKey: "s.idx.extensions.panel.desc",
+
+    keywordsKey: "s.idx.extensions.panel.keywords",
     panel: "extensions",
-    section: "Modules",
+    sectionKey: "s.idx.section.modules",
+
     anchor: "",
   },
 
   // ── About (Sprint D coverage) ──────────────────────────────────────
   {
     id: "about.version",
-    title: "Arlen Version",
-    description: "Release tag and kernel version",
-    keywords: ["about", "version", "release", "kernel"],
+    titleKey: "s.idx.about.version.title",
+
+    descKey: "s.idx.about.version.desc",
+
+    keywordsKey: "s.idx.about.version.keywords",
     panel: "about",
-    section: "Arlen OS",
+    sectionKey: "s.idx.section.arlenos",
+
     anchor: "arlen-version",
   },
   {
     id: "about.daemons",
-    title: "Daemon Status",
-    description: "Knowledge, Notification, Event Bus, Install daemon health",
-    keywords: ["about", "daemon", "status", "notification", "event bus", "install"],
+    titleKey: "s.idx.about.daemons.title",
+
+    descKey: "s.idx.about.daemons.desc",
+
+    keywordsKey: "s.idx.about.daemons.keywords",
     panel: "about",
-    section: "Daemons",
+    sectionKey: "s.idx.section.daemons",
+
     anchor: "daemon-knowledge-graph",
   },
 
   // ── AI (Phase 9-α S7) ──────────────────────────────────────────────
   {
     id: "ai.enable",
-    title: "Enable AI features",
-    description: "Turn the AI assistant on or off",
-    keywords: ["ai", "assistant", "enable", "llm", "model", "intelligence"],
+    titleKey: "s.idx.ai.enable.title",
+
+    descKey: "s.idx.ai.enable.desc",
+
+    keywordsKey: "s.idx.ai.enable.keywords",
     panel: "ai",
-    section: "AI Layer",
+    sectionKey: "s.idx.section.ailayer",
+
     anchor: "ai-enable",
   },
   {
     id: "ai.provider",
-    title: "AI model provider",
-    description: "Choose which model answers your queries (Ollama, ...)",
-    keywords: ["ai", "provider", "model", "ollama", "local", "llm"],
+    titleKey: "s.idx.ai.provider.title",
+
+    descKey: "s.idx.ai.provider.desc",
+
+    keywordsKey: "s.idx.ai.provider.keywords",
     panel: "ai",
-    section: "Provider",
+    sectionKey: "s.idx.section.provider",
+
     anchor: "ai-provider",
   },
   {
     id: "ai.status",
-    title: "Assistant service status",
-    description: "Whether the assistant service and network gate are running",
-    keywords: ["ai", "daemon", "proxy", "status", "running", "service"],
+    titleKey: "s.idx.ai.status.title",
+
+    descKey: "s.idx.ai.status.desc",
+
+    keywordsKey: "s.idx.ai.status.keywords",
     panel: "ai",
-    section: "Status",
+    sectionKey: "s.idx.section.status",
+
     anchor: "ai-daemon-status",
   },
   {
     id: "ai.behaviours",
-    title: "AI behaviours",
-    description: "What the assistant may do on its own, per behaviour",
-    keywords: ["ai", "behaviours", "background", "autonomous", "tasks", "agent"],
+    titleKey: "s.idx.ai.behaviours.title",
+
+    descKey: "s.idx.ai.behaviours.desc",
+
+    keywordsKey: "s.idx.ai.behaviours.keywords",
     panel: "ai",
-    section: "Behaviours",
+    sectionKey: "s.idx.section.behaviours",
+
     anchor: "ai-behaviours",
   },
   {
     id: "ai.executor",
-    title: "Let the assistant make small changes",
-    description: "Allow small, reversible changes without per-action prompts",
-    keywords: ["ai", "changes", "write", "automatic", "executor", "curation"],
+    titleKey: "s.idx.ai.executor.title",
+
+    descKey: "s.idx.ai.executor.desc",
+
+    keywordsKey: "s.idx.ai.executor.keywords",
     panel: "ai",
-    section: "Execution",
+    sectionKey: "s.idx.section.execution",
+
     anchor: "ai-executor-live",
   },
 

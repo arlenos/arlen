@@ -216,7 +216,7 @@
           class="search-popup group-data-[collapsible=icon]:hidden"
           role="listbox"
         >
-          {#each results as r, i (r.setting.title + i)}
+          {#each results as r, i (r.setting.id)}
             {@const Icon =
               ICONS[
                 PANELS.find((p) => p.id === r.setting.panel)?.icon ?? "Palette"
@@ -234,10 +234,10 @@
                 <Icon size={16} strokeWidth={1.75} />
               </span>
               <span class="search-result-text">
-                <span class="search-result-title">{r.setting.title}</span>
+                <span class="search-result-title">{$t(r.setting.titleKey)}</span>
                 <span class="search-result-meta">
-                  <span>{r.setting.section}</span>
-                  <span>{r.setting.description}</span>
+                  <span>{$t(r.setting.sectionKey)}</span>
+                  <span>{$t(r.setting.descKey)}</span>
                 </span>
               </span>
             </button>
@@ -288,8 +288,11 @@
        matches the sidebar's own 0.5rem padding, kept uniform on the top so
        the corner nests evenly. */
     --container-radius: var(--radius-window, var(--radius-card));
-    --container-inset: 0.5rem;
-    margin-top: 0.5rem;
+    /* No top nudge: the SidebarHeader centers the field against the h-12 bar
+       (a margin here would fight justify-center and sit the field 4px low).
+       Centered in 48px the true top inset is 6px, so the concentric radius
+       derives from that. */
+    --container-inset: 0.375rem;
   }
 
   .settings-search-wrap {
