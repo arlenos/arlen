@@ -67,7 +67,7 @@
           id="md-reduceMotion"
         >
           {#snippet control()}
-            <Switch value={reduce} ariaLabel="Reduce motion" onchange={(v) => setMd("reduceMotion", v)} />
+            <Switch value={reduce} ariaLabel={$t("s.md.reduceMotion")} onchange={(v) => setMd("reduceMotion", v)} />
           {/snippet}
         </OverrideRow>
         <OverrideRow
@@ -84,7 +84,7 @@
               max={400}
               step={20}
               unit="ms"
-              ariaLabel="Speed"
+              ariaLabel={$t("s.md.speed")}
               onchange={(v) => setMd("durationNormal", v)}
             />
           {/snippet}
@@ -103,7 +103,7 @@
               id="md-durationFast"
             >
               {#snippet control()}
-                <ValueSlider value={Number($effective.durationFast)} min={40} max={300} step={20} unit="ms" ariaLabel="Fast" onchange={(v) => setMd("durationFast", v)} />
+                <ValueSlider value={Number($effective.durationFast)} min={40} max={300} step={20} unit="ms" ariaLabel={$t("s.md.fast")} onchange={(v) => setMd("durationFast", v)} />
               {/snippet}
             </OverrideRow>
             <OverrideRow
@@ -114,7 +114,7 @@
               id="md-durationSlow"
             >
               {#snippet control()}
-                <ValueSlider value={Number($effective.durationSlow)} min={200} max={800} step={20} unit="ms" ariaLabel="Slow" onchange={(v) => setMd("durationSlow", v)} />
+                <ValueSlider value={Number($effective.durationSlow)} min={200} max={800} step={20} unit="ms" ariaLabel={$t("s.md.slow")} onchange={(v) => setMd("durationSlow", v)} />
               {/snippet}
             </OverrideRow>
           </CollapsibleContent>
@@ -152,7 +152,7 @@
           id="md-blurEnabled"
         >
           {#snippet control()}
-            <Switch value={blur} ariaLabel="Blur" onchange={(v) => setMd("blurEnabled", v)} />
+            <Switch value={blur} ariaLabel={$t("s.md.blur")} onchange={(v) => setMd("blurEnabled", v)} />
           {/snippet}
         </OverrideRow>
       </Section>
