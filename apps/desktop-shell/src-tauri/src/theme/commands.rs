@@ -242,6 +242,15 @@ pub fn start_appearance_watcher(app: AppHandle) {
                 ) {
                     return;
                 }
+                // `theme.toml` lives in this same directory, so its events arrive
+                // here and are discarded by this filter. That is correct only
+                // while nothing writes it: `ConfigFile::Customization` maps to it
+                // but no Settings page selects that variant yet, and
+                // `reload_from_disk` below reads `appearance.toml` alone. When the
+                // Appearance suite starts writing the customization layer, THIS
+                // FILTER AND `reload_from_disk` HAVE TO CHANGE WITH IT - otherwise
+                // the layer is written and silently ignored, which looks like a
+                // setting that does nothing rather than like a missing wire.
                 let touches_target = event.paths.iter().any(|p| {
                     p == &target_clone
                         || p.file_name()
