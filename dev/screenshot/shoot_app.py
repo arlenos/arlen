@@ -121,6 +121,11 @@ def main():
                     help="text to type into the input (Enter appended)")
     ap.add_argument("--selector", default=None,
                     help="CSS selector of the input to type into")
+    ap.add_argument("--inject", default=None,
+                    help="path to a JS file to run in the page; its return value "
+                         "is printed as `inject result: <value>`. The way to ask "
+                         "the running app a question about its own DOM, which is "
+                         "the only place a Tauri command's output can be seen")
     ap.add_argument("--grab-x", action="store_true",
                     help="grab the X root window with `import` instead of the "
                          "WebDriver screenshot endpoint - needed for an app that "
@@ -140,6 +145,15 @@ def main():
             exit_code = 0 if ok else 1
             if not args.out:
                 return exit_code
+        if args.inject:
+            with open(args.inject) as f:
+                script = f.read()
+            # Same endpoint and the same `inject result:` line as `shoot.py`, so
+            # the scanner reads one shape whichever harness produced it.
+            out = rq(base, "POST", f"/session/{sid}/execute/sync",
+                     {"script": script, "args": []})["value"]
+            print(f"inject result: {out}")
+
         if args.type:
             # Type the command via the canonical WebDriver Element Send Keys
             # endpoint, which produces real key events the framework's handlers
