@@ -281,7 +281,7 @@
     } catch (e) {
       if (myVersion === writeSeq) {
         entries = previous;
-        banner = { kind: "error", message: `Save failed: ${e}` };
+        banner = { kind: "error", message: $t("s.qs.saveFailed", { error: String(e) }) };
       }
     }
     if (myVersion === writeSeq) busy = false;
@@ -368,7 +368,7 @@
         message: "Quick Settings layout restored to defaults.",
       };
     } catch (e) {
-      banner = { kind: "error", message: `Reset failed: ${e}` };
+      banner = { kind: "error", message: $t("s.qs.resetFailed", { error: String(e) }) };
     }
     busy = false;
     confirmResetOpen = false;

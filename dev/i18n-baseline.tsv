@@ -11,6 +11,7 @@ apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Tab
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	hjkl
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	to enable some.
+apps/desktop-shell/src/lib/components/WorkspaceIndicator.svelte	[overlay] scheduleClose blocked (ctxOpen={} domMenu={})
 apps/desktop-shell/src/lib/stores/consent.ts	connect to its sync service
 apps/desktop-shell/src/lib/stores/consent.ts	install system software with admin rights
 apps/desktop-shell/src/lib/stores/consent.ts	move 8 files to the Trash
@@ -42,6 +43,8 @@ apps/desktop-shell/src/lib/stores/printDialog.ts	Quarterly report.pdf
 apps/desktop-shell/src/lib/stores/sourcePicker.ts	Arlen OS - Wikipedia
 apps/desktop-shell/src/lib/stores/sourcePicker.ts	Documents
 apps/desktop-shell/src/lib/stores/sourcePicker.ts	tim@arlen: ~/work
+apps/desktop-shell/src/lib/workspace/drag.svelte.ts	[overlay] right-click card={} selectionSize={}
+apps/desktop-shell/src/lib/workspace/drag.svelte.ts	[overlay] toggleSelection card={}
 apps/desktop-shell/src/routes/_mpristest/+page.svelte	Click an album-art thumb to open the mini-player.
 apps/desktop-shell/src/routes/_mpristest/+page.svelte	Lateralus
 apps/desktop-shell/src/routes/_printtest/+page.svelte	Print dialog look-mock. The dialog opens over this page.
