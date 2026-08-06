@@ -6,17 +6,30 @@ import { locale } from "../../i18n";
 /// times the way a file manager speaks them — short, lay-readable,
 /// no internal units.
 
-/// 0 B / 18 KB / 2.4 MB / 4.0 GB.
-export function formatSize(bytes: number | null): string {
+/// 0 B / 18 KB / 2.4 MB / 4.0 GB, with the reader's decimal mark.
+///
+/// `toFixed` always writes a point, so this said "2.4 MB" on a German desktop
+/// where the number wants a comma - the same shape as the hardcoded month name
+/// described below, one line up from the comment that records it. `Intl` knows
+/// the separator for every locale the platform does.
+export function formatSize(bytes: number | null, loc = get(locale)): string {
   if (bytes === null) return "";
-  if (bytes < 1000) return `${bytes} B`;
+  if (bytes < 1000) return `${decimals(bytes, 0, loc)} B`;
   const units = ["KB", "MB", "GB", "TB"];
   let v = bytes;
   for (const u of units) {
     v /= 1000;
-    if (v < 1000) return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${u}`;
+    if (v < 1000) return `${decimals(v, v < 10 ? 1 : 0, loc)} ${u}`;
   }
-  return `${Math.round(v)} PB`;
+  return `${decimals(v, 0, loc)} PB`;
+}
+
+/// A number with exactly `digits` decimals, in `loc`.
+function decimals(value: number, digits: number, loc: string): string {
+  return new Intl.NumberFormat(loc, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value);
 }
 
 /// "now" / "12 minutes ago" / "yesterday" / "4 days ago" / "12 May" /
