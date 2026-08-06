@@ -5,6 +5,7 @@
   /// web-style modal. The host passes its own name/version/description.
   import { Dialog } from "../dialog";
   import { Button } from "../button";
+  import { kt } from "../../../i18n/messages.kit";
 
   type Props = {
     /// Whether the dialog is open.
@@ -22,16 +23,16 @@
   let { open, onClose, appName, version, description }: Props = $props();
 </script>
 
-<Dialog {open} {onClose} ariaLabel={`About ${appName}`} size="sm">
+<Dialog {open} {onClose} ariaLabel={$kt("k.about.title", { app: appName })} size="sm">
   <div class="about">
     <div class="about-mark" aria-hidden="true">{appName.charAt(0)}</div>
     <div class="about-name">{appName}</div>
-    <div class="about-sub">Arlen OS &middot; {version}</div>
+    <div class="about-sub">{$kt("k.about.build", { version })}</div>
     {#if description}
       <p class="about-desc">{description}</p>
     {/if}
     <div class="about-foot">
-      <Button variant="ghost" onclick={onClose}>Close</Button>
+      <Button variant="ghost" onclick={onClose}>{$kt("k.action.close")}</Button>
     </div>
   </div>
 </Dialog>
