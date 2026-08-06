@@ -239,15 +239,7 @@ apps/settings/src/lib/components/appearance/ModuleCard.svelte	Manifest warnings
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Settings
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
-apps/settings/src/lib/components/displays/BrightnessSection.svelte	Brightness
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Adaptive sync
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Mirror target
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Refresh rate
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Resolution
-apps/settings/src/lib/components/displays/MonitorSidePanel.svelte	Rotation
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Color temperature
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Custom end time
 apps/settings/src/lib/components/displays/NightLightSection.svelte	Custom hours
 apps/settings/src/lib/components/displays/NightLightSection.svelte	Custom start time
 apps/settings/src/lib/components/displays/NightLightSection.svelte	Latitude

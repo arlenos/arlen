@@ -143,7 +143,7 @@
             max={100}
             step={1}
             unit="%"
-            ariaLabel="Brightness"
+            ariaLabel={$t("s.disp.brightness")}
             onchange={setPercent}
           />
         </div>

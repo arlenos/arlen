@@ -189,7 +189,7 @@
           max={6500}
           step={100}
           unit="K"
-          ariaLabel="Color temperature"
+          ariaLabel={$t("s.night.temperature")}
           onchange={setTemperature}
         />
       </div>
@@ -221,7 +221,7 @@
       {#snippet control()}
         <TimeInput
           value={formatHhmm(cfg.custom_end)}
-          ariaLabel="Custom end time"
+          ariaLabel={$t("s.night.customEnd")}
           onchange={setCustomEnd}
         />
       {/snippet}
