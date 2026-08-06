@@ -22,6 +22,9 @@ set -euo pipefail
 export SHOOT_URL="${1:?usage: shoot.sh <url> <out.png> [inject.js] [w] [h]}"
 export SHOOT_OUT="${2:?usage: shoot.sh <url> <out.png> [inject.js] [w] [h]}"
 export SHOOT_INJECT="${3:-}"
+# A CSS selector clicked after load and before the injection, for anything the
+# page only shows once something is opened.
+export SHOOT_OPEN="${SHOOT_OPEN:-}"
 export SHOOT_WIDTH="${4:-1280}"
 export SHOOT_HEIGHT="${5:-800}"
 export SHOOT_PORT=4477
@@ -55,5 +58,6 @@ xvfb-run -a bash -c '
   done
   args=(--url "$SHOOT_URL" --out "$SHOOT_OUT" --port "$SHOOT_PORT" --width "$SHOOT_WIDTH" --height "$SHOOT_HEIGHT")
   [ -n "$SHOOT_INJECT" ] && args+=(--inject "$SHOOT_INJECT")
+  [ -n "${SHOOT_OPEN:-}" ] && args+=(--open "$SHOOT_OPEN")
   python3 "$SHOOT_HERE/shoot.py" "${args[@]}"
 '

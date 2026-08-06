@@ -110,8 +110,15 @@ case "$ctl" in
 esac
 
 failed=0
-for path in "$@"; do
-  out=$("$here/shoot.sh" "$base$path" "$shot" "$inject" 2>&1 | sed -n 's/^inject result: //p')
+for spec in "$@"; do
+  # `path::selector` opens something before scanning. Everything behind a click was
+  # outside this check: the mint dialog's routes reported clean while the dialog was
+  # never opened, and a clean result about a component that did not render is the
+  # same false green in a new place.
+  path="${spec%%::*}"
+  open="${spec#*::}"
+  [ "$open" = "$spec" ] && open=""
+  out=$(SHOOT_OPEN="$open" "$here/shoot.sh" "$base$path" "$shot" "$inject" 2>&1 | sed -n 's/^inject result: //p')
   case "$out" in
     "")
       # No result at all means the injected script did not run: a throw, a page
@@ -119,14 +126,14 @@ for path in "$@"; do
       # and reporting it as clean is how this check quietly stops checking. It
       # read as ok until 6 August, when a planted id in an aria-label came back
       # clean and the reason turned out to be an empty result, not a clean page.
-      echo "FAIL  $path -> the page returned no result; the check did not run"
+      echo "FAIL  $spec -> the page returned no result; the check did not run"
       failed=1
       ;;
     "[]"|"null")
-      echo "ok    $path"
+      echo "ok    $spec"
       ;;
     *)
-      echo "IDS   $path -> $out"
+      echo "IDS   $spec -> $out"
       failed=1
       ;;
   esac
