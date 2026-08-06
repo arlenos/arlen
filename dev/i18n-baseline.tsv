@@ -231,7 +231,6 @@ apps/settings/src/routes/appearance/typography/+page.svelte	const answer = 42;
 apps/settings/src/routes/extensions/+page.svelte	forage install
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	Loading…
 apps/settings/src/routes/keyboard/shortcuts/+page.svelte	No bindings match "
-apps/settings/src/routes/notifications/+page.svelte	Active until
 apps/settings/src/routes/notifications/+page.svelte	Alarms
 apps/settings/src/routes/notifications/+page.svelte	Priority
 apps/settings/src/routes/notifications/+page.svelte	Total
