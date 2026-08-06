@@ -504,6 +504,10 @@ def main():
             time.sleep(2)
             capture(f, typed, x_display)
             for _ in range(50):
+                if os.path.exists(typed) and os.path.getsize(typed) > 0:
+                    break
+                time.sleep(0.1)
+            for _ in range(50):
                 if os.path.exists(after) and os.path.getsize(after) > 0:
                     break
                 time.sleep(0.1)
