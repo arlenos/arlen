@@ -243,6 +243,12 @@
           "markdownDescription": "Enables the badges_set command without any pre-configured scope."
         },
         {
+          "description": "Enables the locale_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "arlen-shell:allow-locale-get",
+          "markdownDescription": "Enables the locale_get command without any pre-configured scope."
+        },
+        {
           "description": "Enables the presence_clear command without any pre-configured scope.",
           "type": "string",
           "const": "arlen-shell:allow-presence-clear",
@@ -385,6 +391,12 @@
           "type": "string",
           "const": "arlen-shell:deny-badges-set",
           "markdownDescription": "Denies the badges_set command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the locale_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "arlen-shell:deny-locale-get",
+          "markdownDescription": "Denies the locale_get command without any pre-configured scope."
         },
         {
           "description": "Denies the presence_clear command without any pre-configured scope.",

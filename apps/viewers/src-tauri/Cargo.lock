@@ -3793,6 +3793,7 @@ name = "tauri-plugin-arlen-shell"
 version = "0.1.0"
 dependencies = [
  "arlen-theme",
+ "dirs 6.0.0",
  "log",
  "notify 7.0.0",
  "os-sdk",
@@ -3801,6 +3802,7 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "tokio",
+ "toml 0.9.12+spec-1.1.0",
  "uuid",
 ]
 
