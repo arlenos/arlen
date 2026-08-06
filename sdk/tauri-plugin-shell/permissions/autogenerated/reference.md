@@ -296,6 +296,32 @@ Denies the badges_set command without any pre-configured scope.
 <tr>
 <td>
 
+`arlen-shell:allow-locale-get`
+
+</td>
+<td>
+
+Enables the locale_get command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`arlen-shell:deny-locale-get`
+
+</td>
+<td>
+
+Denies the locale_get command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `arlen-shell:allow-presence-clear`
 
 </td>

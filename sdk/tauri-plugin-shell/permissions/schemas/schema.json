@@ -427,6 +427,18 @@
           "markdownDescription": "Denies the badges_set command without any pre-configured scope."
         },
         {
+          "description": "Enables the locale_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-locale-get",
+          "markdownDescription": "Enables the locale_get command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the locale_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-locale-get",
+          "markdownDescription": "Denies the locale_get command without any pre-configured scope."
+        },
+        {
           "description": "Enables the presence_clear command without any pre-configured scope.",
           "type": "string",
           "const": "allow-presence-clear",

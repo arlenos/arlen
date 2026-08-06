@@ -26,6 +26,7 @@
   import { openQuickConnect } from "$lib/stores/remoteConnections";
   import { initTopbar } from "$lib/topbar";
   import { initArlenTheme } from "@arlen/ui-kit/theme";
+  import { initArlenLocale } from "@arlen/ui-kit/i18n";
   import { dir } from "$lib/i18n/messages";
 
   let { children } = $props();
@@ -34,6 +35,7 @@
     void initTopbar();
     // Live-reskin on a desktop-wide theme switch (GAP-20).
     void initArlenTheme();
+    void initArlenLocale();
   });
 
   // The two global shortcuts (terminal.md §4): Ctrl+T opens a new
