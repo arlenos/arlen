@@ -57,29 +57,35 @@
     { value: "10", label: "10" },
     { value: "11", label: "11" },
   ];
-  const windowModeOptions = [
+  // Derived, not constant: a top-level array is built once at import, so its
+  // labels would hold whichever language was loaded then and stay in it.
+  const windowModeOptions = $derived([
     { value: "windowed", label: $t("s.wa.windowed") },
     { value: "fullscreen", label: $t("s.wa.fullscreen") },
-  ];
-  const bottleModeOptions = [
+  ]);
+  const bottleModeOptions = $derived([
     { value: "per-app", label: $t("s.wa.ownBottle") },
     { value: "shared", label: $t("s.wa.sharedBottle") },
-  ];
+  ]);
 
   // The compat tier as honest prose, never a "just works" promise.
+  //
+  // Whole sentences per case rather than a stem plus a clause: the access lines
+  // differ in more than one word between languages, and German puts the negation
+  // somewhere English does not.
   function compatLine(b: Bottle): string {
     return b.tier === "curated"
-      ? `Curated and verified, using the ${b.recipe}`
-      : "Best effort on the default setup, it may not run perfectly";
+      ? $t("s.wa.compat.curated", { recipe: b.recipe })
+      : $t("s.wa.compat.best");
   }
 
   // The sovereign angle: what the confined Windows app can reach, stated plainly.
   function accessLine(b: Bottle): string {
     const { network, homeFolder } = b.access;
-    if (!network && !homeFolder) return "Limited access. It cannot reach your network or your home folder.";
-    if (network && !homeFolder) return "Limited access. It can use the network, but not your home folder.";
-    if (!network && homeFolder) return "It can reach your home folder, but not the network.";
-    return "Broad access. It can reach your network and your home folder.";
+    if (!network && !homeFolder) return $t("s.wa.access.neither");
+    if (network && !homeFolder) return $t("s.wa.access.network");
+    if (!network && homeFolder) return $t("s.wa.access.home");
+    return $t("s.wa.access.both");
   }
 </script>
 
