@@ -98,6 +98,7 @@ impl ReadServer {
                 req.limit,
                 req.project_id.as_deref(),
                 req.call_chain_id.as_deref(),
+                req.actor.as_deref(),
             )
             .await
         {
@@ -112,7 +113,11 @@ impl ReadServer {
                 let fallback_head = entries.last().map_or(0, |e| e.index + 1);
                 let head = match self
                     .reader
-                    .head(req.project_id.as_deref(), req.call_chain_id.as_deref())
+                    .head(
+                        req.project_id.as_deref(),
+                        req.call_chain_id.as_deref(),
+                        req.actor.as_deref(),
+                    )
                     .await {
                     Ok(h) => h.max(fallback_head),
                     Err(e) => {
@@ -208,6 +213,7 @@ mod tests {
             limit: 100,
             project_id: None,
             call_chain_id: None,
+            actor: None,
         };
         write_frame(&mut client, &serde_json::to_vec(&req).unwrap())
             .await

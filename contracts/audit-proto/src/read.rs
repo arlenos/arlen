@@ -71,6 +71,16 @@ pub struct ReadRequest {
     /// lookup. `serde(default)` keeps old and new peers compatible.
     #[serde(default)]
     pub call_chain_id: Option<String>,
+    /// When set, only entries recorded by this actor.
+    ///
+    /// The actor is the kernel-attested identity of whoever submitted the entry,
+    /// so this answers "what has this app done" without trusting the question.
+    /// Without it, an app-scoped count means paging the whole ledger and matching
+    /// client-side, which is the same scan `call_chain_id` exists to avoid, and it
+    /// would hand every entry of every other app to the caller doing the counting.
+    /// `serde(default)` keeps old and new peers compatible.
+    #[serde(default)]
+    pub actor: Option<String>,
 }
 
 /// The reply to a [`ReadRequest`].
