@@ -130,6 +130,38 @@ for (const file of catalogFiles()) {
   }
 }
 
+// The positive control. This gate has been wrong twice in the way that matters:
+// it fed a string to a declared number and the formatter logged rather than threw,
+// and separately it printed a complaint and exited 0. Both times it reported a
+// healthy catalog. So before believing a clean run, prove it can still see a
+// broken message - plant the two failures it has actually had and require both.
+const CONTROLS = [
+  // Syntactically invalid: an unclosed placeholder.
+  "hello {$name",
+  // The historical one: a numeric selector reached with a string. Caught only if
+  // the `.input` type declaration is still being read.
+  ".input {$n :number}\n.match $n\none {{one thing}}\n* {{{$n} things}}",
+];
+for (const [i, text] of CONTROLS.entries()) {
+  let caught = false;
+  try {
+    const onError = (e) => {
+      throw e;
+    };
+    const mf = new MessageFormat("en", text);
+    // Deliberately the wrong shape: a string where the source declares a number.
+    mf.format({ name: "x", n: "not a number" }, onError);
+  } catch {
+    caught = true;
+  }
+  if (!caught) {
+    console.error(`the catalog check did not catch its own planted failure #${i + 1}:`);
+    console.error(`  ${text.replace(/\n/g, " / ")}`);
+    console.error("A clean result from this gate would mean nothing. Fix the check.");
+    process.exit(2);
+  }
+}
+
 if (!checked) {
   console.error("found no catalog messages; the check needs updating");
   process.exit(2);
