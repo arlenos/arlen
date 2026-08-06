@@ -12,6 +12,7 @@
   /// below the header; for plain text output it is a `GridRegion`.
   import type { Snippet } from "svelte";
   import { formatDuration } from "./duration";
+  import { kt } from "../../i18n/messages.kit";
 
   let {
     command,
@@ -75,14 +76,14 @@
       <span class="cb-actions">{@render actions()}</span>
     {/if}
     {#if running}
-      <span class="cb-running" aria-label="Still running">
+      <span class="cb-running" aria-label={$kt("k.console.stillRunning")}>
         <span class="cb-running-dot"></span>
-        running
+        {$kt("k.console.running")}
       </span>
     {:else if (exitCode !== null && exitCode !== 0) || durationMs !== null}
       <span class="cb-result">
         {#if exitCode !== null && exitCode !== 0}
-          <span class="cb-exit">exit {exitCode}</span>
+          <span class="cb-exit">{$kt("k.console.exit", { code: exitCode })}</span>
         {/if}
         {#if durationMs !== null}
           <span class="cb-duration">{formatDuration(durationMs)}</span>

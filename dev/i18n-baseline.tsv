@@ -625,19 +625,6 @@ sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Toolbar
 sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Undo
 sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	Your name
 sdk/ui-kit/src/lib/components/a11y-kitchen.svelte	toggled:
-sdk/ui-kit/src/lib/components/console/ConsoleBlock.svelte	Still running
-sdk/ui-kit/src/lib/components/console/ConsoleBlock.svelte	exit
-sdk/ui-kit/src/lib/components/console/ConsoleBlock.svelte	running
-sdk/ui-kit/src/lib/components/ui/about-dialog/about-dialog.svelte	Arlen OS &middot;
-sdk/ui-kit/src/lib/components/ui/about-dialog/about-dialog.svelte	Close
-sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Days of week
-sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Fr
-sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Mo
-sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Sa
-sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Su
-sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Th
-sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	Tu
-sdk/ui-kit/src/lib/components/ui/days-picker/days-picker.svelte	We
 sdk/ui-kit/src/lib/components/ui/sidebar/SidebarRail.svelte	Toggle Sidebar
 sdk/ui-kit/src/routes/+page.svelte	All colors come from theme.toml via CSS custom properties.
 sdk/ui-kit/src/routes/+page.svelte	App surface
