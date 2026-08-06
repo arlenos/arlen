@@ -86,6 +86,15 @@ impl PickerIpcHandle {
         p.push("arlen");
         std::fs::create_dir_all(&p)
             .with_context(|| format!("failed to create {}", p.display()))?;
+        // Own the containment rather than inheriting it. `$XDG_RUNTIME_DIR` is
+        // 0700 under systemd, which is what actually keeps another user out of
+        // the socket during the window between `bind` and the `chmod` below -
+        // but that is an assumption about the environment, and this directory is
+        // ours. The sibling daemons (audit, undo-signer) clamp theirs the same
+        // way after review found the same reasoning.
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o700))
+            .with_context(|| format!("chmod 0700 {}", p.display()))?;
         p.push("portal-picker.sock");
         Ok(p)
     }
@@ -259,6 +268,27 @@ fn request_handle(req: &PickerRequest) -> &str {
 /// when a second client connects (which would only happen by mistake
 /// or as a probe), we close the previous one rather than serializing
 /// requests across both, since that would silently break correlation.
+/// Is the peer on `stream` running as us?
+///
+/// Whoever holds this connection answers file-chooser requests, and an answer is
+/// a list of paths the portal then exports to the requesting app. So the peer
+/// decides which of the user's files a sandboxed app receives.
+///
+/// The socket is 0600 in a 0700 directory, so this should never fail - it is the
+/// check that makes that a guarantee of the code rather than of the umask that
+/// happened to be in effect at bind time.
+///
+/// What it does NOT establish: that the peer is the picker-ui rather than some
+/// other process of the same user. Same-uid is the boundary here, as it is for
+/// the rest of Arlen's own IPC; a same-uid attacker can already read the files
+/// it would be choosing. Attesting the binary itself needs the identity work
+/// tracked as F3 and would be spoofable until it lands.
+fn peer_is_us(stream: &UnixStream) -> Result<bool, std::io::Error> {
+    // SAFETY-adjacent: getuid never fails and touches no shared state.
+    let ours = unsafe { libc::getuid() };
+    Ok(stream.peer_cred()?.uid() == ours)
+}
+
 async fn accept_loop(listener: UnixListener, handle: PickerIpcHandle) {
     loop {
         let (stream, _) = match listener.accept().await {
@@ -271,6 +301,22 @@ async fn accept_loop(listener: UnixListener, handle: PickerIpcHandle) {
                 continue;
             }
         };
+        match peer_is_us(&stream) {
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::warn!(
+                    "refusing a picker connection from another user; only this session's picker may answer requests"
+                );
+                continue;
+            }
+            Err(e) => {
+                // No credentials, no connection. Answering file-chooser requests
+                // is choosing which files an app receives, so an unattested peer
+                // is refused rather than assumed friendly.
+                tracing::warn!("refusing a picker connection with unreadable credentials: {e}");
+                continue;
+            }
+        }
         tracing::info!("picker-ui connected");
         // Hand off to the per-connection task. The reader half drives
         // response correlation; the writer half is stashed on the
@@ -383,6 +429,28 @@ async fn deliver_response(handle: &PickerIpcHandle, response: PickerResponse) {
 
 #[cfg(test)]
 mod tests {
+    /// A socketpair peer is this process, so the check admits it. The value of
+    /// the test is the other half: it pins that the check reads the KERNEL's
+    /// credential for the connection rather than anything the peer sends.
+    #[tokio::test]
+    async fn a_connection_from_our_own_uid_is_admitted() {
+        let (a, _b) = tokio::net::UnixStream::pair().unwrap();
+        assert!(peer_is_us(&a).unwrap());
+    }
+
+    /// And the directory the socket lives in is ours alone, so the window
+    /// between `bind` and the `chmod` cannot be walked into from outside.
+    #[test]
+    fn the_socket_directory_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("arlen");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700, "the socket's directory must exclude other users");
+    }
+
     use super::*;
 
     /// `request_handle` covers every variant. Adding a new variant
