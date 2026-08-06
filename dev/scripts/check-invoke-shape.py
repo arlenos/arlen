@@ -291,11 +291,14 @@ DEAD_INVOKES: dict[str, str] = {
     # dictation has no backend at all yet; the badge was built against the intended contract - needs a decision on whether dictation is in scope
     "dictation_status": "dictation has no backend at all yet; the badge was built against the intended contract",
     "stop_dictation": "dictation has no backend at all yet; the badge was built against the intended contract",
-    # the modules panel against modulesd; the daemon exists, the shell commands do not - coder
-    "list_modules": "the modules panel against modulesd; the daemon exists, the shell commands do not",
-    "get_module_errors": "the modules panel against modulesd; the daemon exists, the shell commands do not",
-    "set_module_enabled": "the modules panel against modulesd; the daemon exists, the shell commands do not",
-    "reset_module_errors": "the modules panel against modulesd; the daemon exists, the shell commands do not",
+    # The modules panel was written against a contract modulesd never had. Two of
+    # its four calls were only misnamed and now reach `modulesd_set_enabled` and
+    # `retry_module`. These two are real gaps: `modulesd_list_modules` exists but
+    # returns UiModule (tier/failed/priority/extension_points) while the panel
+    # wants description/module_type/source/has_*/icon, and nothing anywhere
+    # reports per-module errors. Needs the panel and the daemon to agree a shape
+    "list_modules": "modulesd_list_modules exists but returns a different shape than the panel reads",
+    "get_module_errors": "no per-module error report exists anywhere in the tree",
     # the Windows-app (bottles) surface; no backend in the tree - needs a decision on whether this ships before the surface is finished
     "windows_file_request": "the Windows-app (bottles) surface; no backend in the tree",
     "windows_file_run": "the Windows-app (bottles) surface; no backend in the tree",

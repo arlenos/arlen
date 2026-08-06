@@ -54,9 +54,9 @@
 
   async function toggleModule(id: string, enabled: boolean) {
     try {
-      await invoke("set_module_enabled", { id, enabled });
+      await invoke("modulesd_set_enabled", { moduleId: id, enabled });
       if (enabled) {
-        await invoke("reset_module_errors", { moduleId: id });
+        await invoke("retry_module", { moduleId: id });
       }
       await loadModules();
     } catch {}
@@ -64,8 +64,8 @@
 
   async function reEnable(id: string) {
     try {
-      await invoke("reset_module_errors", { moduleId: id });
-      await invoke("set_module_enabled", { id, enabled: true });
+      await invoke("retry_module", { moduleId: id });
+      await invoke("modulesd_set_enabled", { moduleId: id, enabled: true });
       await loadModules();
     } catch {}
   }
