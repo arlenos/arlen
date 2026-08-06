@@ -216,10 +216,11 @@
   }
   .tab {
     position: relative;
-    padding: 0.6rem 0.75rem;
+    padding: 0.5rem 0.7rem;
     border: none;
     background: transparent;
-    font-size: var(--text-base);
+    /* One step below the bar title: the tabs are navigation, not identity. */
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
     cursor: pointer;
   }
