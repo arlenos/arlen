@@ -670,6 +670,38 @@ mod tests {
         scan_script(src).into_iter().map(|f| f.text).collect()
     }
 
+    /// The other half of the same blind spot, and the half the scanner tests
+    /// cannot see: a `.ts` module has to be COLLECTED before anything scans it.
+    /// The 808 invisible strings were mostly in `src/lib/stores/*.ts`, and if the
+    /// `.ts` arm here went away every scanner test above would still pass while
+    /// the lint quietly went back to reading markup only.
+    #[test]
+    fn a_ts_module_is_collected_alongside_components() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let app = root.join("app/src/lib/stores");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(app.join("zoom.ts"), "const O = [{ label: \"Continuously\" }];").unwrap();
+        std::fs::write(root.join("app/src/Page.svelte"), "<p>Copy</p>").unwrap();
+        // Neither of these is ours to lint: one is a dependency, one is not source.
+        let deps = root.join("app/node_modules/pkg");
+        std::fs::create_dir_all(&deps).unwrap();
+        std::fs::write(deps.join("index.ts"), "const O = [{ label: \"Vendor\" }];").unwrap();
+        std::fs::write(root.join("app/README.md"), "Documentation copy").unwrap();
+
+        let mut files = Vec::new();
+        collect_svelte(root, &mut files);
+        let names: Vec<String> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+
+        assert!(names.contains(&"zoom.ts".to_string()), "collected {names:?}");
+        assert!(names.contains(&"Page.svelte".to_string()), "collected {names:?}");
+        assert!(!names.contains(&"index.ts".to_string()), "node_modules is not ours");
+        assert!(!names.contains(&"README.md".to_string()), "not a source file");
+    }
+
     #[test]
     fn a_label_in_an_option_table_is_found() {
         // The blind spot this pass exists for: the markup scanner skips
