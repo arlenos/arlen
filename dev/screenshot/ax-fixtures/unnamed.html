@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ax fixture: unnamed</title>
+<!-- The input that fooled a grep-based scan and that WebKit really does leave
+     unnamed: a column header written the obvious way. In WebKit a `columnheader`
+     takes NO name from its contents, so this labels the column for a sighted user
+     and for nobody else. The button beside it DOES take its name from its text,
+     which is why only one of these two is a finding - a scan that reports both
+     has not understood the engine, it has just matched a pattern. -->
+<table>
+  <tr><th role="columnheader">Name</th></tr>
+  <tr><td><button>x</button></td></tr>
+</table>
