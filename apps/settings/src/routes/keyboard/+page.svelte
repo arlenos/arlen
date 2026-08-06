@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import {
@@ -48,39 +48,31 @@
   let showAddLayout = $state(false);
   let extrasSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /// Friendly labels for common XKB layouts. More exhaustive picker lives
-  /// behind `xkb_config.layouts` — users can hand-edit any identifier
-  /// `/usr/share/X11/xkb/rules/evdev.lst` accepts. Kept short for the
-  /// chooser to stay usable without a search box.
-  // Deliberately NOT routed through the catalog. These are xkb layout
-  // descriptions, and xkeyboard-config already ships translations of them; hand
-  // writing a German name for each here would be inventing data that has a
-  // canonical source. The right fix reads the localised description from
-  // `evdev.lst` rather than translating this list. Noted in `coder-reports.md`.
-  const LAYOUT_CHOICES: { value: string; label: string }[] = [
-    { value: "us", label: "English (US)" },
-    { value: "gb", label: "English (UK)" },
-    { value: "de", label: "German" },
-    { value: "de(nodeadkeys)", label: "German (no dead keys)" },
-    { value: "fr", label: "French" },
-    { value: "es", label: "Spanish" },
-    { value: "it", label: "Italian" },
-    { value: "ch", label: "Swiss" },
-    { value: "pt", label: "Portuguese" },
-    { value: "se", label: "Swedish" },
-    { value: "dk", label: "Danish" },
-    { value: "no", label: "Norwegian" },
-    { value: "fi", label: "Finnish" },
-    { value: "nl", label: "Dutch" },
-    { value: "pl", label: "Polish" },
-    { value: "cz", label: "Czech" },
-    { value: "hu", label: "Hungarian" },
-    { value: "ru", label: "Russian" },
-    { value: "jp", label: "Japanese" },
-  ];
+  /// The layouts this machine offers, named in the reader's language.
+  ///
+  /// Was a hand-written list of nineteen English names. `xkeyboard-config` ships
+  /// both the catalogue (`evdev.lst`) and translations of every description, so
+  /// writing "Deutsch" here would be inventing data that already has a canonical
+  /// source - and the list would be wrong on any machine with layouts we did not
+  /// think of. `settings_keyboard_layouts` reads both; this asks it again when
+  /// the language changes.
+  let layoutChoices = $state<{ value: string; label: string }[]>([]);
+
+  $effect(() => {
+    const want = $locale;
+    invoke<{ value: string; label: string }[]>("settings_keyboard_layouts", { locale: want })
+      .then((list) => {
+        layoutChoices = list;
+      })
+      .catch(() => {
+        // No rules file (a container, a trimmed image): the ids still work, and
+        // `layoutLabel` falls back to showing the id itself.
+        layoutChoices = [];
+      });
+  });
 
   function layoutLabel(code: string): string {
-    return LAYOUT_CHOICES.find((c) => c.value === code)?.label ?? code;
+    return layoutChoices.find((c) => c.value === code)?.label ?? code;
   }
 
   // `$derived`, not `const`: the translator is a store, so a constant would hold
@@ -132,7 +124,7 @@
   /// The "+ Add Layout" picker should not re-offer already-configured
   /// layouts — it's strictly an add action.
   const addableLayouts = $derived(
-    LAYOUT_CHOICES.filter((c) => !layouts.includes(c.value))
+    layoutChoices.filter((c) => !layouts.includes(c.value))
   );
 
   function setOption(value: string, enabled: boolean): void {
