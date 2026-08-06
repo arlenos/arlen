@@ -2,7 +2,7 @@
 /// the host, plus the two quiet KG spots (Projects, Searches) —
 /// graph-backed lists rendered only when they have content.
 
-import { derived, writable } from "svelte/store";
+import { derived, get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { Place, PlaceGroup } from "@arlen/ui-kit/components/browser";
 
@@ -123,13 +123,28 @@ export const savedSearches = writable<SavedSearch[]>([]);
 /// The home place's path; the breadcrumb collapses it to "Home".
 export const homePath = writable("/home");
 
+/// Resolve a group heading before it is handed to the kit.
+///
+/// `PlacesSidebar` renders `group.label` verbatim, as it must: the kit cannot
+/// resolve an app's messages. These four were message ids going straight into
+/// that, so the sidebar showed `f.places.places` as a heading. Resolved here,
+/// the same way `sysOptions` does it in Settings.
+const tr = (id: string) => get(t)(id);
+
+/// Resolve a place's name where the backend sent an id.
+///
+/// The XDG user dirs are ours to name; a volume or a bookmarked folder carries
+/// its own name and arrives without a key.
+const named = (p: Place): Place =>
+  p.labelKey ? { ...p, label: tr(p.labelKey) } : p;
+
 export async function loadPlaces(): Promise<void> {
   const groups: PlaceGroup[] = [];
   try {
     const places = await invoke<{ orte: Place[]; geraete: Place[] }>("files_places");
     const home = places.orte.find((p) => p.icon === "home");
     if (home) homePath.set(home.path);
-    groups.push({ label: "f.places.places", places: places.orte });
+    groups.push({ label: tr("f.places.places"), places: places.orte.map(named) });
     // Devices: the host's base entry (System) plus the real mounted volumes
     // from lsblk (removable drives + extra data mounts). Removable ones carry
     // the hover affordance, routed to eject by `removePlace` via deviceNodes.
@@ -164,14 +179,17 @@ export async function loadPlaces(): Promise<void> {
     } catch {
       // lsblk unavailable: just the host base entries.
     }
-    groups.push({ label: "f.places.devices", places: [...places.geraete, ...devicePlaces] });
+    groups.push({
+      label: tr("f.places.devices"),
+      places: [...places.geraete.map(named), ...devicePlaces],
+    });
   } catch {
     // Unreachable backend: the sidebar stays empty rather than fake.
   }
   try {
     const bookmarks = await invoke<Place[]>("files_bookmarks");
     groups.push({
-      label: "f.places.bookmarks",
+      label: tr("f.places.bookmarks"),
       railHidden: true,
       places: bookmarks.map((b) => ({ ...b, removable: true })),
     });
@@ -181,7 +199,7 @@ export async function loadPlaces(): Promise<void> {
   try {
     const projects = await invoke<Project[]>("files_projects");
     groups.push({
-      label: "f.places.projects",
+      label: tr("f.places.projects"),
       // The rail would show two identical glyphs; the group only
       // makes sense expanded.
       railHidden: true,
