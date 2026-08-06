@@ -70,6 +70,33 @@ impl ReadClient {
             limit,
             project_id: None,
             call_chain_id: Some(call_chain_id.to_string()),
+            actor: None,
+        };
+        match tokio::time::timeout(READ_TIMEOUT, self.exchange(&req)).await {
+            Ok(result) => result,
+            Err(_elapsed) => Err(ReadClientError::Timeout),
+        }
+    }
+
+    /// Every recorded entry for one actor, most recent last.
+    ///
+    /// The actor is the kernel-attested submitter, so this asks what one app has
+    /// done without taking its word for who it is. Bounded by `limit` like any
+    /// read; a caller wanting a total must page rather than trust one page's
+    /// length, and the page's `head` is a seek position rather than a count.
+    pub async fn for_actor(
+        &self,
+        actor: &str,
+        from: u64,
+        limit: u64,
+    ) -> Result<ReadPage, ReadClientError> {
+        let req = ReadRequest {
+            from,
+            to: u64::MAX,
+            limit,
+            project_id: None,
+            call_chain_id: None,
+            actor: Some(actor.to_string()),
         };
         match tokio::time::timeout(READ_TIMEOUT, self.exchange(&req)).await {
             Ok(result) => result,
@@ -94,6 +121,7 @@ impl ReadClient {
             limit,
             project_id: project_id.map(|s| s.to_string()),
             call_chain_id: None,
+            actor: None,
         };
         match tokio::time::timeout(READ_TIMEOUT, self.exchange(&req)).await {
             Ok(result) => result,
