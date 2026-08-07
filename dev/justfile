@@ -125,8 +125,7 @@ build crate="":
     if [ -n "{{crate}}" ]; then cargo build --manifest-path "{{ROOT}}/{{crate}}/Cargo.toml"; exit 0; fi
     for c in {{RUST_CRATES}}; do echo "== build $c =="; cargo build --manifest-path "{{ROOT}}/$c/Cargo.toml"; done
 
-# Test one crate (e.g. `just test daemons/knowledge`) or the whole matrix, with
-# the exact command CI runs, from the same script CI runs it from.
+# Test one crate (e.g. `just test daemons/knowledge`) or all, via dev/check-crate.sh.
 test crate="":
     #!/usr/bin/env bash
     set -euo pipefail
