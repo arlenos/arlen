@@ -19,11 +19,12 @@
          slot is Lap/Reset, the right slot Start/Stop. -->
     <div class="sw-twins">
       {#if swx.running}
-        <Button variant="outline" class="sw-twin" id="sw-lap" onclick={stopwatchLap}>{$t("c.sw.lap")}</Button>
-        <Button class="sw-twin" id="sw-stop" onclick={stopwatchPause}>{$t("c.sw.pause")}</Button>
+        <Button variant="outline" size="lg" class="sw-twin" id="sw-lap" onclick={stopwatchLap}>{$t("c.sw.lap")}</Button>
+        <Button size="lg" class="sw-twin" id="sw-stop" onclick={stopwatchPause}>{$t("c.sw.pause")}</Button>
       {:else}
         <Button
           variant="outline"
+          size="lg"
           class="sw-twin"
           id="sw-reset"
           disabled={total === 0}
@@ -31,7 +32,7 @@
         >
           {$t("c.sw.reset")}
         </Button>
-        <Button class="sw-twin" id="sw-start" onclick={stopwatchStart}>
+        <Button size="lg" class="sw-twin" id="sw-start" onclick={stopwatchStart}>
           {total === 0 ? $t("c.sw.start") : $t("c.sw.resume")}
         </Button>
       {/if}
