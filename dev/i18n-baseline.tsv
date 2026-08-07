@@ -1,9 +1,5 @@
-apps/desktop-shell/src/lib/components/AudioPopover.svelte	Mute
-apps/desktop-shell/src/lib/components/AudioPopover.svelte	Unmute
 apps/desktop-shell/src/lib/components/Indicator.svelte	Grow
 apps/desktop-shell/src/lib/components/Indicator.svelte	Shrink
-apps/desktop-shell/src/lib/components/MprisIndicator.svelte	Pause
-apps/desktop-shell/src/lib/components/MprisIndicator.svelte	Play
 apps/desktop-shell/src/lib/components/NetworkIndicator.svelte	Ethernet: {}
 apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	A4
@@ -20,11 +16,6 @@ apps/desktop-shell/src/lib/components/WaypointerContent.svelte	Ask the agent...
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	First Party
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	System
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	Third Party
-apps/desktop-shell/src/lib/quicksettings/tiles/AirplaneTile.svelte	Available
-apps/desktop-shell/src/lib/quicksettings/tiles/AirplaneTile.svelte	Radios off
-apps/desktop-shell/src/lib/quicksettings/tiles/ProjectTile.svelte	Focus Mode
-apps/desktop-shell/src/lib/quicksettings/tiles/ProjectTile.svelte	Start a project
-apps/desktop-shell/src/lib/quicksettings/tiles/ProjectTile.svelte	Tap to pick
 apps/desktop-shell/src/lib/stores/consent.ts	connect to its sync service
 apps/desktop-shell/src/lib/stores/consent.ts	install system software with admin rights
 apps/desktop-shell/src/lib/stores/consent.ts	move 8 files to the Trash
@@ -85,8 +76,6 @@ apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
 apps/files/src/routes/+page.svelte	Del
 apps/files/src/routes/+page.svelte	F2
-apps/greeter/src/lib/components/PasswordField.svelte	Hide password
-apps/greeter/src/lib/components/PasswordField.svelte	Show password
 apps/greeter/src/routes/+page.svelte	No profile selected.
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Refresh
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	). Live rendering is coming.
@@ -393,7 +382,3 @@ apps/viewers/src/lib/components/ViewerMenu.svelte	film.en.srt
 apps/viewers/src/lib/mock.ts	Nightswim
 sdk/ui-kit/src/lib/components/browser/Breadcrumb.svelte	Home
 sdk/ui-kit/src/lib/components/browser/format.ts	{} PB
-sdk/ui-kit/src/lib/components/ui/media-transport/media-transport.svelte	Pause
-sdk/ui-kit/src/lib/components/ui/media-transport/media-transport.svelte	Play
-sdk/ui-kit/src/lib/components/ui/number-input/number-input.svelte	Decrease
-sdk/ui-kit/src/lib/components/ui/number-input/number-input.svelte	Increase
