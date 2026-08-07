@@ -55,6 +55,13 @@ CYPHER_MARKERS = ("MATCH (", "MERGE (", "CREATE (", "OPTIONAL MATCH (")
 # (the string is Cypher), but a Cypher function namespace is not.
 NOT_A_COLUMN = {"count", "collect", "size", "labels", "properties"}
 
+# `(a:A)-[r:REL]->(b:B)` and its mirror. The node parts are matched loosely
+# because they carry property maps; the label is read out of them afterwards.
+PATTERN = re.compile(
+    r"\(([^()]*)\)\s*(<-|-)\s*\[([^\]]*)\]\s*(->|-)\s*\(([^()]*)\)"
+)
+LABEL_IN = re.compile(r":\s*(\w+)")
+
 
 def declared_tables(text: str) -> tuple[dict[str, set[str]], set[str]]:
     """Every table the schema declares with its columns, and the tables whose
@@ -110,6 +117,52 @@ def declared_tables(text: str) -> tuple[dict[str, set[str]], set[str]]:
                 tables.setdefault(table, set()).add(name[0])
 
     return tables, unresolved
+
+
+def declared_endpoints(text: str) -> dict[str, tuple[str, str]]:
+    """Each relationship table's declared `FROM A TO B`.
+
+    Direction is a fact the schema states and a query can get backwards. The
+    engine does not complain: it matches nothing and returns an empty result,
+    which reads exactly like "there is no such membership" - the same silence a
+    missing column produces, one layer up.
+    """
+    out = {}
+    for m in re.finditer(
+        r"CREATE REL TABLE IF NOT EXISTS\s+(\w+)\s*\(\s*FROM\s+(\w+)\s+TO\s+(\w+)", text
+    ):
+        out[m.group(1)] = (m.group(2), m.group(3))
+    return out
+
+
+def misdirected(query: str, endpoints: dict[str, tuple[str, str]]) -> list[tuple[str, str, str]]:
+    """(rel_type, left_label, right_label) for each traversal written against
+    the declared direction.
+
+    Only a pattern whose BOTH endpoints carry a label is judged. An undirected
+    `-[r:X]-` is deliberate wherever it appears (a neighbour walk wants both
+    ways), so it is not a finding.
+    """
+    found = []
+    for m in PATTERN.finditer(query):
+        left_part, left_arrow, rel_part, right_arrow, right_part = m.groups()
+        rel = LABEL_IN.search(rel_part)
+        left = LABEL_IN.search(left_part)
+        right = LABEL_IN.search(right_part)
+        if not (rel and left and right):
+            continue
+        declared = endpoints.get(rel.group(1))
+        if declared is None:
+            continue
+        if left_arrow == "-" and right_arrow == "->":
+            actual = (left.group(1), right.group(1))
+        elif left_arrow == "<-" and right_arrow == "-":
+            actual = (right.group(1), left.group(1))
+        else:
+            continue  # undirected, and meant to be
+        if actual != declared:
+            found.append((rel.group(1), actual[0], actual[1]))
+    return found
 
 
 def _columns(body: str) -> set[str]:
@@ -188,6 +241,7 @@ def offenders(query: str, tables: dict[str, set[str]]) -> list[tuple[str, str, s
 def main() -> int:
     text = SCHEMA.read_text()
     tables, unresolved = declared_tables(text)
+    endpoints = declared_endpoints(text)
     for table in unresolved:
         tables.pop(table, None)
     if not tables:
@@ -214,6 +268,13 @@ def main() -> int:
         for q in queries(body):
             scanned += 1
             bad = offenders(q, tables)
+            for rel, left, right in misdirected(q, endpoints):
+                a, b = endpoints[rel]
+                problems.append(
+                    f"{path.relative_to(ROOT)}: `{left}-[:{rel}]->{right}` runs "
+                    f"against the declared direction ({a} to {b}), so it matches "
+                    f"nothing and the caller reads an empty result as absence"
+                )
             for alias, label, column in bad:
                 problems.append(
                     f"{path.relative_to(ROOT)}: `{alias}.{column}` - the {label} "
@@ -222,14 +283,15 @@ def main() -> int:
                 )
 
     if problems:
-        print("queries naming columns the schema does not declare:\n")
+        print("queries that disagree with the graph schema:\n")
         for p in sorted(set(problems)):
             print(f"  - {p}")
         return 1
 
     print(
-        f"{len(tables)} declared table(s), {scanned} cypher literal(s) scanned, "
-        f"every labelled reference names a declared column"
+        f"{len(tables)} declared table(s), {len(endpoints)} of them directed, "
+        f"{scanned} cypher literal(s) scanned: every labelled reference names a "
+        f"declared column and every directed traversal follows the schema"
     )
     print(
         f"{truncated} cypher literal(s) inside test modules were not checked"
