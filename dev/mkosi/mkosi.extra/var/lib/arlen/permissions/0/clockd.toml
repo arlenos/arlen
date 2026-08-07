@@ -1,0 +1,21 @@
+# Permission profile for the clock daemon (app id: clockd).
+#
+# Deploy to ~/.config/permissions/clockd.toml. The power daemon loads it by app
+# id when the clock asks for a wake, resolving that id from the caller's
+# bus-attested binary path.
+#
+# One grant, and it is the smallest one that lets an alarm do its job: ask for
+# the machine to be woken at a moment, and withdraw that request when nothing is
+# due. Not `suspend` - a clock that could put the machine to sleep would hold an
+# authority no alarm needs, and the two were split apart so this file could say
+# exactly this much and no more.
+#
+# Without it every wake request is refused; alarms still ring while the machine
+# is awake and the app says so, rather than promising a wake it cannot deliver.
+
+[info]
+app_id = "clockd"
+tier = "first-party"
+
+[system.power]
+schedule_wake = true

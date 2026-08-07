@@ -1,0 +1,44 @@
+#!/bin/sh
+# Phase 8m (CHROOT): the clock daemon (arlen-clockd). It owns `org.arlen.Clock1`
+# on the session bus and holds the alarms, timers, focus session and stopwatch;
+# the clock app is a view onto it. Without it on the image the app runs on its
+# fixture and nothing keeps time - and an alarm is the one thing here that fails
+# by silence, which nobody notices until the morning it mattered.
+#
+# The binary path matters more than usual: it is the canonical `path_to_app_id`
+# entry that resolves this daemon to `clockd`, which is the id the power daemon's
+# schedule_wake grant and the notification daemon's Critical allowlist both key
+# on. Installed anywhere else the clock still runs, but cannot arm a wake and its
+# alarms stop piercing Do-Not-Disturb.
+#
+# Its own standalone cargo workspace (daemons/clock) -> its own target dir in the
+# persistent cache. Pure Rust, no C/C++.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-clock"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the clock daemon (arlen-clockd) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/clock/Cargo.toml --bin arlen-clockd
+
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-clockd" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-clockd"
+
+# The permission profile is NOT installed from here. Profiles are read from the
+# system tier, /var/lib/arlen/permissions/<uid>/, and the image ships those as
+# static extras beside its siblings - so the clock's lives at
+# mkosi.extra/var/lib/arlen/permissions/0/clockd.toml. Putting a copy under
+# /usr/share would place it where nothing looks, which is the exact shape of
+# failure this whole packaging step exists to prevent.
+echo ">> staged arlen-clockd into the image"

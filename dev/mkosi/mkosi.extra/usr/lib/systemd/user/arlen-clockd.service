@@ -1,0 +1,73 @@
+[Unit]
+Description=Arlen clock daemon (user service)
+Documentation=https://github.com/arlenos/arlen
+# arlen-clockd owns the alarms, timers, focus session and stopwatch. The clock
+# app is a view onto it and may be closed at any time; an alarm that stops
+# existing when a window closes is not an alarm, which is why the state lives
+# here and is written to ~/.local/state/arlen/clock.
+# Ordered after the power daemon, and only ordered - not required. The clock
+# asks Power1 at startup whether alarms can wake this machine and renders the
+# answer as a standing line in the app, so starting first would make it say
+# "this machine will not be woken" until the next resume refreshed it. If powerd
+# never comes up the clock still runs and still keeps time; it simply reports the
+# honest degraded state.
+After=arlen-powerd.service
+
+[Service]
+# Type=dbus: started once it owns its bus name, which is what the app connects
+# to.
+Type=dbus
+BusName=org.arlen.Clock1
+# Production binary path (system-wide install), matching the canonical
+# path_to_app_id entry that resolves this daemon to `clockd` - the id both the
+# power daemon's schedule_wake grant and the notification daemon's Critical
+# allowlist key on. Installing it anywhere else silently costs the clock both.
+ExecStart=/usr/lib/arlen/libexec/arlen-clockd
+# A missing per-user state directory exits non-zero (a clock that silently
+# forgets every alarm on restart is worse than one that refuses to start);
+# restart with back-off so a persistent fault surfaces rather than crash-looping.
+Restart=on-failure
+RestartSec=2
+
+# EAGER, not D-Bus activated, and that is the whole point of it being a service.
+# A lazily-activated clock starts when something asks for it, and nothing asks
+# at 07:00 - the alarm set last night would never ring. WantedBy=default.target
+# below is what makes the alarm real.
+
+# No AmbientCapabilities=CAP_WAKE_ALARM here, deliberately: this daemon never
+# arms a wake itself. It asks org.arlen.Power1, which owns suspend policy and is
+# the single unit that carries that capability. Adding it here would put a second
+# holder of the same authority in the system for no gain.
+
+# The mount-namespace options (ProtectSystem, ProtectHome, PrivateTmp,
+# PrivateDevices, ProtectKernel*) are omitted, as they are on the audit daemon,
+# the consent broker, the AI engine, capsuled and powerd. Their reason is that
+# such a namespace makes a process unable to readlink ANOTHER process's
+# /proc/<pid>/exe, EACCES, even same-uid - so a daemon that resolves callers by
+# their binary path stops being able to.
+#
+# Measured again here, since it decides the whole file. A unit run with any one
+# of PrivateTmp=yes, ProtectSystem=strict or ProtectKernelTunables=yes cannot
+# read an outside process's exe link; with no options, or with ProtectProc or
+# NoNewPrivileges, it can. Note the direction: the restriction is on the
+# namespaced process READING others, not on others reading it - a hardened
+# process's own exe link stays readable from outside.
+#
+# Which is why this daemon can carry them and still be resolved by powerd (for
+# the schedule_wake grant) and by the notification daemon (for whether a ringing
+# alarm may pierce Do-Not-Disturb) - it is the side being read. It omits them
+# anyway, for a smaller reason: it holds no secret and keeps its state under
+# ~/.local/state/arlen/clock by its own code, so the isolation would buy little,
+# and matching its siblings is worth more than a marginal difference. If the
+# tree ever revisits this, the clock is a safe place to start, being a reader of
+# nobody.
+# The hardening that does NOT create a mount namespace is kept.
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target
