@@ -15,7 +15,13 @@ export type TimelineKind = "opened" | "edited" | "ran" | "focus" | "agent" | "im
 export interface TimelineEvent {
   id: string;
   kind: TimelineKind;
-  /// The quiet leading verb: "opened", "edited", "ran".
+  /// The quiet leading verb, as a message id ("k.tl.verb.opened").
+  ///
+  /// An id rather than the word: it rendered verbatim, so every row on a German
+  /// timeline read "opened chapter-3.md". The lint could not see it either - a
+  /// lowercase single token looks like an identifier, which is exactly what this
+  /// is now. Separate from `kind` because one kind can state more than one fact:
+  /// an `agent` event tags today and may summarise tomorrow.
   verb: string;
   /// The emphasized object: the file, the command, the app.
   object: string;
@@ -96,10 +102,21 @@ export function groupByDay(items: TimelineItem[]): TimelineDay[] {
 
 /// "Today", "Yesterday", or the written date, for the day headers and the
 /// scrub grip.
+///
+/// The two words come from `Intl.RelativeTimeFormat` with `numeric: "auto"`,
+/// which is what it is for. This used to be `locale.startsWith("de") ? "Heute" :
+/// "Today"` - a ladder that knew exactly two languages and handed English to
+/// everyone else, which is a worse failure than a missing translation because it
+/// looks deliberate. Anything older than yesterday keeps the written date: a
+/// timeline wants "Thursday, 24 June", not "3 days ago".
 export function dayLabel(date: number, locale: string): string {
   const today = localMidnight(Math.floor(Date.now() / 1000));
-  if (date === today) return locale.startsWith("de") ? "Heute" : "Today";
-  if (date === today - 86400) return locale.startsWith("de") ? "Gestern" : "Yesterday";
+  const days = Math.round((date - today) / 86400);
+  if (days === 0 || days === -1) {
+    const word = new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(days, "day");
+    // A day header is capitalised; the locale data returns it mid-sentence.
+    return word.charAt(0).toLocaleUpperCase(locale) + word.slice(1);
+  }
   return new Date(date * 1000).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" });
 }
 
@@ -134,9 +151,9 @@ function ev(kind: TimelineKind, verb: string, object: string, source: string, at
 // worth is context, not an activity gimmick).
 function fixture(): TimelineItem[] {
   const items: TimelineItem[] = [
-    { kind: "event", event: ev("opened", "opened", "Quarterly report.pdf", "Files", dayAgo(0, 9, 12)) },
-    { kind: "event", event: ev("ran", "ran", "cargo build", "Terminal", dayAgo(0, 9, 41), "Arlen OS") },
-    { kind: "event", event: ev("agent", "tagged", "3 files to Thesis", "Assistant", dayAgo(0, 10, 5), "Thesis") },
+    { kind: "event", event: ev("opened", "k.tl.verb.opened", "Quarterly report.pdf", "Files", dayAgo(0, 9, 12)) },
+    { kind: "event", event: ev("ran", "k.tl.verb.ran", "cargo build", "Terminal", dayAgo(0, 9, 41), "Arlen OS") },
+    { kind: "event", event: ev("agent", "k.tl.verb.tagged", "3 files to Thesis", "Assistant", dayAgo(0, 10, 5), "Thesis") },
     {
       kind: "session",
       session: {
@@ -145,16 +162,16 @@ function fixture(): TimelineItem[] {
         from: dayAgo(0, 14, 10),
         to: dayAgo(0, 16, 40),
         events: [
-          ev("opened", "opened", "landing.fig", "Files", dayAgo(0, 14, 12), "Website redesign"),
-          ev("edited", "edited", "hero.css", "Text editor", dayAgo(0, 14, 55), "Website redesign"),
-          ev("focus", "focused", "Browser, localhost:5173", "Shell", dayAgo(0, 15, 30), "Website redesign"),
-          ev("edited", "edited", "hero.css", "Text editor", dayAgo(0, 16, 22), "Website redesign"),
+          ev("opened", "k.tl.verb.opened", "landing.fig", "Files", dayAgo(0, 14, 12), "Website redesign"),
+          ev("edited", "k.tl.verb.edited", "hero.css", "Text editor", dayAgo(0, 14, 55), "Website redesign"),
+          ev("focus", "k.tl.verb.focused", "Browser, localhost:5173", "Shell", dayAgo(0, 15, 30), "Website redesign"),
+          ev("edited", "k.tl.verb.edited", "hero.css", "Text editor", dayAgo(0, 16, 22), "Website redesign"),
         ],
       },
     },
-    { kind: "event", event: ev("edited", "edited", "chapter-3.md", "Text editor", dayAgo(1, 11, 20), "Thesis") },
-    { kind: "event", event: ev("imported", "imported", "12 papers from Zotero", "Zotero bridge", dayAgo(1, 13, 2)) },
-    { kind: "event", event: ev("opened", "opened", "Attention Is All You Need.pdf", "Files", dayAgo(1, 13, 15), "Thesis") },
+    { kind: "event", event: ev("edited", "k.tl.verb.edited", "chapter-3.md", "Text editor", dayAgo(1, 11, 20), "Thesis") },
+    { kind: "event", event: ev("imported", "k.tl.verb.imported", "12 papers from Zotero", "Zotero bridge", dayAgo(1, 13, 2)) },
+    { kind: "event", event: ev("opened", "k.tl.verb.opened", "Attention Is All You Need.pdf", "Files", dayAgo(1, 13, 15), "Thesis") },
     {
       kind: "session",
       session: {
@@ -163,17 +180,17 @@ function fixture(): TimelineItem[] {
         from: dayAgo(2, 9, 30),
         to: dayAgo(2, 12, 15),
         events: [
-          ev("focus", "focused", "Terminal, ~/Repositories/arlen", "Shell", dayAgo(2, 9, 32), "Arlen OS"),
-          ev("edited", "edited", "compositor.toml", "Text editor", dayAgo(2, 10, 8), "Arlen OS"),
-          ev("ran", "ran", "just dev", "Terminal", dayAgo(2, 10, 12), "Arlen OS"),
-          ev("opened", "opened", "design-system.md", "Files", dayAgo(2, 11, 47), "Arlen OS"),
+          ev("focus", "k.tl.verb.focused", "Terminal, ~/Repositories/arlen", "Shell", dayAgo(2, 9, 32), "Arlen OS"),
+          ev("edited", "k.tl.verb.edited", "compositor.toml", "Text editor", dayAgo(2, 10, 8), "Arlen OS"),
+          ev("ran", "k.tl.verb.ran", "just dev", "Terminal", dayAgo(2, 10, 12), "Arlen OS"),
+          ev("opened", "k.tl.verb.opened", "design-system.md", "Files", dayAgo(2, 11, 47), "Arlen OS"),
         ],
       },
     },
-    { kind: "event", event: ev("imported", "imported", "Re: review notes", "Thunderbird bridge", dayAgo(3, 8, 44)) },
-    { kind: "event", event: ev("opened", "opened", "The Rust Programming Language", "Library", dayAgo(3, 21, 6)) },
-    { kind: "event", event: ev("ran", "ran", "git push", "Terminal", dayAgo(4, 17, 58), "Arlen OS") },
-    { kind: "event", event: ev("edited", "edited", "notes.md", "Text editor", dayAgo(4, 18, 30)) },
+    { kind: "event", event: ev("imported", "k.tl.verb.imported", "Re: review notes", "Thunderbird bridge", dayAgo(3, 8, 44)) },
+    { kind: "event", event: ev("opened", "k.tl.verb.opened", "The Rust Programming Language", "Library", dayAgo(3, 21, 6)) },
+    { kind: "event", event: ev("ran", "k.tl.verb.ran", "git push", "Terminal", dayAgo(4, 17, 58), "Arlen OS") },
+    { kind: "event", event: ev("edited", "k.tl.verb.edited", "notes.md", "Text editor", dayAgo(4, 18, 30)) },
   ];
   return items;
 }

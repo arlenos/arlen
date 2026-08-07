@@ -53,6 +53,10 @@ const daysAgo = (d: number, h = 12): number => {
 // The fixture index: the same story the timeline, projects and library tell,
 // flattened into searchable rows. Dense on purpose - the graph's worth is
 // cross-source context.
+//
+// i18n-foreign: the user's own things - a paper, a note, a project, a meeting.
+// The graph will hand these over in whatever language they were written in, and
+// a fixture standing in for them is not ours to translate either.
 const INDEX: SearchResult[] = [
   { id: "r-1", type: "file", title: "compositor.toml", sub: "Text editor", at: daysAgo(2, 10), project: "Arlen OS" },
   { id: "r-2", type: "file", title: "design-system.md", sub: "Files", at: daysAgo(2, 11), project: "Arlen OS" },

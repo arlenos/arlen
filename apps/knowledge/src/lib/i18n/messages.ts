@@ -9,6 +9,13 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "k.menu.timeline": "Timeline",
+    // The quiet leading verb of a timeline row, per event kind.
+    "k.tl.verb.opened": "opened",
+    "k.tl.verb.edited": "edited",
+    "k.tl.verb.ran": "ran",
+    "k.tl.verb.focused": "focused",
+    "k.tl.verb.tagged": "tagged",
+    "k.tl.verb.imported": "imported",
     "k.menu.export": "Export recorded activity…",
     "k.menu.deleteToday": "Delete today's activity…",
     "k.menu.deleteAll": "Delete everything recorded…",
@@ -113,6 +120,12 @@ const messages: Catalogs = {
   },
   de: {
     "k.menu.timeline": "Zeitleiste",
+    "k.tl.verb.opened": "geöffnet",
+    "k.tl.verb.edited": "bearbeitet",
+    "k.tl.verb.ran": "ausgeführt",
+    "k.tl.verb.focused": "im Fokus",
+    "k.tl.verb.tagged": "verschlagwortet",
+    "k.tl.verb.imported": "importiert",
     "k.menu.export": "Aufgezeichnete Aktivität exportieren…",
     "k.menu.deleteToday": "Heutige Aktivität löschen…",
     "k.menu.deleteAll": "Alles Aufgezeichnete löschen…",

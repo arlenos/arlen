@@ -49,6 +49,7 @@ export interface LinkPreview {
   included: boolean;
 }
 
+// i18n-foreign: a capsule is named by whoever minted it, after their own work.
 const FIXTURE_CAPSULES: Capsule[] = [
   { id: "c-1", label: "Thesis slice", audience: "The assistant", expiresAt: "in 5 days", readsLeft: 37, state: "active" },
 ];
