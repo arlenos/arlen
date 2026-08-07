@@ -1,0 +1,24 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Clock
+Name[de]=Uhr
+Comment=Alarms, timers, focus sessions and a stopwatch
+Comment[de]=Wecker, Timer, Fokus-Sitzungen und eine Stoppuhr
+Exec=arlen-clock
+Icon=arlen-clock
+Terminal=false
+Categories=Utility;Clock;
+Keywords=clock;alarm;timer;stopwatch;focus;pomodoro;
+Keywords[de]=uhr;wecker;timer;stoppuhr;fokus;
+StartupNotify=true
+# The identity the permission system keys on. The resolver maps a canonical
+# /usr/bin/arlen-{name} binary to {name}, so this app is `clock` to the profile,
+# the audit actor and every capability check - while the desktop-id this file
+# would otherwise imply is its basename, `arlen-clock`. Stating it keeps the
+# launcher's idea of who this app is identical to the daemons'.
+#
+# Note this is the APP, `clock`. The daemon that holds the alarms is `clockd`,
+# a different principal with its own profile: the app may be closed at any time
+# and the daemon may not, so they are not one identity wearing two hats.
+X-Arlen-AppId=clock
