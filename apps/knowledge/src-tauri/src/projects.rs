@@ -114,6 +114,16 @@ async fn list_projects(
 
 /// One project's live members, by the bitemporal FILE_PART_OF edge.
 ///
+/// **Denied today for this caller, and worth knowing before debugging it.** The
+/// read gate requires every relationship type in a query to be in the caller's
+/// readable set, and that set keeps only entirely-alphanumeric names, so
+/// `FILE_PART_OF` cannot be in it. Measured against the gate, this query answers
+/// "read denied: label outside the caller's read scope" for any caller that is
+/// not system-anchored - which this app is not. The column falls back to its
+/// fixture and says it is mocked, which is the honest outcome; making it real
+/// needs the scope model to admit declared relations, or this app to be
+/// first-party. Recorded for a decision rather than worked around here.
+///
 /// Liveness comes from the EDGE stamps alone, and that is not a shortcut: a
 /// `File` node has no `expired_at` column - only `Project` does - and this
 /// engine refuses a labelled match that names a column the table lacks

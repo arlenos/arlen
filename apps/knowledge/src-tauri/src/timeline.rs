@@ -86,16 +86,29 @@ pub async fn knowledge_timeline() -> Result<Vec<TimelineItem>, String> {
 }
 
 /// File accesses: the promotion pipeline stamps `last_accessed` and the app that
-/// opened it. The project comes from the live membership edge when there is one.
+/// opened it.
+///
+/// **No project join, and that is not an oversight.** The read gate requires
+/// every label AND relationship type in a query to be in the caller's readable
+/// set, and that set is built by stripping `system.` from the profile's read
+/// scopes and keeping only names that are entirely alphanumeric - so
+/// `FILE_PART_OF` can never be in it. Measured against the gate itself, a
+/// timeline query carrying the membership join answers "read denied: label
+/// outside the caller's read scope" for any caller that is not system-anchored,
+/// which this app is not (the first-party list is the four daemons).
+///
+/// Asking for the join anyway would cost the WHOLE read - the spine would fall
+/// back to fixture data rather than show what the graph really holds. So this
+/// asks for what it can have. The project column stays empty until the scope
+/// question is settled one way or the other, and an empty column is a smaller
+/// lie than an invented timeline.
 async fn read_file_accesses(
     client: &os_sdk::graph::UnixGraphClient,
 ) -> Result<Vec<TimelineEvent>, String> {
     let cypher = format!(
         "MATCH (f:File) WHERE f.last_accessed IS NOT NULL \
-         OPTIONAL MATCH (f)-[r:FILE_PART_OF]->(p:Project) \
-         WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
          RETURN f.id AS id, f.path AS path, f.app_id AS app_id, \
-                f.last_accessed AS at, p.name AS project \
+                f.last_accessed AS at \
          ORDER BY f.last_accessed DESC LIMIT {LIMIT}"
     );
     let rows = client.query_rows(&cypher).await.map_err(|e| e.to_string())?;
@@ -110,7 +123,7 @@ async fn read_file_accesses(
                 object: basename(&path),
                 source: text(r, "app_id").unwrap_or_default(),
                 at: seconds(r, "at")?,
-                project: text(r, "project"),
+                project: None,
             })
         })
         .collect())

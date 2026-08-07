@@ -111,26 +111,27 @@ async fn files(
     if let Some(cut) = cutoff_micros(facets.within_days) {
         wheres.push(format!("f.last_accessed >= {cut}"));
     }
-    let project_clause = match facets.project.as_deref() {
-        // A project facet is a REQUIRED membership, so the match stops being
-        // optional - an optional match with a filter on the project would keep
-        // every unmatched file with a null project instead of dropping it.
-        Some(name) => format!(
-            "MATCH (f)-[r:FILE_PART_OF]->(p:Project {{name: '{}'}}) \
-             WHERE r.invalid_at IS NULL AND r.expired_at IS NULL ",
-            escape_cypher_literal(name)
-        ),
-        None => "OPTIONAL MATCH (f)-[r:FILE_PART_OF]->(p:Project) \
-                 WHERE r.invalid_at IS NULL AND r.expired_at IS NULL "
-            .to_string(),
-    };
+    // Filtering files by project needs the membership EDGE, and the read gate
+    // requires every relationship type in a query to be in the caller's readable
+    // set - which is built by stripping `system.` from the profile's read scopes
+    // and keeping only entirely-alphanumeric names, so `FILE_PART_OF` can never
+    // be in it. This app is not system-anchored, so such a query is denied,
+    // measured against the gate rather than assumed.
+    //
+    // Refusing is the honest answer here, and note it differs from the unanswerable
+    // TYPE facet above, which returns empty: there the graph genuinely holds no
+    // such nodes, here it holds the answer and we cannot reach it. Returning files
+    // unfiltered would silently ignore the filter; returning none would claim the
+    // project has no files. So the surface falls to its fixture and says so.
+    if facets.project.is_some() {
+        return Err("filtering files by project needs an edge read this caller cannot make".into());
+    }
     let cypher = format!(
-        "MATCH (f:File) WHERE {} {}\
+        "MATCH (f:File) WHERE {} \
          RETURN f.id AS id, f.path AS path, f.app_id AS app_id, \
-                f.last_accessed AS at, p.name AS project \
+                f.last_accessed AS at \
          ORDER BY f.last_accessed DESC LIMIT {RANK_LIMIT}",
-        wheres.join(" AND "),
-        project_clause
+        wheres.join(" AND ")
     );
     let rows = client.query_rows(&cypher).await.map_err(|e| e.to_string())?;
     Ok(rows
@@ -143,7 +144,7 @@ async fn files(
                 title: path.rsplit('/').next().unwrap_or(&path).to_string(),
                 sub: text(r, "app_id").unwrap_or_default(),
                 at: seconds(r, "at"),
-                project: text(r, "project"),
+                project: None,
             })
         })
         .collect())
@@ -242,6 +243,18 @@ mod tests {
             let r = knowledge_search("anything".into(), facets).await;
             assert_eq!(r.unwrap(), Vec::new(), "{t} must answer empty");
         }
+    }
+
+    #[tokio::test]
+    async fn a_project_filter_refuses_rather_than_ignoring_itself() {
+        // The file half needs the membership edge, which the read gate denies to
+        // a caller that is not system-anchored. Answering with unfiltered files
+        // would ignore the filter while looking like it worked.
+        let facets = SearchFacets {
+            project: Some("Thesis".to_string()),
+            ..Default::default()
+        };
+        assert!(knowledge_search("chapter".into(), facets).await.is_err());
     }
 
     #[test]
