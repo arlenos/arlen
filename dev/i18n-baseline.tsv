@@ -155,11 +155,7 @@ apps/knowledge/src/lib/stores/search.ts	Thesis
 apps/knowledge/src/lib/stores/search.ts	Website redesign
 apps/knowledge/src/lib/stores/search.ts	Website redesign, 2:10 pm to 4:40 pm
 apps/knowledge/src/lib/stores/timeline.ts	Arlen OS
-apps/knowledge/src/lib/stores/timeline.ts	Gestern
-apps/knowledge/src/lib/stores/timeline.ts	Heute
-apps/knowledge/src/lib/stores/timeline.ts	Today
 apps/knowledge/src/lib/stores/timeline.ts	Website redesign
-apps/knowledge/src/lib/stores/timeline.ts	Yesterday
 apps/meetings/src/lib/stores/meeting.ts	Editor and meeting-notes direction
 apps/meetings/src/lib/stores/meeting.ts	Sovereignty review
 apps/meetings/src/lib/stores/meeting.ts	Weekly standup
