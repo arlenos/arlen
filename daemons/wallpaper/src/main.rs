@@ -32,7 +32,7 @@ fn main() {
             return;
         }
     };
-    let (mut wallpaper, mut queue) = match Wallpaper::new(&conn, manifest, time) {
+    let (wallpaper, queue) = match Wallpaper::new(&conn, manifest, time) {
         Ok(w) => w,
         Err(e) => {
             tracing::error!("wallpaper init failed: {e}");
@@ -40,12 +40,85 @@ fn main() {
         }
     };
     tracing::info!("arlen-wallpaperd rendering");
-    loop {
-        if let Err(e) = queue.blocking_dispatch(&mut wallpaper) {
-            tracing::error!("wayland dispatch ended: {e}");
-            break;
-        }
+    if let Err(e) = run(queue, wallpaper) {
+        tracing::error!("wallpaper event loop ended: {e}");
     }
+}
+
+/// Drive the Wayland queue AND the manifest watch in one event loop.
+///
+/// A single `blocking_dispatch` loop waits on the Wayland fd alone, so a
+/// manifest written while the desktop is idle would not be noticed until some
+/// unrelated Wayland event arrived - the wallpaper would appear to change at
+/// random moments, which is worse than not changing at all. calloop lets the
+/// loop wait on both.
+fn run(
+    queue: wayland_client::EventQueue<Wallpaper>,
+    mut wallpaper: Wallpaper,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut event_loop: calloop::EventLoop<Wallpaper> = calloop::EventLoop::try_new()?;
+    let handle = event_loop.handle();
+    calloop_wayland_source::WaylandSource::new(
+        wayland_client::Connection::connect_to_env()?,
+        queue,
+    )
+    .insert(handle.clone())?;
+
+    // The watcher runs on its own thread and hands changes over the loop's own
+    // channel, which is what actually wakes the dispatch.
+    let (tx, rx) = calloop::channel::channel::<()>();
+    let _watcher = watch_manifest(tx);
+    handle.insert_source(rx, |event, _, state: &mut Wallpaper| {
+        if !matches!(event, calloop::channel::Event::Msg(())) {
+            return;
+        }
+        match load_manifest() {
+            Some(m) => {
+                tracing::info!("wallpaper manifest changed; redrawing");
+                state.set_manifest(m, TimeContext::at_minute(minute_of_day()));
+            }
+            // A manifest that stopped loading leaves the current one on screen:
+            // the alternative is a bare desktop while the user fixes a typo.
+            None => tracing::warn!("wallpaper manifest changed but does not load; keeping the current one"),
+        }
+    })?;
+
+    event_loop.run(None, &mut wallpaper, |_| {})?;
+    Ok(())
+}
+
+/// Watch the manifest's DIRECTORY and signal `tx` on any change in it.
+///
+/// The directory rather than the file: Settings writes the manifest with a
+/// temp-and-rename, which replaces the inode, so a watch on the file itself
+/// would go deaf after the first change. Directory events are coarse - any file
+/// in `~/.config/arlen` wakes it - and the handler reloads a small TOML, so
+/// coarse is cheaper than clever here.
+///
+/// Returns the watcher, which must be kept alive; dropping it stops the watch.
+fn watch_manifest(tx: calloop::channel::Sender<()>) -> Option<notify::RecommendedWatcher> {
+    use notify::Watcher;
+    let path = config::user_manifest_path()?;
+    let dir = path.parent()?.to_path_buf();
+    // The directory may not exist until Settings first writes a manifest, so
+    // create it rather than silently never watching.
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        tracing::warn!(dir = %dir.display(), "cannot watch for wallpaper changes: {e}");
+        return None;
+    }
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        if res.is_ok() {
+            let _ = tx.send(());
+        }
+    })
+    .map_err(|e| tracing::warn!("wallpaper watcher unavailable: {e}"))
+    .ok()?;
+    watcher
+        .watch(&dir, notify::RecursiveMode::NonRecursive)
+        .map_err(|e| tracing::warn!(dir = %dir.display(), "cannot watch: {e}"))
+        .ok()?;
+    tracing::info!(dir = %dir.display(), "watching for wallpaper manifest changes");
+    Some(watcher)
 }
 
 /// Load the wallpaper manifest through the shared resolver: the
