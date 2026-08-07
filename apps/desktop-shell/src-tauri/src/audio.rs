@@ -563,6 +563,16 @@ fn get_app_volumes_legacy() -> Result<Vec<AppVolume>, String> {
             current_icon = None;
             current_binary = None;
         } else if let Some(val) = trimmed.strip_prefix("application.name = ") {
+            // NB every `application.*` value here is chosen by the application,
+            // and this parser is line-oriented: `Sink Input #` starts a new
+            // record. If `pactl` can ever render a newline inside a property
+            // value, an app can write one and forge a record - a row in the
+            // per-app volume list with a name and icon of its choosing and an id
+            // naming somebody else's stream. Whether it can is unverified: it
+            // needs a sink-input with a hostile property, which means creating
+            // one, which is not something to do on the machine this was written
+            // on. The migration off `pactl` is the real answer; until then this
+            // is the reason it is not only a tidiness job.
             current_name = val.trim_matches('"').to_string();
         } else if let Some(val) = trimmed.strip_prefix("application.icon_name = ") {
             current_icon = Some(val.trim_matches('"').to_string());
