@@ -12,6 +12,13 @@
 //                                            import and captures whatever the
 //                                            translator held then. Fix: `$derived([...])`.
 //
+// What matters is WHEN `$t` is called, not where the declaration sits. A const whose
+// initialiser is a FUNCTION is fine - `const f = (n) => $t("k")` reads the store when
+// the markup calls it, inside that reaction, so it re-renders on a locale switch. This
+// check flagged one of those and turned CI red over correct code; wrapping it in
+// `$derived` would have silenced the check without creating a dependency, since a
+// derived that only builds a closure reads nothing while it runs.
+//
 //   function label() { return get(t)("k") }  `get()` reads the store imperatively, so it
 //                                            is not a tracked dependency and the markup
 //                                            calling the function never re-renders.
@@ -27,7 +34,7 @@
 // three correctly-wrapped tables as broken.
 
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 
@@ -114,7 +121,7 @@ for (const base of BASES) {
     if (!script) continue;
     scanned++;
     const lines = script[1].split("\n");
-    const rel = file.slice(ROOT.length);
+    const rel = relative(ROOT, file);
 
     lines.forEach((line, i) => {
       if (/\bget\s*\(\s*t\s*\)\s*\(/.test(line)) {
@@ -139,6 +146,13 @@ for (const base of BASES) {
         : rest.slice(rest.indexOf("=") + 1);
       // `$derived` may sit on the next line when the type annotation is long.
       if (initialiser.trimStart().startsWith("$derived")) return;
+      // A function initialiser DEFERS its `$t` reads to the call, and the call
+      // happens inside the markup's reaction, so the store read is tracked there
+      // and the text does follow a locale switch. Only an initialiser that calls
+      // `$t` at declaration time captures anything. Measured rather than argued:
+      // `const f = (n) => $t(k)` re-renders on a locale change and
+      // `const s = $t(k)` does not, verified by mounting both and switching.
+      if (/^\s*(?:async\s+)?(?:function\b|\(|<|[\w$]+\s*=>)/.test(initialiser)) return;
       const end = initialiser.indexOf(";");
       if (!(end === -1 ? initialiser : initialiser.slice(0, end)).includes("$t(")) return;
       problems.push(
@@ -161,7 +175,7 @@ for (const base of BASES) {
     const text = readFileSync(file, "utf8");
     if (!text.includes("get(locale)") && !text.includes("get( locale")) continue;
     tsScanned++;
-    const rel = file.slice(ROOT.length);
+    const rel = relative(ROOT, file);
     const allLines = text.split("\n");
     allLines.forEach((line, i) => {
       const m = /\bget\s*\(\s*locale\s*\)/.exec(line);
