@@ -5,7 +5,7 @@
 ///
 /// See `docs/architecture/CAPABILITY-TOKENS.md` Sections 7-8.
 
-use crate::identity::{app_id_from_cgroup, app_id_from_pid, process_alive, IdentityError};
+use crate::identity::{app_id_from_pid, process_alive, IdentityError};
 use arlen_permissions::{load_profile, PermissionError, PermissionProfile};
 
 use crate::permission::GraphScopeExt;
@@ -76,25 +76,23 @@ impl Authenticator {
     /// 4. Builds and signs token from profile scopes
     /// 5. Caches token with profile mtime
     pub fn issue_token_for_pid(&mut self, pid: u32) -> Result<CapabilityToken, AuthError> {
-        // A hardened, non-dumpable peer's /proc/exe is EACCES even to root, so the
-        // exe-path resolve fails; fall back to the peer's cgroup unit (not
-        // ptrace-gated), which identifies the canonical AI daemons. Without this a
-        // hardened ai-agent could READ (the connection resolver already falls back)
-        // but its WRITE token issuance failed here, so executor_live never wrote.
+        // A hardened, non-dumpable peer's /proc/exe is EACCES even to root, and
+        // there is no second way to identify it. There used to be: the peer's
+        // cgroup unit. It was removed because the peer owns that text - a
+        // directory named after a daemon inside its own slice read as that
+        // daemon - so it turned "I could not identify you" into "you are the AI
+        // daemon", which is what the token, the tier and the read scope key on.
+        // A failed identification stays a failure here; the caller gets the
+        // resolver's error rather than an identity nobody proved.
         let app_id = match app_id_from_pid(pid) {
             Ok(id) => id,
-            // A launcher-declared same-uid caller (debug harness / `just dev`) is
-            // tried BEFORE the cgroup so token issuance keys on the SAME id the
-            // connection resolver assigned (`same_uid_unresolved_id`, which uses
-            // the declared id directly for a same-uid peer); otherwise a
-            // connect-time Grant node would be keyed on a divergent cgroup id and
-            // the caller's own `access_grants` read would not find it. Release
-            // builds return `None` here, so the cgroup stays the fallback for the
-            // canonical cross-uid AI daemons.
-            Err(e) => match dev_self_caller_id() {
-                Some(id) => id,
-                None => app_id_from_cgroup(pid).ok_or(e)?,
-            },
+            // A launcher-declared same-uid caller (debug harness / `just dev`)
+            // keys token issuance on the SAME id the connection resolver assigned
+            // (`same_uid_unresolved_id`, which uses the declared id directly for a
+            // same-uid peer); otherwise a connect-time Grant node would be keyed
+            // on a divergent id and the caller's own `access_grants` read would
+            // not find it. Release builds return `None` here.
+            Err(e) => dev_self_caller_id().ok_or(e)?,
         };
         self.issue_token_for_app(&app_id, pid)
     }
