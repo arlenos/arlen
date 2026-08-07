@@ -15,12 +15,10 @@ This was found by looking: `arlen-wallpaperd.service` had been written, the
 renderer built, and no phase ever compiled it into the image. The desktop had no
 wallpaper and nothing said so. Nineteen more units were in the same state.
 
-The ledger below is the point of the file. It is not an exemption list - each
-entry is a daemon the image does not have, with what that costs, so the number
-appears in the output rather than in nobody's head. Moving an entry out is the
-work. Adding one is admitting a gap, which is fine as long as it is written down
-rather than discovered a year later by someone wondering why installing a
-package does nothing.
+The ledger below is the point of the file. Each entry is a daemon the image does
+not have and the reason it does not, so a unit can only be absent on purpose.
+Adding an entry means writing down a decision; the check fails on any absence
+nobody has.
 
 Not in `just checks`, for the reason `check-invoke-scope` is not: it reports
 real, pre-existing absences, and declaring them to reach a green is the wrong way
@@ -34,29 +32,43 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 IMAGE = ROOT / "dev/mkosi/mkosi.extra"
 SKIP_PARTS = {"target", "mkosi.builddir", "node_modules", ".git"}
 
-# unit -> what the image not having it costs. Written as consequence rather than
-# motive: whether each absence is deliberate is not something this file can know,
-# but what is missing from the running system is.
+# unit -> why the image does not have it. Every entry here is a scope call the
+# planner already made and re-confirmed (coder-jobs 14 Jul, re-swept 21 Jul); the
+# reasons are quoted from it rather than reconstructed, so reading this file
+# cannot re-open a settled question. That is the failure this text exists to
+# prevent: the first version listed only the consequence of each absence, which
+# reads as nineteen open holes and invites someone to "fix" a deliberate scope.
+#
+# The absences are deliberate. A unit that is NOT here and not shipped is the
+# real finding - that was `arlen-wallpaperd`, which had a unit, a working
+# renderer and no build phase, and it is now staged.
 ABSENT_FROM_IMAGE = {
-    "installd.service": "no package can be installed on the image",
-    "install-helper.service": "the root half of installation is absent",
-    "permission-helper.service": "no profile can be written by the root helper",
-    "org.arlen.InstallDaemon1.service": "installd cannot be bus-activated",
-    "org.arlen.InstallHelper1.service": "the install helper cannot be bus-activated",
-    "org.arlen.PermissionHelper1.service": "the permission helper cannot be bus-activated",
-    "xdg-desktop-portal-arlen.service": "no Arlen portal backend: file chooser and screenshot fall back",
-    "org.freedesktop.impl.portal.desktop.arlen.service": "the portal backend cannot be bus-activated",
-    "arlen-accountsd.service": "online accounts are unavailable",
-    "org.arlen.Accounts1.service": "the accounts daemon cannot be bus-activated",
-    "arlen-connectionsd.service": "remote connections are unavailable",
-    "org.arlen.Connections1.service": "the connections daemon cannot be bus-activated",
-    "arlen-transferd.service": "policy-gated transfers are unavailable",
-    "arlen-modulesd.service": "no module (Tier 1 or Tier 2) can run",
-    "arlen-settings-broker.service": "settings writes have no broker",
-    "arlen-trash-cleanup.service": "staged deletions are never collected",
-    "arlen-knowledge-mcp.service": "the graph MCP server is unavailable to the AI layer",
-    "arlen-file-manager-mcp.service": "the file-manager MCP server is unavailable",
-    "arlen-system-monitor-mcp.service": "the system-monitor MCP server is unavailable",
+    # D-Bus-root-activated, not boot-verified: out of minimal-image scope.
+    "installd.service": "installation is D-Bus-root-activated, not boot-verified",
+    "install-helper.service": "the root half of the same deferral",
+    "permission-helper.service": "the root profile writer, same deferral",
+    "org.arlen.InstallDaemon1.service": "activation file for the above",
+    "org.arlen.InstallHelper1.service": "activation file for the above",
+    "org.arlen.PermissionHelper1.service": "activation file for the above",
+    # Deferred to the portal/capture strand: the portal is immature and its
+    # screen-capture half carries open decisions. Verified 8 Aug that no staged
+    # app invokes a file picker or screenshot, so the deferral costs nothing yet.
+    "xdg-desktop-portal-arlen.service": "deferred to the portal/capture strand",
+    "org.freedesktop.impl.portal.desktop.arlen.service": "activation file for the above",
+    # Outside the minimal dogfood appliance (desktop + 4 apps + KG-AI + consent).
+    "arlen-accountsd.service": "online accounts are outside the appliance scope",
+    "org.arlen.Accounts1.service": "activation file for the above",
+    "arlen-connectionsd.service": "no packaged consumer yet",
+    "org.arlen.Connections1.service": "activation file for the above",
+    "arlen-transferd.service": "no packaged consumer yet",
+    "arlen-modulesd.service": "no packaged consumer yet",
+    "arlen-settings-broker.service": "settings is not a staged app",
+    "arlen-trash-cleanup.service": "outside the appliance scope",
+    # AI-spawned on demand rather than session services: a missing one is a
+    # capability the AI layer reports as unavailable, not a broken boot.
+    "arlen-knowledge-mcp.service": "MCP servers are AI-spawned on demand",
+    "arlen-file-manager-mcp.service": "MCP servers are AI-spawned on demand",
+    "arlen-system-monitor-mcp.service": "MCP servers are AI-spawned on demand",
 }
 
 
