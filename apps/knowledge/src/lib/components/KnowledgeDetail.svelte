@@ -48,7 +48,7 @@
       <div class="kn-recent">
         {#each shownHops as h, i (i)}
           <div class="kn-recent-row">
-            <span class="kn-recent-verb">{h.verb}</span>
+            <span class="kn-recent-verb">{$t(h.verb)}</span>
             <span class="kn-recent-object">{h.subject}</span>
             {#if h.when}<span class="kn-recent-time">{formatModified(h.when)}</span>{/if}
           </div>
@@ -87,7 +87,7 @@
         <div class="kn-recent">
           {#each project.events as e (e.id)}
             <div class="kn-recent-row">
-              <span class="kn-recent-verb">{e.verb}</span>
+              <span class="kn-recent-verb">{$t(e.verb)}</span>
               <span class="kn-recent-object">{e.object}</span>
               <span class="kn-recent-time">{clock(e.at, $locale)}</span>
             </div>
@@ -96,7 +96,7 @@
       </div>
     {/if}
   {:else if event}
-    <div class="kn-detail-name">{event.verb} {event.object}</div>
+    <div class="kn-detail-name">{$t(event.verb)} {event.object}</div>
     <div class="kn-kv">
       <span class="kn-k">{$t("k.detail.when")}</span>
       <span class="kn-v">{formatModified(event.at)}</span>

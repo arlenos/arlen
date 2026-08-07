@@ -182,7 +182,7 @@
               {@const Icon = KIND_ICONS[item.event.kind]}
               <button type="button" class="tl-row" onclick={() => onselect(item.event)}>
                 <span class="tl-icon"><Icon size={14} strokeWidth={1.75} /></span>
-                <span class="tl-verb">{item.event.verb}</span>
+                <span class="tl-verb">{$t(item.event.verb)}</span>
                 <span class="tl-object">
                   {item.event.object}
                   {#if item.event.project}<span class="tl-chip">{item.event.project}</span>{/if}
@@ -211,7 +211,7 @@
                       {@const Icon = KIND_ICONS[e.kind]}
                       <button type="button" class="tl-row nested" onclick={() => onselect(e)}>
                         <span class="tl-icon"><Icon size={14} strokeWidth={1.75} /></span>
-                        <span class="tl-verb">{e.verb}</span>
+                        <span class="tl-verb">{$t(e.verb)}</span>
                         <span class="tl-object">{e.object}</span>
                         <span class="tl-source">{e.source}</span>
                         <span class="tl-time">{clock(e.at, $locale)}</span>
