@@ -249,7 +249,7 @@ fn try_zenity_file(start: &str) -> Option<String> {
 /// Decode a `file://...` URI back to an absolute filesystem path.
 /// `None` for non-file URIs and parse failures — the caller falls
 /// back to kdialog/zenity in that case.
-fn uri_to_path(uri: &str) -> Option<String> {
+pub(crate) fn uri_to_path(uri: &str) -> Option<String> {
     let suffix = uri.strip_prefix("file://")?;
     // Drop optional host segment per RFC 8089. `file:///path` has
     // empty host; `file://localhost/path` is also valid.
