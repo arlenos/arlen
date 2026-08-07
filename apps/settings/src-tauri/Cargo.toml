@@ -24,6 +24,7 @@ arlen-forage-bridge-install = { path = "../../../forage/bridge-install" }
 arlen-ai-model-manager = { path = "../../../ai/ai-model-manager" }
 arlen-theme = { path = "../../../sdk/theme" }
 arlen-printers = { path = "../../../sdk/printers" }
+arlen-wallpaper = { path = "../../../daemons/wallpaper" }
 arlen-print = { path = "../../../daemons/print", features = ["cups"] }
 tauri = { version = "2", features = ["protocol-asset"] }
 serde = { version = "1", features = ["derive"] }

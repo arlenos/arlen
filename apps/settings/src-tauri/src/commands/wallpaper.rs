@@ -128,6 +128,82 @@ pub async fn list_wallpapers() -> Result<Vec<WallpaperEntry>, String> {
     Ok(catalogue_from(Path::new(SYSTEM_DIR), user.as_deref()))
 }
 
+/// Resolve an id to the file it names, user root first.
+///
+/// Only ever returns a path INSIDE one of the two roots: the id is validated as
+/// a stem and joined to a root, so there is no input that reaches elsewhere.
+pub fn resolve_from(id: &str, system: &Path, user: Option<&Path>) -> Option<PathBuf> {
+    if !is_valid_id(id) {
+        return None;
+    }
+    let roots = user.into_iter().chain(std::iter::once(system));
+    for root in roots {
+        for ext in EXTENSIONS {
+            let p = root.join(format!("{id}.{ext}"));
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// The daemon's scale for the picker's fit mode.
+///
+/// The daemon models two: Fill and Zoom. The picker's vocabulary carries three
+/// more, and `stretch` in particular the daemon refuses on purpose - it breaks
+/// aspect. Mapping them onto Fill would silently overrule that refusal and show
+/// the user something other than what they picked, so an unmodelled fit is an
+/// error naming itself.
+fn daemon_scale(scale: &str) -> Result<&'static str, String> {
+    match scale {
+        "fill" => Ok("fill"),
+        "fit" => Ok("zoom"),
+        other => Err(format!(
+            "the wallpaper daemon renders fill or fit only; it does not model {other}"
+        )),
+    }
+}
+
+/// The manifest text for a static image wallpaper.
+///
+/// Written by hand because `WallpaperManifest` derives `Deserialize` only - the
+/// daemon reads manifests, nothing wrote one until now. The daemon validates on
+/// read, so a shape error surfaces there rather than being assumed here.
+fn manifest_toml(asset: &Path, scale: &str) -> String {
+    format!(
+        "# Written by Settings. The wallpaper daemon reads this at startup.\n\
+         kind = \"image\"\n\n[default]\nasset = \"{}\"\nscale = \"{scale}\"\n",
+        asset.display()
+    )
+}
+
+/// Make `id` the wallpaper.
+///
+/// **Takes effect when the daemon next starts.** `arlen-wallpaperd` loads the
+/// manifest once and then dispatches Wayland events; there is no watch and no
+/// reload signal. Saying so is better than a picker that looks applied and is
+/// not - the reload is a daemon change, not something this can paper over.
+#[tauri::command]
+pub async fn set_wallpaper(id: String, scale: String) -> Result<(), String> {
+    let daemon_scale = daemon_scale(&scale)?;
+    let user = user_dir();
+    let asset = resolve_from(&id, Path::new(SYSTEM_DIR), user.as_deref())
+        .ok_or_else(|| format!("no wallpaper named {id}"))?;
+    let path = arlen_wallpaper::config::user_manifest_path()
+        .ok_or_else(|| "no home directory to write the wallpaper manifest into".to_string())?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| "the wallpaper manifest path has no directory".to_string())?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+    // Temp-and-rename: a half-written manifest is one the daemon would refuse at
+    // next start, which would read as "my wallpaper reset itself".
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, manifest_toml(&asset, daemon_scale))
+        .map_err(|e| format!("write {}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("rename into {}: {e}", path.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,6 +211,53 @@ mod tests {
     fn touch(dir: &Path, name: &str) {
         std::fs::create_dir_all(dir).unwrap();
         std::fs::write(dir.join(name), b"x").unwrap();
+    }
+
+    #[test]
+    fn an_id_resolves_to_the_users_file_before_the_shipped_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sys = tmp.path().join("sys");
+        let usr = tmp.path().join("usr");
+        touch(&sys, "sunset.png");
+        touch(&usr, "sunset.jpg");
+        let got = resolve_from("sunset", &sys, Some(&usr)).unwrap();
+        assert!(got.ends_with("usr/sunset.jpg"), "got {}", got.display());
+        // Falls back to the shipped file when the user has none.
+        let only_sys = resolve_from("sunset", &sys, None).unwrap();
+        assert!(only_sys.ends_with("sys/sunset.png"));
+        assert!(resolve_from("absent", &sys, Some(&usr)).is_none());
+    }
+
+    #[test]
+    fn a_crafted_id_resolves_to_nothing_at_all() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sys = tmp.path().join("sys");
+        touch(&sys, "ok.png");
+        for bad in ["../../etc/passwd", "..", "a/b", ""] {
+            assert!(resolve_from(bad, &sys, None).is_none(), "{bad:?} must resolve to nothing");
+        }
+    }
+
+    #[test]
+    fn a_fit_the_daemon_does_not_model_is_an_error_not_a_substitution() {
+        assert_eq!(daemon_scale("fill").unwrap(), "fill");
+        assert_eq!(daemon_scale("fit").unwrap(), "zoom");
+        // The daemon refuses Stretch on purpose. Quietly showing Fill instead
+        // would overrule that and show something other than what was picked.
+        for other in ["stretch", "center", "tile", ""] {
+            assert!(daemon_scale(other).is_err(), "{other:?} must be refused");
+        }
+    }
+
+    #[test]
+    fn the_written_manifest_is_one_the_daemon_accepts() {
+        // Round-trips through the daemon's own parser rather than asserting the
+        // text: the shape that matters is the one it will read back.
+        let text = manifest_toml(Path::new("/usr/share/arlen/wallpapers/sunset.png"), "zoom");
+        let m = arlen_wallpaper::manifest::WallpaperManifest::parse(&text)
+            .expect("the daemon parses what Settings writes");
+        assert_eq!(m.default.asset, "/usr/share/arlen/wallpapers/sunset.png");
+        m.validate().expect("and validates it");
     }
 
     #[test]

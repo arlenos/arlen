@@ -336,7 +336,6 @@ DEAD_INVOKES: dict[str, str] = {
     "sentinel_fix_posture": "the Settings sentinel page. Measured 8 Aug and the other way round from how this read: the pure detector cores exist (`daemons/sentinel-detect`), the `org.arlen.Sentinel1` daemon they were written for does NOT - the integration harness says so in as many words. There is also no config surface to bridge to: the anomaly detector builds its `DetectorConfig::default()` in `main` and reads no file, so state, sensitivity and per-detector toggles have nothing to read or write. A daemon to build, not a command to register",
     # the wallpaper surface against wallpaperd; the daemon exists, these commands do not - coder
     "add_wallpaper": "the wallpaper surface against wallpaperd; the daemon exists, these commands do not",
-    "set_wallpaper": "the wallpaper surface against wallpaperd; the daemon exists, these commands do not",
     # apps/knowledge has NO src-tauri at all: it is a SvelteKit frontend calling
     # into a host that does not exist, which is why 14 commands are dead rather
     # than 14 commands being unwritten. The daemon-side read ops all exist and the
