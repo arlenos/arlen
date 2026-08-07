@@ -29,6 +29,7 @@
 //! launcher needs and a picker does not. Written down on both sides so the next
 //! person finds one from the other rather than adding a third.
 
+pub mod entry;
 pub mod exec;
 pub mod mimeapps;
 pub mod plan;
