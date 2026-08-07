@@ -79,7 +79,10 @@ mod tests {
     use super::*;
 
     fn page(tampered: bool, head: u64) -> ReadPage {
-        ReadPage { entries: Vec::new(), tampered, head }
+        // `matching` is a row count and `head` a position in the global index,
+        // so an empty page has no matches whatever the head says. These tests
+        // are about the integrity verdict, which reads neither.
+        ReadPage { entries: Vec::new(), tampered, head, matching: 0 }
     }
 
     #[test]
