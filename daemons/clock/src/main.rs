@@ -384,6 +384,22 @@ async fn watch_sleep(clock: std::sync::Arc<Clock>, socket: String) {
 }
 
 /// The interface the app talks to.
+///
+/// **Every method here is ungated, and that is an open item rather than a
+/// decision.** The session bus is default-allow and `arlen-run` binds its socket
+/// into every confined app, so any app on the machine can call these: read the
+/// alarm labels through `State`, which are the user's own words ("Doctor 9:15"),
+/// or delete an alarm outright. The first is disclosure of exactly the shape
+/// that was found on `org.arlen.AI1.explain_system`; the second fails by silence,
+/// which for an alarm is the whole failure.
+///
+/// It is not gated yet because gating means resolving the caller to an app id
+/// and admitting a list, and **the clock app is not packaged yet, so its attested
+/// id is not a fact**. Picking one now would repeat the installd mistake, where an
+/// anchored check was written against a path the binary does not have and so
+/// refused the only caller that mattered. The gate lands with the app's packaging,
+/// when the id is something the resolver actually returns. `dev/scripts/check-dbus-callers.py`
+/// reports these sixteen methods and is meant to keep reporting them until then.
 struct ClockInterface {
     clock: Arc<Clock>,
 }
