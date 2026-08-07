@@ -62,6 +62,26 @@ pub async fn knowledge_projects_list(
     }
 }
 
+/// The browser's place listing (the `knowledge_list` intent in `adapter.ts`):
+/// one virtual place per sidebar entry - timeline, projects, searches, library,
+/// capsules.
+///
+/// **Only `projects` answers for real.** The other four are reads this app does
+/// not have yet, and each one refuses so the store marks that place mocked and
+/// serves its fixture. Refusing per place rather than per command is what lets
+/// the Projects place go live while the rest stay honestly labelled: a command
+/// that answered them all with empty lists would show four places as "your graph
+/// has nothing" when the truth is "nobody asked it".
+#[tauri::command]
+pub async fn knowledge_list(location: String) -> Result<Vec<BrowserEntry>, String> {
+    if location != "projects" {
+        return Err(format!("the {location} place is not wired yet"));
+    }
+    let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
+    let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
+    list_projects(&client).await
+}
+
 /// Every live project, newest first.
 async fn list_projects(
     client: &os_sdk::graph::UnixGraphClient,
@@ -168,6 +188,19 @@ mod tests {
         assert_eq!(seconds(&row, "missing"), None);
         row.insert("s".to_string(), serde_json::json!("nope"));
         assert_eq!(seconds(&row, "s"), None);
+    }
+
+    #[tokio::test]
+    async fn an_unwired_place_refuses_so_it_is_marked_mocked_not_empty() {
+        // The store flips `mocked` per call, so a refusal is what keeps the four
+        // unwired places labelled. Answering them with an empty list would read
+        // as "the graph knows nothing about your library".
+        for place in ["timeline", "searches", "library", "capsules"] {
+            assert!(
+                knowledge_list(place.to_string()).await.is_err(),
+                "{place} must refuse rather than answer empty"
+            );
+        }
     }
 
     #[tokio::test]

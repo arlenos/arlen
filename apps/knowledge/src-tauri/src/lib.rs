@@ -24,7 +24,10 @@ pub fn run() {
     env_logger::init();
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
-        .invoke_handler(tauri::generate_handler![projects::knowledge_projects_list])
+        .invoke_handler(tauri::generate_handler![
+            projects::knowledge_list,
+            projects::knowledge_projects_list
+        ])
         .run(tauri::generate_context!())
         .expect("error while running the Knowledge app");
 }
