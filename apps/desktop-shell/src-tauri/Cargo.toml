@@ -58,6 +58,8 @@ arlen-modules = { path = "../../../sdk/modules" }
 modulesd-proto = { path = "../../../contracts/modulesd-proto" }
 arlen-consent-broker = { path = "../../../daemons/consent-broker" }
 arlen-permissions = { path = "../../../sdk/permissions" }
+arlen-launch-contract = { path = "../../../contracts/launch" }
+audit-proto = { path = "../../../contracts/audit-proto" }
 arlen-theme = { path = "../../../sdk/theme" }
 arlen-i18n = { path = "../../../sdk/i18n" }
 # The pure, CI-tested shell core (the theme resolution pipeline).

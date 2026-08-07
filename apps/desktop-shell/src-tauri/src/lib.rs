@@ -13,6 +13,7 @@ mod search_ipc;
 mod event_bus;
 mod gtk_menu_bridge;
 mod harness_launch;
+mod launch_service;
 mod layer_shell;
 mod locale;
 mod layout;
@@ -240,6 +241,9 @@ pub fn run() {
             shell_config::start_shell_config_watcher(app.handle().clone());
             quicksettings::layout::start_qs_layout_watcher(app.handle().clone());
             event_bus::start(app.handle().clone(), Arc::clone(&shortcuts_state));
+            // The launch socket, so the portal and the apps stop spawning
+            // programs themselves. Absent rather than fatal if it cannot bind.
+            launch_service::spawn_launch_service();
             wayland_client::start(
                 app.handle().clone(),
                 workspace_sender,
