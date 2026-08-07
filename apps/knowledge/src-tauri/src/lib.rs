@@ -15,6 +15,7 @@
 //! that invented an empty list would show the fixture's absence as fact.
 
 mod projects;
+mod search;
 mod timeline;
 
 /// Build and run the app.
@@ -28,6 +29,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             projects::knowledge_list,
             projects::knowledge_projects_list,
+            search::knowledge_search,
             timeline::knowledge_timeline
         ])
         .run(tauri::generate_context!())

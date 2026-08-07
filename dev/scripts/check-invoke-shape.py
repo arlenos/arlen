@@ -327,7 +327,6 @@ DEAD_INVOKES: dict[str, str] = {
     # os-sdk has clients for them, so the missing piece is the app's Rust side -
     # or a decision that this app is hosted some other way. Needs a decision
     "knowledge_library": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
-    "knowledge_search": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
     "knowledge_search_save": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
     "knowledge_provenance": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
     "knowledge_timeline_pause": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
