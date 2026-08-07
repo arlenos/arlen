@@ -13,7 +13,8 @@
 //!
 //! **What is not wired yet, said plainly rather than left to be discovered:**
 //! ringing. It needs the notification daemon, so until that lands an alarm's
-//! moment arrives, the machine wakes for it, and nothing announces it. That is
+//! moment arrives, the machine wakes for it, the alarm advances to its next day
+//! and a line goes in the log - and nothing announces it to the person. That is
 //! said here rather than in a comment nobody reads.
 
 use std::sync::Arc;
@@ -40,6 +41,9 @@ fn now_ms() -> i64 {
 struct Clock {
     state: Arc<Mutex<ClockState>>,
     dir: std::path::PathBuf,
+    /// Raised whenever the state moves, so the due loop can stop waiting for the
+    /// moment it worked out before the change and work out the new one.
+    changed: tokio::sync::Notify,
 }
 
 impl Clock {
@@ -66,6 +70,7 @@ impl Clock {
             }
             effects
         };
+        self.changed.notify_one();
         self.request_wake(effects.wake_at).await;
     }
 
@@ -82,6 +87,7 @@ impl Clock {
             }
             effects
         };
+        self.changed.notify_one();
         self.request_wake(effects.wake_at).await;
     }
 
@@ -131,6 +137,43 @@ impl Clock {
         }
     }
 
+    /// Advance whatever has come due, then write it down and re-arm the wake.
+    ///
+    /// Nothing announces what arrived yet - that is the notification daemon, and
+    /// until it is wired an alarm's moment passes with a log line. What does
+    /// happen is the part that must: the state moves on, so the next moment is
+    /// real and can be armed.
+    async fn fire_due(&self) {
+        let due = {
+            let mut state = self.state.lock().await;
+            let due = arlen_clock::due::advance(&mut state, &chrono::Local, now_ms());
+            if due.is_empty() {
+                return;
+            }
+            if let Err(e) = store::save(&self.dir, &state) {
+                warn!("clock state not written after a moment came due: {e}");
+            }
+            due
+        };
+        if !due.alarms.is_empty() {
+            info!(alarms = ?due.alarms, "alarms came due, and cannot ring yet");
+        }
+        if !due.timers.is_empty() {
+            info!(timers = ?due.timers, "timers ran out, and cannot ring yet");
+        }
+        if let Some(session) = &due.focus {
+            match session {
+                Some(next) => info!(phase = ?next.phase, round = next.round, "focus phase ended"),
+                None => info!("focus session finished"),
+            }
+        }
+        self.request_wake(arlen_clock::wake::next_wake_at(
+            &*self.state.lock().await,
+            now_ms(),
+        ))
+        .await;
+    }
+
     /// Come back from a sleep: re-derive every anchor, exactly as a restart
     /// does.
     ///
@@ -162,9 +205,54 @@ impl Clock {
             }
             resumed
         };
+        self.changed.notify_one();
         // The wake that was armed fired to get us here, so the next one has to be
         // asked for or the machine sleeps through everything after it.
         self.request_wake(resumed.wake_at).await;
+    }
+}
+
+/// How long to sleep when nothing is due.
+///
+/// Not "for ever": the wall clock can be stepped by NTP or by hand, and a task
+/// parked on a duration computed from the old clock would wake at the wrong
+/// moment. Checking a few times an hour costs nothing and bounds how far wrong
+/// that can go. Anything actually due is slept to exactly, not polled for.
+const IDLE_RECHECK: std::time::Duration = std::time::Duration::from_secs(900);
+
+/// Sleep until the next moment something is due, then advance it, for ever.
+///
+/// **This is what makes the anchors more than a description.** Without it a
+/// focus session sits in the phase that ran out, and an alarm that rang keeps
+/// pointing at the moment it rang at - which `next_wake_at` skips for being in
+/// the past, so the machine is never woken for that alarm again. One alarm
+/// firing while the machine is awake would silence it permanently.
+///
+/// The sleep is to the moment, not a poll: a machine with one alarm set for
+/// 07:00 wakes this task once, at 07:00.
+async fn tick(clock: std::sync::Arc<Clock>) {
+    loop {
+        let wait = {
+            let state = clock.state.lock().await;
+            match arlen_clock::wake::next_wake_at(&state, now_ms()) {
+                // Saturating, and at least a moment: a due time that has just
+                // passed must not turn into a negative duration or a busy loop.
+                Some(at) => std::time::Duration::from_millis(
+                    u64::try_from((at - now_ms()).max(1)).unwrap_or(1),
+                )
+                .min(IDLE_RECHECK),
+                None => IDLE_RECHECK,
+            }
+        };
+        // Not a plain sleep: the wait was computed from the state as it was, and
+        // a timer started a second later is due long before it elapses. Without
+        // this the loop parks for the idle recheck and the timer runs out with
+        // nobody watching - which is exactly what it did the first time.
+        tokio::select! {
+            () = tokio::time::sleep(wait) => {}
+            () = clock.changed.notified() => {}
+        }
+        clock.fire_due().await;
     }
 }
 
@@ -451,11 +539,13 @@ async fn main() {
     let clock = Arc::new(Clock {
         state: Arc::new(Mutex::new(state)),
         dir,
+        changed: tokio::sync::Notify::new(),
     });
     // Before anything can change: alarms set in a previous run are due whether or
     // not anyone touches the app now.
     clock.request_wake(resumed.wake_at).await;
 
+    tokio::spawn(tick(Arc::clone(&clock)));
     tokio::spawn(watch_sleep(
         Arc::clone(&clock),
         os_sdk::runtime::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock")
