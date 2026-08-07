@@ -100,6 +100,31 @@ where
     outcome
 }
 
+/// Whether this daemon can actually carry out `receipt`'s inverse.
+///
+/// A recent-actions surface offers an undo per row, and a row that offers one it
+/// cannot perform is worse than a row that offers none: the user learns the
+/// button lies. `RestoreSnapshot` is exactly that case today - the receipt is a
+/// perfectly good record of how to reverse the action, and [`enact_inverse`]
+/// refuses it because the snapshot seam belongs to the atomic-image strand.
+///
+/// Exhaustive on purpose, with no catch-all: a new receipt variant has to be
+/// classified here rather than defaulting to "yes, offer it" and being found out
+/// by a user pressing the button.
+pub fn is_enactable(receipt: &InverseReceipt) -> bool {
+    match receipt {
+        InverseReceipt::RestorePath { .. }
+        | InverseReceipt::RestoreFromTrash { .. }
+        | InverseReceipt::DeleteCreated { .. }
+        | InverseReceipt::TrashCreated { .. }
+        | InverseReceipt::RestoreValue { .. }
+        // Not enacted through THIS path (the graph store retracts it), but the
+        // undo is real and the surface should offer it.
+        | InverseReceipt::RetractGraphEdge { .. } => true,
+        InverseReceipt::RestoreSnapshot { .. } => false,
+    }
+}
+
 /// Enact a filesystem/setting inverse receipt. Reversible + identity-safe:
 /// relocation-undo moves the entity back only into a free prior path;
 /// creation-undo deletes only a still-fingerprint-matching file. The graph,
