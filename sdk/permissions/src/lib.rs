@@ -546,6 +546,17 @@ impl SystemPermissions {
             background,
             power,
         } = self;
+        // Destructured too, and for the same reason one level down: binding
+        // `power` whole let `schedule_wake` be added to it and stay out of every
+        // summary, so the clock's only grant was invisible in the capability graph
+        // and on the App-access page - the second, invisible store the projection
+        // exists to prevent. A new field here must now be decided on rather than
+        // silently omitted.
+        let PowerPermissions {
+            suspend,
+            set_profile,
+            schedule_wake,
+        } = power;
         let mut parts: Vec<&str> = Vec::new();
         if *autostart {
             parts.push("autostart");
@@ -553,11 +564,14 @@ impl SystemPermissions {
         if *background {
             parts.push("background");
         }
-        if power.suspend {
+        if *suspend {
             parts.push("suspend/power-off");
         }
-        if power.set_profile {
+        if *set_profile {
             parts.push("set power profile");
+        }
+        if *schedule_wake {
+            parts.push("wake the machine for an alarm");
         }
         if parts.is_empty() {
             None
@@ -1702,6 +1716,30 @@ always_confirm_overrides = ["empty_trash"]
             SystemPermissions { autostart: true, ..Default::default() }.reach_summary(),
             Some("autostart".to_string()),
         );
+        // Every power grant has to reach the summary, not just the two the first
+        // version of this test happened to cover: `schedule_wake` was added to the
+        // profile and stayed out of every summary until someone went looking, which
+        // made the clock's only grant invisible on the App-access page. A grant a
+        // person cannot see is a grant they cannot revoke.
+        for (declared, expected) in [
+            (
+                PowerPermissions { suspend: true, ..Default::default() },
+                "suspend/power-off",
+            ),
+            (
+                PowerPermissions { set_profile: true, ..Default::default() },
+                "set power profile",
+            ),
+            (
+                PowerPermissions { schedule_wake: true, ..Default::default() },
+                "wake the machine for an alarm",
+            ),
+        ] {
+            assert_eq!(
+                SystemPermissions { power: declared, ..Default::default() }.reach_summary(),
+                Some(expected.to_string()),
+            );
+        }
 
         assert_eq!(SearchPermissions::default().reach_summary(), None);
         assert_eq!(
