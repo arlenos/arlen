@@ -1,14 +1,16 @@
 <script lang="ts">
   /// Pending updates (update-flow-plan.md U-5): grouped by consequence, never
   /// alphabet. A capability widening needs your decision and sits on top with
-  /// the delta as a first-class line; routine updates sit below with honest
-  /// release notes (the upstream text or "the developer didn't say"), never a
-  /// fabricated changelog. Quiet by default so the loud case is believed.
+  /// the delta as a first-class line - and an UNKNOWN delta sits there too,
+  /// because "couldn't compare" is not routine. Rows render straight off the
+  /// backend wire shape; name and icon resolve from the catalog. Quiet by
+  /// default so the loud case is believed.
   import { onMount } from "svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import StoreHeader from "$lib/components/StoreHeader.svelte";
   import StoreRail from "$lib/components/StoreRail.svelte";
   import { t } from "$lib/i18n/messages";
+  import { loadCatalog } from "$lib/stores/catalog";
   import {
     pendingUpdates,
     updatesMocked,
@@ -17,17 +19,29 @@
     applyAllRoutine,
     skipUpdate,
     uninstallApp,
-    type PendingUpdate,
+    deltaOf,
+    capText,
+    updateApp,
+    type SourceLayer,
   } from "$lib/stores/updates";
 
-  onMount(loadUpdates);
+  onMount(() => {
+    void loadCatalog();
+    void loadUpdates();
+  });
 
-  const widened = $derived($pendingUpdates.filter((u) => u.delta === "widened"));
-  const routine = $derived($pendingUpdates.filter((u) => u.delta !== "widened"));
+  // Unknown joins the decision group: the one thing it must never be is quiet.
+  const decision = $derived($pendingUpdates.filter((u) => deltaOf(u) !== "none"));
+  const routine = $derived($pendingUpdates.filter((u) => deltaOf(u) === "none"));
 
-  function sourceLabel(s: string): string {
-    return s === "forage" ? $t("st.src.forage") : s === "flathub" ? $t("st.src.flathub") : $t("st.src.debian");
-  }
+  const LAYER_KEY: Record<SourceLayer, string> = {
+    Personal: "st.src.forage",
+    Community: "st.src.forage",
+    Official: "st.src.forage",
+    Flatpak: "st.src.flathub",
+    Apt: "st.src.debian",
+    Native: "st.src.native",
+  };
 </script>
 
 <div class="st-app">
@@ -43,21 +57,23 @@
         {#if $pendingUpdates.length === 0}
           <p class="quiet">{$t("st.upd.empty")}</p>
         {:else}
-          {#if widened.length > 0}
+          {#if decision.length > 0}
             <div class="group-label">{$t("st.upd.decision")}</div>
-            {#each widened as u (u.id)}
+            {#each decision as u (u.id)}
+              {@const app = updateApp(u.id)}
               <div class="upd" id={`upd-${u.id}`}>
-                <span class="tile" style="background:{u.icon}" aria-hidden="true"></span>
+                <span class="tile" class:tile-plain={!app.icon} style={app.icon ? `background:${app.icon}` : undefined} aria-hidden="true"></span>
                 <div class="upd-body">
                   <div class="upd-head">
-                    <span class="upd-name">{u.name}</span>
-                    <span class="upd-ver">{u.from} &rarr; {u.to}, {sourceLabel(u.source)}</span>
+                    <span class="upd-name">{app.name}</span>
+                    <span class="upd-ver">{u.installed_version} &rarr; {u.available_version}, {$t(LAYER_KEY[u.layer])}</span>
                   </div>
-                  {#each u.deltaLines as line (line)}
-                    <p class="delta">{line}</p>
-                  {/each}
-                  {#if u.notes}
-                    <p class="notes">{u.notes}</p>
+                  {#if u.new_capabilities === null}
+                    <p class="delta">{$t("st.upd.unknownDelta")}</p>
+                  {:else}
+                    {#each u.new_capabilities as cap (cap)}
+                      <p class="delta">{$t("st.upd.wants", { what: capText(cap) })}</p>
+                    {/each}
                   {/if}
                   <div class="actions">
                     <Button size="sm" onclick={() => applyUpdate(u.id)}>{$t("st.upd.update")}</Button>
@@ -77,17 +93,14 @@
               </Button>
             </div>
             {#each routine as u (u.id)}
+              {@const app = updateApp(u.id)}
               <div class="upd" id={`upd-${u.id}`}>
-                <span class="tile" style="background:{u.icon}" aria-hidden="true"></span>
+                <span class="tile" class:tile-plain={!app.icon} style={app.icon ? `background:${app.icon}` : undefined} aria-hidden="true"></span>
                 <div class="upd-body">
                   <div class="upd-head">
-                    <span class="upd-name">{u.name}</span>
-                    <span class="upd-ver">{u.from} &rarr; {u.to}, {sourceLabel(u.source)}</span>
+                    <span class="upd-name">{app.name}</span>
+                    <span class="upd-ver">{u.installed_version} &rarr; {u.available_version}, {$t(LAYER_KEY[u.layer])}</span>
                   </div>
-                  {#each u.deltaLines as line (line)}
-                    <p class="delta narrowed">{line}</p>
-                  {/each}
-                  <p class="notes">{u.notes ?? $t("st.upd.noNotes")}</p>
                   <div class="actions">
                     <Button variant="outline" size="sm" onclick={() => applyUpdate(u.id)}>{$t("st.upd.update")}</Button>
                   </div>
@@ -202,14 +215,8 @@
     line-height: 1.45;
     color: var(--color-fg-primary);
   }
-  .delta.narrowed {
-    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
-  }
-  .notes {
-    margin: 0;
-    font-size: var(--text-xs);
-    line-height: 1.45;
-    color: color-mix(in srgb, var(--color-fg-primary) 52%, transparent);
+  .tile.tile-plain {
+    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
   }
   .actions {
     display: flex;
