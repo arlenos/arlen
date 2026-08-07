@@ -12,10 +12,9 @@
 //! process: a bus name, a lock around the state, and the timing.
 //!
 //! **What is not wired yet, said plainly rather than left to be discovered:**
-//! ringing (it needs the notification daemon) and asking `org.arlen.Power1` for
-//! the wake. Both decisions are built and tested; what is missing is the
-//! plumbing, and until it lands this daemon keeps time correctly while awake and
-//! says so here rather than in a comment nobody reads.
+//! ringing. It needs the notification daemon, so until that lands an alarm's
+//! moment arrives, the machine wakes for it, and nothing announces it. That is
+//! said here rather than in a comment nobody reads.
 
 use std::sync::Arc;
 
@@ -44,40 +43,90 @@ struct Clock {
 }
 
 impl Clock {
-    /// Apply a command, then write the state down if it changed.
-    ///
-    /// The wake that [`reduce`] works out is dropped for now - see the module
-    /// note. It is computed rather than skipped so the day it is wired there is
-    /// nothing to remember.
+    /// Apply a command, then write the state down and ask for the wake it needs.
     async fn apply(&self, command: Command) {
-        let mut state = self.state.lock().await;
-        let effects = reduce::apply(
-            &mut state,
-            command,
-            &chrono::Local,
-            // The shared offline city dataset is owned outside the clock
-            // (`clock-app.md` §4) and does not exist yet, so a world-clock add
-            // resolves to nothing rather than to a city this daemon invented.
-            |_| None,
-            now_ms(),
-        );
-        if effects.persist {
-            if let Err(e) = store::save(&self.dir, &state) {
-                // Losing the write is worth saying loudly: the state in memory
-                // is still right, but a restart would now lose it.
-                warn!("clock state not written: {e}");
+        let effects = {
+            let mut state = self.state.lock().await;
+            let effects = reduce::apply(
+                &mut state,
+                command,
+                &chrono::Local,
+                // The shared offline city dataset is owned outside the clock
+                // (`clock-app.md` §4) and does not exist yet, so a world-clock add
+                // resolves to nothing rather than to a city this daemon invented.
+                |_| None,
+                now_ms(),
+            );
+            if effects.persist {
+                if let Err(e) = store::save(&self.dir, &state) {
+                    // Losing the write is worth saying loudly: the state in memory
+                    // is still right, but a restart would now lose it.
+                    warn!("clock state not written: {e}");
+                }
             }
-        }
+            effects
+        };
+        self.request_wake(effects.wake_at).await;
     }
 
     /// Apply something that happened to the machine rather than something the app
-    /// asked for, then write the state down if it changed.
+    /// asked for, then write the state down and ask for the wake it needs.
     async fn observe(&self, event: reduce::Event) {
-        let mut state = self.state.lock().await;
-        let effects = reduce::observe(&mut state, event, now_ms());
-        if effects.persist {
-            if let Err(e) = store::save(&self.dir, &state) {
-                warn!("clock state not written: {e}");
+        let effects = {
+            let mut state = self.state.lock().await;
+            let effects = reduce::observe(&mut state, event, now_ms());
+            if effects.persist {
+                if let Err(e) = store::save(&self.dir, &state) {
+                    warn!("clock state not written: {e}");
+                }
+            }
+            effects
+        };
+        self.request_wake(effects.wake_at).await;
+    }
+
+    /// Hand the next moment worth waking for to the daemon that owns suspend, or
+    /// withdraw the standing one when nothing is due.
+    ///
+    /// **Every change re-sends the earliest moment rather than the one that
+    /// changed.** `ScheduleWake` has a single slot, so a call is a replacement,
+    /// and sending the moment that just changed would arm the alarm set last
+    /// instead of the one due next - the evening alarm silently cancelling the
+    /// morning one. `wake::next_wake_at` already answers "earliest"; this simply
+    /// must not second-guess it.
+    ///
+    /// A refusal is recorded rather than retried. If the clock lacks the
+    /// `system.power` grant then alarms genuinely will not wake this machine, and
+    /// the app must say so - a daemon that kept quiet and hoped would be making
+    /// exactly the promise §2a forbids.
+    async fn request_wake(&self, at_ms: Option<i64>) {
+        let Ok(conn) = zbus::Connection::session().await else {
+            return;
+        };
+        let Ok(power) = zbus::Proxy::new(&conn, POWER_SERVICE, POWER_PATH, POWER_SERVICE).await
+        else {
+            return;
+        };
+        let outcome = match at_ms {
+            // Seconds, and rounded DOWN, so the wake never lands after the moment
+            // it is for: a machine that comes back a moment early is fine, one
+            // that comes back late has missed the alarm.
+            Some(at) => power
+                .call::<_, _, String>("ScheduleWake", &(at.div_euclid(1000) as u64,))
+                .await
+                .map(|described| format!("wake at {at}: {described}")),
+            None => power
+                .call::<_, _, bool>("CancelWake", &())
+                .await
+                .map(|was_armed| format!("nothing due, wake withdrawn: {was_armed}")),
+        };
+        match outcome {
+            Ok(described) => info!("{described}"),
+            Err(e) => {
+                warn!("the power daemon refused the wake request: {e}");
+                // Learned from the refusal rather than assumed: whatever the
+                // property said, alarms are not going to wake this machine.
+                self.state.lock().await.wake_capable = false;
             }
         }
     }
@@ -95,21 +144,27 @@ impl Clock {
         // Asked again here because the power daemon may have been down when this
         // one started, and a wake is the moment the answer is about to matter.
         let capable = wake_capable().await;
-        let mut state = self.state.lock().await;
-        state.wake_capable = capable;
-        let resumed = startup::resume(&mut state, &chrono::Local, LATE_WINDOW_MS, now_ms());
-        if !resumed.ring_late.is_empty() {
-            warn!(
-                alarms = ?resumed.ring_late,
-                "alarms came due while the machine slept, and cannot ring yet"
-            );
-        }
-        // Written unconditionally: a machine wakes a handful of times a day, so
-        // a comparison to save one file write would buy nothing and could only
-        // be wrong.
-        if let Err(e) = store::save(&self.dir, &state) {
-            warn!("clock state not written after a wake: {e}");
-        }
+        let resumed = {
+            let mut state = self.state.lock().await;
+            state.wake_capable = capable;
+            let resumed = startup::resume(&mut state, &chrono::Local, LATE_WINDOW_MS, now_ms());
+            if !resumed.ring_late.is_empty() {
+                warn!(
+                    alarms = ?resumed.ring_late,
+                    "alarms came due while the machine slept, and cannot ring yet"
+                );
+            }
+            // Written unconditionally: a machine wakes a handful of times a day,
+            // so a comparison to save one file write would buy nothing and could
+            // only be wrong.
+            if let Err(e) = store::save(&self.dir, &state) {
+                warn!("clock state not written after a wake: {e}");
+            }
+            resumed
+        };
+        // The wake that was armed fired to get us here, so the next one has to be
+        // asked for or the machine sleeps through everything after it.
+        self.request_wake(resumed.wake_at).await;
     }
 }
 
@@ -397,6 +452,9 @@ async fn main() {
         state: Arc::new(Mutex::new(state)),
         dir,
     });
+    // Before anything can change: alarms set in a previous run are due whether or
+    // not anyone touches the app now.
+    clock.request_wake(resumed.wake_at).await;
 
     tokio::spawn(watch_sleep(
         Arc::clone(&clock),
