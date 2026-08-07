@@ -148,21 +148,30 @@ pub fn locales_from(listing: &str) -> Resolution {
     )
 }
 
-/// Parse the devices `pactl list short sinks` (or `sources`) prints: one
-/// tab-separated row per device, `id  name  driver  spec  state`.
+/// Parse the devices `pactl -f json list sinks` (or `sources`) prints.
 ///
-/// The stored value is the device NAME, not the numeric id: ids are handed out
-/// per session, so a config holding `47` would point at a different device after
-/// a reboot, or at nothing.
+/// JSON, not the `list short` text form, and that is a correctness point rather
+/// than a taste one: **a device name may contain a newline, and the text form
+/// renders it as two rows.** Measured, not assumed - loading a null sink named
+/// `"evil\ninjected\tname\tdriver\tspec\tRUNNING"` makes `pactl list short sinks`
+/// print exactly that second row, and the old parser read it as another device
+/// whose name the attacker chose in full. Any app that can reach the session's
+/// audio socket can load such a module, so the picker could be given entries
+/// nobody has. In JSON the record boundaries come from the structure and a
+/// newline inside a value is escaped.
+///
+/// The stored value is the device NAME, not the numeric index: indices are
+/// handed out per session, so a config holding `47` would point at a different
+/// device after a reboot, or at nothing.
 ///
 /// Monitor sources are dropped from the input list. They are loopbacks of an
 /// output, they appear next to real microphones, and picking one as your
 /// recording input records the machine's own playback instead of you.
 pub fn pactl_devices_from(listing: &str) -> Resolution {
+    let devices: Vec<serde_json::Value> = serde_json::from_str(listing).unwrap_or_default();
     let mut names: Vec<String> = Vec::new();
-    for line in listing.lines() {
-        let mut fields = line.split('\t');
-        let (Some(_id), Some(name)) = (fields.next(), fields.next()) else {
+    for device in &devices {
+        let Some(name) = device.get("name").and_then(|n| n.as_str()) else {
             continue;
         };
         let name = name.trim();
@@ -462,7 +471,7 @@ mod tests {
     #[test]
     fn a_device_is_stored_by_name_not_by_session_id() {
         let Resolution::Options(options) = pactl_devices_from(
-            "47\talsa_output.pci-0000_00_1f.3.analog-stereo\tmodule\ts16le\tRUNNING\n",
+            r#"[{"index":47,"name":"alsa_output.pci-0000_00_1f.3.analog-stereo"}]"#,
         ) else {
             panic!("should resolve");
         };
@@ -476,8 +485,8 @@ mod tests {
     #[test]
     fn two_devices_never_share_a_label() {
         let Resolution::Options(options) = pactl_devices_from(
-            "62\talsa_output.platform-snd_aloop.0.analog-stereo\tPipeWire\ts32le\tSUSPENDED\n\
-             64\talsa_output.pci-0000_c1_00.6.analog-stereo\tPipeWire\ts32le\tSUSPENDED\n",
+            r#"[{"index":62,"name":"alsa_output.platform-snd_aloop.0.analog-stereo"},
+               {"index":64,"name":"alsa_output.pci-0000_c1_00.6.analog-stereo"}]"#,
         ) else {
             panic!("should resolve");
         };
@@ -495,8 +504,8 @@ mod tests {
     #[test]
     fn an_unambiguous_device_keeps_its_short_label() {
         let Resolution::Options(options) = pactl_devices_from(
-            "1\talsa_output.pci-0000_00_1f.3.analog-stereo\tPipeWire\ts16le\tRUNNING\n\
-             2\tbluez_output.AC_12_34.1.headset-head-unit\tPipeWire\ts16le\tIDLE\n",
+            r#"[{"index":1,"name":"alsa_output.pci-0000_00_1f.3.analog-stereo"},
+               {"index":2,"name":"bluez_output.AC_12_34.1.headset-head-unit"}]"#,
         ) else {
             panic!("should resolve");
         };
@@ -509,13 +518,29 @@ mod tests {
     #[test]
     fn a_monitor_source_is_not_offered_as_an_input() {
         let Resolution::Options(options) = pactl_devices_from(
-            "1\talsa_input.usb-mic\tmodule\ts16le\tRUNNING\n\
-             2\talsa_output.hdmi.monitor\tmodule\ts16le\tIDLE\n",
+            r#"[{"index":1,"name":"alsa_input.usb-mic"},
+               {"index":2,"name":"alsa_output.hdmi.monitor"}]"#,
         ) else {
             panic!("should resolve");
         };
         assert_eq!(options.len(), 1, "{options:?}");
         assert_eq!(options[0].value, "alsa_input.usb-mic");
+    }
+
+    /// A device name may contain a newline. Under `pactl list short` that
+    /// printed a second row and the parser read it as a second device whose
+    /// name the attacker chose in full - verified on a real host by loading a
+    /// null sink called exactly this. JSON escapes it, so one device stays one
+    /// device.
+    #[test]
+    fn a_newline_in_a_device_name_cannot_forge_a_second_device() {
+        let Resolution::Options(options) = pactl_devices_from(
+            r#"[{"index":221,"name":"evil\ninjected\tname\tdriver\tspec\tRUNNING"}]"#,
+        ) else {
+            panic!("should resolve");
+        };
+        assert_eq!(options.len(), 1, "{options:?}");
+        assert_eq!(options[0].value, "evil\ninjected\tname\tdriver\tspec\tRUNNING");
     }
 
     fn app_dir(entries: &[(&str, &str)]) -> tempfile::TempDir {
