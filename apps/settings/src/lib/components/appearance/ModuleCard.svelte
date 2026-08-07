@@ -85,7 +85,7 @@
       <Switch
         value={module.enabled}
         onchange={onToggle}
-        ariaLabel={module.enabled ? "Disable module" : "Enable module"}
+        ariaLabel={module.enabled ? $t("s.mod.disable") : $t("s.mod.enable")}
       />
     </div>
   </div>

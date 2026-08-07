@@ -120,7 +120,7 @@
       type="button"
       class="chev"
       class:rotated={open}
-      aria-label={open ? "Close" : "Open"}
+      aria-label={open ? $t("s.apick.collapse") : $t("s.apick.expand")}
       onclick={toggleOpen}
     >
       <ChevronDown size={12} strokeWidth={2.25} />
