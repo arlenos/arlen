@@ -903,7 +903,10 @@ fn foreign_ranges(src: &str) -> Result<Vec<(usize, usize, String)>, String> {
     let lines: Vec<&str> = src.lines().collect();
     let mut out = Vec::new();
     for (i, line) in lines.iter().enumerate() {
-        if !line.starts_with("const ") {
+        // `export const` too, which is the commoner form: a marker that silently
+        // applies to nothing is the same failure as no marker at all, and every
+        // list in `themeSystem.ts` is exported.
+        if !(line.starts_with("const ") || line.starts_with("export const ")) {
             continue;
         }
         // Walk up the contiguous comment block directly above the declaration.
@@ -1280,6 +1283,21 @@ mod tests {
         // sentence they sit in.
         assert_eq!(meaningful("Fish &amp; chips"), Some("Fish &amp; chips".into()));
         assert_eq!(meaningful("Save &rarr; Export"), Some("Save &rarr; Export".into()));
+    }
+
+    #[test]
+    fn a_marker_reaches_an_exported_constant() {
+        // Every list in `themeSystem.ts` is exported, and a marker that applied
+        // only to a bare `const` sat above them doing nothing at all - which
+        // reads exactly like a marker that works.
+        let src = "\
+// i18n-foreign: installed theme packages name themselves.
+export const CURSOR_THEMES = [
+  { label: \"Bibata\" },
+];
+";
+        let r = foreign_ranges(src).unwrap();
+        assert_eq!(r.len(), 1, "an exported constant was not covered");
     }
 
     #[test]
