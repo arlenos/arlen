@@ -29,9 +29,9 @@
        take typing directly. -->
   <div class="ti-new">
     <div class="ti-set">
-      <button type="button" class="ti-step" aria-label={$t("c.ti.less")} onclick={() => step(-1)}>
-        <Minus size={20} strokeWidth={2} />
-      </button>
+      <Button variant="outline" size="icon" aria-label={$t("c.ti.less")} onclick={() => step(-1)}>
+        <Minus size={18} strokeWidth={2} />
+      </Button>
       <span class="ti-digits">
         <input
           class="ti-digit min"
@@ -51,9 +51,9 @@
           onchange={(e: Event) => clampSec((e.currentTarget as HTMLInputElement).value)}
         />
       </span>
-      <button type="button" class="ti-step" aria-label={$t("c.ti.more")} onclick={() => step(1)}>
-        <Plus size={20} strokeWidth={2} />
-      </button>
+      <Button variant="outline" size="icon" aria-label={$t("c.ti.more")} onclick={() => step(1)}>
+        <Plus size={18} strokeWidth={2} />
+      </Button>
     </div>
     <Button id="start-timer" size="lg" class="ti-start" disabled={durationMs === 0} onclick={() => startTimer(durationMs)}>
       {$t("c.ti.start")}
@@ -107,21 +107,6 @@
     display: flex;
     align-items: center;
     gap: 1.25rem;
-  }
-  .ti-step {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
-    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 14%, transparent);
-    border-radius: var(--radius-full, 9999px);
-    background: transparent;
-    color: var(--color-fg-primary);
-    cursor: pointer;
-  }
-  .ti-step:hover {
-    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
   }
   .ti-digits {
     display: inline-flex;
