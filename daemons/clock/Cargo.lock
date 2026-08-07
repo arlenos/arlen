@@ -38,6 +38,7 @@ dependencies = [
 name = "arlen-clock"
 version = "0.1.0"
 dependencies = [
+ "arlen-permissions",
  "chrono",
  "chrono-tz",
  "os-sdk",
