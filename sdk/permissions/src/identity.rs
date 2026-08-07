@@ -662,15 +662,44 @@ fn unit_to_app_id(unit: &str) -> Option<&'static str> {
 
 /// Extract the innermost systemd `*.service` unit from a `/proc/<pid>/cgroup`
 /// file's content. Handles cgroup v2 (a single `0::<path>` line) and v1
-/// (`<n>:<controllers>:<path>` lines); returns the last `.service` path component,
-/// or `None` when the peer is not in a service cgroup.
+/// (`<n>:<controllers>:<path>` lines).
+///
+/// **A `.service` component alone is not evidence of a unit.** A cgroup path
+/// component is a directory name, and inside its own delegated subtree an
+/// unprivileged process may create directories and move itself into them.
+/// Measured on a normal host, as a normal user: creating
+/// `<own scope>/arlen-ai-engine-daemon.service` and joining it made
+/// `/proc/self/cgroup` read
+/// `…/user@1000.service/kitty-3255-0.scope/arlen-ai-engine-daemon.service`, which
+/// the old "last `.service` component" rule read as that unit - and this resolver
+/// feeds the app id a token, a tier and a read scope are keyed on.
+///
+/// So a component only counts as a unit when it sits where systemd puts one:
+/// **directly under a `.slice`**. systemd nests units in slices, never inside
+/// another unit, so the forged path above no longer resolves - its parent is a
+/// `.scope`. The innermost qualifying component wins, which is the real unit when
+/// a delegated service has sub-cgroups of its own.
+///
+/// **What this does not close:** the same trick one directory higher, under a
+/// real `.slice` the caller can write to - `user@<uid>.service/app.slice/` in
+/// their own tree. The canonical AI daemon is a USER unit, so that path is
+/// exactly where a genuine one lives and the shape cannot tell them apart. Only
+/// asking systemd who owns the pid settles that, and whether a cgroup-derived
+/// identity should carry a tier at all is a decision above this function.
 fn unit_from_cgroup(content: &str) -> Option<String> {
     content.lines().find_map(|line| {
         let path = line.rsplit(':').next()?;
-        path.split('/')
+        let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
+        components
+            .iter()
+            .enumerate()
             .rev()
-            .find(|component| component.ends_with(".service"))
-            .map(|s| s.to_string())
+            .find(|(i, component)| {
+                component.ends_with(".service")
+                    && *i > 0
+                    && components[i - 1].ends_with(".slice")
+            })
+            .map(|(_, component)| (*component).to_string())
     })
 }
 
@@ -749,6 +778,34 @@ mod tests {
             assert_ne!(got.as_deref().ok(), Some("ai-proxy"), "{imposter}");
             assert_ne!(got.as_deref().ok(), Some("settings"), "{imposter}");
         }
+    }
+
+    /// A cgroup component is a directory name, and a process may create
+    /// directories in its own delegated subtree. This is the exact path an
+    /// unprivileged process produced on a real host by making a directory named
+    /// after the AI daemon inside its own terminal scope and joining it: the old
+    /// rule read it as that unit and handed over the identity a tier is keyed on.
+    /// A unit lives directly under a slice, and a `.scope` is not one.
+    #[test]
+    fn a_service_named_directory_inside_a_scope_is_not_that_unit() {
+        const ENGINE_UNIT: &str = "arlen-ai-engine-daemon.service";
+        let forged = "0::/user.slice/user-1000.slice/user@1000.service/\
+kitty-3255-0.scope/arlen-ai-engine-daemon.service";
+        // The invariant is about the identity, not the string: what the caller
+        // must not obtain is the AI daemon's app id. The path still resolves to
+        // `user@1000.service`, which is a genuine unit under its slice and maps
+        // to nothing - the enclosing session manager, correctly named.
+        assert_ne!(unit_from_cgroup(forged).as_deref(), Some(ENGINE_UNIT));
+        assert_eq!(
+            unit_from_cgroup(forged).and_then(|u| unit_to_app_id(&u)),
+            None,
+            "{forged}"
+        );
+
+        // Nor one nested under a unit's own sub-cgroup, which is what a delegated
+        // service's children look like: the unit is the one under the slice.
+        let nested = "0::/system.slice/arlen-x.service/evil/arlen-ai-engine-daemon.service";
+        assert_eq!(unit_from_cgroup(nested).as_deref(), Some("arlen-x.service"));
     }
 
     #[test]
