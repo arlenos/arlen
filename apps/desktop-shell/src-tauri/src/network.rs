@@ -627,16 +627,38 @@ pub async fn disconnect_wifi() -> Result<(), String> {
     Err("No connected wifi device found".into())
 }
 
-/// Returns whether WiFi radio is enabled.
+/// Returns whether the WiFi radio is enabled.
+///
+/// NetworkManager's `WirelessEnabled`, which is the property `nmcli radio wifi`
+/// prints as "enabled" or "disabled". Checked side by side on a live session:
+/// `enabled` against `b true`.
+///
+/// **It also fixes a real bug rather than only moving the transport.** The old
+/// code compared the output against the literal "enabled", and that word is
+/// translated: NetworkManager's shipped German catalogue maps `msgid "enabled"`
+/// to `"aktiviert"`. On any non-English desktop the comparison returned false
+/// whatever the radio was doing, so the WiFi toggle showed off while WiFi was on.
+/// Confirmed from the catalogue with `msgunfmt`, not by running `nmcli` under a
+/// German locale - this machine has no de_DE generated, so that test would have
+/// printed English and proved nothing. The property is a boolean and has no
+/// language.
 #[tauri::command]
 pub async fn get_wifi_enabled() -> Result<bool, String> {
-    let output = tokio::process::Command::new("nmcli")
-        .args(["radio", "wifi"])
-        .output()
+    let conn = zbus::Connection::system()
         .await
-        .map_err(|e| format!("nmcli radio wifi: {e}"))?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    Ok(text.trim() == "enabled")
+        .map_err(|e| format!("system bus: {e}"))?;
+    let manager = zbus::Proxy::new(
+        &conn,
+        "org.freedesktop.NetworkManager",
+        "/org/freedesktop/NetworkManager",
+        "org.freedesktop.NetworkManager",
+    )
+    .await
+    .map_err(|e| format!("NetworkManager unavailable: {e}"))?;
+    manager
+        .get_property::<bool>("WirelessEnabled")
+        .await
+        .map_err(|e| format!("WirelessEnabled: {e}"))
 }
 
 /// Enable or disable the WiFi radio via NetworkManager.
