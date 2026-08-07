@@ -327,9 +327,25 @@ async fn saved_connection_names() -> std::collections::HashSet<String> {
     };
 
     let mut names = std::collections::HashSet::new();
+    for (id, _) in saved_connections(&conn, paths).await {
+        names.insert(id);
+    }
+    names
+}
+
+/// Every saved connection as `(id, type)`, read once from its settings.
+///
+/// Split out because two callers want different halves of the same read: which
+/// names exist (to badge a scanned network as known) and which of them are VPNs.
+/// One walk, so the popover does not pay for the settings twice.
+async fn saved_connections(
+    conn: &zbus::Connection,
+    paths: Vec<zbus::zvariant::OwnedObjectPath>,
+) -> Vec<(String, String)> {
+    let mut out = Vec::new();
     for path in paths {
         let Ok(proxy) = zbus::Proxy::new(
-            &conn,
+            conn,
             "org.freedesktop.NetworkManager",
             path,
             "org.freedesktop.NetworkManager.Settings.Connection",
@@ -345,15 +361,16 @@ async fn saved_connection_names() -> std::collections::HashSet<String> {
         let Ok(map): Result<Settings, _> = proxy.call("GetSettings", &()).await else {
             continue;
         };
-        if let Some(id) = map
-            .get("connection")
-            .and_then(|c| c.get("id"))
-            .and_then(|v| String::try_from(v.clone()).ok())
-        {
-            names.insert(id);
+        let field = |name: &str| {
+            map.get("connection")
+                .and_then(|c| c.get(name))
+                .and_then(|v| String::try_from(v.clone()).ok())
+        };
+        if let Some(id) = field("id") {
+            out.push((id, field("type").unwrap_or_default()));
         }
     }
-    names
+    out
 }
 
 /// Returns signal strength for the connected SSID, sourced from the
@@ -783,49 +800,30 @@ pub async fn connect_hidden_network(ssid: String, password: String) -> Result<()
 /// List all VPN connections (active and inactive).
 #[tauri::command]
 pub async fn get_vpn_connections() -> Result<Vec<VpnConnection>, String> {
-    // Get all VPN connections.
-    let output = tokio::process::Command::new("nmcli")
-        .args(["-t", "-f", "NAME,TYPE", "connection", "show"])
-        .output()
+    // Saved VPNs, by the same "type contains vpn" test the nmcli version used.
+    let conn = zbus::Connection::system()
         .await
-        .map_err(|e| format!("nmcli: {e}"))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let all_vpns: Vec<String> = stdout
-        .lines()
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split(':').collect();
-            if parts.len() >= 2 && parts[1].contains("vpn") {
-                Some(parts[0].to_string())
-            } else {
-                None
-            }
-        })
+        .map_err(|e| format!("system bus: {e}"))?;
+    let settings = zbus::Proxy::new(
+        &conn,
+        "org.freedesktop.NetworkManager",
+        "/org/freedesktop/NetworkManager/Settings",
+        "org.freedesktop.NetworkManager.Settings",
+    )
+    .await
+    .map_err(|e| format!("NetworkManager unavailable: {e}"))?;
+    let paths: Vec<zbus::zvariant::OwnedObjectPath> = settings
+        .call("ListConnections", &())
+        .await
+        .map_err(|e| format!("ListConnections: {e}"))?;
+    let all_vpns: Vec<String> = saved_connections(&conn, paths)
+        .await
+        .into_iter()
+        .filter(|(_, kind)| kind.contains("vpn"))
+        .map(|(id, _)| id)
         .collect();
 
-    // Get active VPN connections.
-    let active_output = tokio::process::Command::new("nmcli")
-        .args(["-t", "-f", "NAME,TYPE,STATE", "connection", "show", "--active"])
-        .output()
-        .await
-        .unwrap_or_else(|_| std::process::Output {
-            status: std::process::ExitStatus::default(),
-            stdout: Vec::new(),
-            stderr: Vec::new(),
-        });
-
-    let active_stdout = String::from_utf8_lossy(&active_output.stdout);
-    let active_vpns: std::collections::HashSet<String> = active_stdout
-        .lines()
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split(':').collect();
-            if parts.len() >= 3 && parts[1].contains("vpn") && parts[2] == "activated" {
-                Some(parts[0].to_string())
-            } else {
-                None
-            }
-        })
-        .collect();
+    let active_vpns = active_vpn_names(&conn).await;
 
     Ok(all_vpns
         .into_iter()
@@ -862,6 +860,60 @@ pub async fn disconnect_vpn(name: String) -> Result<(), String> {
         return Err(format!("Failed to disconnect VPN {name}"));
     }
     Ok(())
+}
+
+/// The names of the VPN connections that are currently up.
+///
+/// The same walk `check_vpn` does, kept separate because the popover needs the
+/// names and the indicator only needs to know whether any exists. An empty set
+/// on a bus error rather than an error: a VPN section that shows nothing active
+/// is wrong in a visible way, while failing the whole call would empty the list
+/// of saved VPNs too.
+async fn active_vpn_names(conn: &zbus::Connection) -> std::collections::HashSet<String> {
+    /// `NM_ACTIVE_CONNECTION_STATE_ACTIVATED`.
+    const ACTIVE_CONNECTION_ACTIVATED: u32 = 2;
+
+    let Ok(manager) = zbus::Proxy::new(
+        conn,
+        "org.freedesktop.NetworkManager",
+        "/org/freedesktop/NetworkManager",
+        "org.freedesktop.NetworkManager",
+    )
+    .await
+    else {
+        return Default::default();
+    };
+    let Ok(active) = manager
+        .get_property::<Vec<zbus::zvariant::OwnedObjectPath>>("ActiveConnections")
+        .await
+    else {
+        return Default::default();
+    };
+
+    let mut names = std::collections::HashSet::new();
+    for path in active {
+        let Ok(proxy) = zbus::Proxy::new(
+            conn,
+            "org.freedesktop.NetworkManager",
+            path,
+            "org.freedesktop.NetworkManager.Connection.Active",
+        )
+        .await
+        else {
+            continue;
+        };
+        let (Ok(kind), Ok(state), Ok(id)) = (
+            proxy.get_property::<String>("Type").await,
+            proxy.get_property::<u32>("State").await,
+            proxy.get_property::<String>("Id").await,
+        ) else {
+            continue;
+        };
+        if kind.contains("vpn") && state == ACTIVE_CONNECTION_ACTIVATED {
+            names.insert(id);
+        }
+    }
+    names
 }
 
 /// Whether a VPN connection is up.
