@@ -463,8 +463,22 @@ fn get_app_volumes_impl() -> Result<Vec<AppVolume>, String> {
         .map_err(|e| format!("pactl: {e}"))?;
 
     if !output.status.success() {
-        // Fallback: pactl without JSON (older versions).
-        return get_app_volumes_legacy();
+        // No text-format fallback, deliberately. The one that was here parsed
+        // `pactl list sink-inputs` line by line, and a line beginning
+        // `Sink Input #` started a record - while `application.name` is a string
+        // the application itself chooses and libpulse writes it out RAW.
+        // Measured in-process against libpulse 17: a value of
+        // "Innocent\nSink Input #999" formats as two lines, the second at column
+        // zero. Any app could therefore forge an entry in this list, with a name
+        // and icon of its choosing and an id naming somebody else's stream -
+        // which is what the volume slider then moves.
+        //
+        // The JSON form has no such seam: record boundaries come from the
+        // structure and a newline inside a value is escaped. `-f json` has been
+        // in pactl since PulseAudio 15, so that fallback only served systems from
+        // before 2021, and carrying a forgeable parser for them is the kind of
+        // shim this tree does not keep.
+        return Err("pactl does not support -f json".into());
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -510,99 +524,6 @@ fn get_app_volumes_impl() -> Result<Vec<AppVolume>, String> {
                 id: index,
                 name,
                 volume: vol_pct,
-                icon_data,
-            });
-        }
-    }
-
-    Ok(apps)
-}
-
-/// Legacy fallback for pactl without JSON support.
-fn get_app_volumes_legacy() -> Result<Vec<AppVolume>, String> {
-    let output = std::process::Command::new("pactl")
-        .args(["list", "sink-inputs"])
-        .output()
-        .map_err(|e| format!("pactl: {e}"))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut apps = Vec::new();
-    let mut current_id: Option<u32> = None;
-    let mut current_name = String::new();
-    let mut current_vol: u8 = 100;
-    let mut current_icon: Option<String> = None;
-    let mut current_binary: Option<String> = None;
-
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("Sink Input #") {
-            if let Some(id) = current_id {
-                if !current_name.is_empty() {
-                    let icon_data = [
-                        current_icon.as_deref(),
-                        current_binary.as_deref(),
-                        Some(current_name.to_lowercase().as_str()),
-                    ]
-                    .iter()
-                    .copied()
-                    .flatten()
-                    .find_map(|s| {
-                        crate::shell_overlay_client::resolve_app_icon(s.to_string())
-                    });
-                    apps.push(AppVolume {
-                        id,
-                        name: current_name.clone(),
-                        volume: current_vol,
-                        icon_data,
-                    });
-                }
-            }
-            current_id = rest.parse().ok();
-            current_name.clear();
-            current_vol = 100;
-            current_icon = None;
-            current_binary = None;
-        } else if let Some(val) = trimmed.strip_prefix("application.name = ") {
-            // NB every `application.*` value here is chosen by the application,
-            // and this parser is line-oriented: `Sink Input #` starts a new
-            // record. If `pactl` can ever render a newline inside a property
-            // value, an app can write one and forge a record - a row in the
-            // per-app volume list with a name and icon of its choosing and an id
-            // naming somebody else's stream. Whether it can is unverified: it
-            // needs a sink-input with a hostile property, which means creating
-            // one, which is not something to do on the machine this was written
-            // on. The migration off `pactl` is the real answer; until then this
-            // is the reason it is not only a tidiness job.
-            current_name = val.trim_matches('"').to_string();
-        } else if let Some(val) = trimmed.strip_prefix("application.icon_name = ") {
-            current_icon = Some(val.trim_matches('"').to_string());
-        } else if let Some(val) = trimmed.strip_prefix("application.process.binary = ") {
-            current_binary = Some(val.trim_matches('"').to_string());
-        } else if trimmed.starts_with("Volume:") {
-            if let Some(pct_start) = trimmed.find("/ ") {
-                let rest = &trimmed[pct_start + 2..];
-                if let Some(pct_end) = rest.find('%') {
-                    current_vol = rest[..pct_end].trim().parse().unwrap_or(100);
-                }
-            }
-        }
-    }
-    // Last entry.
-    if let Some(id) = current_id {
-        if !current_name.is_empty() {
-            let icon_data = [
-                current_icon.as_deref(),
-                current_binary.as_deref(),
-                Some(current_name.to_lowercase().as_str()),
-            ]
-            .iter()
-            .copied()
-            .flatten()
-            .find_map(|s| crate::shell_overlay_client::resolve_app_icon(s.to_string()));
-            apps.push(AppVolume {
-                id,
-                name: current_name,
-                volume: current_vol,
                 icon_data,
             });
         }
