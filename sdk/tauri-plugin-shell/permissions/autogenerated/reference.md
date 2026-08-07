@@ -322,6 +322,58 @@ Denies the locale_get command without any pre-configured scope.
 <tr>
 <td>
 
+`arlen-shell:allow-menu-register`
+
+</td>
+<td>
+
+Enables the menu_register command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`arlen-shell:deny-menu-register`
+
+</td>
+<td>
+
+Denies the menu_register command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`arlen-shell:allow-menu-unregister`
+
+</td>
+<td>
+
+Enables the menu_unregister command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`arlen-shell:deny-menu-unregister`
+
+</td>
+<td>
+
+Denies the menu_unregister command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `arlen-shell:allow-presence-clear`
 
 </td>

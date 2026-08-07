@@ -439,6 +439,30 @@
           "markdownDescription": "Denies the locale_get command without any pre-configured scope."
         },
         {
+          "description": "Enables the menu_register command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-menu-register",
+          "markdownDescription": "Enables the menu_register command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the menu_register command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-menu-register",
+          "markdownDescription": "Denies the menu_register command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the menu_unregister command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-menu-unregister",
+          "markdownDescription": "Enables the menu_unregister command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the menu_unregister command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-menu-unregister",
+          "markdownDescription": "Denies the menu_unregister command without any pre-configured scope."
+        },
+        {
           "description": "Enables the presence_clear command without any pre-configured scope.",
           "type": "string",
           "const": "allow-presence-clear",

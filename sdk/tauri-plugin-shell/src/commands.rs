@@ -389,3 +389,27 @@ pub async fn ambient_clear<R: Runtime>(
 ) -> Result<(), String> {
     state.ambient.clear().await.map_err(|e| e.to_string())
 }
+
+/// Publish this app's global menu, which the shell's topbar renders while one
+/// of the app's windows is focused.
+///
+/// Here rather than in each app for the reason the cross-app check reports: the
+/// shell's `register_menu` is compiled into the shell's binary, so an app
+/// invoking it by that name is rejected at runtime, and a local copy would
+/// register a menu with nobody. Both ends of the seam already existed - the
+/// `os_sdk::Menu` mechanism publishes `app.menu.registered` and the shell's
+/// event-bus consumer already subscribes to `app.menu.` - so this is the
+/// missing middle, not a new mechanism.
+#[tauri::command]
+pub async fn menu_register(
+    state: State<'_, ShellState>,
+    groups: Vec<os_sdk::MenuGroup>,
+) -> Result<(), String> {
+    state.menu.register(groups).await.map_err(|e| e.to_string())
+}
+
+/// Remove this app's menu from the topbar.
+#[tauri::command]
+pub async fn menu_unregister(state: State<'_, ShellState>) -> Result<(), String> {
+    state.menu.unregister().await.map_err(|e| e.to_string())
+}

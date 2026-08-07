@@ -10,6 +10,8 @@ fn main() {
         "annotation_subscribe_prepare",
         "annotation_subscribe_start",
         "annotation_unsubscribe",
+        "menu_register",
+        "menu_unregister",
         "toolbar_set_quick_actions",
         "toolbar_set_breadcrumb",
         "toolbar_set_progress",
