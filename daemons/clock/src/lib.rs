@@ -15,6 +15,7 @@
 pub mod alarm;
 pub mod focus;
 pub mod missed;
+pub mod reduce;
 pub mod run;
 pub mod state;
 pub mod store;
