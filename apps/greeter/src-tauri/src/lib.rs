@@ -5,6 +5,9 @@
 //! drives, plus the little I/O (read `/etc/passwd`, dial `GREETD_SOCK`, spawn
 //! `systemctl`) that a pure core cannot hold.
 
+
+mod wallpaper;
+
 use arlen_greeter_core as core;
 use arlen_greeter_core::{Profile, Session};
 use arlen_lock_auth::GREETD_SOCK_ENV;
@@ -92,6 +95,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            wallpaper::greeter_wallpaper,
             greeter_profiles,
             greeter_sessions,
             greeter_authenticate,
