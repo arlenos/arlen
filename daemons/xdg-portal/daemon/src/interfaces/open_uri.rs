@@ -3,18 +3,16 @@
 //! Two methods: `OpenURI` (a string URI) and `OpenFile` (a file
 //! descriptor). Caller-controlled URIs go through a scheme allow-list
 //! per Sprint-E A1 pre-read: `http(s)://`, `mailto:`, `tel:`, `sms:`
-//! are handed to the shell's launch service, `file://` is
-//! sandbox-validated for confined callers and still goes to
-//! `xdg-open`, and everything else is rejected.
+//! pass, `file://` is sandbox-validated for confined callers, and
+//! everything else is rejected.
 //!
-//! **The scheme half no longer starts a program here.** The portal
-//! knows the URI and authorises the caller; the shell knows which
+//! **This module starts no programs.** The portal knows the URI and
+//! authorises the caller; the shell's launch service knows which
 //! application handles a type and how to run it confined. A launch
 //! split across those two is one where the confinement decision is
 //! made by something that does not know what it decided about, which
-//! is how `xdg-open` became a third unconfined launch path. The
-//! `file://` half is still to move: it needs a MIME type, which
-//! `xdg-open` used to determine and nothing here does yet.
+//! is how `xdg-open` became a third unconfined launch path here. Both
+//! methods now end in a request rather than a spawn.
 //!
 //! Spec:
 //! https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.impl.portal.OpenURI.html
@@ -28,11 +26,12 @@
 use std::collections::HashMap;
 use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 
 use percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, CONTROLS};
 use zbus::interface;
 use zbus::zvariant::{Fd, ObjectPath, OwnedValue, Value};
+
+use arlen_launch_contract as launch;
 
 use crate::request::{response, RequestHandle};
 use crate::sandbox::CallerIdentity;
@@ -298,7 +297,7 @@ impl OpenUri {
                     identity = ?identity,
                     "OpenURI passthrough"
                 );
-                launch_via_shell(uri).await
+                launch_via_shell(&url_request(uri)).await
             }
             SchemeClass::File => {
                 if !file_uri_authorized(uri, &identity) {
@@ -323,7 +322,13 @@ impl OpenUri {
                     identity = ?identity,
                     "OpenURI file:// authorised"
                 );
-                spawn_xdg_open(uri).await
+                match parse_file_uri(uri) {
+                    Ok(path) => launch_via_shell(&document_request(uri, &path)).await,
+                    // Unreachable in practice: the authorisation above parsed the
+                    // same URI. Refused rather than sent without a path, because a
+                    // document the service cannot classify is one it cannot open.
+                    Err(e) => error_results_with(&format!("unusable file:// URI: {e}")),
+                }
             }
             SchemeClass::Rejected => {
                 tracing::warn!(
@@ -449,7 +454,7 @@ impl OpenUri {
             path = %path.display(),
             "OpenFile fd authorised"
         );
-        spawn_xdg_open(&uri).await
+        launch_via_shell(&document_request(&uri, &path)).await
     }
 }
 
@@ -467,19 +472,19 @@ fn resolve_fd_to_path(fd: &Fd<'_>) -> Result<PathBuf, std::io::Error> {
 
 /// Does `path` still name the very file the caller handed us?
 ///
-/// `xdg-open` takes a URI, not a descriptor, so the fd the caller passed cannot
-/// be handed onward - the name gets resolved a second time, by another process,
-/// after we have decided. Between our decision and that resolution the name can
-/// be pointed somewhere else, and the authorisation we granted for the fd's
-/// inode would be spent on a different file.
+/// The launch request carries a path, not a descriptor, so the fd the caller
+/// passed cannot be handed onward - the name gets resolved a second time, by
+/// another process, after we have decided. Between our decision and that
+/// resolution the name can be pointed somewhere else, and the authorisation we
+/// granted for the fd's inode would be spent on a different file.
 ///
 /// So the name is checked against the fd it came from, immediately before the
-/// spawn: same device, same inode, following symlinks exactly as `xdg-open`
-/// will. A swapped target no longer matches and the call is refused.
+/// request goes out: same device, same inode, following symlinks exactly as the
+/// handler will. A swapped target no longer matches and the call is refused.
 ///
 /// This narrows the window rather than closing it - the name is still resolved
-/// once more inside `xdg-open`, and nothing here can hold a lock across another
-/// process's `open`. Closing it entirely needs a handler that accepts the
+/// once more by whatever opens it, and nothing here can hold a lock across
+/// another process's `open`. Closing it entirely needs a handler that accepts the
 /// descriptor itself. What this removes is the wide window between resolving
 /// the fd, running the containment check and spawning, and it makes a swap in
 /// that window detectable rather than silent.
@@ -515,25 +520,12 @@ fn fd_still_points_at(fd: &Fd<'_>, path: &Path) -> Result<bool, std::io::Error> 
 /// the unconfined path alive for exactly the cases where the service is missing,
 /// which is the shape that lets a bypass survive a migration. The shell is a
 /// session-critical component: if it is not there, the desktop is not there.
-async fn launch_via_shell(uri: &str) -> (u32, HashMap<String, OwnedValue>) {
-    use arlen_launch_contract as launch;
-
-    let request = launch::LaunchRequest::Open {
-        target: launch::Target {
-            uri: uri.to_string(),
-            path: None,
-        },
-        // The scheme names the handler, and the portal knows it from the URI
-        // alone. Saying so saves the service a lookup it would otherwise have to
-        // make against a document that is not a local file at all.
-        mime: launch::scheme_handler_mime(uri),
-    };
-
+async fn launch_via_shell(request: &launch::LaunchRequest) -> (u32, HashMap<String, OwnedValue>) {
     let mut stream = match tokio::net::UnixStream::connect(launch::socket_path()).await {
         Ok(s) => s,
         Err(e) => return error_results_with(&format!("launch service unavailable: {e}")),
     };
-    if let Err(e) = launch::write_request(&mut stream, &request).await {
+    if let Err(e) = launch::write_request(&mut stream, request).await {
         return error_results_with(&format!("launch request failed: {e}"));
     }
     match launch::read_outcome(&mut stream).await {
@@ -546,45 +538,39 @@ async fn launch_via_shell(uri: &str) -> (u32, HashMap<String, OwnedValue>) {
     }
 }
 
+/// The request for a URL, whose handler its scheme names.
+///
+/// Saying the type saves the service a lookup it could not make anyway: a
+/// `https:` target is not a local file, so there is nothing to classify.
+fn url_request(uri: &str) -> launch::LaunchRequest {
+    launch::LaunchRequest::Open {
+        target: launch::Target {
+            uri: uri.to_string(),
+            path: None,
+        },
+        mime: launch::scheme_handler_mime(uri),
+    }
+}
+
+/// The request for a document, carrying its path so the service can classify it
+/// and the handler can be given a file rather than a URI.
+///
+/// The type is left for the service: the portal has just finished deciding this
+/// caller may open this path, which is its question, and what kind of thing the
+/// path holds is the launcher's.
+fn document_request(uri: &str, path: &Path) -> launch::LaunchRequest {
+    launch::LaunchRequest::Open {
+        target: launch::Target {
+            uri: uri.to_string(),
+            path: path.to_str().map(str::to_string),
+        },
+        mime: None,
+    }
+}
+
 /// An `OTHER` response carrying a reason, the shape every failure here uses.
 fn error_results_with(reason: &str) -> (u32, HashMap<String, OwnedValue>) {
     (response::OTHER, error_results(reason))
-}
-
-/// Spawn `xdg-open` for the given URI, fire-and-forget. xdg-open
-/// is the standard freedesktop dispatcher; it forwards to the
-/// user's configured browser, mail client, or default file
-/// handler depending on the URI.
-///
-/// **The handler this starts is not confined, and does not consult
-/// `shell.toml [launcher] confined`.** Everything above this point
-/// authorises the *caller* - the scheme allow-list, the sandbox
-/// containment check, the fd-still-points-at guard - and none of it
-/// says anything about the process that ends up opening the file. So
-/// the same application, opened from the launcher with confinement on,
-/// runs inside `arlen-run`; opened by a portal request, it does not.
-///
-/// This is a third launch path beside the shell launcher and the
-/// per-app Settings handoff, both of which read that flag. It is not
-/// closable by giving this function the flag too: `xdg-open` is what
-/// resolves the URI to a handler, and `arlen-run` needs the app id that
-/// resolution produces, which nothing here has. Closing it means the
-/// resolution and the launch happening in one place that owns the
-/// decision, rather than a fourth copy of it here.
-async fn spawn_xdg_open(uri: &str) -> (u32, HashMap<String, OwnedValue>) {
-    let result = tokio::process::Command::new("xdg-open")
-        .arg(uri)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .stdin(Stdio::null())
-        .spawn();
-    match result {
-        Ok(_child) => (response::SUCCESS, HashMap::new()),
-        Err(e) => (
-            response::OTHER,
-            error_results(&format!("xdg-open spawn failed: {e}")),
-        ),
-    }
 }
 
 #[cfg(test)]
