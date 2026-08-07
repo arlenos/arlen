@@ -280,6 +280,9 @@
   /// its MIME type, from `files_apps_for`). null = not loaded yet; loaded lazily
   /// when the submenu opens so a right-click does not pay an xdg-mime + dir scan.
   interface OpenWithApp {
+    /// The desktop id, which is what opening names - the shell resolves the
+    /// entry, so nothing here needs its command line.
+    id: string;
     name: string;
     exec: string;
     terminal: boolean;
@@ -297,13 +300,14 @@
     }
   }
 
-  /// Open the selected file with the chosen app's `.desktop` Exec (the backend
-  /// expands the field codes + spawns without a shell).
-  async function openWith(exec: string) {
+  /// Open the selected file with the chosen app, by its desktop id. The shell's
+  /// launch service resolves the entry and starts it; the file manager does not
+  /// spawn anything itself.
+  async function openWith(appId: string) {
     if (selected.length !== 1) return;
     const p = joinPath(currentPath(), selected[0].name);
     try {
-      await invoke("files_open_with", { path: p, exec });
+      await invoke("files_open_with", { path: p, appId });
     } catch (err) {
       console.warn("files: open-with failed", err);
     }
@@ -687,8 +691,8 @@
                   {:else if openWithApps.length === 0}
                     <ContextMenu.Item disabled>{$t("f.openWith.none")}</ContextMenu.Item>
                   {:else}
-                    {#each openWithApps as app (app.exec)}
-                      <ContextMenu.Item onclick={() => void openWith(app.exec)}>
+                    {#each openWithApps as app (app.id)}
+                      <ContextMenu.Item onclick={() => void openWith(app.id)}>
                         {app.name}
                       </ContextMenu.Item>
                     {/each}
