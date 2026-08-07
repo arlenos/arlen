@@ -3843,6 +3843,83 @@ fn cypher_label_tokens(cypher: &str) -> Vec<String> {
     out
 }
 
+/// Whether every node pattern names a label and every relationship names a type.
+///
+/// **An omitted constraint is the widest constraint, not an absent one.** An
+/// unlabelled `(x)` means "a node of ANY label" and an untyped `-[r]->` means "an
+/// edge of ANY type, to anywhere". The label allowlist is a check on what a query
+/// NAMES, so leaving the name out walked straight past it: measured on this
+/// daemon, `MATCH (f:File)-[r]->(x)` produced the single token `FILE` and was
+/// allowed for a caller scoped to `File` alone, which is every node adjacent to a
+/// file. Naming the edge got you refused; omitting it got you through. Endpoint
+/// authorisation only means something when the endpoints are constrained.
+///
+/// A node pattern is `(` NOT preceded by an identifier - `count(*)` and
+/// `toLower(n.x)` are calls, not patterns, and must not be read as unlabelled
+/// nodes. A relationship is `[` preceded by `-`, which is the only way Cypher
+/// spells one; a bare `[` is a list literal (`WHERE n.id IN ['a']`).
+///
+/// Returns the offending construct's name for the refusal, so the message can say
+/// which one rather than failing obscurely.
+fn unconstrained_pattern(cypher: &str) -> Option<&'static str> {
+    let chars: Vec<char> = cypher.chars().collect();
+    let mut in_string = false;
+    let mut escaped = false;
+    // (kind, saw_colon) for each open bracket that is a PATTERN, innermost last.
+    let mut open: Vec<(&'static str, bool)> = Vec::new();
+    let mut prev_significant: Option<char> = None;
+
+    for (i, &ch) in chars.iter().enumerate() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '\'' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '\'' => in_string = true,
+            '(' => {
+                let is_call = prev_significant
+                    .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+                if !is_call {
+                    open.push(("node", false));
+                } else {
+                    open.push(("call", true));
+                }
+            }
+            '[' => {
+                if prev_significant == Some('-') {
+                    open.push(("relationship", false));
+                } else {
+                    open.push(("list", true));
+                }
+            }
+            ')' | ']' => {
+                if let Some((kind, saw_colon)) = open.pop() {
+                    if !saw_colon && (kind == "node" || kind == "relationship") {
+                        return Some(kind);
+                    }
+                }
+            }
+            ':' => {
+                if let Some(last) = open.last_mut() {
+                    last.1 = true;
+                }
+            }
+            _ => {}
+        }
+        let _ = i;
+        if !ch.is_whitespace() {
+            prev_significant = Some(ch);
+        }
+    }
+    None
+}
+
 /// Whether `cypher` references a label outside the caller's readable label set, OR
 /// a sensitive label a non-system caller may never read on the raw path. Returns
 /// the denial reason, or `None` to allow.
@@ -3906,6 +3983,21 @@ fn raw_read_label_gate(
     // Arlen labels are plain identifiers, so a scoped read never needs a backtick.
     if cypher.contains('`') {
         return Some("read denied: backtick-quoted identifiers cannot be scoped to the caller");
+    }
+    // An omitted constraint is the widest one. A scoped caller must say which
+    // labels and which edge types it means, because "any" is not a scope it holds.
+    match unconstrained_pattern(cypher) {
+        Some("node") => {
+            return Some(
+                "read denied: every node in the pattern must name a label; an unlabelled node means any label",
+            )
+        }
+        Some("relationship") => {
+            return Some(
+                "read denied: every relationship must name a type; an untyped edge means any edge",
+            )
+        }
+        Some(_) | None => {}
     }
     let tokens = cypher_label_tokens(cypher);
     if tokens.is_empty() {
@@ -4365,6 +4457,45 @@ mod tests {
         // must not depend on that: an ungranted label is not an exercise.
         assert!(exercised_read_types("MATCH (s:Session) RETURN s", &["File".to_string()]).is_empty());
         assert!(exercised_read_types("MATCH (n) RETURN n", &["File".to_string()]).is_empty());
+    }
+
+    /// The measurement that produced this rule: an unlabelled node and an untyped
+    /// edge are "any label" and "any edge", and the allowlist never saw them
+    /// because it only checks what a query NAMES.
+    #[test]
+    fn an_omitted_constraint_is_refused_as_the_widest_one() {
+        let readable = ["File".to_string()];
+        // The exact query that was allowed before this rule.
+        assert!(
+            raw_read_label_gate("MATCH (f:File)-[r]->(x) RETURN x.id", &readable, false).is_some()
+        );
+        // Each half on its own.
+        assert!(raw_read_label_gate("MATCH (x) RETURN x.id", &readable, false).is_some());
+        assert!(
+            raw_read_label_gate(
+                "MATCH (f:File)-[r]->(p:Project) RETURN p.id",
+                &["File".to_string(), "Project".to_string()],
+                false
+            )
+            .is_some(),
+            "an untyped edge between two named labels is still any edge"
+        );
+        // Fully constrained and in scope: allowed.
+        assert!(raw_read_label_gate(
+            "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) RETURN p.id",
+            &["File".to_string(), "Project".to_string(), "FILE_PART_OF".to_string()],
+            false
+        )
+        .is_none());
+        // A function call is not an unlabelled node, and a list is not an edge.
+        assert!(raw_read_label_gate(
+            "MATCH (f:File) WHERE f.id IN ['a','b'] RETURN count(*)",
+            &readable,
+            false
+        )
+        .is_none());
+        // A system-anchored caller still bypasses, as before.
+        assert!(raw_read_label_gate("MATCH (x) RETURN x.id", &[], true).is_none());
     }
 
     #[test]
