@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use arlen_desktop_shell_core::launch::exec::{expand_exec, ExecContext, ExecError};
+use arlen_desktop_shell_core::launch::plan::{plan, Launch};
 use serde::Serialize;
 
 /// A single application entry parsed from a `.desktop` file.
@@ -281,74 +283,23 @@ pub fn search_apps(index: tauri::State<AppIndex>, query: String) -> Vec<AppEntry
     scored.into_iter().take(8).map(|(_, app)| app.clone()).collect()
 }
 
-/// How a launch should be spawned, decided purely from the launcher config and the
-/// app's identity. `Direct` is today's `sh -c` path (the default); `Confined`
-/// routes through `arlen-run` so the app runs under its permission profile.
-#[derive(Debug, PartialEq, Eq)]
-enum LaunchPlan {
-    /// Run the Exec string directly via `sh -c` (unconfined, the default).
-    Direct,
-    /// Run `arlen-run --app-id <app_id> -- <argv>` (confined).
-    Confined { app_id: String, argv: Vec<String> },
-}
-
-/// Decide how to launch. `confined = false` (the default) is always `Direct`, so
-/// nothing changes from today's behaviour. `confined = true` routes through
-/// `arlen-run` when the app id is known and the Exec splits to a non-empty argv;
-/// otherwise it falls back to `Direct` rather than failing the launch (a
-/// profile-less or unsplittable launch under confined mode is the gated go-live's
-/// concern, not this default-off wiring).
-fn launch_plan(confined: bool, app_id: Option<&str>, exec: &str) -> LaunchPlan {
-    if !confined {
-        return LaunchPlan::Direct;
-    }
-    let argv = split_exec(exec);
-    match app_id {
-        Some(id) if !id.is_empty() && !argv.is_empty() => LaunchPlan::Confined {
-            app_id: id.to_string(),
-            argv,
-        },
-        _ => LaunchPlan::Direct,
-    }
-}
-
-/// Split a placeholder-stripped Exec string into argv, honouring single and double
-/// quotes (the freedesktop Exec quoting). Not a full shell parser: the string is
-/// already placeholder-free and the confined path does not run it through a shell,
-/// so this only recovers the program and its literal arguments. An empty pair of
-/// quotes yields an empty argument.
-fn split_exec(exec: &str) -> Vec<String> {
-    let mut args = Vec::new();
-    let mut cur = String::new();
-    let mut in_single = false;
-    let mut in_double = false;
-    let mut started = false;
-    for ch in exec.chars() {
-        match ch {
-            '\'' if !in_double => {
-                in_single = !in_single;
-                started = true;
-            }
-            '"' if !in_single => {
-                in_double = !in_double;
-                started = true;
-            }
-            c if c.is_whitespace() && !in_single && !in_double => {
-                if started {
-                    args.push(std::mem::take(&mut cur));
-                    started = false;
-                }
-            }
-            c => {
-                cur.push(c);
-                started = true;
-            }
-        }
-    }
-    if started {
-        args.push(cur);
-    }
-    args
+/// Turn a desktop entry's `Exec` into the argv to run, or say why it cannot be.
+///
+/// A `.desktop` `Exec` is **not a shell command line** - the desktop-entry spec
+/// gives it its own quoting rules precisely so it is not one - and this used to
+/// hand it to `sh -c`. That made every metacharacter in it live, and it would
+/// have made a metacharacter in a *file name* live too the moment anything
+/// substituted one into `%f`. Nothing does today (the index strips the field
+/// codes), so this was a latent injection rather than a reachable one, but the
+/// launch service exists precisely to start substituting file names.
+///
+/// An entry with `&&` in it is spec-violating and now fails to launch. That is
+/// deliberate, and the failure is logged with the reason rather than being a
+/// silent non-start, so a packaging bug reads as a packaging bug.
+fn launch_argv(exec: &str) -> Result<Vec<String>, ExecError> {
+    // No targets: the launcher starts an application, it does not open a
+    // document. Any field code the index left behind drops here.
+    expand_exec(exec, &ExecContext::default())
 }
 
 /// Launches an application: directly via `sh -c` (the default), or through the
@@ -364,34 +315,39 @@ pub fn launch_app(exec: String, app_id: Option<String>) {
         .map(|c| c.launcher.confined)
         .unwrap_or(false);
     let null = || std::process::Stdio::null();
-    match launch_plan(confined, app_id.as_deref(), &exec) {
-        LaunchPlan::Direct => {
-            log::info!("app_index: launching: {exec}");
-            std::thread::spawn(move || {
-                let _ = std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(&exec)
-                    .stdin(null())
-                    .stdout(null())
-                    .stderr(null())
-                    .spawn();
-            });
+    let argv = match launch_argv(&exec) {
+        Ok(argv) => argv,
+        Err(e) => {
+            log::error!(
+                "app_index: refusing to launch {}: its launcher entry is malformed ({e}): {exec}",
+                app_id.as_deref().unwrap_or("an application")
+            );
+            return;
         }
-        LaunchPlan::Confined { app_id, argv } => {
-            log::info!("app_index: launching {app_id} confined via arlen-run");
-            std::thread::spawn(move || {
-                let _ = std::process::Command::new("arlen-run")
-                    .arg("--app-id")
-                    .arg(&app_id)
-                    .arg("--")
-                    .args(&argv)
-                    .stdin(null())
-                    .stdout(null())
-                    .stderr(null())
-                    .spawn();
-            });
+    };
+    let planned = match plan(confined, app_id.as_deref(), &argv) {
+        Ok(p) => p,
+        Err(e) => {
+            log::error!("app_index: refusing to launch: nothing to run ({e:?}): {exec}");
+            return;
         }
+    };
+    match &planned {
+        Launch::Direct(_) => log::info!("app_index: launching: {exec}"),
+        Launch::Confined(_) => log::info!(
+            "app_index: launching {} confined via arlen-run",
+            app_id.as_deref().unwrap_or_default()
+        ),
     }
+    let argv = planned.argv().to_vec();
+    std::thread::spawn(move || {
+        let _ = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .stdin(null())
+            .stdout(null())
+            .stderr(null())
+            .spawn();
+    });
 }
 
 #[cfg(test)]
@@ -419,42 +375,39 @@ mod tests {
         assert_eq!(id, "firefox");
     }
 
+    /// The spec's quoting, not a shell's. An entry that needs a shell is
+    /// spec-violating and does not launch.
     #[test]
-    fn unconfined_is_always_direct() {
-        // The default (confined=false) never routes through arlen-run, so nothing
-        // changes from today's behaviour regardless of the app id.
-        assert_eq!(launch_plan(false, Some("org.gnome.Calculator"), "gnome-calculator"), LaunchPlan::Direct);
-        assert_eq!(launch_plan(false, None, "firefox"), LaunchPlan::Direct);
-    }
-
-    #[test]
-    fn confined_with_an_app_id_routes_through_arlen_run() {
-        let plan = launch_plan(true, Some("org.gnome.Calculator"), "gnome-calculator --new-window");
+    fn an_exec_becomes_argv_by_the_desktop_entry_rules() {
+        assert_eq!(launch_argv("foo bar baz").unwrap(), ["foo", "bar", "baz"]);
         assert_eq!(
-            plan,
-            LaunchPlan::Confined {
-                app_id: "org.gnome.Calculator".into(),
-                argv: vec!["gnome-calculator".into(), "--new-window".into()],
-            }
-        );
-    }
-
-    #[test]
-    fn confined_without_an_app_id_falls_back_to_direct() {
-        // No derivable identity (or empty) under confined mode falls back rather
-        // than failing the launch; the gated go-live decides the strict policy.
-        assert_eq!(launch_plan(true, None, "someprog"), LaunchPlan::Direct);
-        assert_eq!(launch_plan(true, Some(""), "someprog"), LaunchPlan::Direct);
-    }
-
-    #[test]
-    fn split_exec_honours_quotes() {
-        assert_eq!(split_exec("foo bar baz"), ["foo", "bar", "baz"]);
-        assert_eq!(
-            split_exec("prog --flag \"a b\" 'c d'"),
+            launch_argv("prog --flag \"a b\" 'c d'").unwrap(),
             ["prog", "--flag", "a b", "c d"]
         );
-        assert_eq!(split_exec("  leading   spaces "), ["leading", "spaces"]);
-        assert_eq!(split_exec("prog \"\" tail"), ["prog", "", "tail"]);
+        assert_eq!(launch_argv("  leading   spaces ").unwrap(), ["leading", "spaces"]);
+        assert_eq!(launch_argv("prog \"\" tail").unwrap(), ["prog", "", "tail"]);
+    }
+
+    /// `env FOO=bar prog` needs no shell - `env` is a real binary - which is the
+    /// case people reach for when they assume a shell is required.
+    #[test]
+    fn an_env_prefixed_entry_needs_no_shell() {
+        assert_eq!(
+            launch_argv("env FOO=bar prog").unwrap(),
+            ["env", "FOO=bar", "prog"]
+        );
+    }
+
+    /// A metacharacter is an argument, not syntax. Under `sh -c` this was three
+    /// commands.
+    #[test]
+    fn shell_metacharacters_are_arguments_rather_than_syntax() {
+        let argv = launch_argv("prog ';' 'rm' '-rf'").unwrap();
+        assert_eq!(argv, ["prog", ";", "rm", "-rf"]);
+    }
+
+    #[test]
+    fn an_unterminated_quote_refuses_rather_than_guessing() {
+        assert!(launch_argv("prog \"unclosed").is_err());
     }
 }
