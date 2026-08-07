@@ -8,11 +8,33 @@
 //! hours a laptop spent shut would be nonsense, so it stops when the machine
 //! does.
 //!
-//! **That stop is the daemon's job, not the kernel's.** `CLOCK_MONOTONIC` is
-//! only guaranteed to pause during suspend-to-RAM, and s2idle - the sleep state
-//! most 2024-and-later laptops actually enter - keeps it advancing. Trusting the
-//! guarantee would produce exactly the bug this module exists to avoid, and it
-//! would only appear on hardware nobody tested on.
+//! **That stop is the daemon's job, not the kernel's, and the mechanism is
+//! chosen so the two suspend types cannot disagree.** The obvious
+//! implementation - measure with `CLOCK_MONOTONIC` and let the kernel do the
+//! pausing - gives different answers on different machines: monotonic time
+//! excludes suspend-to-RAM but **keeps advancing under s2idle**, which is what
+//! most 2024-and-later laptops actually enter when the lid closes. The same
+//! code would then read "stopwatch paused" on one laptop and "stopwatch ran all
+//! night" on another, with nothing in the interface explaining why.
+//!
+//! So nothing here asks a clock to pause. The stopwatch is an explicit
+//! subtraction: the daemon folds the current run into the total when the
+//! machine goes to sleep and opens a new one when it wakes. **That is
+//! independent of which suspend type the machine used** - it is the same
+//! arithmetic for s2idle, suspend-to-RAM and, for that matter, a laptop carried
+//! between two of them - because no kernel clock behaviour is being relied on.
+//!
+//! **What it does depend on, stated because it is now the weak point:** the
+//! daemon has to be told. The fold happens on logind's `PrepareForSleep`, and a
+//! sleep that arrives without one counts as running time. That is a signal
+//! question rather than a clock question, and it fails the same way on both
+//! suspend types rather than silently differing between them.
+//!
+//! **And the trade this choice makes:** anchors are wall-clock instants, so a
+//! clock step - NTP correcting a drifting machine, or someone setting the time -
+//! would move the reading. [`stopwatch_clock_stepped`] is how the daemon absorbs
+//! that; monotonic time would not have needed it, which is the price of not
+//! depending on monotonic time's suspend behaviour.
 
 use crate::state::{Stopwatch, Timer};
 
@@ -89,6 +111,23 @@ pub fn stopwatch_suspended(watch: &mut Stopwatch, now_ms: i64) {
 pub fn stopwatch_resumed(watch: &mut Stopwatch, now_ms: i64) {
     if watch.running && watch.started_at.is_none() {
         watch.started_at = Some(now_ms);
+    }
+}
+
+/// Absorb a wall-clock step so the elapsed reading does not move.
+///
+/// The anchors here are epoch instants, which is what lets the app derive a
+/// display without the daemon sending counters - but it means a correction to
+/// the system clock would otherwise add or remove that correction from a
+/// running stopwatch. NTP disciplining a machine that has been asleep is the
+/// ordinary case, and someone setting the clock by hand is the loud one.
+///
+/// Shifting the anchor by the same step leaves the elapsed time exactly as it
+/// was, which is what a person watching a stopwatch expects to see when the
+/// clock beside it jumps.
+pub fn stopwatch_clock_stepped(watch: &mut Stopwatch, old_now_ms: i64, new_now_ms: i64) {
+    if let Some(started) = watch.started_at.as_mut() {
+        *started += new_now_ms - old_now_ms;
     }
 }
 
@@ -251,6 +290,32 @@ mod tests {
         stopwatch_start(&mut w, 30_000);
         assert_eq!(w.started_at, Some(0));
         assert_eq!(stopwatch_elapsed(&w, 60_000), 60_000);
+    }
+
+    /// The price of not depending on monotonic time: a clock correction must
+    /// not move the reading.
+    #[test]
+    fn a_clock_step_does_not_change_how_long_the_stopwatch_has_run() {
+        let mut w = Stopwatch::default();
+        stopwatch_start(&mut w, 0);
+        let before = stopwatch_elapsed(&w, 30_000);
+        // NTP pulls the machine forward five minutes.
+        stopwatch_clock_stepped(&mut w, 30_000, 30_000 + 5 * MIN);
+        assert_eq!(stopwatch_elapsed(&w, 30_000 + 5 * MIN), before);
+        // And backwards, which is the direction that would otherwise read as a
+        // stopwatch running in reverse.
+        stopwatch_clock_stepped(&mut w, 30_000 + 5 * MIN, 30_000);
+        assert_eq!(stopwatch_elapsed(&w, 30_000), before);
+    }
+
+    #[test]
+    fn a_clock_step_while_paused_changes_nothing() {
+        let mut w = Stopwatch::default();
+        stopwatch_start(&mut w, 0);
+        stopwatch_pause(&mut w, MIN);
+        let before = w.clone();
+        stopwatch_clock_stepped(&mut w, MIN, MIN + 60 * MIN);
+        assert_eq!(w, before);
     }
 
     /// A wake with no matching suspend must not restart the run either - a
