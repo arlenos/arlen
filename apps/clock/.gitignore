@@ -1,0 +1,20 @@
+/target
+*.bak
+.DS_Store
+
+# Build artifacts
+.svelte-kit/
+build/
+node_modules/
+
+# Rust
+src-tauri/target/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Env
+.env
+.env.local
