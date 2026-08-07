@@ -5,7 +5,6 @@ apps/desktop-shell/src/lib/components/NetworkPopover.svelte	, VPN
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	A4
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	Legal
 apps/desktop-shell/src/lib/components/PrintDialog.svelte	Letter
-apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	.audio-tile-wrap, .user-row-tile
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Enter
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Esc
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
@@ -65,7 +64,6 @@ apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
 apps/files/src/routes/+page.svelte	Del
 apps/files/src/routes/+page.svelte	F2
-apps/greeter/src/routes/+page.svelte	No profile selected.
 apps/harness/src/lib/components/agent/ActivityTimeline.svelte	Refresh
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	). Live rendering is coming.
 apps/harness/src/lib/components/artifact/ArtifactView.svelte	Diagram source (
@@ -125,7 +123,6 @@ apps/harness/src/lib/menu.ts	Import chat…
 apps/harness/src/lib/menu.ts	New chat
 apps/harness/src/lib/stores/conversation.ts	Referenced files:{}{}
 apps/harness/src/lib/stores/conversation.ts	Standup bullets
-apps/harness/src/lib/stores/conversation.ts	Summarize what changed in week-plan.md since Monday
 apps/harness/src/lib/stores/conversation.ts	What changed in my week plan
 apps/harness/src/lib/stores/mint.ts	12 notes you saved to read
 apps/harness/src/lib/stores/mint.ts	3 items you have open
@@ -153,7 +150,6 @@ apps/knowledge/src/lib/stores/library.ts	Re: review notes
 apps/knowledge/src/lib/stores/library.ts	Scaling Laws for Neural Language Models
 apps/knowledge/src/lib/stores/library.ts	The Rust Programming Language
 apps/knowledge/src/lib/stores/library.ts	Thesis outline
-apps/knowledge/src/lib/stores/provenance.ts	captured from activity
 apps/knowledge/src/lib/stores/search.ts	Arlen OS
 apps/knowledge/src/lib/stores/search.ts	Arlen OS, 9:30 am to 12:15 pm
 apps/knowledge/src/lib/stores/search.ts	Attention Is All You Need
@@ -237,8 +233,6 @@ apps/settings/src/lib/stores/capsules.ts	Reading list
 apps/settings/src/lib/stores/capsules.ts	Recipe collection
 apps/settings/src/lib/stores/capsules.ts	Trip 2026
 apps/settings/src/lib/stores/displays.ts	{} × {} @ {} Hz
-apps/settings/src/lib/stores/grants.ts	All
-apps/settings/src/lib/stores/grants.ts	Own
 apps/settings/src/lib/stores/models.ts	Answers your questions.
 apps/settings/src/lib/stores/models.ts	Background work
 apps/settings/src/lib/stores/models.ts	Balanced
@@ -249,8 +243,6 @@ apps/settings/src/lib/stores/models.ts	Fast
 apps/settings/src/lib/stores/models.ts	Names new chats. A small local model is plenty.
 apps/settings/src/lib/stores/models.ts	Runs the tasks you have turned on.
 apps/settings/src/lib/stores/models.ts	Your machine can run models up to about 8B at a good speed.
-apps/settings/src/lib/stores/modules.ts	Arlen
-apps/settings/src/lib/stores/modules.ts	built-in, prefix "{}"
 apps/settings/src/lib/stores/printers.ts	Network
 apps/settings/src/lib/stores/theme.ts	Fira Code
 apps/settings/src/lib/stores/theme.ts	Inter
@@ -318,21 +310,14 @@ apps/store/src/lib/stores/catalog.ts	The next hours and days, from a single fore
 apps/store/src/lib/stores/catalog.ts	Timers and focus sessions
 apps/store/src/lib/stores/catalog.ts	Typography-first EPUB reading with margins that breathe.
 apps/store/src/lib/stores/catalog.ts	Weather at a glance
-apps/store/src/lib/stores/catalog.ts	knowledge graph
 apps/system-monitor/src/lib/components/tm/DetailPane.svelte	{} GB
 apps/system-monitor/src/lib/components/tm/DetailPane.svelte	{} MB
 apps/system-monitor/src/lib/components/tm/ProcessTable.svelte	{} GB
 apps/system-monitor/src/lib/components/tm/ProcessTable.svelte	{} MB
-apps/system-monitor/src/lib/stores/detail.ts	Running
-apps/system-monitor/src/lib/stores/detail.ts	Stopped
-apps/system-monitor/src/lib/stores/detail.ts	Uninterruptible sleep
 apps/system-monitor/src/lib/stores/detail.ts	read and write the graph
 apps/system-monitor/src/lib/stores/detail.ts	read recent files
 apps/system-monitor/src/lib/stores/detail.ts	read the knowledge graph
 apps/system-monitor/src/lib/stores/detail.ts	read your notes
-apps/system-monitor/src/lib/stores/detail.ts	tcp 140.82.121.4:443 ESTABLISHED
-apps/system-monitor/src/lib/stores/detail.ts	udp 224.0.0.251:5353 mdns
-apps/system-monitor/src/lib/stores/perf.ts	8 cores, 16 threads
 apps/terminal/src/lib/components/TerminalSidebar.svelte	{} (last command exited {})
 apps/terminal/src/routes/_chrometest/+page.svelte	A header bar per block redraws cwd · git as chrome; result + actions always on.
 apps/terminal/src/routes/_chrometest/+page.svelte	A · Styled
@@ -346,5 +331,4 @@ apps/viewers/src/lib/components/ViewerMenu.svelte	German
 apps/viewers/src/lib/components/ViewerMenu.svelte	Space
 apps/viewers/src/lib/components/ViewerMenu.svelte	film.en.srt
 apps/viewers/src/lib/mock.ts	Nightswim
-sdk/ui-kit/src/lib/components/browser/Breadcrumb.svelte	Home
 sdk/ui-kit/src/lib/components/browser/format.ts	{} PB
