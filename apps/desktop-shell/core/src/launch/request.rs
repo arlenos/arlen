@@ -19,32 +19,17 @@
 //! desktop entry says - are injected, so the composition is testable without a
 //! filesystem and the host keeps the I/O.
 
-use super::exec::{expand_exec, ExecContext, ExecError, Target};
+use super::exec::{expand_exec, ExecContext, ExecError};
 use super::mimeapps::{default_handler, MimeApps};
 use super::plan::{plan, Launch, NotLaunchable};
 
-/// What a caller wants to happen.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LaunchRequest {
-    /// Start this application, optionally with documents. The rare case: an app
-    /// that wants a *specific* application rather than whatever opens a document
-    /// is worth a reason, and the honest default is that it does not need one.
-    App {
-        /// The application to start.
-        app_id: String,
-        /// Documents to hand it. Usually empty.
-        targets: Vec<Target>,
-    },
-    /// Open this document with whatever the user's configuration says opens it.
-    /// Nearly every real case.
-    Open {
-        /// The document.
-        target: Target,
-        /// Its MIME type, which the host determines - that is shared-mime-info's
-        /// job, not this module's.
-        mime: String,
-    },
-}
+/// What a caller wants to happen: the wire type, re-exported so a reader of this
+/// module finds it without knowing which crate it lives in.
+///
+/// It is in `contracts/launch` rather than here because the portal and the apps
+/// send it and the shell receives it, and a wire type living in one participant's
+/// crate is a dependency the others should not need.
+pub use arlen_launch_contract::{LaunchOutcome, LaunchRequest};
 
 /// A desktop entry, reduced to what launching needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,6 +145,7 @@ pub fn resolve(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arlen_launch_contract::Target;
 
     fn file(path: &str) -> Target {
         Target {

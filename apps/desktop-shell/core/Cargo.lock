@@ -38,6 +38,7 @@ dependencies = [
 name = "arlen-desktop-shell-core"
 version = "0.1.0"
 dependencies = [
+ "arlen-launch-contract",
  "arlen-theme",
  "bytes",
  "dirs",
@@ -62,6 +63,13 @@ dependencies = [
  "serde",
  "thiserror 2.0.19",
  "toml",
+]
+
+[[package]]
+name = "arlen-launch-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
