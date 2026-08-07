@@ -144,6 +144,48 @@ pub fn load_mimeapps(env: &XdgEnv) -> Vec<super::mimeapps::MimeApps> {
         .collect()
 }
 
+/// Where desktop entries live, highest precedence first.
+///
+/// The data directories only: `$XDG_CONFIG_*` holds the handler *choices*, not
+/// the entries themselves, and looking for entries there would find nothing
+/// while making the search look more thorough than it is.
+pub fn desktop_entry_dirs(env: &XdgEnv) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Some(d) = env.data_home_dir() {
+        out.push(d.join("applications"));
+    }
+    for d in split_dirs(env.data_dirs.as_ref(), "/usr/local/share:/usr/share") {
+        out.push(d.join("applications"));
+    }
+    out
+}
+
+/// Read the desktop entry with this id, from the first directory that has it.
+///
+/// `None` when no directory has it, or when what is there is not a launchable
+/// application - which the caller reports as an unknown application either way,
+/// because from a requester's side those are the same fact.
+///
+/// The id is used as a file name, so it is refused if it is not one: a handler
+/// id arrives from `mimeapps.list`, which is a file anyone can write, and
+/// `../../etc/x.desktop` naming a path outside the search directories would turn
+/// a handler lookup into a file read.
+pub fn load_entry(env: &XdgEnv, desktop_id: &str) -> Option<super::request::Entry> {
+    if desktop_id.is_empty() || desktop_id.contains('/') || desktop_id.contains('\\') {
+        return None;
+    }
+    for dir in desktop_entry_dirs(env) {
+        let path = dir.join(desktop_id);
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if let Some(entry) = super::entry::parse_entry(desktop_id, &text, path.to_str()) {
+            return Some(entry);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,6 +368,70 @@ mod tests {
             ..env()
         };
         assert!(load_mimeapps(&e).is_empty());
+    }
+
+    #[test]
+    fn entries_are_looked_for_in_the_data_directories_only() {
+        let dirs = strs(&desktop_entry_dirs(&env()));
+        assert_eq!(
+            dirs,
+            vec![
+                "/home/u/.local/share/applications",
+                "/usr/local/share/applications",
+                "/usr/share/applications",
+            ]
+        );
+        assert!(!dirs.iter().any(|d| d.contains(".config")));
+    }
+
+    #[test]
+    fn an_entry_is_read_from_the_first_directory_that_has_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let system = dir.path().join("system");
+        for d in [&home, &system] {
+            std::fs::create_dir_all(d.join("applications")).unwrap();
+        }
+        std::fs::write(
+            system.join("applications/x.desktop"),
+            "[Desktop Entry]\nType=Application\nName=System\nExec=system\n",
+        )
+        .unwrap();
+        let e = XdgEnv {
+            data_home: Some(home.display().to_string()),
+            data_dirs: Some(system.display().to_string()),
+            ..env()
+        };
+        assert_eq!(load_entry(&e, "x.desktop").unwrap().exec, "system");
+
+        // The nearer directory wins once it has one.
+        std::fs::write(
+            home.join("applications/x.desktop"),
+            "[Desktop Entry]\nType=Application\nName=Mine\nExec=mine\n",
+        )
+        .unwrap();
+        assert_eq!(load_entry(&e, "x.desktop").unwrap().exec, "mine");
+    }
+
+    /// A handler id comes out of `mimeapps.list`, which is a file anyone can
+    /// write. Used as a file name it must stay one.
+    #[test]
+    fn an_id_that_is_a_path_is_refused_rather_than_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("applications")).unwrap();
+        std::fs::write(
+            dir.path().join("outside.desktop"),
+            "[Desktop Entry]\nType=Application\nName=Outside\nExec=outside\n",
+        )
+        .unwrap();
+        let e = XdgEnv {
+            data_home: Some(dir.path().display().to_string()),
+            data_dirs: Some(dir.path().display().to_string()),
+            ..env()
+        };
+        assert!(load_entry(&e, "../outside.desktop").is_none());
+        assert!(load_entry(&e, "/etc/passwd").is_none());
+        assert!(load_entry(&e, "").is_none());
     }
 
     #[test]
