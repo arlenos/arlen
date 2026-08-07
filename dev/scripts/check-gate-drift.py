@@ -12,21 +12,28 @@ happened three separate times: nextest exiting 4 on a test-free crate where CI's
 the frontend test runner needing a vitest-only flag that CI branched on and the
 justfile did not. Each one looked like a broken crate rather than a broken gate.
 
-Two things are still duplicated by hand and would drift the same way:
+The per-crate commands are no longer duplicated: `dev/check-crate.sh` owns them
+and both gates call it, so the drift this file used to compare for cannot
+happen. What replaces that comparison is keeping the arrangement true, because
+it only holds while it is the arrangement:
 
-  1. The crates whose tests must run serially. Both files carry the same `case`
-     arm. Add a crate to one only and you get either a CI flake nobody can
-     reproduce locally, or a local flake CI never sees - and shared-state test
-     races are the hardest failures to attribute.
+  1. The serial-test rule lives in `dev/check-crate.sh` and nowhere else. The
+     crates whose tests share process-global state must run with
+     `--test-threads=1`, and a second copy of that rule growing back in `ci.yml`
+     or the justfile is how the two would start disagreeing again. So the check
+     is now: the owner names some, and neither caller names any.
 
-  2. `CXXFLAGS`. lbug's vendored thrift will not compile without it, and it is
-     set in three places for three audiences: `.cargo/config.toml` for a bare
-     `cargo`, `dev/justfile` for `just`, `ci.yml` for the runner. If they drift,
-     whichever entry point has the stale value stops being able to build the
-     knowledge daemon at all.
+  2. Both gates actually go through the script. If one stopped calling it, the
+     commands would diverge again with nothing to notice - the script would just
+     sit there being correct and unused.
 
-Both are compared as values rather than pattern-matched loosely, so a change to
-either has to be made in every place before this passes.
+  3. `CXXFLAGS` is still duplicated by hand, and legitimately: lbug's vendored
+     thrift will not compile without it, and it is set in three places for three
+     audiences - `.cargo/config.toml` for a bare `cargo`, `dev/justfile` for
+     `just`, `ci.yml` for the runner. If they drift, whichever entry point has
+     the stale value stops being able to build the knowledge daemon at all. It
+     is compared as a value, so a change has to be made everywhere before this
+     passes.
 """
 
 import pathlib
@@ -38,9 +45,27 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 CI = ".github/workflows/ci.yml"
 JUSTFILE = "dev/justfile"
 CARGO_CONFIG = ".cargo/config.toml"
+CHECK_CRATE = "dev/check-crate.sh"
 
-# `<crates>) extra="... --test-threads=1"`, in either file's `case` block.
-SERIAL = re.compile(r"^\s*([\w/|.-]+)\)\s*extra=\"[^\"]*--test-threads=1\"", re.M)
+# The per-crate serial rule: a `case` arm mapping crate paths to the flag. Both
+# the array form check-crate.sh uses and the string form the two gates used to
+# carry, so a copy growing back in the old shape is still seen. Deliberately
+# narrower than "mentions --test-threads=1": the nightly and on-host recipes pass
+# it to one named test run, which is a different thing from the matrix rule.
+SERIAL = re.compile(
+    r"^\s*([\w/|.-]+)\)\s*extra=(?:\([^)]*|\"[^\"]*)--test-threads=1", re.M
+)
+
+# A per-crate cargo invocation: `cargo check|test ... --manifest-path <something
+# holding the crate>`, where the crate comes from the loop or the CI matrix
+# rather than being written out. That is the call the script exists to own, so
+# either gate making it directly is the drift returning - whatever it happens to
+# mention elsewhere in a comment. A one-off recipe naming a literal crate is not
+# this, and stays allowed.
+PER_CRATE_CARGO = re.compile(
+    r"cargo\s+(?:check|test)\b[^\n]*--manifest-path[^\n]*"
+    r"(?:\$c\b|\{\{\s*crate\s*\}\}|\$\{\{\s*matrix\.component\s*\}\})"
+)
 
 # `CXXFLAGS = "..."` (toml), `export CXXFLAGS := "..."` (just), `CXXFLAGS: "..."` (yaml).
 CXXFLAGS = re.compile(r"^[^#\n]*\bCXXFLAGS\s*(?::=|=|:)\s*\"([^\"]*)\"", re.M)
@@ -69,12 +94,18 @@ def cxxflags(rel: str) -> str:
 def main() -> int:
     problems: list[str] = []
 
-    ci_serial = serial_crates(CI)
-    just_serial = serial_crates(JUSTFILE)
-    for crate in sorted(ci_serial - just_serial):
-        problems.append(f"{crate} runs serially in CI but in parallel under `just test`")
-    for crate in sorted(just_serial - ci_serial):
-        problems.append(f"{crate} runs serially under `just test` but in parallel in CI")
+    serial = serial_crates(CHECK_CRATE)
+    for rel in (CI, JUSTFILE):
+        if SERIAL.search(read(rel)):
+            problems.append(
+                f"{rel} carries its own per-crate serial rule; {CHECK_CRATE} owns that, "
+                "and a second copy is how the two gates start disagreeing again"
+            )
+        if PER_CRATE_CARGO.search(read(rel)):
+            problems.append(
+                f"{rel} runs cargo per crate itself instead of through {CHECK_CRATE}, "
+                "which is how the two gates ran different commands four times"
+            )
 
     flags = {rel: cxxflags(rel) for rel in (CARGO_CONFIG, JUSTFILE, CI)}
     if len(set(flags.values())) > 1:
@@ -89,8 +120,8 @@ def main() -> int:
         return 1
 
     print(
-        f"{len(ci_serial)} serial crate(s) agree, CXXFLAGS agrees across "
-        f"{len(flags)} file(s): {next(iter(flags.values()))!r}"
+        f"{len(serial)} serial crate(s) declared once in {CHECK_CRATE}, both gates call it, "
+        f"CXXFLAGS agrees across {len(flags)} file(s): {next(iter(flags.values()))!r}"
     )
     return 0
 
