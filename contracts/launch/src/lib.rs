@@ -213,6 +213,35 @@ where
     Ok(serde_json::from_slice(&read_frame(stream).await?)?)
 }
 
+/// The MIME type that names the handler for a URI's scheme.
+///
+/// freedesktop models scheme handlers as MIME types - `x-scheme-handler/https`
+/// for a web link, `x-scheme-handler/mailto` for an address - so a URL is opened
+/// through exactly the same lookup as a document, and [`LaunchRequest::Open`]
+/// needs no second shape for it. That is why a caller with a `https://` link has
+/// something to put in `mime` without owning a MIME database.
+///
+/// `None` for `file:`, which is a real document whose type comes from its
+/// content rather than its scheme, and for anything that is not a URI with a
+/// scheme. A scheme is `ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )` per RFC 3986;
+/// anything else is refused rather than lowercased into a plausible-looking
+/// handler name.
+pub fn scheme_handler_mime(uri: &str) -> Option<String> {
+    let scheme = uri.split_once(':')?.0;
+    let mut chars = scheme.chars();
+    if !chars.next()?.is_ascii_alphabetic() {
+        return None;
+    }
+    if !chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.')) {
+        return None;
+    }
+    let scheme = scheme.to_ascii_lowercase();
+    if scheme == "file" {
+        return None;
+    }
+    Some(format!("x-scheme-handler/{scheme}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,6 +306,43 @@ mod tests {
                     .contains("command"),
                 "a command line survived deserialisation: {body}"
             );
+        }
+    }
+
+    /// A URL needs no second request shape: freedesktop already models a scheme
+    /// handler as a MIME type.
+    #[test]
+    fn a_scheme_becomes_the_mime_type_that_names_its_handler() {
+        assert_eq!(
+            scheme_handler_mime("https://example.org/x").as_deref(),
+            Some("x-scheme-handler/https")
+        );
+        assert_eq!(
+            scheme_handler_mime("MAILTO:someone@example.org").as_deref(),
+            Some("x-scheme-handler/mailto")
+        );
+    }
+
+    /// A file is a document; its type comes from its content, not its scheme.
+    #[test]
+    fn a_file_uri_has_no_scheme_handler() {
+        assert_eq!(scheme_handler_mime("file:///tmp/a.png"), None);
+        assert_eq!(scheme_handler_mime("FILE:///tmp/a.png"), None);
+    }
+
+    /// Anything that is not a scheme is refused rather than lowercased into a
+    /// handler name that looks real.
+    #[test]
+    fn a_non_scheme_is_refused() {
+        for bad in [
+            "/tmp/a.png",
+            "no-colon",
+            "1http://x",
+            "sch eme://x",
+            "sch/eme://x",
+            ":empty",
+        ] {
+            assert_eq!(scheme_handler_mime(bad), None, "accepted {bad}");
         }
     }
 
