@@ -17,6 +17,8 @@
     "core:window:allow-close",
     "core:window:allow-show",
     "arlen-shell:allow-theme-get",
-    "arlen-shell:allow-locale-get"
+    "arlen-shell:allow-locale-get",
+    "arlen-shell:allow-menu-register",
+    "arlen-shell:allow-menu-unregister"
   ]
 }
