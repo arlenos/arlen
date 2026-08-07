@@ -50,7 +50,7 @@ use std::sync::Arc;
 use os_sdk::{
     decode_action_invoked, decode_shortcut_invoked, AbortOnDrop, Ambient, AnnotationChange,
     Annotations, Badges, EventConsumer, Presence, Shortcuts, Spatial, Timeline, Toolbar,
-    UnixEventConsumer, UnixEventEmitter, UnixGraphClient,
+    Menu, UnixEventConsumer, UnixEventEmitter, UnixGraphClient,
 };
 use tauri::{
     plugin::{Builder, TauriPlugin},
@@ -91,6 +91,9 @@ pub struct ShellState {
     pub spatial: Arc<Spatial<UnixEventEmitter>>,
     pub annotations: Arc<Annotations<UnixEventEmitter, UnixGraphClient>>,
     pub toolbar: Arc<Toolbar<UnixEventEmitter>>,
+    /// The app's global menu, rendered by the shell's topbar while one of the
+    /// app's windows is focused.
+    pub menu: Arc<Menu<UnixEventEmitter>>,
     pub shortcuts: Arc<Shortcuts<UnixEventEmitter>>,
     pub badges: Arc<Badges<UnixEventEmitter>>,
     pub ambient: Arc<Ambient<UnixEventEmitter>>,
@@ -146,6 +149,7 @@ impl ShellState {
             timeline: Arc::new(Timeline::new(emitter.clone(), app_id.clone())),
             spatial: Arc::new(Spatial::new(emitter.clone(), app_id.clone())),
             toolbar: Arc::new(Toolbar::new(emitter.clone(), app_id.clone())),
+            menu: Arc::new(Menu::new(emitter.clone(), app_id.clone())),
             shortcuts: Arc::new(Shortcuts::new(emitter.clone(), app_id.clone())),
             badges: Arc::new(Badges::new(emitter.clone(), app_id.clone())),
             ambient: Arc::new(Ambient::new(emitter.clone(), app_id.clone())),
@@ -181,6 +185,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::annotation_subscribe_prepare,
             commands::annotation_subscribe_start,
             commands::annotation_unsubscribe,
+            commands::menu_register,
+            commands::menu_unregister,
             commands::toolbar_set_quick_actions,
             commands::toolbar_set_breadcrumb,
             commands::toolbar_set_progress,
