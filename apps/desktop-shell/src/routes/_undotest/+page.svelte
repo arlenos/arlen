@@ -44,7 +44,7 @@
     background: color-mix(in srgb, #ffffff 4%, transparent);
   }
   .strip-label {
-    margin-right: auto;
+    margin-inline-end: auto;
     font-size: 11px;
     color: color-mix(in srgb, #ffffff 35%, transparent);
   }
