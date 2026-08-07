@@ -164,7 +164,13 @@ test crate="":
 check:
     #!/usr/bin/env bash
     set -euo pipefail
-    for c in {{RUST_CRATES}}; do echo "== check $c =="; cargo check --manifest-path "{{ROOT}}/$c/Cargo.toml"; done
+    # `--all-targets`, because CI runs `cargo test` and a bare `cargo check` builds
+    # only the lib and the bins. Every `#[cfg(test)]` module, every integration
+    # test, every bench is invisible to it - so this recipe could be green on a
+    # tree CI fails, which it was: four crates at once, each a struct literal in
+    # test code that a new field had left behind. A local mirror that agrees with
+    # CI only on the code CI shares with it is not a mirror.
+    for c in {{RUST_CRATES}}; do echo "== check $c =="; cargo check --all-targets --manifest-path "{{ROOT}}/$c/Cargo.toml"; done
     for f in {{FRONTENDS}}; do
         # The package's OWN check script, not a re-implementation of it: this
         # used to run a bare `svelte-check`, which skipped the `svelte-kit sync`
