@@ -1,7 +1,7 @@
 {
   "name": "arlen-clock",
   "version": "0.1.0",
-  "description": "Arlen OS Knowledge - explore your own data, the human window onto the graph",
+  "description": "Arlen OS Clock - alarms, timers, focus, stopwatch and world clocks",
   "type": "module",
   "scripts": {
     "dev": "vite dev",
