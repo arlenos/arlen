@@ -32,6 +32,7 @@ audit-proto = { path = "../../../contracts/audit-proto" }
 # The consent-broker intake contract: the ScreenCast backend routes capture
 # consent through the broker (on behalf of the capturing app) before streaming.
 arlen-consent-contract = { path = "../../../contracts/consent-contract" }
+arlen-launch-contract = { path = "../../../contracts/launch" }
 
 [dev-dependencies]
 tempfile = "3"
