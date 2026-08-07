@@ -53,7 +53,7 @@
     size={btnSize}
     class={playBtn}
     disabled={!canControl}
-    aria-label={playing ? "Pause" : "Play"}
+    aria-label={playing ? $kt("k.media.pause") : $kt("k.media.play")}
     onclick={() => onplaypause?.()}
   >
     {#if playing}

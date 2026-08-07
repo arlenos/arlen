@@ -21,6 +21,7 @@
   ///   typing; values outside the range are clamped on commit.
 
   import { Minus, Plus } from "@lucide/svelte";
+  import { kt } from "../../../i18n/messages.kit";
 
   type Props = {
     value: number;
@@ -108,7 +109,9 @@
     class="btn"
     onclick={decrement}
     disabled={!canDecrement}
-    aria-label={ariaLabel ? `Decrease ${ariaLabel}` : "Decrease"}
+    aria-label={ariaLabel
+      ? $kt("k.number.decreaseNamed", { field: ariaLabel })
+      : $kt("k.number.decrease")}
   >
     <Minus size={14} strokeWidth={2.25} />
   </button>
@@ -132,7 +135,9 @@
     class="btn"
     onclick={increment}
     disabled={!canIncrement}
-    aria-label={ariaLabel ? `Increase ${ariaLabel}` : "Increase"}
+    aria-label={ariaLabel
+      ? $kt("k.number.increaseNamed", { field: ariaLabel })
+      : $kt("k.number.increase")}
   >
     <Plus size={14} strokeWidth={2.25} />
   </button>
