@@ -240,7 +240,7 @@
                 {reacher.label}{#if !reacher.identityVerified}<span class="warn">{$t("s.priv.unverified")}</span>{/if}
               </span>
               <span class="how" class:dim={reacher.line.own}>{howText(reacher.line)}</span>
-              <span class="reacher-prov">{reacher.line.provenance}</span>
+              <span class="reacher-prov">{$t(reacher.line.provenance.id, reacher.line.provenance.params)}</span>
               {#if reacher.line.revoke.enabled}
                 <button
                   type="button"

@@ -240,11 +240,8 @@ apps/settings/src/lib/stores/displays.ts	{} × {} @ {} Hz
 apps/settings/src/lib/stores/grants.ts	All
 apps/settings/src/lib/stores/grants.ts	Own
 apps/settings/src/lib/stores/grants.ts	Sees only {}, not the full contents.
-apps/settings/src/lib/stores/grants.ts	declared at install
 apps/settings/src/lib/stores/grants.ts	its own data
-apps/settings/src/lib/stores/grants.ts	managed by the system
 apps/settings/src/lib/stores/grants.ts	reads and changes
-apps/settings/src/lib/stores/grants.ts	you allowed on {}
 apps/settings/src/lib/stores/models.ts	Answers your questions.
 apps/settings/src/lib/stores/models.ts	Background work
 apps/settings/src/lib/stores/models.ts	Balanced

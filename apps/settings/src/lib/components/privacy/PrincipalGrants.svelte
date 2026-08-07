@@ -70,7 +70,7 @@
             </button>
           {/if}
         </span>
-        <span class="prov" class:dim={line.own}>{line.provenance}</span>
+        <span class="prov" class:dim={line.own}>{$t(line.provenance.id, line.provenance.params)}</span>
         {#if requiredRun}
           <!-- The run's intro already states why these cannot be removed; a
                per-line "Required" marker would just repeat it down the column. -->

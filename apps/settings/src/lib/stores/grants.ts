@@ -233,7 +233,12 @@ export interface ScopeLine {
   /// System-managed reach: not per-app revocable here.
   systemManaged: boolean;
   /// "declared at install" or "you allowed this".
-  provenance: string;
+  /// Where this reach came from, as a message id plus what it needs.
+  ///
+  /// A key rather than a sentence, resolved by whoever renders it: this store is
+  /// built once per grant list, so a sentence made here would hold whichever
+  /// language was loaded then. `placeGroups` in Files learned the same thing.
+  provenance: { id: string; params?: Record<string, unknown> };
   /// Field and relation detail, revealed by the expand.
   detail: string[];
   /// The entity type this line concerns, for the by-data pivot (null for a
@@ -320,7 +325,7 @@ function tokenLines(grant: GrantView, c: Ceiling): ScopeLine[] {
       own: !all,
       required: grant.required,
       systemManaged: grant.source === "system",
-      provenance: "declared at install",
+      provenance: { id: "s.priv.prov.declared" },
       detail,
       entityType,
       revoke: revokeAction(grant.app_id, reaches, grant.required, grant.source === "system"),
@@ -355,10 +360,11 @@ function fmtDate(micros: number): string {
     year: "numeric",
   });
 }
-function provenanceOf(grant: GrantView): string {
-  if (grant.source === "consent") return `you allowed on ${fmtDate(grant.issued_at)}`;
-  if (grant.source === "system") return "managed by the system";
-  return "declared at install";
+function provenanceOf(grant: GrantView): ScopeLine["provenance"] {
+  if (grant.source === "consent")
+    return { id: "s.priv.prov.allowed", params: { date: fmtDate(grant.issued_at) } };
+  if (grant.source === "system") return { id: "s.priv.prov.system" };
+  return { id: "s.priv.prov.declared" };
 }
 
 // One non-graph grant becomes one line. The phrasing keeps the honest
