@@ -13,6 +13,7 @@
 //! countdown from it. The frontend is already built to that contract.
 
 pub mod alarm;
+pub mod missed;
 pub mod run;
 pub mod state;
 pub mod store;
