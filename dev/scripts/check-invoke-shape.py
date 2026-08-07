@@ -338,7 +338,6 @@ DEAD_INVOKES: dict[str, str] = {
     "list_wallpapers": "the wallpaper surface against wallpaperd; the daemon exists, these commands do not",
     "add_wallpaper": "the wallpaper surface against wallpaperd; the daemon exists, these commands do not",
     "set_wallpaper": "the wallpaper surface against wallpaperd; the daemon exists, these commands do not",
-    "greeter_wallpaper": "the wallpaper surface against wallpaperd; the daemon exists, these commands do not",
     # apps/knowledge has NO src-tauri at all: it is a SvelteKit frontend calling
     # into a host that does not exist, which is why 14 commands are dead rather
     # than 14 commands being unwritten. The daemon-side read ops all exist and the
