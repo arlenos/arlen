@@ -25,8 +25,12 @@
     type AlertMode,
     type DetectorId,
   } from "$lib/stores/sentinel";
+  import { sensing, sensingUnknown, loadSensing, setScreenCapture } from "$lib/stores/sensing";
 
-  onMount(loadSentinel);
+  onMount(() => {
+    void loadSentinel();
+    void loadSensing();
+  });
 
   const ALERT_OPTIONS = $derived([
     { value: "quiet", label: $t("s.sent.alerts.quiet") },
@@ -106,6 +110,32 @@
           </Row>
         {/if}
         <p class="caveat">{$t("s.sent.exposure.caveat")}</p>
+      </Section>
+
+      <!-- The one switch here that refuses rather than reports. The sections
+           around it say what a detector noticed; this says what the system will
+           not do, and it is enforced by the portal and the compositor rather
+           than by this page. -->
+      <Section label={$t("s.sens.screen")} class="span-full">
+        <Row
+          label={$t("s.sens.screen.row")}
+          description={$t("s.sens.screen.rowDesc")}
+          id="sens-screen-capture"
+        >
+          {#snippet control()}
+            <Switch
+              value={$sensing.screenCapture}
+              onchange={(v) => setScreenCapture(v)}
+              ariaLabel={$t("s.sens.screen.row")}
+            />
+          {/snippet}
+        </Row>
+        {#if !$sensing.screenCapture}
+          <p class="caveat">{$t("s.sens.screen.off")}</p>
+        {/if}
+        {#if $sensingUnknown}
+          <p class="caveat">{$t("s.sens.unknown")}</p>
+        {/if}
       </Section>
 
       <Section label={$t("s.sent.capture")} class="span-full">
