@@ -9,6 +9,7 @@
   import AppSidebar from "$lib/components/AppSidebar.svelte";
   import SiteHeader from "$lib/components/SiteHeader.svelte";
   import { dir, locale } from "$lib/i18n/messages";
+  import { applyDevLocale } from "@arlen/ui-kit/i18n";
   import {
     SidebarProvider,
     SidebarInset,
@@ -88,6 +89,12 @@
     theme.load();
     document.addEventListener("contextmenu", suppressBrowserContextMenu);
 
+    // Above the Tauri guard on purpose: this hook exists FOR the no-Tauri case.
+    // Put below it, as it first was, it never runs under vite - which is the
+    // only place it is meant to run, and the screenshot came back English under
+    // a URL that said `de`.
+    const forcedLocale = applyDevLocale();
+
     // Everything below talks to the Tauri runtime; standalone (plain
     // browser dev, the screenshot loop) renders without window chrome,
     // config watchers, index export, and CLI deep links.
@@ -104,13 +111,15 @@
     // The Language page used to be the only reader, so Settings came up English
     // unless you happened to visit that page - every other app reads at startup
     // and this one, which writes the file, did not.
-    invoke<string>("config_get", { file: "locale", key: "locale.ui" })
-      .then((ui) => {
-        if (typeof ui === "string" && ui) locale.set(ui);
-      })
-      .catch(() => {
-        // No file yet: the default stands until somebody chooses.
-      });
+    if (!forcedLocale) {
+      invoke<string>("config_get", { file: "locale", key: "locale.ui" })
+        .then((ui) => {
+          if (typeof ui === "string" && ui) locale.set(ui);
+        })
+        .catch(() => {
+          // No file yet: the default stands until somebody chooses.
+        });
+    }
 
     exportSettingsIndex();
 
