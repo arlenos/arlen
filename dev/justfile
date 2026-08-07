@@ -17,7 +17,7 @@ RUST_CRATES := "contracts/audit-proto contracts/notification-proto contracts/mod
 # The SvelteKit frontends CI svelte-checks.
 # Exactly CI's FRONT_ALL, in the same order. Six of these were missing, so a
 # local `just check` passed while CI checked more than it did.
-FRONTENDS := "sdk/module-sdk apps/knowledge daemons/xdg-portal/picker-ui apps/settings apps/harness apps/desktop-shell apps/terminal apps/files apps/greeter apps/meetings apps/system-monitor apps/text-editor apps/screenshot apps/store apps/viewers sdk/ui-kit ai/pi-plugins"
+FRONTENDS := "sdk/module-sdk apps/knowledge apps/clock daemons/xdg-portal/picker-ui apps/settings apps/harness apps/desktop-shell apps/terminal apps/files apps/greeter apps/meetings apps/system-monitor apps/text-editor apps/screenshot apps/store apps/viewers sdk/ui-kit ai/pi-plugins"
 
 # List recipes (default).
 default:
