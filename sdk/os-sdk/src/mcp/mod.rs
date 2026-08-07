@@ -124,9 +124,14 @@ pub fn is_safe_server_id(server_id: &str) -> bool {
 /// `$XDG_RUNTIME_DIR/arlen/mcp/modules/{module_id}.sock`. Tier-1
 /// `mcp.server` modules hosted by `arlen-modulesd` live one
 /// directory below first-party app sockets so the two namespaces
-/// can never collide. Both modulesd (which binds the socket) and the
-/// AI daemon (which connects to it) resolve the path through here so
+/// can never collide, and both ends resolve the path through here so
 /// the convention has a single source of truth.
+///
+/// **Only one end exists today.** This said "modulesd, which binds the socket,
+/// and the AI daemon, which connects to it" - that consumer was `ai-daemon`,
+/// which the pi-based engine replaced, and nothing in the tree dials a module
+/// socket now. Naming an absent second party is how a reader goes looking for a
+/// validation on a side that is not there.
 ///
 /// The caller must reject ids that fail [`is_safe_module_id`] first:
 /// the id is formatted straight into the path, so a `/` or `..` in
