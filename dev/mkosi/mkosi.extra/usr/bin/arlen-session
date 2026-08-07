@@ -84,6 +84,17 @@ systemctl --user import-environment \
     LIBGL_ALWAYS_SOFTWARE GALLIUM_DRIVER GDK_BACKEND \
     WEBKIT_DISABLE_COMPOSITING_MODE WEBKIT_DISABLE_DMABUF_RENDERER || true
 
+# Reach graphical-session.target, which the sequence above has always claimed and
+# never did. Units that need the compositor (the wallpaper renderer) say
+# `WantedBy=graphical-session.target`, which is the correct dependency to express
+# and was a no-op while nothing started the target: they were installed, enabled
+# and never run. It goes here rather than earlier because the env import above is
+# what gives those units WAYLAND_DISPLAY. Best-effort: a failure here must not
+# take the session down before the shell has started, so `set -e` is held off.
+if [ -n "$wl" ]; then
+    systemctl --user start graphical-session.target || true
+fi
+
 # Launch the shell directly (not via a --user unit): simpler for this appliance,
 # and systemd-cat routes its output to the system journal -> serial so the shell
 # is diagnosable headlessly (a --user unit's journal is not forwarded). It
