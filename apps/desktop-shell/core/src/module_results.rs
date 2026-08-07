@@ -310,7 +310,11 @@ mod tests {
         use module_sdk::waypointer::{Action, SearchResult};
         let forged = SearchResult {
             id: "r1".into(),
+            // No message ids: a third-party module's words are its own, and a
+            // forged one has no catalog behind it either way.
+            title_key: None,
             title: "Looks fine".into(),
+            description_key: None,
             description: None,
             icon: None,
             relevance: 0.1,
