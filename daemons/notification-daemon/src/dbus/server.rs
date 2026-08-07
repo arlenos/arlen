@@ -140,10 +140,18 @@ pub fn determine_priority(urgency: u8, expire_timeout: i32, category: &str) -> P
 /// (GAP-7). Critical is the only tier that pierces Do-Not-Disturb and shows a
 /// persistent toast, so an arbitrary `notify-send -u critical` from any app
 /// must not claim it. These are the system alert sources: the power daemon
-/// (critical-battery) and the anomaly detector (security alerts), both
-/// root-owned `/usr/lib/arlen/libexec/` binaries with canonical
-/// `path_to_app_id` entries. A new trusted Critical source must be added here.
-const CRITICAL_NOTIFIER_ALLOWLIST: &[&str] = &["powerd", "anomalyd"];
+/// (critical-battery), the anomaly detector (security alerts) and the clock
+/// (a ringing alarm), all root-owned `/usr/lib/arlen/libexec/` binaries with
+/// canonical `path_to_app_id` entries. A new trusted Critical source must be
+/// added here.
+///
+/// The clock is here for a different reason from the other two, and it is worth
+/// saying which: an alarm is not the system warning someone, it is someone
+/// having asked to be woken. Do-Not-Disturb is a decision to be left alone by
+/// *other people*; it was never a decision to sleep through the alarm you set
+/// last night. A clock that DND can silence is not a clock, and only the alarm
+/// claims this - the clock's timers and focus phases send Normal.
+const CRITICAL_NOTIFIER_ALLOWLIST: &[&str] = &["powerd", "anomalyd", "clockd"];
 
 /// Whether a caller may keep a `Critical` priority, by attested identity. Root
 /// (uid 0) is always allowed as a belt for a future system alerter; otherwise
@@ -554,6 +562,7 @@ mod tests {
     fn only_system_notifiers_and_root_may_set_critical() {
         // The trusted system alert sources.
         assert!(caller_may_set_critical(None, Some("powerd")));
+        assert!(caller_may_set_critical(Some(1000), Some("clockd")));
         assert!(caller_may_set_critical(Some(1000), Some("anomalyd")));
         // Root is allowed regardless of resolved app id.
         assert!(caller_may_set_critical(Some(0), None));
