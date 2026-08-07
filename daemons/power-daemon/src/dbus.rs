@@ -135,7 +135,6 @@ impl PowerInterface {
         self.state.read().await.lid.as_str().to_string()
     }
 
-    /// Active power profile: "performance"|"balanced"|"power-saver"|"unknown".
     /// Whether an alarm scheduled here would actually wake a suspended machine.
     ///
     /// Exposed as its own property so a caller can TELL the user before they rely
@@ -147,6 +146,19 @@ impl PowerInterface {
         self.wake_capability.describe().to_string()
     }
 
+    /// The same answer as a value rather than a sentence.
+    ///
+    /// `WakeCapability` is a line to show a person and its wording will change
+    /// when someone finds a better one. A caller that has to *decide* something
+    /// - the clock, which renders "this machine will not be woken" as a standing
+    /// state - cannot rest on matching English, so it gets a boolean and the two
+    /// are pinned to each other by a test.
+    #[zbus(property)]
+    async fn wakes_machine(&self) -> bool {
+        self.wake_capability.wakes_machine()
+    }
+
+    /// Active power profile: "performance"|"balanced"|"power-saver"|"unknown".
     #[zbus(property)]
     async fn profile(&self) -> String {
         self.state.read().await.profile.clone()
@@ -168,8 +180,9 @@ impl PowerInterface {
                 "caller lacks the system.power suspend grant".into(),
             ));
         }
-        let act = PowerAction::parse(&action)
-            .ok_or_else(|| zbus::fdo::Error::InvalidArgs(format!("unknown power action: {action}")))?;
+        let act = PowerAction::parse(&action).ok_or_else(|| {
+            zbus::fdo::Error::InvalidArgs(format!("unknown power action: {action}"))
+        })?;
         let bus = self
             .action_bus()
             .await
@@ -296,7 +309,9 @@ impl PowerInterface {
             Ok(profile) => Ok(profile.system.power),
             Err(e) => {
                 warn!(app_id = %app_id, "power action denied: no profile: {e}");
-                Err(zbus::fdo::Error::AccessDenied("no profile for caller".into()))
+                Err(zbus::fdo::Error::AccessDenied(
+                    "no profile for caller".into(),
+                ))
             }
         }
     }
