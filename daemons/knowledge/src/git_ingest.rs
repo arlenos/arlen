@@ -55,9 +55,25 @@ pub struct CommitRow {
 /// contains commas, quotes or tabs.
 const FIELD_SEP: char = '\u{1f}';
 
-/// The `git log --format` spec matching [`CommitRow`]: SHA, subject, author name,
-/// author email, committer Unix time, unit-separated.
-pub const LOG_FORMAT: &str = "%H%x1f%s%x1f%an%x1f%ae%x1f%ct%x1f%P";
+/// The `git log --format` spec matching [`CommitRow`]: SHA, committer Unix time,
+/// parents, author email, author name, subject - unit-separated, **and in that
+/// order for a reason**.
+///
+/// A commit message, an author name and an author email are written by whoever
+/// made the commit, and git will carry a `\x1f` inside any of them. With the
+/// subject in the middle, a crafted one shifted every later field along: measured
+/// on a scratch repo, a subject of `Innocent\x1fFORGED\x1fforged@evil\x1f9999999999`
+/// parsed into a row whose author, email and commit time were all the attacker's,
+/// with the real ones pushed into the parent list. The row came out clean - there
+/// was nothing malformed for the parser to reject.
+///
+/// So the fields git generates itself - the SHA, the timestamp, the parent list,
+/// all of them hex or digits - come first and cannot be displaced, and the three
+/// authored strings come last where [`parse_line`]'s bounded split absorbs any
+/// separators they carry. A `\x1f` in an email or a name can still smear the
+/// boundary between those two and the subject; that puts the wrong text in a
+/// column, which is a different thing from forging when a commit happened.
+pub const LOG_FORMAT: &str = "%H%x1f%ct%x1f%P%x1f%ae%x1f%an%x1f%s";
 
 /// Parse `git log --format` output (one commit per line, [`FIELD_SEP`]-separated
 /// fields) into commit rows. A line with too few fields, an empty SHA, or a
@@ -68,11 +84,11 @@ pub fn parse_git_log(output: &str) -> Vec<CommitRow> {
 }
 
 fn parse_line(line: &str) -> Option<CommitRow> {
-    let mut f = line.split(FIELD_SEP);
+    // Bounded, so the sixth field is the rest of the line: a subject carrying its
+    // own separators lands wholly in the subject instead of shifting what follows
+    // it. See [`LOG_FORMAT`] for what that prevents.
+    let mut f = line.splitn(6, FIELD_SEP);
     let id = f.next()?.trim().to_string();
-    let message = f.next()?.to_string();
-    let author = f.next()?.to_string();
-    let author_email = f.next()?.to_string();
     let committed_at = f.next()?.trim().parse::<i64>().ok()?;
     // `%P` is a space-separated parent list, empty for the root commit. A missing
     // field (an older format) is treated as no parents rather than a parse error.
@@ -82,6 +98,9 @@ fn parse_line(line: &str) -> Option<CommitRow> {
         .split_whitespace()
         .map(str::to_string)
         .collect();
+    let author_email = f.next()?.to_string();
+    let author = f.next()?.to_string();
+    let message = f.next().unwrap_or("").to_string();
     if id.is_empty() {
         return None;
     }
@@ -392,11 +411,10 @@ mod tests {
 
     #[test]
     fn parses_the_git_log_format_field_by_field() {
-        // A real `git log --format=%H%x1f%s%x1f%an%x1f%ae%x1f%ct` line, unit-
-        // separated. A subject with a comma and a quote must survive intact,
-        // which the separator (never in commit text) guarantees.
-        let out = "abc123\u{1f}fix: the bug, \"finally\"\u{1f}Tim\u{1f}tim@x.org\u{1f}1700000000\u{1f}def456 aaa111\n\
-                   def456\u{1f}initial commit\u{1f}Ada\u{1f}ada@x.org\u{1f}1699999999\u{1f}\n";
+        // A real LOG_FORMAT line: sha, time, parents, email, name, subject. A
+        // subject with a comma and a quote must survive intact.
+        let out = "abc123\u{1f}1700000000\u{1f}def456 aaa111\u{1f}tim@x.org\u{1f}Tim\u{1f}fix: the bug, \"finally\"\n\
+                   def456\u{1f}1699999999\u{1f}\u{1f}ada@x.org\u{1f}Ada\u{1f}initial commit\n";
         let rows = parse_git_log(out);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].id, "abc123");
@@ -411,13 +429,36 @@ mod tests {
     }
 
     #[test]
+    fn a_crafted_subject_cannot_forge_the_fields_around_it() {
+        // The reason LOG_FORMAT is ordered the way it is. This subject is the one
+        // measured on a scratch repo: a commit whose message carries separators
+        // and a plausible-looking author, email and timestamp after them.
+        //
+        // Under the old order (sha, SUBJECT, name, email, time, parents) it
+        // parsed clean, with every one of those three fields taken from the
+        // message and the real author displaced into the parent list. Nothing was
+        // malformed, so nothing was rejected - the knowledge graph would simply
+        // have believed it. Here the same string reaches the parser last, where
+        // the bounded split keeps it whole.
+        let forged = "Innocent\u{1f}FORGED-AUTHOR\u{1f}forged@evil\u{1f}9999999999";
+        let out = format!("abc123\u{1f}1700000000\u{1f}p1\u{1f}real@x.org\u{1f}Real Name\u{1f}{forged}\n");
+        let rows = parse_git_log(&out);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].author, "Real Name", "the author git reported, not the one the message names");
+        assert_eq!(rows[0].author_email, "real@x.org");
+        assert_eq!(rows[0].committed_at, 1_700_000_000, "not the 9999999999 the message asks for");
+        assert_eq!(rows[0].parents, vec!["p1".to_string()], "the real parent, not a displaced author");
+        assert_eq!(rows[0].message, forged, "the whole subject, separators and all");
+    }
+
+    #[test]
     fn a_malformed_line_is_skipped_not_guessed() {
         // Too few fields, an empty SHA, and a non-numeric time each drop the line
         // rather than fabricate a partial commit.
         let out = "just-a-hash\u{1f}only two\n\
-                   \u{1f}empty sha\u{1f}A\u{1f}a@x\u{1f}1\u{1f}\n\
-                   ok123\u{1f}good\u{1f}A\u{1f}a@x\u{1f}notanumber\u{1f}\n\
-                   real\u{1f}good\u{1f}A\u{1f}a@x\u{1f}5\u{1f}\n";
+                   \u{1f}1\u{1f}\u{1f}a@x\u{1f}A\u{1f}empty sha\n\
+                   ok123\u{1f}notanumber\u{1f}\u{1f}a@x\u{1f}A\u{1f}good\n\
+                   real\u{1f}5\u{1f}\u{1f}a@x\u{1f}A\u{1f}good\n";
         let rows = parse_git_log(out);
         assert_eq!(rows.len(), 1, "only the well-formed line survives");
         assert_eq!(rows[0].id, "real");
