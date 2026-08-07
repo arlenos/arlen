@@ -17,6 +17,7 @@ pub mod due;
 pub mod focus;
 pub mod missed;
 pub mod reduce;
+pub mod ring;
 pub mod run;
 pub mod startup;
 pub mod state;

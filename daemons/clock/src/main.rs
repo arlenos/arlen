@@ -11,18 +11,19 @@
 //! machine should be woken for. What is here is the part that genuinely needs a
 //! process: a bus name, a lock around the state, and the timing.
 //!
-//! **What is not wired yet, said plainly rather than left to be discovered:**
-//! ringing. It needs the notification daemon, so until that lands an alarm's
-//! moment arrives, the machine wakes for it, the alarm advances to its next day
-//! and a line goes in the log - and nothing announces it to the person. That is
-//! said here rather than in a comment nobody reads.
+//! **What still needs the rest of the system, said plainly rather than left to
+//! be discovered:** a ringing alarm is a notification, so how loud it is depends
+//! on the notification daemon being up and on the clock being one of the few
+//! callers allowed to pierce Do-Not-Disturb. Both are wired; if the daemon is
+//! down the moment still arrives and the state still advances, and the loss is
+//! logged rather than swallowed.
 
 use std::sync::Arc;
 
 use arlen_clock::missed::LATE_WINDOW_MS;
 use arlen_clock::reduce::{self, Command};
 use arlen_clock::state::{Alarm, ClockState, FocusConfig};
-use arlen_clock::{startup, store};
+use arlen_clock::{ring, startup, store};
 use os_sdk::event_consumer::{EventConsumer, UnixEventConsumer};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
@@ -144,7 +145,10 @@ impl Clock {
     /// happen is the part that must: the state moves on, so the next moment is
     /// real and can be armed.
     async fn fire_due(&self) {
-        let due = {
+        // The announcements are built while the state is held and sent after it
+        // is released: a notification daemon that is slow to answer must not
+        // hold up the app's next read.
+        let (announcements, wake_at) = {
             let mut state = self.state.lock().await;
             let due = arlen_clock::due::advance(&mut state, &chrono::Local, now_ms());
             if due.is_empty() {
@@ -153,25 +157,32 @@ impl Clock {
             if let Err(e) = store::save(&self.dir, &state) {
                 warn!("clock state not written after a moment came due: {e}");
             }
-            due
+            let mut announcements = Vec::new();
+            for id in &due.alarms {
+                if let Some(alarm) = state.alarms.iter().find(|a| &a.id == id) {
+                    announcements.push(ring::for_alarm(alarm));
+                }
+            }
+            for id in &due.timers {
+                if let Some(timer) = state.timers.iter().find(|t| &t.id == id) {
+                    announcements.push(ring::for_timer(timer));
+                }
+            }
+            if let Some(session) = &due.focus {
+                announcements.push(ring::for_focus(session.as_ref()));
+            }
+            (
+                announcements,
+                arlen_clock::wake::next_wake_at(&state, now_ms()),
+            )
         };
-        if !due.alarms.is_empty() {
-            info!(alarms = ?due.alarms, "alarms came due, and cannot ring yet");
-        }
-        if !due.timers.is_empty() {
-            info!(timers = ?due.timers, "timers ran out, and cannot ring yet");
-        }
-        if let Some(session) = &due.focus {
-            match session {
-                Some(next) => info!(phase = ?next.phase, round = next.round, "focus phase ended"),
-                None => info!("focus session finished"),
+        if let Ok(conn) = zbus::Connection::session().await {
+            for announcement in announcements {
+                info!(summary = %announcement.0, "announcing");
+                ring::send(&conn, announcement).await;
             }
         }
-        self.request_wake(arlen_clock::wake::next_wake_at(
-            &*self.state.lock().await,
-            now_ms(),
-        ))
-        .await;
+        self.request_wake(wake_at).await;
     }
 
     /// Come back from a sleep: re-derive every anchor, exactly as a restart
