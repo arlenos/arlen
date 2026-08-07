@@ -247,7 +247,7 @@ jobs:
         run: dev/check-crate.sh check ${{ matrix.component }}
       - name: test
         run: dev/check-crate.sh test ${{ matrix.component }}
-      - name: born-translatable lint
+      - name: born-translatable lint (scans apps/ and ui-kit, not this crate)
         # Runs on the sdk/i18n leg only: the toolchain and the crate's own build
         # are already warm there, so arming this costs one `cargo run` rather than
         # a Rust setup in the build-free structural job. It compares against
@@ -255,10 +255,23 @@ jobs:
         # accepted, so it passes today and bites on the next new hardcoded one.
         # An unarmed gate rots: by the time it would catch something, nobody
         # trusts it.
+        #
+        # The failure has to announce itself. This job is called "rust check +
+        # test (sdk/i18n)", both of those steps pass, and the red comes from a
+        # third step that scans a different part of the tree entirely - so it
+        # read as a job failing with every test green and no error line, three
+        # times, until someone pulled the raw log. The annotation below puts the
+        # reason in the run summary where a red is actually looked at, and the
+        # step name says whose strings it is checking.
         if: ${{ matrix.component == 'sdk/i18n' }}
         run: |
-          cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- \
-            --root apps --root sdk/ui-kit --baseline dev/i18n-baseline.tsv
+          if ! out=$(cargo run -q --manifest-path sdk/i18n/Cargo.toml --bin arlen-i18n-lint -- \
+                       --root apps --root sdk/ui-kit --baseline dev/i18n-baseline.tsv 2>&1); then
+            printf '%s\n' "$out"
+            printf '::error title=born-translatable lint::%s\n' "$(printf '%s' "$out" | head -3 | tr '\n' ' ')"
+            exit 1
+          fi
+          printf '%s\n' "$out"
 
   integration:
     name: integration (EphemeralStack backend smoke)
