@@ -330,7 +330,6 @@ DEAD_INVOKES: dict[str, str] = {
     "knowledge_search": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
     "knowledge_search_save": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
     "knowledge_provenance": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
-    "knowledge_timeline": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
     "knowledge_timeline_pause": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
     "knowledge_timeline_delete": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
     "knowledge_timeline_export": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
