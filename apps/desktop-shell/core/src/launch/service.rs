@@ -113,6 +113,7 @@ pub fn serve(
     caller: &Caller,
     mimeapps: &[MimeApps],
     entry: impl Fn(&str) -> Option<Entry>,
+    mime_of: impl Fn(&arlen_launch_contract::Target) -> Option<String>,
     confined: bool,
 ) -> Served {
     let refuse = |outcome: LaunchOutcome, word: &'static str| Served {
@@ -129,7 +130,7 @@ pub fn serve(
         return refuse(LaunchOutcome::Refused, "refused:unresolved-caller");
     }
 
-    match resolve(request, mimeapps, entry, confined) {
+    match resolve(request, mimeapps, entry, mime_of, confined) {
         Ok(launch) => {
             // The resolved application, which for an `Open` is not what the
             // caller named - it named a document.
@@ -217,6 +218,12 @@ mod tests {
     use super::*;
     use arlen_launch_contract::Target;
 
+    /// These tests always supply a type, so a call to the sniffer would be a
+    /// bug rather than a fallback.
+    fn no_sniff(_: &Target) -> Option<String> {
+        None
+    }
+
     fn entry_of(app_id: &str, exec: &str) -> Entry {
         Entry {
             app_id: app_id.to_string(),
@@ -246,13 +253,20 @@ mod tests {
                 uri: "file:///home/u/holiday.png".into(),
                 path: Some("/home/u/holiday.png".into()),
             },
-            mime: "image/png".into(),
+            mime: Some("image/png".into()),
         }
     }
 
     #[test]
     fn opening_a_document_works_for_a_caller_with_no_name() {
-        let s = serve(&open(), &Caller::Unnamed, &handlers(), catalog, false);
+        let s = serve(
+            &open(),
+            &Caller::Unnamed,
+            &handlers(),
+            catalog,
+            no_sniff,
+            false,
+        );
         assert!(s.launch.is_some());
         assert_eq!(s.audit.caller, "unresolved");
         assert_eq!(s.audit.outcome, "started");
@@ -265,21 +279,68 @@ mod tests {
             app_id: "viewer.desktop".into(),
             targets: vec![],
         };
-        let s = serve(&r, &Caller::Unnamed, &[], catalog, false);
+        let s = serve(&r, &Caller::Unnamed, &[], catalog, no_sniff, false);
         assert_eq!(s.outcome, LaunchOutcome::Refused);
         assert!(s.launch.is_none());
         assert_eq!(s.audit.outcome, "refused:unresolved-caller");
 
-        let ok = serve(&r, &Caller::Named("files".into()), &[], catalog, false);
+        let ok = serve(
+            &r,
+            &Caller::Named("files".into()),
+            &[],
+            catalog,
+            no_sniff,
+            false,
+        );
         assert!(ok.launch.is_some());
         assert_eq!(ok.audit.caller, "files");
+    }
+
+    /// The field is optional so the callee can answer it, and this is that
+    /// answer arriving: the caller said nothing, the service worked it out.
+    #[test]
+    fn a_request_without_a_type_gets_one_from_the_service() {
+        let r = LaunchRequest::Open {
+            target: Target {
+                uri: "file:///home/u/holiday.png".into(),
+                path: Some("/home/u/holiday.png".into()),
+            },
+            mime: None,
+        };
+        let sniff = |_: &Target| Some("image/png".to_string());
+        let s = serve(&r, &Caller::Unnamed, &handlers(), catalog, sniff, false);
+        assert!(s.launch.is_some());
+        assert_eq!(s.audit.started.as_deref(), Some("viewer"));
+    }
+
+    /// And a target nothing can classify is "nothing opens this" rather than a
+    /// failure with a cause the requester cannot act on.
+    #[test]
+    fn a_target_of_unknown_type_reads_as_no_handler() {
+        let r = LaunchRequest::Open {
+            target: Target {
+                uri: "file:///home/u/mystery".into(),
+                path: Some("/home/u/mystery".into()),
+            },
+            mime: None,
+        };
+        let s = serve(&r, &Caller::Unnamed, &handlers(), catalog, no_sniff, false);
+        assert!(matches!(s.outcome, LaunchOutcome::NoHandler { .. }));
+        assert!(s.launch.is_none());
     }
 
     /// A served request still causes a program to start, so an anonymous one
     /// must not read as though nothing did.
     #[test]
     fn an_unresolved_caller_is_written_out_rather_than_left_blank() {
-        let s = serve(&open(), &Caller::Unnamed, &handlers(), catalog, false);
+        let s = serve(
+            &open(),
+            &Caller::Unnamed,
+            &handlers(),
+            catalog,
+            no_sniff,
+            false,
+        );
         assert_eq!(s.audit.caller, "unresolved");
         assert!(!s.audit.caller.is_empty());
         assert_eq!(s.audit.started.as_deref(), Some("viewer"));
@@ -308,6 +369,7 @@ mod tests {
             &Caller::Named("org.arlen.Files".into()),
             &handlers(),
             catalog,
+            no_sniff,
             true,
         );
         assert_eq!(s.audit.caller, "org.arlen.Files");
@@ -323,6 +385,7 @@ mod tests {
             &Caller::Named("org.arlen.Files".into()),
             &handlers(),
             catalog,
+            no_sniff,
             true,
         );
         let event = launch_event(&s.audit);
@@ -348,7 +411,7 @@ mod tests {
             app_id: "nope.desktop".into(),
             targets: vec![],
         };
-        let s = serve(&r, &Caller::Unnamed, &handlers(), catalog, false);
+        let s = serve(&r, &Caller::Unnamed, &handlers(), catalog, no_sniff, false);
         let event = launch_event(&s.audit);
         assert_eq!(event.structural.node_types, ["unresolved"]);
         assert_eq!(event.structural.outcome, "refused:unresolved-caller");
@@ -362,6 +425,7 @@ mod tests {
             &Caller::Named("x".into()),
             &handlers(),
             catalog,
+            no_sniff,
             true,
         );
         let line = format!("{:?}", s.audit);
@@ -383,7 +447,7 @@ mod tests {
                         uri: "file:///x.zzz".into(),
                         path: Some("/x.zzz".into()),
                     },
-                    mime: "application/x-nothing".into(),
+                    mime: Some("application/x-nothing".into()),
                 },
                 "no-handler",
             ),
@@ -395,7 +459,14 @@ mod tests {
                 "unknown-app",
             ),
         ] {
-            let s = serve(&r, &Caller::Named("x".into()), &handlers(), catalog, false);
+            let s = serve(
+                &r,
+                &Caller::Named("x".into()),
+                &handlers(),
+                catalog,
+                no_sniff,
+                false,
+            );
             assert!(s.launch.is_none());
             assert_eq!(s.audit.outcome, word);
             assert_eq!(s.audit.started, None);
@@ -411,9 +482,16 @@ mod tests {
                 uri: "file:///x.zzz".into(),
                 path: Some("/x.zzz".into()),
             },
-            mime: "application/x-nothing".into(),
+            mime: Some("application/x-nothing".into()),
         };
-        let s = serve(&r, &Caller::Named("x".into()), &handlers(), catalog, false);
+        let s = serve(
+            &r,
+            &Caller::Named("x".into()),
+            &handlers(),
+            catalog,
+            no_sniff,
+            false,
+        );
         assert_eq!(
             s.outcome,
             LaunchOutcome::NoHandler {
@@ -429,7 +507,7 @@ mod tests {
             app_id: "x.desktop".into(),
             targets: vec![],
         };
-        let s = serve(&r, &Caller::Named("x".into()), &[], broken, false);
+        let s = serve(&r, &Caller::Named("x".into()), &[], broken, no_sniff, false);
         match s.outcome {
             LaunchOutcome::MalformedEntry { app_id, reason } => {
                 assert_eq!(app_id, "org.x.Broken");

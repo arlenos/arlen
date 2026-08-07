@@ -22,6 +22,7 @@
 use super::exec::{expand_exec, ExecContext, ExecError};
 use super::mimeapps::{default_handler, MimeApps};
 use super::plan::{plan, Launch, NotLaunchable};
+use arlen_launch_contract::Target;
 
 /// What a caller wants to happen: the wire type, re-exported so a reader of this
 /// module finds it without knowing which crate it lives in.
@@ -89,6 +90,7 @@ pub fn resolve(
     request: &LaunchRequest,
     mimeapps: &[MimeApps],
     entry: impl Fn(&str) -> Option<Entry>,
+    mime_of: impl Fn(&Target) -> Option<String>,
     confined: bool,
 ) -> Result<Launch, LaunchError> {
     let (app, targets) = match request {
@@ -99,8 +101,19 @@ pub fn resolve(
             (e, targets.clone())
         }
         LaunchRequest::Open { target, mime } => {
-            let id = default_handler(mimeapps, mime, |id| entry(id).is_some())
-                .ok_or_else(|| LaunchError::NoHandler { mime: mime.clone() })?;
+            // The caller says so when it knows; otherwise the service works it
+            // out, which is the whole reason the field is optional. A target
+            // whose type cannot be determined is reported as having no handler,
+            // because from the requester's side "nothing opens this" is the same
+            // fact whether the type was unknown or unclaimed.
+            let mime = match mime {
+                Some(m) => m.clone(),
+                None => mime_of(target).ok_or_else(|| LaunchError::NoHandler {
+                    mime: "unknown".to_string(),
+                })?,
+            };
+            let id = default_handler(mimeapps, &mime, |id| entry(id).is_some())
+                .ok_or(LaunchError::NoHandler { mime })?;
             // The handler lookup already required the entry to exist, so an
             // absent one here is a race rather than a miss - reported as
             // unknown either way, which is true and does not invent a cause.
@@ -154,6 +167,12 @@ mod tests {
         }
     }
 
+    /// The tests that pass a type never reach the sniffer, so it stands for
+    /// "nothing determined it" and any use of it is visible as a failure.
+    fn no_sniff(_: &Target) -> Option<String> {
+        None
+    }
+
     fn entry_of(app_id: &str, exec: &str) -> Entry {
         Entry {
             app_id: app_id.to_string(),
@@ -182,10 +201,10 @@ mod tests {
         let m = handlers("[Default Applications]\nimage/png=viewer.desktop;\n");
         let r = LaunchRequest::Open {
             target: file("/tmp/a.png"),
-            mime: "image/png".into(),
+            mime: Some("image/png".into()),
         };
         assert_eq!(
-            resolve(&r, &m, catalog, false),
+            resolve(&r, &m, catalog, no_sniff, false),
             Ok(Launch::Direct(vec!["viewer".into(), "/tmp/a.png".into()]))
         );
     }
@@ -197,7 +216,7 @@ mod tests {
             targets: vec![],
         };
         assert_eq!(
-            resolve(&r, &[], catalog, false),
+            resolve(&r, &[], catalog, no_sniff, false),
             Ok(Launch::Direct(vec!["editor".into()]))
         );
     }
@@ -209,10 +228,10 @@ mod tests {
         let m = handlers("[Default Applications]\nimage/png=viewer.desktop;\n");
         let r = LaunchRequest::Open {
             target: file("/tmp/a.png"),
-            mime: "image/png".into(),
+            mime: Some("image/png".into()),
         };
         assert_eq!(
-            resolve(&r, &m, catalog, true),
+            resolve(&r, &m, catalog, no_sniff, true),
             Ok(Launch::Confined(vec![
                 "arlen-run".into(),
                 "--app-id".into(),
@@ -232,10 +251,11 @@ mod tests {
             resolve(
                 &LaunchRequest::Open {
                     target: file("/tmp/a.xyz"),
-                    mime: "application/x-nothing".into(),
+                    mime: Some("application/x-nothing".into()),
                 },
                 &[],
                 catalog,
+                no_sniff,
                 false
             ),
             Err(LaunchError::NoHandler {
@@ -251,10 +271,10 @@ mod tests {
         let m = handlers("[Default Applications]\nimage/png=gone.desktop;viewer.desktop;\n");
         let r = LaunchRequest::Open {
             target: file("/tmp/a.png"),
-            mime: "image/png".into(),
+            mime: Some("image/png".into()),
         };
         assert_eq!(
-            resolve(&r, &m, catalog, false),
+            resolve(&r, &m, catalog, no_sniff, false),
             Ok(Launch::Direct(vec!["viewer".into(), "/tmp/a.png".into()]))
         );
     }
@@ -269,6 +289,7 @@ mod tests {
                 },
                 &[],
                 catalog,
+                no_sniff,
                 false
             ),
             Err(LaunchError::UnknownApplication {
@@ -289,6 +310,7 @@ mod tests {
                 },
                 &[],
                 broken,
+                no_sniff,
                 false
             ),
             Err(LaunchError::MalformedEntry {
@@ -309,6 +331,7 @@ mod tests {
                 },
                 &[],
                 empty,
+                no_sniff,
                 false
             ),
             Err(LaunchError::NothingToRun {
@@ -324,10 +347,10 @@ mod tests {
         let m = handlers("[Default Applications]\ntext/plain=viewer.desktop;\n");
         let r = LaunchRequest::Open {
             target: file("/tmp/; rm -rf ~"),
-            mime: "text/plain".into(),
+            mime: Some("text/plain".into()),
         };
         assert_eq!(
-            resolve(&r, &m, catalog, false),
+            resolve(&r, &m, catalog, no_sniff, false),
             Ok(Launch::Direct(vec![
                 "viewer".into(),
                 "/tmp/; rm -rf ~".into()
