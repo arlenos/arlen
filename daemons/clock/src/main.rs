@@ -12,12 +12,10 @@
 //! process: a bus name, a lock around the state, and the timing.
 //!
 //! **What is not wired yet, said plainly rather than left to be discovered:**
-//! ringing (it needs the notification daemon), the `power.suspend` /
-//! `power.resume` subscription that stops the stopwatch counting a closed lid,
-//! and asking `org.arlen.Power1` for the wake. The decisions for all three are
-//! built and tested; what is missing is the plumbing, and until it lands this
-//! daemon keeps time correctly while awake and says so here rather than in a
-//! comment nobody reads.
+//! ringing (it needs the notification daemon) and asking `org.arlen.Power1` for
+//! the wake. Both decisions are built and tested; what is missing is the
+//! plumbing, and until it lands this daemon keeps time correctly while awake and
+//! says so here rather than in a comment nobody reads.
 
 use std::sync::Arc;
 
@@ -25,6 +23,7 @@ use arlen_clock::missed::LATE_WINDOW_MS;
 use arlen_clock::reduce::{self, Command};
 use arlen_clock::state::{Alarm, ClockState, FocusConfig};
 use arlen_clock::{startup, store};
+use os_sdk::event_consumer::{EventConsumer, UnixEventConsumer};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
@@ -70,6 +69,123 @@ impl Clock {
             }
         }
     }
+
+    /// Apply something that happened to the machine rather than something the app
+    /// asked for, then write the state down if it changed.
+    async fn observe(&self, event: reduce::Event) {
+        let mut state = self.state.lock().await;
+        let effects = reduce::observe(&mut state, event, now_ms());
+        if effects.persist {
+            if let Err(e) = store::save(&self.dir, &state) {
+                warn!("clock state not written: {e}");
+            }
+        }
+    }
+
+    /// Come back from a sleep: re-derive every anchor, exactly as a restart
+    /// does.
+    ///
+    /// `startup::resume` is not a start-up path that happens to be reusable - it
+    /// is the answer to "did anything's moment pass while nothing was watching",
+    /// which is the same question after a restart, a crash and a night asleep.
+    /// Running only the stopwatch half here would leave an alarm that was due at
+    /// 07:00 pointing at a moment already gone.
+    async fn resumed(&self) {
+        self.observe(reduce::Event::Resumed).await;
+        let mut state = self.state.lock().await;
+        let resumed = startup::resume(&mut state, &chrono::Local, LATE_WINDOW_MS, now_ms());
+        if !resumed.ring_late.is_empty() {
+            warn!(
+                alarms = ?resumed.ring_late,
+                "alarms came due while the machine slept, and cannot ring yet"
+            );
+        }
+        // Written unconditionally: a machine wakes a handful of times a day, so
+        // a comparison to save one file write would buy nothing and could only
+        // be wrong.
+        if let Err(e) = store::save(&self.dir, &state) {
+            warn!("clock state not written after a wake: {e}");
+        }
+    }
+}
+
+/// What a power event on the bus means to the clock, or `None` for one it does
+/// not act on.
+///
+/// Pure, so the mapping is testable without a bus. Inverting it would stop the
+/// stopwatch on waking and start it as the machine goes to sleep, which reads
+/// as "the stopwatch is broken" rather than as a wiring mistake.
+fn sleep_transition(event_type: &str) -> Option<reduce::Event> {
+    match event_type {
+        "power.suspend" => Some(reduce::Event::Suspending),
+        "power.resume" => Some(reduce::Event::Resumed),
+        _ => None,
+    }
+}
+
+/// The producers whose word the clock takes for "the machine slept".
+///
+/// The bus stamps `authenticated_origin` from the producer's kernel-attested
+/// app id, so a name claimed in the payload cannot land here. `powerd` is the
+/// deployed id and `dev.arlen-powerd` the one a cargo-run daemon resolves to.
+const SLEEP_PRODUCERS: [&str; 2] = ["powerd", "dev.arlen-powerd"];
+
+/// Whether a sleep event came from the daemon that owns suspend.
+///
+/// A mismatch is logged and the event is still acted on, deliberately. The bus
+/// leaves the origin empty when it could not resolve the peer, and refusing on
+/// that would mean a stopwatch silently counting a whole night - the exact bug
+/// this subscription exists to fix - while the alternative costs a fold and a
+/// restart that preserve the elapsed time and that the person can undo with one
+/// press. If the clock ever acts on a power event in a way that is not
+/// recoverable, this must become a refusal.
+fn sleep_origin_recognised(origin: &str) -> bool {
+    SLEEP_PRODUCERS.contains(&origin)
+}
+
+/// Follow the machine's sleep transitions for as long as the bus will say.
+///
+/// **Which suspend types this covers, since the obvious implementation covers
+/// only some.** The clock does not read a monotonic clock and infer sleep from
+/// a gap: `CLOCK_MONOTONIC` pauses in deep suspend but keeps counting under
+/// s2idle, so that route gives "stopwatch paused" on one machine and "stopwatch
+/// counted the night" on another. This machine's `/sys/power/mem_sleep` selects
+/// `s2idle`, so it is one where that route would be wrong. logind's
+/// `PrepareForSleep`, which the power daemon turns into these two events, is
+/// broadcast around the sleep *operation* - suspend, hibernate, hybrid-sleep and
+/// suspend-then-hibernate alike - and not around whichever mode the kernel then
+/// picks, so this path does not vary with the machine.
+///
+/// If the bus is unreachable the clock keeps working and the stopwatch counts
+/// through a sleep; that is worth a loud line rather than a silent difference in
+/// behaviour.
+async fn watch_sleep(clock: std::sync::Arc<Clock>, socket: String) {
+    let consumer = UnixEventConsumer::new(socket);
+    let types = vec!["power.suspend".to_string(), "power.resume".to_string()];
+    let mut events = match consumer.subscribe(types).await {
+        Ok(rx) => rx,
+        Err(e) => {
+            warn!("no sleep events ({e}); the stopwatch will count time spent asleep");
+            return;
+        }
+    };
+    info!("watching for sleep transitions");
+    while let Some(event) = events.recv().await {
+        let Some(transition) = sleep_transition(&event.r#type) else {
+            continue;
+        };
+        if !sleep_origin_recognised(&event.authenticated_origin) {
+            warn!(
+                origin = %event.authenticated_origin,
+                "a sleep event did not come from the power daemon"
+            );
+        }
+        match transition {
+            reduce::Event::Resumed => clock.resumed().await,
+            other => clock.observe(other).await,
+        }
+    }
+    warn!("sleep events ended; the stopwatch will count time spent asleep");
 }
 
 /// The interface the app talks to.
@@ -235,6 +351,13 @@ async fn main() {
         dir,
     });
 
+    tokio::spawn(watch_sleep(
+        Arc::clone(&clock),
+        os_sdk::runtime::socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock")
+            .to_string_lossy()
+            .into_owned(),
+    ));
+
     let conn = match zbus::connection::Builder::session()
         .and_then(|b| b.name(BUS_NAME))
         .and_then(|b| b.serve_at(OBJECT_PATH, ClockInterface { clock }))
@@ -258,5 +381,60 @@ async fn main() {
     match tokio::signal::ctrl_c().await {
         Ok(()) => info!("clock daemon shutting down"),
         Err(e) => warn!("shutdown signal failed: {e}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Inverted, this would stop the stopwatch on waking and start it as the
+    /// machine goes to sleep.
+    #[test]
+    fn each_power_event_means_the_transition_it_names() {
+        assert_eq!(
+            sleep_transition("power.suspend"),
+            Some(reduce::Event::Suspending)
+        );
+        assert_eq!(
+            sleep_transition("power.resume"),
+            Some(reduce::Event::Resumed)
+        );
+    }
+
+    /// The subscription is by prefix on the bus, so a neighbouring power event
+    /// can arrive here and must not be read as a sleep.
+    #[test]
+    fn no_other_power_event_moves_the_stopwatch() {
+        for other in [
+            "power.state",
+            "power.profile_changed",
+            "power.battery_low",
+            "window.focused",
+            "",
+        ] {
+            assert_eq!(sleep_transition(other), None, "{other} is not a sleep");
+        }
+    }
+
+    /// The two ids the power daemon actually resolves to, deployed and in a
+    /// cargo-run stack. A typo here would log a warning on every real sleep.
+    #[test]
+    fn the_power_daemons_own_ids_are_recognised() {
+        assert!(sleep_origin_recognised("powerd"));
+        assert!(sleep_origin_recognised("dev.arlen-powerd"));
+    }
+
+    /// An unresolved origin is not the power daemon, so it is worth saying -
+    /// the event is still acted on, which is the caller's decision and is
+    /// argued where that happens.
+    #[test]
+    fn anything_else_is_not_recognised_including_an_unresolved_peer() {
+        for origin in ["", "unknown", "settings", "arlen-powerd", "powerd "] {
+            assert!(
+                !sleep_origin_recognised(origin),
+                "{origin:?} is not the power daemon"
+            );
+        }
     }
 }

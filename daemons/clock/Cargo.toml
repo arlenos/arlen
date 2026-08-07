@@ -14,6 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 chrono = "0.4"
+os-sdk = { path = "../../sdk/os-sdk" }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 tracing = "0.1"
