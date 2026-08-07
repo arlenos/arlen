@@ -19,6 +19,7 @@
   /// under vite. Copy law: no em-dashes, no middot separators; usage is "not
   /// measured yet", never a fabricated "never".
   import { onMount } from "svelte";
+  import { loadSensing } from "$lib/stores/sensing";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
@@ -59,6 +60,9 @@
   onMount(() => {
     loadGrants();
     loadCapsules();
+    // A grant line says whether a master switch is currently refusing it, so
+    // this page needs the switch positions as well as the grants.
+    void loadSensing();
   });
 
   // App-first is the default: the surface shows each app (and the assistant, as
