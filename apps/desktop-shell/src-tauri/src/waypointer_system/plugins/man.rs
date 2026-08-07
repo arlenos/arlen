@@ -39,8 +39,14 @@ impl WaypointerPlugin for ManPlugin {
             if let Some(page) = data.get("page").and_then(|v| v.as_str()) {
                 // Open man page in terminal. Terminal discovery delegated to
                 // shell_runner in full integration.
-                std::process::Command::new("sh")
-                    .args(["-c", &format!("man {page}")])
+                //
+                // `man` directly, not `sh -c "man {page}"`: the page name is
+                // whatever the user typed after `#`, and interpolating it into a
+                // shell line makes a `;` in it a statement separator. Nothing
+                // here needs a shell, and an affordance that says "show me a man
+                // page" should not also be a way to run one.
+                std::process::Command::new("man")
+                    .arg(page)
                     .spawn()
                     .map_err(|e| PluginError::ExecuteFailed(e.to_string()))?;
             }
