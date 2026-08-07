@@ -203,6 +203,14 @@ impl SignalDetector {
         {
             if out.status.success() {
                 let url = String::from_utf8_lossy(&out.stdout);
+                // First line only. A remote URL is one line, but the value comes
+                // from the repository's own `.git/config`, and git renders a `\n`
+                // escape there as a real newline - verified in a scratch repo,
+                // where `url = "https://example.com/real\nFORGED"` made
+                // `git remote get-url` print two lines. Taking the whole output
+                // put that newline in the project's name, which the shell then
+                // displays.
+                let url = url.lines().next().unwrap_or_default();
                 if let Some(name) = Self::repo_name_from_url(url.trim()) {
                     return name;
                 }
@@ -300,6 +308,46 @@ mod tests {
         assert_eq!(
             SignalDetector::repo_name_from_url("git@github.com:user/repo.git"),
             Some("repo".into())
+        );
+    }
+
+    /// A repository names itself, and `git remote get-url` renders a `\n`
+    /// escape in `.git/config` as a real newline - verified in a scratch repo.
+    /// Cloning such a repository would otherwise put those extra lines in the
+    /// project's name, which the shell displays.
+    ///
+    /// Driven through `detect` rather than the pure URL parser, because the
+    /// splitting happens in `name_from_git` and a test that does the splitting
+    /// itself would pass with the fix reverted. Asserting "no newline" holds
+    /// whether or not git is installed: without it the name falls back to the
+    /// directory, which has none either.
+    #[test]
+    fn a_multi_line_remote_url_cannot_reach_the_project_name() {
+        let dir = TempDir::new().unwrap();
+        // A real repository, not just a `.git/config`: without `git init` the
+        // command fails, `name_from_git` falls back to the directory name and the
+        // test passes whatever the parser does. It did, until I checked by
+        // reverting the fix and watching it stay green.
+        let init = Command::new("git")
+            .args(["-C", &dir.path().to_string_lossy(), "init", "-q"])
+            .status();
+        if !matches!(init, Ok(s) if s.success()) {
+            return; // no git on this machine; nothing to assert
+        }
+        let mut config = std::fs::read_to_string(dir.path().join(".git/config")).unwrap();
+        config.push_str("[remote \"origin\"]\n\turl = \"https://example.com/real\\nFORGED\"\n");
+        std::fs::write(dir.path().join(".git/config"), config).unwrap();
+
+        let signal = SignalDetector::detect(dir.path()).expect("a .git directory is a signal");
+        assert!(
+            !signal.project_name.contains('\n'),
+            "project name carried a newline: {:?}",
+            signal.project_name
+        );
+        assert!(
+            !signal.project_name.contains("FORGED"),
+            "{:?}",
+            signal.project_name
         );
     }
 
