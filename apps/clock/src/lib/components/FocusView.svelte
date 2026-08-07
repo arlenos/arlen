@@ -29,12 +29,12 @@
           {/each}
         </div>
         <p class="fo-held">{heldText(f.held)}</p>
-        <Button variant="outline" id="end-focus" class="fo-action" onclick={endFocus}>{$t("c.fo.end")}</Button>
+        <Button variant="outline" size="lg" id="end-focus" class="fo-action" onclick={endFocus}>{$t("c.fo.end")}</Button>
       </div>
     {:else}
       <div class="fo-card idle">
         <p class="fo-idle">{$t("c.fo.idle")}</p>
-        <Button id="start-focus" class="fo-action" onclick={startFocus}>{$t("c.fo.start")}</Button>
+        <Button size="lg" id="start-focus" class="fo-action" onclick={startFocus}>{$t("c.fo.start")}</Button>
       </div>
       {@const cfg = $clock.focus_config}
       <Section>

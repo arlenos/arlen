@@ -55,7 +55,7 @@
         <Plus size={20} strokeWidth={2} />
       </button>
     </div>
-    <Button id="start-timer" class="ti-start" disabled={durationMs === 0} onclick={() => startTimer(durationMs)}>
+    <Button id="start-timer" size="lg" class="ti-start" disabled={durationMs === 0} onclick={() => startTimer(durationMs)}>
       {$t("c.ti.start")}
     </Button>
   </div>
