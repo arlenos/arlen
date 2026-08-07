@@ -12,6 +12,7 @@ members = [
     "monitor-reads",
     "proc-collect",
     "permissions",
+    "printers",
     "screen-capture",
     "secret-vault",
     "tauri-plugin-clipboard",

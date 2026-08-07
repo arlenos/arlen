@@ -1,5 +1,6 @@
 mod app_history;
 mod app_index;
+mod printers;
 mod app_state;
 mod audio;
 mod capability;
@@ -341,6 +342,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            printers::printers_list,
+            printers::printers_default,
             log_frontend,
             dispatch_app_action,
             app_shortcut_invoke,

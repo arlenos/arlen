@@ -170,6 +170,7 @@ dependencies = [
  "arlen-launch-contract",
  "arlen-modules",
  "arlen-permissions",
+ "arlen-printers",
  "arlen-theme",
  "audit-proto",
  "base64 0.22.1",
@@ -295,6 +296,26 @@ dependencies = [
  "thiserror 2.0.18",
  "toml 0.8.2",
  "tracing",
+]
+
+[[package]]
+name = "arlen-print"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "audit-proto",
+ "futures-util",
+ "ipp",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "arlen-printers"
+version = "0.1.0"
+dependencies = [
+ "arlen-print",
+ "serde",
 ]
 
 [[package]]
@@ -1278,6 +1299,29 @@ name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
+
+[[package]]
+name = "enum-as-inner"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0359ee92f81184d7985519e474bda2a5738476334edd3746c9b1265c067afe70"
+dependencies = [
+ "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "enum-primitive-derive"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba7795da175654fe16979af73f81f26a8ea27638d8d9823d317016888a63dc4c"
+dependencies = [
+ "num-traits",
+ "quote",
+ "syn 2.0.117",
+]
 
 [[package]]
 name = "enumflags2"
@@ -2417,6 +2461,26 @@ name = "ipnet"
 version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d98f6fed1fde3f8c21bc40a1abb88dd75e67924f9cffc3ef95607bad8017f8e2"
+
+[[package]]
+name = "ipp"
+version = "6.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c50f52bbd6cf4cdaac254c696a8a479e3962b0f5858d3b659c7658ea728a94f"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "enum-as-inner",
+ "enum-primitive-derive",
+ "futures-executor",
+ "futures-util",
+ "http",
+ "log",
+ "num-traits",
+ "reqwest",
+ "thiserror 2.0.18",
+ "tokio-util",
+]
 
 [[package]]
 name = "iri-string"
@@ -5191,6 +5255,7 @@ checksum = "9ae9cec805b01e8fc3fd2fe289f89149a9b66dd16786abd8b19cfa7b48cb0098"
 dependencies = [
  "bytes",
  "futures-core",
+ "futures-io",
  "futures-sink",
  "pin-project-lite",
  "tokio",

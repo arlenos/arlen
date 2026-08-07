@@ -8,39 +8,13 @@
 //! not here. Each command talks directly to the local CUPS server; a down or
 //! unreachable server surfaces as an error string the panel shows.
 
-use arlen_print::{CupsBackend, Job, JobOptions, PrintBackend, PrintSubmission, Printer};
+use arlen_print::{CupsBackend, Job, JobOptions, PrintBackend, PrintSubmission};
 use serde::Serialize;
 
-/// A printer as the panel lists it. The `arlen-print` `Printer` is not
-/// serializable and the panel wants stable lowercase state keys, so this is the
-/// wire shape (camelCase for the frontend).
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PrinterDto {
-    name: String,
-    uri: String,
-    info: Option<String>,
-    location: Option<String>,
-    make_model: Option<String>,
-    state: String,
-    accepting_jobs: bool,
-    destination: String,
-}
-
-impl From<Printer> for PrinterDto {
-    fn from(p: Printer) -> Self {
-        Self {
-            name: p.name,
-            uri: p.uri,
-            info: p.info,
-            location: p.location,
-            make_model: p.make_model,
-            state: p.state.as_key().to_string(),
-            accepting_jobs: p.accepting_jobs,
-            destination: p.destination.as_key().to_string(),
-        }
-    }
-}
+/// The panel's printer rows come from `arlen-printers`, the shared view: the
+/// shell's print dialog lists the same rows, and a second copy of the mapping
+/// here is how the two drift apart.
+pub use arlen_printers::PrinterView as PrinterDto;
 
 /// A print job as the panel lists it.
 #[derive(Serialize)]
@@ -68,21 +42,13 @@ impl From<Job> for JobDto {
 /// The configured printer queues from the local CUPS server.
 #[tauri::command]
 pub async fn printers_list() -> Result<Vec<PrinterDto>, String> {
-    CupsBackend::default()
-        .printers()
-        .await
-        .map(|ps| ps.into_iter().map(PrinterDto::from).collect())
-        .map_err(|e| e.to_string())
+    arlen_printers::list().await
 }
 
 /// The default printer, if one is set.
 #[tauri::command]
 pub async fn printers_default() -> Result<Option<PrinterDto>, String> {
-    CupsBackend::default()
-        .default_printer()
-        .await
-        .map(|p| p.map(PrinterDto::from))
-        .map_err(|e| e.to_string())
+    arlen_printers::default_printer().await
 }
 
 /// The active print queue across all printers (pending, held, and processing
