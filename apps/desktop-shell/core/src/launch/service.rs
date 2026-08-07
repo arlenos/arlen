@@ -213,6 +213,34 @@ pub fn launch_event(line: &AuditLine) -> audit_proto::IngestRequest {
     }
 }
 
+/// The marker that says the ledger is missing entries, and how many.
+///
+/// A warning in the journal is not surfacing. A missing search result is
+/// visibly wrong; a missing audit line is invisible, and what it leaves behind
+/// is a **complete-looking history that is not complete**. Everything the system
+/// claims about being answerable rests on that ledger, so a hole in it has to be
+/// stated inside the ledger rather than in a log nobody reads.
+///
+/// `result_count` is how many launches went unrecorded and `duration_ms` how
+/// long the gap lasted, which with the entry's own append time gives both ends
+/// of the window. A reader of the transparency surface can then say "there is a
+/// gap here" instead of quietly showing less than happened.
+pub fn unrecorded_gap_event(dropped: u64, span_ms: u64) -> audit_proto::IngestRequest {
+    audit_proto::IngestRequest {
+        kind: audit_proto::AuditKind::AppAction,
+        structural: audit_proto::StructuralRecord {
+            subject: "launch.unrecorded".to_string(),
+            result_count: Some(dropped),
+            duration_ms: Some(span_ms),
+            outcome: "gap".to_string(),
+            ..Default::default()
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -415,6 +443,22 @@ mod tests {
         let event = launch_event(&s.audit);
         assert_eq!(event.structural.node_types, ["unresolved"]);
         assert_eq!(event.structural.outcome, "refused:unresolved-caller");
+    }
+
+    /// A gap has to be visible in the ledger, because a ledger that quietly
+    /// shows less than happened looks exactly like one that shows everything.
+    #[test]
+    fn a_gap_marker_carries_how_many_and_how_long() {
+        let e = unrecorded_gap_event(7, 4_200);
+        assert_eq!(e.kind, audit_proto::AuditKind::AppAction);
+        assert_eq!(e.structural.subject, "launch.unrecorded");
+        assert_eq!(e.structural.result_count, Some(7));
+        assert_eq!(e.structural.duration_ms, Some(4_200));
+        assert_eq!(e.structural.outcome, "gap");
+        // No app is named: the marker is about the ledger, not about a launch,
+        // and listing the apps whose records were lost would be a record of
+        // them by another route.
+        assert!(e.structural.node_types.is_empty());
     }
 
     /// A launch audit is not a reading list.
