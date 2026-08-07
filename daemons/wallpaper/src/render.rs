@@ -83,6 +83,24 @@ impl Wallpaper {
         Ok((state, queue))
     }
 
+    /// Replace the manifest and redraw every configured output.
+    ///
+    /// The wallpaper the user just picked should appear now, not at the next
+    /// restart. Redrawing every background rather than diffing them is right
+    /// here: there are as many as there are monitors, and a per-monitor override
+    /// may have changed for any of them.
+    ///
+    /// A background the compositor has not configured yet has zero size, and
+    /// `draw` no-ops on it; it gets the new manifest when its configure lands,
+    /// because `draw` reads `self.manifest` at the time it runs.
+    pub fn set_manifest(&mut self, manifest: WallpaperManifest, time: TimeContext) {
+        self.manifest = manifest;
+        self.time = time;
+        for index in 0..self.backgrounds.len() {
+            self.draw(index);
+        }
+    }
+
     /// Create a full-output background surface for `output`.
     fn add_output(&mut self, qh: &QueueHandle<Self>, output: &wl_output::WlOutput) {
         let connector = self
