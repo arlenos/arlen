@@ -19,3 +19,6 @@ src-tauri/Cargo.lock
 # Env
 .env
 .env.local
+
+# Tauri regenerates gen/schemas from capabilities/ on every build.
+src-tauri/gen/
