@@ -32,12 +32,15 @@ pub enum Command {
     ToggleAlarm { id: String, enabled: bool },
     /// Remove one.
     DeleteAlarm { id: String },
-    /// Start a countdown.
+    /// Start a countdown. **The app sends only a duration** - ids are the
+    /// daemon's to mint, so two apps starting a timer at the same moment cannot
+    /// collide on one, and a view that closes cannot take an id with it.
     TimerStart { id: String, duration_ms: i64 },
-    /// Pause or resume one.
-    TimerPause { id: String },
-    /// Resume a paused one.
-    TimerResume { id: String },
+    /// Pause or resume one. A single command with the wanted state rather than
+    /// two, matching what the app sends: it says where the switch should be,
+    /// not which way to move it, so a repeat is a no-op instead of a toggle
+    /// that undoes the first press.
+    TimerSetPaused { id: String, paused: bool },
     /// Remove one.
     TimerCancel { id: String },
     /// Begin a focus session, with what the enforcement actually held.
@@ -54,8 +57,12 @@ pub enum Command {
     StopwatchLap,
     /// Back to zero.
     StopwatchReset,
-    /// Show a city.
-    WorldAdd(WorldCity),
+    /// Show a city, by its id in the shared offline dataset.
+    ///
+    /// The app sends an id and the daemon resolves the name and zone, because
+    /// the dataset is owned outside the clock (`clock-app.md` §4) and a city
+    /// whose name arrived from a caller is a city nothing can check.
+    WorldAdd { id: String },
     /// Stop showing one.
     WorldRemove { id: String },
 }
@@ -83,12 +90,14 @@ pub struct Effects {
 
 /// Apply a command.
 ///
-/// `tz` resolves an alarm's wall-clock time; the caller passes the local zone,
-/// and passing a fixed one is what makes this testable.
+/// `tz` resolves an alarm's wall-clock time and `cities` looks a world-clock id
+/// up in the shared dataset; both are injected so the decisions here are
+/// testable without a zone database or a city list.
 pub fn apply<Tz: chrono::TimeZone>(
     state: &mut ClockState,
     command: Command,
     tz: &Tz,
+    cities: impl Fn(&str) -> Option<WorldCity>,
     now_ms: i64,
 ) -> Effects {
     let before = state.clone();
@@ -117,14 +126,13 @@ pub fn apply<Tz: chrono::TimeZone>(
                 None => state.timers.push(timer),
             }
         }
-        Command::TimerPause { id } => {
+        Command::TimerSetPaused { id, paused } => {
             if let Some(t) = state.timers.iter_mut().find(|t| t.id == id) {
-                run::timer_pause(t, now_ms);
-            }
-        }
-        Command::TimerResume { id } => {
-            if let Some(t) = state.timers.iter_mut().find(|t| t.id == id) {
-                run::timer_resume(t, now_ms);
+                if paused {
+                    run::timer_pause(t, now_ms);
+                } else {
+                    run::timer_resume(t, now_ms);
+                }
             }
         }
         Command::TimerCancel { id } => state.timers.retain(|t| t.id != id),
@@ -137,9 +145,11 @@ pub fn apply<Tz: chrono::TimeZone>(
         Command::StopwatchPause => run::stopwatch_pause(&mut state.stopwatch, now_ms),
         Command::StopwatchLap => run::stopwatch_lap(&mut state.stopwatch, now_ms),
         Command::StopwatchReset => run::stopwatch_reset(&mut state.stopwatch),
-        Command::WorldAdd(city) => {
-            if !state.world.iter().any(|c| c.id == city.id) {
-                state.world.push(city);
+        Command::WorldAdd { id } => {
+            if !state.world.iter().any(|c| c.id == id) {
+                if let Some(city) = cities(&id) {
+                    state.world.push(city);
+                }
             }
         }
         Command::WorldRemove { id } => state.world.retain(|c| c.id != id),
@@ -185,6 +195,12 @@ mod tests {
             .timestamp_millis()
     }
 
+    /// No city dataset: the tests that add one supply their own, so a call
+    /// here would be a bug rather than a fallback.
+    fn no_cities(_: &str) -> Option<WorldCity> {
+        None
+    }
+
     fn alarm(id: &str, time: &str) -> Alarm {
         Alarm {
             id: id.into(),
@@ -204,6 +220,7 @@ mod tests {
             &mut s,
             Command::SetAlarm(alarm("a", "07:00")),
             &utc(),
+            no_cities,
             at(6, 0),
         );
         assert_eq!(s.alarms[0].next_fire_at, Some(at(7, 0)));
@@ -220,12 +237,14 @@ mod tests {
             &mut s,
             Command::SetAlarm(alarm("morning", "07:00")),
             &utc(),
+            no_cities,
             at(6, 0),
         );
         let fx = apply(
             &mut s,
             Command::SetAlarm(alarm("evening", "20:00")),
             &utc(),
+            no_cities,
             at(6, 0),
         );
         assert_eq!(
@@ -242,12 +261,14 @@ mod tests {
             &mut s,
             Command::SetAlarm(alarm("a", "07:00")),
             &utc(),
+            no_cities,
             at(6, 0),
         );
         apply(
             &mut s,
             Command::SetAlarm(alarm("a", "08:00")),
             &utc(),
+            no_cities,
             at(6, 0),
         );
         assert_eq!(s.alarms.len(), 1);
@@ -263,6 +284,7 @@ mod tests {
             &mut s,
             Command::SetAlarm(alarm("a", "07:00")),
             &utc(),
+            no_cities,
             at(6, 0),
         );
         apply(
@@ -272,6 +294,7 @@ mod tests {
                 enabled: false,
             },
             &utc(),
+            no_cities,
             at(6, 30),
         );
         assert_eq!(s.alarms[0].next_fire_at, None);
@@ -284,6 +307,7 @@ mod tests {
                 enabled: true,
             },
             &utc(),
+            no_cities,
             at(9, 0),
         );
         let due = s.alarms[0].next_fire_at.unwrap();
@@ -297,6 +321,7 @@ mod tests {
             &mut s,
             Command::DeleteAlarm { id: "nope".into() },
             &utc(),
+            no_cities,
             at(6, 0),
         );
         assert!(!fx.persist);
@@ -312,12 +337,14 @@ mod tests {
                 duration_ms: 60_000,
             },
             &utc(),
+            no_cities,
             at(6, 0),
         );
         let fx = apply(
             &mut s,
             Command::TimerCancel { id: "t".into() },
             &utc(),
+            no_cities,
             at(6, 0),
         );
         assert_eq!(fx.wake_at, None);
@@ -334,19 +361,28 @@ mod tests {
                 duration_ms: 60_000,
             },
             &utc(),
+            no_cities,
             at(6, 0),
         );
         let paused = apply(
             &mut s,
-            Command::TimerPause { id: "t".into() },
+            Command::TimerSetPaused {
+                id: "t".into(),
+                paused: true,
+            },
             &utc(),
+            no_cities,
             at(6, 0),
         );
         assert_eq!(paused.wake_at, None, "a paused timer has no moment");
         let resumed = apply(
             &mut s,
-            Command::TimerResume { id: "t".into() },
+            Command::TimerSetPaused {
+                id: "t".into(),
+                paused: false,
+            },
             &utc(),
+            no_cities,
             at(6, 1),
         );
         assert_eq!(resumed.wake_at, Some(at(6, 1) + 60_000));
@@ -355,13 +391,27 @@ mod tests {
     #[test]
     fn a_city_is_not_added_twice() {
         let mut s = ClockState::default();
-        let city = WorldCity {
-            id: "w".into(),
-            name: "Tokyo".into(),
-            zone: "Asia/Tokyo".into(),
+        let tokyo = |id: &str| {
+            (id == "w").then(|| WorldCity {
+                id: "w".into(),
+                name: "Tokyo".into(),
+                zone: "Asia/Tokyo".into(),
+            })
         };
-        apply(&mut s, Command::WorldAdd(city.clone()), &utc(), 0);
-        let fx = apply(&mut s, Command::WorldAdd(city), &utc(), 0);
+        apply(
+            &mut s,
+            Command::WorldAdd { id: "w".into() },
+            &utc(),
+            tokyo,
+            0,
+        );
+        let fx = apply(
+            &mut s,
+            Command::WorldAdd { id: "w".into() },
+            &utc(),
+            tokyo,
+            0,
+        );
         assert_eq!(s.world.len(), 1);
         assert!(!fx.persist, "adding it again changed nothing");
     }
@@ -371,7 +421,7 @@ mod tests {
     #[test]
     fn a_suspend_stops_the_stopwatch_counting() {
         let mut s = ClockState::default();
-        apply(&mut s, Command::StopwatchStart, &utc(), 0);
+        apply(&mut s, Command::StopwatchStart, &utc(), no_cities, 0);
         let fx = observe(&mut s, Event::Suspending, 60_000);
         assert!(fx.persist);
         assert_eq!(s.stopwatch.accumulated_ms, 60_000);
@@ -417,6 +467,7 @@ mod tests {
                 held: vec!["notifications".into()],
             },
             &utc(),
+            no_cities,
             at(9, 0),
         );
         assert_eq!(fx.wake_at, Some(at(9, 25)));
@@ -425,7 +476,7 @@ mod tests {
             vec!["notifications".to_string()]
         );
 
-        let ended = apply(&mut s, Command::FocusEnd, &utc(), at(9, 10));
+        let ended = apply(&mut s, Command::FocusEnd, &utc(), no_cities, at(9, 10));
         assert!(s.focus.is_none());
         assert_eq!(ended.wake_at, None);
     }
