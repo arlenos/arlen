@@ -29,6 +29,7 @@ arlen-ai-core = { path = "../../ai/ai-core" }
 # The signed undo log's inverse-receipt model: the graph compensation receipt maps
 # to InverseReceipt::RetractGraphEdge for the persisted, HMAC-chained undo log.
 arlen-ai-undo-core = { path = "../../ai/ai-undo-core" }
+arlen-undo = { path = "../undo-service" }
 # The shared freedesktop home-trash primitive (atomic no-clobber move + .trashinfo
 # sidecar), shared with the trash-first rm and the file manager.
 arlen-freedesktop-trash = { path = "../../contracts/freedesktop-trash" }

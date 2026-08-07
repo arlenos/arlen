@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 Tim Kicker
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-undo"
+version = "0.1.0"
+edition = "2021"
+description = "Arlen session undo: reading and reversing what happened on this machine, whether or not the assistant is running"
+authors = ["Arlen"]
+
+[workspace]
+
+[dependencies]
+arlen-ai-undo-core = { path = "../../ai/ai-undo-core" }
+async-trait = "0.1"
+libc = "0.2"
+arlen-ai-undo-proto = { path = "../../ai/ai-undo-proto" }
+arlen-config-format = { path = "../../sdk/config-format" }
+arlen-freedesktop-trash = { path = "../../contracts/freedesktop-trash" }
+audit-proto = { path = "../../contracts/audit-proto" }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["io-util", "net", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
