@@ -70,10 +70,10 @@
     { value: "capability", label: $t("s.priv.byCapability") },
   ]);
 
-  const principals = $derived(byApp($grants));
+  const principals = $derived(byApp($t, $grants));
   const assistants = $derived(principals.filter((p) => p.assistant));
   const apps = $derived(principals.filter((p) => !p.assistant));
-  const resources = $derived(byCapability($grants));
+  const resources = $derived(byCapability($t, $grants));
   const isEmpty = $derived($grantsLoaded && principals.length === 0);
 
   let pending = $state<{
