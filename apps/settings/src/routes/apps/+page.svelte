@@ -17,7 +17,7 @@
 
   onMount(loadGrants);
 
-  const apps = $derived(byApp($grants).filter((p) => !p.assistant));
+  const apps = $derived(byApp($t, $grants).filter((p) => !p.assistant));
 </script>
 
 <Page title={$t("s.apps.title")} description={$t("s.apps.desc")}>

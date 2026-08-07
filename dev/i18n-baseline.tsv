@@ -239,9 +239,6 @@ apps/settings/src/lib/stores/capsules.ts	Trip 2026
 apps/settings/src/lib/stores/displays.ts	{} × {} @ {} Hz
 apps/settings/src/lib/stores/grants.ts	All
 apps/settings/src/lib/stores/grants.ts	Own
-apps/settings/src/lib/stores/grants.ts	Sees only {}, not the full contents.
-apps/settings/src/lib/stores/grants.ts	its own data
-apps/settings/src/lib/stores/grants.ts	reads and changes
 apps/settings/src/lib/stores/models.ts	Answers your questions.
 apps/settings/src/lib/stores/models.ts	Background work
 apps/settings/src/lib/stores/models.ts	Balanced

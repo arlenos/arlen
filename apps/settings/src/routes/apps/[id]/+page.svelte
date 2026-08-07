@@ -53,7 +53,7 @@
     }
   });
 
-  const principal = $derived(byApp($grants).find((p) => p.appId === appId));
+  const principal = $derived(byApp($t, $grants).find((p) => p.appId === appId));
   const label = $derived(principal?.label ?? appId);
   const unverified = $derived(principal ? !principal.identityVerified : false);
   const sections = $derived($appPage ? orderedSections($appPage.schema) : []);

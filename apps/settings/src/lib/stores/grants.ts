@@ -18,6 +18,7 @@
 /// zero as "never" - usage is "not measured yet" until an audit feed exists.
 
 import { invoke } from "@tauri-apps/api/core";
+import type { Translate } from "@arlen/ui-kit/i18n";
 import { get, writable } from "svelte/store";
 import { locale } from "$lib/i18n/messages";
 
@@ -111,15 +112,15 @@ export function isAssistant(appId: string): boolean {
 
 // Plain plurals for the KG entity types, lower-cased for mid-sentence use.
 // Unknown types are cleaned (namespace stripped) and passed through.
-const TYPE_NOUNS: Record<string, string> = {
-  File: "files",
-  Folder: "folders",
-  Project: "projects",
-  Event: "activity events",
-  Person: "people",
-  Email: "emails",
-  Note: "notes",
-  Calendar: "calendar entries",
+const TYPE_NOUN_IDS: Record<string, string> = {
+  File: "s.priv.noun.files",
+  Folder: "s.priv.noun.folders",
+  Project: "s.priv.noun.projects",
+  Event: "s.priv.noun.events",
+  Person: "s.priv.noun.people",
+  Email: "s.priv.noun.emails",
+  Note: "s.priv.noun.notes",
+  Calendar: "s.priv.noun.calendar",
 };
 
 // Strip the namespace ("system.File" -> "File", "com.x.Note" -> "Note",
@@ -130,16 +131,20 @@ function shortType(entityType: string): string {
 }
 
 /// A plain plural noun for a KG entity type (title case, for headings).
-export function typeLabel(entityType: string): string {
-  const s = shortType(entityType);
-  const noun = TYPE_NOUNS[s];
-  if (noun) return noun.charAt(0).toUpperCase() + noun.slice(1);
-  return s === "*" ? "its own data" : s;
+export function typeLabel(t: Translate, entityType: string): string {
+  const noun = typeNoun(t, entityType);
+  return noun.charAt(0).toUpperCase() + noun.slice(1);
 }
 
-function typeNoun(entityType: string): string {
+function typeNoun(t: Translate, entityType: string): string {
   const s = shortType(entityType);
-  return TYPE_NOUNS[s] ?? (s === "*" ? "its own data" : s.toLowerCase());
+  const id = TYPE_NOUN_IDS[s];
+  if (id) return t(id);
+  if (s === "*") return t("s.priv.noun.ownData");
+  // An entity type the catalog does not name yet: its own id, lower-cased. A
+  // schema can add a type without this file knowing, so there has to be a
+  // passthrough, and a passthrough cannot be translated.
+  return s.toLowerCase();
 }
 
 /// The display families the panel groups reach into. Every one of the eleven
@@ -250,10 +255,10 @@ export interface ScopeLine {
   text: string;
 }
 
-function verbFor(read: boolean, write: boolean): string {
-  if (read && write) return "reads and changes";
-  if (write) return "changes";
-  return "reads";
+function verbFor(t: Translate, read: boolean, write: boolean): string {
+  if (read && write) return t("s.priv.verb.readsChanges");
+  if (write) return t("s.priv.verb.changes");
+  return t("s.priv.verb.reads");
 }
 
 // Build a line's revoke action. Graph reaches carry the exact `entity_pattern`, so
@@ -276,27 +281,30 @@ function revokeAction(
   return { appId, reaches, enabled: true };
 }
 
-function fieldDetail(scope: EntityScope): string | null {
+function fieldDetail(t: Translate, scope: EntityScope): string | null {
   if (scope.fields && scope.fields.length > 0) {
-    return `Sees only ${scope.fields.join(", ")}, not the full contents.`;
+    return t("s.priv.seesOnly", { fields: scope.fields.join(", ") });
   }
   return null;
 }
 
 // Turn one token grant into scope lines: one per reachable entity type, read
 // and write folded into the verb, plus the relation scopes as quiet detail.
-function tokenLines(grant: GrantView, c: Ceiling): ScopeLine[] {
+function tokenLines(t: Translate, grant: GrantView, c: Ceiling): ScopeLine[] {
   const types = new Map<string, { read?: EntityScope; write?: EntityScope }>();
   for (const s of c.read) (types.get(s.entity_type) ?? setDefault(types, s.entity_type)).read = s;
   for (const s of c.write) (types.get(s.entity_type) ?? setDefault(types, s.entity_type)).write = s;
 
   const relationsByType = new Map<string, string[]>();
   for (const r of c.relations) {
-    const phrase = `Can link ${typeLabel(r.from)} to ${typeLabel(r.to)}.`;
-    for (const t of [r.from, r.to]) {
-      const arr = relationsByType.get(t) ?? [];
+    const phrase = t("s.priv.canLink", {
+      from: typeLabel(t, r.from),
+      to: typeLabel(t, r.to),
+    });
+    for (const endpoint of [r.from, r.to]) {
+      const arr = relationsByType.get(endpoint) ?? [];
       arr.push(phrase);
-      relationsByType.set(t, arr);
+      relationsByType.set(endpoint, arr);
     }
   }
 
@@ -304,14 +312,18 @@ function tokenLines(grant: GrantView, c: Ceiling): ScopeLine[] {
   for (const [entityType, io] of types) {
     const read = !!io.read;
     const write = !!io.write;
-    const noun = typeNoun(entityType);
+    const noun = typeNoun(t, entityType);
     const all = c.instance === "All";
-    const verb = verbFor(read, write);
+    const verb = verbFor(t, read, write);
     // The object is what matters and gets the emphasis; own-data reads as "its
-    // own" and the whole line is dimmed (a zero-prompt default).
-    const object = all ? `your ${noun}` : `its own ${noun}`;
+    // own" and the whole line is dimmed (a zero-prompt default). Whole phrases
+    // rather than a possessive glued to a noun: German inflects the possessive
+    // with the noun's gender, so "your" cannot be a separate word here.
+    const object = all
+      ? t("s.priv.obj.yours", { noun })
+      : t("s.priv.obj.itsOwn", { noun });
     const detail: string[] = [];
-    const fd = fieldDetail(io.read ?? io.write!);
+    const fd = fieldDetail(t, io.read ?? io.write!);
     if (fd) detail.push(fd);
     for (const rel of relationsByType.get(entityType) ?? []) detail.push(rel);
     const reaches: RevokedReach[] = [];
@@ -371,7 +383,7 @@ function provenanceOf(grant: GrantView): ScopeLine["provenance"] {
 // distinction for each family (read vs write, all vs scoped, per-device), never
 // a bare "has access". `consent_class` names the dimension; `consent_scope`
 // carries the concrete detail.
-function nonGraphLine(grant: GrantView): ScopeLine {
+function nonGraphLine(t: Translate, grant: GrantView): ScopeLine {
   const d = dim(grant.consent_class);
   const family = DIMENSION_FAMILY[d] ?? "automation";
   const scope = grant.consent_scope;
@@ -476,13 +488,13 @@ function nonGraphLine(grant: GrantView): ScopeLine {
   };
 }
 
-function grantLines(grant: GrantView): ScopeLine[] {
+function grantLines(t: Translate, grant: GrantView): ScopeLine[] {
   if (grant.source === "capability-token") {
     const c = parseCeiling(grant.declared_ceiling);
-    return c ? tokenLines(grant, c) : [];
+    return c ? tokenLines(t, grant, c) : [];
   }
   // Everything else (declared non-graph reach, consent, system) is one line.
-  return [nonGraphLine(grant)];
+  return [nonGraphLine(t, grant)];
 }
 
 /// One principal (the assistant or an app) with its scope lines, for the
@@ -497,7 +509,7 @@ export interface Principal {
 
 /// Group active grants (not revoked, not superseded) by principal, deriving the
 /// honest scope lines for each. Principals with no lines are dropped.
-export function byApp(list: GrantView[]): Principal[] {
+export function byApp(t: Translate, list: GrantView[]): Principal[] {
   const by = new Map<string, Principal>();
   for (const g of list) {
     if (g.revoked || g.superseded) continue;
@@ -513,7 +525,7 @@ export function byApp(list: GrantView[]): Principal[] {
       by.set(g.app_id, p);
     }
     p.identityVerified = p.identityVerified && g.identity_verified;
-    p.lines.push(...grantLines(g));
+    p.lines.push(...grantLines(t, g));
   }
   return [...by.values()].filter((p) => p.lines.length > 0);
 }
@@ -560,9 +572,9 @@ export interface ResourceGroup {
 /// Invert the grants into "who can reach through each capability family",
 /// grouped by the display families in order. The assistant floats to the top of
 /// each family.
-export function byCapability(list: GrantView[]): ResourceGroup[] {
+export function byCapability(t: Translate, list: GrantView[]): ResourceGroup[] {
   const groups = new Map<Family, ResourceGroup>();
-  for (const p of byApp(list)) {
+  for (const p of byApp(t, list)) {
     for (const line of p.lines) {
       let g = groups.get(line.family);
       if (!g) {
