@@ -46,7 +46,7 @@ fn main() {
         }
     };
     tracing::info!("arlen-wallpaperd rendering");
-    if let Err(e) = run(queue, wallpaper) {
+    if let Err(e) = run(conn, queue, wallpaper) {
         tracing::error!("wallpaper event loop ended: {e}");
     }
 }
@@ -59,16 +59,17 @@ fn main() {
 /// random moments, which is worse than not changing at all. calloop lets the
 /// loop wait on both.
 fn run(
+    conn: Connection,
     queue: wayland_client::EventQueue<Wallpaper>,
     mut wallpaper: Wallpaper,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut event_loop: calloop::EventLoop<Wallpaper> = calloop::EventLoop::try_new()?;
     let handle = event_loop.handle();
-    calloop_wayland_source::WaylandSource::new(
-        wayland_client::Connection::connect_to_env()?,
-        queue,
-    )
-    .insert(handle.clone())?;
+    // The connection here must be the one `queue` came from. Opening a second
+    // one polls a socket nothing ever writes to while the real queue sits
+    // unread, so no output is ever announced, no surface is created and the
+    // daemon renders an empty screen while logging that it is rendering.
+    calloop_wayland_source::WaylandSource::new(conn, queue).insert(handle.clone())?;
 
     // The watcher runs on its own thread and hands changes over the loop's own
     // channel, which is what actually wakes the dispatch.
