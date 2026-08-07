@@ -67,6 +67,7 @@ SKIPPED=(
     "arlen-powerd|needs the system bus (UPower, logind)"
     "arlen-accountsd|needs the session bus"
     "arlen-notifyd|needs the session bus (org.freedesktop.Notifications)"
+    "arlen-clockd|needs the session bus (it owns org.arlen.Clock1)"
     "xdg-desktop-portal-arlen|needs the session bus and the portal frontend"
     "arlen-installd|needs the session bus"
     "arlen-install-helper|system-bus service, runs as root"
