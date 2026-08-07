@@ -15,6 +15,11 @@ const P = (input: string, one: string, other: string) =>
 const messages: Catalogs = {
   en: {
     "f.places.places": "Places",
+    "f.loc.recent": "Recent",
+    "f.loc.trash": "Trash",
+    "f.loc.search": "Search",
+    "f.loc.searchFor": "Search: {$query}",
+    "f.loc.filtered": "Filtered",
     // Provenance: one whole sentence per case. The trust caveat is inside the
     // sentence, not appended to it, so a translation cannot drop it or move it
     // somewhere it reads as an afterthought.
@@ -293,6 +298,11 @@ const messages: Catalogs = {
   },
   de: {
     "f.places.places": "Orte",
+    "f.loc.recent": "Zuletzt",
+    "f.loc.trash": "Papierkorb",
+    "f.loc.search": "Suche",
+    "f.loc.searchFor": "Suche: {$query}",
+    "f.loc.filtered": "Gefiltert",
     "f.prov.user": "Arlen hat das als deins erfasst, {$when}.",
     "f.prov.partOf": "Teil von {$actor}, {$when}. Aus dem erfasst, was Arlen beobachtet hat.",
     "f.prov.lastOpenedBy": "Zuletzt ge\u00f6ffnet von {$actor}, {$when}. Aus dem erfasst, was Arlen beobachtet hat.",

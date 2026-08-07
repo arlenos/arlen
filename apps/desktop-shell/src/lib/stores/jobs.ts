@@ -60,6 +60,11 @@ export interface Job {
   items?: JobItem[];
 }
 
+// i18n-foreign: a job's title is written by whichever daemon is doing the work
+// and names the user's own files - "Copying 240 photos to USB" is a sentence
+// about their photos, not a label of ours. The fixture stands in for that, so it
+// is not ours to translate either; making the daemons send an id instead is the
+// same design question the consent summary raises.
 const MOCK_JOBS: Job[] = [
   {
     id: "fm-copy",
