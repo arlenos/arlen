@@ -55,7 +55,7 @@
     revokeCapsule,
     type Capsule,
   } from "$lib/stores/capsules";
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
 
   onMount(() => {
     loadGrants();
@@ -74,10 +74,10 @@
     { value: "capability", label: $t("s.priv.byCapability") },
   ]);
 
-  const principals = $derived(byApp($t, $grants));
+  const principals = $derived(byApp($t, $locale, $grants));
   const assistants = $derived(principals.filter((p) => p.assistant));
   const apps = $derived(principals.filter((p) => !p.assistant));
-  const resources = $derived(byCapability($t, $grants));
+  const resources = $derived(byCapability($t, $locale, $grants));
   const isEmpty = $derived($grantsLoaded && principals.length === 0);
 
   let pending = $state<{

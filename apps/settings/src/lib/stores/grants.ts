@@ -372,16 +372,19 @@ function setDefault(
 /// - a US month-day order in a sentence nobody else on that page was writing in
 /// English. The kit's file-browser formatter learned the same lesson earlier and
 /// its comment still records it.
-function fmtDate(micros: number): string {
-  return new Date(micros / 1000).toLocaleDateString(get(locale), {
+function fmtDate(loc: string, micros: number): string {
+  return new Date(micros / 1000).toLocaleDateString(loc, {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
 }
-function provenanceOf(grant: GrantView): ScopeLine["provenance"] {
+function provenanceOf(loc: string, grant: GrantView): ScopeLine["provenance"] {
   if (grant.source === "consent")
-    return { id: "s.priv.prov.allowed", params: { date: fmtDate(grant.issued_at) } };
+    return {
+      id: "s.priv.prov.allowed",
+      params: { date: fmtDate(loc, grant.issued_at) },
+    };
   if (grant.source === "system") return { id: "s.priv.prov.system" };
   return { id: "s.priv.prov.declared" };
 }
@@ -390,7 +393,7 @@ function provenanceOf(grant: GrantView): ScopeLine["provenance"] {
 // distinction for each family (read vs write, all vs scoped, per-device), never
 // a bare "has access". `consent_class` names the dimension; `consent_scope`
 // carries the concrete detail.
-function nonGraphLine(t: Translate, grant: GrantView): ScopeLine {
+function nonGraphLine(t: Translate, loc: string, grant: GrantView): ScopeLine {
   const d = dim(grant.consent_class);
   const family = DIMENSION_FAMILY[d] ?? "automation";
   const scope = grant.consent_scope;
@@ -512,7 +515,7 @@ function nonGraphLine(t: Translate, grant: GrantView): ScopeLine {
     own: false,
     required: grant.required,
     systemManaged,
-    provenance: provenanceOf(grant),
+    provenance: provenanceOf(loc, grant),
     detail,
     entityType: null,
     revoke: revokeAction(grant.app_id, [], grant.required, systemManaged),
@@ -520,13 +523,13 @@ function nonGraphLine(t: Translate, grant: GrantView): ScopeLine {
   };
 }
 
-function grantLines(t: Translate, grant: GrantView): ScopeLine[] {
+function grantLines(t: Translate, loc: string, grant: GrantView): ScopeLine[] {
   if (grant.source === "capability-token") {
     const c = parseCeiling(grant.declared_ceiling);
     return c ? tokenLines(t, grant, c) : [];
   }
   // Everything else (declared non-graph reach, consent, system) is one line.
-  return [nonGraphLine(t, grant)];
+  return [nonGraphLine(t, loc, grant)];
 }
 
 /// One principal (the assistant or an app) with its scope lines, for the
@@ -541,7 +544,7 @@ export interface Principal {
 
 /// Group active grants (not revoked, not superseded) by principal, deriving the
 /// honest scope lines for each. Principals with no lines are dropped.
-export function byApp(t: Translate, list: GrantView[]): Principal[] {
+export function byApp(t: Translate, loc: string, list: GrantView[]): Principal[] {
   const by = new Map<string, Principal>();
   for (const g of list) {
     if (g.revoked || g.superseded) continue;
@@ -557,7 +560,7 @@ export function byApp(t: Translate, list: GrantView[]): Principal[] {
       by.set(g.app_id, p);
     }
     p.identityVerified = p.identityVerified && g.identity_verified;
-    p.lines.push(...grantLines(t, g));
+    p.lines.push(...grantLines(t, loc, g));
   }
   return [...by.values()].filter((p) => p.lines.length > 0);
 }
@@ -604,9 +607,9 @@ export interface ResourceGroup {
 /// Invert the grants into "who can reach through each capability family",
 /// grouped by the display families in order. The assistant floats to the top of
 /// each family.
-export function byCapability(t: Translate, list: GrantView[]): ResourceGroup[] {
+export function byCapability(t: Translate, loc: string, list: GrantView[]): ResourceGroup[] {
   const groups = new Map<Family, ResourceGroup>();
-  for (const p of byApp(t, list)) {
+  for (const p of byApp(t, loc, list)) {
     for (const line of p.lines) {
       let g = groups.get(line.family);
       if (!g) {

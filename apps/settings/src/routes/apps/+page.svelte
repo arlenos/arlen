@@ -13,11 +13,11 @@
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { grants, grantsLoaded, grantsMocked, byApp, loadGrants } from "$lib/stores/grants";
   import AppAvatar from "$lib/components/privacy/AppAvatar.svelte";
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
 
   onMount(loadGrants);
 
-  const apps = $derived(byApp($t, $grants).filter((p) => !p.assistant));
+  const apps = $derived(byApp($t, $locale, $grants).filter((p) => !p.assistant));
 </script>
 
 <Page title={$t("s.apps.title")} description={$t("s.apps.desc")}>

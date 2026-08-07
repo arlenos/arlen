@@ -40,7 +40,7 @@
   import AppAvatar from "$lib/components/privacy/AppAvatar.svelte";
   import PrincipalGrants from "$lib/components/privacy/PrincipalGrants.svelte";
   import SchemaSection from "$lib/components/apps/SchemaSection.svelte";
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
 
   const appId = $derived($page.params.id ?? "");
 
@@ -53,7 +53,7 @@
     }
   });
 
-  const principal = $derived(byApp($t, $grants).find((p) => p.appId === appId));
+  const principal = $derived(byApp($t, $locale, $grants).find((p) => p.appId === appId));
   const label = $derived(principal?.label ?? appId);
   const unverified = $derived(principal ? !principal.identityVerified : false);
   const sections = $derived($appPage ? orderedSections($appPage.schema) : []);
