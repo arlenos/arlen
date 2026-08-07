@@ -86,11 +86,11 @@ impl ThisMachine {
 
 impl SystemValues for ThisMachine {
     fn audio_outputs(&self) -> Resolution {
-        Self::listing("pactl", &["list", "short", "sinks"], pactl_devices_from)
+        Self::listing("pactl", &["-f", "json", "list", "sinks"], pactl_devices_from)
     }
 
     fn audio_inputs(&self) -> Resolution {
-        Self::listing("pactl", &["list", "short", "sources"], pactl_devices_from)
+        Self::listing("pactl", &["-f", "json", "list", "sources"], pactl_devices_from)
     }
 
     fn installed_themes(&self) -> Resolution {
