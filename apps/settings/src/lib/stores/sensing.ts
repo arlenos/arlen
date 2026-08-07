@@ -20,8 +20,8 @@ export interface SensingState {
   screenCapture: boolean;
 }
 
-/// The switch positions as last read. Defaults to allowed, which is what a
-/// system nobody has configured is.
+/// The switch positions as last read. Starts allowed, which is what a system
+/// nobody has configured is - an absent file means nobody switched anything off.
 export const sensing = writable<SensingState>({ screenCapture: true });
 
 /// True when the backend could not be reached, so the page can say the switch
@@ -35,6 +35,13 @@ export async function loadSensing(): Promise<void> {
     sensing.set(await invoke<SensingState>("settings_sensing_state"));
     sensingUnknown.set(false);
   } catch {
+    // Unreadable reads as OFF, because that is what the enforcers do: the portal
+    // and the compositor refuse capture when the file is present and unreadable,
+    // on the grounds that an intent nobody can read should be taken the
+    // protective way. Showing "on" here while they refuse everything would make
+    // this page lie about the system it describes - and it would be the
+    // reassuring direction of lying, which is the worse one.
+    sensing.set({ screenCapture: false });
     sensingUnknown.set(true);
   }
 }

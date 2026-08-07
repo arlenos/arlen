@@ -8,6 +8,7 @@
   /// `showHead` off drops the identity row where the page above already names
   /// the app.
   import { ChevronRight } from "lucide-svelte";
+  import { sensing } from "$lib/stores/sensing";
   import { familyGroups, type Principal, type ScopeLine } from "$lib/stores/grants";
   import { familyIcon } from "./familyIcons";
   import AppAvatar from "./AppAvatar.svelte";
@@ -71,6 +72,12 @@
           {/if}
         </span>
         <span class="prov" class:dim={line.own}>{$t(line.provenance.id, line.provenance.params)}</span>
+        {#if line.governedBy === "screenCapture" && !$sensing.screenCapture}
+          <!-- The grant stands; the system refuses it anyway. Saying only
+               "allowed" here would be true about the grant and false about what
+               happens, which is the gap a master switch exists to close. -->
+          <span class="switched-off">{$t("s.priv.switchedOff")}</span>
+        {/if}
         {#if requiredRun}
           <!-- The run's intro already states why these cannot be removed; a
                per-line "Required" marker would just repeat it down the column. -->
@@ -202,6 +209,12 @@
     font-weight: 500;
     color: var(--foreground);
   }
+  .switched-off {
+    font-size: 11px;
+    color: var(--color-fg-warning, var(--foreground));
+    opacity: 0.9;
+  }
+
   .prov {
     justify-self: start;
     font-size: var(--text-2xs);

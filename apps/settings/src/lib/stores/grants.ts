@@ -238,6 +238,13 @@ export interface ScopeLine {
   /// System-managed reach: not per-app revocable here.
   systemManaged: boolean;
   /// "declared at install" or "you allowed this".
+  /// Which master switch can refuse this reach outright, if any.
+  ///
+  /// A property of the reach, not a snapshot: whether the switch is on right now
+  /// is read where the line renders, so a line built once does not go stale
+  /// while the user flips it. The same shape as `revokeLabel`, which derives its
+  /// three states from the line rather than being told them.
+  governedBy?: "screenCapture";
   /// Where this reach came from, as a message id plus what it needs.
   ///
   /// A key rather than a sentence, resolved by whoever renders it: this store is
@@ -393,6 +400,7 @@ function nonGraphLine(t: Translate, grant: GrantView): ScopeLine {
   // have to agree with a gender nothing here knows.
   let verb = t("s.priv.verb.accesses");
   let object = scope || grant.consent_class.toLowerCase();
+  let governedBy: ScopeLine["governedBy"];
   const detail: string[] = [];
 
   switch (d) {
@@ -428,6 +436,7 @@ function nonGraphLine(t: Translate, grant: GrantView): ScopeLine {
       if (dev === "screen") {
         verb = t("s.priv.verb.canCapture");
         object = t("s.priv.obj.yourScreen");
+        governedBy = "screenCapture";
       } else {
         verb = t("s.priv.verb.canUse");
         object =
@@ -499,6 +508,7 @@ function nonGraphLine(t: Translate, grant: GrantView): ScopeLine {
     family,
     verb,
     object,
+    governedBy,
     own: false,
     required: grant.required,
     systemManaged,
