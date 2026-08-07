@@ -48,6 +48,7 @@ prost = "0.13"
 # Already in the tree via tauri; `sync` carries the semaphore bounding
 # concurrent sandboxed decodes.
 tokio = { version = "1", features = ["sync", "net", "io-util"] }
+arlen-launch-contract = { path = "../../../contracts/launch" }
 # FM-R15: call the online-accounts daemon's org.arlen.Accounts1.ListAccounts over the
 # session bus for the Network/Remote places. Match the daemon's zbus (5, tokio).
 zbus = { version = "5", default-features = false, features = ["tokio"] }

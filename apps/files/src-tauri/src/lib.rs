@@ -1265,6 +1265,10 @@ async fn files_open(path: String) -> Result<(), String> {
 /// `files_open_with`).
 #[derive(Serialize)]
 struct AppInfo {
+    /// The desktop id, which is what a launch request names. The picker shows
+    /// the name; opening with it needs the id, because the shell resolves the
+    /// entry itself rather than being handed a command line.
+    id: String,
     name: String,
     exec: String,
     terminal: bool,
@@ -1337,6 +1341,7 @@ fn files_apps_for(path: String) -> Vec<AppInfo> {
     arlen_file_browser_core::openwith::apps_for_mime(&apps, &mime, default_id.as_deref())
         .into_iter()
         .map(|a| AppInfo {
+            id: a.id,
             name: a.name,
             exec: a.exec,
             terminal: a.terminal,
@@ -1356,23 +1361,45 @@ fn default_handler_for(mime: &str) -> Option<String> {
     arlen_file_browser_core::openwith::default_app_for(&text, mime)
 }
 
-/// Open `path` with the app whose `.desktop` `Exec=` is `exec` (from
-/// `files_apps_for`). The core expands the Exec to an argv (field codes -> the
-/// file path) and we spawn it WITHOUT a shell, so a path with spaces or shell
-/// metacharacters is one inert argument. A `Terminal=true` app launches as-is
-/// for now (no terminal wrapper); most Open-With targets are GUI apps.
+/// Open `path` with the application the user picked, by asking the shell.
+///
+/// **The file manager does not start applications.** It used to expand the
+/// picked `Exec` and spawn it, which made Open-With a fourth launch path with
+/// no confinement decision in it - the same defect as the portal's `xdg-open`,
+/// with a live menu in front of it. Now it names the application and the
+/// document, and the shell's launch service resolves the entry, decides whether
+/// it runs confined, records who asked, and starts it.
+///
+/// A failure comes back as a sentence the caller can show; there is no local
+/// fallback, because a fallback would be the unconfined path surviving exactly
+/// where the service is missing.
 #[tauri::command]
-async fn files_open_with(path: String, exec: String) -> Result<(), String> {
-    let argv = arlen_file_browser_core::openwith::expand_exec(&exec, &abs(&path));
-    let Some((program, args)) = argv.split_first() else {
-        return Err("empty exec".to_string());
+async fn files_open_with(path: String, app_id: String) -> Result<(), String> {
+    use arlen_launch_contract as launch;
+
+    let abs = abs(&path);
+    let request = launch::LaunchRequest::App {
+        app_id,
+        targets: vec![launch::Target {
+            uri: format!("file://{abs}"),
+            path: Some(abs.clone()),
+        }],
     };
-    std::process::Command::new(program)
-        .args(args)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    announce_file_opened(&path).await;
-    Ok(())
+
+    let mut stream = tokio::net::UnixStream::connect(launch::socket_path())
+        .await
+        .map_err(|e| format!("launch service unavailable: {e}"))?;
+    launch::write_request(&mut stream, &request)
+        .await
+        .map_err(|e| format!("launch request failed: {e}"))?;
+    match launch::read_outcome(&mut stream).await {
+        Ok(launch::LaunchOutcome::Started { .. }) => {
+            announce_file_opened(&path).await;
+            Ok(())
+        }
+        Ok(other) => Err(format!("could not open it: {other:?}")),
+        Err(e) => Err(format!("launch service did not answer: {e}")),
+    }
 }
 
 /// The mounted, non-system volumes for the Devices sidebar (removable drives +
