@@ -64,7 +64,6 @@
     flex-direction: column;
     gap: 1rem;
     max-width: 34rem;
-    margin: 0 auto;
     padding: 0.9rem 1rem 1.5rem;
   }
   .fo-card {
