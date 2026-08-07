@@ -372,6 +372,23 @@ pub fn load_manifest(extracted_dir: &Path) -> Result<Manifest, InstallError> {
 /// Validate the manifest contents.
 pub fn validate_manifest(manifest: &Manifest) -> Result<(), InstallError> {
     validate_app_id(&manifest.package.id)?;
+    // A reserved id cannot be claimed from a user install. This daemon only ever
+    // writes into the user apps directory, and the resolver refuses to mint a
+    // privileged identity from there - so without this the package installs, its
+    // profile is written, and the app is then permanently unidentifiable. Failing
+    // closed later is the safe direction but a poor answer: better to refuse the
+    // install and say why than to leave a broken app on disk.
+    //
+    // Here rather than in `validate_app_id`, which module ids also go through:
+    // this is the statement about an APP claiming a system identity, and the
+    // system-install path lives in `install-helper`, where `org.arlen.*` is
+    // exactly what a first-party package is called.
+    if arlen_permissions::identity::is_reserved_app_id(&manifest.package.id) {
+        return Err(InstallError::InvalidAppId(format!(
+            "{}: reserved for system apps, cannot be installed for a user",
+            manifest.package.id
+        )));
+    }
 
     if manifest.package.name.is_empty() {
         return Err(InstallError::InvalidManifest("empty package name".into()));
@@ -983,6 +1000,23 @@ mod tests {
         let mut m = make_manifest();
         m.package.name = String::new();
         assert!(validate_manifest(&m).is_err());
+    }
+
+    /// A user install cannot claim a system identity. Without this the package
+    /// installed and the app was then unidentifiable, because the resolver
+    /// refuses to mint a privileged id from a user directory - a broken app on
+    /// disk instead of a refusal at the door.
+    #[test]
+    fn a_reserved_id_cannot_be_installed_for_a_user() {
+        for id in ["system", "system.files", "org.arlen.contacts", "settings", "ai-agent"] {
+            let mut m = make_manifest();
+            m.package.id = id.into();
+            assert!(validate_manifest(&m).is_err(), "{id}");
+        }
+        // An ordinary reverse-domain id is unaffected.
+        let mut ok = make_manifest();
+        ok.package.id = "com.example.notes".into();
+        assert!(validate_manifest(&ok).is_ok());
     }
 
     #[test]
