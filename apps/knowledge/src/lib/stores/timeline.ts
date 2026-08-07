@@ -161,6 +161,12 @@ function ev(kind: TimelineKind, verb: string, object: string, source: string, at
 // The fixture spine: several days, mixed kinds, two reconstructed sessions,
 // bridged imports - dense enough that the recall value reads (the graph's
 // worth is context, not an activity gimmick).
+//
+// i18n-foreign: the project and document names are the user's own words. The
+// graph hands them over in whatever language they were written in, so a fixture
+// standing in for them is not ours to translate either - the same reason the
+// library, search and capsule fixtures carry this marker. The verbs beside them
+// ARE ours and go through the catalog (`k.tl.verb.*`), which is the line.
 function fixture(): TimelineItem[] {
   const items: TimelineItem[] = [
     { kind: "event", event: ev("opened", "k.tl.verb.opened", "Quarterly report.pdf", "Files", dayAgo(0, 9, 12)) },
