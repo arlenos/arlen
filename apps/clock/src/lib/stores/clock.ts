@@ -88,9 +88,15 @@ function fixtureState(now: number): ClockState {
     wake_capable: true,
     alarms: [
       {
+        // No label: it is the user's own words, and AlarmsView already renders
+        // the day set through `fmtDays` in the user's locale, so the "Weekdays"
+        // this carried said the same thing again in untranslated English - in a
+        // fixture the user reaches whenever the daemon is down. Both fixture
+        // alarms are now unlabelled, which means the labelled join in
+        // AlarmsView is exercised only by real alarms.
         id: "a1",
         time: "07:00",
-        label: "Weekdays",
+        label: "",
         days: [0, 1, 2, 3, 4],
         enabled: true,
         fire_late: false,
