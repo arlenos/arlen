@@ -159,36 +159,32 @@ fn detect_output_type() -> String {
     "speakers".into()
 }
 
-/// Get the form_factor property of a PulseAudio sink.
+/// The `device.form_factor` of a named sink, which decides the output icon.
+///
+/// JSON, like the two device lists: the sink's own properties are strings we did
+/// not choose, and the text listing's record boundaries can be forged by a value
+/// containing a newline. The stake here is only which icon is drawn, but it is
+/// the last parse in this file that read the text form, and leaving one behind
+/// invites the next reader to copy it.
 fn get_sink_form_factor(sink_name: &str) -> String {
     let output = match std::process::Command::new("pactl")
-        .args(["list", "sinks"])
+        .args(["-f", "json", "list", "sinks"])
         .output()
     {
         Ok(o) if o.status.success() => o,
         _ => return String::new(),
     };
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut in_target_sink = false;
-
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if let Some(name) = trimmed.strip_prefix("Name: ") {
-            in_target_sink = name == sink_name;
-        }
-        if in_target_sink {
-            if let Some(val) = trimmed.strip_prefix("device.form_factor = ") {
-                return val.trim_matches('"').to_string();
-            }
-        }
-        // Stop at next sink.
-        if trimmed.starts_with("Sink #") && in_target_sink {
-            break;
-        }
-    }
-
-    String::new()
+    let sinks: Vec<serde_json::Value> =
+        serde_json::from_slice(&output.stdout).unwrap_or_default();
+    sinks
+        .iter()
+        .find(|sink| sink.get("name").and_then(|n| n.as_str()) == Some(sink_name))
+        .and_then(|sink| sink.get("properties"))
+        .and_then(|props| props.get("device.form_factor"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// Sets the volume of the default audio sink (0-100).
