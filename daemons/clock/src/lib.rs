@@ -17,6 +17,7 @@ pub mod focus;
 pub mod missed;
 pub mod reduce;
 pub mod run;
+pub mod startup;
 pub mod state;
 pub mod store;
 pub mod wake;
