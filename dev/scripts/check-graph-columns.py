@@ -62,6 +62,17 @@ PATTERN = re.compile(
 )
 LABEL_IN = re.compile(r":\s*(\w+)")
 
+# An inline property map inside a pattern: `(p:Project {name: 'x'})`, and the
+# same on a relationship. The keys are columns exactly as `alias.column` is, and
+# a wrong one fails at the binder just as silently - it simply has no alias to
+# be found by the dotted-reference scan.
+INLINE = re.compile(r"[(\[]\s*\w*\s*:\s*(\w+)\s*\{([^}]*)\}")
+KEY_IN = re.compile(r"(\w+)\s*:")
+# A quoted value can hold a colon - `op_id: 'reopen:abc'` - and the key scan
+# would read `reopen` as a second key. Values are removed before keys are read;
+# the first cut of this check reported exactly that line as a missing column.
+QUOTED = re.compile(r"'[^']*'")
+
 
 def declared_tables(text: str) -> tuple[dict[str, set[str]], set[str]]:
     """Every table the schema declares with its columns, and the tables whose
@@ -165,6 +176,22 @@ def misdirected(query: str, endpoints: dict[str, tuple[str, str]]) -> list[tuple
     return found
 
 
+def inline_offenders(
+    query: str, tables: dict[str, set[str]]
+) -> list[tuple[str, str]]:
+    """(label, key) for each inline property key its label does not declare."""
+    found = []
+    for m in INLINE.finditer(query):
+        label, body = m.group(1), QUOTED.sub("''", m.group(2))
+        if label not in tables:
+            continue
+        for k in KEY_IN.finditer(body):
+            key = k.group(1)
+            if key not in tables[label]:
+                found.append((label, key))
+    return found
+
+
 def _columns(body: str) -> set[str]:
     """Column names from a table body: the first word of each comma-separated
     declaration."""
@@ -179,11 +206,26 @@ def _columns(body: str) -> set[str]:
     return out
 
 
+def _unformat(q: str) -> str:
+    """A `format!` literal read as the Cypher it becomes.
+
+    `{{`/`}}` are escaped braces and `{name}` is an interpolation, so the raw
+    literal is not Cypher: a naive brace match on
+    `CREATE (a)-[:FILE_PART_OF {{ op_id: 'reopen:{op}', ... }}]` stops inside
+    `{op}`, truncating the property map mid-quote - which is how the first cut of
+    the inline-key check reported `reopen` as a column name. Interpolations
+    become a literal so their braces stop being structure, then the doubled
+    braces collapse to what they mean.
+    """
+    q = re.sub(r"(?<!\{)\{[A-Za-z_]\w*\}(?!\})", "'X'", q)
+    return q.replace("{{", "{").replace("}}", "}")
+
+
 def _all_queries(text: str) -> list[str]:
     """Every Cypher-looking literal, test module included - used only to say how
     many the test-module cut left unchecked."""
     return [
-        m.group(1)
+        _unformat(m.group(1))
         for m in STRING.finditer(text)
         if any(k in m.group(1) for k in CYPHER_MARKERS)
     ]
@@ -205,7 +247,7 @@ def queries(text: str) -> list[str]:
     if cut != -1:
         text = text[:cut]
     return [
-        m.group(1)
+        _unformat(m.group(1))
         for m in STRING.finditer(text)
         if any(k in m.group(1) for k in CYPHER_MARKERS)
     ]
@@ -268,6 +310,12 @@ def main() -> int:
         for q in queries(body):
             scanned += 1
             bad = offenders(q, tables)
+            for label, key in inline_offenders(q, tables):
+                problems.append(
+                    f"{path.relative_to(ROOT)}: `{{{key}: ...}}` on {label} - that "
+                    f"table has no {key} column, so the pattern matches nothing "
+                    f"and the caller reads an empty result as absence"
+                )
             for rel, left, right in misdirected(q, endpoints):
                 a, b = endpoints[rel]
                 problems.append(
