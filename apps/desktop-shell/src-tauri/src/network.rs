@@ -143,6 +143,150 @@ async fn parse_device_status() -> Result<(String, bool, Option<String>, Option<u
     Ok(("disconnected".into(), false, None, None))
 }
 
+/// One access point as NetworkManager sees it.
+struct SeenAccessPoint {
+    ssid: String,
+    strength: u8,
+    security: String,
+    is_active: bool,
+}
+
+/// `NM_802_11_AP_FLAGS_PRIVACY` - the network is encrypted at all.
+const AP_FLAGS_PRIVACY: u32 = 0x1;
+
+/// The security label for an access point's three flag words.
+///
+/// **Verified against `nmcli` on a live scan for the WPA2 case only**, which is
+/// what this machine can see: `flags=1 wpa=0 rsn=392` renders as `WPA2`, and 392
+/// is CCMP pairwise + CCMP group + PSK key management. The other arms come from
+/// the published `NM_802_11_AP_SEC_*` constants rather than from a scan, because
+/// no WPA3, enterprise or WEP network was in range - stated plainly, since a
+/// mapping that is only true where it was written is the failure this kind of
+/// code invites.
+///
+/// The order matters: RSN covers WPA2 and WPA3, so it is asked first and the
+/// key-management bits separate them.
+fn ap_security(flags: u32, wpa: u32, rsn: u32) -> String {
+    /// `NM_802_11_AP_SEC_KEY_MGMT_802_1X`.
+    const KEY_MGMT_802_1X: u32 = 0x200;
+    /// `NM_802_11_AP_SEC_KEY_MGMT_SAE`, which is what makes an RSN network WPA3.
+    const KEY_MGMT_SAE: u32 = 0x400;
+
+    let mut parts: Vec<&str> = Vec::new();
+    if rsn != 0 {
+        parts.push(if rsn & KEY_MGMT_SAE != 0 {
+            "WPA3"
+        } else {
+            "WPA2"
+        });
+    } else if wpa != 0 {
+        parts.push("WPA1");
+    } else if flags & AP_FLAGS_PRIVACY != 0 {
+        // Encrypted, but neither WPA nor RSN: the only thing left is WEP.
+        parts.push("WEP");
+    }
+    if (wpa | rsn) & KEY_MGMT_802_1X != 0 {
+        parts.push("802.1X");
+    }
+    parts.join(" ")
+}
+
+/// Every access point the wifi devices currently see.
+///
+/// Replaces the read half of `nmcli -t -f SSID,SIGNAL,SECURITY,IN-USE dev wifi
+/// list`. This reads what NetworkManager has already published and never asks
+/// for a scan - the forced rescan above is a separate, deliberate action and
+/// stays one, so opening the popover cannot trigger an RF sweep through this
+/// path.
+async fn scan_access_points() -> Result<Vec<SeenAccessPoint>, String> {
+    let conn = zbus::Connection::system()
+        .await
+        .map_err(|e| format!("system bus: {e}"))?;
+    let manager = zbus::Proxy::new(
+        &conn,
+        "org.freedesktop.NetworkManager",
+        "/org/freedesktop/NetworkManager",
+        "org.freedesktop.NetworkManager",
+    )
+    .await
+    .map_err(|e| format!("NetworkManager unavailable: {e}"))?;
+    let devices: Vec<zbus::zvariant::OwnedObjectPath> = manager
+        .call("GetDevices", &())
+        .await
+        .map_err(|e| format!("GetDevices: {e}"))?;
+
+    let mut seen = Vec::new();
+    for path in devices {
+        let Ok(device) = zbus::Proxy::new(
+            &conn,
+            "org.freedesktop.NetworkManager",
+            path.clone(),
+            "org.freedesktop.NetworkManager.Device",
+        )
+        .await
+        else {
+            continue;
+        };
+        if device.get_property::<u32>("DeviceType").await != Ok(NM_DEVICE_TYPE_WIFI) {
+            continue;
+        }
+        let Ok(wireless) = zbus::Proxy::new(
+            &conn,
+            "org.freedesktop.NetworkManager",
+            path,
+            "org.freedesktop.NetworkManager.Device.Wireless",
+        )
+        .await
+        else {
+            continue;
+        };
+        // The AP we are associated with, so a row can say so without a second
+        // pass. Absent when the radio is up but unassociated.
+        let active = wireless
+            .get_property::<zbus::zvariant::OwnedObjectPath>("ActiveAccessPoint")
+            .await
+            .ok();
+        let Ok(points): Result<Vec<zbus::zvariant::OwnedObjectPath>, _> =
+            wireless.call("GetAllAccessPoints", &()).await
+        else {
+            continue;
+        };
+        for ap in points {
+            let Ok(proxy) = zbus::Proxy::new(
+                &conn,
+                "org.freedesktop.NetworkManager",
+                ap.clone(),
+                "org.freedesktop.NetworkManager.AccessPoint",
+            )
+            .await
+            else {
+                continue;
+            };
+            // An access point that vanishes between the list and the read is
+            // skipped, not fatal: they come and go with every beacon interval.
+            let (Ok(ssid), Ok(strength), Ok(flags), Ok(wpa), Ok(rsn)) = (
+                proxy.get_property::<Vec<u8>>("Ssid").await,
+                proxy.get_property::<u8>("Strength").await,
+                proxy.get_property::<u32>("Flags").await,
+                proxy.get_property::<u32>("WpaFlags").await,
+                proxy.get_property::<u32>("RsnFlags").await,
+            ) else {
+                continue;
+            };
+            seen.push(SeenAccessPoint {
+                // The SSID is bytes, not text: the standard does not require it
+                // to be UTF-8. Lossy rather than dropped, so a router with an
+                // odd name is still selectable instead of silently missing.
+                ssid: String::from_utf8_lossy(&ssid).into_owned(),
+                strength,
+                security: ap_security(flags, wpa, rsn),
+                is_active: active.as_ref() == Some(&ap),
+            });
+        }
+    }
+    Ok(seen)
+}
+
 /// The names of every saved connection, as NetworkManager holds them.
 ///
 /// Replaces `nmcli -t -f NAME connection show`. One call to list the connection
@@ -322,41 +466,28 @@ pub async fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
         }
     }
 
-    let output = tokio::process::Command::new("nmcli")
-        .args(["-t", "-f", "SSID,SIGNAL,SECURITY,IN-USE", "dev", "wifi", "list"])
-        .output()
-        .await
-        .map_err(|e| format!("nmcli not found: {e}"))?;
-
-    if !output.status.success() {
-        return Err("nmcli wifi list failed".into());
-    }
-
     let known = saved_connection_names().await;
+    let seen = scan_access_points().await?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // nmcli emits ONE row per BSSID (access point), so an SSID with
-    // a mesh / dual-band setup produces multiple rows. We need to
-    // keep the one with IN-USE="*" if any (the BSSID we're actually
-    // connected to), otherwise the strongest signal. Dropping by
-    // first-occurrence loses the connected flag whenever the active
-    // BSSID isn't the first row — which then shows the active SSID
-    // in the "Available Networks" list as if it were unconnected.
+    // NetworkManager publishes ONE access point per BSSID, so an SSID with a
+    // mesh / dual-band setup appears several times. Keep the one we are actually
+    // connected to if any, otherwise the strongest. Dropping by first occurrence
+    // loses the connected flag whenever the active BSSID is not first, which then
+    // shows the active SSID in "Available Networks" as if it were unconnected.
     use std::collections::HashMap;
     let mut by_ssid: HashMap<String, WifiNetwork> = HashMap::new();
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.split(':').collect();
-        if parts.len() < 4 {
-            continue;
-        }
-        let ssid = parts[0].to_string();
+    for point in seen {
+        let ssid = point.ssid;
+        // A hidden network broadcasts an empty SSID. There is nothing to show and
+        // nothing to click, so it is dropped here exactly as the nmcli parse
+        // dropped its blank first column.
         if ssid.is_empty() {
             continue;
         }
         let candidate = WifiNetwork {
-            signal: parts[1].parse().unwrap_or(0),
-            security: parts[2].to_string(),
-            is_connected: parts[3] == "*",
+            signal: point.strength,
+            security: point.security,
+            is_connected: point.is_active,
             is_known: known.contains(&ssid),
             ssid: ssid.clone(),
         };
@@ -855,7 +986,36 @@ async fn run_network_monitor(app: tauri::AppHandle) -> Result<(), zbus::Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::{network_state_payload, NetworkStatus};
+    use super::{ap_security, network_state_payload, NetworkStatus};
+
+    /// The one case a live scan could confirm: `flags=1 wpa=0 rsn=392` is what
+    /// this machine's access points publish, and `nmcli` renders it `WPA2`. If
+    /// this ever fails, the popover has started labelling networks differently
+    /// from the tool everyone cross-checks against.
+    #[test]
+    fn the_flags_a_real_wpa2_network_publishes_read_as_wpa2() {
+        assert_eq!(ap_security(1, 0, 392), "WPA2");
+    }
+
+    /// The remaining arms, from the published `NM_802_11_AP_SEC_*` constants
+    /// rather than from a scan - no WPA3, enterprise or WEP network was in range
+    /// to check against, which is said here as well as at the function so a
+    /// reader knows which lines are measured and which are read from a spec.
+    #[test]
+    fn the_other_security_shapes_follow_the_published_constants() {
+        // SAE key management is what makes an RSN network WPA3.
+        assert_eq!(ap_security(1, 0, 0x400), "WPA3");
+        // WPA with no RSN is the original.
+        assert_eq!(ap_security(1, 0x100, 0), "WPA1");
+        // Encrypted, neither WPA nor RSN: nothing else it can be.
+        assert_eq!(ap_security(1, 0, 0), "WEP");
+        // No privacy bit at all is an open network, and shows as nothing rather
+        // than as the word "none" - the popover renders the empty string as no
+        // badge.
+        assert_eq!(ap_security(0, 0, 0), "");
+        // Enterprise is an addition to the generation, not a replacement.
+        assert_eq!(ap_security(1, 0, 392 | 0x200), "WPA2 802.1X");
+    }
 
     #[test]
     fn payload_maps_wifi_fields() {
