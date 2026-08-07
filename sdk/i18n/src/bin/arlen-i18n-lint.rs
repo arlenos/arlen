@@ -906,7 +906,17 @@ fn foreign_ranges(src: &str) -> Result<Vec<(usize, usize, String)>, String> {
         // `export const` too, which is the commoner form: a marker that silently
         // applies to nothing is the same failure as no marker at all, and every
         // list in `themeSystem.ts` is exported.
-        if !(line.starts_with("const ") || line.starts_with("export const ")) {
+        //
+        // And a function, because a fixture built by one is the same fixture: the
+        // knowledge app's timeline assembles its days in `function fixture()`
+        // while its three sibling stores assign a `const`, and requiring the
+        // author to restructure code so a scanner can see the marker is the wrong
+        // way round. The range still ends at the next declaration, so widening
+        // what may OPEN a range does not widen how far one reaches.
+        let decl = ["const ", "export const ", "function ", "export function "]
+            .iter()
+            .any(|p| line.starts_with(p));
+        if !decl {
             continue;
         }
         // Walk up the contiguous comment block directly above the declaration.
@@ -1298,6 +1308,26 @@ export const CURSOR_THEMES = [
 ";
         let r = foreign_ranges(src).unwrap();
         assert_eq!(r.len(), 1, "an exported constant was not covered");
+    }
+
+    /// A fixture built by a function is the same fixture as one assigned to a
+    /// const. This was not accepted, so the marker above `function fixture()`
+    /// applied to nothing - the failure the `export const` case was already
+    /// widened to avoid.
+    #[test]
+    fn a_marker_opens_a_range_on_a_function_too() {
+        let src = "// i18n-foreign: the user's own projects.\n\
+function fixture() {\n\
+  return [{ project: \"Website redesign\" }];\n\
+}\n\
+const OURS = [\"Settings\"];\n";
+        let r = foreign_ranges(src).unwrap();
+        assert_eq!(r.len(), 1, "{r:?}");
+        let (start, end, reason) = &r[0];
+        assert_eq!(reason, "the user's own projects.");
+        // Opens at the function, closes before the next declaration, so the
+        // string that IS ours stays outside it.
+        assert_eq!((*start, *end), (2, 5), "{r:?}");
     }
 
     #[test]
