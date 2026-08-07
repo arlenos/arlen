@@ -33,7 +33,6 @@ NOT_YET_DEPLOYED: dict[str, str] = {
     "arlen-accountsd.service": "online-accounts is not part of the image scope yet",
     "arlen-connectionsd.service": "connections daemon is not part of the image scope yet",
     "arlen-transferd.service": "transfer daemon is not part of the image scope yet",
-    "arlen-wallpaperd.service": "wallpaper daemon is not part of the image scope yet",
     "arlen-settings-broker.service": "settings broker is not part of the image scope yet",
     "arlen-modulesd.service": "the module runtime is a later phase",
     "arlen-trash-cleanup.service": "trash retention timer, unreviewed for deployment",
