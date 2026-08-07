@@ -95,8 +95,29 @@ pub enum McpServeError {
 /// Resolve the per-app MCP socket path:
 /// `$XDG_RUNTIME_DIR/arlen/mcp/{app_id}.sock`, falling back to
 /// `/run/arlen/mcp/{app_id}.sock` when the runtime dir is unset.
-pub fn mcp_socket_path(app_id: &str) -> PathBuf {
-    mcp_runtime_dir().join(format!("{app_id}.sock"))
+pub fn mcp_socket_path(app_id: &str) -> Option<PathBuf> {
+    is_safe_server_id(app_id).then(|| mcp_runtime_dir().join(format!("{app_id}.sock")))
+}
+
+/// Whether a server id is safe to embed in an MCP socket filename.
+///
+/// The id is formatted straight into a path, so a `/` or `..` in it would place
+/// or resolve the socket outside the MCP runtime directory. Every caller today
+/// passes a compile-time constant, which is why this was safe rather than
+/// fail-safe; the pair below it already documented the requirement for modules
+/// and this states it for apps, in the one place that can enforce it.
+///
+/// The reserved-namespace rule is NOT here: `system.` is exactly what a
+/// first-party server id looks like (`system.knowledge`), and it is *modules*
+/// that must not claim it.
+pub fn is_safe_server_id(server_id: &str) -> bool {
+    !server_id.is_empty()
+        && server_id.len() <= 128
+        && server_id != "."
+        && server_id != ".."
+        && server_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
 }
 
 /// Resolve the per-*module* MCP socket path:
@@ -125,10 +146,7 @@ pub fn mcp_module_socket_path(module_id: &str) -> PathBuf {
 /// discovery checks it before connecting — neither trusts an id it
 /// did not validate. Accepts the reverse-domain charset only.
 pub fn is_safe_module_id(module_id: &str) -> bool {
-    !module_id.is_empty()
-        && module_id.len() <= 128
-        && module_id != "."
-        && module_id != ".."
+    is_safe_server_id(module_id)
         // The `system.` prefix is reserved for Arlen-shipped system MCP
         // servers (e.g. `system.knowledge`). A module is registered in the
         // AI daemon's client under its raw id, and a new connection replaces
@@ -138,9 +156,6 @@ pub fn is_safe_module_id(module_id: &str) -> bool {
         // which binds the socket) and the AI daemon (which connects to it)
         // validate the id.
         && !module_id.starts_with("system.")
-        && module_id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
 }
 
 /// `$XDG_RUNTIME_DIR/arlen/mcp/`, falling back to
@@ -161,7 +176,12 @@ where
     S: rmcp::ServerHandler + Send + 'static,
     F: Fn() -> S + Send + 'static,
 {
-    serve_mcp_at(&mcp_socket_path(app_id), make_handler).await
+    // An id the path helper rejects is refused rather than worked around: the
+    // socket would otherwise land somewhere the id chose.
+    let path = mcp_socket_path(app_id).ok_or_else(|| {
+        McpServeError::Socket(format!("{app_id} is not a safe MCP server id"))
+    })?;
+    serve_mcp_at(&path, make_handler).await
 }
 
 /// Bind an MCP server socket at an explicit path and serve a fresh
@@ -305,9 +325,21 @@ mod tests {
     #[test]
     fn socket_path_uses_runtime_dir() {
         // The path joins the per-app sock under arlen/mcp/.
-        let p = mcp_socket_path("com.example.files");
+        let p = mcp_socket_path("com.example.files").expect("a plain id is safe");
         let s = p.to_string_lossy();
         assert!(s.ends_with("arlen/mcp/com.example.files.sock"), "{s}");
+    }
+
+    /// The id is formatted into a filename, so one that could leave the
+    /// directory has no path at all. `system.` stays allowed here: it is the
+    /// first-party server namespace, and only MODULES are barred from it.
+    #[test]
+    fn an_id_that_could_escape_the_mcp_directory_has_no_socket_path() {
+        for id in ["../evil", "a/b", "", ".", ".."] {
+            assert!(mcp_socket_path(id).is_none(), "{id}");
+        }
+        assert!(mcp_socket_path("system.knowledge").is_some());
+        assert!(!is_safe_module_id("system.knowledge"));
     }
 
     #[test]
