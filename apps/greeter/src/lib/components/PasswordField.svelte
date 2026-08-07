@@ -60,7 +60,7 @@
     type="button"
     class="icon"
     id="greeter-password-reveal"
-    aria-label={reveal ? "Hide password" : "Show password"}
+    aria-label={reveal ? $t("g.password.hide") : $t("g.password.show")}
     aria-pressed={reveal}
     tabindex={-1}
     disabled={disabled || busy}
