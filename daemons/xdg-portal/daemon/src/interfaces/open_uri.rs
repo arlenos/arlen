@@ -2,10 +2,19 @@
 //!
 //! Two methods: `OpenURI` (a string URI) and `OpenFile` (a file
 //! descriptor). Caller-controlled URIs go through a scheme allow-list
-//! per Sprint-E A1 pre-read: `http(s)://` passes through to
-//! `xdg-open`, `file://` is sandbox-validated for confined callers
-//! before forwarding, `mailto:` / `tel:` / `sms:` pass through, and
-//! everything else is rejected.
+//! per Sprint-E A1 pre-read: `http(s)://`, `mailto:`, `tel:`, `sms:`
+//! are handed to the shell's launch service, `file://` is
+//! sandbox-validated for confined callers and still goes to
+//! `xdg-open`, and everything else is rejected.
+//!
+//! **The scheme half no longer starts a program here.** The portal
+//! knows the URI and authorises the caller; the shell knows which
+//! application handles a type and how to run it confined. A launch
+//! split across those two is one where the confinement decision is
+//! made by something that does not know what it decided about, which
+//! is how `xdg-open` became a third unconfined launch path. The
+//! `file://` half is still to move: it needs a MIME type, which
+//! `xdg-open` used to determine and nothing here does yet.
 //!
 //! Spec:
 //! https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.impl.portal.OpenURI.html
@@ -289,7 +298,7 @@ impl OpenUri {
                     identity = ?identity,
                     "OpenURI passthrough"
                 );
-                spawn_xdg_open(uri).await
+                launch_via_shell(uri).await
             }
             SchemeClass::File => {
                 if !file_uri_authorized(uri, &identity) {
@@ -487,6 +496,59 @@ fn fd_still_points_at(fd: &Fd<'_>, path: &Path) -> Result<bool, std::io::Error> 
     // question is what the name resolves TO, not what the last component is.
     let from_name = std::fs::metadata(path)?;
     Ok(from_fd.dev() == from_name.dev() && from_fd.ino() == from_name.ino())
+}
+
+/// Ask the shell's launch service to open a URI.
+///
+/// **The portal does not start programs.** It knows the URI and it authorises
+/// the caller; the shell knows which application handles a type and how to run
+/// it confined, and a launch where those live in different components is one
+/// where the confinement decision is made by something that does not know what
+/// it decided about. So this asks, and the answer comes back as a portal
+/// response.
+///
+/// A scheme handler is looked up by `x-scheme-handler/<scheme>`, which is how
+/// freedesktop names a browser or a mail client in `mimeapps.list` - the same
+/// lookup a document goes through, no second mechanism.
+///
+/// **There is no `xdg-open` fallback, deliberately.** Falling back would keep
+/// the unconfined path alive for exactly the cases where the service is missing,
+/// which is the shape that lets a bypass survive a migration. The shell is a
+/// session-critical component: if it is not there, the desktop is not there.
+async fn launch_via_shell(uri: &str) -> (u32, HashMap<String, OwnedValue>) {
+    use arlen_launch_contract as launch;
+
+    let Some(mime) = launch::scheme_handler_mime(uri) else {
+        return error_results_with("no scheme handler applies to this URI");
+    };
+    let request = launch::LaunchRequest::Open {
+        target: launch::Target {
+            uri: uri.to_string(),
+            path: None,
+        },
+        mime,
+    };
+
+    let mut stream = match tokio::net::UnixStream::connect(launch::socket_path()).await {
+        Ok(s) => s,
+        Err(e) => return error_results_with(&format!("launch service unavailable: {e}")),
+    };
+    if let Err(e) = launch::write_request(&mut stream, &request).await {
+        return error_results_with(&format!("launch request failed: {e}"));
+    }
+    match launch::read_outcome(&mut stream).await {
+        Ok(launch::LaunchOutcome::Started { .. }) => (response::SUCCESS, HashMap::new()),
+        Ok(launch::LaunchOutcome::NoHandler { mime }) => {
+            error_results_with(&format!("nothing is set to open {mime}"))
+        }
+        Ok(other) => error_results_with(&format!("launch refused: {other:?}")),
+        Err(e) => error_results_with(&format!("launch service did not answer: {e}")),
+    }
+}
+
+/// An `OTHER` response carrying a reason, the shape every failure here uses.
+fn error_results_with(reason: &str) -> (u32, HashMap<String, OwnedValue>) {
+    (response::OTHER, error_results(reason))
 }
 
 /// Spawn `xdg-open` for the given URI, fire-and-forget. xdg-open
