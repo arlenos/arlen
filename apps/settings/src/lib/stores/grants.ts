@@ -387,86 +387,108 @@ function nonGraphLine(t: Translate, grant: GrantView): ScopeLine {
   const d = dim(grant.consent_class);
   const family = DIMENSION_FAMILY[d] ?? "automation";
   const scope = grant.consent_scope;
-  let verb = "accesses";
+  // `scope` is the profile's own text (a folder description, a path, a device
+  // name, a tool name). Where it is the object it stays verbatim - it is data,
+  // not our word for a thing - so no possessive is glued to it: "dein" would
+  // have to agree with a gender nothing here knows.
+  let verb = t("s.priv.verb.accesses");
   let object = scope || grant.consent_class.toLowerCase();
   const detail: string[] = [];
 
   switch (d) {
     case "networkaccess": {
-      verb = "reaches";
+      verb = t("s.priv.verb.reaches");
       if (scope === "all") {
-        object = "the whole internet";
+        object = t("s.priv.obj.wholeInternet");
       } else {
         const domains = scope.split(",").map((d) => d.trim()).filter(Boolean);
         object =
           domains.length <= 1
-            ? domains[0] ?? "one host"
-            : `${domains[0]} and ${domains.length - 1} more`;
-        if (domains.length > 1) detail.push(`Hosts: ${domains.join(", ")}.`);
+            ? domains[0] ?? t("s.priv.obj.oneHost")
+            : t("s.priv.obj.hostAndMore", {
+                host: domains[0],
+                n: domains.length - 1,
+              });
+        if (domains.length > 1)
+          detail.push(t("s.priv.detail.hosts", { hosts: domains.join(", ") }));
       }
       break;
     }
     case "filesystem":
-      verb = "reads and changes";
-      object = `your ${scope}`;
+      verb = t("s.priv.verb.readsChanges");
+      object = scope;
       break;
     case "appdata":
-      verb = "access to";
+      verb = t("s.priv.verb.accessTo");
       object = scope;
       break;
     case "portal": {
       // scope is "camera" / "microphone" / "screen" / "usb:Yubikey".
       const [dev, persist] = scope.split("|");
       if (dev === "screen") {
-        verb = "can capture";
-        object = "your screen";
-      } else if (dev.startsWith("usb:")) {
-        verb = "can use";
-        object = `your ${dev.slice(4)}`;
+        verb = t("s.priv.verb.canCapture");
+        object = t("s.priv.obj.yourScreen");
       } else {
-        verb = "can use";
-        object = `your ${dev}`;
+        verb = t("s.priv.verb.canUse");
+        object =
+          dev === "camera"
+            ? t("s.priv.obj.yourCamera")
+            : dev === "microphone"
+              ? t("s.priv.obj.yourMicrophone")
+              : dev.startsWith("usb:")
+                ? dev.slice(4)
+                : dev;
       }
-      detail.push(persist ? `Access: ${persist}.` : "Access: while the app is in use.");
+      detail.push(
+        persist
+          ? t("s.priv.detail.access", { when: persist })
+          : t("s.priv.detail.accessInUse"),
+      );
       break;
     }
     case "clipboard":
-      verb = scope.includes("write") ? "reads and writes" : "reads";
-      object = scope.includes("history") ? "the clipboard and its history" : "the clipboard";
+      verb = scope.includes("write")
+        ? t("s.priv.verb.readsWrites")
+        : t("s.priv.verb.reads");
+      object = scope.includes("history")
+        ? t("s.priv.obj.clipboardHistory")
+        : t("s.priv.obj.clipboard");
       break;
     case "notifications":
-      verb = "can send";
-      object = "notifications";
+      verb = t("s.priv.verb.canSend");
+      object = t("s.priv.obj.notifications");
       break;
     case "system": {
       const map: Record<string, [string, string]> = {
-        background: ["keeps running", "in the background"],
-        suspend: ["can suspend", "the system"],
-        autostart: ["starts", "automatically at login"],
+        background: [t("s.priv.verb.keepsRunning"), t("s.priv.obj.inBackground")],
+        suspend: [t("s.priv.verb.canSuspend"), t("s.priv.obj.theSystem")],
+        autostart: [t("s.priv.verb.starts"), t("s.priv.obj.atLogin")],
       };
-      [verb, object] = map[scope] ?? ["controls", scope];
+      [verb, object] = map[scope] ?? [t("s.priv.verb.controls"), scope];
       break;
     }
     case "eventbus":
       // Listening to the bus means seeing activity: real reach, not plumbing.
-      verb = scope.startsWith("publish") ? "publishes" : "listens to";
-      object = scope.replace(/^(publish|subscribe):\s*/, "") || "app events";
+      verb = scope.startsWith("publish")
+        ? t("s.priv.verb.publishes")
+        : t("s.priv.verb.receives");
+      object = scope.replace(/^(publish|subscribe):\s*/, "") || t("s.priv.obj.appEvents");
       break;
     case "mcp":
       // Tools an app exposes are used BY the assistant: real reach.
-      verb = "exposes";
-      object = `${scope} to the assistant`;
+      verb = t("s.priv.verb.exposes");
+      object = t("s.priv.obj.toAssistant", { tools: scope });
       break;
     case "input":
-      verb = "registers";
+      verb = t("s.priv.verb.registers");
       object = scope;
       break;
     case "search":
-      verb = "provides";
+      verb = t("s.priv.verb.provides");
       object = scope;
       break;
     case "intents":
-      verb = "handles";
+      verb = t("s.priv.verb.handles");
       object = scope;
       break;
   }
