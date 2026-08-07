@@ -96,6 +96,7 @@ pub fn run() {
             commands::activity::settings_app_audit,
             commands::sensing::settings_sensing_state,
             commands::sensing::settings_sensing_set_screen_capture,
+            commands::wallpaper::list_wallpapers,
             commands::config::config_get,
             commands::config::config_set,
             commands::config::ai_defaults_set,
