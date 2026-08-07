@@ -102,7 +102,7 @@
     display: flex;
     align-items: center;
     height: 2.75rem;
-    padding: 0 0.35rem 0 0.9rem;
+    padding: 0 0.35rem 0 1rem;
     flex-shrink: 0;
     user-select: none;
     -webkit-user-select: none;
@@ -118,7 +118,9 @@
   .tabs {
     display: flex;
     gap: 0.25rem;
-    padding: 0 1rem;
+    /* The first tab's TEXT sits on the content edge: the nav start padding is
+       the content inset minus the tab's own inline padding. */
+    padding: 0 1rem 0 calc(1rem - 0.7rem);
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     flex-shrink: 0;
   }
@@ -138,7 +140,7 @@
   .tab.active::after {
     content: "";
     position: absolute;
-    inset-inline: 0.75rem;
+    inset-inline: 0.7rem;
     bottom: -1px;
     height: 2px;
     background: var(--color-fg-primary);

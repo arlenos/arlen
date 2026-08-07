@@ -102,7 +102,6 @@
       />
       <span class="al-field-label">{$t("c.al.repeat")}</span>
       <DaysPicker value={draft.days} onchange={(v) => (draft.days = v)} />
-      <span class="al-field-label"></span>
       <label class="al-late">
         <Switch value={draft.fire_late} size="sm" ariaLabel={$t("c.al.fireLate")} onchange={(v) => (draft.fire_late = v)} />
         <span>{$t("c.al.fireLate")}</span>
@@ -131,7 +130,6 @@
     flex-direction: column;
     gap: 0.5rem;
     max-width: 34rem;
-    margin: 0 auto;
     padding: 0.9rem 1rem 1.5rem;
   }
   .al-nowake {
@@ -166,11 +164,11 @@
   }
   .al-main {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 0.9rem;
     flex: 1;
     min-width: 0;
-    padding: 0.7rem 0.25rem;
+    padding: 0.7rem 0;
     border: none;
     background: transparent;
     text-align: start;
@@ -229,6 +227,7 @@
     max-width: 16rem;
   }
   .al-late {
+    grid-column: 1 / -1;
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;

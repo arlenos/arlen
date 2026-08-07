@@ -76,7 +76,6 @@
     flex-direction: column;
     gap: 0.9rem;
     max-width: 34rem;
-    margin: 0 auto;
     padding: 0.9rem 1rem 1.5rem;
   }
   .wo-add {
@@ -135,7 +134,7 @@
     grid-template-columns: minmax(0, 1fr) auto auto 1.75rem;
     align-items: baseline;
     column-gap: 0.75rem;
-    padding: 0.7rem 0.25rem;
+    padding: 0.7rem 0;
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
   }
   .wo-row:last-child {
