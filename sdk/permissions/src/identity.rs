@@ -639,82 +639,7 @@ impl AsRawFd for OwnedFd {
 // Tests
 // ---------------------------------------------------------------------------
 
-/// Map a systemd unit name (from a peer's cgroup) to its canonical app_id. Only
-/// the canonical AI-daemon units are mapped: this is the cross-uid identity
-/// fallback for when `/proc/<pid>/exe` is unreadable (a hardened, non-dumpable
-/// peer), and it must grant no identity a successful exe-path resolve would not.
-///
-/// The mapped unit is the pi-era engine's, `arlen-ai-engine-daemon.service`, and it
-/// resolves to the `ai-agent` ROLE - the same principal
-/// [`path_to_app_id`] gives that daemon's binary, so the two resolvers agree
-/// whichever path the caller is identified through. The retired
-/// `arlen-ai-agent.service` and `arlen-ai-daemon.service` are gone rather than kept
-/// alongside: neither crate nor unit ships any more, so mapping them would have
-/// left this fallback naming only units that cannot exist while missing the one
-/// that does - and the consequence is not a clean failure, it is the AI layer being
-/// served as `unknown` on exactly the cross-uid read path this fallback exists for.
-fn unit_to_app_id(unit: &str) -> Option<&'static str> {
-    match unit {
-        "arlen-ai-engine-daemon.service" => Some("ai-agent"),
-        _ => None,
-    }
-}
 
-/// Extract the innermost systemd `*.service` unit from a `/proc/<pid>/cgroup`
-/// file's content. Handles cgroup v2 (a single `0::<path>` line) and v1
-/// (`<n>:<controllers>:<path>` lines).
-///
-/// **A `.service` component alone is not evidence of a unit.** A cgroup path
-/// component is a directory name, and inside its own delegated subtree an
-/// unprivileged process may create directories and move itself into them.
-/// Measured on a normal host, as a normal user: creating
-/// `<own scope>/arlen-ai-engine-daemon.service` and joining it made
-/// `/proc/self/cgroup` read
-/// `…/user@1000.service/kitty-3255-0.scope/arlen-ai-engine-daemon.service`, which
-/// the old "last `.service` component" rule read as that unit - and this resolver
-/// feeds the app id a token, a tier and a read scope are keyed on.
-///
-/// So a component only counts as a unit when it sits where systemd puts one:
-/// **directly under a `.slice`**. systemd nests units in slices, never inside
-/// another unit, so the forged path above no longer resolves - its parent is a
-/// `.scope`. The innermost qualifying component wins, which is the real unit when
-/// a delegated service has sub-cgroups of its own.
-///
-/// **What this does not close:** the same trick one directory higher, under a
-/// real `.slice` the caller can write to - `user@<uid>.service/app.slice/` in
-/// their own tree. The canonical AI daemon is a USER unit, so that path is
-/// exactly where a genuine one lives and the shape cannot tell them apart. Only
-/// asking systemd who owns the pid settles that, and whether a cgroup-derived
-/// identity should carry a tier at all is a decision above this function.
-fn unit_from_cgroup(content: &str) -> Option<String> {
-    content.lines().find_map(|line| {
-        let path = line.rsplit(':').next()?;
-        let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
-        components
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(i, component)| {
-                component.ends_with(".service")
-                    && *i > 0
-                    && components[i - 1].ends_with(".slice")
-            })
-            .map(|(_, component)| (*component).to_string())
-    })
-}
-
-/// Resolve an app_id from a peer's systemd cgroup unit (`/proc/<pid>/cgroup`).
-///
-/// The fallback when [`app_id_from_pid`] is denied for a hardened, non-dumpable
-/// cross-uid peer: unlike `/proc/<pid>/exe`, the cgroup file is not ptrace-gated,
-/// so a root reader can identify a hardened AI daemon by its unit. Only the
-/// canonical AI-daemon units ([`unit_to_app_id`]) resolve; every other unit is
-/// `None`, so this never widens identity beyond what the exe-path resolver grants.
-pub fn app_id_from_cgroup(pid: u32) -> Option<String> {
-    let content = std::fs::read_to_string(format!("/proc/{pid}/cgroup")).ok()?;
-    let unit = unit_from_cgroup(&content)?;
-    unit_to_app_id(&unit).map(|s| s.to_string())
-}
 
 #[cfg(test)]
 mod tests {
@@ -780,73 +705,8 @@ mod tests {
         }
     }
 
-    /// A cgroup component is a directory name, and a process may create
-    /// directories in its own delegated subtree. This is the exact path an
-    /// unprivileged process produced on a real host by making a directory named
-    /// after the AI daemon inside its own terminal scope and joining it: the old
-    /// rule read it as that unit and handed over the identity a tier is keyed on.
-    /// A unit lives directly under a slice, and a `.scope` is not one.
-    #[test]
-    fn a_service_named_directory_inside_a_scope_is_not_that_unit() {
-        const ENGINE_UNIT: &str = "arlen-ai-engine-daemon.service";
-        let forged = "0::/user.slice/user-1000.slice/user@1000.service/\
-kitty-3255-0.scope/arlen-ai-engine-daemon.service";
-        // The invariant is about the identity, not the string: what the caller
-        // must not obtain is the AI daemon's app id. The path still resolves to
-        // `user@1000.service`, which is a genuine unit under its slice and maps
-        // to nothing - the enclosing session manager, correctly named.
-        assert_ne!(unit_from_cgroup(forged).as_deref(), Some(ENGINE_UNIT));
-        assert_eq!(
-            unit_from_cgroup(forged).and_then(|u| unit_to_app_id(&u)),
-            None,
-            "{forged}"
-        );
 
-        // Nor one nested under a unit's own sub-cgroup, which is what a delegated
-        // service's children look like: the unit is the one under the slice.
-        let nested = "0::/system.slice/arlen-x.service/evil/arlen-ai-engine-daemon.service";
-        assert_eq!(unit_from_cgroup(nested).as_deref(), Some("arlen-x.service"));
-    }
 
-    #[test]
-    fn cgroup_unit_resolves_the_ai_engine_daemon() {
-        const ENGINE_UNIT: &str = "arlen-ai-engine-daemon.service";
-        // cgroup v2: one `0::<path>` line.
-        let v2 = format!(
-            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/{ENGINE_UNIT}"
-        );
-        assert_eq!(unit_from_cgroup(&v2).as_deref(), Some(ENGINE_UNIT));
-        assert_eq!(unit_to_app_id(ENGINE_UNIT), Some("ai-agent"));
-        // The retired pre-pi units map to nothing: neither ships any more.
-        assert_eq!(unit_to_app_id("arlen-ai-agent.service"), None);
-        assert_eq!(unit_to_app_id("arlen-ai-daemon.service"), None);
-        // A non-AI unit maps to nothing (no identity widening).
-        assert_eq!(unit_to_app_id("some-other.service"), None);
-        // cgroup v1: `<n>:<controllers>:<path>` lines; the path is after the last colon.
-        let v1 = format!("1:name=systemd:/user.slice/user@1000.service/app.slice/{ENGINE_UNIT}\n0::/");
-        assert_eq!(unit_from_cgroup(&v1).as_deref(), Some(ENGINE_UNIT));
-        // No service cgroup -> None.
-        assert_eq!(unit_from_cgroup("0::/user.slice/user-1000.slice"), None);
-    }
-
-    /// The cgroup fallback and the exe-path resolver must name the SAME principal
-    /// for the engine daemon. They are two independent maps over two different
-    /// inputs (a unit name vs an install path), and the cgroup one is only reached
-    /// when /proc/<pid>/exe is unreadable - a cross-uid, hardened peer - so a
-    /// disagreement is invisible until exactly the case the fallback exists for.
-    #[test]
-    fn the_cgroup_fallback_agrees_with_the_exe_resolver_for_the_engine() {
-        let by_unit = unit_to_app_id("arlen-ai-engine-daemon.service")
-            .expect("the shipping engine unit resolves");
-        let by_path =
-            path_to_app_id(&PathBuf::from("/usr/lib/arlen/libexec/arlen-ai-engine-daemon"))
-                .expect("the engine's canonical install path resolves");
-        assert_eq!(
-            by_unit, by_path,
-            "the cgroup fallback gives '{by_unit}' but the exe resolver gives '{by_path}': \
-             the engine would get a different identity depending on which path resolved it"
-        );
-    }
     use crate::identity_registry::{IdentityRecord, IdentityRegistry};
     use std::io::Write;
 

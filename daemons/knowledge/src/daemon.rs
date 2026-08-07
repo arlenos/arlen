@@ -29,7 +29,7 @@ use tracing::{debug, error, info, warn};
 use crate::auth::Authenticator;
 use crate::events::{self, GraphEvent};
 use crate::graph::GraphHandle;
-use crate::identity::{app_id_from_cgroup, app_id_from_pid, pid_start_time, process_alive};
+use crate::identity::{app_id_from_pid, pid_start_time, process_alive};
 use crate::proto::Event;
 use crate::quota::{AppTier, QuotaConfig, RateLimiter};
 use crate::schema::SchemaRegistry;
@@ -2718,22 +2718,23 @@ async fn handle_client(
                     Err(e) => {
                         // A hardened, non-dumpable cross-uid peer's /proc/exe is
                         // EACCES even to root (the VM boot proved the old "root can
-                        // always read it" assumption false). Fall back to the peer's
-                        // cgroup unit, which is NOT ptrace-gated, to identify the
-                        // canonical AI daemons (ai-agent/ai-daemon) - the read path
-                        // the per-user AI layer needs into the system graph.
-                        match (cross_uid, app_id_from_cgroup(pid)) {
-                            (true, Some(id)) => id,
-                            (true, None) => {
-                                warn!(
-                                    peer_uid = uid,
-                                    pid,
-                                    error = %e,
-                                    "graph daemon: cross-uid app_id resolution failed (peer served as unknown)"
-                                );
-                                "unknown".to_string()
-                            }
-                            (false, _) => same_uid_unresolved_id(),
+                        // always read it" assumption false), and there is no longer
+                        // a second source to ask. The peer's cgroup unit used to
+                        // answer here, until it turned out the peer owns the
+                        // directory names under its own unit: naming one after the
+                        // AI daemon made an unreadable identity into that daemon's,
+                        // which is what the tier and the read scope key on. An
+                        // unresolvable caller is unresolved, and recorded as such.
+                        if cross_uid {
+                            warn!(
+                                peer_uid = uid,
+                                pid,
+                                error = %e,
+                                "graph daemon: cross-uid app_id resolution failed (peer served as unknown)"
+                            );
+                            "unknown".to_string()
+                        } else {
+                            same_uid_unresolved_id()
                         }
                     }
                 };
