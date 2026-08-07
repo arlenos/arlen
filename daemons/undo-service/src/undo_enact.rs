@@ -166,6 +166,7 @@ fn rename_noreplace(from: &str, to: &str) -> std::io::Result<bool> {
     let c_to = CString::new(to).map_err(invalid)?;
     // SAFETY: both pointers are valid C strings live for the call; AT_FDCWD resolves
     // the relative-or-absolute paths against the cwd exactly as `std::fs::rename`.
+    #[allow(unsafe_code)]
     let rc = unsafe {
         libc::renameat2(
             libc::AT_FDCWD,
@@ -245,7 +246,7 @@ fn enact_delete_created(path: &str, fingerprint: &str) -> Result<EnactOutcome, E
 /// undo (e.g. of a folder the user has since filled) stays recoverable from the
 /// trash. An already-absent file is an identity mismatch, never an error (idempotent).
 fn enact_trash_created(path: &str, fingerprint: &str) -> Result<EnactOutcome, EnactError> {
-    let trash = crate::file_executor::home_trash_dir()
+    let trash = arlen_freedesktop_trash::home_trash_dir()
         .ok_or_else(|| EnactError::Io("no home trash directory".to_string()))?;
     enact_trash_created_in(path, fingerprint, &trash)
 }
@@ -268,7 +269,7 @@ fn enact_trash_created_in(
                 .file_name()
                 .and_then(|n| n.to_str())
                 .ok_or_else(|| EnactError::Io("created path has no file name".to_string()))?;
-            crate::file_executor::trash_into(&files_dir, &info_dir, base_name, path)
+            arlen_freedesktop_trash::trash_into(&files_dir, &info_dir, base_name, path)
                 .map(|_slot| EnactOutcome::Trashed)
                 .map_err(|e| EnactError::Io(format!("trash: {e:?}")))
         }

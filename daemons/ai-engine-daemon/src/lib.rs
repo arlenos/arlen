@@ -88,15 +88,15 @@ pub mod command_executor;
 
 /// Report-side compensation: op-id-keyed retract receipts for committed writes.
 pub mod compensation;
-pub mod undo_enact;
+
 
 /// The undo-signer client: submit a created undo entry to the signed, HMAC-chained
 /// log so a graph compensation survives a restart.
-pub mod undo_signer;
+
 
 /// The recent-actions read: undo entries joined to the audit ledger by call
 /// chain, so a surface can name who acted and offer the undo.
-pub mod undo_history;
+
 
 /// The pi engine sidecar: the confined `pi --mode rpc` spawn (argv builder).
 pub mod sidecar;
@@ -108,3 +108,10 @@ pub mod engine_config;
 /// sidecar's undici dispatcher dials for provider (LLM) calls, auth'd by
 /// SO_PEERCRED + the session token and forwarded through the governed ai-proxy.
 pub mod pi_completion;
+
+// Undo lives in `arlen-undo` now, not here. It was in this crate, which serves
+// its D-Bus surface only when `[ai] enabled` is true - so turning the assistant
+// off took the history of a user's own file moves with it. Re-exported under the
+// old paths so every `crate::undo_*` call site keeps working while the service
+// grows its own binary and bus name.
+pub use arlen_undo::{undo_enact, undo_history, undo_signer};
