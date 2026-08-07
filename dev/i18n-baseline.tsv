@@ -11,8 +11,6 @@ apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Esc
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Tab
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	hjkl
-apps/desktop-shell/src/lib/components/ToolbarSlot.svelte	Progress
-apps/desktop-shell/src/lib/components/WaypointerContent.svelte	Ask the agent...
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	First Party
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	System
 apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	Third Party
@@ -187,15 +185,10 @@ apps/settings/src/lib/components/AddProviderDialog.svelte	Anthropic
 apps/settings/src/lib/components/AddProviderDialog.svelte	Gemini
 apps/settings/src/lib/components/AddProviderDialog.svelte	OpenAI
 apps/settings/src/lib/components/AddProviderDialog.svelte	https://api.example.com/v1
-apps/settings/src/lib/components/appearance/AppPicker.svelte	Close
-apps/settings/src/lib/components/appearance/AppPicker.svelte	Open
 apps/settings/src/lib/components/appearance/AppPicker.svelte	notify-send
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	Disable module
-apps/settings/src/lib/components/appearance/ModuleCard.svelte	Enable module
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
-apps/settings/src/lib/components/displays/NightLightSection.svelte	Set both coordinates to enable sunset/sunrise mode.
 apps/settings/src/lib/components/displays/ProfileSection.svelte	just now
 apps/settings/src/lib/components/displays/ProfileSection.svelte	never applied
 apps/settings/src/lib/components/displays/ProfileSection.svelte	{} d ago
@@ -363,16 +356,12 @@ apps/system-monitor/src/lib/stores/detail.ts	read your notes
 apps/system-monitor/src/lib/stores/detail.ts	tcp 140.82.121.4:443 ESTABLISHED
 apps/system-monitor/src/lib/stores/detail.ts	udp 224.0.0.251:5353 mdns
 apps/system-monitor/src/lib/stores/perf.ts	8 cores, 16 threads
-apps/terminal/src/lib/components/StreamBlock.svelte	Show as table
-apps/terminal/src/lib/components/StreamBlock.svelte	Show the plain text
 apps/terminal/src/lib/components/TerminalSidebar.svelte	{} (last command exited {})
 apps/terminal/src/routes/_chrometest/+page.svelte	A header bar per block redraws cwd · git as chrome; result + actions always on.
 apps/terminal/src/routes/_chrometest/+page.svelte	A · Styled
 apps/terminal/src/routes/_chrometest/+page.svelte	B · Classic
 apps/terminal/src/routes/_chrometest/+page.svelte	Shell prints prompt + command + output; chrome only on hover / focus.
 apps/terminal/src/routes/_chrometest/+page.svelte	recommended
-apps/viewers/src/lib/components/VideoViewer.svelte	Pause
-apps/viewers/src/lib/components/VideoViewer.svelte	Play
 apps/viewers/src/lib/components/ViewerMenu.svelte	Commentary
 apps/viewers/src/lib/components/ViewerMenu.svelte	English
 apps/viewers/src/lib/components/ViewerMenu.svelte	English (stereo)
