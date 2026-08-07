@@ -10,7 +10,14 @@ import { listen } from "@tauri-apps/api/event";
 import { pendingMenuAction } from "$lib/stores/timeline";
 import { t } from "$lib/i18n/messages";
 
-const APP_ID = "org.arlen.knowledge";
+/// The identity the shell correlates a menu against: the Wayland toplevel
+/// app_id, which for a Tauri app is its bundle identifier. It was
+/// `org.arlen.knowledge` here, which matches nothing - every app in the tree
+/// identifies as `dev.arlen.<app>` and this one's own `tauri.conf.json` says
+/// `dev.arlen.knowledge` - so the menu would not have appeared even once
+/// registration worked. Used now only to filter the action return channel;
+/// registration no longer passes an id at all.
+const APP_ID = "dev.arlen.knowledge";
 
 /// Built per translator value, not once: the menu lives in the shell's process,
 /// so a locale switch has to re-register it or the app menu keeps whichever
@@ -37,8 +44,13 @@ const ACTIONS: Record<string, "export" | "deleteToday" | "deleteAll"> = {
 /// Idempotent enough for one mount; failures are silent by design (no shell).
 export async function initAppMenu(): Promise<void> {
   t.subscribe((tr) => {
-    void invoke("register_menu", { appId: APP_ID, items: menuFor(tr) }).catch(() => {
-      // No shell relay yet: the menu is simply absent.
+    // Through the shared shell plugin, not a bare `register_menu`: that name is
+    // a command in the SHELL's binary, so this app invoking it was rejected at
+    // runtime. The plugin publishes `app.menu.registered` on the bus, which the
+    // shell already consumes - and it stamps the app's OWN identity, so an app
+    // can no longer register a menu under someone else's name.
+    void invoke("plugin:arlen-shell|menu_register", { groups: menuFor(tr) }).catch(() => {
+      // No shell running: the menu is simply absent.
     });
   });
   try {
