@@ -1,0 +1,13 @@
+[package]
+name = "arlen-printers"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "The printer reads two surfaces share: the Printers panel and the shell's print dialog"
+
+[dependencies]
+arlen-print = { path = "../../daemons/print", features = ["cups"] }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
