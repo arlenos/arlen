@@ -128,6 +128,22 @@ pub fn mimeapps_paths(env: &XdgEnv) -> Vec<PathBuf> {
     out
 }
 
+/// Read the handler files that exist, in precedence order.
+///
+/// The one piece of this module that touches the disk, kept here rather than in
+/// the host because the alternative is every caller re-deriving "read the paths
+/// `mimeapps_paths` returned, skip the ones that are not there, keep the order".
+/// A path that cannot be read is skipped rather than failing the lookup: a
+/// handler map is a merge of whatever is present, and one unreadable file in
+/// `/etc/xdg` should not cost the user their own choices.
+pub fn load_mimeapps(env: &XdgEnv) -> Vec<super::mimeapps::MimeApps> {
+    mimeapps_paths(env)
+        .into_iter()
+        .filter_map(|p| std::fs::read_to_string(p).ok())
+        .map(|text| super::mimeapps::parse(&text))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,6 +286,46 @@ mod tests {
                 "/usr/share/applications/mimeapps.list",
             ]
         );
+    }
+
+    /// The order on disk is the order in the list, and a path that is not there
+    /// is skipped rather than becoming an empty entry that shifts the rest.
+    #[test]
+    fn loading_keeps_the_order_and_skips_what_is_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("cfg");
+        std::fs::create_dir_all(&cfg).unwrap();
+        std::fs::write(
+            cfg.join("mimeapps.list"),
+            "[Default Applications]\ntext/plain=mine.desktop;\n",
+        )
+        .unwrap();
+        let e = XdgEnv {
+            config_home: Some(cfg.display().to_string()),
+            // Points at nothing, so these contribute no entries at all.
+            config_dirs: Some(dir.path().join("absent").display().to_string()),
+            data_dirs: Some(dir.path().join("gone").display().to_string()),
+            ..env()
+        };
+        let loaded = load_mimeapps(&e);
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(
+            super::super::mimeapps::default_handler(&loaded, "text/plain", |_| true).as_deref(),
+            Some("mine.desktop")
+        );
+    }
+
+    #[test]
+    fn loading_a_tree_with_no_handler_files_is_empty_rather_than_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let e = XdgEnv {
+            config_home: Some(dir.path().display().to_string()),
+            config_dirs: Some(dir.path().display().to_string()),
+            data_home: Some(dir.path().display().to_string()),
+            data_dirs: Some(dir.path().display().to_string()),
+            ..env()
+        };
+        assert!(load_mimeapps(&e).is_empty());
     }
 
     #[test]
