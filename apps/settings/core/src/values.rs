@@ -541,6 +541,18 @@ mod tests {
         };
         assert_eq!(options.len(), 1, "{options:?}");
         assert_eq!(options[0].value, "evil\ninjected\tname\tdriver\tspec\tRUNNING");
+
+        // And the forgeable shape is not merely handled, it is no longer read:
+        // this is the literal two-row output `pactl list short sinks` printed for
+        // that same sink on a real host. Removing the JSON parse makes the
+        // assertion above fail, but only because the text form is unreadable as
+        // JSON - this line is what says the text form cannot come back.
+        let text_form = "221\tevil\n\
+injected\tname\tdriver\tspec\tRUNNING\tPipeWire\tfloat32le 2ch 48000Hz\tSUSPENDED\n";
+        let Resolution::Options(from_text) = pactl_devices_from(text_form) else {
+            panic!("should resolve");
+        };
+        assert!(from_text.is_empty(), "{from_text:?}");
     }
 
     fn app_dir(entries: &[(&str, &str)]) -> tempfile::TempDir {
