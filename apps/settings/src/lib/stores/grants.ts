@@ -212,8 +212,6 @@ export interface RevokeAction {
   appId: string;
   reaches: RevokedReach[];
   enabled: boolean;
-  /// Why the revoke is disabled, shown before the click (settled model).
-  disabledReason?: string;
 }
 
 /// One line of scope as the panel renders it: a plain sentence split into a
@@ -254,27 +252,22 @@ function verbFor(read: boolean, write: boolean): string {
 }
 
 // Build a line's revoke action. Graph reaches carry the exact `entity_pattern`, so
-// they narrow here; a required or system-managed reach is refused with a reason
-// shown before the click; a non-graph reach has no exact descriptor to send (the
-// summary is not the profile key), so it is shown disabled until `access_grants`
-// carries the revocable descriptor.
+// they narrow here; a required or system-managed reach is refused; a non-graph
+// reach has no exact descriptor to send (the summary is not the profile key), so
+// it is shown disabled until `access_grants` carries the revocable descriptor.
 function revokeAction(
   appId: string,
   reaches: RevokedReach[],
   required: boolean,
   systemManaged: boolean,
 ): RevokeAction {
-  if (required)
-    return { appId, reaches, enabled: false, disabledReason: "This app needs this to work." };
-  if (systemManaged)
-    return { appId, reaches, enabled: false, disabledReason: "Managed by the system, not revocable here." };
-  if (reaches.length === 0)
-    return {
-      appId,
-      reaches,
-      enabled: false,
-      disabledReason: "Removing this needs the service's reach descriptor, coming with the backend.",
-    };
+  // No reason travels with the verdict. `PrincipalGrants` derives the same three
+  // cases from the line itself and says them through the catalog
+  // (`s.priv.required` / `systemManaged` / `notRevocable`), so a second wording
+  // here was a longer, untranslated duplicate that nothing rendered - three
+  // carefully phrased sentences no reader ever saw.
+  if (required || systemManaged || reaches.length === 0)
+    return { appId, reaches, enabled: false };
   return { appId, reaches, enabled: true };
 }
 
