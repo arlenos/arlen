@@ -37,13 +37,41 @@ pub enum Caller {
 }
 
 impl Caller {
-    /// The name for the ledger. An unnamed caller is recorded as such rather
-    /// than omitted, because "we do not know" is a fact worth keeping.
+    /// The name for the ledger.
+    ///
+    /// An unresolved caller is written out as unresolved rather than omitted. A
+    /// served `Open` still causes a program to start - the target and its type
+    /// select a handler - so an audit line with no caller field would read as
+    /// though nothing caused it. This states what could not be checked, the way
+    /// a gate does.
     pub fn as_str(&self) -> &str {
         match self {
             Self::Named(id) => id,
-            Self::Unnamed => "unknown",
+            Self::Unnamed => "unresolved",
         }
+    }
+}
+
+/// Whether this caller may make this request.
+///
+/// **The one place the confinement flip changes.** The rule below rests on a
+/// premise with an expiry date: a same-uid process can `exec` whatever it likes
+/// *today*, so a launch request grants it nothing and gating `Open` would be
+/// ceremony. After the flip a confined application cannot `exec` at all, and
+/// this socket becomes its only route to starting anything - at which point the
+/// request really is authority and this function is where that is said.
+///
+/// Named rather than inlined for exactly that reason: the change should be a
+/// different rule in a function that already exists, not a rewrite of the serve
+/// path to acquire one.
+fn admits(request: &LaunchRequest, caller: &Caller) -> bool {
+    match request {
+        // Naming a specific application is a claim about the user's setup, and
+        // "app X caused app Y to start" is only a sentence if X has a name.
+        LaunchRequest::App { .. } => matches!(caller, Caller::Named(_)),
+        // Opening a document grants nothing the caller lacks, and refusing an
+        // unrecognised binary would only cost someone the ability to open a file.
+        LaunchRequest::Open { .. } => true,
     }
 }
 
@@ -97,8 +125,8 @@ pub fn serve(
         },
     };
 
-    if matches!(request, LaunchRequest::App { .. }) && matches!(caller, Caller::Unnamed) {
-        return refuse(LaunchOutcome::Refused, "refused:unnamed-caller");
+    if !admits(request, caller) {
+        return refuse(LaunchOutcome::Refused, "refused:unresolved-caller");
     }
 
     match resolve(request, mimeapps, entry, confined) {
@@ -203,7 +231,7 @@ mod tests {
     fn opening_a_document_works_for_a_caller_with_no_name() {
         let s = serve(&open(), &Caller::Unnamed, &handlers(), catalog, false);
         assert!(s.launch.is_some());
-        assert_eq!(s.audit.caller, "unknown");
+        assert_eq!(s.audit.caller, "unresolved");
         assert_eq!(s.audit.outcome, "started");
     }
 
@@ -217,11 +245,36 @@ mod tests {
         let s = serve(&r, &Caller::Unnamed, &[], catalog, false);
         assert_eq!(s.outcome, LaunchOutcome::Refused);
         assert!(s.launch.is_none());
-        assert_eq!(s.audit.outcome, "refused:unnamed-caller");
+        assert_eq!(s.audit.outcome, "refused:unresolved-caller");
 
         let ok = serve(&r, &Caller::Named("files".into()), &[], catalog, false);
         assert!(ok.launch.is_some());
         assert_eq!(ok.audit.caller, "files");
+    }
+
+    /// A served request still causes a program to start, so an anonymous one
+    /// must not read as though nothing did.
+    #[test]
+    fn an_unresolved_caller_is_written_out_rather_than_left_blank() {
+        let s = serve(&open(), &Caller::Unnamed, &handlers(), catalog, false);
+        assert_eq!(s.audit.caller, "unresolved");
+        assert!(!s.audit.caller.is_empty());
+        assert_eq!(s.audit.started.as_deref(), Some("viewer"));
+    }
+
+    /// The premise under `admits` expires at the confinement flip, when a
+    /// confined app cannot `exec` and this socket becomes its only way to start
+    /// anything. This pins today's rule so the change is visible as a change.
+    #[test]
+    fn todays_admission_rule_is_open_for_all_and_app_for_the_named() {
+        let app = LaunchRequest::App {
+            app_id: "viewer.desktop".into(),
+            targets: vec![],
+        };
+        assert!(admits(&open(), &Caller::Unnamed));
+        assert!(admits(&open(), &Caller::Named("x".into())));
+        assert!(!admits(&app, &Caller::Unnamed));
+        assert!(admits(&app, &Caller::Named("x".into())));
     }
 
     /// The point of point 3: the ledger says who caused what.
