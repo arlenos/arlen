@@ -597,32 +597,63 @@ pub async fn connect_wifi_password(ssid: String, password: String) -> Result<(),
 }
 
 /// Disconnects WiFi by finding the active wifi device.
+///
+/// **The device lookup this replaces was broken on any non-English desktop.** It
+/// matched the state column against the literal "connected", and NetworkManager
+/// translates that word - the German catalogue has `verbunden` - so the loop
+/// found nothing and the function returned "No connected wifi device found"
+/// while WiFi was plainly connected. Matching the state enum instead removes the
+/// language from the question, the same fix as the radio toggle.
+///
+/// The lookup half is the walk used by `parse_device_status` and
+/// `scan_access_points`, both checked against a live NetworkManager. The
+/// `Disconnect` call itself is not exercised here: it would drop your session's
+/// WiFi, so it is written against the documented interface and wants one run on
+/// a machine that is not the one being developed on.
 #[tauri::command]
 pub async fn disconnect_wifi() -> Result<(), String> {
-    // Find the wifi device name.
-    let output = tokio::process::Command::new("nmcli")
-        .args(["-t", "-f", "DEVICE,TYPE,STATE", "device"])
-        .output()
+    let conn = zbus::Connection::system()
         .await
-        .map_err(|e| format!("nmcli failed: {e}"))?;
+        .map_err(|e| format!("system bus: {e}"))?;
+    let manager = zbus::Proxy::new(
+        &conn,
+        "org.freedesktop.NetworkManager",
+        "/org/freedesktop/NetworkManager",
+        "org.freedesktop.NetworkManager",
+    )
+    .await
+    .map_err(|e| format!("NetworkManager unavailable: {e}"))?;
+    let devices: Vec<zbus::zvariant::OwnedObjectPath> = manager
+        .call("GetDevices", &())
+        .await
+        .map_err(|e| format!("GetDevices: {e}"))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.split(':').collect();
-        if parts.len() >= 3 && parts[1] == "wifi" && parts[2] == "connected" {
-            let result = tokio::process::Command::new("nmcli")
-                .args(["dev", "disconnect", parts[0]])
-                .output()
-                .await
-                .map_err(|e| format!("nmcli disconnect: {e}"))?;
-            if !result.status.success() {
-                return Err(String::from_utf8_lossy(&result.stderr)
-                    .trim()
-                    .to_string());
-            }
-            invalidate_wifi_cache();
-            return Ok(());
+    for path in devices {
+        let Ok(device) = zbus::Proxy::new(
+            &conn,
+            "org.freedesktop.NetworkManager",
+            path,
+            "org.freedesktop.NetworkManager.Device",
+        )
+        .await
+        else {
+            continue;
+        };
+        let (Ok(kind), Ok(state)) = (
+            device.get_property::<u32>("DeviceType").await,
+            device.get_property::<u32>("State").await,
+        ) else {
+            continue;
+        };
+        if kind != NM_DEVICE_TYPE_WIFI || state != NM_DEVICE_STATE_ACTIVATED {
+            continue;
         }
+        device
+            .call::<_, _, ()>("Disconnect", &())
+            .await
+            .map_err(|e| format!("Disconnect: {e}"))?;
+        invalidate_wifi_cache();
+        return Ok(());
     }
     Err("No connected wifi device found".into())
 }
@@ -664,16 +695,24 @@ pub async fn get_wifi_enabled() -> Result<bool, String> {
 /// Enable or disable the WiFi radio via NetworkManager.
 #[tauri::command]
 pub async fn set_wifi_enabled(enabled: bool) -> Result<(), String> {
-    let val = if enabled { "on" } else { "off" };
-    let status = tokio::process::Command::new("nmcli")
-        .args(["radio", "wifi", val])
-        .status()
+    let conn = zbus::Connection::system()
         .await
-        .map_err(|e| format!("nmcli radio wifi {val}: {e}"))?;
-    if !status.success() {
-        return Err(format!("nmcli radio wifi {val} returned non-zero"));
-    }
-    Ok(())
+        .map_err(|e| format!("system bus: {e}"))?;
+    let manager = zbus::Proxy::new(
+        &conn,
+        "org.freedesktop.NetworkManager",
+        "/org/freedesktop/NetworkManager",
+        "org.freedesktop.NetworkManager",
+    )
+    .await
+    .map_err(|e| format!("NetworkManager unavailable: {e}"))?;
+    // The same property `get_wifi_enabled` reads, and the same authorisation
+    // `nmcli radio wifi on|off` needed: NetworkManager asks polkit for
+    // network-control either way, so this is not a privilege change.
+    manager
+        .set_property("WirelessEnabled", enabled)
+        .await
+        .map_err(|e| format!("WirelessEnabled: {e}"))
 }
 
 /// Returns whether airplane mode is active (all WiFi radios soft-blocked).
