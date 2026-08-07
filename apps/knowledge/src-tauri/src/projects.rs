@@ -113,13 +113,21 @@ async fn list_projects(
 }
 
 /// One project's live members, by the bitemporal FILE_PART_OF edge.
+///
+/// Liveness comes from the EDGE stamps alone, and that is not a shortcut: a
+/// `File` node has no `expired_at` column - only `Project` does - and this
+/// engine refuses a labelled match that names a column the table lacks
+/// ("Binder exception: Cannot find property expired_at for f"). An earlier cut
+/// of this query filtered on it and would have failed every members listing,
+/// silently, with the frontend showing its fixture instead. Membership is what
+/// the question is about anyway, and the edge carries it.
 async fn list_members(
     client: &os_sdk::graph::UnixGraphClient,
     project: &str,
 ) -> Result<Vec<BrowserEntry>, String> {
     let cypher = format!(
         "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project {{name: '{}'}}) \
-         WHERE r.invalid_at IS NULL AND r.expired_at IS NULL AND f.expired_at IS NULL \
+         WHERE r.invalid_at IS NULL AND r.expired_at IS NULL \
          RETURN f.path AS path, f.last_accessed AS last_accessed \
          ORDER BY f.path LIMIT 2000",
         escape_cypher_literal(project)
