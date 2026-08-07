@@ -383,23 +383,99 @@ async fn watch_sleep(clock: std::sync::Arc<Clock>, socket: String) {
     warn!("sleep events ended; the stopwatch will count time spent asleep");
 }
 
+/// The callers allowed to reach the clock's state.
+///
+/// The app, and nothing else. `arlen-run` binds the session bus into every
+/// confined app and the bus is default-allow, so without this any app on the
+/// machine could read the alarm labels - the user's own words - or delete an
+/// alarm, which fails by silence and is the whole failure for an alarm.
+///
+/// `clock` is what the resolver returns for `/usr/bin/arlen-clock`, which is
+/// where the image installs it; the desktop entry states the same id so the
+/// launcher and the daemon cannot disagree about who this app is. The dev entry
+/// is the cargo-run binary, admitted only in a debug build so `just dev` and the
+/// screenshot harness reach a daemon that a release build would refuse.
+const ADMITTED: &[&str] = &["clock"];
+/// The same app run from a build tree. Debug only, deliberately.
+#[cfg(debug_assertions)]
+const DEV_ADMITTED: &[&str] = &["dev.arlen-clock-app"];
+
+/// Whether a resolved caller may drive the clock.
+fn caller_admitted(app_id: &str) -> bool {
+    if ADMITTED.contains(&app_id) {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    if DEV_ADMITTED.contains(&app_id) {
+        return true;
+    }
+    false
+}
+
+/// The caller's attested app id, or why it could not be established.
+///
+/// The bus attests the sender and turns it into a pid the caller cannot forge;
+/// the start time is read either side of the resolve so a pid recycled underneath
+/// it is refused rather than mistaken for the app. Duplicated from the power
+/// daemon rather than shared: it is twenty lines, the crates are separate
+/// workspaces, and a shared crate for this is a change to make once across all of
+/// them rather than incidentally here.
+async fn resolve_caller_app_id(
+    header: &zbus::message::Header<'_>,
+    connection: &zbus::Connection,
+) -> Result<String, String> {
+    use arlen_permissions::identity::{app_id_from_pid, pid_start_time};
+    let sender = header
+        .sender()
+        .ok_or_else(|| "no sender in message".to_string())?;
+    let proxy = zbus::fdo::DBusProxy::new(connection)
+        .await
+        .map_err(|e| format!("DBusProxy: {e}"))?;
+    let pid = proxy
+        .get_connection_unix_process_id(sender.clone().into())
+        .await
+        .map_err(|e| format!("get caller pid: {e}"))?;
+    let start_before = pid_start_time(pid).map_err(|e| format!("pid start time: {e}"))?;
+    let app_id = app_id_from_pid(pid).map_err(|e| format!("resolve app id: {e}"))?;
+    let start_after = pid_start_time(pid).map_err(|e| format!("pid start time: {e}"))?;
+    if start_before != start_after {
+        return Err("pid recycled during resolution".to_string());
+    }
+    Ok(app_id)
+}
+
+/// Refuse a caller the clock does not know.
+async fn admit(
+    header: &zbus::message::Header<'_>,
+    connection: &zbus::Connection,
+) -> zbus::fdo::Result<()> {
+    match resolve_caller_app_id(header, connection).await {
+        Ok(id) if caller_admitted(&id) => Ok(()),
+        Ok(id) => {
+            warn!(app_id = %id, "refused a clock call from an app that is not the clock");
+            Err(zbus::fdo::Error::AccessDenied("not the clock app".into()))
+        }
+        Err(e) => {
+            warn!("refused a clock call from an unresolved caller: {e}");
+            Err(zbus::fdo::Error::AccessDenied("unresolved caller".into()))
+        }
+    }
+}
+
 /// The interface the app talks to.
 ///
-/// **Every method here is ungated, and that is an open item rather than a
-/// decision.** The session bus is default-allow and `arlen-run` binds its socket
-/// into every confined app, so any app on the machine can call these: read the
-/// alarm labels through `State`, which are the user's own words ("Doctor 9:15"),
-/// or delete an alarm outright. The first is disclosure of exactly the shape
-/// that was found on `org.arlen.AI1.explain_system`; the second fails by silence,
-/// which for an alarm is the whole failure.
+/// **Every method resolves its caller and refuses anyone but the clock app.**
+/// The session bus is default-allow and `arlen-run` binds its socket into every
+/// confined app, so without this any app on the machine could read the alarm
+/// labels through `State` - the user's own words, "Doctor 9:15" - or delete an
+/// alarm outright. The first is the disclosure shape found on
+/// `org.arlen.AI1.explain_system`; the second fails by silence, which for an
+/// alarm is the whole failure.
 ///
-/// It is not gated yet because gating means resolving the caller to an app id
-/// and admitting a list, and **the clock app is not packaged yet, so its attested
-/// id is not a fact**. Picking one now would repeat the installd mistake, where an
-/// anchored check was written against a path the binary does not have and so
-/// refused the only caller that mattered. The gate lands with the app's packaging,
-/// when the id is something the resolver actually returns. `dev/scripts/check-dbus-callers.py`
-/// reports these sixteen methods and is meant to keep reporting them until then.
+/// The gate could only be written once the app was packaged, because it admits
+/// the id the resolver actually returns for the installed binary rather than one
+/// picked in advance - the installd mistake was an anchored check against a path
+/// its binary does not have, which refused the only caller that mattered.
 struct ClockInterface {
     clock: Arc<Clock>,
 }
@@ -407,13 +483,24 @@ struct ClockInterface {
 #[zbus::interface(name = "org.arlen.Clock1")]
 impl ClockInterface {
     /// Everything the app renders, in one read.
-    async fn state(&self) -> String {
+    async fn state(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
+        admit(&header, connection).await?;
         let state = self.clock.state.lock().await;
-        serde_json::to_string(&*state).unwrap_or_else(|_| "{}".to_string())
+        Ok(serde_json::to_string(&*state).unwrap_or_else(|_| "{}".to_string()))
     }
 
     /// Add or replace an alarm.
-    async fn set_alarm(&self, alarm_json: String) -> zbus::fdo::Result<()> {
+    async fn set_alarm(
+        &self,
+        alarm_json: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         let alarm: Alarm = serde_json::from_str(&alarm_json)
             .map_err(|e| zbus::fdo::Error::InvalidArgs(format!("not an alarm: {e}")))?;
         self.clock.apply(Command::SetAlarm(alarm)).await;
@@ -421,18 +508,39 @@ impl ClockInterface {
     }
 
     /// Arm or disarm one.
-    async fn toggle_alarm(&self, id: String, enabled: bool) {
+    async fn toggle_alarm(
+        &self,
+        id: String,
+        enabled: bool,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         self.clock.apply(Command::ToggleAlarm { id, enabled }).await;
+        Ok(())
     }
 
     /// Remove one.
-    async fn delete_alarm(&self, id: String) {
+    async fn delete_alarm(
+        &self,
+        id: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         self.clock.apply(Command::DeleteAlarm { id }).await;
+        Ok(())
     }
 
     /// Start a countdown. The id is minted here: two apps starting a timer at
     /// the same moment must not collide on one.
-    async fn timer_start(&self, duration_ms: i64) -> String {
+    async fn timer_start(
+        &self,
+        duration_ms: i64,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
+        admit(&header, connection).await?;
         let id = uuid::Uuid::now_v7().to_string();
         self.clock
             .apply(Command::TimerStart {
@@ -440,20 +548,35 @@ impl ClockInterface {
                 duration_ms,
             })
             .await;
-        id
+        Ok(id)
     }
 
     /// Pause or resume one. Takes the wanted state rather than a toggle, so a
     /// repeat is a no-op instead of undoing the first press.
-    async fn timer_pause(&self, id: String, paused: bool) {
+    async fn timer_pause(
+        &self,
+        id: String,
+        paused: bool,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         self.clock
             .apply(Command::TimerSetPaused { id, paused })
             .await;
+        Ok(())
     }
 
     /// Remove one.
-    async fn timer_cancel(&self, id: String) {
+    async fn timer_cancel(
+        &self,
+        id: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         self.clock.apply(Command::TimerCancel { id }).await;
+        Ok(())
     }
 
     /// Begin a focus session.
@@ -461,17 +584,35 @@ impl ClockInterface {
     /// `held` is empty until the notification daemon is asked: a session that
     /// listed what it suppresses without having suppressed anything would be
     /// the dishonesty the design rules out.
-    async fn focus_start(&self) {
+    async fn focus_start(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         self.clock.apply(Command::FocusStart { held: vec![] }).await;
+        Ok(())
     }
 
     /// End it early.
-    async fn focus_end(&self) {
+    async fn focus_end(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         self.clock.apply(Command::FocusEnd).await;
+        Ok(())
     }
 
     /// Change the focus configuration.
-    async fn focus_config(&self, config_json: String) -> zbus::fdo::Result<()> {
+    async fn focus_config(
+        &self,
+        config_json: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         let config: FocusConfig = serde_json::from_str(&config_json)
             .map_err(|e| zbus::fdo::Error::InvalidArgs(format!("not a focus config: {e}")))?;
         self.clock.apply(Command::FocusConfigure(config)).await;
@@ -479,33 +620,71 @@ impl ClockInterface {
     }
 
     /// Start or resume the stopwatch.
-    async fn stopwatch_start(&self) {
+    async fn stopwatch_start(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         self.clock.apply(Command::StopwatchStart).await;
+        Ok(())
     }
 
     /// Pause it.
-    async fn stopwatch_pause(&self) {
+    async fn stopwatch_pause(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         self.clock.apply(Command::StopwatchPause).await;
+        Ok(())
     }
 
     /// Record a lap.
-    async fn stopwatch_lap(&self) {
+    async fn stopwatch_lap(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         self.clock.apply(Command::StopwatchLap).await;
+        Ok(())
     }
 
     /// Back to zero.
-    async fn stopwatch_reset(&self) {
+    async fn stopwatch_reset(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         self.clock.apply(Command::StopwatchReset).await;
+        Ok(())
     }
 
     /// Show a city, by its id in the shared dataset.
-    async fn world_add(&self, id: String) {
+    async fn world_add(
+        &self,
+        id: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         self.clock.apply(Command::WorldAdd { id }).await;
+        Ok(())
     }
 
     /// Stop showing one.
-    async fn world_remove(&self, id: String) {
+    async fn world_remove(
+        &self,
+        id: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        admit(&header, connection).await?;
         self.clock.apply(Command::WorldRemove { id }).await;
+        Ok(())
     }
 }
 
