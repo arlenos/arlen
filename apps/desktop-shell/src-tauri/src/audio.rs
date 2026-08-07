@@ -236,9 +236,16 @@ fn get_audio_outputs_impl() -> Result<Vec<AudioOutput>, String> {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
 
-    // Parse `pactl list sinks` for Name + Description per sink.
+    // JSON, not the text listing, and for the same reason the per-app list uses
+    // it: a sink's name and description are strings we did not choose - any
+    // client may create one with `module-null-sink` and set them - and libpulse
+    // writes property values out raw, newlines included. A line-oriented parse of
+    // the text form therefore lets one forge a record, which here would put a
+    // device of its choosing in the output picker with an id the next
+    // `set-default-sink` would then use. In JSON the record boundaries come from
+    // the structure and a newline in a value is escaped.
     let output = std::process::Command::new("pactl")
-        .args(["list", "sinks"])
+        .args(["-f", "json", "list", "sinks"])
         .output()
         .map_err(|e| format!("pactl not found: {e}"))?;
 
@@ -246,30 +253,24 @@ fn get_audio_outputs_impl() -> Result<Vec<AudioOutput>, String> {
         return Err("pactl list sinks failed".into());
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut outputs = Vec::new();
-    let mut current_name = String::new();
-    let mut current_desc = String::new();
-
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if let Some(name) = trimmed.strip_prefix("Name: ") {
-            current_name = name.to_string();
-        } else if let Some(desc) = trimmed.strip_prefix("Description: ") {
-            current_desc = desc.to_string();
-            // We have both Name and Description, emit the entry.
-            if !current_name.is_empty() {
-                outputs.push(AudioOutput {
-                    id: current_name.clone(),
-                    name: current_desc.clone(),
-                    is_default: current_name == default_name,
-                });
-            }
-        } else if trimmed.starts_with("Sink #") {
-            current_name.clear();
-            current_desc.clear();
-        }
-    }
+    let sinks: Vec<serde_json::Value> =
+        serde_json::from_slice(&output.stdout).unwrap_or_default();
+    let outputs = sinks
+        .iter()
+        .filter_map(|sink| {
+            let id = sink.get("name")?.as_str()?.to_string();
+            let name = sink
+                .get("description")
+                .and_then(|d| d.as_str())
+                .unwrap_or(&id)
+                .to_string();
+            Some(AudioOutput {
+                is_default: id == default_name,
+                id,
+                name,
+            })
+        })
+        .collect();
 
     Ok(outputs)
 }
@@ -317,8 +318,11 @@ fn get_audio_inputs_impl() -> Result<Vec<AudioInput>, String> {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
 
+    // JSON for the same reason as the sink list: a source's name and description
+    // are not ours, and the text form's record boundaries can be forged by a
+    // value containing a newline.
     let output = std::process::Command::new("pactl")
-        .args(["list", "sources"])
+        .args(["-f", "json", "list", "sources"])
         .output()
         .map_err(|e| format!("pactl not found: {e}"))?;
 
@@ -326,30 +330,28 @@ fn get_audio_inputs_impl() -> Result<Vec<AudioInput>, String> {
         return Err("pactl list sources failed".into());
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut inputs = Vec::new();
-    let mut current_name = String::new();
-    let mut current_desc = String::new();
-
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if let Some(name) = trimmed.strip_prefix("Name: ") {
-            current_name = name.to_string();
-        } else if let Some(desc) = trimmed.strip_prefix("Description: ") {
-            current_desc = desc.to_string();
-            // Filter out monitor sources (they contain ".monitor").
-            if !current_name.contains(".monitor") && !current_name.is_empty() {
-                inputs.push(AudioInput {
-                    id: current_name.clone(),
-                    name: current_desc.clone(),
-                    is_default: current_name == default_src,
-                });
+    let sources: Vec<serde_json::Value> =
+        serde_json::from_slice(&output.stdout).unwrap_or_default();
+    let inputs = sources
+        .iter()
+        .filter_map(|source| {
+            let id = source.get("name")?.as_str()?.to_string();
+            // Monitor sources are the loopback of an output, not a microphone.
+            if id.contains(".monitor") {
+                return None;
             }
-        } else if trimmed.starts_with("Source #") {
-            current_name.clear();
-            current_desc.clear();
-        }
-    }
+            let name = source
+                .get("description")
+                .and_then(|d| d.as_str())
+                .unwrap_or(&id)
+                .to_string();
+            Some(AudioInput {
+                is_default: id == default_src,
+                id,
+                name,
+            })
+        })
+        .collect();
 
     Ok(inputs)
 }
