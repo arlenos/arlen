@@ -1530,8 +1530,6 @@ mod crate_reachability {
          "`sdk/config-format` and `daemons/config-broker` do this work, and the compositor parses its own keybindings. The one mention left is a commented-out dependency in `apps/settings/src-tauri/Cargo.toml` pointing at `github.com/arlenos/sdk`, a repo from before the monorepo."),
         ("sdk/tauri-plugin-clipboard",
          "Not superseded - the clipboard client it wraps is live in `os-sdk` and used there. This is the Tauri-plugin shell around it, waiting for an app to register the plugin."),
-        ("sdk/i18n",
-         "Built recently, consumer still to come."),
         ("daemons/integration-packages",
          "Built recently. IP-R5's manifest and permission-profile half; the installd side that would call it is not wired."),
         ("contracts/lenv",
