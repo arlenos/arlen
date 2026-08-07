@@ -100,6 +100,20 @@ export function groupByDay(items: TimelineItem[]): TimelineDay[] {
   return out;
 }
 
+/// "Today" / "Yesterday" in the caller's locale, capitalised for a header.
+///
+/// One function because there were two: `dayLabel` was moved onto
+/// `Intl.RelativeTimeFormat` and left a comment explaining why the
+/// `locale.startsWith("de")` ladder was wrong - "a ladder that knew exactly two
+/// languages and handed English to everyone else" - while `dayLabelShort`, three
+/// lines below that comment, still had the ladder. Sharing the word is what
+/// stops the two drifting again.
+function relativeDay(days: 0 | -1, locale: string): string {
+  const word = new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(days, "day");
+  // The locale data returns it mid-sentence; a label is capitalised.
+  return word.charAt(0).toLocaleUpperCase(locale) + word.slice(1);
+}
+
 /// "Today", "Yesterday", or the written date, for the day headers and the
 /// scrub grip.
 ///
@@ -113,9 +127,7 @@ export function dayLabel(date: number, locale: string): string {
   const today = localMidnight(Math.floor(Date.now() / 1000));
   const days = Math.round((date - today) / 86400);
   if (days === 0 || days === -1) {
-    const word = new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(days, "day");
-    // A day header is capitalised; the locale data returns it mid-sentence.
-    return word.charAt(0).toLocaleUpperCase(locale) + word.slice(1);
+    return relativeDay(days, locale);
   }
   return new Date(date * 1000).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" });
 }
@@ -129,8 +141,8 @@ export function clock(unix: number, locale: string): string {
 /// the rail's edges; the full label lives in aria-valuetext and the day heads.
 export function dayLabelShort(date: number, locale: string): string {
   const today = localMidnight(Math.floor(Date.now() / 1000));
-  if (date === today) return locale.startsWith("de") ? "Heute" : "Today";
-  if (date === today - 86400) return locale.startsWith("de") ? "Gestern" : "Yesterday";
+  if (date === today) return relativeDay(0, locale);
+  if (date === today - 86400) return relativeDay(-1, locale);
   return new Date(date * 1000).toLocaleDateString(locale, { weekday: "short", day: "numeric" });
 }
 
