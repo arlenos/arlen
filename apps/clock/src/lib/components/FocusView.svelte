@@ -119,7 +119,8 @@
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
   }
   .fo :global(.fo-action) {
-    width: 9rem;
+    width: 100%;
+    max-width: 16rem;
   }
   .fo-card.idle {
     gap: 0.9rem;

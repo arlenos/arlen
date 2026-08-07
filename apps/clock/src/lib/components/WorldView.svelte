@@ -107,8 +107,7 @@
   }
   .wo-add {
     position: relative;
-    align-self: center;
-    width: 18rem;
+    align-self: stretch;
   }
   .wo-matches {
     position: absolute;

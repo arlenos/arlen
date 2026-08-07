@@ -77,12 +77,16 @@
   .sw-total.idle {
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
+  /* The twins span the column together, half each - same width discipline
+     as every tile below them. */
   .sw-twins {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
+    align-self: stretch;
   }
   .sw-twins :global(.sw-twin) {
-    width: 7rem;
+    width: 100%;
   }
   .sw-laps {
     display: flex;
