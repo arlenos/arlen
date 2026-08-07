@@ -14,6 +14,7 @@
 /// S18-A content-origin persistence + the ebpf pid->app resolution are coder seams.
 
 import { invoke } from "@tauri-apps/api/core";
+import type { Translate } from "@arlen/ui-kit/i18n";
 
 /// How Arlen came to record a step (daemons/knowledge provenance.rs).
 export type Provenance = "user" | "graph" | "external" | "model" | "agent";
@@ -23,11 +24,22 @@ export type Fidelity = "resolved" | "pid" | "proxy";
 
 /// One hop of lineage.
 export interface ProvenanceStep {
-  /// The fact verb, for the graph/external cases ("Part of", "Last opened by").
-  relation?: string;
+  /// Which fact this hop states, for the graph/external cases.
+  ///
+  /// A closed set rather than a phrase, because the sentence around it differs
+  /// per language: English puts the verb first ("Last opened by X"), German puts
+  /// it last. A free-form verb could only ever be glued to a fixed frame.
+  relation?: "partOf" | "lastOpenedBy" | "downloadedFrom";
   actor: string;
   origin: Provenance;
   /// A coarse, human "when" ("2 hours ago", "last week").
+  ///
+  /// Still a rendered string rather than a timestamp, so it arrives in whatever
+  /// language wrote it - the fixtures write English and it shows through beside
+  /// German sentences. The fix is a timestamp here and one shared relative-time
+  /// formatter over `Intl.RelativeTimeFormat`; there are three hand-rolled copies
+  /// of that in the tree already (harness, settings, this), so it wants doing
+  /// once in the kit rather than a fourth time here.
   when: string;
   fidelity: Fidelity;
   /// Only true when a C2PA content credential actually backs the external origin.
@@ -52,14 +64,14 @@ const FIXTURES: Record<string, ProvenanceChain> = {
     subject: "budget-2026.xlsx",
     steps: [
       { origin: "user", actor: "you", when: "last week", fidelity: "resolved" },
-      { relation: "Part of", origin: "graph", actor: "project Atlas", when: "3 days ago", fidelity: "resolved" },
-      { relation: "Last opened by", origin: "graph", actor: "", when: "2 hours ago", fidelity: "pid" },
+      { relation: "partOf", origin: "graph", actor: "project Atlas", when: "3 days ago", fidelity: "resolved" },
+      { relation: "lastOpenedBy", origin: "graph", actor: "", when: "2 hours ago", fidelity: "pid" },
     ],
     horizon: "deeper_gated",
   },
   external: {
     subject: "report.pdf",
-    steps: [{ relation: "Downloaded from", origin: "external", actor: "example.com", when: "yesterday", fidelity: "resolved" }],
+    steps: [{ relation: "downloadedFrom", origin: "external", actor: "example.com", when: "yesterday", fidelity: "resolved" }],
     horizon: "deeper_gated",
   },
   attested: {
@@ -94,33 +106,41 @@ export async function loadProvenance(ref: string): Promise<ProvenanceChain> {
 }
 
 /// The actor as we may honestly name it - fidelity never overclaims.
-function honestActor(s: ProvenanceStep): string {
-  if (s.fidelity === "pid") return "a process";
-  if (s.fidelity === "proxy") return "the focused window";
+function honestActor(t: Translate, s: ProvenanceStep): string {
+  if (s.fidelity === "pid") return t("f.prov.aProcess");
+  if (s.fidelity === "proxy") return t("f.prov.focusedWindow");
   return s.actor;
 }
 
 /// One step as a single honest sentence. The trust caveat is baked in; nothing
 /// reads as verified unless a content credential backs it.
-export function stepLine(s: ProvenanceStep): string {
-  const actor = honestActor(s);
+///
+/// The translator is a parameter: this is called from a render site, and a
+/// function reading the store itself would pin whichever language was current
+/// when it first ran.
+export function stepLine(t: Translate, s: ProvenanceStep): string {
+  const actor = honestActor(t, s);
+  const when = s.when;
   switch (s.origin) {
     case "user":
-      return `Arlen recorded this as yours, ${s.when}.`;
+      return t("f.prov.user", { when });
     case "graph":
-      return `${s.relation} ${actor}, ${s.when}. Recorded from what Arlen observed.`;
+      return s.relation === "lastOpenedBy"
+        ? t("f.prov.lastOpenedBy", { actor, when })
+        : t("f.prov.partOf", { actor, when });
     case "external":
-      return s.attested
-        ? `Verified as from ${actor}, ${s.when}, by a content credential.`
-        : `${s.relation ? `${s.relation} ${actor}` : "Came from an external document"}, ${s.when}. Arlen did not verify this.`;
+      if (s.attested) return t("f.prov.attested", { actor, when });
+      return s.relation === "downloadedFrom"
+        ? t("f.prov.downloadedFrom", { actor, when })
+        : t("f.prov.externalPlain", { when });
     case "model":
-      return `The assistant asserted this from its reasoning, ${s.when}.`;
+      return t("f.prov.model", { when });
     case "agent":
-      return `The idle curator consolidated this, ${s.when}.`;
+      return t("f.prov.agent", { when });
   }
 }
 
 /// The horizon line, or null when the trail is complete. Never a faked full trail.
-export function horizonLine(chain: ProvenanceChain): string | null {
-  return chain.horizon === "deeper_gated" ? "Deeper history isn't available yet." : null;
+export function horizonLine(t: Translate, chain: ProvenanceChain): string | null {
+  return chain.horizon === "deeper_gated" ? t("f.prov.horizon") : null;
 }

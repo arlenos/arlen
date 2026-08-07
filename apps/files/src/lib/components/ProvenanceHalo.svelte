@@ -41,11 +41,11 @@
       <div class="ph-subject">{$chain.subject}</div>
       <div class="ph-steps">
         {#each $chain.steps as s, i (i)}
-          <p class="ph-step" class:attested={s.attested}>{stepLine(s)}</p>
+          <p class="ph-step" class:attested={s.attested}>{stepLine($t, s)}</p>
         {/each}
       </div>
-      {#if horizonLine($chain)}
-        <p class="ph-horizon">{horizonLine($chain)}</p>
+      {#if horizonLine($t, $chain)}
+        <p class="ph-horizon">{horizonLine($t, $chain)}</p>
       {/if}
     {:else}
       <p class="ph-loading">{$t("f.prov.loading")}</p>
