@@ -71,10 +71,6 @@ KNOWN_RETURN_MISMATCHES: dict[str, str] = {
         "install variants are arlen-ui's store design item; the card model changes "
         "with it."
     ),
-    "store_outdated": (
-        "the pending-updates surface is arlen-ui's; the backend `PendingUpdate` and "
-        "the frontend one are different shapes that have not been reconciled yet."
-    ),
 }
 
 
