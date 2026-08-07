@@ -12,6 +12,7 @@ pub mod ai;
 pub mod brightness;
 pub mod capsules;
 pub mod config;
+pub mod wallpaper;
 pub mod displays;
 pub mod extensions;
 pub mod input;
