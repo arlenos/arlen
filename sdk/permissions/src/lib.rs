@@ -583,6 +583,16 @@ pub struct PowerPermissions {
     /// May change the active power profile (performance/balanced/power-saver).
     #[serde(default)]
     pub set_profile: bool,
+    /// May ask for the machine to be woken at a given moment, and withdraw that
+    /// request, via `org.arlen.Power1`.
+    ///
+    /// Separate from `suspend` because they are not the same authority: a clock
+    /// has to arm a wake and has no business putting the machine to sleep, and
+    /// folding the two would hand every alarm app the power to suspend. The one
+    /// wake slot means a grantee can still displace another's wake, which is a
+    /// nuisance rather than a capability, and the reason this is a grant at all.
+    #[serde(default)]
+    pub schedule_wake: bool,
 }
 
 // ── Search ──
