@@ -233,9 +233,7 @@
   {#if cfg.schedule === "sunset_sunrise"}
     <Row
       label={$t("s.night.lat")}
-      description={locationUnset
-        ? "Set both coordinates to enable sunset/sunrise mode."
-        : undefined}
+      description={locationUnset ? $t("s.night.needCoords") : undefined}
     >
       {#snippet control()}
         <NumberInput
