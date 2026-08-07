@@ -125,52 +125,28 @@ build crate="":
     if [ -n "{{crate}}" ]; then cargo build --manifest-path "{{ROOT}}/{{crate}}/Cargo.toml"; exit 0; fi
     for c in {{RUST_CRATES}}; do echo "== build $c =="; cargo build --manifest-path "{{ROOT}}/$c/Cargo.toml"; done
 
-# Test one crate or the whole matrix. nextest gives process-per-test isolation +
-# parallel scheduling + cleaner output; doctests run separately since nextest does
-# not execute them; the installd workspace and knowledge daemon keep serial
-# execution for their shared-state tests, matching the CI per-path rule.
+# Test one crate (e.g. `just test daemons/knowledge`) or the whole matrix, with
+# the exact command CI runs, from the same script CI runs it from.
 test crate="":
     #!/usr/bin/env bash
     set -euo pipefail
-    run_one() {
-        local c="$1" extra=""
-        case "$c" in
-            daemons/installd|daemons/knowledge) extra="--test-threads=1" ;;
-        esac
-        # `--no-tests=pass`: nextest exits 4 on a crate with no tests, and some
-        # legitimately have none - a proto crate is generated types. Without
-        # this the loop below dies at the SECOND crate, which is what it had
-        # been doing: `just test` could never reach crate 3 of 88. CI runs
-        # `cargo test`, which passes a test-free crate, so this also stops the
-        # local gate from disagreeing with the one that gates merges.
-        cargo nextest run --no-tests=pass --manifest-path "{{ROOT}}/$c/Cargo.toml" $extra
-        # Doc tests need a library target, and several crates here are binaries
-        # only (event-bus among them), where cargo exits 101 with "no library
-        # targets found". That is the absence of a thing to test, not a failing
-        # test, and it used to kill the loop at crate 22 of 88. Only that exact
-        # message is forgiven; any real doc-test failure still fails, which is
-        # why this is not a `|| true`.
-        if ! doc_out=$(cargo test --doc --manifest-path "{{ROOT}}/$c/Cargo.toml" 2>&1); then
-            if ! grep -q 'no library targets found' <<<"$doc_out"; then
-                printf '%s\n' "$doc_out"
-                return 1
-            fi
-        fi
-    }
-    if [ -n "{{crate}}" ]; then run_one "{{crate}}"; exit 0; fi
-    for c in {{RUST_CRATES}}; do echo "== test $c =="; run_one "$c"; done
+    # Through dev/check-crate.sh, which CI's matrix also calls. This used to run
+    # nextest, which needed `--no-tests=pass` for its exit-4 on a test-free crate
+    # and a second `cargo test --doc` pass that had to forgive "no library targets
+    # found" - two workarounds for two ways the local runner disagreed with the
+    # one gating merges. `cargo test` needs neither, and now there is one answer.
+    if [ -n "{{crate}}" ]; then "{{ROOT}}/dev/check-crate.sh" test "{{crate}}"; exit 0; fi
+    for c in {{RUST_CRATES}}; do echo "== test $c =="; "{{ROOT}}/dev/check-crate.sh" test "$c"; done
 
 # Cheap local mirror of CI: cargo check every rust crate + svelte-check + vitest every frontend.
 check:
     #!/usr/bin/env bash
     set -euo pipefail
-    # `--all-targets`, because CI runs `cargo test` and a bare `cargo check` builds
-    # only the lib and the bins. Every `#[cfg(test)]` module, every integration
-    # test, every bench is invisible to it - so this recipe could be green on a
-    # tree CI fails, which it was: four crates at once, each a struct literal in
-    # test code that a new field had left behind. A local mirror that agrees with
-    # CI only on the code CI shares with it is not a mirror.
-    for c in {{RUST_CRATES}}; do echo "== check $c =="; cargo check --all-targets --manifest-path "{{ROOT}}/$c/Cargo.toml"; done
+    # Through dev/check-crate.sh, which CI's matrix also calls, so the two cannot
+    # spell the same job differently. They did: this loop ran a bare `cargo check`,
+    # which never compiles a `#[cfg(test)]` module, while CI's `cargo test` does -
+    # so it called four crates green that CI called red.
+    for c in {{RUST_CRATES}}; do echo "== check $c =="; "{{ROOT}}/dev/check-crate.sh" check "$c"; done
     for f in {{FRONTENDS}}; do
         # The package's OWN check script, not a re-implementation of it: this
         # used to run a bare `svelte-check`, which skipped the `svelte-kit sync`
