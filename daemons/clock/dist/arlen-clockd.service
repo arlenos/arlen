@@ -41,18 +41,26 @@ RestartSec=2
 
 # The mount-namespace options (ProtectSystem, ProtectHome, PrivateTmp,
 # PrivateDevices, ProtectKernel*) are omitted, as they are on the audit daemon,
-# the consent broker, the AI engine, capsuled and powerd. Their stated reason is
-# that such a namespace makes /proc/<pid>/exe unreadable to a same-uid peer and
-# so breaks the app-id resolution those daemons depend on; here the clock is the
-# side being resolved - powerd reads /proc/<clockd-pid>/exe to check the
-# schedule_wake grant, and the notification daemon reads it to decide whether a
-# ringing alarm may pierce Do-Not-Disturb - so the same reason applies in the
-# other direction. Following the convention is the safe choice: this daemon holds
-# no secret, keeps its state under ~/.local/state/arlen/clock by its own code,
-# and would gain little from the isolation while risking both of those lookups.
-# (A spot-check on this host did not reproduce the EACCES those units describe;
-# that is written up in coder-reports rather than acted on here, since five
-# daemons rest on it and one measurement is not enough to move them.)
+# the consent broker, the AI engine, capsuled and powerd. Their reason is that
+# such a namespace makes a process unable to readlink ANOTHER process's
+# /proc/<pid>/exe, EACCES, even same-uid - so a daemon that resolves callers by
+# their binary path stops being able to.
+#
+# Measured again here, since it decides the whole file. A unit run with any one
+# of PrivateTmp=yes, ProtectSystem=strict or ProtectKernelTunables=yes cannot
+# read an outside process's exe link; with no options, or with ProtectProc or
+# NoNewPrivileges, it can. Note the direction: the restriction is on the
+# namespaced process READING others, not on others reading it - a hardened
+# process's own exe link stays readable from outside.
+#
+# Which is why this daemon can carry them and still be resolved by powerd (for
+# the schedule_wake grant) and by the notification daemon (for whether a ringing
+# alarm may pierce Do-Not-Disturb) - it is the side being read. It omits them
+# anyway, for a smaller reason: it holds no secret and keeps its state under
+# ~/.local/state/arlen/clock by its own code, so the isolation would buy little,
+# and matching its siblings is worth more than a marginal difference. If the
+# tree ever revisits this, the clock is a safe place to start, being a reader of
+# nobody.
 # The hardening that does NOT create a mount namespace is kept.
 RestrictAddressFamilies=AF_UNIX
 RestrictNamespaces=yes
