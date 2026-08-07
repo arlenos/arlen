@@ -21,6 +21,9 @@
 use arlen_ai_undo_core::undo_log::UndoState;
 use arlen_ai_undo_proto::RecentEntry;
 use audit_proto::read::StructuralView;
+use audit_proto::read_client::ReadClient;
+use std::collections::BTreeSet;
+use std::path::Path;
 
 /// What the audit ledger knows about an action, when the join resolves.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,12 +96,106 @@ fn describe(correlation_id: &str, audit: &[StructuralView]) -> Option<ActionDesc
         })
 }
 
+/// One action's chain of ledger entries, however the caller gets them.
+///
+/// A seam rather than a `ReadClient` field, for one reason: the guard this
+/// module exists to keep - that a row survives an unresolvable description -
+/// is only worth anything if it is tested against a reader that actually
+/// fails, and a live audit daemon cannot be made to fail on demand.
+#[async_trait::async_trait]
+pub trait AuditChains: Send + Sync {
+    /// The entries stamped with `correlation_id`, or an empty vec if the read
+    /// found nothing OR could not be made. **The two cases are deliberately not
+    /// distinguished**, because they have the same consequence for the caller
+    /// (an undescribed row) and distinguishing them would invite a caller to
+    /// treat one of them as a reason to hide the action.
+    async fn chain(&self, correlation_id: &str) -> Vec<StructuralView>;
+}
+
+/// The real reader: the audit daemon's read socket, one query per chain.
+///
+/// Per chain rather than one tail page of the ledger, which is the cheaper
+/// shape and the wrong one. A page is a guess that the action's entries are
+/// still near the head, so on a busy ledger the descriptions vanish for exactly
+/// the actions a user is most likely to want back - the degradation the guard
+/// above allows for, triggered by our own shortcut rather than by a real gap.
+/// The chains are small and few (a panel shows tens of rows), so the round
+/// trips are cheap and the answer is the true one.
+pub struct LedgerChains {
+    client: ReadClient,
+}
+
+/// Entries to read per chain. One action's chain is a gate decision, an
+/// execution and an outcome; this is well clear of that and still bounded.
+const CHAIN_LIMIT: u64 = 32;
+
+impl LedgerChains {
+    /// A reader against the canonical audit read socket.
+    pub fn at_default_socket() -> Self {
+        Self {
+            client: ReadClient::new(audit_proto::read::read_socket_path()),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl AuditChains for LedgerChains {
+    async fn chain(&self, correlation_id: &str) -> Vec<StructuralView> {
+        match self.client.for_call_chain(correlation_id, CHAIN_LIMIT).await {
+            Ok(page) => page.entries,
+            Err(e) => {
+                // Logged, not propagated: an audit daemon that is down must cost
+                // descriptions, never the undo itself.
+                tracing::debug!(error = %e, correlation_id, "audit chain unreadable");
+                Vec::new()
+            }
+        }
+    }
+}
+
+/// The recent-actions read: the signer's entries, newest first, each described
+/// by its audit chain where that resolves.
+///
+/// Best-effort at both halves and in different ways, which is the point. An
+/// unreachable **signer** yields no rows at all - there is nothing to offer an
+/// undo of, and inventing rows would be worse than an empty panel. An
+/// unreachable **audit daemon** yields rows with no description, because the
+/// action is still undoable and saying so is the whole job.
+pub async fn recent_rows(
+    signer_socket: &Path,
+    audit: &dyn AuditChains,
+    limit: u32,
+) -> Vec<UndoRow> {
+    let recent = match crate::undo_signer::fetch_recent(signer_socket, limit).await {
+        Ok(entries) => entries,
+        Err(e) => {
+            tracing::warn!(error = %e, "undo signer unreadable; recent actions empty");
+            return Vec::new();
+        }
+    };
+    // Distinct chains only. Several receipts can share one correlation id (a run
+    // that produced more than one reversible effect), and reading that chain
+    // once per receipt would multiply the round trips for an identical answer.
+    let chains: BTreeSet<&str> = recent
+        .iter()
+        .map(|r| r.entry.correlation_id.as_str())
+        .collect();
+    let mut views: Vec<StructuralView> = Vec::new();
+    for id in chains {
+        views.extend(audit.chain(id).await);
+    }
+    join_rows(&recent, &views)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use arlen_ai_undo_core::effect_model::{CanonicalPath, InverseReceipt, SettingTarget};
     use arlen_ai_undo_core::undo_log::UndoEntry;
+    use arlen_ai_undo_proto::{read_request, write_response, Request, Response};
     use audit_proto::{AuditKind, StructuralRecord};
+    use std::sync::{Arc, Mutex};
+    use tokio::net::UnixListener;
 
     fn entry(op: &str, chain: &str, inverse: InverseReceipt) -> RecentEntry {
         RecentEntry {
@@ -135,6 +232,114 @@ mod tests {
             project_id: None,
             entry_hash_hex: "00".to_string(),
         }
+    }
+
+    /// An audit side that records what it was asked and answers with `answer`.
+    struct FakeChains {
+        asked: Arc<Mutex<Vec<String>>>,
+        answer: Vec<StructuralView>,
+    }
+
+    #[async_trait::async_trait]
+    impl AuditChains for FakeChains {
+        async fn chain(&self, correlation_id: &str) -> Vec<StructuralView> {
+            self.asked.lock().unwrap().push(correlation_id.to_string());
+            self.answer
+                .iter()
+                .filter(|e| e.call_chain_id.as_deref() == Some(correlation_id))
+                .cloned()
+                .collect()
+        }
+    }
+
+    /// Serve one `ListRecent` on a temp socket and hand back `entries`.
+    fn serve_recent(dir: &std::path::Path, entries: Vec<RecentEntry>) -> std::path::PathBuf {
+        let socket = dir.join("signer.sock");
+        let listener = UnixListener::bind(&socket).unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            match read_request(&mut stream).await.unwrap() {
+                Request::ListRecent { .. } => {}
+                other => panic!("expected ListRecent, got {other:?}"),
+            }
+            write_response(&mut stream, &Response::Recent(entries)).await.unwrap();
+        });
+        socket
+    }
+
+    #[tokio::test]
+    async fn an_unreadable_audit_still_yields_undoable_rows() {
+        // The guard the seam exists for. A live audit daemon cannot be made to
+        // fail on demand, so this is the only place the "undescribed, never
+        // hidden" rule is actually exercised against a reader that answers
+        // nothing - which is what a down daemon looks like from here.
+        let dir = tempfile::tempdir().unwrap();
+        let socket = serve_recent(
+            dir.path(),
+            vec![
+                entry("op-1", "run-1", InverseReceipt::RestorePath {
+                    now: path("/home/u/b.txt"),
+                    prior: path("/home/u/a.txt"),
+                }),
+                entry("op-2", "run-2", InverseReceipt::RestoreValue {
+                    target: SettingTarget::new("shell.toml", "layout.mode").unwrap(),
+                    prior: Some("floating".to_string()),
+                }),
+            ],
+        );
+        let audit = FakeChains {
+            asked: Arc::new(Mutex::new(Vec::new())),
+            answer: Vec::new(),
+        };
+
+        let rows = recent_rows(&socket, &audit, 20).await;
+        assert_eq!(rows.len(), 2, "both actions stay offerable");
+        assert!(rows.iter().all(|r| r.description.is_none()), "undescribed");
+        assert_eq!(rows[0].object, "/home/u/b.txt", "the object still names itself");
+    }
+
+    #[tokio::test]
+    async fn one_chain_is_read_once_however_many_receipts_share_it() {
+        // A run that produced two reversible effects carries one correlation id
+        // on both receipts. Reading its chain twice would double the round trips
+        // for an identical answer.
+        let dir = tempfile::tempdir().unwrap();
+        let mk = |op: &str, chain: &str| {
+            entry(op, chain, InverseReceipt::RestorePath {
+                now: path("/n"),
+                prior: path("/p"),
+            })
+        };
+        let socket = serve_recent(
+            dir.path(),
+            vec![mk("op-a", "run-1"), mk("op-b", "run-1"), mk("op-c", "run-2")],
+        );
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let audit = FakeChains {
+            asked: Arc::clone(&asked),
+            answer: vec![view(1, "run-1", "files", "fs.relocate", 10)],
+        };
+
+        let rows = recent_rows(&socket, &audit, 20).await;
+        assert_eq!(rows.len(), 3, "every receipt is still its own row");
+        let mut asked = asked.lock().unwrap().clone();
+        asked.sort();
+        assert_eq!(asked, vec!["run-1".to_string(), "run-2".to_string()]);
+        // The shared chain describes both of its receipts.
+        assert_eq!(rows[0].description.as_ref().unwrap().actor, "files");
+        assert_eq!(rows[1].description.as_ref().unwrap().actor, "files");
+        assert!(rows[2].description.is_none(), "run-2 has no readable entry");
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_signer_yields_no_rows_rather_than_invented_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let audit = FakeChains {
+            asked: Arc::new(Mutex::new(Vec::new())),
+            answer: Vec::new(),
+        };
+        let rows = recent_rows(&dir.path().join("absent.sock"), &audit, 20).await;
+        assert!(rows.is_empty(), "no signer means nothing to undo, not a fabricated list");
     }
 
     #[test]
