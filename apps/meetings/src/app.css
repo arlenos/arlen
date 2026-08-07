@@ -84,10 +84,10 @@
      tokens. Values mirrored in `desktop-shell/src/app.css` and
      `sdk/ui-kit/src/app.css`. */
   --height-tag:                 20px;  /* Badges, status pills, indicators */
-  --height-control-compact:     24px;  /* Compact controls in dense rows */
-  --height-control:             28px;  /* Standard controls (most common) */
-  --height-control-prominent:   36px;  /* Prominent controls, default button */
-  --height-control-emphasized:  40px;  /* Emphasized buttons, hero inputs */
+  --height-control-compact:     26px;  /* Compact controls in dense rows */
+  --height-control:             30px;  /* Standard controls (most common) */
+  --height-control-prominent:   38px;  /* Prominent controls, default button */
+  --height-control-emphasized:  42px;  /* Emphasized buttons, hero inputs */
   --height-row:                 40px;  /* Settings rows, dense list items */
   --height-bar:                 36px;
 
@@ -236,10 +236,10 @@
      Generates h-tag, h-control-compact, h-control,
      h-control-prominent, h-control-emphasized, h-row, h-bar. */
   --height-tag:                 var(--height-tag, 20px);
-  --height-control-compact:     var(--height-control-compact, 24px);
-  --height-control:             var(--height-control, 28px);
-  --height-control-prominent:   var(--height-control-prominent, 36px);
-  --height-control-emphasized:  var(--height-control-emphasized, 40px);
+  --height-control-compact:     var(--height-control-compact, 26px);
+  --height-control:             var(--height-control, 30px);
+  --height-control-prominent:   var(--height-control-prominent, 38px);
+  --height-control-emphasized:  var(--height-control-emphasized, 42px);
   --height-row:                 var(--height-row, 40px);
   --height-bar:                 var(--height-bar, 36px);
 

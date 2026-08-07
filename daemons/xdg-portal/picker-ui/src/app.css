@@ -54,10 +54,10 @@
 
   /* Sizing scale — docs/architecture/sizing-system.md. */
   --height-tag:                 20px;
-  --height-control-compact:     24px;
-  --height-control:             28px;
-  --height-control-prominent:   36px;
-  --height-control-emphasized:  40px;
+  --height-control-compact:     26px;
+  --height-control:             30px;
+  --height-control-prominent:   38px;
+  --height-control-emphasized:  42px;
   --height-row:                 40px;
   --height-bar:                 36px;
 
@@ -163,10 +163,10 @@
   --radius-full:   var(--radius-full);
 
   --height-tag:                 var(--height-tag, 20px);
-  --height-control-compact:     var(--height-control-compact, 24px);
-  --height-control:             var(--height-control, 28px);
-  --height-control-prominent:   var(--height-control-prominent, 36px);
-  --height-control-emphasized:  var(--height-control-emphasized, 40px);
+  --height-control-compact:     var(--height-control-compact, 26px);
+  --height-control:             var(--height-control, 30px);
+  --height-control-prominent:   var(--height-control-prominent, 38px);
+  --height-control-emphasized:  var(--height-control-emphasized, 42px);
   --height-row:                 var(--height-row, 40px);
   --height-bar:                 var(--height-bar, 36px);
 
