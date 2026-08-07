@@ -75,12 +75,14 @@
     display: flex;
     flex-direction: column;
     gap: 0.9rem;
-    max-width: 34rem;
-    padding: 0.9rem 1rem 1.5rem;
+    max-width: 30rem;
+    margin: 0 auto;
+    padding: 1.1rem 1rem 1.5rem;
   }
   .wo-add {
     position: relative;
-    max-width: 18rem;
+    align-self: center;
+    width: 18rem;
   }
   .wo-matches {
     position: absolute;
@@ -123,22 +125,23 @@
   .wo-empty {
     margin: 0;
     font-size: var(--text-sm);
+    text-align: center;
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .wo-list {
     display: flex;
     flex-direction: column;
+    gap: 0.5rem;
   }
   .wo-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto 1.75rem;
-    align-items: baseline;
+    align-items: center;
     column-gap: 0.75rem;
-    padding: 0.7rem 0;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
-  }
-  .wo-row:last-child {
-    border-bottom: none;
+    padding: 0.8rem 1rem;
+    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
+    border-radius: var(--radius-card);
+    background: color-mix(in srgb, var(--color-fg-primary) 2%, transparent);
   }
   .wo-name {
     font-size: var(--text-sm);

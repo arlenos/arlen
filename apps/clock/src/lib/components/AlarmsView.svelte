@@ -129,13 +129,15 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    max-width: 34rem;
-    padding: 0.9rem 1rem 1.5rem;
+    max-width: 30rem;
+    margin: 0 auto;
+    padding: 1.1rem 1rem 1.5rem;
   }
   .al-nowake {
     margin: 0;
     font-size: var(--text-xs);
     line-height: 1.45;
+    text-align: center;
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
   }
   .al-nowake.inset {
@@ -143,24 +145,29 @@
   }
   .al-toolbar {
     display: flex;
+    justify-content: center;
+    padding-bottom: 0.4rem;
   }
   .al-empty {
     margin: 0.75rem 0 0;
     font-size: var(--text-sm);
+    text-align: center;
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .al-list {
     display: flex;
     flex-direction: column;
+    gap: 0.5rem;
   }
+  /* One alarm, one tile - the GNOME Clocks card list in the house tokens. */
   .al-row {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
-  }
-  .al-row:last-child {
-    border-bottom: none;
+    padding-inline-end: 1rem;
+    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
+    border-radius: var(--radius-card);
+    background: color-mix(in srgb, var(--color-fg-primary) 2%, transparent);
   }
   .al-main {
     display: flex;
@@ -168,14 +175,14 @@
     gap: 0.9rem;
     flex: 1;
     min-width: 0;
-    padding: 0.7rem 0;
+    padding: 0.85rem 1rem;
     border: none;
     background: transparent;
     text-align: start;
     cursor: pointer;
   }
   .al-time {
-    font-size: var(--text-xl);
+    font-size: 1.6rem;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     color: var(--color-fg-primary);

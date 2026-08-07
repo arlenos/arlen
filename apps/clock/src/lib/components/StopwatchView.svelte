@@ -46,7 +46,8 @@
     flex-direction: column;
     align-items: center;
     gap: 1rem;
-    max-width: 34rem;
+    max-width: 30rem;
+    margin: 0 auto;
     padding: 2rem 1rem 1.5rem;
   }
   .sw-total {
@@ -68,13 +69,17 @@
     flex-direction: column;
     align-self: stretch;
     margin-top: 0.5rem;
+    padding: 0.25rem 1rem;
+    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
+    border-radius: var(--radius-card);
+    background: color-mix(in srgb, var(--color-fg-primary) 2%, transparent);
   }
   .sw-lap {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto 7rem;
     align-items: baseline;
     column-gap: 0.75rem;
-    padding: 0.45rem 0;
+    padding: 0.5rem 0;
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
   }
   .sw-lap:last-child {

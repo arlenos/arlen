@@ -115,12 +115,13 @@
   .titlebar-spacer {
     flex: 1;
   }
+  /* The GNOME-Clocks grammar: the view switcher sits centered under the
+     title, the surfaces below center their columns. */
   .tabs {
     display: flex;
+    justify-content: center;
     gap: 0.25rem;
-    /* The first tab's TEXT sits on the content edge: the nav start padding is
-       the content inset minus the tab's own inline padding. */
-    padding: 0 1rem 0 calc(1rem - 0.7rem);
+    padding: 0 1rem;
     border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
     flex-shrink: 0;
   }
@@ -147,6 +148,7 @@
   }
   .sample {
     margin: 0.6rem 1rem 0;
+    text-align: center;
     font-size: var(--text-2xs);
     color: color-mix(in srgb, var(--color-fg-primary) 50%, transparent);
     flex-shrink: 0;
