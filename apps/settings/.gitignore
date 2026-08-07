@@ -23,3 +23,6 @@ src-tauri/Cargo.lock
 # Local dev notes — not committed, lives on the maintainer's machine
 # as cross-sprint reference.
 COMPONENTS.md
+
+# Tauri regenerates gen/schemas from capabilities/ on every build.
+src-tauri/gen/
