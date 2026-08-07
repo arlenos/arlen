@@ -3,6 +3,7 @@
 //! compose) is the pure `decode` module; this binary is the Wayland client
 //! ([`arlen_wallpaper::render`]) plus manifest loading.
 
+use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use arlen_wallpaper::config;
@@ -125,6 +126,38 @@ fn run(
     Ok(())
 }
 
+/// Whether `event` is a change to the manifest, rather than a read of it.
+///
+/// The reason this exists is a feedback loop, measured rather than guessed: the
+/// watch is on the DIRECTORY, and the inotify mask `notify` requests includes
+/// ACCESS - so reloading the manifest READ it, which produced another event,
+/// which scheduled another reload, one every 150 ms for the life of the daemon.
+/// The log showed a reload followed 0.1 ms later by its own event, six times
+/// over and climbing.
+///
+/// So the filter is on two axes: the event must be a modification (create,
+/// write, remove, rename) and it must name the manifest or the temp file it is
+/// renamed from. An access, and any other file in `~/.config/arlen`, is not a
+/// wallpaper change.
+fn changes_manifest(event: &notify::Event, manifest: &Path) -> bool {
+    use notify::EventKind;
+    let modifying = matches!(
+        event.kind,
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+    );
+    if !modifying {
+        return false;
+    }
+    event.paths.iter().any(|p| {
+        p == manifest
+            || p.file_name().is_some_and(|n| {
+                manifest
+                    .file_name()
+                    .is_some_and(|m| n.to_string_lossy().starts_with(&*m.to_string_lossy()))
+            })
+    })
+}
+
 /// Watch the manifest's DIRECTORY and signal `tx` on any change in it.
 ///
 /// The directory rather than the file: Settings writes the manifest with a
@@ -144,8 +177,10 @@ fn watch_manifest(tx: calloop::channel::Sender<()>) -> Option<notify::Recommende
         tracing::warn!(dir = %dir.display(), "cannot watch for wallpaper changes: {e}");
         return None;
     }
+    let manifest = path.clone();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        if res.is_ok() {
+        let Ok(event) = res else { return };
+        if changes_manifest(&event, &manifest) {
             let _ = tx.send(());
         }
     })
@@ -184,4 +219,58 @@ fn minute_of_day() -> u32 {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     ((secs % 86_400) / 60) as u32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use notify::event::{AccessKind, CreateKind, EventKind, ModifyKind};
+
+    fn event(kind: EventKind, path: &str) -> notify::Event {
+        notify::Event {
+            kind,
+            paths: vec![std::path::PathBuf::from(path)],
+            attrs: Default::default(),
+        }
+    }
+
+    #[test]
+    fn reading_the_manifest_is_not_a_change_to_it() {
+        // The whole reason this filter exists: the watch is on the directory and
+        // the mask includes ACCESS, so reloading read the file, which looked like
+        // a change, which scheduled another reload - forever, every 150 ms.
+        let manifest = Path::new("/home/u/.config/arlen/wallpaper.toml");
+        assert!(!changes_manifest(
+            &event(EventKind::Access(AccessKind::Read), "/home/u/.config/arlen/wallpaper.toml"),
+            manifest
+        ));
+    }
+
+    #[test]
+    fn a_write_or_a_rename_of_the_manifest_is_a_change() {
+        let manifest = Path::new("/home/u/.config/arlen/wallpaper.toml");
+        assert!(changes_manifest(
+            &event(EventKind::Modify(ModifyKind::Any), "/home/u/.config/arlen/wallpaper.toml"),
+            manifest
+        ));
+        // Settings writes `wallpaper.toml.tmp` and renames it; the temp file's
+        // events are the ones that arrive first.
+        assert!(changes_manifest(
+            &event(EventKind::Create(CreateKind::File), "/home/u/.config/arlen/wallpaper.toml.tmp"),
+            manifest
+        ));
+    }
+
+    #[test]
+    fn another_file_in_the_same_directory_is_not_a_wallpaper_change() {
+        // `~/.config/arlen` holds every app's config, so most of what happens in
+        // there has nothing to do with the wallpaper.
+        let manifest = Path::new("/home/u/.config/arlen/wallpaper.toml");
+        for other in ["/home/u/.config/arlen/shell.toml", "/home/u/.config/arlen/ai.toml"] {
+            assert!(
+                !changes_manifest(&event(EventKind::Modify(ModifyKind::Any), other), manifest),
+                "{other} must not trigger a wallpaper reload"
+            );
+        }
+    }
 }
