@@ -20,14 +20,11 @@
 use std::fmt;
 
 /// A document to hand the application, in the two forms the field codes want.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Target {
-    /// The URI, for `%u` / `%U`.
-    pub uri: String,
-    /// The local path, for `%f` / `%F`. `None` for a target that is not a local
-    /// file, in which case an application that only takes `%f` cannot open it.
-    pub path: Option<String>,
-}
+///
+/// The wire type, not a local copy: a caller names the document over the launch
+/// socket, and two definitions of "which document" is the drift this whole
+/// strand exists to remove.
+pub use arlen_launch_contract::Target;
 
 /// Everything the non-document field codes need.
 ///
