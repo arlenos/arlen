@@ -189,6 +189,29 @@ fn started_app_id(launch: &Launch) -> String {
     }
 }
 
+/// The ledger record for one launch.
+///
+/// [`AuditKind::AppAction`] and the notification daemon's shape: a fixed
+/// subject, the coarse app ids in `node_types`, the disposition in `outcome`.
+/// A launch is observed, non-AI system activity, and the record carries who
+/// asked and what started - never what was opened.
+pub fn launch_event(line: &AuditLine) -> audit_proto::IngestRequest {
+    let mut apps = vec![line.caller.clone()];
+    apps.extend(line.started.clone());
+    audit_proto::IngestRequest {
+        kind: audit_proto::AuditKind::AppAction,
+        structural: audit_proto::StructuralRecord {
+            subject: "launch.request".to_string(),
+            node_types: apps,
+            outcome: line.outcome.to_string(),
+            ..Default::default()
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,6 +312,46 @@ mod tests {
         );
         assert_eq!(s.audit.caller, "org.arlen.Files");
         assert_eq!(s.audit.started.as_deref(), Some("org.arlen.Viewer"));
+    }
+
+    /// The ledger entry carries the two app ids and the disposition, and the
+    /// document is not among them.
+    #[test]
+    fn the_ledger_entry_names_the_apps_and_nothing_else() {
+        let s = serve(
+            &open(),
+            &Caller::Named("org.arlen.Files".into()),
+            &handlers(),
+            catalog,
+            true,
+        );
+        let event = launch_event(&s.audit);
+        assert_eq!(event.kind, audit_proto::AuditKind::AppAction);
+        assert_eq!(event.structural.subject, "launch.request");
+        assert_eq!(
+            event.structural.node_types,
+            ["org.arlen.Files", "org.arlen.Viewer"]
+        );
+        assert_eq!(event.structural.outcome, "started");
+        let rendered = format!("{:?}", event.structural);
+        assert!(
+            !rendered.contains("holiday"),
+            "document in the record: {rendered}"
+        );
+    }
+
+    /// A refusal still records who asked; only the started app is absent,
+    /// because nothing started.
+    #[test]
+    fn a_refusal_records_the_caller_alone() {
+        let r = LaunchRequest::App {
+            app_id: "nope.desktop".into(),
+            targets: vec![],
+        };
+        let s = serve(&r, &Caller::Unnamed, &handlers(), catalog, false);
+        let event = launch_event(&s.audit);
+        assert_eq!(event.structural.node_types, ["unresolved"]);
+        assert_eq!(event.structural.outcome, "refused:unresolved-caller");
     }
 
     /// A launch audit is not a reading list.

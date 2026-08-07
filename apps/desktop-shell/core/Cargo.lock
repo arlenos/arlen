@@ -40,6 +40,7 @@ version = "0.1.0"
 dependencies = [
  "arlen-launch-contract",
  "arlen-theme",
+ "audit-proto",
  "bytes",
  "dirs",
  "libc",
@@ -109,6 +110,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.2",
+]
+
+[[package]]
+name = "audit-proto"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
 ]
 
 [[package]]
