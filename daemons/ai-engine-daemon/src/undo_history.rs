@@ -56,6 +56,10 @@ pub struct UndoRow {
     /// The audit facts, or `None` when the join found nothing. `None` means
     /// undescribed, never un-undoable.
     pub description: Option<ActionDescription>,
+    /// Whether the undo can actually be carried out here. False means the row is
+    /// a record of what happened with no button - which is the honest shape, not
+    /// a degraded one. See [`crate::undo_enact::is_enactable`].
+    pub enactable: bool,
 }
 
 /// Build the rows from the signer's recent entries and whatever audit entries
@@ -74,6 +78,7 @@ pub fn join_rows(recent: &[RecentEntry], audit: &[StructuralView]) -> Vec<UndoRo
                 inverse_kind: r.entry.inverse.inverse_kind(),
                 object: r.entry.inverse.object(),
                 description: describe(&correlation_id, audit),
+                enactable: crate::undo_enact::is_enactable(&r.entry.inverse),
                 correlation_id,
             }
         })
@@ -190,7 +195,7 @@ pub async fn recent_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arlen_ai_undo_core::effect_model::{CanonicalPath, InverseReceipt, SettingTarget};
+    use arlen_ai_undo_core::effect_model::{CanonicalPath, InverseReceipt, SettingTarget, SnapshotRef};
     use arlen_ai_undo_core::undo_log::UndoEntry;
     use arlen_ai_undo_proto::{read_request, write_response, Request, Response};
     use audit_proto::{AuditKind, StructuralRecord};
@@ -340,6 +345,33 @@ mod tests {
         };
         let rows = recent_rows(&dir.path().join("absent.sock"), &audit, 20).await;
         assert!(rows.is_empty(), "no signer means nothing to undo, not a fabricated list");
+    }
+
+    #[test]
+    fn a_row_never_offers_an_undo_this_daemon_would_refuse() {
+        // The snapshot seam is gated on the atomic-image strand, so its receipt
+        // is a good record with no enactment behind it. Offering a button that
+        // always fails teaches the user the button lies, which costs more than
+        // the missing undo.
+        let snapshot = entry(
+            "op-s",
+            "run-s",
+            InverseReceipt::RestoreSnapshot {
+                snapshot: SnapshotRef::new("pre-op").unwrap(),
+                scope: path("/home/u/work"),
+            },
+        );
+        let movable = entry(
+            "op-m",
+            "run-m",
+            InverseReceipt::RestorePath { now: path("/n"), prior: path("/p") },
+        );
+
+        let rows = join_rows(&[snapshot, movable], &[]);
+        assert!(!rows[0].enactable, "the snapshot row states it cannot be undone here");
+        assert!(rows[1].enactable, "an ordinary move still offers its undo");
+        // Both are still ROWS: an unenactable undo is not a hidden action.
+        assert_eq!(rows.len(), 2);
     }
 
     #[test]
