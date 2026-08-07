@@ -221,9 +221,10 @@ impl PowerInterface {
     /// call and the deadline, and a relative timer stops counting while suspended,
     /// which is exactly what an alarm must not do.
     ///
-    /// Gated on the same grant as suspend. Waking a machine and suspending it are
-    /// the same authority over the same thing, and a caller that may not put the
-    /// machine to sleep has no business deciding when it comes back.
+    /// Gated on `schedule_wake`, which is its own grant. Arming a wake is not the
+    /// authority to suspend: a clock has to do the first and must never be able
+    /// to do the second, and one bit for both would hand every alarm app the
+    /// power to put the machine to sleep.
     ///
     /// Returns what the alarm will actually do, so a caller cannot arm one and
     /// assume it wakes the machine when this session lacks the capability.
@@ -234,9 +235,9 @@ impl PowerInterface {
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<String> {
         let power = self.caller_power_grant(&header, connection).await?;
-        if !power.suspend {
+        if !power.schedule_wake {
             return Err(zbus::fdo::Error::AccessDenied(
-                "caller lacks the system.power suspend grant".into(),
+                "caller lacks the system.power schedule_wake grant".into(),
             ));
         }
         let armed = crate::wake::arm_at(unix_seconds, self.wake_capability)
@@ -250,6 +251,36 @@ impl PowerInterface {
             "wake scheduled"
         );
         Ok(capability.describe().to_string())
+    }
+
+    /// Withdraw the armed wake, if there is one. Returns whether there was.
+    ///
+    /// The one slot makes scheduling a replacement, which leaves no way to say
+    /// "nothing" - and a clock whose last alarm was just deleted has exactly that
+    /// to say. Without this the machine keeps a wake for an alarm that no longer
+    /// exists and comes on in a bag at 06:00, which is the sort of thing people
+    /// stop trusting a computer over.
+    ///
+    /// Same grant as arming one: the single slot already means any grantee can
+    /// displace any other's wake, so being able to withdraw it adds no reach.
+    async fn cancel_wake(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<bool> {
+        let power = self.caller_power_grant(&header, connection).await?;
+        if !power.schedule_wake {
+            return Err(zbus::fdo::Error::AccessDenied(
+                "caller lacks the system.power schedule_wake grant".into(),
+            ));
+        }
+        // Taking it out of the slot drops it, and dropping closes the fd, which
+        // is what disarms the timer.
+        let was_armed = self.armed_wake.lock().await.take().is_some();
+        if was_armed {
+            tracing::info!("wake cancelled");
+        }
+        Ok(was_armed)
     }
 
     async fn set_profile(
