@@ -1,0 +1,12 @@
+[D-BUS Service]
+Name=org.arlen.Clock1
+Exec=/usr/lib/arlen/libexec/arlen-clockd
+# Activation starts the unit, never the bare Exec above, so an activated clock
+# gets the same ordering and restart policy as one started at login. Without this
+# line D-Bus would run the binary directly and quietly bypass all of it.
+#
+# The unit is eager (WantedBy=default.target) because an alarm has to ring
+# whether or not anyone opened the app, so this activation path is a fallback for
+# a session where the unit has not started yet - not the normal way the clock
+# runs.
+SystemdService=arlen-clockd.service
