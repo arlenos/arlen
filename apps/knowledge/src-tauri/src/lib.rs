@@ -15,6 +15,7 @@
 //! that invented an empty list would show the fixture's absence as fact.
 
 mod projects;
+mod timeline;
 
 /// Build and run the app.
 ///
@@ -26,7 +27,8 @@ pub fn run() {
         .plugin(tauri_plugin_arlen_shell::init())
         .invoke_handler(tauri::generate_handler![
             projects::knowledge_list,
-            projects::knowledge_projects_list
+            projects::knowledge_projects_list,
+            timeline::knowledge_timeline
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Knowledge app");
