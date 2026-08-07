@@ -37,6 +37,12 @@ export function sysOptions(
   }));
 }
 
+// A `label` in these lists is an installed package's own name; our words carry a
+// `labelKey` instead ("Default", "None"), which is the whole reason the two
+// fields exist. Each list is marked separately because a marker covers the one
+// declaration under it - saying "from here down" would cover nothing.
+//
+// i18n-foreign: cursor themes name themselves, on disk and in their own project.
 export const CURSOR_THEMES: SysOption[] = [
   { value: "Default", labelKey: "s.sys.default" },
   { value: "Adwaita", label: "Adwaita" },
@@ -44,6 +50,7 @@ export const CURSOR_THEMES: SysOption[] = [
   { value: "Capitaine", label: "Capitaine" },
 ];
 
+// i18n-foreign: icon sets name themselves, on disk and in their own project.
 export const ICON_THEMES: SysOption[] = [
   { value: "Default", labelKey: "s.sys.default" },
   { value: "Papirus", label: "Papirus" },
@@ -52,12 +59,14 @@ export const ICON_THEMES: SysOption[] = [
   { value: "Tela", label: "Tela" },
 ];
 
+// i18n-foreign: sound themes name themselves, on disk and in their own project.
 export const SOUND_THEMES: SysOption[] = [
   { value: "None", labelKey: "s.sys.none" },
   { value: "Chime", label: "Chime" },
   { value: "Soft", label: "Soft" },
 ];
 
+// i18n-foreign: the sound files a theme ships, under the names it gives them.
 export const SOUND_NAMES: SysOption[] = [
   { value: "None", labelKey: "s.sys.none" },
   { value: "Message", label: "Message" },
