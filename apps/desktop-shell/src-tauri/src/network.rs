@@ -34,43 +34,99 @@ pub async fn get_network_status() -> Result<NetworkStatus, String> {
     })
 }
 
-/// Parses `nmcli -t -f TYPE,STATE,CONNECTION device` for the primary connection.
+/// NetworkManager device types, from the published enum. Only the two the
+/// indicator distinguishes are named.
+const NM_DEVICE_TYPE_ETHERNET: u32 = 1;
+const NM_DEVICE_TYPE_WIFI: u32 = 2;
+/// `NM_DEVICE_STATE_ACTIVATED` - the device is up and carrying traffic. The
+/// state enum has fourteen values and this is the only one `nmcli` printed as
+/// "connected", so matching it exactly keeps the old behaviour rather than
+/// treating, say, `DEACTIVATING` as still connected.
+const NM_DEVICE_STATE_ACTIVATED: u32 = 100;
+
+/// The connected wifi or ethernet device, from NetworkManager over the system
+/// bus.
+///
+/// **Behaviour is unchanged from the `nmcli -t -f TYPE,STATE,CONNECTION device`
+/// this replaces**, deliberately: wifi is preferred over ethernet when both are
+/// up, because that is what the indicator has always shown and is a UI choice
+/// rather than an accident of the old parser.
+///
+/// NetworkManager also publishes `PrimaryConnection`, the one carrying the
+/// default route, which is arguably the more truthful answer when both are
+/// connected. Switching to it would change what the indicator displays, so it is
+/// a decision to make on purpose and not a side effect of dropping a subprocess.
 async fn parse_device_status() -> Result<(String, bool, Option<String>, Option<u8>), String> {
-    let output = tokio::process::Command::new("nmcli")
-        .args(["-t", "-f", "TYPE,STATE,CONNECTION", "device"])
-        .output()
+    let conn = zbus::Connection::system()
         .await
-        .map_err(|e| format!("nmcli not found: {e}"))?;
+        .map_err(|e| format!("system bus: {e}"))?;
+    let manager = zbus::Proxy::new(
+        &conn,
+        "org.freedesktop.NetworkManager",
+        "/org/freedesktop/NetworkManager",
+        "org.freedesktop.NetworkManager",
+    )
+    .await
+    .map_err(|e| format!("NetworkManager unavailable: {e}"))?;
+    let devices: Vec<zbus::zvariant::OwnedObjectPath> = manager
+        .call("GetDevices", &())
+        .await
+        .map_err(|e| format!("GetDevices: {e}"))?;
 
-    if !output.status.success() {
-        return Err("nmcli device failed".into());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Find the first connected wifi or ethernet device.
     let mut wifi_conn: Option<String> = None;
     let mut ethernet_conn: Option<String> = None;
 
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.split(':').collect();
-        if parts.len() < 3 {
+    for path in devices {
+        let Ok(device) = zbus::Proxy::new(
+            &conn,
+            "org.freedesktop.NetworkManager",
+            path.clone(),
+            "org.freedesktop.NetworkManager.Device",
+        )
+        .await
+        else {
+            continue;
+        };
+        // A device that cannot be read is skipped rather than failing the whole
+        // status: NetworkManager removes devices while they are being enumerated
+        // (a USB tether unplugged mid-loop), and one vanishing device must not
+        // black out the indicator.
+        let (Ok(state), Ok(kind)) = (
+            device.get_property::<u32>("State").await,
+            device.get_property::<u32>("DeviceType").await,
+        ) else {
+            continue;
+        };
+        if state != NM_DEVICE_STATE_ACTIVATED {
             continue;
         }
-        let dev_type = parts[0];
-        let state = parts[1];
-        let connection = parts[2];
-
-        if state == "connected" {
-            match dev_type {
-                "wifi" => {
-                    wifi_conn = Some(connection.to_string());
-                }
-                "ethernet" => {
-                    ethernet_conn = Some(connection.to_string());
-                }
-                _ => {}
-            }
+        if kind != NM_DEVICE_TYPE_WIFI && kind != NM_DEVICE_TYPE_ETHERNET {
+            continue;
+        }
+        // The human-readable name is the active connection's `Id`, which is what
+        // nmcli printed in the CONNECTION column.
+        let Ok(active) = device
+            .get_property::<zbus::zvariant::OwnedObjectPath>("ActiveConnection")
+            .await
+        else {
+            continue;
+        };
+        let Ok(active_proxy) = zbus::Proxy::new(
+            &conn,
+            "org.freedesktop.NetworkManager",
+            active,
+            "org.freedesktop.NetworkManager.Connection.Active",
+        )
+        .await
+        else {
+            continue;
+        };
+        let Ok(id) = active_proxy.get_property::<String>("Id").await else {
+            continue;
+        };
+        match kind {
+            NM_DEVICE_TYPE_WIFI => wifi_conn = Some(id),
+            _ => ethernet_conn = Some(id),
         }
     }
 
