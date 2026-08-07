@@ -278,7 +278,9 @@ mod tests {
             .timestamp_millis();
         let fire = next_fire_at(&alarm("02:30", &[]), &berlin, sat_evening).unwrap();
         // The first 02:30 is still on summer time, two hours ahead of UTC.
-        let utc_hour = chrono::DateTime::from_timestamp_millis(fire).unwrap().hour();
+        let utc_hour = chrono::DateTime::from_timestamp_millis(fire)
+            .unwrap()
+            .hour();
         assert_eq!(utc_hour, 0, "the earlier of the two 02:30s");
     }
 
