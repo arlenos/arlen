@@ -22,6 +22,12 @@ The rule: every `pub` field of a `*Permissions` struct must be named in that
 struct's `reach_summary`. A struct with no `reach_summary` of its own is
 projected through a parent and is listed below with which one, so that being
 absent is a decision someone wrote down rather than an omission.
+
+Two lists qualify it. `NOT_REACH` is for a field that grants nothing - a
+narrowing, an assertion. `REACH_NOT_YET_SUMMARISED` is the opposite and is a
+ledger rather than an exemption: real reach that a person cannot currently see,
+carried in the output so the number is visible instead of resting in a comment.
+Moving an entry out of it is the work; adding one is admitting a gap.
 """
 
 import pathlib
@@ -41,28 +47,38 @@ PROJECTED_BY_PARENT = {
 # that it is not reach, or that it is projected some other way. Anything else
 # missing is a grant nobody can see.
 NOT_REACH = {
+    # The three GraphPermissions fields its own summary classifies as not-reach,
+    # quoted from the comments there so the two cannot drift apart silently.
+    ("GraphPermissions", "app_isolated"): "a narrowing, not reach",
+    ("GraphPermissions", "instance_scope"): "which instances, not which types",
+    ("GraphPermissions", "required"): "an install-time assertion, not reach",
     ("McpPermissions", "always_confirm_overrides"): (
         "narrows rather than grants: it marks extra tools always-confirm, so an "
         "app can only make itself MORE interruptive with it, never reach further"
     ),
 }
 
-# Structs whose grants are projected by a different mechanism entirely, with the
-# one that does it. `emit_all_declared_grants` binds `graph: _` for this reason.
-PROJECTED_ELSEWHERE = {
-    "GraphPermissions": (
-        "projected by lcg.rs::emit_grant_node from the minted capability token, "
-        "not from the declared summary - the graph dimension is the token-based "
-        "grant. NB that projection serialises the token's read/write/relations/"
-        "instance scopes; whether read_sensitive, app_isolated, "
-        "delegated_namespaces, annotations_read_cross_namespace and required "
-        "reach it too is an open question, and a real one - read_sensitive in "
-        "particular is reach by any reading of the word. Recorded here rather "
-        "than answered, because the answer is in the token minting and deserves "
-        "looking at rather than assuming"
+# (struct, field) -> reach that is real and does not reach a summary yet. This is
+# a LEDGER, not an excuse: each entry is a grant a person cannot currently see on
+# the App-access page. `GraphPermissions::reach_summary` already classifies its
+# own fields in comments and marks these three "Reach, not yet summarised"; this
+# repeats the classification where a check can count it, so the number appears in
+# the output instead of living only in a comment nobody greps.
+REACH_NOT_YET_SUMMARISED = {
+    ("GraphPermissions", "annotations_read_cross_namespace"): (
+        "reading another app's annotations is an explicit grant (foundation §395)"
+    ),
+    ("GraphPermissions", "relations"): "edge-write grants",
+    ("GraphPermissions", "delegated_namespaces"): (
+        "authority handed to another principal"
+    ),
+    ("GraphPermissions", "read_sensitive"): (
+        "gated separately at the daemon, which settles ENFORCEMENT and not "
+        "visibility - reading fields the profile marks sensitive is reach by any "
+        "reading of the word, and it appears in no summary and in no token scope "
+        "(EntityScope carries entity_type/fields/exclude_fields, no sensitive flag)"
     ),
 }
-
 
 def structs(text: str) -> dict[str, list[str]]:
     """Every `*Permissions` struct and its public fields."""
@@ -98,8 +114,6 @@ def main() -> int:
     problems: list[str] = []
 
     for name, fields in sorted(declared.items()):
-        if name in PROJECTED_ELSEWHERE:
-            continue
         body = projected.get(name)
         if body is None:
             parent = PROJECTED_BY_PARENT.get(name)
@@ -116,6 +130,7 @@ def main() -> int:
                 for f in fields
                 if not re.search(rf"\b{f}\b", parent_body)
                 and (name, f) not in NOT_REACH
+                and (name, f) not in REACH_NOT_YET_SUMMARISED
             ]
             if missing:
                 problems.append(
@@ -127,7 +142,9 @@ def main() -> int:
         missing = [
             f
             for f in fields
-            if not re.search(rf"\b{f}\b", body) and (name, f) not in NOT_REACH
+            if not re.search(rf"\b{f}\b", body)
+            and (name, f) not in NOT_REACH
+            and (name, f) not in REACH_NOT_YET_SUMMARISED
         ]
         if missing:
             problems.append(
@@ -142,10 +159,14 @@ def main() -> int:
             print(f"  - {p}")
         return 1
     total = sum(len(f) for f in declared.values())
+    open_gap = len(REACH_NOT_YET_SUMMARISED)
     print(
         f"{len(declared)} permission dimension(s), {total} declared grant(s), "
-        f"every one of them reaches a summary"
+        f"{total - open_gap} reach a summary"
     )
+    print(f"{open_gap} are reach that does not reach one yet, each named in this file:")
+    for (struct, field), why in sorted(REACH_NOT_YET_SUMMARISED.items()):
+        print(f"  - {struct}.{field}: {why}")
     return 0
 
 
