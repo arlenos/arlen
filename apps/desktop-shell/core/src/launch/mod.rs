@@ -18,3 +18,4 @@
 //! handles it, per the freedesktop association spec.
 
 pub mod mimeapps;
+pub mod search;
