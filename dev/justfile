@@ -721,6 +721,13 @@ check-executor:
     python3 "{{ROOT}}/dev/scripts/check-invoke-shape.py"
     node "{{ROOT}}/dev/scripts/test-check-fixtures.mjs"
 
+# Every declared grant has to reach the summary a person reads, or be listed with
+# the reason it is not reach. A grant nobody can see is a grant nobody can
+# revoke: `schedule_wake` was added to a profile, compiled everywhere and
+# appeared in no summary at all, and nothing was red.
+check-grants:
+    python3 "{{ROOT}}/dev/scripts/check-grant-visibility.py"
+
 check-smoke:
     python3 "{{ROOT}}/dev/scripts/check-smoke-coverage.py"
 
@@ -767,7 +774,7 @@ checks:
     set -uo pipefail
     cd "{{ROOT}}"
     status=0
-    for r in check-crates check-ignores check-protos check-units check-gates check-shared check-smoke check-executor; do
+    for r in check-crates check-ignores check-protos check-units check-gates check-shared check-smoke check-grants check-executor; do
         echo "== $r =="
         just --justfile dev/justfile "$r" || status=1
     done
