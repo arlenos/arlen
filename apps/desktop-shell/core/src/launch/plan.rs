@@ -12,6 +12,10 @@
 //! already split it out - they just each split it out separately.
 
 /// How to start an application.
+///
+/// Both variants are an argv to spawn directly, with no shell in between. That
+/// is worth saying because the shell launcher's unconfined path does not do
+/// that today - see the note on [`plan`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Launch {
     /// Run this argv as it stands. Today's default.
@@ -56,6 +60,16 @@ const LAUNCHER: &str = "arlen-run";
 /// launch a confining system should refuse, and refusing it today would break
 /// every application without a profile. Keeping it here means that decision is
 /// made once, in a place with tests, rather than found twice later.
+///
+/// **Adopting this in the shell launcher changes behaviour, so it is not a
+/// refactor.** That launcher's unconfined branch runs `sh -c "<the whole Exec
+/// string>"`, while its confined branch splits the string and passes an argv to
+/// `arlen-run`. So the same entry is interpreted two different ways depending on
+/// a flag: a `Exec=env FOO=bar prog` or anything with `&&` in it works unconfined
+/// and arrives as literal arguments confined. Whichever way that is settled, one
+/// launch path means one interpretation, and the flip should not be the thing
+/// that discovers the difference. The Settings handoff already spawns directly on
+/// both branches and matches what this returns.
 pub fn plan(
     confined: bool,
     app_id: Option<&str>,
