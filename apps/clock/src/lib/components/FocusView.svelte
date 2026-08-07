@@ -29,12 +29,12 @@
           {/each}
         </div>
         <p class="fo-held">{heldText(f.held)}</p>
-        <Button variant="outline" id="end-focus" onclick={endFocus}>{$t("c.fo.end")}</Button>
+        <Button variant="outline" id="end-focus" class="fo-action" onclick={endFocus}>{$t("c.fo.end")}</Button>
       </div>
     {:else}
       <div class="fo-card idle">
         <p class="fo-idle">{$t("c.fo.idle")}</p>
-        <Button id="start-focus" onclick={startFocus}>{$t("c.fo.start")}</Button>
+        <Button id="start-focus" class="fo-action" onclick={startFocus}>{$t("c.fo.start")}</Button>
       </div>
       {@const cfg = $clock.focus_config}
       <Section>
@@ -85,8 +85,8 @@
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .fo-remaining {
-    font-size: 2.6rem;
-    font-weight: 500;
+    font-size: var(--clock-display, 2.75rem);
+    font-weight: 400;
     font-variant-numeric: tabular-nums;
     line-height: 1.1;
     color: var(--color-fg-primary);
@@ -117,6 +117,9 @@
     line-height: 1.5;
     text-align: center;
     color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
+  }
+  .fo :global(.fo-action) {
+    width: 9rem;
   }
   .fo-card.idle {
     gap: 0.9rem;

@@ -3,6 +3,7 @@
   /// behind a tab row - the task-manager chrome, not a sidebar. The titlebar
   /// carries no bottom border; the tabs row below draws the one hairline.
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { Plus } from "lucide-svelte";
   import { WindowButtons } from "@arlen/ui-kit/components/ui/window-controls";
   import AlarmsView from "$lib/components/AlarmsView.svelte";
   import TimersView from "$lib/components/TimersView.svelte";
@@ -10,6 +11,7 @@
   import StopwatchView from "$lib/components/StopwatchView.svelte";
   import WorldView from "$lib/components/WorldView.svelte";
   import { clockMocked } from "$lib/stores/clock";
+  import { requestAdd } from "$lib/stores/ui";
   import { t, dir } from "$lib/i18n/messages";
 
   const TABS = [
@@ -58,6 +60,17 @@
   <header class="titlebar" onpointerdown={startDrag} ondblclick={toggleMax}>
     <span class="app-title">{$t("c.title")}</span>
     <span class="titlebar-spacer"></span>
+    {#if tab === "alarms" || tab === "world"}
+      <button
+        type="button"
+        class="add-btn"
+        id="chrome-add"
+        aria-label={tab === "alarms" ? $t("c.al.add") : $t("c.wo.search")}
+        onclick={requestAdd}
+      >
+        <Plus size={16} strokeWidth={2} />
+      </button>
+    {/if}
     <WindowButtons />
   </header>
 
@@ -95,6 +108,10 @@
     height: 100vh;
     background: var(--color-bg-app, #0f0f0f);
     color: var(--color-fg-primary, #fafafa);
+    /* The clock's two-tier type system: one big display per surface, one
+       list-time size, everything else the small tier. */
+    --clock-display: 2.75rem;
+    --clock-list-time: 1.75rem;
   }
   /* The knowledge/store header recipe; no bottom border here - the tabs row
      right below draws the one hairline. */
@@ -114,6 +131,24 @@
   }
   .titlebar-spacer {
     flex: 1;
+  }
+  /* The one fixed add affordance, in the chrome (the macOS pattern). */
+  .add-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--height-control, 28px);
+    height: var(--height-control, 28px);
+    margin-inline-end: 2px;
+    border: none;
+    border-radius: var(--radius-input, 6px);
+    background: transparent;
+    color: color-mix(in srgb, var(--color-fg-primary) 70%, transparent);
+    cursor: pointer;
+  }
+  .add-btn:hover {
+    background: color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
+    color: var(--color-fg-primary);
   }
   /* The GNOME-Clocks grammar: the view switcher sits centered under the
      title, the surfaces below center their columns. */
