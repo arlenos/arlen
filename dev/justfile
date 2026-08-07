@@ -728,6 +728,14 @@ check-executor:
 check-grants:
     python3 "{{ROOT}}/dev/scripts/check-grant-visibility.py"
 
+# Every Cypher query has to name columns the graph schema declares. The engine
+# answers an undeclared column with a binder error, and a caller that swallows it
+# falls back to fixture data - so the failure reads as "the graph knows nothing"
+# rather than "the query was wrong". A member listing in the Knowledge app died
+# that way on 7 August.
+check-graph:
+    python3 "{{ROOT}}/dev/scripts/check-graph-columns.py"
+
 check-smoke:
     python3 "{{ROOT}}/dev/scripts/check-smoke-coverage.py"
 
@@ -774,7 +782,7 @@ checks:
     set -uo pipefail
     cd "{{ROOT}}"
     status=0
-    for r in check-crates check-ignores check-protos check-units check-gates check-shared check-smoke check-grants check-executor; do
+    for r in check-crates check-ignores check-protos check-units check-gates check-shared check-smoke check-grants check-graph check-executor; do
         echo "== $r =="
         just --justfile dev/justfile "$r" || status=1
     done
