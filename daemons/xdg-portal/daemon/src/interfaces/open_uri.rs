@@ -493,6 +493,22 @@ fn fd_still_points_at(fd: &Fd<'_>, path: &Path) -> Result<bool, std::io::Error> 
 /// is the standard freedesktop dispatcher; it forwards to the
 /// user's configured browser, mail client, or default file
 /// handler depending on the URI.
+///
+/// **The handler this starts is not confined, and does not consult
+/// `shell.toml [launcher] confined`.** Everything above this point
+/// authorises the *caller* - the scheme allow-list, the sandbox
+/// containment check, the fd-still-points-at guard - and none of it
+/// says anything about the process that ends up opening the file. So
+/// the same application, opened from the launcher with confinement on,
+/// runs inside `arlen-run`; opened by a portal request, it does not.
+///
+/// This is a third launch path beside the shell launcher and the
+/// per-app Settings handoff, both of which read that flag. It is not
+/// closable by giving this function the flag too: `xdg-open` is what
+/// resolves the URI to a handler, and `arlen-run` needs the app id that
+/// resolution produces, which nothing here has. Closing it means the
+/// resolution and the launch happening in one place that owns the
+/// decision, rather than a fourth copy of it here.
 async fn spawn_xdg_open(uri: &str) -> (u32, HashMap<String, OwnedValue>) {
     let result = tokio::process::Command::new("xdg-open")
         .arg(uri)
