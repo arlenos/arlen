@@ -42,6 +42,13 @@ impl WakeCapability {
             Self::AwakeOnly => "alarms will not wake this machine",
         }
     }
+
+    /// The same answer as a value, for a caller that has to decide rather than
+    /// display. Kept beside `describe` so the two cannot drift: a test asserts
+    /// they agree for both states.
+    pub fn wakes_machine(self) -> bool {
+        matches!(self, Self::WakesMachine)
+    }
 }
 
 /// Errors from scheduling a wake.
@@ -162,6 +169,18 @@ mod tests {
             WakeCapability::WakesMachine | WakeCapability::AwakeOnly
         ));
         assert!(!cap.describe().is_empty());
+    }
+
+    /// The boolean and the sentence are two views of one fact, and the clock
+    /// renders a standing "this machine will not be woken" off the boolean while
+    /// a person reads the sentence. If they ever disagreed, the app would say one
+    /// thing and behave as the other.
+    #[test]
+    fn the_value_and_the_sentence_agree_for_both_states() {
+        assert!(WakeCapability::WakesMachine.wakes_machine());
+        assert!(WakeCapability::WakesMachine.describe().contains("can wake"));
+        assert!(!WakeCapability::AwakeOnly.wakes_machine());
+        assert!(WakeCapability::AwakeOnly.describe().contains("will not wake"));
     }
 
     #[test]
