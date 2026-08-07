@@ -15,6 +15,7 @@ import re
 import sys
 import time
 import urllib.request
+import urllib.error
 
 # WebDriver key code for Enter (U+E007), used to submit a typed command.
 ENTER = ""
@@ -26,8 +27,16 @@ def rq(base, method, path, body=None):
         base + path, data=data, method=method,
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        # WebDriver puts the reason in the response body, and urllib throws that
+        # body away - so a failure used to surface as a bare "HTTP Error 500"
+        # with a traceback and nothing to act on. Reading it costs one line and
+        # turns every future failure here into something diagnosable.
+        detail = e.read().decode(errors="replace").strip()
+        raise SystemExit(f"{method} {path} -> HTTP {e.code}\n{detail}") from None
 
 
 def type_keys(base, sid, text):
