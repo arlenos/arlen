@@ -1,0 +1,40 @@
+#!/bin/sh
+# Phase 8n (CHROOT): the wallpaper renderer (arlen-wallpaperd), the wlr-layer-shell
+# client that paints the configured wallpaper on every output. Without this phase
+# the image has no wallpaper at all: the desktop is the compositor's clear colour,
+# the Settings picker writes a manifest nobody reads, and `set_wallpaper` succeeds
+# while changing nothing visible. The "built, not deployed" class again.
+#
+# Its own standalone cargo workspace (daemons/wallpaper) -> its own target dir in
+# the persistent cache. Pure Rust, software wl_shm buffers, no GPU and no C/C++.
+#
+# The unit + its graphical-session.target.wants symlink live in mkosi.extra; this
+# phase stages only the binary, at the path the unit's ExecStart names.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-wallpaper"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the wallpaper renderer (arlen-wallpaperd) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/wallpaper/Cargo.toml
+
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-wallpaperd" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-wallpaperd"
+
+# The catalogue directory the Settings picker lists (`/usr/share/arlen/wallpapers`,
+# the system half of the convention; the user half is ~/.local/share/arlen/wallpapers).
+# Created empty: shipping artwork is a content decision, and a missing directory
+# would otherwise read to the picker as an empty catalogue for the wrong reason.
+install -d -m755 "$DESTDIR/usr/share/arlen/wallpapers"
+echo ">> staged arlen-wallpaperd into the image"
