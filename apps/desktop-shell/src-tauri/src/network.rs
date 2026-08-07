@@ -864,26 +864,68 @@ pub async fn disconnect_vpn(name: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Checks if any VPN connection is active.
+/// Whether a VPN connection is up.
+///
+/// Replaces `nmcli -t -f TYPE,STATE con show --active`, matching it exactly: a
+/// connection whose type contains "vpn" and whose state is activated. Verified
+/// side by side on a live session - the same five active connections, the same
+/// type strings, and `State=2` where nmcli printed "activated".
+///
+/// **Two things this does not catch, neither of them new.** NetworkManager also
+/// publishes a `Vpn` boolean on an active connection, which is sturdier than a
+/// substring match on a type name; and WireGuard is a device type rather than a
+/// VPN plugin, so neither the substring nor that boolean is likely to see it.
+/// No VPN and no WireGuard was configured here, so the second is reasoning about
+/// NetworkManager's model rather than something I watched fail - said that way
+/// on purpose. Both are behaviour questions and this commit is a transport
+/// change.
 async fn check_vpn() -> bool {
-    let output = match tokio::process::Command::new("nmcli")
-        .args(["-t", "-f", "TYPE,STATE", "con", "show", "--active"])
-        .output()
+    /// `NM_ACTIVE_CONNECTION_STATE_ACTIVATED`, which is what nmcli printed as
+    /// "activated" in the STATE column this replaces.
+    const ACTIVE_CONNECTION_ACTIVATED: u32 = 2;
+
+    let Ok(conn) = zbus::Connection::system().await else {
+        return false;
+    };
+    let Ok(manager) = zbus::Proxy::new(
+        &conn,
+        "org.freedesktop.NetworkManager",
+        "/org/freedesktop/NetworkManager",
+        "org.freedesktop.NetworkManager",
+    )
+    .await
+    else {
+        return false;
+    };
+    let Ok(active) = manager
+        .get_property::<Vec<zbus::zvariant::OwnedObjectPath>>("ActiveConnections")
         .await
-    {
-        Ok(o) => o,
-        Err(_) => return false,
+    else {
+        return false;
     };
 
-    if !output.status.success() {
-        return false;
+    for path in active {
+        let Ok(proxy) = zbus::Proxy::new(
+            &conn,
+            "org.freedesktop.NetworkManager",
+            path,
+            "org.freedesktop.NetworkManager.Connection.Active",
+        )
+        .await
+        else {
+            continue;
+        };
+        let (Ok(kind), Ok(state)) = (
+            proxy.get_property::<String>("Type").await,
+            proxy.get_property::<u32>("State").await,
+        ) else {
+            continue;
+        };
+        if kind.contains("vpn") && state == ACTIVE_CONNECTION_ACTIVATED {
+            return true;
+        }
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout.lines().any(|line| {
-        let parts: Vec<&str> = line.split(':').collect();
-        parts.len() >= 2 && parts[0].contains("vpn") && parts[1] == "activated"
-    })
+    false
 }
 
 // ---------------------------------------------------------------------------
