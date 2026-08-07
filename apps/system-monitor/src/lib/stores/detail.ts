@@ -40,6 +40,13 @@ export interface ProcDetail {
 
 // Access is keyed by known process name so it reads meaningfully; everything else
 // gets the honest minimal default.
+//
+// These sentences are ours and they are not translated, deliberately: the table
+// is a stand-in. What a process may reach is already derived properly from its
+// permission profile in Settings (`stores/grants.ts` turns a `GrantView` into
+// scope lines), and this hand-keyed copy will be replaced by that rather than
+// grown. Translating it now is work that dies with the table; what it needs is
+// the profile behind it.
 const ACCESS: Record<string, ProcAccess> = {
   Meet: {
     camera: true,
