@@ -17,5 +17,6 @@ version = "1"
 
 [dev-dependencies]
 chrono-tz = "0.9"
+tempfile = "3"
 
 [workspace]
