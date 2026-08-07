@@ -68,6 +68,12 @@ const ADMITTED: &[&str] = &[
     // no-silent-capture screenshot audit (SC-R6). Resolves to this id via the
     // canonical libexec path in `arlen_permissions::identity::path_to_app_id`.
     "xdg-desktop-portal",
+    // The shell, for the launch socket: the audit line is the answer to "which
+    // application caused this one to start", and a producer that is not admitted
+    // here fails closed at the act, so leaving it out would not lose the record -
+    // it would refuse the launch. That is the shape that made the agent's gate
+    // return Unavailable in release while debug hid it behind `dev.*`.
+    "desktop-shell",
     // The Context-Capsule daemon (`capsuled`): its capsule-serve audit is
     // fail-closed, so without admission every capsule read returns "audit
     // unavailable".
@@ -282,6 +288,7 @@ const DEV_ADMITTED: &[&str] = &[
     "dev.arlen-ai-engine-daemon",
     "dev.arlen-graph-daemon",
     "dev.arlen-consent-broker",
+    "dev.arlen-desktop-shell",
 ];
 
 /// Whether a resolved peer app_id may submit audit events.
@@ -349,6 +356,9 @@ mod tests {
             ("/usr/lib/arlen/libexec/arlen-connectionsd", "connections"),
             ("/usr/lib/arlen/libexec/arlen-config-broker", "config-broker"),
             ("/usr/lib/arlen/libexec/arlen-transferd", "transferd"),
+            // The shell is on PATH rather than in libexec: it is what the session
+            // starts, not something a unit activates behind it.
+            ("/usr/bin/arlen-desktop-shell", "desktop-shell"),
         ];
         for &(path, id) in deployed {
             assert_eq!(
@@ -427,6 +437,7 @@ mod tests {
             "xdg-desktop-portal",
             "capsuled",
             "connections",
+            "desktop-shell",
         ] {
             assert!(
                 ADMITTED.contains(&producer),
