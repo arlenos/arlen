@@ -760,11 +760,31 @@ struct ProvenanceRequest {
 /// observation nodes and contribute no label. The result is validated to safe
 /// identifiers, since it is interpolated into the per-label existence probe that
 /// makes an out-of-scope object indistinguishable from an absent one.
+/// Whether `name` is a graph identifier safe to interpolate into a query.
+///
+/// A Cypher label or relationship type is a letter or underscore followed by
+/// letters, digits and underscores, and this accepts exactly that: it must
+/// exclude anything that could end the identifier and start something else, and
+/// it must not exclude a name the graph really uses.
+///
+/// **Underscores are the point.** The previous rule was alphanumeric-only, which
+/// silently dropped every name carrying one - no node label uses one today, so
+/// nothing was visibly broken, but every relationship type does (`FILE_PART_OF`,
+/// `ACCESSED_BY`), and a filter that quietly rejects valid names is a defect
+/// whether or not something is currently hitting it. It would have met any
+/// traversal work head-on: the first edge type to be authorised would have been
+/// dropped by the predicate rather than by a decision.
+fn is_safe_graph_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 fn readable_system_labels(read_scopes: &[crate::token::EntityScope]) -> Vec<String> {
     read_scopes
         .iter()
         .filter_map(|s| s.entity_type.strip_prefix("system."))
-        .filter(|l| !l.is_empty() && l.chars().all(|c| c.is_ascii_alphanumeric()))
+        .filter(|l| is_safe_graph_identifier(l))
         .map(str::to_string)
         .collect()
 }
@@ -4365,6 +4385,15 @@ mod tests {
         assert!(readable_system_labels(&[scope("system.File; DROP")]).is_empty());
         assert!(readable_system_labels(&[scope("system.")]).is_empty());
         assert!(readable_system_labels(&[]).is_empty());
+        // An underscore is part of a valid identifier, not a reason to drop the
+        // name: every relationship type has one, and the old alphanumeric-only
+        // rule rejected them all without saying so.
+        assert_eq!(
+            readable_system_labels(&[scope("system.FILE_PART_OF"), scope("system._x1")]),
+            vec!["FILE_PART_OF".to_string(), "_x1".to_string()],
+        );
+        // A leading digit is not an identifier and stays out.
+        assert!(readable_system_labels(&[scope("system.1File")]).is_empty());
     }
 
     #[test]
