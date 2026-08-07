@@ -1,6 +1,17 @@
-/// Audio volume control via wpctl (wireplumber).
-///
-/// Reads and sets the default audio sink volume using the `wpctl` CLI.
+//! Audio state and control, over the PipeWire CLIs.
+//!
+//! Nineteen subprocesses: thirteen `pactl` and six `wpctl`. `wpctl` reads and
+//! sets the default sink's volume and mute; `pactl` does everything with a
+//! shape - the sink and source lists, per-app streams, device descriptions -
+//! because it prints something parseable and `wpctl` does not.
+//!
+//! **This is the last of the desktop backends still driven by a CLI, and unlike
+//! its siblings D-Bus is not the way out.** Power reaches logind and UPower on
+//! the system bus, and network has NetworkManager there; PipeWire has no D-Bus
+//! interface of its own, so replacing these means libpipewire through the
+//! `pipewire` crate - a native dependency and an event loop, not a proxy call.
+//! Recorded here so the next person does not go looking for a bus name that
+//! does not exist.
 
 use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, OnceLock};
