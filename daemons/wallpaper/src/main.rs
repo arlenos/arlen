@@ -3,13 +3,18 @@
 //! compose) is the pure `decode` module; this binary is the Wayland client
 //! ([`arlen_wallpaper::render`]) plus manifest loading.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use arlen_wallpaper::config;
 use arlen_wallpaper::manifest::WallpaperManifest;
 use arlen_wallpaper::render::Wallpaper;
 use arlen_wallpaper::schedule::TimeContext;
 use wayland_client::Connection;
+
+/// How long the manifest directory must go quiet before a reload. Long enough to
+/// swallow one save's burst of inotify events, short enough that a picked
+/// wallpaper still feels immediate.
+const RELOAD_SETTLE: Duration = Duration::from_millis(150);
 
 fn main() {
     tracing_subscriber::fmt()
@@ -68,18 +73,51 @@ fn run(
     // channel, which is what actually wakes the dispatch.
     let (tx, rx) = calloop::channel::channel::<()>();
     let _watcher = watch_manifest(tx);
-    handle.insert_source(rx, |event, _, state: &mut Wallpaper| {
+
+    // Reload on the TRAILING edge of a burst. One save is many inotify events -
+    // measured under the nested compositor, a single temp-and-rename produced a
+    // dozen - and each would otherwise decode the image and repaint every
+    // output. Waiting for the burst to go quiet also avoids the subtler bug: the
+    // first event of the burst is the temp file appearing, so reloading on it
+    // reads the manifest that is about to be replaced.
+    //
+    // The pending timer is REMOVED before a new one is inserted. Dropping the
+    // token is not enough - a source stays registered without it, so the first
+    // cut of this scheduled one reload per event and made the problem worse
+    // rather than better (42 reloads for one change, measured).
+    let timer_handle = handle.clone();
+    let pending: std::rc::Rc<std::cell::RefCell<Option<calloop::RegistrationToken>>> =
+        std::rc::Rc::new(std::cell::RefCell::new(None));
+    handle.insert_source(rx, move |event, _, _: &mut Wallpaper| {
         if !matches!(event, calloop::channel::Event::Msg(())) {
             return;
         }
-        match load_manifest() {
-            Some(m) => {
-                tracing::info!("wallpaper manifest changed; redrawing");
-                state.set_manifest(m, TimeContext::at_minute(minute_of_day()));
-            }
-            // A manifest that stopped loading leaves the current one on screen:
-            // the alternative is a bare desktop while the user fixes a typo.
-            None => tracing::warn!("wallpaper manifest changed but does not load; keeping the current one"),
+        if let Some(token) = pending.borrow_mut().take() {
+            timer_handle.remove(token);
+        }
+        let slot = pending.clone();
+        let inserted = timer_handle.insert_source(
+            calloop::timer::Timer::from_duration(RELOAD_SETTLE),
+            move |_, _, state: &mut Wallpaper| {
+                slot.borrow_mut().take();
+                match load_manifest() {
+                    Some(m) => {
+                        tracing::info!("wallpaper manifest changed; redrawing");
+                        state.set_manifest(m, TimeContext::at_minute(minute_of_day()));
+                    }
+                    // A manifest that stopped loading leaves the current one on
+                    // screen: the alternative is a bare desktop while the user
+                    // fixes a typo.
+                    None => tracing::warn!(
+                        "wallpaper manifest changed but does not load; keeping the current one"
+                    ),
+                }
+                calloop::timer::TimeoutAction::Drop
+            },
+        );
+        match inserted {
+            Ok(token) => *pending.borrow_mut() = Some(token),
+            Err(e) => tracing::warn!("could not schedule the wallpaper reload: {e}"),
         }
     })?;
 
