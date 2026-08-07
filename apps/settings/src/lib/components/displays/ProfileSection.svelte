@@ -19,6 +19,7 @@
   import { Input } from "@arlen/ui-kit/components/ui/input";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { t } from "$lib/i18n/messages";
+  import { locale, relativeTime } from "@arlen/ui-kit/i18n";
   import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
   import type { ApplyHandle, MonitorConfig } from "$lib/stores/displays";
   import { tauriAvailable } from "$lib/tauri";
@@ -163,14 +164,12 @@
     return set.map((o) => o.connector).join(" + ");
   }
 
+  // The ladder this replaced wrote its own English at four thresholds. The kit's
+  // formatter reads the wording out of the locale data instead, so "gestern" and
+  // "vor 8 Minuten" need no entries here.
   function describeWhen(iso: string | null): string {
-    if (!iso) return "never applied";
-    const t = new Date(iso).getTime();
-    const seconds = Math.max(0, Math.floor((Date.now() - t) / 1000));
-    if (seconds < 60) return "just now";
-    if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-    if (seconds < 86_400) return `${Math.floor(seconds / 3600)} h ago`;
-    return `${Math.floor(seconds / 86_400)} d ago`;
+    if (!iso) return $t("s.profile.neverApplied");
+    return relativeTime(new Date(iso).getTime(), $locale);
   }
 </script>
 

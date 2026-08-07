@@ -180,11 +180,6 @@ apps/settings/src/lib/components/appearance/AppPicker.svelte	notify-send
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	TopBar
 apps/settings/src/lib/components/appearance/ModuleCard.svelte	Waypointer
 apps/settings/src/lib/components/displays/MonitorMap.svelte	wlr-output-management
-apps/settings/src/lib/components/displays/ProfileSection.svelte	just now
-apps/settings/src/lib/components/displays/ProfileSection.svelte	never applied
-apps/settings/src/lib/components/displays/ProfileSection.svelte	{} d ago
-apps/settings/src/lib/components/displays/ProfileSection.svelte	{} h ago
-apps/settings/src/lib/components/displays/ProfileSection.svelte	{} min ago
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Large
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Standard
 apps/settings/src/lib/components/quicksettings/PreviewTile.svelte	Wide
