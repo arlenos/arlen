@@ -143,6 +143,75 @@ async fn parse_device_status() -> Result<(String, bool, Option<String>, Option<u
     Ok(("disconnected".into(), false, None, None))
 }
 
+/// The names of every saved connection, as NetworkManager holds them.
+///
+/// Replaces `nmcli -t -f NAME connection show`. One call to list the connection
+/// objects and one per object for its settings - twenty-odd round trips on a
+/// well-used machine, which is still far cheaper than forking a process, and
+/// they are reads that touch nothing.
+///
+/// An unreadable connection is skipped rather than failing the set: this only
+/// decides whether a scanned network is drawn as "known", so a connection that
+/// disappears mid-enumeration should cost that one row's badge and not the whole
+/// list.
+///
+/// **This compares a saved connection's `id` against a scanned SSID, which is
+/// what the nmcli version did and is not quite right.** The id is a label and
+/// usually equals the SSID, but a network saved as "Home" is the same network
+/// under another name, and today it draws as unknown. The settings also carry
+/// `802-11-wireless.ssid` as the actual bytes, which would answer properly.
+/// Left as it was so this stays a transport change; the fix is a behaviour
+/// change and deserves to be visible as one.
+async fn saved_connection_names() -> std::collections::HashSet<String> {
+    let Ok(conn) = zbus::Connection::system().await else {
+        return Default::default();
+    };
+    let Ok(settings) = zbus::Proxy::new(
+        &conn,
+        "org.freedesktop.NetworkManager",
+        "/org/freedesktop/NetworkManager/Settings",
+        "org.freedesktop.NetworkManager.Settings",
+    )
+    .await
+    else {
+        return Default::default();
+    };
+    let Ok(paths): Result<Vec<zbus::zvariant::OwnedObjectPath>, _> =
+        settings.call("ListConnections", &()).await
+    else {
+        return Default::default();
+    };
+
+    let mut names = std::collections::HashSet::new();
+    for path in paths {
+        let Ok(proxy) = zbus::Proxy::new(
+            &conn,
+            "org.freedesktop.NetworkManager",
+            path,
+            "org.freedesktop.NetworkManager.Settings.Connection",
+        )
+        .await
+        else {
+            continue;
+        };
+        type Settings = std::collections::HashMap<
+            String,
+            std::collections::HashMap<String, zbus::zvariant::OwnedValue>,
+        >;
+        let Ok(map): Result<Settings, _> = proxy.call("GetSettings", &()).await else {
+            continue;
+        };
+        if let Some(id) = map
+            .get("connection")
+            .and_then(|c| c.get("id"))
+            .and_then(|v| String::try_from(v.clone()).ok())
+        {
+            names.insert(id);
+        }
+    }
+    names
+}
+
 /// Returns signal strength for the connected SSID, sourced from the
 /// `WIFI_CACHE` populated by `get_wifi_networks`.
 ///
@@ -263,20 +332,7 @@ pub async fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
         return Err("nmcli wifi list failed".into());
     }
 
-    // Collect known connection names. Async so the second nmcli
-    // invocation also yields to the runtime rather than blocking.
-    let known: std::collections::HashSet<String> =
-        match tokio::process::Command::new("nmcli")
-            .args(["-t", "-f", "NAME", "connection", "show"])
-            .output()
-            .await
-        {
-            Ok(o) => String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .map(|s| s.to_string())
-                .collect(),
-            Err(_) => Default::default(),
-        };
+    let known = saved_connection_names().await;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     // nmcli emits ONE row per BSSID (access point), so an SSID with
