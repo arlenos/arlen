@@ -668,7 +668,11 @@ fn scan_script(src: &str) -> Vec<Finding> {
             if trailing_name(&prefix) == "return" {
                 in_return = true;
             }
-            if c == ';' || c == '}' {
+            // `;` and `}` end the statement; `{` opens an object literal or a
+            // block, and inside one the property rules already decide - without
+            // this, `return { instance: "All" }` reads every value in the
+            // literal as returned copy, and a wire enum lands in the baseline.
+            if c == ';' || c == '}' || c == '{' {
                 in_return = false;
             }
             if !c.is_whitespace() {
@@ -1573,6 +1577,18 @@ const SECOND = [
     fn a_returned_selector_is_not_copy() {
         let src = r#"return "button, a, input, [role='button']";"#;
         assert!(script_texts(src).is_empty());
+    }
+
+    #[test]
+    fn a_returned_object_literal_is_judged_by_its_props() {
+        // `instance` is a wire enum, not copy, and only the prop rules can know
+        // that. Without the brace ending the return, every value in a returned
+        // literal read as a returned sentence.
+        assert!(script_texts(r#"return { instance: "All", mode: "Own" };"#).is_empty());
+        assert_eq!(
+            script_texts(r#"return { instance: "All", label: "Everything here" };"#),
+            vec!["Everything here"]
+        );
     }
 
     #[test]
