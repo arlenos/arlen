@@ -15,10 +15,10 @@
   /// suppress filter is inactive.
   const subtitle = $derived(
     $dndState.mode === "off"
-      ? "Available"
+      ? $t("sh.tile.available")
       : $dndState.mode === "scheduled"
-        ? "Scheduled"
-        : "Silenced",
+        ? $t("sh.tile.scheduled")
+        : $t("sh.tile.silenced"),
   );
 
   function handleClick() {

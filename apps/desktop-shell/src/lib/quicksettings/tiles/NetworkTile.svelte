@@ -66,12 +66,12 @@
   const active = $derived(!!status?.connected && !airplane);
   const subtitle = $derived(
     airplane
-      ? "Airplane Mode"
+      ? $t("sh.tile.airplane")
       : !wifiEnabled && status?.connection_type !== "ethernet"
-        ? "WiFi off"
+        ? $t("sh.tile.wifiOff")
         : status?.connected
           ? (status.name ?? status.connection_type)
-          : "Disconnected",
+          : $t("sh.net.disconnected"),
   );
 </script>
 
