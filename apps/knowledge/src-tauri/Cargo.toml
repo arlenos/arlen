@@ -1,0 +1,29 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-knowledge-app"
+version = "0.1.0"
+description = "Arlen OS Knowledge - the human window onto your own graph"
+authors = ["Arlen"]
+edition = "2021"
+
+[lib]
+name = "arlen_knowledge_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-arlen-shell = { path = "../../../sdk/tauri-plugin-shell" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"
+os-sdk = { path = "../../../sdk/os-sdk" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
+
+# This app is its own standalone crate (not a member of a parent workspace).
+[workspace]
