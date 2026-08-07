@@ -39,13 +39,44 @@ pub struct ToggleStatus {
     pub recording_started_at: Option<u64>,
 }
 
+/// Whether a helper is still running, clearing it if it has exited.
+///
+/// `is_some()` only says a child was once spawned. `systemd-inhibit` can be
+/// refused by logind and a recorder can die on its own, and both leave a process
+/// slot that reads as active forever - the panel would show a machine kept awake
+/// by an inhibitor that is not there.
+///
+/// Reaping here rather than in a watchdog: the badges already poll this every
+/// four seconds, so the poll they were doing anyway becomes the supervision.
+fn still_running(slot: &mut Option<std::process::Child>) -> bool {
+    let Some(child) = slot.as_mut() else { return false };
+    match child.try_wait() {
+        Ok(Some(status)) => {
+            log::info!("toggle: helper exited on its own ({status})");
+            *slot = None;
+            false
+        }
+        // Still running, or a wait we cannot make sense of. Keeping it is the
+        // conservative reading: the process may well be alive.
+        _ => true,
+    }
+}
+
 /// Get current toggle state.
 #[tauri::command]
 pub fn get_toggle_status(state: tauri::State<'_, ToggleState>) -> ToggleStatus {
-    let caffeine = state.caffeine.lock().unwrap().is_some();
-    let recording = state.recording.lock().unwrap().is_some();
-    let path = state.recording_path.lock().unwrap().clone();
-    let started = *state.recording_started_at.lock().unwrap();
+    let caffeine = still_running(&mut state.caffeine.lock().unwrap());
+    let mut rec_guard = state.recording.lock().unwrap();
+    let recording = still_running(&mut rec_guard);
+    let mut path_guard = state.recording_path.lock().unwrap();
+    let mut started_guard = state.recording_started_at.lock().unwrap();
+    if !recording {
+        // The path and the clock belong to a recording that is over.
+        path_guard.take();
+        started_guard.take();
+    }
+    let path = path_guard.clone();
+    let started = *started_guard;
     ToggleStatus {
         caffeine_active: caffeine,
         recording_active: recording,
@@ -83,6 +114,15 @@ pub fn toggle_caffeine(state: tauri::State<'_, ToggleState>) -> Result<bool, Str
             .stderr(std::process::Stdio::null())
             .spawn()
             .map_err(|e| format!("failed to start systemd-inhibit: {e}"))?;
+
+        // Same reason as the recorder below: a spawn proves the binary exists,
+        // not that logind granted the inhibit. Saying "the machine will stay
+        // awake" when it will not is the one thing this toggle must not do.
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        let mut child = child;
+        if let Ok(Some(status)) = child.try_wait() {
+            return Err(format!("the inhibitor stopped immediately ({status})"));
+        }
         *guard = Some(child);
         log::info!("caffeine: activated");
         Ok(true)
@@ -137,9 +177,9 @@ pub fn toggle_recording(state: tauri::State<'_, ToggleState>) -> Result<bool, St
         // immediately, and without this the toggle would report success and the
         // panel would show a recording that never started.
         //
-        // A short look is all this can honestly do: a recorder that dies a minute
-        // in still reads as running until it is stopped. Watching for that is a
-        // supervisor, not a toggle.
+        // This catches the immediate failure so the click itself can report it.
+        // A recorder that dies later is caught by `get_toggle_status`, which the
+        // badges poll every four seconds and which reaps a helper that has gone.
         std::thread::sleep(std::time::Duration::from_millis(250));
         if let Ok(Some(status)) = child.try_wait() {
             let _ = std::fs::remove_file(&output);
