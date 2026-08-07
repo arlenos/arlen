@@ -238,17 +238,13 @@ jobs:
           # .cargo/config.toml `[build] target-dir = "target"`), so cache
           # <root>/target while still keying on this component's Cargo.lock.
           workspaces: ${{ matrix.component }} -> target
+      # Both steps go through dev/check-crate.sh, which the justfile also calls,
+      # so the local gate and this one cannot spell the same job differently.
+      # They did, four times in a week; the script's header lists them.
       - name: check
-        run: cargo check --manifest-path ${{ matrix.component }}/Cargo.toml
+        run: dev/check-crate.sh check ${{ matrix.component }}
       - name: test
-        run: |
-          # installd and knowledge tests mutate process-global state (env vars,
-          # a single on-disk graph) and must run serially to avoid races.
-          extra=""
-          case "${{ matrix.component }}" in
-            daemons/installd|daemons/knowledge) extra="-- --test-threads=1" ;;
-          esac
-          cargo test --manifest-path ${{ matrix.component }}/Cargo.toml --no-fail-fast $extra
+        run: dev/check-crate.sh test ${{ matrix.component }}
       - name: born-translatable lint
         # Runs on the sdk/i18n leg only: the toolchain and the crate's own build
         # are already warm there, so arming this costs one `cargo run` rather than
