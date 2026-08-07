@@ -32,4 +32,5 @@
 pub mod exec;
 pub mod mimeapps;
 pub mod plan;
+pub mod request;
 pub mod search;
