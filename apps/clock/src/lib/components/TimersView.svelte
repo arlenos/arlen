@@ -11,30 +11,36 @@
   const PRESETS = [1, 5, 10, 25];
   let customMin = $state(15);
   let customSec = $state(0);
+  const durationMs = $derived((customMin * 60 + customSec) * 1000);
 </script>
 
 <div class="ti">
+  <!-- One instrument, one action: the big readout IS the duration being set,
+       the presets and steppers set it, Start starts it. -->
   <div class="ti-new">
-    <span class="ti-heading">{$t("c.ti.presets")}</span>
+    <span class="ti-readout" aria-hidden="true">{fmtDuration(durationMs)}</span>
+    <div class="ti-steppers">
+      <NumberInput value={customMin} min={0} max={999} width="120px" unit={$t("c.ti.minutes")} ariaLabel={$t("c.ti.minutes")} onchange={(v) => (customMin = v)} />
+      <NumberInput value={customSec} min={0} max={59} width="120px" unit={$t("c.ti.seconds")} ariaLabel={$t("c.ti.seconds")} onchange={(v) => (customSec = v)} />
+    </div>
     <div class="ti-presets">
       {#each PRESETS as p (p)}
-        <Button variant="outline" size="sm" id={`preset-${p}`} onclick={() => startTimer(p * 60_000)}>
+        <Button
+          variant="outline"
+          size="sm"
+          id={`preset-${p}`}
+          onclick={() => {
+            customMin = p;
+            customSec = 0;
+          }}
+        >
           {$t("c.ti.min", { n: p })}
         </Button>
       {/each}
-      <span class="ti-custom">
-        <NumberInput value={customMin} min={0} max={999} width="120px" unit={$t("c.ti.minutes")} ariaLabel={$t("c.ti.minutes")} onchange={(v) => (customMin = v)} />
-        <NumberInput value={customSec} min={0} max={59} width="120px" unit={$t("c.ti.seconds")} ariaLabel={$t("c.ti.seconds")} onchange={(v) => (customSec = v)} />
-        <Button
-          size="sm"
-          id="start-custom"
-          disabled={customMin === 0 && customSec === 0}
-          onclick={() => startTimer((customMin * 60 + customSec) * 1000)}
-        >
-          {$t("c.ti.start")}
-        </Button>
-      </span>
     </div>
+    <Button id="start-timer" disabled={durationMs === 0} onclick={() => startTimer(durationMs)}>
+      {$t("c.ti.start")}
+    </Button>
   </div>
 
   {#if $clock}
@@ -71,18 +77,24 @@
     margin: 0 auto;
     padding: 1.1rem 1rem 1.5rem;
   }
-  .ti-heading {
-    font-size: var(--text-2xs);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
-  }
   .ti-new {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.75rem;
+    padding-top: 0.75rem;
+  }
+  .ti-readout {
+    font-size: 2.6rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+    color: var(--color-fg-primary);
+  }
+  .ti-steppers {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
   .ti-presets {
     display: flex;
@@ -90,12 +102,6 @@
     justify-content: center;
     flex-wrap: wrap;
     gap: 0.4rem;
-  }
-  .ti-custom {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    margin-inline-start: 0.5rem;
   }
   .ti-empty {
     margin: 0;
