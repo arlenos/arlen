@@ -29,13 +29,13 @@ accent         = "#171717"
 accent_hover   = "#525252"
 accent_pressed = "#3f3f46"
 success        = "#16a34a"
-warning        = "#ca8a04"
+warning        = "#a16207"
 error          = "#dc2626"
 info           = "#2563eb"
 
 [color.border]
 default = "#e5e5e5"
-strong  = "#d4d4d4"
+strong  = "#8a8a8f"
 
 [radius]
 chip           = 4

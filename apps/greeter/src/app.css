@@ -32,9 +32,9 @@
   --color-accent-hover:      var(--color-fg-secondary);
   --color-accent-foreground: var(--color-fg-inverse);
   --color-border:         #262626;
-  --color-border-strong:  #3f3f46;
+  --color-border-strong:  #63636b;
   --color-error:          #ef4444;
-  --color-warning:        #f59e0b;
+  --color-warning:        #eab308;
   --color-success:        #10b981;
 
   --radius-chip:   4px;

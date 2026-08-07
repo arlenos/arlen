@@ -593,15 +593,7 @@ mod contrast_audit {
     /// that is a design decision. Listing them keeps the measurement honest AND lets
     /// the test catch a NEW regression, which is the part that would otherwise go
     /// unnoticed. Delete an entry when the colour changes; the test then enforces it.
-    const KNOWN_BELOW_FLOOR: &[&str] = &[
-        // A separator against the app background. 1.84:1.
-        "dark: border.strong on bg.app",
-        // Amber on a light background is the classic failure; 2.70:1 against a 3.0
-        // floor, so a status colour people are meant to notice is the marginal one.
-        "light: warning on bg.app",
-        // 1.36:1 - the weakest pair in either theme.
-        "light: border.strong on bg.app",
-    ];
+    const KNOWN_BELOW_FLOOR: &[&str] = &[];
 
     /// The shipped themes must clear the contrast floors they are measured against.
     ///
