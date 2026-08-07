@@ -32,9 +32,9 @@ const messages: Catalogs = {
     "c.al.delete": "Delete",
     "c.al.toggleAria": "Alarm {$time} on or off",
 
-    "c.ti.presets": "Start a timer",
-    "c.ti.custom": "Custom",
     "c.ti.minutes": "min",
+    "c.ti.less": "One minute less",
+    "c.ti.more": "One minute more",
     "c.ti.seconds": "sec",
     "c.ti.start": "Start",
     "c.ti.running": "Running",
@@ -43,7 +43,6 @@ const messages: Catalogs = {
     "c.ti.resume": "Resume",
     "c.ti.cancel": "Cancel",
     "c.ti.none": "No timers running.",
-    "c.ti.min": "{$n} min",
 
     "c.fo.title": "Focus",
     "c.fo.idle": "No session running.",
@@ -102,9 +101,9 @@ const messages: Catalogs = {
     "c.al.delete": "Löschen",
     "c.al.toggleAria": "Wecker {$time} ein oder aus",
 
-    "c.ti.presets": "Timer starten",
-    "c.ti.custom": "Eigene",
     "c.ti.minutes": "Min",
+    "c.ti.less": "Eine Minute weniger",
+    "c.ti.more": "Eine Minute mehr",
     "c.ti.seconds": "Sek",
     "c.ti.start": "Starten",
     "c.ti.running": "Läuft",
@@ -113,7 +112,6 @@ const messages: Catalogs = {
     "c.ti.resume": "Fortsetzen",
     "c.ti.cancel": "Abbrechen",
     "c.ti.none": "Keine Timer laufen.",
-    "c.ti.min": "{$n} Min",
 
     "c.fo.title": "Fokus",
     "c.fo.idle": "Keine Sitzung läuft.",

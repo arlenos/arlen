@@ -2,47 +2,62 @@
   /// Timers (clock-app.md §0.2): presets + a custom duration, running timers
   /// as rows. Remaining time derives from the daemon's `ends_at` anchor and
   /// the render tick - the window never counts.
+  import { Minus, Plus } from "lucide-svelte";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { NumberInput } from "@arlen/ui-kit/components/ui/number-input";
   import { clock, tick, startTimer, pauseTimer, cancelTimer, timerRemaining } from "$lib/stores/clock";
   import { fmtDuration } from "$lib/format";
   import { t } from "$lib/i18n/messages";
 
-  const PRESETS = [1, 5, 10, 25];
   let customMin = $state(15);
   let customSec = $state(0);
   const durationMs = $derived((customMin * 60 + customSec) * 1000);
+
+  function step(minutes: number): void {
+    customMin = Math.min(999, Math.max(0, customMin + minutes));
+  }
+  function clampMin(v: string): void {
+    customMin = Math.min(999, Math.max(0, Math.floor(Number(v) || 0)));
+  }
+  function clampSec(v: string): void {
+    customSec = Math.min(59, Math.max(0, Math.floor(Number(v) || 0)));
+  }
 </script>
 
 <div class="ti">
-  <!-- One instrument, one action: the big readout IS the duration being set,
-       the presets and steppers set it, Start starts it. -->
+  <!-- The big display IS the input: minus, editable digits, plus - one
+       instrument, no duplication. The buttons step whole minutes; the digits
+       take typing directly. -->
   <div class="ti-new">
-    <span class="ti-readout" aria-hidden="true">{fmtDuration(durationMs)}</span>
-    <div class="ti-instrument">
-      <div class="ti-steppers">
-        <NumberInput value={customMin} min={0} max={999} width="100%" unit={$t("c.ti.minutes")} ariaLabel={$t("c.ti.minutes")} onchange={(v) => (customMin = v)} />
-        <NumberInput value={customSec} min={0} max={59} width="100%" unit={$t("c.ti.seconds")} ariaLabel={$t("c.ti.seconds")} onchange={(v) => (customSec = v)} />
-      </div>
-      <div class="ti-presets">
-        {#each PRESETS as p (p)}
-          <Button
-            variant="outline"
-            size="sm"
-            id={`preset-${p}`}
-            onclick={() => {
-              customMin = p;
-              customSec = 0;
-            }}
-          >
-            {$t("c.ti.min", { n: p })}
-          </Button>
-        {/each}
-      </div>
-      <Button id="start-timer" class="ti-start" disabled={durationMs === 0} onclick={() => startTimer(durationMs)}>
-        {$t("c.ti.start")}
-      </Button>
+    <div class="ti-set">
+      <button type="button" class="ti-step" aria-label={$t("c.ti.less")} onclick={() => step(-1)}>
+        <Minus size={20} strokeWidth={2} />
+      </button>
+      <span class="ti-digits">
+        <input
+          class="ti-digit min"
+          type="text"
+          inputmode="numeric"
+          value={String(customMin).padStart(2, "0")}
+          aria-label={$t("c.ti.minutes")}
+          onchange={(e: Event) => clampMin((e.currentTarget as HTMLInputElement).value)}
+        />
+        <span class="ti-colon">:</span>
+        <input
+          class="ti-digit sec"
+          type="text"
+          inputmode="numeric"
+          value={String(customSec).padStart(2, "0")}
+          aria-label={$t("c.ti.seconds")}
+          onchange={(e: Event) => clampSec((e.currentTarget as HTMLInputElement).value)}
+        />
+      </span>
+      <button type="button" class="ti-step" aria-label={$t("c.ti.more")} onclick={() => step(1)}>
+        <Plus size={20} strokeWidth={2} />
+      </button>
     </div>
+    <Button id="start-timer" class="ti-start" disabled={durationMs === 0} onclick={() => startTimer(durationMs)}>
+      {$t("c.ti.start")}
+    </Button>
   </div>
 
   {#if $clock}
@@ -84,38 +99,56 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.75rem;
-    padding-top: 0.75rem;
+    gap: 1.5rem;
+    padding-block: 1.5rem 0.5rem;
+    align-self: stretch;
   }
-  .ti-readout {
+  .ti-set {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+  }
+  .ti-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 14%, transparent);
+    border-radius: var(--radius-full, 9999px);
+    background: transparent;
+    color: var(--color-fg-primary);
+    cursor: pointer;
+  }
+  .ti-step:hover {
+    background: color-mix(in srgb, var(--color-fg-primary) 8%, transparent);
+  }
+  .ti-digits {
+    display: inline-flex;
+    align-items: baseline;
+  }
+  /* The big digits ARE the input: type into them, the round buttons step. */
+  .ti-digit {
+    width: 2.1ch;
+    border: none;
+    background: transparent;
     font-size: var(--clock-display, 2.75rem);
     font-weight: 400;
     font-variant-numeric: tabular-nums;
-    line-height: 1.1;
+    text-align: center;
+    color: var(--color-fg-primary);
+    outline: none;
+    border-radius: var(--radius-input, 6px);
+  }
+  .ti-digit:focus {
+    background: color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
+  }
+  .ti-colon {
+    font-size: var(--clock-display, 2.75rem);
+    font-weight: 400;
     color: var(--color-fg-primary);
   }
-  /* One instrument width: the steppers, the presets and Start all share it,
-     so every row ends on the same edges (rule 5). */
-  .ti-instrument {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    align-self: stretch;
-  }
-  .ti-steppers {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
-  }
-  .ti-presets {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.4rem;
-  }
-  .ti-presets :global(button) {
-    width: 100%;
-  }
-  .ti-instrument :global(.ti-start) {
+  .ti-new :global(.ti-start) {
     width: 100%;
   }
   .ti-empty {
