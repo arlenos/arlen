@@ -739,6 +739,14 @@ check-graph:
 check-smoke:
     python3 "{{ROOT}}/dev/scripts/check-smoke-coverage.py"
 
+# An app must invoke commands its OWN binary defines. A Tauri command is compiled
+# into one app and registered on that app's handler, so a cross-app call is
+# rejected at runtime while `grep` still finds the name. NOT in `checks` for the
+# same reason as check-dbus: it reports eight real pre-existing calls today, and
+# declaring them to reach a green would be the wrong way round.
+check-invoke-scope:
+    python3 "{{ROOT}}/dev/scripts/check-invoke-scope.py"
+
 # Every D-Bus method must be able to see who called it, or be listed with the
 # reason it need not. NOT in `checks`: it currently fails on installd, whose
 # whole interface resolves no caller, and acknowledging those to get a green
