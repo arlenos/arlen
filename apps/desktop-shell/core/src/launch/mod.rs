@@ -15,7 +15,17 @@
 //! process machinery.
 //!
 //! [`mimeapps`] is the resolution: a URI's MIME type to the desktop id that
-//! handles it, per the freedesktop association spec.
+//! handles it, per the freedesktop association spec. [`search`] is where those
+//! files are and in which order they win, and [`exec`] turns the chosen entry's
+//! `Exec` into an argument vector.
+//!
+//! **`arlen_file_browser_core::openwith` answers two of the same questions**, for
+//! the file manager's Open-With picker, and one of the two implementations has
+//! to go once this service exists. Theirs came first and has the live caller;
+//! this one walks the full XDG precedence chain, honours
+//! `[Removed Associations]`, and fills `%i`/`%c`/`%k`, which a system-wide
+//! launcher needs and a picker does not. Written down on both sides so the next
+//! person finds one from the other rather than adding a third.
 
 pub mod exec;
 pub mod mimeapps;

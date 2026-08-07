@@ -5,6 +5,22 @@
 //! the application directories, query the file's MIME type, feed each entry's
 //! text here, and expand the `Exec` field codes at launch. This module is the
 //! testable decision layer: what is a launchable app, and does it handle a type.
+//!
+//! **Two of these functions have a second implementation, and that has to
+//! collapse.** `arlen_desktop_shell_core::launch` grew a `mimeapps` lookup and an
+//! `exec` expander for the launch service the portal is to call instead of
+//! `xdg-open`; the ones here came first and have the live caller. They are not
+//! the same: this one reads a single `mimeapps.list` and only its
+//! `[Default Applications]`, and drops `%i`/`%c`/`%k`; that one walks the full
+//! XDG precedence chain, honours `[Removed Associations]`, and fills them. Two
+//! answers to "which app opens this" is the shape that made four call sites
+//! disagree about one build command this week, so the split is recorded here
+//! rather than left for someone to find. The picker half - `parse_desktop_app`,
+//! `app_handles_mime`, `apps_for_mime` - is this module's own and stays.
+//!
+//! `files_open_with` in the host also spawns the chosen app directly, which
+//! makes it one of the launch paths that does not consult
+//! `shell.toml [launcher] confined`.
 
 /// A launchable application parsed from a `.desktop` entry's `[Desktop Entry]`
 /// group.
