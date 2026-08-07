@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { t } from "$lib/i18n/messages";
+  import { t, locale } from "$lib/i18n/messages";
   import { writable } from "$lib/stores/svelteRe.js";
   import { invoke } from "@tauri-apps/api/core";
   import { waypointerVisible, initWaypointerListeners, closeWaypointer } from "$lib/stores/waypointer.js";
@@ -974,7 +974,7 @@
                   badge="kill"
                   fallbackIcon={Skull}
                   title={proc.name}
-                  description={`PID ${proc.pid}, ${formatBytes(proc.memory_bytes)}`}
+                  description={`PID ${proc.pid}, ${formatBytes(proc.memory_bytes, $locale)}`}
                 />
               </CommandItem>
             {/each}

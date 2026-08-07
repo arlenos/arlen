@@ -40,10 +40,10 @@ export async function killProcess(pid: number, force: boolean): Promise<void> {
 }
 
 /// Formats bytes to human-readable string.
-export function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number, loc = get(locale)): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
     if (bytes < 1024 * 1024 * 1024)
-      return `${formatDecimal(bytes / (1024 * 1024), 1, get(locale))} MB`;
-    return `${formatDecimal(bytes / (1024 * 1024 * 1024), 1, get(locale))} GB`;
+      return `${formatDecimal(bytes / (1024 * 1024), 1, loc)} MB`;
+    return `${formatDecimal(bytes / (1024 * 1024 * 1024), 1, loc)} GB`;
 }

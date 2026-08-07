@@ -110,6 +110,51 @@ function reactivityFixtures() {
     `exit ${r2.code}: ${r2.out.trim()}`,
   );
 
+  // The helper-side shape, in a `.ts` file: a formatter that reads the locale
+  // store itself. Three of these shipped in one week and each read correctly.
+  const getLocale = tree({
+    "app/src/lib/fmt.ts": `import { get } from "svelte/store";
+import { locale } from "@arlen/ui-kit/i18n";
+
+export function size(bytes: number): string {
+  return new Intl.NumberFormat(get(locale)).format(bytes);
+}
+`,
+  });
+  const rLoc = run("check-i18n-reactivity.mjs", getLocale);
+  check(
+    "a helper reading get(locale) in its body is reported",
+    rLoc.code === 1 && rLoc.out.includes("get(locale)"),
+    `exit ${rLoc.code}: ${rLoc.out.trim()}`,
+  );
+
+  // Both allowed shapes must stay silent, or the rule is noise: a parameter
+  // default is what it asks for, and an imperative read handed straight to a
+  // command formats nothing.
+  const allowed = tree({
+    "app/src/lib/ok.ts": `import { get } from "svelte/store";
+import { invoke } from "@tauri-apps/api/core";
+import { locale } from "@arlen/ui-kit/i18n";
+
+export function size(bytes: number, loc = get(locale)): string {
+  return new Intl.NumberFormat(loc).format(bytes);
+}
+
+export async function search(query: string): Promise<void> {
+  await invoke("settings_search", {
+    query,
+    locale: get(locale),
+  });
+}
+`,
+  });
+  const rOk = run("check-i18n-reactivity.mjs", allowed);
+  check(
+    "a parameter default and a read passed to invoke are not reported",
+    rOk.code === 0,
+    `exit ${rOk.code}: ${rOk.out.trim()}`,
+  );
+
   const getT = tree({
     "app/src/GetT.svelte": `<script lang="ts">
   function label(kind: string): string {

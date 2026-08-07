@@ -42,8 +42,61 @@ function svelteFiles(dir, out = []) {
   return out;
 }
 
+/// Every `.ts` file, for the helper-side shape. Tests are excluded: a test may
+/// read the store on purpose to assert what it holds.
+function tsFiles(dir, out = []) {
+  for (const name of readdirSync(dir)) {
+    if (name === "node_modules" || name === ".svelte-kit" || name === "build") continue;
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) tsFiles(path, out);
+    else if (name.endsWith(".ts") && !name.endsWith(".test.ts") && !name.endsWith(".d.ts"))
+      out.push(path);
+  }
+  return out;
+}
+
+/// Whether this `get(locale)` is the allowed form: a parameter default.
+///
+/// `formatDecimal(value, digits, loc = get(locale))` is the shape the rule asks
+/// for - the caller passes `$locale` to get a dependency, and the default is
+/// there for callers outside a reactive context. What must go is the read inside
+/// a body, which is invisible to the compiler and to the reader.
+///
+/// A default ends the expression with `,` or `)` and is preceded by `=`; a read
+/// inside a body is preceded by `return`, `=` at statement level, or a call
+/// paren, and followed by `;` or an operator. Distinguishing those two is enough
+/// without parsing, and getting it wrong in the permissive direction only means
+/// the rule misses one - it never invents one.
+/// Whether this read hands the locale to a backend call rather than formatting
+/// with it.
+///
+/// `invoke("settings_search", { query, locale: get(locale) })` is the right
+/// shape: the value is consumed at once by a command, nothing rendered is frozen,
+/// and reading the store imperatively is exactly what an action wants. The bug is
+/// a function that FORMATS by locale and reads the store itself - the result is
+/// held in the markup and never recomputed.
+function isCallArgument(lines, i) {
+  // The statement around the read: back to the last line that ended one, forward
+  // to the next. Cheap, and enough to see the `invoke(` that owns it.
+  let start = i;
+  // A line ending in `{` is the statement continuing into an object argument,
+  // which is where `locale: get(locale)` usually sits - stopping there would cut
+  // the read off from the `invoke(` that owns it.
+  while (start > 0 && !/[;}]\s*$/.test(lines[start - 1])) start--;
+  let end = i;
+  while (end < lines.length - 1 && !/[;]\s*$/.test(lines[end])) end++;
+  return /\binvoke\s*[<(]/.test(lines.slice(start, end + 1).join("\n"));
+}
+
+function isParameterDefault(line, index) {
+  const before = line.slice(0, index);
+  const after = line.slice(index).replace(/^get\s*\(\s*locale\s*\)/, "");
+  return /=\s*$/.test(before) && /^\s*[,)]/.test(after);
+}
+
 const problems = [];
 let scanned = 0;
+let tsScanned = 0;
 
 // A directory argument scans that tree instead of the repo's. Only the fixture
 // runner passes one; CI passes nothing and gets the trees below. The check has
@@ -97,8 +150,39 @@ for (const base of BASES) {
   }
 }
 
-if (!scanned) {
-  console.error("found no Svelte components; the check needs updating");
+// The helper-side shape, in `.ts`: a function that formats by locale and reads
+// the store itself. Three of these shipped in one week - a Files sidebar, a
+// Settings profile list, a timeline day header - and each looked right in the
+// source. They can only be seen on a screen in the wrong language, and nobody
+// looks every time, which is why this is a check rather than a habit.
+for (const base of BASES) {
+  if (!existsSync(base)) continue;
+  for (const file of tsFiles(base)) {
+    const text = readFileSync(file, "utf8");
+    if (!text.includes("get(locale)") && !text.includes("get( locale")) continue;
+    tsScanned++;
+    const rel = file.slice(ROOT.length);
+    const allLines = text.split("\n");
+    allLines.forEach((line, i) => {
+      const m = /\bget\s*\(\s*locale\s*\)/.exec(line);
+      if (!m) return;
+      if (isParameterDefault(line, m.index)) return;
+      if (isCallArgument(allLines, i)) return;
+      problems.push(
+        `${rel}:${i + 1}: reads the locale with get(locale) inside a body, which is ` +
+          `not a tracked dependency, so anything formatted here keeps whichever ` +
+          `language rendered first. Take the locale as a parameter and let the call ` +
+          `site pass $locale.`,
+      );
+    });
+  }
+}
+
+// Nothing at all means the walk is broken, not that the tree is clean. Either
+// half being empty is fine: a `.ts`-only tree has no components, and a tree with
+// no locale-reading helper never opens one.
+if (!scanned && !tsScanned) {
+  console.error("found nothing to check; the walk needs updating");
   process.exit(2);
 }
 if (problems.length) {
@@ -106,4 +190,7 @@ if (problems.length) {
   for (const p of problems) console.log(`  - ${p}`);
   process.exit(1);
 }
-console.log(`no non-reactive catalog wiring in ${scanned} component(s)`);
+console.log(
+  `no non-reactive catalog wiring in ${scanned} component(s)` +
+    ` and ${tsScanned} locale-reading helper file(s)`,
+);
