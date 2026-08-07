@@ -15,6 +15,20 @@ const P = (input: string, one: string, other: string) =>
 const messages: Catalogs = {
   en: {
     "f.places.places": "Places",
+    // Provenance: one whole sentence per case. The trust caveat is inside the
+    // sentence, not appended to it, so a translation cannot drop it or move it
+    // somewhere it reads as an afterthought.
+    "f.prov.user": "Arlen recorded this as yours, {$when}.",
+    "f.prov.partOf": "Part of {$actor}, {$when}. Recorded from what Arlen observed.",
+    "f.prov.lastOpenedBy": "Last opened by {$actor}, {$when}. Recorded from what Arlen observed.",
+    "f.prov.attested": "Verified as from {$actor}, {$when}, by a content credential.",
+    "f.prov.downloadedFrom": "Downloaded from {$actor}, {$when}. Arlen did not verify this.",
+    "f.prov.externalPlain": "Came from an external document, {$when}. Arlen did not verify this.",
+    "f.prov.model": "The assistant asserted this from its reasoning, {$when}.",
+    "f.prov.agent": "The idle curator consolidated this, {$when}.",
+    "f.prov.horizon": "Deeper history isn\u2019t available yet.",
+    "f.prov.aProcess": "a process",
+    "f.prov.focusedWindow": "the focused window",
     "f.place.home": "Home",
     "f.place.documents": "Documents",
     "f.place.downloads": "Downloads",
@@ -279,6 +293,17 @@ const messages: Catalogs = {
   },
   de: {
     "f.places.places": "Orte",
+    "f.prov.user": "Arlen hat das als deins erfasst, {$when}.",
+    "f.prov.partOf": "Teil von {$actor}, {$when}. Aus dem erfasst, was Arlen beobachtet hat.",
+    "f.prov.lastOpenedBy": "Zuletzt ge\u00f6ffnet von {$actor}, {$when}. Aus dem erfasst, was Arlen beobachtet hat.",
+    "f.prov.attested": "Best\u00e4tigt als von {$actor}, {$when}, durch ein Inhaltszertifikat.",
+    "f.prov.downloadedFrom": "Heruntergeladen von {$actor}, {$when}. Arlen hat das nicht gepr\u00fcft.",
+    "f.prov.externalPlain": "Aus einem externen Dokument, {$when}. Arlen hat das nicht gepr\u00fcft.",
+    "f.prov.model": "Der Assistent hat das aus seiner Argumentation behauptet, {$when}.",
+    "f.prov.agent": "Der stille Kurator hat das zusammengef\u00fchrt, {$when}.",
+    "f.prov.horizon": "Weitere Vorgeschichte ist noch nicht verf\u00fcgbar.",
+    "f.prov.aProcess": "ein Prozess",
+    "f.prov.focusedWindow": "das aktive Fenster",
     "f.place.home": "Persönlicher Ordner",
     "f.place.documents": "Dokumente",
     "f.place.downloads": "Downloads",

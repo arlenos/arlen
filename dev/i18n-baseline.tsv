@@ -60,15 +60,6 @@ apps/files/src/lib/locations.ts	Recent
 apps/files/src/lib/locations.ts	Search
 apps/files/src/lib/locations.ts	Search: {}
 apps/files/src/lib/locations.ts	Trash
-apps/files/src/lib/stores/provenance.ts	Arlen recorded this as yours, {}.
-apps/files/src/lib/stores/provenance.ts	Deeper history isn't available yet.
-apps/files/src/lib/stores/provenance.ts	The assistant asserted this from its reasoning, {}.
-apps/files/src/lib/stores/provenance.ts	The idle curator consolidated this, {}.
-apps/files/src/lib/stores/provenance.ts	Verified as from {}, {}, by a content credential.
-apps/files/src/lib/stores/provenance.ts	a process
-apps/files/src/lib/stores/provenance.ts	the focused window
-apps/files/src/lib/stores/provenance.ts	{} {}, {}. Recorded from what Arlen observed.
-apps/files/src/lib/stores/provenance.ts	{}, {}. Arlen did not verify this.
 apps/files/src/routes/+page.svelte	Ctrl+C
 apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
