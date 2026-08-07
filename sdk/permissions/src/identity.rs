@@ -308,6 +308,13 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-anomalyd" => {
             return Ok("anomalyd".to_string());
         }
+        // The clock daemon, which installs beside them and asks `Power1` to wake
+        // the machine for an alarm. Without an entry it resolves to
+        // UnknownBinary, gets no profile, and every wake request is refused - so
+        // alarms would quietly never wake anyone.
+        "/usr/lib/arlen/libexec/arlen-clockd" => {
+            return Ok("clockd".to_string());
+        }
         // The cross-profile transfer daemon (profile-system, PR-R4). It audits
         // every transfer to BOTH profiles' ledgers fail-closed BEFORE any byte
         // crosses a boundary, so without this entry it resolves to UnknownBinary,
