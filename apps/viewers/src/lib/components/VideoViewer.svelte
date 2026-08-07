@@ -114,7 +114,7 @@
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={playing ? "Pause" : "Play"}
+          aria-label={playing ? $t("v.pause") : $t("v.play")}
           onclick={() => (playing = !playing)}
         >
           {#if playing}

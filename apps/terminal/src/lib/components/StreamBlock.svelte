@@ -45,7 +45,7 @@
     {#if block.body_kind === "table"}
       <button
         class="lens-btn"
-        aria-label={tableLens ? "Show the plain text" : "Show as table"}
+        aria-label={tableLens ? $t("term.sb.showPlain") : $t("term.sb.showTable")}
         aria-pressed={tableLens}
         onclick={() => (tableLens = !tableLens)}
       >
