@@ -344,16 +344,36 @@ DEAD_INVOKES: dict[str, str] = {
     # than 14 commands being unwritten. The daemon-side read ops all exist and the
     # os-sdk has clients for them, so the missing piece is the app's Rust side -
     # or a decision that this app is hosted some other way. Needs a decision
-    "knowledge_library": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
-    "knowledge_search_save": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
-    "knowledge_provenance": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
-    "knowledge_timeline_pause": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
-    "knowledge_timeline_delete": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
-    "knowledge_timeline_export": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
-    "knowledge_capsules": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
-    "knowledge_capsule_mint": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
-    "knowledge_capsule_revoke": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
-    "knowledge_capsule_preview": "apps/knowledge has no src-tauri; the app has no Rust side to define them in",
+    "knowledge_library": (
+        "the Knowledge app. Its Rust side exists; papers, books, notes and mail are bridge-ingested entities that are not graph nodes yet, so there is nothing to read"
+    ),
+    "knowledge_search_save": (
+        "the Knowledge app. Its Rust side exists; a saved search needs somewhere to persist, which nothing defines yet"
+    ),
+    "knowledge_provenance": (
+        "the Knowledge app. It HAS a Rust side now (8 Aug); this one waits on two answers: its contract carries prose verbs where the app's own timeline already moved to catalog ids, and lineage needs an edge traversal the read gate denies a caller that is not system-anchored"
+    ),
+    "knowledge_timeline_pause": (
+        "the Knowledge app. Its Rust side exists; pausing recording is a knowledge-daemon capability that does not exist - there is no switch to flip"
+    ),
+    "knowledge_timeline_delete": (
+        "the Knowledge app. Its Rust side exists; deleting recorded history needs a daemon-side retention op and a confirmation path, neither built"
+    ),
+    "knowledge_timeline_export": (
+        "the Knowledge app. Its Rust side exists; export needs a writer and a destination the app cannot choose on its own"
+    ),
+    "knowledge_capsules": (
+        "the Knowledge app. Its Rust side exists; this needs a capsuled client and an expiry the backend states as a timestamp rather than the store's prose ('in 5 days')"
+    ),
+    "knowledge_capsule_mint": (
+        "the Knowledge app. Its Rust side exists; minting is capsuled's human-gated flow, not a read"
+    ),
+    "knowledge_capsule_revoke": (
+        "the Knowledge app. Its Rust side exists; pairs with the mint flow"
+    ),
+    "knowledge_capsule_preview": (
+        "the Knowledge app. Its Rust side exists; pairs with knowledge_capsules and the capsuled client"
+    ),
     # the store's update actions against installd - arlen-ui's surface, coder owes the commands
     "store_update": "the store's update actions against installd",
     "store_uninstall": "the store's update actions against installd",
