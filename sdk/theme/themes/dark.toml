@@ -36,7 +36,7 @@ info           = "#3b82f6"
 
 [color.border]
 default = "#27272a"
-strong  = "#3f3f46"
+strong  = "#63636b"
 
 [radius]
 # Semantic tokens. Numeric (logical pixels) — resolver formats to

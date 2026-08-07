@@ -65,7 +65,7 @@
 
   /* Border */
   --color-border-default: #27272a;
-  --color-border-strong:  #3f3f46;
+  --color-border-strong:  #63636b;
   --color-border:         var(--color-border-default);
 
   /* Radius — semantic tokens (sdk/theme canonical schema).
