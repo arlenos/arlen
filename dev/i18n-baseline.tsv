@@ -238,11 +238,8 @@ apps/settings/src/lib/stores/capsules.ts	Recipe collection
 apps/settings/src/lib/stores/capsules.ts	Trip 2026
 apps/settings/src/lib/stores/displays.ts	{} × {} @ {} Hz
 apps/settings/src/lib/stores/grants.ts	All
-apps/settings/src/lib/stores/grants.ts	Managed by the system, not revocable here.
 apps/settings/src/lib/stores/grants.ts	Own
-apps/settings/src/lib/stores/grants.ts	Removing this needs the service's reach descriptor, coming with the backend.
 apps/settings/src/lib/stores/grants.ts	Sees only {}, not the full contents.
-apps/settings/src/lib/stores/grants.ts	This app needs this to work.
 apps/settings/src/lib/stores/grants.ts	declared at install
 apps/settings/src/lib/stores/grants.ts	its own data
 apps/settings/src/lib/stores/grants.ts	managed by the system
