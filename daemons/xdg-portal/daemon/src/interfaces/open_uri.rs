@@ -37,9 +37,10 @@ use crate::request::{response, RequestHandle};
 use crate::sandbox::CallerIdentity;
 use crate::state::DaemonState;
 
-/// Schemes we forward to `xdg-open` without question. `mailto:` and
-/// friends are authorityless but the kernel's xdg-open dispatcher
-/// understands them. `https?` is the bulk of real-world traffic.
+/// Schemes we hand to the launch service without question. `mailto:`
+/// and friends are authorityless, and each names its handler through
+/// `x-scheme-handler/<scheme>` like any other type. `https?` is the
+/// bulk of real-world traffic.
 const PASSTHROUGH_SCHEMES: &[&str] = &[
     "http://",
     "https://",
@@ -209,8 +210,8 @@ fn file_uri_authorized(uri: &str, identity: &CallerIdentity) -> bool {
 
 /// Same path-percent-encoding semantics as the FileChooser URI
 /// helper, applied here only for the redacted log line. The
-/// production response shape just forwards the URI as-is to
-/// xdg-open — we do not rewrite caller URIs.
+/// production request carries the URI as-is — we do not rewrite
+/// caller URIs.
 fn redact_uri(uri: &str) -> String {
     if let Some(scheme_end) = uri.find("://") {
         let after_scheme = &uri[scheme_end + 3..];
@@ -354,7 +355,7 @@ impl OpenUri {
     /// The fd is dup'd into the daemon process so we can resolve
     /// its filesystem path via `/proc/self/fd/<n>`, then the path
     /// is authorized against the caller's sandbox identity exactly
-    /// like a file:// URI before xdg-open sees it.
+    /// like a file:// URI before the request goes out.
     async fn open_file(
         &self,
         handle: ObjectPath<'_>,
@@ -497,8 +498,8 @@ fn fd_still_points_at(fd: &Fd<'_>, path: &Path) -> Result<bool, std::io::Error> 
     // Verified rather than assumed: an O_PATH fd reports dev/ino here.
     let owned = fd.as_fd().try_clone_to_owned()?;
     let from_fd = std::fs::File::from(owned).metadata()?;
-    // `metadata`, not `symlink_metadata`: xdg-open follows symlinks, so the
-    // question is what the name resolves TO, not what the last component is.
+    // `metadata`, not `symlink_metadata`: the handler follows symlinks, so
+    // the question is what the name resolves TO, not what the last component is.
     let from_name = std::fs::metadata(path)?;
     Ok(from_fd.dev() == from_name.dev() && from_fd.ino() == from_name.ino())
 }
