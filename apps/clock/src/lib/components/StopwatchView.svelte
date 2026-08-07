@@ -3,7 +3,7 @@
   /// window only renders. Laps list quiet, newest on top, with deltas.
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { clock, tick, stopwatchStart, stopwatchPause, stopwatchLap, stopwatchReset, stopwatchTotal } from "$lib/stores/clock";
-  import { fmtStopwatch } from "$lib/format";
+  import { fmtDuration, fmtStopwatch } from "$lib/format";
   import { t } from "$lib/i18n/messages";
 </script>
 
@@ -11,16 +11,29 @@
   {#if $clock}
     {@const swx = $clock.stopwatch}
     {@const total = stopwatchTotal(swx, $tick)}
-    <span class="sw-total" class:idle={!swx.running && total === 0}>{fmtStopwatch(total)}</span>
-    <div class="sw-actions">
+    {@const cs = String(Math.floor((Math.max(0, total) % 1000) / 10)).padStart(2, "0")}
+    <span class="sw-total" class:idle={!swx.running && total === 0}>
+      {fmtDuration(total)}<span class="sw-cs">.{cs}</span>
+    </span>
+    <!-- Equal twins that relabel in place and never move (rule 4): the left
+         slot is Lap/Reset, the right slot Start/Stop. -->
+    <div class="sw-twins">
       {#if swx.running}
-        <Button variant="outline" id="sw-pause" onclick={stopwatchPause}>{$t("c.sw.pause")}</Button>
-        <Button id="sw-lap" onclick={stopwatchLap}>{$t("c.sw.lap")}</Button>
+        <Button variant="outline" class="sw-twin" id="sw-lap" onclick={stopwatchLap}>{$t("c.sw.lap")}</Button>
+        <Button class="sw-twin" id="sw-stop" onclick={stopwatchPause}>{$t("c.sw.pause")}</Button>
       {:else}
-        <Button id="sw-start" onclick={stopwatchStart}>{total === 0 ? $t("c.sw.start") : $t("c.sw.resume")}</Button>
-        {#if total > 0}
-          <Button variant="ghost" id="sw-reset" class="text-muted-foreground" onclick={stopwatchReset}>{$t("c.sw.reset")}</Button>
-        {/if}
+        <Button
+          variant="outline"
+          class="sw-twin"
+          id="sw-reset"
+          disabled={total === 0}
+          onclick={stopwatchReset}
+        >
+          {$t("c.sw.reset")}
+        </Button>
+        <Button class="sw-twin" id="sw-start" onclick={stopwatchStart}>
+          {total === 0 ? $t("c.sw.start") : $t("c.sw.resume")}
+        </Button>
       {/if}
     </div>
 
@@ -51,18 +64,25 @@
     padding: 2rem 1rem 1.5rem;
   }
   .sw-total {
-    font-size: 3.2rem;
-    font-weight: 500;
+    font-size: var(--clock-display, 2.75rem);
+    font-weight: 400;
     font-variant-numeric: tabular-nums;
     line-height: 1.1;
     color: var(--color-fg-primary);
   }
+  .sw-cs {
+    font-size: 0.55em;
+    color: color-mix(in srgb, var(--color-fg-primary) 60%, transparent);
+  }
   .sw-total.idle {
     color: color-mix(in srgb, var(--color-fg-primary) 45%, transparent);
   }
-  .sw-actions {
+  .sw-twins {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.75rem;
+  }
+  .sw-twins :global(.sw-twin) {
+    width: 7rem;
   }
   .sw-laps {
     display: flex;
