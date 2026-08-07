@@ -23,8 +23,8 @@
         </Button>
       {/each}
       <span class="ti-custom">
-        <NumberInput value={customMin} min={0} max={999} width="96px" unit={$t("c.ti.minutes")} ariaLabel={$t("c.ti.minutes")} onchange={(v) => (customMin = v)} />
-        <NumberInput value={customSec} min={0} max={59} width="96px" unit={$t("c.ti.seconds")} ariaLabel={$t("c.ti.seconds")} onchange={(v) => (customSec = v)} />
+        <NumberInput value={customMin} min={0} max={999} width="120px" unit={$t("c.ti.minutes")} ariaLabel={$t("c.ti.minutes")} onchange={(v) => (customMin = v)} />
+        <NumberInput value={customSec} min={0} max={59} width="120px" unit={$t("c.ti.seconds")} ariaLabel={$t("c.ti.seconds")} onchange={(v) => (customSec = v)} />
         <Button
           size="sm"
           id="start-custom"
@@ -67,8 +67,9 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    max-width: 34rem;
-    padding: 0.9rem 1rem 1.5rem;
+    max-width: 30rem;
+    margin: 0 auto;
+    padding: 1.1rem 1rem 1.5rem;
   }
   .ti-heading {
     font-size: var(--text-2xs);
@@ -80,11 +81,13 @@
   .ti-new {
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 0.6rem;
   }
   .ti-presets {
     display: flex;
     align-items: center;
+    justify-content: center;
     flex-wrap: wrap;
     gap: 0.4rem;
   }
@@ -97,21 +100,22 @@
   .ti-empty {
     margin: 0;
     font-size: var(--text-sm);
+    text-align: center;
     color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
   }
   .ti-list {
     display: flex;
     flex-direction: column;
+    gap: 0.5rem;
   }
   .ti-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.7rem 0;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-fg-primary) 6%, transparent);
-  }
-  .ti-row:last-child {
-    border-bottom: none;
+    padding: 0.8rem 1rem;
+    border: 1px solid color-mix(in srgb, var(--color-fg-primary) 10%, transparent);
+    border-radius: var(--radius-card);
+    background: color-mix(in srgb, var(--color-fg-primary) 2%, transparent);
   }
   .ti-remaining {
     font-size: var(--text-xl);
