@@ -79,7 +79,11 @@ impl CommandExecutor {
     /// An executor dialing the well-known terminal-run socket under the per-user
     /// MCP runtime dir, gated by the live `[agent] executor_live`.
     pub fn new(audit: Arc<dyn AuditSink>) -> Self {
+        // A compile-time constant id, so `None` here is a bug in that constant
+        // rather than a runtime condition: say which one and stop, instead of
+        // dialing a path built from an id the socket helper rejected.
         let socket_path = os_sdk::mcp::mcp_socket_path(TERMINAL_RUN_SERVER)
+            .unwrap_or_else(|| panic!("{TERMINAL_RUN_SERVER} is not a safe MCP server id"))
             .to_string_lossy()
             .into_owned();
         Self { executor_live: crate::engine_config::may_act, audit, socket_path }
