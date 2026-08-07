@@ -17,5 +17,6 @@
 //! [`mimeapps`] is the resolution: a URI's MIME type to the desktop id that
 //! handles it, per the freedesktop association spec.
 
+pub mod exec;
 pub mod mimeapps;
 pub mod search;
