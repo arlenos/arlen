@@ -167,6 +167,23 @@ check:
         fi
     done
 
+# Build everything that depends on a crate you changed (default: whatever the tree touched).
+check-consumers crate="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # A field added to a contract crate cannot be validated by building that
+    # crate - the breakage is in someone else by definition, and with no root
+    # workspace nothing local notices. Four crates went red in one night that
+    # way, each from a change that built cleanly where it was made.
+    if [ -n "{{crate}}" ]; then
+        list=$(python3 "{{ROOT}}/dev/scripts/contract-consumers.py" "{{crate}}")
+    else
+        list=$(python3 "{{ROOT}}/dev/scripts/contract-consumers.py" --changed)
+    fi
+    if [ -z "$list" ]; then echo "nothing depends on that"; exit 0; fi
+    echo "$list" | wc -l | xargs printf '%s consumer(s) to build\n'
+    for c in $list; do echo "== check $c =="; "{{ROOT}}/dev/check-crate.sh" check "$c"; done
+
 # The crate lists here and in ci.yml are hand-kept, so they drift: the justfile
 # fell nine crates behind CI once already, which makes `just test` green on a set
 # CI does not share. This also catches a new crate that nothing builds at all.
