@@ -122,13 +122,29 @@ pub fn toggle_recording(state: tauri::State<'_, ToggleState>) -> Result<bool, St
         let output = videos_dir.join(&filename);
         let output_str = output.to_string_lossy().to_string();
 
-        let child = Command::new("wf-recorder")
+        let mut child = Command::new("wf-recorder")
             .args(["-f", &output_str])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
             .map_err(|e| format!("failed to start wf-recorder: {e}"))?;
+
+        // A spawn only proves the binary exists. `wf-recorder` speaks
+        // `zwlr_screencopy_v1`, which this compositor does not implement - it
+        // serves `ext_image_copy_capture_v1` instead, which is also where the
+        // screen-capture master switch is enforced. So the recorder exits almost
+        // immediately, and without this the toggle would report success and the
+        // panel would show a recording that never started.
+        //
+        // A short look is all this can honestly do: a recorder that dies a minute
+        // in still reads as running until it is stopped. Watching for that is a
+        // supervisor, not a toggle.
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        if let Ok(Some(status)) = child.try_wait() {
+            let _ = std::fs::remove_file(&output);
+            return Err(format!("the recorder stopped immediately ({status})"));
+        }
 
         *rec_guard = Some(child);
         *path_guard = Some(output_str.clone());
