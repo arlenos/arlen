@@ -168,7 +168,7 @@ fn seconds(row: &HashMap<String, serde_json::Value>, key: &str) -> Option<i64> {
 /// Escape a string for a single-quoted Cypher literal: backslash first, so an
 /// escaped quote is not double-escaped, then the quote. A project name is a
 /// user-chosen directory name and can contain either.
-fn escape_cypher_literal(s: &str) -> String {
+pub fn escape_cypher_literal(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\'', "\\'")
 }
 
