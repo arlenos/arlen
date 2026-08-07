@@ -173,14 +173,78 @@ fn attest(stream: &UnixStream) -> Caller {
 /// becomes the account of a real authority - at which point this fails closed,
 /// in one place, like `service::admits`.
 async fn record(served: &Served) {
+    let sink = LedgerAuditSink::at_default_socket();
+
+    // The daemon is back and something was lost while it was away: say so in the
+    // ledger before the entry that proves it is back, so a reader meets the gap
+    // in the order it happened. Left pending if this fails too - a gap that
+    // cannot be written is not a gap that stops existing.
+    if let Some(gap) = take_gap() {
+        let marker = service::unrecorded_gap_event(gap.dropped, gap.span_ms());
+        if sink.submit(marker).await.is_err() {
+            restore_gap(gap);
+        }
+    }
+
     let event = service::launch_event(&served.audit);
-    if let Err(e) = LedgerAuditSink::at_default_socket().submit(event).await {
+    if let Err(e) = sink.submit(event).await {
+        let dropped = note_drop();
         log::warn!(
-            "launch not recorded ({}): caller {} outcome {}",
+            "launch not recorded ({}): caller {} outcome {} ({} unrecorded so far)",
             e,
             served.audit.caller,
-            served.audit.outcome
+            served.audit.outcome,
+            dropped
         );
+    }
+}
+
+/// Launches that went unrecorded, and when the first of them was.
+#[derive(Clone, Copy)]
+struct Gap {
+    dropped: u64,
+    since: std::time::Instant,
+}
+
+impl Gap {
+    fn span_ms(&self) -> u64 {
+        u64::try_from(self.since.elapsed().as_millis()).unwrap_or(u64::MAX)
+    }
+}
+
+/// The pending gap, if the ledger is currently missing anything.
+///
+/// A process-global because there is one launch service per shell and one
+/// ledger behind it; threading it through every request would be ceremony
+/// around a single fact about the process.
+static GAP: std::sync::Mutex<Option<Gap>> = std::sync::Mutex::new(None);
+
+/// Count one unrecorded launch. Returns the running total.
+fn note_drop() -> u64 {
+    let mut guard = GAP.lock().unwrap_or_else(|e| e.into_inner());
+    let gap = guard.get_or_insert(Gap {
+        dropped: 0,
+        since: std::time::Instant::now(),
+    });
+    gap.dropped += 1;
+    gap.dropped
+}
+
+/// Take the pending gap, if there is one.
+fn take_gap() -> Option<Gap> {
+    GAP.lock().unwrap_or_else(|e| e.into_inner()).take()
+}
+
+/// Put a gap back after failing to record it, keeping the earlier start time and
+/// any drops counted while the marker was in flight.
+fn restore_gap(gap: Gap) {
+    let mut guard = GAP.lock().unwrap_or_else(|e| e.into_inner());
+    match guard.as_mut() {
+        Some(current) => {
+            current.dropped += gap.dropped;
+            current.since = current.since.min(gap.since);
+        }
+        None => *guard = Some(gap),
     }
 }
 
