@@ -19,6 +19,8 @@
 //! picker that can name any path is a file-read oracle wearing a grid.
 
 use serde::Serialize;
+use tauri_plugin_arlen_portal::api;
+use tauri_plugin_arlen_portal::{FileFilter, FilterPattern, PickFileOptions, PickerResult};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -204,6 +206,108 @@ pub async fn set_wallpaper(id: String, scale: String) -> Result<(), String> {
     std::fs::rename(&tmp, &path).map_err(|e| format!("rename into {}: {e}", path.display()))
 }
 
+/// The largest image the picker will copy in. A wallpaper past this is almost
+/// certainly not one, and a bounded copy keeps a mistaken pick from filling the
+/// user's disk quietly.
+const MAX_ADD_BYTES: u64 = 64 * 1024 * 1024;
+
+/// A free stem in `dir` for `base`: the stem itself, else `base-2`, `base-3`.
+///
+/// Suffixing rather than refusing. Two different pictures called `sunset.jpg`
+/// from two folders is the ordinary case, and "there is already one of those"
+/// is a poor answer to a picture the user just chose. Suffixing is reversible;
+/// overwriting their earlier one is not.
+fn free_stem(dir: &Path, base: &str) -> Option<String> {
+    let taken = |stem: &str| EXTENSIONS.iter().any(|e| dir.join(format!("{stem}.{e}")).exists());
+    if !taken(base) {
+        return Some(base.to_string());
+    }
+    (2..100)
+        .map(|n| format!("{base}-{n}"))
+        .find(|candidate| !taken(candidate))
+}
+
+/// Copy a picked image into the user's wallpapers and return its new id.
+///
+/// The path comes from the portal file chooser, so it is the user's own consented
+/// pick - this does not widen what Settings may read, it copies one file the user
+/// pointed at. `None` when they dismissed the dialog.
+#[tauri::command]
+pub async fn add_wallpaper() -> Result<Option<String>, String> {
+    let options = PickFileOptions {
+        title: Some("Add a wallpaper".to_string()),
+        filters: vec![FileFilter {
+            name: "Images".to_string(),
+            patterns: EXTENSIONS
+                .iter()
+                .map(|e| FilterPattern::Glob { pattern: format!("*.{e}") })
+                .collect(),
+        }],
+        ..Default::default()
+    };
+    let picked = api::pick_file(options).await.map_err(|e| e.to_string())?;
+    let uris = match picked {
+        PickerResult::Picked { uris } => uris,
+        PickerResult::Cancelled => return Ok(None),
+    };
+    let source = uris
+        .first()
+        .and_then(|u| crate::commands::picker::uri_to_path(u))
+        .ok_or_else(|| "the picker returned no usable file".to_string())?;
+    let source = PathBuf::from(source);
+    let dir = user_dir().ok_or_else(|| "no home directory to add a wallpaper into".to_string())?;
+
+    let ext = source
+        .extension()
+        .and_then(|x| x.to_str())
+        .map(str::to_ascii_lowercase)
+        .filter(|x| EXTENSIONS.contains(&x.as_str()))
+        .ok_or_else(|| "that file is not an image type the picker offers".to_string())?;
+    let meta = std::fs::metadata(&source).map_err(|e| format!("read {}: {e}", source.display()))?;
+    if !meta.is_file() {
+        return Err("that is not a file".to_string());
+    }
+    if meta.len() > MAX_ADD_BYTES {
+        return Err("that image is too large to add as a wallpaper".to_string());
+    }
+    let base = source
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(sanitise_stem)
+        .filter(|s| is_valid_id(s))
+        .ok_or_else(|| "that file has no name this can use as an id".to_string())?;
+
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+    let stem = free_stem(&dir, &base).ok_or_else(|| format!("too many wallpapers named {base}"))?;
+    std::fs::copy(&source, dir.join(format!("{stem}.{ext}")))
+        .map_err(|e| format!("copy into {}: {e}", dir.display()))?;
+    Ok(Some(stem))
+}
+
+/// Reduce a filename stem to something that can be an id: the characters an id
+/// allows, anything else folded to `-`, runs collapsed, ends trimmed.
+///
+/// A picked file is named by the world, not by us - spaces, accents and emoji
+/// are all ordinary in a picture's name - so this shapes it rather than
+/// rejecting it. The result still goes through `is_valid_id`, which is the
+/// authority.
+///
+/// Folding rather than dropping keeps word boundaries: "Sunset over the bay"
+/// stays readable. The cost is that an accented word fragments (`Ünïcode` ->
+/// `n-code`) rather than transliterating, which would need a table this does not
+/// carry. The id is a handle, not a label, and nothing renames the file on disk.
+fn sanitise_stem(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for c in raw.chars() {
+        if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+            out.push(c);
+        } else if !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_matches('-').chars().take(64).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,6 +315,37 @@ mod tests {
     fn touch(dir: &Path, name: &str) {
         std::fs::create_dir_all(dir).unwrap();
         std::fs::write(dir.join(name), b"x").unwrap();
+    }
+
+    #[test]
+    fn a_second_picture_of_the_same_name_is_suffixed_not_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        assert_eq!(free_stem(dir, "sunset").unwrap(), "sunset");
+        touch(dir, "sunset.jpg");
+        assert_eq!(free_stem(dir, "sunset").unwrap(), "sunset-2");
+        touch(dir, "sunset-2.png");
+        assert_eq!(free_stem(dir, "sunset").unwrap(), "sunset-3");
+    }
+
+    #[test]
+    fn a_worldly_filename_becomes_an_id_rather_than_a_refusal() {
+        assert_eq!(sanitise_stem("Sunset over the bay"), "Sunset-over-the-bay");
+        assert_eq!(sanitise_stem("photo (2)"), "photo-2");
+        assert_eq!(sanitise_stem("../../etc/passwd"), "etc-passwd");
+        // Accented letters fold to `-` like any other non-ASCII, so an accented
+        // word comes out fragmented rather than transliterated. That is the
+        // honest result of folding without a transliteration table, and it is
+        // still a usable id; the file keeps its real name on disk either way.
+        assert_eq!(sanitise_stem("Ünïcode ✨"), "n-code");
+        // And whatever comes out still has to satisfy the id rule itself.
+        for raw in ["Sunset over the bay", "photo (2)", "../../etc/passwd"] {
+            assert!(is_valid_id(&sanitise_stem(raw)), "{raw:?}");
+        }
+        // A name with nothing usable in it yields an empty stem, which the
+        // caller rejects rather than turning into a file called "-".
+        assert_eq!(sanitise_stem("✨"), "");
+        assert!(!is_valid_id(&sanitise_stem("✨")));
     }
 
     #[test]
