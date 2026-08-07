@@ -133,8 +133,17 @@ pub fn frame_for_output(
         return None;
     }
     let source = source_for_monitor(manifest, connector, ctx);
-    let decoded = load_image_rgba(&source.asset).ok()?;
-    Some(compose_to_output(&decoded, out_w, out_h, source.scale, letterbox))
+    // A missing or corrupt asset is the likeliest real cause of a black desktop,
+    // and swallowing the error here left nothing at all to read: the caller
+    // paints the letterbox colour for this None exactly as it does for a Video
+    // manifest, so the two look identical from outside.
+    match load_image_rgba(&source.asset) {
+        Ok(decoded) => Some(compose_to_output(&decoded, out_w, out_h, source.scale, letterbox)),
+        Err(e) => {
+            tracing::warn!(asset = %source.asset, "wallpaper asset could not be read: {e}");
+            None
+        }
+    }
 }
 
 #[cfg(test)]

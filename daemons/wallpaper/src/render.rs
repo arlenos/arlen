@@ -120,6 +120,7 @@ impl Wallpaper {
         layer.set_exclusive_zone(-1);
         layer.set_size(0, 0);
         layer.commit();
+        tracing::info!(output = %connector, "wallpaper surface created");
         self.backgrounds.push(Background {
             layer,
             connector,
@@ -158,6 +159,21 @@ impl Wallpaper {
                 }
             };
 
+        // The pool hands back its whole slot, which it rounds up: for a 497x950
+        // surface the canvas came back 40 bytes longer than the image. `paint`
+        // compares lengths, so unrounded it took the fallback branch every time
+        // and the desktop was flat black on every output whose buffer is not
+        // already aligned. Only the image's own bytes belong to this frame.
+        let needed = stride as usize * h as usize;
+        let Some(canvas) = canvas.get_mut(..needed) else {
+            tracing::warn!(
+                output = %connector,
+                slot = canvas.len(),
+                needed,
+                "wallpaper buffer smaller than the surface"
+            );
+            return;
+        };
         let frame = frame_for_output(&self.manifest, &connector, &self.time, w, h, FALLBACK);
         paint(canvas, frame.as_deref());
 
@@ -269,8 +285,16 @@ impl LayerShellHandler for Wallpaper {
         };
         let (w, h) = configure.new_size;
         if w > 0 && h > 0 {
-            self.backgrounds[index].width = w;
-            self.backgrounds[index].height = h;
+            let bg = &mut self.backgrounds[index];
+            // Only when the size actually changes. A surface that never gets a
+            // real size draws nothing (`draw` returns early), and until this
+            // line existed that showed up as a daemon which logs "rendering"
+            // and paints an empty screen, with nothing to tell the two apart.
+            if (bg.width, bg.height) != (w, h) {
+                tracing::info!(output = %bg.connector, w, h, "wallpaper surface configured");
+            }
+            bg.width = w;
+            bg.height = h;
         }
         self.draw(index);
     }
