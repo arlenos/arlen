@@ -569,6 +569,36 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
 /// config today (every caller uses `QuotaConfig::arlen_default`, whose
 /// privileged ids are all reserved here). If `QuotaConfig::load` is ever
 /// wired into live tiering, this guard must be re-fenced against the
+/// The user-facing surfaces allowed to ask a daemon to read or act on the user's
+/// behalf: the harness and Settings.
+///
+/// **Here, not in each daemon, because this is the half that drifts.** Two
+/// daemons now answer for the same actions - the AI engine explains them, the
+/// undo service lists and reverses them - and a surface admitted by one and not
+/// the other is a button that works on one page and fails on the next, with
+/// nothing to say why. The resolve of a caller's id is mechanism and can be
+/// spelled per daemon; WHICH ids count is policy and has to be one list.
+///
+/// The dev ids are the same two surfaces as they resolve from a cargo target dir,
+/// exact and never a `dev.` prefix match, compiled out of a release build the way
+/// the audit ingest gate does it.
+const USER_SURFACES: &[&str] = &["harness", "settings"];
+
+/// The same two surfaces as a cargo target dir resolves them.
+#[cfg(debug_assertions)]
+const USER_SURFACES_DEV: &[&str] = &["dev.arlen-settings", "dev.arlen-harness"];
+
+pub fn is_user_surface(app_id: &str) -> bool {
+    if USER_SURFACES.contains(&app_id) {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    if USER_SURFACES_DEV.contains(&app_id) {
+        return true;
+    }
+    false
+}
+
 /// configured allowlist or the rule-4 squat reopens for the added ids.
 pub fn is_reserved_app_id(app_id: &str) -> bool {
     app_id == "system"
@@ -644,6 +674,17 @@ impl AsRawFd for OwnedFd {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A release build admits exactly `USER_SURFACES`, so the property worth
+    /// pinning is that the list carries no development id: one there would admit
+    /// any cargo binary of that name on a real system. Asserted on the list
+    /// rather than by calling under `cfg(not(debug))`, which never runs here.
+    #[test]
+    fn the_release_surface_list_carries_no_development_id() {
+        assert!(USER_SURFACES.iter().all(|id| !id.starts_with("dev.")));
+        assert!(is_user_surface("settings") && is_user_surface("harness"));
+        assert!(!is_user_surface("ai-agent") && !is_user_surface("dev."));
+    }
 
     /// Every canonical binary resolves to the id the rest of the system keys on.
     ///

@@ -267,27 +267,14 @@ fn compensate_caller_admitted(app_id: &str) -> bool {
 /// Same list as [`COMPENSATE_ADMITTED`] today and deliberately a separate name: a
 /// read surface and a destructive one may diverge, and a shared constant would
 /// make that divergence look like a mistake.
-const USER_SURFACE_ADMITTED: &[&str] = &["harness", "settings"];
-
-/// The same two surfaces as they resolve when run from a cargo target dir, so the
-/// dev loop keeps working. Exact ids, never a `dev.` prefix match, and compiled out
-/// of a release build entirely (the audit daemon's ingest gate does this the same
-/// way). Without it, adding this gate would break the explain button for everyone
-/// working on Settings or the harness.
-#[cfg(debug_assertions)]
-const USER_SURFACE_DEV_ADMITTED: &[&str] = &["dev.arlen-settings", "dev.arlen-harness"];
-
 /// Whether `app_id` is a user-facing surface allowed to ask the engine to read on
 /// the user's behalf.
+///
+/// The list itself lives in `arlen_permissions::identity`, because the undo
+/// service answers for the same actions and a surface admitted by one daemon and
+/// not the other is a button that works on one page and fails on the next.
 pub(crate) fn user_surface_admitted(app_id: &str) -> bool {
-    if USER_SURFACE_ADMITTED.contains(&app_id) {
-        return true;
-    }
-    #[cfg(debug_assertions)]
-    if USER_SURFACE_DEV_ADMITTED.contains(&app_id) {
-        return true;
-    }
-    false
+    arlen_permissions::identity::is_user_surface(app_id)
 }
 
 /// Resolve the calling app's Arlen identity from the D-Bus connection: the session
@@ -944,20 +931,6 @@ mod tests {
         // even in a debug build, and the prefix alone never admits.
         assert!(!user_surface_admitted("dev.arlen-run"));
         assert!(!user_surface_admitted("dev."));
-    }
-
-    /// What a release build admits is exactly [`USER_SURFACE_ADMITTED`], so the
-    /// property to check is that this list carries no development id. Asserted on
-    /// the list rather than by calling the function under `cfg(not(debug))`, which
-    /// would never run: `cargo test --release` cannot build this crate at all,
-    /// because dev-dependencies pull audit-proto's `test-util` and that feature
-    /// refuses to compile optimized on purpose.
-    #[test]
-    fn the_release_admission_list_carries_no_development_id() {
-        assert!(
-            USER_SURFACE_ADMITTED.iter().all(|id| !id.starts_with("dev.")),
-            "a dev id here would admit any cargo binary of that name on a real system"
-        );
     }
 
     #[tokio::test]
