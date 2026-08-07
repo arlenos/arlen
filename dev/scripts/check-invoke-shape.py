@@ -281,13 +281,31 @@ DEAD_INVOKES: dict[str, str] = {
     "poll_print_request": "the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not",
     "submit_print": "the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not",
     "cancel_print": "the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not",
-    # the Settings printers page against the same backend - coder
-    "printers_discover": "the Settings printers page against the same backend",
-    "printers_add": "the Settings printers page against the same backend",
-    "printers_remove": "the Settings printers page against the same backend",
-    "printers_set_default": "the Settings printers page against the same backend",
-    "printers_set_options": "the Settings printers page against the same backend",
-    "print_job_retry": "the Settings printers page against the same backend",
+    # The Settings printers page. Measured 8 Aug: the read half is live and the
+    # other six have NO backend operation to bridge to - `PrintBackend` is
+    # printers/default_printer/jobs/submit/cancel_job and nothing more. Four of
+    # them are CUPS admin writes the Settings module doc already defers to an
+    # admin extension, so they are a build behind polkit rather than a wire. Each
+    # entry says which it is; the old shared reason ("against the same backend")
+    # read as a pending bridge and was how the gap stayed comfortable. - coder
+    "printers_discover": (
+        "the Settings printers page. No backend operation - but unlike its four neighbours this is a READ (DNS-SD network discovery), so it needs no privilege and is separable from the admin extension if the discover button is wanted sooner"
+    ),
+    "printers_add": (
+        "the Settings printers page. NOT a missing bridge: `PrintBackend` has five operations (printers, default_printer, jobs, submit, cancel_job) and no add. Adding a printer is a CUPS admin write needing lpadmin/polkit, which the Settings module doc already defers to a deliberate admin extension"
+    ),
+    "printers_remove": (
+        "the Settings printers page. Same as printers_add: no backend operation exists, and removing a printer is a privileged CUPS admin write, not a wire"
+    ),
+    "printers_set_default": (
+        "the Settings printers page. No backend operation; setting the system default is a CUPS admin write behind polkit"
+    ),
+    "printers_set_options": (
+        "the Settings printers page. No backend operation; reconfiguring a queue is a CUPS admin write behind polkit"
+    ),
+    "print_job_retry": (
+        "the Settings printers page. No backend operation; a retry would compose submit + jobs, which exist, so it is the smallest of the six"
+    ),
     # dictation has no backend at all yet; the badge was built against the intended contract - needs a decision on whether dictation is in scope
     "dictation_status": "dictation has no backend at all yet; the badge was built against the intended contract",
     "stop_dictation": "dictation has no backend at all yet; the badge was built against the intended contract",
