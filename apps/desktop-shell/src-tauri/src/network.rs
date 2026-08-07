@@ -724,35 +724,140 @@ pub struct VpnConnection {
     pub active: bool,
 }
 
-/// Get detailed connection info for a connected/known network.
+/// Get detailed connection info for a connected network.
+///
+/// **This replaces a call that never worked.** The nmcli version asked
+/// `connection show <name>` for `IP4.ADDRESS,IP4.GATEWAY,IP4.DNS,GENERAL.HWADDR`,
+/// and `GENERAL.HWADDR` is a *device* field: nmcli rejects the whole request with
+/// `Error: 'connection show': invalid field 'GENERAL...'` and exits 2. The exit
+/// status was not checked, so the empty output parsed into four empty strings and
+/// the details panel showed blanks for IP, gateway, DNS and MAC - all four,
+/// because one name in the list belonged to a different object. Confirmed on this
+/// machine, where the same connection has an address, a gateway and a MAC that
+/// NetworkManager hands over without complaint.
+///
+/// Details only exist while a connection is up, which is also what the nmcli
+/// version could have shown at best: an inactive saved connection has no IP
+/// configuration to report. An unknown or inactive name gives empty fields rather
+/// than an error, as before.
 #[tauri::command]
 pub async fn get_connection_details(ssid: String) -> Result<ConnectionDetails, String> {
-    let output = tokio::process::Command::new("nmcli")
-        .args(["-t", "-f", "IP4.ADDRESS,IP4.GATEWAY,IP4.DNS,GENERAL.HWADDR", "connection", "show", &ssid])
-        .output()
+    let mut details = ConnectionDetails {
+        ip: String::new(),
+        gateway: String::new(),
+        dns: String::new(),
+        mac: String::new(),
+    };
+
+    let conn = zbus::Connection::system()
         .await
-        .map_err(|e| format!("nmcli: {e}"))?;
+        .map_err(|e| format!("system bus: {e}"))?;
+    let manager = zbus::Proxy::new(
+        &conn,
+        "org.freedesktop.NetworkManager",
+        "/org/freedesktop/NetworkManager",
+        "org.freedesktop.NetworkManager",
+    )
+    .await
+    .map_err(|e| format!("NetworkManager unavailable: {e}"))?;
+    let Ok(active) = manager
+        .get_property::<Vec<zbus::zvariant::OwnedObjectPath>>("ActiveConnections")
+        .await
+    else {
+        return Ok(details);
+    };
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut ip = String::new();
-    let mut gateway = String::new();
-    let mut dns = String::new();
-    let mut mac = String::new();
-
-    for line in stdout.lines() {
-        let line = line.trim();
-        if let Some(val) = line.strip_prefix("IP4.ADDRESS[1]:") {
-            ip = val.trim().to_string();
-        } else if let Some(val) = line.strip_prefix("IP4.GATEWAY:") {
-            gateway = val.trim().to_string();
-        } else if let Some(val) = line.strip_prefix("IP4.DNS[1]:") {
-            dns = val.trim().to_string();
-        } else if let Some(val) = line.strip_prefix("GENERAL.HWADDR:") {
-            mac = val.trim().to_string();
+    for path in active {
+        let Ok(proxy) = zbus::Proxy::new(
+            &conn,
+            "org.freedesktop.NetworkManager",
+            path,
+            "org.freedesktop.NetworkManager.Connection.Active",
+        )
+        .await
+        else {
+            continue;
+        };
+        if proxy.get_property::<String>("Id").await.as_deref() != Ok(ssid.as_str()) {
+            continue;
         }
+
+        // The address list is an array of dictionaries; the first entry is the
+        // primary address, which is the one nmcli printed as `IP4.ADDRESS[1]`.
+        // Rendered back as `address/prefix` because that is the string the panel
+        // has always shown.
+        if let Ok(ip4) = proxy
+            .get_property::<zbus::zvariant::OwnedObjectPath>("Ip4Config")
+            .await
+        {
+            if let Ok(ip4_proxy) = zbus::Proxy::new(
+                &conn,
+                "org.freedesktop.NetworkManager",
+                ip4,
+                "org.freedesktop.NetworkManager.IP4Config",
+            )
+            .await
+            {
+                type Entries = Vec<
+                    std::collections::HashMap<String, zbus::zvariant::OwnedValue>,
+                >;
+                let field = |entry: &std::collections::HashMap<
+                    String,
+                    zbus::zvariant::OwnedValue,
+                >,
+                             name: &str| {
+                    entry
+                        .get(name)
+                        .and_then(|v| String::try_from(v.clone()).ok())
+                };
+                if let Ok(addresses) = ip4_proxy.get_property::<Entries>("AddressData").await {
+                    if let Some(first) = addresses.first() {
+                        let address = field(first, "address").unwrap_or_default();
+                        let prefix = first
+                            .get("prefix")
+                            .and_then(|v| u32::try_from(v.clone()).ok());
+                        details.ip = match prefix {
+                            Some(p) if !address.is_empty() => format!("{address}/{p}"),
+                            _ => address,
+                        };
+                    }
+                }
+                if let Ok(gateway) = ip4_proxy.get_property::<String>("Gateway").await {
+                    details.gateway = gateway;
+                }
+                if let Ok(servers) = ip4_proxy.get_property::<Entries>("NameserverData").await {
+                    if let Some(first) = servers.first() {
+                        details.dns = field(first, "address").unwrap_or_default();
+                    }
+                }
+            }
+        }
+
+        // The MAC belongs to the device carrying the connection, which is why
+        // asking `connection show` for it could never have worked.
+        if let Ok(devices) = proxy
+            .get_property::<Vec<zbus::zvariant::OwnedObjectPath>>("Devices")
+            .await
+        {
+            if let Some(device) = devices.first() {
+                if let Ok(device_proxy) = zbus::Proxy::new(
+                    &conn,
+                    "org.freedesktop.NetworkManager",
+                    device.clone(),
+                    "org.freedesktop.NetworkManager.Device",
+                )
+                .await
+                {
+                    if let Ok(mac) = device_proxy.get_property::<String>("HwAddress").await {
+                        details.mac = mac;
+                    }
+                }
+            }
+        }
+        break;
     }
 
-    Ok(ConnectionDetails { ip, gateway, dns, mac })
+    Ok(details)
 }
 
 /// Get the saved PSK password for a known WiFi network.
