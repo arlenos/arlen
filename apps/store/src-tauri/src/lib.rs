@@ -12,6 +12,9 @@
 //! renders each into its own language. A Rust backend writing "Cannot reach the
 //! network" would ship one language.
 
+
+mod url;
+
 use std::collections::BTreeSet;
 
 use arlen_store_backend::{
@@ -223,6 +226,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            url::open_url,
             store_search,
             store_app_detail,
             store_trust_signals,
