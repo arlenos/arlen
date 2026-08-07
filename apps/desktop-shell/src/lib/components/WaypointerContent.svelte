@@ -802,7 +802,7 @@
            the user types (stronger than a frame, which reads as mere focus). -->
       <div class="wp-input-wrap">
         <CommandInput
-          placeholder={$askMode ? "Ask the agent..." : "Search..."}
+          placeholder={$askMode ? $t("sh.wp.askPlaceholder") : $t("sh.wp.searchPlaceholder")}
           bind:value={query}
           bind:ref={inputRef}
           autofocus

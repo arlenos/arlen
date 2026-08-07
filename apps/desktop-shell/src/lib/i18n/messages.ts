@@ -18,6 +18,7 @@ const messages: Catalogs = {
     "sh.layout.innerGap": "Inner gap",
     "sh.layout.tiledTitleBars": "Title bars on tiled windows",
     "sh.mpris.seek": "Seek",
+    "sh.toolbar.progress": "Progress",
     "sh.undo.indicator": "Recent actions and undo",
     "sh.audio.outputVolume": "Output volume",
     "sh.audio.outputDevice": "Audio output device",
@@ -316,6 +317,8 @@ const messages: Catalogs = {
     // types (">", "#", "?", "p:", "Tab") and must survive translation unchanged;
     // only the word after it describes what the key does.
     "sh.wp.agent": "Agent",
+    "sh.wp.askPlaceholder": "Ask the agent\u2026",
+    "sh.wp.searchPlaceholder": "Search\u2026",
     "sh.wp.noResults": "No results found.",
     "sh.wp.removeFromHistory": "Remove from history",
     "sh.wp.clearClipboard": "Clear clipboard history",
@@ -457,6 +460,7 @@ const messages: Catalogs = {
     "sh.layout.innerGap": "Innerer Abstand",
     "sh.layout.tiledTitleBars": "Titelleisten bei gekachelten Fenstern",
     "sh.mpris.seek": "Spulen",
+    "sh.toolbar.progress": "Fortschritt",
     "sh.undo.indicator": "Letzte Aktionen und Rückgängig",
     "sh.audio.outputVolume": "Wiedergabelautstärke",
     "sh.audio.outputDevice": "Wiedergabegerät",
@@ -739,6 +743,8 @@ const messages: Catalogs = {
     "sh.layout.titleBars": "Titelleisten",
 
     "sh.wp.agent": "Agent",
+    "sh.wp.askPlaceholder": "Den Agenten fragen\u2026",
+    "sh.wp.searchPlaceholder": "Suchen\u2026",
     "sh.wp.noResults": "Keine Treffer.",
     "sh.wp.removeFromHistory": "Aus dem Verlauf entfernen",
     "sh.wp.clearClipboard": "Zwischenablageverlauf leeren",

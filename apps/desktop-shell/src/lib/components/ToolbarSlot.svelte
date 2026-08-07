@@ -11,6 +11,7 @@
 -->
 <script lang="ts">
   import { focusedToolbar, focusedToolbarKey } from "$lib/stores/toolbarStore";
+  import { t } from "$lib/i18n/messages";
   import { invoke } from "@tauri-apps/api/core";
   import * as Tooltip from "@arlen/ui-kit/components/ui/tooltip";
   import * as Icons from "lucide-svelte";
@@ -85,7 +86,7 @@
   <div
     class="toolbar-progress"
     role="progressbar"
-    aria-label={$focusedToolbar.progress.label ?? "Progress"}
+    aria-label={$focusedToolbar.progress.label ?? $t("sh.toolbar.progress")}
     aria-valuemin={0}
     aria-valuemax={100}
     aria-valuenow={Math.round(
