@@ -496,6 +496,11 @@ async fn run_compensate(
 /// The `org.arlen.AIAgent1` interface object. Holds the shared compensation store
 /// (for `completed_actions` + `compensate`), the graph writer the undo retracts
 /// through, and the audit sink the undo records to before acting.
+/// How many recent actions `undo_read` returns. A recent-actions panel shows
+/// tens of rows, and each row costs one audit chain read; this is well past what
+/// a person scrolls and still a bounded number of round trips.
+const UNDO_READ_LIMIT: u32 = 50;
+
 pub struct AgentAdminInterface {
     status: StatusHandle,
     compensation: Arc<Mutex<CompensationStore>>,
@@ -588,6 +593,47 @@ impl AgentAdminInterface {
             graph.iter().filter_map(|a| serde_json::to_value(a).ok()).collect();
         items.extend(nongraph.iter().filter_map(|a| serde_json::to_value(a).ok()));
         serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string())
+    }
+
+    /// The recent-actions history: every producer's journalled reversible action,
+    /// newest first, as a JSON array. This is the read behind the desktop-wide undo
+    /// surface, and it is a COMPENSABLE-ACTION history rather than a global Ctrl-Z -
+    /// each row carries its own inverse, and one that this daemon cannot carry out
+    /// says so in `enactable` instead of offering a button that fails.
+    ///
+    /// Same user-surface gate as `completed_actions` and for the same reason: a row
+    /// names the object it acted on, and a file's object is its path. A refused
+    /// caller gets an empty array rather than an error, because the wire shape is
+    /// JSON the caller parses.
+    ///
+    /// Degrades in two directions, deliberately differently. An unreachable signer
+    /// yields no rows - there is nothing to offer an undo of. An unreachable audit
+    /// daemon yields rows with no `description`, because the action is still
+    /// undoable and saying so is the point.
+    #[zbus(name = "undo_read")]
+    async fn undo_read(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> String {
+        match resolve_dbus_caller(&header, connection).await {
+            Ok(caller) if user_surface_admitted(&caller) => {}
+            Ok(caller) => {
+                tracing::warn!(%caller, "undo_read refused: not a user surface");
+                return "[]".to_string();
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "undo_read refused: caller unresolved");
+                return "[]".to_string();
+            }
+        }
+        let rows = crate::undo_history::recent_rows(
+            &arlen_ai_undo_proto::socket_path(),
+            &crate::undo_history::LedgerChains::at_default_socket(),
+            UNDO_READ_LIMIT,
+        )
+        .await;
+        serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string())
     }
 
     /// Undo a completed action: retract the graph write recorded under

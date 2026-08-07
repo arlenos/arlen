@@ -26,7 +26,8 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 /// What the audit ledger knows about an action, when the join resolves.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ActionDescription {
     /// `app_id` of the component that performed the action, kernel-attested at
     /// ingest, so this is who acted and not who claims to have acted.
@@ -41,7 +42,8 @@ pub struct ActionDescription {
 
 /// One row of a recent-actions surface: always undoable-or-not and always
 /// naming its object, with the audit description attached when it resolved.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UndoRow {
     /// The undo entry's op id, the handle an undo is requested with.
     pub op_id: String,
@@ -372,6 +374,30 @@ mod tests {
         assert!(rows[1].enactable, "an ordinary move still offers its undo");
         // Both are still ROWS: an unenactable undo is not a hidden action.
         assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn the_wire_row_names_its_fields_the_way_a_surface_reads_them() {
+        // The panel keys an undo on `opId`, and it has to be able to tell an
+        // undescribed row from a described one - so `description` must serialise
+        // as an explicit null rather than vanishing, or "no audit entry" and
+        // "field absent" become the same thing on the wire.
+        let rows = join_rows(
+            &[entry(
+                "op-1",
+                "run-1",
+                InverseReceipt::RestorePath { now: path("/n"), prior: path("/p") },
+            )],
+            &[],
+        );
+        let json = serde_json::to_value(&rows[0]).unwrap();
+        assert_eq!(json["opId"], "op-1");
+        assert_eq!(json["correlationId"], "run-1");
+        assert_eq!(json["inverseKind"], "restore-path");
+        assert_eq!(json["object"], "/n");
+        assert_eq!(json["enactable"], true);
+        assert!(json.get("description").is_some(), "present as a key");
+        assert!(json["description"].is_null(), "and null, not missing");
     }
 
     #[test]
