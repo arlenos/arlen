@@ -91,6 +91,22 @@ impl Default for FocusConfig {
 /// stop during suspend-to-RAM, and s2idle - what most 2024-and-later laptops
 /// actually enter - keeps it running. A stopwatch that trusted the kernel there
 /// would quietly count the hours a closed laptop spent asleep.
+///
+/// **Which suspend types this was checked against: both, and the answer does not
+/// depend on the type.** The pause is driven by a TRANSITION, not by a clock -
+/// logind broadcasts `PrepareForSleep` for every suspend it manages, the power
+/// daemon turns that into `power.suspend` / `power.resume` (`sleep.rs`), and this
+/// daemon subscribes to exactly those two and folds the run
+/// (`Event::Suspending` -> `stopwatch_suspended`). s2idle and deep suspend both
+/// go through logind, so neither the kernel's choice of sleep state nor which
+/// laptop it is changes the result. The anchor stays wall-clock, which is what
+/// lets a paused total survive a restart; `Event::ClockStepped` covers the other
+/// side of that choice.
+///
+/// **The hole, named rather than assumed away:** a suspend that does NOT go
+/// through logind - `echo mem > /sys/power/state` as root - broadcasts nothing,
+/// so no fold happens and the wall-clock anchor counts that sleep. Nothing on a
+/// normal desktop suspends that way, and closing a lid does not.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Stopwatch {
     /// Whether it is running.
