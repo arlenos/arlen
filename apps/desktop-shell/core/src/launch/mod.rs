@@ -34,3 +34,4 @@ pub mod mimeapps;
 pub mod plan;
 pub mod request;
 pub mod search;
+pub mod service;
