@@ -58,11 +58,21 @@ pub enum LaunchRequest {
     Open {
         /// The document.
         target: Target,
-        /// Its MIME type. The caller supplies it because MIME detection is
-        /// shared-mime-info's job and the caller usually has the answer already;
-        /// a caller that does not can ask the type separately rather than have
-        /// this interface grow a sniffing mode.
-        mime: String,
+        /// Its MIME type, when the caller already knows it.
+        ///
+        /// **Optional because the callee is the one that has to know.** It
+        /// already owns "which application opens this"; "what kind of thing is
+        /// this" is the same question one step earlier, and requiring it here
+        /// would put a MIME database in every caller - which is how the
+        /// resolution ended up in `xdg-open` rather than beside the launch in
+        /// the first place.
+        ///
+        /// A caller that does know says so and saves the lookup: the portal
+        /// knows a `https:` link is `x-scheme-handler/https` from the URI
+        /// alone, and an application that just wrote a file knows what it
+        /// wrote. Absent, the service determines it from the target.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mime: Option<String>,
     },
 }
 
@@ -257,7 +267,7 @@ mod tests {
                 uri: "file:///tmp/a.png".into(),
                 path: Some("/tmp/a.png".into()),
             },
-            mime: "image/png".into(),
+            mime: Some("image/png".into()),
         };
         assert_eq!(round_trip(&r), r);
     }
@@ -344,6 +354,19 @@ mod tests {
         ] {
             assert_eq!(scheme_handler_mime(bad), None, "accepted {bad}");
         }
+    }
+
+    /// A caller that does not know the type says nothing rather than guessing,
+    /// and the service works it out.
+    #[test]
+    fn a_request_may_omit_the_type_entirely() {
+        let parsed: LaunchRequest =
+            serde_json::from_str(r#"{"kind":"open","target":{"uri":"file:///tmp/a"},"mime":null}"#)
+                .unwrap();
+        assert!(matches!(parsed, LaunchRequest::Open { mime: None, .. }));
+        let absent: LaunchRequest =
+            serde_json::from_str(r#"{"kind":"open","target":{"uri":"file:///tmp/a"}}"#).unwrap();
+        assert!(matches!(absent, LaunchRequest::Open { mime: None, .. }));
     }
 
     #[test]

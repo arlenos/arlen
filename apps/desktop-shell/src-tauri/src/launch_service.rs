@@ -102,6 +102,7 @@ async fn handle(mut stream: UnixStream) -> Result<(), String> {
         &caller,
         &handlers,
         |id| search::load_entry(&env, id),
+        mime_of,
         confined,
     );
 
@@ -116,6 +117,29 @@ async fn handle(mut stream: UnixStream) -> Result<(), String> {
     proto::write_outcome(&mut stream, &served.outcome)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// What kind of thing a document is, when the caller did not say.
+///
+/// `xdg-mime` rather than a MIME library: it is what the rest of the tree
+/// already asks (the harness's file pills, the file manager's Open-With), so a
+/// user who has taught their system that a file is one thing gets one answer
+/// everywhere rather than two. A remote target has no local path to classify,
+/// and a classification nobody could make is `None` - which the service reports
+/// as nothing opening it, because from the requester's side that is the same
+/// fact.
+fn mime_of(target: &proto::Target) -> Option<String> {
+    let path = target.path.as_ref()?;
+    let out = std::process::Command::new("xdg-mime")
+        .args(["query", "filetype", path])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let mime = String::from_utf8(out.stdout).ok()?;
+    let mime = mime.trim();
+    (!mime.is_empty()).then(|| mime.to_string())
 }
 
 /// Who is on the other end, as the kernel says rather than as they claim.

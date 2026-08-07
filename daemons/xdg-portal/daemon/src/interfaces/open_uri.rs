@@ -518,15 +518,15 @@ fn fd_still_points_at(fd: &Fd<'_>, path: &Path) -> Result<bool, std::io::Error> 
 async fn launch_via_shell(uri: &str) -> (u32, HashMap<String, OwnedValue>) {
     use arlen_launch_contract as launch;
 
-    let Some(mime) = launch::scheme_handler_mime(uri) else {
-        return error_results_with("no scheme handler applies to this URI");
-    };
     let request = launch::LaunchRequest::Open {
         target: launch::Target {
             uri: uri.to_string(),
             path: None,
         },
-        mime,
+        // The scheme names the handler, and the portal knows it from the URI
+        // alone. Saying so saves the service a lookup it would otherwise have to
+        // make against a document that is not a local file at all.
+        mime: launch::scheme_handler_mime(uri),
     };
 
     let mut stream = match tokio::net::UnixStream::connect(launch::socket_path()).await {
