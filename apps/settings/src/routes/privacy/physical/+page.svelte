@@ -69,6 +69,29 @@
     pendingOff = null;
     toggleEpoch += 1;
   }
+
+  // Switching capture back ON is the heavy direction, and the asymmetry is this
+  // page's job: the backend command says so, and a backend that refused without
+  // a token would be inventing a second consent mechanism beside the one the
+  // system has. Off is one click; on asks, because it restores capture to
+  // everyone already holding a grant - the marker on those grant lines in the
+  // App access list is the list of who.
+  let pendingCapture = $state(false);
+  function requestCapture(on: boolean) {
+    if (on) {
+      pendingCapture = true;
+      return;
+    }
+    void setScreenCapture(false);
+  }
+  function confirmCapture() {
+    pendingCapture = false;
+    void setScreenCapture(true);
+  }
+  function cancelCapture() {
+    pendingCapture = false;
+    toggleEpoch += 1;
+  }
 </script>
 
 <Page title={$t("s.sent.title")} description={$t("s.sent.desc")}>
@@ -123,11 +146,13 @@
           id="sens-screen-capture"
         >
           {#snippet control()}
-            <Switch
-              value={$sensing.screenCapture}
-              onchange={(v) => setScreenCapture(v)}
-              ariaLabel={$t("s.sens.screen.row")}
-            />
+            {#key toggleEpoch}
+              <Switch
+                value={$sensing.screenCapture}
+                onchange={(v) => requestCapture(v)}
+                ariaLabel={$t("s.sens.screen.row")}
+              />
+            {/key}
           {/snippet}
         </Row>
         {#if !$sensing.screenCapture}
@@ -216,6 +241,15 @@
     {/if}
   </SectionGrid>
 </Page>
+
+<ConfirmDialog
+  open={pendingCapture}
+  title={$t("s.sens.screen.onTitle")}
+  message={$t("s.sens.screen.onMsg")}
+  confirmLabel={$t("s.sens.screen.turnOn")}
+  onConfirm={confirmCapture}
+  onCancel={cancelCapture}
+/>
 
 <ConfirmDialog
   open={pendingOff !== null}
