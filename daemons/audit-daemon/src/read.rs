@@ -253,6 +253,12 @@ mod tests {
                 assert_eq!(entries[0].entry_hash_hex.len(), 64);
                 assert!(!tampered, "untampered ledger reports tampered=false");
                 assert_eq!(head, 3, "head is one past the highest index");
+                // The count the filter matched, which for an unfiltered read is
+                // every entry. It was bound and never checked, so the field the
+                // client pages on had no end-to-end assertion at all - and it is
+                // a row count, not a position, which is the distinction the two
+                // fields exist to keep apart.
+                assert_eq!(matching, 3, "an unfiltered read matches every entry");
             }
             ReadResponse::Error { reason } => panic!("read failed: {reason}"),
         }
