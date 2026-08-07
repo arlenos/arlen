@@ -15,6 +15,7 @@
   /// who need the path can right-click → resize the tile to 2×1 in
   /// Settings (the path-text returns automatically).
   import { BaseTile } from "@arlen/ui-kit/components/quicksettings";
+  import { t } from "$lib/i18n/messages";
   import { FolderOpen, FolderPlus } from "lucide-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { focusState, focusedProject } from "$lib/stores/projects.js";
@@ -28,8 +29,8 @@
 
 <div class="project-tile-wrap" class:dim={!$focusState.projectId}>
   <BaseTile
-    label={$focusedProject?.name ?? "Start a project"}
-    statusText={$focusState.projectId ? "Focus Mode" : "Tap to pick"}
+    label={$focusedProject?.name ?? $t("sh.tile.startProject")}
+    statusText={$focusState.projectId ? $t("sh.tile.focusMode") : $t("sh.tile.tapToPick")}
     active={!!$focusState.projectId}
     onclick={openWaypointerWithProjectPrefix}
   >

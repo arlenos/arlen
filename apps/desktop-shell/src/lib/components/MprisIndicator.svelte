@@ -40,7 +40,7 @@
 
     <button
       class="mpris-play"
-      aria-label={playing ? "Pause" : "Play"}
+      aria-label={playing ? $t("sh.media.pause") : $t("sh.media.play")}
       disabled={!n.canControl}
       onclick={() => playPause()}
     >

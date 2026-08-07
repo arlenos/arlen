@@ -104,7 +104,7 @@
   <div class="section-label">{$t("sh.audio.output")}</div>
   <div class="vol-row">
     <button class="vol-icon-btn" onclick={(e) => { e.stopPropagation(); toggleMute(); }}
-      aria-label={muted ? "Unmute" : "Mute"}>
+      aria-label={muted ? $t("sh.audio.unmute") : $t("sh.audio.mute")}>
       {#if muted}
         <VolumeX size={16} strokeWidth={1.5} />
       {:else}
