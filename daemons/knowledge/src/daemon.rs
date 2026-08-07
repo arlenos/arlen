@@ -3791,6 +3791,21 @@ fn cypher_references_any(cypher: &str, needles: &[&str]) -> bool {
 /// pre-gate ([`raw_read_label_gate`]) is the active boundary in the meantime.
 const SENSITIVE_RAW_LABELS: [&str; 0] = [];
 
+/// Relationship types that carry more than their endpoints do, and so need an
+/// explicit grant rather than following from the labels they connect.
+///
+/// **Empty, and honestly so.** The list is for an edge that says something the
+/// endpoints do not - one tying a person to a document, or one person to another.
+/// The observation graph has no `Person` node today, and every edge it does have
+/// (`FILE_PART_OF`, `ACCESSED_BY`, `ACTIVE_IN`, `DERIVED_FROM`) relates things a
+/// caller reading both ends can already see. The authority edges are not here
+/// because they are already refused a step earlier, by the label deny on `Grant`,
+/// `CapabilityUse` and `EntityType`.
+///
+/// Adding an entry is cheap; the standard it has to meet is that someone reading
+/// this file can see why that edge carries more than its ends.
+const RESTRICTED_RELATIONS: [&str; 0] = [];
+
 /// The uppercased label/relationship-type tokens a Cypher query references: every
 /// identifier that immediately follows a `:` (a node label `(n:File)` or a rel type
 /// `-[:FILE_PART_OF]->`), skipping single-quoted string literals so a name inside a
@@ -3861,13 +3876,29 @@ fn cypher_label_tokens(cypher: &str) -> Vec<String> {
 ///
 /// Returns the offending construct's name for the refusal, so the message can say
 /// which one rather than failing obscurely.
-fn unconstrained_pattern(cypher: &str) -> Option<&'static str> {
+struct PatternScan {
+    /// The construct that named no constraint, if any.
+    unconstrained: Option<&'static str>,
+    /// Uppercased labels named on node patterns.
+    node_labels: Vec<String>,
+    /// Uppercased types named on relationship patterns.
+    rel_types: Vec<String>,
+}
+
+fn scan_patterns(cypher: &str) -> PatternScan {
     let chars: Vec<char> = cypher.chars().collect();
     let mut in_string = false;
     let mut escaped = false;
     // (kind, saw_colon) for each open bracket that is a PATTERN, innermost last.
     let mut open: Vec<(&'static str, bool)> = Vec::new();
     let mut prev_significant: Option<char> = None;
+    let mut unconstrained: Option<&'static str> = None;
+    let mut node_labels: Vec<String> = Vec::new();
+    let mut rel_types: Vec<String> = Vec::new();
+    // An identifier being collected because a `:` opened it, and the bracket kind
+    // it belongs to. A token must start with a letter, so a map literal's numeric
+    // value (`{count:5}`) is not read as a name.
+    let mut pending: Option<(String, &'static str)> = None;
 
     for (i, &ch) in chars.iter().enumerate() {
         if in_string {
@@ -3878,6 +3909,19 @@ fn unconstrained_pattern(cypher: &str) -> Option<&'static str> {
             } else if ch == '\'' {
                 in_string = false;
             }
+            continue;
+        }
+        if pending.is_some() && !(ch.is_ascii_alphanumeric() || ch == '_') {
+            let (tok, kind) = pending.take().expect("checked above");
+            if tok.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
+                if kind == "relationship" {
+                    rel_types.push(tok);
+                } else {
+                    node_labels.push(tok);
+                }
+            }
+        } else if let Some((tok, _)) = pending.as_mut() {
+            tok.push(ch.to_ascii_uppercase());
             continue;
         }
         match ch {
@@ -3901,13 +3945,14 @@ fn unconstrained_pattern(cypher: &str) -> Option<&'static str> {
             ')' | ']' => {
                 if let Some((kind, saw_colon)) = open.pop() {
                     if !saw_colon && (kind == "node" || kind == "relationship") {
-                        return Some(kind);
+                        unconstrained = unconstrained.or(Some(kind));
                     }
                 }
             }
             ':' => {
                 if let Some(last) = open.last_mut() {
                     last.1 = true;
+                    pending = Some((String::new(), last.0));
                 }
             }
             _ => {}
@@ -3917,7 +3962,16 @@ fn unconstrained_pattern(cypher: &str) -> Option<&'static str> {
             prev_significant = Some(ch);
         }
     }
-    None
+    if let Some((tok, kind)) = pending {
+        if tok.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
+            if kind == "relationship" {
+                rel_types.push(tok);
+            } else {
+                node_labels.push(tok);
+            }
+        }
+    }
+    PatternScan { unconstrained, node_labels, rel_types }
 }
 
 /// Whether `cypher` references a label outside the caller's readable label set, OR
@@ -3986,7 +4040,8 @@ fn raw_read_label_gate(
     }
     // An omitted constraint is the widest one. A scoped caller must say which
     // labels and which edge types it means, because "any" is not a scope it holds.
-    match unconstrained_pattern(cypher) {
+    let scan = scan_patterns(cypher);
+    match scan.unconstrained {
         Some("node") => {
             return Some(
                 "read denied: every node in the pattern must name a label; an unlabelled node means any label",
@@ -3999,16 +4054,27 @@ fn raw_read_label_gate(
         }
         Some(_) | None => {}
     }
-    let tokens = cypher_label_tokens(cypher);
-    if tokens.is_empty() {
+    if scan.node_labels.is_empty() {
         return Some("read denied: a label-less query cannot be scoped to the caller");
     }
-    for t in &tokens {
+    let readable = |t: &String| readable_labels.iter().any(|l| l.eq_ignore_ascii_case(t));
+    for t in &scan.node_labels {
         if SENSITIVE_RAW_LABELS.contains(&t.as_str()) {
             return Some("read denied: sensitive label served only through the structured read op");
         }
-        if !readable_labels.iter().any(|l| l.eq_ignore_ascii_case(t)) {
+        if !readable(t) {
             return Some("read denied: label outside the caller's read scope");
+        }
+    }
+    // A traversal is authorised by its ENDPOINTS: both node labels were just
+    // checked, so the edge between them adds little a caller could not infer from
+    // the properties and paths it may already read. Enumerating every type in a
+    // profile buys a longer grant, not a tighter one - it becomes "list them all"
+    // through ceremony. Named types on the restricted list are the exception and
+    // need the explicit grant.
+    for t in &scan.rel_types {
+        if RESTRICTED_RELATIONS.contains(&t.as_str()) && !readable(t) {
+            return Some("read denied: this relationship type needs an explicit grant");
         }
     }
     None
@@ -4480,13 +4546,25 @@ mod tests {
             .is_some(),
             "an untyped edge between two named labels is still any edge"
         );
-        // Fully constrained and in scope: allowed.
+        // Fully constrained and in scope: allowed. The edge type is NOT in the
+        // readable set - it does not need to be, because both of its endpoints
+        // are. That is the endpoint model: an edge between two nodes a caller may
+        // read adds little it could not infer from their properties and paths,
+        // and enumerating types in a profile buys length rather than tightness.
         assert!(raw_read_label_gate(
             "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) RETURN p.id",
-            &["File".to_string(), "Project".to_string(), "FILE_PART_OF".to_string()],
+            &["File".to_string(), "Project".to_string()],
             false
         )
         .is_none());
+        // An endpoint outside the scope still refuses, so the edge cannot be used
+        // to reach a label the caller may not read.
+        assert!(raw_read_label_gate(
+            "MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) RETURN p.id",
+            &["File".to_string()],
+            false
+        )
+        .is_some());
         // A function call is not an unlabelled node, and a list is not an edge.
         assert!(raw_read_label_gate(
             "MATCH (f:File) WHERE f.id IN ['a','b'] RETURN count(*)",
