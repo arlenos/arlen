@@ -179,7 +179,11 @@ mod tests {
         fn search(&self, query: &str) -> Vec<SearchResult> {
             vec![SearchResult {
                 id: "echo-1".into(),
+                // The title is the query typed back, so there is no message id
+                // that could stand for it: it is the user's own words.
+                title_key: None,
                 title: query.to_string(),
+                description_key: None,
                 description: Some("Echo result".into()),
                 icon: None,
                 relevance: 1.0,
