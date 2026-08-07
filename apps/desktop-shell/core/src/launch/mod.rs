@@ -17,7 +17,9 @@
 //! [`mimeapps`] is the resolution: a URI's MIME type to the desktop id that
 //! handles it, per the freedesktop association spec. [`search`] is where those
 //! files are and in which order they win, and [`exec`] turns the chosen entry's
-//! `Exec` into an argument vector.
+//! `Exec` into an argument vector. [`plan`] is the confinement decision itself,
+//! which the shell launcher and the Settings handoff each wrote their own copy
+//! of before this existed.
 //!
 //! **`arlen_file_browser_core::openwith` answers two of the same questions**, for
 //! the file manager's Open-With picker, and one of the two implementations has
