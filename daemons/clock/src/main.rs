@@ -92,7 +92,11 @@ impl Clock {
     /// 07:00 pointing at a moment already gone.
     async fn resumed(&self) {
         self.observe(reduce::Event::Resumed).await;
+        // Asked again here because the power daemon may have been down when this
+        // one started, and a wake is the moment the answer is about to matter.
+        let capable = wake_capable().await;
         let mut state = self.state.lock().await;
+        state.wake_capable = capable;
         let resumed = startup::resume(&mut state, &chrono::Local, LATE_WINDOW_MS, now_ms());
         if !resumed.ring_late.is_empty() {
             warn!(
@@ -105,6 +109,43 @@ impl Clock {
         // be wrong.
         if let Err(e) = store::save(&self.dir, &state) {
             warn!("clock state not written after a wake: {e}");
+        }
+    }
+}
+
+/// The daemon that owns suspend, and holds the one capability that lets a timer
+/// wake a sleeping machine.
+const POWER_SERVICE: &str = "org.arlen.Power1";
+/// Where its interface lives.
+const POWER_PATH: &str = "/org/arlen/Power1";
+
+/// Whether alarms can wake this machine, asked of the daemon that would do it.
+///
+/// **Not probed here, deliberately.** `CAP_WAKE_ALARM` is a property of a
+/// process, and the process that arms the wake is `arlen-powerd` - so a probe in
+/// this daemon would answer about the wrong one and report "cannot wake" on a
+/// machine where waking works perfectly. `Power1` probed itself at startup and
+/// publishes the answer; asking it is the only way to be right.
+///
+/// The boolean is read rather than the sentence beside it: a display string is
+/// for a person, and matching English across a process boundary is the kind of
+/// coupling that breaks silently the day someone improves the wording.
+///
+/// An unreachable power daemon means `false`, which is the honest direction: the
+/// app then says this machine will not be woken, and an alarm that rings anyway
+/// is a pleasant surprise rather than a broken promise.
+async fn wake_capable() -> bool {
+    let Ok(conn) = zbus::Connection::session().await else {
+        return false;
+    };
+    let Ok(proxy) = zbus::Proxy::new(&conn, POWER_SERVICE, POWER_PATH, POWER_SERVICE).await else {
+        return false;
+    };
+    match proxy.get_property::<bool>("WakesMachine").await {
+        Ok(capable) => capable,
+        Err(e) => {
+            warn!("power daemon did not answer whether alarms can wake this machine: {e}");
+            false
         }
     }
 }
@@ -333,6 +374,12 @@ async fn main() {
     // Bring the anchors up to date before anything can read them, so the first
     // `State` call answers about now rather than about whenever the daemon last
     // ran.
+    state.wake_capable = wake_capable().await;
+    info!(
+        wake_capable = state.wake_capable,
+        "asked the power daemon about waking"
+    );
+
     let resumed = startup::resume(&mut state, &chrono::Local, LATE_WINDOW_MS, now_ms());
     if !resumed.ring_late.is_empty() {
         // Not rung: the notification daemon is not wired yet. Recorded so the
