@@ -7,16 +7,25 @@ import {
   type PlaceGroup,
   type ColumnSpec,
 } from "@arlen/ui-kit/components/browser";
+import type { Translate } from "@arlen/ui-kit/i18n";
 
 /// Translate a location key into its display label. `groups` lets a
 /// `project:<id>` resolve to the project's place label; without it (or on a
 /// miss) the bare id is shown.
-export function locationLabel(path: string, groups: PlaceGroup[] = []): string {
-  if (path === "recent") return "Recent";
-  if (path === "trash") return "Trash";
+///
+/// The translator is a parameter, not a store read: this is called from a
+/// render site and a plain function reading the store would keep whichever
+/// language was current when it first ran.
+export function locationLabel(
+  t: Translate,
+  path: string,
+  groups: PlaceGroup[] = [],
+): string {
+  if (path === "recent") return t("f.loc.recent");
+  if (path === "trash") return t("f.loc.trash");
   if (path.startsWith("search:")) {
     const q = path.slice("search:".length).trim();
-    return q ? `Search: ${q}` : "Search";
+    return q ? t("f.loc.searchFor", { query: q }) : t("f.loc.search");
   }
   if (path.startsWith("project:")) {
     for (const g of groups) {
@@ -32,7 +41,7 @@ export function locationLabel(path: string, groups: PlaceGroup[] = []): string {
       const hit = g.places.find((pl) => pl.path === path);
       if (hit) return hit.label;
     }
-    return "Filtered";
+    return t("f.loc.filtered");
   }
   return path;
 }

@@ -17,6 +17,7 @@ import {
   type BrowserState,
 } from "@arlen/ui-kit/components/browser";
 import { tauriAvailable } from "$lib/tauri";
+import { t } from "$lib/i18n/messages";
 import { focusedController } from "$lib/stores/panes";
 import { homePath, placeGroups } from "$lib/stores/places";
 import { locationLabel } from "$lib/locations";
@@ -34,7 +35,7 @@ let started = false;
 function crumbItems(path: string): BreadcrumbItem[] {
   // A virtual location becomes one non-navigable name crumb (the host label).
   if (isVirtualLocation(path)) {
-    const crumbs = locationCrumbs(path, locationLabel(path, get(placeGroups)));
+    const crumbs = locationCrumbs(path, locationLabel(get(t), path, get(placeGroups)));
     return crumbs.map((c) => ({ label: c.name, action: NAV_PREFIX + c.path }));
   }
   const home = get(homePath);

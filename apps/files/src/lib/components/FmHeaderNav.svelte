@@ -32,7 +32,7 @@
   const canBack = $derived(controller.canBack);
   const canForward = $derived(controller.canForward);
   // At a virtual location the breadcrumb renders this as the name crumb.
-  const label = $derived(locationLabel($path, $placeGroups));
+  const label = $derived(locationLabel($t, $path, $placeGroups));
 
   // Whole-listing time-travel is meaningful only on a project location (the
   // bitemporal membership slice); the control appears there and re-lists.

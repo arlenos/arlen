@@ -54,11 +54,6 @@ apps/desktop-shell/src/routes/_mpristest/+page.svelte	Click an album-art thumb t
 apps/desktop-shell/src/routes/_mpristest/+page.svelte	Lateralus
 apps/desktop-shell/src/routes/_printtest/+page.svelte	Print dialog look-mock. The dialog opens over this page.
 apps/desktop-shell/src/routes/_undotest/+page.svelte	topbar strip
-apps/files/src/lib/locations.ts	Filtered
-apps/files/src/lib/locations.ts	Recent
-apps/files/src/lib/locations.ts	Search
-apps/files/src/lib/locations.ts	Search: {}
-apps/files/src/lib/locations.ts	Trash
 apps/files/src/routes/+page.svelte	Ctrl+C
 apps/files/src/routes/+page.svelte	Ctrl+V
 apps/files/src/routes/+page.svelte	Ctrl+X
