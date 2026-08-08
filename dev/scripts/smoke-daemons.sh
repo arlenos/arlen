@@ -68,6 +68,7 @@ SKIPPED=(
     "arlen-accountsd|needs the session bus"
     "arlen-notifyd|needs the session bus (org.freedesktop.Notifications)"
     "arlen-clockd|needs the session bus (it owns org.arlen.Clock1)"
+    "arlen-undod|needs the session bus (it owns org.arlen.Undo1); driven by hand on a live bus, where Recent returns [] and Enact says not-permitted for an unadmitted caller"
     "xdg-desktop-portal-arlen|needs the session bus and the portal frontend"
     "arlen-installd|needs the session bus"
     "arlen-install-helper|system-bus service, runs as root"
