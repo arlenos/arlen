@@ -7,6 +7,8 @@
   import LensPanel from "$lib/components/editor/LensPanel.svelte";
   import AiEditReview from "$lib/components/editor/AiEditReview.svelte";
   import { loadLens } from "$lib/stores/lens";
+  import { openDocument, openError, openTarget, loadInitialFile } from "$lib/stores/document";
+  import { onMount } from "svelte";
   import { proposal, proposeEdit, dismiss } from "$lib/stores/aiEdit";
   import { t, dir } from "$lib/i18n/messages";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
@@ -82,12 +84,28 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   return verdict;
 }`;
 
+  // The two demo documents, shown when the editor is launched with no file. They
+  // describe the editor itself, so they claim nothing about the user's machine.
   const FILES = [
     { name: "the-kg-lens.md", type: "markdown" as const, content: MD_DOC },
     { name: "gate.ts", type: "code" as const, content: CODE_DOC },
   ];
-  const file = $derived(FILES[fileIdx]);
-  const fileOptions = FILES.map((f, i) => ({ value: String(i), label: f.name }));
+
+  // A real launch file wins over the demos, and replaces the picker with its own
+  // name: offering to switch back to a demo document from a file the user opened
+  // would put invented text one click from their own.
+  const file = $derived($openDocument ?? FILES[fileIdx]);
+  // A launch file names the window even when it failed to open: the alternative
+  // is a demo document's name over a pane that says the file could not be read.
+  const fileOptions = $derived(
+    $openTarget
+      ? [{ value: "0", label: $openDocument?.name ?? $openTarget }]
+      : FILES.map((f, i) => ({ value: String(i), label: f.name })),
+  );
+
+  onMount(() => {
+    void loadInitialFile();
+  });
 
   // The lens tracks whichever file is open.
   $effect(() => {
@@ -132,7 +150,7 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <header class="titlebar" onpointerdown={startDrag} ondblclick={toggleMax}>
     <PopoverSelect
-      value={String(fileIdx)}
+      value={$openTarget ? "0" : String(fileIdx)}
       options={fileOptions}
       width="170px"
       ariaLabel={$t("te.openFile")}
@@ -177,7 +195,17 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
 
   <div class="body">
     <main class="editor">
-      <Canvas doc={file.content} fileType={file.type} {focusMode} {lineNumbers} />
+      {#if $openError}
+        <!-- The editor was asked to open a file and could not. The host's message
+             names the path and the reason; showing anything else here would mean
+             putting text on screen under a filename that is not its text. -->
+        <div class="open-failed" role="alert">
+          <p class="of-title">{$t("te.open.failed")}</p>
+          <p class="of-detail">{$openError}</p>
+        </div>
+      {:else}
+        <Canvas doc={file.content} fileType={file.type} {focusMode} {lineNumbers} />
+      {/if}
     </main>
     {#if $proposal}
       <AiEditReview />
@@ -188,6 +216,22 @@ export async function authorize(call: ToolCall): Promise<AuthorizeDecision> {
 </div>
 
 <style>
+  .open-failed {
+    padding: 2.5rem 2rem;
+    max-width: 34rem;
+  }
+  .of-title {
+    margin: 0 0 0.4rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .of-detail {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: color-mix(in srgb, var(--color-fg-primary) 62%, transparent);
+    word-break: break-word;
+  }
   .app {
     display: flex;
     flex-direction: column;

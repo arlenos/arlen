@@ -59,6 +59,14 @@ fn editor_open(path: String) -> Result<OpenedFile, String> {
 
 /// Write the edited text back.
 ///
+/// Nothing calls this yet, and that is deliberate rather than forgotten: the
+/// canvas is a renderer, not an editing surface (`Canvas.svelte` says so in its
+/// own header - the incremental highlighting engine that would make it editable
+/// is separate work). A Save that reaches a backend from a surface where nothing
+/// can be typed would be the same shape as the fixtures fixed all week: an
+/// affordance that implies a capability the app does not have. This is the half
+/// that will be correct when the other half exists.
+///
 /// Writes to a sibling temporary file and renames over the original, so an
 /// interrupted save leaves the previous contents intact rather than a truncated
 /// file. The rename is atomic within a filesystem; the temp file is created
@@ -79,12 +87,27 @@ fn editor_save(path: String, text: String) -> Result<(), String> {
     })
 }
 
+/// The file path the editor was launched with (`arlen-text-editor <path>`, or the
+/// `.desktop` `Exec=<bin> %f` when opened from the file manager). `None` when
+/// launched bare, which is the demo-document path.
+struct InitialFile(Option<String>);
+
+/// The path the editor was opened on, for the frontend to load on mount.
+#[tauri::command]
+fn initial_file(state: tauri::State<'_, InitialFile>) -> Option<String> {
+    state.0.clone()
+}
+
 /// Run the editor.
 pub fn run() {
     env_logger::init();
+    // The first non-flag argument is the file to open. Same rule as the viewers,
+    // so `%f` from a desktop entry lands the same way in both.
+    let initial = std::env::args().skip(1).find(|a| !a.starts_with('-'));
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
-        .invoke_handler(tauri::generate_handler![editor_open, editor_save])
+        .manage(InitialFile(initial))
+        .invoke_handler(tauri::generate_handler![editor_open, editor_save, initial_file])
         .run(tauri::generate_context!())
         .expect("error while running the text editor");
 }
