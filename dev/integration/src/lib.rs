@@ -95,6 +95,12 @@ impl EphemeralStack {
     /// write-tier gate and the authority-label read gate). Call before spawning
     /// knowledge. See [`first_party`](Self::first_party) for why FirstParty is the
     /// default in a non-root harness.
+    /// **If a scenario's claim is about read scope, it must call this.** Three
+    /// scenarios did not, and each stated in its own doc that a seeded grant was
+    /// doing the work while a system-anchored caller was skipping the check
+    /// entirely - the retrieve filter, the label gate, and the map-key gate. They
+    /// were green the whole time. Grep for `seed_read_profile` without this call
+    /// before adding another.
     pub fn as_unprivileged(&mut self) -> &mut Self {
         self.first_party = false;
         self
@@ -1759,5 +1765,104 @@ mod terminal_read_scope_agreement {
         ] {
             assert_ne!(narrow, widened);
         }
+    }
+}
+
+#[cfg(test)]
+mod scenario_privilege {
+    /// A scenario that seeds a read grant while staying FirstParty is not testing
+    /// the grant.
+    ///
+    /// `EphemeralStack::new` grants FirstParty, which makes the caller
+    /// `system_anchored`, which skips the read-scope gate and the retrieve op's
+    /// readable-label filter. Three scenarios seeded a profile, said in their own
+    /// docs that the grant was load-bearing, and were green with the check never
+    /// running. This test is here so the fourth is caught by CI rather than by
+    /// someone writing an assertion they expect to fail and noticing it does not.
+    ///
+    /// Staying FirstParty is often right - a scenario about promotion or code
+    /// indexing is not about read scope, and the as-of traversal genuinely needs
+    /// the tier. So each one says which it is, and an unlisted one fails.
+    const PRIVILEGED_WITH_A_GRANT: &[(&str, &str)] = &[
+        (
+            "a_file_opened_promotes_to_a_readable_file_node",
+            "the claim is that promotion produces a readable node, not that a \
+             grant admits it; the profile is there so the read has somewhere to land",
+        ),
+        (
+            "a_file_opened_indexes_code_symbols_into_the_graph",
+            "same: the claim is that indexing lands symbols, not that scope gates them",
+        ),
+        (
+            "provenance_read_flags_a_foreign_opener_without_naming_it",
+            "the co-tenant filter it asserts runs for every caller, not only an \
+             unprivileged one; the tier does not switch it off",
+        ),
+        (
+            "a_connecting_app_sees_only_its_own_capability_grant",
+            "access_grants scopes by the attested app id and its whole-machine \
+             view is refused to everyone until F3, so the tier changes nothing here",
+        ),
+        (
+            "a_signal_bearing_directory_is_detected_as_a_project",
+            "the claim is about project detection; the grant only lets the test \
+             read the node back",
+        ),
+        (
+            "the_engine_executor_does_not_silently_write_from_an_event_trigger",
+            "the claim is about the executor not writing, which the read tier \
+             does not affect",
+        ),
+        (
+            "a_window_focused_event_promotes_to_a_readable_app_node",
+            "promotion again, not scope",
+        ),
+        (
+            "the_seeded_corpus_returns_different_membership_per_as_of_time",
+            "needs the tier: the as-of FILE_PART_OF traversal carries a rel-type \
+             token an unprivileged caller cannot scope, which is why the harness \
+             grants FirstParty by default at all",
+        ),
+    ];
+
+    #[test]
+    fn a_scenario_that_seeds_a_grant_says_why_it_stays_privileged() {
+        let src = include_str!("../tests/integration_backend_smoke.rs");
+        let mut current = String::new();
+        let mut privileged = true;
+        let mut seeds = false;
+        let mut offenders: Vec<String> = Vec::new();
+        let mut finish = |name: &str, privileged: bool, seeds: bool, out: &mut Vec<String>| {
+            if name.is_empty() || !seeds || !privileged {
+                return;
+            }
+            if !PRIVILEGED_WITH_A_GRANT.iter().any(|(n, _)| *n == name) {
+                out.push(name.to_string());
+            }
+        };
+        for line in src.lines() {
+            if let Some(rest) = line.strip_prefix("async fn ") {
+                finish(&current, privileged, seeds, &mut offenders);
+                current = rest.split('(').next().unwrap_or("").to_string();
+                privileged = true;
+                seeds = false;
+                continue;
+            }
+            if line.contains("as_unprivileged()") {
+                privileged = false;
+            }
+            if line.contains("seed_read_profile(") {
+                seeds = true;
+            }
+        }
+        finish(&current, privileged, seeds, &mut offenders);
+
+        assert!(
+            offenders.is_empty(),
+            "these scenarios seed a read grant and stay FirstParty, so the read-scope \
+             gate never runs and the grant proves nothing: {offenders:?}. Either call \
+             `as_unprivileged()` or list the scenario in PRIVILEGED_WITH_A_GRANT with \
+             the reason the tier is right."
+        );
     }
 }

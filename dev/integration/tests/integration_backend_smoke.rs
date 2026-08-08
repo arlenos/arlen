@@ -751,6 +751,11 @@ async fn a_file_opened_indexes_code_symbols_into_the_graph() {
 #[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host (~30s)"]
 async fn a_promoted_file_is_retrievable_by_keyword_under_scope() {
     let mut stack = EphemeralStack::new().expect("private runtime root");
+    // Unprivileged, or the sentence above about the grant being load-bearing is
+    // not true of this run: a system-anchored caller skips
+    // `filter_ids_to_readable_labels` entirely, so the id survives whether or not
+    // the profile is seeded. Same defect as the scoped-read scenario.
+    stack.as_unprivileged();
     stack
         .seed_read_profile(&["system.File.id", "system.File.path"])
         .expect("seed read profile");
