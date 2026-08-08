@@ -167,16 +167,19 @@ impl InstallDaemon {
         path: String,
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
-    ) -> String {
-        if authorise_mutation("InstallPackage", &header, connection).await.is_err() {
-            // An empty job id is the refusal: there is no error channel on a
-            // method whose result arrives later on a signal, and inventing one
-            // would change the interface for every caller.
-            return String::new();
-        }
+    ) -> zbus::fdo::Result<String> {
+        // The refusal is a D-Bus error. It used to be an empty job id, argued for
+        // on the grounds that a method whose result arrives later on a signal has
+        // no error channel - which is not true, and the reads five lines further
+        // down this same file prove it: an interface method can return
+        // `fdo::Result` and the caller gets an error reply instead of a value.
+        // An empty id is worse than nothing, because `GetJobStatus("")` answers
+        // `unknown` rather than `refused`, so a caller that does not check polls a
+        // job that was never enqueued.
+        authorise_mutation("InstallPackage", &header, connection).await.map_err(zbus::fdo::Error::AccessDenied)?;
         let job_id = self.queue.enqueue(JobKind::InstallPackage { path });
         tracing::info!("enqueued install job {job_id}");
-        job_id
+        Ok(job_id)
     }
 
     /// Upgrade an already-installed app from a local .lunpkg.
@@ -194,16 +197,19 @@ impl InstallDaemon {
         path: String,
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
-    ) -> String {
-        if authorise_mutation("Update", &header, connection).await.is_err() {
-            // An empty job id is the refusal: there is no error channel on a
-            // method whose result arrives later on a signal, and inventing one
-            // would change the interface for every caller.
-            return String::new();
-        }
+    ) -> zbus::fdo::Result<String> {
+        // The refusal is a D-Bus error. It used to be an empty job id, argued for
+        // on the grounds that a method whose result arrives later on a signal has
+        // no error channel - which is not true, and the reads five lines further
+        // down this same file prove it: an interface method can return
+        // `fdo::Result` and the caller gets an error reply instead of a value.
+        // An empty id is worse than nothing, because `GetJobStatus("")` answers
+        // `unknown` rather than `refused`, so a caller that does not check polls a
+        // job that was never enqueued.
+        authorise_mutation("Update", &header, connection).await.map_err(zbus::fdo::Error::AccessDenied)?;
         let job_id = self.queue.enqueue(JobKind::Upgrade { path });
         tracing::info!("enqueued upgrade job {job_id}");
-        job_id
+        Ok(job_id)
     }
 
     /// Install a Flatpak app.
@@ -215,16 +221,19 @@ impl InstallDaemon {
         remote: String,
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
-    ) -> String {
-        if authorise_mutation("InstallFlatpak", &header, connection).await.is_err() {
-            // An empty job id is the refusal: there is no error channel on a
-            // method whose result arrives later on a signal, and inventing one
-            // would change the interface for every caller.
-            return String::new();
-        }
+    ) -> zbus::fdo::Result<String> {
+        // The refusal is a D-Bus error. It used to be an empty job id, argued for
+        // on the grounds that a method whose result arrives later on a signal has
+        // no error channel - which is not true, and the reads five lines further
+        // down this same file prove it: an interface method can return
+        // `fdo::Result` and the caller gets an error reply instead of a value.
+        // An empty id is worse than nothing, because `GetJobStatus("")` answers
+        // `unknown` rather than `refused`, so a caller that does not check polls a
+        // job that was never enqueued.
+        authorise_mutation("InstallFlatpak", &header, connection).await.map_err(zbus::fdo::Error::AccessDenied)?;
         let job_id = self.queue.enqueue(JobKind::InstallFlatpak { app_id, remote });
         tracing::info!("enqueued flatpak install job {job_id}");
-        job_id
+        Ok(job_id)
     }
 
     /// Uninstall an app by app_id (.lunpkg source).
@@ -235,16 +244,19 @@ impl InstallDaemon {
         app_id: String,
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
-    ) -> String {
-        if authorise_mutation("Uninstall", &header, connection).await.is_err() {
-            // An empty job id is the refusal: there is no error channel on a
-            // method whose result arrives later on a signal, and inventing one
-            // would change the interface for every caller.
-            return String::new();
-        }
+    ) -> zbus::fdo::Result<String> {
+        // The refusal is a D-Bus error. It used to be an empty job id, argued for
+        // on the grounds that a method whose result arrives later on a signal has
+        // no error channel - which is not true, and the reads five lines further
+        // down this same file prove it: an interface method can return
+        // `fdo::Result` and the caller gets an error reply instead of a value.
+        // An empty id is worse than nothing, because `GetJobStatus("")` answers
+        // `unknown` rather than `refused`, so a caller that does not check polls a
+        // job that was never enqueued.
+        authorise_mutation("Uninstall", &header, connection).await.map_err(zbus::fdo::Error::AccessDenied)?;
         let job_id = self.queue.enqueue(JobKind::Uninstall { app_id });
         tracing::info!("enqueued uninstall job {job_id}");
-        job_id
+        Ok(job_id)
     }
 
     /// Uninstall a Flatpak app.
@@ -255,16 +267,19 @@ impl InstallDaemon {
         app_id: String,
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
-    ) -> String {
-        if authorise_mutation("UninstallFlatpak", &header, connection).await.is_err() {
-            // An empty job id is the refusal: there is no error channel on a
-            // method whose result arrives later on a signal, and inventing one
-            // would change the interface for every caller.
-            return String::new();
-        }
+    ) -> zbus::fdo::Result<String> {
+        // The refusal is a D-Bus error. It used to be an empty job id, argued for
+        // on the grounds that a method whose result arrives later on a signal has
+        // no error channel - which is not true, and the reads five lines further
+        // down this same file prove it: an interface method can return
+        // `fdo::Result` and the caller gets an error reply instead of a value.
+        // An empty id is worse than nothing, because `GetJobStatus("")` answers
+        // `unknown` rather than `refused`, so a caller that does not check polls a
+        // job that was never enqueued.
+        authorise_mutation("UninstallFlatpak", &header, connection).await.map_err(zbus::fdo::Error::AccessDenied)?;
         let job_id = self.queue.enqueue(JobKind::UninstallFlatpak { app_id });
         tracing::info!("enqueued flatpak uninstall job {job_id}");
-        job_id
+        Ok(job_id)
     }
 
     /// List all installed apps (lunpkg + flatpak combined).
