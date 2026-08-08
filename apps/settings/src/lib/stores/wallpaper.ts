@@ -5,7 +5,7 @@
 /// is a coder seam not built yet, so a fixture set stands in under vite. Real
 /// wallpapers are image sources; the fixtures use CSS gradients so the grid, the
 /// set, and the add flow all render without image files.
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 
 /// How the image maps to the screen (the daemon's `Scale`).
@@ -38,6 +38,10 @@ export const wallpapers = writable<WallpaperEntry[]>([]);
 /// True when a real session could not read the installed wallpapers.
 export const wallpapersUnavailable = writable(false);
 /// The id of the active wallpaper, or null.
+/// True when the last wallpaper change did not reach the daemon, so the picker
+/// still highlights the one actually on the desktop.
+export const wallpaperChangeFailed = writable(false);
+
 export const currentId = writable<string | null>(null);
 /// The active fit mode.
 export const scale = writable<WallpaperScale>("fill");
@@ -69,26 +73,33 @@ export async function listWallpapers(): Promise<void> {
 /// Set the active wallpaper (+ fit). Live: `set_wallpaper`; the store update stands
 /// under vite.
 export async function setWallpaper(id: string): Promise<void> {
+  const before = get(currentId);
   currentId.set(id);
-  let s: WallpaperScale = "fill";
-  scale.subscribe((v) => (s = v))();
+  wallpaperChangeFailed.set(false);
+  const s = get(scale);
   try {
     await invoke("set_wallpaper", { id, scale: s });
   } catch {
-    // No daemon under vite: the optimistic select stands.
+    if (import.meta.env.DEV) return; // no daemon under vite
+    // The desktop still shows the old one, so the picker must too.
+    currentId.set(before);
+    wallpaperChangeFailed.set(true);
   }
 }
 
 /// Change the fit mode and re-apply it to the current wallpaper.
 export async function setScale(next: WallpaperScale): Promise<void> {
+  const before = get(scale);
   scale.set(next);
-  let id: string | null = null;
-  currentId.subscribe((v) => (id = v))();
+  wallpaperChangeFailed.set(false);
+  const id = get(currentId);
   if (id === null) return;
   try {
     await invoke("set_wallpaper", { id, scale: next });
   } catch {
-    // vite: nothing to persist.
+    if (import.meta.env.DEV) return; // vite: nothing to persist
+    scale.set(before);
+    wallpaperChangeFailed.set(true);
   }
 }
 
