@@ -93,6 +93,7 @@ jobs:
           node dev/scripts/check-i18n-reactivity.mjs
           python3 dev/scripts/check-invoke-shape.py
           python3 dev/scripts/check-invoke-scope.py
+          python3 dev/scripts/check-opener-args.py
           python3 dev/scripts/check-grant-visibility.py
           python3 dev/scripts/check-graph-columns.py
           python3 dev/scripts/check-webview-sandbox.py

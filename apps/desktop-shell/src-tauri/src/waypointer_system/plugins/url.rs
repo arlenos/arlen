@@ -39,6 +39,10 @@ impl WaypointerPlugin for UrlPlugin {
     fn execute(&self, result: &SearchResult) -> Result<(), PluginError> {
         if let Action::OpenUrl { ref url } = result.action {
             std::process::Command::new("xdg-open")
+                // `--` first: xdg-open parses a leading-dash argument as its own
+                // options. Found by the check rather than by me - I guarded the
+                // two other openers in this directory and walked past this one.
+                .arg("--")
                 .arg(url)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
