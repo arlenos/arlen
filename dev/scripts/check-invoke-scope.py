@@ -16,10 +16,16 @@ the name. Commands from a shared PLUGIN are different: the plugin registers them
 into every app that loads it, so they are resolved per app here rather than
 counted as the defining app's.
 
-**Not in `just checks`, deliberately**, and for the same reason
-`check-dbus-callers` is not: it currently reports real, pre-existing calls, and
-declaring them to reach a green would be the wrong way round. Run it by hand;
-wire it in when the list is decided.
+**Not in `just checks`, deliberately**: it currently reports real, pre-existing
+calls, and declaring them to reach a green would be the wrong way round. Run it by
+hand; wire it in when the list is decided. (`check-dbus-callers` was in the same
+state and is now green and in CI, so this is the last one waiting.)
+
+The two it reports are the same shape and neither is fixed by moving code: the
+command lives in `desktop-shell` because the shell owns the thing - the global
+menu bar, the top bar's inventory - and the caller is another app that needs to
+ask the shell for it. A Tauri command cannot cross a binary, so what those two
+need is an IPC path, which is a decision about mechanism rather than a repair.
 """
 
 import pathlib
@@ -82,6 +88,7 @@ def main() -> int:
         return 2
 
     problems = []
+    backendless: dict[str, list[str]] = {}
     for app in sorted(invokes):
         own = defines.get(app, set())
         for cmd in sorted(invokes[app]):
@@ -90,11 +97,32 @@ def main() -> int:
             elsewhere = sorted(a for a, cs in defines.items() if cmd in cs)
             if not elsewhere:
                 continue  # nobody defines it: check-invoke-shape's finding, not this one
+            if not (ROOT / "apps" / app / "src-tauri").is_dir():
+                # A different fact, and the remedy above would be impossible
+                # advice: you cannot move a command into an app that has no
+                # backend to move it into. The name matching another app's
+                # command is a coincidence of vocabulary, not a scoping mistake -
+                # every invoke this app makes is a call into nothing, including
+                # the ones no app defines, which land in check-invoke-shape's
+                # DEAD_INVOKES instead and so look like a different problem.
+                backendless.setdefault(app, []).append(cmd)
+                continue
             problems.append(
                 f"{app} invokes `{cmd}`, which only {', '.join(elsewhere)} define(s). "
                 f"A command lives in one app's binary, so this call is rejected at "
                 f"runtime - move it into {app}, or into a shared plugin every app loads"
             )
+
+    if backendless:
+        print("apps with no Tauri backend at all, whose every invoke is a call into nothing:\n")
+        for app, cmds in sorted(backendless.items()):
+            print(f"  - {app} (no apps/{app}/src-tauri): {', '.join(cmds)}")
+        print(
+            "    These are counted separately because they are not scoping mistakes.\n"
+            "    A frontend built ahead of its backend is a known shape here; a\n"
+            "    frontend whose backend was expected to exist is not, and only\n"
+            "    someone who knows which can say. Named rather than folded in.\n"
+        )
 
     if problems:
         print("calls into another app's command:\n")
