@@ -12,7 +12,7 @@
     FileBrowser,
     type FileEntry,
   } from "@arlen/ui-kit/components/browser";
-  import { projectsAdapter, projectsMocked, asOf, asOfCandidates } from "$lib/stores/projects";
+  import { projectsAdapter, projectsMocked, projectsUnavailable, asOf, asOfCandidates } from "$lib/stores/projects";
   import { dayLabel } from "$lib/stores/timeline";
   import { t, locale } from "$lib/i18n/messages";
 
@@ -109,7 +109,7 @@
   {/if}
 
   <div class="pr-columns">
-    <FileBrowser controller={ctrl} {onselection} {onactivate} {now} nameLabel={$t("k.place.projects")} emptyLabel={$t("k.empty.projects")} />
+    <FileBrowser controller={ctrl} {onselection} {onactivate} {now} nameLabel={$t("k.place.projects")} emptyLabel={$projectsUnavailable ? $t("k.projects.unavailable") : $t("k.empty.projects")} />
   </div>
 </div>
 
