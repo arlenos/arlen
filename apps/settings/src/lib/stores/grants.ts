@@ -786,9 +786,23 @@ export async function loadGrants(): Promise<void> {
     grantsError.set(false);
     grantsMocked.set(false);
   } catch {
-    grants.set(MOCK_GRANTS);
-    grantsError.set(false);
-    grantsMocked.set(true);
+    if (import.meta.env.DEV) {
+      // No backend to ask under vite, so the fixture is the honest thing to
+      // render for design work - labelled a sample by `grantsMocked`.
+      grants.set(MOCK_GRANTS);
+      grantsError.set(false);
+      grantsMocked.set(true);
+    } else {
+      // A real failure. `grantsError` has existed for this since the store was
+      // written - "A failed read is surfaced via `grantsError`, not an empty
+      // list" - and the catch set it to FALSE and showed the fixture instead.
+      // This page lists which apps hold which capabilities: inventing that is a
+      // sentence about the user's machine that is not true, and the one page
+      // where a reader is deciding whether to revoke something.
+      grants.set([]);
+      grantsError.set(true);
+      grantsMocked.set(false);
+    }
   } finally {
     grantsLoaded.set(true);
   }

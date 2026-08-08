@@ -11,7 +11,7 @@
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
-  import { grants, grantsLoaded, grantsMocked, byApp, loadGrants } from "$lib/stores/grants";
+  import { grants, grantsLoaded, grantsMocked, grantsError, byApp, loadGrants } from "$lib/stores/grants";
   import AppAvatar from "$lib/components/privacy/AppAvatar.svelte";
   import { t, locale } from "$lib/i18n/messages";
 
@@ -30,6 +30,13 @@
       <!-- The read is quick, but a blank page reads as broken; one quiet line. -->
       <Section class="span-full">
         <p class="note pad">{$t("s.apps.loading")}</p>
+      </Section>
+    {:else if $grantsError}
+      <!-- The read failed. Not the same as an empty machine: saying "no app has
+           access" when we could not ask is the one sentence this page must never
+           get wrong. -->
+      <Section class="span-full">
+        <p class="note pad">{$t("s.apps.unavailable")}</p>
       </Section>
     {:else if $grantsLoaded && apps.length === 0}
       <Section class="span-full">
