@@ -2,6 +2,10 @@
 //! live process list - what is running, the hog on top, real CPU/memory/disk per
 //! row - replacing the frontend fixture with a real `/proc` feed.
 //!
+//! `system_tick` does the same for the whole machine (the Performance tab's CPU,
+//! memory, disk and network), replacing a frontend random walk that looked like
+//! measurement and was not.
+//!
 //! `list_processes` samples `/proc` and computes CPU% + disk-rate deltas against
 //! the previous sample (held in the [`procmon::Monitor`] managed state), so the
 //! rates settle after the first poll while memory + names are real immediately.
@@ -12,6 +16,7 @@ use tauri::Manager;
 
 use arlen_system_monitor_core::actions;
 use arlen_system_monitor_core::procmon::{Monitor, Process};
+use arlen_system_monitor_core::sysmon::{SystemMonitor, SystemTick};
 
 /// A structured log line from the frontend into the app's stdout (the shell has no
 /// devtools console the operator can open).
@@ -30,6 +35,14 @@ fn frontend_log(level: String, message: String) {
 #[tauri::command]
 fn list_processes(monitor: tauri::State<'_, Monitor>) -> Vec<Process> {
     monitor.sample()
+}
+
+/// One tick of system-wide device counters for the Performance tab: CPU, memory,
+/// disk and network, read from `/proc` and `/sys`. The rate fields are zero on the
+/// first call with `ratesReady` false, and real from the second on.
+#[tauri::command]
+fn system_tick(system: tauri::State<'_, SystemMonitor>) -> SystemTick {
+    system.sample()
 }
 
 /// Gracefully stop a process (SIGTERM). The kernel refuses a process the user does
@@ -62,11 +75,13 @@ pub fn run() {
         .plugin(tauri_plugin_arlen_shell::init())
         .setup(|app| {
             app.manage(Monitor::new());
+            app.manage(SystemMonitor::new());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             frontend_log,
             list_processes,
+            system_tick,
             stop_process,
             freeze_process,
             limit_process

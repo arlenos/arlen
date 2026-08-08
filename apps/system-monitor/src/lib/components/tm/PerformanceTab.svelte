@@ -4,18 +4,70 @@
   /// (name + current value + a mini live sparkline), the selected device's big live
   /// graph + its current figures on the right.
   import Graph from "./Graph.svelte";
-  import { series, stats, DEVICES, type Device } from "$lib/stores/perf";
+  import { series, tick, perfError, axisMax, DEVICES, type Device } from "$lib/stores/perf";
 
   let selected = $state<Device>("cpu");
   const sel = $derived(DEVICES.find((d) => d.key === selected) ?? DEVICES[0]);
+
+  const n = (v: number, digits = 0) => v.toFixed(digits);
+
+  /// The headline figure per device, from the last tick. A device with nothing
+  /// measured shows a dash: a zero here would be a claim that the machine is idle,
+  /// which is not the same as not having asked it.
+  function value(d: Device): string {
+    const s = $tick;
+    if (!s) return "\u2014";
+    switch (d) {
+      // CPU is a rate like disk and network: on the first tick there is nothing
+      // to subtract from, and printing the 0 the host returns would state that
+      // the machine is idle when nobody has measured it yet.
+      case "cpu":
+        return s.ratesReady ? `${n(s.cpuPct)}%` : "\u2014";
+      // Memory is a level, so it is real from the first tick.
+      case "memory":
+        return `${n(s.memPct)}%`;
+      case "disk":
+        return s.ratesReady ? `${n(s.diskReadMbs + s.diskWriteMbs, 1)} MB/s` : "\u2014";
+      case "network":
+        return s.ratesReady ? `${n(s.netRxMbs + s.netTxMbs, 1)} MB/s` : "\u2014";
+      case "ai":
+        return "\u2014";
+    }
+  }
+
+  /// The line under the big graph.
+  function detail(d: Device): string {
+    const s = $tick;
+    if (d === "ai") return $t("tm.perf.ai.detail");
+    if (!s) return $t("tm.perf.waiting");
+    switch (d) {
+      case "cpu":
+        return $t("tm.perf.cpu.detail", { count: String(s.cpuCount) });
+      case "memory":
+        return $t("tm.perf.mem.detail", {
+          used: n(s.memUsedGb, 1),
+          total: n(s.memTotalGb, 1),
+        });
+      case "disk":
+        return s.ratesReady
+          ? $t("tm.perf.disk.detail", { read: n(s.diskReadMbs, 1), write: n(s.diskWriteMbs, 1) })
+          : $t("tm.perf.waiting");
+      case "network":
+        return s.ratesReady
+          ? $t("tm.perf.net.detail", { down: n(s.netRxMbs, 1), up: n(s.netTxMbs, 1) })
+          : $t("tm.perf.waiting");
+    }
+  }
 </script>
 
-<!-- Every figure below is generated in `perf.ts`, not measured: the collection
-     sidecar is a seam and there is no read to fail, so none of tonight's
-     unavailable states apply. What was missing is the label. Unmarked, a task
-     manager showing "Memory 85%" and a history sparkline is read as this
-     machine, and someone chases a problem that is a random walk. -->
-<p class="perf-sample">{$t("tm.perfSample")}</p>
+<!-- The figures below are read from /proc and /sys by the host, once a second.
+     The label that used to sit here saying they were examples went in the same
+     commit that made them real - an exception outlives its reason otherwise. The
+     one thing still unmeasured is the AI device, which says so where it renders
+     rather than drawing a line. -->
+{#if $perfError}
+  <p class="perf-sample" role="alert">{$t("tm.perf.unavailable")}</p>
+{/if}
 
 <div class="perf">
   <div class="devices" role="tablist" aria-label={$t("tm.perf.devices")}>
@@ -30,10 +82,10 @@
       >
         <div class="dev-info">
           <span class="dev-name">{$t(d.label)}</span>
-          <span class="dev-val">{$stats[d.key].value}</span>
+          <span class="dev-val">{value(d.key)}</span>
         </div>
         <div class="dev-spark">
-          <Graph series={$series[d.key]} max={d.max} variant="spark" />
+          <Graph series={$series[d.key]} max={axisMax($series[d.key], d.max)} variant="spark" />
         </div>
       </button>
     {/each}
@@ -42,12 +94,12 @@
   <div class="main">
     <div class="main-head">
       <h2 class="main-title">{$t(sel.label)}</h2>
-      <span class="main-val">{$stats[selected].value}</span>
+      <span class="main-val">{value(selected)}</span>
     </div>
     <div class="main-graph">
-      <Graph series={$series[selected]} max={sel.max} variant="big" />
+      <Graph series={$series[selected]} max={axisMax($series[selected], sel.max)} variant="big" />
     </div>
-    <div class="main-detail">{$stats[selected].detail}</div>
+    <div class="main-detail">{detail(selected)}</div>
   </div>
 </div>
 
