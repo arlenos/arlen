@@ -30,7 +30,7 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { Plus } from "lucide-svelte";
   import { t, dir } from "$lib/i18n/messages";
-  import { meetings, loadMeetings, meeting, fmtDate } from "$lib/stores/meeting";
+  import { meetings, meetingsMocked, loadMeetings, meeting, fmtDate } from "$lib/stores/meeting";
   import { locale } from "$lib/i18n/messages";
 
   let { children } = $props();
@@ -101,6 +101,13 @@
 
         <SidebarGroup class="pt-0">
           <SidebarGroupLabel>{$t("mt.title")}</SidebarGroupLabel>
+          {#if $meetingsMocked}
+            <!-- Beside the list, not in the empty pane on the other side of the
+                 window: the rows are here, they are named and dated and
+                 clickable, and a reader scanning them has no reason to look at
+                 the pane that says "pick one". -->
+            <p class="mt-sample">{$t("mt.sample.list")}</p>
+          {/if}
           <SidebarMenu>
             {#each $meetings as m (m.id)}
               <SidebarMenuItem>
@@ -147,6 +154,13 @@
 </div>
 
 <style>
+  .mt-sample {
+    margin: 0 8px 4px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: color-mix(in srgb, currentColor 55%, transparent);
+  }
+
   .rec-dot {
     width: 0.5rem;
     height: 0.5rem;
