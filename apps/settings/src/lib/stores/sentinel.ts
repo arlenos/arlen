@@ -81,6 +81,15 @@ export async function loadSentinel(): Promise<void> {
       sentinelUnavailable.set(false);
       return;
     }
+    // A real session with nothing to read. Worth being exact about which:
+    // `sentinel_get_state` has NO backend anywhere - no Tauri command, and no
+    // daemon owns `org.arlen.Sentinel1`; only this store and the pure detector
+    // crate's doc comment mention the name. So this branch is not a transient
+    // failure, it is the permanent state of this build, and the wording says
+    // "nothing is reporting" rather than "cannot read right now", which would
+    // invite a retry that cannot succeed. It stays true if the daemon lands and
+    // is merely down.
+    //
     // A real session that could not read the sentinel. The fixture asserts that
     // the Wi-Fi address rotates, that saved networks are not broadcast and -
     // the sharpest one - that nothing is using the microphone or camera right
