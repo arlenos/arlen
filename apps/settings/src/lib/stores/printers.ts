@@ -285,8 +285,8 @@ export async function setDefault(name: string): Promise<void> {
   try {
     await invoke("printers_set_default", { name });
   } catch {
-    // The command has no backend, so this is every real session. Marking a
-    // printer as the default it is not means the next print goes elsewhere.
+    // This one HAS a backend now (the per-user `lpoptions` default), so a
+    // failure here is a real one - a read-only home, a name CUPS will not take.
     if (!import.meta.env.DEV) {
       printers.update((s) => ({ ...s, actionFailed: true }));
       return;

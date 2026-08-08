@@ -65,6 +65,7 @@ pub fn run() {
             commands::knowledge::knowledge_stats_get,
             commands::printers::printers_list,
             commands::printers::printers_default,
+            commands::printers::printers_set_default,
             commands::printers::print_queue,
             commands::printers::print_job_cancel,
             commands::printers::printers_test_page,

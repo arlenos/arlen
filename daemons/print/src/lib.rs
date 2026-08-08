@@ -23,6 +23,7 @@ pub mod backend;
 pub mod cups;
 pub mod model;
 pub mod service;
+pub mod user_default;
 
 pub use audit::print_audit_event;
 pub use backend::{ColorMode, Duplex, JobOptions, PrintBackend, PrintError, PrintSubmission};
