@@ -89,7 +89,7 @@ pub fn join_rows(recent: &[RecentEntry], audit: &[StructuralView]) -> Vec<UndoRo
                 inverse_kind: r.entry.inverse.inverse_kind(),
                 object: r.entry.inverse.object(),
                 description: describe(&correlation_id, audit),
-                enactable: crate::undo_enact::is_enactable(&r.entry.inverse),
+                enactable: crate::undo_enact::is_enactable_here(&r.entry.inverse),
                 sealed_at_micros: r.sealed_at_micros,
                 correlation_id,
             }
@@ -394,17 +394,38 @@ mod tests {
                 scope: path("/home/u/work"),
             },
         );
+        // A graph retract is a REAL undo - the engine's compensate path replays it
+        // against the knowledge store - but not one this service can carry out: it
+        // has no graph path, on purpose, so that the history stays reversible with
+        // the assistant switched off. Offering it here would be the same lying
+        // button as the snapshot, just with a better excuse.
+        let graph = entry(
+            "op-g",
+            "run-g",
+            InverseReceipt::RetractGraphEdge {
+                op_id: "op-g".into(),
+                from_type: "system.File".into(),
+                from_id: "/home/u/a.txt".into(),
+                relation_type: "FILE_PART_OF".into(),
+                to_type: "system.Project".into(),
+                to_id: "thesis".into(),
+            },
+        );
         let movable = entry(
             "op-m",
             "run-m",
             InverseReceipt::RestorePath { now: path("/n"), prior: path("/p") },
         );
 
-        let rows = join_rows(&[snapshot, movable], &[]);
+        let rows = join_rows(&[snapshot, graph, movable], &[]);
         assert!(!rows[0].enactable, "the snapshot row states it cannot be undone here");
-        assert!(rows[1].enactable, "an ordinary move still offers its undo");
-        // Both are still ROWS: an unenactable undo is not a hidden action.
-        assert_eq!(rows.len(), 2);
+        assert!(
+            !rows[1].enactable,
+            "a graph retract is real but not replayable HERE, so it offers no button"
+        );
+        assert!(rows[2].enactable, "an ordinary move still offers its undo");
+        // All three are still ROWS: an unenactable undo is not a hidden action.
+        assert_eq!(rows.len(), 3);
     }
 
     #[test]
