@@ -51,6 +51,18 @@ pub async fn printers_default() -> Result<Option<PrinterDto>, String> {
     arlen_printers::default_printer().await
 }
 
+/// Make a printer this user's default.
+///
+/// The USER default, in `lpoptions`, not the machine's: changing what every
+/// account prints to needs printer-admin rights over IPP, and a settings toggle
+/// that quietly did that to other people's sessions would be the wrong scope for
+/// the word "default". Per-user is also what `lpoptions -d` means, so anything
+/// else reading CUPS for this account agrees with the page.
+#[tauri::command]
+pub async fn printers_set_default(name: String) -> Result<(), String> {
+    arlen_print::user_default::set_default(&name).map_err(|e| e.to_string())
+}
+
 /// The active print queue across all printers (pending, held, and processing
 /// jobs).
 #[tauri::command]
