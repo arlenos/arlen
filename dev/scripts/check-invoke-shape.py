@@ -155,6 +155,63 @@ def invoke_calls(root: Path):
                 )
 
 
+def wrapped_calls(root: Path, known: set[str]) -> list[str]:
+    """Calls this check cannot see, because they go through a local wrapper.
+
+    Both directions here look for the literal `invoke("name", ...)`. A file that
+    defines its own helper - `async function send(cmd, args) { return invoke(cmd,
+    args) }` - and then calls `send("clock_set_alarm", {alarm})` presents no
+    literal to find, so every one of those calls is invisible: its argument shape
+    is never compared, and it does not appear in the invoke count either. The
+    clock app routes fifteen calls that way, which is most of its backend.
+
+    Rather than resolve them - the wrapper may rename or reshape the payload, so
+    following it could be confidently wrong - they are counted and named, so the
+    number this check reports comes with the number it could not reach. A gate
+    that reports 541 calls checked while 15 more exist is not wrong about the 541;
+    it is wrong about what its silence means.
+    """
+    found: list[str] = []
+    for path in (root / "apps").rglob("*"):
+        if path.suffix not in (".ts", ".svelte") or not path.is_file():
+            continue
+        if "node_modules" in path.parts or ".svelte-kit" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        # A helper whose own call to invoke passes a variable, not a literal.
+        # Found by walking BACK from each such invoke to the nearest enclosing
+        # declaration rather than by matching a function shape forwards: the first
+        # attempt matched a brace-balanced body and found three of eighteen,
+        # which is worse than finding none - a partial number reads as a total.
+        wrappers = set()
+        for m in re.finditer(r"\binvoke\s*(?:<[^>]*>)?\s*\(\s*([A-Za-z_$])", text):
+            if m.group(1) in ('"', "'"):
+                continue
+            # EVERY name declared before this invoke is a candidate, not just the
+            # nearest: taking only the nearest found the clock's `send` and missed
+            # the harness's `run`, whose body declares a local const in between.
+            # The second condition below - the name is called somewhere with a
+            # literal command - is what keeps the candidate set honest.
+            before = text[: m.start()]
+            for d in re.finditer(r"(?:function|const|let)\s+(\w+)\s*[=(]", before):
+                wrappers.add(d.group(1))
+        for w in sorted(wrappers):
+            calls = re.findall(rf'\b{re.escape(w)}\s*(?:<[^>]*>)?\s*\(\s*"([a-z_0-9]+)"', text)
+            # Only literals that name a command anyone defines. Without this the
+            # candidate set reports `hunk("auto")` in the text editor, where the
+            # string is a mode and not a command at all - a wrong name in a
+            # coverage report is worse than a missing one, because someone will
+            # go looking for it.
+            calls = [c for c in calls if c in known]
+            if calls:
+                found.append(
+                    f"{path.relative_to(root)}: {len(calls)} call(s) through `{w}()` "
+                    f"({', '.join(sorted(set(calls))[:4])}"
+                    f"{'...' if len(set(calls)) > 4 else ''})"
+                )
+    return sorted(found)
+
+
 def payload_keys(text: str, pos: int) -> set[str] | None:
     """The payload object's top-level keys, `set()` for no payload, None if unreadable.
 
@@ -666,6 +723,18 @@ def main() -> int:
 
     ret_checked, ret_problems, ret_known, ret_uncompared = check_returns(root)
     problems.extend(ret_problems)
+
+    known = {c for cmds in commands.values() for c in cmds}
+    wrapped = wrapped_calls(root, known)
+    if wrapped:
+        print("calls routed through a local wrapper, which this cannot read:\n")
+        for w in wrapped:
+            print(f"  - {w}")
+        print(
+            "    Their argument shape is not compared and they are not in the count\n"
+            "    below. Named rather than omitted: a silent gap in a coverage number\n"
+            "    reads as coverage.\n"
+        )
 
     print(
         f"{checked} invoke call(s) checked against {total} command(s); "
