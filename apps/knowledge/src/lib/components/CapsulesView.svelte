@@ -14,6 +14,7 @@
   import {
     capsules,
     capsulesMocked,
+    capsulesUnavailable,
     loadCapsules,
     revokeCapsule,
     mintCapsule,
@@ -73,6 +74,8 @@
   <div class="ca-head">
     {#if $capsulesMocked}
       <span class="ca-sample">{$t("k.sample")}</span>
+    {:else if $capsulesUnavailable}
+      <span class="ca-sample">{$t("k.capsules.unavailable")}</span>
     {/if}
   </div>
 

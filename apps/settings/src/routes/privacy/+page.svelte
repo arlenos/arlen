@@ -51,6 +51,7 @@
     capsules,
     capsulesLoaded,
     capsulesMocked,
+    capsulesUnavailable,
     loadCapsules,
     revokeCapsule,
     type Capsule,
@@ -293,6 +294,8 @@
           {#if $capsulesMocked}
             <!-- Invented shares read as data actually sent out and still readable. -->
             <p class="note">{$t("s.priv.sampleShares")}</p>
+          {:else if $capsulesUnavailable}
+            <p class="note">{$t("s.priv.sharesUnavailable")}</p>
           {/if}
           <p class="note">
             {$t("s.priv.shareNote")}

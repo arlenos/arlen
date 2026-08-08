@@ -94,13 +94,28 @@ export const capsuleNotice = writable<string | null>(null);
 /// both invents shares that do not exist and implies real ones are absent.
 export const capsulesMocked = writable(false);
 
+/// True when a real session could not read the share list at all.
+export const capsulesUnavailable = writable(false);
+
 export async function loadCapsules(): Promise<void> {
   try {
     capsules.set(await invoke<Capsule[]>("list_capsules"));
     capsulesMocked.set(false);
   } catch {
-    capsules.set(MOCK_CAPSULES);
-    capsulesMocked.set(true);
+    if (import.meta.env.DEV) {
+      capsules.set(MOCK_CAPSULES);
+      capsulesMocked.set(true);
+      capsulesUnavailable.set(false);
+    } else {
+      // The flag above says an unlabelled sample "both invents shares that do
+      // not exist and implies real ones are absent". That was already the whole
+      // argument; it just never reached this branch. A failed read shows no
+      // shares and says why, because the second half - implying your real
+      // shares are gone - is not something a label fixes.
+      capsules.set([]);
+      capsulesMocked.set(false);
+      capsulesUnavailable.set(true);
+    }
   }
   capsulesLoaded.set(true);
 }
