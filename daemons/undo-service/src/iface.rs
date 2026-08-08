@@ -133,6 +133,29 @@ impl UndoInterface {
         // inverse that gets replayed is the one the signer holds, so a caller
         // cannot describe an undo of its own devising and have it enacted.
         let socket = arlen_ai_undo_proto::socket_path();
+        // Ask the folded state FIRST, because the live set cannot tell "there is
+        // no such action" from "you already undid this one": a terminal entry is
+        // simply absent from it, so both came back as `no-such-action`. They are
+        // different sentences to read - one says you misremembered, the other says
+        // it worked - and the client already had this lookup, which the engine's
+        // compensate path uses for exactly this.
+        match crate::undo_signer::lookup_state(&socket, &op_id).await {
+            Ok(arlen_ai_undo_proto::StateReply::Absent) => {
+                return Ok("no-such-action".to_string())
+            }
+            Ok(arlen_ai_undo_proto::StateReply::Present(state)) if state.is_terminal() => {
+                return Ok("already-undone".to_string())
+            }
+            Ok(arlen_ai_undo_proto::StateReply::Present(_)) => {}
+            Ok(arlen_ai_undo_proto::StateReply::Corrupt) => {
+                tracing::warn!(%op_id, "enact refused: the undo log's chain is corrupt");
+                return Ok("unavailable".to_string());
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, %op_id, "enact: could not read the undo log");
+                return Ok("unavailable".to_string());
+            }
+        }
         let entry = match crate::undo_signer::fetch_live(&socket).await {
             Ok(entries) => match entries.into_iter().find(|e| e.op_id == op_id) {
                 Some(entry) => entry,
@@ -206,11 +229,15 @@ mod tests {
     /// moving while the ledger says nothing, so the sink's failure is checked
     /// BEFORE `enact_inverse` runs rather than after.
     #[test]
-    fn the_refusal_word_for_an_unrecordable_enact_is_a_known_outcome() {
+    fn no_enact_outcome_collides_with_a_pre_enact_refusal() {
         // `unavailable` is not in `outcome_wire`'s vocabulary - it is a
         // pre-enact refusal, not the result of one - so this pins that the two
         // vocabularies stay disjoint and a surface can tell them apart.
         use undo_enact::EnactOutcome::*;
+        // The words `enact` can answer with BEFORE running an inverse. A surface
+        // renders all of them, so an outcome colliding with one would make two
+        // different situations read alike.
+        let pre_enact = ["unavailable", "no-such-action", "already-undone", "not-reversible"];
         for o in [
             Restored,
             Deleted,
@@ -219,10 +246,10 @@ mod tests {
             RefusedPriorOccupied,
             NotFilesystem,
         ] {
-            assert_ne!(
-                outcome_wire(o),
-                "unavailable",
-                "an enact outcome must not collide with the pre-enact refusal"
+            assert!(
+                !pre_enact.contains(&outcome_wire(o)),
+                "the enact outcome {:?} collides with a pre-enact refusal",
+                outcome_wire(o)
             );
         }
     }
