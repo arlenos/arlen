@@ -78,6 +78,9 @@ export const processes = writable<Process[]>([]);
 /// unlabelled they read as real - and every row offers a Stop.
 export const mocked = writable(false);
 
+/// True when a real session could not read the process list at all.
+export const unavailable = writable(false);
+
 /// The last action failure, for the surface to show. Empty when all is well.
 /// Set only when a real backend refused - see `stop`/`setFlagChecked`.
 export const lastError = writable("");
@@ -101,9 +104,23 @@ export async function load(): Promise<void> {
       }));
     });
     mocked.set(false);
+    unavailable.set(false);
   } catch {
-    processes.set(FIXTURE);
-    mocked.set(true);
+    if (import.meta.env.DEV) {
+      processes.set(FIXTURE);
+      mocked.set(true);
+      unavailable.set(false);
+      return;
+    }
+    // The fixture does not just describe processes, it supplies their ids - 1,
+    // 101, 102, 103 - and those ids are the argument to `stop_process`. Every
+    // other invented list tonight was wrong on screen; this one hands a real
+    // PID to a destructive call, and 1 is init. `stop()` above reasons
+    // carefully about never giving a false confirmation of a destructive
+    // action, which is the same concern arriving one step too late.
+    processes.set([]);
+    mocked.set(false);
+    unavailable.set(true);
   }
 }
 
