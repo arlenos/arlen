@@ -93,10 +93,6 @@ KNOWN: dict[str, str] = {
     "apps/settings/src/lib/stores/appSettings.ts": (
         "clearAppCache, which reports a cache cleared that was not"
     ),
-    "apps/desktop-shell/src/lib/stores/sourcePicker.ts": (
-        "share and cancel: the picker says a window is being shared, or that "
-        "sharing stopped, without either having happened"
-    ),
     "apps/desktop-shell/src/lib/stores/printDialog.ts": (
         "submitPrint and cancelPrint, whose commands are also missing"
     ),

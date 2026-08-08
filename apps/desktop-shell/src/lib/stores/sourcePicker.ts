@@ -84,6 +84,12 @@ export const sourcesMocked = writable(false);
 /// problem. And distinct from `sourcesMocked`, which is design work under vite.
 export const sourcesUnavailable = writable(false);
 
+/// True when the last share attempt did not reach the portal, so nothing is
+/// being shared and the picker is still open. Closing on failure would tell
+/// someone their screen is going out when it is not, and they would carry on
+/// as if the other side could see it.
+export const shareFailed = writable(false);
+
 /// Open the picker for a request + load the sources. Live: driven by the portal
 /// event + `list_capture_sources`; fixture sources under vite.
 ///
@@ -130,21 +136,34 @@ export async function openSourcePickerDemo(): Promise<void> {
 /// Share the picked source. Live: `start_screencast` binds the source + cursor +
 /// persist and returns the PipeWire stream.
 export async function share(choice: ShareChoice): Promise<void> {
-  current.set(null);
+  shareFailed.set(false);
   try {
     await invoke("start_screencast", { ...choice });
   } catch {
-    // No portal under vite: the optimistic close stands.
+    if (import.meta.env.DEV) {
+      current.set(null); // no portal under vite: the flow stays drivable
+      return;
+    }
+    // The picker stays open: the decision has not been carried out, so the
+    // interaction is not over.
+    shareFailed.set(true);
+    return;
   }
+  current.set(null);
 }
 
 /// Decline the request (deny is first-class). Live: resolve the portal request as
 /// cancelled.
 export async function cancel(): Promise<void> {
+  // Declining closes the picker either way. A cancel that did not reach the
+  // portal leaves the request pending there, which is the safe direction -
+  // nothing is shared - and holding a dialog open over a refusal the user has
+  // already made would be its own kind of dishonesty.
   current.set(null);
+  shareFailed.set(false);
   try {
     await invoke("cancel_screencast");
   } catch {
-    // mock
+    // Nothing to correct on screen: no sharing started.
   }
 }
