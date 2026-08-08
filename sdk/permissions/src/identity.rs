@@ -315,6 +315,16 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-clockd" => {
             return Ok("clockd".to_string());
         }
+        // The session undo service. It reads the signed undo log through the undo
+        // signer and the audit ledger through the audit daemon, and BOTH admit by
+        // resolved app id - so without this entry it resolves to UnknownBinary and
+        // every read it makes is refused, which is a recent-actions panel that is
+        // permanently empty on a shipped image while working perfectly in a
+        // developer build (where the `dev.*` fallback resolves it). Caught by the
+        // shipped-unit identity test, not by anything that ran the daemon.
+        "/usr/lib/arlen/libexec/arlen-undod" => {
+            return Ok("undod".to_string());
+        }
         // The cross-profile transfer daemon (profile-system, PR-R4). It audits
         // every transfer to BOTH profiles' ledgers fail-closed BEFORE any byte
         // crosses a boundary, so without this entry it resolves to UnknownBinary,

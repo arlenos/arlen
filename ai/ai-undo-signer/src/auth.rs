@@ -25,16 +25,21 @@ use arlen_permissions::connection_auth::ConnectionAuth;
 
 use crate::error::{Result, SignerError};
 
-/// The app ids permitted to reach the signer socket. Only the agent submits
-/// undo entries and looks them up; nothing else has any business here.
-pub const ADMITTED: &[&str] = &["ai-agent"];
+/// The app ids permitted to reach the signer socket.
+///
+/// The agent submits undo entries. `undod`, the session undo service, READS them
+/// for the recent-actions panel - and it was missing here, so on a shipped image
+/// every read it made would have been refused while a developer build worked,
+/// because the `dev.*` fallback resolved it. Caught by the shipped-unit identity
+/// test, which noticed the binary had no app id at all.
+pub const ADMITTED: &[&str] = &["ai-agent", "undod"];
 
 /// The agent's exact cargo-run `dev.*` id, admitted only in debug
 /// builds. An exact match, not a broad `dev.` prefix: any locally-built
 /// crate resolves to some `dev.<bin>`, so a prefix would let any
 /// cargo-run binary reach the signer socket.
 #[cfg(debug_assertions)]
-const DEV_ADMITTED: &str = "dev.arlen-ai-agent";
+const DEV_ADMITTED: &[&str] = &["dev.arlen-ai-agent", "dev.arlen-undod"];
 
 /// Whether a resolved peer `app_id` may use the signer socket. In debug
 /// builds the agent's exact `dev.*` id is also admitted so a locally-run
@@ -46,7 +51,7 @@ pub fn caller_is_admitted(app_id: &str) -> bool {
     }
     #[cfg(debug_assertions)]
     {
-        app_id == DEV_ADMITTED
+        DEV_ADMITTED.contains(&app_id)
     }
     #[cfg(not(debug_assertions))]
     {
