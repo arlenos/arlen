@@ -62,6 +62,15 @@ pub struct UndoRow {
     /// a record of what happened with no button - which is the honest shape, not
     /// a degraded one. See [`crate::undo_enact::is_enactable`].
     pub enactable: bool,
+    /// When this happened, in microseconds since the Unix epoch, from the SIGNER's
+    /// seal rather than the audit join.
+    ///
+    /// The row used to take its only clock from `description`, so an audit daemon
+    /// that was down left every row timeless - the panel could say what happened
+    /// and not when. The signer stamps the seal itself and cannot be talked out of
+    /// it by the submitter, so this is present whenever the entry is. `0` is a
+    /// record sealed before the field existed.
+    pub sealed_at_micros: i64,
 }
 
 /// Build the rows from the signer's recent entries and whatever audit entries
@@ -81,6 +90,7 @@ pub fn join_rows(recent: &[RecentEntry], audit: &[StructuralView]) -> Vec<UndoRo
                 object: r.entry.inverse.object(),
                 description: describe(&correlation_id, audit),
                 enactable: crate::undo_enact::is_enactable(&r.entry.inverse),
+                sealed_at_micros: r.sealed_at_micros,
                 correlation_id,
             }
         })
@@ -212,6 +222,7 @@ mod tests {
                 inverse,
             },
             state: UndoState::Committed,
+            sealed_at_micros: 1_700_000_000_000_000,
         }
     }
 
@@ -476,5 +487,46 @@ mod tests {
         assert_eq!(a.subject, "fs.relocate", "the authorising entry, not the outcome");
         let b = rows[1].description.as_ref().unwrap();
         assert_eq!(b.actor, "ai-agent", "chains do not bleed into each other");
+    }
+}
+
+#[cfg(test)]
+mod seal_clock {
+    use super::*;
+    use arlen_ai_undo_core::effect_model::{CanonicalPath, InverseReceipt};
+
+    /// A row keeps its time when the audit daemon gives nothing.
+    ///
+    /// This is the whole point of the seal timestamp: the description is the
+    /// audit join and it can be absent for a dozen ordinary reasons - the daemon
+    /// is down, the ledger rolled, the chain is not there yet. A row that loses
+    /// its clock with it can say what happened and not when, which is how the
+    /// panel looked before the signer stamped its own seal.
+    #[test]
+    fn a_row_with_no_audit_description_still_knows_when_it_happened() {
+        let inverse = InverseReceipt::RestorePath {
+            now: CanonicalPath::new("/home/u/b.txt").unwrap(),
+            prior: CanonicalPath::new("/home/u/a.txt").unwrap(),
+        };
+        let recent = [arlen_ai_undo_proto::RecentEntry {
+            entry: arlen_ai_undo_core::undo_log::UndoEntry {
+                op_id: "op-1".into(),
+                correlation_id: "chain-1".into(),
+                inverse,
+            },
+            state: arlen_ai_undo_core::undo_log::UndoState::Committed,
+            sealed_at_micros: 1_700_000_000_000_000,
+        }];
+        // No audit entries at all: the join finds nothing.
+        let rows = join_rows(&recent, &[]);
+        assert_eq!(rows.len(), 1);
+        assert!(
+            rows[0].description.is_none(),
+            "the fixture is only meaningful with the join empty"
+        );
+        assert_eq!(
+            rows[0].sealed_at_micros, 1_700_000_000_000_000,
+            "the row's clock must come from the seal, not the audit join"
+        );
     }
 }

@@ -120,8 +120,23 @@ pub struct UndoEntry {
 /// existing entry. The current state of an `op_id` is the fold of its records.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 enum LogRecord {
-    /// An entry was created (state begins `InFlight`).
-    Created(UndoEntry),
+    /// An entry was created (state begins `InFlight`), and when the sealing side
+    /// wrote it.
+    ///
+    /// The time is on the RECORD and not on [`UndoEntry`], which is the shape the
+    /// submitter sends over the wire: put it on the entry and the submitter sets
+    /// it, and a component that can backdate its own undo entries can make an
+    /// action look older than it is. Here the wire type cannot carry it at all.
+    ///
+    /// It exists because the recent-actions surface had no clock of its own - the
+    /// time came entirely from the audit join, so with the audit daemon down
+    /// every row was timeless.
+    Created {
+        /// The immutable entry data as the submitter sent it.
+        entry: UndoEntry,
+        /// Microseconds since the Unix epoch, stamped where the record is sealed.
+        sealed_at_micros: i64,
+    },
     /// An existing entry transitioned to a new state.
     Transition {
         /// The entry whose state changed.
@@ -148,8 +163,11 @@ impl UndoLog {
 
     /// Append an entry's creation record (state begins `InFlight`). In the durable
     /// store this is the provisional record written and fsynced before the act.
-    pub fn append_created(&mut self, entry: UndoEntry) {
-        self.records.push(LogRecord::Created(entry));
+    pub fn append_created(&mut self, entry: UndoEntry, sealed_at_micros: i64) {
+        self.records.push(LogRecord::Created {
+            entry,
+            sealed_at_micros,
+        });
     }
 
     /// Append a lifecycle transition for an existing entry.
@@ -168,7 +186,7 @@ impl UndoLog {
         let mut created = false;
         for record in &self.records {
             match record {
-                LogRecord::Created(entry) if entry.op_id == op_id => {
+                LogRecord::Created { entry, .. } if entry.op_id == op_id => {
                     created = true;
                     states.push(UndoState::InFlight);
                 }
@@ -187,7 +205,19 @@ impl UndoLog {
     /// The created entry for `op_id`, if one was created (its immutable data).
     pub fn entry(&self, op_id: &str) -> Option<&UndoEntry> {
         self.records.iter().find_map(|r| match r {
-            LogRecord::Created(entry) if entry.op_id == op_id => Some(entry),
+            LogRecord::Created { entry, .. } if entry.op_id == op_id => Some(entry),
+            _ => None,
+        })
+    }
+
+    /// When the sealing side wrote this entry's create record, if it is present.
+    /// `None` for an op id the log has never seen.
+    pub fn sealed_at(&self, op_id: &str) -> Option<i64> {
+        self.records.iter().find_map(|r| match r {
+            LogRecord::Created {
+                entry,
+                sealed_at_micros,
+            } if entry.op_id == op_id => Some(*sealed_at_micros),
             _ => None,
         })
     }
@@ -202,7 +232,7 @@ impl UndoLog {
         let mut seen = std::collections::HashSet::new();
         let mut live = Vec::new();
         for record in &self.records {
-            if let LogRecord::Created(entry) = record {
+            if let LogRecord::Created { entry, .. } = record {
                 if !seen.insert(entry.op_id.as_str()) {
                     continue;
                 }
@@ -237,7 +267,7 @@ impl UndoLog {
             if out.len() >= limit {
                 break;
             }
-            if let LogRecord::Created(entry) = record {
+            if let LogRecord::Created { entry, .. } = record {
                 if !seen.insert(entry.op_id.as_str()) {
                     continue;
                 }
@@ -262,7 +292,7 @@ impl UndoLog {
         let mut seen = std::collections::HashSet::new();
         let mut out = Vec::new();
         for record in &self.records {
-            if let LogRecord::Created(entry) = record {
+            if let LogRecord::Created { entry, .. } = record {
                 if !seen.insert(entry.op_id.as_str()) {
                     continue;
                 }
@@ -413,8 +443,15 @@ impl FileUndoLog {
     }
 
     /// Append an entry's creation record, durably (state begins `InFlight`).
-    pub fn append_created(&mut self, entry: UndoEntry) -> std::io::Result<()> {
-        self.append_record(LogRecord::Created(entry))
+    pub fn append_created(
+        &mut self,
+        entry: UndoEntry,
+        sealed_at_micros: i64,
+    ) -> std::io::Result<()> {
+        self.append_record(LogRecord::Created {
+            entry,
+            sealed_at_micros,
+        })
     }
 
     /// Append a lifecycle transition for an existing entry, durably.
@@ -445,6 +482,11 @@ impl FileUndoLog {
     /// See [`UndoLog::recent_entries`].
     pub fn recent_entries(&self, limit: usize) -> Vec<(&UndoEntry, UndoState)> {
         self.log.recent_entries(limit)
+    }
+
+    /// See [`UndoLog::sealed_at`].
+    pub fn sealed_at(&self, op_id: &str) -> Option<i64> {
+        self.log.sealed_at(op_id)
     }
 
     /// The created entries stuck mid-reversal (see
@@ -506,7 +548,7 @@ mod tests {
     fn recent_entries_are_newest_first_and_bounded() {
         let mut log = UndoLog::new();
         for op in ["a", "b", "c"] {
-            log.append_created(entry(op));
+            log.append_created(entry(op), 1_700_000_000_000_000);
         }
         let recent = log.recent_entries(2);
         assert_eq!(
@@ -521,7 +563,7 @@ mod tests {
         // The difference from live_entries, and the reason this exists: an undo
         // that already happened is the evidence the user came to look for.
         let mut log = UndoLog::new();
-        log.append_created(entry("a"));
+        log.append_created(entry("a"), 1_700_000_000_000_000);
         log.append_transition("a", UndoState::Committed);
         log.append_transition("a", UndoState::Compensating);
         log.append_transition("a", UndoState::Compensated);
@@ -534,8 +576,8 @@ mod tests {
     #[test]
     fn an_entry_whose_chain_folds_illegally_is_omitted_not_guessed() {
         let mut log = UndoLog::new();
-        log.append_created(entry("good"));
-        log.append_created(entry("bad"));
+        log.append_created(entry("good"), 1_700_000_000_000_000);
+        log.append_created(entry("bad"), 1_700_000_000_000_000);
         // Compensated without ever being Committed: an illegal sequence.
         log.append_transition("bad", UndoState::Compensated);
         log.append_transition("bad", UndoState::Committed);
@@ -615,7 +657,7 @@ mod tests {
     #[test]
     fn store_folds_an_entrys_current_state_on_read() {
         let mut log = UndoLog::new();
-        log.append_created(entry("op-1"));
+        log.append_created(entry("op-1"), 1_700_000_000_000_000);
         assert_eq!(log.current_state("op-1").unwrap().unwrap(), InFlight);
         log.append_transition("op-1", Committed);
         assert_eq!(log.current_state("op-1").unwrap().unwrap(), Committed);
@@ -627,10 +669,10 @@ mod tests {
     #[test]
     fn live_entries_are_the_non_terminal_ones_deduped_and_fail_closed() {
         let mut log = UndoLog::new();
-        log.append_created(entry("committed")); // stays InFlight->Committed: live
-        log.append_created(entry("done")); // compensated: terminal, omitted
-        log.append_created(entry("inflight")); // still InFlight: live
-        log.append_created(entry("illegal")); // folds illegal: skipped fail-closed
+        log.append_created(entry("committed"), 1_700_000_000_000_000); // stays InFlight->Committed: live
+        log.append_created(entry("done"), 1_700_000_000_000_000); // compensated: terminal, omitted
+        log.append_created(entry("inflight"), 1_700_000_000_000_000); // still InFlight: live
+        log.append_created(entry("illegal"), 1_700_000_000_000_000); // folds illegal: skipped fail-closed
         log.append_transition("committed", Committed);
         log.append_transition("done", Committed);
         log.append_transition("done", Compensating);
@@ -643,10 +685,10 @@ mod tests {
     #[test]
     fn compensating_entries_are_only_the_crash_interrupted_reversals() {
         let mut log = UndoLog::new();
-        log.append_created(entry("mid-undo")); // Committed->Compensating: crash-interrupted
-        log.append_created(entry("committed")); // Committed, not yet undoing: not returned
-        log.append_created(entry("inflight")); // still InFlight: not returned
-        log.append_created(entry("finished")); // Compensated: terminal, not returned
+        log.append_created(entry("mid-undo"), 1_700_000_000_000_000); // Committed->Compensating: crash-interrupted
+        log.append_created(entry("committed"), 1_700_000_000_000_000); // Committed, not yet undoing: not returned
+        log.append_created(entry("inflight"), 1_700_000_000_000_000); // still InFlight: not returned
+        log.append_created(entry("finished"), 1_700_000_000_000_000); // Compensated: terminal, not returned
         log.append_transition("mid-undo", Committed);
         log.append_transition("mid-undo", Compensating);
         log.append_transition("committed", Committed);
@@ -664,8 +706,8 @@ mod tests {
     #[test]
     fn store_isolates_entries_by_op_id() {
         let mut log = UndoLog::new();
-        log.append_created(entry("a"));
-        log.append_created(entry("b"));
+        log.append_created(entry("a"), 1_700_000_000_000_000);
+        log.append_created(entry("b"), 1_700_000_000_000_000);
         log.append_transition("a", Committed);
         assert_eq!(log.current_state("a").unwrap().unwrap(), Committed);
         assert_eq!(log.current_state("b").unwrap().unwrap(), InFlight, "b unaffected by a");
@@ -675,7 +717,7 @@ mod tests {
     #[test]
     fn store_surfaces_an_illegal_chain_as_err() {
         let mut log = UndoLog::new();
-        log.append_created(entry("op-1"));
+        log.append_created(entry("op-1"), 1_700_000_000_000_000);
         log.append_transition("op-1", Compensated); // illegal: InFlight -> Compensated
         assert!(log.current_state("op-1").unwrap().is_err());
     }
@@ -683,7 +725,7 @@ mod tests {
     #[test]
     fn store_returns_the_created_entry_data() {
         let mut log = UndoLog::new();
-        log.append_created(entry("op-1"));
+        log.append_created(entry("op-1"), 1_700_000_000_000_000);
         assert_eq!(log.entry("op-1").unwrap().correlation_id, "run");
         assert!(log.entry("absent").is_none());
     }
@@ -696,7 +738,7 @@ mod tests {
         let path = tmp.path().join("undo.log");
         {
             let mut log = FileUndoLog::open(&path, TEST_KEY).unwrap();
-            log.append_created(entry("op-1")).unwrap();
+            log.append_created(entry("op-1"), 1_700_000_000_000_000).unwrap();
             log.append_transition("op-1", Committed).unwrap();
             assert_eq!(log.current_state("op-1").unwrap().unwrap(), Committed);
         }
@@ -739,7 +781,7 @@ mod tests {
         let path = tmp.path().join("undo.log");
         {
             let mut log = FileUndoLog::open(&path, TEST_KEY).unwrap();
-            log.append_created(entry("op-1")).unwrap();
+            log.append_created(entry("op-1"), 1_700_000_000_000_000).unwrap();
             log.append_transition("op-1", Committed).unwrap();
         }
         // Flip the op id in the first line: the record bytes no longer match the
@@ -760,7 +802,7 @@ mod tests {
         let path = tmp.path().join("undo.log");
         {
             let mut log = FileUndoLog::open(&path, TEST_KEY).unwrap();
-            log.append_created(entry("op-1")).unwrap();
+            log.append_created(entry("op-1"), 1_700_000_000_000_000).unwrap();
         }
         assert!(
             FileUndoLog::open(&path, b"different-key".as_slice()).is_err(),

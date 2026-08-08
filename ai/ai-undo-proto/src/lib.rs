@@ -202,6 +202,15 @@ pub struct RecentEntry {
     pub entry: UndoEntry,
     /// The folded lifecycle state.
     pub state: UndoState,
+    /// When the signer sealed the create record, in microseconds since the Unix
+    /// epoch.
+    ///
+    /// Carried so a recent-actions surface has a clock that does not depend on
+    /// another daemon being up. It used to take every timestamp from the audit
+    /// join, so with the audit daemon down every row was timeless. `0` means a
+    /// record sealed before this field existed.
+    #[serde(default)]
+    pub sealed_at_micros: i64,
 }
 
 /// Read one length-prefixed frame: a 4-byte big-endian length, then that many
