@@ -250,8 +250,9 @@ pub(crate) fn uid_for_user(name: &str) -> Option<u32> {
 ///
 /// Pure so the precedence is testable: this decides whether a cross-uid peer is
 /// admitted at all, and on the image - where the socket is the shared
-/// `/run/arlen/knowledge.sock` - it is the only thing standing between another
-/// human's uid and the whole graph. `None` means no restriction.
+/// `/run/arlen/knowledge.sock` - it decides both who is served AND
+/// who may connect at all: naming an owner also hands the socket to that uid at
+/// 0600, so the peer check is the second refusal rather than the only one. `None` means no restriction.
 pub(crate) fn resolve_owner_uid(
     uid_env: Option<&str>,
     user_env: Option<&str>,

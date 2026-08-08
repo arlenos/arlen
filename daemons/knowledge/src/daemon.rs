@@ -255,17 +255,6 @@ async fn listen_queries(
     }
 
     let listener = UnixListener::bind(socket_path)?;
-    // Mode 0666 so cross-uid clients can connect: this daemon runs as a system
-    // service but the user-uid AI daemons (and other apps) query it, and under
-    // systemd's 0022 umask `bind` leaves the socket owner-only-write, denying
-    // their `connect`. Socket ownership is NOT the access boundary - every read
-    // and write is capability-scoped against the peer's `SO_PEERCRED`-resolved
-    // identity at accept time, so a world-connectable socket grants no authority.
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o666))?;
-    }
-    info!(socket = socket_path, "graph daemon listening");
 
     // SAFETY: getuid() has no preconditions and cannot fail.
     let our_uid = unsafe { libc::getuid() };
@@ -294,6 +283,9 @@ async fn listen_queries(
         // for. Say so; the operator sees it in the journal on the first boot.
         tracing::warn!("ARLEN_OWNER_USER is set but does not resolve to a user; serving any first-party cross-uid peer");
     }
+
+    apply_socket_exposure(socket_path, socket_exposure(owner_uid, our_uid))?;
+    info!(socket = socket_path, "graph daemon listening");
 
     loop {
         match listener.accept().await {
@@ -2510,6 +2502,75 @@ fn same_uid_unresolved_id() -> String {
         }
     }
     "unknown".to_string()
+}
+
+/// Who the kernel will let connect to the read socket at all.
+///
+/// The peer check at accept time is the authority boundary and stays the
+/// authority boundary. This is the door in front of it, and it exists because the
+/// two disagreed: on the image the socket is the shared `/run/arlen/knowledge.sock`
+/// under a `RuntimeDirectory` any uid can traverse, and it was mode 0666
+/// unconditionally, so every uid on the host could connect and reach the framing,
+/// the length caps and the rate-limiter state before being refused. The deployment
+/// that names an owner has already said who is allowed; the socket should say it
+/// too.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SocketExposure {
+    /// No owner named. Anyone may connect and the peer check decides, which is the
+    /// single-user model the per-user runtime dir already scopes by being 0700.
+    Shared,
+    /// An owner is named: only that uid may connect. Root still can, having
+    /// CAP_DAC_OVERRIDE, which is what lets the root-run timeline client keep
+    /// working.
+    OwnerOnly(u32),
+}
+
+/// Pure so the rule is testable without a socket.
+fn socket_exposure(owner_uid: Option<u32>, our_uid: u32) -> SocketExposure {
+    match owner_uid {
+        Some(owner) => SocketExposure::OwnerOnly(owner),
+        // Running as the user with no owner configured is the per-user topology,
+        // where the runtime directory is the boundary.
+        None => {
+            let _ = our_uid;
+            SocketExposure::Shared
+        }
+    }
+}
+
+/// Apply the exposure to the bound socket.
+///
+/// Narrowing is best-effort in one direction only: a chown that fails leaves the
+/// socket connectable and says so, because refusing to start would take the graph
+/// down over a hardening step, and silently presenting a socket as narrowed when
+/// it is not is the failure this whole change is about. The mode is set before the
+/// owner so there is never a moment where a third uid may connect.
+fn apply_socket_exposure(socket_path: &str, exposure: SocketExposure) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    match exposure {
+        SocketExposure::Shared => {
+            // 0666 because a cross-uid first-party client must be able to connect
+            // and systemd's 0022 umask leaves `bind` owner-only-write.
+            std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o666))?;
+        }
+        SocketExposure::OwnerOnly(owner) => {
+            std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600))?;
+            let c_path = std::ffi::CString::new(socket_path)
+                .map_err(|e| anyhow::anyhow!("socket path: {e}"))?;
+            // SAFETY: a valid NUL-terminated path; -1 leaves the group unchanged.
+            let rc = unsafe { libc::chown(c_path.as_ptr(), owner, u32::MAX) };
+            if rc != 0 {
+                let err = std::io::Error::last_os_error();
+                tracing::warn!(
+                    error = %err, owner,
+                    "could not hand the read socket to its owner; widening it back so the \
+                     named owner can still connect - the peer check is then the only boundary"
+                );
+                std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o666))?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Whether a CROSS-uid peer (uid `peer_uid`, resolved to `tier`) may be served.
@@ -5985,5 +6046,74 @@ mod tests {
             }
         }
         assert!(!ai_limited, "the AI daemon's higher tier must not be tripped at 201");
+    }
+}
+
+#[cfg(test)]
+mod socket_exposure_tests {
+    use super::{apply_socket_exposure, socket_exposure, SocketExposure};
+    use std::os::unix::fs::PermissionsExt;
+
+    /// Naming an owner narrows the door; naming none leaves the peer check alone.
+    #[test]
+    fn an_owner_narrows_the_socket_and_no_owner_leaves_it_shared() {
+        assert_eq!(socket_exposure(Some(1000), 0), SocketExposure::OwnerOnly(1000));
+        // Owner and daemon being the same uid still narrows: the point is that
+        // nobody ELSE may connect, not that the daemon is not the owner.
+        assert_eq!(socket_exposure(Some(1000), 1000), SocketExposure::OwnerOnly(1000));
+        assert_eq!(socket_exposure(None, 0), SocketExposure::Shared);
+    }
+
+    fn mode_of(path: &std::path::Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    /// The shared case is the old behaviour, unchanged: a cross-uid first-party
+    /// client must be able to connect, and `bind` under a 0022 umask would not let
+    /// it.
+    #[test]
+    fn a_shared_socket_stays_connectable_by_anyone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shared.sock");
+        let _l = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        apply_socket_exposure(path.to_str().unwrap(), SocketExposure::Shared).unwrap();
+        assert_eq!(mode_of(&path), 0o666);
+    }
+
+    /// Narrowed to its owner, and the owner can still reach it. Chowning to one's
+    /// own uid is permitted, so this runs unprivileged and still proves the pair
+    /// that matters: the mode is owner-only AND a connect from the owner works.
+    #[test]
+    fn an_owned_socket_is_owner_only_and_the_owner_can_still_connect() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("owned.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        // SAFETY: getuid() has no preconditions and cannot fail.
+        let us = unsafe { libc::getuid() };
+        apply_socket_exposure(path.to_str().unwrap(), SocketExposure::OwnerOnly(us)).unwrap();
+        assert_eq!(mode_of(&path), 0o600, "a named owner must be the only one who may connect");
+        std::os::unix::net::UnixStream::connect(&path).expect("the owner must still connect");
+        drop(listener);
+    }
+
+    /// A chown that cannot be done leaves the socket connectable rather than
+    /// stranding the owner behind a door the daemon could not hand over. It says so
+    /// in the log; what it must not do is leave 0600 owned by the wrong uid, which
+    /// would present as narrowed while refusing the very peer it was narrowed for.
+    #[test]
+    fn a_failed_handover_widens_back_rather_than_stranding_the_owner() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("unowned.sock");
+        let _l = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        // Root can chown to anyone, so the failure path is only reachable
+        // unprivileged - which is where the test suite runs.
+        // SAFETY: getuid() has no preconditions and cannot fail.
+        if unsafe { libc::getuid() } == 0 {
+            return;
+        }
+        let someone_else = 65534; // nobody
+        apply_socket_exposure(path.to_str().unwrap(), SocketExposure::OwnerOnly(someone_else))
+            .unwrap();
+        assert_eq!(mode_of(&path), 0o666, "a failed handover must not look like a narrowed socket");
     }
 }
