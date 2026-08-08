@@ -95,6 +95,7 @@ jobs:
           python3 dev/scripts/check-grant-visibility.py
           python3 dev/scripts/check-graph-columns.py
           python3 dev/scripts/check-webview-sandbox.py
+          python3 dev/scripts/check-dbus-callers.py
           node dev/scripts/test-check-fixtures.mjs
           bash dev/scripts/check-packaged-units.sh
           tracked=$(git ls-files --ignored --exclude-standard -c)

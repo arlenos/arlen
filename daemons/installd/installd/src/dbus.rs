@@ -60,6 +60,28 @@ const INSTALL_CALLERS: &[&str] = &["store"];
 /// over.
 const DEV_INSTALL_CALLERS: &[&str] = &["dev.arlen-store", "dev.forage"];
 
+/// Who may ASK what is installed, previewed or trashed.
+///
+/// A separate list from [`INSTALL_CALLERS`] on purpose, even though it holds the
+/// same two names today. Seeing what is installed and changing what is installed
+/// are different powers, and folding them into one const would mean the first
+/// surface that legitimately wants to LIST apps - Settings, a search provider -
+/// could only be granted that by also being granted the ability to install.
+/// Keeping the axes apart costs one const and stops that trade.
+const READ_CALLERS: &[&str] = &["store"];
+
+/// The read callers as they resolve in a development build. Exact ids, not a
+/// `dev.` prefix, for the reason given above [`DEV_INSTALL_CALLERS`].
+const DEV_READ_CALLERS: &[&str] = &["dev.arlen-store", "dev.forage"];
+
+/// Whether a resolved caller may see what is installed. A caller that may change
+/// what is installed may certainly look at it.
+fn caller_may_read(app_id: &str) -> bool {
+    READ_CALLERS.contains(&app_id)
+        || (cfg!(debug_assertions) && DEV_READ_CALLERS.contains(&app_id))
+        || caller_may_mutate(app_id)
+}
+
 /// Whether a resolved caller may change what is installed.
 fn caller_may_mutate(app_id: &str) -> bool {
     INSTALL_CALLERS.contains(&app_id)
@@ -85,6 +107,33 @@ async fn caller_app_id(
         .await
         .map_err(|e| format!("get pid: {e}"))?;
     arlen_permissions::identity::app_id_from_pid(pid).map_err(|e| format!("resolve caller: {e}"))
+}
+
+/// Resolve and authorise the caller of a reading method.
+///
+/// The refusal is an ERROR, never an empty list. What is installed and what a
+/// caller may be told about it are different questions, and answering the second
+/// with the shape of the first - no apps, no trash, no job - would tell a refused
+/// caller that the machine is empty. A gate that lies quietly is worse than one
+/// that says no.
+async fn authorise_read(
+    method: &str,
+    header: &zbus::message::Header<'_>,
+    connection: &zbus::Connection,
+) -> zbus::fdo::Result<String> {
+    match caller_app_id(header, connection).await {
+        Ok(id) if caller_may_read(&id) => Ok(id),
+        Ok(id) => {
+            tracing::warn!("refused {method} from {id}: not an install-daemon reader");
+            Err(zbus::fdo::Error::AccessDenied(format!(
+                "{id} may not read what is installed"
+            )))
+        }
+        Err(e) => {
+            tracing::warn!("refused {method}: {e}");
+            Err(zbus::fdo::Error::AccessDenied(e))
+        }
+    }
 }
 
 /// Resolve and authorise the caller of a mutating method, logging a refusal.
@@ -222,10 +271,15 @@ impl InstallDaemon {
     ///
     /// Returns an array of (app_id, name, version, source).
     /// Source is "lunpkg", "flatpak", or "unknown".
-    async fn list_installed(&self) -> Vec<(String, String, String, String)> {
+    async fn list_installed(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<Vec<(String, String, String, String)>> {
+        authorise_read("ListInstalled", &header, connection).await?;
         let mut apps = install::list_installed();
         apps.extend(crate::flatpak::list_installed_flatpaks());
-        apps
+        Ok(apps)
     }
 
     /// What upgrading to a package would ask of the user, without installing it.
@@ -240,8 +294,19 @@ impl InstallDaemon {
     /// A read-only preview: it extracts and VERIFIES the package exactly as an
     /// install does, then throws the extraction away. Nothing is installed and no
     /// consent is recorded by asking.
-    async fn preview_upgrade(&self, path: String) -> (String, String, Vec<String>) {
-        match crate::consent::preview_upgrade(&path) {
+    async fn preview_upgrade(
+        &self,
+        path: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<(String, String, Vec<String>)> {
+        // Gated harder than a read looks like it deserves, because this one takes
+        // a path FROM the caller and makes the daemon open and verify whatever is
+        // there. Ungated it is a read oracle over the filesystem wearing
+        // installd's privileges: point it anywhere and the reply distinguishes
+        // "could not be read" from "read and verified".
+        authorise_read("PreviewUpgrade", &header, connection).await?;
+        Ok(match crate::consent::preview_upgrade(&path) {
             Ok(p) => match p.gate {
                 crate::consent::UpgradeGate::Silent => (p.app_id, "silent".into(), Vec::new()),
                 crate::consent::UpgradeGate::Interruptive { widened } => {
@@ -252,7 +317,7 @@ impl InstallDaemon {
                 }
             },
             Err(e) => (String::new(), "error".into(), vec![e.to_string()]),
-        }
+        })
     }
 
     /// Restore a previously uninstalled app from the 30-day trash.
@@ -282,11 +347,16 @@ impl InstallDaemon {
     /// List all apps in the 30-day trash.
     ///
     /// Returns an array of (app_id, app_name, app_version, deleted_at).
-    async fn list_trashed(&self) -> Vec<(String, String, String, String)> {
-        crate::trash::list_trashed()
+    async fn list_trashed(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<Vec<(String, String, String, String)>> {
+        authorise_read("ListTrashed", &header, connection).await?;
+        Ok(crate::trash::list_trashed()
             .into_iter()
             .map(|info| (info.app_id, info.app_name, info.app_version, info.deleted_at))
-            .collect()
+            .collect())
     }
 
     /// Run trash cleanup (remove entries older than 30 days).
@@ -385,10 +455,22 @@ impl InstallDaemon {
     /// is defined in `JobState` but unreachable - there is no cancel method on
     /// this interface, so no job ever enters it.)
     /// Returns ("0", "unknown", "") if the job_id is not found.
-    async fn get_job_status(&self, job_id: String) -> (u8, String, String) {
-        self.queue
+    async fn get_job_status(
+        &self,
+        job_id: String,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<(u8, String, String)> {
+        // A job id is opaque, but it is handed out by an install the caller
+        // started, so a peer that may not install holds no id of its own and has
+        // no business reading someone else's. Nothing in the tree calls this today
+        // - progress arrives on the signals - which is the other reason to gate it
+        // now rather than when a caller appears and the gate becomes a break.
+        authorise_read("GetJobStatus", &header, connection).await?;
+        Ok(self
+            .queue
             .get_status(&job_id)
-            .unwrap_or((0, "unknown".into(), String::new()))
+            .unwrap_or((0, "unknown".into(), String::new())))
     }
 
     // ── Signals ──────────────────────────────────────────────────────────
@@ -453,6 +535,19 @@ mod tests {
         assert!(!caller_may_mutate("ai-agent"));
         assert!(!caller_may_mutate("settings"));
         assert!(!caller_may_mutate(""));
+    }
+
+    /// Reading and mutating are separate powers here, and the test is what keeps
+    /// them separate: if someone ever folds `READ_CALLERS` into `INSTALL_CALLERS`
+    /// to save a line, granting a future Settings page the ability to LIST apps
+    /// would also grant it the ability to install them.
+    #[test]
+    fn reading_is_a_narrower_power_than_installing() {
+        for id in INSTALL_CALLERS {
+            assert!(caller_may_read(id), "{id} may install but not look");
+        }
+        assert!(!caller_may_mutate("com.example.nosy"));
+        assert!(!caller_may_read("com.example.nosy"));
     }
 
     #[test]
