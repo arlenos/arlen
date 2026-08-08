@@ -396,9 +396,6 @@ DEAD_INVOKES: dict[str, str] = {
     "knowledge_search_save": (
         "the Knowledge app. Its Rust side exists; a saved search needs somewhere to persist, which nothing defines yet"
     ),
-    "knowledge_provenance": (
-        "the Knowledge app. It HAS a Rust side now (8 Aug); this one waits on two answers: its contract carries prose verbs where the app's own timeline already moved to catalog ids, and lineage needs an edge traversal the read gate denies a caller that is not system-anchored"
-    ),
     "knowledge_timeline_pause": (
         "the Knowledge app. Its Rust side exists; pausing recording is a knowledge-daemon capability that does not exist - there is no switch to flip"
     ),

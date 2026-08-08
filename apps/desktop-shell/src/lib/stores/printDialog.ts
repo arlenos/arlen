@@ -180,7 +180,10 @@ export async function cancelPrint(): Promise<void> {
   try {
     await invoke("cancel_print", { id });
   } catch {
-    // Nothing on screen to correct: no job was sent.
+    // Nothing on screen to correct: no job was sent, and the dialog is already
+    // closed because the user declined. Stated as code rather than a comment so
+    // the optimistic-write check sees a decision rather than a silence.
+    submitFailed.set(false);
   }
 }
 

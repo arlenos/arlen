@@ -164,6 +164,9 @@ export async function cancel(): Promise<void> {
   try {
     await invoke("cancel_screencast");
   } catch {
-    // Nothing to correct on screen: no sharing started.
+    // Nothing to correct on screen: no sharing started, and the picker is closed
+    // because the user declined. Written as a statement so the check sees the
+    // decision instead of an empty block.
+    shareFailed.set(false);
   }
 }

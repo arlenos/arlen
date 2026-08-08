@@ -120,6 +120,13 @@ SKIP = ("/harness/", "/store/", "routes/ai/models")
 # A store that shows fixture content on a real failure for a reason someone
 # stands behind. Empty is the goal: the reason has to survive being read next to
 # the sentence the user ends up seeing.
+#
+# The keys are `file:line`, which DRIFTS: editing anything above an entry moves
+# it and the check reports it as new. That happened on 9 August, when making the
+# meeting edits honest pushed one acknowledgement down twenty lines. Annoying,
+# and the alternative is worse - keying on the file alone would hide a genuinely
+# new fixture in a file that already has an acknowledged one, which is exactly
+# how the sentinel store hid three switches behind one fixed function.
 ACKNOWLEDGED: dict[str, str] = {
     'apps/text-editor/src/lib/stores/lens.ts:78': (
         "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. The lens shows provenance, backlinks and project context for the open file, labelled 'Example context - not this file's real graph neighbourhood'. `openRelated` navigates rather than mutates."
@@ -130,7 +137,7 @@ ACKNOWLEDGED: dict[str, str] = {
     'apps/meetings/src/lib/stores/meeting.ts:142': (
         "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. The whole note page renders from the fixture - participants, claims, transcript - under 'Example note - not a real meeting. The participants and quotes are made up.' Nothing on it writes anywhere."
     ),
-    'apps/meetings/src/lib/stores/meeting.ts:290': (
+    'apps/meetings/src/lib/stores/meeting.ts:310': (
         "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. Same note surface, reached by summarising rather than opening."
     ),
     "apps/files/src/lib/stores/provenance.ts:99": (
