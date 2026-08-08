@@ -537,6 +537,13 @@ impl AgentAdminInterface {
         )
     }
 
+    /// **Superseded by `org.arlen.Undo1`, and kept only until its caller moves.**
+    /// This interface is registered only when `[ai] enabled` is true, so every
+    /// method below that answers about the USER's own actions disappears when the
+    /// assistant is switched off - which is why the session undo service exists
+    /// and serves the same three operations on a bus name no config gates:
+    /// `Recent` for the list and `Enact` for the reversal. The harness still calls
+    /// `completed_actions` here; when it points at Undo1 instead, these go.
     #[zbus(name = "completed_actions")]
     async fn completed_actions(
         &self,
