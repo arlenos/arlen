@@ -28,6 +28,9 @@ export interface LibrarySource {
 
 /// True while the sections are the FIXTURE, not the graph.
 export const libraryMocked = writable(false);
+
+/// True when a real session could not read the library sections at all.
+export const libraryUnavailable = writable(false);
 /// The loaded sections, or null before the read settles.
 export const sources = writable<LibrarySource[] | null>(null);
 
@@ -82,8 +85,16 @@ export async function loadLibrary(): Promise<void> {
     const live = await invoke<LibrarySource[]>("knowledge_library", {});
     sources.set(live);
     libraryMocked.set(false);
+    libraryUnavailable.set(false);
   } catch {
-    sources.set(FIXTURE);
-    libraryMocked.set(true);
+    if (import.meta.env.DEV) {
+      sources.set(FIXTURE);
+      libraryMocked.set(true);
+      libraryUnavailable.set(false);
+    } else {
+      sources.set([]);
+      libraryMocked.set(false);
+      libraryUnavailable.set(true);
+    }
   }
 }

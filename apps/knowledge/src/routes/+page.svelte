@@ -15,7 +15,7 @@
   import LibraryView from "$lib/components/LibraryView.svelte";
   import CapsulesView from "$lib/components/CapsulesView.svelte";
   import { onMount } from "svelte";
-  import { knowledgeAdapter, mocked } from "$lib/adapter";
+  import { knowledgeAdapter, mocked, unavailable } from "$lib/adapter";
   import { labelKeyFor, emptyKeyFor } from "$lib/locations";
   import { days, flatEvents, loadTimeline, type TimelineEvent } from "$lib/stores/timeline";
   import { asOf, projectInfo, type ProjectInfo } from "$lib/stores/projects";
@@ -131,13 +131,15 @@
       <CapsulesView />
     {:else}
       <div class="kn-browser">
+        <!-- "nothing here" and "could not read" are the same empty browser, so
+             the empty label has to say which one it is. -->
         <FileBrowser
           controller={ctrl}
           {onactivate}
           {onselection}
           {now}
           nameLabel={$t(labelKeyFor($path))}
-          emptyLabel={$t(emptyKeyFor($path))}
+          emptyLabel={$unavailable ? $t("k.browse.unavailable") : $t(emptyKeyFor($path))}
         />
       </div>
     {/if}
