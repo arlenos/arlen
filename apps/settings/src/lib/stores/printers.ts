@@ -419,9 +419,13 @@ export async function clearCompleted(): Promise<void> {
 }
 
 export async function testPage(printer: string): Promise<void> {
+  printers.update((s) => ({ ...s, actionFailed: false }));
   try {
     await invoke("printers_test_page", { printer });
   } catch {
-    // a test page is a no-op in the mock
+    if (import.meta.env.DEV) return; // a test page is a no-op in the mock
+    // Nothing comes out of the printer, and a button that reports nothing looks
+    // the same as one that worked.
+    printers.update((s) => ({ ...s, actionFailed: true }));
   }
 }
