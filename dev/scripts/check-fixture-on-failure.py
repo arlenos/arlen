@@ -79,7 +79,15 @@ CATCH = re.compile(r"\}\s*catch\b[^{]*\{", re.S)
 # `.set(FIXTURE)` and the first version of this check only knew the second, so
 # it walked past a rescan that served invented printers on every real run.
 STORE_WRITE = re.compile(r"\.(set|update)\(")
-FIXTURE_NAME = re.compile(r"\b(FIXTURE\w*|\w*_FIXTURE|MOCK\w*|DEMO\w*|SAMPLE\w*)\b")
+# Case matters and this got it wrong twice. The first version knew only
+# `.set(FIXTURE)`; widening to `.update` found two more. This version knew only
+# SHOUTING constants, and the knowledge timeline calls a lowercase `fixture()`
+# helper - a week of invented activity on the app's landing view, missed because
+# of capitalisation. Both times the check had inherited the spelling of the
+# handful of files it was written from.
+FIXTURE_NAME = re.compile(
+    r"\b(FIXTURE\w*|\w*_FIXTURE|MOCK\w*|DEMO\w*|SAMPLE\w*)\b|\b(fixture|mock|demo|sample)\w*\s*\("
+)
 MOCKED_FLAG = re.compile(r"mocked:\s*true")
 # Either guard counts as the author having separated the two sessions. Whether
 # they got the branches the right way round is not something a regex settles;
