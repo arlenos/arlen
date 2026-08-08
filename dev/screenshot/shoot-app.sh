@@ -14,6 +14,17 @@
 #                 Enter (e.g. a terminal command), so output renders before the shot
 #
 # Requirements: tauri-driver (cargo install tauri-driver), WebKitWebDriver, Xvfb.
+#
+# A DEBUG binary loads `build.devUrl` from tauri.conf.json, not the bundled
+# frontend, so `npm run build` + `cargo build` alone is not enough: with nothing
+# on that port the webview renders its own "Connection refused" page and the shot
+# is worthless. Either `cargo build --release`, or serve the built frontend on the
+# port the app's tauri.conf.json names:
+#
+#   ( cd apps/<app> && npx vite preview --port <devUrl port> --outDir build & )
+#
+# Since 9 August this is checked rather than left to the eye - the driver reads
+# the DOM after the shot and exits 1 on an error page.
 set -euo pipefail
 
 # Usage: shoot-app.sh <app-binary> [out.png] [type-text] [settle]

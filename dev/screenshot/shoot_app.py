@@ -113,6 +113,36 @@ def run_and_assert(base, sid, command, expect, selector):
     return ok
 
 
+def warn_if_error_page(base, sid):
+    """Fail if what got photographed was the webview's own error page.
+
+    A debug Tauri binary loads `build.devUrl`, not the bundled frontend, so a
+    freshly built app with no dev server behind it renders "Could not connect to
+    localhost: Connection refused" - a valid PNG, exit code 0, and no app in it.
+    That happened on the text editor's first launch shot and the file gave no
+    hint; it looked like a screenshot until somebody opened it.
+
+    This reads the DOM rather than the pixels, so it catches the message before
+    the eye has to. It does not judge whether the app rendered CORRECTLY - only
+    that it is the app rather than a failure to reach it.
+    """
+    try:
+        html = rq(base, "GET", f"/session/{sid}/source")["value"]
+    except Exception:
+        return 0  # no source endpoint: not a reason to fail a good shot
+    for probe in ("Connection refused", "ERR_CONNECTION", "Unable to load page",
+                  "did not respond"):
+        if probe in html:
+            print(
+                f"SHOT IS AN ERROR PAGE ({probe!r}): the binary loaded its devUrl "
+                f"and nothing was serving it. Either build with --release, or run "
+                f"the app's `vite preview` on the port in its tauri.conf.json.",
+                file=sys.stderr,
+            )
+            return 1
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--app", required=True, help="path to the Tauri app binary")
@@ -219,6 +249,8 @@ def main():
             with open(args.out, "wb") as f:
                 f.write(base64.b64decode(shot))
             print("wrote", args.out)
+        if args.out:
+            exit_code = warn_if_error_page(base, sid) or exit_code
         return exit_code
     finally:
         try:
