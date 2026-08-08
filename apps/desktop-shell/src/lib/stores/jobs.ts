@@ -12,6 +12,8 @@
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { t } from "$lib/i18n/messages";
+import { get } from "svelte/store";
 import { tauriAvailable } from "$lib/tauri";
 
 /// A job's lifecycle state (mirrors the JobView state enum).
@@ -154,8 +156,18 @@ export async function pollJobs(): Promise<void> {
     jobs.set(await invoke<Job[]>("list_jobs"));
     mocked.set(false);
   } catch {
-    jobs.set(MOCK_JOBS);
-    mocked.set(true);
+    if (import.meta.env.DEV) {
+      jobs.set(MOCK_JOBS);
+      mocked.set(true);
+      return;
+    }
+    // A real session: show no jobs rather than invented ones. These rows carry
+    // actions - cancel, retry - so a fabricated job is a button that acts on
+    // something that does not exist, and the zone's own `lastError` is where the
+    // failure belongs.
+    jobs.set([]);
+    mocked.set(false);
+    lastError.set(get(t)("sh.jobs.unavailable"));
   }
 }
 

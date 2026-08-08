@@ -7,7 +7,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
-  import { current, sources, sourcesMocked, share, cancel } from "$lib/stores/sourcePicker";
+  import { current, sources, sourcesMocked, sourcesUnavailable, share, cancel } from "$lib/stores/sourcePicker";
 
   let selected = $state<{ kind: "monitor" | "window" | "region"; id: string } | null>(null);
   let showCursor = $state(true);
@@ -38,6 +38,12 @@
             <!-- Picking one of these is a privacy decision; they must not pass
                  as this machine's real screens and windows. -->
             <p class="sp-sample">{$t("sh.share.mocked")}</p>
+          {/if}
+          {#if $sourcesUnavailable}
+            <!-- Nothing to pick from, and the reason said out loud: an empty
+                 picker with no explanation reads as "this machine has no
+                 screens", which is never the actual problem. -->
+            <p class="sp-sample">{$t("sh.share.unavailable")}</p>
           {/if}
           {#if $sources.monitors.length > 0}
             <div class="sp-group">{$t("sh.share.screens")}</div>

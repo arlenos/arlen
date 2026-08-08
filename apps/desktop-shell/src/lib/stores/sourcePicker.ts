@@ -77,6 +77,13 @@ export const sources = writable<Sources>({ monitors: [], windows: [] });
 /// share is a privacy decision, so the list must not pass as real.
 export const sourcesMocked = writable(false);
 
+/// True when the source list could not be read in a real session.
+///
+/// Distinct from an empty list, which would mean this machine has nothing to
+/// capture - a sentence that is almost never true and that hides the actual
+/// problem. And distinct from `sourcesMocked`, which is design work under vite.
+export const sourcesUnavailable = writable(false);
+
 /// Open the picker for a request + load the sources. Live: driven by the portal
 /// event + `list_capture_sources`; fixture sources under vite.
 ///
@@ -93,9 +100,24 @@ export async function openSourcePicker(request: SourceRequest): Promise<void> {
   try {
     sources.set(await invoke<Sources>("list_capture_sources"));
     sourcesMocked.set(false);
+    sourcesUnavailable.set(false);
   } catch {
-    sources.set(FIXTURE_SOURCES);
-    sourcesMocked.set(true);
+    if (import.meta.env.DEV) {
+      // No backend under vite: the fixture is the honest thing to render for
+      // design work, and `sourcesMocked` labels it.
+      sources.set(FIXTURE_SOURCES);
+      sourcesMocked.set(true);
+      sourcesUnavailable.set(false);
+      return;
+    }
+    // A real session. The paragraph above says the demo helper passes the fixture
+    // EXPLICITLY "so the live path can never fall back to it" - and this catch
+    // was that fallback, doing it unconditionally. Offering "Firefox - Arlen OS -
+    // Wikipedia" when we could not read the real windows is worse than offering
+    // nothing: the user shares a surface believing they picked it.
+    sources.set({ monitors: [], windows: [] });
+    sourcesMocked.set(false);
+    sourcesUnavailable.set(true);
   }
 }
 
