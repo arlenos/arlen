@@ -147,7 +147,10 @@ export async function saveSearch(name: string): Promise<void> {
   try {
     await invoke("knowledge_search_save", { search: s });
   } catch {
-    // No backend under vite: the optimistic entry stands.
+    if (import.meta.env.DEV) return; // no backend under vite
+    // A saved search that was not saved is gone at the next start, and the user
+    // will look for it. Better it is not there now than not there later.
+    savedSearches.update((l) => l.filter((x) => x.id !== s.id));
   }
 }
 
