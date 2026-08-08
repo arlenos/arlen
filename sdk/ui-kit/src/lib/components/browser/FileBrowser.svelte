@@ -41,6 +41,7 @@
     hintPermission = "You don't have permission to see what's inside.",
     hintNotConnected = "This place is not connected right now.",
     hintNoSuchDir = "This folder does not exist anymore.",
+    hintUnknown = "Something went wrong reading this folder.",
     browserLabel = "File browser",
     icon,
   }: {
@@ -74,6 +75,9 @@
     /// The can't-open-folder state text. The kit keeps the which-hint mapping;
     /// the host owns the words (English defaults, so the kit stays i18n-neutral).
     errorTitle?: string;
+    /// Hint shown when the error is not one this component recognises AND does
+    /// not read as a message for a person. See `readsAsInternal` below.
+    hintUnknown?: string;
     /// Hint shown when the error is a permission denial.
     hintPermission?: string;
     /// Hint shown when the location is not connected.
@@ -92,6 +96,16 @@
   const entries = $derived(controller.entries);
   const loading = $derived(controller.loading);
   const error = $derived(controller.error);
+
+  /// Does this error read as a JavaScript runtime failure rather than something
+  /// a person can act on? Deliberately narrow: it matches the shapes a missing
+  /// or broken bridge produces, and lets every other message through, because a
+  /// backend that says why is more useful than a generic sentence.
+  function readsAsInternal(message: string): boolean {
+    return /\b(TypeError|ReferenceError|SyntaxError)\b|undefined is not|is not a function|window\.__/.test(
+      message,
+    );
+  }
   const sortKey = $derived(controller.sortKey);
   const ascending = $derived(controller.ascending);
   const viewMode = $derived(controller.viewMode);
@@ -462,6 +476,13 @@
           {hintNotConnected}
         {:else if /no such directory/i.test($error)}
           {hintNoSuchDir}
+        {:else if readsAsInternal($error)}
+          <!-- A backend's own message ("disk quota exceeded") is worth showing;
+               a JS runtime error is not. Without this the file manager greeted a
+               user with "TypeError: undefined is not an object (evaluating
+               'window.__TAURI_INTERNALS__.invoke')" in the middle of the pane,
+               which names an internal and offers nothing to do about it. -->
+          {hintUnknown}
         {:else}
           {$error}
         {/if}
