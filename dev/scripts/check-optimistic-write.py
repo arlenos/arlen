@@ -42,6 +42,11 @@ What it does NOT cover:
   * whether the revert is CORRECT (it cannot know what the previous value was)
   * a mutation whose optimistic write happens in the component rather than the
     store, or more than ~500 characters before the try
+  * the write-AFTER-catch variant, which is the same defect with the lines
+    swapped: `try { invoke } catch { }` and then an unconditional `store.update`
+    below it. The printer page was four of those and this check could not see
+    them - they were found by reading, after the gate pointed at the file for a
+    different reason
   * a catch that logs and nothing else, which is silent to the user even though it
     is not empty in the source
   * `apps/harness` and `apps/store`, arlen-ui's live work
@@ -69,11 +74,6 @@ SKIP = ("/harness/", "/store/", "node_modules")
 # no backend at all (see check-invoke-exists.py). An entry leaves this list when
 # the action is made honest, not when it is explained.
 KNOWN: dict[str, str] = {
-    "apps/settings/src/lib/stores/printers.ts": (
-        "setDefault, setOptions, removePrinter, addPrinter, testPage - all five "
-        "commands are missing entirely, so the whole printer page is inert while "
-        "looking like it works"
-    ),
     "apps/settings/src/lib/stores/windows-apps.ts": (
         "patchBottle, installExe, deleteBottle, patchDefaults - same, the bottle "
         "commands have no host"

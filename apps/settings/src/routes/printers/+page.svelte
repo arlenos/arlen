@@ -148,6 +148,12 @@
         {$t("s.pr.unavailable")}
       </p>
     {/if}
+    <!-- An add, removal, default change or option change that did not reach the
+         print service. The list below is unchanged, and saying so is the
+         difference between "this printer is installed" and "you asked for it". -->
+    {#if $printers.actionFailed}
+      <p class="note" role="alert">{$t("s.pr.actionFailed")}</p>
+    {/if}
 
     <Section label={$t("s.pr.printers")}>
       {#if $printers.printers.length === 0}
