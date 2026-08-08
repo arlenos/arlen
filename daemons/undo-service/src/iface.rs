@@ -143,7 +143,7 @@ impl UndoInterface {
                 return Ok("unavailable".to_string());
             }
         };
-        if !undo_enact::is_enactable(&entry.inverse) {
+        if !undo_enact::is_enactable_here(&entry.inverse) {
             return Ok("not-reversible".to_string());
         }
         // AUDIT BEFORE THE ACT, and refuse if the ledger will not take it. This

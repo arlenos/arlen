@@ -125,6 +125,23 @@ pub fn is_enactable(receipt: &InverseReceipt) -> bool {
     }
 }
 
+/// Whether THIS service can actually carry the undo out.
+///
+/// Narrower than [`is_enactable`], and the difference is the point.
+/// `is_enactable` answers "is this undo real", which is true of a graph retract -
+/// the engine's compensate path replays it against the knowledge store. This
+/// service has no graph path, deliberately: it exists so a user's history stays
+/// reversible with the assistant switched off, and reaching into the engine to
+/// enact would put it back behind the switch.
+///
+/// So a graph inverse is a row here with no button. Offering one would be a
+/// promise this service cannot keep: `enact_inverse` reports `NotFilesystem` and
+/// nothing moves, which is a click that silently does nothing - the same shape as
+/// a button the daemon refuses, which we removed elsewhere today.
+pub fn is_enactable_here(receipt: &InverseReceipt) -> bool {
+    is_enactable(receipt) && !matches!(receipt, InverseReceipt::RetractGraphEdge { .. })
+}
+
 /// Enact a filesystem/setting inverse receipt. Reversible + identity-safe:
 /// relocation-undo moves the entity back only into a free prior path;
 /// creation-undo deletes only a still-fingerprint-matching file. The graph,
