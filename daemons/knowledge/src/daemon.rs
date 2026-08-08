@@ -2902,6 +2902,14 @@ async fn handle_client(
         // Best-effort; a profile-less app gets no declared grants, and the emit's
         // revoke-preserving ON MATCH means this per-connect refresh never resurrects
         // a grant the user revoked.
+        //
+        // Deliberately NOT audited, unlike the token grant above, and the asymmetry
+        // is the point: a token grant is an ISSUANCE - authority minted now, from a
+        // profile, for this process - while a declared grant is a projection of what
+        // the profile has said all along. Auditing it would write one entry per
+        // dimension per connect for a fact that did not change, and a ledger that
+        // records non-events is a ledger nobody reads. The declaration's own change
+        // is audited where it happens: the profile write, and revoke.
         if let Ok(profile) = arlen_permissions::load_profile(&app_id) {
             if let Err(e) = crate::lcg::emit_all_declared_grants(&graph, &app_id, &profile).await {
                 warn!(app_id = %app_id, "connect-time declared grants emit failed: {e}");
