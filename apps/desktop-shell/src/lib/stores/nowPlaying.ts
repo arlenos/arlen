@@ -4,11 +4,13 @@
 /// producer here. null = no player registered, so the applet hides entirely.
 ///
 /// The MPRIS D-Bus client (discovery, the active-player ranking, transport
-/// calls, position interpolation + `Seeked` resync, art handling) is a coder
-/// seam; until it lands the applet drives this mocked state, and the transport
-/// actions update it optimistically the way the live path will.
+/// calls, position interpolation + `Seeked` resync, art handling) lives in the
+/// shell's `mpris` module and is reached through the commands below. The
+/// transport actions still update optimistically first, so a click feels
+/// immediate and the next poll reconciles.
 
 import { get, writable, derived } from "svelte/store";
+import { invoke } from "@tauri-apps/api/core";
 
 /// A registered media player (for the switcher row).
 export interface MprisPlayer {
@@ -47,6 +49,18 @@ export interface NowPlaying {
 /// The current now-playing state. null hides the applet.
 export const nowPlaying = writable<NowPlaying | null>(null);
 
+/// Load the current state from the shell's MPRIS client. `null` (no player
+/// registered) hides the applet, which is also what an unreachable backend
+/// produces - there is nothing to show either way, and unlike a list of the
+/// user's own actions an absent media player is not a claim worth erroring over.
+export async function loadNowPlaying(): Promise<void> {
+  try {
+    nowPlaying.set(await invoke<NowPlaying | null>("mpris_now_playing"));
+  } catch {
+    nowPlaying.set(null);
+  }
+}
+
 /// The other players (for the switcher), excluding the active one.
 export const otherPlayers = derived(nowPlaying, ($n) =>
   $n ? $n.players.filter((p) => p.id !== $n.activeId) : [],
@@ -58,15 +72,19 @@ export function playPause(): void {
   const n = get(nowPlaying);
   if (!n || !n.canControl) return;
   nowPlaying.set({ ...n, status: n.status === "playing" ? "paused" : "playing" });
-  // invoke("mpris_play_pause", { id: n.activeId }) - coder seam.
+  void invoke("mpris_play_pause", { id: n.activeId }).catch(() => {});
 }
 
 /// Skip to the previous / next track.
 export function previous(): void {
-  // invoke("mpris_previous", { id }) - coder seam.
+  const n = get(nowPlaying);
+  if (!n || !n.canPrev) return;
+  void invoke("mpris_previous", { id: n.activeId }).catch(() => {});
 }
 export function next(): void {
-  // invoke("mpris_next", { id }) - coder seam.
+  const n = get(nowPlaying);
+  if (!n || !n.canNext) return;
+  void invoke("mpris_next", { id: n.activeId }).catch(() => {});
 }
 
 /// Seek the active player to `seconds` (optimistic; the client calls
@@ -75,7 +93,7 @@ export function seek(seconds: number): void {
   const n = get(nowPlaying);
   if (!n || !n.canSeek) return;
   nowPlaying.set({ ...n, position: Math.max(0, Math.min(n.length, seconds)) });
-  // invoke("mpris_set_position", { id, seconds }) - coder seam.
+  void invoke("mpris_set_position", { id: n.activeId, seconds }).catch(() => {});
 }
 
 /// Promote + pin a player as the active one (manual override of auto-follow).
@@ -83,5 +101,5 @@ export function pinPlayer(id: string): void {
   const n = get(nowPlaying);
   if (!n) return;
   nowPlaying.set({ ...n, activeId: id });
-  // invoke("mpris_pin", { id }) - coder seam.
+  void invoke("mpris_pin", { id }).catch(() => {});
 }

@@ -8,8 +8,18 @@
   /// the popup. A count badge marks more than one registered player. Hidden when
   /// nothing is registered.
   import { Music, Play, Pause } from "lucide-svelte";
+  import { onMount } from "svelte";
   import { activePopover, togglePopover, hoverPopover } from "$lib/stores/activePopover.js";
-  import { nowPlaying, playPause } from "$lib/stores/nowPlaying.js";
+  import { nowPlaying, playPause, loadNowPlaying } from "$lib/stores/nowPlaying.js";
+
+  /// Load on mount and poll, the same shape as the battery and network
+  /// indicators: the applet hides itself when nothing is registered, so a poll
+  /// that finds no player costs a hidden element rather than an empty one.
+  onMount(() => {
+    void loadNowPlaying();
+    const poll = setInterval(() => void loadNowPlaying(), 3000);
+    return () => clearInterval(poll);
+  });
 
   const isOpen = $derived($activePopover === "mpris");
   const tip = $derived($nowPlaying ? `${$nowPlaying.title} · ${$nowPlaying.artist}` : "");
