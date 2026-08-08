@@ -176,10 +176,20 @@ def main():
                          "WebDriver screenshot endpoint - needed for an app that "
                          "never reaches paint-idle (a live terminal repaints "
                          "continuously), where /screenshot hangs")
+    ap.add_argument("--app-arg", action="append",
+                    help="argument passed to the app binary (repeatable), e.g. a "
+                         "file path for an app launched on a file")
     args = ap.parse_args()
 
     base = f"http://localhost:{args.port}"
-    caps = {"capabilities": {"alwaysMatch": {"tauri:options": {"application": args.app}}}}
+    # tauri-driver forwards `args` to the binary, which is how an app that takes a
+    # file on the command line (the viewers, the text editor, anything reached by a
+    # desktop entry's `%f`) can be photographed opening a real file rather than its
+    # no-argument state.
+    opts = {"application": args.app}
+    if args.app_arg:
+        opts["args"] = args.app_arg
+    caps = {"capabilities": {"alwaysMatch": {"tauri:options": opts}}}
     sid = rq(base, "POST", "/session", caps)["value"]["sessionId"]
     exit_code = 0
     try:

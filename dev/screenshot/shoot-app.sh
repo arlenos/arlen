@@ -42,6 +42,8 @@ export SHOOT_SETTLE="${4:-}"
 # The vite-served scan cannot see anything a Tauri command supplies, because there
 # is no Tauri there; this harness runs the real binary, so it can.
 export SHOOT_INJECT="${SHOOT_INJECT:-}"
+# A file to launch the app on, colon-separated for more than one argument.
+export SHOOT_APP_ARGS="${SHOOT_APP_ARGS:-}"
 # The binary is an argument here, so building it is the caller's job - but its age
 # is not their memory. On 6 August the compositor harness screenshotted a binary
 # six weeks old and reported a pass, so any harness that runs a prebuilt artifact
@@ -92,6 +94,11 @@ xvfb-run -a --server-args="-screen 0 1280x900x24" bash -c '
   [ -n "$SHOOT_TYPE" ] && args+=(--type "$SHOOT_TYPE")
   [ -n "$SHOOT_SETTLE" ] && args+=(--settle "$SHOOT_SETTLE")
   [ -n "${SHOOT_GRAB:-}" ] && args+=(--grab-x)
+  # Colon-separated, so an app can be launched on a file: SHOOT_APP_ARGS=/etc/hosts
+  if [ -n "${SHOOT_APP_ARGS:-}" ]; then
+    IFS=":" read -ra appargs <<< "$SHOOT_APP_ARGS"
+    for a in "${appargs[@]}"; do args+=(--app-arg "$a"); done
+  fi
   [ -n "${SHOOT_EXEC:-}" ] && args+=(--exec "$SHOOT_EXEC")
   [ -n "${SHOOT_EXPECT:-}" ] && args+=(--expect "$SHOOT_EXPECT")
   # Colon-separated, so a caller can move the app then ask about where it went.
