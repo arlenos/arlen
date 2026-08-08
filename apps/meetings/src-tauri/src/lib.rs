@@ -177,6 +177,12 @@ async fn meeting_update_item(
 #[tauri::command]
 async fn open_file(file: String) -> Result<(), String> {
     std::process::Command::new("xdg-open")
+        // `--` first: a name may legally begin with a dash and xdg-open parses a
+        // leading-dash argument as its own options ("error: unexpected argument
+        // '-z' found / tip: to pass '-z' as a value, use '-- -z'"). The files app
+        // is safe by construction because `abs` guarantees a leading slash; these
+        // callers pass the string through as it arrives.
+        .arg("--")
         .arg(&file)
         .spawn()
         .map(|_| ())
