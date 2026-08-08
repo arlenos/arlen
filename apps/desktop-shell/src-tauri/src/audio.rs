@@ -765,6 +765,61 @@ fn run_audio_monitor(app: tauri::AppHandle) {
 mod tests {
     use super::audio_event_is_device_change;
 
+    /// Every `pactl list` in this file asks for JSON.
+    ///
+    /// `pactl`'s default text output does not escape a newline. Measured, on a
+    /// private server, with a null sink whose `device.description` carried a
+    /// real newline byte:
+    ///
+    /// ```text
+    ///     Description: alpha
+    /// beta
+    ///         device.description = "alpha
+    /// beta"
+    /// ```
+    ///
+    /// The value continues at column 0 and a line-oriented parse reads the
+    /// second half as the next field. An application names its own stream, so
+    /// that is text we did not choose, in a position we would otherwise trust.
+    /// `-f json` escapes it (`"alpha\nbeta"`), which is why every list here
+    /// already uses it.
+    ///
+    /// This test exists because "already uses it" is a property of today. It
+    /// reads this file's own source, so a future `list` call that forgets the
+    /// flag fails here rather than in somebody's stream name.
+    ///
+    /// It does NOT cover: `get-default-sink` and `wpctl get-volume`, which
+    /// return one token and a number rather than a record, and the setters,
+    /// which parse nothing.
+    #[test]
+    fn every_pactl_list_asks_for_json() {
+        // Only the shipping half. A scanner that reads the file it lives in
+        // finds its own pattern: the first version flagged this test's own
+        // `"list"` literal, which is the same shape as a token scanner that
+        // cannot tell code from the comment explaining it.
+        let whole = include_str!("audio.rs");
+        let src = whole.split("#[cfg(test)]").next().unwrap_or(whole);
+        let mut offenders = Vec::new();
+        for (i, window) in src.match_indices("\"list\"") {
+            let _ = window;
+            // The args array containing this "list" - back up to the opening
+            // bracket, forward to the closing one.
+            let start = src[..i].rfind('[').unwrap_or(0);
+            let end = src[i..].find(']').map(|e| i + e).unwrap_or(src.len());
+            let args = &src[start..end];
+            if !args.contains("\"json\"") {
+                let line = src[..i].matches('\n').count() + 1;
+                offenders.push(format!("line {line}: {}", args.replace('\n', " ")));
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "a `pactl list` without `-f json` parses text that an app can write, \
+             and pactl does not escape a newline in it:\n  {}",
+            offenders.join("\n  ")
+        );
+    }
+
     #[test]
     fn device_change_is_detected_for_new_and_remove_only() {
         assert!(audio_event_is_device_change("Event 'new' on sink #42"));
