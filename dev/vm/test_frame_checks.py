@@ -19,12 +19,29 @@ import os
 import sys
 import tempfile
 
-from PIL import Image, ImageDraw
+try:
+    from PIL import Image, ImageDraw
+except ImportError:  # pragma: no cover - the message matters more than the trace
+    sys.exit(
+        "these fixtures need Pillow (python3 -m pip install Pillow). Exiting "
+        "non-zero on purpose: a frame check that cannot run must not read as one "
+        "that passed."
+    )
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from verify import consent_dialog_state  # noqa: E402
+from verify import consent_dialog_state, top_bar_state  # noqa: E402
 
 W, H = 1280, 800
+
+
+def check_bar(name, got, want):
+    """Assert a boolean verdict, recording rather than raising so one wrong answer
+    does not hide the rest."""
+    if got == want:
+        print(f"  ok   {name}: {got}")
+    else:
+        FAILURES.append(name)
+        print(f"  FAIL {name}: got {got}, wanted {want}")
 
 
 def desktop():
@@ -167,6 +184,52 @@ def main():
         check("a frame that changed size is inconclusive",
               consent_dialog_state(before_card, save(small, "small.png", tmp)),
               "inconclusive")
+
+        # `has_top_bar` decides whether a whole boot passed, and nothing pinned it
+        # until now. It asks whether the modal colour of row 8 differs from the
+        # modal colour of the middle row, which is a proxy for "the shell painted a
+        # panel" and is not the same statement.
+        print("\nhas_top_bar:")
+        with_bar = save(desktop(), "bar.png", tmp)
+        check_bar("a desktop with the shell's bar reads present",
+                  top_bar_state(with_bar)[0], "present")
+
+        # The false positive: a wallpaper and no shell at all. The old check called
+        # this a bar - the top of a gradient is not the middle of a gradient - so a
+        # regression that stopped the shell rendering passed the gate.
+        no_bar = Image.new("RGB", (W, H))
+        db = ImageDraw.Draw(no_bar)
+        for y in range(H):
+            v = y * 255 // H
+            db.line([(0, y), (W, y)], fill=(v, v // 2, 255 - v))
+        check_bar("a wallpaper with no bar is not a bar",
+                  top_bar_state(save(no_bar, "nobar.png", tmp))[0], "absent")
+
+        # And the honest limit of the flat-band rule, kept as a fixture rather than
+        # discovered later: a gradient shallow enough that its first rows round to
+        # one colour IS a flat band with an edge under it, and no measurement of
+        # this frame can separate that from a bar. It must say so. Tuning the rule
+        # until this reads `absent` would be tuning it to a frame, not to a
+        # property.
+        shallow = Image.new("RGB", (W, H))
+        ds = ImageDraw.Draw(shallow)
+        for y in range(H):
+            v = 22 + y * 18 // H
+            ds.line([(0, y), (W, y)], fill=(v, v, v + 6))
+        check_bar("a gradient too shallow to resolve is inconclusive",
+                  top_bar_state(save(shallow, "shallow.png", tmp))[0], "inconclusive")
+
+        # The failure this check can give on a working build: a bar whose colour
+        # matches the wallpaper under it. The shell painted its panel, the boot is
+        # fine, and the gate says the shell did not render.
+        flat = Image.new("RGB", (W, H), (38, 38, 44))
+        dc = ImageDraw.Draw(flat)
+        dc.rectangle([0, 0, W, 36], fill=(38, 38, 44))
+        # The false negative: a bar painted the colour of what is under it. There
+        # is nothing to see, and the honest answer is that the check cannot tell -
+        # not that the shell failed to render, which would condemn a working build.
+        check_bar("a bar the colour of the desktop under it is inconclusive",
+                  top_bar_state(save(flat, "camouflaged.png", tmp))[0], "inconclusive")
 
     if FAILURES:
         print(f"\n{len(FAILURES)} check(s) failed: {', '.join(FAILURES)}")
