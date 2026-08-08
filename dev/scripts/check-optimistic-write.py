@@ -96,7 +96,6 @@ KNOWN: dict[str, str] = {
     "apps/desktop-shell/src/lib/stores/windowsFile.ts": "run and install",
     "apps/desktop-shell/src/lib/stores/waypointerAsk.ts": "escalate",
     "apps/knowledge/src/lib/stores/search.ts": "saving a search",
-    "apps/meetings/src/lib/stores/meeting.ts": "saveNotes and two others",
     "apps/text-editor/src/lib/stores/lens.ts": "openRelated, which navigates rather than mutates",
 }
 

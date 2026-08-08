@@ -13,7 +13,15 @@
   import ActionItems from "$lib/components/ActionItems.svelte";
   import TranscriptPanel from "$lib/components/TranscriptPanel.svelte";
   import { t, dir } from "$lib/i18n/messages";
-  import { meeting, currentId, openMeeting, saveNotes, updateItem, openInEditor } from "$lib/stores/meeting";
+  import {
+    meeting,
+    currentId,
+    openMeeting,
+    saveNotes,
+    updateItem,
+    openInEditor,
+    editFailed,
+  } from "$lib/stores/meeting";
 
   const id = $derived($page.params.id);
   let activeStart = $state<number | null>(null);
@@ -46,6 +54,11 @@
         </div>
         {#if m.mocked}
           <p class="sample">{$t("mt.sample")}</p>
+          <!-- The notes and items are the user's own words; if an edit did not
+               persist the text on screen goes back rather than reading as saved. -->
+          {#if $editFailed}
+            <p class="sample" role="alert">{$t("mt.editFailed")}</p>
+          {/if}
         {/if}
       {/snippet}
       {#snippet content()}
