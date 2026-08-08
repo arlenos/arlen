@@ -134,6 +134,11 @@ export const clockMocked = writable(false);
 /// from `clockMocked`: an alarm nobody set is worse than no alarms.
 export const clockUnavailable = writable(false);
 
+/// True when the last alarm, timer or stopwatch action did not reach the daemon.
+/// An alarm nobody set is the failure this app must never produce, and the same
+/// goes for one somebody set that was never recorded.
+export const clockActionFailed = writable(false);
+
 /// A 1 Hz render tick. Surfaces derive displayed remainders from anchors and
 /// this tick; it carries no state of its own.
 export const tick = writable(Date.now());
@@ -177,16 +182,36 @@ export async function loadClock(): Promise<void> {
   }
 }
 
+/// What the store held before the most recent optimistic patch, so a failed
+/// send can put it back.
+///
+/// The coupling between `patch` and `send` is deliberate and worth naming: every
+/// one of the fifteen actions in this file patches the local state and then calls
+/// `send`, which is why one wrapper can make all fifteen honest at once. The
+/// limitation of doing it here rather than at each call site is that an action
+/// which patched twice before sending would only have its last patch undone;
+/// none does today, and a new one that needs to should snapshot itself.
+let beforePatch: ClockState | null = null;
+
 function patch(fn: (s: ClockState) => ClockState): void {
-  clock.update((s) => (s ? fn(s) : s));
+  clock.update((s) => {
+    beforePatch = s;
+    return s ? fn(s) : s;
+  });
 }
 
 async function send(cmd: string, args?: Record<string, unknown>): Promise<void> {
+  clockActionFailed.set(false);
   try {
     await invoke(cmd, args);
     await loadClock();
   } catch {
-    // Daemon unwired under vite: the local patch stands on the fixture.
+    if (import.meta.env.DEV) return; // daemon unwired under vite
+    // None of the clock commands has a host yet, so this is every real session:
+    // an alarm shown as set that will not ring, a timer counting down in the UI
+    // and nowhere else. Put the state back and say so.
+    clock.set(beforePatch);
+    clockActionFailed.set(true);
   }
 }
 

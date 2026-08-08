@@ -95,10 +95,6 @@ KNOWN: dict[str, str] = {
     ),
     "apps/desktop-shell/src/lib/stores/windowsFile.ts": "run and install",
     "apps/desktop-shell/src/lib/stores/waypointerAsk.ts": "escalate",
-    "apps/clock/src/lib/stores/clock.ts": (
-        "the local wrapper every clock action goes through - fifteen commands, one "
-        "silent catch"
-    ),
     "apps/knowledge/src/lib/stores/search.ts": "saving a search",
     "apps/meetings/src/lib/stores/meeting.ts": "saveNotes and two others",
     "apps/text-editor/src/lib/stores/lens.ts": "openRelated, which navigates rather than mutates",

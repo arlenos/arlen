@@ -10,7 +10,7 @@
   import FocusView from "$lib/components/FocusView.svelte";
   import StopwatchView from "$lib/components/StopwatchView.svelte";
   import WorldView from "$lib/components/WorldView.svelte";
-  import { clockMocked, clockUnavailable } from "$lib/stores/clock";
+  import { clockMocked, clockUnavailable, clockActionFailed } from "$lib/stores/clock";
   import { requestAdd } from "$lib/stores/ui";
   import { t, dir } from "$lib/i18n/messages";
 
@@ -86,6 +86,11 @@
     <p class="sample">{$t("c.sample")}</p>
   {:else if $clockUnavailable}
     <p class="sample">{$t("c.unavailable")}</p>
+  {/if}
+  <!-- The alarm or timer below is back to what the daemon holds, because what
+       was asked for never got there. -->
+  {#if $clockActionFailed}
+    <p class="sample" role="alert">{$t("c.actionFailed")}</p>
   {/if}
 
   <main class="body">
