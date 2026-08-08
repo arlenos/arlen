@@ -71,6 +71,9 @@ const broken = [];
 // `h.mint.done` sentence landed on top of the existing "Done" button label, and
 // only `svelte-check` noticed. Seen ids are per (file, locale).
 const seen = new Map();
+// The same map keyed by (file, locale) but holding the VALUES, for the
+// untranslated-string pass below.
+const values = new Map();
 
 for (const file of catalogFiles()) {
   let locale = null;
@@ -90,6 +93,7 @@ for (const file of catalogFiles()) {
       broken.push(`${file.slice(ROOT.length)} [${locale}] ${id}: duplicate id, the later one wins and the earlier use silently changes`);
     }
     seen.get(scope).add(id);
+    if (!values.has(scope)) values.set(scope, new Map());
     let text;
     try {
       text = JSON.parse(`"${raw}"`);
@@ -98,6 +102,7 @@ for (const file of catalogFiles()) {
       // and guessing at it would report noise. Skip rather than mis-report.
       continue;
     }
+    values.get(scope).set(id, text);
     checked++;
     // The source declares its own types (`.input {$n :number}`), so read them
     // rather than guessing from the parameter's name: a guess feeds a numeric
@@ -208,6 +213,45 @@ for (const [file, locales] of byFile) {
           `${file.slice(ROOT.length)} [${locale}] ${id}: present in another locale and missing here, so this locale falls back to the key or the source language`,
         );
       }
+    }
+  }
+}
+
+// A `de` value byte-identical to its `en` one is usually fine - "CPU", "Bluetooth",
+// a version line, a message that is only a number format - and occasionally it is
+// an English sentence sitting in the German block that nobody noticed, because
+// every other check is satisfied by the key being present.
+//
+// That happened on 9 August: `s.wallpaper.unavailable` was untranslated English in
+// `de`, and a script adding a neighbouring key keyed off "does this line look
+// German" and got it wrong, so the new sentence landed in English too. Two
+// untranslated strings, one gate that had nothing to say.
+//
+// The threshold is four words. Below it the identical values are overwhelmingly
+// real (measured: 124 identical pairs across the tree, 121 of them under four
+// words and every one legitimate), and above it a match is a sentence somebody
+// forgot. The three known long ones are named, because a check that reports them
+// every run teaches people to ignore it.
+const SHARED_BY_DESIGN = new Set([
+  "sh.audio.appCount", // the plural arms are "Apps (n)" in both languages
+  "s.display.refreshHz", // a number format and the unit "Hz"
+  "k.about.build", // "Arlen OS · {$version}"
+]);
+for (const [file, locales] of byFile) {
+  const en = values.get(`${file}\u0000en`);
+  if (!en) continue;
+  for (const locale of locales.keys()) {
+    if (locale === "en") continue;
+    const other = values.get(`${file}\u0000${locale}`);
+    if (!other) continue;
+    for (const [id, text] of other) {
+      if (SHARED_BY_DESIGN.has(id)) continue;
+      const source = en.get(id);
+      if (source === undefined || source !== text) continue;
+      if (text.trim().split(/\s+/).length < 4) continue;
+      broken.push(
+        `${file.slice(ROOT.length)} [${locale}] ${id}: identical to the English, word for word - a sentence this long is a translation nobody wrote, not a term both languages share`,
+      );
     }
   }
 }
