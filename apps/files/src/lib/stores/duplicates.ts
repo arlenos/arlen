@@ -28,6 +28,10 @@ export interface DupGroup {
 export const duplicatesOpen = writable(false);
 /// True while the scan runs (the surface shows the scanning state).
 export const duplicatesScanning = writable(false);
+
+/// True when the last duplicate scan could not run. Distinct from an empty
+/// result, which says this folder has no duplicates.
+export const duplicatesFailed = writable(false);
 /// null = no scan yet; [] = scanned and clean; else the groups.
 export const duplicateGroups = writable<DupGroup[] | null>(null);
 /// The location the scan ran under, for the header and the empty copy.
@@ -100,10 +104,15 @@ export async function scanDuplicates(path: string): Promise<void> {
   try {
     const groups = await invoke<DupGroup[]>("files_find_duplicates", { path });
     duplicateGroups.set(groups);
+    duplicatesFailed.set(false);
     keepNewest();
   } catch {
-    duplicateGroups.set([]);
+    // `null` is the store's own "not scanned" state and it already has one, so
+    // use it: `[]` means the scan ran and this folder is clean, which is a
+    // claim about the disk that a failed scan cannot make.
+    duplicateGroups.set(null);
     trashMarks.set(new Set());
+    duplicatesFailed.set(true);
   } finally {
     duplicatesScanning.set(false);
   }

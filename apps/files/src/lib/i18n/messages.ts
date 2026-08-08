@@ -239,6 +239,8 @@ const messages: Catalogs = {
     "f.dup.findHint": "Scan {$scope} for byte-identical copies.",
     "f.dup.none": "No duplicates in {$scope}",
     "f.dup.noneHint": "Every file here is one of a kind.",
+    "f.dup.failed": "Could not scan for duplicates",
+    "f.dup.failedHint": "{scope} was not scanned, so nothing here says whether it holds duplicates.",
     "f.dup.title": "Duplicates in {$scope}",
     "f.dup.groups": P("count", "{$count} group", "{$count} groups"),
     "f.dup.reclaimable": "{$size} reclaimable",
@@ -270,6 +272,8 @@ const messages: Catalogs = {
     "f.results.aria": "Search results",
     "f.results.emptyTitle": "Nothing matches",
     "f.results.emptyHint": "Try fewer letters or different filters.",
+    "f.results.failedTitle": "Could not search",
+    "f.results.failedHint": "This folder was not searched, so nothing here says whether the file is in it.",
     "f.results.truncated": "Showing the first matches only. Narrow the search.",
 
     // Batch rename
@@ -503,6 +507,8 @@ const messages: Catalogs = {
     "f.dup.findHint": "{$scope} nach byte-identischen Kopien scannen.",
     "f.dup.none": "Keine Duplikate in {$scope}",
     "f.dup.noneHint": "Jede Datei hier ist einzigartig.",
+    "f.dup.failed": "Suche nach Duplikaten nicht m\u00f6glich",
+    "f.dup.failedHint": "{scope} wurde nicht durchsucht, hier steht also nichts dar\u00fcber, ob es Duplikate gibt.",
     "f.dup.title": "Duplikate in {$scope}",
     "f.dup.groups": P("count", "{$count} Gruppe", "{$count} Gruppen"),
     "f.dup.reclaimable": "{$size} freigebbar",
@@ -532,6 +538,8 @@ const messages: Catalogs = {
     "f.results.aria": "Suchergebnisse",
     "f.results.emptyTitle": "Nichts passt",
     "f.results.emptyHint": "Versuch weniger Buchstaben oder andere Filter.",
+    "f.results.failedTitle": "Suche nicht m\u00f6glich",
+    "f.results.failedHint": "Dieser Ordner wurde nicht durchsucht, hier steht also nichts dar\u00fcber, ob die Datei darin liegt.",
     "f.results.truncated": "Nur die ersten Treffer werden angezeigt. Grenze die Suche ein.",
 
     "f.rename.aria": "Mehrere Dateien umbenennen",
