@@ -3892,6 +3892,7 @@ fn scan_patterns(cypher: &str) -> PatternScan {
     // (kind, saw_colon) for each open bracket that is a PATTERN, innermost last.
     let mut open: Vec<(&'static str, bool)> = Vec::new();
     let mut prev_significant: Option<char> = None;
+    let mut prev_char: Option<char> = None;
     let mut unconstrained: Option<&'static str> = None;
     let mut node_labels: Vec<String> = Vec::new();
     let mut rel_types: Vec<String> = Vec::new();
@@ -3914,10 +3915,12 @@ fn scan_patterns(cypher: &str) -> PatternScan {
         if pending.is_some() && !(ch.is_ascii_alphanumeric() || ch == '_') {
             let (tok, kind) = pending.take().expect("checked above");
             if tok.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
-                if kind == "relationship" {
-                    rel_types.push(tok);
-                } else {
-                    node_labels.push(tok);
+                match kind {
+                    "relationship" => rel_types.push(tok),
+                    "node" => node_labels.push(tok),
+                    // A map key or a list/call element names nothing the gate
+                    // scopes, so it is neither a label nor an edge type.
+                    _ => {}
                 }
             }
         } else if let Some((tok, _)) = pending.as_mut() {
@@ -3927,8 +3930,15 @@ fn scan_patterns(cypher: &str) -> PatternScan {
         match ch {
             '\'' => in_string = true,
             '(' => {
-                let is_call = prev_significant
-                    .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+                // The IMMEDIATELY preceding character, whitespace included: a call
+                // is `count(` with nothing between, while `MATCH (` has a space.
+                // Skipping whitespace here read every pattern after a keyword as a
+                // call, so no node label was collected at all - and the tests
+                // still passed, because each query they refused was refused by the
+                // unlabelled node later in it. A verdict can be right for the
+                // wrong reason; the assertions now name the labels.
+                let is_call = prev_char
+                    .is_some_and(|c: char| c.is_ascii_alphanumeric() || c == '_');
                 if !is_call {
                     open.push(("node", false));
                 } else {
@@ -3942,7 +3952,13 @@ fn scan_patterns(cypher: &str) -> PatternScan {
                     open.push(("list", true));
                 }
             }
-            ')' | ']' => {
+            // A property map inside a pattern: `(f:File {app_id:'x'})`. Its keys
+            // follow a `:` exactly as a label does, and reading them as labels
+            // refused the more PRECISE query while the vague one passed - an
+            // allowlist that rewards saying less. Opened as satisfied so it never
+            // reports unconstrained; its tokens are dropped below.
+            '{' => open.push(("map", true)),
+            ')' | ']' | '}' => {
                 if let Some((kind, saw_colon)) = open.pop() {
                     if !saw_colon && (kind == "node" || kind == "relationship") {
                         unconstrained = unconstrained.or(Some(kind));
@@ -3958,16 +3974,17 @@ fn scan_patterns(cypher: &str) -> PatternScan {
             _ => {}
         }
         let _ = i;
+        prev_char = Some(ch);
         if !ch.is_whitespace() {
             prev_significant = Some(ch);
         }
     }
     if let Some((tok, kind)) = pending {
         if tok.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
-            if kind == "relationship" {
-                rel_types.push(tok);
-            } else {
-                node_labels.push(tok);
+            match kind {
+                "relationship" => rel_types.push(tok),
+                "node" => node_labels.push(tok),
+                _ => {}
             }
         }
     }
@@ -4528,9 +4545,49 @@ mod tests {
     /// The measurement that produced this rule: an unlabelled node and an untyped
     /// edge are "any label" and "any edge", and the allowlist never saw them
     /// because it only checks what a query NAMES.
+    /// A property map's keys follow a `:` exactly as a label does, and reading
+    /// them as labels refused `MATCH (f:File {app_id:'x'})` while the vaguer
+    /// `MATCH (f:File)` passed - the allowlist rewarding the caller who says
+    /// less. A map key was never a label, so this narrows nothing: the node still
+    /// has to name a readable one.
+    #[test]
+    fn a_property_map_key_is_not_a_label() {
+        let readable = ["File".to_string()];
+        assert!(raw_read_label_gate(
+            "MATCH (f:File {app_id:'com.example'}) RETURN f.path",
+            &readable,
+            false
+        )
+        .is_none());
+        // The numeric case already worked and still does.
+        assert!(raw_read_label_gate("MATCH (f:File {count:5}) RETURN f.path", &readable, false).is_none());
+        // The node's own label is still checked: a map cannot smuggle one past.
+        assert!(raw_read_label_gate(
+            "MATCH (p:Project {app_id:'x'}) RETURN p.name",
+            &readable,
+            false
+        )
+        .is_some());
+        // And an unlabelled node with a map is still an unlabelled node.
+        assert!(raw_read_label_gate("MATCH (x {app_id:'y'}) RETURN x.id", &readable, false).is_some());
+    }
+
     #[test]
     fn an_omitted_constraint_is_refused_as_the_widest_one() {
         let readable = ["File".to_string()];
+        // The scan names what it found, so a refusal cannot be credited to the
+        // wrong construct: this is what caught a call-detection bug that made
+        // every pattern after a keyword look like a function call, collecting no
+        // node label at all while the verdicts stayed correct.
+        let scan = scan_patterns("MATCH (f:File)-[r:FILE_PART_OF]->(p:Project) RETURN p.id");
+        assert_eq!(scan.node_labels, ["FILE", "PROJECT"]);
+        assert_eq!(scan.rel_types, ["FILE_PART_OF"]);
+        assert_eq!(scan.unconstrained, None);
+        // A call is not a node, and its argument is not a label.
+        let calls = scan_patterns("MATCH (f:File) RETURN count(*), toLower(f.path)");
+        assert_eq!(calls.node_labels, ["FILE"]);
+        assert_eq!(calls.unconstrained, None);
+
         // The exact query that was allowed before this rule.
         assert!(
             raw_read_label_gate("MATCH (f:File)-[r]->(x) RETURN x.id", &readable, false).is_some()
