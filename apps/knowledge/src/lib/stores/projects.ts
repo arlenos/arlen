@@ -16,6 +16,11 @@ import { type TimelineEvent } from "$lib/stores/timeline";
 /// True while the columns are the FIXTURE rather than the real graph.
 export const projectsMocked = writable(false);
 
+/// True when a real session could not read the projects for this level. The
+/// browser then shows an empty column, and the empty label has to say which
+/// empty it is.
+export const projectsUnavailable = writable(false);
+
 /// The moment the columns answer for; null is now. Unix seconds.
 export const asOf = writable<number | null>(null);
 
@@ -120,10 +125,20 @@ export const projectsAdapter: BrowserAdapter = {
         asOf: currentAsOf,
       });
       projectsMocked.set(false);
+      projectsUnavailable.set(false);
       return entries;
     } catch {
-      projectsMocked.set(true);
-      return fixtureList(location, currentAsOf);
+      if (import.meta.env.DEV) {
+        projectsMocked.set(true);
+        projectsUnavailable.set(false);
+        return fixtureList(location, currentAsOf);
+      }
+      // The sibling of the browser adapter fixed earlier tonight, and the same
+      // reasoning: these rows are named projects with detection reasons and
+      // member counts, and the columns navigate into them.
+      projectsMocked.set(false);
+      projectsUnavailable.set(true);
+      return [];
     }
   },
 };
