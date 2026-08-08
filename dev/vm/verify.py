@@ -159,11 +159,32 @@ def ocr(png, psm=6, crop=None, scale=1):
         return ""
 
 
-def has_top_bar(png):
-    """Detect the shell's top bar structurally: it paints a panel strip across the
-    top in a distinct colour, so the modal colour of a bar row differs from a
-    mid-desktop row. (OCR of the thin UI font under llvmpipe is unreliable, so we
-    assert the bar's presence by colour, not text.) Returns (present, bar, desktop)."""
+def top_bar_state(png):
+    """Is the shell's top bar on screen? Returns (verdict, bar_row, detail) with
+    verdict one of `present`, `absent`, `inconclusive`.
+
+    This decides whether a whole boot passed, so both wrong answers are expensive,
+    and the version it replaces could give either. It compared the modal colour of
+    row 8 against the modal colour of the middle row and called any difference a
+    bar. That is a proxy for "the shell painted a panel" and not the same
+    statement:
+
+    - A plain gradient wallpaper with **no shell at all** reads present, because
+      the top of a gradient is not the middle of a gradient. A regression that
+      stops the shell rendering passes the gate.
+    - A bar the same colour as the wallpaper under it reads absent, and a working
+      build is condemned.
+
+    Both are pinned as fixtures in `test_frame_checks.py`. What actually
+    distinguishes a panel from a wallpaper is the EDGE: a bar ends in a step at
+    its bottom, within one row, while a gradient changes by a value or two per
+    row over the whole screen. So look for the step.
+
+    And where there is no step because the bar is the colour of what is under it,
+    say `inconclusive` rather than `absent`. The check cannot see a bar there; that
+    is not the same as the shell not rendering, and reporting it as one is how a
+    working build gets condemned.
+    """
     from PIL import Image
     img = Image.open(png).convert("RGB")
     w, h = img.size
@@ -172,8 +193,43 @@ def has_top_bar(png):
         row = [img.getpixel((x, y)) for x in range(0, w, 4)]
         return max(set(row), key=row.count)
 
-    bar, desk = modal_row(8), modal_row(h // 2)
-    return bar != desk, bar, desk
+    def dist(a, b):
+        return sum(abs(x - y) for x, y in zip(a, b))
+
+    # The bar is a panel across the top; its bottom edge falls somewhere in the
+    # first tenth of the screen even at unusual scalings.
+    band = max(12, min(h // 10, 120))
+    rows = [modal_row(y) for y in range(0, band + 2)]
+    steps = [(dist(rows[i], rows[i + 1]), i) for i in range(len(rows) - 1)]
+    step, at = max(steps)
+    top = rows[2]
+
+    # What separates a panel from a wallpaper is not how big the step is - a dark
+    # bar on a dark desktop steps by 15 while a bright one steps by 92 - but that
+    # everything ABOVE the step is one flat colour. A gradient has no flat band:
+    # every row differs slightly from the one before it, all the way down. So test
+    # the band, and let the step be any real edge at all.
+    band_top = rows[: at + 1]
+    flat_top = all(dist(c, top) <= 6 for c in band_top) and at >= 4
+    if flat_top and step >= 6:
+        return ("present", top,
+                f"a flat band of {at + 1} rows ending in an edge (step {step})")
+    if flat_top:
+        return ("inconclusive", top,
+                f"the top {at + 1} rows are one flat colour {top} with no edge "
+                f"below them, so a bar painted in the colour of what is under it "
+                f"would look exactly like this")
+    return ("absent", top,
+            f"no flat band above an edge in the top {band} rows (largest "
+            f"single-row step {step} at row {at + 1}); the top shades into the "
+            f"rest of the frame the way a wallpaper does")
+
+
+def has_top_bar(png):
+    """Back-compat boolean for callers that only branch on presence. `inconclusive`
+    is not a bar: a gate must not pass on an answer the check could not give."""
+    verdict, bar, _ = top_bar_state(png)
+    return verdict == "present", bar, verdict
 
 
 def _amber_strip(img, w, h):
@@ -599,12 +655,12 @@ def main():
         sys.exit("no screenshot captured")
     rendered, summary = inspect(out)
     text = ocr(out)               # whole frame (psm 6) - mainly the console-text guard
-    bar_present, bar_rgb, desk_rgb = has_top_bar(out)
+    bar_verdict, bar_rgb, bar_detail = top_bar_state(out)
+    bar_present = bar_verdict == "present"
     print(f"screenshot: {out} ({summary})")
     if text:
         print("OCR text:\n" + text)
-    print(f"top bar: {'present' if bar_present else 'absent'} "
-          f"(bar row {bar_rgb}, desktop row {desk_rgb})")
+    print(f"top bar: {bar_verdict} (row {bar_rgb}) - {bar_detail}")
     after = out + ".after.png"
     if args.press_super and os.path.exists(after) and os.path.getsize(after) > 0:
         frac = frame_change(out, after)
@@ -642,7 +698,12 @@ def main():
         print(f"  serial log: {serial}")
         return 1
     if args.require_bar and not bar_present:
-        print("VERIFY FAIL: the shell's top bar is absent (compositor up, shell did not render)")
+        if bar_verdict == "inconclusive":
+            print("VERIFY FAIL: could not tell whether the shell's top bar is on "
+                  f"screen - {bar_detail}. This is the gate saying it cannot see, "
+                  "not that the shell did not render; look at the frame.")
+        else:
+            print("VERIFY FAIL: the shell's top bar is absent (compositor up, shell did not render)")
         print(f"  serial log: {serial}")
         return 1
     if args.app:
