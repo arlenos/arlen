@@ -736,6 +736,7 @@ check-grants:
 check-graph:
     python3 "{{ROOT}}/dev/scripts/check-graph-columns.py"
     python3 "{{ROOT}}/dev/scripts/check-webview-sandbox.py"
+    python3 "{{ROOT}}/dev/scripts/check-refusal-shape.py"
 
 check-smoke:
     python3 "{{ROOT}}/dev/scripts/check-smoke-coverage.py"
