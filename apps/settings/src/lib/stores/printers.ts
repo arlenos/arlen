@@ -377,10 +377,17 @@ export async function cancelJob(printer: string, id: number): Promise<void> {
   try {
     await invoke("print_job_cancel", { printer, jobId: id });
   } catch {
-    // optimistic
+    // A job shown as canceled that is still queued prints anyway, on paper, in
+    // another room. `print_job_cancel` does have a backend, so this is a real
+    // service failure rather than a missing command.
+    if (!import.meta.env.DEV) {
+      printers.update((s) => ({ ...s, actionFailed: true }));
+      return;
+    }
   }
   printers.update((s) => ({
     ...s,
+    actionFailed: false,
     queue: s.queue.map((j) => (j.id === id ? { ...j, state: "canceled" } : j)),
   }));
 }
@@ -389,7 +396,12 @@ export async function retryJob(id: number): Promise<void> {
   try {
     await invoke("print_job_retry", { id });
   } catch {
-    // optimistic
+    // `print_job_retry` has no backend at all, so a job shown as queued again
+    // never is.
+    if (!import.meta.env.DEV) {
+      printers.update((s) => ({ ...s, actionFailed: true }));
+      return;
+    }
   }
   printers.update((s) => ({
     ...s,
