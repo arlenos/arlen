@@ -17,6 +17,10 @@ import type { BrowserAdapter, FileEntry } from "@arlen/ui-kit/components/browser
 /// the surface can say so and never pass invented activity as recorded history.
 export const mocked = writable(false);
 
+/// True when a real session could not read the graph for this place. The browser
+/// then shows an empty list, and the empty label has to say which empty it is.
+export const unavailable = writable(false);
+
 const now = Math.floor(Date.now() / 1000);
 const ago = (seconds: number): number => now - seconds;
 
@@ -72,10 +76,21 @@ export const knowledgeAdapter: BrowserAdapter = {
     try {
       const entries = await invoke<FileEntry[]>("knowledge_list", { location });
       mocked.set(false);
+      unavailable.set(false);
       return entries;
     } catch {
-      mocked.set(true);
-      return FIXTURES[location] ?? [];
+      if (import.meta.env.DEV) {
+        mocked.set(true);
+        unavailable.set(false);
+        return FIXTURES[location] ?? [];
+      }
+      // The flag above exists so the surface "never passes invented activity as
+      // recorded history". The surface imports it and renders nothing with it,
+      // so on a real failed read these entries - with timestamps, in a browser
+      // whose rows open things - appeared as this machine's history, unlabelled.
+      mocked.set(false);
+      unavailable.set(true);
+      return [];
     }
   },
 };
