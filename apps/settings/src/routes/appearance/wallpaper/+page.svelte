@@ -38,12 +38,14 @@
 <Page title={$t("s.wallpaper.title")} description={$t("s.wallpaper.desc")}>
   <SectionGrid>
     <Section label={$t("s.wallpaper.choose")}>
-      {#if $wallpapersUnavailable}
-        <!-- Empty here would read as "no wallpapers installed", which is never
-             true and is not what happened. -->
-        <p class="wp-note">{$t("s.wallpaper.unavailable")}</p>
-      {/if}
       <div class="wp-inset">
+        {#if $wallpapersUnavailable}
+          <!-- Empty here would read as "no wallpapers installed", which is never
+               true and is not what happened. Inside the inset, not above it:
+               `.wp-note` has no padding of its own because the inset provides
+               it, so placing it outside drew the text across the box's border. -->
+          <p class="wp-note">{$t("s.wallpaper.unavailable")}</p>
+        {/if}
         <div class="wp-grid">
           {#each $wallpapers as w (w.id)}
             <button
