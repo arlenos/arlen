@@ -216,7 +216,11 @@ pub struct AudioOutput {
 }
 
 /// Returns available audio output devices with human-readable names.
-#[tauri::command]
+/// No longer a `#[tauri::command]`: `get_audio_full_state` bundles this and its
+/// four siblings into one round-trip and is what the popover calls, so nothing
+/// invoked this from a webview. It stays as a function because that bundle calls
+/// it. Every registered command is reachable from the renderer, so one nothing
+/// needs is IPC surface for free.
 pub async fn get_audio_outputs() -> Result<Vec<AudioOutput>, String> {
     tauri::async_runtime::spawn_blocking(get_audio_outputs_impl)
         .await
@@ -299,7 +303,11 @@ pub struct AudioInput {
 
 /// Returns available audio input devices (microphones).
 /// Filters out monitor sources.
-#[tauri::command]
+/// No longer a `#[tauri::command]`: `get_audio_full_state` bundles this and its
+/// four siblings into one round-trip and is what the popover calls, so nothing
+/// invoked this from a webview. It stays as a function because that bundle calls
+/// it. Every registered command is reachable from the renderer, so one nothing
+/// needs is IPC surface for free.
 pub async fn get_audio_inputs() -> Result<Vec<AudioInput>, String> {
     tauri::async_runtime::spawn_blocking(get_audio_inputs_impl)
         .await
@@ -368,7 +376,11 @@ pub async fn set_audio_input(id: String) -> Result<(), String> {
 }
 
 /// Returns the current input (microphone) volume and mute state.
-#[tauri::command]
+/// No longer a `#[tauri::command]`: `get_audio_full_state` bundles this and its
+/// four siblings into one round-trip and is what the popover calls, so nothing
+/// invoked this from a webview. It stays as a function because that bundle calls
+/// it. Every registered command is reachable from the renderer, so one nothing
+/// needs is IPC surface for free.
 pub async fn get_input_volume() -> Result<AudioStatus, String> {
     tauri::async_runtime::spawn_blocking(get_input_volume_impl)
         .await
@@ -447,7 +459,11 @@ pub struct AppVolume {
 }
 
 /// Returns all running applications that are playing audio.
-#[tauri::command]
+/// No longer a `#[tauri::command]`: `get_audio_full_state` bundles this and its
+/// four siblings into one round-trip and is what the popover calls, so nothing
+/// invoked this from a webview. It stays as a function because that bundle calls
+/// it. Every registered command is reachable from the renderer, so one nothing
+/// needs is IPC surface for free.
 pub async fn get_app_volumes() -> Result<Vec<AppVolume>, String> {
     tauri::async_runtime::spawn_blocking(get_app_volumes_impl)
         .await
