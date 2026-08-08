@@ -141,6 +141,11 @@ ACKNOWLEDGED: dict[str, tuple[set[str], str]] = {
             "time_to_full_seconds",
             "lid_state",
             "profile",
+            # A property, and the same kind again: whether an alarm will bring
+            # this machine out of suspend is a fact about the machine, the same
+            # answer for every caller. Its sibling WakeCapability is that fact as
+            # a sentence for a person; this is it as a value for a decision.
+            "wakes_machine",
             # Added after this list was written, and the same kind as the rest: a
             # property describing what the MACHINE can do (whether an RTC alarm can
             # wake it), identical for every caller and carrying nothing about the
@@ -201,7 +206,41 @@ def interface_methods(text: str) -> list[tuple[str, bool]]:
     return out
 
 
+def duplicate_acknowledged_keys() -> list[str]:
+    """Files listed twice in ACKNOWLEDGED.
+
+    Python keeps the last of two identical dict keys and discards the first
+    without a word, so a second entry for a file silently deletes the first one's
+    declarations - and the check then reports methods that someone HAD accounted
+    for, or worse, stops reporting ones they had not. This file exists because a
+    silently dropped declaration reads exactly like a considered one, so it does
+    not get to have that bug itself. Read from the source, since the dict has
+    already lost the evidence by the time it is built.
+    """
+    import ast
+
+    tree = ast.parse(pathlib.Path(__file__).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.AnnAssign):
+            continue
+        if getattr(node.target, "id", None) != "ACKNOWLEDGED":
+            continue
+        keys = [k.value for k in node.value.keys if isinstance(k, ast.Constant)]
+        return sorted({k for k in keys if keys.count(k) > 1})
+    return []
+
+
 def main() -> int:
+    dupes = duplicate_acknowledged_keys()
+    if dupes:
+        print(
+            "ACKNOWLEDGED lists these files twice, so the first entry's methods "
+            "were discarded before this check ran:\n"
+            + "\n".join(f"  - {d}" for d in dupes)
+            + "\nMerge them into one entry."
+        )
+        return 1
+
     # Selected by the ATTRIBUTE, not by any mention of zbus: a file that merely
     # imports `interface` is not an interface, and a file that imports it and then
     # uses the short form must not be missed.
