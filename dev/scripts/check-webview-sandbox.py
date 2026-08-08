@@ -20,7 +20,11 @@ What it does NOT check, and this is the part worth reading before trusting a pas
     subprocesses were spawned" - which is loud, and a crash on first launch is
     not a silent failure, so it is left to the runtime rather than parsed here.
   * That the sandbox actually holds. This reads source; only a running app can
-    show a contained renderer. The boot-verify pass is where that is observable.
+    show a contained renderer. `probe-webview-sandbox.sh` next to this file does
+    that part - it starts an app under Xvfb and compares the web process's mount
+    and user namespaces against the app's. Four apps have been watched holding it
+    (system-monitor, files, viewers, terminal); the rest are inference from the
+    same one line of source.
   * Anything about the webviews the desktop shell creates for its own surfaces
     beyond its main process, or about the modules runtime's iframes, which are
     contained by a different mechanism (CSP + the broker).
