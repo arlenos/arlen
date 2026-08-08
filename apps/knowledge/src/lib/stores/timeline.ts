@@ -4,7 +4,7 @@
 /// events, never screenshots - so the store never invents history: live it
 /// reads the `knowledge_timeline` command (a coder seam over the FUSE timeline
 /// + the typed reads); under vite a fixture stands in and `mocked` says so.
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 
 /// What kind of thing happened; drives the row's mark and verb.
@@ -69,6 +69,13 @@ export const timelineUnavailable = writable(false);
 /// Recording paused. Live state comes with the pause command; the toggle is
 /// optimistic under vite.
 export const paused = writable(false);
+
+/// True when the last pause or resume did not reach the daemon, so the switch
+/// went back to what it was. Recording that continues while the surface says
+/// "paused" is the worst failure this app has, and it is the one the optimistic
+/// flip produced on every real session: the daemon has no pause command at all,
+/// so the call always threw and the toggle always stayed where the user put it.
+export const pauseUnavailable = writable(false);
 
 function localMidnight(unix: number): number {
   const d = new Date(unix * 1000);
@@ -244,11 +251,18 @@ export async function loadTimeline(): Promise<void> {
 /// Pause or resume recording. Live: `knowledge_timeline_pause` (seam); the
 /// optimistic flip stands under vite, behind the mocked banner.
 export async function setPaused(value: boolean): Promise<void> {
+  const previous = get(paused);
   paused.set(value);
+  pauseUnavailable.set(false);
   try {
     await invoke("knowledge_timeline_pause", { paused: value });
   } catch {
-    // No backend under vite: the optimistic state stands.
+    if (import.meta.env.DEV) return; // no backend under vite
+    // The daemon has no pause today, so this is the live path: put the switch
+    // back and say so. Leaving it flipped would tell someone their activity is
+    // no longer being recorded while it is.
+    paused.set(previous);
+    pauseUnavailable.set(true);
   }
 }
 

@@ -23,6 +23,7 @@
     timelineMocked,
     timelineUnavailable,
     paused,
+    pauseUnavailable,
     pendingMenuAction,
     loadTimeline,
     setPaused,
@@ -153,6 +154,9 @@
         {$t("k.tl.whats")}
       </button>
     </div>
+    {#if $pauseUnavailable}
+      <p class="tl-paused-line" role="alert">{$t("k.tl.pauseUnavailable")}</p>
+    {/if}
     {#if $paused}
       <p class="tl-paused-line">{$t("k.tl.pausedLine")}</p>
     {/if}
