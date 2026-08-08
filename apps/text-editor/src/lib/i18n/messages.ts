@@ -11,6 +11,7 @@ export { locale, dir } from "@arlen/ui-kit/i18n";
 const messages: Catalogs = {
   en: {
     "te.openFile": "Open file",
+    "te.open.failed": "This file could not be opened.",
     "te.lineNumbers.toggle": "Toggle line numbers",
     "te.lineNumbers": "Line numbers",
     "te.focus": "Focus",
@@ -42,6 +43,7 @@ const messages: Catalogs = {
   },
   de: {
     "te.openFile": "Datei öffnen",
+    "te.open.failed": "Diese Datei konnte nicht geöffnet werden.",
     "te.lineNumbers.toggle": "Zeilennummern umschalten",
     "te.lineNumbers": "Zeilennummern",
     "te.focus": "Fokus",
