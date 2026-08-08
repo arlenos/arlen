@@ -95,6 +95,10 @@ interface PrintersState {
   /// nothing. The empty list looks the same either way, and only one of them is
   /// news about the network.
   discoverFailed: boolean;
+  /// True when the last add, remove, default or options change did not reach the
+  /// print service. The page says so; without it the list would keep showing a
+  /// printer that was never added, or drop one that was never removed.
+  actionFailed: boolean;
 }
 
 const initial: PrintersState = {
@@ -107,6 +111,7 @@ const initial: PrintersState = {
   mocked: false,
   unavailable: false,
   discoverFailed: false,
+  actionFailed: false,
 };
 
 export const printers = writable<PrintersState>(initial);
@@ -280,17 +285,30 @@ export async function setDefault(name: string): Promise<void> {
   try {
     await invoke("printers_set_default", { name });
   } catch {
-    // optimistic in the mock
+    // The command has no backend, so this is every real session. Marking a
+    // printer as the default it is not means the next print goes elsewhere.
+    if (!import.meta.env.DEV) {
+      printers.update((s) => ({ ...s, actionFailed: true }));
+      return;
+    }
   }
-  printers.update((s) => ({ ...s, defaultName: name }));
+  printers.update((s) => ({ ...s, defaultName: name, actionFailed: false }));
 }
 
 export async function setOptions(name: string, options: PrinterOptions): Promise<void> {
-  printers.update((s) => ({ ...s, options: { ...s.options, [name]: options } }));
+  const before = get(printers).options[name];
+  printers.update((s) => ({ ...s, options: { ...s.options, [name]: options }, actionFailed: false }));
   try {
     await invoke("printers_set_options", { name, options });
   } catch {
-    // optimistic in the mock
+    if (import.meta.env.DEV) return;
+    // Paper size and duplex the service never heard about would print wrong.
+    printers.update((s) => {
+      const opts = { ...s.options };
+      if (before) opts[name] = before;
+      else delete opts[name];
+      return { ...s, options: opts, actionFailed: true };
+    });
   }
 }
 
@@ -302,7 +320,12 @@ export async function removePrinter(name: string): Promise<void> {
   try {
     await invoke("printers_remove", { name });
   } catch {
-    // optimistic in the mock
+    // A printer dropped from the list but still installed comes back on the
+    // next read, which reads as the removal undoing itself.
+    if (!import.meta.env.DEV) {
+      printers.update((s) => ({ ...s, actionFailed: true }));
+      return;
+    }
   }
   printers.update((s) => {
     const next = s.printers.filter((p) => p.name !== name);
@@ -318,7 +341,12 @@ export async function addPrinter(d: DiscoveredPrinter): Promise<void> {
   try {
     await invoke("printers_add", { uri: d.uri, name: d.name });
   } catch {
-    // optimistic in the mock
+    // Listing a printer that was never installed means the next print job goes
+    // to a queue that does not exist.
+    if (!import.meta.env.DEV) {
+      printers.update((s) => ({ ...s, actionFailed: true }));
+      return;
+    }
   }
   printers.update((s) => ({
     ...s,
