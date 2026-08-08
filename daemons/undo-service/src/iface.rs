@@ -61,16 +61,18 @@ async fn admitted(
     method: &str,
     header: &zbus::message::Header<'_>,
     connection: &zbus::Connection,
-) -> bool {
+) -> zbus::fdo::Result<()> {
     match resolve_caller(header, connection).await {
-        Ok(caller) if arlen_permissions::identity::is_user_surface(&caller) => true,
+        Ok(caller) if arlen_permissions::identity::is_user_surface(&caller) => Ok(()),
         Ok(caller) => {
             tracing::warn!(%caller, %method, "refused: not a user surface");
-            false
+            Err(zbus::fdo::Error::AccessDenied(format!(
+                "{caller} may not read or reverse this session's actions"
+            )))
         }
         Err(e) => {
             tracing::warn!(error = %e, %method, "refused: caller unresolved");
-            false
+            Err(zbus::fdo::Error::AccessDenied(e))
         }
     }
 }
@@ -80,23 +82,26 @@ impl UndoInterface {
     /// The recent actions, newest first, as JSON: what happened, when, who did it
     /// and whether it can be reversed.
     ///
-    /// A refused caller gets an empty array rather than an error, because the wire
-    /// is JSON the caller parses; the warning above is where a refusal is visible.
+    /// A refused caller gets an ERROR, not an empty array. The first version
+    /// returned `[]` on the grounds that the wire is JSON the caller parses and
+    /// the journal carries the refusal - and then I ran it and read what a user
+    /// would see: an empty recent-actions list, which says "you have done nothing"
+    /// to someone who has. The journal line helps whoever reads journals. The
+    /// panel treats an error as its cue to show its fixture and say so, which is
+    /// the honest display.
     async fn recent(
         &self,
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
-    ) -> String {
-        if !admitted("recent", &header, connection).await {
-            return "[]".to_string();
-        }
+    ) -> zbus::fdo::Result<String> {
+        admitted("recent", &header, connection).await?;
         let rows = undo_history::recent_rows(
             &arlen_ai_undo_proto::socket_path(),
             &undo_history::LedgerChains::at_default_socket(),
             RECENT_LIMIT,
         )
         .await;
-        serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string())
+        Ok(serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string()))
     }
 
     /// Reverse the action with this operation id, returning a one-word outcome.
@@ -109,10 +114,11 @@ impl UndoInterface {
         op_id: String,
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
-    ) -> String {
-        if !admitted("enact", &header, connection).await {
-            return "not-permitted".to_string();
-        }
+    ) -> zbus::fdo::Result<String> {
+        // A refusal is an error rather than an outcome word: the outcomes below
+        // describe what an undo DID, and refusing to consider one is not among
+        // them. Same reason `recent` errors.
+        admitted("enact", &header, connection).await?;
         // The signer's protocol has no fetch-one, so the live set is fetched and
         // the entry found by key. The op id is a LOOKUP KEY and nothing else: the
         // inverse that gets replayed is the one the signer holds, so a caller
@@ -121,26 +127,26 @@ impl UndoInterface {
         let entry = match crate::undo_signer::fetch_live(&socket).await {
             Ok(entries) => match entries.into_iter().find(|e| e.op_id == op_id) {
                 Some(entry) => entry,
-                None => return "no-such-action".to_string(),
+                None => return Ok("no-such-action".to_string()),
             },
             Err(e) => {
                 tracing::warn!(error = %e, %op_id, "enact: could not read the undo log");
-                return "unavailable".to_string();
+                return Ok("unavailable".to_string());
             }
         };
         if !undo_enact::is_enactable(&entry.inverse) {
-            return "not-reversible".to_string();
+            return Ok("not-reversible".to_string());
         }
         let inverse = entry.inverse.clone();
         match tokio::task::spawn_blocking(move || undo_enact::enact_inverse(&inverse)).await {
-            Ok(Ok(outcome)) => outcome_wire(outcome).to_string(),
+            Ok(Ok(outcome)) => Ok(outcome_wire(outcome).to_string()),
             Ok(Err(e)) => {
                 tracing::warn!(error = %e, %op_id, "enact failed");
-                "failed".to_string()
+                Ok("failed".to_string())
             }
             Err(e) => {
                 tracing::warn!(error = %e, %op_id, "enact panicked");
-                "failed".to_string()
+                Ok("failed".to_string())
             }
         }
     }
