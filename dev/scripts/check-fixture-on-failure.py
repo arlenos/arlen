@@ -51,7 +51,16 @@ not that every failure in the frontend is reported honestly.
 Shown to fail before being trusted: run against `1d761f5b7~1` it names
 sourcePicker, jobs and themes, which is what it was written from.
 
-It fails today, on 9 stores, with one acknowledged. That is the point of committing it - the four
+It fails today on one store, `apps/settings/src/lib/stores/models.ts`, which
+belongs to somebody else's in-flight work and is left visible rather than
+excused. Five entries are acknowledged with reasons.
+
+The line the acknowledgements draw, after fixing eleven of these in one night:
+a labelled sample on screen is a design choice, and someone made it deliberately;
+a fixture that supplies an id, an index or a pid to a real call is a defect
+whatever the label says. The system monitor was the clearest case - its rows are
+labelled 'Example processes' and their ids are 1, 101, 102, 103, which is what
+the Stop button passes to the backend. That is the point of committing it - the four
 found by reading were a sample and not the set, and a list in the repo is worth
 more than the same evening repeated four more times. It goes into CI when the
 list is empty; until then it is the queue, in severity order: a printer or a
@@ -84,6 +93,18 @@ SKIP = ("/harness/", "/store/", "routes/ai/models")
 # stands behind. Empty is the goal: the reason has to survive being read next to
 # the sentence the user ends up seeing.
 ACKNOWLEDGED: dict[str, str] = {
+    'apps/text-editor/src/lib/stores/lens.ts:78': (
+        "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. The lens shows provenance, backlinks and project context for the open file, labelled 'Example context - not this file's real graph neighbourhood'. `openRelated` navigates rather than mutates."
+    ),
+    'apps/meetings/src/lib/stores/meeting.ts:119': (
+        "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. The meetings list is labelled above itself, and clicking a fixture meeting reaches the note path, which is labelled too."
+    ),
+    'apps/meetings/src/lib/stores/meeting.ts:142': (
+        "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. The whole note page renders from the fixture - participants, claims, transcript - under 'Example note - not a real meeting. The participants and quotes are made up.' Nothing on it writes anywhere."
+    ),
+    'apps/meetings/src/lib/stores/meeting.ts:290': (
+        "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. Same note surface, reached by summarising rather than opening."
+    ),
     "apps/files/src/lib/stores/provenance.ts:99": (
         "The caveat is rendered at the claim, not on a banner elsewhere: the halo "
         "popover puts 'Sample history - not this file's real origin' directly above "
