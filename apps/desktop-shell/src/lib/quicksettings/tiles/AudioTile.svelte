@@ -17,7 +17,11 @@
     output_type: string;
   }
 
+  // The initial value is a placeholder, not a reading: `volume: 0` renders as
+  // "0%" next to a muted icon, which says the sound is off. Until a read lands,
+  // `unreadable` keeps the tile from stating it.
   let status = $state<AudioStatus>({ volume: 0, muted: false, output_type: "speaker" });
+  let unreadable = $state(true);
   let writeTimer: ReturnType<typeof setTimeout> | null = null;
 
   onMount(() => {
@@ -35,6 +39,7 @@
   async function refresh() {
     try {
       status = await invoke<AudioStatus>("get_audio_status");
+      unreadable = false;
     } catch {}
   }
 
@@ -57,13 +62,15 @@
 
   const sliderValue = $derived(status.muted ? 0 : status.volume);
   const subtitle = $derived(
-    status.muted
-      ? "Muted"
-      : status.output_type.includes("headphone")
-        ? "Headphones"
-        : status.output_type.includes("hdmi")
-          ? "HDMI"
-          : "Speakers",
+    unreadable
+      ? $t("sh.audio.unknown")
+      : status.muted
+        ? $t("sh.audio.muted")
+        : status.output_type.includes("headphone")
+          ? $t("sh.audio.headphones")
+          : status.output_type.includes("hdmi")
+            ? $t("sh.audio.hdmi")
+            : $t("sh.audio.speakers"),
   );
 </script>
 
@@ -71,6 +78,7 @@
   <SliderTile
     label={$t("sh.tile.sound")}
     statusText={subtitle}
+    valueKnown={!unreadable}
     value={sliderValue}
     min={0}
     max={100}

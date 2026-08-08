@@ -22,6 +22,10 @@
   }
 
   let status = $state<NetworkStatus | null>(null);
+  /// True once a read has failed and none has ever succeeded. Without this the
+  /// tile reads "Disconnected" when it simply never got an answer, which is a
+  /// claim about the network rather than about the read.
+  let unreadable = $state(false);
   let airplane = $state(false);
   let wifiEnabled = $state(true);
 
@@ -44,7 +48,10 @@
       airplane = await invoke<boolean>("get_airplane_mode");
       wifiEnabled = await invoke<boolean>("get_wifi_enabled");
       status = await invoke<NetworkStatus>("get_network_status");
-    } catch {}
+      unreadable = false;
+    } catch {
+      unreadable = status === null;
+    }
   }
 
   /// Single-click: toggle WiFi specifically. Ethernet stays unaffected
@@ -65,7 +72,9 @@
 
   const active = $derived(!!status?.connected && !airplane);
   const subtitle = $derived(
-    airplane
+    unreadable
+      ? $t("sh.net.unknown")
+      : airplane
       ? $t("sh.tile.airplane")
       : !wifiEnabled && status?.connection_type !== "ethernet"
         ? $t("sh.tile.wifiOff")
