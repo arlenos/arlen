@@ -30,3 +30,4 @@
 pub mod undo_enact;
 pub mod undo_history;
 pub mod undo_signer;
+pub mod iface;
