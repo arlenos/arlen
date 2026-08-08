@@ -71,8 +71,19 @@ impl WatchConfig {
         };
 
         if !path.exists() {
-            tracing::debug!("{} not found, using defaults", path.display());
-            return Self::default();
+            // At INFO, not debug, and naming the directories: with no config this
+            // daemon starts scanning three directories in the user's home, and the
+            // journal should say so rather than leave a surprising scan
+            // unexplained. Found by running it headless with an empty config home,
+            // where it read `~/Documents`, `~/Projects` and `~/Repositories`
+            // without a word at the level the units log at.
+            let d = Self::default();
+            tracing::info!(
+                "{} not found; watching the default user directories: {}",
+                path.display(),
+                d.watch_directories.join(", ")
+            );
+            return d;
         }
 
         match std::fs::read_to_string(&path) {
