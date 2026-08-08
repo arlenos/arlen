@@ -130,6 +130,10 @@ export const clock = writable<ClockState | null>(null);
 /// True while the state is the FIXTURE (no daemon under vite).
 export const clockMocked = writable(false);
 
+/// True when a real session could not read the clock daemon at all. Separate
+/// from `clockMocked`: an alarm nobody set is worse than no alarms.
+export const clockUnavailable = writable(false);
+
 /// A 1 Hz render tick. Surfaces derive displayed remainders from anchors and
 /// this tick; it carries no state of its own.
 export const tick = writable(Date.now());
@@ -153,10 +157,23 @@ export async function loadClock(): Promise<void> {
     const s = await invoke<ClockState>("clock_state");
     clock.set(forceNoWake ? { ...s, wake_capable: false } : s);
     clockMocked.set(false);
+    clockUnavailable.set(false);
   } catch {
-    const s = fixtureState(Date.now());
-    clock.set(forceNoWake ? { ...s, wake_capable: false } : s);
-    clockMocked.set(true);
+    if (import.meta.env.DEV) {
+      const s = fixtureState(Date.now());
+      clock.set(forceNoWake ? { ...s, wake_capable: false } : s);
+      clockMocked.set(true);
+      clockUnavailable.set(false);
+      return;
+    }
+    // The fixture contains an ENABLED alarm for 07:00 on weekdays with a
+    // `next_fire_at` nine hours out. Shown when the clock daemon is down, that
+    // is not a wrong pixel: someone reads it, believes they are covered and does
+    // not set a real alarm. Empty, and the surface says the clock could not be
+    // read.
+    clock.set(null);
+    clockMocked.set(false);
+    clockUnavailable.set(true);
   }
 }
 
