@@ -229,10 +229,17 @@ export async function resolveOptions(source: ValueSource): Promise<SettingOption
       throw new Error(res.reason || "unresolved");
     }
     return res.options;
-  } catch {
-    const fixture = RESOLVE_FIXTURE[source];
-    if (!fixture) throw new Error("unresolved");
-    return fixture;
+  } catch (e) {
+    // DEV only. Served on a real failure, this hands the widget a list of audio
+    // outputs or locales that are not on this machine, and the user picks one -
+    // the same defect as the capture picker offering windows that do not exist.
+    // A rejection is the honest answer: the widget already renders a
+    // could-not-ask line for it (`resolveFailed`).
+    if (import.meta.env.DEV) {
+      const fixture = RESOLVE_FIXTURE[source];
+      if (fixture) return fixture;
+    }
+    throw e instanceof Error ? e : new Error("unresolved");
   }
 }
 
