@@ -1148,7 +1148,11 @@ fn main() -> ExitCode {
         let ours = current.len() - foreign_count;
         println!(
             "arlen-i18n-lint: ok, {} known user-facing strings, no new ones\n  \
-             {ours} ours, {foreign_count} declared foreign data",
+             {ours} ours, {foreign_count} declared foreign data\n  \
+             read: .svelte markup and script bodies, and .ts - not .js, not test \
+             files, not a string built at runtime from parts. A quiet pass means \
+             nothing NEW was found where this looks, which is narrower than \
+             \"this app is translated\".",
             current.len()
         );
         return ExitCode::SUCCESS;
