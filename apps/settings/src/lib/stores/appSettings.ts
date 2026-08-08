@@ -148,8 +148,12 @@ export async function loadAppSettings(appId: string): Promise<void> {
     appPage.set(page);
     appPageMocked.set(false);
   } catch {
-    appPage.set(appId === FIXTURE.appId ? structuredClone(FIXTURE) : null);
-    appPageMocked.set(true);
+    // Only under vite, and only for the demo id. A real session that could not
+    // read the page shows no page: an invented settings page is one the user
+    // then edits, and those writes go to a schema nobody confirmed.
+    const demo = import.meta.env.DEV && appId === FIXTURE.appId;
+    appPage.set(demo ? structuredClone(FIXTURE) : null);
+    appPageMocked.set(demo);
   }
 }
 
@@ -291,8 +295,9 @@ export async function loadAppMeta(appId: string): Promise<void> {
     appMeta.set(await invoke<AppMeta | null>("settings_app_meta", { appId }));
     appMetaMocked.set(false);
   } catch {
-    appMeta.set(appId === FIXTURE.appId ? { ...META_FIXTURE } : null);
-    appMetaMocked.set(true);
+    const demo = import.meta.env.DEV && appId === FIXTURE.appId;
+    appMeta.set(demo ? { ...META_FIXTURE } : null);
+    appMetaMocked.set(demo);
   }
 }
 
@@ -328,7 +333,9 @@ export async function loadAppGeneral(appId: string): Promise<void> {
   try {
     appGeneral.set(await invoke<AppGeneral | null>("settings_app_general", { appId }));
   } catch {
-    appGeneral.set(appId === FIXTURE.appId ? structuredClone(GENERAL_FIXTURE) : null);
+    // No mocked flag on this one, so the fixture would be unlabelled if it ever
+    // reached a real session. It cannot now.
+    appGeneral.set(import.meta.env.DEV && appId === FIXTURE.appId ? structuredClone(GENERAL_FIXTURE) : null);
   }
 }
 

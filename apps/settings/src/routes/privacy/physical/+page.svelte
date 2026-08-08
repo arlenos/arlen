@@ -17,6 +17,7 @@
   import {
     sentinel,
     sentinelMocked,
+    sentinelUnavailable,
     loadSentinel,
     setDetector,
     setAlerts,
@@ -98,6 +99,8 @@
   <SectionGrid>
     {#if $sentinelMocked}
       <p class="sample span-full">{$t("s.sent.sample")}</p>
+    {:else if $sentinelUnavailable}
+      <p class="sample span-full">{$t("s.sent.unavailable")}</p>
     {/if}
 
     {#if $sentinel}
