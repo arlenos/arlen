@@ -10,7 +10,7 @@
   import FocusView from "$lib/components/FocusView.svelte";
   import StopwatchView from "$lib/components/StopwatchView.svelte";
   import WorldView from "$lib/components/WorldView.svelte";
-  import { clockMocked } from "$lib/stores/clock";
+  import { clockMocked, clockUnavailable } from "$lib/stores/clock";
   import { requestAdd } from "$lib/stores/ui";
   import { t, dir } from "$lib/i18n/messages";
 
@@ -84,6 +84,8 @@
 
   {#if $clockMocked}
     <p class="sample">{$t("c.sample")}</p>
+  {:else if $clockUnavailable}
+    <p class="sample">{$t("c.unavailable")}</p>
   {/if}
 
   <main class="body">
