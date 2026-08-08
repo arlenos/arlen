@@ -14,6 +14,7 @@
   import { Check, ImagePlus } from "lucide-svelte";
   import {
     wallpapers,
+    wallpapersUnavailable,
     currentId,
     scale,
     listWallpapers,
@@ -37,6 +38,11 @@
 <Page title={$t("s.wallpaper.title")} description={$t("s.wallpaper.desc")}>
   <SectionGrid>
     <Section label={$t("s.wallpaper.choose")}>
+      {#if $wallpapersUnavailable}
+        <!-- Empty here would read as "no wallpapers installed", which is never
+             true and is not what happened. -->
+        <p class="wp-note">{$t("s.wallpaper.unavailable")}</p>
+      {/if}
       <div class="wp-inset">
         <div class="wp-grid">
           {#each $wallpapers as w (w.id)}
