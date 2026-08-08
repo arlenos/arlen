@@ -18,6 +18,7 @@
     sentinel,
     sentinelMocked,
     sentinelUnavailable,
+    sentinelChangeFailed,
     loadSentinel,
     setDetector,
     setAlerts,
@@ -101,6 +102,11 @@
       <p class="sample span-full">{$t("s.sent.sample")}</p>
     {:else if $sentinelUnavailable}
       <p class="sample span-full">{$t("s.sent.unavailable")}</p>
+    {/if}
+    <!-- A switch that did not reach the service is back where it was; saying so
+         is the difference between "you turned this off" and "this is off". -->
+    {#if $sentinelChangeFailed}
+      <p class="sample span-full" role="alert">{$t("s.sent.changeFailed")}</p>
     {/if}
 
     {#if $sentinel}

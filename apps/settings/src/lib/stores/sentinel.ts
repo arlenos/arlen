@@ -4,7 +4,7 @@
 /// (`sentinel_get_state`, `sentinel_set_detector`, `sentinel_set_alerts`,
 /// `sentinel_set_sensitivity`); under vite a fixture stands in so every card
 /// state renders and drives.
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 
 /// The detectors the surface configures (mic/cam is status-only, owned by the
@@ -69,6 +69,11 @@ export const sentinelMocked = writable(false);
 /// does not know.
 export const sentinelUnavailable = writable(false);
 
+/// True when the last change to a detector did not reach the service, so the
+/// switch went back. A protection page that shows a detector as on when it is
+/// off is worse than one that shows nothing: somebody stops looking.
+export const sentinelChangeFailed = writable(false);
+
 /// Load the state. Live: `sentinel_get_state`; fixture under vite.
 export async function loadSentinel(): Promise<void> {
   try {
@@ -112,32 +117,44 @@ function update(id: DetectorId, patch: Partial<DetectorState>): void {
 /// Turn a detector on or off. The always-on pair's OFF path goes through the
 /// acknowledge dialog in the page before this is called.
 export async function setDetector(id: DetectorId, on: boolean): Promise<void> {
+  const before = get(sentinel)?.detectors[id]?.on;
   update(id, { on });
+  sentinelChangeFailed.set(false);
   try {
     await invoke("sentinel_set_detector", { id, on });
   } catch {
-    // Seam unwired: the local view stands.
+    if (import.meta.env.DEV) return; // seam unwired under vite
+    if (before !== undefined) update(id, { on: before });
+    sentinelChangeFailed.set(true);
   }
 }
 
 /// Switch a detector between staying quiet and notifying.
 export async function setAlerts(id: DetectorId, alerts: AlertMode): Promise<void> {
+  const before = get(sentinel)?.detectors[id]?.alerts;
   update(id, { alerts });
+  sentinelChangeFailed.set(false);
   try {
     await invoke("sentinel_set_alerts", { id, mode: alerts });
   } catch {
-    // Seam unwired.
+    if (import.meta.env.DEV) return; // seam unwired under vite
+    if (before !== undefined) update(id, { alerts: before });
+    sentinelChangeFailed.set(true);
   }
 }
 
 /// Set a watcher's sensitivity (proximity for the recording indicator, the
 /// strictness bar for the tracker).
 export async function setSensitivity(id: DetectorId, level: string): Promise<void> {
+  const before = get(sentinel)?.detectors[id]?.sensitivity;
   update(id, { sensitivity: level });
+  sentinelChangeFailed.set(false);
   try {
     await invoke("sentinel_set_sensitivity", { id, level });
   } catch {
-    // Seam unwired.
+    if (import.meta.env.DEV) return; // seam unwired under vite
+    if (before !== undefined) update(id, { sensitivity: before });
+    sentinelChangeFailed.set(true);
   }
 }
 
