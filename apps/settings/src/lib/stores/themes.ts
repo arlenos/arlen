@@ -27,6 +27,13 @@ export const themes = writable<ThemeInfo[]>([]);
 export const activeThemeId = writable<string>("arlen-dark");
 export const themesLoaded = writable(false);
 
+/// True when the theme list could not be read in a real session.
+///
+/// The fixture below names five specific themes. Showing them when the read
+/// failed says "these are installed" about a machine we could not ask, and the
+/// cards are clickable - so the user picks a theme that may not exist.
+export const themesError = writable(false);
+
 /// The active theme's full record (for the Appearance page's summary row).
 export const activeTheme = derived([themes, activeThemeId], ([$themes, $id]) =>
   $themes.find((t) => t.id === $id) ?? $themes[0] ?? null,
@@ -52,7 +59,15 @@ export async function loadThemes(): Promise<void> {
     themes.set(list.map((t) => ({ id: t.id, name: t.name, isBuiltin: t.is_builtin, swatch: t.swatch })));
     activeThemeId.set(await invoke<string>("get_active_theme_id"));
   } catch {
-    themes.set(FIXTURE);
+    if (import.meta.env.DEV) {
+      // The no-Tauri dev fallback this function's doc describes. It used to run
+      // in a real session too, which is not what the sentence says.
+      themes.set(FIXTURE);
+      themesError.set(false);
+    } else {
+      themes.set([]);
+      themesError.set(true);
+    }
   } finally {
     themesLoaded.set(true);
   }

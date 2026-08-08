@@ -34,6 +34,7 @@
   import OverrideRow from "$lib/components/appearance/OverrideRow.svelte";
   import {
     themes,
+    themesError,
     activeThemeId,
     loadThemes,
     setActiveTheme,
@@ -87,6 +88,12 @@
 >
   <SectionGrid>
     <div class="theme-label span-full">{$t("s.appr.theme")}</div>
+    {#if $themesError}
+      <!-- No cards rather than five named themes we could not confirm are
+           installed: the cards are clickable, so an invented one is a theme the
+           user picks and does not get. -->
+      <p class="note span-full">{$t("s.appr.themesUnavailable")}</p>
+    {/if}
     <div class="grid span-full">
       {#each $themes as theme (theme.id)}
         {@const active = theme.id === $activeThemeId}
