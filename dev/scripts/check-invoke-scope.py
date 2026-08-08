@@ -37,6 +37,14 @@ SKIP_PARTS = {"target", "node_modules", ".git", "build", ".svelte-kit"}
 
 COMMAND = re.compile(r"#\[tauri::command[^\]]*\]\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)")
 INVOKE = re.compile(r'invoke(?:<[^>]*>)?\(\s*"([a-z_][a-z0-9_]*)"')
+# A call made through a local helper - `send(cmd, args)` wrapping `invoke(cmd,
+# args)` - carries no literal for the pattern above to find, so it is invisible
+# here exactly as it was in `check-invoke-shape`, where the clock's fifteen
+# actions were being counted past. This check asks a different question of the
+# same calls (whose binary defines them), so the blind spot means a wrapped call
+# into ANOTHER app's command would not be reported at all. Named in the summary
+# rather than resolved: following a wrapper can be confidently wrong.
+WRAPPED = re.compile(r'\binvoke\s*(?:<[^>]*>)?\s*\(\s*[A-Za-z_$]')
 
 
 def app_of(path: pathlib.Path) -> str | None:
@@ -112,6 +120,27 @@ def main() -> int:
                 f"A command lives in one app's binary, so this call is rejected at "
                 f"runtime - move it into {app}, or into a shared plugin every app loads"
             )
+
+    # SKIP_PARTS, the same filter the rest of this file uses: a first cut walked
+    # the tree raw and reported build output and .svelte-kit chunks, which are
+    # copies of the sources already listed. A gate that names generated files is
+    # asking someone to go read a file they must not edit.
+    wrapped_files = sorted(
+        str(f.relative_to(ROOT))
+        for f in ROOT.rglob("*")
+        if f.suffix in (".ts", ".svelte", ".js")
+        and not (SKIP_PARTS & set(f.parts))
+        and app_of(f) is not None
+        and f.is_file()
+        and WRAPPED.search(f.read_text(encoding="utf-8", errors="replace"))
+    )
+    if wrapped_files:
+        print(
+            f"{len(wrapped_files)} file(s) route some calls through a local wrapper, "
+            "so their command names are not visible here:\n"
+            + "\n".join(f"  - {f}" for f in wrapped_files)
+            + "\n  A wrapped call into another app's command would not be reported.\n"
+        )
 
     if backendless:
         print("apps with no Tauri backend at all, whose every invoke is a call into nothing:\n")
