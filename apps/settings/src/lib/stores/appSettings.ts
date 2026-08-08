@@ -4,7 +4,8 @@
 /// escape hatch, and dynamic option resolution. All four commands are LIVE in
 /// src-tauri (PAS-0..7); under vite the fixture stands in - a demo schema that
 /// exercises every declared type so the renderer is fully visible.
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
+import { t } from "$lib/i18n/messages";
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettingsPage,
@@ -186,7 +187,16 @@ export async function writeKey(key: string, value: unknown): Promise<void> {
       writeErrors.update((e) => ({ ...e, [answer.refusedKey || key]: answer.message }));
     }
   } catch {
-    // Broker unwired under vite: the optimistic write stands on the fixture.
+    if (import.meta.env.DEV) return; // broker unwired under vite
+    // The write did not happen, so the row must not keep showing the new value.
+    // A settings surface that displays what you typed while the file still says
+    // the old thing is the same lie as a fixture, and it survives a reboot: the
+    // next read snaps back and the change looks like it undid itself.
+    applyLocal(key, before, false);
+    // The message is read straight into the row, so it has to be a sentence
+    // from the catalogue rather than an exception. `get(t)` because a store is
+    // not a component; the row re-renders when the write does.
+    writeErrors.update((e) => ({ ...e, [key]: get(t)("s.apps.writeUnreachable") }));
   }
 }
 
