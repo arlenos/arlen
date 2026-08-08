@@ -182,12 +182,19 @@ pub async fn recent_rows(
     signer_socket: &Path,
     audit: &dyn AuditChains,
     limit: u32,
-) -> Vec<UndoRow> {
+) -> Result<Vec<UndoRow>, String> {
     let recent = match crate::undo_signer::fetch_recent(signer_socket, limit).await {
         Ok(entries) => entries,
         Err(e) => {
-            tracing::warn!(error = %e, "undo signer unreadable; recent actions empty");
-            return Vec::new();
+            // An unreadable signer is an ERROR, not an empty history. This
+            // returned `Vec::new()` until 8 Aug, which told a surface that nothing
+            // had happened when what had happened was that the log could not be
+            // read - the same substitution of a false statement for a refusal that
+            // `check-refusal-shape` now gates on the D-Bus side. The signer being
+            // down is exactly when a user most wants to be told something is
+            // wrong, because it is the state in which their undo is unavailable.
+            tracing::warn!(error = %e, "undo signer unreadable");
+            return Err(format!("the undo log could not be read: {e}"));
         }
     };
     // Distinct chains only. Several receipts can share one correlation id (a run
@@ -201,7 +208,7 @@ pub async fn recent_rows(
     for id in chains {
         views.extend(audit.chain(id).await);
     }
-    join_rows(&recent, &views)
+    Ok(join_rows(&recent, &views))
 }
 
 #[cfg(test)]
@@ -310,7 +317,7 @@ mod tests {
             answer: Vec::new(),
         };
 
-        let rows = recent_rows(&socket, &audit, 20).await;
+        let rows = recent_rows(&socket, &audit, 20).await.expect("the fake signer answers");
         assert_eq!(rows.len(), 2, "both actions stay offerable");
         assert!(rows.iter().all(|r| r.description.is_none()), "undescribed");
         assert_eq!(rows[0].object, "/home/u/b.txt", "the object still names itself");
@@ -338,7 +345,7 @@ mod tests {
             answer: vec![view(1, "run-1", "files", "fs.relocate", 10)],
         };
 
-        let rows = recent_rows(&socket, &audit, 20).await;
+        let rows = recent_rows(&socket, &audit, 20).await.expect("the fake signer answers");
         assert_eq!(rows.len(), 3, "every receipt is still its own row");
         let mut asked = asked.lock().unwrap().clone();
         asked.sort();
@@ -349,15 +356,28 @@ mod tests {
         assert!(rows[2].description.is_none(), "run-2 has no readable entry");
     }
 
+    /// An unreachable signer is an error, and specifically NOT an empty list.
+    ///
+    /// This test used to assert the opposite - "no rows rather than invented
+    /// ones" - and the fear it was written against is real: a reader that cannot
+    /// reach the log must never make rows up. But the empty list is not the only
+    /// alternative to fabrication, and it is a claim of its own: it says nothing
+    /// has happened, at the exact moment the user's undo is unavailable. An error
+    /// invents nothing either, and the panel renders it as "this is a fixture"
+    /// rather than as an empty history.
     #[tokio::test]
-    async fn an_unreachable_signer_yields_no_rows_rather_than_invented_ones() {
+    async fn an_unreachable_signer_is_an_error_not_an_empty_history() {
         let dir = tempfile::tempdir().unwrap();
         let audit = FakeChains {
             asked: Arc::new(Mutex::new(Vec::new())),
             answer: Vec::new(),
         };
-        let rows = recent_rows(&dir.path().join("absent.sock"), &audit, 20).await;
-        assert!(rows.is_empty(), "no signer means nothing to undo, not a fabricated list");
+        let result = recent_rows(&dir.path().join("absent.sock"), &audit, 20).await;
+        let err = result.expect_err("an unreadable log must not read as an empty one");
+        assert!(
+            err.contains("could not be read"),
+            "the message must say the log was unreadable, got {err:?}"
+        );
     }
 
     #[test]

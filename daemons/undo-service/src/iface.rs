@@ -100,7 +100,11 @@ impl UndoInterface {
             &undo_history::LedgerChains::at_default_socket(),
             RECENT_LIMIT,
         )
-        .await;
+        .await
+        // An unreadable signer is a failure, not an empty history: the panel shows
+        // its fixture and says so, rather than telling a user they have done
+        // nothing at the exact moment their undo is unavailable.
+        .map_err(zbus::fdo::Error::Failed)?;
         Ok(serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string()))
     }
 
