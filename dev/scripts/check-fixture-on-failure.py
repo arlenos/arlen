@@ -25,9 +25,9 @@ They were not cosmetic:
   * the grants list said an app had no access it could not read
   * the theme grid named five themes as installed
 
-What this looks for: inside a `catch` block, a store `.set(...)` from a
-fixture-named constant (FIXTURE, MOCK, DEMO, SAMPLE), or a literal carrying
-`mocked: true`. Both are the app stating something about the machine that it did
+What this looks for: inside a `catch` block, a store write (`.set` or `.update`)
+in the same breath as a fixture-named constant (FIXTURE, MOCK, DEMO, SAMPLE), or
+a literal carrying `mocked: true`. Both are the app stating something about the machine that it did
 not learn from the machine.
 
 What it does NOT cover, and the omission is deliberate rather than an oversight:
@@ -51,7 +51,7 @@ not that every failure in the frontend is reported honestly.
 Shown to fail before being trusted: run against `1d761f5b7~1` it names
 sourcePicker, jobs and themes, which is what it was written from.
 
-It fails today, on 18 stores. That is the point of committing it - the four
+It fails today, on 12 stores. That is the point of committing it - the four
 found by reading were a sample and not the set, and a list in the repo is worth
 more than the same evening repeated four more times. It goes into CI when the
 list is empty; until then it is the queue, in severity order: a printer or a
@@ -66,7 +66,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 CATCH = re.compile(r"\}\s*catch\b[^{]*\{", re.S)
-FIXTURE_SET = re.compile(r"\.set\(\s*[^)]*\b(FIXTURE\w*|MOCK\w*|DEMO\w*|SAMPLE\w*)\b")
+# `.update(s => ({...s, discovered: FIXTURE.discovered}))` is the same act as
+# `.set(FIXTURE)` and the first version of this check only knew the second, so
+# it walked past a rescan that served invented printers on every real run.
+STORE_WRITE = re.compile(r"\.(set|update)\(")
+FIXTURE_NAME = re.compile(r"\b(FIXTURE\w*|\w*_FIXTURE|MOCK\w*|DEMO\w*|SAMPLE\w*)\b")
 MOCKED_FLAG = re.compile(r"mocked:\s*true")
 # Either guard counts as the author having separated the two sessions. Whether
 # they got the branches the right way round is not something a regex settles;
@@ -111,7 +115,10 @@ def main() -> int:
             catches += 1
             if DEV_GUARD.search(body):
                 continue  # the dev-only fallback this is asking for
-            hit = FIXTURE_SET.search(body) or MOCKED_FLAG.search(body)
+            hit = None
+            if STORE_WRITE.search(body):
+                hit = FIXTURE_NAME.search(body)
+            hit = hit or MOCKED_FLAG.search(body)
             if not hit:
                 continue
             rel = path.relative_to(ROOT)
