@@ -26,9 +26,14 @@ They were not cosmetic:
   * the theme grid named five themes as installed
 
 What this looks for: inside a `catch` block, a store write (`.set` or `.update`)
-in the same breath as a fixture-named constant (FIXTURE, MOCK, DEMO, SAMPLE), or
-a literal carrying `mocked: true`. Both are the app stating something about the machine that it did
-not learn from the machine.
+OR a `return`, in the same breath as a fixture-named constant (FIXTURE, MOCK,
+DEMO, SAMPLE), or a literal carrying `mocked: true`. All of them are the app
+stating something about the machine that it did not learn from the machine.
+
+The `return` half was added on 9 August, after the knowledge app's provenance
+read turned out to be exactly this shape and invisible: a plain function whose
+catch returned a five-hop lineage under the user's real filename, with no store
+write anywhere for the check to find.
 
 What it does NOT cover, and the omission is deliberate rather than an oversight:
 
@@ -88,6 +93,12 @@ CATCH = re.compile(r"\}\s*catch\b[^{]*\{", re.S)
 # `.set(FIXTURE)` and the first version of this check only knew the second, so
 # it walked past a rescan that served invented printers on every real run.
 STORE_WRITE = re.compile(r"\.(set|update)\(")
+# A catch that RETURNS the fixture instead of writing a store is the same act by
+# a different route, and the check walked past every one of them until the
+# knowledge app's provenance read turned out to be one: `provenanceFor` answered
+# a failed read with a five-hop lineage it had made up, under the user's real
+# filename. Nothing was `.set` anywhere, so nothing was reported.
+RETURNS = re.compile(r"\breturn\b")
 # Case matters and this got it wrong twice. The first version knew only
 # `.set(FIXTURE)`; widening to `.update` found two more. This version knew only
 # SHOUTING constants, and the knowledge timeline calls a lowercase `fixture()`
@@ -172,7 +183,7 @@ def main() -> int:
             if DEV_GUARD.search(body):
                 continue  # the dev-only fallback this is asking for
             hit = None
-            if STORE_WRITE.search(body):
+            if STORE_WRITE.search(body) or RETURNS.search(body):
                 hit = FIXTURE_NAME.search(body)
             hit = hit or MOCKED_FLAG.search(body)
             if not hit:
