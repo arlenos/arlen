@@ -359,10 +359,16 @@ export async function loadAppGeneral(appId: string): Promise<void> {
 /// Clear the app's cache. Idempotent: clearing an already-empty cache is a
 /// no-op, so the button never needs a confirm.
 export async function clearAppCache(appId: string): Promise<void> {
+  const before = get(appGeneral)?.cacheBytes;
   appGeneral.update((g) => (g ? { ...g, cacheBytes: 0 } : g));
   try {
     await invoke("settings_app_clear_cache", { appId });
   } catch {
-    // Seam unwired: the local zero stands for the session.
+    if (import.meta.env.DEV) return; // seam unwired under vite
+    // A zero here says the disk was freed. It was not, and somebody chasing
+    // space would move on to the next app believing this one is clean.
+    if (before !== undefined) {
+      appGeneral.update((g) => (g ? { ...g, cacheBytes: before } : g));
+    }
   }
 }

@@ -83,16 +83,23 @@ KNOWN: dict[str, str] = {
         "work; named rather than skipped because the shape is identical"
     ),
     "apps/settings/src/lib/stores/appSettings.ts": (
-        "clearAppCache, which reports a cache cleared that was not"
+        "resolveOptions, whose fixture is DEV-gated and whose catch is not empty - "
+        "matched by the proximity window rather than by being wrong"
     ),
     "apps/settings/src/lib/stores/themes.ts": (
         "installThemeFile, where a cancelled file picker and a failed install "
         "arrive as the same exception - telling them apart needs an error shape "
         "the command does not return yet"
     ),
-    "apps/desktop-shell/src/lib/stores/waypointerAsk.ts": "escalate",
-    "apps/knowledge/src/lib/stores/search.ts": "saving a search",
-    "apps/text-editor/src/lib/stores/lens.ts": "openRelated, which navigates rather than mutates",
+    "apps/desktop-shell/src/lib/stores/waypointerAsk.ts": (
+        "escalate mutates nothing: the store write this check sees belongs to the "
+        "streaming function above it, inside the 500-character window. A failed "
+        "Ctrl+J opens no window and claims nothing, which is quiet but not untrue"
+    ),
+    "apps/text-editor/src/lib/stores/lens.ts": (
+        "openRelated navigates rather than mutates - a failed open leaves the "
+        "editor where it was, which is what happened"
+    ),
 }
 
 
