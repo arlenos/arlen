@@ -45,6 +45,10 @@ export const searchContent = writable(false);
 export const searchResults = writable<SearchHit[] | null>(null);
 export const searchTruncated = writable(false);
 
+/// True when the last search could not run at all, so the empty result list is
+/// not an answer about this folder.
+export const searchFailed = writable(false);
+
 /// Result ordering, client-side over the hits (the backend walk has
 /// no order contract). "folder" sorts by the hit's containing path.
 export type SearchSortKey = "name" | "folder" | "modified";
@@ -142,9 +146,14 @@ export async function runSearch(path: string): Promise<void> {
     const now = Date.now() / 1000;
     searchResults.set(outcome.hits.filter((h) => passesFacets(h, now)));
     searchTruncated.set(outcome.truncated);
+    searchFailed.set(false);
   } catch {
+    // Not `[]`. An empty result list renders as "Nothing matches", and someone
+    // who searched for a file they own and read that will conclude it is gone -
+    // the one answer this surface must not give when the search did not run.
     searchResults.set([]);
     searchTruncated.set(false);
+    searchFailed.set(true);
   }
 }
 

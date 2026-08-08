@@ -10,6 +10,7 @@
   import { t } from "$lib/i18n/messages";
   import {
     duplicateGroups,
+    duplicatesFailed,
     duplicatesScanning,
     duplicatesScope,
     trashMarks,
@@ -49,6 +50,11 @@
       <Loader2 class="spin" size={20} strokeWidth={2} />
       <span class="dup-state-title">{$t("f.dup.scanning", { scope: shortScope })}</span>
       <span class="dup-state-hint">{$t("f.dup.scanningHint")}</span>
+    </div>
+  {:else if groups === null && $duplicatesFailed}
+    <div class="dup-state">
+      <span class="dup-state-title">{$t("f.dup.failed")}</span>
+      <span class="dup-state-hint">{$t("f.dup.failedHint", { scope: shortScope })}</span>
     </div>
   {:else if groups === null}
     <div class="dup-state">
