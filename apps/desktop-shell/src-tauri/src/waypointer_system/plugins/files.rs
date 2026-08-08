@@ -176,6 +176,13 @@ impl WaypointerPlugin for FilesPlugin {
         }
 
         std::process::Command::new("xdg-open")
+            // `--` first: a file name may legally begin with a dash, and
+            // xdg-open parses a leading-dash argument as its own option.
+            // Measured: `xdg-open -zzz` answers "error: unexpected argument
+            // '-z' found / tip: to pass '-z' as a value, use '-- -z'", so a
+            // file called `-report.pdf` never opens. Unlike nmcli, which does
+            // not honour `--` at all, this tool documents it in its own error.
+            .arg("--")
             .arg(path)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
