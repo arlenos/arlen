@@ -300,6 +300,12 @@
           <p class="note">
             {$t("s.priv.shareNote")}
           </p>
+        {:else if $capsulesUnavailable}
+          <!-- The unreachable branch bug, found by looking: the note above lives
+               inside `{#if $capsules.length > 0}`, and the failure it describes
+               is exactly what empties that list. So the only branch a failed read
+               can reach is this one, and it used to say you had shared nothing. -->
+          <p class="note">{$t("s.priv.sharesUnavailable")}</p>
         {:else}
           <p class="note">{$t("s.priv.noShares")}</p>
         {/if}

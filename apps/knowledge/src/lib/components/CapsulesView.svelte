@@ -83,7 +83,9 @@
     <section class="ca-block">
       <h2 class="ca-block-head">{$t("k.ca.active")}</h2>
       {#if $capsules && $capsules.length === 0}
-        <p class="ca-empty">{$t("k.empty.capsules")}</p>
+        <!-- The header badge above says the list could not be read; this line is
+             where a reader actually looks, so it carries the distinction too. -->
+        <p class="ca-empty">{$capsulesUnavailable ? $t("k.capsules.unavailable") : $t("k.empty.capsules")}</p>
       {:else if $capsules}
         <div class="ca-list">
           {#each $capsules as c (c.id)}
