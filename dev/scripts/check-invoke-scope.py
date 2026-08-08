@@ -47,6 +47,28 @@ INVOKE = re.compile(r'invoke(?:<[^>]*>)?\(\s*"([a-z_][a-z0-9_]*)"')
 WRAPPED = re.compile(r'\binvoke\s*(?:<[^>]*>)?\s*\(\s*[A-Za-z_$]')
 
 
+
+# A call into another app's command that somebody has looked at and decided to
+# leave, with the reason. Empty is the goal. The entry is keyed `app::command`,
+# and it exists so this gate can be wired into CI without either lying about the
+# two known cases or blocking on a decision it cannot make: a third one fails
+# the build, these two stay named.
+ACKNOWLEDGED: dict[str, str] = {
+    "harness::register_menu": (
+        "The harness is arlen-ui's in-flight work, so not ours to move. Named "
+        "rather than skipped, because the call is still rejected at runtime."
+    ),
+    "settings::topbar_items": (
+        "The top bar lives in the desktop shell's binary and Settings wants to "
+        "list its items. Moving the command into Settings would mean Settings "
+        "owning the top bar, and a shared plugin would put a shell-owned surface "
+        "in every app - so the answer is neither of this gate's two suggestions "
+        "but a cross-binary read, which is a mechanism nobody has chosen yet. "
+        "The same is true of the `qs_layout_*` writers and `register_menu`: they "
+        "are one decision, not three, and it is not one to invent at 04:30."
+    ),
+}
+
 def app_of(path: pathlib.Path) -> str | None:
     """The app a file belongs to, or `None` for anything outside `apps/`."""
     parts = path.relative_to(ROOT).parts
@@ -96,6 +118,7 @@ def main() -> int:
         return 2
 
     problems = []
+    acknowledged = []
     backendless: dict[str, list[str]] = {}
     for app in sorted(invokes):
         own = defines.get(app, set())
@@ -114,6 +137,9 @@ def main() -> int:
                 # the ones no app defines, which land in check-invoke-shape's
                 # DEAD_INVOKES instead and so look like a different problem.
                 backendless.setdefault(app, []).append(cmd)
+                continue
+            if f"{app}::{cmd}" in ACKNOWLEDGED:
+                acknowledged.append(f"{app} invokes `{cmd}`: {ACKNOWLEDGED[f'{app}::{cmd}']}")
                 continue
             problems.append(
                 f"{app} invokes `{cmd}`, which only {', '.join(elsewhere)} define(s). "
@@ -153,6 +179,12 @@ def main() -> int:
             "    someone who knows which can say. Named rather than folded in.\n"
         )
 
+    if acknowledged:
+        print("cross-app calls left in place, with a reason:\n")
+        for a in acknowledged:
+            print(f"  - {a}")
+        print()
+
     if problems:
         print("calls into another app's command:\n")
         for p in problems:
@@ -160,9 +192,17 @@ def main() -> int:
         return 1
 
     total = sum(len(v) for v in invokes.values())
+    # Not "every call resolves in its own app" while `acknowledged` is non-empty:
+    # two of them do not, and a summary line that forgets what it just printed is
+    # the same defect as a gate that reports and returns success.
+    verdict = (
+        "every call resolves in its own app"
+        if not acknowledged
+        else f"{len(acknowledged)} cross-app call(s) left in place with a reason, no new ones"
+    )
     print(
         f"{len(invokes)} app(s), {total} distinct invoke(s), "
-        f"{len(shared)} shared plugin command(s): every call resolves in its own app"
+        f"{len(shared)} shared plugin command(s): {verdict}"
     )
     return 0
 
