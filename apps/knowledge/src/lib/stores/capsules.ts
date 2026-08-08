@@ -30,6 +30,9 @@ export interface Capsule {
 
 /// True while the list is the FIXTURE, not the broker.
 export const capsulesMocked = writable(false);
+
+/// True when a real session could not read the capsule list at all.
+export const capsulesUnavailable = writable(false);
 /// The capsules, or null before the read settles.
 export const capsules = writable<Capsule[] | null>(null);
 
@@ -104,8 +107,18 @@ export async function loadCapsules(): Promise<void> {
     capsules.set(live);
     capsulesMocked.set(false);
   } catch {
-    capsules.set(FIXTURE_CAPSULES.map((c) => ({ ...c })));
-    capsulesMocked.set(true);
+    if (import.meta.env.DEV) {
+      capsules.set(FIXTURE_CAPSULES.map((c) => ({ ...c })));
+      capsulesMocked.set(true);
+      capsulesUnavailable.set(false);
+    } else {
+      // Each row carries a Revoke. On a failed read that button revokes a share
+      // that does not exist, while the shares that do exist - and are still
+      // readable by whoever holds them - are not on screen at all.
+      capsules.set([]);
+      capsulesMocked.set(false);
+      capsulesUnavailable.set(true);
+    }
   }
 }
 
