@@ -6,6 +6,7 @@
   import {
     proposal,
     mocked,
+    unavailable,
     lastError,
     acceptHunk,
     rejectHunk,
@@ -42,6 +43,8 @@
       <!-- A named principal, a scope and concrete hunks against the open file:
            unlabelled this reads as a real pending edit to accept. -->
       <p class="sample">{$t("te.review.sample")}</p>
+    {:else if $unavailable}
+      <p class="sample">{$t("te.review.unavailable")}</p>
     {/if}
     {#if $lastError}
       <!-- A refused action already restored the hunk's status; this says why, so
