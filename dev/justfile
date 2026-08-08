@@ -735,6 +735,7 @@ check-grants:
 # that way on 7 August.
 check-graph:
     python3 "{{ROOT}}/dev/scripts/check-graph-columns.py"
+    python3 "{{ROOT}}/dev/scripts/check-webview-sandbox.py"
 
 check-smoke:
     python3 "{{ROOT}}/dev/scripts/check-smoke-coverage.py"
