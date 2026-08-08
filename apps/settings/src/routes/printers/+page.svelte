@@ -151,7 +151,7 @@
 
     <Section label={$t("s.pr.printers")}>
       {#if $printers.printers.length === 0}
-        <p class="empty">{$t("s.pr.none")}</p>
+        <p class="empty">{$printers.unavailable ? $t("s.pr.noneUnknown") : $t("s.pr.none")}</p>
       {:else}
         <Row label={$t("s.pr.defaultPrinter")} description={$t("s.pr.defaultPrinterDesc")}>
           {#snippet control()}
@@ -172,7 +172,7 @@
 
     <Section label={$t("s.pr.queue")}>
       {#if $printers.queue.length === 0}
-        <p class="empty">{$t("s.pr.queueEmpty")}</p>
+        <p class="empty">{$printers.unavailable ? $t("s.pr.queueUnknown") : $t("s.pr.queueEmpty")}</p>
       {:else}
         {#each $printers.queue as job (job.id)}
           {@render jobRow(job)}
@@ -190,7 +190,13 @@
       {#if $printers.discovered.length === 0}
         <!-- "found none" and "could not look" are the same empty list on screen
              and different facts about the network. -->
-        <p class="empty">{$printers.discoverFailed ? $t("s.pr.discoverFailed") : $t("s.pr.noneDiscovered")}</p>
+        <p class="empty">
+          {#if $printers.discoverFailed || $printers.unavailable}
+            {$t("s.pr.discoverFailed")}
+          {:else}
+            {$t("s.pr.noneDiscovered")}
+          {/if}
+        </p>
       {/if}
       <div class="foot">
         <Button variant="ghost" size="sm" onclick={discover}>
