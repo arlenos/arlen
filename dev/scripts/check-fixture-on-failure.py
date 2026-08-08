@@ -51,7 +51,7 @@ not that every failure in the frontend is reported honestly.
 Shown to fail before being trusted: run against `1d761f5b7~1` it names
 sourcePicker, jobs and themes, which is what it was written from.
 
-It fails today, on 12 stores. That is the point of committing it - the four
+It fails today, on 9 stores, with one acknowledged. That is the point of committing it - the four
 found by reading were a sample and not the set, and a list in the repo is worth
 more than the same evening repeated four more times. It goes into CI when the
 list is empty; until then it is the queue, in severity order: a printer or a
@@ -83,7 +83,20 @@ SKIP = ("/harness/", "/store/", "routes/ai/models")
 # A store that shows fixture content on a real failure for a reason someone
 # stands behind. Empty is the goal: the reason has to survive being read next to
 # the sentence the user ends up seeing.
-ACKNOWLEDGED: dict[str, str] = {}
+ACKNOWLEDGED: dict[str, str] = {
+    "apps/files/src/lib/stores/provenance.ts:99": (
+        "The caveat is rendered at the claim, not on a banner elsewhere: the halo "
+        "popover puts 'Sample history - not this file's real origin' directly above "
+        "the chain, and the store sets `mocked` on the chain object so it travels "
+        "with the data rather than with the page. `provenance_of` also has a real "
+        "backend, so this is a genuine failure path and not the always-path. That "
+        "caveat was built deliberately and verified rendering; replacing it with an "
+        "empty state is a design change, not a fix, so it is not one to make at "
+        "02:30 without the person who asked for it. Revisit if the halo ever gains "
+        "an action, or if a sample chain about a different file stops being an "
+        "acceptable answer to 'where is this from?'."
+    ),
+}
 
 
 def catch_bodies(text: str):
