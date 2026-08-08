@@ -167,6 +167,7 @@ const messages: Catalogs = {
     "sh.print.pageOf": "Page {$page} of {$total}",
     "sh.print.mocked": "Example printers - not the real ones on this machine.",
     "sh.print.unavailable": "Cannot read the printers on this machine right now.",
+    "sh.print.submitFailed": "The job was not sent, so nothing has been printed.",
     "sh.print.printer": "Printer",
     "sh.print.networkHost": "Network, {$host}",
     "sh.print.copies": "Copies",
@@ -285,6 +286,7 @@ const messages: Catalogs = {
 
     // Windows-app open dialog
     "sh.wf.open": "Open {$app}?",
+    "sh.wf.launchFailed": "That did not start, so nothing was run or installed.",
     "sh.wf.windowsApp": "Windows app",
     "sh.wf.tierVerified": "Verified",
     "sh.wf.tierShouldWork": "Should work",
@@ -620,6 +622,7 @@ const messages: Catalogs = {
     "sh.print.pageOf": "Seite {$page} von {$total}",
     "sh.print.mocked": "Beispieldrucker \u2013 nicht die tats\u00e4chlichen dieses Rechners.",
     "sh.print.unavailable": "Die Drucker dieses Rechners k\u00f6nnen gerade nicht gelesen werden.",
+    "sh.print.submitFailed": "Der Druckauftrag wurde nicht abgeschickt, es wurde nichts gedruckt.",
     "sh.share.unavailable": "Nichts bietet an, was geteilt werden kann, es gibt also nichts zu w\u00e4hlen.",
     "sh.share.failed": "Die Freigabe hat nicht begonnen, es wird nichts gesendet. Erneut versuchen oder ablehnen.",
     "sh.jobs.unavailable": "Nichts meldet Aufgaben, daher wird keine angezeigt.",
@@ -731,6 +734,7 @@ const messages: Catalogs = {
     "sh.job.reaches": "Erreicht {$host}",
 
     "sh.wf.open": "{$app} \u00f6ffnen?",
+    "sh.wf.launchFailed": "Das wurde nicht gestartet, es wurde nichts ausgeführt oder installiert.",
     "sh.wf.windowsApp": "Windows-App",
     "sh.wf.tierVerified": "Gepr\u00fcft",
     "sh.wf.tierShouldWork": "Sollte laufen",

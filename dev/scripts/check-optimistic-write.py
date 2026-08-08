@@ -90,10 +90,6 @@ KNOWN: dict[str, str] = {
         "arrive as the same exception - telling them apart needs an error shape "
         "the command does not return yet"
     ),
-    "apps/desktop-shell/src/lib/stores/printDialog.ts": (
-        "submitPrint and cancelPrint, whose commands are also missing"
-    ),
-    "apps/desktop-shell/src/lib/stores/windowsFile.ts": "run and install",
     "apps/desktop-shell/src/lib/stores/waypointerAsk.ts": "escalate",
     "apps/knowledge/src/lib/stores/search.ts": "saving a search",
     "apps/text-editor/src/lib/stores/lens.ts": "openRelated, which navigates rather than mutates",

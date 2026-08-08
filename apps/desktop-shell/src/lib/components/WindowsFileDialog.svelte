@@ -12,6 +12,7 @@
   import { Play, Download, ChevronRight } from "lucide-svelte";
   import {
     current,
+    launchFailed,
     run,
     install,
     cancel,
@@ -108,6 +109,11 @@
             <Button variant="outline" onclick={cancel}>{$t("sh.wf.cancel")}</Button>
           </div>
         {:else}
+          <!-- Run or Install did not reach the daemon: the dialog is still here
+               because nothing started. -->
+          {#if $launchFailed}
+            <p class="wf-status" role="alert">{$t("sh.wf.launchFailed")}</p>
+          {/if}
           <div class="wf-foot">
             <Button variant="outline" onclick={cancel}>{$t("sh.wf.cancel")}</Button>
             <span class="wf-spacer"></span>

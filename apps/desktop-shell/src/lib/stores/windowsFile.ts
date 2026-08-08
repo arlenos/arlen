@@ -72,6 +72,10 @@ const MOCK: PendingWindowsFile[] = [
 /// The Windows file waiting on a decision now, or null.
 export const current = writable<PendingWindowsFile | null>(null);
 
+/// True when the last Run or Install did not reach the bottle daemon. The dialog
+/// stays open: closing it is how it says "started", and nothing did.
+export const launchFailed = writable(false);
+
 let mockIndex = 0;
 // `?wfmock=<n>` (DEV only) pins which fixture renders, so the screenshot loop
 // can address every state by URL - the `?consentmock` pattern.
@@ -94,27 +98,43 @@ export async function openWindowsFile(): Promise<void> {
 
 /// Run the app as a one-off in an auto-bottle, then clear. Live: `windows_file_run`.
 export async function run(id: number): Promise<void> {
-  current.set(null);
+  launchFailed.set(false);
   try {
     await invoke("windows_file_run", { id });
   } catch {
-    // No bottle daemon under vite: the optimistic clear stands.
+    if (import.meta.env.DEV) {
+      current.set(null); // no bottle daemon under vite
+      return;
+    }
+    launchFailed.set(true);
+    return;
   }
+  current.set(null);
 }
 
 /// Install the app as a first-class app, then clear. Live: `windows_file_install`.
 export async function install(id: number): Promise<void> {
-  current.set(null);
+  launchFailed.set(false);
   try {
     await invoke("windows_file_install", { id });
   } catch {
-    // seam
+    if (import.meta.env.DEV) {
+      current.set(null);
+      return;
+    }
+    // An app the user believes is installed, and is not, is one they will look
+    // for in the launcher.
+    launchFailed.set(true);
+    return;
   }
+  current.set(null);
 }
 
 /// Decline the open and clear.
 export function cancel(): void {
+  // Declining needs no backend, so it always succeeds.
   current.set(null);
+  launchFailed.set(false);
 }
 
 /// Dev-only: step to the next fixture (the screenshot loop).
