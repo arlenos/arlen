@@ -899,28 +899,97 @@ pub async fn get_connection_details(ssid: String) -> Result<ConnectionDetails, S
     Ok(details)
 }
 
+/// A connection's settings as NetworkManager hands them over: setting name, then
+/// key, then a typed value.
+type NmSettings =
+    std::collections::HashMap<String, std::collections::HashMap<String, zbus::zvariant::OwnedValue>>;
+
+/// The wifi SSID a saved connection is for, as the bytes NetworkManager holds.
+///
+/// The stored form is a byte array, not a string, which is what the standard
+/// says an SSID is. Compared as bytes so a name that is not valid UTF-8 is
+/// matched or not matched honestly rather than through a lossy decode.
+fn connection_ssid(map: &NmSettings) -> Option<Vec<u8>> {
+    let v = map.get("802-11-wireless")?.get("ssid")?;
+    Vec::<u8>::try_from(v.clone()).ok()
+}
+
+/// The pre-shared key out of a `GetSecrets` reply, if there is one.
+fn psk_from_secrets(secrets: &NmSettings) -> Option<String> {
+    let v = secrets.get("802-11-wireless-security")?.get("psk")?;
+    let psk = String::try_from(v.clone()).ok()?;
+    (!psk.is_empty()).then_some(psk)
+}
+
 /// Get the saved PSK password for a known WiFi network.
+///
+/// **This used to return the wrong password.** It read
+/// `nmcli -s -t -f 802-11-wireless-security.psk connection show <ssid>`, and
+/// terse mode escapes both `:` and `\` with a backslash - `--escape` defaults to
+/// yes, per nmcli(1) - while the parse never unescaped. Both characters are legal
+/// in a WPA passphrase, so a key of `a:b` was copied to the clipboard as `a\:b`
+/// and the user pasted something that could not work. The D-Bus value is typed,
+/// so there is no escaping to undo and nothing to get wrong.
+///
+/// It also takes the secret off a subprocess pipe, which is the exposure
+/// [`connect_wifi_password`] notes below for the write direction.
+///
+/// **And it now matches the SSID rather than the connection's name.** The old
+/// argument went to a matcher that accepts an id, a uuid or an object path, so a
+/// scanned network - a string chosen by whoever is broadcasting nearby - could
+/// name a different saved connection and put THAT connection's key on the
+/// clipboard. [`saved_connection_names`] deliberately left the same
+/// id-versus-SSID gap alone as a behaviour change worth seeing on its own; for a
+/// secret it is not the same call, because the wrong match is the wrong secret.
+///
+/// A connection we cannot read is an error, never `Ok(None)`: "there is no saved
+/// password" and "we could not ask" are different answers and a caller that
+/// cannot tell them apart will state the first one.
 #[tauri::command]
 pub async fn get_saved_password(ssid: String) -> Result<Option<String>, String> {
-    let output = tokio::process::Command::new("nmcli")
-        .args(["-s", "-t", "-f", "802-11-wireless-security.psk", "connection", "show", &ssid])
-        .output()
+    let conn = zbus::Connection::system()
         .await
-        .map_err(|e| format!("nmcli: {e}"))?;
+        .map_err(|e| format!("system bus: {e}"))?;
+    let settings = zbus::Proxy::new(
+        &conn,
+        "org.freedesktop.NetworkManager",
+        "/org/freedesktop/NetworkManager/Settings",
+        "org.freedesktop.NetworkManager.Settings",
+    )
+    .await
+    .map_err(|e| format!("NetworkManager unavailable: {e}"))?;
+    let paths: Vec<zbus::zvariant::OwnedObjectPath> = settings
+        .call("ListConnections", &())
+        .await
+        .map_err(|e| format!("ListConnections: {e}"))?;
 
-    if !output.status.success() {
-        return Ok(None);
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        if let Some(val) = line.strip_prefix("802-11-wireless-security.psk:") {
-            let psk = val.trim().to_string();
-            if !psk.is_empty() {
-                return Ok(Some(psk));
-            }
+    for path in paths {
+        let Ok(proxy) = zbus::Proxy::new(
+            &conn,
+            "org.freedesktop.NetworkManager",
+            path,
+            "org.freedesktop.NetworkManager.Settings.Connection",
+        )
+        .await
+        else {
+            continue;
+        };
+        let Ok(map): Result<NmSettings, _> = proxy.call("GetSettings", &()).await else {
+            continue;
+        };
+        if connection_ssid(&map).as_deref() != Some(ssid.as_bytes()) {
+            continue;
         }
+        // Only now ask for the secret. GetSecrets is the call that can raise a
+        // polkit prompt, so it is made for the one connection that matched and
+        // not once per saved network while looking for it.
+        let secrets: NmSettings = proxy
+            .call("GetSecrets", &("802-11-wireless-security"))
+            .await
+            .map_err(|e| format!("GetSecrets: {e}"))?;
+        return Ok(psk_from_secrets(&secrets));
     }
+    // Nothing is saved for this SSID. That is an answer, not a failure.
     Ok(None)
 }
 
@@ -1246,6 +1315,82 @@ async fn run_network_monitor(app: tauri::AppHandle) -> Result<(), zbus::Error> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// One setting, one key, one value: the shape NetworkManager replies in.
+    fn setting(name: &str, key: &str, value: zbus::zvariant::Value<'static>) -> NmSettings {
+        let mut inner = std::collections::HashMap::new();
+        inner.insert(key.to_string(), value.try_into().unwrap());
+        let mut outer = std::collections::HashMap::new();
+        outer.insert(name.to_string(), inner);
+        outer
+    }
+
+    /// The characters the old terse-mode parse mangled. A key of `a:b` came back
+    /// as `a\:b` and went to the clipboard that way, so this is the regression
+    /// that fix exists for: the value arrives verbatim, escaping and all.
+    #[test]
+    fn a_key_containing_a_colon_or_a_backslash_survives_verbatim() {
+        for raw in ["a:b", "a\\b", "pa:ss\\word:", ":", "\\"] {
+            let secrets = setting(
+                "802-11-wireless-security",
+                "psk",
+                zbus::zvariant::Value::from(raw),
+            );
+            assert_eq!(psk_from_secrets(&secrets).as_deref(), Some(raw));
+        }
+    }
+
+    /// An empty key is not a key. NetworkManager returns the field present and
+    /// blank for a connection whose secret is not stored here (agent-owned, or on
+    /// a keyring), and copying "" to the clipboard would look like it worked.
+    #[test]
+    fn a_blank_key_is_no_key() {
+        let secrets = setting(
+            "802-11-wireless-security",
+            "psk",
+            zbus::zvariant::Value::from(""),
+        );
+        assert_eq!(psk_from_secrets(&secrets), None);
+        assert_eq!(psk_from_secrets(&NmSettings::new()), None);
+    }
+
+    /// The SSID is matched, not the connection's name. A network saved as "Home"
+    /// is still that SSID, and a connection NAMED like a nearby SSID is not it -
+    /// which is the whole reason this reads `802-11-wireless.ssid` instead of
+    /// handing a broadcast string to a matcher that also accepts names.
+    #[test]
+    fn the_ssid_is_the_bytes_not_the_connection_name() {
+        let mut map = setting(
+            "802-11-wireless",
+            "ssid",
+            zbus::zvariant::Value::from(b"Vodafone-1234".to_vec()),
+        );
+        map.insert(
+            "connection".to_string(),
+            [(
+                "id".to_string(),
+                zbus::zvariant::Value::from("Home").try_into().unwrap(),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert_eq!(connection_ssid(&map).as_deref(), Some(&b"Vodafone-1234"[..]));
+        assert_ne!(connection_ssid(&map).as_deref(), Some(&b"Home"[..]));
+    }
+
+    /// A wired or VPN connection has no wifi setting at all, so it is skipped
+    /// rather than mistaken for an SSID-less match.
+    #[test]
+    fn a_connection_with_no_wifi_setting_has_no_ssid() {
+        let map = setting(
+            "connection",
+            "id",
+            zbus::zvariant::Value::from("Wired connection 1"),
+        );
+        assert_eq!(connection_ssid(&map), None);
+    }
+
     use super::{ap_security, network_state_payload, NetworkStatus};
 
     /// The one case a live scan could confirm: `flags=1 wpa=0 rsn=392` is what
