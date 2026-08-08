@@ -17,6 +17,7 @@
     printers,
     defaultPrinter,
     printersMocked,
+    printersUnavailable,
     submitPrint,
     cancelPrint,
     hostOf,
@@ -127,6 +128,8 @@
           <div class="pd-controls">
             {#if $printersMocked}
               <p class="pd-note">{$t("sh.print.mocked")}</p>
+            {:else if $printersUnavailable}
+              <p class="pd-note">{$t("sh.print.unavailable")}</p>
             {/if}
 
             <div class="pd-field">

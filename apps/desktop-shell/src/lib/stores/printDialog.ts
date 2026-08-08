@@ -88,6 +88,13 @@ export const defaultPrinter = writable<string | null>(null);
 /// printers - so a demo dialog never passes as a live one.
 export const printersMocked = writable(false);
 
+/// True when a real session could not read the printer list at all.
+///
+/// Separate from `printersMocked`, because the two say different things: mocked
+/// means "these are examples", unavailable means "there is nothing here and that
+/// is not a statement about your printers".
+export const printersUnavailable = writable(false);
+
 async function loadPrinters(): Promise<void> {
   try {
     const [list, def] = await Promise.all([
@@ -98,9 +105,23 @@ async function loadPrinters(): Promise<void> {
     defaultPrinter.set(def);
     printersMocked.set(false);
   } catch {
-    printers.set(FIXTURE_PRINTERS);
-    defaultPrinter.set("Office HP");
-    printersMocked.set(true);
+    if (import.meta.env.DEV) {
+      // No backend under vite, so the fixture is what there is to design
+      // against, labelled by `printersMocked`.
+      printers.set(FIXTURE_PRINTERS);
+      defaultPrinter.set("Office HP");
+      printersMocked.set(true);
+      printersUnavailable.set(false);
+      return;
+    }
+    // A real session that could not enumerate printers. Offering "Office HP" as
+    // the default here is not a labelling problem the badge can fix: the Print
+    // button sends the job, and it has to go somewhere. No printers leaves the
+    // submit disabled, which is the honest end state.
+    printers.set([]);
+    defaultPrinter.set(null);
+    printersMocked.set(false);
+    printersUnavailable.set(true);
   }
 }
 
