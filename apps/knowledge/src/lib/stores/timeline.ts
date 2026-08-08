@@ -63,6 +63,9 @@ export const pendingMenuAction = writable<"export" | "deleteToday" | "deleteAll"
 /// True while the spine is the FIXTURE, so the surface says so and never
 /// passes invented activity as recorded history.
 export const timelineMocked = writable(false);
+
+/// True when a real session could not read the timeline at all.
+export const timelineUnavailable = writable(false);
 /// Recording paused. Live state comes with the pause command; the toggle is
 /// optimistic under vite.
 export const paused = writable(false);
@@ -220,9 +223,21 @@ export async function loadTimeline(): Promise<void> {
     const items = await invoke<TimelineItem[]>("knowledge_timeline", {});
     days.set(groupByDay(items));
     timelineMocked.set(false);
+    timelineUnavailable.set(false);
   } catch {
-    days.set(groupByDay(fixture()));
-    timelineMocked.set(true);
+    if (import.meta.env.DEV) {
+      days.set(groupByDay(fixture()));
+      timelineMocked.set(true);
+      timelineUnavailable.set(false);
+      return;
+    }
+    // This is the app's landing view, and the fixture is a week of dated
+    // activity attributed to this machine - "ran Terminal", "imported Zotero
+    // bridge", "edited Text editor", each with a time. A label above a week of
+    // invented history is not enough when the history is the whole page.
+    days.set([]);
+    timelineMocked.set(false);
+    timelineUnavailable.set(true);
   }
 }
 
