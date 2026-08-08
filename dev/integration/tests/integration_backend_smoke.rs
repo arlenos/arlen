@@ -454,6 +454,11 @@ async fn a_granted_first_party_relation_write_lands_a_live_edge() {
 #[ignore = "needs event-bus + knowledge binaries built and a FUSE-capable host"]
 async fn a_scoped_caller_may_read_its_granted_label() {
     let mut stack = EphemeralStack::new().expect("private runtime root");
+    // Unprivileged, or this asserts nothing: a FirstParty caller is
+    // `system_anchored` and skips the read-scope gate, so the query would be
+    // admitted whether or not the profile below was ever seeded. It passed that
+    // way until 8 Aug - a green test measuring the wrong mechanism.
+    stack.as_unprivileged();
     // Seed the read grant before the daemon loads it for our connection.
     stack
         .seed_read_profile(&["system.File.id", "system.File.path"])
@@ -481,6 +486,64 @@ async fn a_scoped_caller_may_read_its_granted_label() {
     assert!(
         allowed.is_ok(),
         "a caller granted system.File read may run a File query (RS-R1 admits a granted label), got {allowed:?}"
+    );
+}
+
+/// The read-scope gate reads a property map as a filter, not as labels.
+///
+/// `MATCH (f:File {app_id:'x'})` names one label, `File`, and one property key.
+/// The scanner used to count `app_id` as a label too, so a caller granted
+/// `system.File` had its MORE PRECISE query refused while the vague one passed -
+/// an incentive to write the widest query that works. This drives both halves
+/// against the assembled daemon, because the fix landed as a unit test over a
+/// pure function and a pure function cannot show that the gate on the socket
+/// agrees with it.
+///
+/// The second half matters as much as the first: a node with no label at all is
+/// still refused even when it carries a map, so reading maps did not open a way
+/// past the constraint. An omitted constraint is the widest one.
+#[tokio::test]
+#[ignore = "needs event-bus + knowledge binaries built"]
+async fn a_property_map_is_a_filter_and_an_unlabelled_node_is_still_refused() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    // Load-bearing, and the reason this scenario found something: without it the
+    // caller is FirstParty, `system_anchored` is true and the read-scope gate is
+    // skipped entirely - so both halves would pass without the gate running once.
+    stack.as_unprivileged();
+    stack
+        .seed_read_profile(&["system.File.id", "system.File.path"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+
+    let with_map = client
+        .query_rows("MATCH (f:File {app_id:'com.example'}) RETURN f.id LIMIT 1")
+        .await;
+    assert!(
+        with_map.is_ok(),
+        "a map key is a property, not a label: a caller granted system.File may \
+         filter on one, got {with_map:?}"
+    );
+
+    let unlabelled = client
+        .query_rows("MATCH (n {app_id:'com.example'}) RETURN n.id LIMIT 1")
+        .await;
+    assert!(
+        unlabelled.is_err(),
+        "a node with no label is unconstrained whatever its map says, and must \
+         stay refused, got {unlabelled:?}"
     );
 }
 
