@@ -302,10 +302,18 @@ fn launch_argv(exec: &str) -> Result<Vec<String>, ExecError> {
     expand_exec(exec, &ExecContext::default())
 }
 
-/// Launches an application: directly via `sh -c` (the default), or through the
-/// confined `arlen-run` path when `shell.toml [launcher] confined = true`. A config
-/// read error falls back to the unconfined default (the pre-feature behaviour);
-/// fail-closed-on-config-error is the gated go-live's concern.
+/// Launches an application by executing its parsed argv directly, or through the
+/// confined `arlen-run` path when `shell.toml [launcher] confined = true`.
+///
+/// **No shell is involved.** This doc used to say `sh -c`, which is what it did
+/// before the Exec line was parsed into an argv - and saying so after the fact is
+/// worse than saying nothing, because the whole point of [`launch_argv`] above is
+/// that a launcher entry's `&&`, `$(...)` or `;` are not operators here. A
+/// maintainer who believed the shell was still there would read the refusal of a
+/// spec-violating entry as a bug and fix it by putting one back.
+///
+/// A config read error falls back to the unconfined default (the pre-feature
+/// behaviour); fail-closed-on-config-error is the gated go-live's concern.
 #[tauri::command]
 pub fn launch_app(exec: String, app_id: Option<String>) {
     if exec.is_empty() {
