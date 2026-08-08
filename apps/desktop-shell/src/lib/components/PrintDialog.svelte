@@ -18,6 +18,7 @@
     defaultPrinter,
     printersMocked,
     printersUnavailable,
+    submitFailed,
     submitPrint,
     cancelPrint,
     hostOf,
@@ -130,6 +131,10 @@
               <p class="pd-note">{$t("sh.print.mocked")}</p>
             {:else if $printersUnavailable}
               <p class="pd-note">{$t("sh.print.unavailable")}</p>
+            {/if}
+            <!-- The dialog is still here because nothing was sent. -->
+            {#if $submitFailed}
+              <p class="pd-note" role="alert">{$t("sh.print.submitFailed")}</p>
             {/if}
 
             <div class="pd-field">

@@ -13,7 +13,7 @@
 /// activation are coder seams. Under vite the store serves a fixture so the surface
 /// renders and drives.
 
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 
 /// How the paper maps to the sheet (matches the Printers panel vocabulary; the
@@ -93,6 +93,10 @@ export const printersMocked = writable(false);
 /// Separate from `printersMocked`, because the two say different things: mocked
 /// means "these are examples", unavailable means "there is nothing here and that
 /// is not a statement about your printers".
+/// True when the last print did not reach the portal, so the dialog is still
+/// open and nothing was sent to a printer.
+export const submitFailed = writable(false);
+
 export const printersUnavailable = writable(false);
 
 async function loadPrinters(): Promise<void> {
@@ -144,28 +148,39 @@ export async function openPrintDialog(): Promise<void> {
 /// Send the job. Live: `submit_print` recalls the staged portal settings by the
 /// request id and hands CUPS the document.
 export async function submitPrint(settings: PrintSettings): Promise<void> {
-  let id: string | null = null;
-  current.subscribe((v) => (id = v?.id ?? null))();
-  current.set(null);
+  const id = get(current)?.id ?? null;
   if (id === null) return;
+  submitFailed.set(false);
   try {
     await invoke("submit_print", { id, settings });
   } catch {
-    // No portal under vite: the optimistic close stands.
+    if (import.meta.env.DEV) {
+      current.set(null); // no portal under vite: keep the flow drivable
+      return;
+    }
+    // Closing here is the dialog's way of saying "printed". It did not, so it
+    // stays open - the same rule as the screen-share picker.
+    submitFailed.set(true);
+    return;
   }
+  current.set(null);
 }
 
 /// Dismiss the dialog without printing (cancel is first-class). Live: resolve the
 /// portal request as cancelled.
 export async function cancelPrint(): Promise<void> {
-  let id: string | null = null;
-  current.subscribe((v) => (id = v?.id ?? null))();
+  // Cancel closes either way: nothing was printed, and holding a dialog open
+  // over a decision the user has already made would be its own dishonesty. A
+  // cancel that did not reach the portal leaves the request pending there,
+  // which is the safe direction.
+  const id = get(current)?.id ?? null;
   current.set(null);
+  submitFailed.set(false);
   if (id === null) return;
   try {
     await invoke("cancel_print", { id });
   } catch {
-    // mock
+    // Nothing on screen to correct: no job was sent.
   }
 }
 
