@@ -264,12 +264,16 @@ dependencies = [
  "arlen-ai-undo-proto",
  "arlen-config-format",
  "arlen-freedesktop-trash",
+ "arlen-permissions",
  "async-trait",
  "audit-proto",
  "libc",
  "serde",
+ "serde_json",
  "tokio",
  "tracing",
+ "tracing-subscriber",
+ "zbus",
 ]
 
 [[package]]
