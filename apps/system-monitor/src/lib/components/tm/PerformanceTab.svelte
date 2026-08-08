@@ -10,6 +10,13 @@
   const sel = $derived(DEVICES.find((d) => d.key === selected) ?? DEVICES[0]);
 </script>
 
+<!-- Every figure below is generated in `perf.ts`, not measured: the collection
+     sidecar is a seam and there is no read to fail, so none of tonight's
+     unavailable states apply. What was missing is the label. Unmarked, a task
+     manager showing "Memory 85%" and a history sparkline is read as this
+     machine, and someone chases a problem that is a random walk. -->
+<p class="perf-sample">{$t("tm.perfSample")}</p>
+
 <div class="perf">
   <div class="devices" role="tablist" aria-label={$t("tm.perf.devices")}>
     {#each DEVICES as d (d.key)}
@@ -45,6 +52,13 @@
 </div>
 
 <style>
+  .perf-sample {
+    margin: 0;
+    padding: 8px 12px 0;
+    font-size: 12px;
+    color: color-mix(in srgb, var(--color-fg-primary) 55%, transparent);
+  }
+
   .perf {
     display: flex;
     height: 100%;
