@@ -221,9 +221,13 @@ impl EphemeralStack {
             env.insert("ARLEN_AUDIT_EXTRA_ADMIT".to_string(), id.clone());
             env.insert("ARLEN_REVOKE_EXTRA_ADMIT".to_string(), id.clone());
             env.insert("ARLEN_KNOWLEDGE_DEV_SELF_ID".to_string(), id.clone());
-            // FirstParty tier is opt-in (see `first_party`): granting it globally
-            // would make the deny scenarios' caller system-anchored and defeat
-            // their refusal assertions.
+            // FirstParty is the DEFAULT and a scenario opts OUT with
+            // `as_unprivileged`. This comment used to say "opt-in", which is the
+            // opposite, and the mistake was not cosmetic: a scenario that forgets
+            // to opt out is system-anchored, the read-scope gate never runs, and
+            // its assertion holds whether or not the grant it seeds exists.
+            // `a_scoped_caller_may_read_its_granted_label` passed that way until
+            // 8 Aug. If a scenario's claim is about read scope, it must opt out.
             if self.first_party {
                 env.insert("ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY".to_string(), id);
             }
