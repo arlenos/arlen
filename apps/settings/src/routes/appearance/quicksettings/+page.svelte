@@ -187,13 +187,15 @@
       if (!hasLoadedOnce) {
         entries = [];
       }
+      // The same sentence as the shell's panel, and the same two faults: the raw
+      // error was pasted in (a user with no backend read a TypeError naming
+      // `window.__TAURI_INTERNALS__`), and none of it went through the
+      // catalogue. The error itself is already in the journal above.
       banner = {
         kind: "warning",
         message: isParse
-          ? `Quick Settings layout file is malformed. Editor is in read-only mode${
-              hasLoadedOnce ? " (showing last saved state)" : ""
-            }. Fix the file or reset to recover.`
-          : `Could not read Quick Settings layout: ${err}`,
+          ? $t(hasLoadedOnce ? "s.qs.layoutMalformedKept" : "s.qs.layoutMalformedDefaults")
+          : $t("s.qs.layoutUnreadable"),
       };
     }
   }
