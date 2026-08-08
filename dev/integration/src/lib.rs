@@ -1296,7 +1296,6 @@ mod module_reachability {
         // instead of a `String`, so the writer says whether an error is
         // transient rather than leaving the host to guess from its text.
         "daemons/bridge-ingest/auth",
-        // The undo/audit join built 2 Aug: `fetch_recent` reads the signer's
         // Surfaced once the matcher stopped taking another crate's module name
         // as evidence. Each is real work waiting on the piece that would call
         // it, named here rather than deleted, because deleting a tested core to

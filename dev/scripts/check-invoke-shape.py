@@ -264,13 +264,6 @@ BUILD_DIRS = {"target", "node_modules", "mkosi.builddir", ".git", ".svelte-kit",
 # and an entry for a command nothing invokes any more is equally an error. An
 # unattributed entry is not a pass, it is a triage item that has been seen.
 DEAD_INVOKES: dict[str, str] = {
-    # the recent-actions panel; the shell-side read + enact over the undo signer. coder owes it - fetch_recent and join_rows (2 Aug) are most of the read
-    # The backend half exists and is declared unreached from the other side:
-    # `daemons/ai-engine-daemon/undo_history` sits in `KNOWN_UNREACHED` in
-    # dev/integration because nothing calls it, and nothing calls it because this
-    # command does not exist. Implementing it must delete BOTH entries.
-    "undo_read": "the recent-actions panel; fetch_recent + join_rows are most of the read, waiting on ids-not-prose",
-    "undo_enact": "the recent-actions panel; the shell-side read + enact over the undo signer. coder owes it",
     # capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet - coder, target build
     "list_capture_sources": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
     "start_screencast": "capture-active #12; the PipeWire producer is host-blocked and builds on the ship image, so the picker and badge have no backend yet",
@@ -436,12 +429,17 @@ def bare_type(ret: str) -> str:
     return t.split("::")[-1].strip()
 
 
-def rust_struct_fields(root: Path) -> dict[str, set[str]]:
+def rust_struct_fields(root: Path) -> tuple[dict[str, set[str]], set[str]]:
     """Map struct name to its field names, for every struct in the tree.
 
     Field names only, in snake_case. A struct name defined twice is dropped
     rather than guessed at: comparing against the wrong one is how the argument
     half produced its first round of false findings.
+
+    The dropped names come back with the map, because dropping one is how a
+    command silently leaves the return comparison. A pair that cannot be compared
+    prints identically to a pair that matched, and that is the difference between
+    a check and the appearance of one, so the caller reports them.
     """
     fields: dict[str, set[str]] = {}
     seen_twice: set[str] = set()
@@ -477,7 +475,7 @@ def rust_struct_fields(root: Path) -> dict[str, set[str]]:
             fields[name] = got
     for name in seen_twice:
         fields.pop(name, None)
-    return fields
+    return fields, seen_twice
 
 
 def balanced_body(text: str, open_at: int) -> str:
@@ -564,13 +562,14 @@ def annotated_calls(root: Path):
             )
 
 
-def check_returns(root: Path) -> tuple[int, list[str], list[str]]:
+def check_returns(root: Path) -> tuple[int, list[str], list[str], list[str]]:
     """Report interface fields the command's return struct does not produce."""
     returns = rust_return_types(root)
-    structs = rust_struct_fields(root)
+    structs, ambiguous = rust_struct_fields(root)
     interfaces = ts_interfaces(root)
     problems: list[str] = []
     known: list[str] = []
+    uncompared: list[str] = []
     checked = 0
     for app, path, line, tsname, cmd in annotated_calls(root):
         rust_name = returns.get(app, {}).get(cmd)
@@ -578,6 +577,12 @@ def check_returns(root: Path) -> tuple[int, list[str], list[str]]:
             continue
         produced = structs.get(rust_name)
         declared = interfaces.get(app, {}).get(tsname)
+        if produced is None and rust_name in ambiguous:
+            uncompared.append(
+                f"{path}:{line}: `{cmd}` returns `{rust_name}`, a struct name defined "
+                f"more than once in the tree, so its shape is not compared. Rename one."
+            )
+            continue
         if produced is None or declared is None or not produced or not declared:
             continue
         checked += 1
@@ -592,7 +597,7 @@ def check_returns(root: Path) -> tuple[int, list[str], list[str]]:
             known.append(f"{text}\n      routed: {KNOWN_RETURN_MISMATCHES[cmd]}")
         else:
             problems.append(text)
-    return checked, problems, known
+    return checked, problems, known, uncompared
 
 
 def main() -> int:
@@ -659,7 +664,7 @@ def main() -> int:
                 f"not pass; the command fails to deserialize its arguments"
             )
 
-    ret_checked, ret_problems, ret_known = check_returns(root)
+    ret_checked, ret_problems, ret_known, ret_uncompared = check_returns(root)
     problems.extend(ret_problems)
 
     print(
@@ -672,6 +677,10 @@ def main() -> int:
         for p in problems:
             print(f"  - {p}")
         return 1
+    if ret_uncompared:
+        print("\nreturn shapes this could not compare, so nothing about them is known:\n")
+        for u in ret_uncompared:
+            print(f"  - {u}")
     if ret_known:
         print("\nknown return mismatches, routed to their owners:\n")
         for k in ret_known:

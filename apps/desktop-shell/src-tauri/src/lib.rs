@@ -28,6 +28,7 @@ mod brightness;
 mod quick_actions;
 mod mpris;
 mod network;
+mod undo_history;
 mod night_light;
 mod output_bars;
 mod session_user;
@@ -408,6 +409,8 @@ pub fn run() {
             network::set_airplane_mode,
             network::get_connection_details,
             network::get_saved_password,
+            undo_history::undo_read,
+            undo_history::undo_enact,
             network::forget_network,
             network::connect_hidden_network,
             network::get_vpn_connections,
