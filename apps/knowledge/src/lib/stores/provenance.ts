@@ -65,12 +65,20 @@ function keyFor(name: string): string {
   return name.replace(/\.pdf$/, "");
 }
 
-/// The lineage for a node. An unknown node answers with only its origin -
-/// the one thing the graph always knows.
+/// The lineage for a node.
+///
+/// A file the graph has no record of answers with an empty list, and the pane
+/// renders nothing - which is the honest state. The fixture is DEV-only: served
+/// on a real failure it would put an invented five-hop lineage under a real
+/// filename, on the one surface whose entire promise is that it shows only what
+/// was captured.
 export async function provenanceFor(name: string): Promise<ProvenanceHop[]> {
   try {
     return await invoke<ProvenanceHop[]>("knowledge_provenance", { node: name });
-  } catch {
-    return FIXTURE[keyFor(name)] ?? [{ verb: "origin", subject: "captured from activity" }];
+  } catch (e) {
+    if (import.meta.env.DEV) {
+      return FIXTURE[keyFor(name)] ?? [];
+    }
+    throw e;
   }
 }

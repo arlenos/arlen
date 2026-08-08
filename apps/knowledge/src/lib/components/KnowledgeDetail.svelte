@@ -35,7 +35,12 @@
     hopsOpen = false;
     hops = [];
     if (name) {
-      void provenanceFor(name).then((h) => (hops = h));
+      // A failed read leaves the list empty, so the section does not render at
+      // all. That is the honest state for a lineage nobody could fetch, and it
+      // beats both an invented chain and an unhandled rejection.
+      void provenanceFor(name)
+        .then((h) => (hops = h))
+        .catch(() => (hops = []));
     }
   });
   const shownHops = $derived(hopsOpen ? hops : hops.slice(0, DOI));
