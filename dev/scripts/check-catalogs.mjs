@@ -257,7 +257,9 @@ for (const [file, locales] of byFile) {
 }
 
 if (broken.length) {
-  console.log("catalog messages that do not format:\n");
+  // Not only formatting any more: duplicates, missing keys in a locale and
+  // untranslated sentences arrive here too.
+  console.log("catalog problems:\n");
   for (const b of broken) console.log(`  - ${b}`);
   process.exit(1);
 }
