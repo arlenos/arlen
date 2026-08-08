@@ -48,6 +48,15 @@ What it does NOT cover, and the omission is deliberate rather than an oversight:
 So a pass means no store visibly swaps a failed read for named fixture content,
 not that every failure in the frontend is reported honestly.
 
+The shape to copy, if you are writing one of these: `apps/terminal/src/routes/+page.svelte`.
+It branches on `$sessionsLoaded && $sessionsError` BEFORE the empty case, gives
+the failure its own title and hint out of the catalogue, and puts a Try again
+button next to them. Three states, kept apart: not loaded yet, loaded and failed,
+loaded and empty. Rendered with no backend it says "Can't reach the shell
+backend / The terminal engine did not answer" and nothing else - no fixture, no
+raw exception, no claim about the machine. Every defect found on the night of
+8 August was some collapse of those three states into two.
+
 Shown to fail before being trusted: run against `1d761f5b7~1` it names
 sourcePicker, jobs and themes, which is what it was written from.
 
