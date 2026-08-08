@@ -461,6 +461,12 @@ pub async fn open_external(uri: &str) -> Result<(), PickerError> {
     // No portal frontend. Hand the URI to xdg-open as a single argument (never a
     // shell), so it carries no injection risk.
     std::process::Command::new("xdg-open")
+        // `--` first: a name may legally begin with a dash and xdg-open parses a
+        // leading-dash argument as its own options ("error: unexpected argument
+        // '-z' found / tip: to pass '-z' as a value, use '-- -z'"). The files app
+        // is safe by construction because `abs` guarantees a leading slash; these
+        // callers pass the string through as it arrives.
+        .arg("--")
         .arg(uri)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
