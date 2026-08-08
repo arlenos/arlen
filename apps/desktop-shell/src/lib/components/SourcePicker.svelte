@@ -7,7 +7,15 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { Checkbox } from "@arlen/ui-kit/components/ui/checkbox";
-  import { current, sources, sourcesMocked, sourcesUnavailable, share, cancel } from "$lib/stores/sourcePicker";
+  import {
+    current,
+    sources,
+    sourcesMocked,
+    sourcesUnavailable,
+    shareFailed,
+    share,
+    cancel,
+  } from "$lib/stores/sourcePicker";
 
   let selected = $state<{ kind: "monitor" | "window" | "region"; id: string } | null>(null);
   let showCursor = $state(true);
@@ -38,6 +46,10 @@
             <!-- Picking one of these is a privacy decision; they must not pass
                  as this machine's real screens and windows. -->
             <p class="sp-sample">{$t("sh.share.mocked")}</p>
+          {/if}
+          {#if $shareFailed}
+            <!-- The picker is still open because nothing is being shared. -->
+            <p class="sp-sample" role="alert">{$t("sh.share.failed")}</p>
           {/if}
           {#if $sourcesUnavailable}
             <!-- Nothing to pick from, and the reason said out loud: an empty
