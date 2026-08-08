@@ -85,6 +85,10 @@ export const proposal = writable<AiEditProposal | null>(null);
 /// the open file, so unlabelled it reads as a real pending edit to accept.
 export const mocked = writable(false);
 
+/// True when a real session could not get a proposal at all. The review then
+/// shows none: an empty review is honest, an invented one has an Accept.
+export const unavailable = writable(false);
+
 /// The last action failure, for the review to show. Empty when all is well.
 export const lastError = writable("");
 
@@ -94,9 +98,21 @@ export async function proposeEdit(prompt: string): Promise<void> {
   try {
     proposal.set(await invoke<AiEditProposal>("ai_edit", { prompt }));
     mocked.set(false);
+    unavailable.set(false);
   } catch {
-    proposal.set({ ...FIXTURE, prompt: prompt || FIXTURE_PROMPT });
-    mocked.set(true);
+    if (import.meta.env.DEV) {
+      proposal.set({ ...FIXTURE, prompt: prompt || FIXTURE_PROMPT });
+      mocked.set(true);
+      unavailable.set(false);
+      return;
+    }
+    // The review's Accept sends a hunk INDEX to `ai_edit_accept`, so a fixture
+    // proposal does not only read as a pending edit, it supplies the argument
+    // for applying one to the open file. It also keeps the user's real prompt,
+    // which makes it look like the answer to what they just asked.
+    proposal.set(null);
+    mocked.set(false);
+    unavailable.set(true);
   }
 }
 
