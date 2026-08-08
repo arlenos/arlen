@@ -247,6 +247,8 @@ const messages: Catalogs = {
     "sh.share.wants": "{$app} wants to share your screen",
     "sh.share.choose": "Choose what to share. Only what you pick is sent.",
     "sh.share.mocked": "Example screens and windows - not the real ones on this machine.",
+    "sh.share.unavailable": "Cannot list what can be shared right now.",
+    "sh.jobs.unavailable": "Cannot read the current jobs right now.",
     "sh.share.screens": "Screens",
     "sh.share.windows": "Windows",
     "sh.share.region": "Region",
