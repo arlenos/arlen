@@ -66,6 +66,8 @@ interface WinAppsState {
   bottles: Bottle[];
   loading: boolean;
   mocked: boolean;
+  /// True when a real session could not read the bottles at all.
+  unavailable: boolean;
 }
 
 const FIXTURE: Bottle[] = [
@@ -134,7 +136,7 @@ const FIXTURE: Bottle[] = [
 /// The Wine/Proton versions the selectors offer.
 export const wineVersions = ["Wine 9.0", "Wine 8.21", "Proton 9.0", "Wine (staging)"];
 
-export const winApps = writable<WinAppsState>({ bottles: [], loading: false, mocked: false });
+export const winApps = writable<WinAppsState>({ bottles: [], loading: false, mocked: false, unavailable: false });
 
 export const defaults = writable<WinDefaults>({
   version: "Wine 9.0",
@@ -152,9 +154,15 @@ export async function load(): Promise<void> {
   winApps.update((s) => ({ ...s, loading: true }));
   try {
     const bottles = await invoke<Bottle[]>("list_bottles");
-    winApps.set({ bottles, loading: false, mocked: false });
+    winApps.set({ bottles, loading: false, mocked: false, unavailable: false });
   } catch {
-    winApps.set({ bottles: FIXTURE, loading: false, mocked: true });
+    if (import.meta.env.DEV) {
+      winApps.set({ bottles: FIXTURE, loading: false, mocked: true, unavailable: false });
+      return;
+    }
+    // Each bottle carries live config controls through `patchBottle`, so an
+    // invented one is a row of switches writing to a bottle that does not exist.
+    winApps.set({ bottles: [], loading: false, mocked: false, unavailable: true });
   }
 }
 

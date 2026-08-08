@@ -34,6 +34,9 @@ const FIXTURE: WallpaperEntry[] = [
 
 /// The available wallpapers.
 export const wallpapers = writable<WallpaperEntry[]>([]);
+
+/// True when a real session could not read the installed wallpapers.
+export const wallpapersUnavailable = writable(false);
 /// The id of the active wallpaper, or null.
 export const currentId = writable<string | null>(null);
 /// The active fit mode.
@@ -46,9 +49,20 @@ export async function listWallpapers(): Promise<void> {
   try {
     const list = await invoke<WallpaperEntry[]>("list_wallpapers");
     wallpapers.set(list);
+    wallpapersUnavailable.set(false);
   } catch {
-    wallpapers.set(FIXTURE);
-    currentId.set("wp-nightfall");
+    if (import.meta.env.DEV) {
+      wallpapers.set(FIXTURE);
+      currentId.set("wp-nightfall");
+      wallpapersUnavailable.set(false);
+      return;
+    }
+    // This one also asserted which wallpaper is currently set, and every tile
+    // calls `set_wallpaper` with its id - so a failed read offered a grid of
+    // wallpapers that are not installed, one of them marked as the active one.
+    wallpapers.set([]);
+    currentId.set(null);
+    wallpapersUnavailable.set(true);
   }
 }
 

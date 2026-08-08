@@ -98,6 +98,10 @@
       <p class="note span-full">
         {$t("s.wa.mocked")}
       </p>
+    {:else if $winApps.unavailable}
+      <p class="note span-full">
+        {$t("s.wa.unavailable")}
+      </p>
     {/if}
 
     <Section label={$t("s.wa.installed")} class="span-full">
