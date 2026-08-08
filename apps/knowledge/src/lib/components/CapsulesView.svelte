@@ -15,6 +15,7 @@
     capsules,
     capsulesMocked,
     capsulesUnavailable,
+    actionFailed,
     loadCapsules,
     revokeCapsule,
     mintCapsule,
@@ -76,6 +77,14 @@
       <span class="ca-sample">{$t("k.sample")}</span>
     {:else if $capsulesUnavailable}
       <span class="ca-sample">{$t("k.capsules.unavailable")}</span>
+    {/if}
+    <!-- An action that did not reach the broker says so here, next to the list
+         it did not change. Silence would leave the previous state on screen
+         reading as the result. -->
+    {#if $actionFailed}
+      <span class="ca-sample" role="alert">
+        {$t($actionFailed === "mint" ? "k.capsules.mintFailed" : "k.capsules.revokeFailed")}
+      </span>
     {/if}
   </div>
 

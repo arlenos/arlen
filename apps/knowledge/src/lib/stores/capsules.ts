@@ -11,7 +11,7 @@
 /// Mock-vs-live: `knowledge_capsules` / `knowledge_capsule_mint` /
 /// `knowledge_capsule_revoke` and the preview read are coder seams over the
 /// built capsule.rs; under vite fixtures stand in and `capsulesMocked` says so.
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 
 /// One active (or spent) capsule, display-shaped.
@@ -122,14 +122,27 @@ export async function loadCapsules(): Promise<void> {
   }
 }
 
+/// Which action did not reach the broker, when one did not. Null while things
+/// are working. The surface renders it at the list, because that is where the
+/// consequence is read.
+export const actionFailed = writable<"mint" | "revoke" | null>(null);
+
 /// Revoke: stops every future read; it cannot pull back a copy already made
 /// (decision 4 - never phrased as un-send). Live: `knowledge_capsule_revoke`.
+///
+/// A failed revoke puts the capsule back. Letting the optimistic removal stand
+/// would tell someone their shared slice can no longer be read when it still
+/// can, which is the one claim on this surface that must never be made falsely.
 export async function revokeCapsule(id: string): Promise<void> {
+  const before = get(capsules);
   capsules.update((l) => (l ? l.filter((c) => c.id !== id) : l));
+  actionFailed.set(null);
   try {
     await invoke("knowledge_capsule_revoke", { id });
   } catch {
-    // No broker under vite: the optimistic removal stands.
+    if (import.meta.env.DEV) return; // no broker under vite
+    capsules.set(before);
+    actionFailed.set("revoke");
   }
 }
 
@@ -160,6 +173,10 @@ export async function mintCapsule(
       relations: links.filter((l) => l.included).map((l) => l.relation),
     });
   } catch {
-    // No broker under vite: the optimistic entry stands.
+    if (import.meta.env.DEV) return; // no broker under vite
+    // Nothing was minted, so nothing may be listed: a row here says a slice of
+    // the graph is out there under that audience with that expiry.
+    capsules.update((l) => (l ? l.filter((c) => c.id !== entry.id) : l));
+    actionFailed.set("mint");
   }
 }
