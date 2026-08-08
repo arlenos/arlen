@@ -36,6 +36,7 @@
     themes,
     themesError,
     activeThemeId,
+    themeChangeFailed,
     loadThemes,
     setActiveTheme,
     installThemeFile,
@@ -93,6 +94,11 @@
            installed: the cards are clickable, so an invented one is a theme the
            user picks and does not get. -->
       <p class="note span-full">{$t("s.appr.themesUnavailable")}</p>
+    {/if}
+    <!-- The tick is still on the theme that is in force, because the click was
+         not written anywhere. -->
+    {#if $themeChangeFailed}
+      <p class="note span-full" role="alert">{$t("s.appr.themeChangeFailed")}</p>
     {/if}
     <div class="grid span-full">
       {#each $themes as theme (theme.id)}

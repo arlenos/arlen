@@ -82,16 +82,13 @@ KNOWN: dict[str, str] = {
         "setRole, startDownload, cancelDownload - arlen-ui's model picker is live "
         "work; named rather than skipped because the shape is identical"
     ),
-    "apps/settings/src/lib/stores/themes.ts": (
-        "setActiveTheme and installThemeFile: a theme shown as active that was "
-        "never applied"
-    ),
-    "apps/settings/src/lib/stores/wallpaper.ts": (
-        "setWallpaper and setScale: the picker shows the new wallpaper, the desktop "
-        "keeps the old one"
-    ),
     "apps/settings/src/lib/stores/appSettings.ts": (
         "clearAppCache, which reports a cache cleared that was not"
+    ),
+    "apps/settings/src/lib/stores/themes.ts": (
+        "installThemeFile, where a cancelled file picker and a failed install "
+        "arrive as the same exception - telling them apart needs an error shape "
+        "the command does not return yet"
     ),
     "apps/desktop-shell/src/lib/stores/printDialog.ts": (
         "submitPrint and cancelPrint, whose commands are also missing"

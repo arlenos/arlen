@@ -8,7 +8,7 @@
 /// no-Tauri dev fallback so the gallery still renders under vite.
 
 import { invoke } from "@tauri-apps/api/core";
-import { writable, derived } from "svelte/store";
+import { get, writable, derived } from "svelte/store";
 import { theme } from "./theme";
 
 /// One installed theme as the gallery shows it.
@@ -25,6 +25,10 @@ export interface ThemeInfo {
 /// The installed themes, the active id, and whether the load has run.
 export const themes = writable<ThemeInfo[]>([]);
 export const activeThemeId = writable<string>("arlen-dark");
+
+/// True when the theme could not be persisted, so the grid still marks the one
+/// that is actually in force rather than the one that was clicked.
+export const themeChangeFailed = writable(false);
 export const themesLoaded = writable(false);
 
 /// True when the theme list could not be read in a real session.
@@ -76,12 +80,26 @@ export async function loadThemes(): Promise<void> {
 /// Make a theme the active one. Persists the id to the appearance config for
 /// real; the live re-apply rides the shell's `set_theme` bridge when present.
 export async function setActiveTheme(id: string): Promise<void> {
+  const before = get(activeThemeId);
   activeThemeId.set(id);
+  themeChangeFailed.set(false);
   try {
+    // The persist is what makes the choice real; it must succeed on its own.
     await theme.setValue("theme.active", id);
+  } catch {
+    if (import.meta.env.DEV) return;
+    // Nothing was written, so the grid must not keep the new tick: the next
+    // load would silently move it back and the choice would look self-undoing.
+    activeThemeId.set(before);
+    themeChangeFailed.set(true);
+    return;
+  }
+  try {
     await invoke("set_theme", { id });
   } catch {
-    // The persist path already ran; live re-apply lands with the bridge.
+    // Persisted but not re-applied live. The choice IS in force from the next
+    // start, so the grid stays on it - this half is the shell bridge, not the
+    // decision.
   }
 }
 

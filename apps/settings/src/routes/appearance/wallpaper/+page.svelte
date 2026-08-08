@@ -15,6 +15,7 @@
   import {
     wallpapers,
     wallpapersUnavailable,
+    wallpaperChangeFailed,
     currentId,
     scale,
     listWallpapers,
@@ -45,6 +46,10 @@
                `.wp-note` has no padding of its own because the inset provides
                it, so placing it outside drew the text across the box's border. -->
           <p class="wp-note">{$t("s.wallpaper.unavailable")}</p>
+        {/if}
+        <!-- The highlight is back on the wallpaper that is actually up. -->
+        {#if $wallpaperChangeFailed}
+          <p class="wp-note" role="alert">{$t("s.wallpaper.changeFailed")}</p>
         {/if}
         <div class="wp-grid">
           {#each $wallpapers as w (w.id)}
