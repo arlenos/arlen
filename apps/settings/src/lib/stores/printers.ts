@@ -87,6 +87,14 @@ interface PrintersState {
   loading: boolean;
   /// True while running on the fixture (the bridge isn't wired yet).
   mocked: boolean;
+  /// True when a real session could not read the printers at all. Separate from
+  /// `mocked`: one says "these are examples", the other says "there is nothing
+  /// here and that is not a statement about your printers".
+  unavailable: boolean;
+  /// True when a real rescan could not run, as opposed to running and finding
+  /// nothing. The empty list looks the same either way, and only one of them is
+  /// news about the network.
+  discoverFailed: boolean;
 }
 
 const initial: PrintersState = {
@@ -97,6 +105,8 @@ const initial: PrintersState = {
   options: {},
   loading: false,
   mocked: false,
+  unavailable: false,
+  discoverFailed: false,
 };
 
 export const printers = writable<PrintersState>(initial);
@@ -216,16 +226,35 @@ export async function load(): Promise<void> {
       queue,
       loading: false,
       mocked: false,
+      unavailable: false,
     }));
   } catch {
+    if (import.meta.env.DEV) {
+      printers.update((s) => ({
+        ...s,
+        printers: FIXTURE.printers,
+        defaultName: FIXTURE.defaultName,
+        queue: FIXTURE.queue,
+        discovered: FIXTURE.discovered,
+        loading: false,
+        mocked: true,
+        unavailable: false,
+      }));
+      return;
+    }
+    // Every row here carries an action: Remove behind a confirm dialog, Test
+    // page, Cancel job. On a failed read those act on printers and jobs that do
+    // not exist, and the "example data" note does not reach as far as a confirm
+    // dialog naming a printer.
     printers.update((s) => ({
       ...s,
-      printers: FIXTURE.printers,
-      defaultName: FIXTURE.defaultName,
-      queue: FIXTURE.queue,
-      discovered: FIXTURE.discovered,
+      printers: [],
+      defaultName: null,
+      queue: [],
+      discovered: [],
       loading: false,
-      mocked: true,
+      mocked: false,
+      unavailable: true,
     }));
   }
 }
@@ -234,9 +263,16 @@ export async function load(): Promise<void> {
 export async function discover(): Promise<void> {
   try {
     const found = await invoke<DiscoveredPrinter[]>("printers_discover");
-    printers.update((s) => ({ ...s, discovered: found }));
+    printers.update((s) => ({ ...s, discovered: found, discoverFailed: false }));
   } catch {
-    printers.update((s) => ({ ...s, discovered: FIXTURE.discovered }));
+    // `printers_discover` has no backend yet, so this path is every real rescan.
+    // An invented discovered printer gets an Add button, and adding it would
+    // write a queue pointing at a URI nobody answered on.
+    printers.update((s) => ({
+      ...s,
+      discovered: import.meta.env.DEV ? FIXTURE.discovered : [],
+      discoverFailed: !import.meta.env.DEV,
+    }));
   }
 }
 

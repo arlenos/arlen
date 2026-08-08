@@ -143,6 +143,10 @@
       <p class="note">
         {$t("s.pr.mocked")}
       </p>
+    {:else if $printers.unavailable}
+      <p class="note">
+        {$t("s.pr.unavailable")}
+      </p>
     {/if}
 
     <Section label={$t("s.pr.printers")}>
@@ -184,7 +188,9 @@
         {@render discoveredRow(d)}
       {/each}
       {#if $printers.discovered.length === 0}
-        <p class="empty">{$t("s.pr.noneDiscovered")}</p>
+        <!-- "found none" and "could not look" are the same empty list on screen
+             and different facts about the network. -->
+        <p class="empty">{$printers.discoverFailed ? $t("s.pr.discoverFailed") : $t("s.pr.noneDiscovered")}</p>
       {/if}
       <div class="foot">
         <Button variant="ghost" size="sm" onclick={discover}>
