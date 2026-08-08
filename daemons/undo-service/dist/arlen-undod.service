@@ -1,0 +1,49 @@
+[Unit]
+Description=Arlen session undo (user service)
+Documentation=https://github.com/arlenos/arlen
+# The list of what happened on this machine, and the reversal of it. Reads the
+# signed undo log and the audit ledger; holds nothing itself.
+#
+# **Ordered after nothing AI, deliberately.** These operations used to live on
+# org.arlen.AIAgent1, which the AI engine registers only when `[ai] enabled` is
+# true - so switching the assistant off in Settings took a user's own file moves
+# out of the list and their undo with them. An After= on the engine here would
+# reintroduce the coupling in the unit file after it was removed from the code.
+# The service starts whether or not the assistant exists.
+
+[Service]
+# Type=dbus: up once it owns the name a surface connects to.
+Type=dbus
+BusName=org.arlen.Undo1
+ExecStart=/usr/lib/arlen/libexec/arlen-undod
+# A session bus that is not there yet exits cleanly rather than crash-looping;
+# a persistent fault surfaces through the back-off.
+Restart=on-failure
+RestartSec=2
+
+# EAGER, not D-Bus activated. A surface that opens the undo list expects it to be
+# there; more importantly, the refusal path logs WHY a caller was refused, and a
+# lazily-activated daemon that starts on the call it then refuses tells nobody.
+
+# The mount-namespace options (ProtectSystem, ProtectHome, PrivateTmp,
+# PrivateDevices, ProtectKernel*) are omitted, for the reason measured on the
+# clock daemon and shared by the audit daemon, the consent broker, the AI engine
+# and capsuled: a unit run inside such a namespace cannot readlink ANOTHER
+# process's /proc/<pid>/exe, EACCES, even same-uid. This daemon resolves its
+# callers by exactly that link - it is how `Recent` and `Enact` tell the harness
+# and Settings apart from anything else on the session bus - so a namespace here
+# would turn every caller into "unresolved" and refuse them all. The isolation
+# would cost the admission check it is meant to protect.
+#
+# The hardening that creates no mount namespace is kept. It also enacts undos on
+# the user's files, which is why it holds no extra capability and reaches no
+# network: the widest thing it can do is put a file back where it was.
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target

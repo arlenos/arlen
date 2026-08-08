@@ -1,0 +1,35 @@
+#!/bin/sh
+# Phase 8o (CHROOT): the session undo service (arlen-undod). It owns
+# `org.arlen.Undo1` and answers what happened on this machine and how to reverse
+# it, reading the signed undo log and the audit ledger.
+#
+# Staged as its own daemon on purpose: the same operations used to sit on the AI
+# engine's bus name, which exists only when `[ai] enabled` is true, so turning the
+# assistant off took a user's own file moves out of the list and their undo with
+# them. On the image that is the whole difference between "the assistant can be
+# switched off" and "switching it off costs you your history".
+#
+# Its own standalone cargo workspace -> its own target dir in the persistent
+# cache. Pure Rust, no C/C++.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-undo"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the session undo service (arlen-undod) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/undo-service/Cargo.toml
+
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-undod" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-undod"
+echo ">> staged arlen-undod into the image"
