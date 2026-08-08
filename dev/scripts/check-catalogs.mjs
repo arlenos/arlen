@@ -166,6 +166,52 @@ if (!checked) {
   console.error("found no catalog messages; the check needs updating");
   process.exit(2);
 }
+// Parity, which is a different property from validity and was not checked.
+//
+// A key that exists in `en` and not in `de` compiles and formats perfectly - in
+// `en`. The gate above reads "every locale it carries", and a one-locale key
+// carries in the locale it has. Three such keys shipped in the desktop shell on
+// 8 August, all three on surfaces whose whole point was telling the user the
+// truth, and a German reader got the key or a fallback instead.
+//
+// The tree is at zero when this lands, so it is a ratchet rather than a backlog.
+// If a half-finished translation ever needs to sit in the tree, that is a
+// decision to take here, out loud, rather than by the check quietly not looking.
+const byFile = new Map();
+for (const [scope, ids] of seen) {
+  const [file, locale] = scope.split("\u0000");
+  if (!byFile.has(file)) byFile.set(file, new Map());
+  byFile.get(file).set(locale, ids);
+}
+for (const [file, locales] of byFile) {
+  if (locales.size < 2) continue;
+  const union = new Set([...locales.values()].flatMap((s) => [...s]));
+  // The reader above deliberately skips a key whose value spans lines, and one
+  // file indents a key differently from its neighbours. Both make a key INVISIBLE
+  // to `seen` while it is plainly present in the file, so a parity report built
+  // on `seen` alone accuses a translation that exists. Confirm against the raw
+  // text of that locale's own slice before saying anything - measured: without
+  // this, three entries were reported and all three were there.
+  const text = readFileSync(file, "utf8");
+  const slice = (loc) => {
+    const start = text.indexOf(`\n  ${loc}: {`);
+    if (start === -1) return "";
+    const rest = text.slice(start + 1);
+    const end = rest.search(/\n  [a-z]{2}(?:-[A-Z]{2})?: \{/);
+    return end === -1 ? rest : rest.slice(0, end);
+  };
+  for (const [locale, ids] of locales) {
+    const raw = slice(locale);
+    for (const id of union) {
+      if (!ids.has(id) && !raw.includes(`"${id}":`)) {
+        broken.push(
+          `${file.slice(ROOT.length)} [${locale}] ${id}: present in another locale and missing here, so this locale falls back to the key or the source language`,
+        );
+      }
+    }
+  }
+}
+
 if (broken.length) {
   console.log("catalog messages that do not format:\n");
   for (const b of broken) console.log(`  - ${b}`);
