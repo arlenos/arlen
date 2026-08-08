@@ -368,6 +368,7 @@ const messages: Catalogs = {
     "sh.undo.title": "Recent actions",
     "sh.undo.mocked": "Example actions - nothing here really ran.",
     "sh.undo.empty": "Nothing to take back right now.",
+    "sh.undo.unavailable": "Cannot show your recent actions right now.",
     "sh.undo.irreversible": "Cannot be undone",
     "sh.undo.done": "Done",
 

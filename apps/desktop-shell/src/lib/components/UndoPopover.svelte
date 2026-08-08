@@ -9,7 +9,7 @@
   import { Undo2, Check } from "lucide-svelte";
   import ShellPopover from "$lib/components/shared/ShellPopover.svelte";
   import PopoverHeader from "$lib/components/shared/PopoverHeader.svelte";
-  import { undoHistory, undoMocked, enact } from "$lib/stores/undoHistory";
+  import { undoHistory, undoMocked, undoUnavailable, enact } from "$lib/stores/undoHistory";
 
   // Compact ages so the row stays one calm line ("now", "4m", "2h").
   function ago(at: number): string {
@@ -30,7 +30,11 @@
     <p class="undo-sample">{$t("sh.undo.mocked")}</p>
   {/if}
 
-  {#if $undoHistory && $undoHistory.length === 0}
+  {#if $undoUnavailable}
+    <!-- The read failed in a real session. Say so, and show no rows: a populated
+         panel of actions nobody performed invites a click on one of them. -->
+    <p class="undo-empty">{$t("sh.undo.unavailable")}</p>
+  {:else if $undoHistory && $undoHistory.length === 0}
     <p class="undo-empty">{$t("sh.undo.empty")}</p>
   {:else if $undoHistory}
     <div class="undo-list">

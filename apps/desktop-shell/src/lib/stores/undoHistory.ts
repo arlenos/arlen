@@ -11,7 +11,7 @@
 /// offers enact on entries the read declares enactable.
 
 import { writable, get } from "svelte/store";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 
 /// Who journalled the inverse.
 export type UndoProducer = "agent" | "files" | "terminal" | "settings";
@@ -35,8 +35,19 @@ export interface UndoEntry {
 
 /// The ledger view, newest first, or null before the read settles.
 export const undoHistory = writable<UndoEntry[] | null>(null);
-/// True while the list is the FIXTURE, not the signed log.
+/// True while the list is the FIXTURE, not the signed log. Only ever set outside
+/// a Tauri session (design work under vite), where there is no backend to ask.
 export const undoMocked = writable(false);
+
+/// True when the read failed inside a real session: the daemon refused, is down,
+/// or answered something unusable.
+///
+/// Separate from `undoMocked` and from an empty list, because the three are
+/// different sentences: "here is a sample", "nothing has happened", and "your
+/// history exists and I cannot show it". This used to be the fixture in all three
+/// cases, so a refused read produced a populated panel of invented rows - worse
+/// than an empty one, because it invites a click on an action that never happened.
+export const undoUnavailable = writable(false);
 
 const now = Math.floor(Date.now() / 1000);
 
@@ -54,9 +65,22 @@ export async function loadUndoHistory(): Promise<void> {
     const live = await invoke<UndoEntry[]>("undo_read");
     undoHistory.set(live);
     undoMocked.set(false);
+    undoUnavailable.set(false);
   } catch {
+    if (isTauri()) {
+      // A real session whose read failed. `null` is "unknown", not "empty": the
+      // panel says it cannot show the history rather than showing rows nobody
+      // performed.
+      undoHistory.set(null);
+      undoMocked.set(false);
+      undoUnavailable.set(true);
+      return;
+    }
+    // Under vite there is no backend to refuse, so the fixture is the honest
+    // thing to render for design work - labelled as a sample by `undoMocked`.
     undoHistory.set(FIXTURE.map((e) => ({ ...e })));
     undoMocked.set(true);
+    undoUnavailable.set(false);
   }
 }
 

@@ -589,14 +589,31 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
 /// nothing to say why. The resolve of a caller's id is mechanism and can be
 /// spelled per daemon; WHICH ids count is policy and has to be one list.
 ///
-/// The dev ids are the same two surfaces as they resolve from a cargo target dir,
+/// **The rule, so the next addition is measured against something rather than
+/// against these three names: this list gates surfaces that ARE the system
+/// talking to the user - not ordinary apps.** The desktop shell is that by
+/// definition; it owns the top bar, the notifications and the launcher, and
+/// anything it could do with undo it can already effect by other means, so adding
+/// it widens nothing. Settings and the harness qualify for the same reason, one
+/// step further from the centre.
+///
+/// **An ordinary app never joins.** An app that wants something undone asks the
+/// user through the shell; it does not hold the capability itself. If a candidate
+/// is a place the user goes to work rather than a place the system speaks from,
+/// the answer is no.
+///
+/// The dev ids are the same surfaces as they resolve from a cargo target dir,
 /// exact and never a `dev.` prefix match, compiled out of a release build the way
 /// the audit ingest gate does it.
-const USER_SURFACES: &[&str] = &["harness", "settings"];
+const USER_SURFACES: &[&str] = &["desktop-shell", "harness", "settings"];
 
-/// The same two surfaces as a cargo target dir resolves them.
+/// The same surfaces as a cargo target dir resolves them.
 #[cfg(debug_assertions)]
-const USER_SURFACES_DEV: &[&str] = &["dev.arlen-settings", "dev.arlen-harness"];
+const USER_SURFACES_DEV: &[&str] = &[
+    "dev.arlen-desktop-shell",
+    "dev.arlen-settings",
+    "dev.arlen-harness",
+];
 
 pub fn is_user_surface(app_id: &str) -> bool {
     if USER_SURFACES.contains(&app_id) {
@@ -607,6 +624,30 @@ pub fn is_user_surface(app_id: &str) -> bool {
         return true;
     }
     false
+}
+
+#[cfg(test)]
+mod user_surface_rule {
+    use super::is_user_surface;
+
+    /// The three system surfaces, and the rule that keeps the list from growing
+    /// by sympathy: a place the system speaks from is in, a place the user goes to
+    /// work is out. The file manager is the sharpest test of that line - it is
+    /// first-party, it is trusted, it moves the user's files, and it is still an
+    /// app, so it asks through the shell rather than holding the capability.
+    #[test]
+    fn the_system_surfaces_are_in_and_an_ordinary_app_is_not() {
+        for id in ["desktop-shell", "harness", "settings"] {
+            assert!(is_user_surface(id), "{id} is the system talking to the user");
+        }
+        for id in ["files", "terminal", "store", "viewers", "com.example.app", "ai-agent"] {
+            assert!(
+                !is_user_surface(id),
+                "{id} is an app: it asks the user through the shell, it does not \
+                 hold the capability"
+            );
+        }
+    }
 }
 
 /// configured allowlist or the rule-4 squat reopens for the added ids.
