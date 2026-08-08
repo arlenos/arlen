@@ -41,7 +41,13 @@ async fn main() {
         }
     };
 
-    if let Err(e) = connection.object_server().at(OBJECT_PATH, UndoInterface).await {
+    let audit: std::sync::Arc<dyn audit_proto::sink::AuditSink> =
+        std::sync::Arc::new(audit_proto::sink::LedgerAuditSink::at_default_socket());
+    if let Err(e) = connection
+        .object_server()
+        .at(OBJECT_PATH, UndoInterface { audit })
+        .await
+    {
         warn!(error = %e, "could not serve the undo surface");
         return;
     }
