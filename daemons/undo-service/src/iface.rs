@@ -27,7 +27,12 @@ pub const BUS_NAME: &str = "org.arlen.Undo1";
 
 /// The undo surface. Holds no state: both methods read the two stores fresh, so a
 /// restart loses nothing and two callers cannot disagree about what is undoable.
-pub struct UndoInterface;
+pub struct UndoInterface {
+    /// Where an enact is recorded before it happens. Held rather than opened per
+    /// call so a ledger that is down is a failure of the enact, not of the
+    /// interface.
+    pub audit: std::sync::Arc<dyn audit_proto::sink::AuditSink>,
+}
 
 /// Resolve the calling app's Arlen identity from the D-Bus connection: the bus
 /// attests the sender's PID (`GetConnectionUnixProcessID`, never a client value)
@@ -61,9 +66,9 @@ async fn admitted(
     method: &str,
     header: &zbus::message::Header<'_>,
     connection: &zbus::Connection,
-) -> zbus::fdo::Result<()> {
+) -> zbus::fdo::Result<String> {
     match resolve_caller(header, connection).await {
-        Ok(caller) if arlen_permissions::identity::is_user_surface(&caller) => Ok(()),
+        Ok(caller) if arlen_permissions::identity::is_user_surface(&caller) => Ok(caller),
         Ok(caller) => {
             tracing::warn!(%caller, %method, "refused: not a user surface");
             Err(zbus::fdo::Error::AccessDenied(format!(
@@ -122,7 +127,7 @@ impl UndoInterface {
         // A refusal is an error rather than an outcome word: the outcomes below
         // describe what an undo DID, and refusing to consider one is not among
         // them. Same reason `recent` errors.
-        admitted("enact", &header, connection).await?;
+        let caller = admitted("enact", &header, connection).await?;
         // The signer's protocol has no fetch-one, so the live set is fetched and
         // the entry found by key. The op id is a LOOKUP KEY and nothing else: the
         // inverse that gets replayed is the one the signer holds, so a caller
@@ -140,6 +145,22 @@ impl UndoInterface {
         };
         if !undo_enact::is_enactable(&entry.inverse) {
             return Ok("not-reversible".to_string());
+        }
+        // AUDIT BEFORE THE ACT, and refuse if the ledger will not take it. This
+        // replays a captured inverse against the user's files - it moves, deletes
+        // or trashes real things - and the rule the rest of the system keeps is
+        // that no destructive act happens unrecorded. The engine's compensate
+        // path does exactly this; the service that replaces it must not be the
+        // weaker of the two. Content-free: the subject names the caller and the
+        // correlation id, never the path.
+        let event = arlen_ai_core::audit::behaviour_action_event(
+            "undo",
+            format!("enact-inverse:by={caller}"),
+            &entry.correlation_id,
+        );
+        if self.audit.submit(event).await.is_err() {
+            tracing::warn!(%op_id, "enact refused: the audit ledger is unavailable");
+            return Ok("unavailable".to_string());
         }
         let inverse = entry.inverse.clone();
         match tokio::task::spawn_blocking(move || undo_enact::enact_inverse(&inverse)).await {
@@ -176,6 +197,35 @@ fn outcome_wire(outcome: undo_enact::EnactOutcome) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An enact that cannot be recorded does not happen.
+    ///
+    /// The wire word for it is `unavailable`, the same word an unreadable log
+    /// gets, and that is deliberate: from the caller's side both mean "we did not
+    /// do this and it is not your fault". What must never happen is the file
+    /// moving while the ledger says nothing, so the sink's failure is checked
+    /// BEFORE `enact_inverse` runs rather than after.
+    #[test]
+    fn the_refusal_word_for_an_unrecordable_enact_is_a_known_outcome() {
+        // `unavailable` is not in `outcome_wire`'s vocabulary - it is a
+        // pre-enact refusal, not the result of one - so this pins that the two
+        // vocabularies stay disjoint and a surface can tell them apart.
+        use undo_enact::EnactOutcome::*;
+        for o in [
+            Restored,
+            Deleted,
+            Trashed,
+            RefusedIdentityMismatch,
+            RefusedPriorOccupied,
+            NotFilesystem,
+        ] {
+            assert_ne!(
+                outcome_wire(o),
+                "unavailable",
+                "an enact outcome must not collide with the pre-enact refusal"
+            );
+        }
+    }
 
     /// The vocabulary is closed and each word is distinct: a surface renders these
     /// verbatim, so two outcomes sharing a word would be two different things

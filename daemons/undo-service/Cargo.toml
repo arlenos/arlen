@@ -24,6 +24,9 @@ arlen-ai-undo-proto = { path = "../../ai/ai-undo-proto" }
 arlen-config-format = { path = "../../sdk/config-format" }
 arlen-freedesktop-trash = { path = "../../contracts/freedesktop-trash" }
 audit-proto = { path = "../../contracts/audit-proto" }
+# For `behaviour_action_event`: the audit entry shape the engine already uses for
+# an enacted inverse, so both surfaces write the same record for the same act.
+arlen-ai-core = { path = "../../ai/ai-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["io-util", "net", "time", "macros", "rt-multi-thread", "signal"] }
