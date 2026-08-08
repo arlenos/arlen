@@ -7,7 +7,7 @@
   import PerformanceTab from "$lib/components/tm/PerformanceTab.svelte";
   import DetailPane from "$lib/components/tm/DetailPane.svelte";
   import RowMenu from "$lib/components/tm/RowMenu.svelte";
-  import { processes, mocked, lastError, load, startProcessPolling, stopProcessPolling, stop, pause, resume, limit, unlimit, type Process } from "$lib/stores/processes";
+  import { processes, mocked, unavailable, lastError, load, startProcessPolling, stopProcessPolling, stop, pause, resume, limit, unlimit, type Process } from "$lib/stores/processes";
   import { startPerf, stopPerf } from "$lib/stores/perf";
   import { t, dir } from "$lib/i18n/messages";
   import { Rows3, Layers } from "lucide-svelte";
@@ -95,6 +95,10 @@
       <!-- Every row here offers a Stop; unlabelled, the fixture reads as this
            machine's real processes. -->
       <p class="note">{$t("tm.sample")}</p>
+    {:else if $unavailable}
+      <!-- No rows at all rather than a labelled fixture: the ids in that fixture
+           are the argument Stop passes to the backend. -->
+      <p class="note">{$t("tm.unavailable")}</p>
     {/if}
     {#if $lastError}
       <!-- A refused action must be visible: the row already reverted, and this
