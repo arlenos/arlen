@@ -108,8 +108,15 @@ impl SignerStore {
                 entry.op_id
             )));
         }
+        // The seal time is taken HERE, in the signer, and never accepted from the
+        // submitter: an entry that carried its own timestamp would let whoever
+        // sends it decide how old its action looks.
+        let sealed_at_micros = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_micros() as i64)
+            .unwrap_or(0);
         self.log
-            .append_created(entry)
+            .append_created(entry, sealed_at_micros)
             .map_err(|e| SignerError::Storage(format!("appending an undo-log entry: {e}")))?;
         self.write_checkpoint()
     }
@@ -171,6 +178,7 @@ impl SignerStore {
             .recent_entries(limit)
             .into_iter()
             .map(|(entry, state)| arlen_ai_undo_proto::RecentEntry {
+                sealed_at_micros: self.log.sealed_at(&entry.op_id).unwrap_or(0),
                 entry: entry.clone(),
                 state,
             })
