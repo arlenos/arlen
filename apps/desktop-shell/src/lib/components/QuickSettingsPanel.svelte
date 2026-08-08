@@ -103,12 +103,16 @@
         userEntries = [];
       }
       // else: keep the last-known-good `userEntries` rendered.
+      // The raw error goes to the journal above, not into the toast. It used to
+      // be concatenated in, so a user with no running backend read
+      // "TypeError: undefined is not an object (evaluating
+      // 'window.__TAURI_INTERNALS__.invoke')" across the top of their panel -
+      // which names an internal and tells them nothing they can act on. These
+      // were also the only hardcoded English strings on this surface.
       toast.warning(
         isParseError
-          ? "Quick Settings layout file is malformed. Using "
-            + (hasLoadedOnce ? "last good state" : "defaults")
-            + ". Fix or reset the file in Settings."
-          : "Could not read Quick Settings layout: " + err,
+          ? $t(hasLoadedOnce ? "sh.qs.layoutMalformedKept" : "sh.qs.layoutMalformedDefaults")
+          : $t("sh.qs.layoutUnreadable"),
         { duration: 8000 },
       );
     }
