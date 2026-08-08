@@ -62,7 +62,6 @@ KNOWN: dict[str, dict[str, str]] = {
         "knowledge_capsule_revoke": "revoking a minted capsule",
         "knowledge_capsules": "the capsule list",
         "knowledge_library": "the library view",
-        "knowledge_provenance": "a file's provenance chain",
         "knowledge_search_save": "saving a search",
         "knowledge_timeline_delete": "deleting a timeline entry",
         "knowledge_timeline_export": "exporting the timeline",

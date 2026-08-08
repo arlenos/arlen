@@ -10,6 +10,7 @@ const messages: Catalogs = {
   en: {
     "k.menu.timeline": "Timeline",
     // The quiet leading verb of a timeline row, per event kind.
+    "k.pv.verb.openedIn": "opened in",
     "k.tl.verb.opened": "opened",
     "k.tl.verb.edited": "edited",
     "k.tl.verb.ran": "ran",
@@ -125,6 +126,7 @@ const messages: Catalogs = {
   },
   de: {
     "k.menu.timeline": "Zeitleiste",
+    "k.pv.verb.openedIn": "geöffnet in",
     "k.tl.verb.opened": "geöffnet",
     "k.tl.verb.edited": "bearbeitet",
     "k.tl.verb.ran": "ausgeführt",

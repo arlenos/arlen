@@ -15,6 +15,7 @@
 //! that invented an empty list would show the fixture's absence as fact.
 
 mod projects;
+mod provenance;
 mod search;
 mod timeline;
 
@@ -29,6 +30,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             projects::knowledge_list,
             projects::knowledge_projects_list,
+            provenance::knowledge_provenance,
             search::knowledge_search,
             timeline::knowledge_timeline
         ])
