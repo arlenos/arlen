@@ -144,20 +144,32 @@ export async function openMeeting(id: string): Promise<void> {
   }
 }
 
-/// Save the user's edited notes (a coder seam - today nothing persists edits; the
-/// local view applies either way).
+/// True when the last edit did not reach the host. Everything else on this
+/// surface is a labelled sample, but the notes, the speaker names and the action
+/// items are the user's OWN words - losing them silently is the one failure this
+/// app cannot absorb behind a caveat.
+export const editFailed = writable(false);
+
+/// Save the user's edited notes.
 export async function saveNotes(text: string): Promise<void> {
+  const before = get(meeting)?.humanNotes;
   meeting.update((m) => (m ? { ...m, humanNotes: text } : m));
+  editFailed.set(false);
   try {
     await invoke("meeting_save_notes", { id: get(currentId), text });
   } catch {
-    // Seam unwired: the local save stands.
+    if (import.meta.env.DEV) return; // no host under vite
+    // Showing the text as saved is how somebody closes the window and loses it.
+    meeting.update((m) => (m ? { ...m, humanNotes: before ?? "" } : m));
+    editFailed.set(true);
   }
 }
 
 /// Relabel a diarization speaker everywhere ("speaker_1" -> "Ben"). Confirming
 /// attribution is the user's job by design; the seam persists it with the note.
 export async function relabelSpeaker(label: string, name: string): Promise<void> {
+  const beforeNames = get(speakerNames);
+  editFailed.set(false);
   speakerNames.update((s) => {
     const next = { ...s };
     if (name.trim()) next[label] = name.trim();
@@ -167,12 +179,16 @@ export async function relabelSpeaker(label: string, name: string): Promise<void>
   try {
     await invoke("meeting_relabel_speaker", { id: get(currentId), label, name: name.trim() });
   } catch {
-    // Seam unwired.
+    if (import.meta.env.DEV) return;
+    speakerNames.set(beforeNames);
+    editFailed.set(true);
   }
 }
 
 /// Update one action item (owner confirm/edit, done tick). Persisted via the seam.
 export async function updateItem(index: number, patch: { owner?: string; done?: boolean }): Promise<void> {
+  const beforeMeeting = get(meeting);
+  editFailed.set(false);
   meeting.update((m) => {
     if (!m) return m;
     const items = m.note.action_items.map((it, i) => (i === index ? { ...it, ...patch } : it));
@@ -181,7 +197,11 @@ export async function updateItem(index: number, patch: { owner?: string; done?: 
   try {
     await invoke("meeting_update_item", { id: get(currentId), index, ...patch });
   } catch {
-    // Seam unwired.
+    if (import.meta.env.DEV) return;
+    // A tick that did not persist means the item comes back undone next time,
+    // and the owner shown against it is not the one recorded.
+    meeting.set(beforeMeeting);
+    editFailed.set(true);
   }
 }
 
