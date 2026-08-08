@@ -61,14 +61,35 @@ export const sentinel = writable<SentinelState | null>(null);
 /// True while the state is the FIXTURE rather than this machine's real posture.
 export const sentinelMocked = writable(false);
 
+/// True when a real session could not read the state at all.
+///
+/// Distinct from `sentinelMocked`. The page guards its whole body on `$sentinel`
+/// being set, so a null read renders an empty page - and an empty privacy page
+/// reads as "nothing to report", which is the one thing it must not say when it
+/// does not know.
+export const sentinelUnavailable = writable(false);
+
 /// Load the state. Live: `sentinel_get_state`; fixture under vite.
 export async function loadSentinel(): Promise<void> {
   try {
     sentinel.set(await invoke<SentinelState>("sentinel_get_state"));
     sentinelMocked.set(false);
   } catch {
-    sentinel.set(structuredClone(FIXTURE));
-    sentinelMocked.set(true);
+    if (import.meta.env.DEV) {
+      sentinel.set(structuredClone(FIXTURE));
+      sentinelMocked.set(true);
+      sentinelUnavailable.set(false);
+      return;
+    }
+    // A real session that could not read the sentinel. The fixture asserts that
+    // the Wi-Fi address rotates, that saved networks are not broadcast and -
+    // the sharpest one - that nothing is using the microphone or camera right
+    // now. That last line is what a person opens this page to find out, and
+    // "example state" above it does not unsay it. Null, and the page says it
+    // cannot read the posture.
+    sentinel.set(null);
+    sentinelMocked.set(false);
+    sentinelUnavailable.set(true);
   }
 }
 
