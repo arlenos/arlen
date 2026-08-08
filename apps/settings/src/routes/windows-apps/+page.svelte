@@ -106,7 +106,9 @@
 
     <Section label={$t("s.wa.installed")} class="span-full">
       {#if $winApps.bottles.length === 0}
-        <p class="empty">{$t("s.wa.none")}</p>
+        <!-- "none installed" is a claim about this machine; the banner above says
+             we could not read it. The label has to be where the sentence is. -->
+        <p class="empty">{$winApps.unavailable ? $t("s.wa.noneUnknown") : $t("s.wa.none")}</p>
       {/if}
       {#each $winApps.bottles as b (b.id)}
         <Row label={b.appName} description={compatLine(b)}>
