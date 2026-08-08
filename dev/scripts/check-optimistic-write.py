@@ -75,8 +75,8 @@ SKIP = ("/harness/", "/store/", "node_modules")
 # the action is made honest, not when it is explained.
 KNOWN: dict[str, str] = {
     "apps/settings/src/lib/stores/windows-apps.ts": (
-        "patchBottle, installExe, deleteBottle, patchDefaults - same, the bottle "
-        "commands have no host"
+        "installExe, where the file picker and a failed install are the same "
+        "exception - the same problem as installThemeFile"
     ),
     "apps/settings/src/lib/stores/models.ts": (
         "setRole, startDownload, cancelDownload - arlen-ui's model picker is live "

@@ -12,7 +12,7 @@
 /// build-deferred, so everything is a coder seam; under vite the store serves a
 /// fixture and flags `mocked` for the honest banner (the Printers pattern).
 
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 
 /// How well-supported the app is - stated honestly.
@@ -138,6 +138,12 @@ export const wineVersions = ["Wine 9.0", "Wine 8.21", "Proton 9.0", "Wine (stagi
 
 export const winApps = writable<WinAppsState>({ bottles: [], loading: false, mocked: false, unavailable: false });
 
+/// True when the last change to a bottle or a default did not reach the daemon,
+/// so the switches went back to what the bottle really holds. A Windows app's
+/// config decides what that app can reach on this machine, so a switch showing
+/// one thing while the prefix holds another is a claim about containment.
+export const winActionFailed = writable(false);
+
 export const defaults = writable<WinDefaults>({
   version: "Wine 9.0",
   bottleMode: "per-app",
@@ -168,14 +174,23 @@ export async function load(): Promise<void> {
 
 /// Change any of a bottle's config, optimistically. Live: `set_bottle_config`.
 export async function patchBottle(id: string, patch: Partial<Bottle>): Promise<void> {
+  const before = get(winApps).bottles.find((b) => b.id === id);
   winApps.update((s) => ({
     ...s,
     bottles: s.bottles.map((b) => (b.id === id ? { ...b, ...patch } : b)),
   }));
+  winActionFailed.set(false);
   try {
     await invoke("set_bottle_config", { id, patch });
   } catch {
-    // optimistic in the mock
+    if (import.meta.env.DEV) return; // no bottle daemon under vite
+    if (before) {
+      winApps.update((s) => ({
+        ...s,
+        bottles: s.bottles.map((b) => (b.id === id ? before : b)),
+      }));
+    }
+    winActionFailed.set(true);
   }
 }
 
@@ -209,20 +224,30 @@ export async function clearCaches(id: string): Promise<void> {
 
 /// Remove the app + its bottle. Live: `delete_bottle`.
 export async function deleteBottle(id: string): Promise<void> {
+  const before = get(winApps).bottles;
   winApps.update((s) => ({ ...s, bottles: s.bottles.filter((b) => b.id !== id) }));
+  winActionFailed.set(false);
   try {
     await invoke("delete_bottle", { id });
   } catch {
-    // optimistic in the mock
+    if (import.meta.env.DEV) return;
+    // The app and its prefix are still on disk; a list that hides them is a
+    // machine the user thinks is cleaner than it is.
+    winApps.update((s) => ({ ...s, bottles: before }));
+    winActionFailed.set(true);
   }
 }
 
 /// Change a global default, optimistically. Live: `set_windows_defaults`.
 export async function patchDefaults(patch: Partial<WinDefaults>): Promise<void> {
+  const before = get(defaults);
   defaults.update((d) => ({ ...d, ...patch }));
+  winActionFailed.set(false);
   try {
     await invoke("set_windows_defaults", { patch });
   } catch {
-    // optimistic in the mock
+    if (import.meta.env.DEV) return;
+    defaults.set(before);
+    winActionFailed.set(true);
   }
 }

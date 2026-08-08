@@ -28,6 +28,7 @@
   import { navigateTo } from "$lib/stores/navigation";
   import {
     winApps,
+    winActionFailed,
     defaults,
     wineVersions,
     load,
@@ -102,6 +103,10 @@
       <p class="note span-full">
         {$t("s.wa.unavailable")}
       </p>
+    {/if}
+    <!-- The switches below are back on what the bottle really holds. -->
+    {#if $winActionFailed}
+      <p class="note span-full" role="alert">{$t("s.wa.actionFailed")}</p>
     {/if}
 
     <Section label={$t("s.wa.installed")} class="span-full">
