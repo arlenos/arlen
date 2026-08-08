@@ -24,9 +24,13 @@
     oncontextmenu,
     onDetail,
     detailLabel = "",
+    valueKnown = true,
   }: {
     /// Tile label, top-left next to the icon.
     label: string;
+    /// False when the value is a placeholder rather than a reading, so the
+    /// percentage readout is withheld.
+    valueKnown?: boolean;
     /// Status strip line (e.g. the active output device).
     statusText?: string;
     icon?: Snippet;
@@ -63,7 +67,11 @@
   tabindex={-1}
 >
   {#snippet headTrailing()}
-    {Math.round(percent)}%
+    <!-- A percentage is a reading. A tile whose backend never answered has a
+         placeholder value, and rendering it says the volume is 0 - so when the
+         caller says the value is not known, the readout says nothing rather
+         than a number nobody measured. -->
+    {#if valueKnown}{Math.round(percent)}%{:else}&mdash;{/if}
   {/snippet}
 
   <div class="qs-slider-row">
