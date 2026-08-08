@@ -549,22 +549,27 @@ impl AgentAdminInterface {
         &self,
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
-    ) -> String {
+    ) -> zbus::fdo::Result<String> {
         // Same gate as `explain_system`, for the same reason: an entry's `from` and
         // `to` are `type/id`, and a File node's id is its path, so this list names
-        // the user's files. A refused caller gets an empty array rather than an
-        // error string, because the wire shape is JSON the caller parses; the
-        // warning is there so a harness whose identity stopped resolving shows up
-        // in the log instead of quietly seeing no actions.
+        // the user's files.
+        //
+        // A refused caller gets an ERROR. It used to get an empty array, argued
+        // for on the grounds that the wire is JSON the caller parses and the
+        // warning lands in the log - and an empty recent-actions list tells a user
+        // they have done nothing, which is a different false statement to make
+        // than "you may not see this". The log helps whoever reads logs.
         match resolve_dbus_caller(&header, connection).await {
             Ok(caller) if user_surface_admitted(&caller) => {}
             Ok(caller) => {
                 tracing::warn!(%caller, "completed_actions refused: not a user surface");
-                return "[]".to_string();
+                return Err(zbus::fdo::Error::AccessDenied(format!(
+                    "{caller} may not read this session's completed actions"
+                )));
             }
             Err(e) => {
                 tracing::warn!(error = %e, "completed_actions refused: caller unresolved");
-                return "[]".to_string();
+                return Err(zbus::fdo::Error::AccessDenied(e));
             }
         }
         // The graph actions from the in-memory store (fast, always present).
@@ -586,7 +591,7 @@ impl AgentAdminInterface {
         let mut items: Vec<serde_json::Value> =
             graph.iter().filter_map(|a| serde_json::to_value(a).ok()).collect();
         items.extend(nongraph.iter().filter_map(|a| serde_json::to_value(a).ok()));
-        serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string())
+        Ok(serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string()))
     }
 
     /// The recent-actions history: every producer's journalled reversible action,
@@ -609,16 +614,21 @@ impl AgentAdminInterface {
         &self,
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
-    ) -> String {
+    ) -> zbus::fdo::Result<String> {
+        // Refusal is an error, not an empty list, for the reason on
+        // `completed_actions` above. The replacement service (`org.arlen.Undo1`)
+        // answers the same way, so the two agree while both exist.
         match resolve_dbus_caller(&header, connection).await {
             Ok(caller) if user_surface_admitted(&caller) => {}
             Ok(caller) => {
                 tracing::warn!(%caller, "undo_read refused: not a user surface");
-                return "[]".to_string();
+                return Err(zbus::fdo::Error::AccessDenied(format!(
+                    "{caller} may not read this session's actions"
+                )));
             }
             Err(e) => {
                 tracing::warn!(error = %e, "undo_read refused: caller unresolved");
-                return "[]".to_string();
+                return Err(zbus::fdo::Error::AccessDenied(e));
             }
         }
         let rows = crate::undo_history::recent_rows(
@@ -627,7 +637,7 @@ impl AgentAdminInterface {
             UNDO_READ_LIMIT,
         )
         .await;
-        serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string())
+        Ok(serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string()))
     }
 
     /// Undo a completed action: retract the graph write recorded under
