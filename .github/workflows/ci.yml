@@ -94,6 +94,7 @@ jobs:
           python3 dev/scripts/check-invoke-shape.py
           python3 dev/scripts/check-invoke-exists.py
           python3 dev/scripts/check-optimistic-write.py
+          python3 dev/scripts/check-granted-and-used.py
           python3 dev/scripts/check-invoke-scope.py
           python3 dev/scripts/check-opener-args.py
           python3 dev/scripts/check-grant-visibility.py
