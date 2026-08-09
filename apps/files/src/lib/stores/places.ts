@@ -130,8 +130,16 @@ export const savedSearches = writable<SavedSearch[]>([]);
 /// The home place's path; the breadcrumb collapses it to "Home".
 export const homePath = writable("/home");
 
+/// True when the places read failed, as opposed to returning nothing. The two
+/// look identical in the sidebar and only one of them is a statement about this
+/// machine; the sidebar says which.
+export const placesUnavailable = writable(false);
+
 export async function loadPlaces(): Promise<void> {
   const groups: PlaceGroup[] = [];
+  // Cleared per attempt, so a later successful reload takes the notice away
+  // rather than leaving it to contradict the places listed under it.
+  placesUnavailable.set(false);
   try {
     const places = await invoke<{ orte: Place[]; geraete: Place[] }>("files_places");
     const home = places.orte.find((p) => p.icon === "home");
@@ -176,7 +184,13 @@ export async function loadPlaces(): Promise<void> {
       places: [...places.geraete, ...devicePlaces],
     });
   } catch {
-    // Unreachable backend: the sidebar stays empty rather than fake.
+    // Unreachable backend. Not inventing places was always right; going silent
+    // about it was not. What survives a failed read here is Recent and Trash,
+    // which need no backend and keep working - so the sidebar does not look
+    // broken, it looks like a file manager whose only places are Recent and
+    // Trash, and the user wonders where Home went rather than learning that
+    // nothing could be read. Seen on 9 August in the first desktop-width sweep.
+    placesUnavailable.set(true);
   }
   try {
     const bookmarks = await invoke<Place[]>("files_bookmarks");

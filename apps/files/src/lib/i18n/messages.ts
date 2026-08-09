@@ -229,6 +229,7 @@ const messages: Catalogs = {
     "f.sidebar.searches": "Searches",
     "f.sidebar.recent": "Recent",
     "f.sidebar.trash": "Trash",
+    "f.sidebar.placesUnavailable": "Your places could not be read, so none are listed.",
 
     // Tabs
     "f.tab.close": "Close tab",
@@ -499,6 +500,7 @@ const messages: Catalogs = {
     "f.sidebar.searches": "Suchen",
     "f.sidebar.recent": "Zuletzt",
     "f.sidebar.trash": "Papierkorb",
+    "f.sidebar.placesUnavailable": "Deine Orte konnten nicht gelesen werden, deshalb steht hier keiner.",
 
     "f.tab.close": "Tab schließen",
 
