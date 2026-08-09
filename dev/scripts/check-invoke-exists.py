@@ -68,7 +68,6 @@ KNOWN: dict[str, dict[str, str]] = {
             "namespace to the store's four sections and which field is the display "
             "title - both are schema decisions that every future bridge inherits"
         ),
-        "knowledge_search_save": "saving a search",
         "knowledge_timeline_delete": "deleting a timeline entry",
         "knowledge_timeline_pause": "pausing collection",
     },

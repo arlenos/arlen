@@ -125,14 +125,40 @@ export interface SavedSearch {
   facets: SearchFacets;
 }
 
-/// The saved searches (the Searches place lists these). Seeded with the
-/// previous fixture entries as real presets; persistence is a seam.
-export const savedSearches = writable<SavedSearch[]>([
+/// The searches this person saved, newest first, read from disk on mount.
+///
+/// It starts EMPTY. It used to open with four entries - "Touched by cargo
+/// build", "Related to Thesis" - which rendered in every session including a
+/// real one as searches the user had saved and had not. That is the fixture
+/// defect without a catch to hide in: a hardcoded initial value.
+export const savedSearches = writable<SavedSearch[]>([]);
+
+/// The four former presets, kept for the design surface under vite only.
+const DEV_PRESETS: SavedSearch[] = [
   { id: "s-1", name: "Touched by cargo build", query: "cargo", facets: { type: null, project: "Arlen OS", withinDays: null } },
   { id: "s-2", name: "Related to Thesis", query: "", facets: { type: null, project: "Thesis", withinDays: null } },
   { id: "s-3", name: "Opened this week", query: "", facets: { type: "file", project: null, withinDays: 7 } },
   { id: "s-4", name: "Papers I have not read", query: "", facets: { type: "paper", project: null, withinDays: null } },
-]);
+];
+
+/// True when the saved list could not be read, so an empty place can say which
+/// kind of empty it is.
+export const savedUnavailable = writable(false);
+
+/// Load the saved searches. Call on mount.
+export async function loadSavedSearches(): Promise<void> {
+  try {
+    savedSearches.set(await invoke<SavedSearch[]>("knowledge_searches"));
+    savedUnavailable.set(false);
+  } catch {
+    if (import.meta.env.DEV) {
+      savedSearches.set(DEV_PRESETS);
+      return;
+    }
+    savedSearches.set([]);
+    savedUnavailable.set(true);
+  }
+}
 
 /// Keep the current query as a place. Live: `knowledge_search_save` (seam);
 /// the optimistic add stands under vite.
@@ -145,7 +171,9 @@ export async function saveSearch(name: string): Promise<void> {
   };
   savedSearches.update((l) => [s, ...l]);
   try {
-    await invoke("knowledge_search_save", { search: s });
+    // The command returns the list as written, so the place shows what is on
+    // disk rather than what this window hoped was on disk.
+    savedSearches.set(await invoke<SavedSearch[]>("knowledge_search_save", { search: s }));
   } catch {
     if (import.meta.env.DEV) return; // no backend under vite
     // A saved search that was not saved is gone at the next start, and the user
