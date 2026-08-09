@@ -715,16 +715,48 @@ pub async fn set_wifi_enabled(enabled: bool) -> Result<(), String> {
         .map_err(|e| format!("WirelessEnabled: {e}"))
 }
 
-/// Returns whether airplane mode is active (all WiFi radios soft-blocked).
+/// Whether every radio is soft-blocked, from `rfkill --json` output.
+///
+/// Split out so the rule can be stated in tests rather than inferred from a
+/// substring. It replaces `text.contains("Soft blocked: yes")` over the prose
+/// listing, which was wrong in two ways that pointed opposite directions:
+///
+///   * it answered ANY where the doc said ALL, so a machine with two WiFi radios
+///     and one of them blocked showed the aeroplane while WiFi still worked;
+///   * it read only `wifi`, while `set_airplane_mode` blocks `all` - so the
+///     question the toggle asks and the question the indicator answers were not
+///     the same question.
+///
+/// Prose is also the wrong thing to match against: a device name is chosen by its
+/// driver, not by us, and one containing the phrase would have flipped the
+/// answer. That is the smaller of the three and the reason it is a parse now.
+///
+/// No radios at all is not aeroplane mode: there is nothing switched off.
+fn all_radios_blocked(json: &str) -> Result<bool, String> {
+    let parsed: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| format!("rfkill output not readable: {e}"))?;
+    let devices = parsed
+        .get("rfkilldevices")
+        .and_then(|d| d.as_array())
+        .ok_or_else(|| "rfkill output has no device list".to_string())?;
+    if devices.is_empty() {
+        return Ok(false);
+    }
+    Ok(devices
+        .iter()
+        .all(|d| d.get("soft").and_then(|s| s.as_str()) == Some("blocked")))
+}
+
+/// Returns whether airplane mode is active: every radio soft-blocked, which is
+/// exactly what [`set_airplane_mode`] switches.
 #[tauri::command]
 pub async fn get_airplane_mode() -> Result<bool, String> {
     let output = tokio::process::Command::new("rfkill")
-        .args(["list", "wifi"])
+        .args(["--json"])
         .output()
         .await
         .map_err(|e| format!("rfkill not found: {e}"))?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    Ok(text.contains("Soft blocked: yes"))
+    all_radios_blocked(&String::from_utf8_lossy(&output.stdout))
 }
 
 /// Toggles airplane mode by blocking or unblocking all wireless radios.
@@ -1315,6 +1347,54 @@ async fn run_network_monitor(app: tauri::AppHandle) -> Result<(), zbus::Error> {
 
 #[cfg(test)]
 mod tests {
+
+    /// The `rfkill --json` shape, verified against util-linux on 9 August.
+    fn rfkill(devices: &str) -> String {
+        format!(r#"{{"rfkilldevices": [{devices}]}}"#)
+    }
+
+    #[test]
+    fn every_radio_blocked_is_aeroplane_mode() {
+        let json = rfkill(
+            r#"{"id":0,"type":"bluetooth","device":"hci0","soft":"blocked","hard":"unblocked"},
+               {"id":1,"type":"wlan","device":"phy0","soft":"blocked","hard":"unblocked"}"#,
+        );
+        assert_eq!(all_radios_blocked(&json), Ok(true));
+    }
+
+    /// The case the old substring test got backwards: one radio still on means
+    /// the machine is still on the air, whatever the other one says.
+    #[test]
+    fn one_radio_left_on_is_not_aeroplane_mode() {
+        let json = rfkill(
+            r#"{"id":0,"type":"wlan","device":"phy0","soft":"blocked","hard":"unblocked"},
+               {"id":1,"type":"wlan","device":"phy1","soft":"unblocked","hard":"unblocked"}"#,
+        );
+        assert_eq!(all_radios_blocked(&json), Ok(false));
+    }
+
+    #[test]
+    fn no_radios_at_all_is_not_aeroplane_mode() {
+        assert_eq!(all_radios_blocked(&rfkill("")), Ok(false));
+    }
+
+    /// A device name is written by its driver, not by us. The old test matched
+    /// the phrase anywhere in the listing, so a name carrying it would have
+    /// reported the radios off while they were on.
+    #[test]
+    fn a_device_named_after_the_phrase_does_not_flip_the_answer() {
+        let json = rfkill(
+            r#"{"id":0,"type":"wlan","device":"Soft blocked: yes","soft":"unblocked","hard":"unblocked"}"#,
+        );
+        assert_eq!(all_radios_blocked(&json), Ok(false));
+    }
+
+    #[test]
+    fn unreadable_output_is_an_error_rather_than_a_no() {
+        assert!(all_radios_blocked("not json").is_err());
+        assert!(all_radios_blocked(r#"{"other": 1}"#).is_err());
+    }
+
     use super::*;
 
     /// One setting, one key, one value: the shape NetworkManager replies in.
