@@ -108,6 +108,7 @@ jobs:
           python3 dev/scripts/check-refusal-shape.py
           node dev/scripts/test-check-fixtures.mjs
           node dev/scripts/test-check-units.mjs
+          node dev/scripts/test-check-invokes.mjs
           bash dev/scripts/check-packaged-units.sh
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then

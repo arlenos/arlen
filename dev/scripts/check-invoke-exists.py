@@ -48,7 +48,11 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+# The tree to scan. An argument points it at a throwaway one, which is what lets
+# `test-check-invokes.mjs` watch the gate fail on a call with no handler and stay
+# quiet on one that has it. A gate nobody has seen fail is a gate nobody should
+# trust, and this one decides whether a control is honest.
+ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 
 INVOKE = re.compile(r'invoke(?:<[^>]*>)?\(\s*["\'`]([A-Za-z_][A-Za-z0-9_]*)["\'`]')
 HANDLER = re.compile(r"generate_handler!\s*\[(.*?)\]", re.S)
