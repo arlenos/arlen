@@ -6,13 +6,16 @@
 /// events into the store at all. Anything less would be the shape this tree has
 /// spent two days removing: a surface asserting a state nobody enforces.
 ///
-/// Read at startup only, deliberately, because that is the honest half that can
-/// land on its own. `graph.toml` hot-reload is a separate sprint item the
-/// promotion loop already documents, and until the live path exists the app's
-/// switch keeps reporting "Recording could not be paused, so it is still
-/// running" - which is true. A user who edits this file and restarts gets a real
-/// pause; nobody is told they have one when they do not.
+/// Watched, not just read once. The switch is a privacy control, and a pause
+/// that only takes effect after a restart is the same lie in slower motion: the
+/// user asks for collection to stop, the file says it stopped, and the daemon
+/// keeps writing until something else happens to restart it. `watch_paused`
+/// below keeps a shared flag current so the writer sees a change within a
+/// moment of the file being saved.
 use serde::Deserialize;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// `[timeline]` section of `graph.toml`.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -55,6 +58,34 @@ impl TimelineConfig {
             Err(e) => {
                 tracing::warn!("{} could not be read ({e}); recording stays on", path.display());
                 Self::default()
+            }
+        }
+    }
+}
+
+/// Keep `flag` in step with `[timeline] paused`, for as long as the daemon runs.
+///
+/// Polled rather than inotify-watched, on purpose. Editors save by writing a
+/// temporary file and renaming it over the target, so a watch registered on the
+/// path itself stops seeing changes after the first save - a failure that looks
+/// exactly like "the setting does not work" and is tedious to find. A read of one
+/// small file every few seconds costs nothing and cannot lose the file.
+///
+/// The lag is honest rather than hidden: a save takes effect within one interval,
+/// not instantly, and that is the guarantee the surface should make.
+pub async fn watch_paused(flag: Arc<AtomicBool>) {
+    const INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+    let mut last = flag.load(Ordering::Relaxed);
+    loop {
+        tokio::time::sleep(INTERVAL).await;
+        let now = TimelineConfig::load().paused;
+        if now != last {
+            flag.store(now, Ordering::Relaxed);
+            last = now;
+            if now {
+                tracing::info!("recording paused; events are read and discarded until it resumes");
+            } else {
+                tracing::info!("recording resumed; events are being stored again");
             }
         }
     }

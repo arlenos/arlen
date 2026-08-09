@@ -30,12 +30,15 @@ pub async fn run(consumer_socket: &str, pool: SqlitePool) -> Result<()> {
     // about its threshold), so a change takes effect on restart and the app's
     // switch keeps reporting that it could not pause - which is true until the
     // live path exists.
-    let paused = crate::timeline_config::TimelineConfig::load().paused;
-    if paused {
+    let paused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
+        crate::timeline_config::TimelineConfig::load().paused,
+    ));
+    tokio::spawn(crate::timeline_config::watch_paused(paused.clone()));
+    if paused.load(std::sync::atomic::Ordering::Relaxed) {
         info!("graph.toml [timeline] paused = true; events are read and discarded, nothing is stored");
     }
     loop {
-        match connect_and_consume(consumer_socket, &pool, paused).await {
+        match connect_and_consume(consumer_socket, &pool, &paused).await {
             Ok(()) => {
                 // Clean disconnect; Event Bus shut down intentionally.
                 info!("event bus disconnected, waiting to reconnect");
@@ -49,7 +52,11 @@ pub async fn run(consumer_socket: &str, pool: SqlitePool) -> Result<()> {
 }
 
 /// Connect to the Event Bus consumer socket, register, and consume events.
-async fn connect_and_consume(consumer_socket: &str, pool: &SqlitePool, paused: bool) -> Result<()> {
+async fn connect_and_consume(
+    consumer_socket: &str,
+    pool: &SqlitePool,
+    paused: &std::sync::atomic::AtomicBool,
+) -> Result<()> {
     let mut stream = UnixStream::connect(consumer_socket).await?;
     info!(socket = consumer_socket, "connected to event bus");
 
@@ -85,7 +92,7 @@ async fn connect_and_consume(consumer_socket: &str, pool: &SqlitePool, paused: b
                         // paused: leaving it unread would stall the bus for every
                         // other consumer, which is a different failure from the
                         // one the switch asks for.
-                        if !paused {
+                        if !paused.load(std::sync::atomic::Ordering::Relaxed) {
                             admit(&mut buffer, event);
                         }
                         if buffer.len() >= BATCH_SIZE_THRESHOLD {
