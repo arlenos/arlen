@@ -456,6 +456,61 @@ def bare_type(ret: str) -> str:
     return t.split("::")[-1].strip()
 
 
+def crate_dir(path: Path) -> Path | None:
+    """The directory of the crate that holds `path`: the nearest Cargo.toml above it."""
+    for parent in path.parents:
+        if (parent / "Cargo.toml").is_file():
+            return parent
+    return None
+
+
+def crate_dirs_by_name(root: Path) -> dict[str, Path]:
+    """Package name (in its Rust `use` spelling) to the crate's directory."""
+    out: dict[str, Path] = {}
+    for manifest in root.rglob("Cargo.toml"):
+        if BUILD_DIRS & set(manifest.parts):
+            continue
+        text = manifest.read_text(encoding="utf-8", errors="replace")
+        m = re.search(r'^\s*name\s*=\s*"([^"]+)"', text, re.M)
+        if m:
+            out.setdefault(m.group(1).replace("-", "_"), manifest.parent)
+    return out
+
+
+def imported_from(app_src: Path, name: str) -> str | None:
+    """The crate an app's Rust source imports `name` from, if it says so once.
+
+    Resolution by name alone cannot tell `module_sdk`'s `SearchResult` from the
+    knowledge app's, so five shell calls went uncompared while the answer was
+    written in the source: `waypointer_system` reaches the type through
+    `module_sdk`. Reads `use` lines only - the shape of the import, not the type
+    system - so a path written inline at the use site is not seen, and two
+    different crates importing the same name means no answer rather than a guess.
+    """
+    if not app_src.is_dir():
+        return None
+    found: set[str] = set()
+    # `pub use` counts - the shell reaches the type through a re-export - and the
+    # brace list is routinely wrapped across lines by rustfmt, so neither the
+    # visibility prefix nor a single-line assumption may be baked in. Both were,
+    # in the first cut, and the resolver answered None for the one case it exists
+    # to answer.
+    pattern = re.compile(
+        r"(?:pub\s*(?:\([^)]*\))?\s*)?use\s+([A-Za-z_][A-Za-z0-9_]*)"
+        r"((?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)*)"
+        r"(?:\s*::\s*\{([^}]*)\})?\s*;",
+        re.M | re.S,
+    )
+    for rs in app_src.rglob("*.rs"):
+        text = rs.read_text(encoding="utf-8", errors="replace")
+        for m in pattern.finditer(text):
+            head, path, braced = m.group(1), m.group(2) or "", m.group(3)
+            names = [n.strip().split(" as ")[0].strip() for n in braced.split(",")] if braced else [path.split("::")[-1]]
+            if name in names and head not in {"crate", "self", "super", "std"}:
+                found.add(head)
+    return next(iter(found)) if len(found) == 1 else None
+
+
 def rust_struct_fields(root: Path) -> tuple[dict[str, set[str]], set[str], dict[str, dict[str, set[str]]]]:
     """Map struct name to its field names, for every struct in the tree.
 
@@ -475,10 +530,22 @@ def rust_struct_fields(root: Path) -> tuple[dict[str, set[str]], set[str], dict[
     both safer and more accurate than the global lookup, which had left 29 pairs
     (a quarter of them) unchecked purely because `SearchResult`, `Session`,
     `Project` and `Capability` are unremarkable names that several apps chose.
+
+    The fourth keeps every definition with the crate that holds it, for the names
+    the per-app lookup cannot rescue - a type the app does not define itself but
+    imports. `waypointer_search_plugin` returns the `SearchResult` of
+    `module_sdk`, and three structs carry that name, so five shell calls went
+    uncompared while the answer sat in the app's own `pub use`. Reading the import
+    is not a guess; renaming code so a checker can read it would have been the
+    other way round, and it would have cost the knowledge app a comparison that
+    works today.
     """
     fields: dict[str, set[str]] = {}
     per_app: dict[str, dict[str, set[str]]] = {}
     seen_twice: set[str] = set()
+    # Every definition, kept with the crate that holds it, so an ambiguous name
+    # can still be resolved when the returning app says which crate it means.
+    by_crate: dict[str, dict[Path, set[str]]] = {}
     for path in root.rglob("*.rs"):
         if BUILD_DIRS & set(path.parts):
             continue
@@ -516,6 +583,9 @@ def rust_struct_fields(root: Path) -> tuple[dict[str, set[str]], set[str], dict[
             if name in fields and fields[name] != got:
                 seen_twice.add(name)
             fields[name] = got
+            home = crate_dir(path)
+            if home is not None:
+                by_crate.setdefault(name, {})[home] = got
             if app:
                 # Within one app a repeat is still ambiguous, so the same
                 # drop-rather-than-guess rule applies per app.
@@ -526,7 +596,7 @@ def rust_struct_fields(root: Path) -> tuple[dict[str, set[str]], set[str], dict[
                     bucket[name] = got
     for name in seen_twice:
         fields.pop(name, None)
-    return fields, seen_twice, per_app
+    return fields, seen_twice, per_app, by_crate
 
 
 def balanced_body(text: str, open_at: int) -> str:
@@ -616,7 +686,8 @@ def annotated_calls(root: Path):
 def check_returns(root: Path) -> tuple[int, list[str], list[str], list[str]]:
     """Report interface fields the command's return struct does not produce."""
     returns = rust_return_types(root)
-    structs, ambiguous, structs_by_app = rust_struct_fields(root)
+    structs, ambiguous, structs_by_app, structs_by_crate = rust_struct_fields(root)
+    crate_homes = crate_dirs_by_name(root)
     interfaces = ts_interfaces(root)
     problems: list[str] = []
     known: list[str] = []
@@ -630,6 +701,14 @@ def check_returns(root: Path) -> tuple[int, list[str], list[str], list[str]]:
         # name defined there is the one this call means.
         own = structs_by_app.get(app, {}).get(rust_name)
         produced = own if own else structs.get(rust_name)
+        if produced is None and rust_name in ambiguous:
+            # The app's own source names the crate it means. Reading the import
+            # is the difference between "several structs share this name" and
+            # "this one", and it is written down rather than inferred.
+            crate = imported_from(root / "apps" / app / "src-tauri" / "src", rust_name)
+            home = crate_homes.get(crate) if crate else None
+            if home is not None:
+                produced = structs_by_crate.get(rust_name, {}).get(home)
         declared = interfaces.get(app, {}).get(tsname)
         if produced is None and rust_name in ambiguous:
             uncompared.append(
