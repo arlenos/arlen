@@ -17,7 +17,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 # while skipping them was reading its own source of truth too narrowly. They cost
 # under a second each and they are the reason any of the gates can be trusted.
 mapfile -t scripts < <(
-  grep -oE 'dev/scripts/(test-)?check-[a-z-]*\.(py|mjs)' .github/workflows/ci.yml \
+  grep -oE 'dev/scripts/(test-)?check-[a-z-]*\.(py|mjs|sh)' .github/workflows/ci.yml \
     | awk '!seen[$0]++'
 )
 
@@ -30,6 +30,7 @@ for i in "${!scripts[@]}"; do
     case "$script" in
       *.py) python3 "$script" >"$out/$i.log" 2>&1 ;;
       *.mjs) node "$script" >"$out/$i.log" 2>&1 ;;
+      *.sh) bash "$script" >"$out/$i.log" 2>&1 ;;
     esac
     echo $? >"$out/$i.rc"
   } &
