@@ -34,6 +34,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 EXCLUDED = {
     "apps/*/src-tauri": "Tauri hosts need system webkit2gtk; the frontend job covers the app",
     "daemons/kernel-layer": "eBPF needs the bpf target and toolchain, not in the CI image",
+    # Added to the matrix on 9 August to satisfy this gate, which produced a job
+    # that failed in 17 seconds with no error line: too fast to have built a
+    # WebKit-linked crate, so it was missing system libraries the runner has no
+    # reason to carry. It is a PROBE - it drives a real webview to answer
+    # questions about keyboard focus and transparency - so it needs a browser
+    # engine and a display, and belongs here with a reason rather than in a job
+    # that cannot succeed.
+    "dev/ghost-webview": "a webview probe; needs webkit2gtk and a display, like the Tauri hosts",
 }
 
 
