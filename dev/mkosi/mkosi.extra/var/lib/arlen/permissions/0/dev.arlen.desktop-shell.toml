@@ -28,4 +28,11 @@ read = [
     "system.Project.status",
     "system.App.id",
     "system.File.id",
+    # `knowledge_daily_counts` reads raw event timestamps for the activity strip
+    # (knowledge.rs:87). Without this the query is denied and the function falls
+    # to `empty_response()`, so the strip renders a flat week - it says the user
+    # did nothing rather than that it was not allowed to look. Only the
+    # timestamp: the counts are bucketed in Rust and no other Event field is
+    # read.
+    "system.Event.timestamp",
 ]
