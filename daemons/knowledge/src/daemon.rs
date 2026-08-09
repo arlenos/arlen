@@ -566,6 +566,15 @@ enum WriteRequest {
         /// The external key of the canonical instance that survives.
         canonical_key: String,
     },
+    /// Delete the user's own recorded activity at or after `from`, for good
+    /// (`bitemporal-knowledge-graph.md`, ruled 9 August). The one place the
+    /// close-never-delete graph is genuinely destroyed, because the audit
+    /// guarantee exists so the user can hold the SYSTEM to account and lives in a
+    /// different store, which this never touches. Only the knowledge app may ask.
+    DeleteActivity {
+        /// Unix seconds; everything recorded at or after this instant goes.
+        from: i64,
+    },
     /// Persist a consent grant into the shared LCG Grant node (system-dialog-
     /// plan.md, Option A): the durable half of the consent lifecycle, surfaced by
     /// the `access_grants` read in the same see+revoke place. Only the consent
@@ -1291,6 +1300,34 @@ fn revoke_caller_admitted(app_id: &str) -> bool {
     is_settings_principal(app_id)
 }
 
+/// May this caller delete the user's recorded activity?
+///
+/// Only the knowledge app, which is the surface that owns the timeline and its
+/// Delete control. This is the most destructive thing the write socket can do -
+/// it is the one operation that permanently removes graph nodes - so the gate is
+/// an exact match on one principal rather than a tier check: FirstParty is a
+/// dozen binaries, and none of the others has any business clearing someone's
+/// history.
+///
+/// `dev.arlen.knowledge` is what the resolver's rule (3) makes of the app's
+/// install path, `/usr/lib/arlen/apps/dev.arlen.knowledge/bin/arlen-knowledge`,
+/// which the image now stages. The debug arm accepts the exact cargo-run id and
+/// the harness extra-admit, never a broad `dev.` prefix - that would let any
+/// locally built crate wipe the timeline.
+fn activity_delete_caller_admitted(app_id: &str) -> bool {
+    if app_id == "dev.arlen.knowledge" {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    {
+        app_id == "dev.arlen-knowledge-app" || revoke_extra_admit(app_id)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        false
+    }
+}
+
 /// The canonical Settings management principal: the only app trusted to browse
 /// the whole-system grant list (`access_grants`) and to issue revokes (`revoke`),
 /// living-capability-graph.md §6.2. Root-anchored app_id `settings` (identity.rs
@@ -1723,6 +1760,40 @@ async fn handle_write_request(
             }
             let label = node_type.strip_prefix("system.").unwrap_or(&node_type);
             persist_create_node(graph, label, &id).await
+        }
+        WriteRequest::DeleteActivity { from } => {
+            // One principal, exact. The gate comes before anything reads the
+            // graph, so a refused caller cannot even learn how much is there.
+            if !activity_delete_caller_admitted(&token.app_id) {
+                return "ERROR: permission denied for activity delete".to_string();
+            }
+            let planned = match crate::activity_delete::count_activity_since(graph, from).await {
+                Ok(c) => c,
+                Err(e) => return format!("ERROR: {e}"),
+            };
+            // Audit BEFORE the act, fail-closed, the same order the executor
+            // keeps for a destructive write. The ruling asks that a user who
+            // clears their history can still see that they did; if the ledger
+            // cannot record it, the honest move is to refuse rather than to
+            // delete unrecorded. Nothing is destroyed at this point, so refusing
+            // costs the user a retry and never their data.
+            if let Some(sink) = audit {
+                if let Err(e) = sink
+                    .submit(crate::audit::activity_delete_event(
+                        &token.app_id,
+                        from,
+                        planned.total(),
+                    ))
+                    .await
+                {
+                    warn!("activity delete refused: audit unavailable: {e}");
+                    return "ERROR: audit unavailable, nothing was deleted".to_string();
+                }
+            }
+            match crate::activity_delete::run_deletion(graph, from).await {
+                Ok(()) => format!("OK: deleted {}", planned.total()),
+                Err(e) => format!("ERROR: {e}"),
+            }
         }
         WriteRequest::UpsertEntity {
             qualified_type,
@@ -4763,6 +4834,28 @@ mod tests {
         );
         // A leading digit is not an identifier and stays out.
         assert!(readable_system_labels(&[scope("system.1File")]).is_empty());
+    }
+
+    #[test]
+    fn only_the_knowledge_app_may_delete_activity() {
+        // The exact principal the image stages, and nothing else. A tier check
+        // would admit every FirstParty binary; a `dev.` prefix would admit any
+        // locally built crate. Both were considered and both are too wide for the
+        // one operation that permanently destroys the user's records.
+        assert!(activity_delete_caller_admitted("dev.arlen.knowledge"));
+        for other in [
+            "dev.arlen.settings",
+            "dev.arlen.files",
+            "knowledge",
+            "ai-agent",
+            "dev.arlen.knowledge.evil",
+            "",
+        ] {
+            assert!(
+                !activity_delete_caller_admitted(other),
+                "{other} must not be able to clear the timeline"
+            );
+        }
     }
 
     #[test]
