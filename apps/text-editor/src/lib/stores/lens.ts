@@ -12,6 +12,7 @@
 
 import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
+import { openPath } from "$lib/stores/document";
 
 /// Where a step's assertion came from (mirrors the Files provenance model).
 export type Provenance = "user" | "graph" | "external" | "model" | "agent";
@@ -86,11 +87,10 @@ export async function loadLens(ref: string): Promise<void> {
 /// Open a related file in the editor.
 ///
 /// It used to invoke `open_file`, a command the MEETINGS app defines - a call
-/// that could only ever be rejected. This app's own reader is `editor_open`.
+/// that could only ever be rejected. This app's own reader is `editor_open`, and
+/// the result has to be PUT somewhere: reading a file and dropping it on the
+/// floor leaves the click doing nothing, which is what the broken version did
+/// and is not an improvement over it.
 export async function openRelated(file: string): Promise<void> {
-  try {
-    await invoke("editor_open", { path: file });
-  } catch {
-    // Nothing opened, and the editor is where it was - which is what happened.
-  }
+  await openPath(file);
 }

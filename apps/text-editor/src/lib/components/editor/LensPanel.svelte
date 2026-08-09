@@ -40,11 +40,21 @@
     <h2 class="sec-title">{$t("te.lens.related")}</h2>
     {#if $lens.related.length > 0}
       <div class="rel">
+        <!-- A sample link must not look clickable: these names are not files on
+             this machine while the section is labelled an example, and a button
+             that opens nothing is the same broken promise as a fixture. -->
         {#each $lens.related as link (link.ref)}
-          <button type="button" class="rel-item" onclick={() => openRelated(link.file)}>
-            <span class="rel-file"><FileText size={13} strokeWidth={2} /> {link.file}</span>
-            <span class="rel-snippet">{link.snippet}</span>
-          </button>
+          {#if $lens.mocked}
+            <div class="rel-item">
+              <span class="rel-file"><FileText size={13} strokeWidth={2} /> {link.file}</span>
+              <span class="rel-snippet">{link.snippet}</span>
+            </div>
+          {:else}
+            <button type="button" class="rel-item" onclick={() => openRelated(link.file)}>
+              <span class="rel-file"><FileText size={13} strokeWidth={2} /> {link.file}</span>
+              <span class="rel-snippet">{link.snippet}</span>
+            </button>
+          {/if}
         {/each}
       </div>
     {:else}
@@ -58,7 +68,11 @@
       <p class="proj-name">{$t("te.lens.project.partOf", { name: $lens.project.name })}</p>
       <div class="proj-members">
         {#each $lens.project.members as m (m)}
-          <button type="button" class="proj-chip" onclick={() => openRelated(m)}>{m}</button>
+          {#if $lens.mocked}
+            <span class="proj-chip">{m}</span>
+          {:else}
+            <button type="button" class="proj-chip" onclick={() => openRelated(m)}>{m}</button>
+          {/if}
         {/each}
       </div>
     </section>
