@@ -14,6 +14,22 @@
 # canonical). Exit 1 = a drift a reviewer must reconcile.
 set -euo pipefail
 
+# Say something before doing anything, and say so if we stop early.
+#
+# On 9 August this job went red with a log containing only setup and cleanup: no
+# gate output, no error line, nothing to act on. Under `set -euo pipefail` any
+# unguarded command that returns non-zero ends the script mid-stride and prints
+# nothing, so the log cannot distinguish "aborted on line 40" from "never ran".
+# Two such aborts were found and fixed by the self-test that evening, but I could
+# not prove from here which one CI hit - so this makes the SHAPE impossible
+# instead of guessing at the instance. The opening line proves the script
+# started; the trap says so if it ever stops early. It does not name a line:
+# `$LINENO` inside an EXIT trap reports the trap itself, and a confidently wrong
+# line number is worse than none.
+echo "unit gates: checking the tree's units against what the image installs"
+finished=0
+trap '[ "$finished" = 1 ] || echo "unit gates: ABORTED before finishing - a command returned non-zero and set -e ended the run, so the checks below this point never ran" >&2' EXIT
+
 # Every gate below runs even when an earlier one fails, and the script exits
 # non-zero at the end. Bailing on the first failure meant one long-standing
 # drift silently disabled the gates after it - the netlink sandbox check was
@@ -315,6 +331,9 @@ for f in $(git ls-files '*.service'); do
 done
 [ "$bad_activation" -eq 0 ] && echo "OK: every D-Bus activation file names a unit that owns the name it activates"
 
+# Reaching here means every gate ran to its own verdict, so a later non-zero exit
+# is a RESULT and not an abort - the trap above must stay quiet for it.
+finished=1
 if [ "$missing_refs" -ne 0 ] || [ "$bad_activation" -ne 0 ]; then
     exit 1
 fi
