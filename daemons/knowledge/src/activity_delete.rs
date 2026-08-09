@@ -49,6 +49,12 @@ impl DeletedActivity {
     pub fn is_empty(&self) -> bool {
         self.events == 0 && self.file_accesses == 0 && self.orphan_files == 0
     }
+
+    /// One number for the audit record: how much went. The split matters to the
+    /// caller, not to the ledger, which only needs the size of the act.
+    pub fn total(&self) -> u64 {
+        self.events + self.file_accesses + self.orphan_files
+    }
 }
 
 /// The statements that destroy activity at or after `from`, in the order they
@@ -89,7 +95,7 @@ fn deletion_statements(from: i64) -> Vec<String> {
 ///
 /// Read before the write, on the same serial graph thread, so the numbers
 /// describe the range the transaction then removes.
-async fn count_activity_since(graph: &GraphHandle, from: i64) -> Result<DeletedActivity> {
+pub async fn count_activity_since(graph: &GraphHandle, from: i64) -> Result<DeletedActivity> {
     let one = |rows: crate::graph::RowSet| -> u64 {
         rows.rows
             .first()
@@ -136,8 +142,17 @@ async fn count_activity_since(graph: &GraphHandle, from: i64) -> Result<DeletedA
 /// still there, which is what the app's Delete already does.
 pub async fn delete_activity_since(graph: &GraphHandle, from: i64) -> Result<DeletedActivity> {
     let counted = count_activity_since(graph, from).await?;
-    graph.transaction(deletion_statements(from)).await?;
+    run_deletion(graph, from).await?;
     Ok(counted)
+}
+
+/// The deletion on its own, for a caller that has already counted.
+///
+/// The socket op audits the act BEFORE carrying it out and needs the size in that
+/// record, so it counts first; re-counting inside would either repeat the work or
+/// report a different number than the one audited.
+pub async fn run_deletion(graph: &GraphHandle, from: i64) -> Result<()> {
+    graph.transaction(deletion_statements(from)).await
 }
 
 #[cfg(test)]

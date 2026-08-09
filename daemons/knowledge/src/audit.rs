@@ -328,6 +328,42 @@ pub fn entity_merge_event(app_id: &str, qualified_type: &str, outcome: &str) -> 
     }
 }
 
+/// Build the content-free audit record for a timeline delete (0x0b).
+///
+/// The ruling that made this a HARD delete asks for it by name
+/// (`bitemporal-knowledge-graph.md`): *"the deletion itself is audited. It captures
+/// the act, never the content. A user who deletes their history should still be
+/// able to see that they did."* So the range boundary is recorded - it is part of
+/// the act, not of what was in it - along with how much went, and nothing else: no
+/// paths, no window titles, no ids.
+///
+/// Its own `activity.delete` subject rather than a shared one, for the reason
+/// `entity.merge` has its own: someone reading the ledger should see a destructive
+/// act distinctly, not have to infer it from a routine-looking row.
+///
+/// Note whose act this is. The audit ledger records the SYSTEM's behaviour so the
+/// user can hold it to account; this row is the system saying it carried out a
+/// deletion the user asked for. It is not a copy of the history kept behind the
+/// user's back, which is why the content stays out.
+pub fn activity_delete_event(app_id: &str, from: i64, removed: u64) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::AppAction,
+        structural: StructuralRecord {
+            subject: "activity.delete".to_string(),
+            node_types: vec![app_id.to_string()],
+            relations: Vec::new(),
+            result_count: Some(removed),
+            duration_ms: None,
+            outcome: format!("deleted:from={from}"),
+            depth: None,
+            capability_change: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

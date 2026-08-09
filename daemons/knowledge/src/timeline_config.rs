@@ -13,7 +13,6 @@
 /// below keeps a shared flag current so the writer sees a change within a
 /// moment of the file being saved.
 use serde::Deserialize;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
