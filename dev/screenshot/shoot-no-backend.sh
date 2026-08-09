@@ -91,7 +91,16 @@ xvfb-run -a --server-args="-screen 0 1600x1200x24" \
 
 # Did we photograph the app, or the preview server's corpse? A page whose text is
 # a connection error is not a render of anything.
-BODY=$(curl -s "$URL" | head -c 4000)
+# Truncated in the shell rather than with `| head -c`, which was a silent
+# scuttling of everything below it: under `pipefail`, head closing the pipe kills
+# curl with SIGPIPE and the script exits 23 - after the screenshot has been
+# written, so it looks like a success. It only bit pages whose HTML is much
+# larger than the limit, which is every settings route and none of the small
+# apps, so it hid for as long as shots were taken one at a time. The checks it
+# skipped are the two this script exists for: was that an error page, and was
+# anything written at all.
+BODY=$(curl -s "$URL")
+BODY=${BODY:0:4000}
 pid=$(pgrep -f "vite preview --port $PORT" | head -1) && [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
 
 case "$BODY" in
