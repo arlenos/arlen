@@ -133,6 +133,50 @@ def split_params(params: str) -> list[str]:
     return out
 
 
+def passthrough_wrappers(text: str) -> list[str]:
+    """Local helpers that hand their own parameters straight to `invoke`.
+
+    `wrapped_calls` declines to follow a wrapper in general, and its reason is
+    right: one that builds the payload itself could be followed to a confidently
+    wrong answer. This is the one shape where that cannot happen - the command
+    and the argument object are the function's own parameters, passed in order
+    and untouched, so a call `send("clock_set_alarm", {alarm})` IS
+    `invoke("clock_set_alarm", {alarm})` and its keys are at the call site.
+
+    The body is delimited by matching braces from the declaration rather than by
+    a character window: an earlier attempt at wrapper-finding used a shape match
+    and got three of eighteen, and a partial number reads as a total.
+    """
+    out: list[str] = []
+    for m in re.finditer(r"(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)", text):
+        params = []
+        for raw in m.group(2).split(","):
+            ident = re.match(r"\s*(\w+)", raw)
+            if ident:
+                params.append(ident.group(1))
+        if len(params) < 2:
+            continue
+        brace = text.find("{", m.end())
+        if brace == -1:
+            continue
+        depth, i = 0, brace
+        while i < len(text):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        body = text[brace : i + 1]
+        forwards = re.compile(
+            rf"invoke\s*(?:<[^>]*>)?\s*\(\s*{re.escape(params[0])}\s*,\s*{re.escape(params[1])}\s*\)"
+        )
+        if forwards.search(body):
+            out.append(m.group(1))
+    return out
+
+
 def invoke_calls(root: Path):
     """Yield (app, file, line, command, argument keys or None) for every call."""
     for base in (root / "apps",):
@@ -142,17 +186,21 @@ def invoke_calls(root: Path):
             if "node_modules" in path.parts or ".svelte-kit" in path.parts:
                 continue
             text = path.read_text(encoding="utf-8", errors="replace")
-            for m in re.finditer(r'invoke\s*(?:<[^>]*>)?\s*\(\s*"([a-z_0-9]+)"', text):
-                cmd = m.group(1)
-                line = text[: m.start()].count("\n") + 1
-                keys = payload_keys(text, m.end())
-                yield (
-                    path.relative_to(root).parts[1],
-                    path.relative_to(root),
-                    line,
-                    cmd,
-                    keys,
-                )
+            names = ["invoke", *passthrough_wrappers(text)]
+            for name in names:
+                for m in re.finditer(
+                    rf'\b{re.escape(name)}\s*(?:<[^>]*>)?\s*\(\s*"([a-z_0-9]+)"', text
+                ):
+                    cmd = m.group(1)
+                    line = text[: m.start()].count("\n") + 1
+                    keys = payload_keys(text, m.end())
+                    yield (
+                        path.relative_to(root).parts[1],
+                        path.relative_to(root),
+                        line,
+                        cmd,
+                        keys,
+                    )
 
 
 def wrapped_calls(root: Path, known: set[str]) -> list[str]:
@@ -183,6 +231,11 @@ def wrapped_calls(root: Path, known: set[str]) -> list[str]:
         # declaration rather than by matching a function shape forwards: the first
         # attempt matched a brace-balanced body and found three of eighteen,
         # which is worse than finding none - a partial number reads as a total.
+        # A wrapper `invoke_calls` now follows is compared like any other call,
+        # so naming it here too would report the same fifteen as both counted and
+        # unreachable - a report contradicting itself in the direction of
+        # understating what it checked.
+        followed = set(passthrough_wrappers(text))
         wrappers = set()
         for m in re.finditer(r"\binvoke\s*(?:<[^>]*>)?\s*\(\s*([A-Za-z_$])", text):
             if m.group(1) in ('"', "'"):
@@ -195,7 +248,7 @@ def wrapped_calls(root: Path, known: set[str]) -> list[str]:
             before = text[: m.start()]
             for d in re.finditer(r"(?:function|const|let)\s+(\w+)\s*[=(]", before):
                 wrappers.add(d.group(1))
-        for w in sorted(wrappers):
+        for w in sorted(wrappers - followed):
             calls = re.findall(rf'\b{re.escape(w)}\s*(?:<[^>]*>)?\s*\(\s*"([a-z_0-9]+)"', text)
             # Only literals that name a command anyone defines. Without this the
             # candidate set reports `hunk("auto")` in the text editor, where the
