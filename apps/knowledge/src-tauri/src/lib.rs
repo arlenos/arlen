@@ -16,6 +16,7 @@
 
 mod export;
 mod projects;
+mod settings_link;
 mod provenance;
 mod search;
 mod timeline;
@@ -34,7 +35,8 @@ pub fn run() {
             provenance::knowledge_provenance,
             search::knowledge_search,
             timeline::knowledge_timeline,
-            export::knowledge_timeline_export
+            export::knowledge_timeline_export,
+            settings_link::open_settings_route
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Knowledge app");
