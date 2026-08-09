@@ -291,7 +291,11 @@ fn main() -> ExitCode {
     let profile = match profile {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("arlen-run: profile for {}: {e}", args.app_id);
+            // The error already names the app (`profile not found for <id>`),
+            // and this line is read by a person now rather than only by a log:
+            // the shell surfaces it verbatim when a confined launch is refused,
+            // so a prefix that repeats the id reads as a stutter on screen.
+            eprintln!("arlen-run: {e}");
             return ExitCode::from(exit::PROFILE);
         }
     };
