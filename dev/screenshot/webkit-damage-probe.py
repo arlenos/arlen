@@ -21,6 +21,25 @@ block's own magenta if it did not.
 The colour is the same saturated magenta `ghost-repro` uses, for the same reason:
 it appears in no theme, so a pixel readback attributes it without argument.
 
+**Result, 9 August: no ghost, opaque or transparent.** The block reports itself at
+device (240,240) 280x280 in a 496x1186 viewport; the capture measures 192x209,
+which reconciles exactly - the compositor composites the surface at 0.742, so 280
+becomes 208 against 209 measured, and the width runs to the window edge for 195
+against 192. Identical in both modes.
+
+**The transparent mode was checked for having actually happened**, because a
+control that silently does nothing passes every time: the window content reads
+(38,40,41) opaque, which is the page ground, and (39,41,42) transparent, which is
+the desktop showing through. One unit apart and in the right direction.
+
+**What this does NOT cover, and it matters:** Tauri on Linux links webkit2gtk-4.1
+on GTK 3, and this probe is WebKit 6.0 on GTK 4 - the only combination reachable
+from Python on this host. Same project, different build. A faithful test of the
+shipped engine wants a small Rust client against webkit2gtk-4.1 and
+gtk-layer-shell, which the desktop shell already depends on; that also gets a real
+layer surface instead of a toplevel. Until then, "WebKit damages correctly" is
+measured for the engine here and inferred for the one that ships.
+
 **A plain toplevel is faithful here even though the waypointer is a layer
 surface.** What is being asked is whether a shrinking element inside an
 unchanging surface leaves stale pixels, and the surface's role does not enter
@@ -34,7 +53,9 @@ Usage, under the nested compositor:
   dev/screenshot/shoot-compositor.sh /tmp/webkit-damage.png \\
     dev/screenshot/webkit-damage-probe.py 1200
 
-The argument is how long to hold the big block before shrinking it, in ms. It
+A second argument of `transparent` runs it with no page ground and a transparent
+view, which is the waypointer's shape. The first argument is how long to hold the
+big block before shrinking it, in ms. It
 must be shorter than the harness's settle, or the capture lands on the block and
 the shrink never gets photographed - the same trap `ghost-repro` documents.
 """
@@ -44,7 +65,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("WebKit", "6.0")
-from gi.repository import GLib, Gtk, WebKit  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk, WebKit  # noqa: E402
 
 # Magenta on a dark ground, and the block is deliberately not centred: a stale
 # region has to be attributable to the block's OLD bounds rather than to
@@ -58,9 +79,20 @@ PAGE = """<!doctype html>
 SHRINK = "document.getElementById('b').style.width='140px';" \
          "document.getElementById('b').style.height='140px';"
 
+# The transparent variant: the page keeps no ground of its own and the view is
+# given a fully transparent background, which is what the waypointer is - a
+# fullscreen layer surface you can see the desktop through. It is the one
+# variable neither this probe nor `ghost-repro` had, and it is worth isolating
+# rather than assuming: a transparent surface is composited by blending instead
+# of replacement, so "repainted" and "repainted with nothing" stop being the same
+# thing.
+PAGE_TRANSPARENT = PAGE.replace("background:#262829", "background:transparent")
+
 
 def main():
     hold_ms = int(sys.argv[1]) if len(sys.argv) > 1 else 1200
+    transparent = len(sys.argv) > 2 and sys.argv[2] == "transparent"
+
     app = Gtk.Application(application_id="dev.arlen.webkit-damage-probe")
 
     def activate(a):
@@ -70,8 +102,17 @@ def main():
         view.set_hexpand(True)
         view.set_vexpand(True)
         win.set_child(view)
+        if transparent:
+            # Both halves, or the test is not the thing it claims: a transparent
+            # WebView inside a window that still paints its theme ground composites
+            # against an opaque surface and measures nothing new.
+            view.set_background_color(Gdk.RGBA(red=0, green=0, blue=0, alpha=0))
+            css = Gtk.CssProvider()
+            css.load_from_string("window { background: transparent; }")
+            Gtk.StyleContext.add_provider_for_display(
+                Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         win.present()
-        view.load_html(PAGE, None)
+        view.load_html(PAGE_TRANSPARENT if transparent else PAGE, None)
 
         def report(v, result):
             # The numbers, because the first run of this could not be read: the
