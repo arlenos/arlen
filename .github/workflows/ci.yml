@@ -101,6 +101,7 @@ jobs:
           python3 dev/scripts/check-graph-columns.py
           python3 dev/scripts/check-webview-sandbox.py
           python3 dev/scripts/check-setup-runtime.py
+          python3 dev/scripts/check-dev-prefix-admission.py
           python3 dev/scripts/check-dbus-callers.py
           python3 dev/scripts/check-refusal-shape.py
           node dev/scripts/test-check-fixtures.mjs
