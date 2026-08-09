@@ -134,7 +134,11 @@
               </SidebarMenuItem>
             {/each}
           </SidebarMenu>
-          {#if $meetings.length === 0}
+          {#if $meetings.length === 0 && !$meetingsUnavailable}
+            <!-- Not when the read failed: "No meetings yet" is a claim about your
+                 history, and the line above has just said that history could not
+                 be read. Three states kept apart - not loaded, loaded and failed,
+                 loaded and empty - and this is the third. -->
             <p class="px-2 py-2 text-xs leading-relaxed text-sidebar-foreground/55">{$t("mt.empty")}</p>
           {/if}
         </SidebarGroup>
