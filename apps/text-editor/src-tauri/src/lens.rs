@@ -24,17 +24,27 @@ use std::collections::HashMap;
 use serde::Serialize;
 use serde_json::Value;
 
-/// One lineage step, in the shape the lens renders.
+/// One lineage step, in exactly the shape the lens renders.
+///
+/// The field names are the frontend's, and that is not a detail: the first cut
+/// of this returned `verb`/`subject`/`when`, which type-checked on both sides
+/// and would have rendered "undefined undefined" in the panel. A command whose
+/// answer does not fit its caller is a silent blank, not an error.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ProvenanceStep {
-    /// A verb MESSAGE ID, never the word: the panel resolves it through the
-    /// catalogue, so an English string here would ship untranslated.
-    pub verb: String,
-    /// What the verb points at. Data, not chrome.
-    pub subject: String,
-    /// Unix seconds, when the graph knows.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub when: Option<i64>,
+    /// The relation as a MESSAGE ID, never the word: the panel resolves it
+    /// through the catalogue, so an English string here would ship untranslated.
+    pub relation: String,
+    /// Who or what acted, at the fidelity the graph actually has.
+    pub actor: String,
+    /// `user` | `graph` | `external` | `model` | `agent` - tints the dot only,
+    /// never adds specificity the record does not carry.
+    pub origin: &'static str,
+    /// When, already phrased for display. The panel prints this verbatim, so an
+    /// empty string is the honest form for "the graph did not record a time".
+    pub when: String,
+    /// `resolved` | `pid` | `proxy`: how confidently the actor is known.
+    pub fidelity: &'static str,
 }
 
 /// Where the open file came from, as far as the graph can say.
@@ -72,15 +82,44 @@ fn steps_from_rows(rows: &[HashMap<String, Value>]) -> Vec<ProvenanceStep> {
     let mut steps = Vec::new();
     if let Some(app) = row.get("app_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
         steps.push(ProvenanceStep {
-            verb: "te.pv.verb.openedIn".into(),
-            subject: app.to_string(),
-            // Epoch micros in the graph, seconds on the surface - the same
-            // conversion the knowledge app uses, so two panels cannot disagree
-            // about when one access happened.
-            when: row.get("at").and_then(|v| v.as_i64()).map(|micros| micros / 1_000_000),
+            relation: "te.pv.verb.openedIn".into(),
+            actor: app.to_string(),
+            // The promotion pipeline wrote this from an observed file open, so
+            // the origin is the graph's own observation, not a claim by a user
+            // or a model.
+            origin: "graph",
+            // Epoch micros in the graph. The panel prints `when` verbatim, and
+            // an ISO date is the one form that is unambiguous without knowing
+            // the reader's locale; "3 weeks ago" would be the app's phrasing to
+            // make, not this command's.
+            when: row
+                .get("at")
+                .and_then(|v| v.as_i64())
+                .map(|micros| iso_day(micros / 1_000_000))
+                .unwrap_or_default(),
+            // The graph records the app id it saw, so the actor is resolved -
+            // not a pid we guessed a name for.
+            fidelity: "resolved",
         });
     }
     steps
+}
+
+/// `YYYY-MM-DD` for Unix seconds, UTC. Civil-from-days, so no date dependency
+/// for one field.
+fn iso_day(seconds: i64) -> String {
+    let days = seconds.div_euclid(86_400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
 }
 
 #[cfg(test)]
@@ -99,6 +138,23 @@ mod tests {
     }
 
     #[test]
+    fn the_shape_carries_every_field_the_panel_reads() {
+        let json = serde_json::to_string(&ProvenanceStep {
+            relation: "x".into(),
+            actor: "y".into(),
+            origin: "graph",
+            when: String::new(),
+            fidelity: "resolved",
+        })
+        .unwrap();
+        // The panel reads all five; a renamed field renders as a blank rather
+        // than an error, so the names are asserted rather than trusted.
+        for field in ["relation", "actor", "origin", "when", "fidelity"] {
+            assert!(json.contains(&format!("\"{field}\"")), "{field} missing from {json}");
+        }
+    }
+
+    #[test]
     fn an_unknown_file_gets_no_steps_rather_than_a_guess() {
         assert!(steps_from_rows(&[]).is_empty());
     }
@@ -111,7 +167,10 @@ mod tests {
         ]);
         let steps = steps_from_rows(&[r]);
         assert_eq!(steps.len(), 1);
-        assert_eq!(steps[0].verb, "te.pv.verb.openedIn", "a message id, never a word");
-        assert_eq!(steps[0].when, Some(1_786_000_000));
+        assert_eq!(steps[0].relation, "te.pv.verb.openedIn", "a message id, never a word");
+        assert_eq!(steps[0].actor, "text-editor");
+        assert_eq!(steps[0].when, "2026-08-06");
+        assert_eq!(steps[0].origin, "graph");
+        assert_eq!(steps[0].fidelity, "resolved");
     }
 }
