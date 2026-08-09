@@ -28,7 +28,10 @@
         <div class="prov-step">
           <span class="prov-dot" data-origin={originClass(step)} aria-hidden="true"></span>
           <div class="prov-body">
-            <div class="prov-what">{step.relation} <span class="prov-actor">{step.actor}</span></div>
+            <!-- The relation is a message id when it comes from the backend and
+                 a phrase in the fixture; `$t` returns the key unchanged when it
+                 is not one, so both render without a second code path. -->
+            <div class="prov-what">{$t(step.relation)} <span class="prov-actor">{step.actor}</span></div>
             <div class="prov-when">{step.when}</div>
           </div>
         </div>
