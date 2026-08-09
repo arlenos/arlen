@@ -68,8 +68,6 @@ KNOWN: dict[str, dict[str, str]] = {
             "namespace to the store's four sections and which field is the display "
             "title - both are schema decisions that every future bridge inherits"
         ),
-        "knowledge_timeline_delete": "deleting a timeline entry",
-        "knowledge_timeline_pause": "pausing collection",
     },
     "settings": {
         # The seven Windows-app entries are a different kind of missing from the
@@ -243,6 +241,18 @@ def main() -> int:
                 f"apps/{app.name}: `{name}` is carried as known-missing and nothing "
                 f"invokes it any more. Drop the entry; the count is supposed to be "
                 f"what is actually claimed on screen."
+            )
+        # The other direction, and the one that bit: an entry whose command now
+        # EXISTS. The loop above simply stops counting it, so the total quietly
+        # drops by one and the entry sits there forever claiming a control is dead
+        # that someone has since wired up. An exception must not outlive its
+        # subject either way round, and the inventory is only worth reading if it
+        # shrinks deliberately.
+        for name in sorted(set(known) & (handlers | plugin)):
+            findings.append(
+                f"apps/{app.name}: `{name}` is carried as known-missing and its "
+                f"host now registers it. Drop the entry; a fixed command left in "
+                f"the inventory makes the count read higher than the real debt."
             )
         for name in sorted(handlers - calls):
             uncalled.append(f"apps/{app.name}: `{name}`")

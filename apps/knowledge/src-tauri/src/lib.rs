@@ -15,6 +15,7 @@
 //! that invented an empty list would show the fixture's absence as fact.
 
 mod export;
+mod delete;
 mod pause;
 mod projects;
 mod settings_link;
@@ -38,6 +39,7 @@ pub fn run() {
             search::knowledge_search,
             timeline::knowledge_timeline,
             export::knowledge_timeline_export,
+            delete::knowledge_timeline_delete,
             pause::knowledge_timeline_pause,
             pause::knowledge_timeline_paused,
             settings_link::open_settings_route,
