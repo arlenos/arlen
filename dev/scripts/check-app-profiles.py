@@ -47,14 +47,14 @@ PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/0"
 # app cannot be launched confined yet, so the list should shrink to nothing before
 # the confinement flag is flipped - which is exactly what makes it worth writing
 # down rather than rediscovering.
-# All three wait on the SAME question, which is worth stating once: a confined
-# launch grants an app `~/.local/share|.config|.cache/arlen/apps/<id>`, and a Tauri
-# app's webview writes to `~/.local/share/<identifier>` instead - on this machine
-# `~/.local/share/dev.arlen.clock/` holds WebKitCache, CacheStorage,
-# hsts-storage.sqlite and the rest, while the granted arlen path is EMPTY. So a
-# first-party app confined today would have its webview data masked. Either the
-# launcher grants that directory too or the apps are pointed at the arlen one;
-# both are decisions, and one experiment inside the image answers all three apps.
+# NB the pending list is not the only thing between here and a confined desktop.
+# Measured on 9 August with an empty profile: a confined app can write its granted
+# `~/.local/share/arlen/apps/<id>`, and `~/.local/share/<identifier>` - where a
+# Tauri app's webview actually keeps WebKitCache, CacheStorage and its storage - is
+# neither visible nor creatable. That applies to ALL SIX installed apps, the three
+# WITH profiles included, so having a profile is necessary and not sufficient.
+# Either the launcher grants that directory too or the apps are pointed at the
+# granted one; both are decisions. See the report of 9 August.
 PENDING: dict[str, str] = {
     "dev.arlen.clock": "needs nothing from the graph, but its webview data lives outside the granted app dirs (see above)",
     "dev.arlen.meetings": "renders from a labelled fixture, so it needs no scope - same webview-directory question as the others",
