@@ -52,7 +52,15 @@ echo ">> tauri build --no-bundle (production) arlen-clock"
 out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-clock' 2>/dev/null \
         | head -1)
 [ -n "$out" ] || { echo "!! arlen-clock not found after build" >&2; exit 1; }
-install -Dm755 "$out" "$DESTDIR/usr/bin/arlen-clock"
+# The app lives under its own id, which is what makes the id: the resolver's
+# rule (3) reads the directory name below `/usr/lib/arlen/apps/`, so an app
+# installed to `/usr/bin/` took rule (2) - the system-daemon rule - and resolved
+# to the bare basename instead. The `/usr/bin` symlink keeps `Exec=` and PATH
+# working; `/proc/<pid>/exe` resolves through it to the real path, so identity
+# comes from the app directory either way.
+install -Dm755 "$out" "$DESTDIR/usr/lib/arlen/apps/dev.arlen.clock/bin/arlen-clock"
+mkdir -p "$DESTDIR/usr/bin"
+ln -sf "../lib/arlen/apps/dev.arlen.clock/bin/arlen-clock" "$DESTDIR/usr/bin/arlen-clock"
 # The launcher enumerates /usr/share/applications; without an entry there the app
 # is installed and undiscoverable, which reads as a broken launcher rather than a
 # missing file. The entry and the icon live with the app, so they are staged by
