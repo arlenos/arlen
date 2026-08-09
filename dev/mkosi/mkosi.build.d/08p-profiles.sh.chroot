@@ -1,0 +1,40 @@
+#!/bin/sh
+# Phase 8p (CHROOT): the curated third-party permission profiles, at the path the
+# apt-enrolment hook reads.
+#
+# `permission-helper`'s `CURATED_DIR` is `/usr/share/arlen/profiles`, and its
+# `match_enrollments` looks there for `<package>.toml` when apt reports an
+# install. The matching, the per-uid write and the desktop-entry rewrite are all
+# built; the 2273 authored profiles were not installed anywhere, so the hook
+# would have matched an empty directory and enrolled nothing. Built, not
+# deployed - the same class as the wallpaper renderer next door.
+#
+# This stages DATA, not behaviour. A curated profile becomes an app's profile
+# only when apt installs that package AND the hook fires; on its own the
+# directory changes nothing about what runs or how. The hook binary itself is not
+# in the image yet, so today this is the half that can land without deciding
+# anything.
+#
+# Copied from the source tree rather than staged under `mkosi.extra`, which would
+# put a second copy of 9 MB in git and let the two drift.
+set -eu
+
+src="$SRCDIR/arlen/sdk/permissions/profiles"
+dst="$DESTDIR/usr/share/arlen/profiles"
+
+if [ ! -d "$src" ]; then
+    echo "!! no curated profile catalogue at $src" >&2
+    exit 1
+fi
+
+install -d -m755 "$dst"
+# `install` per file rather than `cp -r`: it sets the mode explicitly on each one,
+# and these are read by a root helper deciding what an application may do.
+find "$src" -maxdepth 1 -name '*.toml' -exec install -m644 {} "$dst/" \;
+
+count=$(find "$dst" -maxdepth 1 -name '*.toml' | wc -l)
+if [ "$count" -eq 0 ]; then
+    echo "!! staged no profiles; the catalogue moved and this phase did not" >&2
+    exit 1
+fi
+echo ">> staged $count curated profiles into /usr/share/arlen/profiles"
