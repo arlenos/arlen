@@ -200,15 +200,6 @@ ACKNOWLEDGED: dict[str, str] = {
     'apps/text-editor/src/lib/stores/lens.ts:82': (
         "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. The lens shows provenance, backlinks and project context for the open file, labelled 'Example context - not this file's real graph neighbourhood'. `openRelated` navigates rather than mutates."
     ),
-    'apps/meetings/src/lib/stores/meeting.ts:119': (
-        "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. The meetings list is labelled above itself, and clicking a fixture meeting reaches the note path, which is labelled too."
-    ),
-    'apps/meetings/src/lib/stores/meeting.ts:142': (
-        "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. The whole note page renders from the fixture - participants, claims, transcript - under 'Example note - not a real meeting. The participants and quotes are made up.' Nothing on it writes anywhere."
-    ),
-    'apps/meetings/src/lib/stores/meeting.ts:310': (
-        "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. Same note surface, reached by summarising rather than opening."
-    ),
     "apps/files/src/lib/stores/provenance.ts:99": (
         "The caveat is rendered at the claim, not on a banner elsewhere: the halo "
         "popover puts 'Sample history - not this file's real origin' directly above "
@@ -268,6 +259,7 @@ def main() -> int:
     files = 0
     catches = 0
     rendered = 0
+    used: set[str] = set()
     for path in sorted((ROOT / "apps").rglob("*.ts")) + sorted((ROOT / "apps").rglob("*.svelte")):
         s = str(path)
         if any(k in s for k in SKIP) or "node_modules" in s or "/src/" not in s:
@@ -278,6 +270,7 @@ def main() -> int:
             for line, name in markup_fixtures(text):
                 rendered += 1
                 if f"{rel_path}:{line}" in ACKNOWLEDGED:
+                    used.add(f"{rel_path}:{line}")
                     continue
                 findings.append(
                     f"{rel_path}:{line}: renders `{name}` straight into markup, so this "
@@ -300,6 +293,7 @@ def main() -> int:
                 continue
             rel = path.relative_to(ROOT)
             if f"{rel}:{line}" in ACKNOWLEDGED:
+                used.add(f"{rel}:{line}")
                 continue
             findings.append(
                 f"{rel}:{line}: a failed read falls back to `{hit.group(0).strip()}`, so "
@@ -315,6 +309,26 @@ def main() -> int:
         f"in a catch can be the honest answer for some stores and a false claim "
         f"for others, which needs the store read rather than this."
     )
+    # An acknowledgement that matched nothing. Either the fixture it excused is
+    # gone, in which case the excuse must go with it, or the line drifted and the
+    # real one is being reported above as new - and both halves want saying. Added
+    # 9 August: making the meetings fixtures honest left four of these behind, and
+    # nothing here noticed. The same rule was applied to `check-invoke-exists` a
+    # few hours earlier; an exception must not outlive its subject.
+    for key in sorted(set(ACKNOWLEDGED) - used):
+        # Only where the file is actually in the tree being scanned. Without this
+        # the guard fired on every entry the moment the check was pointed at a
+        # throwaway tree, which its own test caught immediately: an acknowledgement
+        # for a file that is not there says nothing about whether its subject
+        # survived.
+        if not (ROOT / key.rsplit(":", 1)[0]).exists():
+            continue
+        findings.append(
+            f"{key}: acknowledged, but nothing at that line is a fixture fallback "
+            f"any more. Delete the entry, or if the line moved, re-key it to where "
+            f"the fixture went."
+        )
+
     if findings:
         print("\nstores that answer a failed read with invented content:\n")
         for f in findings:
