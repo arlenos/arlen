@@ -543,7 +543,29 @@ function fixtureMarkupFixtures() {
     `exit ${r3.code}: ${r3.out.trim()}`,
   );
 
-  for (const d of [caught, flag, styleComment]) rmSync(d, { recursive: true, force: true });
+  // An acknowledgement whose subject is gone. The tree is clean, so the only
+  // thing that can be reported is the stale entry itself - which is the point:
+  // making the meetings fixtures honest left four of these behind and nothing
+  // noticed until this existed.
+  // Written at a path the real ACKNOWLEDGED list keys on, with the fixture taken
+  // out of it: that is exactly the state left behind when an excused fallback is
+  // made honest. The guard is scoped to files present in the scanned tree, so an
+  // arbitrary tree does not light up every entry - which is what the first draft
+  // did, and these two neighbours below are what caught it.
+  const stale = tree({
+    "apps/text-editor/src/lib/stores/lens.ts": `export function load() {
+  try { return 1; } catch { return 2; }
+}
+`,
+  });
+  const r4 = run("check-fixture-on-failure.py", stale);
+  check(
+    "an acknowledgement whose fixture is gone is reported, not silently kept",
+    r4.code === 1 && r4.out.includes("acknowledged, but"),
+    `exit ${r4.code}: ${r4.out.trim()}`,
+  );
+
+  for (const d of [caught, flag, styleComment, stale]) rmSync(d, { recursive: true, force: true });
 }
 
 fixtureMarkupFixtures();
