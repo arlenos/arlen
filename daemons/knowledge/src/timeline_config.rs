@@ -73,6 +73,27 @@ impl TimelineConfig {
 ///
 /// The lag is honest rather than hidden: a save takes effect within one interval,
 /// not instantly, and that is the guarantee the surface should make.
+/// The one flag every collector in this daemon reads.
+///
+/// Process-wide because the question is process-wide - "is this daemon recording"
+/// has one answer, and two collectors reading two flags is how half a pause
+/// happens. Threading it through both entry points would say the same thing with
+/// more rope: `writer::run` and `project::watcher::run` are started side by side
+/// in `main` and neither owns the setting.
+static PAUSED: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
+
+/// The shared flag, seeded from the config on first use.
+pub fn paused_flag() -> Arc<AtomicBool> {
+    PAUSED
+        .get_or_init(|| Arc::new(AtomicBool::new(TimelineConfig::load().paused)))
+        .clone()
+}
+
+/// Is collection paused right now?
+pub fn is_paused() -> bool {
+    paused_flag().load(Ordering::Relaxed)
+}
+
 pub async fn watch_paused(flag: Arc<AtomicBool>) {
     const INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
     let mut last = flag.load(Ordering::Relaxed);
