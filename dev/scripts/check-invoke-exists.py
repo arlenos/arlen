@@ -61,7 +61,13 @@ KNOWN: dict[str, dict[str, str]] = {
         "knowledge_capsule_preview": "the capsule preview",
         "knowledge_capsule_revoke": "revoking a minted capsule",
         "knowledge_capsules": "the capsule list",
-        "knowledge_library": "the library view",
+        "knowledge_library": (
+            "the library view. Traced: the bridge-ingest daemon writes into dynamic "
+            "entity tables under a namespace, and the schema registry lists the "
+            "types, so the read is straightforward. What is not is the mapping from "
+            "namespace to the store's four sections and which field is the display "
+            "title - both are schema decisions that every future bridge inherits"
+        ),
         "knowledge_search_save": "saving a search",
         "knowledge_timeline_delete": "deleting a timeline entry",
         "knowledge_timeline_pause": "pausing collection",
