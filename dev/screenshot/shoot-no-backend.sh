@@ -63,6 +63,23 @@ echo "building $APP for production (the fixtures are DEV-gated, so this matters)
   echo "build failed:" >&2; tail -20 /tmp/shoot-nb-build-$APP.log >&2; exit 1
 }
 
+# Clear the port before claiming it. `--strictPort` means our server LOSES this
+# race silently: a preview left behind by an earlier run keeps answering, the
+# readiness poll below is satisfied by it, and the screenshot is of that server's
+# build - the previous one, taken after the fix and looking exactly like a
+# verification of it. The old cleanup killed `head -1` of the matches while each
+# preview is two processes, so leftovers were the normal state, not the odd one.
+pkill -f "vite preview --port $PORT" 2>/dev/null || true
+for _ in $(seq 1 20); do
+  curl -sf -o /dev/null "http://localhost:$PORT/" || break
+  sleep 0.5
+done
+if curl -sf -o /dev/null "http://localhost:$PORT/"; then
+  echo "port $PORT is still serving something this run did not start;" >&2
+  echo "refusing rather than photographing it" >&2
+  exit 1
+fi
+
 ( cd "$DIR" && npx vite preview --port "$PORT" --strictPort --outDir build \
     >/tmp/shoot-nb-serve-$APP.log 2>&1 & )
 for _ in $(seq 1 30); do
@@ -101,7 +118,9 @@ xvfb-run -a --server-args="-screen 0 1600x1200x24" \
 # anything written at all.
 BODY=$(curl -s "$URL")
 BODY=${BODY:0:4000}
-pid=$(pgrep -f "vite preview --port $PORT" | head -1) && [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+# All of them: `npx vite preview` is an npm wrapper plus the node process that
+# actually holds the socket, so killing one of the two left the port occupied.
+pkill -f "vite preview --port $PORT" 2>/dev/null || true
 
 case "$BODY" in
   *"Connection refused"* | *"ERR_CONNECTION"* )
