@@ -324,11 +324,9 @@ pub fn validate_app_id(app_id: &str) -> Result<(), InstallError> {
     if !arlen_permissions::is_valid_app_id(app_id) {
         return Err(InstallError::InvalidAppId(app_id.into()));
     }
-    if !app_id.contains('.') {
-        return Err(InstallError::InvalidAppId(format!(
-            "{app_id}: must be reverse-domain"
-        )));
-    }
+    // No reverse-domain requirement: it was a syntax proxy for the reserved-id
+    // rule `validate_manifest` states properly, and it refused the identifier a
+    // large share of real Linux applications actually ship with.
     Ok(())
 }
 
@@ -958,7 +956,10 @@ mod tests {
     #[test]
     fn test_validate_app_id() {
         assert!(validate_app_id("com.example.app").is_ok());
-        assert!(validate_app_id("nodots").is_err());
+        // A dotless id is valid since 9 Aug: what keeps a foreign package from
+        // claiming a first-party identity is `validate_manifest`'s reserved-id
+        // refusal, and the dot was a proxy for it that also refused `1password`.
+        assert!(validate_app_id("1password").is_ok());
         assert!(validate_app_id("../evil").is_err());
         assert!(validate_app_id("").is_err());
         // The convention nearly every real app follows.

@@ -54,7 +54,8 @@ fn desktop_dir() -> PathBuf {
     PathBuf::from(SYSTEM_DESKTOP_DIR)
 }
 
-/// Validate an app_id: reverse-domain notation, no path traversal.
+/// Validate an app_id: the safe-path-component charset, no traversal. There is no
+/// reverse-domain requirement: see the body.
 pub fn validate_app_id(app_id: &str) -> Result<(), InstallError> {
     if app_id.is_empty()
         || app_id.contains('/')
@@ -66,12 +67,9 @@ pub fn validate_app_id(app_id: &str) -> Result<(), InstallError> {
     {
         return Err(InstallError::InvalidAppId(app_id.into()));
     }
-    // Must contain at least one dot (reverse-domain).
-    if !app_id.contains('.') {
-        return Err(InstallError::InvalidAppId(format!(
-            "{app_id}: must be reverse-domain notation (e.g. com.example.app)"
-        )));
-    }
+    // No reverse-domain requirement. This is the SYSTEM install path, where
+    // `org.arlen.*` is what a first-party package is called anyway; the rule that
+    // matters is the charset above, because the id becomes a path component.
     Ok(())
 }
 
@@ -242,7 +240,15 @@ mod tests {
         assert!(validate_app_id("../evil").is_err());
         assert!(validate_app_id("path/traversal").is_err());
         assert!(validate_app_id("has spaces").is_err());
-        assert!(validate_app_id("nodots").is_err());
+    }
+
+    /// A dotless id is valid. It was refused as a naming convention until 9 Aug;
+    /// what protects a first-party identity is the reserved-id refusal, not the
+    /// punctuation, and most real applications ship an id like this.
+    #[test]
+    fn a_dotless_id_is_installable() {
+        assert!(validate_app_id("1password").is_ok());
+        assert!(validate_app_id("gnome-power-manager").is_ok());
     }
 
     #[test]

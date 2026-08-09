@@ -63,36 +63,31 @@ pub mod exit {
     pub const NOT_LINUX: u8 = 2;
 }
 
-/// Whether `app_id` is a valid reverse-DNS app id safe to put into a profile path
-/// AND a cgroup name: a non-empty lowercase `[a-z0-9._-]` id with at least one dot,
-/// no `..`, and no leading/trailing dot. It lands in both a filesystem path and a
-/// cgroup leaf name, so it is validated strictly before either.
+/// Whether `app_id` is safe to put into a profile path AND a cgroup name: a
+/// non-empty `[A-Za-z0-9._-]` id, no `..`, no leading or trailing dot. It lands in
+/// both a filesystem path and a cgroup leaf name, so it is validated before either.
+/// The shape is a safety rule, not a naming convention - see the body.
 fn valid_app_id(app_id: &str) -> bool {
     // The charset and traversal rules come from the profile loader, because this
     // launcher must be able to run every app the loader can address - restating
     // them here is how it came to reject `org.gnome.Calculator` while the rest of
     // the system accepted it.
     //
-    // The dot is the reverse-domain convention, and it is NOT this launcher's own:
-    // `installd::validate_app_id` and the install-helper both refuse a dotless id
-    // at install time with "must be reverse-domain", so an Arlen package cannot
-    // carry one. Relaxing it here alone would only let the launcher accept ids the
-    // installer will never produce.
-    //
-    // It is also not a cgroup requirement, whatever an earlier version of this
-    // comment claimed: `cgroup_leaf_name`/`parse_arlen_leaf` round-trip on the pid
-    // being all digits and the id being non-empty, and a dashed id already
-    // round-trips. Measured on 9 August against a real machine, the dot is what
-    // separates 60 of 230 `.desktop` entries from the other 155 that pass the
-    // shared charset rule; whether those are Arlen app ids is a question about the
-    // namespace, answered at install time, not here.
-    arlen_permissions::is_valid_app_id(app_id) && app_id.contains('.')
+    // There is no reverse-domain requirement. It used to be here, and it was a
+    // syntax proxy for a rule we hold properly elsewhere: the danger was never
+    // punctuation, it was a foreign package claiming `settings` and inheriting a
+    // first-party profile, which `validate_manifest` refuses by name. Measured on
+    // 9 August, the dot refused 1415 of the 2273 authored third-party profiles and
+    // 155 of 230 real `.desktop` entries, because desktop ids in the wild are
+    // `1password` and `slic3r`. We do not get to define the identifier someone
+    // else's software ships with. Our own apps are `dev.arlen.<app>` by choice.
+    arlen_permissions::is_valid_app_id(app_id)
 }
 
 /// The parsed launch request.
 #[derive(Debug, PartialEq, Eq)]
 struct Args {
-    /// The reverse-DNS app id (validated).
+    /// The app id (validated).
     app_id: String,
     /// Optional override for the directory `{app_id}.toml` is read from.
     profile_root: Option<PathBuf>,
@@ -694,7 +689,6 @@ mod tests {
     fn invalid_app_ids() {
         for bad in [
             "",
-            "noseparator",       // no dot
             ".leading",          // leading dot
             "trailing.",         // trailing dot
             "a..b",              // double dot
@@ -708,10 +702,19 @@ mod tests {
 
     #[test]
     fn a_real_apps_id_can_be_launched() {
-        // Case is part of a real reverse-domain id, and this launcher must accept
-        // every id the profile loader can address or the app cannot run confined
-        // at all. It used to demand lowercase, which excluded most real apps.
-        for good in ["org.gnome.Calculator", "app.drey.Biblioteca", "com.example.notes"] {
+        // This launcher must accept every id the profile loader can address, or the
+        // app cannot run confined at all. It used to demand lowercase, which
+        // excluded most real apps, and then a reverse-domain dot, which excluded
+        // 1415 of the 2273 profiles we have authored - `.desktop` files in the wild
+        // carry `1password`, not `com.agilebits.1password`.
+        for good in [
+            "org.gnome.Calculator",
+            "app.drey.Biblioteca",
+            "com.example.notes",
+            "1password",
+            "slic3r",
+            "gnome-power-manager",
+        ] {
             assert!(valid_app_id(good), "{good:?} must be launchable");
         }
     }
@@ -755,12 +758,16 @@ mod tests {
         assert_eq!(parse_args(&args(&["--", "prog"])), Err(exit::BAD_ARGS));
     }
 
+    /// The id becomes a path component, so a separator is refused at the argument
+    /// boundary rather than deeper. A dotless id is NOT invalid: that was a naming
+    /// convention, and it is the id most real applications ship with.
     #[test]
     fn rejects_an_invalid_app_id() {
         assert_eq!(
-            parse_args(&args(&["--app-id", "no-dot", "--", "prog"])),
+            parse_args(&args(&["--app-id", "a/b", "--", "prog"])),
             Err(exit::BAD_ARGS)
         );
+        assert!(parse_args(&args(&["--app-id", "1password", "--", "prog"])).is_ok());
     }
 
     #[test]
