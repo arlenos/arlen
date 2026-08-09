@@ -22,11 +22,10 @@ What it does NOT check, and this is the part worth reading before trusting a pas
   * That the sandbox actually holds. This reads source; only a running app can
     show a contained renderer. `probe-webview-sandbox.sh` next to this file does
     that part - it starts an app under Xvfb and compares the web process's mount
-    and user namespaces against the app's. Ten apps have now been watched holding
-    it (system-monitor, files, viewers, terminal, clock, meetings, text-editor,
-    knowledge, screenshot, settings). The shell is not among them: it needs a
-    compositor rather than a bare X server. Watching one is worth more than this
-    file's whole pass, because
+    and user namespaces against the app's. Every app has now been watched holding
+    it, the desktop shell included - that one needs a compositor rather than a
+    bare X server, which is what the probe's `PROBE_WAYLAND=1` mode is for.
+    Watching one is worth more than this file's whole pass, because
     the knowledge app read as NOT CONTAINED on the first watch and the cause was a
     binary older than the line that asks for containment - which this check, being
     a reader of source, cannot see and would never have caught.
