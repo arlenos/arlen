@@ -78,6 +78,19 @@ pub async fn default_printer() -> Result<Option<PrinterView>, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Print a queued job again from the server's own copy.
+///
+/// The caller is asking for their own job back, so this needs no rights the
+/// listing above did not - but it does need cupsd to still HOLD the document,
+/// and it stops holding by configuration. A refusal is therefore ordinary, and
+/// the message is cupsd's own so a surface can say which kind it was.
+pub async fn retry_job(printer: &str, job_id: i32) -> Result<(), String> {
+    CupsBackend::default()
+        .restart_job(printer, job_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

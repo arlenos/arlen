@@ -56,6 +56,11 @@ impl<B: PrintBackend> PrintService<B> {
         self.backend.cancel_job(printer, job_id).await
     }
 
+    /// Print a job again from the queue's own copy.
+    pub async fn restart_job(&self, printer: &str, job_id: i32) -> Result<(), PrintError> {
+        self.backend.restart_job(printer, job_id).await
+    }
+
     /// Submit a print job to the user-chosen `printer` on behalf of `app_id`,
     /// then record it.
     ///

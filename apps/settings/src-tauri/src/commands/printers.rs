@@ -51,6 +51,17 @@ pub async fn printers_default() -> Result<Option<PrinterDto>, String> {
     arlen_printers::default_printer().await
 }
 
+/// Print a job again, from the copy the queue still holds.
+///
+/// The retry the Settings jobs list offers. Not administration: it is the
+/// caller's own job going back to the same queue, which is why it is here while
+/// adding and removing a printer are not - those want printer-admin rights and
+/// their own decision.
+#[tauri::command]
+pub async fn print_job_retry(printer: String, job_id: i32) -> Result<(), String> {
+    arlen_printers::retry_job(&printer, job_id).await
+}
+
 /// Make a printer this user's default.
 ///
 /// The USER default, in `lpoptions`, not the machine's: changing what every

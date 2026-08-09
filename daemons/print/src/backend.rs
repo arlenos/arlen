@@ -120,6 +120,13 @@ pub trait PrintBackend: Send + Sync {
     async fn submit(&self, submission: &PrintSubmission<'_>) -> Result<i32, PrintError>;
     /// Cancel a job in a queue.
     async fn cancel_job(&self, printer: &str, job_id: i32) -> Result<(), PrintError>;
+    /// Print a job again from the queue's own copy of the document.
+    ///
+    /// Needs no privilege the caller does not already have - it is their job -
+    /// but it needs the SERVER to still hold the document. CUPS keeps completed
+    /// jobs only while `PreserveJobFiles` says so, so a refusal here is ordinary
+    /// and must reach the caller as itself rather than as a generic failure.
+    async fn restart_job(&self, printer: &str, job_id: i32) -> Result<(), PrintError>;
 }
 
 /// An in-memory [`PrintBackend`] for tests: a fixed printer set, an incrementing
@@ -139,6 +146,8 @@ struct MockState {
     jobs: Vec<Job>,
     /// (printer, copies, title) of each accepted submission, for assertions.
     submitted: Vec<(String, u32, Option<String>)>,
+    /// (printer, job id) of each restart, for the same reason.
+    restarted: Vec<(String, i32)>,
 }
 
 #[cfg(any(test, feature = "mock"))]
@@ -225,6 +234,19 @@ impl PrintBackend for MockBackend {
         }
         Ok(())
     }
+
+    /// Restarting the mock records the intent and leaves the queue alone: a real
+    /// Restart-Job hands the SERVER's copy back to the printer, so there is
+    /// nothing for an in-memory queue to add. Absence still refuses, which is the
+    /// half a caller's error path is written against.
+    async fn restart_job(&self, printer: &str, job_id: i32) -> Result<(), PrintError> {
+        let mut st = self.state.lock().unwrap();
+        if !st.jobs.iter().any(|j| j.printer == printer && j.id == job_id) {
+            return Err(PrintError::NotFound(format!("{printer}#{job_id}")));
+        }
+        st.restarted.push((printer.to_string(), job_id));
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -292,6 +314,27 @@ mod tests {
         backend.cancel_job("Office", id).await.expect("cancel");
         assert!(backend.jobs(None).await.unwrap().is_empty());
         assert!(backend.cancel_job("Office", id).await.is_err());
+    }
+
+    /// Restart is not cancel: the job stays in the queue, because the server is
+    /// printing its own copy again rather than being told to forget it. A job
+    /// that is gone still refuses, which is the case a caller's error path is
+    /// written for.
+    #[tokio::test]
+    async fn restart_keeps_the_job_and_refuses_one_that_is_gone() {
+        let backend = MockBackend::new(vec![printer("Office", "usb://x/y")]);
+        let sub = PrintSubmission {
+            printer: "Office",
+            document: b"x",
+            title: None,
+            mime: None,
+            options: JobOptions::default(),
+        };
+        let id = backend.submit(&sub).await.unwrap();
+        backend.restart_job("Office", id).await.expect("restart");
+        assert_eq!(backend.jobs(None).await.unwrap().len(), 1);
+        backend.cancel_job("Office", id).await.expect("cancel");
+        assert!(backend.restart_job("Office", id).await.is_err());
     }
 
     #[tokio::test]

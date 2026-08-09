@@ -7,7 +7,7 @@
 /// invoke the real commands; the `FIXTURE` below is the no-Tauri dev fallback,
 /// surfaced by the `mocked` banner when the read load fails. The MANAGE/write
 /// half - `printers_add` / `_remove` / `_set_default` / `_set_options` /
-/// `printers_discover` / `print_job_retry` - is still backend-blocked and runs
+/// `printers_discover` - is still backend-blocked and runs
 /// optimistic-only until the coder lands it.
 
 import { writable, get } from "svelte/store";
@@ -394,11 +394,18 @@ export async function cancelJob(printer: string, id: number): Promise<void> {
 }
 
 export async function retryJob(id: number): Promise<void> {
+  // IPP addresses a job by its queue as well as its number, and the command now
+  // takes both. It used to pass the id alone against a command that did not
+  // exist, so nothing was there to mind.
+  const job = get(printers).queue.find((j) => j.id === id);
+  if (!job) return;
   try {
-    await invoke("print_job_retry", { id });
+    await invoke("print_job_retry", { printer: job.printer, jobId: id });
   } catch {
-    // `print_job_retry` has no backend at all, so a job shown as queued again
-    // never is.
+    // A refusal here is ordinary: cupsd keeps a finished job's document only
+    // while it is configured to, so a job old enough to be forgotten cannot be
+    // printed again. Either way it did not restart, and the row must not say it
+    // did.
     if (!import.meta.env.DEV) {
       printers.update((s) => ({ ...s, actionFailed: true }));
       return;
