@@ -51,5 +51,13 @@ echo ">> tauri build --no-bundle (production) arlen-desktop-shell"
 out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-desktop-shell' 2>/dev/null \
         | head -1)
 [ -n "$out" ] || { echo "!! arlen-desktop-shell not found after build" >&2; exit 1; }
-install -Dm755 "$out" "$DESTDIR/usr/bin/arlen-desktop-shell"
+# The app lives under its own id, which is what makes the id: the resolver's
+# rule (3) reads the directory name below `/usr/lib/arlen/apps/`, so an app
+# installed to `/usr/bin/` took rule (2) - the system-daemon rule - and resolved
+# to the bare basename instead. The `/usr/bin` symlink keeps `Exec=` and PATH
+# working; `/proc/<pid>/exe` resolves through it to the real path, so identity
+# comes from the app directory either way.
+install -Dm755 "$out" "$DESTDIR/usr/lib/arlen/apps/dev.arlen.desktop-shell/bin/arlen-desktop-shell"
+mkdir -p "$DESTDIR/usr/bin"
+ln -sf "../lib/arlen/apps/dev.arlen.desktop-shell/bin/arlen-desktop-shell" "$DESTDIR/usr/bin/arlen-desktop-shell"
 echo ">> staged arlen-desktop-shell into the image"
