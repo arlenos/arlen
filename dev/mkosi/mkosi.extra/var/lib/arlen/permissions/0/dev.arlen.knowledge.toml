@@ -1,0 +1,38 @@
+# The knowledge app's KG profile. The daemon runs as root (uid 0) and resolves a
+# caller's profile under /var/lib/arlen/permissions/<its own uid = 0>/<app_id>.toml;
+# without one the read scope is empty and every surface in this app - the timeline,
+# projects, search, provenance - is denied, which renders as an app that opens onto
+# nothing. The app_id comes from the install path the image uses
+# (/usr/lib/arlen/apps/dev.arlen.knowledge/), which is what resolver rule (3) reads.
+#
+# The read list is the fields the app actually asks for, taken from its own
+# queries rather than granted by label: Event (window focus) and File (accesses)
+# make the timeline, Project makes the project list and the timeline's project
+# column. `e.type` is not listed because it is a filter, not a returned field -
+# the scope covers what is read back.
+#
+# It also DELETES, which no other app profile here does. That is deliberately not
+# a graph write scope: the daemon gates `delete_activity` on an exact caller match
+# (`activity_delete_caller_admitted`), because the operation is not "write to the
+# graph" but "destroy the user's own records", and a scope wide enough to express
+# it would be wider than the act. Nothing in this file grants it and nothing here
+# needs to; the profile is what the app may READ.
+[info]
+app_id = "dev.arlen.knowledge"
+tier = "first-party"
+
+[graph]
+read = [
+    "system.Event.id",
+    "system.Event.title",
+    "system.Event.source",
+    "system.Event.timestamp",
+    "system.File.id",
+    "system.File.path",
+    "system.File.app_id",
+    "system.File.last_accessed",
+    "system.Project.id",
+    "system.Project.name",
+    "system.Project.root_path",
+    "system.Project.created_at",
+]

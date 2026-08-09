@@ -429,12 +429,6 @@ DEAD_INVOKES: dict[str, str] = {
     "knowledge_library": (
         "the Knowledge app. Its Rust side exists; papers, books, notes and mail are bridge-ingested entities that are not graph nodes yet, so there is nothing to read"
     ),
-    "knowledge_timeline_pause": (
-        "the Knowledge app. Its Rust side exists; pausing recording is a knowledge-daemon capability that does not exist - there is no switch to flip"
-    ),
-    "knowledge_timeline_delete": (
-        "the Knowledge app. Its Rust side exists; deleting recorded history needs a daemon-side retention op and a confirmation path, neither built"
-    ),
     # the store's update actions against installd - arlen-ui's surface, coder owes the commands
     "store_update": "the store's update actions against installd",
     "store_uninstall": "the store's update actions against installd",
