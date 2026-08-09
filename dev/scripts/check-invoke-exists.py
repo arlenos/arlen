@@ -87,9 +87,17 @@ KNOWN: dict[str, dict[str, str]] = {
         "topbar_items": "the top-bar item list",
     },
     "desktop-shell": {
-        "cancel_print": "cancelling a print job",
-        "poll_print_request": "the print request poll",
-        "submit_print": "submitting a print job",
+        # The shell has a print DIALOG whose three commands are missing, and the
+        # portal's Print backend deliberately does not consult one: it stages the
+        # requesting app's own settings and prints, with a comment saying the
+        # interactive dialog is arlen-ui's. So this is a question before it is
+        # work - either the portal grows a handback to the shell dialog (the shape
+        # the file chooser already uses through picker_ipc) or the dialog is dead
+        # like ModulesPanel. Building the three commands without answering that
+        # gives the portal a dialog it never opens.
+        "cancel_print": "cancelling a print job (portal does not consult a dialog)",
+        "poll_print_request": "the print request poll (same)",
+        "submit_print": "submitting a print job (same)",
         # The whole capture group waits on ONE missing piece rather than five.
         # The ScreenCast portal backend exists (sessions, source-type and cursor
         # negotiation, a content-free audit of every share step); its own header
