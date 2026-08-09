@@ -22,9 +22,17 @@ import { invoke } from "@tauri-apps/api/core";
 
 // ── shell.menu ─────────────────────────────────────────────────────────
 //
-// Wired end-to-end. Tauri commands `register_menu`, `unregister_menu`,
-// `set_menu_state`, `get_menu`, `dispatch_menu_action` live in
-// desktop-shell/src-tauri/src/menu_store.rs. Foundation §712-783.
+// Those command names live in the SHELL's own binary
+// (desktop-shell/src-tauri/src/menu_store.rs), and a Tauri command is reachable
+// only inside the binary that registers it - so an app invoking them by those
+// names is rejected at runtime, which is what `tauri-plugin-shell` says beside
+// its own `menu_register`. The plugin is the app-facing half, and a plugin
+// command is addressed `plugin:arlen-shell|<name>`, not bare.
+//
+// This file said "wired end-to-end" and named the shell's spelling, so an app
+// following it got a throw per call. The harness did exactly that, which is why
+// `register_menu` sits in the missing-command inventory under the harness's
+// name rather than under this file's. Foundation §712-783.
 
 /** Single menu item or separator. Items can nest via `children`. */
 export interface MenuItem {
@@ -70,32 +78,41 @@ export interface MenuStatePatch {
 export const menu = {
   /** Register or replace this app's global menu. */
   async register(options: MenuRegisterOptions): Promise<void> {
-    return invoke("register_menu", {
-      appId: options.appId ?? "unknown",
-      items: options.items,
-    });
+    // The plugin takes the groups and resolves the caller itself - passing an
+    // app id was the shell-internal shape, where the caller is another process.
+    return invoke("plugin:arlen-shell|menu_register", { groups: options.items });
   },
 
   /** Remove this app's menu from the global menu bar. */
   async unregister(appId?: string): Promise<void> {
-    return invoke("unregister_menu", { appId: appId ?? "unknown" });
+    void appId;
+    return invoke("plugin:arlen-shell|menu_unregister");
   },
 
   /**
    * Update a single item's runtime state by action identifier.
-   * Item not found is silently ignored — see foundation §776.
+   *
+   * NOT AVAILABLE TO AN APP. `tauri-plugin-shell` exposes no counterpart, so
+   * there is no name this could be called under; the shell's `set_menu_state`
+   * is internal to its own binary. Kept declared rather than silently removed
+   * because the shape is the contract the plugin would implement, and left
+   * rejecting rather than pretending: re-registering the whole menu is what an
+   * app can do today.
    */
   async setState(action: string, state: MenuStatePatch, appId?: string): Promise<void> {
-    return invoke("set_menu_state", {
-      appId: appId ?? "unknown",
-      action,
-      state,
-    });
+    void action;
+    void state;
+    void appId;
+    return Promise.reject(
+      new Error("shell.menu.setState: no app-facing command; re-register the menu instead"),
+    );
   },
 
-  /** Get the current menu tree for an app (used for shell rehydration). */
+  /** Get the current menu tree for an app. Same as `setState`: shell-internal,
+   * with no plugin counterpart an app could reach. */
   async get(appId: string): Promise<MenuItem[] | null> {
-    return invoke("get_menu", { appId });
+    void appId;
+    return Promise.reject(new Error("shell.menu.get: no app-facing command"));
   },
 };
 
@@ -129,10 +146,10 @@ export interface PresenceParams {
 
 export const presence = {
   async set(params: PresenceParams): Promise<void> {
-    return invoke("shell_presence_set", { params });
+    return invoke("plugin:arlen-shell|presence_set", { params });
   },
   async clear(): Promise<void> {
-    return invoke("shell_presence_clear");
+    return invoke("plugin:arlen-shell|presence_clear");
   },
 };
 
@@ -158,7 +175,7 @@ export interface TimelineParams {
 
 export const timeline = {
   async record(params: TimelineParams): Promise<void> {
-    return invoke("shell_timeline_record", { params });
+    return invoke("plugin:arlen-shell|timeline_record", { params });
   },
 };
 
