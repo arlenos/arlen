@@ -43,27 +43,17 @@ ROOT = Path(__file__).resolve().parents[2]
 STEPS = ROOT / "dev/mkosi/mkosi.build.d"
 PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/0"
 
-# The apps installed without a profile, and why. Each entry is a promise that the
-# app cannot be launched confined yet, so the list should shrink to nothing before
-# the confinement flag is flipped - which is exactly what makes it worth writing
-# down rather than rediscovering.
+# The apps installed without a profile, and why. EMPTY as of 9 August: every app
+# the image installs has one. Each entry was a promise that an app could not be
+# launched confined yet, so an empty list is the state this was written to reach -
+# keep it empty by writing the profile rather than the excuse.
 # The webview-directory blocker that used to sit here is CLOSED: the launcher sets
 # `XDG_DATA_HOME` to `~/.local/share/arlen/apps`, so a Tauri app's `appDataDir()`
 # (`$XDG_DATA_HOME/<bundle identifier>`) lands on the granted directory instead of
 # an ungranted `~/.local/share/<id>`. Decided as move-not-grant, and it works out
 # to one directory because the app id and the bundle identifier are now the same
 # string.
-PENDING: dict[str, str] = {
-    "dev.arlen.clock": "needs nothing from the graph; down to writing the file",
-    "dev.arlen.meetings": "renders from a labelled fixture, so it needs no scope; down to writing the file",
-    # Measured, not assumed: a confined run with an empty profile reaches /proc
-    # (bwrap mounts a private procfs) and NOT /sys, and `/sys` is on the launcher's
-    # FORBIDDEN_FS_ROOTS, so a `custom` grant for it is dropped by design. The app
-    # reads both. What it needs is a read-only grant of a /sys SUBTREE, and the
-    # profile format's `custom` binds read-write - so this one waits on a format
-    # question, not on somebody writing a file.
-    "dev.arlen.system-monitor": "the read-only subtree grant it needed now exists (`[filesystem] read_only`), so this one is down to writing the file",
-}
+PENDING: dict[str, str] = {}
 
 INSTALL = re.compile(r'\$DESTDIR/usr/lib/arlen/apps/([A-Za-z0-9._-]+)/bin/')
 

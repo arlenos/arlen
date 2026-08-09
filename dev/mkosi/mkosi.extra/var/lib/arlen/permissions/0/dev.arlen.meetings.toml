@@ -1,0 +1,15 @@
+# The meetings app's profile.
+#
+# Empty of grants on purpose, and the emptiness is honest rather than lazy: the
+# meeting list and the note surface both render from a labelled sample today
+# ("Example note - not a real meeting"), so nothing here reads the graph, the
+# filesystem or the network. Its own state and webview data land in the app
+# directory the launcher always grants.
+#
+# When the surfaces are wired to real meetings, this file is where the read scope
+# goes, and it should be written from what the code reads rather than from what
+# the feature sounds like it needs.
+
+[info]
+app_id = "dev.arlen.meetings"
+tier = "first-party"

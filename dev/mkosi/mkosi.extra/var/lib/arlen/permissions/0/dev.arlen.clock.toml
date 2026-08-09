@@ -1,0 +1,15 @@
+# The clock app's profile.
+#
+# The smallest profile in the tree, and deliberately: the app renders alarms and
+# timers, and the authority to WAKE the machine is not its. That grant lives in
+# `clockd.toml`, held by the daemon the app asks - so a compromised clock window
+# cannot schedule a wake, it can only ask something that may.
+#
+# No graph scope: the app reads no knowledge graph. No filesystem grant: its own
+# state and its webview data both land in the app directory the launcher always
+# grants (`~/.local/share/arlen/apps/dev.arlen.clock`, reached as
+# `$XDG_DATA_HOME/dev.arlen.clock`). No network.
+
+[info]
+app_id = "dev.arlen.clock"
+tier = "first-party"

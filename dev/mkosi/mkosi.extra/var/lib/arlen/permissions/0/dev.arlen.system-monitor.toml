@@ -1,0 +1,26 @@
+# The system monitor's profile.
+#
+# It reads two kernel interfaces and writes nothing outside its own state. The
+# graph is not among them: the Performance tab samples `/proc` directly rather
+# than asking the knowledge daemon, so there is no `[graph]` section and no read
+# scope to argue about.
+#
+# `/proc` needs no grant - the sandbox mounts a private procfs, which is where
+# `stat`, `meminfo`, `diskstats` and `net/dev` come from.
+#
+# `/sys/block` does. It is the one `/sys` path this app touches: a name in
+# `diskstats` is a whole disk exactly when `/sys/block/<name>` exists, which is
+# how the kernel itself draws the line between a disk and its partitions.
+# Counting both would double every byte.
+#
+# Read-only, and named as a subtree rather than as `/sys`: a writable `custom`
+# grant of a whole-tree root is what the launcher drops by design, and this app
+# has no reason to write there. Verified against a confined run - the subtree is
+# readable, it is not writable, and `/sys` as a whole stays refused.
+
+[info]
+app_id = "dev.arlen.system-monitor"
+tier = "first-party"
+
+[filesystem]
+read_only = ["/sys/block"]
