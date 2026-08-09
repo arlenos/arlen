@@ -1,0 +1,64 @@
+#!/bin/sh
+# Phase 8q (CHROOT): the apt enrolment hook - the last mile of the confinement
+# strand, and the reason the curated catalogue staged next door does anything.
+#
+# Everything else was already built and none of it ran. `permission-helper`
+# implements both stages (`--apt-hook` parses the Pre-Install-Pkgs stream,
+# matches packages against the curated profiles and writes one per human uid;
+# `--apt-post-install` rewrites the launchers once dpkg has unpacked them), and
+# `dist/99arlen-enroll` declares both to apt with the version pin and the
+# reasoning. Neither was in the image. Phase 8p put 2273 profiles at the path the
+# matcher reads; without this phase nothing ever calls the matcher, so a package
+# installed with apt is unconfined however good its profile is.
+#
+# **Only the two pieces the hook needs.** The helper also serves
+# `org.arlen.PermissionHelper1` over the system bus for installd and Settings,
+# and that half is deliberately NOT installed here: the hook runs as root inside
+# apt with no bus involved (its own config file says so), and enabling a root
+# D-Bus service as a side effect of an enrolment change would be a privilege
+# decision smuggled in behind a packaging commit. The binary sits at the path the
+# unit would use, so whoever installs that half later adds the unit and the
+# .conf, not another copy.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-installd"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"
+echo ">> cargo build the permission helper - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/installd/Cargo.toml \
+    -p arlen-permission-helper
+
+# `/usr/lib/arlen/permission-helper`, because that is the path written into
+# `99arlen-enroll` and into the unit next to it. A binary installed anywhere else
+# would leave apt calling a file that is not there, which apt reports as a failed
+# hook and the enrolment as silence.
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-permission-helper" \
+    "$DESTDIR/usr/lib/arlen/permission-helper"
+install -Dm644 "$SRCDIR/arlen/daemons/installd/dist/99arlen-enroll" \
+    "$DESTDIR/etc/apt/apt.conf.d/99arlen-enroll"
+
+# The handoff directory between the two stages. The first writes the pending
+# package list here and the second consumes it; creating it at build time rather
+# than relying on the first stage to succeed means a failure there cannot be
+# mistaken for "nothing was pending".
+install -d -m755 "$DESTDIR/var/lib/arlen"
+
+# Verified rather than assumed: an apt.conf.d file with a typo is parsed as
+# nothing and apt says so only in verbose mode, so the hook would silently never
+# run - the exact shape of every gap this strand has been closing.
+if ! grep -q -- "--apt-hook" "$DESTDIR/etc/apt/apt.conf.d/99arlen-enroll"; then
+    echo "!! the staged apt hook does not name --apt-hook" >&2
+    exit 1
+fi
+echo ">> staged the permission helper and its apt enrolment hook"
