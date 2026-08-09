@@ -13,7 +13,8 @@ use std::path::Path;
 use serde::Serialize;
 
 use arlen_settings_core::knowledge::{
-    daemon_socket_exists, dir_size, expand_tilde, file_size, is_fuse_mounted,
+    daemon_socket_exists, daemon_socket_open_to_others, dir_size, expand_tilde, file_size,
+    is_fuse_mounted,
 };
 
 const DB_PATH_DEFAULT: &str = "/var/lib/arlen/knowledge/events.db";
@@ -41,6 +42,12 @@ pub struct KnowledgeStats {
     /// Sum of all file sizes in the graph storage directory.
     /// `null` for the same reasons as `db_size_bytes`.
     pub graph_size_bytes: Option<u64>,
+    /// Whether the graph socket is reachable by other accounts on this machine,
+    /// or `null` when it cannot be read. Surfaced because the daemon widens the
+    /// socket back to world-accessible when it cannot hand it to its owner, and
+    /// until now the only record of that was a log line - a boundary that
+    /// quietly becomes weaker has to be visible where a person looks.
+    pub socket_open_to_others: Option<bool>,
 }
 
 #[tauri::command]
@@ -60,6 +67,7 @@ pub fn knowledge_stats_get() -> Result<KnowledgeStats, String> {
     // signal — it's stale on-disk data after a crash and would
     // misreport a dead daemon as running (Codex Sprint C review).
     let daemon_running = daemon_socket_exists() || fuse_mounted;
+    let socket_open_to_others = daemon_socket_open_to_others();
 
     Ok(KnowledgeStats {
         daemon_running,
@@ -67,6 +75,7 @@ pub fn knowledge_stats_get() -> Result<KnowledgeStats, String> {
         fuse_mounted,
         db_size_bytes,
         graph_size_bytes,
+        socket_open_to_others,
     })
 }
 

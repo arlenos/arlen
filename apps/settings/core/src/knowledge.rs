@@ -31,6 +31,26 @@ pub fn daemon_socket_exists() -> bool {
     daemon_socket_path().exists()
 }
 
+/// Whether the daemon's read socket is reachable by accounts other than its
+/// owner, or `None` when the socket is absent or unreadable.
+///
+/// Read from the mode bits rather than from anything the daemon remembers, so it
+/// cannot drift from what the kernel will actually allow. The daemon widens to
+/// 0666 in two cases and this does not distinguish them: deliberately, for a
+/// configured cross-uid first-party client, and as a fallback when it could not
+/// hand the socket to its named owner - where the only record was a log line. The
+/// user-facing fact is the same either way, which is why one predicate answers
+/// both: every account on this machine can open it, and the peer check is then
+/// the whole boundary.
+pub fn daemon_socket_open_to_others() -> Option<bool> {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(daemon_socket_path())
+        .ok()?
+        .permissions()
+        .mode();
+    Some(mode & 0o077 != 0)
+}
+
 /// Expand a leading `~/` to `$HOME/`, passing anything else through unchanged.
 pub fn expand_tilde(s: &str) -> String {
     if let Some(rest) = s.strip_prefix("~/") {

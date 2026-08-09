@@ -41,6 +41,7 @@
     fuseMounted: boolean;
     dbSizeBytes: number | null;
     graphSizeBytes: number | null;
+    socketOpenToOthers: boolean | null;
   }
 
   let stats = $state<KnowledgeStats | null>(null);
@@ -151,6 +152,16 @@
             </span>
           {/snippet}
         </Row>
+        <!-- Only when it is true. A boundary that quietly became weaker has to be
+             visible where a person looks, and a row saying "owner only" every day
+             is how the one day it says otherwise gets skipped over. -->
+        {#if s.socketOpenToOthers === true}
+          <Row
+            label={$t("s.know.socketOpen")}
+            description={$t("s.know.socketOpen.desc")}
+            id="kg-socket-exposure"
+          />
+        {/if}
         {#if s.daemonRunning}
           <Row label={$t("s.know.dbSize")} description={$t("s.know.dbSize.desc")} id="kg-db-size">
             {#snippet control()}

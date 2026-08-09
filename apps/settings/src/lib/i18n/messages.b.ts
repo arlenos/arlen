@@ -184,6 +184,9 @@ export const b: Catalogs = {
     "s.know.dbSize.desc": "SQLite event store.",
     "s.know.graphSize": "Graph size",
     "s.know.graphSize.desc": "Ladybug graph storage on disk.",
+    "s.know.socketOpen": "Every account on this machine can reach your graph",
+    "s.know.socketOpen.desc":
+      "The connection the graph listens on is open to all accounts, not just yours. What still limits who is served is the check on the connecting program itself.",
     "s.know.fuse": "FUSE mount",
     "s.know.fuse.mounted": "Browseable as a filesystem.",
     "s.know.fuse.notMounted": "Not mounted.",
@@ -1084,6 +1087,9 @@ export const b: Catalogs = {
     "s.know.dbSize.desc": "SQLite-Ereignisspeicher.",
     "s.know.graphSize": "Graphgröße",
     "s.know.graphSize.desc": "Ladybug-Graphspeicher auf der Festplatte.",
+    "s.know.socketOpen": "Jedes Konto auf diesem Rechner erreicht Ihren Graphen",
+    "s.know.socketOpen.desc":
+      "Die Verbindung, auf der der Graph lauscht, steht allen Konten offen, nicht nur Ihrem. Wer bedient wird, begrenzt dann nur noch die Prüfung des verbindenden Programms selbst.",
     "s.know.fuse": "FUSE-Einhängung",
     "s.know.fuse.mounted": "Als Dateisystem durchsuchbar.",
     "s.know.fuse.notMounted": "Nicht eingehängt.",
