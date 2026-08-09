@@ -65,9 +65,14 @@ raw exception, no claim about the machine. Every defect found on the night of
 Shown to fail before being trusted: run against `1d761f5b7~1` it names
 sourcePicker, jobs and themes, which is what it was written from.
 
-It fails today on one store, `apps/settings/src/lib/stores/models.ts`, which
-belongs to somebody else's in-flight work and is left visible rather than
-excused. Five entries are acknowledged with reasons.
+It passes today, and this paragraph used to say the opposite: that it "fails on
+one store, `models.ts`, left visible rather than excused". Both halves went stale
+without anyone noticing - models.ts is in the SKIP list forty lines below, so it
+is excused rather than visible, and the check has exited clean since the meetings
+fixtures were made honest. A file whose whole job is catching claims that outlived
+their subject had two of its own; corrected 9 August. Five entries are
+acknowledged with reasons, and every one of them names the condition that would
+end it.
 
 The line the acknowledgements draw, after fixing eleven of these in one night:
 a labelled sample on screen is a design choice, and someone made it deliberately;
@@ -76,10 +81,9 @@ whatever the label says. The system monitor was the clearest case - its rows are
 labelled 'Example processes' and their ids are 1, 101, 102, 103, which is what
 the Stop button passes to the backend. That is the point of committing it - the four
 found by reading were a sample and not the set, and a list in the repo is worth
-more than the same evening repeated four more times. It goes into CI when the
-list is empty; until then it is the queue, in severity order: a printer or a
-capture source the user picks and does not get, then app permissions and
-capsules, then the cosmetic ones.
+more than the same evening repeated four more times. It has been in CI since
+9 August, so the queue it once held is now a gate: the list reached empty, and
+what is left in ACKNOWLEDGED is five deliberate samples rather than a backlog.
 """
 
 import re
