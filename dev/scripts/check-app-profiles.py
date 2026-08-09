@@ -20,6 +20,12 @@ What this checks: every app staged by a `dev/mkosi/mkosi.build.d/*.chroot` step
 has a profile file named for the id it resolves to, or an entry in PENDING below
 with the reason it does not have one yet.
 
+It also checks the two things that decide whether a present profile actually
+loads: the file parses as TOML, and its `[info] app_id` is the id its filename
+claims. A profile naming a different app is the drift the file-manager's own
+header warned about ("confirm it matches the daemon's path_to_app_id resolution
+of the installed binary"), and it fails at launch rather than here.
+
 What it does NOT check:
 
   * whether the profile GRANTS the right things. A profile that parses and names
@@ -37,6 +43,7 @@ step without one, makes it name that app.
 
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -84,6 +91,19 @@ def main() -> int:
             f"{PROFILES.relative_to(ROOT)}/{app}.toml, or add it to PENDING with the "
             f"reason it cannot have one yet."
         )
+    for path in sorted(PROFILES.glob("*.toml")) if PROFILES.is_dir() else []:
+        try:
+            declared = tomllib.loads(path.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError) as e:
+            problems.append(f"{path.relative_to(ROOT)} does not parse ({e}), so the launcher refuses the app")
+            continue
+        named = declared.get("info", {}).get("app_id")
+        if named != path.stem:
+            problems.append(
+                f"{path.relative_to(ROOT)} is named for {path.stem} and its "
+                f"`[info] app_id` says {named!r}. The launcher looks the file up by "
+                f"the id and then trusts what is inside it, so these must agree."
+            )
     for app, reason in sorted(PENDING.items()):
         if app in shipped:
             problems.append(f"{app} is listed as pending and also ships a profile; drop the PENDING entry")
@@ -95,8 +115,9 @@ def main() -> int:
     ready = sum(1 for a in apps if a in shipped)
     print(
         f"{len(apps)} app(s) installed by the image: {ready} with a permission profile, "
-        f"{len(PENDING)} pending with a reason. The pending list has to reach zero "
-        f"before a confined launch works for everything the image ships."
+        f"{len(PENDING)} pending with a reason; each present profile parses and "
+        f"names its own app. An empty pending list is the state a confined launch "
+        f"needs, so keep it empty by writing the profile rather than the excuse."
     )
     if problems:
         print("\ninstalled without a profile:\n")
