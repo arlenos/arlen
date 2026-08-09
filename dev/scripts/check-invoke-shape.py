@@ -468,7 +468,7 @@ def bare_type(ret: str) -> str:
     return t.split("::")[-1].strip()
 
 
-def rust_struct_fields(root: Path) -> tuple[dict[str, set[str]], set[str]]:
+def rust_struct_fields(root: Path) -> tuple[dict[str, set[str]], set[str], dict[str, dict[str, set[str]]]]:
     """Map struct name to its field names, for every struct in the tree.
 
     Field names only, in snake_case. A struct name defined twice is dropped
@@ -479,12 +479,23 @@ def rust_struct_fields(root: Path) -> tuple[dict[str, set[str]], set[str]]:
     command silently leaves the return comparison. A pair that cannot be compared
     prints identically to a pair that matched, and that is the difference between
     a check and the appearance of one, so the caller reports them.
+
+    The third return value is the same thing keyed BY APP, and it is what rescues
+    most of the dropped names. A Tauri command lives in one app's binary, so a
+    call in `apps/files` that returns `Project` means the `Project` under
+    `apps/files/` - not the four others in the tree. Comparing within the app is
+    both safer and more accurate than the global lookup, which had left 29 pairs
+    (a quarter of them) unchecked purely because `SearchResult`, `Session`,
+    `Project` and `Capability` are unremarkable names that several apps chose.
     """
     fields: dict[str, set[str]] = {}
+    per_app: dict[str, dict[str, set[str]]] = {}
     seen_twice: set[str] = set()
     for path in root.rglob("*.rs"):
         if BUILD_DIRS & set(path.parts):
             continue
+        parts = path.relative_to(root).parts
+        app = parts[1] if len(parts) > 1 and parts[0] == "apps" else None
         text = path.read_text(encoding="utf-8", errors="replace")
         for m in re.finditer(r"struct\s+(\w+)\s*\{([^}]*)\}", text, re.S):
             name, body = m.group(1), m.group(2)
@@ -505,16 +516,29 @@ def rust_struct_fields(root: Path) -> tuple[dict[str, set[str]], set[str]]:
                     continue
                 if line.startswith(("#", "//", "///")):
                     continue
-                fm = re.match(r"(?:pub\s+)?(\w+)\s*:", line)
+                # `r#type` is the raw-identifier form of a field whose name is a
+                # Rust keyword; serde puts `type` on the wire. Without the `r#`
+                # here the struct reads as not producing `type` at all, which is
+                # how widening this check to compare within an app produced its
+                # first finding - against a pair that agrees exactly.
+                fm = re.match(r"(?:pub\s+)?(?:r#)?(\w+)\s*:", line)
                 if fm:
                     got.add(snake(renamed or fm.group(1)))
                     renamed = None
             if name in fields and fields[name] != got:
                 seen_twice.add(name)
             fields[name] = got
+            if app:
+                # Within one app a repeat is still ambiguous, so the same
+                # drop-rather-than-guess rule applies per app.
+                bucket = per_app.setdefault(app, {})
+                if name in bucket and bucket[name] != got:
+                    bucket[name] = set()  # marked ambiguous within the app
+                elif name not in bucket:
+                    bucket[name] = got
     for name in seen_twice:
         fields.pop(name, None)
-    return fields, seen_twice
+    return fields, seen_twice, per_app
 
 
 def balanced_body(text: str, open_at: int) -> str:
@@ -604,7 +628,7 @@ def annotated_calls(root: Path):
 def check_returns(root: Path) -> tuple[int, list[str], list[str], list[str]]:
     """Report interface fields the command's return struct does not produce."""
     returns = rust_return_types(root)
-    structs, ambiguous = rust_struct_fields(root)
+    structs, ambiguous, structs_by_app = rust_struct_fields(root)
     interfaces = ts_interfaces(root)
     problems: list[str] = []
     known: list[str] = []
@@ -614,12 +638,16 @@ def check_returns(root: Path) -> tuple[int, list[str], list[str], list[str]]:
         rust_name = returns.get(app, {}).get(cmd)
         if not rust_name or OPAQUE_RETURN.match(rust_name):
             continue
-        produced = structs.get(rust_name)
+        # The app's own struct first: a command lives in its app's binary, so a
+        # name defined there is the one this call means.
+        own = structs_by_app.get(app, {}).get(rust_name)
+        produced = own if own else structs.get(rust_name)
         declared = interfaces.get(app, {}).get(tsname)
         if produced is None and rust_name in ambiguous:
             uncompared.append(
                 f"{path}:{line}: `{cmd}` returns `{rust_name}`, a struct name defined "
-                f"more than once in the tree, so its shape is not compared. Rename one."
+                f"more than once outside this app, so its shape is not compared. "
+                f"Rename one, or define the returned struct in the app that returns it."
             )
             continue
         if produced is None or declared is None or not produced or not declared:
