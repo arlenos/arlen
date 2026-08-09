@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Run the structural gates CI declares, before the commit rather than after it.
+#
+# This existed as a script and not as a hook, which is the same as not existing.
+# On the night of 9 August a stale inventory entry reached CI; on the 10th an
+# image change of mine turned `check-app-profiles` red and sat there for an hour
+# while I committed four more times over the top of it. Both were caught by gates
+# that were already written and already correct - nothing ran them.
+#
+# It is the CI list, read out of the workflow at run time rather than kept here,
+# so a gate added to CI is picked up without anyone remembering to add it twice.
+# Roughly fifteen seconds; the gates run concurrently for exactly that reason.
+#
+# `git commit --no-verify` skips it. That is deliberate and not a loophole: a
+# hook with no escape gets uninstalled the first time it is wrong, and then it
+# protects nothing.
+set -uo pipefail
+
+root=$(git rev-parse --show-toplevel)
+runner="$root/dev/scripts/run-ci-gates.sh"
+
+# Absent runner: say so and let the commit through. The hook is a safety net, and
+# a net that blocks work when its own plumbing is missing is worse than none.
+if [ ! -f "$runner" ]; then
+    echo "pre-commit: $runner is missing; gates not run" >&2
+    exit 0
+fi
+
+if ! bash "$runner"; then
+    echo >&2
+    echo "pre-commit: a structural gate is red, so this commit would land broken." >&2
+    echo "Fix it, or pass --no-verify if you know why it is wrong." >&2
+    exit 1
+fi
