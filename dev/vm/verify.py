@@ -328,6 +328,49 @@ def frame_change(a, b):
     return changed / (ia.width * ia.height)
 
 
+def card_left_the_dom(serial_path):
+    """Did the shell's frontend report the consent card removed?
+
+    This separates two failures that look identical in a screenshot and have
+    nothing to do with each other. When the card is still visible after being
+    answered, either the answer never got through - the click missed, or the
+    shell -> broker Resolve leg is broken - or the answer got through perfectly
+    and the pixels simply stayed on screen. Only the second is PR-20.
+
+    The shell logs `[frontend] consent: card for N is out of the DOM` when the
+    card is actually gone, so the serial log settles it. Measured on the
+    2026-08-09 image: that line is present, no frame is painted after it, and
+    the card is still in the capture - so the resolve leg is fine and the stale
+    frame is the whole bug. Before this, the gate blamed the resolve leg and
+    would have sent the next reader to the wrong half of the system.
+    """
+    if not serial_path or not os.path.exists(serial_path):
+        return None
+    try:
+        with open(serial_path, "r", errors="replace") as fh:
+            return "is out of the DOM" in fh.read()
+    except OSError:
+        return None
+
+
+def ghost_or_resolve(serial_path, how):
+    """The failure line for a card that is still on screen after `how`."""
+    gone = card_left_the_dom(serial_path)
+    if gone:
+        return ("VERIFY FAIL: the consent card is still on screen after " + how +
+                ", but the shell reports it out of the DOM - the request WAS "
+                "resolved and the pixels are stale. This is PR-20: the last "
+                "frame painted still contains the card and nothing repaints "
+                "after the removal.")
+    if gone is None:
+        return ("VERIFY FAIL: the consent dialog did not dismiss after " + how +
+                " (no serial log to tell a failed resolve from a stale frame)")
+    return ("VERIFY FAIL: the consent dialog did not dismiss after " + how +
+            " (the shell never reported the card leaving the DOM, so the "
+            "request was not resolved - the click landing or the shell -> "
+            "broker Resolve leg is off)")
+
+
 def main():
     ap = argparse.ArgumentParser()
     here = os.path.dirname(os.path.abspath(__file__))
@@ -838,9 +881,10 @@ def main():
             print(f"consent deny: press Escape -> dialog {verdict} "
                   f"({why}) -> {denied}")
             if verdict == "present":
-                print("VERIFY FAIL: Escape did not dismiss the consent dialog (the "
-                      "main shell window is not grabbing the keyboard while a "
-                      "request is up, so Escape-to-deny never reaches it)")
+                # The old wording named the keyboard grab, which is only one of
+                # the two ways this fails and not the one measured. See
+                # `ghost_or_resolve`.
+                print(ghost_or_resolve(serial, "Escape"))
                 print(f"  serial log: {serial}")
                 return 1
             if verdict == "inconclusive":
@@ -866,9 +910,7 @@ def main():
                   f"({why}; {frac*100:.1f}% of the whole frame changed) "
                   f"-> {approved}")
             if verdict == "present":
-                print("VERIFY FAIL: the consent dialog did not dismiss after "
-                      "'Allow once' (the click did not resolve the request - the "
-                      "shell -> broker Resolve leg, or the click landing, is off)")
+                print(ghost_or_resolve(serial, "'Allow once'"))
                 print(f"  serial log: {serial}")
                 return 1
             if verdict == "inconclusive":
