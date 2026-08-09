@@ -33,8 +33,11 @@ What it does NOT check:
     is a per-app judgement, and each shipped profile argues for its own in its
     header.
   * the profile catalogue under `sdk/permissions/profiles/` - 2273 authored
-    profiles for third-party applications that no install step reaches. That is
-    a packaging gap, tracked separately, and it is not what this compares.
+    profiles for third-party applications. Those are staged by
+    `mkosi.build.d/08p-profiles.sh.chroot` into `/usr/share/arlen/profiles`,
+    which is where the apt-enrolment hook matches them by package name; they are
+    a different thing from the per-app profiles compared here, and they become an
+    app's profile only when a package install enrols one.
   * apps that are not in the image at all.
 
 Shown to fail before being trusted: deleting a shipped profile, or adding an app
