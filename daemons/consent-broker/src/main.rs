@@ -119,10 +119,19 @@ const GRANT_MGMT_ADMITTED: &[&str] = &["dev.arlen.settings"];
 /// refusal for outsiders before the request is read). The per-op restriction for a
 /// grant-management-only caller is enforced by [`control_op_admitted`].
 fn control_caller_admitted(app_id: &str) -> bool {
-    CONTROL_ADMITTED.contains(&app_id)
-        || GRANT_MGMT_ADMITTED.contains(&app_id)
-        || (cfg!(debug_assertions)
-            && (CONTROL_ADMITTED_DEV.contains(&app_id) || GRANT_MGMT_ADMITTED_DEV.contains(&app_id)))
+    if CONTROL_ADMITTED.contains(&app_id) || GRANT_MGMT_ADMITTED.contains(&app_id) {
+        return true;
+    }
+    // `#[cfg]` on the statement, not `cfg!()` in the expression: the two dev lists
+    // are themselves `#[cfg(debug_assertions)]`, so naming them inside a `cfg!()`
+    // still asks the compiler to resolve them and a release build cannot. A debug
+    // `cargo test` compiled it happily; the image's release cross-build is what
+    // said so.
+    #[cfg(debug_assertions)]
+    if CONTROL_ADMITTED_DEV.contains(&app_id) || GRANT_MGMT_ADMITTED_DEV.contains(&app_id) {
+        return true;
+    }
+    false
 }
 
 /// Whether `app_id` may drive THIS specific control op. The shell (and a debug
