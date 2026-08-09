@@ -10,7 +10,7 @@
 /// reachable nowhere, which is the shape where a feature looks finished from
 /// every angle except the user's.
 
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 
 /// One field per switch that exists. Camera and microphone are deliberately
@@ -50,12 +50,18 @@ export async function loadSensing(): Promise<void> {
 /// is refused - a switch that shows the position it failed to reach is worse
 /// than one that snaps back.
 export async function setScreenCapture(allowed: boolean): Promise<void> {
-  const before = allowed;
+  // The value as it stands, read before the optimistic write. It used to be
+  // `const before = allowed` - the value being SET, not the one being replaced -
+  // and the revert then wrote `!allowed`. That is the same thing only while every
+  // call is a true toggle from the opposite state; a call that re-applies the
+  // current value would have flipped the switch on a FAILED write, showing the
+  // user a change to a privacy setting that did not happen and was not asked for.
+  const before = get(sensing).screenCapture;
   sensing.update((s) => ({ ...s, screenCapture: allowed }));
   try {
     await invoke("settings_sensing_set_screen_capture", { allowed });
   } catch {
-    sensing.update((s) => ({ ...s, screenCapture: !before }));
+    sensing.update((s) => ({ ...s, screenCapture: before }));
     sensingUnknown.set(true);
   }
 }

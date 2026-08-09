@@ -161,11 +161,22 @@ export async function setSensitivity(id: DetectorId, level: string): Promise<voi
 /// Run the one-click remediation behind a posture line (e.g. stop Bluetooth
 /// being discoverable). Live: the daemon applies it and re-reads.
 export async function fixPosture(index: number): Promise<void> {
+  sentinelChangeFailed.set(false);
   try {
     await invoke("sentinel_fix_posture", { index });
     await loadSentinel();
   } catch {
-    // Fixture: apply the remediation locally so the flow is drivable.
+    // The fixture stays under the DEV gate. Outside it, this catch used to write
+    // "Bluetooth is no longer discoverable." into the posture line whatever the
+    // command did - and `sentinel_fix_posture` has no daemon behind it, so in a
+    // real session the fix ALWAYS failed and the page ALWAYS said it had worked.
+    // A protection page claiming a machine is secured when nothing was done is
+    // the one lie on this surface that costs more than showing nothing, which is
+    // what the flag below already says about the detector switches.
+    if (!import.meta.env.DEV) {
+      sentinelChangeFailed.set(true);
+      return;
+    }
     sentinel.update((s) => {
       if (!s) return s;
       const posture = s.posture.map((p, i) =>
