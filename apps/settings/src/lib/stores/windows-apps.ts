@@ -144,15 +144,29 @@ export const winApps = writable<WinAppsState>({ bottles: [], loading: false, moc
 /// one thing while the prefix holds another is a claim about containment.
 export const winActionFailed = writable(false);
 
+/// The Windows-compatibility defaults.
+///
+/// The runtime list starts EMPTY, and that is the fix rather than an oversight:
+/// it used to open with "Wine 9.0 installed, Proton 9.0 installed, DXVK 2.4
+/// installed" as a hardcoded initial value, so every session - including a real
+/// one on a machine with no Wine at all - stated which runtimes were on the
+/// disk. Nothing ever corrected it, because the command that would read them has
+/// no backend.
+///
+/// `version` and `bottleMode` are preferences rather than observations, so a
+/// default for them is a real default; a runtime list is an observation, and
+/// there is no honest default for one of those.
 export const defaults = writable<WinDefaults>({
   version: "Wine 9.0",
   bottleMode: "per-app",
-  runtimes: [
-    { name: "Wine 9.0", installed: true },
-    { name: "Proton 9.0", installed: true },
-    { name: "DXVK 2.4", installed: true },
-    { name: "Wine 8.21", installed: false },
-  ],
+  runtimes: import.meta.env.DEV
+    ? [
+        { name: "Wine 9.0", installed: true },
+        { name: "Proton 9.0", installed: true },
+        { name: "DXVK 2.4", installed: true },
+        { name: "Wine 8.21", installed: false },
+      ]
+    : [],
 });
 
 /// Load the bottles. Live: `list_bottles`; fixture under vite.
