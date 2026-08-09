@@ -389,6 +389,11 @@ def main():
     ap.add_argument("--super", dest="press_super", action="store_true",
                     help="after verifying, press Super and capture a second shot "
                          "(the waypointer/launcher) to exercise the input->shell path")
+    ap.add_argument("--dismiss-with-escape", action="store_true",
+                    help="with --super, close the waypointer with Escape instead of "
+                         "Super. Tells whether Escape reaches a shell webview at "
+                         "all, which is the open half of the consent card that "
+                         "will not deny on Escape")
     ap.add_argument("--app", default=None, metavar="BINARY",
                     help="launch a daily-driver app (its binary name, e.g. "
                          "arlen-system-monitor) in the booted session via QEMU fw_cfg, "
@@ -623,7 +628,14 @@ def main():
             # against the pre-open desktop is what makes the ghost visible: if the
             # overlay's pixels are still there, the compositor kept them.
             dismissed = out + ".dismissed.png"
-            qmp_key(f, "meta_l")
+            # Super by default, because that is the toggle. `--dismiss-with-escape`
+            # sends Escape instead, and it is not a variant for its own sake: the
+            # consent card measured on 2026-08-09 never resolves on Escape while
+            # holding an exclusive keyboard grab with its handler bound, so the
+            # open question is whether Escape reaches a shell webview at all. The
+            # waypointer closes on Escape too, so it answers that without needing
+            # a consent request in the frame.
+            qmp_key(f, "esc" if args.dismiss_with_escape else "meta_l")
             time.sleep(3)
             capture(f, dismissed, x_display)
             for _ in range(50):
