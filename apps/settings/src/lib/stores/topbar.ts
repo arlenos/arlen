@@ -2,9 +2,15 @@
 /// bar, in order, each shown-in-bar or in-overflow. The Settings panel reorders
 /// + toggles them; the shell reads the saved arrangement to render the bar.
 ///
-/// The inventory command (`topbar_items`) and the data-driven shell render are
-/// coder seams; until they land the panel drives a mocked inventory. Order +
-/// visibility persist to `topbar.toml` via the existing `config_set`.
+/// `topbar_items` is implemented, but in the desktop-shell (`topbar.rs`), and a
+/// Tauri command only exists inside the binary that registers it - so from here
+/// it does not resolve and `load` below leaves the panel empty with the error.
+/// What is missing is a route from Settings to the running shell, not a producer.
+///
+/// This comment used to say the panel drives a mocked inventory while that seam
+/// lands. It does not and never did: the mock lives in the DEV `_topbartest`
+/// route, and the panel itself shows nothing rather than something invented.
+/// Order + visibility persist to `topbar.toml` via the existing `config_set`.
 
 import { get, writable, derived } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
