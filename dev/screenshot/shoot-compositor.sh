@@ -215,6 +215,24 @@ fi
 WAYLAND_DISPLAY="$WL" grim "$OUT"
 echo "wrote $OUT"
 
+# A capture of one flat colour is reported, not written silently. It is what this
+# harness produces for a wlr-layer-shell client (the desktop shell): the surface
+# never becomes a composited toplevel here, so grim returns the empty output and
+# the PNG looks exactly like a client that failed to render. Both the modified and
+# the unmodified shell produced the identical 444x1425 single-colour frame on
+# 9 August, which is how the difference between "broken" and "not visible to this
+# harness" was established - after half an hour spent reading the blank one as a
+# regression. The shell's own checks are `just shell-smoke` (it starts, it answers)
+# and `dev/vm/verify.py --require-bar` (the bar reaches the screen).
+if command -v magick >/dev/null 2>&1; then
+  colors="$(magick "$OUT" -format %k info: 2>/dev/null || echo "")"
+  if [ "$colors" = "1" ]; then
+    echo "NOTE: the capture is one flat colour - nothing of the client is in it." >&2
+    echo "      A layer-shell client (the desktop shell) looks like this here even" >&2
+    echo "      when healthy; use 'just shell-smoke' or dev/vm/verify.py --require-bar." >&2
+  fi
+fi
+
 # Optional baseline tripwire: fail if the capture differs from a reference PNG by
 # more than SHOOT_TOLERANCE pixels. `magick compare -metric AE` is the installed
 # odiff equivalent; it prints the differing-pixel count to stderr and exits 0/1
