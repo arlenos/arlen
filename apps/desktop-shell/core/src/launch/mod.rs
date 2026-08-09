@@ -33,6 +33,7 @@ pub mod entry;
 pub mod exec;
 pub mod mimeapps;
 pub mod plan;
+pub mod refusal;
 pub mod request;
 pub mod search;
 pub mod service;

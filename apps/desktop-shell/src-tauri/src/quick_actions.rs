@@ -35,7 +35,7 @@ pub enum ToastKind {
 
 const TOAST_EVENT: &str = "arlen://toast";
 
-fn emit_toast(app: &AppHandle, kind: ToastKind, message: impl Into<String>) {
+pub(crate) fn emit_toast(app: &AppHandle, kind: ToastKind, message: impl Into<String>) {
     let _ = app.emit(
         TOAST_EVENT,
         ToastEvent {
