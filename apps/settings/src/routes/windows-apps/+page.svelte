@@ -333,6 +333,11 @@
           />
         {/snippet}
       </Row>
+      <!-- No runtimes rather than four invented ones: the list of what is
+           installed is an observation, and nothing reports it yet. -->
+      {#if $defaults.runtimes.length === 0}
+        <Row label={$t("s.wa.runtimesUnknown")} description={$t("s.wa.runtimesUnknownDesc")} />
+      {/if}
       {#each $defaults.runtimes as r (r.name)}
         <Row label={r.name} description={r.installed ? $t("s.wa.runtimeInstalled") : $t("s.wa.runtimeAvailable")}>
           {#snippet control()}
