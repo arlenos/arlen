@@ -75,21 +75,16 @@ KNOWN: dict[str, dict[str, str]] = {
         "list_bottles": "the bottle list",
         "set_bottle_config": "bottle settings",
         "set_windows_defaults": "the Windows-app defaults",
-        # None of these four is wiring, though the queue read them that way once:
-        # the CUPS backend exists, and `printers_list`/`printers_default` prove it
-        # is reachable - but `PrintBackend` has exactly five operations (printers,
-        # default_printer, jobs, submit, cancel_job) and none of the four below is
-        # among them. A crate existing is not the capability existing.
-        "printers_add": (
-            "adding a printer. Queue administration, not a print operation: it "
-            "wants lpadmin rights, which is a different privilege class from "
-            "anything the daemon does today"
-        ),
-        "printers_discover": (
-            "printer discovery. Network browsing (DNS-SD/IPP), a capability the "
-            "backend does not have and a new listener rather than a call"
-        ),
-        "printers_remove": "removing a printer. Same privilege class as printers_add",
+        # The four printer entries that stood here are gone rather than fixed, and
+        # the way they were wrong is worth keeping: the CUPS backend exists and
+        # `printers_list`/`printers_default` reach it, so "this is just wiring" was
+        # true of the half that already worked - which is the most convincing form
+        # a wrong claim takes. `PrintBackend` had five operations and none of the
+        # four was among them. `print_job_retry` became the sixth (IPP Restart-Job:
+        # your own job, no new privilege). The other three came off the Settings
+        # panel instead: add and remove are queue administration wanting lpadmin,
+        # which is a privilege decision to take on its own terms, and discover is a
+        # DNS-SD listener, which is a subsystem rather than a command.
         "sentinel_fix_posture": "the security posture fix",
         "sentinel_get_state": (
             "the sentinel state. The blocker is a whole daemon, not a command: "
