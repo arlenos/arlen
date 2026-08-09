@@ -50,7 +50,13 @@ PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/0"
 PENDING: dict[str, str] = {
     "dev.arlen.clock": "reads nothing from the graph yet; its daemon holds the profile (clockd.toml)",
     "dev.arlen.meetings": "the meeting surfaces still render from a labelled fixture, so nothing it does needs a scope",
-    "dev.arlen.system-monitor": "reads /proc directly rather than the graph; needs a filesystem scope decided, not a graph one",
+    # Measured, not assumed: a confined run with an empty profile reaches /proc
+    # (bwrap mounts a private procfs) and NOT /sys, and `/sys` is on the launcher's
+    # FORBIDDEN_FS_ROOTS, so a `custom` grant for it is dropped by design. The app
+    # reads both. What it needs is a read-only grant of a /sys SUBTREE, and the
+    # profile format's `custom` binds read-write - so this one waits on a format
+    # question, not on somebody writing a file.
+    "dev.arlen.system-monitor": "reads /sys as well as /proc; /sys is a forbidden whole-tree root and `custom` binds read-write, so it needs a read-only subtree grant the format does not have",
 }
 
 INSTALL = re.compile(r'\$DESTDIR/usr/lib/arlen/apps/([A-Za-z0-9._-]+)/bin/')
