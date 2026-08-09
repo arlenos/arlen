@@ -161,6 +161,111 @@ pub fn set_default(printer: &str) -> Result<(), UserDefaultError> {
     Ok(())
 }
 
+/// The options saved for one destination, as `key=value` pairs.
+///
+/// These are the same per-printer defaults `lpoptions -p <printer> -o k=v`
+/// writes: paper size, duplex and colour that this user's jobs get unless a
+/// dialog overrides them. The keys are IPP attribute names (`media`, `sides`,
+/// `print-color-mode`), because that is what CUPS reads back.
+pub fn parse_dest_options(text: &str, printer: &str) -> Vec<(String, String)> {
+    for line in text.lines() {
+        let mut parts = line.split_whitespace();
+        if parts.next() != Some("Dest") {
+            continue;
+        }
+        let Some(dest) = parts.next() else { continue };
+        if dest.split('/').next().unwrap_or(dest) != printer {
+            continue;
+        }
+        return parts
+            .filter_map(|opt| opt.split_once('=').map(|(k, v)| (k.to_string(), v.to_string())))
+            .collect();
+    }
+    Vec::new()
+}
+
+/// The file's text with `options` saved for `printer`.
+///
+/// Replaces that destination's `Dest` line and leaves every other line alone,
+/// including the `Default` line and other printers' options. Options this code
+/// does not set are dropped from THAT line only, which is what `lpoptions -o`
+/// does: the line is the set of overrides, not a merge target.
+pub fn with_dest_options(text: &str, printer: &str, options: &[(String, String)]) -> String {
+    let mut line = format!("Dest {printer}");
+    for (k, v) in options {
+        line.push(' ');
+        line.push_str(k);
+        line.push('=');
+        line.push_str(v);
+    }
+    let mut replaced = false;
+    let mut out: Vec<String> = Vec::new();
+    for existing in text.lines() {
+        let mut parts = existing.split_whitespace();
+        let is_this_dest = parts.next() == Some("Dest")
+            && parts
+                .next()
+                .map(|d| d.split('/').next().unwrap_or(d) == printer)
+                .unwrap_or(false);
+        if is_this_dest && !replaced {
+            out.push(line.clone());
+            replaced = true;
+        } else {
+            out.push(existing.to_string());
+        }
+    }
+    if !replaced {
+        out.push(line);
+    }
+    let mut joined = out.join("\n");
+    joined.push('\n');
+    joined
+}
+
+/// Save this user's options for one printer.
+pub fn set_dest_options(
+    printer: &str,
+    options: &[(String, String)],
+) -> Result<(), UserDefaultError> {
+    if !usable_name(printer) {
+        return Err(UserDefaultError::BadName(printer.to_string()));
+    }
+    for (k, v) in options {
+        // Same reason as the printer name: this is a whitespace-separated line,
+        // so a value with a space in it would become another option and a value
+        // with a newline another directive.
+        if !usable_option(k) || !usable_option(v) {
+            return Err(UserDefaultError::BadName(format!("{k}={v}")));
+        }
+    }
+    write_options(printer, options)
+}
+
+/// An option key or value: IPP keywords are ASCII words with dashes and dots.
+fn usable_option(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 127
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+}
+
+fn write_options(printer: &str, options: &[(String, String)]) -> Result<(), UserDefaultError> {
+    let path = lpoptions_path().ok_or(UserDefaultError::NoHome)?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let existing = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.into()),
+    };
+    let tmp = path.with_extension("arlen-tmp");
+    std::fs::write(&tmp, with_dest_options(&existing, printer, options))?;
+    std::fs::rename(&tmp, &path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,6 +296,44 @@ mod tests {
     fn an_instance_suffix_is_not_part_of_the_printer_name() {
         assert_eq!(parse_default("Default office/duplex\n").as_deref(), Some("office"));
         assert_eq!(parse_default("Dest office\n"), None);
+    }
+
+    #[test]
+    fn one_printers_options_are_replaced_and_the_others_are_not() {
+        let before = "Default office\nDest office media=Letter\nDest kitchen media=A4\n";
+        let after = with_dest_options(
+            before,
+            "office",
+            &[("media".into(), "A4".into()), ("sides".into(), "two-sided-long-edge".into())],
+        );
+        assert_eq!(
+            after,
+            "Default office\nDest office media=A4 sides=two-sided-long-edge\nDest kitchen media=A4\n"
+        );
+    }
+
+    #[test]
+    fn options_for_a_printer_with_no_line_yet_are_appended() {
+        let after = with_dest_options("Default office\n", "office", &[("media".into(), "A4".into())]);
+        assert_eq!(after, "Default office\nDest office media=A4\n");
+    }
+
+    #[test]
+    fn saved_options_read_back() {
+        let text = "Dest office media=A4 sides=one-sided\n";
+        assert_eq!(
+            parse_dest_options(text, "office"),
+            vec![("media".into(), "A4".into()), ("sides".into(), "one-sided".into())]
+        );
+        assert!(parse_dest_options(text, "kitchen").is_empty());
+    }
+
+    #[test]
+    fn an_option_value_with_whitespace_is_refused() {
+        assert!(!usable_option("A4 Letter"));
+        assert!(!usable_option("A4\nDefault evil"));
+        assert!(usable_option("two-sided-long-edge"));
+        assert!(usable_option("print-color-mode"));
     }
 
     #[test]

@@ -80,7 +80,6 @@ KNOWN: dict[str, dict[str, str]] = {
         "printers_add": "adding a printer",
         "printers_discover": "printer discovery",
         "printers_remove": "removing a printer",
-        "printers_set_options": "printer options",
         "sentinel_fix_posture": "the security posture fix",
         "sentinel_get_state": "the sentinel state",
         "sentinel_set_alerts": "sentinel alerts",

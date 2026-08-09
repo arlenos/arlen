@@ -63,6 +63,62 @@ pub async fn printers_set_default(name: String) -> Result<(), String> {
     arlen_print::user_default::set_default(&name).map_err(|e| e.to_string())
 }
 
+/// The paper size, duplex and colour this user's jobs get on `printer` unless a
+/// dialog overrides them.
+///
+/// Per-user, in `lpoptions`, for the same reason as the default: a machine-wide
+/// printer default is an admin operation. The keys are IPP attribute names
+/// because that is what CUPS reads back, so a value set here is the value the
+/// print dialog and `lp` both see.
+#[tauri::command]
+pub async fn printers_set_options(name: String, options: PrinterOptionsDto) -> Result<(), String> {
+    let pairs = vec![
+        ("media".to_string(), options.paper_ipp().to_string()),
+        ("sides".to_string(), options.duplex_ipp().to_string()),
+        ("print-color-mode".to_string(), options.color_ipp().to_string()),
+    ];
+    arlen_print::user_default::set_dest_options(&name, &pairs).map_err(|e| e.to_string())
+}
+
+/// What the Printers panel sends for one printer's saved options. The strings
+/// are the frontend's own vocabulary; the IPP keywords they map to are below, so
+/// an unknown value falls back rather than being written through.
+#[derive(Debug, serde::Deserialize)]
+pub struct PrinterOptionsDto {
+    /// `one-sided` | `two-sided-long` | `two-sided-short`.
+    pub duplex: String,
+    /// `color` | `mono`.
+    pub color: String,
+    /// `a4` | `letter` | `legal`.
+    pub paper: String,
+}
+
+impl PrinterOptionsDto {
+    fn duplex_ipp(&self) -> &'static str {
+        match self.duplex.as_str() {
+            "two-sided-long" => "two-sided-long-edge",
+            "two-sided-short" => "two-sided-short-edge",
+            _ => "one-sided",
+        }
+    }
+
+    fn color_ipp(&self) -> &'static str {
+        match self.color.as_str() {
+            "mono" => "monochrome",
+            _ => "color",
+        }
+    }
+
+    /// PWG media names, which is what CUPS stores.
+    fn paper_ipp(&self) -> &'static str {
+        match self.paper.as_str() {
+            "letter" => "na_letter_8.5x11in",
+            "legal" => "na_legal_8.5x14in",
+            _ => "iso_a4_210x297mm",
+        }
+    }
+}
+
 /// The active print queue across all printers (pending, held, and processing
 /// jobs).
 #[tauri::command]
