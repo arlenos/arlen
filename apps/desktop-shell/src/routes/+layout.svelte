@@ -58,9 +58,17 @@
   // label is the only thing needed and this needs no import and no throwing path.
   // Absent host (vite) reads as the main window, so every surface still renders for
   // the screenshot loop.
-  const isMainWindow =
-    ((globalThis as Record<string, any>).__TAURI_INTERNALS__?.metadata?.currentWindow
-      ?.label ?? "main") === "main";
+  const windowLabel =
+    (globalThis as Record<string, any>).__TAURI_INTERNALS__?.metadata?.currentWindow
+      ?.label ?? "main";
+  const isMainWindow = windowLabel === "main";
+  /// The consent card renders here and nowhere else. It moved out of the bar
+  /// because a layer surface is only granted keyboard focus when it maps, so the
+  /// bar's runtime switch to exclusive interactivity never produced focus and
+  /// Escape-to-deny never reached the page. The consent window maps exclusive.
+  /// The one-surface rule the guard below was written for still holds; it is the
+  /// same rule, pointed at a different window.
+  const isConsentWindow = windowLabel === "consent";
 
   /// Top of the QS / Notifications popover panels. Matches their
   /// CSS `top: 40px` so the math here stays in lock-step with where
@@ -193,7 +201,7 @@
      exactly one surface.
      The sibling modals below have the same shape and are NOT yet narrowed; that is
      a follow-up, kept separate so this boot stays attributable. -->
-{#if isMainWindow}
+{#if isConsentWindow}
   <ConsentDialog />
 {/if}
 <SourcePicker />

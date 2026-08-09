@@ -203,13 +203,14 @@ static CONSENT_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Recomputes and applies the correct input region from current state.
 fn update_input_region(app: &tauri::AppHandle) {
-    let consent = CONSENT_ACTIVE.load(Ordering::SeqCst);
+    // Consent is deliberately absent from this calculus now. The card moved to
+    // its own layer surface, which takes fullscreen input for itself, and a bar
+    // that also went fullscreen would be a second Overlay surface competing for
+    // the same clicks with no defined ordering between them.
     let menu = MENU_ACTIVE.load(Ordering::SeqCst);
     let notif = NOTIFICATIONS_ACTIVE.load(Ordering::SeqCst);
     let popover = POPOVER_ACTIVE.load(Ordering::SeqCst);
-    // Consent is a modal decision, so it takes the whole surface ahead of every
-    // other overlay.
-    let mode = if consent || menu {
+    let mode = if menu {
         InputRegionMode::FullScreen
     } else if popover {
         InputRegionMode::WithPopover
@@ -219,8 +220,8 @@ fn update_input_region(app: &tauri::AppHandle) {
         InputRegionMode::BarOnly
     };
     log::info!(
-        "update_input_region: consent={} menu={} popover={} notif={} -> {:?}",
-        consent, menu, popover, notif, mode,
+        "update_input_region: menu={} popover={} notif={} -> {:?}",
+        menu, popover, notif, mode,
     );
     set_input_region(app, mode);
     // An overlay that CLOSES leaves its pixels on the screen. The shell's main
@@ -1101,27 +1102,15 @@ pub fn set_popover_input_region(app: tauri::AppHandle, expanded: bool) {
     update_input_region(&app);
 }
 
-/// Grab or release the keyboard on the main shell window. The window is a top bar
-/// and normally takes no keyboard (default `KeyboardMode::None`), so a dialog it
-/// hosts never sees key events. A consent decision must be keyboard-operable - most
-/// importantly Escape-to-deny, the always-available safe out - so while a request
-/// is up the window grabs the keyboard (Exclusive, as the waypointer does), and
-/// releases it when the request clears.
-fn set_main_keyboard_grab(app: &tauri::AppHandle, grab: bool) {
-    let Some(w) = app.get_webview_window("main") else {
-        return;
-    };
-    let _ = w.with_webview(move |webview| {
-        use gtk::prelude::{Cast, WidgetExt};
-        use gtk_layer_shell::{KeyboardMode, LayerShell};
-
-        let Some(toplevel) = webview.inner().toplevel() else { return };
-        let Ok(gtk_window) = toplevel.downcast::<gtk::Window>() else { return };
-        let mode = if grab { KeyboardMode::Exclusive } else { KeyboardMode::None };
-        gtk_window.set_keyboard_mode(mode);
-        log::info!("set_main_keyboard_grab: grab={} -> {:?}", grab, mode);
-    });
-}
+// `set_main_keyboard_grab` used to live here. It flipped the bar's layer surface
+// to `KeyboardMode::Exclusive` while a consent request was up, and its doc claimed
+// that made the decision keyboard-operable. It did not: a layer surface is granted
+// keyboard focus when it MAPS, and the bar maps once at startup with no
+// interactivity, so the flip changed a property nobody read again. Escape-to-deny
+// never fired for the whole life of that function. Deleted rather than left
+// unused, because a dead helper that names the guarantee it failed to provide is
+// worse than no helper. The guarantee now comes from `consent_window`, which maps
+// its surface exclusive.
 
 /// Capture or release full-surface input for the unified consent dialog. Called by
 /// the consent store when a request appears or is resolved, so the centered modal
@@ -1135,8 +1124,17 @@ pub fn set_consent_input_region(app: tauri::AppHandle, active: bool) {
         return;
     }
     log::info!("set_consent_input_region: active={} (was {})", active, was);
+    // The bar no longer carries the card, so it no longer widens its region or
+    // takes the keyboard for one. Both moves are the consent window's now, and
+    // the keyboard one is why: interactivity is read when a surface maps, so the
+    // bar's runtime flip never produced focus and Escape-to-deny never fired.
+    // Measured 9 August, `dev/ghost-webview` kbflip against kbexcl.
     update_input_region(&app);
-    set_main_keyboard_grab(&app, active);
+    if active {
+        crate::consent_window::show(&app);
+    } else {
+        crate::consent_window::hide(&app);
+    }
 }
 
 /// Resolves a freedesktop app icon and returns it as a base64 data URL.
