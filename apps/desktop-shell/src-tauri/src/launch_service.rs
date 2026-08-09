@@ -31,6 +31,15 @@ use tokio::net::{UnixListener, UnixStream};
 /// everything else do not depend on this - so a failure is logged and the
 /// service is simply absent. Callers get a connection refusal, which is a
 /// legible "the service is not there" rather than a hang.
+///
+/// This is called from Tauri's setup hook, which is NOT inside a tokio runtime,
+/// so nothing here may touch tokio before the thread below has one. Binding with
+/// `tokio::net::UnixListener` panicked on "there is no reactor running" every
+/// time the shell started - on the main thread, in a function whose whole
+/// contract is that it degrades quietly - and `tokio::spawn` would have panicked
+/// on the next line for the same reason. The sibling services in `setup` all
+/// start a plain `std::thread`; this one needs async for its request handling, so
+/// it owns a small runtime inside that thread rather than assuming an ambient one.
 pub fn spawn_launch_service() {
     let path = proto::socket_path();
     let listener = match bind(&path) {
@@ -40,23 +49,43 @@ pub fn spawn_launch_service() {
             return;
         }
     };
+    if let Err(e) = listener.set_nonblocking(true) {
+        log::error!("launch service not started: {e}");
+        return;
+    }
     log::info!("launch service listening on {}", path.display());
-    tokio::spawn(async move {
-        loop {
-            match listener.accept().await {
-                Ok((stream, _)) => {
-                    tokio::spawn(async move {
-                        if let Err(e) = handle(stream).await {
-                            log::warn!("launch request: {e}");
-                        }
-                    });
-                }
+    std::thread::spawn(move || {
+        let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+            Ok(rt) => rt,
+            Err(e) => {
+                log::error!("launch service not started: {e}");
+                return;
+            }
+        };
+        rt.block_on(async move {
+            let listener = match UnixListener::from_std(listener) {
+                Ok(l) => l,
                 Err(e) => {
-                    log::error!("launch service accept failed, stopping: {e}");
+                    log::error!("launch service not started: {e}");
                     return;
                 }
+            };
+            loop {
+                match listener.accept().await {
+                    Ok((stream, _)) => {
+                        tokio::spawn(async move {
+                            if let Err(e) = handle(stream).await {
+                                log::warn!("launch request: {e}");
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        log::error!("launch service accept failed, stopping: {e}");
+                        return;
+                    }
+                }
             }
-        }
+        });
     });
 }
 
@@ -66,7 +95,7 @@ pub fn spawn_launch_service() {
 /// something to take over: two shells answering one socket would hand the same
 /// request two different answers. A stale file left by a dead one is cleared,
 /// which is the ordinary case after a crash.
-fn bind(path: &Path) -> std::io::Result<UnixListener> {
+fn bind(path: &Path) -> std::io::Result<std::os::unix::net::UnixListener> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -79,7 +108,7 @@ fn bind(path: &Path) -> std::io::Result<UnixListener> {
         }
         let _ = std::fs::remove_file(path);
     }
-    let listener = UnixListener::bind(path)?;
+    let listener = std::os::unix::net::UnixListener::bind(path)?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     Ok(listener)
 }
