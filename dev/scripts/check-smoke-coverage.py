@@ -18,6 +18,16 @@ under `daemons/` (plus `store-backend`) with a `src/main.rs` produces a binary,
 and each must appear in the smoke's `DAEMONS` or in its `SKIPPED` list with a
 reason. Adding a daemon then means deciding which it is, rather than defaulting
 to untested-and-unmentioned.
+
+The desktop apps are held to the same rule against `smoke-apps.sh`, added after
+the desktop shell turned out to have been panicking on every start for as long as
+its launch socket existed. Nothing read startups, so nobody had to decide whether
+an app was covered, and it was silently neither.
+
+What this does NOT check is whether a smoke's assertions are worth anything. It
+compares two lists. `smoke-apps.sh` asserting only "no panic, still alive" would
+pass this check while proving very little, which is why that script says in its
+own header what it does and does not rule in.
 """
 
 import pathlib
@@ -25,17 +35,31 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SMOKE = ROOT / "dev/scripts/smoke-daemons.sh"
+
+# Each smoke script and the crates it is responsible for. The apps were added
+# after the desktop shell spent as long as its launch socket existed panicking on
+# every start: no check reads a startup, and nothing required anyone to decide
+# whether an app was covered, so it was silently neither.
+SMOKES = [
+    (
+        "dev/scripts/smoke-daemons.sh",
+        "DAEMONS",
+        lambda: sorted(ROOT.glob("daemons/*/")) + sorted(ROOT.glob("daemons/*/*/")) + [ROOT / "store-backend"],
+    ),
+    (
+        "dev/scripts/smoke-apps.sh",
+        "APPS",
+        lambda: sorted(ROOT.glob("apps/*/src-tauri/")),
+    ),
+]
 
 BIN_SECTION = re.compile(r"\[\[bin\]\](.*?)(?=\n\[|\Z)", re.S)
 NAME = re.compile(r'^\s*name\s*=\s*"([^"]+)"', re.M)
 
 
-def binaries() -> dict[str, str]:
-    """Binary name to the crate that builds it, for every daemon with a main.rs."""
+def binaries(roots: list[pathlib.Path]) -> dict[str, str]:
+    """Binary name to the crate that builds it, for every crate with a main.rs."""
     out: dict[str, str] = {}
-    roots = sorted(ROOT.glob("daemons/*/")) + sorted(ROOT.glob("daemons/*/*/"))
-    roots.append(ROOT / "store-backend")
     for d in roots:
         manifest = d / "Cargo.toml"
         if not manifest.is_file() or not (d / "src/main.rs").is_file():
@@ -55,16 +79,16 @@ def binaries() -> dict[str, str]:
         for name in named or [pkg.group(1)]:
             out[name] = str(d.relative_to(ROOT))
     if not out:
-        sys.exit("found no daemon binaries at all; the check needs updating")
+        sys.exit("found no binaries at all; the check needs updating")
     return out
 
 
-def listed(array: str) -> dict[str, str]:
+def listed(smoke: pathlib.Path, array: str) -> dict[str, str]:
     """Entries of a `NAME=( "a|b" ... )` array in the smoke script, first field to rest."""
-    text = SMOKE.read_text()
+    text = smoke.read_text()
     m = re.search(rf"^{array}=\((.*?)^\)", text, re.S | re.M)
     if not m:
-        sys.exit(f"could not find the {array} array in {SMOKE.name}; the check needs updating")
+        sys.exit(f"could not find the {array} array in {smoke.name}; the check needs updating")
     out: dict[str, str] = {}
     for entry in re.findall(r'"([^"]+)"', m.group(1)):
         name, _, rest = entry.partition("|")
@@ -73,35 +97,41 @@ def listed(array: str) -> dict[str, str]:
 
 
 def main() -> int:
-    built = binaries()
-    smoked = listed("DAEMONS")
-    skipped = listed("SKIPPED")
-
     problems: list[str] = []
-    for name, crate in sorted(built.items()):
-        if name not in smoked and name not in skipped:
-            problems.append(
-                f"{name} ({crate}) is neither started by the smoke nor listed as skipped. "
-                "Add it to DAEMONS with the socket it binds, or to SKIPPED with the reason it cannot run."
-            )
-    for name in sorted(set(smoked) & set(skipped)):
-        problems.append(f"{name} is both started and skipped; the smoke will run it and the list lies")
-    for name in sorted((set(smoked) | set(skipped)) - set(built)):
-        problems.append(f"{name} is listed but builds no binary any more; delete the entry")
-    for name, reason in sorted(skipped.items()):
-        if not reason.strip():
-            problems.append(f"{name} is skipped with no reason given")
+    counted = 0
 
+    for rel, started_array, roots in SMOKES:
+        smoke = ROOT / rel
+        built = binaries(roots())
+        started = listed(smoke, started_array)
+        skipped = listed(smoke, "SKIPPED")
+        counted += len(built)
+
+        for name, crate in sorted(built.items()):
+            if name not in started and name not in skipped:
+                problems.append(
+                    f"{name} ({crate}) is neither started by {smoke.name} nor listed as skipped. "
+                    f"Add it to {started_array}, or to that script's SKIPPED with the reason it cannot run."
+                )
+        for name in sorted(set(started) & set(skipped)):
+            problems.append(
+                f"{name} is both started and skipped in {smoke.name}; it will run and the list lies"
+            )
+        for name in sorted((set(started) | set(skipped)) - set(built)):
+            problems.append(f"{name} is listed in {smoke.name} but builds no binary any more; delete the entry")
+        for name, reason in sorted(skipped.items()):
+            if not reason.strip():
+                problems.append(f"{name} is skipped in {smoke.name} with no reason given")
+
+    print(
+        f"{counted} binary(s) across {len(SMOKES)} smoke script(s) checked for being started or "
+        f"skipped with a reason. Whether the smoke's assertions are strong enough is its own question."
+    )
     if problems:
-        print("the daemon smoke does not account for every daemon:\n")
+        print("\nnot classified:\n")
         for p in problems:
             print(f"  - {p}")
         return 1
-
-    print(
-        f"{len(built)} daemon binarie(s): {len(smoked)} smoked, "
-        f"{len(skipped)} skipped, each with a reason"
-    )
     return 0
 
 
