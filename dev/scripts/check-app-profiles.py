@@ -47,9 +47,17 @@ PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/0"
 # app cannot be launched confined yet, so the list should shrink to nothing before
 # the confinement flag is flipped - which is exactly what makes it worth writing
 # down rather than rediscovering.
+# All three wait on the SAME question, which is worth stating once: a confined
+# launch grants an app `~/.local/share|.config|.cache/arlen/apps/<id>`, and a Tauri
+# app's webview writes to `~/.local/share/<identifier>` instead - on this machine
+# `~/.local/share/dev.arlen.clock/` holds WebKitCache, CacheStorage,
+# hsts-storage.sqlite and the rest, while the granted arlen path is EMPTY. So a
+# first-party app confined today would have its webview data masked. Either the
+# launcher grants that directory too or the apps are pointed at the arlen one;
+# both are decisions, and one experiment inside the image answers all three apps.
 PENDING: dict[str, str] = {
-    "dev.arlen.clock": "reads nothing from the graph yet; its daemon holds the profile (clockd.toml)",
-    "dev.arlen.meetings": "the meeting surfaces still render from a labelled fixture, so nothing it does needs a scope",
+    "dev.arlen.clock": "needs nothing from the graph, but its webview data lives outside the granted app dirs (see above)",
+    "dev.arlen.meetings": "renders from a labelled fixture, so it needs no scope - same webview-directory question as the others",
     # Measured, not assumed: a confined run with an empty profile reaches /proc
     # (bwrap mounts a private procfs) and NOT /sys, and `/sys` is on the launcher's
     # FORBIDDEN_FS_ROOTS, so a `custom` grant for it is dropped by design. The app
