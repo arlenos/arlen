@@ -75,10 +75,27 @@ KNOWN: dict[str, dict[str, str]] = {
         "list_bottles": "the bottle list",
         "set_bottle_config": "bottle settings",
         "set_windows_defaults": "the Windows-app defaults",
-        "print_job_retry": "retrying a print job",
-        "printers_add": "adding a printer",
-        "printers_discover": "printer discovery",
-        "printers_remove": "removing a printer",
+        # None of these four is wiring, though the queue read them that way once:
+        # the CUPS backend exists, and `printers_list`/`printers_default` prove it
+        # is reachable - but `PrintBackend` has exactly five operations (printers,
+        # default_printer, jobs, submit, cancel_job) and none of the four below is
+        # among them. A crate existing is not the capability existing.
+        "print_job_retry": (
+            "retrying a print job. The closest of the four: IPP Restart-Job on the "
+            "same client `cancel_job` already uses. It still needs a trait method "
+            "and, more awkwardly, CUPS to have retained the document - a retry that "
+            "silently does nothing for most jobs would be worse than none"
+        ),
+        "printers_add": (
+            "adding a printer. Queue administration, not a print operation: it "
+            "wants lpadmin rights, which is a different privilege class from "
+            "anything the daemon does today"
+        ),
+        "printers_discover": (
+            "printer discovery. Network browsing (DNS-SD/IPP), a capability the "
+            "backend does not have and a new listener rather than a call"
+        ),
+        "printers_remove": "removing a printer. Same privilege class as printers_add",
         "sentinel_fix_posture": "the security posture fix",
         "sentinel_get_state": (
             "the sentinel state. The blocker is a whole daemon, not a command: "
