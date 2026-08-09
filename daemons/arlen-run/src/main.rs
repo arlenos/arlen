@@ -71,8 +71,21 @@ fn valid_app_id(app_id: &str) -> bool {
     // The charset and traversal rules come from the profile loader, because this
     // launcher must be able to run every app the loader can address - restating
     // them here is how it came to reject `org.gnome.Calculator` while the rest of
-    // the system accepted it. The reverse-domain dot is this launcher's own extra
-    // requirement, since the id also becomes a cgroup leaf name.
+    // the system accepted it.
+    //
+    // The dot is the reverse-domain convention, and it is NOT this launcher's own:
+    // `installd::validate_app_id` and the install-helper both refuse a dotless id
+    // at install time with "must be reverse-domain", so an Arlen package cannot
+    // carry one. Relaxing it here alone would only let the launcher accept ids the
+    // installer will never produce.
+    //
+    // It is also not a cgroup requirement, whatever an earlier version of this
+    // comment claimed: `cgroup_leaf_name`/`parse_arlen_leaf` round-trip on the pid
+    // being all digits and the id being non-empty, and a dashed id already
+    // round-trips. Measured on 9 August against a real machine, the dot is what
+    // separates 60 of 230 `.desktop` entries from the other 155 that pass the
+    // shared charset rule; whether those are Arlen app ids is a question about the
+    // namespace, answered at install time, not here.
     arlen_permissions::is_valid_app_id(app_id) && app_id.contains('.')
 }
 

@@ -59,11 +59,12 @@ const LAUNCHER: &str = "arlen-run";
 /// **`has_profile` is the per-app rule, and it is what the flag means.** An
 /// application with a profile is confined; one without runs exactly as it does
 /// today. That is a deliberate choice over an all-or-nothing flag, which was
-/// measured on 9 August against a real machine: of 230 `.desktop` entries, 193
-/// carry a plain desktop-id `arlen-run` rejects as malformed (exit 64) and 37
-/// have no profile (exit 65), so an all-or-nothing flip stops 230 applications,
-/// silently, on the day it is turned on. Under this rule those 230 are not a
-/// blocker - they are the unconfined set, and it shrinks as profiles arrive.
+/// measured on 9 August against a real machine: of 230 `.desktop` entries, 170
+/// carry an id `arlen-run` rejects as malformed (exit 64, mostly for having no
+/// reverse-domain dot) and the remaining 60 have no profile (exit 65), so an
+/// all-or-nothing flip stops all 230, silently, on the day it is turned on.
+/// Under this rule those 230 are not a blocker - they are the unconfined set,
+/// and it shrinks as profiles arrive.
 ///
 /// The caller answers `has_profile`, because it is a filesystem question and
 /// this is not a filesystem function. Ask it with `arlen_permissions::
