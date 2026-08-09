@@ -564,6 +564,14 @@ confinement-check:
         bash -c 'cd daemons/terminal-run-mcp && cargo test --test confined_exec -- --ignored --test-threads=1'
     leg "viewers (the decoder workers)" \
         just --justfile "{{justfile()}}" viewers-decode-check
+    # The two seccomp/Landlock suites in ai-sandbox were in no recipe at all - the
+    # only #[ignore]d tests in the tree that nothing ran. They need this kernel and
+    # a feature flag, which is what a confinement leg is for.
+    leg "ai-sandbox (the per-decoder seccomp profiles)" \
+        bash -c 'cd ai && cargo test -p arlen-ai-sandbox --features thumbnail --test seccomp_profile_integration -- --ignored --test-threads=1'
+    leg "ai-sandbox (cover art under the music worker lockdown)" \
+        bash -c 'cd ai && cargo build -p arlen-ai-sandbox --features music --bin arlen-music-thumbnail-sandbox && cargo test -p arlen-ai-sandbox --features music --test music_thumbnail_integration -- --ignored --test-threads=1'
+
     if [ "${#unexpected[@]}" -ne 0 ]; then
         echo
         echo "confinement broke in ${#unexpected[@]} place(s):"
