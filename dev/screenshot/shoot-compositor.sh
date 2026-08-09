@@ -121,6 +121,13 @@ LOG="$(mktemp)"
 cleanup() {
   kill "${CLIENT2_PID:-}" "${CLIENT_PID:-}" "${CC_PID:-}" "${XVFB_PID:-}" "${YDOTOOLD_PID:-}" 2>/dev/null || true
   wait 2>/dev/null || true
+  # The compositor's own log, kept only when asked for. It answers questions a
+  # screenshot cannot - which surface it gave keyboard focus to, for one, which
+  # it already prints at debug level - and until now it was deleted on the way
+  # out, so anyone wanting it had to edit this script first.
+  if [ -n "${SHOOT_COMPOSITOR_LOG:-}" ] && [ -s "$LOG" ]; then
+    cp "$LOG" "$SHOOT_COMPOSITOR_LOG" 2>/dev/null || true
+  fi
   rm -f "/tmp/.X${DISP#:}-lock" "$LOG" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -145,7 +152,19 @@ Xvfb "$DISP" -screen 0 1920x1080x24 >/dev/null 2>&1 &
 XVFB_PID=$!
 sleep 2
 
-DISPLAY="$DISP" "$CC_BIN" >"$LOG" 2>&1 &
+# WAYLAND_DISPLAY is UNSET deliberately, not merely overridden. cosmic-comp picks
+# its backend from the environment (`backend/mod.rs:29`): X11 first, then winit on
+# failure, and winit prefers Wayland whenever WAYLAND_DISPLAY is set. Inherited
+# from a developer's own session that sends it nesting into the real compositor
+# rather than the Xvfb this script just started, which is not what the script
+# means. Unsetting it demonstrably moves winit onto X11.
+#
+# It is NOT sufficient on its own, and saying so here is the point: with it unset
+# the run still fails on this host, one step later and for a different reason -
+# `EGL_EXT_device_drm` is missing because Xvfb has no DRI3, so cosmic-comp's winit
+# backend cannot bind a display. Anyone chasing "the compositor will not start"
+# should look there and not re-litigate this line.
+env -u WAYLAND_DISPLAY DISPLAY="$DISP" "$CC_BIN" >"$LOG" 2>&1 &
 CC_PID=$!
 
 # cosmic-comp picks its own socket name (wayland-N, ignoring WAYLAND_DISPLAY); it

@@ -126,12 +126,59 @@ const SHRINK_AND_REPORT: &str = r#"
   });
 "#;
 
+/// Does a layer surface that flips to exclusive keyboard interactivity AFTER it is
+/// mapped actually receive keyboard focus?
+///
+/// This is the shell's consent card in miniature. The bar maps with
+/// `KeyboardMode::None` and `set_main_keyboard_grab` flips it to `Exclusive` when a
+/// request arrives (`shell_overlay_client.rs:1110`); measured on the booted image,
+/// Escape then never reaches the page and the request is never denied. The
+/// waypointer, which is mapped exclusive from the start, takes Escape fine.
+///
+/// Reading it needs no input at all, which is what makes it runnable here: the
+/// compositor already prints `Restoring focus to ...` at debug level on every
+/// focus refresh, so the question is answered by its log, not by a keystroke.
+/// Run it with `SHOOT_COMPOSITOR_LOG` set and `RUST_LOG=debug`, then read which
+/// target it names before and after the flip.
+fn run_keyboard_flip(hold_ms: u32) {
+    use gtk_layer_shell::KeyboardMode;
+
+    let window = gtk::Window::new(gtk::WindowType::Toplevel);
+    window.init_layer_shell();
+    window.set_layer(Layer::Overlay);
+    for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+        window.set_anchor(edge, true);
+    }
+    window.set_exclusive_zone(-1);
+    // Mapped WITHOUT keyboard interactivity, which is the whole point: a surface
+    // born exclusive is the case that already works.
+    window.set_keyboard_mode(KeyboardMode::None);
+    window.show_all();
+    eprintln!("kbflip: mapped with KeyboardMode::None");
+
+    let window_for_timer = window.clone();
+    glib::timeout_add_local_once(std::time::Duration::from_millis(hold_ms.into()), move || {
+        window_for_timer.set_keyboard_mode(KeyboardMode::Exclusive);
+        eprintln!("kbflip: set KeyboardMode::Exclusive");
+    });
+
+    glib::timeout_add_seconds_local_once(120, gtk::main_quit);
+    gtk::main();
+}
+
 fn main() {
     let hold_ms: u32 = std::env::args()
         .nth(1)
         .and_then(|a| a.parse().ok())
         .unwrap_or(1_200);
-    let animated = std::env::args().nth(2).as_deref() == Some("animated");
+    let mode = std::env::args().nth(2);
+    let animated = mode.as_deref() == Some("animated");
+
+    if mode.as_deref() == Some("kbflip") {
+        gtk::init().expect("gtk init");
+        run_keyboard_flip(hold_ms);
+        return;
+    }
 
     gtk::init().expect("gtk init");
 
