@@ -35,20 +35,21 @@
 #      written successfully, exit code 0, and worthless. The screenshot existing
 #      is not evidence that the app was in it.
 #
-# What it does NOT get right, found 9 August: [w] and [h] are passed on and the
-# browser ignores them. Every shot this script has produced is 372 CSS px wide,
-# which is a phone, so the desktop layout of these panels has never appeared in
-# one. `shoot.py` now prints the viewport it actually rendered at on every run -
-# read that line before drawing a conclusion about spacing or alignment. Set
-# SHOOT_REQUIRE_WIDTH to be refused rather than handed a narrow-layout render.
+# Fourth thing, and it took until 9 August to notice: [w] used to be passed to
+# WebKitWebDriver, which accepted it, echoed it back and ignored it. Every shot
+# this script produced before then was 372 CSS px wide - a phone - so the desktop
+# layout of these panels had never once appeared in one, and nothing in the output
+# said so. It now renders through `render-wide.py`, which reaches the width by a
+# route that works and refuses rather than quietly hand back a narrow render, so
+# [w] finally means what it says. [h] is gone: the viewport height follows from
+# the width and asking for one would be a knob that cannot work.
 
 set -euo pipefail
 
-APP="${1:?usage: shoot-no-backend.sh <app> [route] [out.png] [w] [h]}"
+APP="${1:?usage: shoot-no-backend.sh <app> [route] [out.png] [w]}"
 ROUTE="${2:-}"
 OUT="${3:-dev/screenshot/out/${APP}-no-backend.png}"
 W="${4:-1280}"
-H="${5:-880}"
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 DIR="$ROOT/apps/$APP"
@@ -73,8 +74,20 @@ curl -sf -o /dev/null "http://localhost:$PORT/" || {
 }
 
 URL="http://localhost:$PORT/${ROUTE#/}"
-echo "shooting $URL"
-"$ROOT/dev/screenshot/shoot.sh" "$URL" "$OUT" "" "$W" "$H" >/dev/null
+echo "shooting $URL at ${W}px"
+# Yesterday's PNG must not be able to stand in for today's run. render-wide
+# refuses by writing nothing, and the "no screenshot was written" check below is
+# what turns that into a failure - which it can only do if there is nothing there
+# to begin with.
+rm -f "$OUT"
+# --require-width is the same number, so this script can never again produce what
+# it produced for months: a narrow-layout PNG that reads as a desktop one.
+# Piped through grep, so the exit code here is grep's; the file check below is
+# the real verdict.
+xvfb-run -a --server-args="-screen 0 1600x1200x24" \
+  python3 "$ROOT/dev/screenshot/render-wide.py" \
+    --url "$URL" --out "$OUT" --width "$W" --require-width "$W" \
+  2>&1 | grep -v "Gdk-WARNING" || true
 
 # Did we photograph the app, or the preview server's corpse? A page whose text is
 # a connection error is not a render of anything.
