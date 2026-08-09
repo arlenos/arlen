@@ -431,7 +431,6 @@ DEAD_INVOKES: dict[str, str] = {
     # The capability browser lives in Settings/Privacy (decision 6), so knowledge
     # links out rather than re-hosting it. Needs a cross-app open mechanism, which
     # nothing provides yet - coder, and it is a mechanism rather than one command
-    "open_settings_route": "no cross-app open mechanism exists; knowledge links out to Settings/Privacy",
 }
 
 def rust_return_types(root: Path) -> dict[str, dict[str, str]]:

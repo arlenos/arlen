@@ -96,11 +96,19 @@
     selected = entry;
   }
 
+  /// True when the last attempt to open Settings did not start it.
+  let settingsOpenFailed = $state(false);
+
   function openCapabilities(): void {
     // The generic capability browser lives in Settings/Privacy (decision 6); this
-    // links out rather than re-hosting it. Live: a cross-app open command (a coder
-    // seam); under vite it is a no-op.
-    void invoke("open_settings_route", { route: "/privacy" }).catch(() => {});
+    // links out rather than re-hosting it, by spawning `arlen-settings --panel`.
+    settingsOpenFailed = false;
+    void invoke("open_settings_route", { route: "/privacy" }).catch(() => {
+      // A link to a privacy control that silently does nothing is the worst
+      // shape for this affordance: the person clicking it concludes there is no
+      // such control.
+      settingsOpenFailed = true;
+    });
   }
 
   const now = Date.now();
@@ -116,6 +124,11 @@
       <h1 class="kn-h1">{$t(labelKeyFor($path))}</h1>
       <!-- Every designed place carries its own example-data line. -->
 
+      <!-- The capability browser lives in Settings; if it would not start, say
+           so rather than leaving the click looking like there is no such page. -->
+      {#if settingsOpenFailed}
+        <p class="kn-open-failed" role="alert">{$t("k.settingsOpenFailed")}</p>
+      {/if}
     </header>
     {#if $searchQuery.trim().length > 0 || $path === "searches"}
       <!-- The titlebar query owns the content area wherever you are; the
@@ -156,6 +169,12 @@
 </div>
 
 <style>
+  .kn-open-failed {
+    margin: 0;
+    font-size: 0.85rem;
+    color: color-mix(in srgb, var(--color-fg-primary) 62%, transparent);
+  }
+
   .kn-app {
     display: flex;
     flex-direction: column;

@@ -71,7 +71,6 @@ KNOWN: dict[str, dict[str, str]] = {
         "knowledge_search_save": "saving a search",
         "knowledge_timeline_delete": "deleting a timeline entry",
         "knowledge_timeline_pause": "pausing collection",
-        "open_settings_route": "the deep link into Settings",
     },
     "settings": {
         "browse_bottle_files": "the Windows-app bottle browser",
