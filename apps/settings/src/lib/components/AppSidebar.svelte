@@ -132,7 +132,9 @@
   const SECTIONS = [
     {
       label: "s.section.system",
-      panelIds: ["display", "workspaces", "topbar", "notifications", "printers", "windows-apps", "language", "about"] as const,
+      // No windows-apps: see the note in `navigation.ts`. The route and its
+      // store are still here and still build; what is gone is the way in.
+      panelIds: ["display", "workspaces", "topbar", "notifications", "printers", "language", "about"] as const,
     },
     {
       label: "s.section.personal",
