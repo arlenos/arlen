@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Tim Kicker
+#
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Standalone, with its own workspace: this is a probe, not a component, and it
+# pulls the GTK 3 stack that nothing else in the tree wants in its lockfile.
+[workspace]
+
+[package]
+name = "arlen-ghost-webview"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# The engine and the surface role the desktop shell actually ships, which is the
+# whole point of this crate existing next to the Python probe that does not.
+gtk = "0.18"
+gtk-layer-shell = { version = "0.8", features = ["v0_6"] }
+# `v2_40` for the two calls this needs: a transparent view background (v2_8) and
+# console-to-stdout (v2_2). The host ships WebKitGTK 2.52, so the floor is met
+# with room; pinning it lower would compile and then not have the methods.
+webkit2gtk = { version = "2.0", features = ["v2_40"] }
+glib = "0.18"
