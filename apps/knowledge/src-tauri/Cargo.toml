@@ -14,6 +14,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# The shared format-preserving editor, so the pause key does not need a
+# third TOML writer in this tree.
+dirs = "5"
+arlen-config-format = { path = "../../../sdk/config-format" }
 tauri = { version = "2", features = [] }
 tauri-plugin-arlen-shell = { path = "../../../sdk/tauri-plugin-shell" }
 serde = { version = "1", features = ["derive"] }
