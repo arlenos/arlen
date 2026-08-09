@@ -264,8 +264,9 @@ kg-seed:
 integration:
     cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml"
 
-# Start each app and check it does not die on the way up. `smoke` for the
-# desktop apps; the shell needs the compositor, so it has `shell-smoke`.
+# `smoke` for the desktop apps; the shell needs the compositor, so it has its own
+# recipe (`shell-smoke`).
+# Start each app and check it does not die on the way up.
 smoke-apps:
     bash "{{ROOT}}/dev/scripts/smoke-apps.sh"
 
