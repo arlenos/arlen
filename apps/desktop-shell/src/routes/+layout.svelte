@@ -184,14 +184,24 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<AmbientOverlay />
+<!-- Desktop chrome, and not on the consent surface. `AmbientOverlay` is
+     `position: fixed; inset: 0` with a solid ground, so on a fullscreen modal
+     window it paints over the desktop instead of letting the card's 50% dim show
+     it: measured on the image, the frame was 11.4% non-black with the card up and
+     100% the moment it closed, and the top bar was invisible underneath. The rest
+     is desktop furniture that a modal has no business drawing. -->
+{#if !isConsentWindow}
+  <AmbientOverlay />
+{/if}
 <slot />
-<ContextMenu />
-<TabBar />
-<Indicator />
-<ZoomToolbar />
-<WindowHeader />
-<BluetoothPairingDialog />
+{#if !isConsentWindow}
+  <ContextMenu />
+  <TabBar />
+  <Indicator />
+  <ZoomToolbar />
+  <WindowHeader />
+  <BluetoothPairingDialog />
+{/if}
 <!-- One window, not every window. There is a single root layout and no route of
      its own for the waypointer, so every shell window - the bar, one extra bar per
      additional output, and the fullscreen waypointer - was mounting the consent
