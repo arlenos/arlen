@@ -264,6 +264,11 @@ kg-seed:
 integration:
     cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml"
 
+# Start each app and check it does not die on the way up. `smoke` for the
+# desktop apps; the shell needs the compositor, so it has `shell-smoke`.
+smoke-apps:
+    bash "{{ROOT}}/dev/scripts/smoke-apps.sh"
+
 # `smoke` for the desktop, which `smoke` cannot reach: the shell is a
 # wlr-layer-shell client, so it needs the nested compositor rather than a bare
 # socket check. Same purpose exactly - the unit tests, the structural checks and
