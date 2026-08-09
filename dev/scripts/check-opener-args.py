@@ -35,6 +35,9 @@ What this does NOT cover:
     check that guesses is worse than one that admits its scope.
   * A path that reaches `xdg-open` through a helper rather than a literal
     `.arg(...)` on the same call.
+  * Whether an acknowledged call's witness string really makes it safe. The
+    witness ties the excuse to one call rather than to a whole file; reading
+    whether `abs(` does what its entry claims is still a person's job.
   * Whether a dash-named file actually opens end to end. That needs a real
     session and an application launch, which is not something CI or an agent
     should be doing on somebody's desktop. The parse is what is verified.
@@ -50,18 +53,27 @@ CALL = re.compile(r'Command::new\("xdg-open"\)')
 # The `--` may sit on its own `.arg("--")` line before the value.
 GUARD = re.compile(r'\.arg\("--"\)')
 
-# A call that passes something which cannot look like an option, with the reason.
-# Empty is not the goal here: an argument that is absolute by construction is
-# better than a guard, and saying so is the point.
-ACKNOWLEDGED: dict[str, str] = {
+# A call that passes something which cannot look like an option: the file, the
+# string that must appear in THAT call's builder chain for the excuse to hold,
+# and why. Empty is not the goal here - an argument that is absolute by
+# construction is better than a guard, and saying so is the point.
+#
+# The witness string matters. This was a plain file allowlist until 9 August,
+# when adding a second, unguarded `xdg-open` call to `apps/files` to re-prove the
+# check found that the check said nothing: the file was excused as a whole, so
+# any NEW call in it inherited the excuse. A file-keyed exception is a hole that
+# grows.
+ACKNOWLEDGED: dict[str, tuple[str, str]] = {
     "apps/files/src-tauri/src/lib.rs": (
+        "abs(",
         "Passes `abs(&path)`, which trims leading slashes and re-adds one, so the "
         "argument always starts with `/` and can never be read as an option. "
-        "Checked the function, not the name."
+        "Checked the function, not the name.",
     ),
     "apps/harness/src-tauri/src/file_ref.rs": (
+        ".arg(",
         "arlen-ui's in-flight work. Named rather than skipped, because the call "
-        "has the same shape as the ones that were fixed."
+        "has the same shape as the ones that were fixed.",
     ),
 }
 
@@ -88,8 +100,11 @@ def main() -> int:
             if GUARD.search(chain):
                 continue
             rel = str(path.relative_to(ROOT))
-            if rel in ACKNOWLEDGED:
-                acknowledged.append(f"{rel}: {ACKNOWLEDGED[rel]}")
+            excuse = ACKNOWLEDGED.get(rel)
+            # The excuse applies to a call that carries its witness, not to every
+            # call the file will ever contain.
+            if excuse and excuse[0] in chain:
+                acknowledged.append(f"{rel}: {excuse[1]}")
                 continue
             line = text[: m.start()].count("\n") + 1
             findings.append(
