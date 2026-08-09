@@ -55,6 +55,57 @@ const PAGE: &str = r#"<!doctype html>
        width:520px;height:520px;background:#ff00ff"></div>
 </body></html>"#;
 
+/// The waypointer's own shape, which is the mode that was still missing.
+///
+/// Six configurations came back clean before this one, and the only difference
+/// left between the probe and the thing that ghosts was the page. That page is
+/// not a plain div: `WaypointerContent.svelte` puts the card inside a fixed
+/// full-viewport backdrop, animates both on open (`wp-backdrop-fade` and
+/// `wp-fade-in`, 150ms ease-out `both`), and the card's animation moves
+/// `transform: scale() translateY()` as well as opacity. An animated transform
+/// is what promotes an element to its own compositing layer, and a compositing
+/// layer is repainted by a different path from a plain repaint - so this is the
+/// one remaining place the damage could go missing.
+///
+/// Reproduced structurally rather than copied: a fixed inset-0 backdrop, a
+/// centred card with the same two animations, and a list inside it that shrinks.
+const PAGE_ANIMATED: &str = r#"<!doctype html>
+<html><body style="margin:0;background:transparent">
+  <div id="backdrop" style="position:fixed;inset:0;display:flex;
+       justify-content:center;align-items:flex-start;padding-top:25vh;
+       background:rgba(0,0,0,0.4);overflow:hidden;
+       animation:fade 150ms ease-out both">
+    <div id="card" style="position:relative;width:100%;max-width:600px;
+         border-radius:12px;overflow:hidden;background:#ff00ff;
+         animation:pop 150ms ease-out both">
+      <div id="list" style="height:520px"></div>
+    </div>
+  </div>
+  <style>
+    @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes pop {
+      from { opacity: 0; transform: scale(0.98) translateY(-4px) }
+      to   { opacity: 1; transform: scale(1) translateY(0) }
+    }
+  </style>
+</body></html>"#;
+
+/// The animated page shrinks its LIST, which is what filtering does - the card
+/// follows, and the strip the card gives up is the region under test.
+const SHRINK_LIST_AND_REPORT: &str = r#"
+  document.getElementById('list').style.height = '140px';
+  requestAnimationFrame(() => {
+    const r = document.getElementById('card').getBoundingClientRect();
+    const d = window.devicePixelRatio;
+    console.log('after shrink: ' + JSON.stringify({
+      dpr: d,
+      css: [r.left, r.top, r.width, r.height],
+      device: [r.left * d, r.top * d, r.width * d, r.height * d],
+      viewport: [innerWidth * d, innerHeight * d],
+    }));
+  });
+"#;
+
 /// Shrinks the block, then reports where it ended up. The reporting half is not
 /// decoration: the first run of the Python probe produced a rectangle that was
 /// equally consistent with the shrunken block and with the big one clipped by the
@@ -80,6 +131,7 @@ fn main() {
         .nth(1)
         .and_then(|a| a.parse().ok())
         .unwrap_or(1_200);
+    let animated = std::env::args().nth(2).as_deref() == Some("animated");
 
     gtk::init().expect("gtk init");
 
@@ -106,7 +158,7 @@ fn main() {
 
     let view = WebView::new();
     view.set_background_color(&gtk::gdk::RGBA::new(0.0, 0.0, 0.0, 0.0));
-    view.load_html(PAGE, None);
+    view.load_html(if animated { PAGE_ANIMATED } else { PAGE }, None);
     window.add(&view);
     window.show_all();
 
@@ -123,7 +175,7 @@ fn main() {
         // host ships WebKitGTK 2.52 and the old call has been deprecated since
         // 2.40, so using it would be writing a warning into a brand-new file.
         view_for_timer.evaluate_javascript(
-            SHRINK_AND_REPORT,
+            if animated { SHRINK_LIST_AND_REPORT } else { SHRINK_AND_REPORT },
             None,
             None,
             gtk::gio::Cancellable::NONE,
