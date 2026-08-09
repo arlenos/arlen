@@ -173,6 +173,17 @@
     return { cpu, memMB, diskKBs, netKBs };
   });
 
+  // A failed read leaves nothing to sum, and a sum of nothing is zero - which in
+  // this header reads as "0% CPU, 0 MB", a measurement of the machine, sitting
+  // directly under a line saying the processes could not be read. Seen on 9
+  // August in the first desktop-width sweep. Blank says nothing, which is what we
+  // know, and it is already this file's convention: `rate()` renders a zero rate
+  // as blank rather than as a nought.
+  const totalCpu = $derived(list.length ? `${formatDecimal(totals.cpu, 0, $locale)}%` : "");
+  const totalMem = $derived(list.length ? mem(totals.memMB) : "");
+  const totalDisk = $derived(list.length ? rate(totals.diskKBs) || "0" : "");
+  const totalNet = $derived(list.length ? rate(totals.netKBs) || "0" : "");
+
   // `$locale` rather than the default, so the table re-renders on a language
   // switch: a template calling a function that reads the store internally has no
   // dependency on it and would keep the first render's convention.
@@ -215,21 +226,21 @@
       {$t("tm.col.status")}
     </button>
     <span class="h access" role="columnheader" aria-label={$t("tm.col.access")}>{$t("tm.col.access")}</span>
-    <button class="h num" class:sorted={sortKey === "cpu"} role="columnheader" aria-label={$t("tm.col.withTotal", { col: $t("tm.col.cpu"), total: formatDecimal(totals.cpu, 0, $locale) + "%" })} aria-sort={ariaSort("cpu")} onclick={() => sortBy("cpu")}>
+    <button class="h num" class:sorted={sortKey === "cpu"} role="columnheader" aria-label={totalCpu ? $t("tm.col.withTotal", { col: $t("tm.col.cpu"), total: totalCpu }) : $t("tm.col.cpu")} aria-sort={ariaSort("cpu")} onclick={() => sortBy("cpu")}>
       <span class="h-label">{$t("tm.col.cpu")} {#if sortKey === "cpu"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
-      <span class="h-total">{formatDecimal(totals.cpu, 0, $locale)}%</span>
+      <span class="h-total">{totalCpu}</span>
     </button>
-    <button class="h num" class:sorted={sortKey === "memMB"} role="columnheader" aria-label={$t("tm.col.withTotal", { col: $t("tm.col.memory"), total: mem(totals.memMB) })} aria-sort={ariaSort("memMB")} onclick={() => sortBy("memMB")}>
+    <button class="h num" class:sorted={sortKey === "memMB"} role="columnheader" aria-label={totalMem ? $t("tm.col.withTotal", { col: $t("tm.col.memory"), total: totalMem }) : $t("tm.col.memory")} aria-sort={ariaSort("memMB")} onclick={() => sortBy("memMB")}>
       <span class="h-label">{$t("tm.col.memory")} {#if sortKey === "memMB"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
-      <span class="h-total">{mem(totals.memMB)}</span>
+      <span class="h-total">{totalMem}</span>
     </button>
-    <button class="h num" class:sorted={sortKey === "diskKBs"} role="columnheader" aria-label={$t("tm.col.withTotal", { col: $t("tm.col.disk"), total: rate(totals.diskKBs) || "0" })} aria-sort={ariaSort("diskKBs")} onclick={() => sortBy("diskKBs")}>
+    <button class="h num" class:sorted={sortKey === "diskKBs"} role="columnheader" aria-label={totalDisk ? $t("tm.col.withTotal", { col: $t("tm.col.disk"), total: totalDisk }) : $t("tm.col.disk")} aria-sort={ariaSort("diskKBs")} onclick={() => sortBy("diskKBs")}>
       <span class="h-label">{$t("tm.col.disk")} {#if sortKey === "diskKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
-      <span class="h-total">{rate(totals.diskKBs) || "0"}</span>
+      <span class="h-total">{totalDisk}</span>
     </button>
-    <button class="h num" class:sorted={sortKey === "netKBs"} role="columnheader" aria-label={$t("tm.col.withTotal", { col: $t("tm.col.network"), total: rate(totals.netKBs) || "0" })} aria-sort={ariaSort("netKBs")} onclick={() => sortBy("netKBs")}>
+    <button class="h num" class:sorted={sortKey === "netKBs"} role="columnheader" aria-label={totalNet ? $t("tm.col.withTotal", { col: $t("tm.col.network"), total: totalNet }) : $t("tm.col.network")} aria-sort={ariaSort("netKBs")} onclick={() => sortBy("netKBs")}>
       <span class="h-label">{$t("tm.col.network")} {#if sortKey === "netKBs"}<span class="arrow">{sortDir === "asc" ? "▲" : "▼"}</span>{/if}</span>
-      <span class="h-total">{rate(totals.netKBs) || "0"}</span>
+      <span class="h-total">{totalNet}</span>
     </button>
   </div>
 
