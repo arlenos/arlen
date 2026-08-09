@@ -17,7 +17,7 @@
 //! bounded here, and a result it cannot be trusted with is dropped rather than
 //! rendered as an entry that would fail or, worse, succeed.
 
-use modulesd_proto::{SearchAction, SearchResult as ModuleResult};
+use modulesd_proto::{SearchAction, WireSearchResult as ModuleResult};
 
 /// Why a module's result was not offered to the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

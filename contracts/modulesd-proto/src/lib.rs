@@ -51,7 +51,7 @@ pub enum Request {
     WaypointerExecute {
         id: String,
         module_id: String,
-        result: SearchResult,
+        result: WireSearchResult,
     },
 
     /// Request a Tier 2 iframe URL for the given module. Daemon mints
@@ -111,11 +111,11 @@ pub enum Response {
     WaypointerResults {
         id: String,
         module_id: String,
-        results: Vec<SearchResult>,
+        results: Vec<WireSearchResult>,
     },
     WaypointerAggregate {
         id: String,
-        results: Vec<SearchResult>,
+        results: Vec<WireSearchResult>,
     },
     Executed {
         id: String,
@@ -214,11 +214,19 @@ pub enum ModuleTier {
     Iframe,
 }
 
-/// Subset of `module-sdk::SearchResult`. We re-shape it on the wire so
-/// the JSON stays stable even if the SDK type evolves; the conversion
-/// is in `manager`. Mirror of the Tier 1 WIT `search-result`.
+/// Subset of `module_sdk::waypointer::SearchResult`, re-shaped for the wire so
+/// the JSON stays stable even if the SDK type evolves; the conversion is in
+/// `manager`. Mirror of the Tier 1 WIT `search-result`.
+///
+/// Named apart from the SDK type on purpose. They are deliberately different -
+/// the SDK's gained `title_key`/`description_key` and this did not - and while
+/// both were called `SearchResult` the shell's core had to alias one at the
+/// import to hold them apart, and a checker comparing return shapes could not
+/// tell which one a command returns. The struct name never reaches the wire
+/// (serde writes field names only), so this is a source-level name, not a
+/// protocol change.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SearchResult {
+pub struct WireSearchResult {
     pub id: String,
     pub title: String,
     pub description: Option<String>,
@@ -299,7 +307,7 @@ mod tests {
         let r = Response::WaypointerResults {
             id: "r1".into(),
             module_id: "com.example.test".into(),
-            results: vec![SearchResult {
+            results: vec![WireSearchResult {
                 id: "x".into(),
                 title: "Hi".into(),
                 description: None,
