@@ -57,10 +57,6 @@ HANDLER = re.compile(r"generate_handler!\s*\[(.*?)\]", re.S)
 # reason next to the name is the difference between an inventory and an alibi.
 KNOWN: dict[str, dict[str, str]] = {
     "knowledge": {
-        "knowledge_capsule_mint": "the capsule mint button",
-        "knowledge_capsule_preview": "the capsule preview",
-        "knowledge_capsule_revoke": "revoking a minted capsule",
-        "knowledge_capsules": "the capsule list",
         "knowledge_library": (
             "the library view. Traced: the bridge-ingest daemon writes into dynamic "
             "entity tables under a namespace, and the schema registry lists the "

@@ -12,14 +12,14 @@ export interface KnowledgePlace {
   emptyKey: string;
 }
 
-/// The explore places, in sidebar order (§2 of knowledge-app.md). Capabilities is
-/// NOT here - it is a link-out to Settings/Privacy, handled separately.
+/// The explore places, in sidebar order (§2 of knowledge-app.md). Capabilities and
+/// Capsules are NOT here - both are link-outs to Settings/Privacy, which owns them,
+/// handled separately.
 export const EXPLORE_PLACES: KnowledgePlace[] = [
   { id: "timeline", labelKey: "k.place.timeline", emptyKey: "k.empty.timeline" },
   { id: "projects", labelKey: "k.place.projects", emptyKey: "k.empty.projects" },
   { id: "searches", labelKey: "k.place.searches", emptyKey: "k.empty.searches" },
   { id: "library", labelKey: "k.place.library", emptyKey: "k.empty.library" },
-  { id: "capsules", labelKey: "k.place.capsules", emptyKey: "k.empty.capsules" },
 ];
 
 /// The place whose base location a saved search / project refines (search:<q>,
