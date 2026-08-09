@@ -119,6 +119,19 @@ impl QuotaConfig {
                 "ai-agent".to_string(),
                 "code-indexer".to_string(),
                 "bridge-ingest".to_string(),
+                // The knowledge app, which is the only APP here rather than a
+                // daemon, and the only caller of the timeline delete. The write
+                // socket refuses a ThirdParty peer before any token work, so
+                // without this the Delete control fails with "write mode not
+                // permitted" on a real system while every test passes - the gate
+                // that would have caught it lives on the far side of a socket.
+                //
+                // The tier is coarse and grants nothing on its own: a write still
+                // needs the scope in this app's profile, which is read-only and
+                // names no relations, and the delete additionally needs the exact
+                // caller match in `activity_delete_caller_admitted`. This lifts
+                // the doorway, not the lock.
+                "dev.arlen.knowledge".to_string(),
             ],
             overrides: HashMap::new(),
         }
@@ -145,6 +158,12 @@ impl QuotaConfig {
                 | "dev.arlen-ai-daemon"
                 | "dev.arlen-code-indexer"
                 | "dev.arlen-bridge-ingest"
+                // The knowledge app's cargo-run id. Its delete has a debug arm in
+                // `activity_delete_caller_admitted` accepting exactly this id; the
+                // tier gate runs FIRST, so without the same id here that arm is
+                // dead code and the delete is refused a step earlier in `just dev`
+                // than anyone would think to look.
+                | "dev.arlen-knowledge-app"
         ) {
             return true;
         }
@@ -215,6 +234,20 @@ mod tests {
             first_party_apps: vec!["org.arlen.contacts".into(), "com.partner".into()],
             overrides: HashMap::new(),
         }
+    }
+
+    /// The knowledge app must clear the write socket's tier gate, or its Delete
+    /// control cannot reach the daemon at all. Pinned because the failure is
+    /// invisible from inside the daemon: every unit test passes and the refusal
+    /// happens on the far side of a socket, to a caller no test here plays.
+    #[test]
+    fn the_knowledge_app_is_first_party_so_its_delete_can_reach_the_socket() {
+        let c = QuotaConfig::arlen_default();
+        assert_eq!(c.tier_for_app("dev.arlen.knowledge"), AppTier::FirstParty);
+        // The neighbours stay ordinary: this is one app, not a blanket on the
+        // `dev.arlen.` prefix, which would tier every installed app upward.
+        assert_eq!(c.tier_for_app("dev.arlen.files"), AppTier::ThirdParty);
+        assert_eq!(c.tier_for_app("dev.arlen.clock"), AppTier::ThirdParty);
     }
 
     #[test]
