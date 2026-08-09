@@ -11,6 +11,11 @@ name = "arlen-ghost-webview"
 version = "0.1.0"
 edition = "2021"
 publish = false
+# Same as its sibling dev crates and matching the SPDX header in src/. The
+# licence gate reads this field, not the header, and a crate without it fails the
+# whole job - which is how this one turned the license job red the moment it
+# entered the build list.
+license = "AGPL-3.0-only"
 
 [dependencies]
 # The engine and the surface role the desktop shell actually ships, which is the
