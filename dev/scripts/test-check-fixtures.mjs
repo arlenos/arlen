@@ -469,6 +469,85 @@ function catalogFixtures() {
 
 catalogFixtures();
 
+// ---------------------------------------------------------------------------
+// check-fixture-on-failure.py, markup pass
+//
+// The shape that slipped past: a component whose DEFAULT branch renders the
+// mock. The viewers app answered `initial_file` returning null with a bare
+// `return`, leaving the window on that branch, so a shipped viewer opened on
+// nothing showed a song called "Nightswim" with a waveform and a playhead. No
+// catch, no store write - nothing the original pass looks at.
+//
+// The neighbour that must NOT be reported is the reason this case is here twice:
+// the first version of the markup pass flagged `meetingsMocked`, `grantsMocked`
+// and five more, which are the flags that put "showing example data" ON the
+// screen. It reported the honesty as the dishonesty.
+// ---------------------------------------------------------------------------
+function fixtureMarkupFixtures() {
+  console.log("check-fixture-on-failure (markup):");
+
+  const caught = tree({
+    "apps/viewer/src/routes/+page.svelte": `<script lang="ts">
+  import { audioMock } from "$lib/mock";
+  let loaded = $state(null);
+</script>
+
+{#if loaded}
+  <Player file={loaded} />
+{:else}
+  <Player file={audioMock} />
+{/if}
+`,
+  });
+  const r1 = run("check-fixture-on-failure.py", caught);
+  check(
+    "a component whose default branch renders the mock is reported",
+    r1.code === 1 && r1.out.includes("audioMock"),
+    `exit ${r1.code}: ${r1.out.trim()}`,
+  );
+
+  const flag = tree({
+    "apps/meetings/src/routes/+page.svelte": `<script lang="ts">
+  import { meetingsMocked } from "$lib/stores/meeting";
+</script>
+
+{#if $meetingsMocked}
+  <p class="caveat">Example meetings - not your real history.</p>
+{/if}
+`,
+  });
+  const r2 = run("check-fixture-on-failure.py", flag);
+  check(
+    "the flag that admits a mock is showing is not reported as one",
+    r2.code === 0,
+    `exit ${r2.code}: ${r2.out.trim()}`,
+  );
+
+  const styleComment = tree({
+    "apps/settings/src/lib/components/Tile.svelte": `<script lang="ts">
+  let x = 1;
+</script>
+
+<div class="skeleton"></div>
+
+<style>
+  /* Mocks the real tile strip. */
+  .skeleton { height: 28px; }
+</style>
+`,
+  });
+  const r3 = run("check-fixture-on-failure.py", styleComment);
+  check(
+    "prose in a CSS comment is not a component rendering invented data",
+    r3.code === 0,
+    `exit ${r3.code}: ${r3.out.trim()}`,
+  );
+
+  for (const d of [caught, flag, styleComment]) rmSync(d, { recursive: true, force: true });
+}
+
+fixtureMarkupFixtures();
+
 if (failures.length) {
   console.log(`\n${failures.length} fixture(s) failed: ${failures.join(", ")}`);
   process.exit(1);

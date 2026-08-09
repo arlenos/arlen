@@ -86,7 +86,12 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+# An argument overrides the tree to scan, so this check can be pointed at a
+# throwaway one and shown to fail. It could not be, before 9 August: its own
+# docstring proved it by naming an old commit to run it against, which is a
+# demonstration nobody repeats. `test-check-fixtures.mjs` now runs it over both
+# the shape that must be reported and the neighbour that must not.
+ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 
 CATCH = re.compile(r"\}\s*catch\b[^{]*\{", re.S)
 # `.update(s => ({...s, discovered: FIXTURE.discovered}))` is the same act as
@@ -109,6 +114,32 @@ FIXTURE_NAME = re.compile(
     r"\b(FIXTURE\w*|\w*_FIXTURE|MOCK\w*|DEMO\w*|SAMPLE\w*)\b|\b(fixture|mock|demo|sample)\w*\s*\("
 )
 MOCKED_FLAG = re.compile(r"mocked:\s*true")
+# A fixture that reaches the screen without passing through a catch at all.
+#
+# Added 9 August, from the one the catch pass could never have seen: the viewers
+# app answered `initial_file` returning null with a bare `return`, which left the
+# component on its default branch - and its default branch was the mock. A
+# shipped window opened on nothing showed a track called "Nightswim", a waveform
+# and a playhead at 1:13 of 3:40, with no caveat anywhere, and no `catch` and no
+# `.set` for the pass above to find. It was found by reading the branch behind a
+# screenshot, which does not scale.
+#
+# The signal that does scale is the name: data called `audioMock` or `FIXTURE`
+# rendered straight into markup is a component whose resting state is invented.
+# Deliberately not matching a bare lowercase `demo`, which is a mode string in
+# several files and would drown the real ones.
+#
+# `...Mocked` is excluded, and getting that wrong first was instructive: the
+# first version flagged `meetingsMocked`, `grantsMocked`, `sentinelMocked` and
+# four more, which are the flags that put "showing example data" ON the screen.
+# It was reporting the honesty as the dishonesty. The codebase has a convention
+# worth stating: `xMock` / `XFIXTURE` is the invented data, `xMocked` is the
+# boolean admitting it is showing. Only the first belongs in markup.
+MARKUP_FIXTURE = re.compile(
+    r"\b\w*(?:Mock|Fixture|Sample)(?!ed\b)\w*\b|\b(?:FIXTURE|MOCK|SAMPLE|DEMO)_?\w*\b"
+)
+SVELTE_COMMENT = re.compile(r"<!--.*?-->", re.S)
+SVELTE_STYLE = re.compile(r"<style[^>]*>.*?</style>", re.S)
 # Either guard counts as the author having separated the two sessions. Whether
 # they got the branches the right way round is not something a regex settles;
 # what it can see is that the question was asked at all.
@@ -148,6 +179,24 @@ SKIP = (
 # new fixture in a file that already has an acknowledged one, which is exactly
 # how the sentinel store hid three switches behind one fixed function.
 ACKNOWLEDGED: dict[str, str] = {
+    # The three below are one decision. Before 9 August the viewers app fell onto
+    # this branch in a real shell too: `initial_file` returning null hit a bare
+    # `return`, leaving the window on its default render, which is the mock - a
+    # shipped viewer opened on nothing showed a song called "Nightswim" with a
+    # waveform and a playhead, uncaveated. A real session with no file now says
+    # "No file is open." and this branch is what remains: the browser, where there
+    # is no host to ask, and the `?demo=` path the screenshot harness drives. Both
+    # are contexts where a sample IS the answer. If the `noFile` branch above it
+    # ever goes, these three go back to being the defect they were.
+    "apps/viewers/src/routes/+page.svelte:98": (
+        "The demo face, reachable only with no Tauri host or an explicit `?demo=`; the real shell with no file is answered above it."
+    ),
+    "apps/viewers/src/routes/+page.svelte:100": (
+        "The demo face, reachable only with no Tauri host or an explicit `?demo=`; the real shell with no file is answered above it."
+    ),
+    "apps/viewers/src/routes/+page.svelte:102": (
+        "The demo face, reachable only with no Tauri host or an explicit `?demo=`; the real shell with no file is answered above it."
+    ),
     'apps/text-editor/src/lib/stores/lens.ts:82': (
         "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. The lens shows provenance, backlinks and project context for the open file, labelled 'Example context - not this file's real graph neighbourhood'. `openRelated` navigates rather than mutates."
     ),
@@ -180,6 +229,27 @@ ACKNOWLEDGED: dict[str, str] = {
 }
 
 
+def markup_fixtures(text: str):
+    """Yield (line, name) for each fixture-named identifier rendered in markup.
+
+    Markup is everything after the last `</script>`, minus comments and the
+    `<style>` block - a CSS comment reading "Mocks the real tile strip" is prose
+    about a skeleton, not a component rendering invented data, and it was the
+    only false positive this pass produced across every app.
+    """
+    cut = text.rfind("</script>")
+    if cut < 0:
+        return
+    offset = cut
+    markup = text[cut:]
+    # Blanked rather than removed, so the line numbers still point at the file.
+    markup = SVELTE_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"), markup)
+    markup = SVELTE_STYLE.sub(lambda m: "\n" * m.group(0).count("\n"), markup)
+    for m in MARKUP_FIXTURE.finditer(markup):
+        line = text[:offset].count("\n") + markup[: m.start()].count("\n") + 1
+        yield line, m.group(0)
+
+
 def catch_bodies(text: str):
     """Yield (line, body) for each catch block, matched by brace depth."""
     for m in CATCH.finditer(text):
@@ -197,11 +267,24 @@ def main() -> int:
     findings: list[str] = []
     files = 0
     catches = 0
+    rendered = 0
     for path in sorted((ROOT / "apps").rglob("*.ts")) + sorted((ROOT / "apps").rglob("*.svelte")):
         s = str(path)
         if any(k in s for k in SKIP) or "node_modules" in s or "/src/" not in s:
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
+        rel_path = path.relative_to(ROOT)
+        if path.suffix == ".svelte":
+            for line, name in markup_fixtures(text):
+                rendered += 1
+                if f"{rel_path}:{line}" in ACKNOWLEDGED:
+                    continue
+                findings.append(
+                    f"{rel_path}:{line}: renders `{name}` straight into markup, so this "
+                    f"component's resting state is invented content. No catch is "
+                    f"involved and no store is written, which is why the pass above "
+                    f"cannot see it."
+                )
         if "catch" not in text:
             continue
         files += 1
@@ -227,7 +310,8 @@ def main() -> int:
 
     print(
         f"{catches} catch block(s) across {files} frontend file(s) checked for a "
-        f"fixture shown after a failed read. Named fixtures only: an empty list "
+        f"fixture shown after a failed read, and {rendered} fixture-named "
+        f"identifier(s) reaching markup. Named fixtures only: an empty list "
         f"in a catch can be the honest answer for some stores and a false claim "
         f"for others, which needs the store read rather than this."
     )
