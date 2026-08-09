@@ -5,8 +5,6 @@ export { CSS_VARS } from "./types.js";
 export { injectThemeVariables, getCssVar, setCssVar } from "./inject.js";
 export {
   themeVars,
-  availableThemes,
-  activeThemeId,
   themeVariant,
   themeLoading,
   themeError,

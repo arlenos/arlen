@@ -4,7 +4,7 @@ import { derived, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { injectThemeVariables } from "./inject.js";
-import type { AppearanceConfig, CssVariables, ThemeInfo } from "./types.js";
+import type { AppearanceConfig, CssVariables } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Stores
@@ -13,11 +13,11 @@ import type { AppearanceConfig, CssVariables, ThemeInfo } from "./types.js";
 /** Current resolved CSS variables (null until first load). */
 export const themeVars = writable<CssVariables | null>(null);
 
-/** All available themes (built-in + user). */
-export const availableThemes = writable<ThemeInfo[]>([]);
-
-/** Currently active theme ID. */
-export const activeThemeId = writable<string>("dark");
+// The list of installed themes and the active theme's id are deliberately NOT
+// held here. The theme PICKER lives in Settings/Appearance, which owns it; a
+// second list in the shell would be one feature and two claims. The shell's own
+// dark/light toggle asks for the active id when the popover opens, so a stored
+// copy would only be a value nobody reads and nothing keeps true.
 
 /** Current color scheme derived from themeVars. */
 export const themeVariant = derived(themeVars, ($v) => $v?.variant ?? "dark");
@@ -38,18 +38,13 @@ export async function initTheme(): Promise<void> {
   themeError.set(null);
 
   try {
-    // Three independent Tauri calls — run in parallel. Previously
-    // sequential, which blocked first paint for ~300-500ms because the
-    // CSS injection can't happen until `get_theme` resolves.
-    const [css, themes, id] = await Promise.all([
-      invoke<CssVariables>("get_theme"),
-      invoke<ThemeInfo[]>("get_available_themes"),
-      invoke<string>("get_active_theme_id"),
-    ]);
+    // One call on the first-paint path: the CSS the shell injects. It used to
+    // fetch the theme list and the active id alongside, both of which nothing
+    // rendered, so first paint waited on two round trips for values no pixel
+    // depended on.
+    const css = await invoke<CssVariables>("get_theme");
     injectThemeVariables(css);
     themeVars.set(css);
-    availableThemes.set(themes);
-    activeThemeId.set(id);
   } catch (e) {
     themeError.set(e instanceof Error ? e.message : String(e));
   }
@@ -71,7 +66,6 @@ export async function setTheme(id: string): Promise<void> {
     const css = await invoke<CssVariables>("set_theme", { id });
     injectThemeVariables(css);
     themeVars.set(css);
-    activeThemeId.set(id);
   } catch (e) {
     themeError.set(e instanceof Error ? e.message : String(e));
   }
@@ -122,7 +116,6 @@ export async function resetTheme(): Promise<void> {
     const css = await invoke<CssVariables>("reset_theme");
     injectThemeVariables(css);
     themeVars.set(css);
-    activeThemeId.set("dark");
   } catch (e) {
     themeError.set(e instanceof Error ? e.message : String(e));
   }
