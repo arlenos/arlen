@@ -12,8 +12,13 @@
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
+# `check-*` AND `test-check-*`: the self-tests sit in the same CI step and are
+# what keeps the gates honest, so a runner claiming to be "the gates CI lists"
+# while skipping them was reading its own source of truth too narrowly. They cost
+# under a second each and they are the reason any of the gates can be trusted.
 mapfile -t scripts < <(
-  grep -o 'dev/scripts/check-[a-z-]*\.\(py\|mjs\)' .github/workflows/ci.yml | awk '!seen[$0]++'
+  grep -oE 'dev/scripts/(test-)?check-[a-z-]*\.(py|mjs)' .github/workflows/ci.yml \
+    | awk '!seen[$0]++'
 )
 
 out=$(mktemp -d)
