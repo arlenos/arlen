@@ -1,7 +1,7 @@
 <script lang="ts">
   /// The Knowledge places sidebar (knowledge-app.md §2): the explore places over the
-  /// graph, plus a Capabilities row that links out to Settings/Privacy (decision 6 -
-  /// the capability browser is not re-hosted here). A fixed nav list, so it is its
+  /// graph, plus the rows that link out to Settings/Privacy (decision 6 - a surface
+  /// that owns a capability is not re-hosted here). A fixed nav list, so it is its
   /// own light component rather than the file-oriented kit PlacesSidebar.
   import { Clock, FolderGit2, Search, Library, Package, ShieldCheck, ChevronRight } from "lucide-svelte";
   import { t } from "$lib/i18n/messages";
@@ -9,11 +9,11 @@
   let {
     activeLocation,
     onnavigate,
-    oncapabilities,
+    onsettings,
   }: {
     activeLocation: string;
     onnavigate: (location: string) => void;
-    oncapabilities: () => void;
+    onsettings: () => void;
   } = $props();
 
   // The explore places with their icons, in sidebar order (§2). The label/empty
@@ -23,6 +23,16 @@
     { id: "projects", labelKey: "k.place.projects", icon: FolderGit2 },
     { id: "searches", labelKey: "k.place.searches", icon: Search },
     { id: "library", labelKey: "k.place.library", icon: Library },
+  ];
+
+  // The rows that leave for Settings rather than being re-hosted here (decision 6).
+  // Capsules joined the capability browser on this list: minting is authority-bearing
+  // and the mint allowlist is deliberate, so widening it to a third surface would mean
+  // re-making the mint-requires-a-human argument for a section nobody asked for. A link
+  // is idempotent and honest; a disabled capsule panel would be an invented capability
+  // wearing a disabled state.
+  const LINKOUTS = [
+    { id: "capabilities", labelKey: "k.place.capabilities", icon: ShieldCheck },
     { id: "capsules", labelKey: "k.place.capsules", icon: Package },
   ];
 
@@ -52,11 +62,14 @@
   {/each}
 
   <div class="kn-group">{$t("k.section.authority")}</div>
-  <button type="button" class="kn-place kn-linkout" onclick={oncapabilities}>
-    <ShieldCheck size={16} strokeWidth={1.75} />
-    <span>{$t("k.place.capabilities")}</span>
-    <span class="kn-caret"><ChevronRight size={14} strokeWidth={2} /></span>
-  </button>
+  {#each LINKOUTS as l (l.id)}
+    {@const Icon = l.icon}
+    <button type="button" class="kn-place kn-linkout" onclick={onsettings}>
+      <Icon size={16} strokeWidth={1.75} />
+      <span>{$t(l.labelKey)}</span>
+      <span class="kn-caret"><ChevronRight size={14} strokeWidth={2} /></span>
+    </button>
+  {/each}
   <span class="kn-linkout-note">{$t("k.caps.opens")}</span>
 </nav>
 

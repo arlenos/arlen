@@ -13,7 +13,6 @@
   import ProjectsView from "$lib/components/ProjectsView.svelte";
   import SearchView from "$lib/components/SearchView.svelte";
   import LibraryView from "$lib/components/LibraryView.svelte";
-  import CapsulesView from "$lib/components/CapsulesView.svelte";
   import { onMount } from "svelte";
   import { knowledgeAdapter, mocked, unavailable } from "$lib/adapter";
   import { labelKeyFor, emptyKeyFor } from "$lib/locations";
@@ -102,9 +101,10 @@
   /// True when the last attempt to open Settings did not start it.
   let settingsOpenFailed = $state(false);
 
-  function openCapabilities(): void {
-    // The generic capability browser lives in Settings/Privacy (decision 6); this
-    // links out rather than re-hosting it, by spawning `arlen-settings --panel`.
+  function openPrivacySettings(): void {
+    // The capability browser and the capsule list both live in Settings/Privacy
+    // (decision 6); this links out rather than re-hosting either, by spawning
+    // `arlen-settings --panel`.
     settingsOpenFailed = false;
     void invoke("open_settings_route", { route: "/privacy" }).catch(() => {
       // A link to a privacy control that silently does nothing is the worst
@@ -120,7 +120,7 @@
 <div class="kn-app">
   <KnowledgeHeader />
   <div class="kn">
-    <KnowledgeSidebar activeLocation={$path} onnavigate={navigate} oncapabilities={openCapabilities} />
+    <KnowledgeSidebar activeLocation={$path} onnavigate={navigate} onsettings={openPrivacySettings} />
 
     <main class="kn-main">
     <header class="kn-head">
@@ -143,8 +143,6 @@
       <ProjectsView onselect={onProjectsSelect} />
     {:else if $path === "library"}
       <LibraryView onselect={onLibrarySelect} />
-    {:else if $path === "capsules"}
-      <CapsulesView />
     {:else}
       <div class="kn-browser">
         <!-- "nothing here" and "could not read" are the same empty browser, so

@@ -393,18 +393,6 @@ DEAD_INVOKES: dict[str, str] = {
     "knowledge_timeline_delete": (
         "the Knowledge app. Its Rust side exists; deleting recorded history needs a daemon-side retention op and a confirmation path, neither built"
     ),
-    "knowledge_capsules": (
-        "the Knowledge app. Its Rust side exists; this needs a capsuled client and an expiry the backend states as a timestamp rather than the store's prose ('in 5 days')"
-    ),
-    "knowledge_capsule_mint": (
-        "the Knowledge app. Its Rust side exists; minting is capsuled's human-gated flow, not a read"
-    ),
-    "knowledge_capsule_revoke": (
-        "the Knowledge app. Its Rust side exists; pairs with the mint flow"
-    ),
-    "knowledge_capsule_preview": (
-        "the Knowledge app. Its Rust side exists; pairs with knowledge_capsules and the capsuled client"
-    ),
     # the store's update actions against installd - arlen-ui's surface, coder owes the commands
     "store_update": "the store's update actions against installd",
     "store_uninstall": "the store's update actions against installd",
