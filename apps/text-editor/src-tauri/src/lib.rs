@@ -16,6 +16,8 @@
 //! frontend already renders an honest "not available" state for each, so the
 //! editor is useful before they land rather than lying about them.
 
+mod lens;
+
 use std::path::{Path, PathBuf};
 
 /// A file the editor opened: its path, its text, and whether it is new.
@@ -107,7 +109,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
         .manage(InitialFile(initial))
-        .invoke_handler(tauri::generate_handler![editor_open, editor_save, initial_file])
+        .invoke_handler(tauri::generate_handler![
+            editor_open,
+            editor_save,
+            initial_file,
+            lens::provenance_of
+        ])
         .run(tauri::generate_context!())
         .expect("error while running the text editor");
 }
