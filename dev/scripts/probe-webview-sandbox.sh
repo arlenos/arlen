@@ -36,6 +36,24 @@ if [ ! -x "$BIN" ]; then
 fi
 command -v Xvfb >/dev/null || { echo "Xvfb is not installed" >&2; exit 2; }
 
+# This probe measures a BINARY, and a binary is a claim about the past. The
+# knowledge app reported NOT CONTAINED twice and looked like a real hole in an
+# app that renders filenames from disk; it was a binary built the day before the
+# line that asks for containment was written, and the string is simply not in it.
+# A verification that silently measures history is worse than no verification, so
+# an app whose source is newer than its binary stops here rather than producing a
+# verdict about a build nobody is shipping.
+APP_DIR=$(printf '%s' "$BIN" | sed 's#.*/##; s/^arlen-//; s/-app$//')
+for candidate in "apps/$APP_DIR/src-tauri/src" "apps/$APP_DIR/src"; do
+  [ -d "$candidate" ] || continue
+  newer=$(find "$candidate" -newer "$BIN" -name '*.rs' -o -newer "$BIN" -name '*.svelte' 2>/dev/null | head -1)
+  if [ -n "$newer" ]; then
+    echo "stale binary: $BIN is older than $newer" >&2
+    echo "rebuild it, or the verdict describes a build that no longer exists" >&2
+    exit 2
+  fi
+done
+
 Xvfb "$DISPLAY_NUM" -screen 0 1280x800x24 >/tmp/probe-xvfb.log 2>&1 &
 XVFB=$!
 sleep 2
