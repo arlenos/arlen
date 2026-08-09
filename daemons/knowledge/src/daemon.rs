@@ -3894,6 +3894,14 @@ fn cypher_label_tokens(cypher: &str) -> Vec<String> {
     let mut token = String::new();
     let mut token_after_colon = false;
     let mut prev_colon = false;
+    // Inside a map literal a colon separates a key from its value, and neither is
+    // a label - Cypher has no way to write one there. Without this, an unquoted
+    // alpha value hard against the colon is collected: `{app_id:true}` produced
+    // the token `TRUE`, so the gate refused a query for naming a label nobody
+    // wrote, while the quoted `{app_id:'x'}` right beside it passed. That refuses
+    // the more precise form and lets the vaguer one through, which teaches
+    // callers to narrow less. A map key was never a label.
+    let mut map_depth = 0usize;
     let flush = |token: &mut String, after_colon: bool, out: &mut Vec<String>| {
         if after_colon
             && token
@@ -3918,13 +3926,17 @@ fn cypher_label_tokens(cypher: &str) -> Vec<String> {
         }
         if ch.is_ascii_alphanumeric() || ch == '_' {
             if token.is_empty() {
-                token_after_colon = prev_colon;
+                token_after_colon = prev_colon && map_depth == 0;
             }
             token.push(ch.to_ascii_uppercase());
         } else {
             flush(&mut token, token_after_colon, &mut out);
             prev_colon = ch == ':';
-            if ch == '\'' {
+            if ch == '{' {
+                map_depth += 1;
+            } else if ch == '}' {
+                map_depth = map_depth.saturating_sub(1);
+            } else if ch == '\'' {
                 in_string = true;
             }
         }
@@ -4401,6 +4413,22 @@ mod tests {
         assert!(cypher_label_tokens("MATCH (n) WHERE n.x = 'a:b' RETURN n").is_empty());
         // A map-literal numeric value (`{c:5}`) is not a label (must start alpha).
         assert!(cypher_label_tokens("MATCH (n {c:5}) RETURN n").is_empty());
+        // Nor is an ALPHA one. `{app_id:true}` used to yield `TRUE` and get the
+        // query refused for a label nobody wrote, while the quoted `{app_id:'x'}`
+        // beside it passed - refusing the more precise form and admitting the
+        // vaguer. Cypher cannot write a label inside a map, so nothing in there is
+        // one, whatever it starts with.
+        assert!(cypher_label_tokens("MATCH (n {app_id:true}) RETURN n").is_empty());
+        assert!(cypher_label_tokens("MATCH (n {app_id:x}) RETURN n").is_empty());
+        assert_eq!(
+            cypher_label_tokens("MATCH (f:File {app_id:x}) RETURN f.id"),
+            ["FILE"]
+        );
+        // The label still lands when the pattern follows a closed map.
+        assert_eq!(
+            cypher_label_tokens("MATCH (f:File {a:1})-[:FILE_PART_OF]->(p:Project) RETURN p"),
+            ["FILE", "FILE_PART_OF", "PROJECT"]
+        );
     }
 
     #[test]
@@ -6131,3 +6159,4 @@ mod socket_exposure_tests {
         assert_eq!(mode_of(&path), 0o666, "a failed handover must not look like a narrowed socket");
     }
 }
+
