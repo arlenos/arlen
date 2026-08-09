@@ -746,6 +746,7 @@ check-executor:
     node "{{ROOT}}/dev/scripts/test-check-fixtures.mjs"
     node "{{ROOT}}/dev/scripts/test-check-units.mjs"
     node "{{ROOT}}/dev/scripts/test-check-invokes.mjs"
+    node "{{ROOT}}/dev/scripts/test-check-read-scope.mjs"
 
 # Every declared grant has to reach the summary a person reads, or be listed with
 # the reason it is not reach. A grant nobody can see is a grant nobody can
