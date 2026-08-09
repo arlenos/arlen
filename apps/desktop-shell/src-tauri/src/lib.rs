@@ -243,6 +243,7 @@ pub fn run() {
             theme::commands::start_appearance_watcher(app.handle().clone());
             shell_config::start_shell_config_watcher(app.handle().clone());
             quicksettings::layout::start_qs_layout_watcher(app.handle().clone());
+            topbar::start_topbar_watcher(app.handle().clone());
             event_bus::start(app.handle().clone(), Arc::clone(&shortcuts_state));
             // The launch socket, so the portal and the apps stop spawning
             // programs themselves. Absent rather than fatal if it cannot bind.
