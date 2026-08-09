@@ -169,7 +169,7 @@ pub fn may_write_for(caller: &str, target: &str) -> bool {
         return false;
     }
     caller == target
-        || caller == "settings"
+        || caller == "dev.arlen.settings"
         || (cfg!(debug_assertions) && caller == "dev.arlen-settings")
 }
 
@@ -537,7 +537,7 @@ mod tests {
     /// is precisely what Settings is for.
     #[test]
     fn settings_may_write_on_any_apps_behalf() {
-        assert!(may_write_for("settings", "org.example.App"));
+        assert!(may_write_for("dev.arlen.settings", "org.example.App"));
     }
 
     /// An unresolvable peer gets the empty id, which must open nothing.

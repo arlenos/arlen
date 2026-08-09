@@ -229,7 +229,7 @@ pub struct HandoffTarget {
 pub fn handoff_caller_admitted(app_id: &str) -> bool {
     // EXACT: a handoff opens a window on another app's behalf, so a prefix match
     // would hand that authority to every locally-built binary.
-    app_id == "settings" || (cfg!(debug_assertions) && app_id == "dev.arlen-settings")
+    app_id == "dev.arlen.settings" || (cfg!(debug_assertions) && app_id == "dev.arlen-settings")
 }
 
 /// One declared setting.
@@ -823,7 +823,7 @@ commit = "0000000000000000000000000000000000000000"
         // this deliberately minimal fixture may be, so assert precisely.
         let errors = crate::validate(&recipe);
         assert!(
-            !errors.iter().any(|e| e.field.starts_with("settings")),
+            !errors.iter().any(|e| e.field.starts_with("dev.arlen.settings")),
             "settings must be optional, got {errors:?}"
         );
     }
@@ -1225,7 +1225,7 @@ commit = "0000000000000000000000000000000000000000"
     /// exported activity Android shipped.
     #[test]
     fn only_settings_may_trigger_a_handoff() {
-        assert!(handoff_caller_admitted("settings"));
+        assert!(handoff_caller_admitted("dev.arlen.settings"));
         for other in ["org.example.App", "modulesd", "ai-agent", "", "settings.evil"] {
             assert!(
                 !handoff_caller_admitted(other),

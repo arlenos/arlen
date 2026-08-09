@@ -260,6 +260,7 @@ dependencies = [
 name = "arlen-undo"
 version = "0.1.0"
 dependencies = [
+ "arlen-ai-core",
  "arlen-ai-undo-core",
  "arlen-ai-undo-proto",
  "arlen-config-format",

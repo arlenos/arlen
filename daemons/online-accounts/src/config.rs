@@ -472,7 +472,7 @@ mod tests {
             scope = "drive.file"
 
             [[grant]]
-            app_id = "settings"
+            app_id = "dev.arlen.settings"
             services = ["files", "calendar"]
         "#;
         let a = parse_account(Path::new("/x/gdrive-personal.toml"), toml).unwrap();

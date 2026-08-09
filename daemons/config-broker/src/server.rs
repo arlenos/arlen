@@ -388,7 +388,7 @@ mod tests {
         let sink = audit_proto::sink::MockAuditSink::failing();
         // opening the executor gate is escalating
         let want = AiMasterSwitches { executor_live: true, ..Default::default() };
-        let resp = apply_set_audited(&store, "settings", want, &sink).await;
+        let resp = apply_set_audited(&store, "dev.arlen.settings", want, &sink).await;
         assert!(
             matches!(resp, Response::Error(_)),
             "escalation must be refused when unrecordable, got {resp:?}"
@@ -415,7 +415,7 @@ mod tests {
         let sink = audit_proto::sink::MockAuditSink::failing();
         // turn everything off - a pure de-escalation
         let resp =
-            apply_set_audited(&store, "settings", AiMasterSwitches::default(), &sink).await;
+            apply_set_audited(&store, "dev.arlen.settings", AiMasterSwitches::default(), &sink).await;
         assert_eq!(resp, Response::Committed, "the off-switch must always apply");
         assert_eq!(
             store.load().unwrap(),
@@ -431,13 +431,13 @@ mod tests {
         let store = StateStore::open(dir.path()).unwrap();
         let sink = audit_proto::sink::MockAuditSink::accepting();
         let want = AiMasterSwitches { enabled: true, access_level: 4, ..Default::default() };
-        let resp = apply_set_audited(&store, "settings", want.clone(), &sink).await;
+        let resp = apply_set_audited(&store, "dev.arlen.settings", want.clone(), &sink).await;
         assert_eq!(resp, Response::Committed);
         assert_eq!(store.load().unwrap(), want);
         // exactly one audit event, naming the caller + the escalation
         let recorded = sink.recorded().await;
         assert_eq!(recorded.len(), 1);
-        assert!(recorded[0].structural.outcome.contains("settings"));
+        assert!(recorded[0].structural.outcome.contains("dev.arlen.settings"));
         assert!(recorded[0].structural.outcome.contains("enabled=true"));
     }
 
