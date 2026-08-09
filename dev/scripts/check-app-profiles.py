@@ -64,7 +64,7 @@ PENDING: dict[str, str] = {
     # reads both. What it needs is a read-only grant of a /sys SUBTREE, and the
     # profile format's `custom` binds read-write - so this one waits on a format
     # question, not on somebody writing a file.
-    "dev.arlen.system-monitor": "reads /sys as well as /proc; /sys is a forbidden whole-tree root and `custom` binds read-write, so it needs a read-only subtree grant the format does not have",
+    "dev.arlen.system-monitor": "the read-only subtree grant it needed now exists (`[filesystem] read_only`), so this one is down to writing the file and the webview-directory question above",
 }
 
 INSTALL = re.compile(r'\$DESTDIR/usr/lib/arlen/apps/([A-Za-z0-9._-]+)/bin/')

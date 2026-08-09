@@ -332,6 +332,19 @@ pub struct FilesystemPermissions {
     pub videos: bool,
     #[serde(default)]
     pub custom: Vec<PathBuf>,
+    /// Subtrees the app may READ and never write.
+    ///
+    /// `custom` binds read-write and may not name a forbidden whole-tree root, so
+    /// an app that needs to read `/sys` had nothing it could say: the only
+    /// expressible grant was one the launcher drops by design. That is a grammar
+    /// that can express the stronger thing and not the weaker one, which makes
+    /// over-granting the path of least resistance.
+    ///
+    /// A named subtree only - `/sys/class/power_supply`, not `/sys`. The
+    /// whole-tree roots stay forbidden here too: a read-only bind of `/` or
+    /// `/etc` is still the shape the rule exists to stop.
+    #[serde(default)]
+    pub read_only: Vec<PathBuf>,
 }
 
 impl FilesystemPermissions {
@@ -347,6 +360,7 @@ impl FilesystemPermissions {
             music,
             videos,
             custom,
+            read_only,
         } = self;
         let mut parts: Vec<String> = Vec::new();
         for (on, label) in [
@@ -363,6 +377,13 @@ impl FilesystemPermissions {
         }
         for p in custom {
             parts.push(p.display().to_string());
+        }
+        // Said differently from a writable grant, because it IS different: the
+        // summary is what a person reads when deciding whether a grant is
+        // reasonable, and "/sys/class/power_supply" next to "home" would suggest
+        // the app can write there.
+        for p in read_only {
+            parts.push(format!("{} (read-only)", p.display()));
         }
         if parts.is_empty() {
             None

@@ -40,6 +40,11 @@ pub struct ConfinementInputs {
     /// dirs that lie under a masked path are re-exposed after the mask (the
     /// confiner's `post_mask_binds`). (same-uid-isolation-plan.md Tier-A #3.)
     pub masked_dirs: Vec<PathBuf>,
+    /// Subtrees bound READ-ONLY. Separate from `app_dirs` because the difference
+    /// is the whole point of the grant: an app that needs to read `/sys` could
+    /// otherwise only ask for a writable bind, which the forbidden-roots rule
+    /// drops - so the narrow thing was unsayable and the wide thing was refused.
+    pub read_only_dirs: Vec<PathBuf>,
     /// The network policy.
     pub network: NetworkPolicy,
 }
@@ -62,6 +67,18 @@ const FORBIDDEN_FS_ROOTS: &[&str] = &[
 /// the home (e.g. `~/Projects`) is NOT an escape.
 pub fn is_host_escape(path: &Path, home: &Path) -> bool {
     FORBIDDEN_FS_ROOTS.iter().any(|r| path == Path::new(r)) || home.starts_with(path)
+}
+
+/// Whether a READ-ONLY subtree grant is acceptable.
+///
+/// The same whole-tree rule - `/sys` and `/etc` are refused here too, because a
+/// read-only bind of the whole tree is still the shape the rule exists to stop -
+/// but a NAMED SUBTREE under one of them is exactly what this grant is for, and
+/// it is not an escape: the app can read the part it asked for and write nothing.
+/// A relative path is refused rather than resolved, since what it would resolve
+/// against is the launcher's cwd, not the app's.
+pub fn read_only_grant_ok(path: &Path, home: &Path) -> bool {
+    path.is_absolute() && !is_host_escape(path, home) && path.components().count() > 2
 }
 
 /// Map an app's filesystem + network permissions to the confiner inputs. The app's
@@ -108,8 +125,18 @@ pub fn confinement_inputs(
             .filter(|p| !is_host_escape(p, home))
             .cloned(),
     );
+    // Read-only subtrees: the same whole-tree refusal, and a named subtree under
+    // one of those roots is allowed - that is what makes `/sys/class/power_supply`
+    // sayable without making `/sys` bindable.
+    let read_only_dirs: Vec<PathBuf> = fs
+        .read_only
+        .iter()
+        .filter(|p| read_only_grant_ok(p, home))
+        .cloned()
+        .collect();
     ConfinementInputs {
         app_dirs,
+        read_only_dirs,
         // Always mask the system arlen config dir: only the app's own
         // `~/.config/arlen/apps/{app_id}` (in `app_dirs`) is re-exposed, so a
         // broad grant (`home`, or a `custom` ancestor of `~/.config`) cannot
@@ -141,7 +168,7 @@ pub fn network_policy(net: &NetworkPermissions) -> NetworkPolicy {
 mod tests {
     use super::*;
 
-    fn dirs() -> UserDirs {
+    pub(super) fn dirs() -> UserDirs {
         UserDirs {
             documents: PathBuf::from("/home/u/Documents"),
             downloads: PathBuf::from("/home/u/Downloads"),
@@ -263,5 +290,77 @@ mod tests {
             allowed_domains: vec!["api.example.org:443".into()],
         };
         assert!(matches!(network_policy(&net), NetworkPolicy::FilteredHosts(_)));
+    }
+}
+
+#[cfg(test)]
+mod read_only_grant {
+    use super::tests::dirs;
+    use super::*;
+
+    #[test]
+    fn a_named_subtree_under_a_forbidden_root_is_grantable_read_only() {
+        let home = Path::new("/home/u");
+        // The case that motivated the grant: the system monitor needs these and
+        // could not say so, because the only thing the format offered was a
+        // writable `custom` that the forbidden-roots rule drops.
+        assert!(read_only_grant_ok(Path::new("/sys/class/power_supply"), home));
+        assert!(read_only_grant_ok(Path::new("/sys/devices/system/cpu"), home));
+    }
+
+    #[test]
+    fn the_whole_tree_roots_stay_refused_even_read_only() {
+        let home = Path::new("/home/u");
+        for root in ["/sys", "/etc", "/usr", "/", "/proc", "/dev"] {
+            assert!(
+                !read_only_grant_ok(Path::new(root), home),
+                "{root} read-only is still the shape the rule exists to stop"
+            );
+        }
+        // And the home's ancestors, for the same reason `custom` refuses them.
+        assert!(!read_only_grant_ok(Path::new("/home"), home));
+    }
+
+    #[test]
+    fn a_relative_path_is_refused_rather_than_resolved() {
+        // It would resolve against the LAUNCHER's cwd, which has nothing to do
+        // with the app - so it is refused rather than quietly made absolute.
+        assert!(!read_only_grant_ok(Path::new("sys/class"), Path::new("/home/u")));
+    }
+
+    #[test]
+    fn a_read_only_grant_never_lands_in_the_writable_set() {
+        let fs = FilesystemPermissions {
+            read_only: vec![PathBuf::from("/sys/class/power_supply")],
+            ..Default::default()
+        };
+        let c = confinement_inputs(
+            &fs,
+            &NetworkPermissions::default(),
+            "com.example.app",
+            Path::new("/home/u"),
+            &dirs(),
+        );
+        assert!(c.read_only_dirs.contains(&PathBuf::from("/sys/class/power_supply")));
+        assert!(
+            !c.app_dirs.contains(&PathBuf::from("/sys/class/power_supply")),
+            "a read-only grant must not become a writable bind"
+        );
+    }
+
+    #[test]
+    fn a_forbidden_root_asked_for_read_only_is_dropped_not_bound() {
+        let fs = FilesystemPermissions {
+            read_only: vec![PathBuf::from("/etc"), PathBuf::from("/sys")],
+            ..Default::default()
+        };
+        let c = confinement_inputs(
+            &fs,
+            &NetworkPermissions::default(),
+            "com.example.app",
+            Path::new("/home/u"),
+            &dirs(),
+        );
+        assert!(c.read_only_dirs.is_empty(), "{:?}", c.read_only_dirs);
     }
 }

@@ -71,6 +71,7 @@ pub fn build_confinement(
     usr: &Path,
     app_dirs: &[PathBuf],
     masked: &[PathBuf],
+    read_only: &[PathBuf],
     env: BTreeMap<String, String>,
     net: NetworkPolicy,
     plumbing: Vec<Bind>,
@@ -83,6 +84,15 @@ pub fn build_confinement(
     // interpreter and `execvp` fails ENOENT ("no such file"). Add them read-only.
     let mut plumbing = plumbing;
     plumbing.extend(merged_usr_compat_binds());
+    // The read-only subtrees ride in with the plumbing, which is the one place a
+    // read-only bind belongs: `app_runtime_profile` takes writable dirs, and
+    // handing it these would be the writable grant the format exists to avoid.
+    plumbing.extend(
+        read_only
+            .iter()
+            .filter(|p| p.exists())
+            .map(|p| Bind::ReadOnly(p.display().to_string(), p.display().to_string())),
+    );
     Ok(skeleton.complete(plumbing, Vec::new()))
 }
 
@@ -481,6 +491,7 @@ mod tests {
             Path::new("/usr"),
             &[PathBuf::from("/home/u/.config/arlen/apps/com.a.b")],
             &[],
+            &[],
             BTreeMap::new(),
             NetworkPolicy::None,
             Vec::new(),
@@ -498,6 +509,7 @@ mod tests {
     fn build_confinement_keeps_the_network_up_for_unrestricted() {
         let conf = build_confinement(
             Path::new("/usr"),
+            &[],
             &[],
             &[],
             BTreeMap::new(),
@@ -528,6 +540,7 @@ mod tests {
             Path::new("/usr"),
             &[],
             &[],
+            &[],
             BTreeMap::from([("PATH".to_string(), "/usr/bin:/bin".to_string())]),
             NetworkPolicy::None,
             Vec::new(),
@@ -552,6 +565,7 @@ mod tests {
     fn echo_runs_confined_under_the_seccomp_filter() {
         let conf = build_confinement(
             Path::new("/usr"),
+            &[],
             &[],
             &[],
             BTreeMap::from([("PATH".to_string(), "/usr/bin:/bin".to_string())]),
