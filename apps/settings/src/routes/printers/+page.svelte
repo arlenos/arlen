@@ -1,36 +1,39 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
-  /// Printers panel (printing-plan.md PRN-R4): the printer list, the print
-  /// queue, and add-a-printer, on the settings-panel archetype - built on the
-  /// kit `Row` (leading status column, right-aligned control cluster, full-width
-  /// `below` for the options) exactly like the AI Providers panel, so it shares
-  /// their alignment + rhythm. The Arlen angle is the print-as-egress honesty:
-  /// network printing sends the document over the LAN, stated once for the
-  /// section and carried per row by the "Network" label (§4.2). Reads/writes the
-  /// print daemon through the `printers_*` Tauri bridge; until that lands the
-  /// panel runs on a fixture (a banner says so).
+  /// Printers panel (printing-plan.md PRN-R4): the printer list and the print
+  /// queue, on the settings-panel archetype - built on the kit `Row` (leading
+  /// status column, right-aligned control cluster, full-width `below` for the
+  /// options) exactly like the AI Providers panel, so it shares their alignment
+  /// + rhythm. The Arlen angle is the print-as-egress honesty: network printing
+  /// sends the document over the LAN, stated once for the section and carried
+  /// per row by the "Network" label (§4.2).
+  ///
+  /// **Setting a printer up is not done here, and the panel no longer pretends
+  /// otherwise.** Adding, removing and discovering queues had buttons and no
+  /// commands behind them: `printers_add`, `printers_remove` and
+  /// `printers_discover` were never registered, so every one of them threw. Two
+  /// of the three are also queue administration needing `lpadmin`, which is the
+  /// same privilege question the default-printer control answered by writing the
+  /// caller's own `lpoptions` instead - it deserves deciding rather than
+  /// arriving behind a settings button. Discovery is a DNS-SD listener, which is
+  /// a subsystem and not a command. What is left reads the queues and acts on
+  /// your own jobs, and all of it works.
   import { onMount } from "svelte";
   import { Page } from "@arlen/ui-kit/components/ui/page";
   import { SectionGrid } from "@arlen/ui-kit/components/ui/section-grid";
   import { Section } from "@arlen/ui-kit/components/ui/section";
   import { Row } from "@arlen/ui-kit/components/ui/row";
   import { Button } from "@arlen/ui-kit/components/ui/button";
-  import { Input } from "@arlen/ui-kit/components/ui/input";
   import { SegmentedControl } from "@arlen/ui-kit/components/ui/segmented-control";
   import { PopoverSelect } from "@arlen/ui-kit/components/ui/popover-select";
-  import { ConfirmDialog } from "@arlen/ui-kit/components/ui/confirm-dialog";
-  import { Trash2, SlidersHorizontal, RefreshCw, Plus } from "lucide-svelte";
+  import { SlidersHorizontal } from "lucide-svelte";
 
   import {
     printers,
     load,
-    discover,
     setDefault,
     setOptions,
     optionsFor,
-    removePrinter,
-    addPrinter,
-    addByUri,
     cancelJob,
     retryJob,
     clearCompleted,
@@ -39,7 +42,6 @@
     transportOf,
     type Printer,
     type Job,
-    type DiscoveredPrinter,
     type PrinterState,
     type JobState,
     type PrinterOptions,
@@ -48,10 +50,6 @@
   onMount(load);
 
   let expanded = $state<string | null>(null);
-  let confirmRemove = $state<Printer | null>(null);
-  let addOpen = $state(false);
-  let addName = $state("");
-  let addUri = $state("");
 
   // These are `$derived`, not `const`, on purpose: the translator is a store, so a
   // module-level constant captures English at import and a locale switch would leave
@@ -126,15 +124,6 @@
   function commitOptions(name: string, patch: Partial<PrinterOptions>) {
     setOptions(name, { ...optionsFor(name), ...patch });
   }
-  async function submitManual() {
-    const uri = addUri.trim();
-    const name = addName.trim() || uri;
-    if (!uri) return;
-    await addByUri(uri, name);
-    addUri = "";
-    addName = "";
-    addOpen = false;
-  }
 </script>
 
 <Page title={$t("s.pr.title")} description={$t("s.pr.desc")}>
@@ -148,9 +137,9 @@
         {$t("s.pr.unavailable")}
       </p>
     {/if}
-    <!-- An add, removal, default change or option change that did not reach the
-         print service. The list below is unchanged, and saying so is the
-         difference between "this printer is installed" and "you asked for it". -->
+    <!-- A default change, an option change or a job action that did not reach
+         the print service. The list below is unchanged, and saying so is the
+         difference between "this is set" and "you asked for it". -->
     {#if $printers.actionFailed}
       <p class="note" role="alert">{$t("s.pr.actionFailed")}</p>
     {/if}
@@ -188,40 +177,6 @@
         </div>
       {/if}
     </Section>
-
-    <Section label={$t("s.pr.addPrinter")}>
-      {#each $printers.discovered as d (d.uri)}
-        {@render discoveredRow(d)}
-      {/each}
-      {#if $printers.discovered.length === 0}
-        <!-- "found none" and "could not look" are the same empty list on screen
-             and different facts about the network. -->
-        <p class="empty">
-          {#if $printers.discoverFailed || $printers.unavailable}
-            {$t("s.pr.discoverFailed")}
-          {:else}
-            {$t("s.pr.noneDiscovered")}
-          {/if}
-        </p>
-      {/if}
-      <div class="foot">
-        <Button variant="ghost" size="sm" onclick={discover}>
-          <RefreshCw />
-          {$t("s.pr.rescan")}
-        </Button>
-        <Button variant="ghost" size="sm" onclick={() => (addOpen = !addOpen)}>
-          <Plus />
-          {$t("s.pr.addByUri")}
-        </Button>
-      </div>
-      {#if addOpen}
-        <div class="manual">
-          <Input placeholder={$t("s.pr.namePlaceholder")} bind:value={addName} aria-label={$t("s.pr.printerName")} />
-          <Input placeholder={$t("s.pr.uriPlaceholder")} bind:value={addUri} aria-label={$t("s.pr.printerAddress")} />
-          <Button variant="default" size="sm" disabled={!addUri.trim()} onclick={submitManual}>{$t("s.pr.add")}</Button>
-        </div>
-      {/if}
-    </Section>
   </SectionGrid>
 </Page>
 
@@ -241,9 +196,6 @@
           onclick={() => (expanded = expanded === p.name ? null : p.name)}
         >
           <SlidersHorizontal />
-        </Button>
-        <Button variant="ghost" size="icon-sm" aria-label={$t("s.pr.removePrinter")} onclick={() => (confirmRemove = p)}>
-          <Trash2 />
         </Button>
       </span>
     {/snippet}
@@ -304,35 +256,6 @@
   </Row>
 {/snippet}
 
-{#snippet discoveredRow(d: DiscoveredPrinter)}
-  <Row
-    label={d.makeModel ?? d.name}
-    description={d.driverless
-      ? $t("s.pr.discDriverless", { transport: d.destination === "network" ? $t("s.pr.network") : transportOf(d.uri) })
-      : d.destination === "network" ? $t("s.pr.network") : transportOf(d.uri)}
-  >
-    {#snippet leading()}
-      <span class="dot ghost" aria-hidden="true"></span>
-    {/snippet}
-    {#snippet control()}
-      <Button variant="outline" size="sm" onclick={() => addPrinter(d)}>{$t("s.pr.add")}</Button>
-    {/snippet}
-  </Row>
-{/snippet}
-
-<ConfirmDialog
-  open={confirmRemove !== null}
-  title={$t("s.pr.confirmTitle")}
-  message={$t("s.pr.confirmMsg", { name: confirmRemove ? displayName(confirmRemove) : "" })}
-  confirmLabel={$t("s.pr.confirmLabel")}
-  variant="destructive"
-  onConfirm={async () => {
-    if (confirmRemove) await removePrinter(confirmRemove.name);
-    confirmRemove = null;
-  }}
-  onCancel={() => (confirmRemove = null)}
-/>
-
 <style>
   .note {
     margin: 0;
@@ -358,10 +281,6 @@
     height: 8px;
     border-radius: var(--radius-chip);
     background: var(--color-fg-disabled);
-  }
-  .dot.ghost {
-    background: none;
-    border: 1.5px solid var(--color-border-strong, var(--color-border));
   }
   .dot[data-state="idle"] {
     background: var(--color-success, #10b981);
@@ -416,10 +335,5 @@
     display: flex;
     gap: 8px;
     padding: 0.5rem 1rem;
-  }
-  .manual {
-    display: flex;
-    gap: 8px;
-    padding: 0 1rem 0.5rem;
   }
 </style>

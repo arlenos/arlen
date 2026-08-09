@@ -137,15 +137,9 @@ export const SETTINGS_REGISTRY: SettingDefinition[] = [
     sectionKey: "s.idx.section.printqueue",
     anchor: "print-queue",
   },
-  {
-    id: "printers.add",
-    titleKey: "s.idx.printers.add.title",
-    descKey: "s.idx.printers.add.desc",
-    keywordsKey: "s.idx.printers.add.keywords",
-    panel: "printers",
-    sectionKey: "s.idx.section.addaprinter",
-    anchor: "add-printer",
-  },
+  // No "Add a printer" entry: the section it pointed at is gone, because the
+  // commands behind it were never registered. A search result is a promise that
+  // the thing exists somewhere in here.
 
   // ── Appearance: Window ─────────────────────────────────────────────
   {

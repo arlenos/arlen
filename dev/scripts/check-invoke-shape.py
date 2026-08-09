@@ -384,22 +384,14 @@ DEAD_INVOKES: dict[str, str] = {
     "poll_print_request": "the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not",
     "submit_print": "the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not",
     "cancel_print": "the shell's print dialog against the CUPS/IPP backend; the daemon side exists, the shell commands do not",
-    # The Settings printers page. Measured 8 Aug: the read half is live and the
-    # other six have NO backend operation to bridge to - `PrintBackend` is
-    # printers/default_printer/jobs/submit/cancel_job and nothing more. Four of
-    # them are CUPS admin writes the Settings module doc already defers to an
-    # admin extension, so they are a build behind polkit rather than a wire. Each
-    # entry says which it is; the old shared reason ("against the same backend")
-    # read as a pending bridge and was how the gap stayed comfortable. - coder
-    "printers_discover": (
-        "the Settings printers page. No backend operation - but unlike its four neighbours this is a READ (DNS-SD network discovery), so it needs no privilege and is separable from the admin extension if the discover button is wanted sooner"
-    ),
-    "printers_add": (
-        "the Settings printers page. NOT a missing bridge: `PrintBackend` has five operations (printers, default_printer, jobs, submit, cancel_job) and no add. Adding a printer is a CUPS admin write needing lpadmin/polkit, which the Settings module doc already defers to a deliberate admin extension"
-    ),
-    "printers_remove": (
-        "the Settings printers page. Same as printers_add: no backend operation exists, and removing a printer is a privileged CUPS admin write, not a wire"
-    ),
+    # The Settings printers page had three more entries here, and they are gone
+    # because the buttons are: `printers_add`, `printers_remove` and
+    # `printers_discover` no longer appear on the panel. Add and remove are CUPS
+    # admin writes wanting lpadmin, a privilege decision to take on its own terms
+    # rather than behind a settings button; discover is a DNS-SD listener, which
+    # is a subsystem and not a command. `print_job_retry` was the fourth and went
+    # the other way: IPP Restart-Job on your own job needs no new privilege, so
+    # `PrintBackend` grew a sixth operation and the Resume button works.
     # dictation has no backend at all yet; the badge was built against the intended contract - needs a decision on whether dictation is in scope
     "dictation_status": "dictation has no backend at all yet; the badge was built against the intended contract",
     "stop_dictation": "dictation has no backend at all yet; the badge was built against the intended contract",
