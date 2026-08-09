@@ -45,6 +45,29 @@ function canvasType(name: string): "markdown" | "code" {
   return /\.(md|markdown|mdown|mkd)$/i.test(name) ? "markdown" : "code";
 }
 
+/// Open one file by path, replacing whatever is open.
+///
+/// Shared by the launch path and the lens's related-file links, so a file opened
+/// either way lands in the same place and fails the same way. A failure sets the
+/// error rather than throwing: both callers are user gestures, and the surface
+/// already renders `openError` where the text would be.
+export async function openPath(path: string): Promise<void> {
+  if (!tauriAvailable) return;
+  openTarget.set(path.split("/").pop() || path);
+  try {
+    const opened = await invoke<{ path: string; text: string }>("editor_open", { path });
+    openDocument.set({
+      path: opened.path,
+      name: opened.path.split("/").pop() || opened.path,
+      content: opened.text,
+      type: canvasType(opened.path),
+    });
+    openError.set(null);
+  } catch (e) {
+    openError.set(String(e));
+  }
+}
+
 /// Load the launch file, if there is one. Safe to call when no Tauri runtime is
 /// present: the browser and the screenshot loop simply have no launch file.
 export async function loadInitialFile(): Promise<void> {
@@ -57,19 +80,7 @@ export async function loadInitialFile(): Promise<void> {
     return;
   }
   if (!path) return;
-  openTarget.set(path.split("/").pop() || path);
-  try {
-    const opened = await invoke<{ path: string; text: string }>("editor_open", { path });
-    openDocument.set({
-      path: opened.path,
-      name: opened.path.split("/").pop() || opened.path,
-      content: opened.text,
-      type: canvasType(opened.path),
-    });
-    openError.set(null);
-  } catch (e) {
-    // The host's message names the path and the reason; it is more useful than
-    // anything this layer could invent, and it is about a file the user chose.
-    openError.set(String(e));
-  }
+  // The host's message names the path and the reason, which is more useful than
+  // anything this layer could invent and is about a file the user chose.
+  await openPath(path);
 }
