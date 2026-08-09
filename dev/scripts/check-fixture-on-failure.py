@@ -114,8 +114,28 @@ MOCKED_FLAG = re.compile(r"mocked:\s*true")
 # what it can see is that the question was asked at all.
 DEV_GUARD = re.compile(r"import\.meta\.env\.DEV|isTauri\(")
 
+# In CI since 9 August. It was the one check in `dev/scripts/` that no runner
+# called - found by asking the mechanical question rather than remembering: 26
+# check scripts, 23 in the workflow. The other two absentees are honest, and are
+# named here so nobody has to re-derive it: `check-image-contents.sh` needs a
+# built image, and `check-sensing-vectors.sh` skips when the compositor is not
+# checked out, so on a runner it would pass without looking at anything.
+#
+# The `file:line` keys below drift, which is the cost of admitting it here: the
+# first run after this note found its own lens.ts entry twenty lines stale,
+# because tonight's edits to that file moved it. That is the check working.
+
 # arlen-ui's live work. Not ours to edit, so not ours to fail on.
-SKIP = ("/harness/", "/store/", "routes/ai/models")
+SKIP = (
+    "/harness/",
+    "/store/",
+    "routes/ai/models",
+    # The store BEHIND that route, and reached from nowhere else - both its
+    # importers are `routes/ai/models/**`. Skipping the route while checking its
+    # only store left the same work half-excluded, which reads as a finding
+    # against someone else's file.
+    "settings/src/lib/stores/models.ts",
+)
 
 # A store that shows fixture content on a real failure for a reason someone
 # stands behind. Empty is the goal: the reason has to survive being read next to
@@ -128,7 +148,7 @@ SKIP = ("/harness/", "/store/", "routes/ai/models")
 # new fixture in a file that already has an acknowledged one, which is exactly
 # how the sentinel store hid three switches behind one fixed function.
 ACKNOWLEDGED: dict[str, str] = {
-    'apps/text-editor/src/lib/stores/lens.ts:78': (
+    'apps/text-editor/src/lib/stores/lens.ts:82': (
         "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. The lens shows provenance, backlinks and project context for the open file, labelled 'Example context - not this file's real graph neighbourhood'. `openRelated` navigates rather than mutates."
     ),
     'apps/meetings/src/lib/stores/meeting.ts:119': (
