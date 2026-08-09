@@ -49,9 +49,13 @@ fi
 echo ">> tauri build --no-bundle (production) arlen-clock"
 ./node_modules/.bin/tauri build --no-bundle
 
-out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-clock' 2>/dev/null \
+# The crate is `arlen-clock-app`, so that is what cargo emits; the image installs
+# it as `arlen-clock`, which is what the desktop entry's Exec names. Searching for
+# the INSTALLED name found nothing and failed the whole image build here - the
+# clock is the last app step, so everything before it had already run.
+out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-clock-app' 2>/dev/null \
         | head -1)
-[ -n "$out" ] || { echo "!! arlen-clock not found after build" >&2; exit 1; }
+[ -n "$out" ] || { echo "!! arlen-clock-app not found after build" >&2; exit 1; }
 # The app lives under its own id, which is what makes the id: the resolver's
 # rule (3) reads the directory name below `/usr/lib/arlen/apps/`, so an app
 # installed to `/usr/bin/` took rule (2) - the system-daemon rule - and resolved
