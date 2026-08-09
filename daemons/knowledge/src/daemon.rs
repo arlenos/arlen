@@ -2130,7 +2130,14 @@ async fn handle_write_request(
 /// debug a `dev.`-prefixed id is admitted (the dev/test convention the other
 /// gates use).
 fn meeting_caller_admitted(app_id: &str) -> bool {
-    if app_id == "meetings" || app_id == "ai-agent" {
+    // `dev.arlen.meetings` is what the app actually resolves to: the image
+    // installs it at `/usr/lib/arlen/apps/dev.arlen.meetings/`, and rule (3)
+    // reads that directory name. The bare `meetings` beside it is what this gate
+    // was written against and nothing produces it under any current install path
+    // - left rather than removed, because whether the short id or the namespaced
+    // one is canonical for an APP is a naming decision, not mine to settle at the
+    // point where it blocks a shipped feature.
+    if app_id == "dev.arlen.meetings" || app_id == "meetings" || app_id == "ai-agent" {
         return true;
     }
     // EXACT, never a `dev.` prefix: every locally-built binary resolves to some

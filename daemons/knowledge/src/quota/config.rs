@@ -132,6 +132,13 @@ impl QuotaConfig {
                 // caller match in `activity_delete_caller_admitted`. This lifts
                 // the doorway, not the lock.
                 "dev.arlen.knowledge".to_string(),
+                // The same doorway for the other two writers, found by asking
+                // which callers of a write-socket method tier below it. The
+                // meetings app files a meeting note from its own process, and the
+                // consent broker persists the durable half of a consent grant;
+                // both were refused before their own caller gates ever ran.
+                "dev.arlen.meetings".to_string(),
+                "consent-broker".to_string(),
             ],
             overrides: HashMap::new(),
         }
@@ -164,6 +171,12 @@ impl QuotaConfig {
                 // dead code and the delete is refused a step earlier in `just dev`
                 // than anyone would think to look.
                 | "dev.arlen-knowledge-app"
+                // Same reasoning for the meetings app and the consent broker:
+                // `meeting_caller_admitted` and `consent_grant_writer_admitted`
+                // each have a debug arm naming these exact ids, and the tier gate
+                // runs before both.
+                | "dev.arlen-meetings"
+                | "dev.arlen-consent-broker"
         ) {
             return true;
         }
@@ -248,6 +261,29 @@ mod tests {
         // `dev.arlen.` prefix, which would tier every installed app upward.
         assert_eq!(c.tier_for_app("dev.arlen.files"), AppTier::ThirdParty);
         assert_eq!(c.tier_for_app("dev.arlen.clock"), AppTier::ThirdParty);
+    }
+
+    /// Every principal that calls a write-socket method has to clear the tier
+    /// gate, which runs before the operation's own caller check. Found by
+    /// enumerating the SDK methods that send the `0x02` prefix and asking who
+    /// calls each: the meetings app files a note from its own process and the
+    /// consent broker persists a grant, and both tiered below the doorway.
+    #[test]
+    fn every_write_socket_caller_clears_the_tier_gate() {
+        let c = QuotaConfig::arlen_default();
+        for writer in [
+            "ai-agent",          // the engine daemon resolves to this principal
+            "bridge-ingest",     // upsert_entity, link_entities
+            "consent-broker",    // persist_consent_grant
+            "dev.arlen.knowledge", // delete_activity
+            "dev.arlen.meetings",  // file_meeting
+        ] {
+            assert_ne!(
+                c.tier_for_app(writer),
+                AppTier::ThirdParty,
+                "{writer} writes to the graph and would be refused before its own gate"
+            );
+        }
     }
 
     #[test]
