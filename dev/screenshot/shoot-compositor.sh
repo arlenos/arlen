@@ -146,11 +146,28 @@ require_xvfb() {
   echo "  Fedora:           sudo dnf install xorg-x11-server-Xvfb" >&2
   exit 127
 }
-require_xvfb Xvfb
-
-Xvfb "$DISP" -screen 0 1920x1080x24 >/dev/null 2>&1 &
-XVFB_PID=$!
-sleep 2
+# SHOOT_SKIP_XVFB reuses an X server already running on $SHOOT_DISPLAY instead of
+# starting one. It exists because cosmic-comp cannot run on Xvfb at all: its X11
+# backend needs DRI3 and its winit fallback needs `EGL_EXT_device_drm`, and Xvfb
+# provides neither, so every run here died before creating a Wayland socket. A
+# DRM-capable X server does satisfy it, and on a Wayland host XWayland (:0) is one.
+#
+# The cost is honest: the nested compositor then opens a window on that real
+# session, briefly and visibly, and is torn down with the run. Capture is
+# unaffected either way, since grim reads the nested compositor's own output and
+# not the X server.
+if [ -n "${SHOOT_SKIP_XVFB:-}" ]; then
+  if ! DISPLAY="$DISP" xdpyinfo >/dev/null 2>&1; then
+    echo "error: SHOOT_SKIP_XVFB is set but nothing answers on $DISP" >&2
+    exit 1
+  fi
+  echo "using the existing X server on $DISP (SHOOT_SKIP_XVFB)" >&2
+else
+  require_xvfb Xvfb
+  Xvfb "$DISP" -screen 0 1920x1080x24 >/dev/null 2>&1 &
+  XVFB_PID=$!
+  sleep 2
+fi
 
 # WAYLAND_DISPLAY is UNSET deliberately, not merely overridden. cosmic-comp picks
 # its backend from the environment (`backend/mod.rs:29`): X11 first, then winit on
