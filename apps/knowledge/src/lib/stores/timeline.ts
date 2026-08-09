@@ -266,14 +266,15 @@ export async function setPaused(value: boolean): Promise<void> {
   }
 }
 
-/// Export the recorded timeline. Live: `knowledge_timeline_export` (seam);
-/// returns false when no backend answered so the surface can say so.
-export async function exportTimeline(): Promise<boolean> {
+/// Export the recorded timeline to a file, returning where it went.
+///
+/// The path matters as much as the success: an export that says "done" without
+/// saying where leaves the user hunting for their own history.
+export async function exportTimeline(): Promise<string | null> {
   try {
-    await invoke("knowledge_timeline_export", {});
-    return true;
+    return await invoke<string>("knowledge_timeline_export", {});
   } catch {
-    return false;
+    return null;
   }
 }
 

@@ -396,9 +396,6 @@ DEAD_INVOKES: dict[str, str] = {
     "knowledge_timeline_delete": (
         "the Knowledge app. Its Rust side exists; deleting recorded history needs a daemon-side retention op and a confirmation path, neither built"
     ),
-    "knowledge_timeline_export": (
-        "the Knowledge app. Its Rust side exists; export needs a writer and a destination the app cannot choose on its own"
-    ),
     "knowledge_capsules": (
         "the Knowledge app. Its Rust side exists; this needs a capsuled client and an expiry the backend states as a timestamp rather than the store's prose ('in 5 days')"
     ),
