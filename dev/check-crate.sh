@@ -30,7 +30,29 @@ case "$mode" in
     # the lib and the bins only, so every struct literal inside a test module is
     # invisible - which is exactly how a new field on a shared type can land
     # green and break the build.
-    cargo check --all-targets --manifest-path "$manifest"
+    #
+    # Annotated on failure for the same reason `test` below is, and this is the
+    # half that was still missing: three separate jobs (`sdk/i18n`, the systemd
+    # unit gates, the webview probe) have now been reported as "red in seconds
+    # with no error line", and each time the reason was sitting in the raw log
+    # while the run summary said nothing. A red nobody can read gets re-run
+    # rather than fixed.
+    set +e
+    out=$(cargo check --all-targets --manifest-path "$manifest" 2>&1)
+    rc=$?
+    set -e
+    printf '%s\n' "$out"
+    if [ "$rc" -ne 0 ]; then
+      if [ -n "${GITHUB_ACTIONS:-}" ]; then
+        # cargo's own first error, or an honest admission that it exited without
+        # one - which is itself the finding, and points at the environment (a
+        # missing system library, a linker, disk) rather than at the code.
+        why=$(printf '%s' "$out" | grep -E "^(error|error\[)" | head -2 | tr '\n' ' ')
+        printf '::error title=%s check::%s\n' "$crate" \
+          "${why:-cargo check exited $rc with no error line - environment, not code; see the log}"
+      fi
+      exit "$rc"
+    fi
     ;;
   test)
     # installd and knowledge tests mutate process-global state (env vars, a
