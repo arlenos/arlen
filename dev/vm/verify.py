@@ -535,6 +535,9 @@ def main():
         # black; polling reports "did the bar render WITHIN N seconds" and the elapsed
         # time is the true time-to-render. The app/consent/super modes keep the fixed
         # wait their after-steps depend on.
+        # Set when the poll actually saw the bar, so a modal covering the final
+        # frame cannot erase that evidence.
+        bar_seen_while_polling = False
         bar_gate_only = args.require_bar and not (
             args.app or args.press_super or args.deny_consent or args.approve_consent
         )
@@ -557,11 +560,28 @@ def main():
                         pass  # a truncated/mid-write PNG: poll again
                 time.sleep(3)
             if appeared_at is not None:
+                bar_seen_while_polling = True
                 print(f"top bar appeared after {appeared_at:.0f}s (polled)")
             else:
                 print(f"top bar did not appear within {args.wait}s (polled)")
         else:
-            time.sleep(args.wait)
+            # The fixed-wait modes still watch for the bar, they just do not cut the
+            # wait short: the after-steps depend on its full length. Without this a
+            # consent run had no bar evidence at all, because the only sighting it
+            # could have made happens seconds before the card covers the screen.
+            watch_deadline = time.monotonic() + args.wait
+            while time.monotonic() < watch_deadline:
+                time.sleep(3)
+                if bar_seen_while_polling:
+                    continue
+                try:
+                    shot = capture(f, out, x_display)
+                    if "error" not in shot and os.path.exists(out) \
+                            and os.path.getsize(out) > 0 and has_top_bar(out)[0]:
+                        bar_seen_while_polling = True
+                        print("top bar: seen before the after-step covered it")
+                except Exception:
+                    pass  # a truncated/mid-write PNG: look again next round
         if args.app:
             # The shell may show a modal (e.g. its consent fixture) over the desktop;
             # press Escape so a launched app window is not hidden behind it.
@@ -752,6 +772,17 @@ def main():
         print("VERIFY FAIL: frame is blank/black (compositor did not render)")
         print(f"  serial log: {serial}")
         return 1
+    if args.require_bar and not bar_present and bar_seen_while_polling:
+        # The poll SAW the bar render; the final frame is a later moment, and in a
+        # consent run that moment has a fullscreen modal over the desktop by
+        # design - `system-dialog-plan.md` wants the consent surface unobscurable,
+        # so it covering the bar is the feature working. Failing here turned every
+        # `--deny-consent` and `--approve-consent` run red for the wrong reason,
+        # and a gate that reports correct behaviour as failure is one people learn
+        # to skip.
+        print(f"top bar: covered in the final frame ({bar_detail}), but the poll "
+              "saw it render earlier - treating the shell as up")
+        bar_present = True
     if args.require_bar and not bar_present:
         if bar_verdict == "inconclusive":
             print("VERIFY FAIL: could not tell whether the shell's top bar is on "
