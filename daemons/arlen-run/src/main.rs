@@ -527,6 +527,24 @@ fn launch_env(
         env.insert("HOME".to_string(), h.to_string());
     }
     env.insert("PATH".to_string(), "/usr/bin:/bin".to_string());
+    // Point the XDG data home at the parent of the app's own granted directory.
+    //
+    // A Tauri app's `appDataDir()` is `$XDG_DATA_HOME/<bundle identifier>`, and
+    // its webview keeps WebKitCache, CacheStorage and hsts-storage.sqlite there.
+    // With the ambient value that is `~/.local/share/<id>`, which is NOT granted
+    // and cannot even be created inside the sandbox - measured, and it would have
+    // broken every app the image ships, the ones WITH a profile included.
+    //
+    // Redirecting here rather than granting that path keeps the profile grammar
+    // small (no implicit per-app grant every profile has to remember, whose
+    // omission fails inside the webview, the least legible place we have) and puts
+    // the state in a namespace we own, so uninstall can clean it and the privacy
+    // surface can name it. It works out to the same directory because the app id
+    // IS the bundle identifier: `$XDG_DATA_HOME/<id>` becomes
+    // `~/.local/share/arlen/apps/<id>`, which is bound read-write.
+    if let Some(d) = home.join(".local/share/arlen/apps").to_str() {
+        env.insert("XDG_DATA_HOME".to_string(), d.to_string());
+    }
     if let Some(rt) = runtime_dir.and_then(|p| p.to_str()) {
         env.insert("XDG_RUNTIME_DIR".to_string(), rt.to_string());
     }

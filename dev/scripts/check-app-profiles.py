@@ -47,24 +47,22 @@ PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/0"
 # app cannot be launched confined yet, so the list should shrink to nothing before
 # the confinement flag is flipped - which is exactly what makes it worth writing
 # down rather than rediscovering.
-# NB the pending list is not the only thing between here and a confined desktop.
-# Measured on 9 August with an empty profile: a confined app can write its granted
-# `~/.local/share/arlen/apps/<id>`, and `~/.local/share/<identifier>` - where a
-# Tauri app's webview actually keeps WebKitCache, CacheStorage and its storage - is
-# neither visible nor creatable. That applies to ALL SIX installed apps, the three
-# WITH profiles included, so having a profile is necessary and not sufficient.
-# Either the launcher grants that directory too or the apps are pointed at the
-# granted one; both are decisions. See the report of 9 August.
+# The webview-directory blocker that used to sit here is CLOSED: the launcher sets
+# `XDG_DATA_HOME` to `~/.local/share/arlen/apps`, so a Tauri app's `appDataDir()`
+# (`$XDG_DATA_HOME/<bundle identifier>`) lands on the granted directory instead of
+# an ungranted `~/.local/share/<id>`. Decided as move-not-grant, and it works out
+# to one directory because the app id and the bundle identifier are now the same
+# string.
 PENDING: dict[str, str] = {
-    "dev.arlen.clock": "needs nothing from the graph, but its webview data lives outside the granted app dirs (see above)",
-    "dev.arlen.meetings": "renders from a labelled fixture, so it needs no scope - same webview-directory question as the others",
+    "dev.arlen.clock": "needs nothing from the graph; down to writing the file",
+    "dev.arlen.meetings": "renders from a labelled fixture, so it needs no scope; down to writing the file",
     # Measured, not assumed: a confined run with an empty profile reaches /proc
     # (bwrap mounts a private procfs) and NOT /sys, and `/sys` is on the launcher's
     # FORBIDDEN_FS_ROOTS, so a `custom` grant for it is dropped by design. The app
     # reads both. What it needs is a read-only grant of a /sys SUBTREE, and the
     # profile format's `custom` binds read-write - so this one waits on a format
     # question, not on somebody writing a file.
-    "dev.arlen.system-monitor": "the read-only subtree grant it needed now exists (`[filesystem] read_only`), so this one is down to writing the file and the webview-directory question above",
+    "dev.arlen.system-monitor": "the read-only subtree grant it needed now exists (`[filesystem] read_only`), so this one is down to writing the file",
 }
 
 INSTALL = re.compile(r'\$DESTDIR/usr/lib/arlen/apps/([A-Za-z0-9._-]+)/bin/')
