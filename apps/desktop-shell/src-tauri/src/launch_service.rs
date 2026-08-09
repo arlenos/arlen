@@ -32,14 +32,18 @@ use tokio::net::{UnixListener, UnixStream};
 /// service is simply absent. Callers get a connection refusal, which is a
 /// legible "the service is not there" rather than a hang.
 ///
-/// This is called from Tauri's setup hook, which is NOT inside a tokio runtime,
-/// so nothing here may touch tokio before the thread below has one. Binding with
-/// `tokio::net::UnixListener` panicked on "there is no reactor running" every
-/// time the shell started - on the main thread, in a function whose whole
-/// contract is that it degrades quietly - and `tokio::spawn` would have panicked
-/// on the next line for the same reason. The sibling services in `setup` all
-/// start a plain `std::thread`; this one needs async for its request handling, so
-/// it owns a small runtime inside that thread rather than assuming an ambient one.
+/// This is called from Tauri's setup hook, which is NOT inside a tokio runtime.
+/// Binding with `tokio::net::UnixListener` panicked on "there is no reactor
+/// running" every time the shell started - on the main thread, in a function
+/// whose whole contract is that it degrades quietly - and the bare `tokio::spawn`
+/// underneath it would have panicked next for the same reason. The three sibling
+/// IPC services in the same hook (clipboard, intent, search) all go through
+/// `tauri::async_runtime::spawn`, which is the runtime this process has; this one
+/// had grown its own spelling.
+///
+/// The socket is bound here rather than inside the task, so that when `setup`
+/// returns the socket exists. A caller that connects the moment the shell is up
+/// then gets served rather than refused, which the siblings do not guarantee.
 pub fn spawn_launch_service() {
     let path = proto::socket_path();
     let listener = match bind(&path) {
@@ -54,38 +58,30 @@ pub fn spawn_launch_service() {
         return;
     }
     log::info!("launch service listening on {}", path.display());
-    std::thread::spawn(move || {
-        let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
-            Ok(rt) => rt,
+    tauri::async_runtime::spawn(async move {
+        // Inside the runtime, so this is the first line that may touch tokio.
+        let listener = match UnixListener::from_std(listener) {
+            Ok(l) => l,
             Err(e) => {
                 log::error!("launch service not started: {e}");
                 return;
             }
         };
-        rt.block_on(async move {
-            let listener = match UnixListener::from_std(listener) {
-                Ok(l) => l,
+        loop {
+            match listener.accept().await {
+                Ok((stream, _)) => {
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(e) = handle(stream).await {
+                            log::warn!("launch request: {e}");
+                        }
+                    });
+                }
                 Err(e) => {
-                    log::error!("launch service not started: {e}");
+                    log::error!("launch service accept failed, stopping: {e}");
                     return;
                 }
-            };
-            loop {
-                match listener.accept().await {
-                    Ok((stream, _)) => {
-                        tokio::spawn(async move {
-                            if let Err(e) = handle(stream).await {
-                                log::warn!("launch request: {e}");
-                            }
-                        });
-                    }
-                    Err(e) => {
-                        log::error!("launch service accept failed, stopping: {e}");
-                        return;
-                    }
-                }
             }
-        });
+        }
     });
 }
 
