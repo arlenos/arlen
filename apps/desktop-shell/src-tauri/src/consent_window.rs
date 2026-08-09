@@ -71,6 +71,20 @@ pub fn init_layer_shell(window: WebviewWindow) {
             return;
         };
 
+        // An RGBA visual, or the surface composites opaque and the 50% dim in
+        // `--color-bg-overlay` lands on black instead of on the desktop. Measured
+        // on the image: with the card up the frame was 11.4% non-black and the top
+        // bar was gone, and the moment Escape dropped the window it was 100%
+        // non-black again. Tauri's `transparent(true)` sets the webview's own
+        // background and is not enough on its own here; `dev/ghost-webview` needs
+        // the same two calls to see the desktop through a layer surface.
+        gtk_window.set_app_paintable(true);
+        if let Some(screen) = WidgetExt::screen(&gtk_window) {
+            if let Some(visual) = screen.rgba_visual() {
+                gtk_window.set_visual(Some(&visual));
+            }
+        }
+
         gtk_window.init_layer_shell();
         gtk_window.set_layer(Layer::Overlay);
         for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
