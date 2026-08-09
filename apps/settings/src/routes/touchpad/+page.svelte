@@ -118,7 +118,9 @@
     </Section>
 
     {#if $touchpad.error}
-      <div class="span-full error-box" title={$touchpad.error}>{$t("s.err.readPaused")}</div>
+      <div class="span-full error-box" title={$touchpad.error}>
+        {$touchpad.errorKind === "write" ? $t("s.err.notSaved") : $t("s.err.readPaused")}
+      </div>
     {/if}
   </SectionGrid>
 </Page>
