@@ -18,9 +18,13 @@
 #         dev/scripts/probe-webview-sandbox.sh <binary> off    # negative control
 #         PROBE_WAYLAND=1 dev/scripts/probe-webview-sandbox.sh target/debug/arlen-desktop-shell
 #
-# The second form runs with WEBKIT_FORCE_SANDBOX=0 and must report NOT contained.
-# A probe that says "contained" either way proves nothing, so run both before
-# believing the first.
+# The second form disables the sandbox and must report NOT contained. A probe
+# that says "contained" either way proves nothing, so run both before believing
+# the first. NB the variable changed: WebKitGTK 2.52 says so itself, in the
+# library - "WEBKIT_FORCE_SANDBOX no longer allows disabling the sandbox. Use
+# WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 instead." The old name left the
+# negative control silently passing, which is the one failure a control must not
+# have.
 #
 # The third form is for the desktop shell, which is a wlr-layer-shell client and
 # cannot come up on a bare X server - under Xvfb it reports "no web process
@@ -75,7 +79,7 @@ if [ "$WAYLAND" = "1" ]; then
   # The client inherits this process's environment, so the negative control still
   # reaches it. Without this line `off` would be accepted and quietly ignored on
   # this path, and a probe that cannot fail is not evidence of anything.
-  [ "$MODE" = "off" ] && export WEBKIT_FORCE_SANDBOX=0
+  [ "$MODE" = "off" ] && export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
   SHOOT_SETTLE=$((SETTLE + 6)) SHOOT_CLIENT_LOG=/tmp/probe-app.log \
     bash "$(dirname "$0")/../screenshot/shoot-compositor.sh" \
       /tmp/probe-webview-sandbox.png "$BIN" >/tmp/probe-compositor.log 2>&1 &
@@ -88,7 +92,7 @@ else
   sleep 2
 
   if [ "$MODE" = "off" ]; then
-    env DISPLAY="$DISPLAY_NUM" WEBKIT_FORCE_SANDBOX=0 "$BIN" >/tmp/probe-app.log 2>&1 &
+    env DISPLAY="$DISPLAY_NUM" WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 "$BIN" >/tmp/probe-app.log 2>&1 &
   else
     env DISPLAY="$DISPLAY_NUM" "$BIN" >/tmp/probe-app.log 2>&1 &
   fi
@@ -120,13 +124,32 @@ echo 2 >"$VERDICT_FILE"
 {
   echo "probe: $BIN (sandbox requested: $MODE)"
 
-  # The web process under bwrap is a grandchild, so find it by name rather than
-  # by walking the tree, and take the one whose parent is a bwrap.
+  # The web process must be a DESCENDANT of the app under test. Selecting it by
+  # name across the machine is how this came to compare an app started seconds
+  # ago against a five-hour-old web process belonging to a different app, and
+  # report CONTAINED on the strength of it - on 9 August, ten times in a row,
+  # because a probing session leaves those behind. `pgrep -f` also matches any
+  # command line mentioning the name, including this script's own shell, so the
+  # match is by comm and then by ancestry.
+  # `WebKitWebProcess` is 16 characters and the kernel truncates `comm` to 15, so
+  # `pgrep -x WebKitWebProcess` matches nothing at all - pgrep says so and exits,
+  # which reads as "no web process appeared" rather than as a broken pattern. The
+  # same truncation is already handled for the app lookup above.
   web=""
-  for p in $(pgrep -f "WebKitWebProcess" 2>/dev/null); do
-    parent=$(ps -o comm= -p "$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')" 2>/dev/null)
-    [ "$parent" = "bwrap" ] && web="$p" && break
-    [ -z "$web" ] && web="$p"
+  for d in /proc/[0-9]*; do
+    case "$(cat "$d/comm" 2>/dev/null)" in
+      WebKitWebProces*) p="${d#/proc/}" ;;
+      *) continue ;;
+    esac
+    walk="$p"
+    while [ -n "$walk" ] && [ "$walk" != "1" ] && [ "$walk" != "0" ]; do
+      walk=$(ps -o ppid= -p "$walk" 2>/dev/null | tr -d ' ')
+      if [ "$walk" = "$APP" ]; then
+        web="$p"
+        break
+      fi
+    done
+    [ -n "$web" ] && break
   done
 
   if [ -z "$web" ]; then
