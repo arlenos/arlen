@@ -23,8 +23,19 @@ const BATCH_TIMEOUT: Duration = Duration::from_millis(500);
 /// This function runs forever. It reconnects automatically if the Event Bus
 /// restarts, with a short delay between attempts.
 pub async fn run(consumer_socket: &str, pool: SqlitePool) -> Result<()> {
+    // The Knowledge app's Pause switch promises "Nothing is added until you
+    // resume", so honouring it has to happen HERE, where events enter the store,
+    // and not in any view built on top. Read once at startup: `graph.toml`
+    // hot-reload is a separate sprint item (the promotion loop says the same
+    // about its threshold), so a change takes effect on restart and the app's
+    // switch keeps reporting that it could not pause - which is true until the
+    // live path exists.
+    let paused = crate::timeline_config::TimelineConfig::load().paused;
+    if paused {
+        info!("graph.toml [timeline] paused = true; events are read and discarded, nothing is stored");
+    }
     loop {
-        match connect_and_consume(consumer_socket, &pool).await {
+        match connect_and_consume(consumer_socket, &pool, paused).await {
             Ok(()) => {
                 // Clean disconnect; Event Bus shut down intentionally.
                 info!("event bus disconnected, waiting to reconnect");
@@ -38,7 +49,7 @@ pub async fn run(consumer_socket: &str, pool: SqlitePool) -> Result<()> {
 }
 
 /// Connect to the Event Bus consumer socket, register, and consume events.
-async fn connect_and_consume(consumer_socket: &str, pool: &SqlitePool) -> Result<()> {
+async fn connect_and_consume(consumer_socket: &str, pool: &SqlitePool, paused: bool) -> Result<()> {
     let mut stream = UnixStream::connect(consumer_socket).await?;
     info!(socket = consumer_socket, "connected to event bus");
 
@@ -70,7 +81,13 @@ async fn connect_and_consume(consumer_socket: &str, pool: &SqlitePool) -> Result
             result = read_event(&mut stream) => {
                 match result {
                     Ok(Some(event)) => {
-                        admit(&mut buffer, event);
+                        // Read off the socket either way, then dropped while
+                        // paused: leaving it unread would stall the bus for every
+                        // other consumer, which is a different failure from the
+                        // one the switch asks for.
+                        if !paused {
+                            admit(&mut buffer, event);
+                        }
                         if buffer.len() >= BATCH_SIZE_THRESHOLD {
                             flush(&mut buffer, pool).await;
                         }
