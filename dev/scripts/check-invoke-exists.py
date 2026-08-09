@@ -80,7 +80,14 @@ KNOWN: dict[str, dict[str, str]] = {
         "printers_discover": "printer discovery",
         "printers_remove": "removing a printer",
         "sentinel_fix_posture": "the security posture fix",
-        "sentinel_get_state": "the sentinel state",
+        "sentinel_get_state": (
+            "the sentinel state. The blocker is a whole daemon, not a command: "
+            "`daemons/sentinel-detect` holds only the pure detectors and says so "
+            "in its own header - the `org.arlen.Sentinel1` that drives the BLE and "
+            "network hardware and owns the consent/audit boundary is unwritten, "
+            "and it needs a radio to be worth writing. All five sentinel_* entries "
+            "share this one blocker"
+        ),
         "sentinel_set_alerts": "sentinel alerts",
         "sentinel_set_detector": "a sentinel detector toggle",
         "sentinel_set_sensitivity": "sentinel sensitivity",
@@ -132,7 +139,13 @@ KNOWN: dict[str, dict[str, str]] = {
             "transfer daemon is one producer of many it would need. The missing "
             "piece is a job-report contract, not a command"
         ),
-        "waypointer_ask": "asking the assistant from the launcher",
+        "waypointer_ask": (
+            "asking the assistant from the launcher. Needs a bounded streamed "
+            "single-completion on `org.arlen.AIAgent1`, which the agent does not "
+            "expose today - so it is a new method across the AI gate rather than "
+            "shell wiring. The pane already says the agent is unreachable instead "
+            "of pretending, so nothing claims otherwise while it waits"
+        ),
         "windows_file_install": "installing a Windows file",
         "windows_file_request": "the Windows file prompt",
         "windows_file_run": "running a Windows file",
