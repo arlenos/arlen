@@ -25,6 +25,9 @@ export SHOOT_INJECT="${3:-}"
 # A CSS selector clicked after load and before the injection, for anything the
 # page only shows once something is opened.
 export SHOOT_OPEN="${SHOOT_OPEN:-}"
+# A REQUEST, and one this browser answers with a yes and ignores - see the note at
+# the top of shoot.py. Every run now prints the viewport it actually rendered at.
+# Set SHOOT_REQUIRE_WIDTH to refuse rather than hand back a narrow-layout shot.
 export SHOOT_WIDTH="${4:-1280}"
 export SHOOT_HEIGHT="${5:-800}"
 export SHOOT_PORT=4477
@@ -59,5 +62,6 @@ xvfb-run -a bash -c '
   args=(--url "$SHOOT_URL" --out "$SHOOT_OUT" --port "$SHOOT_PORT" --width "$SHOOT_WIDTH" --height "$SHOOT_HEIGHT")
   [ -n "$SHOOT_INJECT" ] && args+=(--inject "$SHOOT_INJECT")
   [ -n "${SHOOT_OPEN:-}" ] && args+=(--open "$SHOOT_OPEN")
+  [ -n "${SHOOT_REQUIRE_WIDTH:-}" ] && args+=(--require-width "$SHOOT_REQUIRE_WIDTH")
   python3 "$SHOOT_HERE/shoot.py" "${args[@]}"
 '
