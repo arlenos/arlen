@@ -14,6 +14,15 @@
 # `git commit --no-verify` skips it. That is deliberate and not a loophole: a
 # hook with no escape gets uninstalled the first time it is wrong, and then it
 # protects nothing.
+#
+# What this does NOT cover, found by walking into it within the minute: the gates
+# read the WORKING TREE, not the index. So a partly-staged commit - a file staged
+# in one state and edited into another - is judged on the state on disk, and can
+# pass here while landing something else. That is how a throwaway line proving
+# this hook fires ended up inside the commit that added the hook. Staging the
+# whole file is the habit that avoids it; `git stash --keep-index` around the run
+# would close it properly, and is not done here because a stash that fails midway
+# costs more than the gap does.
 set -uo pipefail
 
 root=$(git rev-parse --show-toplevel)
