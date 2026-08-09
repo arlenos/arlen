@@ -18,4 +18,4 @@ StartupNotify=true
 # file would otherwise imply is its basename, `arlen-meetings`. Stating it here
 # keeps the launcher's idea of who this app is identical to the daemons',
 # rather than two names for one app that only diverge under confinement.
-X-Arlen-AppId=meetings
+X-Arlen-AppId=dev.arlen.meetings
