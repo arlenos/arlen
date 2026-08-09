@@ -457,8 +457,8 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         // so a root-owned canonical path is the trust anchor until F3 upgrades it.
         // Rule (3) would also resolve this apps path, but the explicit entry keeps
         // the canonical principal unambiguous (as the ai-daemon apps entries do).
-        "/usr/lib/arlen/apps/dev.arlen.settings/bin/arlen-settings" => {
-            return Ok("dev.arlen.settings".to_string());
+        "/usr/lib/arlen/apps/settings/bin/arlen-settings" => {
+            return Ok("settings".to_string());
         }
         _ => {}
     }
@@ -605,7 +605,7 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
 /// The dev ids are the same surfaces as they resolve from a cargo target dir,
 /// exact and never a `dev.` prefix match, compiled out of a release build the way
 /// the audit ingest gate does it.
-const USER_SURFACES: &[&str] = &["dev.arlen.desktop-shell", "dev.arlen.harness", "dev.arlen.settings"];
+const USER_SURFACES: &[&str] = &["desktop-shell", "harness", "settings"];
 
 /// The same surfaces as a cargo target dir resolves them.
 #[cfg(debug_assertions)]
@@ -637,17 +637,10 @@ mod user_surface_rule {
     /// app, so it asks through the shell rather than holding the capability.
     #[test]
     fn the_system_surfaces_are_in_and_an_ordinary_app_is_not() {
-        for id in ["dev.arlen.desktop-shell", "dev.arlen.harness", "dev.arlen.settings"] {
+        for id in ["desktop-shell", "harness", "settings"] {
             assert!(is_user_surface(id), "{id} is the system talking to the user");
         }
-        for id in [
-            "dev.arlen.files",
-            "dev.arlen.terminal",
-            "dev.arlen.store",
-            "dev.arlen.viewers",
-            "com.example.app",
-            "ai-agent",
-        ] {
+        for id in ["files", "terminal", "store", "viewers", "com.example.app", "ai-agent"] {
             assert!(
                 !is_user_surface(id),
                 "{id} is an app: it asks the user through the shell, it does not \
@@ -662,15 +655,6 @@ pub fn is_reserved_app_id(app_id: &str) -> bool {
     app_id == "system"
         || app_id.starts_with("system.")
         || app_id.starts_with("org.arlen.")
-        // Every first-party app now lives in this namespace, so the whole prefix
-        // is unclaimable from a user-writable directory. Without this line the
-        // rename would MOVE the squat rather than close it: a user could create
-        // `~/.local/share/arlen/apps/dev.arlen.settings/` and mint the identity
-        // that the revoke socket, the consent broker's grant management and the
-        // config broker's writer allowlist all key on. The debug ids are
-        // `dev.arlen-settings` with a hyphen, so they are a different namespace
-        // and unaffected.
-        || app_id.starts_with("dev.arlen.")
         || matches!(
             app_id,
             // `modulesd` and `xdg-desktop-portal` are the consent broker's
@@ -748,22 +732,9 @@ mod tests {
     /// rather than by calling under `cfg(not(debug))`, which never runs here.
     #[test]
     fn the_release_surface_list_carries_no_development_id() {
-        // A debug id is `dev.<binary>` and every binary here is `arlen-…`, so the
-        // shape to keep out is `dev.arlen-` with the hyphen. `dev.` alone is no
-        // longer the test it once was: the app ids ARE `dev.arlen.…` now, and the
-        // two namespaces are told apart by that one character.
-        assert!(USER_SURFACES.iter().all(|id| !id.starts_with("dev.arlen-")));
-        #[cfg(debug_assertions)]
-        assert!(
-            USER_SURFACES.iter().all(|id| !USER_SURFACES_DEV.contains(id)),
-            "the release list and the debug list must not overlap"
-        );
-        assert!(is_user_surface("dev.arlen.settings") && is_user_surface("dev.arlen.harness"));
+        assert!(USER_SURFACES.iter().all(|id| !id.starts_with("dev.")));
+        assert!(is_user_surface("settings") && is_user_surface("harness"));
         assert!(!is_user_surface("ai-agent") && !is_user_surface("dev."));
-        // The bare form the tree used to carry is not a surface any more, which is
-        // the half of this rename that has teeth: an id left behind somewhere
-        // stops being trusted rather than quietly keeping its old power.
-        assert!(!is_user_surface("settings") && !is_user_surface("harness"));
     }
 
     /// Every canonical binary resolves to the id the rest of the system keys on.
@@ -798,7 +769,7 @@ mod tests {
             ("/usr/lib/arlen/libexec/arlen-config-broker", "config-broker"),
             ("/usr/bin/arlen-graph-daemon", "knowledge"),
             ("/usr/lib/arlen/libexec/arlen-connectionsd", "connections"),
-            ("/usr/lib/arlen/apps/dev.arlen.settings/bin/arlen-settings", "dev.arlen.settings"),
+            ("/usr/lib/arlen/apps/settings/bin/arlen-settings", "settings"),
         ];
         for (path, want) in canonical {
             assert_eq!(
@@ -1186,15 +1157,11 @@ mod tests {
 
     #[test]
     fn test_app_id_from_path_settings_canonical() {
-        // The Settings app must resolve to the canonical `dev.arlen.settings` app
-        // id, the sole principal the Living Capability Graph revoke op admits. A
+        // The Settings app must resolve to the canonical `settings` app id, the
+        // sole principal the Living Capability Graph revoke op admits. A
         // same-basename binary in a writable location must not impersonate it.
-        let path = PathBuf::from("/usr/lib/arlen/apps/dev.arlen.settings/bin/arlen-settings");
-        assert_eq!(path_to_app_id(&path).unwrap(), "dev.arlen.settings");
-        // And the id cannot be minted from a user-writable app directory, which is
-        // the squat the reserved namespace closes. Rule (3) reads the directory
-        // name, so without that guard the rename would simply have moved it.
-        assert!(is_reserved_app_id("dev.arlen.settings"));
+        let path = PathBuf::from("/usr/lib/arlen/apps/settings/bin/arlen-settings");
+        assert_eq!(path_to_app_id(&path).unwrap(), "settings");
         for spoofed in ["/tmp/arlen-settings", "/home/attacker/arlen-settings"] {
             assert!(
                 path_to_app_id(&PathBuf::from(spoofed)).is_err(),

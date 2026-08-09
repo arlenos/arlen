@@ -16,7 +16,7 @@
 # no relations. Erring narrow; confirm the exact readable-label/rel-type gate
 # semantics if a query is unexpectedly refused.
 [info]
-app_id = "dev.arlen.desktop-shell"
+app_id = "desktop-shell"
 tier = "first-party"
 
 [graph]
