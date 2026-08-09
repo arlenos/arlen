@@ -90,13 +90,24 @@ KNOWN: dict[str, dict[str, str]] = {
         "cancel_print": "cancelling a print job",
         "poll_print_request": "the print request poll",
         "submit_print": "submitting a print job",
-        "cancel_screencast": "cancelling a screencast",
-        "start_screencast": "starting a screencast",
-        "stop_capture": "stopping a capture",
-        "capture_status": "the capture indicator",
-        "list_capture_sources": "the capture source picker",
-        "dictation_status": "the dictation indicator",
-        "stop_dictation": "stopping dictation",
+        # The whole capture group waits on ONE missing piece rather than five.
+        # The ScreenCast portal backend exists (sessions, source-type and cursor
+        # negotiation, a content-free audit of every share step); its own header
+        # says what is left is "the PipeWire producer that makes `Start` return
+        # real node ids". Until that producer exists there is nothing for these
+        # shell commands to hand back, so they are one job, not five.
+        "cancel_screencast": "cancelling a screencast (PipeWire producer)",
+        "start_screencast": "starting a screencast (PipeWire producer)",
+        "stop_capture": "stopping a capture (PipeWire producer)",
+        "capture_status": "the capture indicator (PipeWire producer)",
+        "list_capture_sources": (
+            "the capture source picker - also needs the compositor to enumerate "
+            "monitors and toplevels for it"
+        ),
+        # Dictation needs a speech engine, which this system does not have and has
+        # not decided to have. Listed so it is not mistaken for plumbing.
+        "dictation_status": "the dictation indicator (no speech engine)",
+        "stop_dictation": "stopping dictation (no speech engine)",
         "get_module_errors": (
             "module error reporting - called ONLY from ModulesPanel.svelte, which "
             "nothing mounts; do not build a backend for it without deciding whether "
@@ -106,7 +117,13 @@ KNOWN: dict[str, dict[str, str]] = {
             "the module list, same orphan panel. The live module surfaces use "
             "`modulesd_list_modules` in the shell and `modules_list` in Settings"
         ),
-        "list_jobs": "the jobs zone",
+        "list_jobs": (
+            "the jobs zone. Not a wiring gap: the store models a cross-daemon feed "
+            "(running / paused / impeded / recoverable / fatal, per-item lists, "
+            "real-unit metrics) and no daemon reports jobs in that shape. The "
+            "transfer daemon is one producer of many it would need. The missing "
+            "piece is a job-report contract, not a command"
+        ),
         "waypointer_ask": "asking the assistant from the launcher",
         "windows_file_install": "installing a Windows file",
         "windows_file_request": "the Windows file prompt",
