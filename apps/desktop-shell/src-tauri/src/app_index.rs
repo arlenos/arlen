@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use arlen_desktop_shell_core::launch::exec::{expand_exec, ExecContext, ExecError};
 use arlen_desktop_shell_core::launch::plan::{plan, Launch};
+use arlen_desktop_shell_core::launch::refusal::refusal_message;
 use serde::Serialize;
 
 /// A single application entry parsed from a `.desktop` file.
@@ -315,7 +316,7 @@ fn launch_argv(exec: &str) -> Result<Vec<String>, ExecError> {
 /// A config read error falls back to the unconfined default (the pre-feature
 /// behaviour); fail-closed-on-config-error is the gated go-live's concern.
 #[tauri::command]
-pub fn launch_app(exec: String, app_id: Option<String>) {
+pub fn launch_app(exec: String, app_id: Option<String>, app: tauri::AppHandle) {
     if exec.is_empty() {
         return;
     }
@@ -329,6 +330,14 @@ pub fn launch_app(exec: String, app_id: Option<String>) {
             log::error!(
                 "app_index: refusing to launch {}: its launcher entry is malformed ({e}): {exec}",
                 app_id.as_deref().unwrap_or("an application")
+            );
+            crate::quick_actions::emit_toast(
+                &app,
+                crate::quick_actions::ToastKind::Error,
+                format!(
+                    "{} did not start: its launcher entry is malformed.",
+                    app_id.as_deref().unwrap_or("The application")
+                ),
             );
             return;
         }
@@ -349,6 +358,14 @@ pub fn launch_app(exec: String, app_id: Option<String>) {
         Ok(p) => p,
         Err(e) => {
             log::error!("app_index: refusing to launch: nothing to run ({e:?}): {exec}");
+            crate::quick_actions::emit_toast(
+                &app,
+                crate::quick_actions::ToastKind::Error,
+                format!(
+                    "{} did not start: its launcher entry names no program to run.",
+                    app_id.as_deref().unwrap_or("The application")
+                ),
+            );
             return;
         }
     };
@@ -359,32 +376,69 @@ pub fn launch_app(exec: String, app_id: Option<String>) {
             app_id.as_deref().unwrap_or_default()
         ),
     }
+    let was_confined = matches!(planned, Launch::Confined(_));
+    let toast = app.clone();
+    let toast_launch_failure = move |message: &str| {
+        crate::quick_actions::emit_toast(
+            &toast,
+            crate::quick_actions::ToastKind::Error,
+            message.to_string(),
+        );
+    };
     let argv = planned.argv().to_vec();
+    let named = app_id.clone().unwrap_or_else(|| "The application".into());
     std::thread::spawn(move || {
+        // The confined path keeps stderr, because that is where `arlen-run`
+        // writes the reason it would not run something and the exit code alone
+        // cannot be told from an application's own. Everything else keeps the
+        // null it had: an ordinary program's stderr is not the shell's to
+        // collect, and reading it would mean holding the pipe for the life of
+        // the process.
         let child = std::process::Command::new(&argv[0])
             .args(&argv[1..])
             .stdin(null())
             .stdout(null())
-            .stderr(null())
+            .stderr(if was_confined {
+                std::process::Stdio::piped()
+            } else {
+                null()
+            })
             .spawn();
         // Wait for it, and say so when it fails. The spawn result alone only
         // reports whether the program could be started; it says nothing about a
         // program that starts and immediately refuses, which is precisely what
-        // `arlen-run` does when it will not confine a launch (a malformed app id
-        // exits 64, a missing profile 65) - and with stderr on /dev/null and the
-        // exit status dropped, that arrives at the user as an icon that does
-        // nothing at all. An ordinary application exits this way too, long after
-        // launch, so the message says the status rather than calling it a
-        // failure to start.
+        // `arlen-run` does when it will not confine a launch. An ordinary
+        // application exits non-zero too, long after launch, so only a refusal
+        // the launcher signed reaches the user - see `launch::refusal`.
         match child {
-            Err(e) => log::error!("app_index: could not start {}: {e}", argv[0]),
-            Ok(mut c) => match c.wait() {
-                Ok(status) if !status.success() => {
-                    log::warn!("app_index: exited with {status}: {argv:?}");
+            Err(e) => {
+                log::error!("app_index: could not start {}: {e}", argv[0]);
+                toast_launch_failure(&format!("{named} did not start: {e}"));
+            }
+            Ok(mut c) => {
+                let stderr = c
+                    .stderr
+                    .take()
+                    .map(|mut s| {
+                        let mut buf = String::new();
+                        let _ = std::io::Read::read_to_string(&mut s, &mut buf);
+                        buf
+                    })
+                    .unwrap_or_default();
+                match c.wait() {
+                    Ok(status) if !status.success() => {
+                        log::warn!("app_index: exited with {status}: {argv:?}");
+                        if let Some(message) =
+                            refusal_message(&named, was_confined, status.success(), &stderr)
+                        {
+                            log::error!("app_index: {message}");
+                            toast_launch_failure(&message);
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => log::warn!("app_index: could not wait for {}: {e}", argv[0]),
                 }
-                Ok(_) => {}
-                Err(e) => log::warn!("app_index: could not wait for {}: {e}", argv[0]),
-            },
+            }
         }
     });
 }
