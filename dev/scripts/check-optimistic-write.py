@@ -73,30 +73,41 @@ SKIP = ("/harness/", "/store/", "node_modules")
 # every line is a button that lies when its backend is down, and most of them have
 # no backend at all (see check-invoke-exists.py). An entry leaves this list when
 # the action is made honest, not when it is explained.
-KNOWN: dict[str, str] = {
+# File to (how many are there today, why). The COUNT is what keeps this a queue
+# rather than a hole: a file-keyed exception hides every new instance added to an
+# already-listed file, which is exactly what the opener check turned out to be
+# doing when it was re-proved on 9 August. A file that grows a new one fails,
+# and a file whose count drops asks to have its number lowered.
+KNOWN: dict[str, tuple[int, str]] = {
     "apps/settings/src/lib/stores/windows-apps.ts": (
+        2,
         "installExe, where the file picker and a failed install are the same "
         "exception - the same problem as installThemeFile"
     ),
     "apps/settings/src/lib/stores/models.ts": (
+        4,
         "setRole, startDownload, cancelDownload - arlen-ui's model picker is live "
         "work; named rather than skipped because the shape is identical"
     ),
     "apps/settings/src/lib/stores/appSettings.ts": (
+        1,
         "resolveOptions, whose fixture is DEV-gated and whose catch is not empty - "
         "matched by the proximity window rather than by being wrong"
     ),
     "apps/settings/src/lib/stores/themes.ts": (
+        1,
         "installThemeFile, where a cancelled file picker and a failed install "
         "arrive as the same exception - telling them apart needs an error shape "
         "the command does not return yet"
     ),
     "apps/desktop-shell/src/lib/stores/waypointerAsk.ts": (
+        1,
         "escalate mutates nothing: the store write this check sees belongs to the "
         "streaming function above it, inside the 500-character window. A failed "
         "Ctrl+J opens no window and claims nothing, which is quiet but not untrue"
     ),
     "apps/text-editor/src/lib/stores/lens.ts": (
+        1,
         "openRelated navigates rather than mutates - a failed open leaves the "
         "editor where it was, which is what happened"
     ),
@@ -119,6 +130,9 @@ def main() -> int:
     findings: list[str] = []
     known_hits = 0
     checked = 0
+    # How many instances each file has produced so far this run, so an entry's
+    # recorded count bounds it rather than excusing the file forever.
+    seen_per_file: dict[str, int] = {}
     files = sorted((ROOT / "apps").rglob("*.ts")) + sorted((ROOT / "apps").rglob("*.svelte"))
     for path in files:
         s = str(path)
@@ -139,7 +153,8 @@ def main() -> int:
                 continue
             if not STORE_WRITE.search(head[max(0, try_at - 500) : try_at]):
                 continue
-            if rel in KNOWN:
+            seen_per_file[rel] = seen_per_file.get(rel, 0) + 1
+            if rel in KNOWN and seen_per_file[rel] <= KNOWN[rel][0]:
                 known_hits += 1
                 continue
             line = head.count("\n") + 1
@@ -154,7 +169,7 @@ def main() -> int:
     print(
         f"{checked} catch block(s) checked for a mutation that failed silently after "
         f"an optimistic update. {known_hits} in {len(KNOWN)} known file(s) carried as "
-        f"a queue. Cannot see a revert's correctness, a component-level optimistic "
+        f"a queue, each bounded by its recorded count. Cannot see a revert's correctness, a component-level optimistic "
         f"write, or a catch that only logs."
     )
     if findings:
