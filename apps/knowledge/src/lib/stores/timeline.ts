@@ -280,11 +280,24 @@ export async function exportTimeline(): Promise<string | null> {
 
 /// Delete a recorded range for good. Live: `knowledge_timeline_delete` (seam);
 /// under vite the fixture drops the range locally, behind the mocked banner.
-export async function deleteRange(fromUnix: number): Promise<void> {
+///
+/// Returns whether the delete actually happened, and on a real failure it leaves
+/// the timeline ALONE. The catch used to drop the range locally whatever the
+/// command did, so a delete that never reached the graph cleared the screen and
+/// the user was told their history was gone while it sat on disk. That is the
+/// worst place in the app for a comfortable lie: the control says "for good", and
+/// the person clicking it is doing so because they mean it. The DEV branch keeps
+/// the local drop because under vite the whole store is a fixture behind the
+/// mocked banner - there is no graph to have failed.
+export async function deleteRange(fromUnix: number): Promise<boolean> {
   try {
     await invoke("knowledge_timeline_delete", { from: fromUnix });
     await loadTimeline();
+    return true;
   } catch {
+    if (!import.meta.env.DEV) {
+      return false;
+    }
     days.update((d) =>
       d
         ? d
@@ -295,5 +308,6 @@ export async function deleteRange(fromUnix: number): Promise<void> {
             .filter((day) => day.items.length > 0)
         : d
     );
+    return true;
   }
 }

@@ -104,6 +104,7 @@
   // the destructive confirm.
   let disclosureOpen = $state(false);
   let exportFailed = $state(false);
+  let deleteFailed = $state(false);
   /// Where the last export landed, so the line can name the file.
   let exportedTo = $state<string | null>(null);
 
@@ -115,7 +116,7 @@
   }
   async function confirmDelete(): Promise<void> {
     if (pendingDelete === null) return;
-    await deleteRange(pendingDelete.from);
+    deleteFailed = !(await deleteRange(pendingDelete.from));
     pendingDelete = null;
   }
 
@@ -169,6 +170,9 @@
       <div class="tl-disclosure">
         <p class="tl-statement">{$t("k.tl.statement")}</p>
         <p class="tl-statement-menu">{$t("k.tl.menuHint")}</p>
+        {#if deleteFailed}
+          <p class="tl-fail">{$t("k.tl.deleteFail")}</p>
+        {/if}
         {#if exportFailed}
           <p class="tl-fail">{$t("k.tl.exportFail")}</p>
         {:else if exportedTo}
