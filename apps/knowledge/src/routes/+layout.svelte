@@ -11,10 +11,14 @@
   import "../app.css";
   import { onMount } from "svelte";
   import { initArlenLocale } from "@arlen/ui-kit/i18n";
+  // The capability file has granted `theme_get` all along; without this call the
+  // app held the permission and stayed in the default palette.
+  import { initArlenTheme } from "@arlen/ui-kit/theme";
   let { children } = $props();
 
   onMount(() => {
     void initArlenLocale();
+    void initArlenTheme();
   });
 </script>
 
