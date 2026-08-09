@@ -37,6 +37,12 @@
   // keeps the mock/demo path (no Tauri runtime, or no file argument).
   let loaded = $state<Loaded | null>(null);
   let loadError = $state<string | null>(null);
+  // Opened by the real shell with no file to show. Distinct from the demo path
+  // below, and the distinction is the whole point: without it this window falls
+  // back to the mock and a shipped viewer shows a track called "Nightswim" with
+  // a waveform and a playhead at 1:13 of 3:40, none of which exists and none of
+  // which says so. Found on 9 August in the first desktop-width sweep.
+  let noFile = $state(false);
 
   function basename(p: string): string {
     return p.split("/").filter(Boolean).pop() ?? p;
@@ -50,7 +56,10 @@
     } catch {
       return; // no managed state / not the real shell - stay on the mock path
     }
-    if (!path) return;
+    if (!path) {
+      noFile = true;
+      return;
+    }
     const name = basename(path);
     try {
       const kind = await invoke<string>("detect_media_kind", { path });
@@ -100,6 +109,10 @@
   <div class="fill"><AudioPlayer file={loaded.file} /></div>
 {:else if loadError}
   <div class="fill err">{$t("v.couldNotOpen", { reason: loadError })}</div>
+{:else if noFile}
+  <!-- Before the demo branches on purpose: in the real shell an empty window is
+       an empty window, and the sample below is for the harness and the browser. -->
+  <div class="fill err">{$t("v.nothingOpen")}</div>
 {:else if framed}
   <div class="frame" style="width:{w}px;height:{h}px">
     {@render face(demo)}
