@@ -111,8 +111,7 @@
   const DEFAULT_ORDER = Object.keys(ARRANGEABLE);
   let arrangedApplets = $state(DEFAULT_ORDER);
 
-  onMount(async () => {
-    if (!isPrimary) return;
+  async function loadArrangement() {
     try {
       const items = await invoke<{ id: string; shown: boolean }[]>("topbar_items");
       const arranged = items
@@ -122,8 +121,18 @@
       // an empty bar, so the default stands rather than blanking the cluster.
       if (arranged.length > 0) arrangedApplets = arranged;
     } catch {
-      // Keep the default order.
+      // Keep the current order.
     }
+  }
+
+  onMount(async () => {
+    if (!isPrimary) return;
+    await loadArrangement();
+    // Re-read when the arrangement is saved elsewhere. Settings writes
+    // `topbar.toml` from its own process, so nothing in this one would
+    // otherwise notice: without this the bar kept its startup order until the
+    // next login, while the panel showed the new one.
+    unlistenArrangement = await listen("arlen://topbar-arrangement-changed", loadArrangement);
   });
 
   // Per-output context published to children (WorkspaceIndicator,
@@ -152,6 +161,7 @@
   });
 
   let unlistenOutputChanged: UnlistenFn | null = null;
+  let unlistenArrangement: UnlistenFn | null = null;
 
   /// Re-fetch the registry entry. Called from mount, on each
   /// `arlen://topbar-output-changed` event, AND on a 100 ms
@@ -204,6 +214,7 @@
 
   onDestroy(() => {
     unlistenOutputChanged?.();
+    unlistenArrangement?.();
   });
 </script>
 

@@ -9,8 +9,12 @@
 //! same config is the separate, metal-verified seam.
 
 use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
+use notify::{Event, EventKind, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter};
 
 use crate::sni::SniItems;
 
@@ -133,6 +137,106 @@ pub fn topbar_items(sni: tauri::State<'_, SniItems>) -> Result<Vec<TopbarItem>, 
     Ok(assemble(tray, &read_topbar_config()))
 }
 
+// ---------------------------------------------------------------------------
+// Live-reload watcher
+// ---------------------------------------------------------------------------
+
+/// The event the bar listens for to re-read the arrangement.
+pub const ARRANGEMENT_CHANGED: &str = "arlen://topbar-arrangement-changed";
+
+/// Does a filesystem event concern the arrangement file?
+///
+/// The watch is on the whole config directory, so `appearance.toml`,
+/// `shell.toml` and every other neighbour arrive here too and must be dropped:
+/// a theme save that bounced the bar would be a new bug traded for the old one.
+/// The atomic-write dance shows up as events on the temp name and on the target,
+/// so the filename is matched as well as the full path.
+fn touches_arrangement(paths: &[std::path::PathBuf], target: &std::path::Path) -> bool {
+    paths
+        .iter()
+        .any(|p| p == target || p.file_name().map(|n| n == "topbar.toml").unwrap_or(false))
+}
+
+/// Watch `~/.config/arlen/topbar.toml` and tell the bar when it changes.
+///
+/// Without this the bar reads the arrangement once, at startup: reordering an
+/// applet in Settings wrote the file, the panel showed the new order, and the
+/// bar kept the old one until the next login with nothing on screen saying so.
+/// A control that persists but does not take effect is worse than one that
+/// refuses, because it looks like it worked.
+///
+/// The event carries no payload. The bar re-invokes `topbar_items`, which
+/// merges the file with the live SNI tray - a payload built here would be the
+/// file half only, and the tray half would go stale on exactly the reload meant
+/// to freshen it.
+///
+/// Editors and the Settings writer both write atomically (tmp + rename), so the
+/// watch is on the parent directory with a filename filter; watching the file
+/// itself stops firing after the first rename replaces the inode. The debounce
+/// collapses the create/modify/rename burst of one save into one reload.
+///
+/// NOT covered: a change made while the shell is not running. That needs no
+/// event - the bar reads the file at startup anyway.
+pub fn start_topbar_watcher(app: AppHandle) {
+    let Some(target) = topbar_config_path() else {
+        log::warn!("topbar: no config dir to watch for arrangement changes");
+        return;
+    };
+    let Some(watch_dir) = target.parent().map(std::path::Path::to_path_buf) else {
+        log::warn!("topbar: topbar.toml has no parent dir");
+        return;
+    };
+    // The directory need not exist yet on a fresh install; create it so the
+    // watch can be established before the first save rather than after it.
+    let _ = std::fs::create_dir_all(&watch_dir);
+
+    std::thread::spawn(move || {
+        let app_clone = app.clone();
+        let last_fire = Mutex::new(Instant::now() - Duration::from_secs(1));
+
+        let mut watcher = match notify::recommended_watcher(move |event: Result<Event, _>| {
+            let Ok(event) = event else { return };
+            if !matches!(
+                event.kind,
+                EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
+            ) {
+                return;
+            }
+            if !touches_arrangement(&event.paths, &target) {
+                return;
+            }
+
+            {
+                let mut lf = last_fire.lock().unwrap();
+                if lf.elapsed() < Duration::from_millis(100) {
+                    return;
+                }
+                *lf = Instant::now();
+            }
+            // Let the rename settle before the bar reads the file back.
+            std::thread::sleep(Duration::from_millis(30));
+
+            let _ = app_clone.emit(ARRANGEMENT_CHANGED, ());
+        }) {
+            Ok(w) => w,
+            Err(e) => {
+                log::warn!("topbar: failed to create arrangement watcher: {e}");
+                return;
+            }
+        };
+
+        if let Err(e) = watcher.watch(&watch_dir, RecursiveMode::NonRecursive) {
+            log::warn!("topbar: failed to watch {}: {e}", watch_dir.display());
+            return;
+        }
+
+        // Keep the watcher alive for the life of the shell.
+        loop {
+            std::thread::sleep(Duration::from_secs(3600));
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     /// The inventory is what the arrangement panel offers, so an applet the bar
@@ -171,6 +275,30 @@ mod tests {
         assert!(!tray.shown, "a new tray item defaults to the overflow");
         assert_eq!(tray.kind, "tray");
         assert_eq!(tray.name, "X");
+    }
+
+    /// The watcher's filter, which decides whether a save bounces the bar.
+    ///
+    /// NOT covered here: that notify delivers the event at all. That rests on
+    /// watching the parent directory rather than the file, because the atomic
+    /// rename every writer here performs replaces the inode and a watch on the
+    /// file itself would go deaf after the first save. It is the same shape the
+    /// appearance watcher already live-reloads through.
+    #[test]
+    fn only_the_arrangement_file_bounces_the_bar() {
+        let target = std::path::PathBuf::from("/home/u/.config/arlen/topbar.toml");
+        assert!(touches_arrangement(&[target.clone()], &target));
+        // The neighbours that share the watched directory.
+        for neighbour in ["appearance.toml", "shell.toml", "graph.toml"] {
+            let p = target.with_file_name(neighbour);
+            assert!(!touches_arrangement(&[p], &target), "{neighbour} must not reload the bar");
+        }
+        // A save arrives as several paths at once; one match is enough.
+        assert!(touches_arrangement(
+            &[target.with_file_name("appearance.toml"), target.clone()],
+            &target
+        ));
+        assert!(!touches_arrangement(&[], &target));
     }
 
     #[test]
