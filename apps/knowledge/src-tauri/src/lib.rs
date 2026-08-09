@@ -39,6 +39,7 @@ pub fn run() {
             timeline::knowledge_timeline,
             export::knowledge_timeline_export,
             pause::knowledge_timeline_pause,
+            pause::knowledge_timeline_paused,
             settings_link::open_settings_route,
             searches::knowledge_searches,
             searches::knowledge_search_save

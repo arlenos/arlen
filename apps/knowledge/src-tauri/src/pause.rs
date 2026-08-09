@@ -62,6 +62,27 @@ pub async fn knowledge_timeline_pause(paused: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Is recording paused right now, according to the file the daemon reads?
+///
+/// The switch needs this on load. Persisting the pause means it survives a
+/// restart, and a surface that opens showing "recording" while the daemon is
+/// paused is the same lie as the one this pair was built to remove, pointing the
+/// other way - the user would think they are being recorded when they are not,
+/// and turn off something that is already off.
+///
+/// A missing or unreadable file answers `false`, matching the daemon's own
+/// default: it records unless told otherwise, and the surface should say what
+/// the daemon does rather than guess more cautiously than the truth.
+#[tauri::command]
+pub async fn knowledge_timeline_paused() -> Result<bool, String> {
+    let Ok(path) = graph_toml() else { return Ok(false) };
+    let Ok(text) = std::fs::read_to_string(&path) else { return Ok(false) };
+    let model = handler_for(Format::Toml)
+        .read(&text)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(matches!(model.get("timeline.paused"), Some(ConfigValue::Bool(true))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,6 +107,26 @@ mod tests {
         // user chose instead of leaving it to a default that could change.
         let out = set("[timeline]\npaused = true\n", false);
         assert!(out.contains("paused = false"), "{out}");
+    }
+
+    /// The read half, over the same handler the write half uses: a round trip
+    /// through the file is what the switch actually depends on.
+    fn reads_paused(text: &str) -> bool {
+        let model = handler_for(Format::Toml).read(text).expect("valid TOML");
+        matches!(model.get("timeline.paused"), Some(ConfigValue::Bool(true)))
+    }
+
+    #[test]
+    fn what_was_written_is_what_is_read_back() {
+        assert!(reads_paused(&set("", true)));
+        assert!(!reads_paused(&set("[timeline]\npaused = true\n", false)));
+    }
+
+    #[test]
+    fn a_config_without_the_section_reads_as_recording() {
+        // The direction matters: an absent key must not read as paused, or the
+        // switch would open claiming a pause nobody set.
+        assert!(!reads_paused("[projects]\nmax_depth = 2\n"));
     }
 
     #[test]

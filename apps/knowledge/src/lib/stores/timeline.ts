@@ -66,8 +66,11 @@ export const timelineMocked = writable(false);
 
 /// True when a real session could not read the timeline at all.
 export const timelineUnavailable = writable(false);
-/// Recording paused. Live state comes with the pause command; the toggle is
-/// optimistic under vite.
+/// Recording paused, as the daemon has it.
+///
+/// `loadPaused` fills this from `graph.toml` when the timeline loads, so the
+/// switch opens on the real state rather than assuming recording. The optimistic
+/// flip in `setPaused` is reverted when a write fails.
 export const paused = writable(false);
 
 /// True when the last pause or resume did not reach the daemon, so the switch
@@ -229,7 +232,26 @@ function fixture(): TimelineItem[] {
 
 /// Load the spine. Live: `knowledge_timeline` (the FUSE timeline + typed
 /// reads, a coder seam); fixture under vite.
+/// Read the real pause state before showing the switch.
+///
+/// The setting persists in `graph.toml`, so it survives a restart - which means
+/// a switch that always opens on "recording" would claim collection is running
+/// while the daemon has it stopped. That is the same lie as the one this control
+/// was fixed for, pointing the other way, and it only became possible once the
+/// pause became real. A failure leaves the switch where it is rather than
+/// guessing.
+export async function loadPaused(): Promise<void> {
+  try {
+    paused.set(await invoke<boolean>("knowledge_timeline_paused"));
+    pauseUnavailable.set(false);
+  } catch {
+    // Under vite there is no backend; on metal a failed read is not a reason to
+    // assert either state.
+  }
+}
+
 export async function loadTimeline(): Promise<void> {
+  void loadPaused();
   try {
     const items = await invoke<TimelineItem[]>("knowledge_timeline", {});
     days.set(groupByDay(items));
