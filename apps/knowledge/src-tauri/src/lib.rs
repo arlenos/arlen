@@ -19,6 +19,7 @@ mod projects;
 mod settings_link;
 mod provenance;
 mod search;
+mod searches;
 mod timeline;
 
 /// Build and run the app.
@@ -36,7 +37,9 @@ pub fn run() {
             search::knowledge_search,
             timeline::knowledge_timeline,
             export::knowledge_timeline_export,
-            settings_link::open_settings_route
+            settings_link::open_settings_route,
+            searches::knowledge_searches,
+            searches::knowledge_search_save
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Knowledge app");

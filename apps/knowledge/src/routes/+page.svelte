@@ -19,7 +19,7 @@
   import { labelKeyFor, emptyKeyFor } from "$lib/locations";
   import { days, flatEvents, loadTimeline, type TimelineEvent } from "$lib/stores/timeline";
   import { asOf, projectInfo, type ProjectInfo } from "$lib/stores/projects";
-  import { query as searchQuery, type SearchResult } from "$lib/stores/search";
+  import { query as searchQuery, loadSavedSearches, type SearchResult } from "$lib/stores/search";
   import type { LibraryEntry } from "$lib/stores/library";
   import { initAppMenu } from "$lib/menu";
   import { t } from "$lib/i18n/messages";
@@ -29,6 +29,9 @@
     // The projects detail reuses the timeline's events for its recent-activity
     // block, so both fixtures stay one story.
     void loadTimeline();
+    // The Searches place opens with what is on disk; it used to open with four
+    // searches nobody had saved.
+    void loadSavedSearches();
   });
 
   // The headless controller auto-loads its initial place (Timeline, the spine).

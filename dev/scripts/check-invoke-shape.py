@@ -387,9 +387,6 @@ DEAD_INVOKES: dict[str, str] = {
     "knowledge_library": (
         "the Knowledge app. Its Rust side exists; papers, books, notes and mail are bridge-ingested entities that are not graph nodes yet, so there is nothing to read"
     ),
-    "knowledge_search_save": (
-        "the Knowledge app. Its Rust side exists; a saved search needs somewhere to persist, which nothing defines yet"
-    ),
     "knowledge_timeline_pause": (
         "the Knowledge app. Its Rust side exists; pausing recording is a knowledge-daemon capability that does not exist - there is no switch to flip"
     ),
