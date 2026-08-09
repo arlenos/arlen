@@ -21,7 +21,11 @@ set -euo pipefail
 # to prevent, not demonstrate.
 gate_failed=0
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# The tree to check. Defaults to this checkout; an argument points it at a
+# throwaway one, which is what lets the gate be TESTED rather than trusted -
+# `test-check-units.mjs` builds trees where it must fail and trees where it must
+# not, and a gate nobody has watched fail is a gate nobody should believe.
+repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$repo_root"
 
 # Directive-only view of a unit: drop comments (# ...) and blank lines, so the
@@ -78,7 +82,7 @@ while IFS= read -r pkg; do
     diff <(directives "$canonical") <(directives "$pkg") | sed 's/^/  /' || true
     echo
   fi
-done < <(find dev/mkosi/mkosi.extra -name '*.service' -not -path '*.wants/*' | sort)
+done < <(find dev/mkosi/mkosi.extra -name '*.service' -not -path '*.wants/*' 2>/dev/null | sort)
 
 if [ "$drift" -ne 0 ]; then
   echo "FAIL: $drift packaged unit(s) drifted from their dist/ canonical (directives differ)."
@@ -167,9 +171,15 @@ built_checked=0
 installed_bins="$(mktemp)"
 trap 'rm -f "$installed_bins"' EXIT
 {
-  grep -hoE '\$DESTDIR"?/[a-zA-Z0-9/_.-]+' dev/mkosi/mkosi.build.d/*.chroot 2>/dev/null \
-    | sed 's/^\$DESTDIR"\?//'
-  grep -hoE '/usr/(bin|lib)/[a-zA-Z0-9/_.-]+' dev/mkosi/build-image.sh 2>/dev/null
+  # `|| true` on both: a tree without one of these staging mechanisms is a
+  # legitimate shape (a checkout mid-restructure, or the throwaway trees the
+  # self-test builds), and under `set -euo pipefail` a grep that matches nothing
+  # would abort the whole gate with no output at all - the silent-failure shape
+  # this script exists to prevent, in the script itself. Found by the self-test
+  # on its first run.
+  { grep -hoE '\$DESTDIR"?/[a-zA-Z0-9/_.-]+' dev/mkosi/mkosi.build.d/*.chroot 2>/dev/null \
+    | sed 's/^\$DESTDIR"\?//'; } || true
+  grep -hoE '/usr/(bin|lib)/[a-zA-Z0-9/_.-]+' dev/mkosi/build-image.sh 2>/dev/null || true
 } | sort -u > "$installed_bins"
 
 while read -r crate; do
@@ -220,7 +230,7 @@ while read -r crate; do
     # while its dangling symlink kept the gate green - which is worse than no
     # gate, because the symlink is precisely what makes systemd try to start a
     # unit that is not there. The drift check above already excludes them.
-    if ! find dev/mkosi/mkosi.extra -name "$base" -not -path '*.wants/*' | grep -q .; then
+    if ! find dev/mkosi/mkosi.extra -name "$base" -not -path '*.wants/*' 2>/dev/null | grep -q .; then
       missing_unit=$((missing_unit + 1))
       echo "UNPACKAGED UNIT: $base"
       echo "  the image builds $crate but ships no copy of its unit under mkosi.extra,"
@@ -253,6 +263,15 @@ fi
 # `arlen-modulesd.service` waited on `arlen-knowledge.service` for as long as the
 # knowledge daemon's unit has been called `arlen-graph.service`.
 missing_refs=0
+# The remaining gates enumerate units with `git ls-files`, which needs a
+# checkout. A throwaway tree is not one, so they are skipped there rather than
+# erroring out half-way with `fatal: not a git repository` and a bare
+# `basename: missing operand` - output that says nothing about units at all.
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "OK: skipping the git-enumerated unit gates (not a checkout)"
+    exit "$gate_failed"
+fi
+
 units=$(git ls-files '*.service' '*.socket' '*.timer' | xargs -n1 basename | sort -u)
 for f in $(git ls-files '*.service' '*.socket' '*.timer'); do
     for ref in $(grep -oP '^(After|Requires|Wants|BindsTo|PartOf|Before)=\K.*' "$f" 2>/dev/null |

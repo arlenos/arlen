@@ -744,6 +744,7 @@ check-executor:
     node "{{ROOT}}/dev/scripts/check-i18n-reactivity.mjs"
     python3 "{{ROOT}}/dev/scripts/check-invoke-shape.py"
     node "{{ROOT}}/dev/scripts/test-check-fixtures.mjs"
+    node "{{ROOT}}/dev/scripts/test-check-units.mjs"
 
 # Every declared grant has to reach the summary a person reads, or be listed with
 # the reason it is not reach. A grant nobody can see is a grant nobody can
