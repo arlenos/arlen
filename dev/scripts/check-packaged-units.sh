@@ -161,6 +161,17 @@ echo "OK: $netlink_checked sandbox-spawning unit(s) allow the netlink socket bwr
 missing_unit=0
 built_checked=0
 
+# Every binary the image actually installs, from both staging mechanisms. The
+# question this gate wants to ask is "does a daemon the image SHIPS have a unit",
+# and shipping is an install line, not a build line.
+installed_bins="$(mktemp)"
+trap 'rm -f "$installed_bins"' EXIT
+{
+  grep -hoE '\$DESTDIR"?/[a-zA-Z0-9/_.-]+' dev/mkosi/mkosi.build.d/*.chroot 2>/dev/null \
+    | sed 's/^\$DESTDIR"\?//'
+  grep -hoE '/usr/(bin|lib)/[a-zA-Z0-9/_.-]+' dev/mkosi/build-image.sh 2>/dev/null
+} | sort -u > "$installed_bins"
+
 while read -r crate; do
   [ -d "$crate" ] || continue
   # Every SYSTEMD unit the crate ships, whichever convention it uses (dist/ or
@@ -172,6 +183,36 @@ while read -r crate; do
     base="$(basename "$canonical")"
     case "$base" in
       org.*.service) continue ;;
+    esac
+    # Scope by the binary the unit actually starts, not by the crate a build
+    # phase mentions. `08q-apt-enroll` builds ONE package out of the installd
+    # workspace with `-p arlen-permission-helper` and installs ONE binary, but the
+    # crate-level read flagged all four of installd's units - three of which start
+    # binaries this image has never contained. A gate that reports three
+    # impossible failures beside one real one teaches people to skim it.
+    exec_bin="$(grep -m1 '^ExecStart=' "$canonical" | sed 's/^ExecStart=//' | awk '{print $1}')"
+    case "$exec_bin" in
+      /usr/bin/busctl|/bin/busctl)
+        # Started by talking to another daemon, so its own unit needs no binary
+        # of its own; it is in scope only if that daemon is.
+        continue ;;
+    esac
+    if [ -n "$exec_bin" ] && ! grep -qF "$exec_bin" "$installed_bins"; then
+      continue
+    fi
+    # Installed on purpose with no unit, and the reason is in the phase that does
+    # it: `08q-apt-enroll` ships the helper binary for the apt hook, which runs it
+    # as root inside apt with no bus and no systemd involved. Enabling the D-Bus
+    # half would be a privilege decision smuggled in behind a packaging change,
+    # so it is deliberately left to whoever makes that call. Printed every run,
+    # because an exception nobody sees is a silent failure with better manners.
+    case "$base" in
+      permission-helper.service)
+        echo "NO UNIT BY DESIGN (not failing): $base"
+        echo "  the image installs $exec_bin for the apt enrolment hook, which apt"
+        echo "  runs directly as root. The bus-served half needs a unit AND a"
+        echo "  policy file, and that is a privilege decision, not packaging."
+        continue ;;
     esac
     built_checked=$((built_checked + 1))
     # Not the *.target.wants/ enablement symlinks. They are named after the unit
