@@ -30,7 +30,14 @@
   } from "@arlen/ui-kit/components/ui/sidebar";
   import { Plus } from "lucide-svelte";
   import { t, dir } from "$lib/i18n/messages";
-  import { meetings, meetingsMocked, loadMeetings, meeting, fmtDate } from "$lib/stores/meeting";
+  import {
+    meetings,
+    meetingsMocked,
+    meetingsUnavailable,
+    loadMeetings,
+    meeting,
+    fmtDate,
+  } from "$lib/stores/meeting";
   import { locale } from "$lib/i18n/messages";
 
   let { children } = $props();
@@ -107,6 +114,11 @@
                  clickable, and a reader scanning them has no reason to look at
                  the pane that says "pick one". -->
             <p class="mt-sample">{$t("mt.sample.list")}</p>
+          {:else if $meetingsUnavailable}
+            <!-- Same place, for the same reason, and it is a different sentence:
+                 "these are examples" and "I could not read yours" are different
+                 facts and only one of them is about this machine. -->
+            <p class="mt-sample">{$t("mt.unavailable")}</p>
           {/if}
           <SidebarMenu>
             {#each $meetings as m (m.id)}

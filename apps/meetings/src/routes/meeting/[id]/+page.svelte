@@ -15,6 +15,7 @@
   import { t, dir } from "$lib/i18n/messages";
   import {
     meeting,
+    noteUnavailable,
     currentId,
     openMeeting,
     saveNotes,
@@ -87,10 +88,22 @@
         />
       {/snippet}
     </MeetingShell>
+  {:else if $noteUnavailable}
+    <!-- A note that could not be read is not an empty note. Before this
+         branch the page rendered the fixture note here - invented
+         participants and quotes under a real meeting's id, with the edit
+         controls writing against that id. -->
+    <p class="unavailable">{$t("mt.noteUnavailable")}</p>
   {/if}
 </div>
 
 <style>
+  .unavailable {
+    margin: 0;
+    padding: 2rem 1.5rem;
+    font-size: var(--text-sm);
+    color: var(--color-fg-secondary);
+  }
   .page {
     height: 100%;
     min-height: 0;

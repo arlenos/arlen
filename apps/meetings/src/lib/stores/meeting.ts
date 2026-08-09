@@ -47,6 +47,21 @@ export const meetings = writable<MeetingSummary[]>([]);
 /// True while the home list is the FIXTURE, not your real meetings.
 export const meetingsMocked = writable(false);
 
+/// True when a real session could not read the meetings at all.
+///
+/// Separate from `meetingsMocked`, and the separation is the whole point: one
+/// says "these are examples", the other says "there is nothing here and that is
+/// not a statement about your meetings". Until 9 August a real session with no
+/// engine got the fixture and the label, which reads as the first when it is the
+/// second - and the rows carry actions. A label does not rescue a fixture you can
+/// click: the click either does nothing, which is a lie about the control, or it
+/// does something to invented data, which is worse. Printers, clock and files all
+/// answered this the same way and for the same reason.
+export const meetingsUnavailable = writable(false);
+
+/// True when a real session could not read the open meeting's note.
+export const noteUnavailable = writable(false);
+
 /// Live capture state: the transcript as it streams in, the notes you type as the
 /// anchor, whether transcription is on (a separate, opt-outable step - recording
 /// and transcribing are different consents), and the elapsed time in ms.
@@ -116,9 +131,17 @@ export async function loadMeetings(): Promise<void> {
   try {
     meetings.set(await invoke<MeetingSummary[]>("meetings_list"));
     meetingsMocked.set(false);
+    meetingsUnavailable.set(false);
   } catch {
-    meetings.set(MEETINGS_FIXTURE);
-    meetingsMocked.set(true);
+    if (import.meta.env.DEV) {
+      meetings.set(MEETINGS_FIXTURE);
+      meetingsMocked.set(true);
+      meetingsUnavailable.set(false);
+      return;
+    }
+    meetings.set([]);
+    meetingsMocked.set(false);
+    meetingsUnavailable.set(true);
   }
 }
 
@@ -139,8 +162,18 @@ export async function openMeeting(id: string): Promise<void> {
       // The note still renders; every claim falls into the unanchored bucket.
     }
     meeting.set({ humanNotes, note, mocked: false });
+    noteUnavailable.set(false);
   } catch {
-    meeting.set({ humanNotes: FIXTURE.humanNotes, note: FIXTURE.note, mocked: true });
+    if (import.meta.env.DEV) {
+      meeting.set({ humanNotes: FIXTURE.humanNotes, note: FIXTURE.note, mocked: true });
+      noteUnavailable.set(false);
+      return;
+    }
+    // The note page is participants, claims and a transcript. Serving the fixture
+    // one here put invented quotes under a real meeting's id, and the page's own
+    // edit controls then wrote against that id.
+    meeting.set(null);
+    noteUnavailable.set(true);
   }
 }
 
@@ -295,7 +328,7 @@ export function startCapture(): void {
 /// Stop capturing and produce the note. Live: the summarize seam turns the
 /// transcript + your notes into a MeetingNote; under vite it resolves to the
 /// fixture. The caller navigates to the note route after.
-export async function stopCapture(): Promise<void> {
+export async function stopCapture(): Promise<boolean> {
   clearTimers();
   invoke("meeting_stop_capture").catch(() => {});
   const notes = get(liveNotes);
@@ -307,7 +340,22 @@ export async function stopCapture(): Promise<void> {
       humanNotes: notes,
     });
     meeting.set({ humanNotes: notes, note, mocked: false });
+    noteUnavailable.set(false);
+    return true;
   } catch {
-    meeting.set({ humanNotes: notes.trim() || FIXTURE.humanNotes, note: FIXTURE.note, mocked: true });
+    if (import.meta.env.DEV) {
+      meeting.set({ humanNotes: notes.trim() || FIXTURE.humanNotes, note: FIXTURE.note, mocked: true });
+      noteUnavailable.set(false);
+      return true;
+    }
+    // The sharpest of the three fixture paths, because of when it fires: the
+    // user has just recorded a meeting and typed their own notes, and a failed
+    // summarise handed back invented participants and invented quotes with those
+    // real notes attached. `liveNotes` is deliberately not cleared - whatever
+    // they typed is theirs and still on the capture surface - and the false
+    // return tells the caller not to navigate to a note that does not exist.
+    meeting.set(null);
+    noteUnavailable.set(true);
+    return false;
   }
 }
