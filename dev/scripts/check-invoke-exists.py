@@ -68,13 +68,22 @@ KNOWN: dict[str, dict[str, str]] = {
         "knowledge_timeline_pause": "pausing collection",
     },
     "settings": {
-        "browse_bottle_files": "the Windows-app bottle browser",
-        "clear_bottle_caches": "bottle cache clearing",
-        "delete_bottle": "deleting a bottle",
-        "install_windows_app": "installing a Windows app",
-        "list_bottles": "the bottle list",
-        "set_bottle_config": "bottle settings",
-        "set_windows_defaults": "the Windows-app defaults",
+        # The seven Windows-app entries are a different kind of missing from the
+        # rest of this list, and saying so keeps the count honest: **their surface
+        # is no longer reachable.** The page came off the navigation on 9 August
+        # because its backend is the Wine bottle daemon, which `wine-proton-plan.md`
+        # defers on purpose - a page whose subject does not exist rather than a page
+        # with dead buttons. The route, the store and the calls all still stand, so
+        # they still count here, but nobody can press them. Without this note the
+        # total reads as that many controls lying on screen, and seven of them are
+        # not on screen at all.
+        "browse_bottle_files": "the Windows-app bottle browser (surface off the navigation)",
+        "clear_bottle_caches": "bottle cache clearing (surface off the navigation)",
+        "delete_bottle": "deleting a bottle (surface off the navigation)",
+        "install_windows_app": "installing a Windows app (surface off the navigation)",
+        "list_bottles": "the bottle list (surface off the navigation)",
+        "set_bottle_config": "bottle settings (surface off the navigation)",
+        "set_windows_defaults": "the Windows-app defaults (surface off the navigation)",
         # The four printer entries that stood here are gone rather than fixed, and
         # the way they were wrong is worth keeping: the CUPS backend exists and
         # `printers_list`/`printers_default` reach it, so "this is just wiring" was
