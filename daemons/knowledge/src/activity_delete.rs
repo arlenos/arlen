@@ -246,6 +246,28 @@ mod tests {
         assert_eq!(count("MATCH (e:Event {id:'e-old'}) RETURN count(e)").await, 1);
     }
 
+    /// The audit obligation, pinned where it can be broken.
+    ///
+    /// The ruling asks that an audit entry referring to a deleted node still
+    /// reads. It does today, and the reason is narrow enough to be worth a test:
+    /// the only node reference an audit entry carries is `project_id`
+    /// (`StructuralView`; `node_types` holds TYPES, and the forensic tier holds
+    /// stored strings), and this delete never removes a `Project`. Widen it to
+    /// projects and the obligation stops holding for free - a reader that resolves
+    /// `project_id` would then have to say the subject was deleted rather than
+    /// break or drop the row.
+    #[test]
+    fn no_project_node_is_ever_deleted_here() {
+        for s in deletion_statements(1) {
+            let deletes = s.contains("DELETE");
+            assert!(
+                !(deletes && s.contains(":Project")),
+                "audit entries reference projects by id; deleting one needs the \
+                 dangling-reference half of the ruling first: {s}"
+            );
+        }
+    }
+
     #[test]
     fn nothing_touches_a_project_membership_edge() {
         // FILE_PART_OF is the one edge that must survive: it is what the user
