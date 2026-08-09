@@ -1017,6 +1017,17 @@ fn journal_undo_ops(ops: &[UndoableOp]) {
     }
     let socket = arlen_ai_undo_proto::socket_path();
     if !socket.exists() {
+        // Its sibling below logs a failed submission; this path returned without a
+        // word, and it is the one that happens - the image binds nothing to that
+        // socket today, so the durable record is missing for every operation and
+        // there is no trace of why. Ctrl+Z is unaffected: `files_undo` pops the
+        // in-process `UndoStack`, so what is lost is the cross-session record a
+        // future history panel would read, not this session's undo.
+        eprintln!(
+            "files: no undo journal at {} - this session's Ctrl+Z still works, \
+             the durable record does not",
+            socket.display()
+        );
         return;
     }
     tauri::async_runtime::spawn(async move {
