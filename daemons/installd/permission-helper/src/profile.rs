@@ -44,7 +44,7 @@ pub fn profile_path_in(base: &Path, uid: u32, app_id: &str) -> PathBuf {
     base.join(uid.to_string()).join(format!("{app_id}.toml"))
 }
 
-/// Validate an app_id: reverse-domain notation over `[A-Za-z0-9._-]`, no path
+/// Validate an app_id: `[A-Za-z0-9._-]`, no path
 /// traversal. Deferred to the profile loaders' `arlen_permissions::is_valid_app_id`
 /// rather than restated, because the two MUST agree in both directions and a
 /// restatement is what let them drift apart.

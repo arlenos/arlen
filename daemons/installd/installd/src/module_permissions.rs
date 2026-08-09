@@ -260,7 +260,11 @@ mod tests {
     fn permission_profile_path_rejects_a_traversal_id() {
         // A `..`/separator id can never build a path outside the permissions dir,
         // and write/remove_profile propagate the rejection instead of touching disk.
-        for bad in ["../evil", "../../etc/x", "/etc/x", "a/b", "", "nodots"] {
+        // `nodots` used to be in this list, riding along on a reverse-domain rule
+        // `validate_app_id` no longer has. It was never a traversal case, which is
+        // what this test is about; a module id without a dot is now accepted, and
+        // the path safety it does assert is unchanged.
+        for bad in ["../evil", "../../etc/x", "/etc/x", "a/b", ""] {
             assert!(
                 permission_profile_path(bad).is_err(),
                 "{bad:?} must be rejected as an invalid module id"
