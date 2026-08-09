@@ -120,6 +120,33 @@ check(
   (code, out) => code !== 0 && out.includes("open_thing"),
 );
 
+// Both drift directions on the inventory, using the real one: `apps/knowledge`
+// carries entries, and an app named `knowledge` in a throwaway tree is measured
+// against them. The direction that bit was the second one - the gate simply
+// stopped counting a fixed command and the entry sat there forever, so the total
+// read as debt that someone had already paid.
+check(
+  "an inventory entry whose command now exists is reported",
+  tree({
+    "apps/knowledge/package.json": "{}",
+    "apps/knowledge/src/lib/x.ts": 'await invoke("knowledge_library");\n',
+    "apps/knowledge/src-tauri/src/lib.rs": HOST.replace(/open_thing/g, "knowledge_library"),
+  }),
+  (code, out) => code !== 0 && out.includes("knowledge_library") && out.includes("now registers it"),
+);
+
+check(
+  "an inventory entry with neither a call nor a command stays quiet",
+  // Carried, still missing, still invoked: the ordinary state of the inventory,
+  // which must not fail the check or the count would be unusable.
+  tree({
+    "apps/knowledge/package.json": "{}",
+    "apps/knowledge/src/lib/x.ts": 'await invoke("knowledge_library");\n',
+    "apps/knowledge/src-tauri/src/lib.rs": "// no host commands here\n",
+  }),
+  (code) => code === 0,
+);
+
 check(
   "an app with no host at all does not crash the gate",
   tree({

@@ -744,6 +744,45 @@ impl UnixGraphClient {
         }
     }
 
+    /// Delete the user's own recorded activity at or after `from` (Unix seconds),
+    /// for good, and answer how many nodes went.
+    ///
+    /// This is the one call that permanently destroys graph nodes rather than
+    /// closing them (`bitemporal-knowledge-graph.md`, ruled 9 August): the
+    /// activity is the user's own data, and the audit ledger that keeps the SYSTEM
+    /// accountable is a different store, untouched here. The daemon admits one
+    /// principal, the knowledge app, and audits the act before carrying it out, so
+    /// any other caller gets [`QueryError::PermissionDenied`] and nothing is
+    /// deleted.
+    ///
+    /// An error means the range is still there. Callers must not clear their view
+    /// on a failure: the control that reaches this promises the range is gone, and
+    /// showing an empty timeline over a delete that did not happen is the worst
+    /// available lie.
+    pub async fn delete_activity(&self, from: i64) -> Result<u64, QueryError> {
+        let req = serde_json::json!({ "op": "delete_activity", "from": from });
+        let json = serde_json::to_vec(&req).map_err(|e| QueryError::InvalidQuery(e.to_string()))?;
+
+        // A leading 0x02 byte selects the daemon's structured write mode.
+        let mut body = Vec::with_capacity(json.len() + 1);
+        body.push(0x02);
+        body.extend_from_slice(&json);
+
+        let bytes = self.round_trip(&body, MAX_WRITE_RESPONSE_BYTES).await?;
+        let response = String::from_utf8_lossy(&bytes);
+        Self::check_error(&response)?;
+        response
+            .trim()
+            .strip_prefix("OK: deleted ")
+            .and_then(|n| n.parse::<u64>().ok())
+            .ok_or_else(|| {
+                QueryError::InvalidQuery(format!(
+                    "unexpected daemon write response: {}",
+                    response.trim()
+                ))
+            })
+    }
+
     /// Merge a duplicate entity instance into a canonical one via the write
     /// socket (SHARED-ENTITIES.md §Merge Flow): the daemon re-points every edge of
     /// the duplicate onto the canonical and deletes the duplicate, atomically.
