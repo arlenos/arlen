@@ -34,6 +34,13 @@
 #      takes the server down, and the next shot is a "Connection refused" page -
 #      written successfully, exit code 0, and worthless. The screenshot existing
 #      is not evidence that the app was in it.
+#
+# What it does NOT get right, found 9 August: [w] and [h] are passed on and the
+# browser ignores them. Every shot this script has produced is 372 CSS px wide,
+# which is a phone, so the desktop layout of these panels has never appeared in
+# one. `shoot.py` now prints the viewport it actually rendered at on every run -
+# read that line before drawing a conclusion about spacing or alignment. Set
+# SHOOT_REQUIRE_WIDTH to be refused rather than handed a narrow-layout render.
 
 set -euo pipefail
 
