@@ -21,6 +21,7 @@ pub mod permission;
 pub mod project;
 pub mod provenance;
 pub mod retrieval;
+pub mod timeline_config;
 pub mod revoke;
 pub mod quota;
 pub mod schema;
