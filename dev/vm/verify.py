@@ -339,10 +339,10 @@ def card_left_the_dom(serial_path):
 
     The shell logs `[frontend] consent: card for N is out of the DOM` when the
     card is actually gone, so the serial log settles it. Measured on the
-    2026-08-09 image: that line is present, no frame is painted after it, and
-    the card is still in the capture - so the resolve leg is fine and the stale
-    frame is the whole bug. Before this, the gate blamed the resolve leg and
-    would have sent the next reader to the wrong half of the system.
+    2026-08-09 image: that line is present and the card is still in the capture,
+    so the resolve leg is fine and the stale pixels are the whole bug. Before
+    this, the gate blamed the resolve leg and would have sent the next reader to
+    the wrong half of the system.
     """
     if not serial_path or not os.path.exists(serial_path):
         return None
