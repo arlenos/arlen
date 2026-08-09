@@ -16,10 +16,18 @@
 #
 # Usage:  dev/scripts/probe-webview-sandbox.sh target/debug/arlen-system-monitor
 #         dev/scripts/probe-webview-sandbox.sh <binary> off    # negative control
+#         PROBE_WAYLAND=1 dev/scripts/probe-webview-sandbox.sh target/debug/arlen-desktop-shell
 #
 # The second form runs with WEBKIT_FORCE_SANDBOX=0 and must report NOT contained.
 # A probe that says "contained" either way proves nothing, so run both before
 # believing the first.
+#
+# The third form is for the desktop shell, which is a wlr-layer-shell client and
+# cannot come up on a bare X server - under Xvfb it reports "no web process
+# appeared", which is inconclusive and reads like a pass to anyone skimming. It
+# boots the real compositor nested through `dev/screenshot/shoot-compositor.sh`
+# and hosts the app under that, so the same comparison happens against a shell
+# that actually started. Slower, and it needs the compositor repo built.
 #
 # Not in CI: it needs a built Tauri binary, an X server and about ten seconds.
 
@@ -43,28 +51,65 @@ command -v Xvfb >/dev/null || { echo "Xvfb is not installed" >&2; exit 2; }
 # A verification that silently measures history is worse than no verification, so
 # an app whose source is newer than its binary stops here rather than producing a
 # verdict about a build nobody is shipping.
+#
+# Only the Rust side is compared. What decides this verdict is one line in
+# `main.rs`, and the frontend cannot affect it; refusing because a stylesheet
+# moved would be a guard people learn to skip.
 APP_DIR=$(printf '%s' "$BIN" | sed 's#.*/##; s/^arlen-//; s/-app$//')
-for candidate in "apps/$APP_DIR/src-tauri/src" "apps/$APP_DIR/src"; do
-  [ -d "$candidate" ] || continue
-  newer=$(find "$candidate" -newer "$BIN" -name '*.rs' -o -newer "$BIN" -name '*.svelte' 2>/dev/null | head -1)
+HOST="apps/$APP_DIR/src-tauri/src"
+if [ -d "$HOST" ]; then
+  newer=$(find "$HOST" -name '*.rs' -newer "$BIN" 2>/dev/null | head -1)
   if [ -n "$newer" ]; then
     echo "stale binary: $BIN is older than $newer" >&2
     echo "rebuild it, or the verdict describes a build that no longer exists" >&2
     exit 2
   fi
-done
-
-Xvfb "$DISPLAY_NUM" -screen 0 1280x800x24 >/tmp/probe-xvfb.log 2>&1 &
-XVFB=$!
-sleep 2
-
-if [ "$MODE" = "off" ]; then
-  env DISPLAY="$DISPLAY_NUM" WEBKIT_FORCE_SANDBOX=0 "$BIN" >/tmp/probe-app.log 2>&1 &
-else
-  env DISPLAY="$DISPLAY_NUM" "$BIN" >/tmp/probe-app.log 2>&1 &
 fi
-APP=$!
-sleep "$SETTLE"
+
+WAYLAND="${PROBE_WAYLAND:-0}"
+
+if [ "$WAYLAND" = "1" ]; then
+  # The compositor harness brings its own Xvfb and its own settle, and it hosts
+  # the app as a Wayland client. We are one of its two consumers, so it runs in
+  # the background and we look at the tree while the client is alive.
+  # The client inherits this process's environment, so the negative control still
+  # reaches it. Without this line `off` would be accepted and quietly ignored on
+  # this path, and a probe that cannot fail is not evidence of anything.
+  [ "$MODE" = "off" ] && export WEBKIT_FORCE_SANDBOX=0
+  SHOOT_SETTLE=$((SETTLE + 6)) SHOOT_CLIENT_LOG=/tmp/probe-app.log \
+    bash "$(dirname "$0")/../screenshot/shoot-compositor.sh" \
+      /tmp/probe-webview-sandbox.png "$BIN" >/tmp/probe-compositor.log 2>&1 &
+  HARNESS=$!
+  XVFB=""
+  sleep "$((SETTLE + 8))"
+else
+  Xvfb "$DISPLAY_NUM" -screen 0 1280x800x24 >/tmp/probe-xvfb.log 2>&1 &
+  XVFB=$!
+  sleep 2
+
+  if [ "$MODE" = "off" ]; then
+    env DISPLAY="$DISPLAY_NUM" WEBKIT_FORCE_SANDBOX=0 "$BIN" >/tmp/probe-app.log 2>&1 &
+  else
+    env DISPLAY="$DISPLAY_NUM" "$BIN" >/tmp/probe-app.log 2>&1 &
+  fi
+  APP=$!
+  HARNESS=""
+  sleep "$SETTLE"
+fi
+
+# Under the compositor the app is the harness's grandchild, not our child, so the
+# pid has to be looked up. `comm` is truncated to 15 characters by the kernel,
+# which is why this matches a prefix rather than the whole name - a lookup by
+# full command line matches this script's own arguments instead, and reports the
+# probe's namespaces as the app's.
+if [ "$WAYLAND" = "1" ]; then
+  want=$(printf '%s' "${BIN##*/}" | cut -c1-15)
+  APP=""
+  for d in /proc/[0-9]*; do
+    [ "$(cat "$d/comm" 2>/dev/null)" = "$want" ] && APP="${d#/proc/}" && break
+  done
+  APP="${APP:-0}"
+fi
 
 # The report is piped through `tee`, which runs it in a subshell, so the verdict
 # cannot come back in a variable - it goes through a file. Found by reading the
@@ -110,7 +155,10 @@ echo 2 >"$VERDICT_FILE"
 
 kill "$APP" 2>/dev/null
 sleep 1
-kill "$XVFB" 2>/dev/null
+[ -n "$XVFB" ] && kill "$XVFB" 2>/dev/null
+# The compositor harness tears down its own compositor and Xvfb when it finishes
+# its capture; killing it mid-run would leave those behind, so it is waited out.
+[ -n "$HARNESS" ] && wait "$HARNESS" 2>/dev/null
 wait 2>/dev/null
 verdict=$(cat "$VERDICT_FILE")
 rm -f "$VERDICT_FILE"
