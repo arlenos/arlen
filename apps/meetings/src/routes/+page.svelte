@@ -15,7 +15,12 @@
     {:else if $meetingsUnavailable}
       <p class="sample">{$t("mt.unavailable")}</p>
     {/if}
-    <p class="hint">{$meetings.length === 0 ? $t("mt.empty") : $t("mt.pickHint")}</p>
+    <!-- Same three states. When the read failed the sentence above already says
+         so, and adding "No meetings yet" underneath would answer a question we
+         just said we could not answer. -->
+    {#if !$meetingsUnavailable}
+      <p class="hint">{$meetings.length === 0 ? $t("mt.empty") : $t("mt.pickHint")}</p>
+    {/if}
     <Button id="start-meeting" onclick={() => goto("/capture")}>{$t("mt.start")}</Button>
   </div>
 </div>
