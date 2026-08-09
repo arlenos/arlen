@@ -1,4 +1,5 @@
 mod app_history;
+mod consent_window;
 mod app_index;
 mod printers;
 mod app_state;
@@ -318,10 +319,18 @@ pub fn run() {
                 log::error!("waypointer: window creation failed: {e}");
             }
 
+            // The consent card's own surface. It needs to be its own window
+            // because keyboard interactivity is only honoured at map time, which
+            // the top bar cannot satisfy; see `consent_window`.
+            if let Err(e) = consent_window::create_window(app.handle()) {
+                log::error!("consent_window: window creation failed: {e}");
+            }
+
             #[cfg(target_os = "linux")]
             {
                 let window_clone = app.get_webview_window("main").unwrap();
                 let wp_clone = app.get_webview_window("waypointer");
+                let consent_clone = app.get_webview_window("consent");
                 let app_for_bars = app.handle().clone();
                 let registry_for_bars = Arc::clone(&output_bar_registry);
                 let table_for_bars = Arc::clone(&output_connector_table);
@@ -331,6 +340,9 @@ pub fn run() {
                     }
                     if let Some(wp) = wp_clone {
                         waypointer::init_layer_shell(wp);
+                    }
+                    if let Some(cw) = consent_clone {
+                        consent_window::init_layer_shell(cw);
                     }
                     // Discover secondary monitors via GDK and spawn
                     // a layer-shell-bound bar window per output. The
