@@ -71,12 +71,17 @@ pub fn init_layer_shell(window: WebviewWindow) {
             return;
         };
 
-        // No RGBA visual is set here on purpose. An earlier version did, on the
-        // theory that the surface was compositing opaque; the boot after it
-        // measured `depth=Some(32)` on this window AND on the waypointer, which
-        // sets no visual of its own, so Tauri already provides one and the calls
-        // changed nothing. Removed rather than left in with a reason the
-        // measurement had disproven.
+        // No RGBA visual: measured `depth=Some(32)` here and on the waypointer,
+        // which sets none of its own, so Tauri already provides one.
+        //
+        // `app_paintable` IS set, and separating it from that visual is the point.
+        // The two went in together and came out together, so the depth
+        // measurement only ever spoke to the visual. This is the other half: with
+        // it false, GTK paints its own theme ground and tells the compositor the
+        // surface is opaque, and an opaque surface is composited by replacement -
+        // which would put pure black under a 50% dim exactly as measured, whatever
+        // depth the visual has.
+        gtk_window.set_app_paintable(true);
 
         gtk_window.init_layer_shell();
         gtk_window.set_layer(Layer::Overlay);
