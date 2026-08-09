@@ -69,22 +69,28 @@ export const lens = writable<LensState>({ ...FIXTURE, mocked: true });
 /// Load the lens for a file. Live: the three graph queries; fixture under vite.
 export async function loadLens(ref: string): Promise<void> {
   try {
-    const [provenance, related, project] = await Promise.all([
-      invoke<ProvenanceStep[]>("provenance_of", { ref }),
-      invoke<Backlink[]>("related_of", { ref }),
-      invoke<ProjectContext | null>("project_of", { ref }),
-    ]);
-    lens.set({ provenance, related, project, mocked: false });
+    // Only provenance is asked for. `related_of` and `project_of` named commands
+    // that live in the FILES app's binary, so those two calls could never have
+    // succeeded from here - and the edges they want (backlinks, project
+    // membership) are refused by the knowledge daemon's read gate to a caller
+    // that is not system-anchored anyway. Asking for all three failed the whole
+    // load and dropped the panel to its fixture every time, including the part
+    // that could have been real.
+    const provenance = await invoke<ProvenanceStep[]>("provenance_of", { ref });
+    lens.set({ provenance, related: FIXTURE.related, project: FIXTURE.project, mocked: true });
   } catch {
     lens.set({ ...FIXTURE, mocked: true });
   }
 }
 
-/// Open a related file in the editor. Live seam: a cross-file open.
+/// Open a related file in the editor.
+///
+/// It used to invoke `open_file`, a command the MEETINGS app defines - a call
+/// that could only ever be rejected. This app's own reader is `editor_open`.
 export async function openRelated(file: string): Promise<void> {
   try {
-    await invoke("open_file", { file });
+    await invoke("editor_open", { path: file });
   } catch {
-    // no engine under vite
+    // Nothing opened, and the editor is where it was - which is what happened.
   }
 }

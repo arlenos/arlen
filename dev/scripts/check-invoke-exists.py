@@ -149,9 +149,7 @@ KNOWN: dict[str, dict[str, str]] = {
     "text-editor": {
         "Authorize": "the AI-edit gate call",
         "ai_edit": "proposing an assistant edit",
-        "open_file": "opening a file from the lens",
         "project_of": "the lens project section",
-        "provenance_of": "the lens provenance section",
         "related_of": "the lens backlinks",
     },
     "harness": {
