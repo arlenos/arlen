@@ -349,12 +349,31 @@ pub fn launch_app(exec: String, app_id: Option<String>) {
     }
     let argv = planned.argv().to_vec();
     std::thread::spawn(move || {
-        let _ = std::process::Command::new(&argv[0])
+        let child = std::process::Command::new(&argv[0])
             .args(&argv[1..])
             .stdin(null())
             .stdout(null())
             .stderr(null())
             .spawn();
+        // Wait for it, and say so when it fails. The spawn result alone only
+        // reports whether the program could be started; it says nothing about a
+        // program that starts and immediately refuses, which is precisely what
+        // `arlen-run` does when it will not confine a launch (a malformed app id
+        // exits 64, a missing profile 65) - and with stderr on /dev/null and the
+        // exit status dropped, that arrives at the user as an icon that does
+        // nothing at all. An ordinary application exits this way too, long after
+        // launch, so the message says the status rather than calling it a
+        // failure to start.
+        match child {
+            Err(e) => log::error!("app_index: could not start {}: {e}", argv[0]),
+            Ok(mut c) => match c.wait() {
+                Ok(status) if !status.success() => {
+                    log::warn!("app_index: exited with {status}: {argv:?}");
+                }
+                Ok(_) => {}
+                Err(e) => log::warn!("app_index: could not wait for {}: {e}", argv[0]),
+            },
+        }
     });
 }
 
