@@ -264,11 +264,13 @@ kg-seed:
 integration:
     cargo test --manifest-path "{{justfile_directory()}}/integration/Cargo.toml"
 
-# Start the desktop shell under the nested compositor and check that it came up
-# without panicking and that its launch socket answers. The unit tests, the
-# structural checks and the IT-1 nightly all pass while the shell panics on every
-# start - that happened, for as long as the launch socket existed - because none
-# of them start it. Needs the compositor repo built.
+# `smoke` for the desktop, which `smoke` cannot reach: the shell is a
+# wlr-layer-shell client, so it needs the nested compositor rather than a bare
+# socket check. Same purpose exactly - the unit tests, the structural checks and
+# the IT-1 nightly all passed while the shell panicked on every single start, for
+# as long as the launch socket existed, because none of them start it.
+# Needs the compositor repo built.
+# Start the shell and check it came up without panicking and that it serves.
 shell-smoke:
     bash "{{ROOT}}/dev/scripts/smoke-shell.sh"
 
