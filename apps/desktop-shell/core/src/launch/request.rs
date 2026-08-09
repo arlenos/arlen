@@ -84,14 +84,18 @@ pub enum LaunchError {
 /// desktop entry by its id, and answers `None` for one that is not installed,
 /// which is also what makes the handler lookup skip a stale default.
 ///
-/// `confined` is the launcher flag, and it reaches [`plan`] unchanged - this
-/// composes the pieces, it does not add a policy of its own.
+/// `confined` is the launcher flag and `has_profile` answers the per-app rule
+/// for the entry's app id; both reach [`plan`] unchanged - this composes the
+/// pieces, it does not add a policy of its own. `has_profile` is a closure for
+/// the same reason `entry` and `mime_of` are: it is a filesystem lookup, and
+/// keeping it injected is what lets this be tested without one.
 pub fn resolve(
     request: &LaunchRequest,
     mimeapps: &[MimeApps],
     entry: impl Fn(&str) -> Option<Entry>,
     mime_of: impl Fn(&Target) -> Option<String>,
     confined: bool,
+    has_profile: impl Fn(&str) -> bool,
 ) -> Result<Launch, LaunchError> {
     let (app, targets) = match request {
         LaunchRequest::App { app_id, targets } => {
@@ -148,7 +152,7 @@ pub fn resolve(
     // `expand_exec` has already refused an empty result, so this arm is not
     // reachable from here today. Mapped rather than unwrapped because that is a
     // fact about the current expander, not a guarantee of the signature.
-    plan(confined, Some(&app.app_id), &argv).map_err(|e| match e {
+    plan(confined, Some(&app.app_id), has_profile(&app.app_id), &argv).map_err(|e| match e {
         NotLaunchable::EmptyArgv => LaunchError::NothingToRun {
             app_id: app.app_id.clone(),
         },
@@ -204,7 +208,7 @@ mod tests {
             mime: Some("image/png".into()),
         };
         assert_eq!(
-            resolve(&r, &m, catalog, no_sniff, false),
+            resolve(&r, &m, catalog, no_sniff, false, |_| true),
             Ok(Launch::Direct(vec!["viewer".into(), "/tmp/a.png".into()]))
         );
     }
@@ -216,7 +220,7 @@ mod tests {
             targets: vec![],
         };
         assert_eq!(
-            resolve(&r, &[], catalog, no_sniff, false),
+            resolve(&r, &[], catalog, no_sniff, false, |_| true),
             Ok(Launch::Direct(vec!["editor".into()]))
         );
     }
@@ -231,7 +235,7 @@ mod tests {
             mime: Some("image/png".into()),
         };
         assert_eq!(
-            resolve(&r, &m, catalog, no_sniff, true),
+            resolve(&r, &m, catalog, no_sniff, true, |_| true),
             Ok(Launch::Confined(vec![
                 "arlen-run".into(),
                 "--app-id".into(),
@@ -256,7 +260,8 @@ mod tests {
                 &[],
                 catalog,
                 no_sniff,
-                false
+                false,
+                |_| true
             ),
             Err(LaunchError::NoHandler {
                 mime: "application/x-nothing".into()
@@ -274,7 +279,7 @@ mod tests {
             mime: Some("image/png".into()),
         };
         assert_eq!(
-            resolve(&r, &m, catalog, no_sniff, false),
+            resolve(&r, &m, catalog, no_sniff, false, |_| true),
             Ok(Launch::Direct(vec!["viewer".into(), "/tmp/a.png".into()]))
         );
     }
@@ -290,7 +295,8 @@ mod tests {
                 &[],
                 catalog,
                 no_sniff,
-                false
+                false,
+                |_| true
             ),
             Err(LaunchError::UnknownApplication {
                 app_id: "nope.desktop".into()
@@ -311,7 +317,8 @@ mod tests {
                 &[],
                 broken,
                 no_sniff,
-                false
+                false,
+                |_| true
             ),
             Err(LaunchError::MalformedEntry {
                 app_id: "org.x.Broken".into(),
@@ -332,7 +339,8 @@ mod tests {
                 &[],
                 empty,
                 no_sniff,
-                false
+                false,
+                |_| true
             ),
             Err(LaunchError::NothingToRun {
                 app_id: "org.x.Empty".into()
@@ -350,7 +358,7 @@ mod tests {
             mime: Some("text/plain".into()),
         };
         assert_eq!(
-            resolve(&r, &m, catalog, no_sniff, false),
+            resolve(&r, &m, catalog, no_sniff, false, |_| true),
             Ok(Launch::Direct(vec![
                 "viewer".into(),
                 "/tmp/; rm -rf ~".into()

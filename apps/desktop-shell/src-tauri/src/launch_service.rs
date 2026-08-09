@@ -129,6 +129,15 @@ async fn handle(mut stream: UnixStream) -> Result<(), String> {
         |id| search::load_entry(&env, id),
         mime_of,
         confined,
+        // Per-app confinement, same rule and same source as the launcher's:
+        // `profile_paths` lists every path the loader consults, so an app the
+        // system holds no profile for is not routed through `arlen-run` and
+        // cannot be stopped by turning the flag on.
+        |id| {
+            arlen_permissions::profile_paths(id)
+                .iter()
+                .any(|p| p.exists())
+        },
     );
 
     // Before the act, not after: a record written afterwards is a record that a

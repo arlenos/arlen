@@ -115,6 +115,7 @@ pub fn serve(
     entry: impl Fn(&str) -> Option<Entry>,
     mime_of: impl Fn(&arlen_launch_contract::Target) -> Option<String>,
     confined: bool,
+    has_profile: impl Fn(&str) -> bool,
 ) -> Served {
     let refuse = |outcome: LaunchOutcome, word: &'static str| Served {
         outcome,
@@ -130,7 +131,7 @@ pub fn serve(
         return refuse(LaunchOutcome::Refused, "refused:unresolved-caller");
     }
 
-    match resolve(request, mimeapps, entry, mime_of, confined) {
+    match resolve(request, mimeapps, entry, mime_of, confined, has_profile) {
         Ok(launch) => {
             // The resolved application, which for an `Open` is not what the
             // caller named - it named a document.
@@ -294,6 +295,7 @@ mod tests {
             catalog,
             no_sniff,
             false,
+            |_| true,
         );
         assert!(s.launch.is_some());
         assert_eq!(s.audit.caller, "unresolved");
@@ -307,7 +309,9 @@ mod tests {
             app_id: "viewer.desktop".into(),
             targets: vec![],
         };
-        let s = serve(&r, &Caller::Unnamed, &[], catalog, no_sniff, false);
+        let s = serve(&r, &Caller::Unnamed, &[], catalog, no_sniff, false, |_| {
+            true
+        });
         assert_eq!(s.outcome, LaunchOutcome::Refused);
         assert!(s.launch.is_none());
         assert_eq!(s.audit.outcome, "refused:unresolved-caller");
@@ -319,6 +323,7 @@ mod tests {
             catalog,
             no_sniff,
             false,
+            |_| true,
         );
         assert!(ok.launch.is_some());
         assert_eq!(ok.audit.caller, "files");
@@ -336,7 +341,15 @@ mod tests {
             mime: None,
         };
         let sniff = |_: &Target| Some("image/png".to_string());
-        let s = serve(&r, &Caller::Unnamed, &handlers(), catalog, sniff, false);
+        let s = serve(
+            &r,
+            &Caller::Unnamed,
+            &handlers(),
+            catalog,
+            sniff,
+            false,
+            |_| true,
+        );
         assert!(s.launch.is_some());
         assert_eq!(s.audit.started.as_deref(), Some("viewer"));
     }
@@ -352,7 +365,15 @@ mod tests {
             },
             mime: None,
         };
-        let s = serve(&r, &Caller::Unnamed, &handlers(), catalog, no_sniff, false);
+        let s = serve(
+            &r,
+            &Caller::Unnamed,
+            &handlers(),
+            catalog,
+            no_sniff,
+            false,
+            |_| true,
+        );
         assert!(matches!(s.outcome, LaunchOutcome::NoHandler { .. }));
         assert!(s.launch.is_none());
     }
@@ -368,6 +389,7 @@ mod tests {
             catalog,
             no_sniff,
             false,
+            |_| true,
         );
         assert_eq!(s.audit.caller, "unresolved");
         assert!(!s.audit.caller.is_empty());
@@ -399,6 +421,7 @@ mod tests {
             catalog,
             no_sniff,
             true,
+            |_| true,
         );
         assert_eq!(s.audit.caller, "org.arlen.Files");
         assert_eq!(s.audit.started.as_deref(), Some("org.arlen.Viewer"));
@@ -415,6 +438,7 @@ mod tests {
             catalog,
             no_sniff,
             true,
+            |_| true,
         );
         let event = launch_event(&s.audit);
         assert_eq!(event.kind, audit_proto::AuditKind::AppAction);
@@ -439,7 +463,15 @@ mod tests {
             app_id: "nope.desktop".into(),
             targets: vec![],
         };
-        let s = serve(&r, &Caller::Unnamed, &handlers(), catalog, no_sniff, false);
+        let s = serve(
+            &r,
+            &Caller::Unnamed,
+            &handlers(),
+            catalog,
+            no_sniff,
+            false,
+            |_| true,
+        );
         let event = launch_event(&s.audit);
         assert_eq!(event.structural.node_types, ["unresolved"]);
         assert_eq!(event.structural.outcome, "refused:unresolved-caller");
@@ -471,6 +503,7 @@ mod tests {
             catalog,
             no_sniff,
             true,
+            |_| true,
         );
         let line = format!("{:?}", s.audit);
         assert!(
@@ -510,6 +543,7 @@ mod tests {
                 catalog,
                 no_sniff,
                 false,
+                |_| true,
             );
             assert!(s.launch.is_none());
             assert_eq!(s.audit.outcome, word);
@@ -535,6 +569,7 @@ mod tests {
             catalog,
             no_sniff,
             false,
+            |_| true,
         );
         assert_eq!(
             s.outcome,
@@ -551,7 +586,15 @@ mod tests {
             app_id: "x.desktop".into(),
             targets: vec![],
         };
-        let s = serve(&r, &Caller::Named("x".into()), &[], broken, no_sniff, false);
+        let s = serve(
+            &r,
+            &Caller::Named("x".into()),
+            &[],
+            broken,
+            no_sniff,
+            false,
+            |_| true,
+        );
         match s.outcome {
             LaunchOutcome::MalformedEntry { app_id, reason } => {
                 assert_eq!(app_id, "org.x.Broken");
