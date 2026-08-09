@@ -155,6 +155,12 @@ impl SocketServer {
 /// currently skips the consent gate.
 const ADMITTED: &[&str] = &["desktop-shell", "settings"];
 
+/// The same two as a cargo target dir resolves them, debug only. EXACT, never a
+/// `dev.` prefix: every locally-built binary resolves to some `dev.<bin>`, so the
+/// prefix this replaced admitted all of them to drive the module runtime.
+#[cfg(debug_assertions)]
+const ADMITTED_DEV: &[&str] = &["dev.arlen-desktop-shell", "dev.arlen-settings"];
+
 /// Resolve the connecting peer and admit it, or `None` to refuse.
 ///
 /// Same-uid only, from the kernel-attested credential rather than anything the
@@ -176,7 +182,24 @@ fn admitted_peer(stream: &UnixStream) -> Option<String> {
 /// resolution is kernel work, but which ids are allowed is policy and policy is
 /// what regresses.
 fn is_admitted_id(app_id: &str) -> bool {
-    ADMITTED.contains(&app_id) || (cfg!(debug_assertions) && app_id.starts_with("dev."))
+    if ADMITTED.contains(&app_id) {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    if ADMITTED_DEV.contains(&app_id) || dev_extra_admits(app_id) {
+        return true;
+    }
+    false
+}
+
+
+/// A debug-only test affordance, mirroring the audit daemon's: a test sets
+/// `ARLEN_MODULESD_EXTRA_ADMIT` to ONE extra dev id (its own cargo-run `dev.<test>` id, which is
+/// hash-suffixed and so cannot be a static entry) to exercise this path as
+/// itself. EXACT, never a broad `dev.` prefix, and never in a release build.
+#[cfg(debug_assertions)]
+fn dev_extra_admits(app_id: &str) -> bool {
+    std::env::var("ARLEN_MODULESD_EXTRA_ADMIT").is_ok_and(|v| v == app_id)
 }
 
 async fn handle_connection(

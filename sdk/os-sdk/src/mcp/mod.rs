@@ -74,11 +74,28 @@ const AI_ENGINE_APP_ID: &str = "ai-agent";
 /// cargo target directory and resolves to a `dev.*` id (the engine
 /// included), so those are admitted too for local development; the
 /// branch compiles out of release builds.
+
+/// A debug-only test affordance, mirroring the audit daemon's: a test sets
+/// `ARLEN_MCP_EXTRA_ADMIT` to ONE extra dev id (its own cargo-run `dev.<test>` id, which is
+/// hash-suffixed and so cannot be a static entry) to exercise this path as
+/// itself. EXACT, never a broad `dev.` prefix, and never in a release build.
+#[cfg(debug_assertions)]
+fn dev_extra_admits(app_id: &str) -> bool {
+    std::env::var("ARLEN_MCP_EXTRA_ADMIT").is_ok_and(|v| v == app_id)
+}
+
 fn caller_is_admitted(app_id: &str) -> bool {
     if app_id == AI_ENGINE_APP_ID {
         return true;
     }
-    cfg!(debug_assertions) && app_id.starts_with("dev.")
+    // EXACT, never the whole `dev.` prefix: every locally-built binary resolves
+    // to some `dev.<bin>`, so a prefix match admits all of them to every
+    // first-party MCP server rather than the one client that has a reason.
+    #[cfg(debug_assertions)]
+    if app_id == "dev.arlen-ai-engine-daemon" || dev_extra_admits(app_id) {
+        return true;
+    }
+    false
 }
 
 /// Errors raised while setting up or running an MCP server socket.
@@ -323,6 +340,21 @@ where
 
 #[cfg(test)]
 mod tests {
+
+    /// Admit THIS test binary for the duration of the run.
+    ///
+    /// The admission list is exact now, and a test binary resolves to a
+    /// hash-suffixed `dev.<test>` id that no static list can carry - the same
+    /// reason the audit daemon grew its own extra-admit. Setting it here rather
+    /// than loosening the list keeps the tightening honest: the affordance is
+    /// debug-only, exact, and names one id.
+    fn admit_self() {
+        let exe = std::fs::read_link("/proc/self/exe").expect("read own exe link");
+        if let Ok(id) = arlen_permissions::identity::path_to_app_id(&exe) {
+            // SAFETY: the test process sets this for itself before it connects.
+            unsafe { std::env::set_var("ARLEN_MCP_EXTRA_ADMIT", id) };
+        }
+    }
     use super::*;
     use rmcp::handler::server::router::tool::ToolRouter;
     use rmcp::{tool, tool_handler, tool_router, ServerHandler};
@@ -399,6 +431,7 @@ mod tests {
 
     #[tokio::test]
     async fn served_socket_is_reachable_and_mode_0600() {
+        admit_self();
         use std::os::unix::fs::PermissionsExt;
 
         let unique = std::time::SystemTime::now()
@@ -515,6 +548,7 @@ mod tests {
 
     #[tokio::test]
     async fn stale_socket_is_replaced() {
+        admit_self();
         let socket = temp_socket("stale");
         std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
 

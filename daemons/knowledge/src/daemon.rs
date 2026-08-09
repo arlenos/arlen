@@ -2122,8 +2122,10 @@ fn consent_grant_writer_admitted(app_id: &str) -> bool {
     if app_id == "consent-broker" {
         return true;
     }
+    // EXACT: the Grant label is daemon-internal, and a prefix match would let any
+    // locally-built binary write consent grants for any app.
     #[cfg(debug_assertions)]
-    if app_id.starts_with("dev.") {
+    if app_id == "dev.arlen-consent-broker" {
         return true;
     }
     false

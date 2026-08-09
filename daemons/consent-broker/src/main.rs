@@ -121,7 +121,8 @@ const GRANT_MGMT_ADMITTED: &[&str] = &["settings"];
 fn control_caller_admitted(app_id: &str) -> bool {
     CONTROL_ADMITTED.contains(&app_id)
         || GRANT_MGMT_ADMITTED.contains(&app_id)
-        || (cfg!(debug_assertions) && app_id.starts_with("dev."))
+        || (cfg!(debug_assertions)
+            && (CONTROL_ADMITTED_DEV.contains(&app_id) || GRANT_MGMT_ADMITTED_DEV.contains(&app_id)))
 }
 
 /// Whether `app_id` may drive THIS specific control op. The shell (and a debug

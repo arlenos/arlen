@@ -63,8 +63,10 @@ fn mint_caller_admitted(app_id: &str) -> bool {
     if app_id == "harness" || app_id == "settings" {
         return true;
     }
+    // EXACT: a prefix match would admit every locally-built binary to mint a
+    // capsule, and mint is the one operation this gate exists for.
     #[cfg(debug_assertions)]
-    if app_id.starts_with("dev.") {
+    if matches!(app_id, "dev.arlen-harness" | "dev.arlen-settings") {
         return true;
     }
     false
