@@ -104,10 +104,18 @@ pub fn init_layer_shell(window: WebviewWindow) {
             gtk_window.input_shape_combine_region(Some(&empty));
         }
 
+        // Visual depth and compositing, because the page has been exonerated by
+        // measurement: it reports html and body transparent and the overlay at
+        // exactly rgba(0,0,0,0.5), yet 88.6% of the frame is PURE black, and a 50%
+        // dim over a wallpaper cannot be pure black. So the surface under the page
+        // is what is black. A 32-bit visual means the surface can carry alpha; 24
+        // means it cannot, whatever the page does. The waypointer is transparent
+        // in the same frame, so this line exists to be compared against its own.
         log::info!(
-            "consent_window::init_layer_shell: is_layer_window={} layer={:?}",
+            "consent_window::init_layer_shell: is_layer_window={} layer={:?} depth={:?}",
             gtk_window.is_layer_window(),
             gtk_window.layer(),
+            WidgetExt::visual(&gtk_window).map(|v| v.depth()),
         );
     }) {
         log::error!("consent_window: init_layer_shell failed: {e}");

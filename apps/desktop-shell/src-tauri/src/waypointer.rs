@@ -88,6 +88,13 @@ pub fn init_layer_shell(window: tauri::WebviewWindow) {
             gtk_window.input_shape_combine_region(Some(&empty));
         }
 
+        // Depth and compositing, as the control for the consent window's own line:
+        // this surface demonstrably shows the desktop through at 94% non-black,
+        // so whatever it reports is what a working one looks like.
+        log::info!(
+            "waypointer::init_layer_shell: depth={:?}",
+            WidgetExt::visual(&gtk_window).map(|v| v.depth()),
+        );
         log::info!(
             "waypointer::init_layer_shell: is_layer_window={} layer={:?} title={:?} alloc={}x{}",
             gtk_window.is_layer_window(),
