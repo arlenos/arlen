@@ -389,6 +389,7 @@ fn main() -> ExitCode {
         std::path::Path::new("/usr"),
         &inputs.app_dirs,
         &inputs.masked_dirs,
+        &inputs.read_only_dirs,
         env,
         inputs.network,
         plumbing,
