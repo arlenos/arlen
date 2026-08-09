@@ -67,6 +67,24 @@ CATCH = re.compile(r"\}\s*catch\b[^{]*\{", re.S)
 STORE_WRITE = re.compile(r"\.(set|update)\(")
 COMMENT = re.compile(r"/\*.*?\*/", re.S)
 
+# The blind spot, found by reading rather than by this check, on 9 August: the
+# INVERSE shape, where the catch performs the mutation itself. The timeline's
+# "delete this range for good" called the command, and on failure its catch
+# dropped the range from the store - so a delete that never reached the graph
+# cleared the screen and told the user their history was gone. This check cannot
+# see it, because it looks for an EMPTY catch after an optimistic write and that
+# catch was full.
+#
+# It is not mechanically separable either, and the measurement says so: 14 catch
+# blocks in the tree mutate through `.update(` without a DEV gate, and the ones
+# sampled are correct REVERTS or error-flag writes - `topbar.update(s => ({...s,
+# error}))`, `keybindings` the same. A revert and a fake success are the same
+# syntax; only the direction differs, and the direction is semantic. Flagging the
+# shape would fire on the right code, which is how a check stops being read.
+#
+# So it is written down here rather than gated, and the way it gets found is a
+# person reading a catch on a control that promises something irreversible.
+
 SKIP = ("/harness/", "/store/", "node_modules")
 
 # The ones that were already there, worst first. This is a queue, not an alibi:
