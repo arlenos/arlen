@@ -227,7 +227,9 @@ pub struct HandoffTarget {
 /// audit and revoke admissions use, so a cargo-run Settings works without
 /// widening the release rule.
 pub fn handoff_caller_admitted(app_id: &str) -> bool {
-    app_id == "settings" || (cfg!(debug_assertions) && app_id.starts_with("dev."))
+    // EXACT: a handoff opens a window on another app's behalf, so a prefix match
+    // would hand that authority to every locally-built binary.
+    app_id == "settings" || (cfg!(debug_assertions) && app_id == "dev.arlen-settings")
 }
 
 /// One declared setting.
