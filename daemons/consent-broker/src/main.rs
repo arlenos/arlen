@@ -127,12 +127,35 @@ fn control_caller_admitted(app_id: &str) -> bool {
 /// Whether `app_id` may drive THIS specific control op. The shell (and a debug
 /// `dev.` id) may drive all ops; a [`GRANT_MGMT_ADMITTED`] caller (`settings`) may
 /// drive only `ListGrants` / `RevokeGrant`, never `Fetch` / `Resolve`.
+/// The cargo-run ids of the admitted callers, accepted only in debug builds.
+///
+/// EXACT, never a `dev.` prefix match, which is what this used to be. Every
+/// locally-built binary resolves to some `dev.<bin>`, so the prefix admitted all
+/// of them - including, in a debug build, to ANSWER PROMPTS, which is the one
+/// thing the split between these two lists exists to deny anything but the shell.
+/// The audit ingest, the undo signer and the transfer daemon had each already
+/// moved off this shape for the same reason.
+#[cfg(debug_assertions)]
+const CONTROL_ADMITTED_DEV: &[&str] = &["dev.arlen-desktop-shell"];
+
+/// The same, for the grant-management half.
+#[cfg(debug_assertions)]
+const GRANT_MGMT_ADMITTED_DEV: &[&str] = &["dev.arlen-settings"];
+
 fn control_op_admitted(app_id: &str, request: &ControlRequest) -> bool {
     if CONTROL_ADMITTED.contains(&app_id) {
         return true;
     }
-    if cfg!(debug_assertions) && app_id.starts_with("dev.") {
+    #[cfg(debug_assertions)]
+    if CONTROL_ADMITTED_DEV.contains(&app_id) {
         return true;
+    }
+    #[cfg(debug_assertions)]
+    if GRANT_MGMT_ADMITTED_DEV.contains(&app_id) {
+        return matches!(
+            request,
+            ControlRequest::ListGrants | ControlRequest::RevokeGrant { .. }
+        );
     }
     if GRANT_MGMT_ADMITTED.contains(&app_id) {
         return matches!(

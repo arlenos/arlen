@@ -2062,8 +2062,12 @@ fn meeting_caller_admitted(app_id: &str) -> bool {
     if app_id == "meetings" || app_id == "ai-agent" {
         return true;
     }
+    // EXACT, never a `dev.` prefix: every locally-built binary resolves to some
+    // `dev.<bin>`, so a prefix match admits all of them to another app's meeting
+    // notes. The sibling gates in this file, the audit ingest and the transfer
+    // daemon all key on an exact list for exactly this reason.
     #[cfg(debug_assertions)]
-    if app_id.starts_with("dev.") {
+    if matches!(app_id, "dev.arlen-meetings" | "dev.arlen-ai-engine-daemon" | "dev.arlen-ai-agent") {
         return true;
     }
     false
