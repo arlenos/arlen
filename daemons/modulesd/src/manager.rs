@@ -32,7 +32,7 @@ use crate::runtime::{
     CrashState, Recovery,
 };
 use crate::socket::protocol::{
-    ErrorCode, Event, ModuleSummary, ModuleTier, Request, Response, SearchResult,
+    ErrorCode, Event, ModuleSummary, ModuleTier, Request, Response, WireSearchResult,
 };
 
 /// One row in the manager's module table.
@@ -103,7 +103,7 @@ const SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 /// single very slow module cannot stretch shell-side latency.
 const SEARCH_ALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
 
-/// Max bytes per `SearchResult` text field. Mirrors the equivalent
+/// Max bytes per `WireSearchResult` text field. Mirrors the equivalent
 /// cap on the legacy in-process `WaypointerPlugin::max_results`
 /// shape. A module that returns longer fields gets them truncated
 /// with an ellipsis marker; the truncation is logged but does **not**
@@ -266,14 +266,14 @@ fn cap_field(s: String) -> String {
 }
 
 /// Translate the WIT-generated `search-result` list returned by a
-/// Tier 1 module into the wire-protocol `SearchResult` type. Applies
+/// Tier 1 module into the wire-protocol `WireSearchResult` type. Applies
 /// `max_results` truncation, per-field 4 KB cap, and `relevance`
 /// clamping in one pass.
 fn wit_to_proto_results(
     module_id: &str,
     wit_results: Vec<crate::runtime::wit::exports::arlen::waypointer::provider::SearchResult>,
     max_results: usize,
-) -> Vec<SearchResult> {
+) -> Vec<WireSearchResult> {
     use crate::runtime::wit::exports::arlen::waypointer::provider::Action as WitAction;
     use crate::socket::protocol::SearchAction;
 
@@ -293,7 +293,7 @@ fn wit_to_proto_results(
                     data: cap_field(c.data),
                 },
             };
-            SearchResult {
+            WireSearchResult {
                 id: cap_field(r.id),
                 title: cap_field(r.title),
                 description: r.description.map(cap_field),
@@ -306,10 +306,10 @@ fn wit_to_proto_results(
         .collect()
 }
 
-/// Translate a wire-protocol `SearchResult` back into the WIT type
+/// Translate a wire-protocol `WireSearchResult` back into the WIT type
 /// for the guest's `execute(hit: search-result)` call.
 fn proto_to_wit_result(
-    r: &SearchResult,
+    r: &WireSearchResult,
 ) -> crate::runtime::wit::exports::arlen::waypointer::provider::SearchResult {
     use crate::runtime::wit::exports::arlen::waypointer::provider::{
         Action as WitAction, CustomAction, SearchResult as WitResult,
@@ -1168,7 +1168,7 @@ impl Manager {
             })
             .collect();
 
-        let mut all: Vec<SearchResult> = Vec::new();
+        let mut all: Vec<WireSearchResult> = Vec::new();
         let mut budget_hit = false;
         loop {
             let next = tokio::time::timeout_at(deadline, pending.next()).await;
@@ -1245,7 +1245,7 @@ impl Manager {
         module_id: &str,
         query: &str,
         max_results: usize,
-    ) -> std::result::Result<Vec<SearchResult>, SearchFailure> {
+    ) -> std::result::Result<Vec<WireSearchResult>, SearchFailure> {
         let instance = self
             .ensure_tier1_instance(module_id)
             .await
@@ -1288,7 +1288,7 @@ impl Manager {
         &self,
         id: &str,
         module_id: &str,
-        result: SearchResult,
+        result: WireSearchResult,
     ) -> Response {
         // Resolve module + Tier check up-front. Fail fast on a Tier 2
         // module: execute() is meaningless there because Tier 2 has
