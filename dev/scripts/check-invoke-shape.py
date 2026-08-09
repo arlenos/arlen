@@ -412,8 +412,6 @@ DEAD_INVOKES: dict[str, str] = {
     # apps/text-editor is the same shape as apps/knowledge: a frontend with no
     # src-tauri, so these three have nowhere to live yet - needs the same decision
     "ai_edit": "apps/text-editor has no src-tauri; the app has no Rust side to define them in",
-    "project_of": "apps/text-editor has no src-tauri; the app has no Rust side to define them in",
-    "related_of": "apps/text-editor has no src-tauri; the app has no Rust side to define them in",
     # These three read as unattributed from the call site and are not: each
     # surface's own header names the plan and says it is fixture-backed until the
     # command lands. Read the file, not just the line.
