@@ -30,9 +30,7 @@ pub async fn run(consumer_socket: &str, pool: SqlitePool) -> Result<()> {
     // about its threshold), so a change takes effect on restart and the app's
     // switch keeps reporting that it could not pause - which is true until the
     // live path exists.
-    let paused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
-        crate::timeline_config::TimelineConfig::load().paused,
-    ));
+    let paused = crate::timeline_config::paused_flag();
     tokio::spawn(crate::timeline_config::watch_paused(paused.clone()));
     if paused.load(std::sync::atomic::Ordering::Relaxed) {
         info!("graph.toml [timeline] paused = true; events are read and discarded, nothing is stored");

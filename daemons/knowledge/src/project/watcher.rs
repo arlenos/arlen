@@ -138,6 +138,18 @@ impl ProjectWatcher {
         dir: &Path,
         signal: &crate::project::signals::DetectionSignal,
     ) -> anyhow::Result<bool> {
+        // Detection is collection. The timeline's Pause switch says "Nothing is
+        // added until you resume", and a project node derived from watching
+        // someone's directories is something added - so this collector honours the
+        // same flag the event writer does, or the promise is only half kept.
+        //
+        // Scoped to NEW detection on purpose: projects already known keep working,
+        // including Focus Mode and the launcher. Pausing is meant to stop the
+        // system learning more about you, not to take away what it already has.
+        if crate::timeline_config::is_paused() {
+            return Ok(false);
+        }
+
         let root_path = dir.to_string_lossy().to_string();
 
         if let Some(existing) = self.store.get_by_root_path(&root_path).await? {
