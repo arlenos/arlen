@@ -72,9 +72,13 @@ export const paused = writable(false);
 
 /// True when the last pause or resume did not reach the daemon, so the switch
 /// went back to what it was. Recording that continues while the surface says
-/// "paused" is the worst failure this app has, and it is the one the optimistic
-/// flip produced on every real session: the daemon has no pause command at all,
-/// so the call always threw and the toggle always stayed where the user put it.
+/// "paused" is the worst failure this app has.
+///
+/// It used to be the normal case: there was no pause command at all, so the call
+/// always threw and an optimistic flip left the toggle wherever the user put it.
+/// Both halves exist now - the app writes `[timeline] paused` and the daemon
+/// stops admitting events - so this flag means what it says: a write that failed,
+/// and recording that really is still running.
 export const pauseUnavailable = writable(false);
 
 function localMidnight(unix: number): number {
@@ -248,8 +252,15 @@ export async function loadTimeline(): Promise<void> {
   }
 }
 
-/// Pause or resume recording. Live: `knowledge_timeline_pause` (seam); the
-/// optimistic flip stands under vite, behind the mocked banner.
+/// Pause or resume recording.
+///
+/// `knowledge_timeline_pause` writes `[timeline] paused` into `graph.toml`, and
+/// the knowledge daemon follows that file while it runs and drops events at the
+/// point they would enter the store - so the switch means what its label says,
+/// "Nothing is added until you resume", rather than filtering a view.
+///
+/// One honest lag: the daemon re-reads the file every couple of seconds, so a
+/// flip takes effect within that window rather than on the same tick.
 export async function setPaused(value: boolean): Promise<void> {
   const previous = get(paused);
   paused.set(value);
@@ -258,9 +269,10 @@ export async function setPaused(value: boolean): Promise<void> {
     await invoke("knowledge_timeline_pause", { paused: value });
   } catch {
     if (import.meta.env.DEV) return; // no backend under vite
-    // The daemon has no pause today, so this is the live path: put the switch
-    // back and say so. Leaving it flipped would tell someone their activity is
-    // no longer being recorded while it is.
+    // A failed write, now that the backend exists: put the switch back and say
+    // so. Leaving it flipped would tell someone their activity is no longer
+    // being recorded while it is - which is the one thing this control must
+    // never do.
     paused.set(previous);
     pauseUnavailable.set(true);
   }
