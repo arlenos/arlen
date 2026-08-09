@@ -333,7 +333,19 @@ pub fn launch_app(exec: String, app_id: Option<String>) {
             return;
         }
     };
-    let planned = match plan(confined, app_id.as_deref(), &argv) {
+    // Per-app confinement: only an application the system holds a profile for is
+    // routed through the launcher. `profile_paths` returns every path the loader
+    // consults, so this answer cannot disagree with what `arlen-run` finds a
+    // moment later.
+    let has_profile = app_id
+        .as_deref()
+        .map(|id| {
+            arlen_permissions::profile_paths(id)
+                .iter()
+                .any(|p| p.exists())
+        })
+        .unwrap_or(false);
+    let planned = match plan(confined, app_id.as_deref(), has_profile, &argv) {
         Ok(p) => p,
         Err(e) => {
             log::error!("app_index: refusing to launch: nothing to run ({e:?}): {exec}");
