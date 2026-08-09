@@ -332,6 +332,7 @@ export const a: Catalogs = {
     "s.header.appName": "Settings",
     // Shared
     "s.err.readPaused": "Can't read these settings right now. Changes are paused.",
+    "s.err.notSaved": "That change was not saved. The control shows what you set; the system still has the old value.",
     // Mouse
     "s.mouse.title": "Mouse",
     "s.mouse.desc": "Pointer acceleration and scroll direction for external mice.",
@@ -1138,6 +1139,7 @@ export const a: Catalogs = {
     "s.header.breadcrumb": "Breadcrumb",
     "s.header.appName": "Einstellungen",
     "s.err.readPaused": "Diese Einstellungen können gerade nicht gelesen werden. Änderungen sind pausiert.",
+    "s.err.notSaved": "Diese Änderung wurde nicht gespeichert. Das Bedienelement zeigt Ihre Eingabe, das System hat weiterhin den alten Wert.",
     "s.mouse.title": "Maus",
     "s.mouse.desc": "Zeigerbeschleunigung und Scrollrichtung für externe Mäuse.",
     "s.mouse.behavior": "Verhalten",

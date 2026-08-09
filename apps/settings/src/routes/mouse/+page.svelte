@@ -94,7 +94,9 @@
     </Section>
 
     {#if $mouse.error}
-      <div class="span-full error-box" title={$mouse.error}>{$t("s.err.readPaused")}</div>
+      <div class="span-full error-box" title={$mouse.error}>
+        {$mouse.errorKind === "write" ? $t("s.err.notSaved") : $t("s.err.readPaused")}
+      </div>
     {/if}
   </SectionGrid>
 </Page>
