@@ -5,13 +5,15 @@
   import { goto } from "$app/navigation";
   import { Button } from "@arlen/ui-kit/components/ui/button";
   import { t, dir } from "$lib/i18n/messages";
-  import { meetings, meetingsMocked } from "$lib/stores/meeting";
+  import { meetings, meetingsMocked, meetingsUnavailable } from "$lib/stores/meeting";
 </script>
 
 <div class="home" dir={$dir}>
   <div class="home-center">
     {#if $meetingsMocked}
       <p class="sample">{$t("mt.sample.list")}</p>
+    {:else if $meetingsUnavailable}
+      <p class="sample">{$t("mt.unavailable")}</p>
     {/if}
     <p class="hint">{$meetings.length === 0 ? $t("mt.empty") : $t("mt.pickHint")}</p>
     <Button id="start-meeting" onclick={() => goto("/capture")}>{$t("mt.start")}</Button>

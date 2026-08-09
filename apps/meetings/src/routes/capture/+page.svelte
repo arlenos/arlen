@@ -30,8 +30,10 @@
   });
 
   async function stop() {
-    await stopCapture();
-    await goto("/meeting/live");
+    // Only navigate to a note that exists. A failed summarise used to hand back
+    // the fixture note, so this went to it regardless; now it returns false and
+    // the capture surface stays put with everything the user typed still in it.
+    if (await stopCapture()) await goto("/meeting/live");
   }
 </script>
 
