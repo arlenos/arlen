@@ -1,0 +1,25 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Knowledge
+Name[de]=Wissen
+Comment=Your timeline, projects and what the system recorded about them
+Comment[de]=Deine Zeitleiste, Projekte und was das System dazu aufgezeichnet hat
+Exec=arlen-knowledge
+Icon=arlen-knowledge
+Terminal=false
+Categories=Utility;
+Keywords=timeline;history;knowledge;graph;activity;projects;
+Keywords[de]=zeitleiste;verlauf;wissen;graph;aktivitaet;projekte;
+StartupNotify=true
+# The identity the permission system keys on, stated so the launcher's idea of
+# who this app is matches the daemons'. The resolver's rule (3) reads the
+# directory below /usr/lib/arlen/apps/, which the image install path sets to this
+# same id.
+#
+# Note this is the APP, `dev.arlen.knowledge`. The daemon that holds the graph is
+# `knowledge`, a different principal with its own profile: this window reads and
+# may be closed at any time, the daemon records whether it is open or not. They
+# are not one identity wearing two hats, and the delete path in particular has to
+# tell them apart - the app asks, the daemon is what carries it out.
+X-Arlen-AppId=dev.arlen.knowledge

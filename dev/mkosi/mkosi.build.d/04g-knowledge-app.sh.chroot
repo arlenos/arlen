@@ -1,0 +1,77 @@
+#!/bin/sh
+# Phase 4g (CHROOT): the knowledge app (arlen-knowledge, a Tauri 2 app). Same
+# two-step as the other apps: build the SvelteKit frontend (vite -> ../build, the
+# tauri frontendDist), then the Tauri Rust backend, which embeds it.
+#
+# This app was designed, built and given its own `src-tauri` - the planner's call,
+# so per-app commands do not accumulate in the shell - but never got the image
+# step that call named alongside it. The result was an app with a full timeline,
+# export, pause and search that did not exist on a booted system, so none of it
+# could be looked at. Everything it does reads the graph the knowledge DAEMON
+# (phase 2) keeps; the daemon works without this window, and this window is empty
+# without the daemon.
+#
+# The install path is load-bearing: the resolver's rule (3) reads the directory
+# name below `/usr/lib/arlen/apps/`, so this is what makes the app id
+# `dev.arlen.knowledge`. Installed anywhere else it still runs and any caller gate
+# refuses it, so this line and `X-Arlen-AppId=` in the desktop entry have to keep
+# saying the same thing.
+#
+# rustup + node + the -dev libs were installed by phases 1-2; network is on via
+# WithNetwork=yes.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-knowledge-app"  # own dir; app is a separate workspace
+export CXXFLAGS="-include cstdint"
+export LIBGL_ALWAYS_SOFTWARE=1                         # llvmpipe, harmless at build time
+export npm_config_cache="$cache/npm"                   # persist the npm cache across builds
+mkdir -p "$CARGO_TARGET_DIR" "$npm_config_cache"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen/apps/knowledge"
+# Reuse a complete + current node_modules instead of re-running npm ci (the chroot
+# overlay's per-file fchown EINVAL makes a fresh npm ci pathologically slow); the
+# repo is bind-mounted via BuildSources, so a host-prepared node_modules is visible
+# here. Fall back to a quieted npm ci with the audit/fund round-trips skipped.
+if [ -x ./node_modules/.bin/tauri ] && [ ! package-lock.json -nt node_modules ]; then
+    echo ">> node_modules is complete and current; skipping npm ci"
+else
+    echo ">> npm ci (frontend + tauri-cli deps)"
+    npm ci --no-audit --no-fund --loglevel=error
+fi
+
+# Production build, not a plain cargo build: a debug build leaves the webview
+# pointed at the dev URL, so the packaged app would show a connection-refused page
+# instead of the timeline. --no-bundle: we want the binary, not a .deb/AppImage.
+echo ">> tauri build --no-bundle (production) arlen-knowledge"
+./node_modules/.bin/tauri build --no-bundle
+
+# The crate is `arlen-knowledge-app`, so that is what cargo emits; the image
+# installs it as `arlen-knowledge`, which is what the desktop entry's Exec names.
+# Searching for the INSTALLED name would find nothing and fail the image here.
+out=$(find "$CARGO_TARGET_DIR" -type f -path '*/release/arlen-knowledge-app' 2>/dev/null \
+        | head -1)
+[ -n "$out" ] || { echo "!! arlen-knowledge-app not found after build" >&2; exit 1; }
+# Under its own id, which is what makes the id (see the header). The /usr/bin
+# symlink keeps `Exec=` and PATH working; /proc/<pid>/exe resolves through it to
+# the real path, so identity comes from the app directory either way.
+install -Dm755 "$out" "$DESTDIR/usr/lib/arlen/apps/dev.arlen.knowledge/bin/arlen-knowledge"
+mkdir -p "$DESTDIR/usr/bin"
+ln -sf "../lib/arlen/apps/dev.arlen.knowledge/bin/arlen-knowledge" \
+       "$DESTDIR/usr/bin/arlen-knowledge"
+# The launcher enumerates /usr/share/applications; without an entry there the app
+# is installed and undiscoverable, which reads as a broken launcher rather than a
+# missing file.
+install -Dm644 "$SRCDIR/arlen/apps/knowledge/dist/arlen-knowledge.desktop" \
+        "$DESTDIR/usr/share/applications/arlen-knowledge.desktop"
+install -Dm644 "$SRCDIR/arlen/apps/knowledge/src-tauri/icons/128x128.png" \
+        "$DESTDIR/usr/share/icons/hicolor/128x128/apps/arlen-knowledge.png"
+echo ">> staged arlen-knowledge into the image"
