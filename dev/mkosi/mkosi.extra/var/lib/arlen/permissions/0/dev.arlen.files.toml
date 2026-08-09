@@ -22,4 +22,11 @@ read = [
     "system.File.last_accessed",
     "system.Project.id",
     "system.Project.name",
+    # The Ask facets offer the apps that touched a file as an answerable
+    # question, over `MATCH (a:App) RETURN a.id` (lib.rs:790). Without this the
+    # query is denied and the facet list comes back empty, which reads as "no app
+    # ever opened anything" rather than as a missing grant. Only the id: that is
+    # the whole of what the query returns, and the friendly name is derived from
+    # it in Rust.
+    "system.App.id",
 ]
