@@ -13,6 +13,21 @@ use arlen_modulesd::manager::Manager;
 use arlen_modulesd::socket::protocol::{Request, Response};
 use arlen_modulesd::socket::server::SocketServer;
 
+/// Admit THIS test binary for the run.
+///
+/// The runtime's admission list is exact - a `dev.` prefix match would have
+/// admitted every locally-built binary in the tree - and a test binary resolves
+/// to a hash-suffixed `dev.<test>` id that no static list can carry. So the test
+/// names itself through the same debug-only extra-admit the audit daemon uses,
+/// rather than the list being widened back to a prefix for its convenience.
+fn admit_self() {
+    let exe = std::fs::read_link("/proc/self/exe").expect("read own exe link");
+    if let Ok(id) = arlen_permissions::identity::path_to_app_id(&exe) {
+        // SAFETY: the test sets this for itself before it connects.
+        unsafe { std::env::set_var("ARLEN_MODULESD_EXTRA_ADMIT", id) };
+    }
+}
+
 async fn write_frame(stream: &mut UnixStream, body: &[u8]) -> std::io::Result<()> {
     let len = (body.len() as u32).to_be_bytes();
     stream.write_all(&len).await?;
@@ -31,6 +46,7 @@ async fn read_frame(stream: &mut UnixStream) -> std::io::Result<Vec<u8>> {
 
 #[tokio::test]
 async fn hello_round_trip() {
+    admit_self();
     let tmp = tempfile::tempdir().unwrap();
     let socket_path = tmp.path().join("modulesd.sock");
 
@@ -64,6 +80,7 @@ async fn hello_round_trip() {
 
 #[tokio::test]
 async fn list_modules_returns_empty_when_no_modules_discovered() {
+    admit_self();
     let tmp = tempfile::tempdir().unwrap();
     let socket_path = tmp.path().join("modulesd.sock");
 

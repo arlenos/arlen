@@ -153,7 +153,7 @@ impl SocketServer {
 /// is listed because the Extensions page's toggle belongs here rather than
 /// writing `modules.toml` behind the runtime's back, which is the bypass that
 /// currently skips the consent gate.
-const ADMITTED: &[&str] = &["desktop-shell", "settings"];
+const ADMITTED: &[&str] = &["dev.arlen.desktop-shell", "dev.arlen.settings"];
 
 /// The same two as a cargo target dir resolves them, debug only. EXACT, never a
 /// `dev.` prefix: every locally-built binary resolves to some `dev.<bin>`, so the
@@ -305,8 +305,8 @@ mod tests {
     /// matters.
     #[test]
     fn only_the_shell_and_settings_drive_the_module_runtime() {
-        assert!(is_admitted_id("desktop-shell"));
-        assert!(is_admitted_id("settings"));
+        assert!(is_admitted_id("dev.arlen.desktop-shell"));
+        assert!(is_admitted_id("dev.arlen.settings"));
         for other in ["org.example.App", "ai-agent", "bridge-ingest", "", "desktop-shell.evil"] {
             assert!(
                 !is_admitted_id(other),

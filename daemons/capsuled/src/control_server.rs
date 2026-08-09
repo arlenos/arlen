@@ -60,7 +60,7 @@ pub struct ControlContext {
 /// mint alone carries this gate. In debug a `dev.`-prefixed id is admitted (the
 /// dev/test convention), never in release.
 fn mint_caller_admitted(app_id: &str) -> bool {
-    if app_id == "harness" || app_id == "settings" {
+    if app_id == "dev.arlen.harness" || app_id == "dev.arlen.settings" {
         return true;
     }
     // EXACT: a prefix match would admit every locally-built binary to mint a
@@ -220,8 +220,8 @@ mod tests {
 
     #[test]
     fn mint_is_admitted_only_for_the_human_uis_not_the_agent() {
-        assert!(mint_caller_admitted("harness"));
-        assert!(mint_caller_admitted("settings"));
+        assert!(mint_caller_admitted("dev.arlen.harness"));
+        assert!(mint_caller_admitted("dev.arlen.settings"));
         for other in ["ai-agent", "ai-daemon", "com.x", "knowledge", "unknown", ""] {
             assert!(!mint_caller_admitted(other), "{other} must not mint (mint-requires-human)");
         }

@@ -252,7 +252,7 @@ fn nongraph_completed_actions(
 /// through the F3 `path_to_app_id` chain (a root-owned `/usr/lib/arlen/apps/<id>`
 /// path), the same identity model the knowledge daemon and installd key on; the
 /// exact harness id is verified against its install at the name-transfer wiring.
-const COMPENSATE_ADMITTED: &[&str] = &["harness", "settings"];
+const COMPENSATE_ADMITTED: &[&str] = &["dev.arlen.harness", "dev.arlen.settings"];
 
 /// Whether `app_id` may invoke `compensate`.
 fn compensate_caller_admitted(app_id: &str) -> bool {
@@ -880,7 +880,7 @@ mod tests {
         let prior = dir.join("orig.txt");
         std::fs::write(&now, b"x").unwrap();
         let out = dispatch_nongraph_inverse(
-            "settings",
+            "dev.arlen.settings",
             "corr-1",
             restore_path_inverse(&now, &prior),
             &MockAuditSink::accepting(),
@@ -898,7 +898,7 @@ mod tests {
         let prior = dir.join("orig.txt");
         std::fs::write(&now, b"x").unwrap();
         let out = dispatch_nongraph_inverse(
-            "settings",
+            "dev.arlen.settings",
             "corr-1",
             restore_path_inverse(&now, &prior),
             &MockAuditSink::failing(),
@@ -920,15 +920,15 @@ mod tests {
             relation_type: "FILE_PART_OF".into(),
         };
         let out =
-            dispatch_nongraph_inverse("settings", "corr-1", inverse, &MockAuditSink::accepting(), no_signer())
+            dispatch_nongraph_inverse("dev.arlen.settings", "corr-1", inverse, &MockAuditSink::accepting(), no_signer())
                 .await;
         assert_eq!(out, "no-such-receipt");
     }
 
     #[test]
     fn only_the_harness_and_settings_may_compensate() {
-        assert!(compensate_caller_admitted("harness"));
-        assert!(compensate_caller_admitted("settings"));
+        assert!(compensate_caller_admitted("dev.arlen.harness"));
+        assert!(compensate_caller_admitted("dev.arlen.settings"));
         assert!(!compensate_caller_admitted("com.example.app"));
         assert!(!compensate_caller_admitted("ai-agent"));
         assert!(!compensate_caller_admitted(""));
@@ -939,8 +939,8 @@ mod tests {
     /// work; only the two surfaces that show the answer to the user may ask.
     #[test]
     fn only_the_harness_and_settings_may_ask_the_engine_to_read() {
-        assert!(user_surface_admitted("harness"));
-        assert!(user_surface_admitted("settings"));
+        assert!(user_surface_admitted("dev.arlen.harness"));
+        assert!(user_surface_admitted("dev.arlen.settings"));
         assert!(!user_surface_admitted("com.example.app"));
         assert!(!user_surface_admitted("ai-agent"));
         assert!(!user_surface_admitted(""));
@@ -954,7 +954,7 @@ mod tests {
     async fn suggest_mode_refuses_the_undo_without_touching_the_store_or_writer() {
         let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
         let out =
-            run_compensate(false, "settings", "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::accepting())
+            run_compensate(false, "dev.arlen.settings", "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::accepting())
                 .await;
         assert_eq!(out, "not-enabled");
         assert!(!writer.retract_called.load(Ordering::Relaxed));
@@ -965,7 +965,7 @@ mod tests {
         let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
         let out = run_compensate(
             true,
-            "settings",
+            "dev.arlen.settings",
             "missing",
             &Mutex::new(CompensationStore::new(8)),
             &writer,
@@ -985,7 +985,7 @@ mod tests {
     async fn an_unrecordable_audit_refuses_the_undo_and_never_retracts() {
         let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
         let out =
-            run_compensate(true, "settings", "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::failing())
+            run_compensate(true, "dev.arlen.settings", "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::failing())
                 .await;
         assert_eq!(out, "error: audit unavailable");
         assert!(
@@ -998,7 +998,7 @@ mod tests {
     async fn a_live_undo_retracts_its_own_edge_and_drops_the_receipt() {
         let writer = RetractMock::new(Ok(RelationRetractOutcome::Retracted));
         let store = store_with("corr-1", "op-1");
-        let out = run_compensate(true, "settings", "corr-1", &store, &writer, &MockAuditSink::accepting()).await;
+        let out = run_compensate(true, "dev.arlen.settings", "corr-1", &store, &writer, &MockAuditSink::accepting()).await;
         assert_eq!(out, "retracted");
         assert!(writer.retract_called.load(Ordering::Relaxed));
         // The undone receipt is dropped so completed_actions won't re-offer it.
@@ -1009,7 +1009,7 @@ mod tests {
     async fn an_already_gone_edge_reports_nothing_to_undo() {
         let writer = RetractMock::new(Ok(RelationRetractOutcome::Absent));
         let out =
-            run_compensate(true, "settings", "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::accepting())
+            run_compensate(true, "dev.arlen.settings", "corr-1", &store_with("corr-1", "op-1"), &writer, &MockAuditSink::accepting())
                 .await;
         assert_eq!(out, "nothing-to-undo");
     }

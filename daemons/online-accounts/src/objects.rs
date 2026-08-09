@@ -21,7 +21,7 @@ use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
 /// The canonical app-id of the Settings management app (identity.rs resolves the
 /// Settings binary to this). The only caller allowed the full account tree.
-pub const MANAGEMENT_APP_ID: &str = "settings";
+pub const MANAGEMENT_APP_ID: &str = "dev.arlen.settings";
 
 /// The D-Bus interface name carried by each per-account object entry.
 pub const ACCOUNT_IFACE: &str = "org.arlen.Accounts1.Account";
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn the_management_app_gets_the_full_tree() {
         let configs = vec![account("work"), account("personal")];
-        let tree = managed_objects_gated("settings", &configs);
+        let tree = managed_objects_gated("dev.arlen.settings", &configs);
         assert_eq!(tree.len(), 2);
         let path = account_object_path("work").unwrap();
         let iface = &tree[&path][ACCOUNT_IFACE];
@@ -163,7 +163,7 @@ mod tests {
         // The correctness fix: a common `google-work` / `com.acme.mail` id must not
         // be dropped (D-Bus path elements forbid `-` and `.`); it is encoded.
         let configs = vec![account("google-work"), account("com.acme.mail")];
-        let tree = managed_objects_gated("settings", &configs);
+        let tree = managed_objects_gated("dev.arlen.settings", &configs);
         assert_eq!(tree.len(), 2);
         assert!(tree.contains_key(&account_object_path("google-work").unwrap()));
         assert!(tree.contains_key(&account_object_path("com.acme.mail").unwrap()));
@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn presentation_falls_back_to_identity_when_unset() {
-        let tree = managed_objects_gated("settings", &[account("a")]);
+        let tree = managed_objects_gated("dev.arlen.settings", &[account("a")]);
         let iface = &tree[&account_object_path("a").unwrap()][ACCOUNT_IFACE];
         assert_eq!(
             iface["Presentation"],

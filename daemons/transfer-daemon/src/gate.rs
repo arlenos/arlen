@@ -161,7 +161,7 @@ mod tests {
 
     // A debug-build admitted caller (the dev requester id), so the auth gate
     // passes in the test build.
-    const ADMITTED_CALLER: &str = "desktop-shell";
+    const ADMITTED_CALLER: &str = "dev.arlen.desktop-shell";
 
     fn pid(name: &str) -> ProfileId {
         ProfileId::new(name).expect("valid test profile id")

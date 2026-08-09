@@ -166,7 +166,7 @@ mod tests {
         let s = store();
         let reg = handle_identity(
             &s,
-            "settings",
+            "dev.arlen.settings",
             IdentityRequest::Register {
                 app_id: "com.evil.squat".into(),
             },
@@ -183,7 +183,7 @@ mod tests {
     /// `system.*` / an AI principal onto a controlled pidfd).
     #[test]
     fn a_registrar_may_not_stamp_a_reserved_id() {
-        for reserved in ["settings", "system", "system.knowledge", "ai-agent", "org.arlen.x"] {
+        for reserved in ["dev.arlen.settings", "system", "system.knowledge", "ai-agent", "org.arlen.x"] {
             let s = store();
             let reg = handle_identity(
                 &s,

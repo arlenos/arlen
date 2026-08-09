@@ -19,7 +19,7 @@
 /// The app ids permitted to submit a transfer request. The shell broker drives
 /// the copy/drag gestures; Settings drives an explicit transfer action. An app
 /// not on this list is refused before the policy gate is even consulted.
-const REQUESTERS: &[&str] = &["desktop-shell", "settings"];
+const REQUESTERS: &[&str] = &["dev.arlen.desktop-shell", "dev.arlen.settings"];
 
 /// The cargo-run `dev.*` ids of the admitted requesters, accepted only in debug
 /// builds. An EXACT list, never a broad `dev.` prefix: every locally-built
@@ -71,8 +71,8 @@ mod tests {
 
     #[test]
     fn only_the_shell_and_settings_may_request() {
-        assert!(caller_is_admitted("desktop-shell"));
-        assert!(caller_is_admitted("settings"));
+        assert!(caller_is_admitted("dev.arlen.desktop-shell"));
+        assert!(caller_is_admitted("dev.arlen.settings"));
         // An arbitrary app is refused.
         assert!(!caller_is_admitted("com.example.app"));
         assert!(!caller_is_admitted("knowledge"));

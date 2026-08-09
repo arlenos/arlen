@@ -105,7 +105,7 @@ const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 /// D-Bus-style name - NEITHER can be a `path_to_app_id` result, so the shell (which
 /// resolves to `desktop-shell`) was refused in release and could not drive the
 /// consent dialog at all. In debug builds a `dev.`-prefixed id is also admitted.
-const CONTROL_ADMITTED: &[&str] = &["desktop-shell"];
+const CONTROL_ADMITTED: &[&str] = &["dev.arlen.desktop-shell"];
 
 /// App ids permitted ONLY the grant-management ops (`ListGrants` / `RevokeGrant`)
 /// - the App-access panel's "what you allowed" + release-a-grant surface.
@@ -113,7 +113,7 @@ const CONTROL_ADMITTED: &[&str] = &["desktop-shell"];
 /// 0x06 on the `is_settings_principal` anchor), so releasing a consent grant is a
 /// strict subset of the power it already holds; it is deliberately NOT admitted to
 /// `Fetch` / `Resolve` (rendering and answering prompts stays the trusted shell's).
-const GRANT_MGMT_ADMITTED: &[&str] = &["settings"];
+const GRANT_MGMT_ADMITTED: &[&str] = &["dev.arlen.settings"];
 
 /// The early gate: whether `app_id` may drive ANY control op at all (a cheap
 /// refusal for outsiders before the request is read). The per-op restriction for a
@@ -603,18 +603,18 @@ mod tests {
         // The trusted shell drives every control op, under its SO_PEERCRED-resolved
         // app id `desktop-shell` (the id `path_to_app_id` returns for the shell's
         // canonical /usr/bin/arlen-desktop-shell binary).
-        assert!(control_op_admitted("desktop-shell", &ControlRequest::Fetch));
-        assert!(control_op_admitted("desktop-shell", &revoke));
+        assert!(control_op_admitted("dev.arlen.desktop-shell", &ControlRequest::Fetch));
+        assert!(control_op_admitted("dev.arlen.desktop-shell", &revoke));
         // The pre-rename `arlen-shell` name is NOT a resolvable app id, so it is
         // (correctly) no longer admitted - the shell resolves to `desktop-shell`.
         assert!(!control_caller_admitted("arlen-shell"));
         // settings may list + release remembered grants (the App-access surface)...
-        assert!(control_op_admitted("settings", &ControlRequest::ListGrants));
-        assert!(control_op_admitted("settings", &revoke));
+        assert!(control_op_admitted("dev.arlen.settings", &ControlRequest::ListGrants));
+        assert!(control_op_admitted("dev.arlen.settings", &revoke));
         // ...but is refused rendering / answering consent prompts (shell-only).
-        assert!(!control_op_admitted("settings", &ControlRequest::Fetch));
+        assert!(!control_op_admitted("dev.arlen.settings", &ControlRequest::Fetch));
         assert!(!control_op_admitted(
-            "settings",
+            "dev.arlen.settings",
             &ControlRequest::Resolve {
                 id: 1,
                 outcome: ConsentOutcome::AllowedOnce,
@@ -622,7 +622,7 @@ mod tests {
         ));
         // A random app is refused every op, and the early gate rejects it too.
         assert!(!control_op_admitted("com.random", &ControlRequest::ListGrants));
-        assert!(control_caller_admitted("settings"));
+        assert!(control_caller_admitted("dev.arlen.settings"));
         assert!(!control_caller_admitted("com.random"));
     }
 

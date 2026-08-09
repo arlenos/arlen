@@ -1303,7 +1303,7 @@ fn revoke_caller_admitted(app_id: &str) -> bool {
 /// deny still holds for Settings (it reaches authority data only through the
 /// curated `access_grants`/`revoke` ops, never arbitrary Cypher).
 fn is_settings_principal(app_id: &str) -> bool {
-    if app_id == "settings" {
+    if app_id == "dev.arlen.settings" {
         return true;
     }
     #[cfg(debug_assertions)]
@@ -4572,7 +4572,7 @@ mod tests {
     fn settings_browses_whole_system_grants_but_not_the_general_authority_path() {
         // The Settings management principal sees whole-system grants (the App-access
         // capability browser) through the curated access_grants op.
-        assert!(is_settings_principal("settings"));
+        assert!(is_settings_principal("dev.arlen.settings"));
         // Every ordinary caller sees only its own grants (scoped by attested id).
         for other in ["desktop-shell", "ai-agent", "com.x", "unknown", ""] {
             assert!(!is_settings_principal(other), "{other} is not the Settings principal");
@@ -4581,7 +4581,7 @@ mod tests {
         // path's authority-label deny for it: is_privileged_authority_reader stays
         // false, so Settings reaches Grant/CapabilityUse/EntityType only through the
         // curated access_grants/revoke ops, never arbitrary Cypher.
-        assert!(!is_privileged_authority_reader("settings"));
+        assert!(!is_privileged_authority_reader("dev.arlen.settings"));
     }
 
     #[test]
@@ -4739,7 +4739,7 @@ mod tests {
 
     #[test]
     fn revoke_caller_admitted_only_settings() {
-        assert!(revoke_caller_admitted("settings"));
+        assert!(revoke_caller_admitted("dev.arlen.settings"));
         for other in ["ai-agent", "ai-daemon", "com.x", "knowledge", "unknown", ""] {
             assert!(!revoke_caller_admitted(other), "{other} must not be allowed to revoke");
         }
@@ -4880,7 +4880,7 @@ mod tests {
 
     #[test]
     fn handle_revoke_rejects_a_malformed_request() {
-        let r = handle_revoke("settings", b"not json");
+        let r = handle_revoke("dev.arlen.settings", b"not json");
         assert!(r.starts_with("ERROR: invalid revoke request"), "got {r}");
     }
 
@@ -4891,7 +4891,7 @@ mod tests {
         // (a confirmed revoke is replayed as `User`). The refusal lands before the
         // target is turned into a path, so no profile is touched.
         let body = b"{\"target_app_id\":\"com.x\",\"reach\":{\"InstanceAll\":null},\"initiator\":{\"Agent\":{\"suggestion_id\":\"s1\"}}}";
-        let r = handle_revoke("settings", body);
+        let r = handle_revoke("dev.arlen.settings", body);
         assert!(r.starts_with("ERROR: an agent-initiated revoke"), "got {r}");
     }
 
@@ -4904,7 +4904,7 @@ mod tests {
                 "{{\"target_app_id\":\"{}\",\"reach\":{{\"InstanceAll\":null}},\"initiator\":{{\"User\":null}}}}",
                 target.escape_default()
             );
-            let r = handle_revoke("settings", body.as_bytes());
+            let r = handle_revoke("dev.arlen.settings", body.as_bytes());
             assert!(
                 r.starts_with("ERROR: invalid target app id") || r.starts_with("ERROR: invalid revoke request"),
                 "traversal target {target:?} must be refused, got {r}"

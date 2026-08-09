@@ -39,7 +39,7 @@ pub const MAX_FRAME: usize = 64 * 1024;
 /// an admitted binary is the documented residual that only the
 /// SO_PEERSEC/MAC label tier (`same-uid-isolation-plan.md` Tier-A #4)
 /// closes - this allowlist is the structure that tier slots into.
-const ADMITTED_WRITERS: &[&str] = &["settings"];
+const ADMITTED_WRITERS: &[&str] = &["dev.arlen.settings"];
 
 /// True iff `app_id` may mutate the master switches. In a debug
 /// build the `dev.arlen-*` cargo-run id of an admitted app also
@@ -221,7 +221,7 @@ mod tests {
         };
         want.autonomous_apps.insert("org.arlen.files".to_string());
         assert_eq!(
-            handle_request(&s, "settings", Request::Set(want.clone())),
+            handle_request(&s, "dev.arlen.settings", Request::Set(want.clone())),
             Response::Committed
         );
         // a fresh store sees the persisted state
@@ -254,7 +254,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            handle_request(&s, "settings", Request::Set(bad)),
+            handle_request(&s, "dev.arlen.settings", Request::Set(bad)),
             Response::Committed
         );
         assert_eq!(s.load().unwrap().access_level, 0);
@@ -283,7 +283,7 @@ mod tests {
 
     #[test]
     fn debug_dev_ids_are_admitted_only_in_debug() {
-        assert!(is_admitted_writer("settings"));
+        assert!(is_admitted_writer("dev.arlen.settings"));
         // ai-daemon/ai-agent were removed in the pi cutover; they no longer write.
         assert!(!is_admitted_writer("ai-agent"));
         assert!(!is_admitted_writer("ai-daemon"));
