@@ -19,7 +19,13 @@
   import { PlacesSidebar, placeIcon } from "@arlen/ui-kit/components/browser";
   import { Trash2, Clock, SlidersHorizontal } from "lucide-svelte";
   import { activeController } from "$lib/stores/tabs";
-  import { placeGroups, removePlace, navigatePlace, savedSearches } from "$lib/stores/places";
+  import {
+    placeGroups,
+    removePlace,
+    navigatePlace,
+    savedSearches,
+    placesUnavailable,
+  } from "$lib/stores/places";
   import { runSearch, searchOpen, searchQuery } from "$lib/stores/search";
   import {
     savedFolders,
@@ -95,6 +101,14 @@
       }}
       onremove={(place) => removePlace(place)}
     />
+    <!-- Recent and Trash below need no backend and keep working, so a failed
+         places read leaves a sidebar that looks intact and is not. This says so
+         where the missing places would have been. -->
+    {#if $placesUnavailable}
+      <p class="places-unavailable group-data-[collapsible=icon]:hidden">
+        {$t("f.sidebar.placesUnavailable")}
+      </p>
+    {/if}
     {#if $savedFolders.length > 0}
       <SidebarGroup class="group-data-[collapsible=icon]:hidden">
         <SidebarGroupLabel>{$t("f.sidebar.smartFolders")}</SidebarGroupLabel>
@@ -181,5 +195,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Quieter than a place, and it wraps: it is a sentence, not a row, and
+     truncating it would leave "Your places could not be…" against a sidebar
+     that is exactly as wide as it is. */
+  .places-unavailable {
+    margin: 0;
+    padding: 0.25rem 0.5rem 0.5rem;
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--sidebar-foreground) 55%, transparent);
   }
 </style>
