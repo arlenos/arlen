@@ -14,6 +14,7 @@
 //! stores), which is only honest while a failure is really a failure: a command
 //! that invented an empty list would show the fixture's absence as fact.
 
+mod export;
 mod projects;
 mod provenance;
 mod search;
@@ -32,7 +33,8 @@ pub fn run() {
             projects::knowledge_projects_list,
             provenance::knowledge_provenance,
             search::knowledge_search,
-            timeline::knowledge_timeline
+            timeline::knowledge_timeline,
+            export::knowledge_timeline_export
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Knowledge app");

@@ -64,7 +64,6 @@ KNOWN: dict[str, dict[str, str]] = {
         "knowledge_library": "the library view",
         "knowledge_search_save": "saving a search",
         "knowledge_timeline_delete": "deleting a timeline entry",
-        "knowledge_timeline_export": "exporting the timeline",
         "knowledge_timeline_pause": "pausing collection",
         "open_settings_route": "the deep link into Settings",
     },

@@ -104,6 +104,8 @@
   // the destructive confirm.
   let disclosureOpen = $state(false);
   let exportFailed = $state(false);
+  /// Where the last export landed, so the line can name the file.
+  let exportedTo = $state<string | null>(null);
 
   let pendingDelete = $state<{ from: number; label: string } | null>(null);
   function midnightToday(): number {
@@ -122,7 +124,10 @@
     if (!action) return;
     pendingMenuAction.set(null);
     if (action === "export") {
-      void exportTimeline().then((ok) => (exportFailed = !ok));
+      void exportTimeline().then((path) => {
+        exportFailed = path === null;
+        exportedTo = path;
+      });
     } else if (action === "deleteToday") {
       pendingDelete = { from: midnightToday(), label: $t("k.tl.rangeToday") };
     } else {
@@ -166,6 +171,9 @@
         <p class="tl-statement-menu">{$t("k.tl.menuHint")}</p>
         {#if exportFailed}
           <p class="tl-fail">{$t("k.tl.exportFail")}</p>
+        {:else if exportedTo}
+          <!-- The path, not just "done": the file is the point of the export. -->
+          <p class="tl-statement">{$t("k.tl.exportedTo", { path: exportedTo })}</p>
         {/if}
       </div>
     {/if}
