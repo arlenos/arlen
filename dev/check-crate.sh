@@ -42,7 +42,31 @@ case "$mode" in
     # `cargo test`, not nextest: it is what gates merges, it passes a crate with
     # no tests instead of exiting 4, and it runs the doc tests itself rather
     # than needing a second pass that has to forgive "no library targets found".
-    cargo test --manifest-path "$manifest" --no-fail-fast "${extra[@]}"
+    # `--no-fail-fast` runs every target, so a failing one can be followed by
+    # several passing ones - and the tail of the log is then a green summary from
+    # some other binary. That is how four CI reds across two crates read as "all
+    # tests pass, no error line": the failure was real and simply not last.
+    #
+    # So capture, stream, and on failure repeat WHAT failed at the end, where a
+    # reader looks. Under GitHub Actions also emit an annotation, so the reason
+    # reaches the run summary rather than only the raw log.
+    set +e
+    out=$(cargo test --manifest-path "$manifest" --no-fail-fast "${extra[@]}" 2>&1)
+    rc=$?
+    set -e
+    printf '%s\n' "$out"
+    if [ "$rc" -ne 0 ]; then
+      echo
+      echo "=== $crate: the failing targets, repeated because --no-fail-fast buries them ==="
+      # A failing target prints "test result: FAILED." and names its binary in the
+      # "Running ..." line above it; both are worth having in one place.
+      printf '%s\n' "$out" | grep -E "^(error|error\[)|test result: FAILED|^failures:|^ +[a-zA-Z_0-9:]+$|^     Running" | tail -40
+      if [ -n "${GITHUB_ACTIONS:-}" ]; then
+        why=$(printf '%s' "$out" | grep -E "^error|test result: FAILED" | head -2 | tr '\n' ' ')
+        printf '::error title=%s tests::%s\n' "$crate" "${why:-cargo test exited $rc with no error line - see the log}"
+      fi
+      exit "$rc"
+    fi
     ;;
   *)
     echo "check-crate: unknown mode '$mode' (want check or test)" >&2
