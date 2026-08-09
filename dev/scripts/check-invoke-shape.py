@@ -347,9 +347,6 @@ DEAD_INVOKES: dict[str, str] = {
     "printers_remove": (
         "the Settings printers page. Same as printers_add: no backend operation exists, and removing a printer is a privileged CUPS admin write, not a wire"
     ),
-    "printers_set_options": (
-        "the Settings printers page. No backend operation; reconfiguring a queue is a CUPS admin write behind polkit"
-    ),
     "print_job_retry": (
         "the Settings printers page. No backend operation; a retry would compose submit + jobs, which exist, so it is the smallest of the six"
     ),

@@ -302,7 +302,8 @@ export async function setOptions(name: string, options: PrinterOptions): Promise
     await invoke("printers_set_options", { name, options });
   } catch {
     if (import.meta.env.DEV) return;
-    // Paper size and duplex the service never heard about would print wrong.
+    // This has a backend now (the per-user `lpoptions` line), so a failure is a
+    // real one. Paper size and duplex the service never heard about print wrong.
     printers.update((s) => {
       const opts = { ...s.options };
       if (before) opts[name] = before;
