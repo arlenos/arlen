@@ -27,12 +27,16 @@
 
   onMount(listWallpapers);
 
+  // Two, because the daemon renders two. `daemon_scale` in
+  // `src-tauri/src/commands/wallpaper.rs` maps fill and fit and refuses the rest
+  // by name, on purpose - stretch breaks aspect and mapping it onto fill would
+  // show the user something other than what they picked. That refusal was right
+  // and the picker offered all five anyway, so Center, Tile and Stretch were
+  // three buttons whose only outcome was an error. A control that cannot work
+  // does not appear; when the daemon learns a fit, it comes back here.
   const FITS = $derived<{ value: WallpaperScale; label: string }[]>([
     { value: "fill", label: $t("s.wallpaper.fit.fill") },
     { value: "fit", label: $t("s.wallpaper.fit.fit") },
-    { value: "center", label: $t("s.wallpaper.fit.center") },
-    { value: "tile", label: $t("s.wallpaper.fit.tile") },
-    { value: "stretch", label: $t("s.wallpaper.fit.stretch") },
   ]);
 </script>
 

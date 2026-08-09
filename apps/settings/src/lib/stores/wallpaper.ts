@@ -9,7 +9,13 @@ import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 
 /// How the image maps to the screen (the daemon's `Scale`).
-export type WallpaperScale = "fill" | "fit" | "center" | "tile" | "stretch";
+///
+/// The two the daemon renders, and no more. It used to carry center, tile and
+/// stretch as well, which the Rust side refuses by name in `daemon_scale` - so
+/// the type described a vocabulary that only ever produced errors. The Rust
+/// guard stays: it defends the boundary against any caller, and this narrowing
+/// only stops the front end forming one.
+export type WallpaperScale = "fill" | "fit";
 
 /// One choosable wallpaper.
 export interface WallpaperEntry {
