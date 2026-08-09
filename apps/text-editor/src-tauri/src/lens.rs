@@ -26,12 +26,19 @@ use serde_json::Value;
 
 /// One lineage step, in exactly the shape the lens renders.
 ///
+/// Named `Lens…` rather than `ProvenanceStep` because the Files app already has a
+/// struct by that name, and `check-invoke-shape.py` refuses to compare a type
+/// whose name is defined twice - it cannot know which one a call means. It said
+/// so, by file and line, in a section of its output I had not read: the pair went
+/// uncompared, which is how the field-name mismatch survived. A unique name is
+/// the whole fix.
+///
 /// The field names are the frontend's, and that is not a detail: the first cut
 /// of this returned `verb`/`subject`/`when`, which type-checked on both sides
 /// and would have rendered "undefined undefined" in the panel. A command whose
 /// answer does not fit its caller is a silent blank, not an error.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct ProvenanceStep {
+pub struct LensProvenanceStep {
     /// The relation as a MESSAGE ID, never the word: the panel resolves it
     /// through the catalogue, so an English string here would ship untranslated.
     pub relation: String,
@@ -53,7 +60,7 @@ pub struct ProvenanceStep {
 /// daemon is an error, so the panel can tell "nothing recorded" from "could not
 /// ask".
 #[tauri::command]
-pub async fn provenance_of(r#ref: String) -> Result<Vec<ProvenanceStep>, String> {
+pub async fn provenance_of(r#ref: String) -> Result<Vec<LensProvenanceStep>, String> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let rows = client
@@ -75,13 +82,13 @@ fn file_query(node: &str) -> String {
 }
 
 /// Pure, so the shape is tested without a daemon.
-fn steps_from_rows(rows: &[HashMap<String, Value>]) -> Vec<ProvenanceStep> {
+fn steps_from_rows(rows: &[HashMap<String, Value>]) -> Vec<LensProvenanceStep> {
     let Some(row) = rows.first() else {
         return Vec::new();
     };
     let mut steps = Vec::new();
     if let Some(app) = row.get("app_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
-        steps.push(ProvenanceStep {
+        steps.push(LensProvenanceStep {
             relation: "te.pv.verb.openedIn".into(),
             actor: app.to_string(),
             // The promotion pipeline wrote this from an observed file open, so
@@ -139,7 +146,7 @@ mod tests {
 
     #[test]
     fn the_shape_carries_every_field_the_panel_reads() {
-        let json = serde_json::to_string(&ProvenanceStep {
+        let json = serde_json::to_string(&LensProvenanceStep {
             relation: "x".into(),
             actor: "y".into(),
             origin: "graph",
