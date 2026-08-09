@@ -399,6 +399,13 @@ def main():
                          "arlen-system-monitor) in the booted session via QEMU fw_cfg, "
                          "so its window renders for the screenshot (TIER-A 1b). Use a "
                          "longer --wait so the app has time to come up after the shell")
+    ap.add_argument("--click", action="append", default=None, metavar="X,Y",
+                    help="after the wait, click these 1280x800 coordinates in order "
+                         "(repeatable) and capture an after-shot. Written to answer a "
+                         "question a boot alone cannot: whether a pane that renders "
+                         "empty is empty because the read found nothing or because it "
+                         "ran before the data existed - clicking away and back "
+                         "re-mounts the view without rebuilding the image")
     ap.add_argument("--require-app-text", default=None, metavar="SUBSTR",
                     help="with --app, fail unless the screenshot OCRs a substring "
                          "(case-insensitive), e.g. a process name the app must show")
@@ -540,6 +547,7 @@ def main():
         bar_seen_while_polling = False
         bar_gate_only = args.require_bar and not (
             args.app or args.press_super or args.deny_consent or args.approve_consent
+            or args.click
         )
         if bar_gate_only:
             deadline = time.monotonic() + args.wait
@@ -689,6 +697,23 @@ def main():
                 if os.path.exists(denied) and os.path.getsize(denied) > 0:
                     break
                 time.sleep(0.1)
+        if args.click:
+            # Coordinates are given against the 1280x800 layout and scaled to the
+            # real frame, like the consent click below.
+            from PIL import Image
+            fw, fh = Image.open(out).size
+            for spec in args.click:
+                cx, cy = (int(v) for v in spec.split(","))
+                qmp_click(f, round(fw * cx / 1280), round(fh * cy / 800), fw, fh)
+                time.sleep(1.5)
+            clicked = out + ".clicked.png"
+            time.sleep(2)
+            capture(f, clicked, x_display)
+            for _ in range(50):
+                if os.path.exists(clicked) and os.path.getsize(clicked) > 0:
+                    break
+                time.sleep(0.1)
+            print(f"after-click screenshot: {clicked}")
         if args.approve_consent:
             # Click "Allow once" (lower-right of the centered consent card, fixed
             # 1280x800 layout), then capture an after-shot so the dialog-dismissed
