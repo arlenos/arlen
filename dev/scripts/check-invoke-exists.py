@@ -80,12 +80,6 @@ KNOWN: dict[str, dict[str, str]] = {
         # is reachable - but `PrintBackend` has exactly five operations (printers,
         # default_printer, jobs, submit, cancel_job) and none of the four below is
         # among them. A crate existing is not the capability existing.
-        "print_job_retry": (
-            "retrying a print job. The closest of the four: IPP Restart-Job on the "
-            "same client `cancel_job` already uses. It still needs a trait method "
-            "and, more awkwardly, CUPS to have retained the document - a retry that "
-            "silently does nothing for most jobs would be worse than none"
-        ),
         "printers_add": (
             "adding a printer. Queue administration, not a print operation: it "
             "wants lpadmin rights, which is a different privilege class from "

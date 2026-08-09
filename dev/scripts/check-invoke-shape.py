@@ -400,9 +400,6 @@ DEAD_INVOKES: dict[str, str] = {
     "printers_remove": (
         "the Settings printers page. Same as printers_add: no backend operation exists, and removing a printer is a privileged CUPS admin write, not a wire"
     ),
-    "print_job_retry": (
-        "the Settings printers page. No backend operation; a retry would compose submit + jobs, which exist, so it is the smallest of the six"
-    ),
     # dictation has no backend at all yet; the badge was built against the intended contract - needs a decision on whether dictation is in scope
     "dictation_status": "dictation has no backend at all yet; the badge was built against the intended contract",
     "stop_dictation": "dictation has no backend at all yet; the badge was built against the intended contract",

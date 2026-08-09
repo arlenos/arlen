@@ -279,6 +279,45 @@ impl PrintBackend for CupsBackend {
         }
         Ok(())
     }
+
+    /// IPP `Restart-Job` (0x000E) over the same client `cancel_job` uses.
+    ///
+    /// Hand-built rather than taken from `IppOperationBuilder`, which has no
+    /// helper for it: the request is the operation code, the printer URI and the
+    /// job id, exactly as `CancelJob` assembles its own.
+    ///
+    /// **The likely refusal is not a bug.** Restart-Job needs cupsd to still hold
+    /// the document, which it does only while `PreserveJobFiles` says so, so a
+    /// job old enough to be forgotten answers `client-error-not-possible`. That
+    /// reaches the caller as the status cupsd sent rather than as a generic
+    /// failure, because "we no longer have your document" and "the printer is
+    /// unreachable" are different things to be told.
+    async fn restart_job(&self, printer: &str, job_id: i32) -> Result<(), PrintError> {
+        let uri = self.printer_uri(printer)?;
+        let mut req = IppRequestResponse::new(IppVersion::v1_1(), Operation::RestartJob, Some(uri.clone()))
+            .map_err(|e| PrintError::Backend(e.to_string()))?;
+        req.attributes_mut().add(
+            DelimiterTag::OperationAttributes,
+            IppAttribute::new(
+                IppAttribute::JOB_ID
+                    .try_into()
+                    .map_err(|_| PrintError::Backend("job-id attribute name".into()))?,
+                IppValue::Integer(job_id),
+            ),
+        );
+        let client = AsyncIppClient::new(uri);
+        let resp = client
+            .send(req)
+            .await
+            .map_err(|e| PrintError::Backend(e.to_string()))?;
+        if !resp.header().status_code().is_success() {
+            return Err(PrintError::Backend(format!(
+                "restart-job: {}",
+                resp.header().status_code()
+            )));
+        }
+        Ok(())
+    }
 }
 
 /// Turn the typed [`JobOptions`](crate::backend::JobOptions) into IPP job
