@@ -149,8 +149,6 @@ KNOWN: dict[str, dict[str, str]] = {
     "text-editor": {
         "Authorize": "the AI-edit gate call",
         "ai_edit": "proposing an assistant edit",
-        "project_of": "the lens project section",
-        "related_of": "the lens backlinks",
     },
     "harness": {
         "register_menu": "the app menu (the plugin's name for it is menu_register)",
@@ -201,6 +199,16 @@ def main() -> int:
                 f"apps/{app.name}: invokes `{name}`, which neither its host nor a "
                 f"plugin registers. Every call throws; whatever the catch does is "
                 f"what the user gets."
+            )
+        # An inventory entry whose call is gone. The entry says "this control is on
+        # screen with nothing behind it", and once the call goes the sentence is
+        # false - it then reads as remaining work that nobody owes. Same shape as a
+        # skip-list entry outliving its subject, which is a lie that accumulates.
+        for name in sorted(set(known) - calls):
+            findings.append(
+                f"apps/{app.name}: `{name}` is carried as known-missing and nothing "
+                f"invokes it any more. Drop the entry; the count is supposed to be "
+                f"what is actually claimed on screen."
             )
         for name in sorted(handlers - calls):
             uncalled.append(f"apps/{app.name}: `{name}`")
