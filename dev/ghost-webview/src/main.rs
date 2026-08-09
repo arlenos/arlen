@@ -21,18 +21,32 @@
 //!     fullscreen layer surface anchored to all four edges, which is what this
 //!     one creates.
 //!
-//! No input, deliberately: `shoot-compositor.sh` records that injecting into a
-//! nested surface under Xvfb is unsolved, so anything needing a keystroke cannot
-//! be measured headlessly at all. The page shrinks itself on a timer, the same
-//! trick `ghost-repro` uses.
+//! The ghost modes need no input: the page shrinks itself on a timer, the same
+//! trick `ghost-repro` uses. The `kbflip` and `kbexcl` modes below DO take a
+//! keystroke, and that is now possible - `wtype` against the nested compositor's
+//! own socket works, which retires the note that headless input was unsolved. It
+//! was unsolved for ydotool, which injects at the evdev layer and lands in the
+//! host session instead.
 //!
 //! Run it under the nested compositor:
 //!
 //! ```text
 //! cargo build --manifest-path dev/ghost-webview/Cargo.toml
-//! dev/screenshot/shoot-compositor.sh /tmp/ghost-webview.png \
-//!   dev/ghost-webview/target/debug/arlen-ghost-webview 1200
+//! SHOOT_SKIP_XVFB=1 SHOOT_DISPLAY=:0 RUST_LOG=info \
+//!   dev/screenshot/shoot-compositor.sh /tmp/ghost-webview.png \
+//!   "$PWD/target/debug/arlen-ghost-webview" 1200
 //! ```
+//!
+//! Three things in that line are not decoration, each one measured after a run
+//! failed on it. The binary is in the REPO's `target/`, not the crate's, because
+//! `.cargo/config.toml` sets a shared `target-dir` that reaches even a crate with
+//! its own workspace; the path this comment used to give has never existed. It
+//! must be absolute, since the harness runs the client from another directory.
+//! And cosmic-comp cannot run on Xvfb at all - its X11 backend wants DRI3 and its
+//! winit fallback wants `EGL_EXT_device_drm` - so it needs a DRM-capable X server,
+//! which on a Wayland host means XWayland at `:0`. `RUST_LOG` must leave `info`
+//! on, because the harness learns the compositor's socket name by reading it out
+//! of the log, and filtering that line makes a healthy run report as a dead one.
 //!
 //! The argument is how long to hold the big block before shrinking it, in ms; it
 //! must be shorter than the harness settle or the capture lands on the block and
@@ -135,12 +149,23 @@ const SHRINK_AND_REPORT: &str = r#"
 /// Escape then never reaches the page and the request is never denied. The
 /// waypointer, which is mapped exclusive from the start, takes Escape fine.
 ///
-/// Reading it needs no input at all, which is what makes it runnable here: the
-/// compositor already prints `Restoring focus to ...` at debug level on every
-/// focus refresh, so the question is answered by its log, not by a keystroke.
-/// Run it with `SHOOT_COMPOSITOR_LOG` set and `RUST_LOG=debug`, then read which
-/// target it names before and after the flip.
-fn run_keyboard_flip(hold_ms: u32) {
+/// **Answered, 9 August: it does not.** Run against the same compositor with the
+/// same injector, `kbexcl` (mapped exclusive) logs `KEY RECEIVED keyval=Key(120)`
+/// and `kbflip` (flipped after mapping) logs nothing. The compositor's own focus
+/// log says nothing either way, which is why the key had to be the measurement:
+/// asking whether a key ARRIVES beats asking what the compositor says about it.
+///
+///   SHOOT_SKIP_XVFB=1 SHOOT_DISPLAY=:0 SHOOT_CLIENT2='sleep 5; wtype x' \
+///     RUST_LOG=info dev/screenshot/shoot-compositor.sh /tmp/kb.png \
+///     "$PWD/target/debug/arlen-ghost-webview" 2000 kbflip
+///
+/// `exclusive_from_start` is the CONTROL, and without it this probe proves
+/// nothing. "No key arrived" is equally consistent with "the flip does not carry
+/// focus" and with "the injector never reached this compositor", and those are
+/// opposite conclusions. The control maps exclusive at once - the waypointer's
+/// shape, the case known to work on the booted image - so a key must arrive. If
+/// it does not, the probe is broken and says so instead of indicting the code.
+fn run_keyboard_flip(hold_ms: u32, exclusive_from_start: bool) {
     use gtk_layer_shell::KeyboardMode;
 
     let window = gtk::Window::new(gtk::WindowType::Toplevel);
@@ -152,15 +177,44 @@ fn run_keyboard_flip(hold_ms: u32) {
     window.set_exclusive_zone(-1);
     // Mapped WITHOUT keyboard interactivity, which is the whole point: a surface
     // born exclusive is the case that already works.
-    window.set_keyboard_mode(KeyboardMode::None);
-    window.show_all();
-    eprintln!("kbflip: mapped with KeyboardMode::None");
-
-    let window_for_timer = window.clone();
-    glib::timeout_add_local_once(std::time::Duration::from_millis(hold_ms.into()), move || {
-        window_for_timer.set_keyboard_mode(KeyboardMode::Exclusive);
-        eprintln!("kbflip: set KeyboardMode::Exclusive");
+    window.set_keyboard_mode(if exclusive_from_start {
+        KeyboardMode::Exclusive
+    } else {
+        KeyboardMode::None
     });
+
+    // Real content, because an empty GTK window is not the thing under test. The
+    // interactivity change only reaches the compositor on a surface commit, and a
+    // window with nothing to paint may never produce one - so a probe that stayed
+    // empty could report "the compositor ignored the flip" when the flip was never
+    // sent. The shell's bar has a webview in it and always paints.
+    let label = gtk::Label::new(Some("kbflip"));
+    window.add(&label);
+
+    // The actual question, asked directly. Whether the compositor logs a focus
+    // change is a proxy; whether a key ARRIVES is the thing the consent card needs
+    // and the thing that is failing on the booted image. Send one with
+    // `wtype` against this compositor's socket after the flip and read the answer
+    // here: a line means the runtime flip works and the shell's problem is
+    // elsewhere, silence means the flip does not carry focus.
+    window.connect_key_press_event(|_, ev| {
+        eprintln!("kbflip: KEY RECEIVED keyval={:?}", ev.keyval());
+        gtk::glib::Propagation::Proceed
+    });
+
+    window.show_all();
+    eprintln!(
+        "kbflip: mapped with KeyboardMode::{}",
+        if exclusive_from_start { "Exclusive (control)" } else { "None" }
+    );
+
+    if !exclusive_from_start {
+        let window_for_timer = window.clone();
+        glib::timeout_add_local_once(std::time::Duration::from_millis(hold_ms.into()), move || {
+            window_for_timer.set_keyboard_mode(KeyboardMode::Exclusive);
+            eprintln!("kbflip: set KeyboardMode::Exclusive");
+        });
+    }
 
     glib::timeout_add_seconds_local_once(120, gtk::main_quit);
     gtk::main();
@@ -174,9 +228,9 @@ fn main() {
     let mode = std::env::args().nth(2);
     let animated = mode.as_deref() == Some("animated");
 
-    if mode.as_deref() == Some("kbflip") {
+    if matches!(mode.as_deref(), Some("kbflip") | Some("kbexcl")) {
         gtk::init().expect("gtk init");
-        run_keyboard_flip(hold_ms);
+        run_keyboard_flip(hold_ms, mode.as_deref() == Some("kbexcl"));
         return;
     }
 
