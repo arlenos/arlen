@@ -167,7 +167,12 @@ async fn timing_noise() {
 /// Spawns two concurrent tasks:
 /// 1. Socket listener for client queries.
 /// 2. Event Bus subscriber for permission/schema change events.
-pub async fn listen(socket_path: &str, graph: GraphHandle, pool: sqlx::SqlitePool) -> Result<()> {
+pub async fn listen(
+    socket_path: &str,
+    graph: GraphHandle,
+    pool: sqlx::SqlitePool,
+    gate: crate::activity_delete::PromotionGate,
+) -> Result<()> {
     let auth = Arc::new(Mutex::new(Authenticator::new()));
     info!("graph daemon: HMAC key generated");
 
@@ -222,6 +227,7 @@ pub async fn listen(socket_path: &str, graph: GraphHandle, pool: sqlx::SqlitePoo
             socket_path,
             graph.clone(),
             pool,
+            gate,
             auth.clone(),
             rate,
             emitter,
@@ -241,6 +247,7 @@ async fn listen_queries(
     socket_path: &str,
     graph: GraphHandle,
     pool: sqlx::SqlitePool,
+    gate: crate::activity_delete::PromotionGate,
     auth: Arc<Mutex<Authenticator>>,
     rate: Arc<Mutex<RateState>>,
     emitter: Arc<RateLimitEmitter>,
@@ -293,6 +300,7 @@ async fn listen_queries(
             Ok((stream, _)) => {
                 let graph = graph.clone();
                 let pool = pool.clone();
+                let gate = gate.clone();
                 let auth = auth.clone();
                 let rate = rate.clone();
                 let emitter = emitter.clone();
@@ -301,8 +309,8 @@ async fn listen_queries(
                 let uses = uses.clone();
                 tokio::spawn(async move {
                     if let Err(e) = handle_client(
-                        stream, graph, pool, auth, rate, emitter, registry, our_uid, owner_uid,
-                        audit, uses,
+                        stream, graph, pool, gate, auth, rate, emitter, registry, our_uid,
+                        owner_uid, audit, uses,
                     )
                     .await
                     {
@@ -1609,6 +1617,9 @@ async fn handle_write_request(
     // The raw event store, because a delete that leaves the source is a delayed
     // failure: the promotion pass would put the range straight back.
     pool: &sqlx::SqlitePool,
+    // Taken for the whole delete, so no pass is mid-flight with a batch it read
+    // before the rows went.
+    gate: &crate::activity_delete::PromotionGate,
     auth: &Arc<Mutex<Authenticator>>,
     audit: Option<&Arc<dyn AuditSink>>,
     uses: Option<&Arc<Mutex<crate::lcg::UseTally>>>,
@@ -1794,6 +1805,16 @@ async fn handle_write_request(
                     return "ERROR: audit unavailable, nothing was deleted".to_string();
                 }
             }
+            // Nothing is destroyed until no promotion pass is in flight.
+            //
+            // Deleting the raw events closes the case where a pass runs AFTER the
+            // delete. It does nothing for a pass already running: those read their
+            // batch out of SQLite first and write the nodes second, so a delete in
+            // that gap removes rows the pass is holding in memory and the pass
+            // writes them anyway. On a booted run that happened two times in three,
+            // with the surviving stamp sitting 28 seconds past the cut-off.
+            let _pass = gate.lock().await;
+
             // Raw events FIRST, then the graph, and the order is the reverse of
             // the obvious one.
             //
@@ -2859,6 +2880,7 @@ async fn handle_client(
     mut stream: UnixStream,
     graph: GraphHandle,
     pool: sqlx::SqlitePool,
+    gate: crate::activity_delete::PromotionGate,
     auth: Arc<Mutex<Authenticator>>,
     rate: Arc<Mutex<RateState>>,
     emitter: Arc<RateLimitEmitter>,
@@ -3093,6 +3115,7 @@ async fn handle_client(
                         &registry,
                         &graph,
                         &pool,
+                        &gate,
                         &auth,
                         Some(&audit),
                         Some(&uses),
@@ -6099,6 +6122,7 @@ mod tests {
     async fn a_refused_write_records_no_capability_use() {
         let (graph, _tmp) = spawn_test_graph().await;
         let (pool, _pool_tmp) = spawn_test_pool().await;
+        let gate = crate::activity_delete::promotion_gate();
         let auth = Arc::new(Mutex::new(Authenticator::new()));
         let registry = SchemaRegistry::new(vec![]);
         // A tally whose interval has ALREADY elapsed, so any recorded use would
@@ -6114,6 +6138,7 @@ mod tests {
             &registry,
             &graph,
             &pool,
+            &gate,
             &auth,
             None,
             Some(&uses),
@@ -6136,6 +6161,7 @@ mod tests {
     async fn write_rejects_recycled_pid() {
         let (graph, _tmp) = spawn_test_graph().await;
         let (pool, _pool_tmp) = spawn_test_pool().await;
+        let gate = crate::activity_delete::promotion_gate();
         let auth = Arc::new(Mutex::new(Authenticator::new()));
         let registry = SchemaRegistry::new(vec![]);
         // A start time that cannot match the live process: the reuse guard must
@@ -6151,6 +6177,7 @@ mod tests {
                 &registry,
                 &graph,
                 &pool,
+                &gate,
                 &auth,
                 None,
                 None,
@@ -6163,6 +6190,7 @@ mod tests {
     async fn write_rejects_unverifiable_peer() {
         let (graph, _tmp) = spawn_test_graph().await;
         let (pool, _pool_tmp) = spawn_test_pool().await;
+        let gate = crate::activity_delete::promotion_gate();
         let auth = Arc::new(Mutex::new(Authenticator::new()));
         let registry = SchemaRegistry::new(vec![]);
         // No captured start time: reuse cannot be guarded, so fail closed.
@@ -6177,6 +6205,7 @@ mod tests {
                 &registry,
                 &graph,
                 &pool,
+                &gate,
                 &auth,
                 None,
                 None,
@@ -6189,18 +6218,20 @@ mod tests {
     async fn write_rejects_absent_peer_and_malformed_body() {
         let (graph, _tmp) = spawn_test_graph().await;
         let (pool, _pool_tmp) = spawn_test_pool().await;
+        let gate = crate::activity_delete::promotion_gate();
         let auth = Arc::new(Mutex::new(Authenticator::new()));
         let registry = SchemaRegistry::new(vec![]);
 
         let no_peer =
             handle_write_request(
-                VALID_REL_BODY.as_bytes(), None, &registry, &graph, &pool, &auth, None, None,
+                VALID_REL_BODY.as_bytes(), None, &registry, &graph, &pool, &gate, &auth, None, None,
             )
                 .await;
         assert_eq!(no_peer, "ERROR: write requires a resolvable peer process");
 
         // A malformed body is rejected before the peer is even consulted.
-        let bad = handle_write_request(b"not json", None, &registry, &graph, &pool, &auth, None, None).await;
+        let bad = handle_write_request(b"not json", None, &registry, &graph, &pool, &gate, &auth, None, None)
+            .await;
         assert!(bad.starts_with("ERROR: malformed write request"), "got: {bad}");
     }
 

@@ -57,6 +57,11 @@ pub async fn run(
     pool: SqlitePool,
     graph: GraphHandle,
     clock: std::sync::Arc<crate::drift::DeviceClock>,
+    // Held for the whole of each pass. A pass reads its batch out of SQLite and
+    // then writes nodes; an activity delete landing between those two steps
+    // destroys rows this pass is already holding, and the pass writes them back.
+    // See `activity_delete::PromotionGate`.
+    gate: crate::activity_delete::PromotionGate,
 ) -> Result<()> {
     // Ensure the metadata table exists for high-water mark tracking.
     ensure_metadata_table(&pool).await?;
@@ -80,6 +85,7 @@ pub async fn run(
 
     loop {
         interval.tick().await;
+        let _pass = gate.lock().await;
         if let Err(e) = run_pass(&pool, &graph, &project_store, threshold).await {
             error!("promotion pass failed: {e}");
         }
