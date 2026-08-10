@@ -406,6 +406,11 @@ def main():
                          "empty is empty because the read found nothing or because it "
                          "ran before the data existed - clicking away and back "
                          "re-mounts the view without rebuilding the image")
+    ap.add_argument("--click-settle", type=int, default=8, metavar="SECONDS",
+                    help="with --click, how long to wait before the after-shot. The "
+                         "default is generous on purpose: the shot is evidence about "
+                         "what the surface ANSWERED, and a pane still loading looks "
+                         "exactly like a pane that answered nothing")
     ap.add_argument("--require-app-text", default=None, metavar="SUBSTR",
                     help="with --app, fail unless the screenshot OCRs a substring "
                          "(case-insensitive), e.g. a process name the app must show")
@@ -707,7 +712,12 @@ def main():
                 qmp_click(f, round(fw * cx / 1280), round(fh * cy / 800), fw, fh)
                 time.sleep(1.5)
             clicked = out + ".clicked.png"
-            time.sleep(2)
+            # Long enough for the surface to have ANSWERED, not merely repainted.
+            # Two seconds was not: a pane whose read is still in flight shows its
+            # empty label, and I read that as "the read returned nothing" and had
+            # to withdraw it. A screenshot is only evidence about a load if the
+            # load has resolved by the time it is taken.
+            time.sleep(args.click_settle)
             capture(f, clicked, x_display)
             for _ in range(50):
                 if os.path.exists(clicked) and os.path.getsize(clicked) > 0:
