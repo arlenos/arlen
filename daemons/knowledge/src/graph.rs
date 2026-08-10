@@ -844,6 +844,15 @@ fn create_schema(conn: &Connection) -> Result<()> {
     // "session") + the transition kind ("device-up"|"connected"|"session-opened"|
     // ...). Convergent ADD IF NOT EXISTS for already-initialized DBs. KG-richness:
     // an emitted event type that previously sat raw in SQLite, now on the timeline.
+    // The app a `window.focused` Event belongs to. The `App` node already carries
+    // it, but only through an ACTIVE_IN edge to the Session - there is no Event to
+    // App edge - so a reader of Events alone could not say WHICH app was focused.
+    // That is why a focus onto a surface with no title rendered as a row saying
+    // "focused" and nothing else: the one thing known about it was unreachable.
+    // Recorded rather than derived at read time, because it is measured here.
+    conn.query("ALTER TABLE Event ADD IF NOT EXISTS app_id STRING")
+        .map_err(|e| anyhow!("ensure Event.app_id column: {e}"))?;
+
     conn.query("ALTER TABLE Event ADD IF NOT EXISTS service STRING")
         .map_err(|e| anyhow!("ensure Event.service column: {e}"))?;
     conn.query("ALTER TABLE Event ADD IF NOT EXISTS kind STRING")
