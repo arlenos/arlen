@@ -307,7 +307,23 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
                         debug!(id = %event.id, event_type = %event.r#type, uid = event.uid, "received event");
                         registry.dispatch(&event).await;
                     }
-                    Err(e) => warn!(error = %e, "dropping invalid event"),
+                    // Name the producer and the type, as the deny line above does.
+                    //
+                    // A booted image dropped two events for a missing `session_id`
+                    // and the log said only that - so the event was lost AND the
+                    // producer was unidentifiable, which makes the warning a report
+                    // that something is wrong with no way to act on it. The bus
+                    // knows the attested app id here; withholding it helps nobody.
+                    //
+                    // Metadata only: the id, the type and the attested producer. Not
+                    // the payload - a malformed event is still the user's data.
+                    Err(e) => warn!(
+                        error = %e,
+                        app_id = publish_scope.app_id(),
+                        event_type = %event.r#type,
+                        id = %event.id,
+                        "dropping invalid event"
+                    ),
                 }
             }
             Err(e) => warn!(error = %e, "failed to decode event, dropping"),
