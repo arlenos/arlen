@@ -429,9 +429,48 @@ async fn serve_dbus(shared: SharedState) -> Option<zbus::Connection> {
     }
 }
 
+
+/// Does anything own the UPower bus name right now?
+///
+/// A raw method call rather than a `zbus::Proxy`, deliberately: a proxy would cache
+/// properties, which is the very thing whose failure this exists to avoid. Any error
+/// answers `false` - if the bus cannot tell us, we are not going to reach UPower
+/// through it either.
+async fn upower_is_running(conn: &zbus::Connection) -> bool {
+    let reply = conn
+        .call_method(
+            Some("org.freedesktop.DBus"),
+            "/org/freedesktop/DBus",
+            Some("org.freedesktop.DBus"),
+            "NameHasOwner",
+            &(UPOWER_BUS,),
+        )
+        .await;
+    match reply {
+        Ok(msg) => msg.body().deserialize::<bool>().unwrap_or(false),
+        Err(_) => false,
+    }
+}
+
 /// Read the current power state from UPower, or `None` if UPower is
 /// unreachable or reports no battery (a desktop with `State`=Unknown and 0%).
 async fn read_power_state(conn: &zbus::Connection) -> Option<PowerState> {
+    // Ask whether UPower is there before building anything that assumes it is.
+    //
+    // This function already returned `None` when the proxies failed, so a machine
+    // without UPower behaved correctly - it just rediscovered the fact every ten
+    // seconds by constructing two proxies, and proxy construction is what populates
+    // (and fails to populate) the properties cache that zbus then warns about. On
+    // an image that ships no UPower at all, that was twenty warnings per 200 seconds
+    // for a condition that never changes, in a log where the real findings live.
+    //
+    // One `NameHasOwner` replaces two failing constructions, so this is less work as
+    // well as quieter, and a system that gains UPower is picked up on the next poll
+    // rather than needing a restart.
+    if !upower_is_running(conn).await {
+        return None;
+    }
+
     let device = zbus::Proxy::new(conn, UPOWER_BUS, UPOWER_DISPLAY_DEVICE, UPOWER_DEVICE_IFACE)
         .await
         .ok()?;
