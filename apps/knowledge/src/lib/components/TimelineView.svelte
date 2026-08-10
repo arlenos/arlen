@@ -5,6 +5,7 @@
   /// delete are visible first-class controls, with an honest statement of what
   /// is recorded). Event rows reuse the privacy page's sentence anatomy: quiet
   /// verb, emphasized object - recall of the user's data, not an app log.
+  import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import {
     ChevronRight,
@@ -54,13 +55,17 @@
   // pane reads the user's own activity, and polling it for a window nobody is
   // looking at is work and exposure with no reader. Becoming visible refreshes
   // immediately, so a window you come back to is current rather than a tick behind.
-  const REFRESH_MS = 30_000;
+  // The interval is ASKED FOR, not chosen here. `knowledge_refresh_interval_ms`
+  // answers with the daemon's promotion cadence, defined once in the SDK, so moving
+  // the pass moves this pane with it. The fallback is only for the window between
+  // mount and that answer arriving.
+  let refreshMs = 30_000;
 
   onMount(() => {
     let timer: ReturnType<typeof setInterval> | undefined;
 
     const start = () => {
-      if (timer === undefined) timer = setInterval(loadTimeline, REFRESH_MS);
+      if (timer === undefined) timer = setInterval(loadTimeline, refreshMs);
     };
     const stop = () => {
       if (timer !== undefined) {
@@ -76,6 +81,18 @@
         start();
       }
     };
+
+    void invoke<number>("knowledge_refresh_interval_ms").then((ms) => {
+      if (ms > 0 && ms !== refreshMs) {
+        refreshMs = ms;
+        // Restart only if it was already ticking, so asking does not start a timer
+        // for a hidden window.
+        if (timer !== undefined) {
+          stop();
+          start();
+        }
+      }
+    });
 
     void loadTimeline();
     if (!document.hidden) start();

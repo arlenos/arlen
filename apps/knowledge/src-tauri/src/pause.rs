@@ -137,3 +137,14 @@ mod tests {
         assert!(out.contains("max_depth = 2"), "{out}");
     }
 }
+
+/// How often the timeline should ask again, in milliseconds.
+///
+/// The surface must not pick this number. It is the knowledge daemon's promotion
+/// cadence - the rate at which the graph can change at all - and it is defined once
+/// in `os_sdk::graph::PROMOTION_INTERVAL`. Refreshing faster shows nothing new and
+/// costs queries; refreshing slower leaves the pane behind the data.
+#[tauri::command]
+pub async fn knowledge_refresh_interval_ms() -> u64 {
+    u64::try_from(os_sdk::graph::PROMOTION_INTERVAL.as_millis()).unwrap_or(30_000)
+}

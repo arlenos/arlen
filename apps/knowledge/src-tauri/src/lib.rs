@@ -42,6 +42,7 @@ pub fn run() {
             export::knowledge_timeline_export,
             delete::knowledge_timeline_delete,
             pause::knowledge_timeline_pause,
+            pause::knowledge_refresh_interval_ms,
             pause::knowledge_timeline_paused,
             settings_link::open_settings_route,
             searches::knowledge_searches,
