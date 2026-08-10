@@ -36,4 +36,57 @@ cargo build --release --manifest-path "$SRCDIR/arlen/dev/kg-probe/Cargo.toml"
 # remember a libexec path defeats the point of having it.
 install -Dm755 "$CARGO_TARGET_DIR/release/arlen-kg-probe" \
         "$DESTDIR/usr/bin/arlen-kg-probe"
+
+# Run it once at boot, as root, and put the answer on the serial console.
+#
+# Two reasons it is a unit and not the session hook. First, there is no shell into
+# this VM - the harness speaks QMP, so anything I want to read has to arrive in the
+# journal or on the console by itself. Second, and this is the part I got wrong the
+# first time: run from the session the probe is uid 1000 with a THIRD-PARTY id, and
+# `cross_uid_admitted` refuses it before the owner check is even reached. That
+# refusal is the gate working, and it made the probe's six questions all report
+# "Broken pipe" while saying nothing about the graph.
+#
+# As root the probe is the daemon's own uid, so no cross-uid rule applies and the
+# question it answers is "what does the graph hold". That is NOT the same question
+# as "what does the app see" - an app is uid 1000 with a first-party id and passes
+# a different pair of checks. Anyone reading this output for the second question
+# will get a confident wrong answer, which is why it is written down here.
+# Written straight to its final path. The obvious shape - heredoc to /tmp, install,
+# delete the temp - trips check (3), which fails any verify phase that runs `rm`.
+# The check is right to: it cannot tell a temp-file cleanup from a phase quietly
+# deleting release content, and "plus, never minus" is worth more than the
+# convenience. Writing the file where it belongs needs no cleanup at all.
+mkdir -p "$DESTDIR/usr/lib/systemd/system"
+cat > "$DESTDIR/usr/lib/systemd/system/arlen-kg-probe.service" <<'UNIT'
+[Unit]
+Description=Ask the knowledge graph what it holds (verify image only)
+After=arlen-graph.service
+Wants=arlen-graph.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Wait for the socket, but never longer than a minute, and run either way: a probe
+# that stays silent because it gave up is worse than one that reports it could not
+# connect. The daemon binds late enough that connecting immediately loses the race.
+#
+# No shell variable in here, deliberately. systemd expands $NAME in Exec lines
+# ITSELF, so the obvious counter loop arrives at /bin/sh as `[ -lt 60 ]` and dies
+# on a syntax error - and because a failing ExecStartPre skips ExecStart, the
+# symptom would have been the probe silently never running. `timeout` needs no
+# counter, and the leading `-` tells systemd to run ExecStart even when the wait
+# expires.
+ExecStartPre=-/usr/bin/timeout 60 /bin/sh -c 'while [ ! -S /run/arlen/knowledge.sock ]; do sleep 1; done'
+ExecStart=/usr/bin/arlen-kg-probe
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+chmod 644 "$DESTDIR/usr/lib/systemd/system/arlen-kg-probe.service"
+mkdir -p "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants"
+ln -sf ../arlen-kg-probe.service \
+       "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants/arlen-kg-probe.service"
 echo ">> staged the verify probes into the image"
