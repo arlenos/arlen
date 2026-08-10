@@ -8,6 +8,14 @@
 # together: `just dev --profile shell --profile portal`.
 version: "0.5"
 
+environment:
+  # The same expression as `process-compose.yaml`, deliberately not a fresh mint:
+  # one login is one session, and these stacks are usually up alongside it. Being
+  # deterministic in $USER makes all three agree without having to coordinate.
+  # Producers here (compositor, shell, apps) READ it; unset means an empty origin,
+  # which the bus refuses.
+  - "ARLEN_SESSION_ID=dev-${USER}"
+
 processes:
   portal-daemon:
     command: 'WAYLAND_DISPLAY=wayland-2 cargo run --bin xdg-desktop-portal-arlen'

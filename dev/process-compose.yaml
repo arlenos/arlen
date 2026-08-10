@@ -10,6 +10,12 @@
 version: "0.5"
 
 environment:
+  # This stack stands in for a login, so it mints the session id the way
+  # `arlen-session` does on the image. Producers READ it and never invent one; a
+  # producer that finds it unset sends an empty origin, which the bus refuses, so
+  # without this line the whole dev stack's event flow goes quiet. That is what
+  # took ten integration tests red on 10 August, in the harness rather than here.
+  - "ARLEN_SESSION_ID=dev-${USER}"
   - "ARLEN_RUNTIME_DIR=${XDG_RUNTIME_DIR}/arlen"
   - "ARLEN_PRODUCER_SOCKET=${XDG_RUNTIME_DIR}/arlen/event-bus-producer.sock"
   - "ARLEN_CONSUMER_SOCKET=${XDG_RUNTIME_DIR}/arlen/event-bus-consumer.sock"

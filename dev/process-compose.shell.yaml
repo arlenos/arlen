@@ -9,6 +9,14 @@
 # nested display.
 version: "0.5"
 
+environment:
+  # The same expression as `process-compose.yaml`, deliberately not a fresh mint:
+  # one login is one session, and these stacks are usually up alongside it. Being
+  # deterministic in $USER makes all three agree without having to coordinate.
+  # Producers here (compositor, shell, apps) READ it; unset means an empty origin,
+  # which the bus refuses.
+  - "ARLEN_SESSION_ID=dev-${USER}"
+
 processes:
   # Build the compositor to completion BEFORE the run process starts, so the
   # run's readiness probe (the wayland-2 socket, a ~120s window) times only a
