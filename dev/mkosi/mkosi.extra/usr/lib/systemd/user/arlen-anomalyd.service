@@ -21,6 +21,19 @@ RestartSec=2
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=%h/.local/share/arlen
+# NB the ordering above carries a second job that is not obvious from its purpose.
+#
+# `ReadWritePaths=/run/user/%U/arlen` below is FATAL when that directory does not
+# exist yet, and nothing in this unit creates it: what makes it exist by the time
+# this daemon starts is that auditd, the event bus or notifyd got there first. The
+# undo signer had no such ordering and failed its first start on a booted image with
+# "Failed at step NAMESPACE ... No such file or directory".
+#
+# So dropping a service from `After=` because this daemon no longer talks to it is a
+# decision, not a tidy-up. If the list ever shrinks to nothing that creates the
+# runtime directory, add `RuntimeDirectory=arlen` with `RuntimeDirectoryPreserve=yes`
+# (the preserve flag is mandatory: the directory is shared, and systemd deletes an
+# unpreserved one on stop, taking every other daemon's socket with it).
 ReadWritePaths=/run/user/%U/arlen
 RestrictAddressFamilies=AF_UNIX
 PrivateTmp=yes
