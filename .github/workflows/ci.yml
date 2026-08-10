@@ -250,6 +250,7 @@ jobs:
           node dev/scripts/test-check-read-scope.mjs
           node dev/scripts/test-pre-commit-hook.mjs
           bash dev/scripts/check-packaged-units.sh
+          bash dev/scripts/check-sensing-vectors.sh
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
             echo "tracked, yet matched by an ignore rule:"
