@@ -69,6 +69,22 @@ def qmp_key(f, qcode):
                                      "key": {"type": "qcode", "data": qcode}}}])
 
 
+def qmp_move(f, px, py, w, h):
+    """Move the pointer to (px, py) WITHOUT clicking.
+
+    Enough on its own to answer a compositing question: passing the cursor over a
+    region makes the compositor recomposite it from the CURRENT surface buffer. So
+    if a stale band clears where the pointer has been, the band was old scanout
+    pixels the client never damaged; if it survives the pointer, the band is in the
+    buffer itself. That is the split a full-damage experiment would otherwise cost
+    an image build to make."""
+    ax = max(0, min(0x7fff, round(px * 0x7fff / w)))
+    ay = max(0, min(0x7fff, round(py * 0x7fff / h)))
+    qmp(f, "input-send-event", events=[
+        {"type": "abs", "data": {"axis": "x", "value": ax}},
+        {"type": "abs", "data": {"axis": "y", "value": ay}}])
+
+
 def qmp_click(f, px, py, w, h):
     """Left-click at pixel (px, py) on a w x h frame via the absolute pointing
     device (virtio-tablet). QEMU's abs axis is 0..0x7fff mapped to the display, so
@@ -389,6 +405,10 @@ def main():
     ap.add_argument("--super", dest="press_super", action="store_true",
                     help="after verifying, press Super and capture a second shot "
                          "(the waypointer/launcher) to exercise the input->shell path")
+    ap.add_argument("--hover", default=None,
+                    help="with --super, sweep the pointer down this column after "
+                         "typing (X or X,Y1,Y2,...) and capture. A stale band that "
+                         "clears where the cursor passed was never in the buffer.")
     ap.add_argument("--type-keys", nargs="*", default=["f", "i"],
                     help="with --super, the qcodes to type into the open overlay, "
                          "one capture per keystroke except the last. More keys mean "
@@ -665,6 +685,15 @@ def main():
                     capture(f, f"{out}.typed-{i + 1}.png", x_display)
             time.sleep(2)
             capture(f, typed, x_display)
+            if args.hover:
+                parts = [int(v) for v in args.hover.split(",")]
+                col = parts[0]
+                rows = parts[1:] or [560, 600, 640]
+                for py in rows:
+                    qmp_move(f, col, py, 1280, 800)
+                    time.sleep(0.5)
+                time.sleep(1.5)
+                capture(f, out + ".hover.png", x_display)
             for _ in range(50):
                 if os.path.exists(typed) and os.path.getsize(typed) > 0:
                     break
