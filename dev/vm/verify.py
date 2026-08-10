@@ -271,7 +271,35 @@ def _spread(img, bx0, by0, bx1, by1):
     return max(vals) - min(vals)
 
 
-def consent_dialog_state(before_png, after_png):
+def _blank_pointer(img, at, w, h):
+    """Paint out the mouse pointer before measuring contrast.
+
+    The pointer is drawn by the compositor's cursor plane, not by the surface
+    under test, so it has no business in a measurement about that surface. It was
+    in one: the approve path clicks 'Allow once' at the middle of the screen,
+    which is inside the sampled card box by construction, and a white arrow on a
+    dark desktop reads as contrast. Measured on 10 August - the approved frame's
+    card box scored 241 against a desktop 3, and blanking a 45px patch at the
+    click point dropped it to 4. Two runs were called "the card is still on
+    screen, this is PR-20" against a frame that shows a bare desktop.
+
+    That is also why the verdict lined up so neatly with allowed-versus-denied:
+    approve leaves the pointer in the box, Escape leaves it wherever it was.
+    """
+    if at is None:
+        return img
+    cx, cy = at
+    patch = img.copy()
+    # Generous enough for the arrow and its shadow at either scale.
+    r = max(24, int(w * 0.02))
+    fill = img.getpixel((max(0, min(w - 1, cx + 3 * r)), max(0, min(h - 1, cy))))
+    for x in range(max(0, cx - r), min(w, cx + r)):
+        for y in range(max(0, cy - r), min(h, cy + r)):
+            patch.putpixel((x, y), fill)
+    return patch
+
+
+def consent_dialog_state(before_png, after_png, pointer_at=None):
     """Did the consent card go away between the two frames? Returns
     (verdict, detail) with verdict one of `present`, `dismissed`, `inconclusive`.
 
@@ -310,6 +338,8 @@ def consent_dialog_state(before_png, after_png):
 
     if _amber_strip(after, w, h):
         return "present", "the card's amber header is on screen"
+
+    after = _blank_pointer(after, pointer_at, w, h)
 
     card_box = (int(w * 0.33), int(h * 0.34), int(w * 0.67), int(h * 0.66))
     desk_box = (int(w * 0.06), int(h * 0.34), int(w * 0.26), int(h * 0.66))
@@ -1083,7 +1113,13 @@ def main():
             # not on a raw frame-diff (the backdrop dimming + the cursor appearing
             # change most of the frame even when the dialog is still up, so a diff
             # threshold false-passes).
-            verdict, why = consent_dialog_state(out, approved)
+            # The approve click lands inside the sampled card box, so the pointer
+            # that is now sitting there must be excluded; see `_blank_pointer`.
+            from PIL import Image as _Im
+            _w, _h = _Im.open(approved).size
+            verdict, why = consent_dialog_state(
+                out, approved,
+                pointer_at=(round(_w * 797 / 1280), round(_h * 489 / 800)))
             frac = frame_change(out, approved)
             print(f"consent resolve: click 'Allow once' -> dialog {verdict} "
                   f"({why}; {frac*100:.1f}% of the whole frame changed) "
