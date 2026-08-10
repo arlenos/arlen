@@ -2552,3 +2552,197 @@ async fn the_store_serves_a_distribution_app_as_present_but_not_installable() {
         "the description should be the unlocalized text only: {description:?}"
     );
 }
+
+/// IT-1 deletion, the fail-closed half: with no reachable audit ledger the delete
+/// is REFUSED and the node survives.
+///
+/// The unit tests prove the Cypher and the caller check in isolation; what they
+/// cannot see is the pair of refusals that happen on the far side of a socket -
+/// the write path's tier gate, which runs before any token work, and the
+/// operation's own exact-caller allowlist. On 10 August the knowledge app tiered
+/// below the first of those, so the delete could not have worked on a real system
+/// while every unit test passed. This scenario is the shape of that gap: the
+/// harness lifts both gates for its own resolved id (`ARLEN_KNOWLEDGE_EXTRA_FIRST_
+/// PARTY`, `ARLEN_REVOKE_EXTRA_ADMIT`), and everything else is the assembled path.
+///
+/// The delete is asserted in both directions: the node is readable first, and gone
+/// after, because "the delete returned OK" is exactly the claim that was worth
+/// nothing without a read to back it.
+#[tokio::test]
+#[ignore = "spawns real daemons; run via `just integration-smoke`"]
+async fn a_delete_is_refused_when_the_ledger_cannot_record_it() {
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .seed_read_profile(&["system.File.id", "system.File.path"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    // Taken before anything is emitted, so it is a boundary the promoted node is
+    // certainly at or after - the delete is a range, not a wildcard, and giving it
+    // a real one keeps the test honest about what the control does.
+    let from = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock is after the epoch")
+        .as_secs() as i64;
+
+    let path = "/work/it/deleted.rs";
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let query = format!("MATCH (f:File {{id: '{path}'}}) RETURN f.path LIMIT 1");
+
+    // Same emit-until-landed shape as the promotion scenario, and for the same
+    // reason: the writer's subscription races the first emit.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let payload = proto::FileOpenedPayload {
+            path: path.to_string(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
+            .await
+            .expect("emit file.opened");
+        if let Ok(rows) = client.query_rows(&query).await {
+            if !rows.is_empty() {
+                break;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the file.opened event never promoted, so there was nothing to delete"
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+
+    // No audit daemon in this stack, so the ledger is unreachable - and the delete
+    // must refuse rather than destroy unrecorded. The ruling asks that a user who
+    // clears their history can still see that they did, which is only true if the
+    // record is written FIRST and a failure to write it stops the act.
+    let err = client
+        .delete_activity(from)
+        .await
+        .expect_err("a delete with no reachable ledger must be refused, not carried out");
+    assert!(
+        format!("{err}").contains("audit unavailable"),
+        "refused for the wrong reason: {err}"
+    );
+
+    let rows = client
+        .query_rows(&query)
+        .await
+        .expect("the read still works after the refusal");
+    assert!(
+        !rows.is_empty(),
+        "the delete was refused but the node is gone anyway, so the refusal came too late"
+    );
+}
+
+/// IT-1 deletion, the other half: with a reachable ledger the delete is carried
+/// out and the node is gone.
+///
+/// The pair is the point. Its sibling above proves the act is refused when it
+/// cannot be recorded; this one proves the refusal is not simply how the delete
+/// always ends. A destructive operation that never works and a destructive
+/// operation that works but records nothing are both failures, and only running
+/// both directions tells them apart.
+#[tokio::test]
+#[ignore = "spawns real daemons; run via `just integration-smoke`"]
+async fn a_promoted_file_is_destroyed_once_the_ledger_can_record_it() {
+    if !arlen_integration::binary_built("daemons/audit-daemon", "arlen-auditd") {
+        eprintln!("SKIP a_promoted_file_is_destroyed_once_the_ledger_can_record_it: arlen-auditd not built (run `just integration-nightly`)");
+        return;
+    }
+    let mut stack = EphemeralStack::new().expect("private runtime root");
+    stack
+        .seed_read_profile(&["system.File.id", "system.File.path"])
+        .expect("seed read profile");
+    stack
+        .spawn("daemons/event-bus", "event-bus", &[])
+        .expect("spawn event-bus");
+    stack
+        .wait_socket("event-bus-producer.sock", Duration::from_secs(20))
+        .expect("producer socket");
+    stack
+        .wait_socket("event-bus-consumer.sock", Duration::from_secs(20))
+        .expect("consumer socket");
+    stack
+        .spawn("daemons/audit-daemon", "arlen-auditd", &[])
+        .expect("spawn audit-daemon");
+    stack
+        .wait_socket("arlen/audit-ingest.sock", Duration::from_secs(20))
+        .expect("audit ingest socket appears");
+    stack
+        .spawn("daemons/knowledge", "arlen-graph-daemon", &[])
+        .expect("spawn knowledge");
+    stack
+        .wait_socket("knowledge.sock", Duration::from_secs(30))
+        .expect("knowledge socket");
+
+    let from = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock is after the epoch")
+        .as_secs() as i64;
+
+    let path = "/work/it/deleted-for-good.rs";
+    let emitter = UnixEventEmitter::new(stack.producer_socket().to_string_lossy().into_owned());
+    let client = UnixGraphClient::new(stack.knowledge_socket().to_string_lossy().into_owned());
+    let query = format!("MATCH (f:File {{id: '{path}'}}) RETURN f.path LIMIT 1");
+
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let payload = proto::FileOpenedPayload {
+            path: path.to_string(),
+            app_id: "integration-test".to_string(),
+            flags: 0,
+        }
+        .encode_to_vec();
+        emitter
+            .emit("file.opened", payload)
+            .await
+            .expect("emit file.opened");
+        if let Ok(rows) = client.query_rows(&query).await {
+            if !rows.is_empty() {
+                break;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the file.opened event never promoted, so there was nothing to delete"
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+
+    let removed = client
+        .delete_activity(from)
+        .await
+        .expect("with a reachable ledger the delete is carried out");
+    assert!(
+        removed >= 1,
+        "the delete reported removing {removed} nodes, but one was readable a moment ago"
+    );
+
+    let rows = client
+        .query_rows(&query)
+        .await
+        .expect("the read still works after the delete");
+    assert!(
+        rows.is_empty(),
+        "the File node survived a delete that claimed to remove {removed} nodes"
+    );
+}
