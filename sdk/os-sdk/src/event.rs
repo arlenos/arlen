@@ -72,6 +72,24 @@ pub struct UnixEventEmitter {
     origin: String,
 }
 
+/// The session this producer belongs to, or an empty string and a loud complaint.
+///
+/// `arlen-session` mints `ARLEN_SESSION_ID` once per login and every session-side
+/// producer reads it. Substituting anything for an absent id makes the graph look
+/// joined while joining nothing, so absent is reported rather than replaced.
+fn session_origin() -> String {
+    match std::env::var("ARLEN_SESSION_ID") {
+        Ok(id) if !id.is_empty() => id,
+        _ => {
+            tracing::error!(
+                "ARLEN_SESSION_ID is unset: this producer runs in a session but \
+                 cannot name it, so the bus will refuse its events"
+            );
+            String::new()
+        }
+    }
+}
+
 impl UnixEventEmitter {
     /// Create a new emitter that will connect to the given socket path.
     ///
@@ -85,16 +103,21 @@ impl UnixEventEmitter {
             app_id: app_id.clone(),
             // A session when there is one, a NAMED system source when there is not.
             //
-            // This used to fall back to "unknown", which is the same blankness the
-            // bus now refuses in a politer font: it says an event happened and
-            // declines to say where. A daemon with no session is not unknown - it is
-            // the journald parser, or the project watcher - and saying so is what
-            // lets a transparency surface separate what the user did from what the
-            // system did on its own.
-            origin: std::env::var("ARLEN_SESSION_ID")
-                .ok()
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| format!("system:{app_id}")),
+            // The session, or nothing - never a stand-in.
+            //
+            // This fell back to "unknown", then to `system:{app_id}`, and the second
+            // was the more dangerous of the two because it reads like an answer.
+            // Every construction site of this emitter is INSIDE a login: a Tauri
+            // app plugin, the dogfood sensor stand-in, the dev emit tool. For those,
+            // `system:` attributes what the user did to the machine, in the one
+            // field the transparency surface uses to tell those apart.
+            //
+            // A daemon that genuinely has no session states `system:<name>` itself -
+            // installd, the knowledge daemon and the project watcher all do, in
+            // their own code, where it is a claim rather than a guess. Absent here
+            // is a deployment defect: the bus refuses an empty origin, so the
+            // events stop and the log says why.
+            origin: session_origin(),
         }
     }
 }
