@@ -1,0 +1,32 @@
+# Permission profile for the clock daemon (app id: clockd).
+#
+# The power daemon loads it by app id when the clock asks for a wake, resolving
+# that id from the caller's bus-attested binary path.
+#
+# It lives under `1000/`, not `0/` like the app profiles beside it, because
+# `arlen-powerd` is a USER service: `load_profile` resolves under the LOADER's uid,
+# and the knowledge daemon that reads those others is a system service running as
+# root. Shipped in `0/` this file was invisible to the only process that reads it,
+# and a booted image said so plainly - "power action denied: no profile: profile
+# not found for clockd" on one side, "the power daemon refused the wake request" on
+# the other - while the file sat one directory away.
+#
+# The 1000 is this image's session user (the first `useradd`), not a law. A
+# deployment that numbers its user differently has to put this where that user's
+# uid says, or the alarm silently loses its wake again.
+#
+# One grant, and it is the smallest one that lets an alarm do its job: ask for
+# the machine to be woken at a moment, and withdraw that request when nothing is
+# due. Not `suspend` - a clock that could put the machine to sleep would hold an
+# authority no alarm needs, and the two were split apart so this file could say
+# exactly this much and no more.
+#
+# Without it every wake request is refused; alarms still ring while the machine
+# is awake and the app says so, rather than promising a wake it cannot deliver.
+
+[info]
+app_id = "clockd"
+tier = "first-party"
+
+[system.power]
+schedule_wake = true
