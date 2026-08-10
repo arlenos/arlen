@@ -244,6 +244,7 @@ jobs:
           bash dev/scripts/check-verify-image.sh
           node dev/scripts/test-check-verify-image.mjs
           node dev/scripts/test-build-image-trap.mjs
+          node dev/scripts/test-check-shared-files.mjs
           node dev/scripts/test-check-invokes.mjs
           node dev/scripts/test-check-read-scope.mjs
           node dev/scripts/test-pre-commit-hook.mjs
