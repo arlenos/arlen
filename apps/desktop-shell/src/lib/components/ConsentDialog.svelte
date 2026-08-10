@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from "$lib/i18n/messages";
+  import { clearSurface } from "$lib/surface-clear";
   /// The unified consent dialog (system-dialog-plan.md): one polymorphic surface
   /// every permission request routes into, the sibling of the App-access page.
   /// Mounted once in +layout, inert when nothing is pending.
@@ -97,6 +98,20 @@
   // node that is already invisible on screen is removed - so a missing repaint on
   // removal costs nothing.
   let view = $state<PendingView | null>(null);
+  // Clear the surface whenever the card appears or goes. Measured on the image on
+  // 10 August: answering 'Allow once' resolved the request and left the card on
+  // screen, while the waypointer - which already did this - came back
+  // byte-identical to the desktop it opened over. Same build, same session, so
+  // the difference between the two surfaces was the clear and nothing else.
+  //
+  // The target is `document.body` rather than a backdrop: the whole card lives
+  // inside `{#if view}`, so every element it owns is gone at exactly the moment
+  // the stale pixels need reaching, and body is the element that spans this
+  // surface and survives. See `$lib/surface-clear` for what the two steps do.
+  $effect(() => {
+    view;
+    if (typeof document !== "undefined") clearSurface(document.body);
+  });
   $effect(() => {
     const pending = $current;
     if (pending) {
