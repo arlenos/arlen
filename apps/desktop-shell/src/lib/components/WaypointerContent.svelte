@@ -89,6 +89,72 @@
   } from "lucide-svelte";
 
   let query = $state("");
+
+  /// The element the shrinking card vacates into, kept so it can be forced to
+  /// repaint.
+  let backdropEl: HTMLDivElement | undefined = $state();
+
+  /// The card itself, which is the element that shrinks - and, measurably, the
+  /// one holding most of the stale paint.
+  let cardEl: HTMLDivElement | undefined = $state();
+
+  // Repaint the backdrop whenever the query changes, because the webview will not.
+  //
+  // PR-20, measured rather than argued: filter the list and the strip the card
+  // gives up keeps the pixels last drawn there. The compositor is not at fault -
+  // a build that composited every frame whole showed the same strips - and they
+  // are not in the document either, since the keyboard walks straight past them.
+  // What is left is WebKit's own painting: it repaints what it thinks is dirty,
+  // the vacated region is not in that set, and the page behind it is transparent
+  // so nothing else covers it.
+  //
+  // The nudge is on the background, NOT on opacity, and that distinction is the
+  // whole of a wasted image build. `.wp-backdrop` carries
+  // `animation: wp-backdrop-fade ... both`, so its `to { opacity: 1 }` stays
+  // applied forever - and a CSS animation outranks an inline style, so writing
+  // `el.style.opacity` did nothing at all. Same `fill-mode: both` that pinned the
+  // card's transform, twice in one file.
+  //
+  // The animation touches only opacity, so the background is free. Swapping in a
+  // fully transparent gradient and back invalidates the backdrop's background
+  // paint across its whole area - which is the area the card vacates - without
+  // changing a pixel of what it looks like or promoting a layer.
+  //
+  // Both the backdrop AND the card, because nudging the backdrop alone moved the
+  // symptom only partly: the band OUTSIDE the old card box faded almost away,
+  // while the rows inside it stood unchanged. An element repaints what it owns,
+  // and the region inside the old box belongs to the card - which is also the
+  // element that shrank, so its own paint is the stale part. The box still
+  // visible at the old size IS the previous card.
+  //
+  // A workaround, and labelled as one: the right fix lives in the engine, and
+  // this makes the shipped surface correct until that arrives.
+  $effect(() => {
+    query;
+    const el = backdropEl;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.style.backgroundImage = "linear-gradient(transparent, transparent)";
+      void el.offsetHeight;
+      el.style.backgroundImage = "";
+      // Detach and reattach for a frame, which is the only thing measured to reach
+      // pixels whose element is gone.
+      //
+      // The ladder, each rung measured: swapping the backdrop's background
+      // cleared the band OUTSIDE the card and nothing else; adding the card's
+      // background changed nothing at all, because what is stale inside the box
+      // is painted by ROWS that no longer exist and an ancestor's background does
+      // not cover them; detaching the CARD cleared its oversized box and the top
+      // stale row, and faded the rest.
+      //
+      // So it is done on the BACKDROP, which spans the whole surface and therefore
+      // covers every region the card can ever have occupied. Both writes are in
+      // one frame, so nothing is presented between them.
+      el.style.display = "none";
+      void el.offsetHeight;
+      el.style.display = "";
+    });
+  });
   let inputRef = $state<HTMLInputElement | null>(null);
   let listRef = $state<HTMLElement | null>(null);
   let commandValue = $state("");
@@ -793,10 +859,10 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
-<div class="wp-backdrop" onclick={close}>
+<div class="wp-backdrop" bind:this={backdropEl} onclick={close}>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="wp-card shell-surface" onclick={(e) => e.stopPropagation()}>
+  <div class="wp-card shell-surface" bind:this={cardEl} onclick={(e) => e.stopPropagation()}>
     <Command class="wp-root" shouldFilter={false} bind:value={commandValue}>
       <!-- The Ask-mode marker: a quiet chip riding the input line, exactly where
            the user types (stronger than a frame, which reads as mere focus). -->
