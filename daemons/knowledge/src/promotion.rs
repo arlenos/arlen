@@ -359,12 +359,26 @@ async fn promote_file_opened(
     // merge into a single node rather than creating duplicates.
     let path = if file_payload.path.is_empty() {
         // Fallback: eBPF events from Phase 1A may not have a resolved path yet.
+        //
+        // Said out loud, because this one INVENTS an identity: the node's id names
+        // no file on any disk, and it is indistinguishable in the graph from one
+        // that does. The window-focus path had the same shape and stayed hidden for
+        // months precisely because the substitution was silent.
+        warn!(
+            event_id,
+            "file.opened carried no path; recording it under an invented id"
+        );
         format!("unknown:{event_id}")
     } else {
         file_payload.path.clone()
     };
 
     // Prefer the app_id from the payload; fall back to source:pid.
+    //
+    // No warning here, deliberately: unlike the two above, this substitutes
+    // MEASURED values - the event's own source and pid - rather than a placeholder,
+    // so the result still names something real. Warning on it would add noise to
+    // the ordinary case and teach people to scroll past the two that matter.
     let app_id = if file_payload.app_id.is_empty() {
         format!("{source}:{pid}")
     } else {
@@ -715,11 +729,27 @@ async fn promote_window_focused(
 ) -> Result<()> {
     let win_payload = WindowFocusedPayload::decode(payload)?;
 
+    // Substituting is right - a focus that happened is worth recording even when
+    // the producer said nothing about it - but doing so QUIETLY is what let this
+    // run for months. The compositor built `window.focused` with an empty payload,
+    // so every focus in the graph carried app "unknown" and an empty title, and
+    // nothing anywhere said so: no error, no warning, just a surface rendering a
+    // row with nothing in it. A fallback that never announces itself is
+    // indistinguishable from a measurement.
     let app_id = if win_payload.app_id.is_empty() {
+        warn!(
+            event_id,
+            "window.focused carried no app id; recording it as unknown"
+        );
         "unknown".to_string()
     } else {
         win_payload.app_id.clone()
     };
+    if win_payload.window_title.is_empty() {
+        // Separately, because they have separate causes: a window genuinely may
+        // have no title, while a missing app id means the producer sent nothing.
+        warn!(event_id, app_id, "window.focused carried no window title");
+    }
 
     let app_id_esc = escape_cypher(&app_id);
     let event_id_esc = escape_cypher(event_id);
