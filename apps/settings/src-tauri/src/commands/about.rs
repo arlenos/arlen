@@ -93,13 +93,13 @@ fn daemon_statuses() -> Vec<DaemonStatus> {
 // ── Socket-existence probes ────────────────────────────────────────
 
 fn knowledge_socket_path_string() -> String {
-    if let Ok(p) = std::env::var("ARLEN_DAEMON_SOCKET") {
-        return p;
-    }
-    if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        return format!("{xdg}/arlen/knowledge.sock");
-    }
-    "/run/arlen/knowledge.sock".into()
+    // Both env names, via the SDK. This read only `ARLEN_DAEMON_SOCKET` and then
+    // fell through to XDG, so on a booted image - where the launcher exports
+    // `ARLEN_KNOWLEDGE_SOCKET` - the probe checked a path nothing binds and this
+    // page reported the knowledge daemon as not running while it was running.
+    os_sdk::runtime::knowledge_socket_path()
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn knowledge_socket_exists() -> bool {

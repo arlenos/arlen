@@ -12,12 +12,24 @@ use std::process::Command;
 /// token-authenticated round-trip.
 const DAEMON_SOCKET_DEFAULT: &str = "/run/arlen/knowledge.sock";
 
-/// Resolve the daemon socket path with the same fallback chain the desktop-shell
-/// client uses: `ARLEN_DAEMON_SOCKET` env var (set by `start-dev.sh`), then
-/// `$XDG_RUNTIME_DIR/arlen/...`, finally the hardcoded `/run/arlen/...` default.
+/// Resolve the daemon socket path: `ARLEN_KNOWLEDGE_SOCKET` (what a session
+/// launcher exports for clients), then `ARLEN_DAEMON_SOCKET` (what pins the
+/// daemon's bind, set by `start-dev.sh`), then `$XDG_RUNTIME_DIR/arlen/...`,
+/// finally `/run/arlen/...`.
+///
+/// The canonical version is `os_sdk::runtime::knowledge_socket_path`; this crate
+/// does not depend on `os-sdk` and this is its only socket, so the rule is
+/// repeated rather than the dependency added. `check-knowledge-socket.py` is what
+/// keeps the repetition honest - the previous copy here claimed to match "the
+/// same fallback chain the desktop-shell client uses" and did not, which is
+/// exactly the drift a comment cannot catch.
 pub fn daemon_socket_path() -> std::path::PathBuf {
-    if let Ok(p) = std::env::var("ARLEN_DAEMON_SOCKET") {
-        return std::path::PathBuf::from(p);
+    for name in ["ARLEN_KNOWLEDGE_SOCKET", "ARLEN_DAEMON_SOCKET"] {
+        if let Ok(p) = std::env::var(name) {
+            if !p.is_empty() {
+                return std::path::PathBuf::from(p);
+            }
+        }
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
         return std::path::PathBuf::from(xdg).join("arlen/knowledge.sock");

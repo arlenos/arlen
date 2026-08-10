@@ -328,11 +328,8 @@ fn load_profile(app_id: &str) -> Option<arlen_permissions::PermissionProfile> {
 
 /// The knowledge daemon's socket, matching its bind.
 fn knowledge_socket() -> String {
-    if let Some(s) = std::env::var_os("ARLEN_DAEMON_SOCKET") {
-        return s.to_string_lossy().into_owned();
-    }
-    if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
-        return format!("{}/arlen/knowledge.sock", dir.to_string_lossy());
-    }
-    "/run/arlen/knowledge.sock".to_string()
+    // Both env names, via the SDK: see `about.rs` for what reading only one cost.
+    os_sdk::runtime::knowledge_socket_path()
+        .to_string_lossy()
+        .into_owned()
 }

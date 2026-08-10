@@ -38,11 +38,18 @@ fn classify(e: os_sdk::QueryError) -> WriteFailure {
     }
 }
 
-/// Resolve the knowledge daemon's write socket: `ARLEN_DAEMON_SOCKET`, else
+/// Resolve the knowledge daemon's write socket: `ARLEN_KNOWLEDGE_SOCKET` or `ARLEN_DAEMON_SOCKET`, else
 /// `$XDG_RUNTIME_DIR/arlen/knowledge.sock`, else `/run/arlen/knowledge.sock`.
 fn knowledge_socket() -> String {
-    if let Some(s) = std::env::var_os("ARLEN_DAEMON_SOCKET") {
-        return s.to_string_lossy().into_owned();
+    // Both names: the launcher exports `ARLEN_KNOWLEDGE_SOCKET` for clients,
+    // `ARLEN_DAEMON_SOCKET` pins the daemon's bind. Reading only the second sent
+    // this to `$XDG_RUNTIME_DIR/arlen/knowledge.sock`, which nothing binds.
+    for name in ["ARLEN_KNOWLEDGE_SOCKET", "ARLEN_DAEMON_SOCKET"] {
+        if let Some(s) = std::env::var_os(name) {
+            if !s.is_empty() {
+                return s.to_string_lossy().into_owned();
+            }
+        }
     }
     if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
         let mut p = PathBuf::from(dir);
