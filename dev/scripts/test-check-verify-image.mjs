@@ -15,7 +15,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-verify-image.sh");
@@ -33,12 +33,15 @@ function tree(files) {
   return dir;
 }
 
+// Both streams, joined, on every path. The try/catch version read `execFileSync`'s
+// return value on success - which is stdout alone - so a case asserting on a
+// message the gate writes to stderr while still exiting 0 would have seen an empty
+// string and been wrong quietly. It also let the sync call echo the child's stderr
+// into this run's own output, so an EXPECTED failure printed a wall of red above
+// the word "ok". Same shape, same fix, as the pre-commit hook's test.
 function run(dir) {
-  try {
-    return { code: 0, out: execFileSync("bash", [GATE, dir], { encoding: "utf8" }) };
-  } catch (e) {
-    return { code: e.status ?? 1, out: `${e.stdout ?? ""}${e.stderr ?? ""}` };
-  }
+  const r = spawnSync("bash", [GATE, dir], { encoding: "utf8" });
+  return { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
 function check(name, dir, expect) {
@@ -126,6 +129,26 @@ check(
   // grows a verify variant. Not a finding.
   tree({ [`${D}/01-thing.sh.chroot`]: RELEASE }),
   (code) => code === 0,
+);
+
+check(
+  "an image build whose phases are gone is a failure, not a pass",
+  // The shape this gate could not report on itself: with no phases directory it
+  // printed "nothing to check" and exited 0, so moving or deleting the phases
+  // would have turned it permanently green while watching nothing. Present here
+  // as a case rather than a comment, because that is the only version that stays
+  // true.
+  tree({ "dev/mkosi/mkosi.conf": "[Distribution]\n" }),
+  (code, out) => code !== 0 && out.includes("mkosi.build.d"),
+);
+
+check(
+  "a tree that builds no image really has nothing to check",
+  // The other half, and the reason the first is a distinction rather than a
+  // blanket rule: a checkout with no image build at all is out of scope, and
+  // failing it would make the gate wrong everywhere it is not needed.
+  tree({ "README.md": "no image here\n" }),
+  (code, out) => code === 0 && out.includes("no image build"),
 );
 
 console.log(failures.length ? "\nsome cases regressed" : "\nevery shape holds");
