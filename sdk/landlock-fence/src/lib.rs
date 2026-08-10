@@ -54,6 +54,31 @@
 //!
 //! ## Do NOT fence a daemon that resolves caller identity via `/proc/<pid>/exe`
 //!
+//! **Correction (10 Aug): the fence is not what breaks these daemons - ordinary
+//! systemd hardening already has.** Measured with `systemd-run --user`, one
+//! directive per run, against a process readable from outside the sandbox:
+//!
+//! ```text
+//! PrivateDevices=yes        DENIED      RestrictNamespaces=yes  readable
+//! ProtectKernelTunables=yes DENIED
+//! ProtectSystem=strict      DENIED
+//! ProtectHome=read-only     DENIED
+//! PrivateTmp=yes            DENIED
+//! ProtectControlGroups=yes  DENIED
+//! ```
+//!
+//! Every directive that gives the unit its OWN MOUNT NAMESPACE denies the exe
+//! read; the one that does not create a mount namespace leaves it working. Each
+//! daemon named below already carries several of them, so each was unable to
+//! resolve a peer before any fence was considered. The undo signer is the case
+//! that showed it: it refuses every caller on the booted image, takes no fence,
+//! and its `ptrace_may_access` condition provably passes (matching uid and gid
+//! triples, no capability difference, Yama off, both sides unconfined).
+//!
+//! The Landlock reasoning below is still correct about Landlock. It is wrong as
+//! the explanation for the symptom, and it was read that way - including by me,
+//! for several hours, while the answer was one `systemd-run` away.
+//!
 //! A daemon that authenticates a peer by reading `/proc/<peer-pid>/exe` (the
 //! `arlen_permissions::identity::app_id_from_pid` pattern - the app-id-allowlist
 //! IPC daemons: the config-broker, online-accounts, the audit ingest, the
