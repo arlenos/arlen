@@ -16,7 +16,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-knowledge-socket.py");
@@ -34,11 +34,13 @@ function tree(files) {
 }
 
 function run(dir) {
-  try {
-    return { code: 0, out: execFileSync("python3", [GATE, dir], { encoding: "utf8" }) };
-  } catch (e) {
-    return { code: e.status ?? 1, out: `${e.stdout ?? ""}${e.stderr ?? ""}` };
-  }
+  // Both streams on every path. Reading `execFileSync`'s return value catches
+  // stdout alone, so a case asserting on something the gate writes to stderr while
+  // still exiting 0 would silently compare against an empty string - and the sync
+  // call additionally echoes the child's stderr here, printing a wall of red above
+  // an EXPECTED failure. Found twice in sibling gate tests before being fixed here.
+  const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
+  return { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
 function check(name, dir, expect) {
