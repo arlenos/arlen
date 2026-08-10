@@ -1163,6 +1163,50 @@ mod ci_matrix {
     ///
     /// A crate counts as covered if it is listed OR an ancestor is - the matrix
     /// names workspace roots like `sdk` and `ai` rather than each member.
+    /// Does `rel` fall under the exclusion pattern `pat`?
+    ///
+    /// Segment-wise, with `*` matching exactly one segment, because the patterns
+    /// are shaped like `apps/*/src-tauri` - the star sits in the MIDDLE, which a
+    /// prefix comparison silently fails to match while looking like it works. It
+    /// looked like it worked to me until the test named sixteen crates.
+    fn path_matches_exclusion(rel: &str, pat: &str) -> bool {
+        let want: Vec<&str> = pat.split('/').collect();
+        let have: Vec<&str> = rel.split('/').collect();
+        if have.len() < want.len() {
+            return false;
+        }
+        want.iter().zip(&have).all(|(w, h)| *w == "*" || w == h)
+    }
+
+    /// The crate paths `check-crate-coverage.py` documents as deliberately outside
+    /// the CI matrix, read out of that file.
+    ///
+    /// Its `EXCLUDED` map is the enforcing copy - the gate that actually fails a
+    /// build - so it is the one worth trusting. Parsing it here is deliberately
+    /// literal: the entries are `"path": "reason",` lines between `EXCLUDED = {`
+    /// and its closing brace, and if that shape ever changes the caller's length
+    /// check turns the miss into a failure rather than into an empty excuse-list
+    /// that quietly forgives every crate.
+    fn documented_exclusions() -> Vec<String> {
+        let src = std::fs::read_to_string(repo_path("dev/scripts/check-crate-coverage.py"))
+            .expect("the coverage gate is in the tree");
+        let body = src
+            .split_once("EXCLUDED = {")
+            .and_then(|(_, rest)| rest.split_once("\n}"))
+            .map(|(body, _)| body.to_string())
+            .unwrap_or_default();
+        body.lines()
+            .filter_map(|l| {
+                let l = l.trim();
+                if l.starts_with('#') {
+                    return None;
+                }
+                let (key, _) = l.strip_prefix('"')?.split_once('"')?;
+                Some(key.trim_end_matches("/*").to_string())
+            })
+            .collect()
+    }
+
     #[test]
     fn every_package_is_in_the_ci_matrix_or_documented_as_excluded() {
         let root = repo_path("");
@@ -1171,11 +1215,23 @@ mod ci_matrix {
         packages(&root, &mut found);
         assert!(found.len() > 50, "expected to find the tree's crates, got {}", found.len());
 
+        // Read the exclusions from the gate that ENFORCES them rather than keeping
+        // a second copy here. Two lists for one exception is how this test came to
+        // fail over a skip that was deliberate and documented - in the other list.
+        // An exception has to be recorded everywhere it is claimed, and the way to
+        // guarantee that is to claim it in one place.
+        let excluded = documented_exclusions();
+        assert!(
+            excluded.len() >= 2,
+            "read {} exclusions from check-crate-coverage.py; the format must have \
+             changed, and a silent zero here would pass this test by excusing nothing",
+            excluded.len()
+        );
+
         let mut missing = Vec::new();
         for dir in found {
             let rel = dir.strip_prefix(&root).unwrap_or(&dir).to_string_lossy().to_string();
-            // The two exclusions ci.yml documents.
-            if rel.contains("/src-tauri") || rel.starts_with("daemons/kernel-layer") {
+            if excluded.iter().any(|e| path_matches_exclusion(&rel, e)) {
                 continue;
             }
             // Listed outright, or a member of a listed workspace. A crate that
@@ -1792,6 +1848,17 @@ mod scenario_privilege {
         (
             "a_file_opened_indexes_code_symbols_into_the_graph",
             "same: the claim is that indexing lands symbols, not that scope gates them",
+        ),
+        (
+            "a_delete_is_refused_when_the_ledger_cannot_record_it",
+            "the delete's own tier gate REFUSES a ThirdParty caller before any token \
+             work, so the scenario cannot run unprivileged at all; the grant is \
+             there so the read that proves the node survived has somewhere to land",
+        ),
+        (
+            "a_promoted_file_is_destroyed_once_the_ledger_can_record_it",
+            "same tier requirement, and the claim is that the delete lands, not that \
+             scope admits the read",
         ),
         (
             "provenance_read_flags_a_foreign_opener_without_naming_it",
