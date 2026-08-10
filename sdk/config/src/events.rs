@@ -65,8 +65,21 @@ impl ConfigEventEmitter {
     /// Create a new emitter. Does not connect yet (lazy).
     pub fn new() -> Self {
         let socket_path = resolve_producer_socket();
+        // A config change outside a session says so, rather than claiming to be a
+        // session called "unknown".
+        //
+        // `origin` is either a session reference or `system:<producer>`, settled on
+        // 10 August. A bare "unknown" passes the bus validator - it is non-empty -
+        // and then reads as a real session id downstream: the knowledge daemon
+        // treats any origin without the `system:` prefix as a session, so a
+        // promoter would mint a Session node named "unknown" out of a file watcher
+        // firing at boot. The value was truthful about not knowing and wrong about
+        // what kind of thing it was, which is the same defect as an `app_id`
+        // holding "layer".
         let origin = std::env::var("ARLEN_SESSION_ID")
-            .unwrap_or_else(|_| "unknown".into());
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "system:arlen-config".into());
         Self {
             socket_path,
             origin,

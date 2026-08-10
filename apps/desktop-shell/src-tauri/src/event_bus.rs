@@ -116,11 +116,30 @@ fn forward_to_frontend(
 
     // Window events.
     if event_type.starts_with("window.") {
+        // Decoded as protobuf, because that is what a window event carries.
+        //
+        // This used `extract_payload_field`, which parses the payload as JSON -
+        // right for the config events below, which really are JSON, and wrong for
+        // these. So the parse failed on every window event, `app_id` fell through
+        // to `event.source` ("wayland", the producer, in the field that means the
+        // application) and `title` was always empty. Two independent reasons the
+        // values were wrong; the compositor's empty payload was the other, fixed
+        // separately.
+        //
+        // Nothing listens to the Tauri events below today. That is why this was
+        // invisible, and it is exactly why it is worth correcting now rather than
+        // when a listener inherits it.
+        let focused = (event_type == "window.focused")
+            .then(|| <proto::WindowFocusedPayload as prost::Message>::decode(&event.payload[..]).ok())
+            .flatten();
         let payload = WindowEventPayload {
             event_type: event.r#type.clone(),
-            app_id: extract_payload_field(&event, "app_id")
+            app_id: focused
+                .as_ref()
+                .map(|p| p.app_id.clone())
+                .filter(|a| !a.is_empty())
                 .unwrap_or_else(|| event.source.clone()),
-            title: extract_payload_field(&event, "title").unwrap_or_default(),
+            title: focused.as_ref().map(|p| p.window_title.clone()).unwrap_or_default(),
         };
 
         let tauri_event = match event_type {
