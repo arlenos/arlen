@@ -28,15 +28,16 @@ StandardError=journal
 # dogfood must be too - confining it would test a configuration that never occurs.
 
 [Install]
-# graphical-session.target, not default.target, because this needs the session's
-# ENVIRONMENT and not just its user manager. `arlen-session` mints
-# ARLEN_SESSION_ID and imports it partway through its run; a unit pulled in by
-# default.target starts with the user manager, which can be before that import,
-# and `systemctl --user import-environment` cannot reach a process that is already
-# running. It would then emit with no session id at all - which the bus now
-# refuses outright rather than papering over, so the ordering has to be right
-# instead of merely usual.
+# default.target, and the session env is deliberately NOT relied on.
 #
-# It also reads better: a stand-in for a user-activity sensor belongs to the
-# session it is standing in for.
-WantedBy=graphical-session.target
+# This was moved to graphical-session.target so it would inherit ARLEN_SESSION_ID,
+# and the boot said no: the timeline lost its file row, so the unit did not run.
+# Why it did not is NOT established. The obvious reading - "the target is never
+# reached" - came from grepping the serial log for it, and a --user unit's journal
+# is not forwarded to the serial console, so that grep could not have seen the
+# target either way. The evidence here is the missing row, nothing more.
+#
+# So it stays here and states what it is instead. Its events are SYNTHETIC: it
+# stands in for a sensor, it is not a user, and `system:dogfood` is the truthful
+# origin for something the verify image generates about itself.
+WantedBy=default.target
