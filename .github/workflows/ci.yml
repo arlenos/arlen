@@ -234,6 +234,7 @@ jobs:
           python3 dev/scripts/check-knowledge-socket.py
           python3 dev/scripts/check-window-capability.py
           python3 dev/scripts/check-session-origin.py
+          python3 dev/scripts/check-peer-identity-sandbox.py
           node dev/scripts/test-check-fixtures.mjs
           node dev/scripts/test-check-knowledge-socket.mjs
           node dev/scripts/test-check-window-capability.mjs
