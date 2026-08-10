@@ -112,6 +112,31 @@ fn cutoff_micros(from_secs: i64) -> i64 {
 }
 
 
+/// Destroy the RAW events for the range, in the SQLite store the promotion pass
+/// reads from.
+///
+/// Without this the delete is a delayed failure rather than a smaller version of
+/// itself. A user clears a range while raw events inside it are still waiting to
+/// be promoted; the pass runs half a minute later and puts the nodes back. "This
+/// cannot be undone" would then be false because the system undoes it itself,
+/// which is the worst available way for that sentence to be wrong.
+///
+/// Not a tombstone the pass agrees to skip: that keeps the data and adds a rule to
+/// remember, and a store holding what it was told to delete is the thing this
+/// feature exists to refuse. Deletion is already routine here - retention drops
+/// promoted events past thirty days through the same table.
+///
+/// Same microseconds as the graph, from the same one conversion, which is how the
+/// two halves stay in step.
+pub async fn delete_raw_events_since(pool: &sqlx::SqlitePool, from_secs: i64) -> Result<u64> {
+    let from = cutoff_micros(from_secs);
+    let result = sqlx::query("DELETE FROM events WHERE timestamp >= ?")
+        .bind(from)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected())
+}
+
 /// Count what is about to go, so the act can be audited and reported.
 ///
 /// Read before the write, on the same serial graph thread, so the numbers
@@ -241,6 +266,45 @@ mod tests {
             "a file accessed a year before the cut-off was destroyed by a delete \
              of today's activity"
         );
+    }
+
+    /// The raw events for the range go, and the ones outside it stay.
+    ///
+    /// The half that makes "this cannot be undone" true: a raw event left behind
+    /// is promoted back into a node half a minute later, so leaving the source is
+    /// not a smaller delete, it is a delete the system reverses on its own. The
+    /// out-of-range row is here for the same reason the graph test grew one -
+    /// deleting everything would also pass a test that only checks the range went.
+    #[tokio::test]
+    async fn the_raw_events_for_the_range_go_and_the_older_ones_stay() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pool = crate::db::open(tmp.path().join("events.db").to_str().unwrap())
+            .await
+            .expect("event store");
+
+        let cutoff_secs: i64 = 1_754_784_000;
+        let inside = cutoff_secs * 1_000_000 + 5_000_000;
+        let outside = 1_723_000_000_000_000;
+        for (id, ts) in [("inside", inside), ("outside", outside)] {
+            sqlx::query(
+                "INSERT INTO events (id, type, timestamp, source, pid, origin, payload) \
+                 VALUES (?, 'file.opened', ?, 'test', 1, 'system:test', X'')",
+            )
+            .bind(id)
+            .bind(ts)
+            .execute(&pool)
+            .await
+            .expect("seed");
+        }
+
+        let deleted = delete_raw_events_since(&pool, cutoff_secs).await.expect("delete");
+        assert_eq!(deleted, 1, "only the event inside the range");
+
+        let left: Vec<String> = sqlx::query_scalar("SELECT id FROM events ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .expect("read back");
+        assert_eq!(left, vec!["outside".to_string()], "the older event stands");
     }
 
     /// Against a real graph, because the dialect is the thing I cannot reason my
