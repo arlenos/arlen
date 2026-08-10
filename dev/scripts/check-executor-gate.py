@@ -65,8 +65,30 @@ def acting_methods(path: pathlib.Path) -> list[tuple[str, bool]]:
     # Production only. A `#[cfg(test)]` module holds test doubles that implement
     # the same trait and never touch the system, and counting them would let an
     # acknowledged name cover a real executor that happens to share it.
-    if (cut := text.find("#[cfg(test)]")) != -1:
-        text = text[:cut]
+    # Follow braces rather than cutting at the first marker. Cutting drops the
+    # REST OF THE FILE, so a sub-executor written below the test module would be
+    # invisible - and a new sub-executor that never asks the flag is the entire
+    # failure this check exists for. Nothing is hidden there today (measured on
+    # 11 August, no `execute*` after a cut outside a test scope); this is about
+    # the one that gets added later.
+    lines = text.splitlines()
+    inside, depth, opened, pending = set(), 0, [], False
+    for i, line in enumerate(lines):
+        if opened:
+            inside.add(i)
+        if "#[cfg(test)]" in line or line.strip().startswith("mod tests"):
+            pending = True
+        for ch in line:
+            if ch == "{":
+                depth += 1
+                if pending:
+                    opened.append(depth)
+                    pending = False
+            elif ch == "}":
+                if opened and depth == opened[-1]:
+                    opened.pop()
+                depth -= 1
+    text = "\n".join("" if i in inside else l for i, l in enumerate(lines))
     hits = list(FN.finditer(text))
     if not hits:
         return []
