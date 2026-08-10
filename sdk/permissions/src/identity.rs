@@ -30,8 +30,16 @@ use thiserror::Error;
 pub enum IdentityError {
     #[error("process {0} not found")]
     ProcessNotFound(u32),
-    #[error("cannot read exe path: {0}")]
-    CannotReadExe(std::io::Error),
+    #[error("cannot read exe path for pid {pid}: {source}{why}")]
+    CannotReadExe {
+        /// The process whose identity was being resolved.
+        pid: u32,
+        /// What the kernel said.
+        source: std::io::Error,
+        /// What is readable about that process, when the exe link is not. See
+        /// [`why_exe_unreadable`].
+        why: String,
+    },
     #[error("cannot read stat: {0}")]
     CannotReadStat(std::io::Error),
     #[error("malformed /proc/{0}/stat")]
@@ -55,6 +63,55 @@ pub fn app_id_from_pid(pid: u32) -> Result<String, IdentityError> {
 /// for `/proc/{pid}` is held open while we read `exe`, so the
 /// kernel's per-process subdirectory is the same lifetime as the
 /// readlink.
+/// What is knowable about a process whose `exe` link would not open, appended to
+/// the error so the next occurrence explains itself.
+///
+/// `cannot read exe path: Permission denied` names a symptom that three unrelated
+/// causes produce, and telling them apart has cost real time twice: once for the
+/// daemons under the Landlock fence (see `sdk/landlock-fence`, where the ptrace
+/// LSM hook denies the read and no filesystem grant can help), and again on 10
+/// August, when the undo signer was found turning away every caller on the image
+/// with nothing in the message to say which cause it was.
+///
+/// The three separate cleanly on facts that stay readable when `exe` does not:
+/// a peer of a DIFFERENT uid, a target that is non-dumpable (its `/proc` entries
+/// become root-owned), or neither - which points at the reader being confined.
+/// So report the peer's uid, the owner of its `/proc` directory, and our own uid,
+/// and let whoever reads the log stop guessing.
+///
+/// Best-effort by construction: this runs on an error path and must never mask
+/// the original failure, so anything unreadable is simply omitted.
+fn why_exe_unreadable(pid: u32) -> String {
+    use std::os::unix::fs::MetadataExt;
+
+    if let Ok(meta) = std::fs::metadata(format!("/proc/{pid}")) {
+        // SAFETY: getuid is always successful and takes no arguments.
+        let me = unsafe { libc::getuid() };
+        let dir_owner = meta.uid();
+        let peer = std::fs::read_to_string(format!("/proc/{pid}/status"))
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find_map(|l| l.strip_prefix("Uid:"))
+                    .and_then(|v| v.split_whitespace().next().map(str::to_owned))
+            });
+        let peer = peer.unwrap_or_else(|| "unknown".into());
+        let reading = if dir_owner != me {
+            if peer == me.to_string() {
+                " - the peer shares our uid but its /proc is root-owned, so it is \
+                  non-dumpable"
+            } else {
+                " - the peer runs as another user"
+            }
+        } else {
+            " - same uid and same /proc owner, so the restriction is on our side \
+              (a Landlock fence denies this read; see sdk/landlock-fence)"
+        };
+        return format!(" (peer uid {peer}, /proc/{pid} owned by {dir_owner}, we are {me}{reading})");
+    }
+    String::new()
+}
+
 pub(crate) fn exe_path_openat(pid: u32) -> Result<PathBuf, IdentityError> {
     use std::ffi::CString;
     let proc_dir = format!("/proc/{pid}");
@@ -76,7 +133,7 @@ pub(crate) fn exe_path_openat(pid: u32) -> Result<PathBuf, IdentityError> {
         return Err(if err.kind() == std::io::ErrorKind::NotFound {
             IdentityError::ProcessNotFound(pid)
         } else {
-            IdentityError::CannotReadExe(err)
+            IdentityError::CannotReadExe { pid, why: why_exe_unreadable(pid), source: err }
         });
     }
     let dir = unsafe { OwnedFd::from_raw_fd(dir_fd) };
@@ -95,14 +152,15 @@ pub(crate) fn exe_path_openat(pid: u32) -> Result<PathBuf, IdentityError> {
         )
     };
     if n < 0 {
-        return Err(IdentityError::CannotReadExe(std::io::Error::last_os_error()));
+        let err = std::io::Error::last_os_error();
+        return Err(IdentityError::CannotReadExe { pid, why: why_exe_unreadable(pid), source: err });
     }
     let bytes = &buf[..n as usize];
     let s = std::str::from_utf8(bytes)
-        .map_err(|_| IdentityError::CannotReadExe(std::io::Error::new(
+        .map_err(|_| IdentityError::CannotReadExe { pid, why: String::new(), source: std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "exe path not UTF-8",
-        )))?;
+        )})?;
     Ok(PathBuf::from(s))
 }
 
@@ -1623,5 +1681,36 @@ mod shipped_desktop_entry_tests {
         // An empty sweep would pass silently, and this test exists precisely
         // because nothing else looks at these files.
         assert!(checked > 0, "no shipped desktop entries were found to check");
+    }
+}
+
+#[cfg(test)]
+mod exe_diagnosis_tests {
+    use super::*;
+
+    /// The message must name the cause, not just the symptom.
+    ///
+    /// pid 1 is root-owned on every Linux box, so an unprivileged test reproduces
+    /// exactly the shape that had the undo signer refusing callers with nothing to
+    /// go on: `Permission denied` and no indication of which of the three causes
+    /// it was. Skipped when run as root, where the read succeeds and there is
+    /// nothing to diagnose.
+    #[test]
+    fn a_refused_exe_read_says_which_cause_it_was() {
+        // SAFETY: getuid takes no arguments and always succeeds.
+        if unsafe { libc::getuid() } == 0 {
+            return;
+        }
+        let err = app_id_from_pid(1).expect_err("pid 1 is not readable unprivileged");
+        let msg = err.to_string();
+        assert!(msg.contains("pid 1"), "names the process: {msg}");
+        assert!(
+            msg.contains("/proc/1 owned by 0"),
+            "names the /proc owner, which is what separates the causes: {msg}"
+        );
+        assert!(
+            msg.contains("another user"),
+            "reaches a conclusion rather than leaving the reader to: {msg}"
+        );
     }
 }
