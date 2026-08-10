@@ -39,7 +39,53 @@
 
   let { onselect }: { onselect: (event: TimelineEvent) => void } = $props();
 
-  onMount(loadTimeline);
+  // Load on mount, then again whenever this window becomes visible, and on a slow
+  // tick while it is.
+  //
+  // A single load on mount is what made this pane look broken on a real system:
+  // the app starts with the session, asks the graph about seven seconds into the
+  // boot, and the daemon's promotion pass runs every 30 seconds - so the first
+  // answer is empty on every boot and nothing ever asked again. A boot verified at
+  // 200 seconds showed "Nothing recorded here yet." while the graph had held a file
+  // access, two focus events and a project for two minutes.
+  //
+  // The interval matches the promotion pass, because asking faster than the data
+  // can change only adds reads. It runs ONLY while the document is visible: this
+  // pane reads the user's own activity, and polling it for a window nobody is
+  // looking at is work and exposure with no reader. Becoming visible refreshes
+  // immediately, so a window you come back to is current rather than a tick behind.
+  const REFRESH_MS = 30_000;
+
+  onMount(() => {
+    let timer: ReturnType<typeof setInterval> | undefined;
+
+    const start = () => {
+      if (timer === undefined) timer = setInterval(loadTimeline, REFRESH_MS);
+    };
+    const stop = () => {
+      if (timer !== undefined) {
+        clearInterval(timer);
+        timer = undefined;
+      }
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        void loadTimeline();
+        start();
+      }
+    };
+
+    void loadTimeline();
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  });
 
   const KIND_ICONS: Record<TimelineKind, typeof FileText> = {
     opened: FileText,
