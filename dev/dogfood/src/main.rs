@@ -214,8 +214,16 @@ async fn executor_verify(file_path: &str) -> Result<(), String> {
         emit_open(file_path)
             .await
             .map_err(|e| format!("re-emit file.opened: {e}"))?;
-        if let Some(id) = first_completed_action(&agent).await {
-            break id;
+        match first_completed_action(&agent).await {
+            Ok(Some(id)) => break id,
+            Ok(None) => {}
+            // Stop rather than poll to timeout: if the agent will not answer, this
+            // run cannot decide the question either way, and saying so is the only
+            // honest outcome. Reporting "no write surfaced" here would be a verdict
+            // about the executor drawn from a fact about permissions.
+            Err(e) => {
+                return Err(format!("cannot verify the executor write: {e}"));
+            }
         }
         if Instant::now() >= deadline {
             return Err("no executor write surfaced within budget".to_string());
@@ -243,16 +251,34 @@ async fn executor_verify(file_path: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// The correlation id of the first completed (executed) action the agent retains,
-/// or None if none yet. `completed_actions` is a JSON array of `{id, ...}`.
-async fn first_completed_action(agent: &Proxy<'_>) -> Option<String> {
-    let json: String = agent.call("completed_actions", &()).await.ok()?;
-    let parsed: Value = serde_json::from_str(&json).ok()?;
-    parsed
-        .as_array()?
+/// The correlation id of the first completed (executed) action the agent retains.
+///
+/// `Ok(None)` means the agent answered and has nothing yet; `Err` means it did not
+/// answer. **The two must not be conflated**, and they were: this used to be
+/// `.await.ok()?`, which turned a REFUSAL into "nothing yet". A booted image showed
+/// the consequence - `completed_actions refused: not a user surface caller=dogfood`
+/// every five seconds until the budget expired, and the run then reported "no
+/// executor write surfaced", which is what it would have said if the agent had
+/// simply not written anything.
+///
+/// A verifier that reads its own denial as evidence is worse than no verifier: it
+/// produces a confident negative. `completed_actions` is gated to user surfaces and
+/// dogfood is not one, so this call cannot succeed as things stand - which is a
+/// finding about how dogfood should observe, not something to paper over here.
+async fn first_completed_action(agent: &Proxy<'_>) -> Result<Option<String>, String> {
+    let json: String = agent
+        .call("completed_actions", &())
+        .await
+        .map_err(|e| format!("completed_actions: {e}"))?;
+    let parsed: Value =
+        serde_json::from_str(&json).map_err(|e| format!("completed_actions reply: {e}"))?;
+    let Some(items) = parsed.as_array() else {
+        return Err("completed_actions reply was not an array".to_string());
+    };
+    Ok(items
         .iter()
         .find_map(|v| v.get("id").and_then(Value::as_str))
-        .map(str::to_string)
+        .map(str::to_string))
 }
 
 /// Raise a `run_command`-shaped consent request on the broker intake socket and
