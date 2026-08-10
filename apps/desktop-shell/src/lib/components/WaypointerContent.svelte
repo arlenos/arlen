@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t, locale } from "$lib/i18n/messages";
+  import { clearSurface } from "$lib/surface-clear";
   import { writable } from "$lib/stores/svelteRe.js";
   import { invoke } from "@tauri-apps/api/core";
   import { waypointerVisible, initWaypointerListeners, closeWaypointer } from "$lib/stores/waypointer.js";
@@ -129,31 +130,14 @@
   //
   // A workaround, and labelled as one: the right fix lives in the engine, and
   // this makes the shipped surface correct until that arrives.
+  // The backdrop spans the whole surface, so it is the element that covers every
+  // region the card can ever have occupied. `clearSurface` holds the measured
+  // steps and the reasoning; it lives in `$lib/surface-clear` because this is a
+  // property of every transparent shell surface and not of the waypointer, and
+  // the consent surface showed what happens to the one that does not do it.
   $effect(() => {
     query;
-    const el = backdropEl;
-    if (!el) return;
-    requestAnimationFrame(() => {
-      el.style.backgroundImage = "linear-gradient(transparent, transparent)";
-      void el.offsetHeight;
-      el.style.backgroundImage = "";
-      // Detach and reattach for a frame, which is the only thing measured to reach
-      // pixels whose element is gone.
-      //
-      // The ladder, each rung measured: swapping the backdrop's background
-      // cleared the band OUTSIDE the card and nothing else; adding the card's
-      // background changed nothing at all, because what is stale inside the box
-      // is painted by ROWS that no longer exist and an ancestor's background does
-      // not cover them; detaching the CARD cleared its oversized box and the top
-      // stale row, and faded the rest.
-      //
-      // So it is done on the BACKDROP, which spans the whole surface and therefore
-      // covers every region the card can ever have occupied. Both writes are in
-      // one frame, so nothing is presented between them.
-      el.style.display = "none";
-      void el.offsetHeight;
-      el.style.display = "";
-    });
+    clearSurface(backdropEl);
   });
   let inputRef = $state<HTMLInputElement | null>(null);
   let listRef = $state<HTMLElement | null>(null);
