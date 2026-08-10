@@ -139,20 +139,28 @@ fn why_exe_unreadable(pid: u32) -> String {
             // (CapPrm 0x800000000, CAP_WAKE_ALARM), unreadable, while two
             // zero-capability processes of the same uid read fine.
             //
-            // Two earlier guesses at this branch were wrong and are not repeated
-            // here: a Landlock fence (the signer takes none) and Yama's
-            // ptrace_scope (its hook governs ATTACH, not READ, and a
-            // non-descendant reads fine). The scope is still reported because it
-            // is cheap and someone will ask, but the capability line is the one
-            // that has evidence behind it.
+            // Report every candidate rather than the current favourite. Four
+            // mechanisms have been proposed for this one refusal and three are
+            // now dead - a Landlock fence (the signer takes none), Yama (the
+            // image reports scope=0, and its hook governs ATTACH anyway), and a
+            // capability difference (both sets read zero on the image). Each was
+            // plausible, each fitted the evidence available when it was proposed.
+            //
+            // The pattern is the lesson: when the capability line was added it
+            // REPLACED the LSM-label probe, and the label is exactly what the
+            // next boot needed. Narrowing a diagnostic to the leading hypothesis
+            // discards the evidence that would refute it. So this prints all of
+            // them, cheaply, and lets the reader do the eliminating.
             return format!(
                 " (peer uid {peer}, /proc/{pid} owned by {dir_owner}, we are {me} \
                  - same uid, so compare capabilities: peer CapPrm={}, ours={} \
                  (a READ is refused unless ours is a superset); \
-                 yama ptrace_scope={})",
+                 yama ptrace_scope={}; our LSM label={}, peer's={})",
                 proc_field(pid, "CapPrm"),
                 proc_field(std::process::id(), "CapPrm"),
                 read_trimmed("/proc/sys/kernel/yama/ptrace_scope"),
+                read_trimmed("/proc/self/attr/current"),
+                read_trimmed(&format!("/proc/{pid}/attr/current")),
             );
         };
         return format!(" (peer uid {peer}, /proc/{pid} owned by {dir_owner}, we are {me}{reading})");
