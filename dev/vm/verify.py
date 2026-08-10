@@ -290,11 +290,16 @@ def _blank_pointer(img, at, w, h):
         return img
     cx, cy = at
     patch = img.copy()
-    # Generous enough for the arrow and its shadow at either scale.
-    r = max(24, int(w * 0.02))
-    fill = img.getpixel((max(0, min(w - 1, cx + 3 * r)), max(0, min(h - 1, cy))))
-    for x in range(max(0, cx - r), min(w, cx + r)):
-        for y in range(max(0, cy - r), min(h, cy + r)):
+    # A pointer's hotspot is its TIP, so the glyph hangs DOWN and RIGHT of the
+    # point that was clicked; a box centred on that point clips its tail. The test
+    # caught exactly that - a symmetric 25px patch left the arrow's lower tip in
+    # frame and the spread stayed at 225. So reach much further down-right than up-
+    # left, and keep a small margin for the outline and any drop shadow.
+    back = max(12, int(w * 0.01))
+    fwd = max(48, int(w * 0.045))
+    fill = img.getpixel((max(0, min(w - 1, cx + 4 * fwd)), max(0, min(h - 1, cy))))
+    for x in range(max(0, cx - back), min(w, cx + fwd)):
+        for y in range(max(0, cy - back), min(h, cy + fwd)):
             patch.putpixel((x, y), fill)
     return patch
 

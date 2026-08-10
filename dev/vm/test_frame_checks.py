@@ -150,6 +150,41 @@ def main():
         check("an untouched card reads present",
               consent_dialog_state(before_card, before_card), "present")
 
+        # The mouse pointer is not a consent card. The approve click lands in the
+        # middle of the screen, which is inside the sampled box by construction,
+        # so after it a bright arrow sits exactly where the card was. Measured on
+        # the image on 10 August: two runs read 'the card is still on screen, this
+        # is PR-20' off a frame that shows a bare desktop, and hours went into
+        # explaining a defect that was a cursor.
+        pointer = base.copy()
+        pd = ImageDraw.Draw(pointer)
+        px, py = int(W * 0.62), int(H * 0.61)
+        pd.polygon([(px, py), (px, py + 34), (px + 9, py + 25),
+                    (px + 20, py + 30), (px + 25, py + 22), (px + 13, py + 18)],
+                   fill=(245, 245, 245), outline=(20, 20, 20))
+        with_pointer = save(pointer, "pointer.png", tmp)
+
+        # Without being told where the pointer is, the arrow reads as the card:
+        # that is the bug, pinned so it cannot come back quietly.
+        check("a bare pointer is mistaken for a card when unmasked",
+              consent_dialog_state(before_card, with_pointer), "present")
+        check("a dismissed card with the pointer left in the box reads dismissed",
+              consent_dialog_state(before_card, with_pointer, pointer_at=(px, py)),
+              "dismissed")
+
+        # And masking must not blind the check: a real card with the pointer over
+        # it is still a card.
+        card_and_pointer = with_card(base)
+        cd = ImageDraw.Draw(card_and_pointer)
+        cd.polygon([(px, py), (px, py + 34), (px + 9, py + 25),
+                    (px + 20, py + 30), (px + 25, py + 22), (px + 13, py + 18)],
+                   fill=(245, 245, 245), outline=(20, 20, 20))
+        check("a card under the pointer still reads present",
+              consent_dialog_state(before_card,
+                                   save(card_and_pointer, "card-pointer.png", tmp),
+                                   pointer_at=(px, py)),
+              "present")
+
         # The first observed failure direction, from the amber-only era: a card
         # caught mid-fade is still plainly on screen but its amber has dropped
         # below any threshold. It must not read as dismissed.
