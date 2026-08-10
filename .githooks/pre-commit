@@ -23,15 +23,42 @@
 # whole file is the habit that avoids it; `git stash --keep-index` around the run
 # would close it properly, and is not done here because a stash that fails midway
 # costs more than the gap does.
+#
+# So the gap is NAMED instead. `warn_divergence` lists the files this ran against
+# a different version of, every time it happens, whether the gates passed, failed
+# or never ran. It does not block: partial staging is legitimate and a hook that
+# refuses it gets bypassed, after which it protects nothing. What it removes is
+# the silence - a green run above no longer implies the thing being committed is
+# the thing that was checked, and now says so rather than leaving it to be
+# remembered from a comment nobody reads at commit time.
 set -uo pipefail
 
 root=$(git rev-parse --show-toplevel)
 runner="$root/dev/scripts/run-ci-gates.sh"
 
+# Files that are BOTH staged and further edited since: `git diff` is worktree
+# against index, `git diff --cached` is index against HEAD, so the intersection is
+# exactly the set whose on-disk state is not the committed state.
+divergent=$(comm -12 \
+    <(git diff --name-only | sort) \
+    <(git diff --cached --name-only | sort))
+
+warn_divergence() {
+    [ -n "$divergent" ] || return 0
+    echo >&2
+    echo "pre-commit: checked the version on disk, not the version being committed:" >&2
+    printf '%s\n' "$divergent" | while IFS= read -r f; do
+        [ -n "$f" ] && echo "  $f" >&2
+    done
+    echo "  Each is staged in one state and edited into another, so the result above" >&2
+    echo "  says nothing about what lands. Stage the whole file, or check it yourself." >&2
+}
+
 # Absent runner: say so and let the commit through. The hook is a safety net, and
 # a net that blocks work when its own plumbing is missing is worse than none.
 if [ ! -f "$runner" ]; then
     echo "pre-commit: $runner is missing; gates not run" >&2
+    warn_divergence
     exit 0
 fi
 
@@ -39,5 +66,8 @@ if ! bash "$runner"; then
     echo >&2
     echo "pre-commit: a structural gate is red, so this commit would land broken." >&2
     echo "Fix it, or pass --no-verify if you know why it is wrong." >&2
+    warn_divergence
     exit 1
 fi
+
+warn_divergence

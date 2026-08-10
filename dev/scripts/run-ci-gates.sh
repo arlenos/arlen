@@ -12,12 +12,21 @@
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
-# `check-*` AND `test-check-*`: the self-tests sit in the same CI step and are
-# what keeps the gates honest, so a runner claiming to be "the gates CI lists"
-# while skipping them was reading its own source of truth too narrowly. They cost
-# under a second each and they are the reason any of the gates can be trusted.
+# Every `dev/scripts/` script the step runs, whatever it is called.
+#
+# This matched `(test-)?check-[a-z-]*` until 10 August, which is a naming habit
+# wearing the costume of a derivation - and it had two holes, both found by
+# walking into them rather than by reading it. `[a-z-]` excludes digits, so
+# `check-i18n-reactivity.mjs` had been in CI and never once in a pre-commit run,
+# for no reason but the 18 in its name. And a check whose name does not begin
+# `check-` was invisible entirely.
+#
+# The lesson is the one this week keeps paying for: derive the list, do not
+# maintain it. A filter that additionally requires a naming convention is a
+# maintained list again, just harder to notice, because it fails by leaving
+# things out silently and the runner still prints a confident tally.
 mapfile -t scripts < <(
-  grep -oE 'dev/scripts/(test-)?check-[a-z-]*\.(py|mjs|sh)' .github/workflows/ci.yml \
+  grep -oE 'dev/scripts/[a-z0-9-]+\.(py|mjs|sh)' .github/workflows/ci.yml \
     | awk '!seen[$0]++'
 )
 
