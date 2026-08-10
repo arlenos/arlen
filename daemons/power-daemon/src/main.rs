@@ -42,7 +42,7 @@ async fn main() {
 
     let producer = os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
     info!(socket = %producer.display(), "power-daemon starting");
-    let emitter = UnixEventEmitter::new(producer.to_string_lossy().into_owned());
+    let emitter = UnixEventEmitter::for_system_named("powerd", producer.to_string_lossy().into_owned());
 
     // System bus for UPower. If it is unavailable at startup we still run and
     // retry on each poll, so a late dbus/UPower start recovers without a crash.

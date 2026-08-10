@@ -107,7 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // pins it for the dev stack and the integration harness.
     let producer_socket =
         os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
-    let emitter = Arc::new(UnixEventEmitter::new(
+    let emitter = Arc::new(UnixEventEmitter::for_system_named("auditd", 
         producer_socket.to_string_lossy().into_owned(),
     ));
 
