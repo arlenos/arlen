@@ -65,7 +65,13 @@ installed_paths() { # $1 = 'verify' | 'release'
             *verify*) [ "$1" = verify ] || continue ;;
             *)        [ "$1" = release ] || continue ;;
         esac
-        grep -hoE '\$DESTDIR"?/[a-zA-Z0-9/_.-]+' "$f" 2>/dev/null | sed 's/^\$DESTDIR"\?//'
+        # `mkdir` lines are dropped first. They name a DIRECTORY, and a directory
+        # is not an installed artefact - two phases both needing
+        # /usr/lib/systemd/system to exist is ordinary, not a collision. Counting
+        # them made this gate report a probe shipping to users because
+        # mkosi.extra happens to contain that same directory.
+        grep -v '^[[:space:]]*mkdir' "$f" 2>/dev/null \
+            | grep -hoE '\$DESTDIR"?/[a-zA-Z0-9/_.-]+' | sed 's/^\$DESTDIR"\?//'
     done | sort -u
 }
 
