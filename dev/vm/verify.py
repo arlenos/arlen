@@ -15,6 +15,7 @@ Exit 0 if the frame rendered, non-zero otherwise.
 import argparse
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -809,6 +810,29 @@ def main():
     if args.serial_out and os.path.exists(serial):
         shutil.copyfile(serial, os.path.abspath(args.serial_out))
         print(f"serial: {os.path.abspath(args.serial_out)}")
+        # Say how far the capture actually reaches. It does not always reach the
+        # end of the run: on 10 Aug a 110s run produced a log whose last entry was
+        # at 7.4s, and the dogfood markers land at ~12.7s. Reading that log, their
+        # absence looks exactly like the one-shot never emitting, and the wrong
+        # conclusion is the natural one. A grep over a truncated log answers a
+        # question about the log, not about the system.
+        #
+        # This reports rather than fails: a genuinely quiet guest also stops
+        # logging, so an early last-entry is not proof of truncation. The horizon
+        # is what the reader needs either way - it is the line past which absence
+        # means nothing.
+        try:
+            with open(os.path.abspath(args.serial_out), "r", errors="replace") as fh:
+                stamps = re.findall(r"^\[\s*(\d+\.\d+)\]", fh.read(), re.M)
+        except OSError:
+            stamps = []
+        if stamps:
+            last = float(stamps[-1])
+            print(f"serial horizon: last entry at {last:.1f}s of a ~{args.wait}s run"
+                  + ("  (nothing after this was captured; absence past it proves nothing)"
+                     if last < args.wait * 0.6 else ""))
+        else:
+            print("serial horizon: no timestamped entries; the log says nothing about timing")
 
     if not (os.path.exists(out) and os.path.getsize(out) > 0):
         sys.exit("no screenshot captured")
