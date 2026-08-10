@@ -98,17 +98,18 @@
   // node that is already invisible on screen is removed - so a missing repaint on
   // removal costs nothing.
   let view = $state<PendingView | null>(null);
-  // Clear the surface when the card changes, which covers one case and NOT the
-  // one this was first written for. Measured on the image on 10 August: with this
-  // in place, answering 'Allow once' still left the card on screen. The serial
-  // says why - `consent_window::hide: dropped` fires immediately on the answer,
-  // and the screenshot eight seconds later still shows the card. By then the page
-  // is gone and so is the surface, so nothing here can reach those pixels. The
-  // residue after an answer is below the page and is not this component's to fix.
+  // Clear the surface when the card changes. Note what this is NOT for: the
+  // after-answer residue it was first written for does not exist. Re-driven on
+  // the image on 10 August with the pointer masked out of the check, answering
+  // 'Allow once' returns the card's area to desktop. The earlier reading that
+  // said otherwise was the mouse pointer sitting where the click had just landed.
   //
-  // What it does cover is a card that changes while the surface stays mapped: a
-  // second queued request replacing the first vacates whatever the taller card
-  // occupied, which is the waypointer's shrink case on this surface.
+  // What is left is the case this shape is actually measured on elsewhere: a card
+  // that changes while the surface stays mapped, where a second queued request
+  // replacing a taller first one vacates the region the taller one occupied. That
+  // is the waypointer's shrink case, which IS measured, arriving on this surface.
+  // It has not been reproduced here - it needs two queued requests - so this is a
+  // known-mechanism guard rather than a fix for an observed break.
   //
   // The target is `document.body` because the whole card lives inside
   // `{#if view}`, so every element it owns is gone at the moment stale pixels
