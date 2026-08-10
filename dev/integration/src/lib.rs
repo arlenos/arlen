@@ -81,6 +81,15 @@ impl EphemeralStack {
             std::process::id(),
             runtime.path().file_name().and_then(|s| s.to_str()).unwrap_or("stack")
         );
+        // Process-wide on purpose, because the scenarios build their emitters with
+        // `UnixEventEmitter::new` inside the test process and that reads the
+        // environment. The cost is a real constraint: this suite must stay
+        // sequential. Two stacks alive in one process would share one variable, so
+        // the second one's id would reach the first one's emitters and its events
+        // would be accepted and filed under the wrong session - passing tests
+        // built on joined-to-the-wrong-thing data, which is the exact damage the
+        // session rule exists to stop, arriving quietly. `--test-threads=1` is
+        // what holds this, and it is in the recipe for the Ladybug reason too.
         std::env::set_var("ARLEN_SESSION_ID", &session);
         std::fs::create_dir_all(runtime.path().join("knowledge"))?;
         std::fs::create_dir_all(runtime.path().join("timeline"))?;
