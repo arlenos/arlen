@@ -5,10 +5,17 @@
  * overlay that shrinks or closes can leave its last frame behind: the element is
  * gone from the DOM and its pixels are still presented. Measured on the image on
  * 10 August: the waypointer, which does the clear below, returns to a frame that
- * is byte-identical to the desktop before it opened (max channel delta 0). The
- * consent surface, which did not, still shows its card after the request has been
- * resolved - the same build, the same session, the same session-wide rendering
- * settings.
+ * is byte-identical to the desktop before it opened (max channel delta 0).
+ *
+ * An earlier version of this comment named the consent surface as the standing
+ * counter-example, still showing its card after the request had been resolved.
+ * That was wrong and is retracted. The check that produced it was reading the
+ * MOUSE POINTER, which sits where the click just landed and therefore always
+ * looks like a card that has not gone away. With the pointer masked out and the
+ * same path re-driven on the same image, answering 'Allow once' returns the
+ * card's area to desktop (spread 3 against a desktop spread of 3). **There is no
+ * residue after an answer.** The only measured instance of this defect is the
+ * waypointer's shrink case.
  *
  * This CLEARS rather than covers. Painting an opaque fill over the region would
  * leave the stale pixels exactly where they are and merely stop us seeing them,
