@@ -25,6 +25,7 @@ reverse is the normal case.
 import os
 import pathlib
 import re
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -97,26 +98,55 @@ def protocol_copies() -> tuple[list[str], int, str | None]:
     the compositor's said `session_id`, and the drift gate collected its subjects
     with `git ls-files` here). So this reaches across when the checkout is there
     and reports plainly when it is not, rather than counting silence as agreement.
+
+    Every copy is collected rather than the shell's, because the shell is not the
+    only vendor: `sdk/tauri-plugin-menu` keeps its own `arlen-titlebar-v1.xml` and
+    generates its own client bindings from it, so a version that compared the shell
+    against the compositor would have watched two of that protocol's three copies
+    and called it covered.
     """
-    shell = ROOT / "apps/desktop-shell/src-tauri/protocols"
+    copies: dict[str, list[pathlib.Path]] = {}
+    listed = subprocess.run(
+        ["git", "ls-files", "*/protocols/*.xml"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    ).stdout.split()
+    for rel in listed:
+        copies.setdefault(pathlib.Path(rel).name, []).append(ROOT / rel)
+
     comp = pathlib.Path(
         os.environ.get("COMPOSITOR_PATH", pathlib.Path.home() / "Repositories/compositor")
     ) / "resources/protocols"
-    if not comp.is_dir():
-        return [], 0, f"{comp} is absent, so the shell/compositor protocol copies were not compared"
+    absent = None
+    if comp.is_dir():
+        for name in copies:
+            other = comp / name
+            if other.is_file():
+                copies[name].append(other)
+    else:
+        absent = f"{comp} is absent, so the compositor's protocol copies were not compared"
+
     problems, checked = [], 0
-    for xml in sorted(shell.glob("*.xml")):
-        other = comp / xml.name
-        if not other.is_file():
+    for name, paths in sorted(copies.items()):
+        if len(paths) < 2:
             continue
-        checked += 1
-        if xml.read_bytes() != other.read_bytes():
-            problems.append(
-                f"{xml.name}: the shell's copy and the compositor's differ. Each side "
-                "generates bindings from its own, so this builds on both and breaks "
-                "only when the two talk."
-            )
-    return problems, checked, None
+        checked += len(paths)
+        first = paths[0].read_bytes()
+        for other in paths[1:]:
+            if other.read_bytes() != first:
+                problems.append(
+                    f"{name}: {_rel(paths[0])} and {_rel(other)} differ. Each side "
+                    "generates bindings from its own, so this builds on both and "
+                    "breaks only when the two talk."
+                )
+    return problems, checked, absent
+
+
+def _rel(p: pathlib.Path) -> str:
+    """Repo-relative where possible, absolute for the separate compositor checkout."""
+    try:
+        return str(p.relative_to(ROOT))
+    except ValueError:
+        return str(p)
 
 
 def main() -> int:
