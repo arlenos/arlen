@@ -62,6 +62,17 @@ The flag is the identity story getting stronger. It is not yet the /proc
 dependency going away, and those are easy to confuse - I confused them for four
 hours. What removes the dependency is the legacy resolution stopping, which is
 the keystone work, not a unit-file change.
+
+Narrowed by measurement on 11 Aug, because "reads /proc" does not say which read:
+
+    ProtectSystem=strict     /proc/<pid>/stat = OK     /proc/<pid>/exe = DENIED
+
+**Only the exe magic link is refused** - it is ptrace-gated, `stat` is not, so
+`pid_start_time` survives a sandbox and is not the obstacle. For a unit already
+on enforce the whole problem is therefore the single fatal `app_id_from_pid`
+call, whose value enforce consumes only for the divergence log. Making a
+non-authoritative observation unable to fail the connection is the first slice,
+and it wants a boot against the audit chain rather than an argument.
 """
 
 import re
