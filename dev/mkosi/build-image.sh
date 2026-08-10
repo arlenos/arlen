@@ -39,6 +39,16 @@ for d in $daemons; do
     install -Dm755 "$out" "$extra/${dest#/}"
 done
 
+# `--verify` adds the probe phase and nothing else. The relationship it must keep -
+# verify is release PLUS probes, never minus - is asserted by
+# `dev/scripts/check-verify-image.sh` rather than by anyone remembering it, because
+# an image that differs by omission verifies a system that does not ship.
+verify_args=()
+if [ "${1:-}" = "--verify" ]; then
+    verify_args=(-E ARLEN_VERIFY_IMAGE=1)
+    echo ">> verify variant: the release image plus the probes"
+fi
+
 echo ">> mkosi build --incremental --force"
 # --incremental yes caches the post-distro base image (debootstrap + the apt
 # package install) as an intermediary, so a re-run skips that whole phase and
@@ -46,5 +56,5 @@ echo ">> mkosi build --incremental --force"
 # cargo/npm caches). A single --force rebuilds the OUTPUT but keeps the
 # incremental cache (only -ff drops it), so the slow Debian-rootfs assembly is
 # paid once, not on every build.
-( cd "$repo" && PATH=/usr/sbin:/sbin:$PATH mkosi --directory "$here" --incremental yes --cache-directory "$here/mkosi.cache" build --force )
+( cd "$repo" && PATH=/usr/sbin:/sbin:$PATH mkosi --directory "$here" --incremental yes --cache-directory "$here/mkosi.cache" "${verify_args[@]}" build --force )
 echo ">> image built: $here/arlen.raw"
