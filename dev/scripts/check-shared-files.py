@@ -28,7 +28,13 @@ import re
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+# A tree to check may be passed in, which is what lets the gate's own test drive it
+# against fixtures; the sibling gates take the same argument.
+ROOT = (
+    pathlib.Path(sys.argv[1]).resolve()
+    if len(sys.argv) > 1
+    else pathlib.Path(__file__).resolve().parents[2]
+)
 
 # (what the file is, writer file, writer struct, reader file, reader struct)
 PAIRS = [
@@ -47,7 +53,13 @@ RENAME = re.compile(r'rename\s*=\s*"([^"]+)"')
 
 def fields(rel: str, struct: str) -> dict[str, str]:
     """Serde field names of one struct, mapped to the Rust name that produced them."""
-    text = (ROOT / rel).read_text()
+    path = ROOT / rel
+    if not path.is_file():
+        # Symmetric with the missing-struct exit below. A rename used to land here
+        # as a traceback, which reads like the gate is broken rather than like the
+        # pair it watches has moved.
+        sys.exit(f"{rel} is gone; the check names it as {struct}'s home and needs updating")
+    text = path.read_text()
     m = re.search(rf"struct {struct}\b[^{{]*{{", text)
     if not m:
         sys.exit(f"could not find `struct {struct}` in {rel}; the check needs updating")
