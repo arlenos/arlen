@@ -107,6 +107,31 @@ check(
   (code) => code === 0,
 );
 
+check(
+  "an unsandboxed peer-resolver is reported as paying for /proc identity",
+  tree({
+    [`${U}/arlen-thing.service`]: unit("Restart=on-failure"),
+    "daemons/thing/Cargo.toml": CARGO,
+    "daemons/thing/src/lib.rs": RESOLVES,
+  }),
+  (code, out) => code === 0 && out.includes("PAYING THE OTHER HALF"),
+);
+
+// The same unit once it is on the stamped resolver. It looks identical to the
+// case above from the outside - no sandbox, resolves peers - but it is not
+// paying for anything any more, and telling the two apart is the whole point:
+// one is a trade being carried, the other is a sandbox nobody has collected.
+check(
+  "a peer-resolver already on enforce is reported as recoverable, not paying",
+  tree({
+    [`${U}/arlen-thing.service`]: unit("Restart=on-failure\nEnvironment=ARLEN_STAMPED_IDENTITY=enforce"),
+    "daemons/thing/Cargo.toml": CARGO,
+    "daemons/thing/src/lib.rs": RESOLVES,
+  }),
+  (code, out) =>
+    code === 0 && out.includes("HARDENING RECOVERABLE") && !out.includes("PAYING THE OTHER HALF"),
+);
+
 // The measured control: RestrictNamespaces restricts what a unit may CREATE and
 // does not put it in a mount namespace, so the exe read still works and flagging
 // it would be a false positive that teaches people to ignore this gate.

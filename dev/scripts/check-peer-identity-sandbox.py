@@ -118,6 +118,7 @@ def main():
     flagged, carried, checked = [], [], 0
 
     unhardened: list[str] = []
+    recoverable: list[str] = []
 
     for unit in units:
         text = unit.read_text(encoding="utf-8")
@@ -135,7 +136,16 @@ def main():
             if exec_line:
                 crate = crate_for(Path(exec_line.group(1)).name)
                 if crate is not None and resolves_peers(crate) is not None:
-                    unhardened.append(unit.stem)
+                    # A unit already on the stamped resolver identifies callers
+                    # through a pidfd, not through /proc, so it is no longer
+                    # paying for anything - it is carrying the debt of a trade
+                    # that has already been settled, and its hardening can come
+                    # back. Reporting the two groups together would hide the one
+                    # that is a free win.
+                    if re.search(r"^Environment=ARLEN_STAMPED_IDENTITY=enforce", text, re.M):
+                        recoverable.append(unit.stem)
+                    else:
+                        unhardened.append(unit.stem)
             continue
         exec_line = re.search(r"^ExecStart=(\S+)", text, re.M)
         if not exec_line:
@@ -174,6 +184,11 @@ def main():
               "mount-namespace hardening,")
         print("  which is what it costs to keep /proc identity working: "
               + ", ".join(sorted(unhardened)))
+    if recoverable:
+        print(f"HARDENING RECOVERABLE ({len(recoverable)}): already on "
+              "ARLEN_STAMPED_IDENTITY=enforce, so they")
+        print("  identify callers by pidfd and no longer need /proc. Their sandboxes can be "
+              "restored: " + ", ".join(sorted(recoverable)))
     return 0
 
 
