@@ -7,8 +7,17 @@
 
 `app_id_from_pid` reads `/proc/<peer-pid>/exe`. That read is refused when the
 READER runs in its own mount namespace, which is what most systemd hardening
-gives a unit. Measured on 10 August with `systemd-run --user`, one directive per
-run, against a process plainly readable from outside the sandbox:
+gives a unit.
+
+This was host-proved on 14 July and is written down in
+`docs/architecture/stamped-identity-plan.md` (the bullet beginning "Brittle +
+forces a bad hardening tradeoff"), including the root-bypass via CAP_SYS_PTRACE
+and the user-namespace hypothesis it refuted. It was re-derived from scratch on
+10 August, over five image builds, by someone who had read the `landlock-fence`
+note and not the plan for the subject - so the rule was known and nothing
+enforced it, which is what this file is for. Re-measured then with
+`systemd-run --user`, one directive per run, against a process plainly readable
+from outside the sandbox:
 
     PrivateDevices=yes        DENIED      RestrictNamespaces=yes  readable
     ProtectKernelTunables=yes DENIED
