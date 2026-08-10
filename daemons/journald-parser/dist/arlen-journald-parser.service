@@ -13,6 +13,15 @@ Documentation=https://github.com/arlenos/arlen
 Type=notify
 # Production binary path (system-wide install). Dev runs invoke the debug binary
 # directly; this file is the canonical production unit.
+# The system socket, pinned rather than inherited.
+#
+# `arlen-session` exports these and then imports them into the user manager, but a
+# unit wanted by `default.target` is already running by then and an import does not
+# reach a live service. This daemon announced the consequence in its own first line
+# - "journald-parser starting socket=/run/user/1000/arlen/event-bus-producer.sock" -
+# and nothing binds that path, so every journal line it turned into an event went
+# into a socket that does not exist. Said once, at INFO, and never again.
+Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
 ExecStart=/usr/lib/arlen/libexec/arlen-journald-parser
 # Source stamp on the emitted events (UnixEventEmitter reads ARLEN_APP_ID).
 Environment=ARLEN_APP_ID=journald-parser
