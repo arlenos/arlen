@@ -47,6 +47,21 @@ The rule, deliberately narrow:
 The exception list is for cases that are known and being carried, and it must
 carry the reason rather than the name alone - a bare name is how an exception
 outlives the problem it was granted for.
+
+**`ARLEN_STAMPED_IDENTITY=enforce` does NOT lift this.** An earlier version of
+this file split the units by that flag and told anyone reading that the enforced
+ones could have their sandboxes back, because they resolve callers through a
+pidfd. That was wrong and is retracted. `ConnectionAuth::extract_from` runs
+`let legacy_app_id = app_id_from_pid(peer_pid)?` unconditionally and BEFORE it
+looks at the mode (`connection_auth.rs:122`), so the `/proc/<pid>/exe` read
+happens either way and its failure propagates; the enforce arm then calls
+`pid_start_time(spid)?`, which is another `/proc` read. Hardening a unit on
+enforce would break it exactly as the unhardened comment in each unit says.
+
+The flag is the identity story getting stronger. It is not yet the /proc
+dependency going away, and those are easy to confuse - I confused them for four
+hours. What removes the dependency is the legacy resolution stopping, which is
+the keystone work, not a unit-file change.
 """
 
 import re
@@ -118,7 +133,6 @@ def main():
     flagged, carried, checked = [], [], 0
 
     unhardened: list[str] = []
-    recoverable: list[str] = []
 
     for unit in units:
         text = unit.read_text(encoding="utf-8")
@@ -136,16 +150,7 @@ def main():
             if exec_line:
                 crate = crate_for(Path(exec_line.group(1)).name)
                 if crate is not None and resolves_peers(crate) is not None:
-                    # A unit already on the stamped resolver identifies callers
-                    # through a pidfd, not through /proc, so it is no longer
-                    # paying for anything - it is carrying the debt of a trade
-                    # that has already been settled, and its hardening can come
-                    # back. Reporting the two groups together would hide the one
-                    # that is a free win.
-                    if re.search(r"^Environment=ARLEN_STAMPED_IDENTITY=enforce", text, re.M):
-                        recoverable.append(unit.stem)
-                    else:
-                        unhardened.append(unit.stem)
+                    unhardened.append(unit.stem)
             continue
         exec_line = re.search(r"^ExecStart=(\S+)", text, re.M)
         if not exec_line:
@@ -184,11 +189,6 @@ def main():
               "mount-namespace hardening,")
         print("  which is what it costs to keep /proc identity working: "
               + ", ".join(sorted(unhardened)))
-    if recoverable:
-        print(f"HARDENING RECOVERABLE ({len(recoverable)}): already on "
-              "ARLEN_STAMPED_IDENTITY=enforce, so they")
-        print("  identify callers by pidfd and no longer need /proc. Their sandboxes can be "
-              "restored: " + ", ".join(sorted(recoverable)))
     return 0
 
 

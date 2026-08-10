@@ -117,19 +117,19 @@ check(
   (code, out) => code === 0 && out.includes("PAYING THE OTHER HALF"),
 );
 
-// The same unit once it is on the stamped resolver. It looks identical to the
-// case above from the outside - no sandbox, resolves peers - but it is not
-// paying for anything any more, and telling the two apart is the whole point:
-// one is a trade being carried, the other is a sandbox nobody has collected.
+// The same unit on the stamped resolver still pays. A version of this check
+// split them and said the enforced ones could have their sandboxes back, because
+// they resolve through a pidfd - but `extract_from` reads /proc/<pid>/exe before
+// it ever looks at the mode, so the dependency is there either way. This case
+// pins the retraction: the flag must not buy an exemption it does not earn.
 check(
-  "a peer-resolver already on enforce is reported as recoverable, not paying",
+  "being on enforce does not exempt a peer-resolver",
   tree({
     [`${U}/arlen-thing.service`]: unit("Restart=on-failure\nEnvironment=ARLEN_STAMPED_IDENTITY=enforce"),
     "daemons/thing/Cargo.toml": CARGO,
     "daemons/thing/src/lib.rs": RESOLVES,
   }),
-  (code, out) =>
-    code === 0 && out.includes("HARDENING RECOVERABLE") && !out.includes("PAYING THE OTHER HALF"),
+  (code, out) => code === 0 && out.includes("PAYING THE OTHER HALF"),
 );
 
 // The measured control: RestrictNamespaces restricts what a unit may CREATE and
