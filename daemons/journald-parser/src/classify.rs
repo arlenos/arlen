@@ -157,8 +157,13 @@ fn classify_bluetooth(message: &str) -> Option<ServiceEvent> {
     })
 }
 
-/// systemd-logind session lifecycle. Carries the numeric session id (e.g. `3`),
-/// not the user name, so it is a coarse non-identifying handle.
+/// systemd-logind session lifecycle. Carries the session id as logind writes it
+/// (`3`, or `c1` for a console session) and not the user name, so it is a coarse
+/// non-identifying handle.
+///
+/// The id is taken as an opaque token on purpose. An earlier version of this note
+/// called it numeric, which is true on most systems and would invite a `parse()`
+/// that silently drops every session on the ones where it is not.
 fn classify_session(message: &str) -> Option<ServiceEvent> {
     if let Some(rest) = message.strip_prefix("New session ") {
         // "New session 3 of user tim." -> id is the leading token.
