@@ -12,6 +12,23 @@
 //! range back and tells the user their history is still there - a delete that
 //! failed while the screen went empty would be the worst lie in the app.
 
+/// Is `from` a boundary this command will act on?
+///
+/// Zero is legitimate and means everything ever recorded - `TimelineView` offers
+/// exactly that as "all", alongside "today". An earlier version of this guard
+/// refused it on the reasoning that no range the surface could offer would be
+/// zero, which was simply false: the surface offers it by name, and the refusal
+/// turned the whole "delete all my history" path into the message *"Nothing was
+/// deleted. The recorded range is still there."*
+///
+/// A NEGATIVE boundary is still refused. It cannot come from any control - both
+/// ranges are zero or a midnight timestamp - so it can only arrive from a bug or
+/// from a caller that is not the timeline, and answering it would delete
+/// everything on the strength of a number nobody meant.
+fn is_usable_boundary(from: i64) -> bool {
+    from >= 0
+}
+
 /// Delete everything recorded at or after `from` (Unix seconds).
 ///
 /// Answers how many nodes went, which the surface may use to say "nothing to
@@ -19,15 +36,34 @@
 /// swallowed: see the module note.
 #[tauri::command]
 pub async fn knowledge_timeline_delete(from: i64) -> Result<u64, String> {
-    // A negative or zero boundary would mean "everything ever recorded" via a
-    // control that names a range, so it is refused here rather than passed on.
-    // The daemon would carry it out faithfully; the point is that no range the UI
-    // can offer produces it, so it can only arrive from a bug or a caller that is
-    // not the timeline.
-    if from <= 0 {
-        return Err("a delete needs a real range boundary".to_string());
+    if !is_usable_boundary(from) {
+        return Err("a delete needs a range boundary at or after the epoch".to_string());
     }
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     client.delete_activity(from).await.map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The two boundaries the timeline actually offers, pinned so the guard
+    /// cannot be re-tightened into refusing one of them. `TimelineView` sets
+    /// `from: 0` for "all" and a midnight timestamp for "today"; refusing zero
+    /// broke the first of those and reported it to the user as a delete that
+    /// simply did not happen.
+    #[test]
+    fn both_ranges_the_timeline_offers_are_usable() {
+        assert!(is_usable_boundary(0), "\"all\" is offered as zero");
+        assert!(is_usable_boundary(1_786_000_000), "\"today\" is a midnight stamp");
+    }
+
+    #[test]
+    fn a_negative_boundary_is_still_refused() {
+        // No control produces one, so it is a bug or a stranger, and acting on it
+        // would delete everything on the strength of a number nobody meant.
+        assert!(!is_usable_boundary(-1));
+        assert!(!is_usable_boundary(i64::MIN));
+    }
 }
