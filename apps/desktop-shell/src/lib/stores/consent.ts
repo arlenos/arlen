@@ -153,9 +153,15 @@ export async function pollConsent(): Promise<void> {
 /// made it undiagnosable. It is logged now, with the id and the reason, so the
 /// journal says whether the click reached the broker and what it answered.
 ///
-/// The error is still not surfaced to the user, because there is nothing useful
-/// for them to do with it and the reappearing dialog is itself the signal that
-/// the answer did not take.
+/// The error is not surfaced to the user, because the reappearing dialog is the
+/// signal that the answer did not take and there is nothing else useful for them
+/// to do with it. That safety net only works if the failure path gives it back:
+/// `answered` is what tells `poll` to ignore a request it has already replied to,
+/// so a failed resolve that left the id in there would suppress the dialog
+/// FOREVER - the broker keeps the request pending, every later poll matches
+/// `answered.has(view.id)` and returns early, and the one thing the user could
+/// have done about it never appears again. So the catch takes the marker back
+/// out, and the next poll presents the request as unanswered, which it is.
 export async function resolve(id: number, outcome: ConsentOutcome): Promise<void> {
   answered.add(id);
   current.set(null);
@@ -169,6 +175,7 @@ export async function resolve(id: number, outcome: ConsentOutcome): Promise<void
   } catch (e) {
     // Under vite there is no broker and this is expected; on a real session it
     // means the answer did not reach the broker.
+    answered.delete(id);
     console.error(`[consent] resolve failed for id=${id} outcome=${outcome}:`, e);
   }
 }
