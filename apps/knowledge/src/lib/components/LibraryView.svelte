@@ -11,7 +11,26 @@
 
   let { onselect }: { onselect: (e: LibraryEntry) => void } = $props();
 
-  onMount(loadLibrary);
+  // Load on mount, and again whenever this window becomes visible.
+  //
+  // Same one-shot read the timeline had: the app starts with the session and asks
+  // about seven seconds into the boot, so whoever opens the Library later is looking
+  // at what the graph held before it held anything.
+  //
+  // No interval here, deliberately, and the difference from the timeline is the
+  // reasoning rather than the shape. The timeline's 30 second tick is earned by the
+  // promotion pass, which changes its data on exactly that cadence. Library sources
+  // change when something is imported or a bridge is added - events, not a clock -
+  // so a tick would re-read identical rows all day to catch something that announces
+  // itself by the window being looked at again anyway.
+  onMount(() => {
+    const refresh = () => {
+      if (!document.hidden) void loadLibrary();
+    };
+    void loadLibrary();
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  });
 
   function dayName(at: number): string {
     return new Date(at * 1000).toLocaleDateString($locale, { day: "numeric", month: "short" });
