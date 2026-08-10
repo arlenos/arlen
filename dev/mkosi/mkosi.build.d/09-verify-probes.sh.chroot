@@ -86,6 +86,49 @@ StandardError=journal+console
 WantedBy=multi-user.target
 UNIT
 chmod 644 "$DESTDIR/usr/lib/systemd/system/arlen-kg-probe.service"
+
+# And a read scope, or the probe asks and is refused.
+#
+# Running as root got it past the cross-uid rule; the read-scope label gate then
+# denied all six questions, because `kg-probe` has no profile and an absent
+# profile means an empty scope. Right on both counts - that is the gate doing its
+# job - but a probe that can only report "denied" cannot answer what the graph
+# holds.
+#
+# The grant is EXACTLY the knowledge app's read list, because the probe's whole
+# purpose is to ask the app's questions from outside the app. A wider scope would
+# let the probe report rows the app could never see, which is a worse failure than
+# no probe at all: it would look like an answer.
+#
+# Verify-only, and it has to stay that way. This file is written by this phase
+# into $DESTDIR; it does NOT go in `mkosi.extra/var/lib/arlen/permissions/`, where
+# the app profiles live, because everything there ships in every image and a
+# release system has no `kg-probe` to grant anything to.
+mkdir -p "$DESTDIR/var/lib/arlen/permissions/0"
+cat > "$DESTDIR/var/lib/arlen/permissions/0/kg-probe.toml" <<'PROFILE'
+# Verify images only. The probe reads exactly what the knowledge app reads, so
+# that what it reports is what the app would have seen.
+[info]
+app_id = "kg-probe"
+tier = "first-party"
+
+[graph]
+read = [
+    "system.Event.id",
+    "system.Event.title",
+    "system.Event.source",
+    "system.Event.timestamp",
+    "system.File.id",
+    "system.File.path",
+    "system.File.app_id",
+    "system.File.last_accessed",
+    "system.Project.id",
+    "system.Project.name",
+    "system.Project.root_path",
+    "system.Project.created_at",
+]
+PROFILE
+chmod 644 "$DESTDIR/var/lib/arlen/permissions/0/kg-probe.toml"
 mkdir -p "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants"
 ln -sf ../arlen-kg-probe.service \
        "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants/arlen-kg-probe.service"
