@@ -238,14 +238,37 @@ def queries(text: str) -> list[str]:
     A test's Cypher is illustrative - an expected-output assertion for a query
     builder, an input to a lexer - and names whatever the test needs, including
     columns no table has. Checking those reports a passing test as a broken
-    query. The cut is at the first `#[cfg(test)]`, which in this tree is the
-    trailing test module; a file that put one in the middle would have its later
-    queries skipped, so the count of truncated files is printed rather than left
-    implicit.
+    query. So the exclusion follows braces: a test scope opens at the first `{`
+    after the marker and closes when depth returns, which is what "inside a test"
+    actually means.
+
+    It used to cut at the first `#[cfg(test)]` and drop the rest of the file.
+    `daemons/knowledge/src/write/entity.rs` puts one at line 589 of 1431, so 14
+    production write-path queries after it were never checked - measured on
+    10 August, and they all pass, so this was coverage rather than a live break.
+    The predecessor's own comment predicted this exact case - "a file that put one
+    in the middle would have its later queries unchecked" - and one file already
+    did. The count of skipped literals is still printed rather than left implicit,
+    because a number that only ever goes unremarked is how the gap stayed quiet.
     """
-    cut = text.find("#[cfg(test)]")
-    if cut != -1:
-        text = text[:cut]
+    lines = text.splitlines()
+    inside, depth, opened, pending = set(), 0, [], False
+    for i, line in enumerate(lines):
+        if opened:
+            inside.add(i)
+        if "#[cfg(test)]" in line or line.strip().startswith("mod tests"):
+            pending = True
+        for ch in line:
+            if ch == "{":
+                depth += 1
+                if pending:
+                    opened.append(depth)
+                    pending = False
+            elif ch == "}":
+                if opened and depth == opened[-1]:
+                    opened.pop()
+                depth -= 1
+    text = "\n".join("" if i in inside else l for i, l in enumerate(lines))
     return [
         _unformat(m.group(1))
         for m in STRING.finditer(text)
