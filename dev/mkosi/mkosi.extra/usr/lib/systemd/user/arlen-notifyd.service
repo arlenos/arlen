@@ -8,6 +8,19 @@ BusName=org.freedesktop.Notifications
 # Root-owned system path so the daemon's identity is attested (SO_PEERCRED →
 # `path_to_app_id` → `notifyd`) and admitted by the audit ledger (GAP-2). A
 # per-user $HOME path would be same-uid-spoofable and is not a trusted producer.
+# The system sockets, pinned here rather than inherited.
+#
+# `arlen-session` exports these and then calls `systemctl --user import-environment`,
+# but a unit wanted by `default.target` is already running by then, and an import
+# does not reach a live service. On a booted image this daemon looped on
+# "No such file or directory" against $XDG_RUNTIME_DIR/arlen/, 83 times in three
+# minutes, while the bus listened under /run/arlen the whole time.
+#
+# `arlen-ai-engine-daemon.service` already pins its sockets this way; this is that
+# pattern, applied where a boot log showed it was missing.
+Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
+Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
+Environment=ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
 ExecStart=/usr/lib/arlen/libexec/arlen-notifyd
 
 # Restart on crash.

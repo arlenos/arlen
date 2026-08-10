@@ -11,6 +11,19 @@ Documentation=https://github.com/arlenos/arlen
 
 [Service]
 Type=notify
+# The system sockets, pinned here rather than inherited.
+#
+# `arlen-session` exports these and then calls `systemctl --user import-environment`,
+# but a unit wanted by `default.target` is already running by then, and an import
+# does not reach a live service. On a booted image this daemon looped on
+# "No such file or directory" against $XDG_RUNTIME_DIR/arlen/, 83 times in three
+# minutes, while the bus listened under /run/arlen the whole time.
+#
+# `arlen-ai-engine-daemon.service` already pins its sockets this way; this is that
+# pattern, applied where a boot log showed it was missing.
+Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
+Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
+Environment=ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
 ExecStart=/usr/lib/arlen/libexec/arlen-code-indexer
 Restart=on-failure
 RestartSec=2
