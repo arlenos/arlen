@@ -1,0 +1,16 @@
+[package]
+name = "arlen-kg-probe"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "Verify-image probe: report what the knowledge graph holds, as a session caller sees it"
+
+[[bin]]
+name = "arlen-kg-probe"
+path = "src/main.rs"
+
+[dependencies]
+os-sdk = { path = "../../sdk/os-sdk" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[workspace]
