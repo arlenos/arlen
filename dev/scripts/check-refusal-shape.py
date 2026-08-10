@@ -48,7 +48,13 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+# A tree to check may be passed in, which is what lets this gate's own test drive
+# it against fixtures; the sibling gates take the same argument.
+ROOT = (
+    Path(sys.argv[1]).resolve()
+    if len(sys.argv) > 1
+    else Path(__file__).resolve().parents[2]
+)
 
 IFACE = re.compile(r"#\[(?:zbus::)?interface\b")
 FN = re.compile(r"^\s{4}(?:pub )?(?:async )?fn (\w+)")
