@@ -111,6 +111,23 @@ def main() -> int:
         body = setup_body(lib.read_text(encoding="utf-8", errors="replace"))
         if not body:
             continue
+        # The hook's own body, before anything it calls. This used to check only
+        # the functions setup NAMES, so a `tokio::spawn` written straight into the
+        # closure - the shortest way to write this defect, needing no helper at
+        # all - passed. The instances that prompted the check happened to be
+        # helpers, and it was built to their shape. Measured on 11 August: no
+        # setup body reaches tokio today, so this is for the next one.
+        checked += 1
+        for pattern in NEEDS_RUNTIME:
+            if pattern.search(body):
+                findings.append(
+                    f"{lib.relative_to(ROOT)}: {app}'s setup hook reaches for tokio "
+                    f"directly in its own body, which is not inside a runtime - that "
+                    f"panics on 'there is no reactor running' at startup. Use "
+                    f"`tauri::async_runtime::spawn`."
+                )
+                break
+
         fns = fn_bodies(lib.parent)
         for name in sorted(called_names(body)):
             found = fns.get(name)
@@ -131,9 +148,10 @@ def main() -> int:
                     break
 
     print(
-        f"{checked} function(s) called from a Tauri setup hook checked for a "
-        f"tokio reach that needs a runtime already running. Depth one only: "
-        f"what setup names directly, not what those go on to call."
+        f"{checked} setup hook body/bodies and the functions they call checked "
+        f"for a tokio reach that needs a runtime already running. Depth one "
+        f"only: the hook itself and what it names directly, not what those go "
+        f"on to call."
     )
     if findings:
         print("\nstarted from setup, panics without a runtime:\n")
