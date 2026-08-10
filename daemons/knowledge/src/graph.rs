@@ -842,8 +842,14 @@ fn create_schema(conn: &Connection) -> Result<()> {
     // Coarse system-service transitions (journald Tier-2, `system.service`) promote
     // to Event nodes carrying the normalized service ("network"|"bluetooth"|
     // "session") + the transition kind ("device-up"|"connected"|"session-opened"|
-    // ...). Convergent ADD IF NOT EXISTS for already-initialized DBs. KG-richness:
-    // an emitted event type that previously sat raw in SQLite, now on the timeline.
+    // ...). Convergent ADD IF NOT EXISTS for already-initialized DBs.
+    //
+    // This said "now on the timeline" and that is not true: the knowledge app reads
+    // exactly two things, file accesses and window focus, so these columns are
+    // written on every transition and displayed nowhere. They are queryable, which
+    // is worth something to the AI layer, but a comment claiming a surface shows
+    // them is how a gap stops being looked for. The reader is a separate piece of
+    // work and needs display copy for each transition, which is a product call.
     // The app a `window.focused` Event belongs to. The `App` node already carries
     // it, but only through an ACTIVE_IN edge to the Session - there is no Event to
     // App edge - so a reader of Events alone could not say WHICH app was focused.
