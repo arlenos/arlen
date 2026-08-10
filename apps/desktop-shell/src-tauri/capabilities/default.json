@@ -1,8 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "description": "Capability for every window this shell creates. Listing only \"main\" left the waypointer and the consent dialog with no capability at all, so Tauri's ACL refused their frontends every gated command: a booted image logged 77 \"Command plugin:event|listen not allowed by ACL\" errors from the consent window, which is how it learns a consent request arrived. The labels are the three in src-tauri (main, waypointer, consent); they are all this app's own windows, so they get what main gets.",
+  "windows": [
+    "main",
+    "waypointer",
+    "consent"
+  ],
   "permissions": [
     "core:default",
     "opener:default"
