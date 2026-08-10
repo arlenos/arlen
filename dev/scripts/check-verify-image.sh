@@ -34,8 +34,23 @@ phases="$root/dev/mkosi/mkosi.build.d"
 flag="ARLEN_VERIFY_IMAGE"
 failed=0
 
+# A missing phases directory is only "nothing to check" if this tree builds no
+# image at all. If `dev/mkosi` is here and its phases are not, the thing this gate
+# exists to watch has been moved or deleted, and answering that with a cheerful
+# exit 0 is the failure mode we have hit twice: a checker that passes because it
+# looked nowhere. The distinction is read off the tree rather than guessed - the
+# image-build directory being present is what makes phases mandatory.
 if [ ! -d "$phases" ]; then
-    echo "verify-image: no $phases; nothing to check"
+    if [ -d "$root/dev/mkosi" ]; then
+        echo "verify-image: $root/dev/mkosi exists but $phases does not." >&2
+        echo "  This tree builds an image, so its build phases are where the" >&2
+        echo "  verify-only branch lives - and there is nothing here to check." >&2
+        echo "  Either the phases moved (point this gate at them) or they are gone" >&2
+        echo "  (say so deliberately), but a green result here would mean only that" >&2
+        echo "  the gate could not find its subject." >&2
+        exit 1
+    fi
+    echo "verify-image: no $phases and no image build in this tree; nothing to check"
     exit 0
 fi
 
