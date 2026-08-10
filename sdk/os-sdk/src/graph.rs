@@ -1345,6 +1345,19 @@ impl GraphClient for UnixGraphClient {
     }
 }
 
+/// How often the knowledge daemon folds raw events into the graph.
+///
+/// Defined here rather than in the daemon because it is not private timing: it is
+/// the rate at which anything reading the graph can observe a change, and a client
+/// that refreshes faster than this only costs queries. The daemon's promotion loop
+/// and the Knowledge app's timeline refresh both take their period from this
+/// constant, so moving the pass moves its readers with it.
+///
+/// A copied number would not do that. The app refreshed on a hand-picked 30 seconds
+/// that happened to agree; the next person to change the pass would have left the UI
+/// polling at a stale cadence under a comment claiming the two matched.
+pub const PROMOTION_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+
 #[cfg(test)]
 mod tests {
     use super::*;

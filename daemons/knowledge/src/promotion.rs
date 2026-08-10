@@ -38,7 +38,10 @@ pub(crate) fn annotation_id(target_type: &str, target_id: &str, namespace: &str)
 const PROMOTION_THRESHOLD_DEFAULT: usize = 3;
 
 /// How often the promotion pass runs.
-const PROMOTION_INTERVAL: Duration = Duration::from_secs(30);
+/// Taken from the SDK, not restated here: the app's timeline refresh reads the same
+/// constant, so changing the pass changes what its readers do rather than leaving
+/// them polling at a cadence that used to match.
+const PROMOTION_INTERVAL: Duration = os_sdk::graph::PROMOTION_INTERVAL;
 
 /// High-water mark key in a metadata table we use to track progress.
 /// The promotion pass only processes events newer than the last run.
