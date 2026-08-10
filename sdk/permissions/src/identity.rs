@@ -81,6 +81,14 @@ pub fn app_id_from_pid(pid: u32) -> Result<String, IdentityError> {
 ///
 /// Best-effort by construction: this runs on an error path and must never mask
 /// the original failure, so anything unreadable is simply omitted.
+/// A one-line `/proc` value, or `"unreadable"`. Never propagates a failure: this
+/// only ever decorates an error that has already happened.
+fn read_trimmed(path: &str) -> String {
+    std::fs::read_to_string(path)
+        .map(|s| s.trim().to_owned())
+        .unwrap_or_else(|_| "unreadable".into())
+}
+
 fn why_exe_unreadable(pid: u32) -> String {
     use std::os::unix::fs::MetadataExt;
 
@@ -104,8 +112,20 @@ fn why_exe_unreadable(pid: u32) -> String {
                 " - the peer runs as another user"
             }
         } else {
-            " - same uid and same /proc owner, so the restriction is on our side \
-              (a Landlock fence denies this read; see sdk/landlock-fence)"
+            // Reader-side, but do NOT name a mechanism we have not established.
+            // The first cut asserted a Landlock fence here and the very next boot
+            // disproved it: the undo signer hit this branch while taking no fence
+            // at all. Both plausible causes are readable, so read them instead of
+            // picking one - a Landlock domain (`sdk/landlock-fence`, the ptrace
+            // LSM hook) and Yama's ptrace scope, which above 0 stops a same-uid
+            // process reading a non-descendant's `exe`.
+            return format!(
+                " (peer uid {peer}, /proc/{pid} owned by {dir_owner}, we are {me} \
+                 - same uid and same /proc owner, so the restriction is on our \
+                 side: yama ptrace_scope={}, our landlock domain={})",
+                read_trimmed("/proc/sys/kernel/yama/ptrace_scope"),
+                read_trimmed("/proc/self/attr/current"),
+            );
         };
         return format!(" (peer uid {peer}, /proc/{pid} owned by {dir_owner}, we are {me}{reading})");
     }
