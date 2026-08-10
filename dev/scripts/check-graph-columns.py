@@ -30,7 +30,13 @@ import pathlib
 import re
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+# A tree to check may be passed in, which is what lets this gate's own test drive
+# it against fixtures; the sibling gates take the same argument.
+ROOT = (
+    pathlib.Path(sys.argv[1]).resolve()
+    if len(sys.argv) > 1
+    else pathlib.Path(__file__).resolve().parents[2]
+)
 SCHEMA = ROOT / "daemons/knowledge/src/graph.rs"
 
 # Directories whose Cypher is not ours to check: vendored code and build output.
