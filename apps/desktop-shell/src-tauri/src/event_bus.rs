@@ -548,10 +548,7 @@ fn emit_event(event_type: &str, payload: Vec<u8>) -> Result<(), Box<dyn std::err
         // The user's session when the launcher gave us one, else the shell as a
         // named source - never blank, which the bus rejects and which says nothing
         // anyway.
-        origin: std::env::var("ARLEN_SESSION_ID")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "system:desktop-shell".to_string()),
+        origin: session_origin(),
         payload,
         uid: 0,
         project_id: String::new(),
@@ -659,6 +656,30 @@ pub fn emit_intent_dispatched(
 }
 
 /// Extract a string field from the JSON-encoded event payload.
+/// The session this shell belongs to, and nothing else if it has none.
+///
+/// The shell runs INSIDE a login, so `system:desktop-shell` was the wrong answer
+/// even though it reads like a careful one: it attributes what the user did to the
+/// machine, in the exact field the transparency surface uses to tell those apart.
+/// `arlen-session` mints the id and every session-side producer reads it.
+///
+/// Absent is a deployment defect, not a case to paper over. The empty string is
+/// refused by the bus validator, so the events stop and the log says why - a
+/// substituted value would keep them flowing under a false name, which is worse
+/// than losing them.
+fn session_origin() -> String {
+    match std::env::var("ARLEN_SESSION_ID") {
+        Ok(id) if !id.is_empty() => id,
+        _ => {
+            log::error!(
+                "ARLEN_SESSION_ID is unset: the session startup did not export it, \
+                 so shell events cannot be attributed and the bus will refuse them"
+            );
+            String::new()
+        }
+    }
+}
+
 fn extract_payload_field(event: &proto::Event, field: &str) -> Option<String> {
     let json: serde_json::Value = serde_json::from_slice(&event.payload).ok()?;
     json.get(field)?.as_str().map(|s| s.to_string())
