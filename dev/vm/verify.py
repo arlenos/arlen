@@ -72,12 +72,14 @@ def qmp_key(f, qcode):
 def qmp_move(f, px, py, w, h):
     """Move the pointer to (px, py) WITHOUT clicking.
 
-    Enough on its own to answer a compositing question: passing the cursor over a
-    region makes the compositor recomposite it from the CURRENT surface buffer. So
-    if a stale band clears where the pointer has been, the band was old scanout
-    pixels the client never damaged; if it survives the pointer, the band is in the
-    buffer itself. That is the split a full-damage experiment would otherwise cost
-    an image build to make."""
+    NOT a compositing probe, though it was written as one. The idea was that passing
+    the cursor over a region recomposites it from the current surface buffer, so a
+    stale band that cleared would be old scanout and one that survived would be
+    buffer content. The compositor keeps a SEPARATE `cursor_damage_tracker`
+    (`kms/surface/mod.rs`), so the cursor never forces the scene beneath it to
+    redraw and the test cannot tell the two apart. Kept because moving the pointer
+    without clicking is a real gap - hover states, and putting the cursor somewhere
+    harmless before a capture - but do not read a ghost result out of it."""
     ax = max(0, min(0x7fff, round(px * 0x7fff / w)))
     ay = max(0, min(0x7fff, round(py * 0x7fff / h)))
     qmp(f, "input-send-event", events=[
