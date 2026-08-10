@@ -16,7 +16,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 
@@ -35,16 +35,15 @@ function tree(files) {
 
 /** Run a check over a fixture tree; returns {code, out}. */
 function run(script, dir) {
-  try {
-    const runner = script.endsWith(".py") ? "python3" : "node";
-    const out = execFileSync(runner, [join(ROOT, "dev/scripts", script), dir], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    return { code: 0, out };
-  } catch (e) {
-    return { code: e.status ?? 1, out: `${e.stdout ?? ""}${e.stderr ?? ""}` };
-  }
+  // Both streams on every path: `execFileSync`'s return value is stdout alone, so a
+  // case asserting on something written to stderr while the gate still exits 0
+  // would compare against an empty string and pass for the wrong reason.
+  const runner = script.endsWith(".py") ? "python3" : "node";
+  const r = spawnSync(runner, [join(ROOT, "dev/scripts", script), dir], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  return { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
 function check(name, ok, detail) {

@@ -20,7 +20,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-packaged-units.sh");
@@ -40,12 +40,11 @@ function tree(files) {
 
 /** Run the gate against `dir`; returns {code, out}. */
 function run(dir) {
-  try {
-    const out = execFileSync("bash", [GATE, dir], { encoding: "utf8" });
-    return { code: 0, out };
-  } catch (e) {
-    return { code: e.status ?? 1, out: `${e.stdout ?? ""}${e.stderr ?? ""}` };
-  }
+  // Both streams on every path: `execFileSync`'s return value is stdout alone, so a
+  // case asserting on something written to stderr while the gate still exits 0
+  // would compare against an empty string and pass for the wrong reason.
+  const r = spawnSync("bash", [GATE, dir], { encoding: "utf8" });
+  return { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
 function check(name, dir, expect) {
