@@ -5,7 +5,7 @@ use crate::proto::{
     CodeFileIndexPayload, CommandFinishedPayload, FileOpenedPayload, FileWrittenPayload,
     NetworkConnectionPayload,
     PresenceClearPayload, PresenceSetPayload, ServiceEventPayload, ShortcutActionInvokedPayload,
-    TimelineRecordPayload, WindowFocusedPayload,
+    TimelineRecordPayload, WindowFocusLeftPayload, WindowFocusedPayload,
 };
 use crate::utils::escape_cypher;
 use anyhow::Result;
@@ -229,6 +229,9 @@ async fn run_pass(
             }
             "window.focused" => {
                 promote_window_focused(graph, id, timestamp, session_of(origin), payload).await
+            }
+            "window.focus_left" => {
+                promote_focus_left(graph, id, timestamp, payload).await
             }
             "file.written" => {
                 promote_file_written(graph, id, timestamp, source, pid, payload).await
@@ -851,6 +854,45 @@ async fn promote_power_transition(
         ))
         .await?;
     debug!(event_id, event_type, "promoted power transition");
+    Ok(())
+}
+
+/// Promote a `window.focus_left` event: focus went to something that is not an
+/// application window.
+///
+/// A separate fact from a focus, and now a separate type, because the compositor
+/// used to report it as a `window.focused` whose `app_id` was "layer", "lock" or
+/// "none" - values naming no application, in the field that means which one. The
+/// timeline reader asks for focus events and this is not one, so it skips nothing
+/// and shows nothing invented; the graph still records that the machine's focus
+/// left the applications, which is what the AI layer needs for session
+/// boundaries.
+///
+/// No `App` node and no session edge: there is no app, and saying so by absence is
+/// the point of the split.
+async fn promote_focus_left(
+    graph: &GraphHandle,
+    event_id: &str,
+    timestamp: &i64,
+    payload: &[u8],
+) -> Result<()> {
+    let p = WindowFocusLeftPayload::decode(payload)?;
+    if p.kind.is_empty() {
+        // The one thing this event carries. Without it the row states only that
+        // focus left, which the timestamp already implies, so say the producer
+        // sent nothing rather than record a blank.
+        warn!(event_id, "window.focus_left carried no kind");
+    }
+    let event_id_esc = escape_cypher(event_id);
+    let kind_esc = escape_cypher(&p.kind);
+    graph
+        .write(format!(
+            "MERGE (e:Event {{id: '{event_id_esc}'}})
+             SET e.type = 'window.focus_left', e.timestamp = {timestamp},
+                 e.source = 'wayland', e.kind = '{kind_esc}'"
+        ))
+        .await?;
+    debug!(event_id, kind = %p.kind, "promoted focus_left");
     Ok(())
 }
 
