@@ -45,6 +45,13 @@ What it does NOT cover, and the omission is deliberate rather than an oversight:
     work rather than failed here. There were 9 of them when this was written.
   * A fixture reached through a helper, or assigned to a local that is set
     later.
+  * Invented content written INLINE in the catch - `store.set([{ id: 1, label:
+    "Wake up" }])` passes where `store.set(FIXTURE_ALARMS)` fails, measured on
+    11 August. This one is deliberate and not a widening waiting to happen: an
+    inline literal in a catch is just as often the HONEST fix (`{ status:
+    "unavailable" }`, an error flag the surface renders), so flagging the shape
+    would punish the correction this check exists to encourage. Telling invented
+    content from an honest failure state is a reading, not a regex.
   * Whether a store that DOES branch on `isTauri()` or `import.meta.env.DEV` put
     the fixture on the right side of it.
   * Anything outside `apps/*/src`. The `dev` fixtures and the test suites are
