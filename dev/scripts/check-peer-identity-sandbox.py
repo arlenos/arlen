@@ -117,10 +117,25 @@ def main():
     units = sorted((REPO / UNIT_DIR).glob("*.service")) if (REPO / UNIT_DIR).is_dir() else []
     flagged, carried, checked = [], [], 0
 
+    unhardened: list[str] = []
+
     for unit in units:
         text = unit.read_text(encoding="utf-8")
         directives = [d for d in MOUNT_NS if re.search(rf"^{d}=", text, re.M)]
         if not directives:
+            # The other side of the same trade, and the reason a small flagged list
+            # is not good news: a daemon that resolves peers and carries NO
+            # mount-namespace hardening has most likely given the hardening up to
+            # keep identity working. `stamped-identity-plan.md` records exactly that
+            # as the interim fix for the consent broker, and notes those daemons are
+            # "running WEAKER for it". Counting only the broken-and-hardened hides
+            # that cost completely, so list these too - not as failures, since the
+            # trade was deliberate, but so it is visible what it is costing.
+            exec_line = re.search(r"^ExecStart=(\S+)", text, re.M)
+            if exec_line:
+                crate = crate_for(Path(exec_line.group(1)).name)
+                if crate is not None and resolves_peers(crate) is not None:
+                    unhardened.append(unit.stem)
             continue
         exec_line = re.search(r"^ExecStart=(\S+)", text, re.M)
         if not exec_line:
@@ -154,6 +169,11 @@ def main():
     print(f"OK: {checked} hardened unit(s) checked, none newly unable to identify callers")
     for c in carried:
         print(f"KNOWN (not failing): {c}")
+    if unhardened:
+        print(f"PAYING THE OTHER HALF ({len(unhardened)}): these resolve peers and carry no "
+              "mount-namespace hardening,")
+        print("  which is what it costs to keep /proc identity working: "
+              + ", ".join(sorted(unhardened)))
     return 0
 
 
