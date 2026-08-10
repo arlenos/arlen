@@ -105,6 +105,22 @@ check(
 );
 
 check(
+  "a directory both sides merely create is not a collision",
+  // Found by the gate firing on its own author: staging a unit needs
+  // `mkdir -p $DESTDIR/usr/lib/systemd/system`, and mkosi.extra contains that same
+  // directory, so the probe-in-the-unconditional-copy check reported a probe
+  // shipping to users. A directory is not an installed artefact; two phases both
+  // needing it to exist is ordinary.
+  tree({
+    [`${D}/01-thing.sh.chroot`]: RELEASE,
+    [`${D}/09-verify.sh.chroot`]:
+      VERIFY_OK + 'mkdir -p "$DESTDIR/usr/lib/systemd/system"\n',
+    "dev/mkosi/mkosi.extra/usr/lib/systemd/system/arlen-thing.service": "[Unit]\n",
+  }),
+  (code, out) => code === 0 && out.includes("adds 1 path"),
+);
+
+check(
   "a tree with no verify phase at all is quiet",
   // The state before this work existed, and the state of any checkout that never
   // grows a verify variant. Not a finding.
