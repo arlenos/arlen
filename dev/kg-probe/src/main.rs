@@ -48,12 +48,41 @@ const QUESTIONS: &[(&str, &str)] = &[
     ("events: any", "MATCH (e:Event) RETURN e.id LIMIT 500"),
 ];
 
+/// How many times to ask, and how long to wait between rounds.
+///
+/// One round is not enough, and the reason is a mistake I made with this tool
+/// rather than a theory. The unit starts right after the graph daemon, so a single
+/// round measures the graph about five seconds into the boot - before the first
+/// promotion pass, which runs on a 30 second interval, and before most of the
+/// session has emitted anything. Every "0 row(s)" it printed was true and told me
+/// almost nothing, and I read those zeroes for an hour as evidence about the
+/// steady state.
+///
+/// Two rounds: one at boot, one after the promotion interval has come round twice.
+/// The difference between them is the interesting number - it separates "nothing
+/// is ever recorded" from "nothing had been recorded yet".
+const ROUNDS: usize = 2;
+const ROUND_GAP: std::time::Duration = std::time::Duration::from_secs(75);
+
 #[tokio::main]
 async fn main() {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     println!("kg-probe: socket {}", socket.display());
     let client = UnixGraphClient::new(socket.to_string_lossy().into_owned());
 
+    let mut failures = 0;
+    for round in 1..=ROUNDS {
+        if round > 1 {
+            tokio::time::sleep(ROUND_GAP).await;
+        }
+        println!("kg-probe: round {round} of {ROUNDS}");
+        failures += ask_all(&client).await;
+    }
+    println!("kg-probe: done, {failures} question(s) failed");
+}
+
+/// Ask every question once; answer how many failed.
+async fn ask_all(client: &UnixGraphClient) -> usize {
     let mut failures = 0;
     for (name, cypher) in QUESTIONS {
         match client.query_rows(cypher).await {
@@ -69,5 +98,5 @@ async fn main() {
             }
         }
     }
-    println!("kg-probe: done, {failures} question(s) failed");
+    failures
 }

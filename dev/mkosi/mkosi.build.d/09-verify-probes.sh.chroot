@@ -67,6 +67,10 @@ Wants=arlen-graph.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# The probe now asks twice with a gap, so it outlives systemd's default 90s start
+# timeout. Nothing waits on this unit, so a generous ceiling costs nothing and a
+# killed probe would look exactly like a probe that found nothing.
+TimeoutStartSec=300
 # Wait for the socket, but never longer than a minute, and run either way: a probe
 # that stays silent because it gave up is worse than one that reports it could not
 # connect. The daemon binds late enough that connecting immediately loses the race.
