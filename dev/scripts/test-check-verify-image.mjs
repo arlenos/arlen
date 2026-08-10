@@ -92,6 +92,19 @@ check(
 );
 
 check(
+  "a probe smuggled into the unconditional copy fails",
+  // mkosi.extra is staged into every image, so a probe there ships to users while
+  // checks 1-3 still report that the verify image only adds. The bypass, not an
+  // observed mistake.
+  tree({
+    [`${D}/01-thing.sh.chroot`]: RELEASE,
+    [`${D}/09-verify.sh.chroot`]: VERIFY_OK,
+    "dev/mkosi/mkosi.extra/usr/bin/arlen-probe": "#!/bin/sh\n",
+  }),
+  (code, out) => code !== 0 && out.includes("PROBE IN THE UNCONDITIONAL COPY"),
+);
+
+check(
   "a tree with no verify phase at all is quiet",
   // The state before this work existed, and the state of any checkout that never
   // grows a verify variant. Not a finding.
@@ -99,5 +112,5 @@ check(
   (code) => code === 0,
 );
 
-console.log(failures.length ? "\nsome cases regressed" : "\nall four shapes hold");
+console.log(failures.length ? "\nsome cases regressed" : "\nevery shape holds");
 process.exit(failures.length ? 1 : 0);
