@@ -233,10 +233,12 @@ jobs:
           python3 dev/scripts/check-refusal-shape.py
           python3 dev/scripts/check-knowledge-socket.py
           python3 dev/scripts/check-window-capability.py
+          python3 dev/scripts/check-session-origin.py
           node dev/scripts/test-check-fixtures.mjs
           node dev/scripts/test-check-knowledge-socket.mjs
           node dev/scripts/test-check-window-capability.mjs
           node dev/scripts/test-check-units.mjs
+          node dev/scripts/test-check-session-origin.mjs
           bash dev/scripts/check-verify-image.sh
           node dev/scripts/test-check-verify-image.mjs
           node dev/scripts/test-check-invokes.mjs
