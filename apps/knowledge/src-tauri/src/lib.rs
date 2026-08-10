@@ -20,6 +20,7 @@ mod pause;
 mod projects;
 mod settings_link;
 mod provenance;
+mod report;
 mod search;
 mod searches;
 mod timeline;

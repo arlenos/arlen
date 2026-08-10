@@ -60,7 +60,7 @@ pub async fn knowledge_provenance(node: String) -> Result<Vec<ProvenanceHop>, St
     let rows = client
         .query_rows(&file_query(&node))
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::report::graph_call_failed("knowledge_provenance", e))?;
     Ok(hops_from_rows(&rows))
 }
 

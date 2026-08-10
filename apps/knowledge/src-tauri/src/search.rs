@@ -75,7 +75,7 @@ pub async fn knowledge_search(
     let ranked = if trimmed.is_empty() {
         None
     } else {
-        Some(client.retrieve(trimmed, RANK_LIMIT).await.map_err(|e| e.to_string())?)
+        Some(client.retrieve(trimmed, RANK_LIMIT).await.map_err(|e| crate::report::graph_call_failed("search_retrieve", e))?)
     };
 
     let mut out = Vec::new();
@@ -133,7 +133,7 @@ async fn files(
          ORDER BY f.last_accessed DESC LIMIT {RANK_LIMIT}",
         wheres.join(" AND ")
     );
-    let rows = client.query_rows(&cypher).await.map_err(|e| e.to_string())?;
+    let rows = client.query_rows(&cypher).await.map_err(|e| crate::report::graph_call_failed("search_files", e))?;
     Ok(rows
         .iter()
         .filter_map(|r| {
@@ -177,7 +177,7 @@ async fn projects(
          ORDER BY p.created_at DESC LIMIT {RANK_LIMIT}",
         wheres.join(" AND ")
     );
-    let rows = client.query_rows(&cypher).await.map_err(|e| e.to_string())?;
+    let rows = client.query_rows(&cypher).await.map_err(|e| crate::report::graph_call_failed("search_projects", e))?;
     Ok(rows
         .iter()
         .filter_map(|r| {

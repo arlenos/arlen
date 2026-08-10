@@ -93,7 +93,7 @@ async fn list_projects(
              ORDER BY p.created_at DESC LIMIT 500",
         )
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::report::graph_call_failed("list_projects", e))?;
     Ok(rows
         .iter()
         .filter_map(|r| {
@@ -142,7 +142,7 @@ async fn list_members(
          ORDER BY f.path LIMIT 2000",
         escape_cypher_literal(project)
     );
-    let rows = client.query_rows(&cypher).await.map_err(|e| e.to_string())?;
+    let rows = client.query_rows(&cypher).await.map_err(|e| crate::report::graph_call_failed("list_members", e))?;
     Ok(rows
         .iter()
         .filter_map(|r| {

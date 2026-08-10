@@ -111,7 +111,7 @@ async fn read_file_accesses(
                 f.last_accessed AS at \
          ORDER BY f.last_accessed DESC LIMIT {LIMIT}"
     );
-    let rows = client.query_rows(&cypher).await.map_err(|e| e.to_string())?;
+    let rows = client.query_rows(&cypher).await.map_err(|e| crate::report::graph_call_failed("read_file_accesses", e))?;
     Ok(rows
         .iter()
         .filter_map(|r| {
@@ -140,7 +140,7 @@ async fn read_window_focus(
                 e.timestamp AS at \
          ORDER BY e.timestamp DESC LIMIT {LIMIT}"
     );
-    let rows = client.query_rows(&cypher).await.map_err(|e| e.to_string())?;
+    let rows = client.query_rows(&cypher).await.map_err(|e| crate::report::graph_call_failed("read_window_focus", e))?;
     Ok(rows
         .iter()
         .filter_map(|r| {
