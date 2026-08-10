@@ -2728,6 +2728,22 @@ async fn a_promoted_file_is_destroyed_once_the_ledger_can_record_it() {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
+    // Let the backlog finish before deleting, or the delete races the producer.
+    //
+    // The loop above re-emits every two seconds until the node is readable, so by
+    // then a dozen `file.opened` events for this same path are queued, and each
+    // one promotes to another `SET f.last_accessed`. The node becoming visible
+    // means the FIRST of them landed, not the last - so a delete issued at that
+    // moment can be overwritten by the rest of its own batch, and the file comes
+    // back with a fresh stamp. That is what the intermittent failure was: not the
+    // delete failing, the delete being undone a millisecond later.
+    //
+    // Every emit is finished by now, so one promotion interval covers all of them:
+    // the first pass after the last emit promotes the lot. Waiting on the pass
+    // rather than on a taste number, for the reason the app's refresh cadence
+    // waits on it too.
+    tokio::time::sleep(os_sdk::graph::PROMOTION_INTERVAL + Duration::from_secs(3)).await;
+
     let removed = client
         .delete_activity(from)
         .await
@@ -2746,8 +2762,13 @@ async fn a_promoted_file_is_destroyed_once_the_ledger_can_record_it() {
     // The first version of this test asserted the node was gone. It passed alone
     // and failed in the full suite, where a project covered the path and the node
     // was preserved by design. The test was wrong, not the delete.
+    // Returns the stamp, not just the path: a failure saying only "it survived"
+    // costs a rebuild to learn whether the value is out of the deleted range, in
+    // the wrong unit, or freshly rewritten - and that is three quite different
+    // bugs. The number and the cut-off together tell them apart on sight.
     let live = format!(
-        "MATCH (f:File {{id: '{path}'}}) WHERE f.last_accessed IS NOT NULL RETURN f.path LIMIT 1"
+        "MATCH (f:File {{id: '{path}'}}) WHERE f.last_accessed IS NOT NULL \
+         RETURN f.last_accessed LIMIT 1"
     );
     let rows = client
         .query_rows(&live)
@@ -2755,6 +2776,8 @@ async fn a_promoted_file_is_destroyed_once_the_ledger_can_record_it() {
         .expect("the read still works after the delete");
     assert!(
         rows.is_empty(),
-        "the access record survived a delete that claimed to remove {removed} nodes"
+        "the access record survived a delete that claimed to remove {removed} nodes: \
+         surviving row={:?}, cut-off={from}",
+        rows.first()
     );
 }
