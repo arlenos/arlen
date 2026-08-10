@@ -239,7 +239,9 @@ fn emit_permission_changed(change: ProfileChange) {
         timestamp: chrono::Utc::now().timestamp_micros(),
         source: "desktop-shell".to_string(),
         pid: std::process::id(),
-        session_id: String::new(),
+        // A profile changing on disk belongs to no session - this is the other
+        // event the bus was dropping every boot for saying so with an empty string.
+        origin: "system:permission-watcher".to_string(),
         payload,
         uid: unsafe { libc::getuid() },
         project_id: String::new(),

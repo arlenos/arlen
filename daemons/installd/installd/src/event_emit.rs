@@ -66,7 +66,8 @@ pub fn emit_permission_changed(app_id: &str, exists: bool) {
         timestamp: now_micros(),
         source: "installd".to_string(),
         pid: std::process::id(),
-        session_id: String::new(),
+        // An install happens on behalf of the system, in no user session.
+        origin: "system:installd".to_string(),
         payload: build_payload(app_id, exists),
         uid: unsafe { libc::getuid() },
         project_id: String::new(),

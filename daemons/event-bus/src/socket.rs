@@ -309,7 +309,7 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
                     }
                     // Name the producer and the type, as the deny line above does.
                     //
-                    // A booted image dropped two events for a missing `session_id`
+                    // A booted image dropped two events for a missing `origin`
                     // and the log said only that - so the event was lost AND the
                     // producer was unidentifiable, which makes the warning a report
                     // that something is wrong with no way to act on it. The bus
@@ -632,7 +632,7 @@ mod tests {
             r#type: "file.opened".to_string(),
             timestamp: 1_700_000_000_000_000,
             source: "app:test".to_string(),
-            session_id: "test-session".to_string(),
+            origin: "test-session".to_string(),
             ..Default::default()
         };
         let encoded = event.encode_to_vec();

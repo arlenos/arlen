@@ -175,7 +175,7 @@ fn make_event(id: &str, event_type: &str, payload: Vec<u8>) -> proto::Event {
         timestamp: 1,
         source: "test".into(),
         pid: 0,
-        session_id: "s".into(),
+        origin: "s".into(),
         payload,
         uid: 0,
         project_id: String::new(),

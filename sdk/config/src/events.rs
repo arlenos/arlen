@@ -52,7 +52,7 @@ pub struct ConfigChangedPayload {
 /// events. Falls back silently if the Event Bus is not running.
 pub struct ConfigEventEmitter {
     socket_path: PathBuf,
-    session_id: String,
+    origin: String,
 }
 
 impl Default for ConfigEventEmitter {
@@ -65,11 +65,11 @@ impl ConfigEventEmitter {
     /// Create a new emitter. Does not connect yet (lazy).
     pub fn new() -> Self {
         let socket_path = resolve_producer_socket();
-        let session_id = std::env::var("ARLEN_SESSION_ID")
+        let origin = std::env::var("ARLEN_SESSION_ID")
             .unwrap_or_else(|_| "unknown".into());
         Self {
             socket_path,
-            session_id,
+            origin,
         }
     }
 
@@ -100,8 +100,8 @@ impl ConfigEventEmitter {
 
         // Build a minimal protobuf Event by hand (avoids prost dependency).
         // Wire format: field 1 (id) = UUID, field 2 (type), field 3 (timestamp),
-        // field 4 (source), field 5 (pid), field 6 (session_id), field 7 (payload).
-        let event_bytes = encode_event(event_type, &self.session_id, &payload_json);
+        // field 4 (source), field 5 (pid), field 6 (origin), field 7 (payload).
+        let event_bytes = encode_event(event_type, &self.origin, &payload_json);
 
         // Connect, send length-prefixed message, close.
         let mut stream = match UnixStream::connect(&self.socket_path) {
@@ -119,7 +119,7 @@ impl ConfigEventEmitter {
 ///
 /// This avoids adding prost as a dependency to the config crate.
 /// The wire format follows proto3 encoding for the Event message.
-fn encode_event(event_type: &str, session_id: &str, payload: &[u8]) -> Vec<u8> {
+fn encode_event(event_type: &str, origin: &str, payload: &[u8]) -> Vec<u8> {
     let mut buf = Vec::with_capacity(128 + payload.len());
 
     // Field 1: id (string) - UUID v7 approximation using timestamp
@@ -148,8 +148,8 @@ fn encode_event(event_type: &str, session_id: &str, payload: &[u8]) -> Vec<u8> {
     // Field 5: pid (uint32)
     encode_varint_field(&mut buf, 5, std::process::id() as u64);
 
-    // Field 6: session_id (string)
-    encode_string(&mut buf, 6, session_id);
+    // Field 6: origin (string)
+    encode_string(&mut buf, 6, origin);
 
     // Field 7: payload (bytes)
     encode_bytes(&mut buf, 7, payload);

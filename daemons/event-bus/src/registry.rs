@@ -208,7 +208,7 @@ mod tests {
             timestamp: 1_000_000,
             source: "test".to_string(),
             pid: 1,
-            session_id: "session-test".to_string(),
+            origin: "session-test".to_string(),
             payload: vec![],
             uid,
             project_id: String::new(),

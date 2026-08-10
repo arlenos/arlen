@@ -88,7 +88,7 @@ mod tests {
             timestamp: ts as i64,
             source: "ebpf".to_string(),
             pid,
-            session_id: session_id.to_string(),
+            origin: session_id.to_string(),
             payload,
         };
         let encoded = proto_event.encode_to_vec();

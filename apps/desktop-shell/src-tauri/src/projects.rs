@@ -526,7 +526,9 @@ pub(crate) fn emit_to_event_bus(event_type: &str, payload: Vec<u8>) {
         timestamp: chrono::Utc::now().timestamp_micros(),
         source: "desktop-shell".to_string(),
         pid: std::process::id(),
-        session_id: String::new(),
+        // Focus mode is driven by the user, but this emit carries no session
+        // handle, and blank is what the bus refuses. Name the surface instead.
+        origin: "system:desktop-shell".to_string(),
         payload,
         uid: unsafe { libc::getuid() },
         project_id: String::new(),

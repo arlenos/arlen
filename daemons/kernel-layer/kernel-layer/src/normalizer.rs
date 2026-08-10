@@ -316,7 +316,7 @@ fn encode_envelope(
         timestamp: timestamp_ns as i64,
         source: "ebpf".to_string(),
         pid,
-        session_id: session_id.to_string(),
+        origin: session_id.to_string(),
         payload,
         uid: 0,
         project_id: String::new(),

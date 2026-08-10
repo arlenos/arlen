@@ -526,7 +526,13 @@ fn emit_event(event_type: &str, payload: Vec<u8>) -> Result<(), Box<dyn std::err
             .as_micros() as i64,
         source: "desktop-shell".to_string(),
         pid: std::process::id(),
-        session_id: std::env::var("ARLEN_SESSION_ID").unwrap_or_else(|_| "shell".into()),
+        // The user's session when the launcher gave us one, else the shell as a
+        // named source - never blank, which the bus rejects and which says nothing
+        // anyway.
+        origin: std::env::var("ARLEN_SESSION_ID")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "system:desktop-shell".to_string()),
         payload,
         uid: 0,
         project_id: String::new(),
