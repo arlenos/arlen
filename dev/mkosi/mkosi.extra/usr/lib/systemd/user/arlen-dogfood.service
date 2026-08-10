@@ -28,4 +28,15 @@ StandardError=journal
 # dogfood must be too - confining it would test a configuration that never occurs.
 
 [Install]
-WantedBy=default.target
+# graphical-session.target, not default.target, because this needs the session's
+# ENVIRONMENT and not just its user manager. `arlen-session` mints
+# ARLEN_SESSION_ID and imports it partway through its run; a unit pulled in by
+# default.target starts with the user manager, which can be before that import,
+# and `systemctl --user import-environment` cannot reach a process that is already
+# running. It would then emit with no session id at all - which the bus now
+# refuses outright rather than papering over, so the ordering has to be right
+# instead of merely usual.
+#
+# It also reads better: a stand-in for a user-activity sensor belongs to the
+# session it is standing in for.
+WantedBy=graphical-session.target
