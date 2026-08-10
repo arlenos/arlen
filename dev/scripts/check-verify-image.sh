@@ -94,6 +94,25 @@ for f in "$phases"/*verify*; do
     fi
 done
 
+# (4) a probe may not arrive through the unconditional copy instead.
+#
+# `mkosi.extra/` is staged into EVERY image, so anything there is release content
+# by definition. A probe placed there would ship to users while this gate, reading
+# only the build phases, reported that the verify image adds one path - true, and
+# beside the point. Found by asking how someone would bypass checks 1-3 rather
+# than by it happening.
+extra="$root/dev/mkosi/mkosi.extra"
+if [ -n "$verify_paths" ] && [ -d "$extra" ]; then
+    for path in $verify_paths; do
+        if [ -e "$extra$path" ]; then
+            echo "PROBE IN THE UNCONDITIONAL COPY: mkosi.extra$path" >&2
+            echo "  mkosi.extra is staged into every image, so this ships to users." >&2
+            echo "  A verify-only binary belongs in a verify phase, not here." >&2
+            failed=1
+        fi
+    done
+fi
+
 if [ "$failed" -eq 0 ]; then
     count=$(printf '%s\n' "$verify_paths" | grep -c . || true)
     echo "OK: the verify image adds $count path(s) and changes none."
