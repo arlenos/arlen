@@ -1782,6 +1782,24 @@ async fn handle_write_request(
             if !activity_delete_caller_admitted(&token.app_id) {
                 return "ERROR: permission denied for activity delete".to_string();
             }
+            // Taken before the COUNT, not just before the destruction.
+            //
+            // Deleting the raw events closes the case where a pass runs after the
+            // delete. It does nothing for a pass already running: those read their
+            // batch out of SQLite first and write the nodes second, so a delete in
+            // that gap removes rows the pass is holding in memory and the pass
+            // writes them anyway. On a booted run that happened two times in three,
+            // with the surviving stamp sitting 28 seconds past the cut-off.
+            //
+            // Before the count because `count_activity_since` promises the numbers
+            // describe the range the delete then removes. Lock only the destructive
+            // part and a pass can slip in between, so the audit records a size the
+            // act did not have - a small lie, in the one record that exists to be
+            // trusted. The audit round-trip happens under the lock as a result: it
+            // is a local socket and a delete is rare, so a pass waits briefly at
+            // worst.
+            let _pass = gate.lock().await;
+
             let planned = match crate::activity_delete::count_activity_since(graph, from).await {
                 Ok(c) => c,
                 Err(e) => return format!("ERROR: {e}"),
@@ -1805,16 +1823,6 @@ async fn handle_write_request(
                     return "ERROR: audit unavailable, nothing was deleted".to_string();
                 }
             }
-            // Nothing is destroyed until no promotion pass is in flight.
-            //
-            // Deleting the raw events closes the case where a pass runs AFTER the
-            // delete. It does nothing for a pass already running: those read their
-            // batch out of SQLite first and write the nodes second, so a delete in
-            // that gap removes rows the pass is holding in memory and the pass
-            // writes them anyway. On a booted run that happened two times in three,
-            // with the surviving stamp sitting 28 seconds past the cut-off.
-            let _pass = gate.lock().await;
-
             // Raw events FIRST, then the graph, and the order is the reverse of
             // the obvious one.
             //
