@@ -106,6 +106,33 @@ impl Drop for ProfileWatcher {
     }
 }
 
+
+/// Which pending app ids have been idle for at least `debounce` as of `now`.
+///
+/// Split out with `now` as a parameter so the debounce can be tested by
+/// constructing instants rather than by sleeping. The test that covered this used
+/// to write five files 15 ms apart and then assert that no SECOND event arrived
+/// within 180 ms - a claim about the relationship between two windows, measured on
+/// a shared CI runner, which failed whenever the machine stretched one of them.
+///
+/// Widening that timeout would have postponed the flake and kept the dependency.
+/// Passing `now` in removes it: the test can now say *a burst collapses to one
+/// key*, which is what it always meant, instead of *within 180 ms on this machine*.
+///
+/// A flaky red is worse than a check nobody wrote, because it teaches everyone to
+/// re-run rather than read.
+fn due_keys(
+    pending: &HashMap<String, Instant>,
+    now: Instant,
+    debounce: Duration,
+) -> Vec<String> {
+    pending
+        .iter()
+        .filter(|(_, t)| now.duration_since(**t) >= debounce)
+        .map(|(k, _)| k.clone())
+        .collect()
+}
+
 impl ProfileWatcher {
     /// Default canonical path per AUTH-CANONICAL.md §2:
     /// `~/.config/permissions/`. Honours `ARLEN_PERMISSIONS_DIR`
@@ -220,13 +247,7 @@ impl ProfileWatcher {
                 // 1. Drain debounced pending.
                 let due: Vec<String> = {
                     let mut guard = state_for_worker.lock().unwrap();
-                    let now = Instant::now();
-                    let due_keys: Vec<String> = guard
-                        .pending
-                        .iter()
-                        .filter(|(_, t)| now.duration_since(**t) >= debounce)
-                        .map(|(k, _)| k.clone())
-                        .collect();
+                    let due_keys = due_keys(&guard.pending, Instant::now(), debounce);
                     for k in &due_keys {
                         guard.pending.remove(k);
                     }
@@ -455,7 +476,54 @@ mod tests {
         }
         let first = await_change(&rx).expect("at least one event");
         assert_eq!(first.app_id, "com.burst");
-        assert!(rx.recv_timeout(Duration::from_millis(180)).is_err());
+        // The "and no second event" half of this claim lives in
+        // `a_burst_collapses_to_one_key` below, where it is decided by arithmetic
+        // instead of by how loaded the machine is. What remains here is the part a
+        // real watcher can honestly assert: a burst of writes does reach the
+        // callback, through notify, the filter and the worker thread.
+    }
+
+    /// The claim the burst test was always trying to make, without the wall clock.
+    ///
+    /// The worker records the LAST time it saw each app id, so five writes leave one
+    /// entry. Nothing is due while the window is still running; once it has elapsed
+    /// exactly one key comes out. Both halves are arithmetic, so a loaded runner
+    /// cannot change the answer.
+    #[test]
+    fn a_burst_collapses_to_one_key() {
+        let base = Instant::now();
+        let debounce = Duration::from_millis(120);
+
+        let mut pending = HashMap::new();
+        for i in 0..5u64 {
+            pending.insert("com.burst".to_string(), base + Duration::from_millis(i * 15));
+        }
+        let last_seen = base + Duration::from_millis(60);
+
+        assert!(
+            due_keys(&pending, last_seen + Duration::from_millis(119), debounce).is_empty(),
+            "still inside the window, so nothing is due yet"
+        );
+        assert_eq!(
+            due_keys(&pending, last_seen + debounce, debounce),
+            vec!["com.burst".to_string()],
+            "one key, once, however many writes went into it"
+        );
+    }
+
+    /// One app going quiet does not drag another out with it.
+    #[test]
+    fn only_the_idle_key_comes_due() {
+        let base = Instant::now();
+        let debounce = Duration::from_millis(120);
+        let mut pending = HashMap::new();
+        pending.insert("com.quiet".to_string(), base);
+        pending.insert("com.busy".to_string(), base + Duration::from_millis(100));
+
+        assert_eq!(
+            due_keys(&pending, base + Duration::from_millis(150), debounce),
+            vec!["com.quiet".to_string()]
+        );
     }
 
     #[test]
