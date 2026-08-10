@@ -46,6 +46,49 @@ pub fn socket_path(env_var: &str, file_name: &str) -> PathBuf {
     path
 }
 
+/// Resolve the knowledge daemon's socket, which answers to two names.
+///
+/// `ARLEN_KNOWLEDGE_SOCKET` is what a session launcher exports for CLIENTS;
+/// `ARLEN_DAEMON_SOCKET` is what pins the daemon's own BIND, and the dev stack
+/// sets that one. One socket, two variables - a wart, not a design - and a
+/// client that reads only one of them is broken under the launcher that sets
+/// the other.
+///
+/// That is not hypothetical. On a booted image `arlen-session` exports
+/// `ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock`; six separate resolvers
+/// across the shell, Settings and modulesd read only `ARLEN_DAEMON_SOCKET`,
+/// fell through to `$XDG_RUNTIME_DIR/arlen/knowledge.sock`, and every graph read
+/// in the desktop failed against a path nothing binds - while the daemon logged
+/// that it was listening. Settings' About page reported the daemon as not
+/// running on a system where it was.
+///
+/// Each of those six carried a comment saying it matched the others. Reading
+/// both names in one place is what makes that true.
+#[must_use]
+pub fn knowledge_socket_path() -> PathBuf {
+    socket_path_any(
+        &["ARLEN_KNOWLEDGE_SOCKET", "ARLEN_DAEMON_SOCKET"],
+        "knowledge.sock",
+    )
+}
+
+/// [`socket_path`] for a socket that answers to more than one env name, in
+/// order of preference. The tiers below the env overrides are unchanged.
+#[must_use]
+pub fn socket_path_any(env_vars: &[&str], file_name: &str) -> PathBuf {
+    let pinned = env_vars
+        .iter()
+        .find_map(|name| std::env::var(name).ok().filter(|v| !v.is_empty()));
+    let xdg = std::env::var("XDG_RUNTIME_DIR").ok();
+    let path = resolve(pinned.as_deref(), xdg.as_deref(), file_name);
+    if pinned.is_none() {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
+    path
+}
+
 /// Pure precedence: env override (non-empty) wins, else
 /// `$XDG_RUNTIME_DIR/arlen/<file_name>` (non-empty XDG), else
 /// `/run/arlen/<file_name>`. Split out so the contract is unit-tested

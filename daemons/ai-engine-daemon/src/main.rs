@@ -231,13 +231,19 @@ fn default_engine_session() -> SessionInit {
     }
 }
 
-/// The Knowledge Daemon socket the read pipeline queries: the `ARLEN_DAEMON_SOCKET`
-/// override, else the XDG runtime path if it exists, else the system path (mirrors
+/// The Knowledge Daemon socket the read pipeline queries: the client and bind
+/// overrides, else the XDG runtime path if it exists, else the system path (mirrors
 /// the ai-daemon resolver so both read the same socket).
 fn resolve_knowledge_socket() -> String {
-    if let Ok(explicit) = std::env::var("ARLEN_DAEMON_SOCKET") {
-        if !explicit.is_empty() {
-            return explicit;
+    // Both names. Our own systemd unit sets `ARLEN_KNOWLEDGE_SOCKET`, and this
+    // read only `ARLEN_DAEMON_SOCKET` - so the unit was pinning a socket nobody
+    // consulted. It happened to work because the XDG branch below checks that the
+    // path exists before returning it, which is more care than its siblings took.
+    for name in ["ARLEN_KNOWLEDGE_SOCKET", "ARLEN_DAEMON_SOCKET"] {
+        if let Ok(explicit) = std::env::var(name) {
+            if !explicit.is_empty() {
+                return explicit;
+            }
         }
     }
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
