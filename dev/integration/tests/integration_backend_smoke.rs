@@ -2737,12 +2737,24 @@ async fn a_promoted_file_is_destroyed_once_the_ledger_can_record_it() {
         "the delete reported removing {removed} nodes, but one was readable a moment ago"
     );
 
+    // What the delete promises, and not more. A file that holds nothing but the
+    // observation goes whole; a file that is ALSO a project member keeps its node
+    // and loses its access record, because deleting it would take a membership the
+    // user never asked to delete. So the assertion is the timeline's own filter -
+    // `last_accessed IS NOT NULL` - rather than the node's existence.
+    //
+    // The first version of this test asserted the node was gone. It passed alone
+    // and failed in the full suite, where a project covered the path and the node
+    // was preserved by design. The test was wrong, not the delete.
+    let live = format!(
+        "MATCH (f:File {{id: '{path}'}}) WHERE f.last_accessed IS NOT NULL RETURN f.path LIMIT 1"
+    );
     let rows = client
-        .query_rows(&query)
+        .query_rows(&live)
         .await
         .expect("the read still works after the delete");
     assert!(
         rows.is_empty(),
-        "the File node survived a delete that claimed to remove {removed} nodes"
+        "the access record survived a delete that claimed to remove {removed} nodes"
     );
 }
