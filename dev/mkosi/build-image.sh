@@ -14,6 +14,17 @@
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
+
+# A build that dies part-way leaves the half-written arlen.raw behind, and the
+# next verify run boots it without complaint. That happened on 10 Aug: the disk
+# filled during `systemd-repart`, the copy failed, and a 4.4G image was sitting
+# there afterwards looking exactly like a real one. A verify against it reports a
+# system defect that does not exist, and the hours go into chasing it.
+#
+# So a failed build removes its output. `dev/vm/verify.py` then says the image is
+# missing, which is true and is the thing worth being told. Only on failure - a
+# successful build leaves the image alone.
+trap 'status=$?; [ $status -eq 0 ] || { rm -f "$here/arlen.raw"; echo ">> build failed; removed the partial $here/arlen.raw" >&2; }; exit $status' EXIT
 repo=$(cd "$here/../.." && pwd)
 extra="$here/mkosi.extra"
 target="x86_64-unknown-linux-gnu.2.36"
