@@ -139,6 +139,17 @@ impl QuotaConfig {
                 // both were refused before their own caller gates ever ran.
                 "dev.arlen.meetings".to_string(),
                 "consent-broker".to_string(),
+                // The shell, found by booting the image and watching it be
+                // refused. It is not a writer; a READ needs this too, because
+                // `cross_uid_admitted` requires first-party BEFORE it considers
+                // the owner uid, and every session client is cross-uid against a
+                // root daemon. So Projects, Focus Mode, recent files and the
+                // Waypointer's file search were refused at accept time, with the
+                // shell's own read profile never consulted.
+                //
+                // NB this is the doorway only, same as above: what the shell may
+                // then read is its profile, which is read-only.
+                "dev.arlen.desktop-shell".to_string(),
             ],
             overrides: HashMap::new(),
         }
@@ -253,7 +264,22 @@ mod tests {
     /// control cannot reach the daemon at all. Pinned because the failure is
     /// invisible from inside the daemon: every unit test passes and the refusal
     /// happens on the far side of a socket, to a caller no test here plays.
+        /// The image ships a read profile for every app it installs, but a profile
+    /// is only reached by a caller that clears `cross_uid_admitted` first, and
+    /// that gate wants first-party BEFORE it looks at the owner uid. So a
+    /// shipped profile plus a third-party tier is a profile that is never read.
+    ///
+    /// This pins the shell, whose refusal was watched on a booted image. The
+    /// remaining five (clock, files, system-monitor, terminal, and the ai-agent
+    /// entry) are deliberately NOT pinned here: whether they should clear that
+    /// gate is a trust-model question, not a bug to fix by widening a list.
     #[test]
+    fn the_shell_clears_the_doorway_its_shipped_profile_needs() {
+        let c = QuotaConfig::arlen_default();
+        assert_eq!(c.tier_for_app("dev.arlen.desktop-shell"), AppTier::FirstParty);
+    }
+
+#[test]
     fn the_knowledge_app_is_first_party_so_its_delete_can_reach_the_socket() {
         let c = QuotaConfig::arlen_default();
         assert_eq!(c.tier_for_app("dev.arlen.knowledge"), AppTier::FirstParty);
