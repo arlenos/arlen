@@ -67,6 +67,8 @@ impl DeletedActivity {
 /// Kept separate from execution so the shape is readable and unit-testable
 /// without a graph; `delete_activity_since` is what actually runs it, inside one
 /// transaction, so a failure part-way cannot leave half a range deleted.
+///
+/// Takes MICROSECONDS. Callers hold seconds and convert through `cutoff_micros`.
 fn deletion_statements(from: i64) -> Vec<String> {
     vec![
         // Pure activity records, removed whole with their edges.
@@ -91,11 +93,31 @@ fn deletion_statements(from: i64) -> Vec<String> {
     ]
 }
 
+/// The caller's cut-off in the unit the graph actually stores.
+///
+/// Everything crossing the socket is Unix SECONDS: the app documents it, and the
+/// surface's "today" is a midnight timestamp. Everything IN the graph is epoch
+/// MICROSECONDS, which the timeline reader states as it divides by a million.
+///
+/// Compared raw the two never disagree in the interesting direction - every
+/// microsecond stamp since 1970 is larger than every second stamp - so
+/// `last_accessed >= from` was true for the entire store, and "delete today's
+/// activity" destroyed everything ever recorded. Silent, total, and reported as a
+/// success with a count that looked plausible.
+///
+/// Saturating, so an absurd boundary clamps instead of wrapping into the past and
+/// deleting the very thing it overflowed past.
+fn cutoff_micros(from_secs: i64) -> i64 {
+    from_secs.saturating_mul(1_000_000)
+}
+
+
 /// Count what is about to go, so the act can be audited and reported.
 ///
 /// Read before the write, on the same serial graph thread, so the numbers
 /// describe the range the transaction then removes.
-pub async fn count_activity_since(graph: &GraphHandle, from: i64) -> Result<DeletedActivity> {
+pub async fn count_activity_since(graph: &GraphHandle, from_secs: i64) -> Result<DeletedActivity> {
+    let from = cutoff_micros(from_secs);
     let one = |rows: crate::graph::RowSet| -> u64 {
         rows.rows
             .first()
@@ -151,8 +173,8 @@ pub async fn delete_activity_since(graph: &GraphHandle, from: i64) -> Result<Del
 /// The socket op audits the act BEFORE carrying it out and needs the size in that
 /// record, so it counts first; re-counting inside would either repeat the work or
 /// report a different number than the one audited.
-pub async fn run_deletion(graph: &GraphHandle, from: i64) -> Result<()> {
-    graph.transaction(deletion_statements(from)).await
+pub async fn run_deletion(graph: &GraphHandle, from_secs: i64) -> Result<()> {
+    graph.transaction(deletion_statements(cutoff_micros(from_secs))).await
 }
 
 #[cfg(test)]
@@ -172,6 +194,55 @@ mod tests {
         assert_eq!(clear, stmts.len() - 1, "the clear must be last: {stmts:#?}");
     }
 
+    /// The units the two sides actually use, which the toy-number test below
+    /// cannot see.
+    ///
+    /// `from` arrives in Unix SECONDS - the app documents it, the surface offers
+    /// "today" as a midnight timestamp - and the graph stores epoch MICROSECONDS,
+    /// which the timeline reader states in its own doc as it divides by a million.
+    /// Compared raw, every microsecond stamp since 1970 is larger than every
+    /// second stamp, so `last_accessed >= from` is true for the whole store and
+    /// "delete today" takes everything ever recorded.
+    ///
+    /// The existing test passes because 500 and 400 are in the same made-up unit.
+    /// That is the shape worth naming: a test can only compare what it is handed,
+    /// so a unit error is invisible to it unless the fixture uses real values.
+    #[tokio::test]
+    async fn a_range_delete_leaves_what_is_older_than_the_range() {
+        let tmp = tempfile::tempdir().unwrap();
+        let graph = crate::graph::spawn(tmp.path().join("graph").to_str().unwrap()).unwrap();
+
+        // A year ago, in the microseconds the graph really stores.
+        let a_year_ago_micros: i64 = 1_723_000_000_000_000;
+        // Today's midnight, in the seconds the app really sends.
+        let today_secs: i64 = 1_754_784_000;
+
+        graph
+            .transaction(vec![format!(
+                "CREATE (:File {{id:'/w/old.rs', path:'/w/old.rs', last_accessed: {a_year_ago_micros}}})"
+            )])
+            .await
+            .expect("fixture");
+
+        delete_activity_since(&graph, today_secs).await.expect("delete");
+
+        let left = graph
+            .query_rows(
+                "MATCH (f:File {id:'/w/old.rs'}) WHERE f.last_accessed IS NOT NULL \
+                 RETURN count(f)"
+                    .to_string(),
+            )
+            .await
+            .unwrap()
+            .rows[0][0]
+            .as_i64();
+        assert_eq!(
+            left, 1,
+            "a file accessed a year before the cut-off was destroyed by a delete \
+             of today's activity"
+        );
+    }
+
     /// Against a real graph, because the dialect is the thing I cannot reason my
     /// way to: whether the engine takes an `EXISTS` subquery at all, and whether
     /// a delete over one label leaves the neighbours standing.
@@ -185,16 +256,16 @@ mod tests {
                 "CREATE (:Project {id:'p1', name:'Work'})".into(),
                 // In a project, accessed inside the range: the access goes, the
                 // file and its membership stay.
-                "CREATE (:File {id:'/w/kept.rs', path:'/w/kept.rs', last_accessed: 500})".into(),
+                "CREATE (:File {id:'/w/kept.rs', path:'/w/kept.rs', last_accessed: 500000000})".into(),
                 // No project, accessed inside the range: nothing but the
                 // observation, so it goes whole.
-                "CREATE (:File {id:'/tmp/seen.rs', path:'/tmp/seen.rs', last_accessed: 600})"
+                "CREATE (:File {id:'/tmp/seen.rs', path:'/tmp/seen.rs', last_accessed: 600000000})"
                     .into(),
                 // Before the range: untouched, the proof the cut-off is real.
-                "CREATE (:File {id:'/w/old.rs', path:'/w/old.rs', last_accessed: 100})".into(),
+                "CREATE (:File {id:'/w/old.rs', path:'/w/old.rs', last_accessed: 100000000})".into(),
                 "CREATE (:App {id:'editor'})".into(),
-                "CREATE (:Event {id:'e-new', type:'window.focused', timestamp: 700})".into(),
-                "CREATE (:Event {id:'e-old', type:'window.focused', timestamp: 100})".into(),
+                "CREATE (:Event {id:'e-new', type:'window.focused', timestamp: 700000000})".into(),
+                "CREATE (:Event {id:'e-old', type:'window.focused', timestamp: 100000000})".into(),
             ])
             .await
             .expect("fixture");
@@ -222,7 +293,7 @@ mod tests {
         };
 
         // The range is gone.
-        assert_eq!(count("MATCH (e:Event) WHERE e.timestamp >= 400 RETURN count(e)").await, 0);
+        assert_eq!(count("MATCH (e:Event) WHERE e.timestamp >= 400000000 RETURN count(e)").await, 0);
         assert_eq!(count("MATCH (f:File {id:'/tmp/seen.rs'}) RETURN count(f)").await, 0);
         assert_eq!(
             count("MATCH (:File {id:'/w/kept.rs'})-[r:ACCESSED_BY]->() RETURN count(r)").await,
