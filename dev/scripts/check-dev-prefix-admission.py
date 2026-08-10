@@ -40,24 +40,53 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+# A tree to check may be passed in, which is what lets this gate's own test drive
+# it against fixtures; the sibling gates take the same argument.
+ROOT = (
+    Path(sys.argv[1]).resolve()
+    if len(sys.argv) > 1
+    else Path(__file__).resolve().parents[2]
+)
 SKIP = {"target", "node_modules", "mkosi.builddir", ".git", ".svelte-kit", "build", "dist"}
 PATTERN = re.compile(r'starts_with\(\s*"dev\."\s*\)')
 
 
-def in_test_module(lines: list[str], index: int) -> bool:
-    """Whether this line sits under a `#[cfg(test)]` or in a `#[test]` function.
+def test_scope_lines(lines: list[str]) -> set[int]:
+    """Line indices that are genuinely INSIDE a `#[cfg(test)]` item's body.
 
-    Crude but adequate: a test that asserts something about the prefix is talking
-    ABOUT the shape rather than admitting by it, and the one in the tree does
-    exactly that (it checks the release surface list carries no debug id).
+    A test asserting something about the prefix is talking ABOUT the shape rather
+    than admitting by it, so it is excused - but only if it really is a test.
+
+    The predecessor scanned backwards for the nearest `#[cfg(test)]` within 400
+    lines and excused anything it found one above. Rust convention puts the test
+    module at the END of a file, so that excused every line after it: an
+    admission added at the bottom of a file was invisible to this check. Measured
+    on 10 August by injecting `starts_with("dev.")` into `event-bus/src/socket.rs`
+    twice - above the test module it was caught, appended after it the gate passed.
+
+    So track braces instead. A scope opens at the first `{` after the marker and
+    closes when depth returns, which is what "inside" actually means.
     """
-    for i in range(index, max(index - 400, -1), -1):
-        if lines[i].startswith("mod tests") or "#[cfg(test)]" in lines[i]:
-            return True
-        if lines[i].startswith("}") and i < index - 1:
-            continue
-    return False
+    inside: set[int] = set()
+    depth = 0
+    opened_at: list[int] = []
+    pending = False
+    for i, line in enumerate(lines):
+        if opened_at:
+            inside.add(i)
+        if "#[cfg(test)]" in line or line.strip().startswith("mod tests"):
+            pending = True
+        for ch in line:
+            if ch == "{":
+                depth += 1
+                if pending:
+                    opened_at.append(depth)
+                    pending = False
+            elif ch == "}":
+                if opened_at and depth == opened_at[-1]:
+                    opened_at.pop()
+                depth -= 1
+    return inside
 
 
 def main() -> int:
@@ -71,10 +100,11 @@ def main() -> int:
             continue
         scanned += 1
         lines = text.splitlines()
+        in_test = test_scope_lines(lines)
         for n, line in enumerate(lines):
             if not PATTERN.search(line):
                 continue
-            if in_test_module(lines, n) or "assert" in line:
+            if n in in_test or "assert" in line:
                 continue
             findings.append(
                 f"{path.relative_to(ROOT)}:{n + 1}: admits every id starting with "
