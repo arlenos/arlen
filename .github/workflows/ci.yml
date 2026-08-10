@@ -43,82 +43,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      # The matrix below is hand-kept and its comment claims every [package] is
-      # listed. Nothing checked that, and the justfile copy of the same list had
-      # already fallen nine crates behind. Runs here because this job is
-      # unconditional: drift can arrive in a commit that touches no rust at all.
-      # The catalog gate compiles every MessageFormat source string, so it needs
-      # the same formatter the UI runs. This job has no app node_modules and node
-      # resolves a bare import from the importing file, so install that one
-      # package at the version the apps declare. Deliberately not made skippable:
-      # a gate that goes quiet when its dependency is missing is a gate that stops
-      # running the day someone changes the layout, and nobody finds out.
-      - name: messageformat for the catalog gate
-        run: |
-          want=$(node -e "console.log(require('./sdk/ui-kit/package.json').dependencies.messageformat)")
-          echo "installing messageformat@$want (as declared by sdk/ui-kit)"
-          # --prefix is not optional: with no package.json at the repo root npm
-          # walks UP to the nearest one and installs there instead, which on a
-          # developer machine is $HOME and here would be wherever the runner's
-          # checkout sits. Pin it to the checkout so the gate's resolution finds it.
-          npm install --prefix "$PWD" --no-save --no-audit --no-fund "messageformat@$want"
-          node -e "require('./node_modules/messageformat/package.json')" \
-            || { echo "messageformat did not land in the checkout"; exit 1; }
-      - name: frame-check fixtures
-        # Separate from the block below because it is the one check with a
-        # dependency: the boot-verify frame detectors are image code, so their
-        # fixtures need Pillow. Kept out of the "build-free, no network" block
-        # rather than quietly weakening what that block claims about itself.
-        run: |
-          python3 -m pip install --quiet --disable-pip-version-check Pillow
-          python3 dev/vm/test_frame_checks.py
-      - name: structural checks
-        # The seven build-free checks, run directly rather than through `just`,
-        # which the runner does not have. Each is deterministic file reading with
-        # no network and no build, and each guards something that had already
-        # drifted once: the matrix against the tree, an ignore rule against what
-        # is tracked, a unit ordering against a unit that exists, the eight copies
-        # of event.proto against each other, and this workflow against the
-        # justfile on how a listed crate is actually built, and a shared file's
-        # reader against its writer. Seconds, together.
-        run: |
-          python3 dev/scripts/check-crate-coverage.py
-          python3 dev/scripts/check-proto-drift.py
-          python3 dev/scripts/check-gate-drift.py
-          python3 dev/scripts/check-shared-files.py
-          python3 dev/scripts/check-smoke-coverage.py
-          python3 dev/scripts/check-executor-gate.py
-          python3 dev/scripts/check-shipped-units.py
-          node dev/scripts/check-catalogs.mjs
-          node dev/scripts/check-i18n-reactivity.mjs
-          python3 dev/scripts/check-invoke-shape.py
-          python3 dev/scripts/check-invoke-exists.py
-          python3 dev/scripts/check-optimistic-write.py
-          python3 dev/scripts/check-granted-and-used.py
-          python3 dev/scripts/check-invoke-scope.py
-          python3 dev/scripts/check-opener-args.py
-          python3 dev/scripts/check-grant-visibility.py
-          python3 dev/scripts/check-graph-columns.py
-          python3 dev/scripts/check-webview-sandbox.py
-          python3 dev/scripts/check-setup-runtime.py
-          python3 dev/scripts/check-dev-prefix-admission.py
-          python3 dev/scripts/check-fixture-on-failure.py
-          python3 dev/scripts/check-app-profiles.py
-          python3 dev/scripts/check-read-scope.py
-          python3 dev/scripts/check-dbus-callers.py
-          python3 dev/scripts/check-refusal-shape.py
-          node dev/scripts/test-check-fixtures.mjs
-          node dev/scripts/test-check-units.mjs
-          node dev/scripts/test-check-invokes.mjs
-          node dev/scripts/test-check-read-scope.mjs
-          bash dev/scripts/check-packaged-units.sh
-          tracked=$(git ls-files --ignored --exclude-standard -c)
-          if [ -n "$tracked" ]; then
-            echo "tracked, yet matched by an ignore rule:"
-            printf '  %s\n' $tracked
-            exit 1
-          fi
-          echo "no tracked file is matched by an ignore rule"
       - id: detect
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -225,6 +149,100 @@ jobs:
           echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
           echo "rust components: $rust"
           echo "frontend apps: $frontend"
+
+  structural:
+    name: structural checks
+    # Deliberately NOTHING depends on this job.
+    #
+    # These steps used to live inside `detect changed components`, which every
+    # other job needs - so one red checker skipped the compile, the tests, the
+    # integration smoke and clippy all at once. On 9 August a single stale
+    # inventory entry did exactly that: for two hours nothing pushed was built or
+    # tested, and the message on screen was small enough to read as a tidy-up
+    # item. A checker guards a claim ABOUT the tree; it has no business deciding
+    # whether the tree gets compiled.
+    #
+    # Split out so a red here is a red here. It still blocks a merge when it is a
+    # required check, which is where that decision belongs.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The matrix below is hand-kept and its comment claims every [package] is
+      # listed. Nothing checked that, and the justfile copy of the same list had
+      # already fallen nine crates behind. Runs here because this job is
+      # unconditional: drift can arrive in a commit that touches no rust at all.
+      # The catalog gate compiles every MessageFormat source string, so it needs
+      # the same formatter the UI runs. This job has no app node_modules and node
+      # resolves a bare import from the importing file, so install that one
+      # package at the version the apps declare. Deliberately not made skippable:
+      # a gate that goes quiet when its dependency is missing is a gate that stops
+      # running the day someone changes the layout, and nobody finds out.
+      - name: messageformat for the catalog gate
+        run: |
+          want=$(node -e "console.log(require('./sdk/ui-kit/package.json').dependencies.messageformat)")
+          echo "installing messageformat@$want (as declared by sdk/ui-kit)"
+          # --prefix is not optional: with no package.json at the repo root npm
+          # walks UP to the nearest one and installs there instead, which on a
+          # developer machine is $HOME and here would be wherever the runner's
+          # checkout sits. Pin it to the checkout so the gate's resolution finds it.
+          npm install --prefix "$PWD" --no-save --no-audit --no-fund "messageformat@$want"
+          node -e "require('./node_modules/messageformat/package.json')" \
+            || { echo "messageformat did not land in the checkout"; exit 1; }
+      - name: frame-check fixtures
+        # Separate from the block below because it is the one check with a
+        # dependency: the boot-verify frame detectors are image code, so their
+        # fixtures need Pillow. Kept out of the "build-free, no network" block
+        # rather than quietly weakening what that block claims about itself.
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check Pillow
+          python3 dev/vm/test_frame_checks.py
+      - name: structural checks
+        # The seven build-free checks, run directly rather than through `just`,
+        # which the runner does not have. Each is deterministic file reading with
+        # no network and no build, and each guards something that had already
+        # drifted once: the matrix against the tree, an ignore rule against what
+        # is tracked, a unit ordering against a unit that exists, the eight copies
+        # of event.proto against each other, and this workflow against the
+        # justfile on how a listed crate is actually built, and a shared file's
+        # reader against its writer. Seconds, together.
+        run: |
+          python3 dev/scripts/check-crate-coverage.py
+          python3 dev/scripts/check-proto-drift.py
+          python3 dev/scripts/check-gate-drift.py
+          python3 dev/scripts/check-shared-files.py
+          python3 dev/scripts/check-smoke-coverage.py
+          python3 dev/scripts/check-executor-gate.py
+          python3 dev/scripts/check-shipped-units.py
+          node dev/scripts/check-catalogs.mjs
+          node dev/scripts/check-i18n-reactivity.mjs
+          python3 dev/scripts/check-invoke-shape.py
+          python3 dev/scripts/check-invoke-exists.py
+          python3 dev/scripts/check-optimistic-write.py
+          python3 dev/scripts/check-granted-and-used.py
+          python3 dev/scripts/check-invoke-scope.py
+          python3 dev/scripts/check-opener-args.py
+          python3 dev/scripts/check-grant-visibility.py
+          python3 dev/scripts/check-graph-columns.py
+          python3 dev/scripts/check-webview-sandbox.py
+          python3 dev/scripts/check-setup-runtime.py
+          python3 dev/scripts/check-dev-prefix-admission.py
+          python3 dev/scripts/check-fixture-on-failure.py
+          python3 dev/scripts/check-app-profiles.py
+          python3 dev/scripts/check-read-scope.py
+          python3 dev/scripts/check-dbus-callers.py
+          python3 dev/scripts/check-refusal-shape.py
+          node dev/scripts/test-check-fixtures.mjs
+          node dev/scripts/test-check-units.mjs
+          node dev/scripts/test-check-invokes.mjs
+          node dev/scripts/test-check-read-scope.mjs
+          bash dev/scripts/check-packaged-units.sh
+          tracked=$(git ls-files --ignored --exclude-standard -c)
+          if [ -n "$tracked" ]; then
+            echo "tracked, yet matched by an ignore rule:"
+            printf '  %s\n' $tracked
+            exit 1
+          fi
+          echo "no tracked file is matched by an ignore rule"
 
   rust:
     name: rust check + test
