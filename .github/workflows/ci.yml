@@ -249,6 +249,7 @@ jobs:
           node dev/scripts/test-check-executor-gate.mjs
           node dev/scripts/test-check-setup-runtime.mjs
           node dev/scripts/test-check-refusal-shape.mjs
+          node dev/scripts/test-check-graph-columns.mjs
           node dev/scripts/test-check-invokes.mjs
           node dev/scripts/test-check-read-scope.mjs
           node dev/scripts/test-pre-commit-hook.mjs
