@@ -83,6 +83,18 @@ pub fn app_id_from_pid(pid: u32) -> Result<String, IdentityError> {
 /// the original failure, so anything unreadable is simply omitted.
 /// A one-line `/proc` value, or `"unreadable"`. Never propagates a failure: this
 /// only ever decorates an error that has already happened.
+/// One named field out of `/proc/<pid>/status`, or `"unreadable"`.
+fn proc_field(pid: u32, field: &str) -> String {
+    std::fs::read_to_string(format!("/proc/{pid}/status"))
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find_map(|l| l.strip_prefix(&format!("{field}:")))
+                .map(|v| v.trim().to_owned())
+        })
+        .unwrap_or_else(|| "unreadable".into())
+}
+
 fn read_trimmed(path: &str) -> String {
     std::fs::read_to_string(path)
         .map(|s| s.trim().to_owned())
@@ -119,12 +131,28 @@ fn why_exe_unreadable(pid: u32) -> String {
             // picking one - a Landlock domain (`sdk/landlock-fence`, the ptrace
             // LSM hook) and Yama's ptrace scope, which above 0 stops a same-uid
             // process reading a non-descendant's `exe`.
+            // The deciding field, found by measurement rather than by reasoning
+            // from the symptom: `__ptrace_may_access` refuses a READ unless the
+            // reader's permitted capabilities are a SUPERSET of the target's. A
+            // peer holding one capability we lack is unreadable no matter that we
+            // share a uid - measured on 10 August against `systemd --user`
+            // (CapPrm 0x800000000, CAP_WAKE_ALARM), unreadable, while two
+            // zero-capability processes of the same uid read fine.
+            //
+            // Two earlier guesses at this branch were wrong and are not repeated
+            // here: a Landlock fence (the signer takes none) and Yama's
+            // ptrace_scope (its hook governs ATTACH, not READ, and a
+            // non-descendant reads fine). The scope is still reported because it
+            // is cheap and someone will ask, but the capability line is the one
+            // that has evidence behind it.
             return format!(
                 " (peer uid {peer}, /proc/{pid} owned by {dir_owner}, we are {me} \
-                 - same uid and same /proc owner, so the restriction is on our \
-                 side: yama ptrace_scope={}, our landlock domain={})",
+                 - same uid, so compare capabilities: peer CapPrm={}, ours={} \
+                 (a READ is refused unless ours is a superset); \
+                 yama ptrace_scope={})",
+                proc_field(pid, "CapPrm"),
+                proc_field(std::process::id(), "CapPrm"),
                 read_trimmed("/proc/sys/kernel/yama/ptrace_scope"),
-                read_trimmed("/proc/self/attr/current"),
             );
         };
         return format!(" (peer uid {peer}, /proc/{pid} owned by {dir_owner}, we are {me}{reading})");
@@ -1715,6 +1743,21 @@ mod exe_diagnosis_tests {
     /// go on: `Permission denied` and no indication of which of the three causes
     /// it was. Skipped when run as root, where the read succeeds and there is
     /// nothing to diagnose.
+    /// The capability line must carry a real value, not the fallback.
+    ///
+    /// `CapPrm` is the field `__ptrace_may_access` actually decides on, so a
+    /// diagnosis that silently printed "unreadable" there would look informative
+    /// and say nothing - the failure mode this whole function exists to avoid.
+    #[test]
+    fn the_capability_field_is_actually_read() {
+        let mine = proc_field(std::process::id(), "CapPrm");
+        assert!(
+            mine != "unreadable" && mine.chars().all(|c| c.is_ascii_hexdigit()),
+            "our own CapPrm should read as hex, got {mine:?}"
+        );
+        assert_eq!(proc_field(u32::MAX, "CapPrm"), "unreadable", "absent pid");
+    }
+
     #[test]
     fn a_refused_exe_read_says_which_cause_it_was() {
         // SAFETY: getuid takes no arguments and always succeeds.
