@@ -136,8 +136,8 @@ async fn read_window_focus(
 ) -> Result<Vec<TimelineEvent>, String> {
     let cypher = format!(
         "MATCH (e:Event) WHERE e.type = 'window.focused' \
-         RETURN e.id AS id, e.title AS title, e.source AS source, \
-                e.timestamp AS at \
+         RETURN e.id AS id, e.title AS title, e.app_id AS app_id, \
+                e.source AS source, e.timestamp AS at \
          ORDER BY e.timestamp DESC LIMIT {LIMIT}"
     );
     let rows = client.query_rows(&cypher).await.map_err(|e| crate::report::graph_call_failed("read_window_focus", e))?;
@@ -148,13 +148,30 @@ async fn read_window_focus(
                 id: text(r, "id")?,
                 kind: "focus".to_string(),
                 verb: "k.tl.verb.focused".to_string(),
-                object: text(r, "title")?,
+                object: focus_object(r),
                 source: text(r, "source").unwrap_or_default(),
                 at: seconds(r, "at")?,
                 project: None,
             })
         })
         .collect())
+}
+
+/// What a focus row names: the window's title, or failing that its app.
+///
+/// Not every focus lands on a titled window. A layer surface, or focus leaving all
+/// windows, has no title, and the row rendered as the word "focused" followed by
+/// empty space - which tells a reader nothing at all. That was visible on a booted
+/// image beside a file row that named its file.
+///
+/// The app id is the other thing actually measured about that event, so the
+/// fallback names something real rather than inventing a label. Empty only when
+/// neither was recorded, and then the row is honestly empty rather than made up.
+fn focus_object(row: &HashMap<String, serde_json::Value>) -> String {
+    match text(row, "title") {
+        Some(t) if !t.is_empty() => t,
+        _ => text(row, "app_id").unwrap_or_default(),
+    }
 }
 
 /// The last path component, or the whole string when there is none.
@@ -207,6 +224,26 @@ mod tests {
         // A trailing slash yields an empty last component; that is what the path
         // says, and inventing the parent's name would be a guess.
         assert_eq!(basename("/a/b/"), "");
+    }
+
+    /// The three shapes a focus row arrives in, including the one that shipped
+    /// blank: title present, title empty with an app, and neither recorded.
+    #[test]
+    fn a_focus_row_names_the_window_or_the_app_behind_it() {
+        let row = |title: &str, app: &str| {
+            HashMap::from([
+                ("title".to_string(), serde_json::json!(title)),
+                ("app_id".to_string(), serde_json::json!(app)),
+            ])
+        };
+        assert_eq!(focus_object(&row("notes.md - Editor", "editor")), "notes.md - Editor");
+        // The case seen on the image: a surface with no title. The app is what is
+        // known about it, so that is what the row says.
+        assert_eq!(focus_object(&row("", "arlen-shell")), "arlen-shell");
+        // Nothing recorded either way stays empty rather than acquiring a label
+        // nobody measured - the whole defect this pair exists to prevent.
+        assert_eq!(focus_object(&row("", "")), "");
+        assert_eq!(focus_object(&HashMap::new()), "");
     }
 
     #[test]

@@ -774,7 +774,8 @@ async fn promote_window_focused(
         .write(format!(
             "MERGE (e:Event {{id: '{event_id_esc}'}})
              SET e.type = 'window.focused', e.timestamp = {timestamp},
-                 e.source = 'wayland', e.title = '{title_esc}'"
+                 e.source = 'wayland', e.title = '{title_esc}',
+                 e.app_id = '{app_id_esc}'"
         ))
         .await?;
 
