@@ -88,6 +88,57 @@ def installed_units() -> set[str]:
     return placed | {name for name in shipped_units() if name in scripts}
 
 
+
+# The second half of this gate, and the reason it exists: the first half can only
+# ever check components that HAVE a unit.
+#
+# `kernel-layer` is the case that showed it. It is not on the image - no unit, no
+# build phase - and it produces `file.opened`, which the whole File-and-timeline
+# half of the graph is built from. The gate designed to catch exactly that could
+# not see it, because a component nobody wrote a `dist/` file for is not a subject.
+# `modulesd` is absent WITH a written reason precisely because someone did write
+# one; the difference between the two was never deliberateness.
+#
+# So the subjects here are DERIVED: every crate under `daemons/`. Each must either
+# have a unit somewhere in its own tree, or say below why it has none. A
+# hand-maintained list is strongest exactly where it is needed least.
+NO_UNIT: dict[str, str] = {
+    "arlen-run": (
+        "no unit by design: it is a fork-exec launcher a session invokes per app, "
+        "not a service that runs"
+    ),
+    "kernel-layer": (
+        "the eBPF loader needs the bpf toolchain, is outside the CI matrix, and "
+        "putting it on a shipped image is a scope decision rather than a packaging "
+        "oversight. NOTE this is why a booted image records no file.opened at all"
+    ),
+    "bridge-ingest": "runs from the dogfood path today, unreviewed as a standalone service",
+    "integration-packages": "a library and CLI for package assembly, not a running service",
+    "lock-auth": "the lock screen's auth backend, consumed in-process, not a service",
+    "print": "the print backend is reached through the portal, which is itself unstaged",
+    "sentinel-detect": "detection library, no daemon shape yet",
+}
+
+
+def crates_without_units() -> list[str]:
+    """Daemon crates that ship no unit anywhere in their own tree.
+
+    Looks beyond `dist/`: the knowledge daemon files its unit under `systemd/`, so
+    a dist-only scan reports the tree's most load-bearing daemon as unit-less.
+    """
+    missing = []
+    for crate in sorted((ROOT / "daemons").iterdir()):
+        if not (crate / "Cargo.toml").is_file():
+            continue
+        units = [
+            u
+            for u in crate.glob("**/*.service")
+            if not {"target", "node_modules"} & set(u.parts)
+        ]
+        if not units:
+            missing.append(crate.name)
+    return missing
+
 def main() -> int:
     shipped = shipped_units()
     if not shipped:
@@ -114,6 +165,22 @@ def main() -> int:
     for stale in sorted(set(NOT_YET_DEPLOYED) - set(shipped)):
         problems.append(f"{stale} is listed but ships no unit any more; delete the entry")
 
+    # The derived half: a crate with no unit at all is a subject too.
+    unit_less = crates_without_units()
+    for crate in unit_less:
+        if crate not in NO_UNIT:
+            problems.append(
+                f"daemons/{crate} ships no systemd unit anywhere and says nothing "
+                "about why. Write the unit, or add the reason to NO_UNIT - a "
+                "component nobody listed is exactly what this half of the gate "
+                "exists to notice"
+            )
+    for stale in sorted(set(NO_UNIT) - set(unit_less)):
+        problems.append(
+            f"daemons/{stale} is excused for having no unit and now has one; "
+            "delete the entry so the excuse cannot outlive its subject"
+        )
+
     if problems:
         print("shipped units and the image disagree:\n")
         for p in problems:
@@ -122,7 +189,8 @@ def main() -> int:
 
     print(
         f"{len(shipped)} shipped unit(s); {len(shipped) - len(NOT_YET_DEPLOYED)} installed, "
-        f"{len(NOT_YET_DEPLOYED)} deliberately waiting"
+        f"{len(NOT_YET_DEPLOYED)} deliberately waiting; "
+        f"{len(unit_less)} daemon crate(s) carry no unit, each with a stated reason"
     )
     return 0
 
