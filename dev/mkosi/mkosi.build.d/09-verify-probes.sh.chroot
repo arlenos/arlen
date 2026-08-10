@@ -1,0 +1,39 @@
+#!/bin/sh
+# Phase 9 (CHROOT): the verify-only probes.
+#
+# THE ONE RULE THIS FILE EXISTS TO KEEP: the verify image is the release image
+# PLUS these binaries, never minus anything. A verify variant that can differ by
+# OMISSION verifies a different system than the one that ships, which is the
+# mechanism-versus-assembly gap one level up - and this week has already spent
+# three findings on that gap.
+#
+# So the branch lives HERE and nowhere else. No release phase may ask whether this
+# is a verify build; `check-verify-image.sh` fails the tree if one does, if a
+# verify phase writes a path a release phase also writes, or if it removes
+# anything. Under those three, "plus, never minus" holds by construction rather
+# than by anyone remembering it.
+#
+# Off unless asked: `dev/mkosi/build-image.sh --verify` passes the flag through
+# `mkosi -E`. A plain build runs this phase and it does nothing.
+set -eu
+
+if [ "${ARLEN_VERIFY_IMAGE:-0}" != "1" ]; then
+    echo ">> not a verify image; no probes staged"
+    exit 0
+fi
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-verify-probes"
+mkdir -p "$CARGO_TARGET_DIR"
+export PATH="$CARGO_HOME/bin:$PATH"
+
+echo ">> building the verify probes"
+cargo build --release --manifest-path "$SRCDIR/arlen/dev/kg-probe/Cargo.toml"
+
+# `/usr/bin`, because a probe is run by hand over a serial console and having to
+# remember a libexec path defeats the point of having it.
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-kg-probe" \
+        "$DESTDIR/usr/bin/arlen-kg-probe"
+echo ">> staged the verify probes into the image"
