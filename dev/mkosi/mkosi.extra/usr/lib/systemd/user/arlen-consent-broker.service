@@ -14,6 +14,15 @@ After=arlen-auditd.service
 Type=simple
 # Production binary path (system-wide install). Dev runs invoke the debug binary
 # directly; this file is the canonical production unit.
+# The knowledge socket, pinned rather than inherited (see arlen-journald-parser
+# for the import race).
+#
+# This daemon's OWN sockets under $XDG_RUNTIME_DIR are correct and stay there: they
+# are per-user by design and the shell reaches them. What needed pinning is where it
+# CALLS - it writes a consent grant to the knowledge daemon, a system service under
+# /run/arlen. A daemon can be right about where it listens and wrong about where it
+# calls, and only the second one needs this line.
+Environment=ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
 ExecStart=/usr/lib/arlen/libexec/arlen-consent-broker
 Restart=on-failure
 RestartSec=2
