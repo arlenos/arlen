@@ -14,8 +14,12 @@ pub fn validate(event: &Event) -> Result<(), ValidationError> {
     if event.timestamp == 0 {
         return Err(ValidationError::MissingField("timestamp"));
     }
-    if event.session_id.is_empty() {
-        return Err(ValidationError::MissingField("session_id"));
+    // `origin` says WHERE the event came from: a session reference, or a named
+    // system source for the things that happen in no session. Still required, still
+    // rejected when empty - what changed is that a producer with no session can now
+    // say so instead of sending a blank the rule had to refuse.
+    if event.origin.is_empty() {
+        return Err(ValidationError::MissingField("origin"));
     }
     Ok(())
 }
@@ -46,7 +50,7 @@ mod tests {
             timestamp: 1_000_000,
             source: "ebpf".to_string(),
             pid: 1234,
-            session_id: "session-abc".to_string(),
+            origin: "session-abc".to_string(),
             payload: vec![],
             uid: 1000,
             project_id: String::new(),

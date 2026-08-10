@@ -21,7 +21,7 @@ fn make_event(id: &str, event_type: &str) -> Event {
         timestamp: 1_000_000,
         source: "bench".to_string(),
         pid: 1,
-        session_id: "bench-session".to_string(),
+        origin: "session-bench".to_string(),
         // The bench measures write throughput, and neither field is read on that
         // path: an unscoped event from the running user is the cheapest shape
         // that is also a real one.

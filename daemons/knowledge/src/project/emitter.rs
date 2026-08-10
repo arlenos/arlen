@@ -72,7 +72,12 @@ impl ProjectEmitter {
             timestamp: chrono::Utc::now().timestamp_micros(),
             source: "knowledge".to_string(),
             pid: std::process::id(),
-            session_id: String::new(),
+            // A project is noticed by a filesystem watcher, in no session at all.
+            // This used to send an empty string - the truthful value, which the bus
+            // then rejected as a missing field, so every project.created/updated/
+            // archived event was dropped and nothing ever learned about a project.
+            // Naming the source says the same thing in a form the rule accepts.
+            origin: "system:project-watcher".to_string(),
             payload,
             uid: unsafe { libc::getuid() },
             project_id: String::new(),

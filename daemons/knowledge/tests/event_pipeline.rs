@@ -142,7 +142,7 @@ async fn event_lands_in_sqlite() {
         timestamp: 1_000_000,
         source: "test".to_string(),
         pid: 42,
-        session_id: "session-integration-test".to_string(),
+        origin: "session-integration-test".to_string(),
         payload: vec![],
         uid: 1000,
         project_id: String::new(),

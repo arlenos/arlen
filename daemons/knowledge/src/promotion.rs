@@ -135,6 +135,29 @@ async fn write_hwm(pool: &SqlitePool, hwm: i64) -> Result<()> {
 /// - All `file.opened` events become `File` and `App` nodes with an `ACCESSED_BY` edge.
 /// - All `window.focused` events become `App`, `Session`, and `Event` nodes with `ACTIVE_IN` edge.
 /// - Other event types are stored in SQLite but not yet promoted (Phase 2).
+
+/// Marks an origin that is a named system source rather than a user session.
+const SYSTEM_ORIGIN_PREFIX: &str = "system:";
+
+/// The session an event belongs to, or empty when it came from a system source.
+///
+/// The bus's `origin` is either a session reference or `system:<producer>` - a
+/// filesystem watcher, a profile change, things that happen in no session. Only the
+/// first kind may become a `Session` node: promoting `system:project-watcher` as a
+/// session would invent a session the user never had, in a graph whose whole value
+/// is that its contents are true.
+///
+/// Empty is the right answer for the system case rather than an error, because the
+/// promotion path already treats an empty session as "do not link one" - the guard
+/// existed before this split and does exactly what is needed.
+fn session_of(origin: &str) -> &str {
+    if origin.starts_with(SYSTEM_ORIGIN_PREFIX) {
+        ""
+    } else {
+        origin
+    }
+}
+
 async fn run_pass(
     pool: &SqlitePool,
     graph: &GraphHandle,
@@ -145,7 +168,7 @@ async fn run_pass(
 
     // Fetch unprocessed events ordered by timestamp, including the payload.
     let rows: Vec<(String, String, i64, String, i64, String, Vec<u8>)> = sqlx::query_as(
-        "SELECT id, type, timestamp, source, pid, session_id, payload
+        "SELECT id, type, timestamp, source, pid, origin, payload
          FROM events
          WHERE timestamp > ?
          ORDER BY timestamp ASC
@@ -166,11 +189,11 @@ async fn run_pass(
     let mut skipped = 0usize;
     let mut last_timestamp = hwm;
 
-    for (id, event_type, timestamp, source, pid, session_id, payload) in &rows {
+    for (id, event_type, timestamp, source, pid, origin, payload) in &rows {
         let result = match event_type.as_str() {
             "file.opened" => {
                 let res = promote_file_opened(
-                    graph, id, timestamp, source, pid, session_id, payload,
+                    graph, id, timestamp, source, pid, session_of(origin), payload,
                 )
                 .await;
                 // After the File node exists, try linking it to a project.
@@ -179,7 +202,7 @@ async fn run_pass(
                         if !fp.path.is_empty() {
                             if let Err(e) = link_file_to_project(
                                 &fp.path,
-                                session_id,
+                                session_of(origin),
                                 project_store,
                                 promote_threshold,
                             )
@@ -199,7 +222,7 @@ async fn run_pass(
                 res
             }
             "window.focused" => {
-                promote_window_focused(graph, id, timestamp, session_id, payload).await
+                promote_window_focused(graph, id, timestamp, session_of(origin), payload).await
             }
             "file.written" => {
                 promote_file_written(graph, id, timestamp, source, pid, payload).await
@@ -236,7 +259,7 @@ async fn run_pass(
             | "app.shortcut.action_invoked"
             | "app.menu.action_invoked" => {
                 promote_action_invoked(
-                    graph, id, event_type, timestamp, session_id, payload,
+                    graph, id, event_type, timestamp, session_of(origin), payload,
                 )
                 .await
             }

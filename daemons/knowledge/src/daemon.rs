@@ -98,7 +98,8 @@ impl RateLimitEmitter {
             pid: std::process::id(),
             // The Event Bus rejects an empty session_id; a daemon has
             // no user session, so a stable daemon identifier is used.
-            session_id: "knowledge-daemon".to_string(),
+            // The daemon itself, in no user session: a named system source.
+            origin: "system:knowledge-daemon".to_string(),
             payload: app_id.as_bytes().to_vec(),
             uid: unsafe { libc::getuid() },
             project_id: String::new(),

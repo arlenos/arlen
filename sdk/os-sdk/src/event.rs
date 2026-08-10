@@ -69,7 +69,7 @@ pub struct UnixEventEmitter {
     /// `None` means not yet connected or previously failed.
     stream: Arc<Mutex<Option<UnixStream>>>,
     app_id: String,
-    session_id: String,
+    origin: String,
 }
 
 impl UnixEventEmitter {
@@ -78,12 +78,23 @@ impl UnixEventEmitter {
     /// Does not connect immediately; the connection is established on the
     /// first call to [`emit`](EventEmitter::emit).
     pub fn new(socket_path: impl Into<String>) -> Self {
+        let app_id = std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| "unknown".to_string());
         Self {
             socket_path: socket_path.into(),
             stream: Arc::new(Mutex::new(None)),
-            app_id: std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| "unknown".to_string()),
-            session_id: std::env::var("ARLEN_SESSION_ID")
-                .unwrap_or_else(|_| "unknown".to_string()),
+            app_id: app_id.clone(),
+            // A session when there is one, a NAMED system source when there is not.
+            //
+            // This used to fall back to "unknown", which is the same blankness the
+            // bus now refuses in a politer font: it says an event happened and
+            // declines to say where. A daemon with no session is not unknown - it is
+            // the journald parser, or the project watcher - and saying so is what
+            // lets a transparency surface separate what the user did from what the
+            // system did on its own.
+            origin: std::env::var("ARLEN_SESSION_ID")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| format!("system:{app_id}")),
         }
     }
 }
@@ -105,7 +116,7 @@ impl EventEmitter for UnixEventEmitter {
                     .as_micros() as i64,
                 source: format!("app:{}", self.app_id),
                 pid: std::process::id(),
-                session_id: self.session_id.clone(),
+                origin: self.origin.clone(),
                 payload,
                 // uid is enriched by the bus via SO_PEERCRED on the
                 // accept socket; sending 0 here is the documented

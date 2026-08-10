@@ -27,7 +27,11 @@ async fn create_schema(pool: &SqlitePool) -> Result<()> {
             timestamp   INTEGER NOT NULL,
             source      TEXT    NOT NULL,
             pid         INTEGER NOT NULL,
-            session_id  TEXT    NOT NULL,
+            -- Where the event came from: a session reference, or a named system
+            -- source (`system:<producer>`) for what happens in no session. Renamed
+            -- from `session_id` with the bus contract; pre-production, so the column
+            -- follows the field rather than keeping a name that would now lie.
+            origin      TEXT    NOT NULL,
             payload     BLOB
         )",
     )
@@ -77,7 +81,7 @@ pub async fn write_batch(pool: &SqlitePool, events: &[Event]) -> Result<usize> {
     for event in events {
         sqlx::query(
             "INSERT OR IGNORE INTO events
-                (id, type, timestamp, source, pid, session_id, payload)
+                (id, type, timestamp, source, pid, origin, payload)
              VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&event.id)
@@ -85,7 +89,7 @@ pub async fn write_batch(pool: &SqlitePool, events: &[Event]) -> Result<usize> {
         .bind(event.timestamp)
         .bind(&event.source)
         .bind(i64::from(event.pid))
-        .bind(&event.session_id)
+        .bind(&event.origin)
         .bind(event.payload.as_slice())
         .execute(&mut *tx)
         .await?;
@@ -108,7 +112,7 @@ mod tests {
             timestamp: 1_000_000,
             source: "test".to_string(),
             pid: 1,
-            session_id: "session-test".to_string(),
+            origin: "session-test".to_string(),
             payload: vec![],
             uid: 0,
             project_id: String::new(),
