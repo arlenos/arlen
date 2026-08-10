@@ -160,6 +160,7 @@ async fn run_pass(
     info!(count = rows.len(), "promoting events to ladybug");
 
     let mut all_ok = true;
+    let mut skipped = 0usize;
     let mut last_timestamp = hwm;
 
     for (id, event_type, timestamp, source, pid, session_id, payload) in &rows {
@@ -251,7 +252,9 @@ async fn run_pass(
             // freshly-parsed set and fuse each to its File via DEFINES.
             "code.indexed" => promote_code_indexed(graph, payload).await,
             _ => {
-                // Not yet promoted; will be handled in a later phase.
+                // Not yet promoted; will be handled in a later phase. Counted, so
+                // the line at the end of the pass cannot claim it was promoted.
+                skipped += 1;
                 debug!(event_type, "skipping promotion for unhandled event type");
                 Ok(())
             }
@@ -271,7 +274,19 @@ async fn run_pass(
     // On failure, the next pass will retry from the same position.
     if all_ok && last_timestamp > hwm {
         write_hwm(pool, last_timestamp).await?;
-        info!(hwm = last_timestamp, promoted = rows.len(), "promotion pass complete");
+        // `promoted` used to be `rows.len()`, which is how many raw events the pass
+        // READ - including every one the match above skipped as unhandled. So a pass
+        // that created nothing still announced "promoted=5", and that line is read by
+        // anyone asking whether the pipeline is alive. It cost me two hours: I took
+        // it as evidence the graph was being filled while the probe kept answering
+        // that the graph was empty, and both were telling the truth.
+        info!(
+            hwm = last_timestamp,
+            considered = rows.len(),
+            promoted = rows.len() - skipped,
+            skipped,
+            "promotion pass complete"
+        );
     } else if !all_ok {
         // Advance to the last successfully promoted event so we do not
         // re-process events that already succeeded.
