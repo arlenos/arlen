@@ -108,14 +108,22 @@ fn why_exe_unreadable(pid: u32) -> String {
         // SAFETY: getuid is always successful and takes no arguments.
         let me = unsafe { libc::getuid() };
         let dir_owner = meta.uid();
-        let peer = std::fs::read_to_string(format!("/proc/{pid}/status"))
-            .ok()
-            .and_then(|s| {
-                s.lines()
-                    .find_map(|l| l.strip_prefix("Uid:"))
-                    .and_then(|v| v.split_whitespace().next().map(str::to_owned))
-            });
-        let peer = peer.unwrap_or_else(|| "unknown".into());
+        // The WHOLE `Uid:` line: real, effective, saved, fs. `ptrace_may_access`
+        // requires the reader's uid to match every one of them, so printing only
+        // the first can show a match while the kernel sees a mismatch - a probe
+        // that reports agreement it has not checked. Found by re-reading the
+        // kernel's condition after three mechanisms had been eliminated and the
+        // peer still looked identical to us on everything I was printing.
+        let uids = proc_field(pid, "Uid");
+        // The kernel checks the GID triple next to the UID triple in the same
+        // condition, so a group mismatch denies just as a uid mismatch does.
+        // Printing one and not the other would leave half the condition unseen.
+        let gids = proc_field(pid, "Gid");
+        let peer = uids
+            .split_whitespace()
+            .next()
+            .unwrap_or("unknown")
+            .to_owned();
         let reading = if dir_owner != me {
             if peer == me.to_string() {
                 " - the peer shares our uid but its /proc is root-owned, so it is \
@@ -152,10 +160,13 @@ fn why_exe_unreadable(pid: u32) -> String {
             // discards the evidence that would refute it. So this prints all of
             // them, cheaply, and lets the reader do the eliminating.
             return format!(
-                " (peer uid {peer}, /proc/{pid} owned by {dir_owner}, we are {me} \
-                 - same uid, so compare capabilities: peer CapPrm={}, ours={} \
+                " (peer Uid[real effective saved fs]=[{uids}], /proc/{pid} owned by \
+                 {dir_owner}, we are {me}; peer Gid=[{gids}], ours={} - a READ \
+                 needs OUR uid and gid to match EVERY one of those; \
+                 capabilities: peer CapPrm={}, ours={} \
                  (a READ is refused unless ours is a superset); \
                  yama ptrace_scope={}; our LSM label={}, peer's={})",
+                proc_field(std::process::id(), "Gid"),
                 proc_field(pid, "CapPrm"),
                 proc_field(std::process::id(), "CapPrm"),
                 read_trimmed("/proc/sys/kernel/yama/ptrace_scope"),
