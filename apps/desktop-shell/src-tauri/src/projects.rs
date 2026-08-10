@@ -66,21 +66,50 @@ const KNOWLEDGE_SOCKET: &str = "/run/arlen/knowledge.sock";
 /// empty and log at debug level instead.
 const GRAPH_QUERY_TIMEOUT_MS: u64 = 200;
 
-/// Resolve the knowledge-daemon socket path with the same fallback
-/// logic the daemon itself uses. If `ARLEN_DAEMON_SOCKET` is set
-/// (normal path via `start-dev.sh`), use it. Otherwise fall back to
-/// `$XDG_RUNTIME_DIR/arlen/knowledge.sock` so the shell works when
-/// launched ad-hoc without the launcher exporting the env var. Last
-/// resort: the hardcoded `/run/arlen/` default (historically
-/// root-only; kept as a fourth fallback for completeness).
-fn knowledge_socket_path() -> String {
-    if let Ok(p) = std::env::var("ARLEN_DAEMON_SOCKET") {
-        return p;
+/// Resolve the knowledge-daemon socket path.
+///
+/// `ARLEN_KNOWLEDGE_SOCKET` comes first, because that is the name the
+/// session launcher exports and the name the SDK resolver reads. It was
+/// missing here, and the cost was concrete: on a booted image
+/// `arlen-session` exports `ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock`,
+/// this function did not look at it, fell through to the XDG branch, and
+/// every graph read in the shell failed against
+/// `$XDG_RUNTIME_DIR/arlen/knowledge.sock`, which nothing binds. The daemon
+/// was listening the whole time - three `graph connect: No such file or
+/// directory` lines two seconds after it announced the socket.
+///
+/// `ARLEN_DAEMON_SOCKET` stays as the second choice: it is the daemon's own
+/// BIND variable and `start-dev.sh` sets it, so a dev stack that points the
+/// daemon somewhere keeps working without also setting the client name. The
+/// two names for one socket are a wart, not a design; until they are
+/// reconciled, reading both is what keeps every launcher working.
+///
+/// Then `$XDG_RUNTIME_DIR/arlen/knowledge.sock` for an ad-hoc launch with no
+/// launcher at all, and the system path last.
+pub(crate) fn knowledge_socket_path() -> String {
+    resolve_socket(
+        std::env::var("ARLEN_KNOWLEDGE_SOCKET").ok().as_deref(),
+        std::env::var("ARLEN_DAEMON_SOCKET").ok().as_deref(),
+        std::env::var("XDG_RUNTIME_DIR").ok().as_deref(),
+    )
+}
+
+/// The precedence itself, with the environment passed in.
+///
+/// Split out so the order can be tested without setting process-wide
+/// variables, which is flaky under a parallel test run and, worse, silently
+/// changes what a neighbouring test resolves. `os-sdk`'s resolver is split for
+/// the same reason.
+fn resolve_socket(knowledge: Option<&str>, daemon: Option<&str>, xdg: Option<&str>) -> String {
+    for candidate in [knowledge, daemon] {
+        if let Some(p) = candidate.filter(|p| !p.is_empty()) {
+            return p.to_string();
+        }
     }
-    if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        return format!("{xdg}/arlen/knowledge.sock");
+    match xdg.filter(|x| !x.is_empty()) {
+        Some(x) => format!("{x}/arlen/knowledge.sock"),
+        None => KNOWLEDGE_SOCKET.to_string(),
     }
-    KNOWLEDGE_SOCKET.to_string()
 }
 
 /// Send a Cypher query to the Knowledge Daemon and return the raw result.
@@ -662,6 +691,47 @@ fn read_shell_toml(path: &std::path::Path) -> toml::Value {
 
 #[cfg(test)]
 mod tests {
+
+    /// The launcher's variable wins, because it is the one a booted system
+    /// actually sets. Getting this order wrong is not theoretical: the shell
+    /// read only `ARLEN_DAEMON_SOCKET`, `arlen-session` exports
+    /// `ARLEN_KNOWLEDGE_SOCKET`, and every graph read in the shell failed on a
+    /// booted image against an XDG path nothing binds.
+    #[test]
+    fn the_launchers_variable_wins() {
+        assert_eq!(
+            resolve_socket(Some("/run/arlen/knowledge.sock"), Some("/dev/other"), Some("/run/user/1000")),
+            "/run/arlen/knowledge.sock"
+        );
+    }
+
+    /// The daemon's own bind variable still works on its own, so a dev stack
+    /// that sets only that one keeps running.
+    #[test]
+    fn the_daemons_bind_variable_still_works_alone() {
+        assert_eq!(
+            resolve_socket(None, Some("/tmp/dev/knowledge.sock"), Some("/run/user/1000")),
+            "/tmp/dev/knowledge.sock"
+        );
+    }
+
+    /// An empty value is not an answer. Exporting a variable to the empty
+    /// string is how a launcher says "I have nothing", and treating it as a
+    /// path would resolve the socket to "".
+    #[test]
+    fn an_empty_value_falls_through() {
+        assert_eq!(
+            resolve_socket(Some(""), Some(""), Some("/run/user/1000")),
+            "/run/user/1000/arlen/knowledge.sock"
+        );
+        assert_eq!(resolve_socket(Some(""), None, None), KNOWLEDGE_SOCKET);
+    }
+
+    /// No launcher and no XDG at all: the system path, not a relative one.
+    #[test]
+    fn with_nothing_set_it_is_the_system_path() {
+        assert_eq!(resolve_socket(None, None, None), KNOWLEDGE_SOCKET);
+    }
     use super::*;
 
     #[test]
