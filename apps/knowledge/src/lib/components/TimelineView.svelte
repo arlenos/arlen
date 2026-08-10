@@ -134,17 +134,25 @@
       }
     };
 
-    void invoke<number>("knowledge_refresh_interval_ms").then((ms) => {
-      if (ms > 0 && ms !== refreshMs) {
-        refreshMs = ms;
-        // Restart only if it was already ticking, so asking does not start a timer
-        // for a hidden window.
-        if (timer !== undefined) {
-          stop();
-          start();
+    void invoke<number>("knowledge_refresh_interval_ms")
+      .then((ms) => {
+        if (ms > 0 && ms !== refreshMs) {
+          refreshMs = ms;
+          // Restart only if it was already ticking, so asking does not start a
+          // timer for a hidden window.
+          if (timer !== undefined) {
+            stop();
+            start();
+          }
         }
-      }
-    });
+      })
+      .catch((e) => {
+        // Say so. The fallback keeps the pane working, but it is a GUESS at the
+        // daemon's cadence, and a guess that stays silent is how a number stops
+        // meaning what its comment claims - which is the whole reason this value
+        // is asked for rather than typed.
+        console.error("timeline: could not read the refresh cadence, using the fallback:", e);
+      });
 
     void loadTimeline();
     if (!document.hidden) start();
