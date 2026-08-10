@@ -700,6 +700,23 @@ fn run_audio_monitor(app: tauri::AppHandle) {
     use std::io::BufRead;
     use tauri::Emitter;
 
+    // "pactl is missing" and "pactl is not ready" are different failures and only
+    // one of them is worth retrying at speed.
+    //
+    // A booted image logged 39 identical warnings in 200 seconds - roughly 17,000 a
+    // day - because it ships no audio server at all, so the spawn fails with
+    // NotFound every five seconds forever. A retry that cannot succeed is noise
+    // that trains people to skim the log, and this log is where the last several
+    // real findings came from.
+    //
+    // NotFound means the binary is absent: said once, then retried slowly, so a
+    // system that gains an audio server later still recovers without a restart.
+    // Every other spawn error stays on the fast retry and keeps reporting, because
+    // those are the ones that do clear on their own.
+    const NOT_READY_RETRY: std::time::Duration = std::time::Duration::from_secs(5);
+    const NOT_INSTALLED_RETRY: std::time::Duration = std::time::Duration::from_secs(60);
+    let mut reported_missing = false;
+
     loop {
         let child = match std::process::Command::new("pactl")
             .args(["subscribe"])
@@ -708,12 +725,24 @@ fn run_audio_monitor(app: tauri::AppHandle) {
             .spawn()
         {
             Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                if !reported_missing {
+                    log::warn!(
+                        "audio: pactl is not installed, so audio monitoring is off;                          retrying every {}s in case one appears",
+                        NOT_INSTALLED_RETRY.as_secs()
+                    );
+                    reported_missing = true;
+                }
+                std::thread::sleep(NOT_INSTALLED_RETRY);
+                continue;
+            }
             Err(e) => {
                 log::warn!("audio: pactl subscribe failed: {e}, retrying in 5s");
-                std::thread::sleep(std::time::Duration::from_secs(5));
+                std::thread::sleep(NOT_READY_RETRY);
                 continue;
             }
         };
+        reported_missing = false;
 
         log::info!("audio: pactl subscribe monitor started");
 
