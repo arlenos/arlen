@@ -427,6 +427,13 @@ def main():
                          "arlen-system-monitor) in the booted session via QEMU fw_cfg, "
                          "so its window renders for the screenshot (TIER-A 1b). Use a "
                          "longer --wait so the app has time to come up after the shell")
+    ap.add_argument("--webkit-compositing", action="store_true",
+                    help="boot with WebKit's accelerated compositing left ON "
+                         "(the session disables it by default for the VM's software "
+                         "GL). Use to tell whether an overlay's leftover pixels are a "
+                         "webview defect or a consequence of running uncomposited. "
+                         "Apps may paint black under llvmpipe this way - that outcome "
+                         "is itself the answer that this cannot be measured here")
     ap.add_argument("--click", action="append", default=None, metavar="X,Y",
                     help="after the wait, click these 1280x800 coordinates in order "
                          "(repeatable) and capture an after-shot. Written to answer a "
@@ -560,8 +567,15 @@ def main():
     # /sys/class/dmi/id/product_sku (built-in DMI driver, no kernel module) and
     # launches the (sanitised, installed) binary after the shell. Empty SKU on a
     # normal boot, so nothing extra launches.
+    # SKU and family ride in the same type=1 record: QEMU takes one -smbios entry
+    # per type, so passing them separately would silently drop the first.
+    smbios_fields = []
     if args.app:
-        qemu += ["-smbios", f"type=1,sku={args.app}"]
+        smbios_fields.append(f"sku={args.app}")
+    if args.webkit_compositing:
+        smbios_fields.append("family=webkit-compositing")
+    if smbios_fields:
+        qemu += ["-smbios", "type=1," + ",".join(smbios_fields)]
     print("+ " + " ".join(qemu))
     qemu_env = {**os.environ, "DISPLAY": x_display} if x_display else None
     proc = subprocess.Popen(qemu, stdout=subprocess.DEVNULL,

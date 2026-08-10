@@ -56,8 +56,26 @@ export XDG_CURRENT_DESKTOP=arlen
 export LIBGL_ALWAYS_SOFTWARE=1
 export GALLIUM_DRIVER=llvmpipe
 export GDK_BACKEND=wayland
-export WEBKIT_DISABLE_COMPOSITING_MODE=1
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
+# Compositing mode off by default, and separable on purpose. The two flags are
+# not the same lever: the black-paint problem the comment above describes is the
+# GPU/dmabuf path, while THIS one turns off WebKit's accelerated compositing
+# altogether, which is the path where a removed layer's pixels are left behind.
+# That is the shape of PR-20 (overlays leaving strips on a transparent surface),
+# so being able to boot the other way is what tells us whether the residue is a
+# webview defect or something we are asking for.
+#
+# The switch comes in on the SMBIOS product FAMILY, alongside the SKU the verify
+# app already uses (`-smbios type=1,family=webkit-compositing`). Absent - which is
+# every normal boot and all real hardware - the flag is set exactly as before.
+webkit_family_file=/sys/class/dmi/id/product_family
+webkit_family=""
+[ -r "$webkit_family_file" ] && webkit_family=$(tr -cd 'a-z-' < "$webkit_family_file")
+if [ "$webkit_family" = "webkit-compositing" ]; then
+    echo "arlen-session: WebKit accelerated compositing left ON by request" | systemd-cat -t arlen-verify
+else
+    export WEBKIT_DISABLE_COMPOSITING_MODE=1
+fi
 
 # Launch the compositor in the background so we can start the user session once it
 # is up. It imports WAYLAND_DISPLAY/DISPLAY itself; we add the Arlen env below.
