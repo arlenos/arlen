@@ -53,7 +53,7 @@ async fn main() {
     let graph_socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     info!(consumer = %consumer.display(), "code-indexer starting");
 
-    let emitter = UnixEventEmitter::new(producer.to_string_lossy().into_owned());
+    let emitter = UnixEventEmitter::for_system_named("code-indexer", producer.to_string_lossy().into_owned());
     let graph = UnixGraphClient::new(graph_socket.to_string_lossy().into_owned());
 
     let _ = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]);

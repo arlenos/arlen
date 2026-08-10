@@ -54,7 +54,7 @@ async fn main() {
 
     let producer = os_sdk::runtime::socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
     info!(socket = %producer.display(), "journald-parser starting");
-    let emitter = UnixEventEmitter::new(producer.to_string_lossy().into_owned());
+    let emitter = UnixEventEmitter::for_system_named("journald-parser", producer.to_string_lossy().into_owned());
 
     let _ = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]);
 

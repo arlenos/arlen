@@ -475,7 +475,7 @@ mod tests {
         let ledger = Arc::new(Mutex::new(ledger));
         // The emitter points at a nonexistent socket; emits fail and
         // are swallowed, which is the documented best-effort behaviour.
-        let emitter = Arc::new(UnixEventEmitter::new("/nonexistent/producer.sock"));
+        let emitter = Arc::new(UnixEventEmitter::for_system_named("auditd", "/nonexistent/producer.sock"));
         let server = Arc::new(IngestServer::new(
             Arc::clone(&ledger),
             emitter,
@@ -539,7 +539,7 @@ mod tests {
         .await
         .expect("open ledger");
         let ledger = Arc::new(Mutex::new(ledger));
-        let emitter = Arc::new(UnixEventEmitter::new("/nonexistent/producer.sock"));
+        let emitter = Arc::new(UnixEventEmitter::for_system_named("auditd", "/nonexistent/producer.sock"));
         let server = Arc::new(IngestServer::new(
             Arc::clone(&ledger),
             emitter,
@@ -600,7 +600,7 @@ mod tests {
         let (mut client, server_end) = UnixStream::pair().unwrap();
         let server = Arc::new(IngestServer::new(
             Arc::clone(&ledger),
-            Arc::new(UnixEventEmitter::new("/nonexistent/producer.sock")),
+            Arc::new(UnixEventEmitter::for_system_named("auditd", "/nonexistent/producer.sock")),
             Arc::new(AtomicBool::new(false)),
         ));
         let serving = tokio::spawn(async move {
@@ -625,7 +625,7 @@ mod tests {
         let sock = sock_dir.path().join("ingest.sock");
         let server = Arc::new(IngestServer::new(
             Arc::clone(&ledger),
-            Arc::new(UnixEventEmitter::new("/nonexistent/producer.sock")),
+            Arc::new(UnixEventEmitter::for_system_named("auditd", "/nonexistent/producer.sock")),
             Arc::new(AtomicBool::new(false)),
         ));
         let serving = {
@@ -677,7 +677,7 @@ mod tests {
             .await
             .expect("open ledger");
         let ledger = Arc::new(Mutex::new(ledger));
-        let emitter = Arc::new(UnixEventEmitter::new("/nonexistent/producer.sock"));
+        let emitter = Arc::new(UnixEventEmitter::for_system_named("auditd", "/nonexistent/producer.sock"));
         // Tamper flag set: the daemon detected a broken chain at startup.
         let server = Arc::new(IngestServer::new(
             Arc::clone(&ledger),

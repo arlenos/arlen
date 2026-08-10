@@ -95,28 +95,43 @@ impl UnixEventEmitter {
     ///
     /// Does not connect immediately; the connection is established on the
     /// first call to [`emit`](EventEmitter::emit).
+    /// An emitter for a producer that runs OUTSIDE any login session.
+    ///
+    /// `producer` names it - "journald-parser", "powerd" - and the origin becomes
+    /// `system:<producer>`. That is a claim the caller is positioned to make, which
+    /// is the whole difference from the fallback this replaced: a library guessing
+    /// "system" for a producer that turned out to be session-side is how a file the
+    /// user opened gets attributed to the machine.
+    ///
+    /// Session-side producers use [`Self::new`], which reads the id the session
+    /// minted and refuses to invent one. The producer comes FIRST so the call site
+    /// reads as what it claims to be before it says where it sends.
+    pub fn for_system_named(producer: &str, socket_path: impl Into<String>) -> Self {
+        let app_id = std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| producer.to_string());
+        Self {
+            socket_path: socket_path.into(),
+            stream: Arc::new(Mutex::new(None)),
+            app_id,
+            origin: format!("system:{producer}"),
+        }
+    }
+
     pub fn new(socket_path: impl Into<String>) -> Self {
         let app_id = std::env::var("ARLEN_APP_ID").unwrap_or_else(|_| "unknown".to_string());
         Self {
             socket_path: socket_path.into(),
             stream: Arc::new(Mutex::new(None)),
             app_id: app_id.clone(),
-            // A session when there is one, a NAMED system source when there is not.
-            //
             // The session, or nothing - never a stand-in.
             //
             // This fell back to "unknown", then to `system:{app_id}`, and the second
-            // was the more dangerous of the two because it reads like an answer.
-            // Every construction site of this emitter is INSIDE a login: a Tauri
-            // app plugin, the dogfood sensor stand-in, the dev emit tool. For those,
-            // `system:` attributes what the user did to the machine, in the one
-            // field the transparency surface uses to tell those apart.
+            // was the more dangerous because it reads like an answer: for a producer
+            // inside a login it attributes what the USER did to the machine, in the
+            // one field the transparency surface uses to tell those apart.
             //
-            // A daemon that genuinely has no session states `system:<name>` itself -
-            // installd, the knowledge daemon and the project watcher all do, in
-            // their own code, where it is a claim rather than a guess. Absent here
-            // is a deployment defect: the bus refuses an empty origin, so the
-            // events stop and the log says why.
+            // A producer that genuinely has no session uses `for_system` below and
+            // names itself. Absent here is a deployment defect: the bus refuses an
+            // empty origin, so the events stop and the log says why.
             origin: session_origin(),
         }
     }
