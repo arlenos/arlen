@@ -771,6 +771,20 @@ def main():
             # real frame, like the consent click below.
             from PIL import Image
             fw, fh = Image.open(out).size
+            # A frame from immediately before the clicks, because the main
+            # screenshot is not a usable baseline for them. Measured on 10 August:
+            # a run that clicked a top-bar indicator had a consent card covering
+            # the screen at main-capture time, so both frames were about the
+            # consent surface and the diff between them read as 99.995% - which
+            # says nothing whatever about the popover that was the subject. This
+            # capture happens after the consent flow above has resolved, so it is
+            # the state the clicks actually start from.
+            preclick = out + ".preclick.png"
+            capture(f, preclick, x_display)
+            for _ in range(50):
+                if os.path.exists(preclick) and os.path.getsize(preclick) > 0:
+                    break
+                time.sleep(0.1)
             for spec in args.click:
                 cx, cy = (int(v) for v in spec.split(","))
                 qmp_click(f, round(fw * cx / 1280), round(fh * cy / 800), fw, fh)
