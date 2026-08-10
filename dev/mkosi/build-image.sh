@@ -22,9 +22,20 @@ here=$(cd "$(dirname "$0")" && pwd)
 # system defect that does not exist, and the hours go into chasing it.
 #
 # So a failed build removes its output. `dev/vm/verify.py` then says the image is
-# missing, which is true and is the thing worth being told. Only on failure - a
-# successful build leaves the image alone.
-trap 'status=$?; [ $status -eq 0 ] || { rm -f "$here/arlen.raw"; echo ">> build failed; removed the partial $here/arlen.raw" >&2; }; exit $status' EXIT
+# missing, which is true and is the thing worth being told.
+#
+# But only a failure DURING the image write, which is why the flag exists. Almost
+# everything above the mkosi call is cross-compiling daemons, and a Rust compile
+# error there is by far this script's most common failure. At that moment the
+# arlen.raw on disk is the PREVIOUS one, complete and bootable, and deleting it
+# would turn a typo into a 40-minute rebuild - a cleanup step that destroys the
+# artefact it exists to protect. The flag is set immediately before mkosi runs, so
+# the removal covers exactly the window where the file can be half-written.
+#
+# Both directions are asserted by `dev/scripts/test-build-image-trap.mjs`, which
+# was shown to fail against the delete-on-any-failure version before being trusted.
+writing_image=""
+trap 'status=$?; [ $status -eq 0 ] || [ -z "$writing_image" ] || { rm -f "$here/arlen.raw"; echo ">> build failed; removed the partial $here/arlen.raw" >&2; }; exit $status' EXIT
 repo=$(cd "$here/../.." && pwd)
 extra="$here/mkosi.extra"
 target="x86_64-unknown-linux-gnu.2.36"
@@ -61,6 +72,8 @@ if [ "${1:-}" = "--verify" ]; then
 fi
 
 echo ">> mkosi build --incremental --force"
+# From here on the file on disk is this run's, so a failure may leave it partial.
+writing_image=1
 # --incremental yes caches the post-distro base image (debootstrap + the apt
 # package install) as an intermediary, so a re-run skips that whole phase and
 # resumes at the build scripts (themselves warm via the persistent BUILDDIR
