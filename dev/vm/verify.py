@@ -389,6 +389,11 @@ def main():
     ap.add_argument("--super", dest="press_super", action="store_true",
                     help="after verifying, press Super and capture a second shot "
                          "(the waypointer/launcher) to exercise the input->shell path")
+    ap.add_argument("--type-keys", nargs="*", default=["f", "i"],
+                    help="with --super, the qcodes to type into the open overlay, "
+                         "one capture per keystroke except the last. More keys mean "
+                         "more list-shrinks, which is how a stale strip that "
+                         "ACCUMULATES is told apart from one wrong frame.")
     ap.add_argument("--dismiss-with-escape", action="store_true",
                     help="with --super, close the waypointer with Escape instead of "
                          "Super. Tells whether Escape reaches a shell webview at "
@@ -641,10 +646,23 @@ def main():
             # under the new one. The doubled "Applications" group someone found in a
             # waypointer shot is that shape: the shell renders one such heading, so
             # two on screen means an intermediate frame survived a repaint.
+            # One capture per keystroke, because the interesting question is not
+            # whether a stale strip appears but whether strips ACCUMULATE.
+            #
+            # Each character filters the list further, so the card shrinks again and
+            # vacates more. If every shrink leaves another band and the bands hold
+            # successive older frames, the client's buffer is fine and its DAMAGE
+            # under-reports the vacated region. A wrong buffer, or a DOM that keeps
+            # old rows, would not stack a history - it would show one wrong thing.
+            # That distinction is the whole question, and it costs two more
+            # keystrokes rather than a compositor experiment and an image rebuild.
             typed = out + ".typed.png"
-            for qcode in ("f", "i"):
+            for i, qcode in enumerate(args.type_keys):
                 qmp_key(f, qcode)
                 time.sleep(0.4)
+                if i + 1 < len(args.type_keys):
+                    time.sleep(1.5)
+                    capture(f, f"{out}.typed-{i + 1}.png", x_display)
             time.sleep(2)
             capture(f, typed, x_display)
             for _ in range(50):
