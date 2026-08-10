@@ -9,6 +9,14 @@ Documentation=https://github.com/arlenos/arlen
 Type=simple
 # Production binary path (system-wide install). Dev runs invoke the debug binary
 # directly; this file is the canonical production unit.
+# The shared runtime directory is NOT this unit's to delete.
+#
+# systemd removes a `RuntimeDirectory=` when its unit stops, and `/run/user/%U/arlen`
+# is shared: the consent broker, the undo signer, the notification daemon and the
+# module runtime all bind their sockets inside it. Without this line, stopping this
+# one service unlinks every one of those sockets while the daemons holding them are
+# still running, and nothing can connect to them again until each restarts.
+RuntimeDirectoryPreserve=yes
 ExecStart=/usr/lib/arlen/libexec/arlen-store-backend
 Restart=on-failure
 RestartSec=2

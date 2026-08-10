@@ -13,6 +13,21 @@ Documentation=https://github.com/arlenos/arlen
 Type=simple
 # Production binary path (system-wide install). Dev runs invoke the
 # debug binary directly; this file is the canonical production unit.
+# Let systemd make the sandbox paths, rather than requiring them to exist.
+#
+# `ReadWritePaths=` is fatal when the path is absent: this unit failed its first
+# start on a booted image with "Failed at step NAMESPACE ... No such file or
+# directory", because it is wanted by default.target and runs before anything has
+# created `/run/user/%U/arlen`. `Restart=on-failure` covered it two seconds later,
+# which is why it looked like nothing.
+#
+# `RuntimeDirectory=`/`StateDirectory=` create the directory before the namespace is
+# built. `RuntimeDirectoryPreserve=yes` is mandatory with it: the runtime directory
+# is shared, and systemd deletes an unpreserved one on stop, taking other daemons'
+# sockets with it.
+RuntimeDirectory=arlen
+RuntimeDirectoryPreserve=yes
+StateDirectory=arlen
 ExecStart=/usr/lib/arlen/libexec/arlen-ai-undo-signer
 # A tampered or unverifiable undo-log makes the signer exit non-zero
 # (the fail-closed integrity posture); restart with back-off so a
