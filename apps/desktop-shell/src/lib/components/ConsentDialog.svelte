@@ -98,16 +98,21 @@
   // node that is already invisible on screen is removed - so a missing repaint on
   // removal costs nothing.
   let view = $state<PendingView | null>(null);
-  // Clear the surface whenever the card appears or goes. Measured on the image on
-  // 10 August: answering 'Allow once' resolved the request and left the card on
-  // screen, while the waypointer - which already did this - came back
-  // byte-identical to the desktop it opened over. Same build, same session, so
-  // the difference between the two surfaces was the clear and nothing else.
+  // Clear the surface when the card changes, which covers one case and NOT the
+  // one this was first written for. Measured on the image on 10 August: with this
+  // in place, answering 'Allow once' still left the card on screen. The serial
+  // says why - `consent_window::hide: dropped` fires immediately on the answer,
+  // and the screenshot eight seconds later still shows the card. By then the page
+  // is gone and so is the surface, so nothing here can reach those pixels. The
+  // residue after an answer is below the page and is not this component's to fix.
   //
-  // The target is `document.body` rather than a backdrop: the whole card lives
-  // inside `{#if view}`, so every element it owns is gone at exactly the moment
-  // the stale pixels need reaching, and body is the element that spans this
-  // surface and survives. See `$lib/surface-clear` for what the two steps do.
+  // What it does cover is a card that changes while the surface stays mapped: a
+  // second queued request replacing the first vacates whatever the taller card
+  // occupied, which is the waypointer's shrink case on this surface.
+  //
+  // The target is `document.body` because the whole card lives inside
+  // `{#if view}`, so every element it owns is gone at the moment stale pixels
+  // would need reaching. See `$lib/surface-clear` for what the two steps do.
   $effect(() => {
     view;
     if (typeof document !== "undefined") clearSurface(document.body);
