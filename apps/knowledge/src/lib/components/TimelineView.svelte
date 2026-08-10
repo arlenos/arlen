@@ -6,7 +6,7 @@
   /// is recorded). Event rows reuse the privacy page's sentence anatomy: quiet
   /// verb, emphasized object - recall of the user's data, not an app log.
   import { invoke } from "@tauri-apps/api/core";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import {
     ChevronRight,
     Pause,
@@ -61,11 +61,63 @@
   // mount and that answer arriving.
   let refreshMs = 30_000;
 
+
+  // Refresh without moving what the reader is looking at.
+  //
+  // The keyed `{#each}` blocks already keep rows and open sessions across a reload;
+  // what they cannot prevent is the timeline's own shape. Newest is first, so new
+  // rows arrive ABOVE everything, and a reader half way down the day would watch
+  // their position slide by however much arrived. That is the failure that makes a
+  // staleness fix worse than the staleness.
+  //
+  // So: remember which day heading sits at the top of the viewport and how far into
+  // it we are, reload, then put that same heading back at the same offset. Browsers
+  // have `overflow-anchor` for this and WebKit does not implement it, so it is done
+  // by hand against the `[data-day]` anchors the scrub already maintains.
+  //
+  // At the very top we deliberately do NOT anchor: someone parked at the newest
+  // entry wants the newest entry, and holding position there would hide exactly the
+  // rows they are waiting for.
+  async function refreshKeepingPlace(): Promise<void> {
+    const el = scroller;
+    if (!el || el.scrollTop <= 0) {
+      await loadTimeline();
+      return;
+    }
+
+    const top = el.getBoundingClientRect().top;
+    let anchorDate: string | null = null;
+    let anchorOffset = 0;
+    for (const node of el.querySelectorAll<HTMLElement>("[data-day]")) {
+      const offset = node.getBoundingClientRect().top - top;
+      if (offset >= 0) {
+        anchorDate = node.dataset.day ?? null;
+        anchorOffset = offset;
+        break;
+      }
+      // Still above the fold: keep it as the best candidate so a reader deep inside
+      // one long day is anchored to that day rather than to nothing.
+      anchorDate = node.dataset.day ?? anchorDate;
+      anchorOffset = offset;
+    }
+
+    await loadTimeline();
+    await tick();
+
+    if (anchorDate === null) return;
+    const again = el.querySelector<HTMLElement>(`[data-day="${anchorDate}"]`);
+    // The day can be gone entirely - a delete, or a range change. Leaving the scroll
+    // alone is the honest answer; guessing a new position would be the jump again.
+    if (!again) return;
+    const moved = again.getBoundingClientRect().top - top - anchorOffset;
+    if (moved !== 0) el.scrollTop += moved;
+  }
+
   onMount(() => {
     let timer: ReturnType<typeof setInterval> | undefined;
 
     const start = () => {
-      if (timer === undefined) timer = setInterval(loadTimeline, refreshMs);
+      if (timer === undefined) timer = setInterval(refreshKeepingPlace, refreshMs);
     };
     const stop = () => {
       if (timer !== undefined) {
@@ -77,7 +129,7 @@
       if (document.hidden) {
         stop();
       } else {
-        void loadTimeline();
+        void refreshKeepingPlace();
         start();
       }
     };
