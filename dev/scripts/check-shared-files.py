@@ -22,6 +22,7 @@ will. A reader field with no writer field of that name is the failure; the
 reverse is the normal case.
 """
 
+import os
 import pathlib
 import re
 import sys
@@ -83,6 +84,41 @@ def fields(rel: str, struct: str) -> dict[str, str]:
     return out
 
 
+def protocol_copies() -> tuple[list[str], int, str | None]:
+    """The Wayland protocol XMLs the shell and the compositor each vendor.
+
+    They must be byte-identical: each side generates bindings from its own copy,
+    so a divergence compiles cleanly on both and fails at runtime, when a request
+    carries an argument the other end does not expect. `CLAUDE.md` records the
+    sync requirement in prose and nothing enforced it.
+
+    The compositor is a separate repo, which is exactly how the one real wire
+    divergence in this system survived (nine `event.proto` copies said `origin`,
+    the compositor's said `session_id`, and the drift gate collected its subjects
+    with `git ls-files` here). So this reaches across when the checkout is there
+    and reports plainly when it is not, rather than counting silence as agreement.
+    """
+    shell = ROOT / "apps/desktop-shell/src-tauri/protocols"
+    comp = pathlib.Path(
+        os.environ.get("COMPOSITOR_PATH", pathlib.Path.home() / "Repositories/compositor")
+    ) / "resources/protocols"
+    if not comp.is_dir():
+        return [], 0, f"{comp} is absent, so the shell/compositor protocol copies were not compared"
+    problems, checked = [], 0
+    for xml in sorted(shell.glob("*.xml")):
+        other = comp / xml.name
+        if not other.is_file():
+            continue
+        checked += 1
+        if xml.read_bytes() != other.read_bytes():
+            problems.append(
+                f"{xml.name}: the shell's copy and the compositor's differ. Each side "
+                "generates bindings from its own, so this builds on both and breaks "
+                "only when the two talk."
+            )
+    return problems, checked, None
+
+
 def main() -> int:
     problems: list[str] = []
     checked = 0
@@ -96,13 +132,19 @@ def main() -> int:
                 "The read fails silently and the surface goes quiet, so neither side's tests catch it."
             )
 
+    proto_problems, proto_checked, skipped = protocol_copies()
+    problems += proto_problems
+
     if problems:
         print("a file's reader and writer disagree:\n")
         for p in problems:
             print(f"  - {p}")
         return 1
 
-    print(f"{len(PAIRS)} shared file(s), {checked} read field(s), all written")
+    print(f"{len(PAIRS)} shared file(s), {checked} read field(s), all written; "
+          f"{proto_checked} protocol copy/copies identical")
+    if skipped:
+        print(f"NOT CHECKED: {skipped}")
     return 0
 
 
