@@ -54,8 +54,20 @@ async fn main() -> Result<()> {
     let producer_socket = socket_path("ARLEN_PRODUCER_SOCKET", "event-bus-producer.sock");
 
     // Read or generate session ID.
-    let session_id = std::env::var("ARLEN_SESSION_ID")
-        .unwrap_or_else(|_| uuid::Uuid::now_v7().to_string());
+    // Read, never mint - `arlen-session` is the one thing that knows how many
+    // sessions a login has. This used to invent its own uuid, and the compositor
+    // invented a different one, so the same login carried two ids and a file the
+    // user opened could not be joined to the window they had focused.
+    //
+    // Absent is a deployment defect and is said so: substituting would make the
+    // graph look joined while joining nothing.
+    let session_id = std::env::var("ARLEN_SESSION_ID").unwrap_or_default();
+    if session_id.is_empty() {
+        log::error!(
+            "ARLEN_SESSION_ID is unset: kernel events cannot be attributed to a \
+             session and the bus will refuse them"
+        );
+    }
 
     info!("starting kernel-layer daemon");
     info!("session_id={session_id}");

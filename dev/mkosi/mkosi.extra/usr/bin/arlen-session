@@ -25,6 +25,24 @@ export ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
 export ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
 export ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
 
+# One login is one session, so exactly one thing mints its id: this script.
+#
+# Everything downstream READS it. The compositor and the kernel-layer each used to
+# mint their own uuid when it was absent, which put TWO ids on one login with
+# neither locally wrong - a component is not positioned to know how many sessions
+# a machine has, and the disagreement was the proof. Every app-side producer that
+# emits onto the bus needs the same value, or the graph cannot join a file the
+# user opened to the window they had focused when they opened it.
+#
+# `systemd-id128 new` when available (a proper 128-bit id from the same source
+# systemd uses for its own), else /proc/sys/kernel/random/uuid, which exists on
+# any Linux. Not the boot id: two logins in one boot are two sessions.
+if [ -z "${ARLEN_SESSION_ID:-}" ]; then
+    ARLEN_SESSION_ID="$(systemd-id128 new 2>/dev/null \
+        || cat /proc/sys/kernel/random/uuid 2>/dev/null)"
+fi
+export ARLEN_SESSION_ID
+
 # cosmic-comp auto-selects its backend: if DISPLAY or WAYLAND_DISPLAY is set it
 # goes NESTED (x11/winit, for running inside another session); otherwise it uses
 # the udev/KMS bare-metal backend that drives the seat's DRM device directly -
@@ -81,6 +99,7 @@ fi
 systemctl --user import-environment \
     WAYLAND_DISPLAY XDG_CURRENT_DESKTOP \
     ARLEN_PRODUCER_SOCKET ARLEN_CONSUMER_SOCKET ARLEN_KNOWLEDGE_SOCKET \
+    ARLEN_SESSION_ID \
     LIBGL_ALWAYS_SOFTWARE GALLIUM_DRIVER GDK_BACKEND \
     WEBKIT_DISABLE_COMPOSITING_MODE WEBKIT_DISABLE_DMABUF_RENDERER || true
 
