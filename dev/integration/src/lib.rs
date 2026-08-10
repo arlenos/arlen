@@ -38,6 +38,8 @@ pub struct EphemeralStack {
     runtime: TempDir,
     /// Spawned daemons, killed on drop (reverse spawn order).
     children: Vec<Child>,
+    /// The session id this stack minted, handed to every producer it starts.
+    session: String,
     /// When true (the default), `base_env` grants the resolved test caller the
     /// FirstParty (system-anchored) tier (`ARLEN_KNOWLEDGE_EXTRA_FIRST_PARTY`).
     ///
@@ -65,6 +67,21 @@ impl EphemeralStack {
     /// graph under the temp root, never `/var/lib`).
     pub fn new() -> std::io::Result<Self> {
         let runtime = tempfile::Builder::new().prefix("arlen-it-").tempdir()?;
+        // One stack is one session, so the stack mints the id, exactly as
+        // `arlen-session` does for a login. Everything downstream reads it.
+        //
+        // It is set in THIS process as well as handed to children, because the
+        // tests build their own emitters in-process: an emitter with no session id
+        // sends an empty origin, the bus refuses an empty origin, and every
+        // emitting test goes quiet without saying why. That is how ten of them
+        // went red - the producers were taught to read a session id before
+        // anything here minted one.
+        let session = format!(
+            "it-{}-{}",
+            std::process::id(),
+            runtime.path().file_name().and_then(|s| s.to_str()).unwrap_or("stack")
+        );
+        std::env::set_var("ARLEN_SESSION_ID", &session);
         std::fs::create_dir_all(runtime.path().join("knowledge"))?;
         std::fs::create_dir_all(runtime.path().join("timeline"))?;
         std::fs::create_dir_all(runtime.path().join("permissions"))?;
@@ -84,6 +101,7 @@ impl EphemeralStack {
             runtime,
             children: Vec::new(),
             first_party: true,
+            session,
         })
     }
 
@@ -152,6 +170,9 @@ impl EphemeralStack {
         let p = |rel: &str| self.runtime.path().join(rel).to_string_lossy().into_owned();
         let mut env = BTreeMap::from([
             ("ARLEN_RUNTIME_DIR".to_string(), root.clone()),
+            // The stack's own session id, so a spawned producer states which
+            // session its events belong to rather than sending an empty origin.
+            ("ARLEN_SESSION_ID".to_string(), self.session.clone()),
             (
                 "ARLEN_PRODUCER_SOCKET".to_string(),
                 self.producer_socket().to_string_lossy().into_owned(),
