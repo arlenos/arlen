@@ -240,16 +240,14 @@ fn fetch_rows() -> Vec<FileRow> {
     }
 }
 
-/// Knowledge daemon socket path (same fallback chain as `projects.rs`).
-fn knowledge_socket_path() -> String {
-    if let Ok(p) = std::env::var("ARLEN_DAEMON_SOCKET") {
-        return p;
-    }
-    if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
-        return format!("{xdg}/arlen/knowledge.sock");
-    }
-    "/run/arlen/knowledge.sock".to_string()
-}
+/// Knowledge daemon socket path - the one in `projects.rs`, not a second copy.
+///
+/// This was a copy, with the comment "same fallback chain as `projects.rs`"
+/// standing in for the guarantee. It was not the same chain for long: when
+/// `ARLEN_KNOWLEDGE_SOCKET` had to be added, only one copy would have got it,
+/// and the file search would have kept failing against a path nothing binds
+/// while Projects worked. One resolver, one place to fix.
+use crate::projects::knowledge_socket_path;
 
 /// Send a Cypher query to the Knowledge Daemon with explicit read /
 /// write timeouts. The sync `projects::graph_query` lacks these; we
