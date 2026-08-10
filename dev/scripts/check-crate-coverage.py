@@ -33,6 +33,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 # from the matrix is a mistake, not a decision.
 EXCLUDED = {
     "apps/*/src-tauri": "Tauri hosts need system webkit2gtk; the frontend job covers the app",
+    # The same reason, for the two Tauri hosts that do not live under `apps/`.
+    # Named rather than folded into a `*/src-tauri` glob: this file's patterns are
+    # matched left-anchored by the integration test that reads them, and a glob
+    # whose two readers anchor it differently is how the exclusion came to mean one
+    # thing here and another there.
+    "daemons/xdg-portal/picker-ui/src-tauri": "the portal's picker UI is a Tauri host; same webkit dependency",
+    "sdk/ui-kit/src-tauri": "the kit's own Tauri host; same webkit dependency",
     "daemons/kernel-layer": "eBPF needs the bpf target and toolchain, not in the CI image",
     # Added to the matrix on 9 August to satisfy this gate, which produced a job
     # that failed in 17 seconds with no error line: too fast to have built a
