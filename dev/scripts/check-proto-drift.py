@@ -22,6 +22,7 @@ what lets a copy lag a field like `cgroup_id` without failing.
 """
 
 import collections
+import os
 import pathlib
 import re
 import subprocess
@@ -67,6 +68,28 @@ def main() -> int:
         print("found no .proto files; the check needs updating")
         return 2
 
+    # The compositor vendors the same `event.proto` and lives in its own repo, so
+    # `git ls-files` here cannot see it - and that is exactly where the one real
+    # divergence in the tree sat until 10 Aug: nine copies called field 6 `origin`
+    # and the compositor called it `session_id`, which is precisely the "same
+    # number, two names" case below. This gate ran green throughout, over sixteen
+    # files that agreed with each other.
+    #
+    # So reach across the boundary when the checkout is there, and SAY when it is
+    # not. A gate that silently narrows its subject list to what is convenient is
+    # how that divergence survived; being told "not checked" is a different thing
+    # from being told "no disagreement".
+    external: list[tuple[str, pathlib.Path]] = []
+    comp = pathlib.Path(
+        os.environ.get("COMPOSITOR_PATH", pathlib.Path.home() / "Repositories/compositor")
+    )
+    comp_proto = comp / "proto/event.proto"
+    if comp_proto.is_file():
+        external.append((f"compositor:{comp_proto.name}", comp_proto))
+    else:
+        print(f"NOT CHECKED: {comp_proto} is absent, so the compositor's copy of the")
+        print("  wire format is not in this comparison. Set COMPOSITOR_PATH to include it.")
+
     # message -> field -> number -> the files that say so
     seen: dict[str, dict[str, dict[int, list[str]]]] = collections.defaultdict(
         lambda: collections.defaultdict(lambda: collections.defaultdict(list))
@@ -76,8 +99,8 @@ def main() -> int:
         lambda: collections.defaultdict(set)
     )
 
-    for f in files:
-        text = (ROOT / f).read_text()
+    for f, path in [(f, ROOT / f) for f in files] + external:
+        text = path.read_text()
         # Keyed by package, not by message name alone: `HistoryResponse` exists in
         # both `arlen.clipboard` and `arlen.notification` with different field 1s,
         # and those are two unrelated messages rather than copies that disagree.
