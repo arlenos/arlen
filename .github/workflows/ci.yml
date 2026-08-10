@@ -247,6 +247,7 @@ jobs:
           node dev/scripts/test-check-shared-files.mjs
           node dev/scripts/test-check-dev-prefix-admission.mjs
           node dev/scripts/test-check-executor-gate.mjs
+          node dev/scripts/test-check-setup-runtime.mjs
           node dev/scripts/test-check-invokes.mjs
           node dev/scripts/test-check-read-scope.mjs
           node dev/scripts/test-pre-commit-hook.mjs
