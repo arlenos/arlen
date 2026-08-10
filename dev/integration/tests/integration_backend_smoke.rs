@@ -2728,22 +2728,19 @@ async fn a_promoted_file_is_destroyed_once_the_ledger_can_record_it() {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
-    // Let the backlog finish before deleting, or the delete races the producer.
+    // Deliberately NOT waiting for the backlog to drain.
     //
-    // The loop above re-emits every two seconds until the node is readable, so by
-    // then a dozen `file.opened` events for this same path are queued, and each
-    // one promotes to another `SET f.last_accessed`. The node becoming visible
-    // means the FIRST of them landed, not the last - so a delete issued at that
-    // moment can be overwritten by the rest of its own batch, and the file comes
-    // back with a fresh stamp. That is what the intermittent failure was: not the
-    // delete failing, the delete being undone a millisecond later.
+    // An earlier version slept out a promotion interval here, because the loop
+    // above re-emits every two seconds and a delete landing mid-batch was undone
+    // by the rest of its own batch. That was the right patch for a test against a
+    // delete that left the raw events behind - and it is the wrong one now,
+    // because it hides the thing being tested. A test that waits for the queue to
+    // empty never exercises a delete issued while the queue is full, which is the
+    // whole situation the ruling addresses.
     //
-    // Every emit is finished by now, so one promotion interval covers all of them:
-    // the first pass after the last emit promotes the lot. Waiting on the pass
-    // rather than on a taste number, for the reason the app's refresh cadence
-    // waits on it too.
-    tokio::time::sleep(os_sdk::graph::PROMOTION_INTERVAL + Duration::from_secs(3)).await;
-
+    // So the backlog is left standing on purpose. The delete takes the raw events
+    // with the nodes, so there is nothing left to promote and nothing to come
+    // back. If that ever regresses, this fails here rather than intermittently.
     let removed = client
         .delete_activity(from)
         .await

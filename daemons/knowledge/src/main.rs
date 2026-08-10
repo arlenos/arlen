@@ -150,6 +150,10 @@ async fn run(
     let pool = db::open(&db_path).await?;
     info!(path = db_path, "sqlite write store ready");
 
+    // One gate, shared by the promotion pass and the activity delete, so a delete
+    // cannot land inside a pass that has already read its batch.
+    let promotion_gate = activity_delete::promotion_gate();
+
     // Spawn the dedicated Ladybug thread
     let graph = graph::spawn(&graph_path)?;
     info!(path = graph_path, "ladybug query store ready");
@@ -207,7 +211,7 @@ async fn run(
             Ok(()) => bail!("writer task exited unexpectedly"),
             Err(e) => bail!("writer ({consumer_socket}): {e}"),
         },
-        r = promotion::run(pool.clone(), graph.clone(), merge_clock.clone()) => match r {
+        r = promotion::run(pool.clone(), graph.clone(), merge_clock.clone(), promotion_gate.clone()) => match r {
             Ok(()) => bail!("promotion task exited unexpectedly"),
             Err(e) => bail!("promotion: {e}"),
         },
@@ -223,7 +227,7 @@ async fn run(
             Ok(()) => bail!("git ingestion task exited unexpectedly"),
             Err(e) => bail!("git ingestion: {e}"),
         },
-        r = daemon::listen(&daemon_socket, graph, pool) => match r {
+        r = daemon::listen(&daemon_socket, graph, pool, promotion_gate.clone()) => match r {
             Ok(()) => bail!("daemon listener exited unexpectedly"),
             Err(e) => bail!("daemon listen ({daemon_socket}): {e}"),
         },

@@ -27,9 +27,32 @@
 //! caller (the daemon op), which knows the caller identity; recording the act and
 //! never the content is the point, so this returns counts rather than paths.
 
+use std::sync::Arc;
+
 use anyhow::Result;
 
 use crate::graph::GraphHandle;
+
+/// Held by a promotion pass for its whole run, and by a delete for its whole run,
+/// so the two are never in flight together.
+///
+/// Deleting the raw events is not enough on its own, which a booted run showed
+/// two times in three: a pass reads its batch out of SQLite BEFORE writing the
+/// nodes, so a delete landing in that gap destroys rows the pass is already
+/// holding in memory, and it writes them anyway. The surviving stamp sat 28
+/// seconds past the cut-off - written after the delete, from a batch read before
+/// it.
+///
+/// This keeps nothing, which is why it does not reopen the tombstone question: it
+/// only orders two operations that must not interleave. A delete waits at most one
+/// pass, and it is a rare user-initiated act, so the cost lands where it is
+/// affordable and the guarantee stops being probabilistic.
+pub type PromotionGate = Arc<tokio::sync::Mutex<()>>;
+
+/// A fresh gate. One per daemon, shared by the pass and the delete op.
+pub fn promotion_gate() -> PromotionGate {
+    Arc::new(tokio::sync::Mutex::new(()))
+}
 
 /// What a delete removed. Counts only: enough to audit that it happened and to
 /// tell the user their range is gone, with nothing about what was in it.
