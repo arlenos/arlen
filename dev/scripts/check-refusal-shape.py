@@ -57,8 +57,17 @@ END = re.compile(r"^\s{4}\}\s*$")
 # A method body that mentions one of these is on a refusal path.
 REFUSAL = re.compile(r"refus|not admitted|not a user surface|AccessDenied|unauthoris|unauthoriz")
 # ...and returning one of these instead of an error is the defect.
+# Either an explicit `return`, or the value alone on its own line - Rust's tail
+# expression, which is how anyone writing this fresh would write it. The first
+# version required the `return` keyword and so could only see the form nobody
+# reaches for: a method ending in a bare `Vec::new()` after a refusal warning
+# passed it completely. Measured on 11 August - no method in the tree currently
+# uses the implicit form, so this is about the next one, not a live break.
 EMPTY = re.compile(
-    r'return\s+(?:"\[\]"\.to_string\(\)|String::new\(\)|Vec::new\(\)|Default::default\(\)|"\[\]"|vec!\[\])'
+    r'(?:return\s+|^\s*)'
+    r'(?:"\[\]"\.to_string\(\)|String::new\(\)|Vec::new\(\)|Default::default\(\)|"\[\]"|vec!\[\])'
+    r"\s*;?\s*$",
+    re.M,
 )
 
 # A method that answers a refusal with a value for a reason someone stands behind.
