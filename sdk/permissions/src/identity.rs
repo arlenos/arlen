@@ -83,6 +83,25 @@ pub fn app_id_from_pid(pid: u32) -> Result<String, IdentityError> {
 /// the original failure, so anything unreadable is simply omitted.
 /// A one-line `/proc` value, or `"unreadable"`. Never propagates a failure: this
 /// only ever decorates an error that has already happened.
+/// How `/proc` is mounted for US, from `/proc/self/mountinfo`.
+///
+/// Reached for only after the whole `ptrace_may_access` condition was measured
+/// SATISFIED on the image - matching uid and gid triples, no capability
+/// difference, Yama off, both sides unconfined - and the read was refused anyway.
+/// When the credential check provably passes, what is left is the filesystem the
+/// reader is looking at, and `hidepid=` is the option that turns another
+/// process's `/proc` entry unreadable without touching credentials at all.
+fn proc_mount_options() -> String {
+    std::fs::read_to_string("/proc/self/mountinfo")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.split(' ').nth(4) == Some("/proc"))
+                .map(|l| l.to_owned())
+        })
+        .unwrap_or_else(|| "unreadable".into())
+}
+
 /// One named field out of `/proc/<pid>/status`, or `"unreadable"`.
 fn proc_field(pid: u32, field: &str) -> String {
     std::fs::read_to_string(format!("/proc/{pid}/status"))
@@ -165,13 +184,15 @@ fn why_exe_unreadable(pid: u32) -> String {
                  needs OUR uid and gid to match EVERY one of those; \
                  capabilities: peer CapPrm={}, ours={} \
                  (a READ is refused unless ours is a superset); \
-                 yama ptrace_scope={}; our LSM label={}, peer's={})",
+                 yama ptrace_scope={}; our LSM label={}, peer's={}; \
+                 our /proc mount={})",
                 proc_field(std::process::id(), "Gid"),
                 proc_field(pid, "CapPrm"),
                 proc_field(std::process::id(), "CapPrm"),
                 read_trimmed("/proc/sys/kernel/yama/ptrace_scope"),
                 read_trimmed("/proc/self/attr/current"),
                 read_trimmed(&format!("/proc/{pid}/attr/current")),
+                proc_mount_options(),
             );
         };
         return format!(" (peer uid {peer}, /proc/{pid} owned by {dir_owner}, we are {me}{reading})");
@@ -200,7 +221,11 @@ pub(crate) fn exe_path_openat(pid: u32) -> Result<PathBuf, IdentityError> {
         return Err(if err.kind() == std::io::ErrorKind::NotFound {
             IdentityError::ProcessNotFound(pid)
         } else {
-            IdentityError::CannotReadExe { pid, why: why_exe_unreadable(pid), source: err }
+            IdentityError::CannotReadExe {
+                pid,
+                why: format!(" [failed at open(/proc/{pid})]{}", why_exe_unreadable(pid)),
+                source: err,
+            }
         });
     }
     let dir = unsafe { OwnedFd::from_raw_fd(dir_fd) };
@@ -220,7 +245,11 @@ pub(crate) fn exe_path_openat(pid: u32) -> Result<PathBuf, IdentityError> {
     };
     if n < 0 {
         let err = std::io::Error::last_os_error();
-        return Err(IdentityError::CannotReadExe { pid, why: why_exe_unreadable(pid), source: err });
+        return Err(IdentityError::CannotReadExe {
+            pid,
+            why: format!(" [failed at readlinkat(exe)]{}", why_exe_unreadable(pid)),
+            source: err,
+        });
     }
     let bytes = &buf[..n as usize];
     let s = std::str::from_utf8(bytes)
