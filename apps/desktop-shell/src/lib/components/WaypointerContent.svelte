@@ -1328,9 +1328,19 @@
     opacity: 0.9;
   }
 
+  /* The last frame drops the transform rather than setting it to the identity.
+     `animation-fill-mode: both` keeps the final keyframe applied forever, and a
+     transform of any value - `scale(1) translateY(0)` included - pins the element
+     to its own compositing layer. The card is the element that resizes on every
+     keystroke, so that looked like PR-20's cause.
+
+     It is NOT: built an image with this change and the stale strips came back
+     identical. Kept anyway, because pinning a compositing layer for an identity
+     transform buys nothing, and recorded here so the next person reads a measured
+     negative instead of spending a build on the same idea. */
   @keyframes wp-fade-in {
     from { opacity: 0; transform: scale(0.98) translateY(-4px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
+    to { opacity: 1; transform: none; }
   }
 
   @keyframes wp-backdrop-fade {
