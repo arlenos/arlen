@@ -49,7 +49,13 @@ import sys
 import tomllib
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+# Takes the tree to scan as an argument so the check can be pointed at a
+# fixture and SHOWN TO FAIL. It had no positive control because it could not
+# be handed one: a hardcoded root can only ever be run against a tree that
+# passes, which is the same as never having seen it speak.
+ROOT = (
+    Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
+)
 STEPS = ROOT / "dev/mkosi/mkosi.build.d"
 PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000"
 
