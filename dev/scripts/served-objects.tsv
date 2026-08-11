@@ -40,3 +40,4 @@ arlen-connectionsd	org.arlen.Connections1	/org/arlen/Connections1
 arlen-accountsd	org.arlen.Accounts1	/org/arlen/Accounts1
 arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1
 arlen-notifyd	org.freedesktop.Notifications	/org/freedesktop/Notifications
+arlen-ai-proxy	org.arlen.AIProxy1	/org/arlen/AIProxy1
