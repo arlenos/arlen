@@ -98,15 +98,6 @@ struct Args {
     ephemeral_file: Option<PathBuf>,
 }
 
-/// Parse `arlen-run --app-id <id> [--profile-root <dir>] [--ephemeral <file>] --
-/// <program> [args...]` from the argument list (excluding the binary name).
-/// Returns the parsed request, or the exit code to fail with: an unknown flag, a
-/// missing/invalid `--app-id`, a missing `--`, or an empty program is `BAD_ARGS`.
-///
-/// `--ephemeral` takes the ONE untrusted file the launch may see, and requires an
-/// absolute path - the confiner refuses a relative bind source anyway, but failing
-/// here names the argument instead of surfacing later as a confinement-setup
-/// error. It is rejected alongside `--profile-root`, which points at a profile an
 /// Refuse an argv, saying why, and hand back the exit code.
 ///
 /// Every refusal in `parse_args` used to be a bare `Err(exit::BAD_ARGS)`, which
@@ -132,6 +123,17 @@ fn bad_args_line(reason: &str) -> String {
     format!("arlen-run: {reason}")
 }
 
+/// ephemeral launch never reads: accepting both would let a caller believe a
+/// profile was in force when nothing loaded it.
+/// Parse `arlen-run --app-id <id> [--profile-root <dir>] [--ephemeral <file>] --
+/// <program> [args...]` from the argument list (excluding the binary name).
+/// Returns the parsed request, or the exit code to fail with: an unknown flag, a
+/// missing/invalid `--app-id`, a missing `--`, or an empty program is `BAD_ARGS`.
+///
+/// `--ephemeral` takes the ONE untrusted file the launch may see, and requires an
+/// absolute path - the confiner refuses a relative bind source anyway, but failing
+/// here names the argument instead of surfacing later as a confinement-setup
+/// error. It is rejected alongside `--profile-root`, which points at a profile an
 /// ephemeral launch never reads: accepting both would let a caller believe a
 /// profile was in force when nothing loaded it.
 fn parse_args(args: &[String]) -> Result<Args, u8> {

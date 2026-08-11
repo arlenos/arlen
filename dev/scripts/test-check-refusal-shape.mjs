@@ -86,6 +86,50 @@ check(
   (code) => code === 0,
 );
 
+// The second rule, in the other medium: a launcher that refuses an argv by
+// exiting and printing nothing. `launcher` writes the file the rule reads.
+function launcher(name, body, expect) {
+  const dir = mkdtempSync(join(tmpdir(), "arlen-refusal-"));
+  const src = join(dir, "daemons/arlen-run/src");
+  mkdirSync(src, { recursive: true });
+  writeFileSync(join(src, "main.rs"), body);
+  const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
+  const got = { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  const ok = expect(got.code, got.out);
+  console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
+  if (!ok) failures.push({ name, ...got });
+  rmSync(dir, { recursive: true, force: true });
+}
+
+launcher(
+  "a launcher refusal that prints nothing is caught",
+  'fn parse() -> Result<(), u8> {\n    return Err(exit::BAD_ARGS);\n}\n',
+  (code, out) => code === 1 && out.includes("stops in silence"),
+);
+
+launcher(
+  "a refusal routed through the helper passes",
+  'fn parse() -> Result<(), u8> {\n    return Err(bad_args("no --app-id"));\n}\n',
+  (code) => code === 0,
+);
+
+// The fix documents the shape it replaced, so the doc quotes the very pattern
+// the rule looks for. Reading a comment as code would make the fix fail its own
+// check - which is what the first version of this rule did.
+launcher(
+  "a doc comment quoting the bad shape is not a finding",
+  '/// Every refusal used to be a bare `Err(exit::BAD_ARGS)`, which printed nothing.\nfn parse() -> Result<(), u8> {\n    return Err(bad_args("x"));\n}\n',
+  (code) => code === 0,
+);
+
+// Test expectations name the code on purpose; demanding they print would be
+// backwards.
+launcher(
+  "an assertion in the test module is not a refusal site",
+  'fn parse() -> Result<(), u8> {\n    return Err(bad_args("x"));\n}\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() { assert_eq!(parse(), Err(exit::BAD_ARGS)); }\n}\n',
+  (code) => code === 0,
+);
+
 if (failures.length) {
   console.log(`\n${failures.length} case(s) failed:`);
   for (const f of failures) console.log(`  ${f.name}\n    exit ${f.code}\n${f.out}`);

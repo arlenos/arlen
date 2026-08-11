@@ -42,6 +42,19 @@ What it does NOT cover, and the list matters more than the count:
 
 So a pass means no D-Bus method visibly answers a refusal with an empty literal,
 not that every refusal in the system is honest.
+
+**The second rule is the same principle in the other medium: a process exit.**
+`arlen-run` refuses a launch by exiting non-zero, and the shell learns the reason
+from a line beginning with `arlen-run` - nothing else. Nine argv-parse arms
+returned a bare `Err(exit::BAD_ARGS)` and printed nothing, so the launcher's front
+door was the one path that stops without a word: exit 64 with an empty stderr,
+which the shell cannot tell from a program that exited 64 itself and therefore
+shows as nothing at all. Same failure as the empty list, reached by a different
+route - the refusal is not lost, it is replaced by silence.
+
+Every arm goes through `bad_args` now. What this checks is that a TENTH one has to
+as well, because both sides of that contract can pass their own tests while a new
+refusal slips between them.
 """
 
 import re
@@ -79,6 +92,38 @@ EMPTY = re.compile(
 # A method that answers a refusal with a value for a reason someone stands behind.
 # Empty is the goal. An entry needs the reason, not just the name.
 ACKNOWLEDGED: dict[str, str] = {}
+
+
+# `Err(exit::BAD_ARGS)` written out rather than routed through the helper that
+# prints. Matched on the literal because that is exactly the shape that was there
+# nine times; a refusal reaching the code some other way is not something this can
+# see, and saying so is better than implying it can.
+BARE_EXIT = re.compile(r"Err\(exit::(\w+)\)")
+
+
+def silent_launcher_refusals(root: Path) -> list[str]:
+    """Argv refusals in `arlen-run` that return a code without printing a reason."""
+    src = root / "daemons/arlen-run/src/main.rs"
+    if not src.is_file():
+        return []
+    text = src.read_text(encoding="utf-8", errors="replace")
+    # Stop at the test module. Its `assert_eq!(parse_args(..), Err(exit::BAD_ARGS))`
+    # lines are the expectation, not a refusal site, and reading them as findings
+    # would have this gate demand that the tests print - which is backwards, and is
+    # what the first version of it did.
+    cut = text.find("#[cfg(test)]")
+    if cut != -1:
+        text = text[:cut]
+    out: list[str] = []
+    for i, line in enumerate(text.splitlines(), 1):
+        # A doc comment naming the shape it warns about is not the shape. The
+        # helper's own doc quotes `Err(exit::BAD_ARGS)` to say what it replaced,
+        # and reading that as a finding would make the fix trip its own check.
+        if line.lstrip().startswith(("//", "*")):
+            continue
+        if BARE_EXIT.search(line) and "bad_args" not in line:
+            out.append(f"daemons/arlen-run/src/main.rs:{i}")
+    return out
 
 
 def main() -> int:
@@ -119,9 +164,18 @@ def main() -> int:
             if inside:
                 body.append(line)
 
+    exits = silent_launcher_refusals(ROOT)
+    for site in exits:
+        findings.append(
+            f"{site}: refuses with a bare exit code and prints nothing, so the shell "
+            f"has no line to show and the launch stops in silence. Route it through "
+            f"`bad_args(reason)`, which prints and returns the same code."
+        )
+
     print(
         f"{methods} D-Bus method(s) across {files} file(s) checked for a refusal that "
-        f"answers with a value. Reads Rust interface bodies only: a socket protocol's "
+        f"answers with a value, and the launcher's argv refusals checked for one that "
+        f"exits without a word. Reads Rust interface bodies only: a socket protocol's "
         f"uniform denial is a different and deliberate design, and a frontend's own "
         f"error fallback is not visible here."
     )
