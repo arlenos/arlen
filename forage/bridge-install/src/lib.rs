@@ -110,7 +110,7 @@ pub fn bridge_namespace(entities_toml: &str) -> Result<String, NamespaceError> {
 
 /// The canonical bridge-ingest identity: one shared FirstParty daemon identity that
 /// every installed bridge writes under, its profile accumulating each bridge's
-/// delegated namespace. Matches `sdk/permissions/identity.rs` + the FirstParty
+/// delegated namespace. Matches `sdk/permissions/src/identity.rs` + the FirstParty
 /// tier entry, so a written `bridge-ingest.toml` is the profile the daemon loads.
 pub const BRIDGE_INGEST_APP_ID: &str = "bridge-ingest";
 
