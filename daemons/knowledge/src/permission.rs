@@ -77,8 +77,29 @@ fn parse_scope_entries(entries: &[String]) -> Vec<EntityScope> {
         });
     }
 
-    // Sort for deterministic output.
+    // Sort for deterministic output - the ENTITY TYPES and the field lists
+    // inside each scope.
+    //
+    // Sorting the types alone was not enough, and the gap was invisible from
+    // here: `read = ["system.File.path", "system.File.app_id"]` and the same two
+    // lines swapped produced `["path","app_id"]` and `["app_id","path"]`. Same
+    // authority, two different scope lists - and `lcg::declared_ceiling_json`
+    // serialises this, `retention::collapse_grant_history` collapses runs of
+    // grants whose ceiling STRING matches. So a profile rewritten with its
+    // entries in another order (which `revoke` does, format-preservingly, every
+    // time it narrows one) started a fresh run, and the Grant projection kept
+    // both ends of it for an authority that never changed.
+    //
+    // Field order carries no meaning - `can_read` asks whether a name is in the
+    // list - so canonicalising it costs nothing and makes the ceiling a function
+    // of the grant rather than of its typography.
     scopes.sort_by(|a, b| a.entity_type.cmp(&b.entity_type));
+    for scope in &mut scopes {
+        if let Some(fields) = scope.fields.as_mut() {
+            fields.sort();
+        }
+        scope.exclude_fields.sort();
+    }
     scopes
 }
 
@@ -458,4 +479,79 @@ instance_scope = "all"
         assert_eq!(profile.to_instance_scope(), InstanceScope::Own);
     }
 
+}
+
+#[cfg(test)]
+mod ceiling_determinism {
+    use super::*;
+
+    /// The Grant projection's retention rests on this.
+    ///
+    /// `lcg::declared_ceiling_json` serialises these scope collections, and
+    /// `retention::collapse_grant_history` collapses runs of grants whose ceiling
+    /// STRING is identical. If the same profile could serialise two ways, every
+    /// run would be length one, nothing would ever collapse, and the projection
+    /// would grow forever while looking maintained.
+    ///
+    /// `parse_scope_entries` groups field entries in a `HashMap`, whose iteration
+    /// order is randomised per process - so the `sort_by` at the end of that
+    /// function is load-bearing for retention, several files away from anything
+    /// that says so. This is what says so.
+    /// The scopes AS SERIALISED, because the serialised form is what the ceiling
+    /// actually is - comparing the structs would be comparing a proxy for the
+    /// thing the retention rule keys on.
+    fn ceiling_of(entries: &[&str]) -> String {
+        let list = entries.iter().map(|e| format!("\"{e}\"")).collect::<Vec<_>>().join(", ");
+        let p = toml::from_str::<arlen_permissions::PermissionProfile>(&format!(
+            "[info]\napp_id = \"com.test\"\n[graph]\nread = [{list}]\n"
+        ))
+        .expect("a profile with a read list parses");
+        serde_json::to_string(&p.to_read_scopes()).expect("scopes serialise")
+    }
+
+    /// The same grants written in a different ORDER must produce the same scopes.
+    /// A profile rewritten by a tool that sorts its keys differently is the same
+    /// authority and must not read as a new ceiling.
+    #[test]
+    fn input_order_does_not_change_the_scopes() {
+        let a = ceiling_of(&[
+            "system.File.path",
+            "system.Project",
+            "system.File.app_id",
+            "system.Session",
+        ]);
+        let b = ceiling_of(&[
+            "system.Session",
+            "system.File.app_id",
+            "system.Project",
+            "system.File.path",
+        ]);
+        assert_eq!(a, b, "the ceiling must not depend on the order entries were written in");
+    }
+
+    /// And repeated parses inside one process agree - the case that would break
+    /// if the `HashMap` reached the output without the sort.
+    #[test]
+    fn repeated_parses_agree() {
+        let entries = ["system.File.path", "system.App.name", "system.Project.root_path"];
+        let first = ceiling_of(&entries);
+        for _ in 0..8 {
+            assert_eq!(ceiling_of(&entries), first);
+        }
+    }
+
+    /// The residual named in the 12 Aug report: a full-type grant and a
+    /// field-level one for the SAME type. `parse_scope_entries` removes the
+    /// field-level entry when a full grant covers it, so only one scope carries
+    /// that type - which is what keeps `sort_by(entity_type)` a total order
+    /// rather than one with ties resolved by whatever the HashMap yielded.
+    #[test]
+    fn a_full_grant_and_a_field_grant_for_one_type_collapse_to_one_scope() {
+        let s = ceiling_of(&["system.File.path", "system.File", "system.Project"]);
+        assert_eq!(
+            s.matches("\"system.File\"").count(),
+            1,
+            "one scope per entity type, or sort_by(entity_type) has ties to break: {s}"
+        );
+    }
 }
