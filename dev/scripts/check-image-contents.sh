@@ -17,12 +17,38 @@
 # arlen binary the image does not ship. The rest is printed as inventory,
 # because "which apps belong in the image" is a build decision and a script
 # should not quietly hold an opinion about it.
+#
+# Naming an image and being asked about a file that is not there is an error;
+# naming none when none is built is not. That distinction is what lets this run
+# from `just check-executor` without either lying or failing on a tree that has
+# never built an image, and it was added on 11 Aug when the check turned out to
+# be the one file in dev/scripts that nothing invoked. It had sat there correct
+# and unread, which is the shape the standing rule exists to catch: a check
+# nobody runs cannot be told apart from a check that passes.
 set -uo pipefail
 
-img="${1:-$(dirname "$0")/../mkosi/arlen.raw}"
+explicit=1
+img="${1:-}"
+if [ -z "$img" ]; then
+  explicit=0
+  img="$(dirname "$0")/../mkosi/arlen.raw"
+fi
+
 if [ ! -f "$img" ]; then
-  echo "no image at $img - build it first (dev/mkosi/build-image.sh)" >&2
-  exit 2
+  if [ "$explicit" = 1 ]; then
+    echo "no image at $img" >&2
+    exit 2
+  fi
+  echo "no image built at $img; nothing to inspect (dev/mkosi/build-image.sh builds one)"
+  exit 0
+fi
+
+# Same reasoning for the tool: an image is present and we cannot open it, so say
+# which of the two it is rather than reporting the image as clean.
+if ! command -v guestfish >/dev/null 2>&1; then
+  echo "an image is present at $img but guestfish is not installed, so it was NOT inspected" >&2
+  echo "  (Debian/Ubuntu: libguestfs-tools, Arch: libguestfs)" >&2
+  exit "$([ "$explicit" = 1 ] && echo 2 || echo 0)"
 fi
 
 # `guestfish -i` does not recognise this image's layout ("no operating system

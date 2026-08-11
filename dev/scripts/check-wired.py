@@ -52,11 +52,17 @@ RUN_LISTS = [
 
 # name -> why it cannot be wired. Empty is not the goal here; accuracy is. Each
 # entry is a claim that a run list has nowhere to put this.
+#
+# `check-image-contents.sh` was here until 11 Aug on the ground that CI has no
+# image. True, and it was the wrong conclusion: CI is not the only run list, and
+# the script's own behaviour was what made it unwireable rather than anything
+# about the runners. It errored when the default image was absent, so any list
+# that called it would fail on a tree that had never built one. Teaching it to
+# tell "you named an image and it is not there" (an error) from "you named none
+# and none is built" (nothing to inspect) made it free to call, and `just
+# check-executor` now does. The excuse had been sitting here describing a
+# limitation that could simply be removed.
 CANNOT_BE_WIRED = {
-    "check-image-contents.sh": (
-        "reads a built arlen.raw and answers what is inside it. CI has no image, "
-        "and building one to run it would cost more than the question is worth."
-    ),
     "probe-webview-sandbox.sh": (
         "starts an app under Xvfb and compares the web process's namespaces "
         "against the app's. Needs a display and a real WebKit process, which the "
