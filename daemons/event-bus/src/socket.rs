@@ -527,8 +527,24 @@ mod tests {
         use arlen_permissions::PermissionProfile;
         // The stamp carries the real kernel-attested id for an attributable peer,
         // and EMPTY (not the "<unresolved>" diagnostic sentinel) for one that is
-        // not - so the consumer's origin classifier reads empty as un-attested and
-        // treats it as external, fail-closed.
+        // not, so an unattributable producer can never be mistaken for a named one.
+        //
+        // This used to claim the consumers run an origin classifier that reads
+        // empty as un-attested and treats it as external. They do not, and saying
+        // so was describing a component that does not exist. What the two real
+        // consumers do, checked:
+        //
+        //   clock          `sleep_origin_recognised` is allowlist membership
+        //                  (`main.rs:372`). Empty is not in SLEEP_PRODUCERS, so it
+        //                  is rejected - fail-closed, by not being on a list rather
+        //                  than by being classified as anything.
+        //   ai-engine      deliberately does not consume the stamp at all, and says
+        //                  why (`orchestrator.rs:86`): its trigger flag is already
+        //                  hardcoded external, so routing this in would be inert.
+        //
+        // The property holds either way. It is worth stating precisely, because a
+        // future consumer reading the old sentence would think a shared classifier
+        // was covering it.
         let profile: PermissionProfile = toml::from_str(
             "[info]\napp_id = \"app\"\ntier = \"first-party\"\n",
         )
