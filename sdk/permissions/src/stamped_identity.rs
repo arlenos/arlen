@@ -24,6 +24,22 @@
 //! registry attestation ([`IdentitySource::InodeRegistry`]) and the path-trust
 //! fallback ([`IdentitySource::LegacyProc`]); the launcher-stamped Tier-1
 //! ([`IdentitySource::Stamped`]) lands with the broker.
+//!
+//! **Why a stamp rather than something already in `/proc`.** Tiers 2 and 3 read
+//! `/proc/{pid}/exe`, and a reader hardened with `ProtectSystem=strict` is refused
+//! that link for a same-uid peer. `cgroup`, `stat` and `cmdline` all survive the
+//! same hardening, so `cgroup` looks like the obvious substitute - it even carries
+//! a systemd unit name. Measured on 11 Aug, and it does not hold: a user-session
+//! process names its own cgroup, because `systemd-run --user
+//! --unit=arlen-knowledge` lands it at
+//! `.../user@1000.service/app.slice/arlen-knowledge.service` with no privilege at
+//! all. Only `/system.slice/...` resists that, since entering the system tree needs
+//! root - and a peer there is a root-launched daemon, which is not the case that
+//! broke. The route is unattested exactly where it would be needed, which is why
+//! identity has to be stamped at launch by something that already knows what it is
+//! starting. `daemons/xdg-portal` reached for the same idea twice and reverted it
+//! both times for an unrelated reason (the sender pid is `xdg-dbus-proxy`, whose
+//! cgroup is the session scope), so this is the second independent way it fails.
 
 use crate::connection_auth::AuthError;
 use crate::identity::{exe_ino_dev, exe_path_openat, path_to_app_id};
