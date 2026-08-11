@@ -33,8 +33,16 @@
 //! the move runs as the single session uid, hits the audit ledger, shows in the
 //! pull activity view, is undoable (the `RestorePath` compensation) and the standing
 //! grant is revocable. The blast radius is "any file this uid may rename", bounded
-//! by `executor_live` (default off), the registered-tools-only dispatch and the
-//! one-time args-bound proof, not by a filesystem scope.
+//! by `executor_live`, the registered-tools-only dispatch and the one-time
+//! args-bound proof, not by a filesystem scope.
+//!
+//! `executor_live` defaults off in code and **the dogfood image ships it ON**
+//! (`mkosi.extra/home/arlen/.config/arlen/ai.toml`), so do not read "default off"
+//! as "off where this runs". What holds there instead is the gate: an
+//! event-triggered action carries `external_content=true` and is forced to
+//! RequireConfirmation, so nothing auto-writes from a trigger, and the integration
+//! scenario `the_engine_executor_does_not_silently_write_from_an_event_trigger`
+//! is what keeps that true rather than the sentence saying so.
 //!
 //! The path gate is SYNTACTIC (`CanonicalPath`: absolute, no `.`/`..`), not
 //! symlink-resolved, so a component that is itself a symlink resolves wherever it
