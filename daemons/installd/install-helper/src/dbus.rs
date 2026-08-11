@@ -119,7 +119,23 @@ impl InstallHelper {
 }
 
 /// Validate that the D-Bus caller is an authorized process.
+/// Authorise a caller, and leave a line when it is refused.
+///
+/// This helper runs as ROOT and installs into system paths, so a refused attempt
+/// on it belongs in the journal. Every rejection returns `Err(reason)` to the
+/// caller and, until 11 Aug, was invisible to everyone else.
 async fn validate_caller(
+    header: &zbus::message::Header<'_>,
+    connection: &Connection,
+) -> Result<(), String> {
+    let r = validate_caller_inner(header, connection).await;
+    if let Err(reason) = &r {
+        tracing::warn!("refused a caller: {reason}");
+    }
+    r
+}
+
+async fn validate_caller_inner(
     header: &zbus::message::Header<'_>,
     connection: &Connection,
 ) -> Result<(), String> {

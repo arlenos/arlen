@@ -106,7 +106,26 @@ impl PermissionHelper {
 }
 
 /// Validate that the D-Bus caller is an authorized process.
+/// Authorise a caller, and leave a line when it is refused.
+///
+/// This helper runs as ROOT and writes authoritative permission profiles, so a
+/// refused attempt on it is exactly what an operator reading the journal later
+/// wants to find. Every rejection here returns `Err(reason)` to the caller and,
+/// until 11 Aug, told nobody else - a peer probing for a way to plant a profile
+/// left no line anywhere on the system.
 async fn validate_caller(
+    header: &zbus::message::Header<'_>,
+    connection: &Connection,
+    target_uid: u32,
+) -> Result<(), String> {
+    let r = validate_caller_inner(header, connection, target_uid).await;
+    if let Err(reason) = &r {
+        tracing::warn!("refused a caller: {reason}");
+    }
+    r
+}
+
+async fn validate_caller_inner(
     header: &zbus::message::Header<'_>,
     connection: &Connection,
     target_uid: u32,
