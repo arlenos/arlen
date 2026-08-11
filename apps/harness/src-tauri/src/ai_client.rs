@@ -19,6 +19,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::UnixStream;
 use tokio::time::{timeout, timeout_at, Instant};
 use zbus::{Connection, Proxy};
 
@@ -32,14 +34,6 @@ const AI_OBJECT_PATH: &str = "/org/arlen/AI1";
 /// How long a whole turn (submit + every poll + the waits between) may
 /// take before it is abandoned and the query cancelled.
 const QUERY_TIMEOUT: Duration = Duration::from_secs(90);
-/// Delay between `take_result` polls.
-const POLL_INTERVAL: Duration = Duration::from_millis(250);
-/// Bound on the best-effort cancel so cancellation itself cannot hang.
-const CANCEL_TIMEOUT: Duration = Duration::from_secs(5);
-/// Fresh budget for fetching the tool trace after the answer arrives. Its
-/// own timeout, not the (possibly near-expired) query deadline, so a slow
-/// tool-using turn still gets a fair chance to retrieve its trace.
-const TRACE_TIMEOUT: Duration = Duration::from_secs(5);
 /// User-facing message when the turn exceeds [`QUERY_TIMEOUT`].
 const TIMEOUT_MSG: &str = "the assistant took too long to respond";
 
@@ -108,130 +102,191 @@ struct Trace {
     unavailable: bool,
 }
 
-/// The classification of one `take_result` poll envelope.
-#[derive(Debug, PartialEq, Eq)]
-enum Poll {
-    /// Terminal: the answer.
-    Completed(String),
-    /// Terminal: a failure reason to surface.
-    Failed(String),
-    /// Terminal: the query was cancelled.
-    Cancelled,
-    /// Terminal: the result was already consumed.
-    Drained,
-    /// Non-terminal (pending / in-progress / unknown): keep polling.
-    Working,
+/// One assistant turn, folded out of the drive stream.
+///
+/// Pure so the whole mapping is testable without a daemon: the stream is
+/// newline-delimited JSON and this is the only thing that interprets it.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Turn {
+    answer: String,
+    calls: Vec<ToolCall>,
+    /// The turn ended on `turn_end` rather than on EOF or the deadline. False
+    /// means the events seen may be a prefix, which is what `trace_unavailable`
+    /// reports: the tools listed are the ones observed, not necessarily all.
+    complete: bool,
 }
 
-/// Classify a `take_result` JSON envelope. Pure, so the status mapping
-/// is unit-tested without a live daemon.
-fn classify(outcome: &Value) -> Poll {
-    match outcome.get("status").and_then(Value::as_str) {
-        Some("completed") => Poll::Completed(
-            outcome
-                .get("result")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-        ),
-        Some("failed") => Poll::Failed(
-            outcome
-                .get("reason")
-                .and_then(Value::as_str)
-                .unwrap_or("the query failed")
-                .to_string(),
-        ),
-        Some("cancelled") => Poll::Cancelled,
-        Some("drained") => Poll::Drained,
-        _ => Poll::Working,
-    }
-}
-
-/// Submit `prompt` to the AI daemon and poll until it completes,
-/// returning the answer. Every awaited D-Bus call is bounded by the
-/// turn deadline (zbus has no default method timeout), so a stalled
-/// daemon cannot hang the turn; on timeout the query is cancelled
-/// best-effort. Errors (daemon down, disabled, no graph access, query
-/// failure, timeout) come back as a readable string the UI shows.
-#[tauri::command]
-pub async fn ai_query(prompt: String) -> Result<QueryReply, String> {
-    // One connection for the whole turn: the daemon authorises
-    // `take_result` against the submitting connection's unique name, so
-    // a fresh connection per poll would be rejected.
-    let connection = Connection::session()
-        .await
-        .map_err(|e| format!("session bus: {e}"))?;
-    let proxy = Proxy::new(&connection, AI_BUS_NAME, AI_OBJECT_PATH, AI_BUS_NAME)
-        .await
-        .map_err(|e| format!("ai daemon unavailable: {e}"))?;
-
-    let deadline = Instant::now() + QUERY_TIMEOUT;
-
-    // Submit (bounded). `context_hints` is unused by the daemon (empty).
-    let handle_json: String = match timeout_at(deadline, proxy.call("query", &(prompt.as_str(), "")))
-        .await
-    {
-        Ok(r) => r.map_err(map_call_error)?,
-        Err(_) => return Err(TIMEOUT_MSG.to_string()),
-    };
-    let handle: Value =
-        serde_json::from_str(&handle_json).map_err(|e| format!("malformed query handle: {e}"))?;
-    let query_id = handle
-        .get("query_id")
-        .and_then(Value::as_str)
-        .ok_or("query handle missing query_id")?
-        .to_string();
-    let token = handle
-        .get("retrieval_token")
-        .and_then(Value::as_str)
-        .ok_or("query handle missing retrieval_token")?
-        .to_string();
-
-    loop {
-        let outcome_json: String =
-            match timeout_at(deadline, proxy.call("take_result", &(query_id.as_str(), token.as_str())))
-                .await
-            {
-                Ok(r) => r.map_err(map_call_error)?,
-                Err(_) => {
-                    bounded_cancel(&proxy, &query_id, &token).await;
-                    return Err(TIMEOUT_MSG.to_string());
-                }
-            };
-        let outcome: Value = serde_json::from_str(&outcome_json)
-            .map_err(|e| format!("malformed result envelope: {e}"))?;
-
-        match classify(&outcome) {
-            Poll::Completed(answer) => {
-                // The answer is in hand; fetching the tool-call trace is
-                // best-effort (it never fails the turn) but its failure is
-                // surfaced, not hidden, so a slow tool-using turn is never
-                // shown as a direct answer.
-                let trace = fetch_trace(&proxy, &query_id, &token).await;
-                return Ok(QueryReply {
-                    answer,
-                    tool_calls: trace.calls,
-                    trace_unavailable: trace.unavailable,
-                    // No artifact producer in the turn path yet; the transport is
-                    // wired so a future agent/daemon emit flows straight through.
-                    artifacts: Vec::new(),
-                });
-            }
-            Poll::Failed(reason) => return Err(reason),
-            Poll::Cancelled => return Err("the query was cancelled".to_string()),
-            Poll::Drained => return Err("the result was already consumed".to_string()),
-            Poll::Working => {
-                // Wait before the next poll, but never past the deadline.
-                if timeout_at(deadline, tokio::time::sleep(POLL_INTERVAL))
-                    .await
-                    .is_err()
-                {
-                    bounded_cancel(&proxy, &query_id, &token).await;
-                    return Err(TIMEOUT_MSG.to_string());
+/// Fold one pi agent event into the turn.
+///
+/// The vocabulary is pi's, not ours - the daemon relays its events byte for
+/// byte on purpose, because reshaping trusted model output would be a
+/// prompt-injection surface. So this reads pi's documented shapes
+/// (`packages/agent/src/types.ts`):
+///
+///   message_update + assistantMessageEvent.text_delta   the answer, in pieces
+///   tool_execution_start { toolCallId, toolName, args }  a call beginning
+///   tool_execution_end { toolCallId, result, isError }   its outcome
+///   turn_end                                             the turn is done
+///
+/// Unknown records are ignored rather than refused: pi emits thinking deltas,
+/// message boundaries and usage records this surface has no use for, and a
+/// client that failed on an unfamiliar event would break every time pi grew one.
+fn fold_event(turn: &mut Turn, record: &Value) {
+    match record.get("type").and_then(Value::as_str) {
+        Some("message_update") => {
+            let ev = record.get("assistantMessageEvent");
+            if ev.and_then(|e| e.get("type")).and_then(Value::as_str) == Some("text_delta") {
+                if let Some(d) = ev.and_then(|e| e.get("delta")).and_then(Value::as_str) {
+                    turn.answer.push_str(d);
                 }
             }
         }
+        Some("tool_execution_start") => {
+            let name = record
+                .get("toolName")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            // pi names a tool `server.tool` where a server exists; the old trace
+            // carried the two separately and the surface renders both, so split
+            // on the first dot and leave the server empty when there is none
+            // rather than inventing one.
+            let (server, tool) = match name.split_once('.') {
+                Some((s, t)) => (s.to_string(), t.to_string()),
+                None => (String::new(), name.to_string()),
+            };
+            turn.calls.push(ToolCall {
+                server,
+                tool,
+                arguments: compact(record.get("args")),
+                result: String::new(),
+                // Running until its `tool_execution_end` lands; the surface renders
+                // that as in-flight, which is what it is while the stream is open.
+                status: ToolStatus::Running,
+            });
+        }
+        Some("tool_execution_end") => {
+            let id = record.get("toolCallId").and_then(Value::as_str);
+            let name = record.get("toolName").and_then(Value::as_str);
+            // Match the end to its start by tool name, newest first: the id is
+            // pi's and this surface does not keep it, and a turn does not run
+            // two calls of one tool concurrently.
+            if let Some(call) = turn.calls.iter_mut().rev().find(|c| {
+                name.is_none_or(|n| n == format!("{}{}{}", c.server, if c.server.is_empty() { "" } else { "." }, c.tool))
+            }) {
+                call.result = compact(record.get("result"));
+                call.status = if record.get("isError").and_then(Value::as_bool) == Some(true) {
+                    ToolStatus::Failed
+                } else {
+                    ToolStatus::Done
+                };
+            }
+            let _ = id;
+        }
+        Some("turn_end") => turn.complete = true,
+        _ => {}
     }
+}
+
+/// A JSON value as the surface shows it: a string verbatim, anything else
+/// compact-encoded. Absent is empty rather than the literal `null`, which would
+/// render as a word the model never said.
+fn compact(v: Option<&Value>) -> String {
+    match v {
+        None | Some(Value::Null) => String::new(),
+        Some(Value::String(s)) => s.clone(),
+        Some(other) => other.to_string(),
+    }
+}
+
+/// This process's uid, for the fallback runtime path.
+fn uid() -> u32 {
+    // SAFETY: getuid never fails.
+    unsafe { libc::getuid() }
+}
+
+/// The drive socket: `$XDG_RUNTIME_DIR/arlen/ai-engine-drive.sock`, else
+/// `/run/user/<uid>/arlen/...`. The daemon binds it 0600, so the same-uid
+/// boundary is the socket's own permissions - this channel carries prompts to
+/// the user's OWN pi.
+fn drive_socket_path() -> std::path::PathBuf {
+    let base = std::env::var("XDG_RUNTIME_DIR")
+        .unwrap_or_else(|_| format!("/run/user/{}", uid()));
+    std::path::PathBuf::from(base)
+        .join("arlen")
+        .join("ai-engine-drive.sock")
+}
+
+/// Submit `prompt` and read the turn back off the drive socket.
+///
+/// **This used to be a D-Bus submit-poll-take against `org.arlen.AI1`, and those
+/// methods no longer exist.** The ai-engine-daemon replaced the retired
+/// ai-daemon, took the name, and serves only `ExplainSystem`; `query`,
+/// `take_result`, `take_trace` and `cancel` went with the daemon that had them,
+/// so every turn through here failed with `UnknownMethod`. The file recorded the
+/// handover in a comment and kept calling the old API - a comment that documents
+/// a migration is not a migration.
+///
+/// The replacement is a stream, not a poll: one `{"type":"prompt"}` line in,
+/// newline-delimited pi agent events out until `turn_end`. Cancelling is
+/// dropping the connection, and the turn budget is a deadline on the read loop.
+/// The tool calls arrive inline, so there is no second fetch that can fail
+/// separately - `trace_unavailable` now means the stream ended before `turn_end`
+/// and the calls listed may be a prefix.
+#[tauri::command]
+pub async fn ai_query(prompt: String) -> Result<QueryReply, String> {
+    let path = drive_socket_path();
+    let mut stream = UnixStream::connect(&path).await.map_err(|e| {
+        format!("the assistant is not reachable: {e} (arlen-ai-engine-daemon)")
+    })?;
+
+    let command = serde_json::json!({ "type": "prompt", "message": prompt }).to_string();
+    stream
+        .write_all(format!("{command}\n").as_bytes())
+        .await
+        .map_err(|e| format!("could not send the prompt: {e}"))?;
+
+    let deadline = Instant::now() + QUERY_TIMEOUT;
+    let mut turn = Turn::default();
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 8192];
+
+    while !turn.complete {
+        let read = timeout_at(deadline, stream.read(&mut chunk)).await;
+        let n = match read {
+            // A deadline or a closed peer both end the turn with what we have;
+            // the answer so far is worth more than an error, and `complete`
+            // stays false so the surface can say the trace may be partial.
+            Err(_) => break,
+            Ok(Ok(0)) => break,
+            Ok(Ok(n)) => n,
+            Ok(Err(e)) => return Err(format!("the assistant connection failed: {e}")),
+        };
+        buf.extend_from_slice(&chunk[..n]);
+
+        while let Some(pos) = buf.iter().position(|b| *b == b'\n') {
+            let line = String::from_utf8_lossy(&buf[..pos]).to_string();
+            buf.drain(..=pos);
+            if line.trim().is_empty() {
+                continue;
+            }
+            if let Ok(record) = serde_json::from_str::<Value>(&line) {
+                fold_event(&mut turn, &record);
+            }
+        }
+    }
+
+    if turn.answer.is_empty() && !turn.complete {
+        return Err(TIMEOUT_MSG.to_string());
+    }
+
+    Ok(QueryReply {
+        answer: turn.answer,
+        tool_calls: turn.calls,
+        trace_unavailable: !turn.complete,
+        // No artifact producer in the turn path yet; the transport is wired so a
+        // future agent/daemon emit flows straight through.
+        artifacts: Vec::new(),
+    })
 }
 
 /// Run System Explanation Mode (Foundation §5.8): ask the daemon for a
@@ -254,63 +309,16 @@ pub async fn ai_explain() -> Result<String, String> {
     }
 }
 
-/// Best-effort cancel, itself time-bounded so cancellation cannot become
-/// the hang. Errors are ignored: the turn is already being abandoned.
-async fn bounded_cancel(proxy: &Proxy<'_>, query_id: &str, token: &str) {
-    let _ = timeout(CANCEL_TIMEOUT, async {
-        let _: Result<bool, zbus::Error> = proxy.call("cancel", &(query_id, token)).await;
-    })
-    .await;
-}
-
-/// Fetch the tool-call transcript for a completed query via `take_trace`
-/// (single-shot, authorised by the submitting connection like `take_result`),
-/// on its own [`TRACE_TIMEOUT`] budget so a near-deadline answer still gets a
-/// fair attempt. A successful empty array means the query took the direct path
-/// (no tools, `unavailable: false`); a failed, timed-out, or malformed fetch
-/// is reported `unavailable: true` so the UI never implies no tools ran when it
-/// simply could not read the trace.
-///
-/// Residual (accepted, not a defect here): `take_trace` is single-shot server
-/// side (`std::mem::take`), so if the call reaches the daemon and the trace is
-/// moved out but the response is lost to this timeout, a retry returns empty.
-/// The timeout is kept deliberately: it must not let a stalled fetch block the
-/// already-computed answer from reaching the UI. The trace is daemon-capped and
-/// the server op is in-memory and instant, so this timeout effectively only
-/// fires on a wedged bus, where the turn itself already failed. Full retry
-/// safety would need a peek-until-ack daemon API (a separate change to the
-/// settled take_trace contract), not this rendering increment.
-async fn fetch_trace(proxy: &Proxy<'_>, query_id: &str, token: &str) -> Trace {
-    // Bind the args so the tuple outlives the borrowed call future; pin the
-    // reply type to String so the deserialize target is known.
-    let args = (query_id, token);
-    let json = match timeout(TRACE_TIMEOUT, proxy.call::<_, _, String>("take_trace", &args)).await {
-        Ok(Ok(json)) => json,
-        _ => return Trace { calls: Vec::new(), unavailable: true },
-    };
-    match parse_trace(&json) {
-        Some(calls) => Trace { calls, unavailable: false },
-        None => Trace { calls: Vec::new(), unavailable: true },
-    }
-}
-
-/// Parse the `take_trace` JSON array into tool calls. Pure, so the shape
-/// mapping is unit-tested without a live daemon. `Some(vec)` (possibly empty)
-/// is a readable array; `None` is a malformed/non-array payload, which the
-/// caller treats as the trace being unavailable, distinct from empty.
-fn parse_trace(json: &str) -> Option<Vec<ToolCall>> {
-    serde_json::from_str::<Vec<ToolCall>>(json).ok()
-}
-
-/// Map a zbus method-call error to a readable message. The daemon
-/// surfaces its gate refusals as D-Bus errors (disabled, no graph
-/// access, capacity), so the text it carries is the useful part.
+/// Map a zbus method-call error to a readable message. The daemon surfaces its
+/// gate refusals as D-Bus errors (disabled, no graph access, capacity), so the
+/// text it carries is the useful part. Still used by `ai_explain`, which is the
+/// one call on this interface that still exists.
 fn map_call_error(err: zbus::Error) -> String {
     match err {
         zbus::Error::MethodError(_, detail, _) => {
-            detail.unwrap_or_else(|| "the AI daemon rejected the request".to_string())
+            detail.unwrap_or_else(|| "the AI engine rejected the request".to_string())
         }
-        other => format!("AI daemon error: {other}"),
+        other => format!("AI engine error: {other}"),
     }
 }
 
@@ -319,69 +327,85 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    #[test]
-    fn classify_maps_each_terminal_status() {
-        assert_eq!(
-            classify(&json!({"status": "completed", "result": "hi"})),
-            Poll::Completed("hi".to_string())
-        );
-        assert_eq!(
-            classify(&json!({"status": "failed", "reason": "boom"})),
-            Poll::Failed("boom".to_string())
-        );
-        assert_eq!(classify(&json!({"status": "cancelled"})), Poll::Cancelled);
-        assert_eq!(classify(&json!({"status": "drained"})), Poll::Drained);
+    fn fold(records: &[serde_json::Value]) -> Turn {
+        let mut turn = Turn::default();
+        for r in records {
+            fold_event(&mut turn, r);
+        }
+        turn
     }
 
+    /// The answer arrives in pieces and is one string by the end.
     #[test]
-    fn classify_treats_pending_in_progress_and_unknown_as_working() {
-        assert_eq!(classify(&json!({"status": "pending"})), Poll::Working);
-        assert_eq!(classify(&json!({"status": "in-progress"})), Poll::Working);
-        assert_eq!(classify(&json!({"status": "weird"})), Poll::Working);
-        assert_eq!(classify(&json!({})), Poll::Working);
+    fn text_deltas_concatenate_in_order() {
+        let t = fold(&[
+            json!({"type": "message_update", "assistantMessageEvent": {"type": "text_delta", "delta": "Hel"}}),
+            json!({"type": "message_update", "assistantMessageEvent": {"type": "text_delta", "delta": "lo"}}),
+            json!({"type": "turn_end"}),
+        ]);
+        assert_eq!(t.answer, "Hello");
+        assert!(t.complete);
     }
 
+    /// A tool call is a start and an end, and both halves land on one record.
     #[test]
-    fn classify_completed_without_result_is_empty_not_a_panic() {
-        assert_eq!(
-            classify(&json!({"status": "completed"})),
-            Poll::Completed(String::new())
-        );
+    fn a_tool_call_pairs_its_start_with_its_end() {
+        let t = fold(&[
+            json!({"type": "tool_execution_start", "toolCallId": "1", "toolName": "graph.read", "args": {"q": "x"}}),
+            json!({"type": "tool_execution_end", "toolCallId": "1", "toolName": "graph.read", "result": "3 rows", "isError": false}),
+            json!({"type": "turn_end"}),
+        ]);
+        assert_eq!(t.calls.len(), 1);
+        assert_eq!(t.calls[0].server, "graph");
+        assert_eq!(t.calls[0].tool, "read");
+        assert_eq!(t.calls[0].arguments, r#"{"q":"x"}"#);
+        assert_eq!(t.calls[0].result, "3 rows");
+        assert_eq!(t.calls[0].status, ToolStatus::Done);
     }
 
+    /// A failing tool is `failed`, which is what the card's ✕ reads from.
     #[test]
-    fn classify_failed_without_reason_has_a_default() {
-        assert_eq!(
-            classify(&json!({"status": "failed"})),
-            Poll::Failed("the query failed".to_string())
-        );
+    fn an_erroring_tool_call_is_marked_failed() {
+        let t = fold(&[
+            json!({"type": "tool_execution_start", "toolCallId": "1", "toolName": "fs.write", "args": {}}),
+            json!({"type": "tool_execution_end", "toolCallId": "1", "toolName": "fs.write", "result": "denied", "isError": true}),
+        ]);
+        assert_eq!(t.calls[0].status, ToolStatus::Failed);
     }
 
+    /// A call whose end never arrives stays in flight rather than reading as done.
     #[test]
-    fn parse_trace_reads_the_tool_calls_in_order() {
-        let json = json!([
-            {"server": "system.graph", "tool": "query", "arguments": "MATCH ...", "result": "rows", "status": "done"},
-            {"server": "system.knowledge", "tool": "describe_schema", "arguments": "", "result": "err", "status": "failed"}
-        ])
-        .to_string();
-        let calls = parse_trace(&json).expect("valid array parses");
-        assert_eq!(calls.len(), 2);
-        assert_eq!(calls[0].server, "system.graph");
-        assert_eq!(calls[0].tool, "query");
-        assert_eq!(calls[0].status, ToolStatus::Done);
-        assert_eq!(calls[1].tool, "describe_schema");
-        assert_eq!(calls[1].status, ToolStatus::Failed);
+    fn a_call_without_an_end_stays_running() {
+        let t = fold(&[
+            json!({"type": "tool_execution_start", "toolCallId": "1", "toolName": "slow.thing", "args": {}}),
+        ]);
+        assert_eq!(t.calls[0].status, ToolStatus::Running);
+        assert!(!t.complete, "no turn_end means the turn may be a prefix");
     }
 
+    /// pi emits thinking deltas, message boundaries and usage records this
+    /// surface has no use for. Ignoring them is deliberate: a client that
+    /// refused an unfamiliar event would break every time pi grew one.
     #[test]
-    fn parse_trace_distinguishes_empty_from_unavailable() {
-        // A valid empty array is genuinely "no tools" (Some, the direct
-        // path); malformed / non-array / missing-field payloads are
-        // unavailable (None), so the UI can say so instead of implying no
-        // tools ran. This is the transparency distinction.
-        assert_eq!(parse_trace("[]"), Some(Vec::new()));
-        assert_eq!(parse_trace("not json"), None);
-        assert_eq!(parse_trace(r#"{"status":"ok"}"#), None);
-        assert_eq!(parse_trace(r#"[{"server":"s","tool":"t"}]"#), None);
+    fn unknown_records_are_ignored_rather_than_refused() {
+        let t = fold(&[
+            json!({"type": "agent_start"}),
+            json!({"type": "message_update", "assistantMessageEvent": {"type": "thinking_delta", "delta": "hmm"}}),
+            json!({"type": "something_pi_grew_later"}),
+            json!({"type": "message_update", "assistantMessageEvent": {"type": "text_delta", "delta": "hi"}}),
+        ]);
+        assert_eq!(t.answer, "hi", "thinking must not leak into the answer");
+        assert!(t.calls.is_empty());
+    }
+
+    /// A tool with no server prefix keeps an empty server rather than an
+    /// invented one; the card renders what pi actually said.
+    #[test]
+    fn a_bare_tool_name_has_no_server() {
+        let t = fold(&[
+            json!({"type": "tool_execution_start", "toolCallId": "1", "toolName": "bash", "args": {}}),
+        ]);
+        assert_eq!(t.calls[0].server, "");
+        assert_eq!(t.calls[0].tool, "bash");
     }
 }
