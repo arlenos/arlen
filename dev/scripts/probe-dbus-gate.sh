@@ -178,7 +178,7 @@ for m in "${METHODS[@]}"; do
     # never given the chance to run. Reported as untested, which is a different
     # statement from either verdict, and it fails the run so nobody reads a
     # green as coverage.
-    *"Signature mismatch"* | *"Invalid argument"*)
+    *"Signature mismatch"* | *"Invalid argument"* | *"Too few parameters"* | *"Too many parameters"*)
       echo "  $name: NOT TESTED (needs arguments; give the entry its busctl signature and values) -> $out"
       untested+=("$name") ;;
     *)

@@ -43,3 +43,4 @@ arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1
 arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	EnrollSystemApp ss dev.arlen.probe /tmp/nonexistent.toml
 arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	open:its only driver is a timer running busctl, which resolves to no app id; safe because the method can destroy only provably expired entries	CleanupTrash
 arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1	refuse	compensate s corr-1
+arlen-undod	org.arlen.Undo1	/org/arlen/Undo1	org.arlen.Undo1	refuse	Enact s undo-1
