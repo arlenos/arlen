@@ -257,6 +257,8 @@ jobs:
           bash dev/scripts/check-sensing-vectors.sh
           python3 dev/scripts/check-unit-directives.py
           node dev/scripts/test-check-unit-directives.mjs
+          python3 dev/scripts/check-inert-switches.py
+          node dev/scripts/test-check-inert-switches.mjs
           python3 dev/scripts/check-wired.py
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then
