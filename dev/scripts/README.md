@@ -27,12 +27,16 @@ reason - untestable and untested arrived together.
 **Be shown to fail before you trust it.** A `test-check-*.mjs` beside it, running
 the check against a planted defect and against the correct form.
 
-Twenty-nine of the forty-one checks have one, and **nothing enforces it** - which
-this file said otherwise until it was checked. That gap is a decision rather than
-an oversight: writing the missing twelve as a batch is an evening on test
-scaffolding, so they are written when their subject is next touched, while the
-defect is fresh and the fixture is obvious. The count is here so the gap is a
-number somebody can watch rather than a feeling.
+**Nothing enforces this** - which this file claimed otherwise until it was
+checked. The gap is a decision rather than an oversight: writing the missing ones
+as a batch is an evening on test scaffolding, so they are written when their
+subject is next touched, while the defect is fresh and the fixture is obvious.
+
+`check-wired.py` prints how many checks have a control and names the ones that do
+not, every run. It is not a number in this file on purpose: two hand-counts of it
+tonight were both wrong - once by counting test FILES instead of proven checks,
+once by matching names instead of reading which check each control actually
+drives. A count belongs in the tool that can recompute it.
 
 **Compare your count to the size of what you claim to cover.** Print how much was
 scanned, not only how much was flagged. `check-opener-args.py` answered "pass" to
