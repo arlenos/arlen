@@ -1408,6 +1408,12 @@ async fn files_open_with(path: String, app_id: String) -> Result<(), String> {
             announce_file_opened(&path).await;
             Ok(())
         }
+        // The one outcome worth its own sentence: the handler was found and did
+        // not start, so the reason is about that program rather than about the
+        // file the person clicked.
+        Ok(launch::LaunchOutcome::DidNotStart { app_id, reason }) => {
+            Err(format!("{app_id} did not start: {reason}"))
+        }
         Ok(other) => Err(format!("could not open it: {other:?}")),
         Err(e) => Err(format!("launch service did not answer: {e}")),
     }

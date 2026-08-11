@@ -534,6 +534,13 @@ async fn launch_via_shell(request: &launch::LaunchRequest) -> (u32, HashMap<Stri
         Ok(launch::LaunchOutcome::NoHandler { mime }) => {
             error_results_with(&format!("nothing is set to open {mime}"))
         }
+        // Named rather than swept into the catch-all: "refused" is a claim about
+        // permission, and telling somebody their file was refused when the
+        // handler simply failed to start sends them to the wrong place. The
+        // reason is the shell's own sentence, which is what a person can act on.
+        Ok(launch::LaunchOutcome::DidNotStart { app_id, reason }) => {
+            error_results_with(&format!("{app_id} did not start: {reason}"))
+        }
         Ok(other) => error_results_with(&format!("launch refused: {other:?}")),
         Err(e) => error_results_with(&format!("launch service did not answer: {e}")),
     }

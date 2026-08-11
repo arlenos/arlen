@@ -109,6 +109,27 @@ pub enum LaunchOutcome {
         /// What is wrong with the entry.
         reason: String,
     },
+    /// The handler was found and starting it failed.
+    ///
+    /// The distinction [`NoHandler`] draws - "you have not chosen a handler" is
+    /// a different thing to tell someone than "it did not work" - needs a second
+    /// variant to be worth drawing, and this is it. Without it there was nothing
+    /// honest to answer a failed spawn with, so the shell wrote nothing at all
+    /// and closed the connection; a caller could then not tell a missing handler
+    /// from a broken one from a dead shell.
+    ///
+    /// Carried as a sentence for the same reason as [`MalformedEntry`]: the
+    /// caller shows it to a person, and "footclient: No such file or directory"
+    /// is actionable in a way that a code is not.
+    ///
+    /// [`NoHandler`]: LaunchOutcome::NoHandler
+    /// [`MalformedEntry`]: LaunchOutcome::MalformedEntry
+    DidNotStart {
+        /// Which application was resolved for the request.
+        app_id: String,
+        /// Why starting it failed.
+        reason: String,
+    },
     /// The request was refused. The reason is deliberately coarse: a caller
     /// learning exactly which check it failed learns how to pass it.
     Refused,

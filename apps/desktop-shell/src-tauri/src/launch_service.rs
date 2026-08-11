@@ -145,10 +145,25 @@ async fn handle(mut stream: UnixStream) -> Result<(), String> {
     // answer is what caused a program to start.
     record(&served).await;
 
-    if let Some(launch) = &served.launch {
-        spawn(launch)?;
-    }
-    proto::write_outcome(&mut stream, &served.outcome)
+    // A failed spawn is ANSWERED, not dropped. This used to be `spawn(launch)?`,
+    // which returned before the write and left the caller with a closed
+    // connection - unable to tell "nothing opens this" from "it did not start"
+    // from "the shell died". The reason travels with it because the caller shows
+    // it to a person.
+    let outcome = match (&served.launch, &served.outcome) {
+        (Some(launch), proto::LaunchOutcome::Started { app_id }) => match spawn(launch) {
+            Ok(()) => served.outcome.clone(),
+            Err(reason) => {
+                log::warn!("launch request: {reason}");
+                proto::LaunchOutcome::DidNotStart {
+                    app_id: app_id.clone(),
+                    reason,
+                }
+            }
+        },
+        _ => served.outcome.clone(),
+    };
+    proto::write_outcome(&mut stream, &outcome)
         .await
         .map_err(|e| e.to_string())
 }
