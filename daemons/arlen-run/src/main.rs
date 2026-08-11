@@ -107,6 +107,31 @@ struct Args {
 /// absolute path - the confiner refuses a relative bind source anyway, but failing
 /// here names the argument instead of surfacing later as a confinement-setup
 /// error. It is rejected alongside `--profile-root`, which points at a profile an
+/// Refuse an argv, saying why, and hand back the exit code.
+///
+/// Every refusal in `parse_args` used to be a bare `Err(exit::BAD_ARGS)`, which
+/// left the one entry path into the launcher as the only one that stops without
+/// a word: exit 64 and zero bytes of stderr, indistinguishable from a program
+/// that itself exited 64. The shell reads a refusal off a line beginning with
+/// `arlen-run`, so it had nothing to show and showed nothing - an app that does
+/// not start and says nothing, which is the shape the refusal path exists to
+/// remove. Printing here rather than mapping the code in `main` keeps the reason
+/// next to the check that knows it, and leaves the `u8` return the tests assert on
+/// unchanged.
+fn bad_args(reason: &str) -> u8 {
+    eprintln!("{}", bad_args_line(reason));
+    exit::BAD_ARGS
+}
+
+/// The refusal line itself, split out so the one thing that has to stay true can
+/// be asserted: the shell finds a refusal by matching `arlen-run` at the START of
+/// a line, and shows nothing at all if no line matches. That contract lives in
+/// two crates with no shared type between them, which is where the last two bugs
+/// on this path came from.
+fn bad_args_line(reason: &str) -> String {
+    format!("arlen-run: {reason}")
+}
+
 /// ephemeral launch never reads: accepting both would let a caller believe a
 /// profile was in force when nothing loaded it.
 fn parse_args(args: &[String]) -> Result<Args, u8> {
@@ -117,20 +142,26 @@ fn parse_args(args: &[String]) -> Result<Args, u8> {
     while i < args.len() {
         match args[i].as_str() {
             "--app-id" => {
-                let value = args.get(i + 1).ok_or(exit::BAD_ARGS)?;
+                let value = args
+                    .get(i + 1)
+                    .ok_or_else(|| bad_args("--app-id needs a value"))?;
                 app_id = Some(value.clone());
                 i += 2;
             }
             "--profile-root" => {
-                let value = args.get(i + 1).ok_or(exit::BAD_ARGS)?;
+                let value = args
+                    .get(i + 1)
+                    .ok_or_else(|| bad_args("--profile-root needs a value"))?;
                 profile_root = Some(PathBuf::from(value));
                 i += 2;
             }
             "--ephemeral" => {
-                let value = args.get(i + 1).ok_or(exit::BAD_ARGS)?;
+                let value = args
+                    .get(i + 1)
+                    .ok_or_else(|| bad_args("--ephemeral needs a value"))?;
                 let path = PathBuf::from(value);
                 if !path.is_absolute() {
-                    return Err(exit::BAD_ARGS);
+                    return Err(bad_args("--ephemeral needs an absolute path"));
                 }
                 ephemeral_file = Some(path);
                 i += 2;
@@ -138,14 +169,17 @@ fn parse_args(args: &[String]) -> Result<Args, u8> {
             "--" => {
                 let program: Vec<String> = args[i + 1..].to_vec();
                 if program.is_empty() {
-                    return Err(exit::BAD_ARGS);
+                    return Err(bad_args("nothing to run after `--`"));
                 }
-                let app_id = app_id.ok_or(exit::BAD_ARGS)?;
+                let app_id =
+                    app_id.ok_or_else(|| bad_args("no --app-id, so there is no profile to scope by"))?;
                 if !valid_app_id(&app_id) {
-                    return Err(exit::BAD_ARGS);
+                    return Err(bad_args(&format!("not a usable app id: {app_id}")));
                 }
                 if ephemeral_file.is_some() && profile_root.is_some() {
-                    return Err(exit::BAD_ARGS);
+                    return Err(bad_args(
+                        "--ephemeral and --profile-root together: an ephemeral launch reads no profile",
+                    ));
                 }
                 return Ok(Args {
                     app_id,
@@ -154,11 +188,11 @@ fn parse_args(args: &[String]) -> Result<Args, u8> {
                     ephemeral_file,
                 });
             }
-            _ => return Err(exit::BAD_ARGS),
+            other => return Err(bad_args(&format!("unknown argument: {other}"))),
         }
     }
     // No `--` separator: there is no program to run.
-    Err(exit::BAD_ARGS)
+    Err(bad_args("no `--` separator, so no program was named"))
 }
 
 /// The tmpfs mounts an ephemeral launch gets, which are also the only places it
@@ -581,6 +615,18 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+
+    /// Pins the half of the refusal contract that lives in this crate. The shell's
+    /// `refusal_message` matches on the marker at line start and skips a line
+    /// marked `warning:`, so a refusal must carry the marker and must NOT read as
+    /// a warning - otherwise it is a stop with nothing shown.
+    #[test]
+    fn a_refusal_line_is_one_the_shell_will_show() {
+        let line = super::bad_args_line("not a usable app id: x");
+        assert!(line.starts_with("arlen-run"), "{line}");
+        assert!(!line["arlen-run".len()..].trim_start().starts_with(": warning:"), "{line}");
+        assert!(line.contains("not a usable app id"), "{line}");
+    }
     use super::*;
 
     fn args(parts: &[&str]) -> Vec<String> {
