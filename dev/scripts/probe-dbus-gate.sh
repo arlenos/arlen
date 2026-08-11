@@ -11,6 +11,12 @@
 #       target/debug/arlen-undod org.arlen.Undo1 /org/arlen/Undo1 org.arlen.Undo1 \
 #       Recent Enact
 #
+# A method that takes arguments carries them in its entry, as busctl wants them:
+#
+#   dev/scripts/probe-dbus-gate.sh target/debug/arlen-connectionsd \
+#       org.arlen.Connections1 /org/arlen/Connections1 org.arlen.Connections1 \
+#       "FetchEgressCredential sss anthropic api.anthropic.com bearer"
+#
 # `busctl` is the caller, and it is not a first-party surface: its binary does not
 # resolve to an app id, so every gated method must refuse it. **A method that
 # ANSWERS is the failure.** That inversion is the whole point - a probe where the
@@ -101,10 +107,19 @@ echo "$BUS is owned by $(basename "$BIN")"
 answered=()
 untested=()
 for m in "${METHODS[@]}"; do
-  out=$(timeout 10 busctl --user call "$BUS" "$OBJ" "$IFACE" "$m" 2>&1 | head -1)
+  # A method entry may carry its arguments, exactly as busctl wants them:
+  #   "FetchEgressCredential sss provider host scheme"
+  # Without that the call goes out with no arguments, which only reaches a
+  # method that takes none. The methods worth probing most - the ones handing
+  # back a credential or a token - all take some, so a probe that could only
+  # call the argument-free ones was covering the least sensitive half of every
+  # interface it looked at.
+  read -r -a spec <<< "$m"
+  name="${spec[0]}"
+  out=$(timeout 10 busctl --user call "$BUS" "$OBJ" "$IFACE" "$name" "${spec[@]:1}" 2>&1 | head -1)
   case "$out" in
     *"Access denied"* | *"AccessDenied"*)
-      echo "  $m: refused" ;;
+      echo "  $name: refused" ;;
     # The call never reached the method: busctl sent no arguments and the bus
     # rejected the message on its signature. Counting that as ANSWERED is what
     # this probe did until 11 Aug, and it is the worst possible mistake for a
@@ -113,11 +128,11 @@ for m in "${METHODS[@]}"; do
     # statement from either verdict, and it fails the run so nobody reads a
     # green as coverage.
     *"Signature mismatch"* | *"Invalid argument"*)
-      echo "  $m: NOT TESTED (takes arguments; this probe sent none) -> $out"
-      untested+=("$m") ;;
+      echo "  $name: NOT TESTED (needs arguments; give the entry its busctl signature and values) -> $out"
+      untested+=("$name") ;;
     *)
-      echo "  $m: ANSWERED -> $out"
-      answered+=("$m") ;;
+      echo "  $name: ANSWERED -> $out"
+      answered+=("$name") ;;
   esac
 done
 
