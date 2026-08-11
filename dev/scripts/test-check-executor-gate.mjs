@@ -31,21 +31,32 @@ const failures = [];
 // satisfy that too, or every case fails on the staleness check instead of on what
 // it is testing. These three are ungated on purpose - that is what being
 // acknowledged means.
-const ACKNOWLEDGED = ["proxy_executor.rs", "read_executor.rs", "file_executor.rs"];
-const ACK_BODY = `impl Ack {
+// Every file the gate's ACKNOWLEDGED table names, because it also reports an entry
+// whose file is gone. `placeholder.rs` is in that list and is deliberately NOT
+// named like an executor - discovery is by `impl Executor for` now, and this
+// fixture is what proves the name stopped mattering.
+const ACKNOWLEDGED = [
+  "proxy_executor.rs",
+  "read_executor.rs",
+  "file_executor.rs",
+  "placeholder.rs",
+];
+const ACK_BODY = `impl Executor for Ack {}
+
+impl Ack {
     async fn execute(&self, _p: &Path) -> Result<()> {
         Ok(())
     }
 }
 `;
 
-function check(name, body, expect) {
+function check(name, body, expect, file = "probe_executor.rs") {
   const dir = mkdtempSync(join(tmpdir(), "arlen-execgate-"));
   const src = join(dir, "daemons/ai-engine-daemon/src");
   mkdirSync(src, { recursive: true });
   for (const f of ACKNOWLEDGED) writeFileSync(join(src, f), ACK_BODY);
   // The subject, deliberately not a name the map excuses.
-  const abs = join(src, "probe_executor.rs");
+  const abs = join(src, file);
   writeFileSync(abs, body);
   const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
   const got = { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
@@ -55,7 +66,9 @@ function check(name, body, expect) {
   rmSync(dir, { recursive: true, force: true });
 }
 
-const GATED = `impl ProbeExecutor {
+const GATED = `impl Executor for ProbeExecutor {}
+
+impl ProbeExecutor {
     async fn execute(&self, p: &Path) -> Result<()> {
         if !(self.executor_live)() {
             return Ok(());
@@ -66,7 +79,9 @@ const GATED = `impl ProbeExecutor {
 }
 `;
 
-const UNGATED = `impl ProbeExecutor {
+const UNGATED = `impl Executor for ProbeExecutor {}
+
+impl ProbeExecutor {
     async fn execute_quietly(&self, p: &Path) -> Result<()> {
         std::fs::remove_file(p)?;
         Ok(())
@@ -106,6 +121,26 @@ check(
   "a test double inside the test module is still excused",
   `${GATED}\n${TESTS}`,
   (code) => code === 0,
+);
+
+// The reason discovery moved off the filename. `placeholder.rs` held a production
+// `impl Executor for` that `*executor*.rs` never matched - inert, which is why it
+// went unnoticed and why it proved the naming convention was enforced by nothing.
+// An ungated executor in a plainly-named file must be caught on its trait alone.
+check(
+  "an ungated executor in a file not named like one is caught",
+  UNGATED,
+  (code, out) => code === 1 && out.includes("execute_quietly"),
+  "helpers.rs",
+);
+
+// And the other half: mentioning the trait is not implementing it, or every file
+// that imports the type would be scanned as an executor.
+check(
+  "a file that only mentions Executor is not scanned",
+  "// see dispatch.rs for the Executor trait\nfn helper() {}\n",
+  (code) => code === 0,
+  "notes.rs",
 );
 
 if (failures.length) {
