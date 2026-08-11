@@ -245,7 +245,12 @@ def main() -> int:
     # imports `interface` is not an interface, and a file that imports it and then
     # uses the short form must not be missed.
     files = subprocess.run(
-        ["git", "grep", "-lE", r"#\[(zbus::)?interface"],
+        # `-- *.rs`: an interface lives in Rust. Without the pathspec this matched
+        # any file CONTAINING the attribute, so a test fixture holding a Rust
+        # snippet inside a JS string was read as a real interface and its
+        # fixture methods were demanded to take a caller header. Found 11 Aug,
+        # when the sibling method-name gate arrived with exactly such a fixture.
+        ["git", "grep", "-lE", r"#\[(zbus::)?interface", "--", "*.rs"],
         cwd=ROOT,
         capture_output=True,
         text=True,
