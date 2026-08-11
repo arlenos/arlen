@@ -431,20 +431,33 @@ mod tests {
 /// forwards through the governed proxy with its allowlist, its audit entry and its
 /// credential resolution. Only the outbound HTTP request is answered here.
 ///
-/// **It cannot be reached by accident.** `main` builds it only when
-/// `ARLEN_AI_ECHO` is set, logs loudly when it does, and the answer says what it
-/// is in its own text - so a screenshot of an echoed reply can never be mistaken
-/// for a model working.
+/// **It cannot be reached by accident, and it cannot pass for a model.** Those are
+/// two different guarantees and it needs both. `main` builds it only when
+/// `ARLEN_AI_ECHO` is set and logs at WARN when it does - there is no config path
+/// that selects it, so accidental selection means someone typed the variable. And
+/// every answer OPENS with [`ECHO_MARKER`], before any content, on every path
+/// including the ones that could not parse the request: an echoed reply is
+/// self-identifying wherever it is rendered, quoted or pasted.
+///
+/// Of the two shapes offered - carry the origin in the answer, or refuse to load
+/// outside test configuration - this takes the first, because the second needs a
+/// reliable notion of "test configuration" and a wrong one either blocks the
+/// offline demo case or fails open on the install it was meant to protect. An
+/// origin that travels with the text needs no such judgement.
+/// The opening every echoed answer carries. Deliberately a plain sentence rather
+/// than a code or a tag: it has to mean something to a person who meets it in a
+/// launcher pane with no idea what a forwarder is.
+pub const ECHO_MARKER: &str = "[echo provider - no model was asked]";
+
 pub struct EchoForwarder {
-    /// The sentence every completion returns.
+    /// The sentence every completion returns after the marker.
     answer: String,
 }
 
 impl Default for EchoForwarder {
     fn default() -> Self {
         Self {
-            answer: "This is the echo provider. No model was asked; the chain that \
-                     carried this sentence is real."
+            answer: "The chain that carried this sentence is real; the answer is not."
                 .to_string(),
         }
     }
@@ -460,10 +473,13 @@ impl EchoForwarder {
     /// Kept to the fields a consumer actually reads rather than a full fake of the
     /// upstream schema, which would be inventing a contract we do not own.
     fn completion(&self, echoed: &str) -> String {
+        // The marker leads, always. A consumer that shows only the first line, a
+        // notification that truncates, a screenshot of the top of a pane: each of
+        // those still says where the answer came from.
         let content = if echoed.is_empty() {
-            self.answer.clone()
+            format!("{ECHO_MARKER} {}", self.answer)
         } else {
-            format!("{} It was handed: {echoed}", self.answer)
+            format!("{ECHO_MARKER} {} It was handed: {echoed}", self.answer)
         };
         serde_json::json!({
             "id": "echo",
@@ -562,6 +578,36 @@ mod echo_tests {
     #[tokio::test]
     async fn an_unparsable_body_still_answers() {
         let r = EchoForwarder::new().post("http://x", "not json", None).await.unwrap();
-        assert!(r.body.contains("echo provider"), "{}", r.body);
+        assert!(r.body.contains(ECHO_MARKER), "{}", r.body);
+    }
+
+    /// The guarantee that matters most: **no input produces an answer that could
+    /// pass for a model's.** Not the empty body, not a malformed one, not a
+    /// request with no messages, not a normal one. A fixture that can answer
+    /// anonymously is an absence wearing the costume of a success, which is the
+    /// failure this whole evening was spent removing - one layer up.
+    ///
+    /// Shown to fail before being trusted: dropping the marker from one branch of
+    /// `completion` turns this red.
+    #[tokio::test]
+    async fn no_input_produces_an_anonymous_answer() {
+        let bodies = [
+            "",
+            "not json",
+            "{}",
+            r#"{"messages":[]}"#,
+            r#"{"messages":[{"role":"user","content":"hello"}]}"#,
+            r#"{"messages":[{"role":"user"}]}"#,
+        ];
+        for body in bodies {
+            let r = EchoForwarder::new().post("http://x", body, None).await.unwrap();
+            let v: serde_json::Value = serde_json::from_str(&r.body).expect("valid json");
+            let content = v["choices"][0]["message"]["content"].as_str().unwrap_or("");
+            assert!(
+                content.starts_with(ECHO_MARKER),
+                "an answer that does not open with the marker could pass for a model: {content}"
+            );
+            assert_eq!(v["model"], "echo", "the model field must name the echo too");
+        }
     }
 }
