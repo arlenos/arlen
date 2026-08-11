@@ -153,16 +153,23 @@ impl PeerScope {
 
 /// Resolve the connected peer from its kernel-attested pid.
 fn peer_app_profile(stream: &UnixStream) -> PeerScope {
-    let Some(app_id) = stream
-        .peer_cred()
-        .ok()
-        .and_then(|c| c.pid())
+    let Ok(cred) = stream.peer_cred() else {
+        return PeerScope::Unresolved;
+    };
+    // The profile belongs to the PEER's user, not to this daemon's. The bus runs
+    // as root, so asking for its own would look under /var/lib/arlen/permissions/0
+    // while the set that applies to the connecting user is filed under theirs
+    // (decided 11 Aug: the uid names who the permissions are for, not who reads
+    // them). Same file for every reader, which is the point.
+    let peer_uid = cred.uid();
+    let Some(app_id) = cred
+        .pid()
         .and_then(|pid| u32::try_from(pid).ok())
         .and_then(|pid| arlen_permissions::identity::app_id_from_pid(pid).ok())
     else {
         return PeerScope::Unresolved;
     };
-    match arlen_permissions::load_profile(&app_id) {
+    match arlen_permissions::load_profile_for_user(peer_uid, &app_id) {
         Ok(profile) => PeerScope::Profiled(app_id, Box::new(profile)),
         Err(_) => PeerScope::NoProfile(app_id),
     }

@@ -1005,6 +1005,27 @@ pub fn system_permissions_dir() -> PathBuf {
     }
     // SAFETY: getuid never fails.
     let uid = unsafe { libc::getuid() };
+    system_permissions_dir_for(uid)
+}
+
+/// The same directory for an EXPLICIT user: `/var/lib/arlen/permissions/{uid}`.
+///
+/// **The uid is the user a profile applies to, never the process reading it**
+/// (decided 11 Aug, `app-enrollment-plan.md`). A profile describes an app, so one
+/// that appears or disappears depending on who asks is incoherent - and keying on
+/// the reader made exactly that happen: the launcher runs as the user and looked
+/// in `/1000/`, while the image staged the set the root knowledge daemon reads
+/// under `/0/`, so a confined launch refused on a profile filed one directory
+/// away. One per-user set, root-owned and world-readable, is what lets readers
+/// with different uids agree on the same file.
+///
+/// A daemon serving a peer passes THAT peer's uid; a process acting for itself
+/// can use [`system_permissions_dir`], which is this with its own.
+pub fn system_permissions_dir_for(uid: u32) -> PathBuf {
+    #[cfg(debug_assertions)]
+    if let Ok(dir) = std::env::var("ARLEN_SYSTEM_PERMISSIONS_DIR") {
+        return PathBuf::from(dir);
+    }
     PathBuf::from("/var/lib/arlen/permissions").join(uid.to_string())
 }
 
@@ -1066,6 +1087,26 @@ pub fn load_profile(app_id: &str) -> Result<PermissionProfile, PermissionError> 
     let system = system_profile_path(app_id);
     let user = profile_path(app_id)?;
     load_tiered(system.as_deref(), &user, app_id)
+}
+
+/// [`load_profile`] for an app belonging to an EXPLICIT user.
+///
+/// What a root daemon serving a peer needs: the profile it must read is the one
+/// filed under the PEER's uid, not under its own. `load_profile` answers for the
+/// calling process, which is right for a launcher acting as the user and wrong
+/// for every daemon acting on someone's behalf.
+///
+/// The user tier stays the caller's `$HOME` overlay and is only consulted when
+/// the system tier is absent, so this does not reach into another user's home.
+pub fn load_profile_for_user(uid: u32, app_id: &str) -> Result<PermissionProfile, PermissionError> {
+    if !is_valid_app_id(app_id) {
+        return Err(PermissionError::NotFound {
+            app_id: app_id.into(),
+        });
+    }
+    let system = system_permissions_dir_for(uid).join(format!("{app_id}.toml"));
+    let user = profile_path(app_id)?;
+    load_tiered(Some(&system), &user, app_id)
 }
 
 /// Load from an explicit path (for testing).
@@ -1359,6 +1400,27 @@ always_confirm_overrides = ["empty_trash"]
     }
 
     #[test]
+    // The decision this API exists for: two readers with different uids resolve
+    // the SAME file for the same user, because the uid names whose permissions
+    // these are. Keying it on the reader is what left the launcher looking in
+    // /1000/ while the image staged /0/.
+    #[test]
+    fn the_directory_is_keyed_on_the_user_not_the_reader() {
+        // Set only where the override is not in play, so the shape is the claim.
+        let a = super::system_permissions_dir_for(1000);
+        let b = super::system_permissions_dir_for(0);
+        if std::env::var("ARLEN_SYSTEM_PERMISSIONS_DIR").is_err() {
+            assert!(a.ends_with("1000"), "{a:?}");
+            assert!(b.ends_with("0"), "{b:?}");
+            assert_ne!(a, b, "two users must not share one directory");
+        }
+        // And the self-flavoured one is this with the caller's own uid, so a
+        // process acting for itself keeps agreeing with a daemon acting for it.
+        // SAFETY: getuid never fails.
+        let me = unsafe { libc::getuid() };
+        assert_eq!(super::system_permissions_dir(), super::system_permissions_dir_for(me));
+    }
+
     fn system_profile_path_validates_the_app_id() {
         let p = system_profile_path("com.example.notes").expect("a valid id resolves");
         assert!(p.ends_with("com.example.notes.toml"));
