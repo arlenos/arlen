@@ -749,6 +749,11 @@ check-executor:
     node "{{ROOT}}/dev/scripts/test-check-read-scope.mjs"
     bash "{{ROOT}}/dev/scripts/check-verify-image.sh"
     node "{{ROOT}}/dev/scripts/test-check-verify-image.mjs"
+    # Asks the built image what is in it. Costs a guestfish appliance boot when an
+    # image exists and returns at once when none does, so a tree that has never
+    # built one pays nothing. It was the single file under dev/scripts that no run
+    # named, which is why it is here rather than in a recipe of its own.
+    bash "{{ROOT}}/dev/scripts/check-image-contents.sh"
 
 # Every declared grant has to reach the summary a person reads, or be listed with
 # the reason it is not reach. A grant nobody can see is a grant nobody can
