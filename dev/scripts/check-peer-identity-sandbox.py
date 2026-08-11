@@ -115,7 +115,15 @@ from pathlib import Path
 
 REPO = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 
-UNIT_DIR = "dev/mkosi/mkosi.extra/usr/lib/systemd/user"
+# BOTH shipped unit trees. It read only the user tree for its first weeks, which
+# is how it missed the loudest instance of its own subject: `arlen-event-bus` is a
+# SYSTEM unit carrying five mount-namespace directives while resolving every peer
+# through `/proc/<pid>/exe`, and this check walked straight past it. A rule that
+# looks in one of two places is not a narrower rule, it is a rule with a hole.
+UNIT_DIRS = (
+    "dev/mkosi/mkosi.extra/usr/lib/systemd/user",
+    "dev/mkosi/mkosi.extra/usr/lib/systemd/system",
+)
 
 # Directives that put the unit in its own mount namespace. `RestrictNamespaces`
 # is deliberately absent: it restricts what the unit may CREATE and does not put
@@ -132,6 +140,35 @@ MOUNT_NS = (
 )
 
 RESOLVES_PEER = ("app_id_from_pid", "ConnectionAuth")
+
+# `/proc/<pid>/exe` is ptrace-gated, and CAP_SYS_PTRACE is the documented bypass -
+# the same one `stamped-identity-plan.md` records from the 14 July host-proof. A
+# unit with no `User=` runs as root and keeps the default bounding set, so it reads
+# the link a same-uid reader is refused, and the whole defect does not apply to it.
+#
+# This matters because it is what widening to the system tree first got wrong:
+# `arlen-event-bus` and `arlen-graph` are both hardened AND both resolve peers, and
+# flagging them looked for a moment like two live findings. They run as root. Two
+# false positives in a gate are worse than the hole that hid them, because they
+# teach people to skip the output.
+#
+# NB inherited rather than re-measured: my own measurement covered a same-uid
+# non-root reader. If a unit ever gains `CapabilityBoundingSet=` without
+# CAP_SYS_PTRACE, or a `User=`, it drops back into the rule and this check says so.
+def runs_as_root_with_ptrace(text, system_unit):
+    # SYSTEM units only. A user unit has no `User=` either, because it already runs
+    # as the user - and reading absence as root there exempts exactly the wrong
+    # thing: the first version of this rule waved through `arlen-ai-undo-signer`,
+    # the one CONFIRMED live breakage this whole file was written for. An exemption
+    # that swallows the motivating case is worse than no exemption.
+    if not system_unit:
+        return False
+    if re.search(r"^User=", text, re.M):
+        return False
+    bounding = re.search(r"^CapabilityBoundingSet=(.*)$", text, re.M)
+    if bounding and "CAP_SYS_PTRACE" not in bounding.group(1):
+        return False
+    return True
 
 # name -> why it is carried. Empty is the state to aim for.
 KNOWN = {
@@ -174,14 +211,26 @@ def resolves_peers(crate):
 
 
 def main():
-    units = sorted((REPO / UNIT_DIR).glob("*.service")) if (REPO / UNIT_DIR).is_dir() else []
+    units = sorted(
+        u
+        for d in UNIT_DIRS
+        if (REPO / d).is_dir()
+        for u in (REPO / d).glob("*.service")
+    )
     flagged, carried, checked = [], [], 0
+    root_exempt: list[str] = []
 
     unhardened: list[str] = []
 
     for unit in units:
         text = unit.read_text(encoding="utf-8")
+        is_system = unit.parent.name == "system"
         directives = [d for d in MOUNT_NS if re.search(rf"^{d}=", text, re.M)]
+        if directives and runs_as_root_with_ptrace(text, is_system):
+            # Sandboxed, resolves peers, and reads the link anyway. Counted so the
+            # summary cannot read as "nothing here is sandboxed".
+            root_exempt.append(unit.stem)
+            continue
         if not directives:
             # The other side of the same trade, and the reason a small flagged list
             # is not good news: a daemon that resolves peers and carries NO
@@ -229,6 +278,11 @@ def main():
     print(f"OK: {checked} hardened unit(s) checked, none newly unable to identify callers")
     for c in carried:
         print(f"KNOWN (not failing): {c}")
+    if root_exempt:
+        print(f"ROOT, SO EXEMPT ({len(root_exempt)}): sandboxed and peer-resolving, but running as root "
+              "with CAP_SYS_PTRACE,")
+        print("  which reads the exe link a same-uid reader is refused: "
+              + ", ".join(sorted(root_exempt)))
     if unhardened:
         print(f"PAYING THE OTHER HALF ({len(unhardened)}): these resolve peers and carry no "
               "mount-namespace hardening,")

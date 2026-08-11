@@ -48,6 +48,7 @@ function check(name, dir, expect) {
 }
 
 const U = "dev/mkosi/mkosi.extra/usr/lib/systemd/user";
+const S = "dev/mkosi/mkosi.extra/usr/lib/systemd/system";
 
 const unit = (extra) => `[Unit]
 Description=A daemon
@@ -132,6 +133,58 @@ check(
     "daemons/thing/src/lib.rs": RESOLVES,
   }),
   (code, out) => code === 0 && out.includes("PAYING THE OTHER HALF"),
+);
+
+// The system tree was invisible to this check for weeks, which is how it walked
+// past `arlen-event-bus` - five mount-namespace directives, resolving every peer
+// through /proc/<pid>/exe. Both trees are read now.
+check(
+  "a sandboxed peer-resolver in the SYSTEM tree is seen at all",
+  tree({
+    [`${S}/arlen-thing.service`]: unit("ProtectSystem=strict\nUser=arlen-thing"),
+    "daemons/thing/Cargo.toml": CARGO,
+    "daemons/thing/src/lib.rs": RESOLVES,
+  }),
+  (code, out) => code === 1 && out.includes("arlen-thing"),
+);
+
+// A system unit with no `User=` runs as root, keeps CAP_SYS_PTRACE, and reads the
+// link a same-uid reader is refused. Flagging it is a false positive, and two of
+// those in a gate teach people to skip its output.
+check(
+  "a root system unit is exempt rather than flagged",
+  tree({
+    [`${S}/arlen-thing.service`]: unit("ProtectSystem=strict"),
+    "daemons/thing/Cargo.toml": CARGO,
+    "daemons/thing/src/lib.rs": RESOLVES,
+  }),
+  (code, out) => code === 0 && out.includes("ROOT, SO EXEMPT"),
+);
+
+// The trap that exemption fell into on its first cut, and the reason this case
+// exists: a USER unit has no `User=` either, because it already runs as the user.
+// Reading absence as root there waves through `arlen-ai-undo-signer` - the one
+// confirmed live breakage this whole check was written for.
+check(
+  "a user unit without User= is NOT read as root",
+  tree({
+    [`${U}/arlen-thing.service`]: unit("ProtectSystem=strict"),
+    "daemons/thing/Cargo.toml": CARGO,
+    "daemons/thing/src/lib.rs": RESOLVES,
+  }),
+  (code, out) => code === 1 && out.includes("arlen-thing"),
+);
+
+// Root is only half of it: drop the capability and the read goes back to being
+// refused, so the exemption has to go with it.
+check(
+  "a system unit that drops CAP_SYS_PTRACE loses the exemption",
+  tree({
+    [`${S}/arlen-thing.service`]: unit("ProtectSystem=strict\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE"),
+    "daemons/thing/Cargo.toml": CARGO,
+    "daemons/thing/src/lib.rs": RESOLVES,
+  }),
+  (code, out) => code === 1 && out.includes("arlen-thing"),
 );
 
 // The measured control: RestrictNamespaces restricts what a unit may CREATE and
