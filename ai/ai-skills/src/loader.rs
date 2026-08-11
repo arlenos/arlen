@@ -491,3 +491,80 @@ mod tests {
         }
     }
 }
+
+/// The behaviours this repository actually ships, loaded from the tree rather
+/// than from a fixture.
+///
+/// Everything else in this file tests the loader against synthetic or absent
+/// paths, which is right for the loader's own rules and leaves one thing
+/// uncovered: **whether the `SKILL.md` files we ship parse at all.** Nothing did,
+/// and the gap has teeth - the `ask` skill was written, committed, and served on
+/// D-Bus without any test ever having read it. On a developer machine
+/// `behaviour_sources()` finds nothing (the built-in root is `/usr/share`, the
+/// user root is usually absent), so a malformed skill surfaces first on an
+/// installed system, which is the worst place to learn it.
+#[cfg(test)]
+mod shipped_behaviours {
+    use super::*;
+
+    /// The in-tree behaviour directory, addressed from this crate rather than
+    /// through `behaviour_sources()`, which resolves install paths a test run
+    /// does not have.
+    fn shipped() -> BehaviourSource {
+        BehaviourSource::builtin(format!("{}/behaviours", env!("CARGO_MANIFEST_DIR")))
+    }
+
+    /// Enable everything found, so this reads what ships rather than what a
+    /// configuration happens to turn on.
+    fn all_enabled() -> BTreeMap<String, Provenance> {
+        let root = std::path::PathBuf::from(format!("{}/behaviours", env!("CARGO_MANIFEST_DIR")));
+        std::fs::read_dir(root)
+            .expect("the behaviours directory ships in this crate")
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_dir())
+            .map(|e| (e.file_name().to_string_lossy().into_owned(), Provenance::BuiltIn))
+            .collect()
+    }
+
+    #[test]
+    fn every_shipped_skill_parses() {
+        let outcome = load(&[shipped()], &all_enabled());
+        assert!(
+            outcome.errors.is_empty(),
+            "a shipped SKILL.md does not load: {:?}",
+            outcome.errors
+        );
+        assert!(!outcome.loaded.is_empty(), "no behaviours found; the layout moved");
+    }
+
+    /// The two the AI engine daemon asks for BY NAME when it serves
+    /// `org.arlen.AI1` - `explain_system` and `ask` each look up a string. A
+    /// renamed or removed directory turns that into a method that exists and
+    /// refuses, which is a worse failure than a build error and one no compiler
+    /// can see across a crate boundary.
+    #[test]
+    fn the_skills_the_ai_surface_names_are_present() {
+        let outcome = load(&[shipped()], &all_enabled());
+        let names: Vec<&str> =
+            outcome.loaded.iter().map(|b| b.behaviour.manifest.name.as_str()).collect();
+        for wanted in ["explain", "ask"] {
+            assert!(names.contains(&wanted), "org.arlen.AI1 names `{wanted}`, which is not shipped: {names:?}");
+        }
+    }
+
+    /// A directory's name and the name inside its `SKILL.md` must agree: the
+    /// loader looks up by manifest name while a person looks by directory, and
+    /// the two drifting apart is how a skill goes missing while appearing to be
+    /// right there.
+    #[test]
+    fn a_skills_directory_and_its_manifest_agree() {
+        for b in load(&[shipped()], &all_enabled()).loaded {
+            let dir = b.dir.file_name().expect("a behaviour lives in a directory");
+            assert_eq!(
+                dir.to_string_lossy(),
+                b.behaviour.manifest.name,
+                "the directory and the manifest name disagree"
+            );
+        }
+    }
+}
