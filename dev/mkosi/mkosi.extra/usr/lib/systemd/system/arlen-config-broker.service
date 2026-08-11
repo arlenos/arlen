@@ -51,6 +51,14 @@ RestartSec=1
 # ARLEN_CONFIG_BROKER_AUDIT_SOCKET if the deployment moves it.
 Environment=ARLEN_CONFIG_BROKER_DIR=/var/lib/arlen/config-broker
 Environment=ARLEN_CONFIG_BROKER_SOCKET=/run/arlen/config-broker.sock
+# The identity socket, pinned like its sibling above rather than left to the
+# fallback. The daemon resolves this from XDG_RUNTIME_DIR, which a system unit
+# does not have, so it already landed on this exact path - by inheritance from
+# an absent variable rather than by statement. The canonical dist/ unit pins it
+# and this copy did not, which is one line of the declared drift that costs
+# nothing to close. Clients resolve the per-user path first and fall through to
+# this one, so the two meet here.
+Environment=ARLEN_CONFIG_BROKER_IDENTITY_SOCKET=/run/arlen/config-broker-identity.sock
 Environment=ARLEN_CONFIG_BROKER_OWNER_UID=1000
 Environment=RUST_LOG=info
 
