@@ -26,6 +26,7 @@ pub mod privacy;
 pub mod search;
 pub mod sensing;
 pub mod theme;
+pub mod topbar;
 pub mod url;
 pub mod values;
 pub mod waypointer_plugins;
