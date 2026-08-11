@@ -82,11 +82,14 @@ SWITCHES = {
         "unset",
         "the bus REJECTING an out-of-scope publish or subscribe instead of only "
         "logging it",
-        "deliberate shadow default, the same cutover shape as stamped identity: "
-        "the first-party [event_bus] scopes are meant to be verified against real "
-        "traffic before the reject flip, because enforcing against profiles that "
-        "do not declare their scopes silently stops delivery. The observation is "
-        "the precondition and it has not been done on a booted image.",
+        "deliberate shadow default, the same cutover shape as stamped identity. "
+        "The precondition is not an observation, it is a declaration, and counting "
+        "it on 11 Aug gave the answer: 13 components use the bus, 4 of them have a "
+        "profile at all, and NONE declared an [event_bus] section. Enforce denies a "
+        "publish and strips every subscription when the scope is absent, so the "
+        "flip today would silence the bus system-wide. The file manager's scopes "
+        "are written; the rest, including whether the profile-less daemons get "
+        "profiles, is the work the flip waits on.",
     ),
     "ARLEN_CAPSULE_REQUIRE_FENCE": (
         "unset",
