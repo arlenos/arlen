@@ -24,33 +24,54 @@ fn is_safe_session_id(id: &str) -> bool {
 }
 
 /// Open the harness GUI on the given AI session id (the Waypointer `Ctrl+J`
-/// escalation). Spawns `arlen-harness --session <id>` detached under the shell's
-/// Wayland environment; the harness resumes that server-side session. The id is
-/// passed as a discrete argument (never shell-interpolated) and validated first,
-/// so a malformed or hostile id is refused rather than launched. Returns an error
-/// string the launcher surfaces; on success the overlay closes.
+/// escalation). Runs `arlen-harness --session <id>` under the shell's Wayland
+/// environment; the harness resumes that server-side session. The id is passed as
+/// a discrete argument (never shell-interpolated) and validated first, so a
+/// malformed or hostile id is refused rather than launched.
+///
+/// **The spawn is not on a thread, and that is the fix rather than the style.**
+/// It used to spawn from a detached thread and return `Ok(())` first, so a failure
+/// could only ever reach the log - while this doc said, and the caller believed,
+/// that it returned an error the launcher surfaces. `arlen-harness` is not in the
+/// image today, so that path is the live one: Ctrl+J closed the overlay and
+/// nothing opened, with nothing said. `Command::spawn` forks and execs without
+/// waiting on the child, so there was never anything to move off the calling
+/// thread; the thread bought nothing and cost the error.
+///
+/// A failure also raises a toast, because the caller deliberately swallows the
+/// error: under vite there is no backend and every Ctrl+J would otherwise report
+/// one. Telling the user from here keeps that swallow correct without leaving a
+/// real failure silent.
 #[tauri::command]
-pub fn open_harness_session(id: String) -> Result<(), String> {
+pub fn open_harness_session(app: tauri::AppHandle, id: String) -> Result<(), String> {
     if !is_safe_session_id(&id) {
         return Err("invalid session id".to_string());
     }
     let wayland_display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
-    std::thread::spawn(move || {
-        match std::process::Command::new(HARNESS_BIN)
-            .arg("--session")
-            .arg(&id)
-            .env("WAYLAND_DISPLAY", &wayland_display)
-            .env("DISPLAY", "")
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-        {
-            Ok(_) => log::info!("open_harness_session: launched harness on session"),
-            Err(e) => log::error!("open_harness_session: spawn failed: {e}"),
+    match std::process::Command::new(HARNESS_BIN)
+        .arg("--session")
+        .arg(&id)
+        .env("WAYLAND_DISPLAY", &wayland_display)
+        .env("DISPLAY", "")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        Ok(_) => {
+            log::info!("open_harness_session: launched harness on session");
+            Ok(())
         }
-    });
-    Ok(())
+        Err(e) => {
+            log::error!("open_harness_session: spawn failed: {e}");
+            crate::quick_actions::emit_toast(
+                &app,
+                crate::quick_actions::ToastKind::Error,
+                format!("The assistant did not open: {e}"),
+            );
+            Err(format!("could not start {HARNESS_BIN}: {e}"))
+        }
+    }
 }
 
 #[cfg(test)]
