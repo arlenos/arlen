@@ -839,3 +839,11 @@ served-objects:
     #!/usr/bin/env bash
     set -uo pipefail
     dev/scripts/probe-served-objects.sh --all dev/scripts/served-objects.tsv
+
+# Ask every gated D-Bus method whether it refuses a caller with no app id. The
+# list carries each method's expectation, so an open-by-design read is a pass and
+# a changed contract is a failure either way. Needs the binaries built.
+gated-methods:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    dev/scripts/probe-dbus-gate.sh --all dev/scripts/gated-methods.tsv

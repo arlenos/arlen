@@ -42,6 +42,45 @@
 
 set -u
 
+# `--all <file>`: every gated method in a tab-separated list, grouped by daemon so
+# each one starts once. The list records what each method is EXPECTED to do, which
+# is what lets this compare against intent instead of against a single blanket
+# rule - two of the agent's reads answer on purpose, and a probe that cannot know
+# that reports correct code as broken until somebody stops reading it.
+if [ "${1:-}" = "--all" ]; then
+  LIST="${2:?usage: probe-dbus-gate.sh --all <file>}"
+  [ -r "$LIST" ] || { echo "cannot read $LIST" >&2; exit 2; }
+  rc=0
+  prev=""
+  methods=()
+  flush() {
+    [ -n "$prev" ] || return 0
+    IFS='|' read -r bin bus obj iface <<< "$prev"
+    if [ ! -x "target/debug/$bin" ]; then
+      echo "### $bin  SKIP (not built)"
+      return 0
+    fi
+    echo "### $bin  $bus"
+    "$0" "target/debug/$bin" "$bus" "$obj" "$iface" "${methods[@]}" || rc=1
+  }
+  while IFS=$'\t' read -r bin bus obj iface expect method; do
+    case "${bin# }" in ''|\#*) continue ;; esac
+    [ -n "${method:-}" ] || continue
+    key="$bin|$bus|$obj|$iface"
+    if [ "$key" != "$prev" ]; then
+      flush
+      prev="$key"
+      methods=()
+    fi
+    case "$expect" in
+      open:*) methods+=("[open] $method") ;;
+      *)      methods+=("$method") ;;
+    esac
+  done < "$LIST"
+  flush
+  exit "$rc"
+fi
+
 BIN="${1:?usage: probe-dbus-gate.sh <binary> <bus-name> <object> <interface> <method>...}"
 BUS="${2:?bus name}"
 OBJ="${3:?object path}"
@@ -115,11 +154,23 @@ for m in "${METHODS[@]}"; do
   # call the argument-free ones was covering the least sensitive half of every
   # interface it looked at.
   read -r -a spec <<< "$m"
+  expect_open=0
+  if [ "${spec[0]}" = "[open]" ]; then
+    expect_open=1
+    spec=("${spec[@]:1}")
+  fi
   name="${spec[0]}"
   out=$(timeout 10 busctl --user call "$BUS" "$OBJ" "$IFACE" "$name" "${spec[@]:1}" 2>&1 | head -1)
   case "$out" in
     *"Access denied"* | *"AccessDenied"*)
-      echo "  $name: refused" ;;
+      # A method the list calls open, refusing: also worth a line. The contract
+      # changed under whoever depends on the read.
+      if [ "$expect_open" = "1" ]; then
+        echo "  $name: REFUSED, but its entry says it should answer"
+        answered+=("$name")
+      else
+        echo "  $name: refused"
+      fi ;;
     # The call never reached the method: busctl sent no arguments and the bus
     # rejected the message on its signature. Counting that as ANSWERED is what
     # this probe did until 11 Aug, and it is the worst possible mistake for a
@@ -142,6 +193,8 @@ for m in "${METHODS[@]}"; do
       # pattern-matching a return value it does not own.
       if grep -qiE "refus(ed|ing)[^A-Za-z]*$name\b" "$LOG"; then
         echo "  $name: refused (by return value; the daemon logged it)"
+      elif [ "$expect_open" = "1" ]; then
+        echo "  $name: answered, as its entry says it should"
       else
         echo "  $name: ANSWERED -> $out"
         answered+=("$name")
