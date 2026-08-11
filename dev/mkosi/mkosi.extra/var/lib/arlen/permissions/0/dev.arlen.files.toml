@@ -30,3 +30,33 @@ read = [
     # it in Rust.
     "system.App.id",
 ]
+
+# Event-bus scopes, for the shadow-to-enforce cutover the bus is parked halfway
+# through (`ARLEN_EVENT_BUS_ENFORCE`, off by default). In shadow an out-of-scope
+# publish is only logged and every requested subscription is kept verbatim, so
+# this section changes nothing today; under enforce a caller with no declared
+# scope publishes nothing and subscribes to nothing, and the FM would go quiet.
+#
+# Each entry was read out of the source rather than guessed, because a wrong one
+# is a denial that only appears after the flip:
+#
+#   file.opened            lib.rs:1260, on opening a file - the event the whole
+#                          KG File/Project graph is built from.
+#   app.menu.*             the topbar menu contract in os-sdk/src/menu.rs: the
+#                          app publishes registered/unregistered as its menu
+#                          appears and goes away, and subscribes to
+#                          app.menu.action_invoked (lib.rs:2061) to hear the user
+#                          picking one of its own items back.
+#
+# `app.menu.*` rather than the two names: pattern_matches treats a `.*` suffix as
+# a prefix on a dot boundary, the two publishes and the one subscribe are the
+# whole of that contract, and a third verb in it would otherwise be a silent
+# denial in an app that had already been granted the family.
+[event_bus]
+publish = [
+    "file.opened",
+    "app.menu.*",
+]
+subscribe = [
+    "app.menu.*",
+]
