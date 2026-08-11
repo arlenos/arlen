@@ -76,6 +76,32 @@ def wire_name(fn: str) -> str:
     return "".join(part[:1].upper() + part[1:] for part in fn.split("_") if part)
 
 
+def impl_body(text: str, after_attr: int) -> str:
+    """The `impl` block that follows the attribute, by matching its braces.
+
+    Slicing to the next interface attribute instead - which is what this did
+    first - runs past the end of the impl and swallows whatever follows,
+    including `#[cfg(test)] mod tests`. That put thirty test function names into
+    `org.arlen.AIAgent1`'s method set, so a client calling
+    `ANongraphUndoRefusesAndDoesNotActWhenTheAuditFails` would have passed. The
+    error direction is the bad one: it makes the gate quieter, and a gate that
+    accepts anything is indistinguishable from no gate.
+    """
+    start = text.find("{", after_attr)
+    if start == -1:
+        return ""
+    depth = 0
+    for i in range(start, len(text)):
+        c = text[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return text[start:]
+
+
 def interfaces(root: Path) -> dict[str, set[str]]:
     """`org.arlen.X` -> the method names it answers to."""
     out: dict[str, set[str]] = {}
@@ -86,9 +112,7 @@ def interfaces(root: Path) -> dict[str, set[str]]:
         text = path.read_text(encoding="utf-8", errors="replace")
         for m in INTERFACE_ATTR.finditer(text):
             name = m.group(1)
-            # The impl block after the attribute, to the next attribute or EOF.
-            nxt = INTERFACE_ATTR.search(text, m.end())
-            body = text[m.end() : nxt.start() if nxt else len(text)]
+            body = impl_body(text, m.end())
             names = out.setdefault(name, set())
             for f in METHOD.finditer(body):
                 attr = f.group("attr") or ""
