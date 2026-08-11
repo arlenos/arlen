@@ -57,6 +57,20 @@ pub struct ShellConfig {
 /// confined `arlen-run` path, which runs the app under its permission profile and
 /// refuses an app it cannot scope - a deliberate, human-gated tightening, so the
 /// default is off and the flip is an explicit opt-in.
+///
+/// **The flip needs one thing the image does not ship yet.** `plan.rs` names the
+/// launcher as the bare `arlen-run`, resolved on PATH, and the image installs no
+/// such binary: it is in neither `/usr/bin` nor `/usr/lib/arlen/libexec`, and no
+/// build script under `dev/mkosi/mkosi.build.d/` produces it (checked 11 Aug
+/// against the built image). So flipping this today makes every launch fail to
+/// spawn rather than launch confined. Ship the launcher first; the flip is then
+/// what it says it is.
+///
+/// The same gap keeps the stamped-identity tier dormant, which is the less
+/// obvious half: `arlen-run` is what stamps an app's identity before it runs, so
+/// with no launcher in the picture every peer resolves through `/proc/{pid}/exe`,
+/// and a daemon that hardens itself loses the ability to identify its callers.
+/// That is why this flag has readers outside the launcher.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LauncherConfig {
     /// Route launches through `arlen-run` (confined). Default `false`.
