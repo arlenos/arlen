@@ -1,8 +1,10 @@
 # The AI agent's executor go-live permission profile, baked at the knowledge
-# daemon's system profile path. The daemon runs as root (uid 0), so it resolves a
-# caller's profile under /var/lib/arlen/permissions/<its own uid = 0>/<app_id>.toml
-# (knowledge `permission::system_profile_path`, preferred by `load_tiered` over the
-# ~/.config fallback). The agent resolves to app_id "ai-agent"
+# daemon's system profile path: /var/lib/arlen/permissions/<the user it applies
+# to>/<app_id>.toml - 1000 here, not the reading daemon's uid (decided 11 Aug;
+# keying on the reader made the same profile appear at two paths depending on who
+# asked). The root daemon acting for user 1000 and a same-uid reader resolve the
+# one file (knowledge `permission::system_profile_path`, preferred by
+# `load_tiered` over the ~/.config fallback). The agent resolves to app_id "ai-agent"
 # (/usr/lib/arlen/libexec/arlen-ai-agent, identity rule 1) and connects cross-uid
 # (it is a per-user service, uid 1000); the daemon serves it because it is
 # FirstParty (the cross-uid serve gate), and reads this profile for the WRITE

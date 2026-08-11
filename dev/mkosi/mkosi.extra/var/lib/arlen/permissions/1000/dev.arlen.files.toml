@@ -1,8 +1,13 @@
-# The file-manager's KG read profile. The knowledge daemon runs as root (uid 0)
-# and resolves a caller's profile under /var/lib/arlen/permissions/<its own uid =
-# 0>/<app_id>.toml; without a profile a caller's read scope is empty and every
-# KG-backed FM feature (Recent, the file's Project, provenance, the Ask facets)
-# is denied. The app_id is the file-manager's bundle identifier (dev.arlen.files,
+# The file-manager's KG read profile, under the uid the profile APPLIES TO
+# (decided 11 Aug): `/var/lib/arlen/permissions/1000/<app_id>.toml`, read by the
+# root knowledge daemon acting for user 1000 and by the launcher running as 1000
+# alike. This header used to say the directory was keyed on the READER's uid and
+# therefore 0; that was the incoherence the ruling removed, since a profile
+# describes an app and cannot appear or disappear depending on who asks.
+#
+# Without a profile a caller's read scope is empty and every KG-backed FM feature
+# (Recent, the file's Project, provenance, the Ask facets) is denied. The app_id
+# is the file-manager's bundle identifier (dev.arlen.files,
 # apps/files/src-tauri/tauri.conf.json); confirm it matches the daemon's
 # path_to_app_id resolution of the installed binary if the install path differs.
 #
