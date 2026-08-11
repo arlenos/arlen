@@ -844,6 +844,12 @@ def main() -> int:
             "    Their argument shape is not compared and they are not in the count\n"
             "    below. Named rather than omitted: a silent gap in a coverage number\n"
             "    reads as coverage.\n"
+            "    Checked by hand on 11 Aug and both match: `applyReaches` passes\n"
+            "    targetAppId + reach, and revoke_reach/restore_reach each declare\n"
+            "    (target_app_id: String, reach: String). Not automated, because the\n"
+            "    shape is one site - a wrapper whose command names live in a union\n"
+            "    type - and a rule fitted to a single caller is a rule that breaks on\n"
+            "    the second one.\n"
         )
 
     print(
