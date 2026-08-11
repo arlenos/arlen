@@ -6,7 +6,7 @@
 //! Usage:
 //!   arlen-rtl-lint [--root <dir>]... [--baseline <file>] [--update]
 //!     --root      a directory tree to scan (repeatable; default `apps`)
-//!     --baseline  the accepted-usages file (default `dev/rtl-baseline.tsv`)
+//!     --baseline  the accepted-usages file (default `dev/rtl-baseline.tsvv`)
 //!     --update    rewrite the baseline from the current findings (then exit 0)
 //!     --prune     drop baseline entries this scan can no longer reproduce, and
 //!                 ONLY those (then exit 0). The safe counterpart to `--update`
@@ -62,7 +62,7 @@ struct Args {
 
 fn parse_args() -> Result<Args, String> {
     let mut roots = Vec::new();
-    let mut baseline = PathBuf::from("dev/rtl-baseline.tsv");
+    let mut baseline = PathBuf::from("dev/rtl-baseline.tsvv");
     let mut update = false;
     let mut prune = false;
     let mut it = std::env::args().skip(1);

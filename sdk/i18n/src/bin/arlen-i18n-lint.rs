@@ -25,7 +25,7 @@
 //! Usage:
 //!   arlen-i18n-lint [--root <dir>]... [--baseline <file>] [--update]
 //!     --root      a directory tree to scan (repeatable; default `apps`)
-//!     --baseline  the accepted-strings file (default `dev/i18n-baseline.tsv`)
+//!     --baseline  the accepted-strings file (default `dev/i18n-baseline.tsvv`)
 //!     --update    rewrite the baseline from the current findings (then exit 0)
 //!     --prune     drop baseline entries this scan can no longer reproduce, and
 //!                 ONLY those (then exit 0). Unlike `--update` it never accepts a
@@ -976,7 +976,7 @@ struct Args {
 
 fn parse_args() -> Result<Args, String> {
     let mut roots = Vec::new();
-    let mut baseline = PathBuf::from("dev/i18n-baseline.tsv");
+    let mut baseline = PathBuf::from("dev/i18n-baseline.tsvv");
     let mut update = false;
     let mut prune = false;
     let mut it = std::env::args().skip(1);

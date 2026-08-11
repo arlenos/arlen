@@ -3,7 +3,7 @@
 //! `read` walks the parsed [`DocumentMut`] collecting every scalar leaf path in
 //! document order. `set` does an INDEXED ASSIGN (`doc[a][b] = value`), not
 //! `.insert()`, so the key's surrounding comment decor survives, the exact
-//! technique `apps/settings/src-tauri/src/toml_writer.rs` uses (its load-bearing
+//! technique `apps/settings/core/src/toml_writer.rs` uses (its load-bearing
 //! rule: `table[key] = value` mutates in place and keeps the comment block,
 //! `.insert()` replaces the entry whole and resets its decor). Insert of a new
 //! key falls out of the same indexed assign.
