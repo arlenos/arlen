@@ -34,6 +34,13 @@ manager, on the strength of a regex that had not seen the multi-line queries at
 `lib.rs:593` and `1729`. So the scan below reads inside query text only, and when
 it cannot tell, it says nothing.
 
+Apps only, and not because daemons do not query: `code-indexer`, `modulesd`,
+`knowledge-mcp` and the AI engine all write Cypher, and the knowledge daemon owns
+the graph outright. None of them has a profile at all, which is the open question
+about whether daemons get profiles, not something this check can decide. It will
+cover them the day they have one; until then a scope of `dev.arlen.*` is the whole
+set that exists.
+
 **Filter fields count, and the knowledge profile used to say the opposite.** Its
 header held that a filter is not a returned field so the scope covers what is read
 back, which is a coherent rule and not the one this check applies. What decided it
