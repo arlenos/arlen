@@ -40,7 +40,15 @@ import pathlib
 import re
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+# The tree to check. Defaults to this checkout; an argument points it at a
+# throwaway one, which is what lets the gate be TESTED rather than trusted. It had
+# no such argument and no test, and rule 2 of its own docstring turned out never to
+# have been implemented - those two facts are the same fact.
+ROOT = (
+    pathlib.Path(sys.argv[1]).resolve()
+    if len(sys.argv) > 1
+    else pathlib.Path(__file__).resolve().parents[2]
+)
 
 CI = ".github/workflows/ci.yml"
 JUSTFILE = "dev/justfile"
@@ -105,6 +113,21 @@ def main() -> int:
             problems.append(
                 f"{rel} runs cargo per crate itself instead of through {CHECK_CRATE}, "
                 "which is how the two gates ran different commands four times"
+            )
+
+    # Rule 2, which this file described for a while and did not check. The success
+    # line said "both gates call it" on the strength of the two rules above, and
+    # neither of them looks at whether the script is invoked at all: renaming every
+    # `dev/check-crate.sh` in ci.yml to a path that does not exist left this passing
+    # and still claiming it. The rules above catch a caller that inlines the loop's
+    # cargo call, so they cover the loud way to diverge; a caller that simply stops
+    # calling the script is the quiet one, and the script sitting there correct and
+    # unused is exactly what rule 2 was written for.
+    for rel in (CI, JUSTFILE):
+        if CHECK_CRATE not in read(rel):
+            problems.append(
+                f"{rel} never invokes {CHECK_CRATE}; that script owns the per-crate "
+                "commands, so a gate that does not go through it is running its own"
             )
 
     flags = {rel: cxxflags(rel) for rel in (CARGO_CONFIG, JUSTFILE, CI)}
