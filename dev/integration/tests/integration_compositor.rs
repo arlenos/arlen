@@ -4,10 +4,11 @@
 /// Opens a minimal Wayland window using the test-client binary.
 /// Verifies that a window.focused event lands in SQLite.
 ///
-/// Requires all binaries to be built before running:
-///   cargo build --manifest-path ../event-bus/Cargo.toml
-///   cargo build --manifest-path ../knowledge/Cargo.toml
-///   cargo build --manifest-path ../compositor/Cargo.toml
+/// Requires the monorepo daemons built into the shared target, plus the SEPARATE
+/// compositor repo built at `$COMPOSITOR_PATH` (default `~/Repositories/compositor`):
+///   cargo build --manifest-path daemons/event-bus/Cargo.toml
+///   cargo build --manifest-path daemons/knowledge/Cargo.toml
+///   cargo build --manifest-path "$COMPOSITOR_PATH/Cargo.toml"
 ///
 /// Run with:
 ///   cargo test --manifest-path dev/integration/Cargo.toml --test integration_compositor
@@ -21,18 +22,27 @@ mod proto {
     include!(concat!(env!("OUT_DIR"), "/arlen.eventbus.rs"));
 }
 
-/// Locate a binary in its repo's target/debug directory.
-fn binary_path(repo: &str, name: &str) -> PathBuf {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let workspace_root = PathBuf::from(&manifest_dir)
-        .parent()
-        .unwrap()
-        .to_path_buf();
-    workspace_root
-        .join(repo)
-        .join("target")
-        .join("debug")
-        .join(name)
+/// A monorepo daemon binary, from the shared target directory.
+///
+/// This used to be a local copy that joined `<parent>/<repo>/target/debug/<name>`
+/// - the per-repo layout from before the monorepo - so it resolved to
+/// `dev/event-bus/target/debug/event-bus`, which has not existed for months. The
+/// test is `#[ignore]`d, so nothing ever ran it and nothing ever said so: it
+/// failed with `failed to start event-bus: No such file or directory`, naming the
+/// daemon rather than the path, which reads as a broken event bus rather than a
+/// stale test. The crate's own `binary_path` has been right the whole time.
+fn daemon_binary(name: &str) -> PathBuf {
+    arlen_integration::binary_path("", name)
+}
+
+/// A binary from the compositor, which is a SEPARATE repo and not under the
+/// monorepo target. `COMPOSITOR_PATH` matches `dev/screenshot/shoot-compositor.sh`.
+fn compositor_binary(name: &str) -> PathBuf {
+    let root = std::env::var("COMPOSITOR_PATH").unwrap_or_else(|_| {
+        let home = std::env::var("HOME").unwrap_or_default();
+        format!("{home}/Repositories/compositor")
+    });
+    PathBuf::from(root).join("target").join("debug").join(name)
 }
 
 /// Wait until a Unix socket file exists, polling every 50ms.
@@ -78,8 +88,8 @@ impl Drop for KillOnDrop {
 }
 
 // IT-4 (GUI/compositor) scenario: needs the now-separate compositor repo
-// (`COMPOSITOR_PATH`, not under the monorepo so `binary_path("compositor", ..)`
-// cannot resolve here) plus a display, and uses the pre-restructure flat paths.
+// (`COMPOSITOR_PATH`) built, plus a display. The paths it uses are current; what
+// it still lacks is the environment, which is the honest reason to skip it.
 // Ignored so the host-only IT run (`just integration` / `integration-smoke`) is
 // not poisoned by it; it graduates to the VM-based IT-4 stage
 // (integration-testing-plan.md §3) rebuilt on the `EphemeralStack` harness.
@@ -101,7 +111,7 @@ async fn compositor_window_focused_lands_in_sqlite() {
 
     // Start event-bus
     let _event_bus = KillOnDrop(
-        Command::new(binary_path("event-bus", "event-bus"))
+        Command::new(daemon_binary("event-bus"))
             .env("ARLEN_PRODUCER_SOCKET", producer_str)
             .env("ARLEN_CONSUMER_SOCKET", consumer_str)
             .env("RUST_LOG", "error")
@@ -114,7 +124,7 @@ async fn compositor_window_focused_lands_in_sqlite() {
 
     // Start knowledge daemon
     let _knowledge = KillOnDrop(
-        Command::new(binary_path("knowledge", "knowledge"))
+        Command::new(daemon_binary("arlen-graph-daemon"))
             .env("ARLEN_CONSUMER_SOCKET", consumer_str)
             .env("ARLEN_DB_PATH", db_str)
             .env("ARLEN_GRAPH_PATH", graph_str)
@@ -140,7 +150,7 @@ async fn compositor_window_focused_lands_in_sqlite() {
     // DISPLAY must be explicitly passed so the X11 backend can connect.
     let display = std::env::var("DISPLAY").unwrap_or_else(|_| ":0".to_string());
     let _compositor = KillOnDrop(
-        Command::new(binary_path("compositor", "cosmic-comp"))
+        Command::new(compositor_binary("cosmic-comp"))
             .env("ARLEN_PRODUCER_SOCKET", producer_str)
             .env("DISPLAY", &display)
             .env("RUST_LOG", "error")
@@ -158,7 +168,7 @@ async fn compositor_window_focused_lands_in_sqlite() {
     std::thread::sleep(Duration::from_millis(500));
 
     // Open a minimal Wayland window using the test-client binary
-    let mut client = Command::new(binary_path("compositor", "test-client"))
+    let mut client = Command::new(compositor_binary("test-client"))
         .env("WAYLAND_DISPLAY", compositor_display)
         .env("RUST_LOG", "error")
         .spawn()
