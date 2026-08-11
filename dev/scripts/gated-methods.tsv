@@ -40,3 +40,5 @@ arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1
 arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1	refuse	undo_read
 arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1	open:the loop-state property, readable by a same-user session peer by design	status
 arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1	open:AIT-R1 introspection is shape-only - behaviour names and counts, never content	working_set
+arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	EnrollSystemApp ss dev.arlen.probe /tmp/nonexistent.toml
+arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	open:its only driver is a timer running busctl, which resolves to no app id; safe because the method can destroy only provably expired entries	CleanupTrash
