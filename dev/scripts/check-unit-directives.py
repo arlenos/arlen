@@ -39,7 +39,15 @@ from pathlib import Path
 
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 
-UNITS = ROOT / "dev/mkosi/mkosi.extra/usr/lib/systemd/user"
+# BOTH shipped trees. This gate was written on 11 Aug reading only the user tree,
+# and a few hours later the peer-identity gate turned out to have the identical
+# hole - the image ships five system units, and a mistyped directive in one of
+# them would have been exactly as invisible as in a user unit. One tree is not a
+# narrower check, it is a check with a blind side.
+UNIT_DIRS = (
+    ROOT / "dev/mkosi/mkosi.extra/usr/lib/systemd/user",
+    ROOT / "dev/mkosi/mkosi.extra/usr/lib/systemd/system",
+)
 
 # The verdicts that mean a directive did not land. Everything else it says about
 # a unit whose binary is not on this host is noise here.
@@ -47,14 +55,14 @@ BAD = re.compile(r"Unknown key|Invalid |Failed to parse|Unknown lvalue|Unknown s
 
 
 def main() -> int:
-    if not UNITS.is_dir():
-        print(f"{UNITS} is absent, nothing to check")
+    if not any(d.is_dir() for d in UNIT_DIRS):
+        print("no shipped unit tree, nothing to check")
         return 0
     if not shutil.which("systemd-analyze"):
         print("NOT CHECKED: systemd-analyze is not on this host, so no unit was verified")
         return 0
 
-    units = sorted(UNITS.glob("*.service"))
+    units = sorted(u for d in UNIT_DIRS if d.is_dir() for u in d.glob("*.service"))
     problems = []
     for unit in units:
         r = subprocess.run(
