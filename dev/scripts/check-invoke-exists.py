@@ -146,15 +146,6 @@ KNOWN: dict[str, dict[str, str]] = {
         # not decided to have. Listed so it is not mistaken for plumbing.
         "dictation_status": "the dictation indicator (no speech engine)",
         "stop_dictation": "stopping dictation (no speech engine)",
-        "get_module_errors": (
-            "module error reporting - called ONLY from ModulesPanel.svelte, which "
-            "nothing mounts; do not build a backend for it without deciding whether "
-            "that panel should exist at all"
-        ),
-        "list_modules": (
-            "the module list, same orphan panel. The live module surfaces use "
-            "`modulesd_list_modules` in the shell and `modules_list` in Settings"
-        ),
         "list_jobs": (
             "the jobs zone. Not a wiring gap: the store models a cross-daemon feed "
             "(running / paused / impeded / recoverable / fatal, per-item lists, "

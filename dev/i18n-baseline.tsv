@@ -10,9 +10,6 @@ apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Esc
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Space
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	Tab
 apps/desktop-shell/src/lib/components/QuickSettingsPanel.svelte	hjkl
-apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	First Party
-apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	System
-apps/desktop-shell/src/lib/components/settings/ModulesPanel.svelte	Third Party
 apps/desktop-shell/src/lib/stores/consent.ts	connect to its sync service
 apps/desktop-shell/src/lib/stores/consent.ts	install system software with admin rights
 apps/desktop-shell/src/lib/stores/consent.ts	move 8 files to the Trash
