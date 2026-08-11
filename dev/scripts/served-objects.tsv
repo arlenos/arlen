@@ -15,12 +15,28 @@
 # own, so a shape-built list would report correct code as broken every run.
 # Deriving this properly belongs with the boot-verify job.
 #
-# Excluded on purpose:
-#   org.arlen.Transfer1 - a reserved identifier, not a name anyone takes
-#                         (daemons/transfer-daemon/src/request_socket.rs:30)
+# Every `BusName=` in a shipped unit must appear here, as a pair or as an
+# `!exclude` line carrying the reason it cannot be one. `check-bus-names-covered.py`
+# holds this file to that, so a new daemon cannot land its unit and leave this
+# gate quietly covering less than it did the day before.
+#
+# `!exclude <name> <reason>` - declared, but not probeable the way this probe
+# works. Not a way to make a name go away: the reason is read by a person.
+#
+# A binary that is not built is SKIPPED by the sweep rather than failing it, so a
+# pair may name a daemon this checkout has not compiled.
+
+!exclude	org.arlen.Transfer1	a reserved identifier, not a name anyone takes (daemons/transfer-daemon/src/request_socket.rs:30)
+!exclude	org.arlen.InstallHelper1	root-owned on the SYSTEM bus; this probe drives a private session bus as the developer's own uid
+!exclude	org.arlen.PermissionHelper1	root-owned on the SYSTEM bus, same as the install helper
+!exclude	org.freedesktop.impl.portal.desktop.arlen	an impl-portal BACKEND: the frontend dispatches to it, so it is reached through xdg-desktop-portal rather than dialled directly
 
 arlen-ai-engine-daemon	org.arlen.AI1	/org/arlen/AI1
 arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1
 arlen-clockd	org.arlen.Clock1	/org/arlen/Clock1
 arlen-powerd	org.arlen.Power1	/org/arlen/Power1
 arlen-undod	org.arlen.Undo1	/org/arlen/Undo1
+arlen-connectionsd	org.arlen.Connections1	/org/arlen/Connections1
+arlen-accountsd	org.arlen.Accounts1	/org/arlen/Accounts1
+arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1
+arlen-notifyd	org.freedesktop.Notifications	/org/freedesktop/Notifications
