@@ -69,6 +69,14 @@ impl ExplainInterface {
     /// a summary of the user's work and read the reply, which is the read-scope
     /// enforcement the knowledge daemon exists to apply. Unresolvable callers are
     /// refused too: fail-closed.
+    ///
+    /// The wire name is pinned lowercase. zbus would otherwise publish this as
+    /// `ExplainSystem`, and the ai-daemon this daemon replaced carried the same
+    /// `#[zbus(name)]` line for that reason - the callers, the settings app and
+    /// the harness, both send `explain_system`. Re-implementing the interface
+    /// without the override renamed the method out from under them: both compile,
+    /// the daemon compiles, and the click answers `UnknownMethod`.
+    #[zbus(name = "explain_system")]
     async fn explain_system(
         &self,
         #[zbus(header)] header: zbus::message::Header<'_>,
