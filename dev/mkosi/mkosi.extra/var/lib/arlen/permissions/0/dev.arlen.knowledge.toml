@@ -8,8 +8,18 @@
 # The read list is the fields the app actually asks for, taken from its own
 # queries rather than granted by label: Event (window focus) and File (accesses)
 # make the timeline, Project makes the project list and the timeline's project
-# column. `e.type` is not listed because it is a filter, not a returned field -
-# the scope covers what is read back.
+# column.
+#
+# This used to say `e.type` was left out because a filter is not a returned field
+# and "the scope covers what is read back". Filters are listed now, and the
+# reasoning changed on 11 Aug after reading how the scope is consumed:
+# `readable_system_labels` (daemon.rs:793) strips the field off every pattern and
+# keeps the LABEL, so the field half of `system.Event.type` is not enforced
+# anywhere on the read path today. It is documentation - and documentation of
+# what a query touches is more useful than documentation of what it returns,
+# because a filter is exactly the field a later field-level gate would deny while
+# the query still looks like it should work. The terminal's profile had been
+# granting its own filter-only `expired_at` all along.
 #
 # It also DELETES, which no other app profile here does. That is deliberately not
 # a graph write scope: the daemon gates `delete_activity` on an exact caller match
@@ -32,6 +42,9 @@ read = [
     # was not in the grant. Added 11 Aug on a pass that read the queries and
     # compared the grants to them, rather than the other way round.
     "system.Event.app_id",
+    # The timeline selects on the event type (`WHERE e.type = 'window.focused'`),
+    # a filter-only field like Project.expired_at below.
+    "system.Event.type",
     "system.File.id",
     "system.File.path",
     "system.File.app_id",

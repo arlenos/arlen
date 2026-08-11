@@ -26,6 +26,18 @@ read = [
     "system.Project.description",
     "system.Project.root_path",
     "system.Project.status",
+    # The project list returns the whole card, not just its identity
+    # (`projects.rs:299-302`): accent colour and icon for the chip, created_at
+    # and last_accessed for ordering, and the inferred/confidence/promoted trio
+    # that decides whether a detected project is shown as a suggestion. Seven
+    # fields the profile did not name, all in one query.
+    "system.Project.accent_color",
+    "system.Project.icon",
+    "system.Project.created_at",
+    "system.Project.last_accessed",
+    "system.Project.inferred",
+    "system.Project.confidence",
+    "system.Project.promoted",
     "system.App.id",
     "system.File.id",
     # The three fields the shell's file surfaces actually read, added on
