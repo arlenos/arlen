@@ -146,6 +146,25 @@ if [ "${entries:-0}" -eq 0 ] && [ "${apps_shipped:-0}" -gt 0 ]; then
 fi
 echo "desktop entries present: ${entries:-0}"
 
+# The confined launcher, reported rather than failed on. `shell.toml [launcher]
+# confined` defaults false, so its absence costs nothing today - but the flag
+# names this binary on PATH, so flipping it without the binary makes every launch
+# fail to spawn. Read the name out of the shell rather than repeating it here, so
+# a rename cannot leave this checking for a launcher nobody runs.
+launcher=$(grep -hoE 'const LAUNCHER: &str = "[^"]+"' \
+  "$repo_root/apps/desktop-shell/core/src/launch/plan.rs" 2>/dev/null | sed 's/.*"\(.*\)"/\1/')
+echo
+if [ -z "$launcher" ]; then
+  echo "could not read the launcher name from the shell; skipped that check"
+elif echo "$img_bins" | grep -qx "$launcher"; then
+  echo "confined launcher present: $launcher"
+else
+  echo "confined launcher ABSENT: the shell runs \`$launcher\` on PATH when"
+  echo "  [launcher] confined = true, and the image ships no such binary, so the"
+  echo "  flip would make every launch fail to spawn. Not an error while the flag"
+  echo "  defaults off; it is what has to be built before the flag means anything."
+fi
+
 echo
 if [ -n "$missing" ]; then
   echo "a unit names an arlen binary the image does not ship:"
