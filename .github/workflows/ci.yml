@@ -210,6 +210,7 @@ jobs:
           python3 dev/scripts/check-proto-drift.py
           python3 dev/scripts/check-gate-drift.py
           python3 dev/scripts/check-comment-paths.py
+          python3 dev/scripts/check-dbus-method-names.py
           python3 dev/scripts/check-shared-files.py
           python3 dev/scripts/check-smoke-coverage.py
           python3 dev/scripts/check-executor-gate.py
@@ -254,6 +255,7 @@ jobs:
           node dev/scripts/test-check-invokes.mjs
           node dev/scripts/test-check-read-scope.mjs
           node dev/scripts/test-check-comment-paths.mjs
+          node dev/scripts/test-check-dbus-method-names.mjs
           node dev/scripts/test-pre-commit-hook.mjs
           bash dev/scripts/check-packaged-units.sh
           bash dev/scripts/check-sensing-vectors.sh
