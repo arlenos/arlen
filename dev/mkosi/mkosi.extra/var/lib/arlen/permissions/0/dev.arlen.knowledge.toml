@@ -27,6 +27,11 @@ read = [
     "system.Event.title",
     "system.Event.source",
     "system.Event.timestamp",
+    # The timeline names the app that held focus (`timeline.rs:139` returns
+    # e.app_id beside id, title, source and timestamp), so the column it renders
+    # was not in the grant. Added 11 Aug on a pass that read the queries and
+    # compared the grants to them, rather than the other way round.
+    "system.Event.app_id",
     "system.File.id",
     "system.File.path",
     "system.File.app_id",
@@ -35,6 +40,16 @@ read = [
     "system.Project.name",
     "system.Project.root_path",
     "system.Project.created_at",
+    # Filter-only, and that is exactly why it was missing: `search.rs:160` and
+    # `projects.rs:91` both open with `p.expired_at IS NULL` to keep archived
+    # projects out, and the field never appears in a returned row. The terminal's
+    # profile grants its own filter-only `expired_at` for the same reason.
+    #
+    # Like the two above, inert today: `dev.arlen.knowledge` is in the first-party
+    # set, so the caller is system-anchored and the read-scope gate does not apply.
+    # The grant is here so the profile describes the app, not so anything changes
+    # this week.
+    "system.Project.expired_at",
 ]
 
 # Event-bus scopes, for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
