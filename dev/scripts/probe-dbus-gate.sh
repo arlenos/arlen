@@ -59,6 +59,33 @@ export XDG_STATE_HOME=$(mktemp -d)
 export RUST_LOG="${RUST_LOG:-info}"
 
 LOG=$(mktemp)
+
+# Sweep the five temp paths on the way out, whichever way that is. The script
+# already kills the daemon at each of its three exits, so that part is covered;
+# what none of them do is remove the four private XDG dirs and the log, and a
+# cleanup line at the bottom would only reach the success path anyway. Four
+# directories per run, on a probe meant to be run repeatedly while chasing a gate.
+#
+# The kill here is belt-and-braces for an exit those three do not own (an
+# interrupt, or a future early return); it is harmless when the daemon is already
+# gone, and `$DAEMON` being unset at that point is fine since this script sets
+# neither `-e` nor `-u`.
+#
+# The daemon log survives a FAILURE and is named, because a probe reporting that
+# a gate did not refuse is a probe whose log you want to read; on success there is
+# nothing in it worth keeping.
+cleanup() {
+  status=$?
+  kill "$DAEMON" 2>/dev/null
+  rm -rf "$XDG_RUNTIME_DIR" "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_STATE_HOME"
+  if [ "$status" -eq 0 ]; then
+    rm -f "$LOG"
+  else
+    echo "(kept for the failure: daemon log $LOG)" >&2
+  fi
+}
+trap cleanup EXIT
+
 "$BIN" >"$LOG" 2>&1 &
 DAEMON=$!
 sleep 3
