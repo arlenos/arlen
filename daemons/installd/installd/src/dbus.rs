@@ -391,9 +391,19 @@ impl InstallDaemon {
         // which reads like nothing needed doing. Admitting `busctl` instead would
         // admit every program that can spawn it, which is every program.
         //
-        // The exposure this leaves is small: cleanup only removes entries already
-        // past the 30-day window, which the daemon also does on startup. Gating it
-        // would buy that and cost a working timer.
+        // So the bound is inside the method rather than at its door, and until
+        // 11 Aug this comment asserted a bound the code did not have: cleanup
+        // deleted any entry whose `.trash-info` was missing or unparsable, at any
+        // age, calling it a safety measure. That made its reach depend on a file
+        // in the user's own trash - corrupt one and a within-window entry became
+        // deletable at once. `cleanup_trash` now destroys only what it can SHOW to
+        // be past the 30-day window and keeps (loudly) whatever it cannot judge,
+        // which is what makes an ungated caller acceptable here.
+        //
+        // Enumerated by effect: expiring what is already due is scheduled
+        // housekeeping, which is the timer's business; destroying an entry still
+        // inside its window is a user action on their own data, and this method
+        // can no longer do it at all.
         let _ = (&header, connection);
         crate::trash::cleanup_trash() as u32
     }
@@ -417,12 +427,22 @@ impl InstallDaemon {
         #[zbus(header)] header: zbus::message::Header<'_>,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> (bool, String) {
+        // Every refusal leaves a line. This one returns `false` plus a reason,
+        // which serves the caller and told nobody else: a peer probing for a
+        // root-enrol path left no trace in the journal, in a daemon that logs its
+        // other refusals a few lines away. A refusal that returns quietly is
+        // nearer an absence than a refusal, and the gate probe reads this journal
+        // to tell the two apart.
         match caller_uid(&header, connection).await {
             Ok(0) => {}
             Ok(uid) => {
-                return (false, format!("enrol requires root; caller uid {uid} refused"))
+                tracing::warn!("refused EnrollSystemApp: enrol requires root, caller uid {uid}");
+                return (false, format!("enrol requires root; caller uid {uid} refused"));
             }
-            Err(e) => return (false, format!("resolve caller: {e}")),
+            Err(e) => {
+                tracing::warn!("refused EnrollSystemApp: resolve caller: {e}");
+                return (false, format!("resolve caller: {e}"));
+            }
         }
         let content = match std::fs::read_to_string(&manifest_path) {
             Ok(c) => c,

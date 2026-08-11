@@ -188,6 +188,7 @@ pub fn list_trashed() -> Vec<TrashInfo> {
 pub fn cleanup_trash() -> usize {
     let trash = trash_dir();
     let mut deleted = 0;
+    let mut skipped = 0;
 
     let Ok(dir) = fs::read_dir(&trash) else {
         return 0;
@@ -195,25 +196,35 @@ pub fn cleanup_trash() -> usize {
 
     for entry in dir.flatten() {
         let info_path = entry.path().join(".trash-info");
+        // An entry is destroyed only when it can be SHOWN to be past its window.
+        // Unreadable or unparsable metadata used to mean "delete as a safety
+        // measure", which had it backwards: this trash is the undo for uninstall,
+        // so the cautious act is to keep something we cannot judge, not to
+        // destroy it. The old branches also made the reach of this function
+        // depend on a file in the user's own directory - corrupt one
+        // `.trash-info` and a within-window entry became deletable immediately.
         let should_delete = match fs::read_to_string(&info_path) {
             Ok(content) => match serde_json::from_str::<TrashInfo>(&content) {
                 Ok(info) => is_expired(&info.deleted_at),
-                Err(_) => {
-                    // Invalid trash-info: delete as a safety measure.
+                Err(e) => {
                     tracing::warn!(
-                        "invalid .trash-info in {}, deleting",
+                        "unreadable .trash-info in {} ({e}); keeping it, since an \
+                         entry that cannot be shown to be expired is not ours to delete",
                         entry.path().display()
                     );
-                    true
+                    skipped += 1;
+                    false
                 }
             },
-            Err(_) => {
-                // No .trash-info: orphaned entry.
+            Err(e) => {
                 tracing::warn!(
-                    "no .trash-info in {}, deleting",
+                    "no readable .trash-info in {} ({e}); keeping it - an orphan \
+                     accumulates, which is a smaller harm than deleting something \
+                     still inside its restore window",
                     entry.path().display()
                 );
-                true
+                skipped += 1;
+                false
             }
         };
 
@@ -229,6 +240,14 @@ pub fn cleanup_trash() -> usize {
     if deleted > 0 {
         tracing::info!("trash cleanup: deleted {deleted} expired entries");
     }
+    if skipped > 0 {
+        // Said out loud rather than left as a silent count: these entries will
+        // never expire on their own now, so somebody has to look.
+        tracing::warn!(
+            "trash cleanup: kept {skipped} entr(y/ies) whose age could not be \
+             established; they need a person, not a timer"
+        );
+    }
 
     deleted
 }
@@ -236,7 +255,12 @@ pub fn cleanup_trash() -> usize {
 /// Check if a deletion timestamp is older than the grace period.
 fn is_expired(deleted_at: &str) -> bool {
     let Ok(deleted) = parse_iso8601(deleted_at) else {
-        return true; // Can't parse -> expired (safe default).
+        // Cannot parse -> NOT expired. The old default was `true`, described as
+        // safe, which read the risk the wrong way round: the loss here is a
+        // user's uninstalled app during the window they were promised, and no
+        // amount of disk saved is worth it.
+        tracing::warn!("unparsable deletion timestamp {deleted_at:?}; treating the entry as still within its window");
+        return false;
     };
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -496,8 +520,18 @@ mod tests {
         std::env::remove_var("ARLEN_TRASH_DIR");
     }
 
+    /// An entry whose age cannot be established is KEPT.
+    ///
+    /// This test asserted the opposite until 11 Aug - an orphan was deleted, and
+    /// the code called that "a safety measure". It is the wrong way round for the
+    /// thing this directory holds: an uninstall's undo. Deleting on unreadable
+    /// metadata also made the reach of `cleanup_trash` depend on a file inside the
+    /// user's own trash, so corrupting one `.trash-info` turned a within-window
+    /// entry into an immediately deletable one. The orphan now accumulates and is
+    /// logged, which needs a person and costs disk - both smaller harms than
+    /// destroying something still inside its restore window.
     #[test]
-    fn test_cleanup_orphaned_entry() {
+    fn an_entry_whose_age_cannot_be_established_is_kept() {
         // Serialised: this test overrides process-global env vars.
         let _env = crate::env_lock();
         let trash = tempfile::TempDir::new().unwrap();
@@ -508,11 +542,26 @@ mod tests {
         fs::create_dir_all(&orphan).unwrap();
         fs::write(orphan.join("some-file"), "data").unwrap();
 
+        // And one whose .trash-info is present but unreadable, which is the
+        // corruptible path: same directory, same uid, one edit away.
+        let corrupt = trash.path().join("com.test.corrupt");
+        fs::create_dir_all(&corrupt).unwrap();
+        fs::write(corrupt.join(".trash-info"), "{not json").unwrap();
+
         let deleted = cleanup_trash();
-        assert_eq!(deleted, 1);
-        assert!(!orphan.exists());
+        assert_eq!(deleted, 0, "neither entry could be shown to be expired");
+        assert!(orphan.exists(), "an orphan is kept, not destroyed");
+        assert!(corrupt.exists(), "unreadable metadata must not authorise deletion");
 
         std::env::remove_var("ARLEN_TRASH_DIR");
+    }
+
+    /// The same rule one level in: a `.trash-info` that parses but carries a
+    /// timestamp we cannot read is not evidence of expiry either.
+    #[test]
+    fn an_unparsable_timestamp_does_not_mean_expired() {
+        assert!(!is_expired("not-a-timestamp"));
+        assert!(!is_expired(""));
     }
 
     #[test]
