@@ -826,6 +826,13 @@ mod tests {
         // finds its own pattern: the first version flagged this test's own
         // `"list"` literal, which is the same shape as a token scanner that
         // cannot tell code from the comment explaining it.
+        //
+        // The cut has the cost every version of it has: it drops the REST of the
+        // file, so a `pactl list` added below this module would not be checked.
+        // Nothing follows it today (verified 11 Aug), and three CI gates carried
+        // the same `split at the first #[cfg(test)]` idiom and were each blind to
+        // the bottom of a file for it - so if production code ever lands under
+        // here, this needs brace tracking rather than a split.
         let whole = include_str!("audio.rs");
         let src = whole.split("#[cfg(test)]").next().unwrap_or(whole);
         let mut offenders = Vec::new();
