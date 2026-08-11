@@ -36,6 +36,9 @@ EXECUTORS = ROOT / "daemons/ai-engine-daemon/src"
 # `async fn execute(...)`, `async fn execute_move(...)` - the acting entry points.
 FN = re.compile(r"^\s+(?:pub )?(?:async )?fn (execute[_a-z]*)\s*\(", re.M)
 GATE = re.compile(r"if !\(self\.executor_live\)\(\)")
+# What makes a file an executor: it implements the trait. The `Executor` trait is
+# declared in `dispatch.rs`, so a file that only mentions the word is not one.
+IMPLEMENTS_EXECUTOR = re.compile(r"^impl\s+Executor\s+for\s", re.M)
 
 # file -> (methods, why acting without the flag is right). Every ungated
 # `execute*` must be here. This list shrinking is not the goal; the list being
@@ -57,26 +60,31 @@ ACKNOWLEDGED: dict[str, tuple[set[str], str]] = {
         "the dispatcher for this executor's three operations (move, trash, "
         "create), each of which gates before it touches anything",
     ),
+    "placeholder.rs": (
+        {"execute"},
+        "`UnavailableExecutor` runs nothing: every call returns Unavailable with "
+        "the not-wired reason, so there is no act for the flag to withhold. It is "
+        "here at all because this check used to find executors by filename and "
+        "never saw it - the entry is the record that discovery is structural now, "
+        "and it goes when the trusted privileged-tool runner replaces the stub",
+    ),
 }
 
 
-def acting_methods(path: pathlib.Path) -> list[tuple[str, bool]]:
-    """Every `execute*` in the file, with whether its body contains the gate.
+def production_text(text: str) -> str:
+    """The file with every `#[cfg(test)]` / `mod tests` scope blanked out.
 
-    A method's body runs to the next method at the same indent or the end of the
-    file, which is enough here: these files are one impl block of flat methods,
-    and a nested helper would still be inside the body it belongs to.
+    Production only. A `#[cfg(test)]` module holds test doubles that implement the
+    same trait and never touch the system, and counting them would let an
+    acknowledged name cover a real executor that happens to share it.
+
+    Follows braces rather than cutting at the first marker. Cutting drops the REST
+    OF THE FILE, so a sub-executor written below the test module would be invisible
+    - and a new sub-executor that never asks the flag is the entire failure this
+    check exists for. Nothing is hidden there today (measured on 11 August, no
+    `execute*` after a cut outside a test scope); this is about the one that gets
+    added later.
     """
-    text = path.read_text()
-    # Production only. A `#[cfg(test)]` module holds test doubles that implement
-    # the same trait and never touch the system, and counting them would let an
-    # acknowledged name cover a real executor that happens to share it.
-    # Follow braces rather than cutting at the first marker. Cutting drops the
-    # REST OF THE FILE, so a sub-executor written below the test module would be
-    # invisible - and a new sub-executor that never asks the flag is the entire
-    # failure this check exists for. Nothing is hidden there today (measured on
-    # 11 August, no `execute*` after a cut outside a test scope); this is about
-    # the one that gets added later.
     lines = text.splitlines()
     inside, depth, opened, pending = set(), 0, [], False
     for i, line in enumerate(lines):
@@ -94,7 +102,17 @@ def acting_methods(path: pathlib.Path) -> list[tuple[str, bool]]:
                 if opened and depth == opened[-1]:
                     opened.pop()
                 depth -= 1
-    text = "\n".join("" if i in inside else l for i, l in enumerate(lines))
+    return "\n".join("" if i in inside else l for i, l in enumerate(lines))
+
+
+def acting_methods(path: pathlib.Path) -> list[tuple[str, bool]]:
+    """Every `execute*` in the file, with whether its body contains the gate.
+
+    A method's body runs to the next method at the same indent or the end of the
+    file, which is enough here: these files are one impl block of flat methods,
+    and a nested helper would still be inside the body it belongs to.
+    """
+    text = production_text(path.read_text())
     hits = list(FN.finditer(text))
     if not hits:
         return []
@@ -107,7 +125,16 @@ def acting_methods(path: pathlib.Path) -> list[tuple[str, bool]]:
 
 
 def main() -> int:
-    files = sorted(EXECUTORS.glob("*executor*.rs"))
+    # Discover by what a file IS, not by what it is called. This used to glob
+    # `*executor*.rs`, and `placeholder.rs` holds a production `impl Executor for`
+    # that the name never matched - inert today (it answers Unavailable to
+    # everything), which is exactly why it sat there unnoticed proving the naming
+    # convention is enforced by nothing. The next one need not be inert.
+    files = sorted(
+        p
+        for p in EXECUTORS.glob("*.rs")
+        if IMPLEMENTS_EXECUTOR.search(production_text(p.read_text()))
+    )
     if not files:
         sys.exit(f"found no executor files under {EXECUTORS}; the check needs updating")
 
