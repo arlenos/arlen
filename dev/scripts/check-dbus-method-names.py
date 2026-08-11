@@ -92,6 +92,43 @@ def impl_body(text: str, after_attr: int) -> str:
     return text[start:]
 
 
+# A local helper that forwards its first argument to `.call(`: `async fn tell(
+# method: &str, ...) { ... .call::<_, _, ()>(method, args) ... }`. The clock has
+# one, and fourteen of its sixteen methods go through it.
+WRAPPER = re.compile(
+    r"\bfn\s+([a-z_][a-z0-9_]*)\s*(?:<[^>]*>)?\s*\(\s*([a-z_][a-z0-9_]*)\s*:\s*&str"
+)
+
+
+def wrapper_calls(text: str) -> set[str]:
+    """Method names reaching `.call(` through a one-hop local wrapper.
+
+    Without this the gate reads only the literal `.call("Name")` sites, and a file
+    that routes its calls through a helper is checked for whatever is left over.
+    **The clock is exactly that file, and it is the one this gate was written
+    for**: two of its sixteen methods are literal `.call(` sites and fourteen go
+    through `tell(method, args)`, so the check reported "every method present"
+    after reading an eighth of it. A coverage number that counts what it could
+    not read is the silent-cap shape this directory exists to remove.
+
+    One hop and one file, deliberately. A wrapper that calls a wrapper, or one
+    imported from elsewhere, is not resolved - and the count printed at the end
+    says how many calls were actually compared, so a file this cannot follow
+    shows up as a small number rather than as a pass.
+    """
+    names: set[str] = set()
+    for m in WRAPPER.finditer(text):
+        fn, param = m.group(1), m.group(2)
+        body = impl_body(text, m.end())
+        # The parameter has to be what the wrapper forwards - a helper taking a
+        # `&str` for something else entirely must not turn its callers' literals
+        # into method names.
+        if not re.search(rf"\.call(?:::<[^>]*>)?\(\s*{re.escape(param)}\b", body):
+            continue
+        names |= set(re.findall(rf"\b{re.escape(fn)}\(\s*\"([A-Za-z][A-Za-z0-9_]*)\"", text))
+    return names
+
+
 def interfaces(root: Path) -> dict[str, set[str]]:
     """`org.arlen.X` -> the method names it answers to."""
     out: dict[str, set[str]] = {}
@@ -124,7 +161,7 @@ def main() -> int:
         if "/target/" in sp or "mkosi.builddir" in sp:
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        calls = CALL.findall(text)
+        calls = CALL.findall(text) + sorted(wrapper_calls(text))
         if not calls:
             continue
         named = {n for n in set(ARLEN_IFACE.findall(text)) if n in known}

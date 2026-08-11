@@ -124,6 +124,39 @@ check(
   (code, out) => code === 0 && out.includes("more than one interface"),
 );
 
+// The clock routes fourteen of its sixteen methods through `tell(method, args)`.
+// Reading only literal `.call(` sites checked two of them and reported "every
+// method present" - a coverage number counting what it could not read.
+check(
+  "a method reaching .call through a one-hop wrapper is checked",
+  {
+    "apps/probe/src/lib.rs":
+      'async fn tell(method: &str, a: &A) -> R {\n' +
+      '    proxy().await?.call::<_, _, ()>(method, a).await\n' +
+      '}\n' +
+      'const IFACE: &str = "org.arlen.Probe1";\n' +
+      'async fn go() { tell("NotAMethod", &()).await; }\n',
+    "daemons/probe/src/main.rs":
+      '#[zbus::interface(name = "org.arlen.Probe1")]\nimpl P {\n    async fn real_one(&self) {}\n}\n',
+  },
+  (code, out) => code === 1 && out.includes("NotAMethod"),
+);
+
+// The guard on that: a helper that happens to take a `&str` for something else
+// must not turn its callers' literals into method names.
+check(
+  "a &str helper that does not forward to .call is not treated as one",
+  {
+    "apps/probe/src/lib.rs":
+      'fn label(text: &str) -> String { text.to_string() }\n' +
+      'const IFACE: &str = "org.arlen.Probe1";\n' +
+      'fn go() { label("NotAMethod"); }\n',
+    "daemons/probe/src/main.rs":
+      '#[zbus::interface(name = "org.arlen.Probe1")]\nimpl P {\n    async fn real_one(&self) {}\n}\n',
+  },
+  (code) => code === 0,
+);
+
 if (failures.length) {
   console.log(`\n${failures.length} case(s) failed:`);
   for (const f of failures) console.log(`  ${f.name}\n    exit ${f.code}\n${f.out}`);

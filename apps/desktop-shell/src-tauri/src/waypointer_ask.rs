@@ -32,12 +32,6 @@ use serde::Serialize;
 const AI_BUS_NAME: &str = "org.arlen.AI1";
 /// The object path it is served at.
 const AI_OBJECT_PATH: &str = "/org/arlen/AI1";
-/// The method name on the wire. Lowercase because the daemon pins it with
-/// `#[zbus(name = "ask")]`; zbus would otherwise publish it as `Ask`, which is
-/// the exact mismatch that left `explain_system` answering `UnknownMethod` to two
-/// callers for weeks.
-const ASK_METHOD: &str = "ask";
-
 /// How long to wait for an answer. The skill's own wall-clock budget is 20s, so
 /// this is that plus room for the spawn; past it the pane should say the
 /// assistant is unreachable rather than hang with a spinner.
@@ -73,9 +67,17 @@ pub async fn waypointer_ask(prompt: String, session: String) -> Result<AskAnswer
         .await
         .map_err(|e| format!("the assistant is not on the bus: {e}"))?;
 
+    // The method name is written out here rather than held in a const, and that is
+    // deliberate: `check-dbus-method-names.py` reads call sites by matching a
+    // STRING at `.call(`, so a const hides this call from the one check that
+    // compares it against the interface. A name only this file can see is the
+    // shape that let `explain_system` be renamed out from under two callers.
+    //
+    // Lowercase because the daemon pins it with `#[zbus(name = "ask")]`; zbus
+    // would otherwise publish it as `Ask`.
     let text: String = tokio::time::timeout(
         ASK_TIMEOUT,
-        proxy.call::<_, _, String>(ASK_METHOD, &(question)),
+        proxy.call::<_, _, String>("ask", &(question)),
     )
     .await
     .map_err(|_| "the assistant did not answer in time".to_string())?
@@ -88,14 +90,14 @@ pub async fn waypointer_ask(prompt: String, session: String) -> Result<AskAnswer
 mod tests {
     use super::*;
 
-    /// The bus name, path and method the daemon serves. They are four strings
-    /// shared with another crate through no type at all, which is precisely the
-    /// seam that broke this morning - so they are asserted rather than trusted.
+    /// The bus name and object path the daemon serves. The METHOD name is not
+    /// here on purpose - it is a literal at the call site so
+    /// `check-dbus-method-names.py` can compare it against the interface itself,
+    /// which is a stronger check than this file agreeing with itself.
     #[test]
-    fn the_wire_names_match_the_daemon() {
+    fn the_bus_name_and_path_match_the_daemon() {
         assert_eq!(AI_BUS_NAME, "org.arlen.AI1");
         assert_eq!(AI_OBJECT_PATH, "/org/arlen/AI1");
-        assert_eq!(ASK_METHOD, "ask");
     }
 
     /// An empty question never reaches the bus: it costs a confined pi spawn and
