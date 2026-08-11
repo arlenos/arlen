@@ -56,7 +56,12 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+# Takes the tree as an argument so the rule can be shown to fail on a planted
+# app. Interleaved with the confinement work that changed this check's subject:
+# the fixture was obvious while the defect was fresh.
+ROOT = (
+    Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
+)
 
 # An app that genuinely cannot run sandboxed belongs here with a reason and an
 # owner, not silently missing from the tree. Empty is the goal and the current
