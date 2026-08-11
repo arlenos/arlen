@@ -275,6 +275,7 @@ jobs:
           python3 dev/scripts/check-bus-names-covered.py
           python3 dev/scripts/check-inert-switches.py
           node dev/scripts/test-check-inert-switches.mjs
+          node dev/scripts/test-check-wired.mjs
           python3 dev/scripts/check-wired.py
           tracked=$(git ls-files --ignored --exclude-standard -c)
           if [ -n "$tracked" ]; then

@@ -90,6 +90,14 @@ def invoked_by(name: str) -> list[str]:
     for rel in listed:
         if Path(rel).name == name:
             continue
+        # A gate's own positive control contains example invocations as FIXTURE
+        # TEXT - `test-check-wired.mjs` writes a justfile that calls a probe, to
+        # watch this gate react. Counting those as runs would let a check be
+        # "wired" by nothing but a test that plants a string, which is precisely
+        # the mention-is-not-a-run distinction this file exists to draw, one turn
+        # further in.
+        if Path(rel).name.startswith("test-check-"):
+            continue
         p = ROOT / rel
         if not p.is_file():
             continue
