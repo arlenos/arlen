@@ -523,7 +523,20 @@ def main():
     if not os.path.exists(image):
         sys.exit(f"image not found: {image} (run dev/mkosi/build-image.sh first)")
 
+    # Removed on a clean run, KEPT on a failing one. It holds the boot's OVMF
+    # vars, its qcow2 overlay and the raw serial log, which are the things you
+    # want when a run fails and useless when it passes - so the rule is the same
+    # one the image build's cleanup arrived at: throw away what nobody needs,
+    # never what a failure would be diagnosed from.
+    #
+    # It leaked before this: every run since the harness was written left one
+    # behind, 56 of them holding 1.3G by 11 Aug. That matters beyond tidiness -
+    # a full disk is what killed a build mid-write and left a half-image that
+    # verified as a broken system for an hour.
     tmp = tempfile.mkdtemp(prefix="arlen-verify-")
+    # Said out loud because the failure paths leave it behind on purpose, and a
+    # kept directory nobody can find is the same as a deleted one.
+    print(f"workdir: {tmp} (kept if this run fails)", flush=True)
     vars_fd = os.path.join(tmp, "OVMF_VARS.fd")
     shutil.copyfile(OVMF_VARS, vars_fd)
     qmp_path = os.path.join(tmp, "qmp.sock")
@@ -1142,6 +1155,9 @@ def main():
                 return 1
     print("VERIFY OK: " + ("the full desktop rendered (compositor + shell bar)"
                            if bar_present else "the compositor rendered a frame"))
+    # Clean run: nobody needs the overlay or the vars copy. Every failing path
+    # above returns before this and leaves them where the message says they are.
+    shutil.rmtree(tmp, ignore_errors=True)
     return 0
 
 
