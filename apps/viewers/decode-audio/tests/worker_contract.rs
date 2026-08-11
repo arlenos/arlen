@@ -11,10 +11,9 @@
 //! them. All four workers were driven by hand on 12 Aug and agreed on this
 //! contract; these tests are what keeps the agreement from being a coincidence.
 //!
-//! **Failure cases only, and deliberately.** A valid input for this format is a
-//! real encoded file, which this test cannot synthesise the way the PNG one can -
-//! so the happy path stays with the library tests and the round-trip fixtures,
-//! and what is pinned here is the part the host depends on when things go wrong.
+//! Unlike the HEIC and JPEG XL workers, this one gets its happy path too: a
+//! canonical PCM WAV is 44 bytes of header and some zeros, so the success case is
+//! constructible here rather than needing an encoded fixture.
 
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -48,4 +47,41 @@ fn empty_input_exits_nonzero_and_writes_nothing() {
     let (code, stdout, _) = run_worker(&[]);
     assert_ne!(code, Some(0));
     assert!(stdout.is_empty());
+}
+
+/// A minimal canonical PCM WAV: 44-byte header plus `frames` 16-bit samples per
+/// channel. Mirrors the builder in this crate's library tests, so the process
+/// case and the function case are fed the same shape of input.
+fn wav(sample_rate: u32, channels: u16, frames: u32) -> Vec<u8> {
+    let bits = 16u16;
+    let block_align = channels * bits / 8;
+    let byte_rate = sample_rate * u32::from(block_align);
+    let data_len = frames * u32::from(block_align);
+    let mut w = Vec::new();
+    w.extend_from_slice(b"RIFF");
+    w.extend_from_slice(&(36 + data_len).to_le_bytes());
+    w.extend_from_slice(b"WAVE");
+    w.extend_from_slice(b"fmt ");
+    w.extend_from_slice(&16u32.to_le_bytes());
+    w.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    w.extend_from_slice(&channels.to_le_bytes());
+    w.extend_from_slice(&sample_rate.to_le_bytes());
+    w.extend_from_slice(&byte_rate.to_le_bytes());
+    w.extend_from_slice(&block_align.to_le_bytes());
+    w.extend_from_slice(&bits.to_le_bytes());
+    w.extend_from_slice(b"data");
+    w.extend_from_slice(&data_len.to_le_bytes());
+    w.resize(w.len() + data_len as usize, 0);
+    w
+}
+
+/// The success half of the contract: a real container in, something on stdout,
+/// exit 0. Without this the failure tests alone would be satisfied by a worker
+/// that failed on EVERYTHING, which is the loose-pass shape in yet another form.
+#[test]
+fn a_real_wav_probes_and_writes_to_stdout() {
+    // 8000 Hz mono, 8000 frames: exactly one second.
+    let (code, stdout, stderr) = run_worker(&wav(8000, 1, 8000));
+    assert_eq!(code, Some(0), "stderr: {stderr}");
+    assert!(!stdout.is_empty(), "a successful probe must answer");
 }
