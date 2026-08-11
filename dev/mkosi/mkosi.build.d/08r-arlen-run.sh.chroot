@@ -1,0 +1,66 @@
+#!/bin/sh
+# Phase 8r (CHROOT): the confined-launch launcher (arlen-run).
+#
+# It is the missing PRODUCER, not a missing feature. `arlen-run` resolves an app's
+# authenticated id from the root IdentityRegistry, spawns it under bwrap, and
+# registers the sandboxed child's pidfd at the identity broker before the child
+# execs - so the app's first daemon connection already has a STAMPED identity.
+# Every piece of that is built and none of it was in the image, which is why
+# `check-image-contents.sh` reports the launcher absent under its own heading.
+#
+# What that absence costs is larger than one binary. A daemon that hardens itself
+# with ProtectSystem=strict can no longer readlink a same-uid peer's
+# /proc/<pid>/exe, so Tier-2 identity stops working in exactly the units we most
+# want hardened - the audit ledger, the consent broker, the undo signer. Those two
+# carry ARLEN_STAMPED_IDENTITY=enforce today and the tier it selects is
+# unreachable, because nothing stamps. Shipping the launcher is what makes the
+# stamped tier producible at all.
+#
+# Its own standalone cargo workspace (daemons/arlen-run) -> its own target dir in
+# the persistent cache. Pure Rust; the sandbox itself is bubblewrap, already an
+# image dependency for the pi sidecar and the terminal run server.
+#
+# TWO PATHS, and both are load-bearing:
+#
+#   /usr/lib/arlen/libexec/arlen-run   the real binary, and the path
+#                                      `path_to_app_id` pins to the id `arlen-run`
+#                                      - the ONLY id the broker admits as a
+#                                      registrar. Install it anywhere else and
+#                                      every registration is refused.
+#   /usr/bin/arlen-run                 a symlink, because the shell spawns the
+#                                      launcher by bare name and libexec is not on
+#                                      PATH. A symlink is safe for identity:
+#                                      /proc/<pid>/exe reports the RESOLVED target,
+#                                      so the registrar still resolves via libexec.
+#
+# This changes nothing about what runs. `shell.toml [launcher] confined` defaults
+# false and the image ships no shell.toml, so every launch stays direct; staging
+# the binary is what has to exist before that flag means anything, which is the
+# order the per-app rule needs (flipping first would refuse every launch it
+# applies to).
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-arlen-run"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the confined launcher (arlen-run) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/arlen-run/Cargo.toml
+
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-run" \
+    "$DESTDIR/usr/lib/arlen/libexec/arlen-run"
+
+install -d -m755 "$DESTDIR/usr/bin"
+ln -sf /usr/lib/arlen/libexec/arlen-run "$DESTDIR/usr/bin/arlen-run"
+
+echo ">> staged arlen-run into the image (libexec binary + /usr/bin symlink)"
