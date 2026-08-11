@@ -191,7 +191,11 @@ for m in "${METHODS[@]}"; do
       # body: if it logged a refusal naming this method while the call was in
       # flight, it refused. That is the daemon saying so, not this script
       # pattern-matching a return value it does not own.
-      if grep -qiE "refus(ed|ing)[^A-Za-z]*$name\b" "$LOG"; then
+      # Either order: `refused Compensate` and `compensate refused: ...` are both
+      # in the tree, written by daemons that never compared notes. The line has to
+      # carry BOTH the method name and a refusal word, which is what keeps this
+      # from matching an unrelated refusal that happened to be logged nearby.
+      if grep -iE "\b$name\b" "$LOG" | grep -qiE "refus(ed|ing|al)"; then
         echo "  $name: refused (by return value; the daemon logged it)"
       elif [ "$expect_open" = "1" ]; then
         echo "  $name: answered, as its entry says it should"
