@@ -143,6 +143,64 @@ if ! busctl --user list 2>/dev/null | grep -q "$BUS"; then
 fi
 echo "$BUS is owned by $(basename "$BIN")"
 
+
+# The input signature of each method the interface declares, from introspection.
+# Filled once per run, before any call.
+declare -A SIGNATURE
+
+read_signatures() {
+  local line name sig
+  while read -r line; do
+    # `.Enact  method  s  s  -` -> name Enact, input signature s
+    case "$line" in
+      .*" method "*) ;;
+      *) continue ;;
+    esac
+    name=$(printf '%s' "$line" | awk '{print $1}' | sed 's/^\.//')
+    sig=$(printf '%s' "$line" | awk '{print $3}')
+    [ "$sig" = "-" ] && sig=""
+    SIGNATURE["$name"]="$sig"
+  done < <(busctl --user introspect "$BUS" "$OBJ" "$IFACE" 2>/dev/null)
+}
+
+# Build a call's arguments from a D-Bus input signature.
+#
+# The point is not convenience. A call built from the interface's OWN signature
+# cannot be rejected for shape, so **any error that comes back is the gate's**,
+# by construction - which is the condition this probe was trying to detect by
+# reading error prose it does not own. Four wordings of "wrong shape" had already
+# slipped past that reading; there is no fifth to miss if the shape is right.
+#
+# A type this cannot synthesise returns non-zero, and the caller reports the
+# method as NOT TESTED rather than guessing.
+synthesise_args() {
+  local sig="$1" i=0 c out=()
+  while [ "$i" -lt "${#sig}" ]; do
+    c="${sig:$i:1}"
+    case "$c" in
+      s|o|g) out+=("probe") ;;
+      b) out+=("false") ;;
+      y|n|q|i|u|x|t|h) out+=("0") ;;
+      d) out+=("0.0") ;;
+      a)
+        # An empty array: the element type still has to be named for busctl, and
+        # a length of 0 means no values follow, so any element type is safe here.
+        i=$((i + 1))
+        [ "$i" -lt "${#sig}" ] || return 1
+        case "${sig:$i:1}" in
+          s|o|g|b|y|n|q|i|u|x|t|d|h) out+=("0") ;;
+          *) return 1 ;;   # a{sv}, a(...), nested: not ours to guess
+        esac
+        ;;
+      *) return 1 ;;
+    esac
+    i=$((i + 1))
+  done
+  printf '%s\n' "${out[@]}"
+}
+
+read_signatures
+
 answered=()
 untested=()
 for m in "${METHODS[@]}"; do
@@ -160,6 +218,26 @@ for m in "${METHODS[@]}"; do
     spec=("${spec[@]:1}")
   fi
   name="${spec[0]}"
+  # Arguments come from the interface, not from the list. An entry may still
+  # carry its own (older lists did, and a method needing a MEANINGFUL value
+  # rather than a placeholder still can), but the default is the signature the
+  # daemon itself declares.
+  if [ "${#spec[@]}" -eq 1 ]; then
+    if [ -z "${SIGNATURE[$name]+set}" ]; then
+      echo "  $name: NOT TESTED (the interface does not declare it; renamed or removed?)"
+      untested+=("$name")
+      continue
+    fi
+    mapfile -t built < <(synthesise_args "${SIGNATURE[$name]}") || true
+    if ! synthesise_args "${SIGNATURE[$name]}" >/dev/null; then
+      echo "  $name: NOT TESTED (cannot build a call for signature '${SIGNATURE[$name]}')"
+      untested+=("$name")
+      continue
+    fi
+    if [ -n "${SIGNATURE[$name]}" ]; then
+      spec=("$name" "${SIGNATURE[$name]}" "${built[@]}")
+    fi
+  fi
   # Classify by OUTCOME, with "I could not tell" as the loud default.
   #
   # This matched failure MESSAGES until 12 Aug - `Signature mismatch`, then

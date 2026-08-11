@@ -12,27 +12,31 @@
 #                  starts refusing is also reported, because that is a change to
 #                  a contract somebody depends on.
 #
-# The method column carries its arguments exactly as busctl wants them
-# ("GetAccessToken sss a b c"). Without them the bus rejects the message on its
-# signature and the gate never runs - which this probe used to score as ANSWERED,
-# the worst mistake available to it.
+# The method column is just the NAME. The probe introspects the interface and
+# builds the call from the signature the daemon itself declares, so a call cannot
+# be rejected for shape and every error that comes back is the gate's. Hand-written
+# arguments are still accepted for a method that needs a meaningful value rather
+# than a placeholder.
+#
+# A method the interface no longer declares reports NOT TESTED rather than
+# vanishing quietly, so a rename shows up here instead of shrinking the sweep.
 #
 # Run: dev/scripts/probe-dbus-gate.sh --all dev/scripts/gated-methods.tsv
 #
 # Everything below was measured on 11 Aug, not assumed.
 
-arlen-connectionsd	org.arlen.Connections1	/org/arlen/Connections1	org.arlen.Connections1	refuse	FetchEgressCredential sss anthropic api.anthropic.com bearer
-arlen-connectionsd	org.arlen.Connections1	/org/arlen/Connections1	org.arlen.Connections1	refuse	MintEgressCapability s anthropic
-arlen-connectionsd	org.arlen.Connections1	/org/arlen/Connections1	org.arlen.Connections1	refuse	RequestCredential sas anthropic 1 read
+arlen-connectionsd	org.arlen.Connections1	/org/arlen/Connections1	org.arlen.Connections1	refuse	FetchEgressCredential
+arlen-connectionsd	org.arlen.Connections1	/org/arlen/Connections1	org.arlen.Connections1	refuse	MintEgressCapability
+arlen-connectionsd	org.arlen.Connections1	/org/arlen/Connections1	org.arlen.Connections1	refuse	RequestCredential
 
-arlen-accountsd	org.arlen.Accounts1	/org/arlen/Accounts1	org.arlen.Accounts1	refuse	GetAccessToken sss acct scope caller
-arlen-accountsd	org.arlen.Accounts1	/org/arlen/Accounts1	org.arlen.Accounts1	refuse	Mount s acct
-arlen-accountsd	org.arlen.Accounts1	/org/arlen/Accounts1	org.arlen.Accounts1	refuse	Unmount s acct
+arlen-accountsd	org.arlen.Accounts1	/org/arlen/Accounts1	org.arlen.Accounts1	refuse	GetAccessToken
+arlen-accountsd	org.arlen.Accounts1	/org/arlen/Accounts1	org.arlen.Accounts1	refuse	Mount
+arlen-accountsd	org.arlen.Accounts1	/org/arlen/Accounts1	org.arlen.Accounts1	refuse	Unmount
 
-arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	InstallPackage s /tmp/nonexistent.lunpkg
-arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	Uninstall s dev.arlen.probe
+arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	InstallPackage
+arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	Uninstall
 arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	ListInstalled
-arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	RestoreApp s dev.arlen.probe
+arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	RestoreApp
 
 arlen-undod	org.arlen.Undo1	/org/arlen/Undo1	org.arlen.Undo1	refuse	Recent
 
@@ -40,7 +44,7 @@ arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1
 arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1	refuse	undo_read
 arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1	open:the loop-state property, readable by a same-user session peer by design	status
 arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1	open:AIT-R1 introspection is shape-only - behaviour names and counts, never content	working_set
-arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	EnrollSystemApp ss dev.arlen.probe /tmp/nonexistent.toml
+arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	EnrollSystemApp
 arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	open:its only driver is a timer running busctl, which resolves to no app id; safe because the method can destroy only provably expired entries	CleanupTrash
-arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1	refuse	compensate s corr-1
-arlen-undod	org.arlen.Undo1	/org/arlen/Undo1	org.arlen.Undo1	refuse	Enact s undo-1
+arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1	refuse	compensate
+arlen-undod	org.arlen.Undo1	/org/arlen/Undo1	org.arlen.Undo1	refuse	Enact
