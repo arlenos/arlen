@@ -644,35 +644,57 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // bwrap's --info-fd) is the one the engine's contract calls resolve against.
     // A disabled config, or paths that do not resolve, leaves pi unspawned while
     // the contract socket still serves (the gate denies, the runners fail-closed).
+    // Serve org.arlen.AI1 (explain_system + ask) WHENEVER the connection exists,
+    // and carry the reason when there is no engine behind it.
+    //
+    // This used to sit inside both `ai_enabled()` and the `Ok(paths)` arm below,
+    // while the bus NAME is claimed unconditionally when the connection is built.
+    // The result, seen by asking a running daemon rather than by reading this file:
+    // on a machine without the pi runtime the daemon OWNED `org.arlen.AI1` and
+    // served nothing at `/org/arlen/AI1`, so the launcher's Ask pane answered
+    // `Unknown object`. Name without object is the absence class - no reason, no
+    // subject, nothing in the ledger - where what a person is owed is a refusal
+    // that says the assistant is switched off, or not set up here.
+    //
+    // `SidecarPaths::resolve` runs again in the block below. It only reads env
+    // vars, so the repeat is cheap, and the alternative is threading a value out
+    // of a match arm that exists for a different purpose.
+    if let Some(conn) = &ai_connection {
+        {
+            let engine = if !engine_config::ai_enabled() {
+                ai1_iface::Engine::Unavailable(
+                    "the assistant is switched off; turn it on in Settings to ask a question".into(),
+                )
+            } else {
+                match SidecarPaths::resolve(
+                    |k| std::env::var(k).ok(),
+                    path.to_string_lossy().into_owned(),
+                ) {
+                    Ok(paths) => ai1_iface::Engine::Ready(Arc::new(PiSidecar::new(paths))),
+                    Err(e) => ai1_iface::Engine::Unavailable(
+                        format!("the assistant is not set up on this machine: {e}").into(),
+                    ),
+                }
+            };
+            let iface = ai1_iface::Ai1Interface::new(
+                ai1_iface::load_builtin_behaviour("explain").map(Arc::new),
+                ai1_iface::load_builtin_behaviour("ask").map(Arc::new),
+                engine,
+                Arc::clone(&dispatcher) as Arc<dyn SessionBinder>,
+            );
+            match conn.object_server().at(ai1_iface::AI1_OBJECT_PATH, iface).await {
+                Ok(true) => info!("serving org.arlen.AI1 (explain_system + ask)"),
+                Ok(false) => warn!("the AI1 object path is already served"),
+                Err(e) => warn!(error = %e, "could not serve the AI1 interface"),
+            }
+        }
+    } else {
+        warn!("no org.arlen.AI1 connection; explain and ask are unavailable");
+    }
+
     if engine_config::ai_enabled() {
         match SidecarPaths::resolve(|k| std::env::var(k).ok(), path.to_string_lossy().into_owned()) {
             Ok(paths) => {
-                // System Explanation Mode: serve org.arlen.AI1.explain_system
-                // via a fresh ephemeral pi. Held by its own task so the served
-                // connection outlives this block (which ends before the accept loop).
-                match ai1_iface::load_builtin_behaviour("explain") {
-                    Some(behaviour) => {
-                        let iface = ai1_iface::Ai1Interface::new(
-                            Arc::new(behaviour),
-                            ai1_iface::load_builtin_behaviour("ask").map(Arc::new),
-                            Arc::new(PiSidecar::new(paths.clone())),
-                            Arc::clone(&dispatcher) as Arc<dyn SessionBinder>,
-                        );
-                        match &ai_connection {
-                            Some(conn) => match conn
-                                .object_server()
-                                .at(ai1_iface::AI1_OBJECT_PATH, iface)
-                                .await
-                            {
-                                Ok(true) => info!("serving org.arlen.AI1.explain_system"),
-                                Ok(false) => warn!("explain object path already served"),
-                                Err(e) => warn!(error = %e, "could not serve the explain interface"),
-                            },
-                            None => warn!("no org.arlen.AI1 connection; explain unavailable"),
-                        }
-                    }
-                    None => warn!("explain skill not found; System Explanation Mode unavailable"),
-                }
 
                 // pi model-completion egress (Option B, daemon-mediated): serve an
                 // HTTP-over-Unix completion endpoint at the sidecar's proxy-socket
