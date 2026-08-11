@@ -104,6 +104,28 @@ fn sort(a: &Row, b: &Row) -> Ordering { a.name.cmp(&b.name) }
   (code) => code === 0,
 );
 
+// The three shapes the scan cannot parse, pinned as PASSES rather than left
+// implicit. Each makes the gate quieter, which is the chosen direction - but a
+// silent limit that nothing records is indistinguishable from coverage, and
+// these are the cases where a future query would slip past unseen.
+check(
+  "a quoted label hides its fields, and that is a known limit",
+  {
+    [`${P}/dev.arlen.probe.toml`]: profile("system.File.id"),
+    [`${APP}/lib.rs`]: 'let q = "MATCH (f:`File`) RETURN f.path AS path";\n',
+  },
+  (code) => code === 0,
+);
+
+check(
+  "a label in a WHERE predicate hides its fields too",
+  {
+    [`${P}/dev.arlen.probe.toml`]: profile("system.File.id"),
+    [`${APP}/lib.rs`]: 'let q = "MATCH (f) WHERE f:File RETURN f.path AS path";\n',
+  },
+  (code) => code === 0,
+);
+
 // One direction only: a grant nothing appears to use is never reported, because
 // the fix that suggests is deleting a grant an app needs.
 check(
