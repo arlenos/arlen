@@ -131,8 +131,21 @@ for m in "${METHODS[@]}"; do
       echo "  $name: NOT TESTED (needs arguments; give the entry its busctl signature and values) -> $out"
       untested+=("$name") ;;
     *)
-      echo "  $name: ANSWERED -> $out"
-      answered+=("$name") ;;
+      # Not every refusal is a D-Bus error. `installd` answers `false` plus the
+      # reason - a typed refusal, which is a legitimate shape and arguably a
+      # kinder one - and the probe used to call that an ANSWER, which is how a
+      # correctly gated method got reported as ungated.
+      #
+      # The daemon's own journal decides it rather than a guess about the reply
+      # body: if it logged a refusal naming this method while the call was in
+      # flight, it refused. That is the daemon saying so, not this script
+      # pattern-matching a return value it does not own.
+      if grep -qiE "refus(ed|ing)[^A-Za-z]*$name\b" "$LOG"; then
+        echo "  $name: refused (by return value; the daemon logged it)"
+      else
+        echo "  $name: ANSWERED -> $out"
+        answered+=("$name")
+      fi ;;
   esac
 done
 
