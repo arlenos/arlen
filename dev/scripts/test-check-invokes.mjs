@@ -149,6 +149,35 @@ check(
   (code) => code === 0,
 );
 
+// The shape that inflated the uncalled count: the name is chosen at runtime and
+// assigned, so the literal never sits inside the `invoke(` call. Settings' module
+// store does this for real, and both of its commands were reported as called by
+// nothing while being in daily use.
+check(
+  "a command reached through a variable is not reported as uncalled",
+  tree({
+    "apps/demo/package.json": "{}",
+    "apps/demo/src/lib/x.ts":
+      'const cmd = flag ? "open_thing" : "open_other";\nawait invoke(cmd, { id });\n',
+    "apps/demo/src-tauri/src/lib.rs": HOST,
+  }),
+  (code, out) => code === 0 && out.includes("0 registered command(s)"),
+);
+
+// And the boundary that keeps it safe: the same literals must NOT satisfy the
+// missing-command check, or a discriminant string in an assignment would become
+// an invoked command and fail a gate over nothing.
+check(
+  "a variable-borne name is not treated as a call that needs a command",
+  tree({
+    "apps/demo/package.json": "{}",
+    "apps/demo/src/lib/x.ts":
+      'const cmd = kind === "builtin" ? "open_thing" : "open_thing";\nawait invoke(cmd);\n',
+    "apps/demo/src-tauri/src/lib.rs": HOST,
+  }),
+  (code, out) => code === 0 && !out.includes("builtin"),
+);
+
 check(
   "an app with no host at all does not crash the gate",
   tree({

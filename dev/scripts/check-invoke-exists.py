@@ -55,6 +55,40 @@ from pathlib import Path
 ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 
 INVOKE = re.compile(r'invoke(?:<[^>]*>)?\(\s*["\'`]([A-Za-z_][A-Za-z0-9_]*)["\'`]')
+
+# `invoke(command, {...})` - the name arrives as a variable, so the literal is
+# wherever that variable was assigned. Settings' module store does exactly this:
+#
+#     const command = source === "builtin" ? "waypointer_set_plugin_enabled"
+#                                          : "modules_set_enabled";
+#     await invoke(command, { id, enabled });
+#
+# Both commands are live and registered, and the literal scan above sees neither.
+# That is declared for the missing direction ("string literals only") and was NOT
+# declared for the uncalled one, where it does real damage: a command in daily use
+# is reported as called by nothing, and the obvious next move on such a report is
+# to delete it. I made the same mistake by hand on `modules_set_enabled` the day
+# before writing this, reading a route instead of the store it imports.
+INVOKE_VAR = re.compile(r"invoke(?:<[^>]*>)?\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*[,)]")
+STRINGS = re.compile(r"""["'`]([A-Za-z_][A-Za-z0-9_]*)["'`]""")
+
+
+def indirect_calls(text: str) -> set[str]:
+    """Literals assigned to a variable that is then passed to `invoke`.
+
+    Deliberately one-way: this feeds the uncalled list ONLY, never the
+    missing-command check. An assignment holds strings that are not command
+    names (`"builtin"` above is a discriminant), and treating those as invoked
+    would manufacture failures for commands nobody ever calls. Over-collecting
+    can only make the uncalled list shorter, which is the safe direction - the
+    cost of a name wrongly kept is nothing, the cost of one wrongly dropped is a
+    deleted command.
+    """
+    out: set[str] = set()
+    for var in set(INVOKE_VAR.findall(text)):
+        for m in re.finditer(rf"\b(?:const|let|var)\s+{re.escape(var)}\s*=([^;\n]*(?:\n[^;]*)?);", text):
+            out |= set(STRINGS.findall(m.group(1)))
+    return out
 HANDLER = re.compile(r"generate_handler!\s*\[(.*?)\]", re.S)
 
 # The commands with no host, as of 9 August, with what each one is. Keeping the
@@ -203,10 +237,16 @@ def main() -> int:
 
     for app in apps:
         calls: set[str] = set()
+        # Names reaching `invoke` through a variable. Kept apart from `calls` so
+        # they can relax the uncalled list without ever entering the strict
+        # missing-command check.
+        indirect: set[str] = set()
         src = app / "src"
         if src.exists():
             for f in list(src.rglob("*.ts")) + list(src.rglob("*.svelte")):
-                calls |= set(INVOKE.findall(f.read_text(encoding="utf-8", errors="replace")))
+                text = f.read_text(encoding="utf-8", errors="replace")
+                calls |= set(INVOKE.findall(text))
+                indirect |= indirect_calls(text)
         handlers: set[str] = set()
         host = app / "src-tauri"
         if host.exists():
@@ -245,7 +285,7 @@ def main() -> int:
                 f"host now registers it. Drop the entry; a fixed command left in "
                 f"the inventory makes the count read higher than the real debt."
             )
-        for name in sorted(handlers - calls):
+        for name in sorted(handlers - calls - indirect):
             uncalled.append(f"apps/{app.name}: `{name}`")
 
     print(
@@ -260,7 +300,9 @@ def main() -> int:
         return 1
     print(
         f"\n{len(uncalled)} registered command(s) nothing under apps/*/src invokes. "
-        f"Informational only: a ui-kit helper can call one this scanner cannot see."
+        f"Informational only: a ui-kit helper can call one this scanner cannot "
+        f"see, and a name built at runtime from anything but a plain assignment "
+        f"is invisible the same way."
     )
     return 0
 
