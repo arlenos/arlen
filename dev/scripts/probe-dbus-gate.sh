@@ -160,49 +160,63 @@ for m in "${METHODS[@]}"; do
     spec=("${spec[@]:1}")
   fi
   name="${spec[0]}"
-  out=$(timeout 10 busctl --user call "$BUS" "$OBJ" "$IFACE" "$name" "${spec[@]:1}" 2>&1 | head -1)
-  case "$out" in
-    *"Access denied"* | *"AccessDenied"*)
-      # A method the list calls open, refusing: also worth a line. The contract
-      # changed under whoever depends on the read.
+  # Classify by OUTCOME, with "I could not tell" as the loud default.
+  #
+  # This matched failure MESSAGES until 12 Aug - `Signature mismatch`, then
+  # `Invalid argument`, then two more when `Enact` answered `Too few parameters`.
+  # Every wording it did not know fell through to ANSWERED, which is the quiet
+  # verdict and the dangerous one: a gate reported as absent when it was never
+  # consulted. Enumerating messages meant the list was always one wording behind
+  # the next daemon. So the question is now asked the other way round - what do
+  # we actually know? - and anything unrecognised fails the run instead of
+  # passing it.
+  # Unpiped, so `$?` is busctl's own exit and not `head`'s. Piping here made
+  # every call look successful, which handed the classifier below the one input
+  # that turns it back into the bug it was written to remove.
+  out=$(timeout 10 busctl --user call "$BUS" "$OBJ" "$IFACE" "$name" "${spec[@]:1}" 2>&1)
+  status=$?
+  out=$(printf '%s' "$out" | head -1)
+  # Either order, and both parts required: `refused Compensate` and `compensate
+  # refused: ...` are both in the tree, written by daemons that never compared
+  # notes, and an unrelated refusal logged nearby must not count.
+  logged_refusal=0
+  if grep -iE "\b$name\b" "$LOG" 2>/dev/null | grep -qiE "refus(ed|ing|al)"; then
+    logged_refusal=1
+  fi
+
+  verdict="unknown"
+  if [ "$logged_refusal" = "1" ]; then
+    # The daemon says it refused - true whether it answered with a D-Bus error
+    # or, like installd, returned `false` plus a reason.
+    verdict="refused"
+  elif [ "$status" -eq 0 ]; then
+    verdict="answered"
+  else
+    case "$out" in
+      *"Access denied"* | *"AccessDenied"*) verdict="refused" ;;
+    esac
+  fi
+
+  case "$verdict" in
+    refused)
       if [ "$expect_open" = "1" ]; then
         echo "  $name: REFUSED, but its entry says it should answer"
         answered+=("$name")
       else
         echo "  $name: refused"
       fi ;;
-    # The call never reached the method: busctl sent no arguments and the bus
-    # rejected the message on its signature. Counting that as ANSWERED is what
-    # this probe did until 11 Aug, and it is the worst possible mistake for a
-    # gate probe to make - it reports a method as UNGATED when the gate was
-    # never given the chance to run. Reported as untested, which is a different
-    # statement from either verdict, and it fails the run so nobody reads a
-    # green as coverage.
-    *"Signature mismatch"* | *"Invalid argument"* | *"Too few parameters"* | *"Too many parameters"*)
-      echo "  $name: NOT TESTED (needs arguments; give the entry its busctl signature and values) -> $out"
-      untested+=("$name") ;;
-    *)
-      # Not every refusal is a D-Bus error. `installd` answers `false` plus the
-      # reason - a typed refusal, which is a legitimate shape and arguably a
-      # kinder one - and the probe used to call that an ANSWER, which is how a
-      # correctly gated method got reported as ungated.
-      #
-      # The daemon's own journal decides it rather than a guess about the reply
-      # body: if it logged a refusal naming this method while the call was in
-      # flight, it refused. That is the daemon saying so, not this script
-      # pattern-matching a return value it does not own.
-      # Either order: `refused Compensate` and `compensate refused: ...` are both
-      # in the tree, written by daemons that never compared notes. The line has to
-      # carry BOTH the method name and a refusal word, which is what keeps this
-      # from matching an unrelated refusal that happened to be logged nearby.
-      if grep -iE "\b$name\b" "$LOG" | grep -qiE "refus(ed|ing|al)"; then
-        echo "  $name: refused (by return value; the daemon logged it)"
-      elif [ "$expect_open" = "1" ]; then
+    answered)
+      if [ "$expect_open" = "1" ]; then
         echo "  $name: answered, as its entry says it should"
       else
         echo "  $name: ANSWERED -> $out"
         answered+=("$name")
       fi ;;
+    *)
+      # The call failed and nothing said the gate was reached: a wrong signature,
+      # a timeout, a daemon that died. Not a verdict either way.
+      echo "  $name: NOT TESTED (the call failed and no refusal was logged) -> $out"
+      untested+=("$name") ;;
   esac
 done
 
