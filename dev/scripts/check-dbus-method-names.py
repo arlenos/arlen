@@ -54,21 +54,11 @@ STANDARD = {"Get", "Set", "GetAll", "Introspect", "Ping", "GetMachineId"}
 
 # file -> why its mismatches are carried rather than fixed here.
 #
-# The gate found this on its first run, which is the argument for it: nothing
-# else in the tree could have. `apps/harness` is arlen-ui's, so the fix is
-# theirs; carrying it green with the reason in front of them beats a red gate
-# nobody here can clear.
-KNOWN = {
-    "apps/harness/src-tauri/src/ai_client.rs": (
-        "calls `query`, `take_result`, `take_trace` and `cancel` on org.arlen.AI1, "
-        "which the ai-engine-daemon now owns and which serves only ExplainSystem. "
-        "Those four were the RETIRED ai-daemon's methods: the file's own comment "
-        "records the handover and says the new owner serves `explain_system`, but "
-        "the conversation call sites were not migrated with it. Nothing in the "
-        "tree serves take_result or take_trace any more, so every turn through "
-        "this client fails with UnknownMethod. arlen-ui's file; found 11 Aug."
-    ),
-}
+# Empty, and it got there the right way: the entry that was here named the
+# harness's four retired AI1 calls, and they are migrated now. A gate that finds
+# something, carries it while it is somebody's to fix, and then goes back to
+# empty is the whole shape working.
+KNOWN: dict[str, str] = {}
 
 
 def wire_name(fn: str) -> str:
