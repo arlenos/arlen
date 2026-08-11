@@ -1,0 +1,26 @@
+# The bus surfaces this tree owns, and the object path each one must serve.
+#
+# binary <TAB> bus name <TAB> object path
+#
+# Fed to `dev/scripts/probe-served-objects.sh --all dev/scripts/served-objects.tsv`,
+# which starts each daemon on a private bus and asks what it actually serves.
+#
+# HAND-KEPT, and that is a stated weakness rather than a design. The pairs belong
+# to the call sites - the serving side names them, the calling side dials them -
+# but deriving them is not a grep: ownership uses two idioms in this tree
+# (`request_name` in three daemons, `connection::Builder::name` in the rest), the
+# name and path are usually constants resolved per crate, and a scan by string
+# SHAPE over-collects badly. `org.arlen.Transfer1` looks exactly like a bus name
+# and is documented as an identifier the transfer daemon deliberately does not
+# own, so a shape-built list would report correct code as broken every run.
+# Deriving this properly belongs with the boot-verify job.
+#
+# Excluded on purpose:
+#   org.arlen.Transfer1 - a reserved identifier, not a name anyone takes
+#                         (daemons/transfer-daemon/src/request_socket.rs:30)
+
+arlen-ai-engine-daemon	org.arlen.AI1	/org/arlen/AI1
+arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1
+arlen-clockd	org.arlen.Clock1	/org/arlen/Clock1
+arlen-powerd	org.arlen.Power1	/org/arlen/Power1
+arlen-undod	org.arlen.Undo1	/org/arlen/Undo1
