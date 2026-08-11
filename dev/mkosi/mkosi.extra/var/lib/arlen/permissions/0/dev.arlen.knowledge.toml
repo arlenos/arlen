@@ -36,3 +36,41 @@ read = [
     "system.Project.root_path",
     "system.Project.created_at",
 ]
+
+# Event-bus scopes, for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
+# off by default). This daemon is the one with most to lose: under enforce an
+# absent scope means the graph writer receives nothing and the knowledge graph
+# stops being fed, silently, while everything else still looks alive.
+#
+# ONE process, TWO consumer registrations, and the bus resolves both connections
+# to the same app_id and the same profile - so this is their union, not a choice:
+#
+#   *                        the graph writer (`writer.rs:68`). It stores every
+#                            event and lets the promotion pipeline decide later
+#                            what is worth keeping, so its request really is the
+#                            whole band and the grant has to say so.
+#   permission.*, ai.*,      the config/authority consumer (`events.rs:38`):
+#   schema.*                 permission changes invalidate the token cache, the
+#                            AI level gates the agent's reach, schema changes
+#                            reload the registry.
+#
+# Both are needed and neither covers the other. A grant of `*` matches ONLY a
+# request for `*` - it is compared by equality, having no `.*` suffix to strip -
+# so it would not admit `permission.*`, and `permission.*` would not admit the
+# writer's `*`. That is pinned in the resolver's own tests rather than left to a
+# reading, because getting it wrong looks like a working system with an empty
+# graph.
+#
+# publish is the project lifecycle the detector emits (`project/emitter.rs`).
+# Granted as the family: created/updated/archived are one contract with one
+# producer, and a fourth verb in it would otherwise be a silent denial.
+[event_bus]
+publish = [
+    "project.*",
+]
+subscribe = [
+    "*",
+    "permission.*",
+    "ai.*",
+    "schema.*",
+]
