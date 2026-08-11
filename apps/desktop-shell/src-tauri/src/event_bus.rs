@@ -21,7 +21,8 @@ const CONSUMER_ID: &str = "desktop-shell";
 /// topbar-toolbar.md) lands in a Phase-6 hardening pass once
 /// pid→app_id mapping infrastructure exists.
 /// Adding a prefix here means adding it to the shell's permission profile too:
-/// `permissions/0/dev.arlen.desktop-shell.toml` carries the same nine as
+/// `permissions/<the user it applies to>/dev.arlen.desktop-shell.toml` - 1000 in
+/// the image - carries the same nine as
 /// `.*` patterns, and under `ARLEN_EVENT_BUS_ENFORCE` the bus keeps only the
 /// requested patterns its profile admits. A prefix added on one side alone is
 /// not an error anywhere - the subscription is simply dropped, and the surface
