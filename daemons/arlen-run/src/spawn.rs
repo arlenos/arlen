@@ -73,6 +73,14 @@ pub fn plumbing_binds(
     candidates.push(runtime_dir.join("pipewire-0"));
     candidates.push(runtime_dir.join("bus"));
     candidates.push(runtime_dir.join("arlen"));
+    // The SYSTEM half of the same directory. `arlen-event-bus` is a system unit,
+    // so its producer and consumer sockets are at `/run/arlen/`, and a confined
+    // app dialling one gets `No such file or directory` however well the per-user
+    // directory is bound. Measured by launching the real file manager confined:
+    // it started, then retried `/run/arlen/event-bus-consumer.sock` with growing
+    // backoff, forever. Same rule as above - the socket authorises its caller, so
+    // binding it restores a refusal rather than granting anything.
+    candidates.push(PathBuf::from("/run/arlen"));
 
     let mut binds = Vec::new();
     for p in candidates {
@@ -81,6 +89,29 @@ pub fn plumbing_binds(
         }
         if let Some(s) = p.to_str() {
             binds.push(Bind::ReadWrite(s.to_string(), s.to_string()));
+        }
+    }
+    // Read-only system configuration a GUI app reads and never writes. `/usr` is
+    // already bound read-only in full, so this adds no readable surface of any
+    // consequence; it is here because `/etc` is not bound at all and fontconfig
+    // lives there.
+    //
+    // Measured rather than assumed, and the assumption was wrong in an
+    // interesting direction: I expected no fonts at all, and in fact fontconfig
+    // falls back to compiled-in defaults and still finds one. What it loses is
+    // the SYSTEM's choice - `fc-match sans` answers `Adwaita Mono` inside the
+    // sandbox and `Noto Sans` outside it. So the failure is not a crash, it is
+    // every confined app quietly rendering in a different font from every
+    // unconfined one, which is the kind of wrong that gets blamed on the theme.
+    //
+    // Only `/etc/fonts`, because it is the only one measured. `/etc/machine-id`
+    // and `/etc/localtime` are plausible next entries and plausible is not a
+    // reason - add them when a launch shows they are needed.
+    for p in [Path::new("/etc/fonts")] {
+        if exists(p) {
+            if let Some(s) = p.to_str() {
+                binds.push(Bind::ReadOnly(s.to_string(), s.to_string()));
+            }
         }
     }
     binds
@@ -515,6 +546,20 @@ mod tests {
                 "/run/user/1000/arlen".into()
             )],
             "the daemon sockets have to be reachable so the daemons can refuse"
+        );
+    }
+
+    /// Fontconfig's config is the one piece of `/etc` a launch was measured to
+    /// need, and it is read-only because an app reads it and never writes it.
+    #[test]
+    fn font_configuration_is_bound_read_only() {
+        let rt = Path::new("/run/user/1000");
+        let present = [PathBuf::from("/etc/fonts")];
+        let binds = plumbing_binds(rt, None, |p| present.contains(&p.to_path_buf()));
+        assert_eq!(
+            binds,
+            vec![Bind::ReadOnly("/etc/fonts".into(), "/etc/fonts".into())],
+            "without it a confined app renders in a different font from an unconfined one"
         );
     }
 

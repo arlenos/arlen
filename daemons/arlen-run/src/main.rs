@@ -422,7 +422,12 @@ fn main() -> ExitCode {
             ));
         }
     }
-    let mut env = launch_env(&home, runtime_dir.as_deref(), wayland_display.as_deref());
+    let mut env = launch_env(
+        &home,
+        &args.app_id,
+        runtime_dir.as_deref(),
+        wayland_display.as_deref(),
+    );
     // Point the confined app's HTTP client at the egress proxy (reached at the
     // netns's mapped-loopback gateway). A raw dial that ignores these still hits
     // route-absence, so this is the cooperative path, not the boundary.
@@ -569,6 +574,7 @@ fn app_state_dirs(home: &std::path::Path, app_id: &str) -> Vec<PathBuf> {
 #[cfg(target_os = "linux")]
 fn launch_env(
     home: &std::path::Path,
+    app_id: &str,
     runtime_dir: Option<&std::path::Path>,
     wayland_display: Option<&str>,
 ) -> std::collections::BTreeMap<String, String> {
@@ -594,6 +600,31 @@ fn launch_env(
     // `~/.local/share/arlen/apps/<id>`, which is bound read-write.
     if let Some(d) = home.join(".local/share/arlen/apps").to_str() {
         env.insert("XDG_DATA_HOME".to_string(), d.to_string());
+    }
+    // Point the cache home INSIDE the app's own granted directory, which is the
+    // opposite of the data home above and for a reason worth stating.
+    //
+    // `XDG_DATA_HOME` gets the PARENT because Tauri appends the bundle id, and the
+    // id IS the directory name, so it lands exactly on the grant. Nothing else in
+    // a GUI app agrees with that convention: fontconfig appends `fontconfig`, GTK
+    // appends its own names, and the parent is not writable, so pointing there
+    // would leave every one of them without a cache.
+    //
+    // Measured by launching the real file manager confined:
+    //
+    //     Fontconfig error: No writable cache directories
+    //             /var/cache/fontconfig
+    //             /home/tim/.cache/fontconfig
+    //
+    // Neither is bound, so every confined launch rescans the font set and throws
+    // the result away. That is a per-launch cost on the most visible path there
+    // is - the app starting - and it is silent apart from the warning.
+    //
+    // The price of pointing at the app's own directory is that a Tauri
+    // `appCacheDir()` becomes `<id>/<id>`, which is ugly and works. An unwritable
+    // cache is not ugly and does not.
+    if let Some(c) = home.join(".cache/arlen/apps").join(app_id).to_str() {
+        env.insert("XDG_CACHE_HOME".to_string(), c.to_string());
     }
     if let Some(rt) = runtime_dir.and_then(|p| p.to_str()) {
         env.insert("XDG_RUNTIME_DIR".to_string(), rt.to_string());
@@ -837,6 +868,27 @@ mod tests {
         assert_eq!(
             parse_args(&args(&["--bogus", "x", "--app-id", "com.a.b", "--", "prog"])),
             Err(exit::BAD_ARGS)
+        );
+    }
+
+    /// The two XDG homes point at different levels on purpose, and getting them
+    /// the same way round would break something either way: the data home has to
+    /// be the parent for Tauri to land on the grant, and the cache home has to be
+    /// the app's own directory because fontconfig appends its own name and the
+    /// parent is not writable.
+    #[test]
+    fn the_cache_home_is_writable_and_the_data_home_lands_on_the_grant() {
+        let home = std::path::Path::new("/home/u");
+        let env = launch_env(home, "dev.arlen.files", None, None);
+        assert_eq!(
+            env.get("XDG_DATA_HOME").map(String::as_str),
+            Some("/home/u/.local/share/arlen/apps"),
+            "Tauri appends the bundle id, so the parent is the grant"
+        );
+        assert_eq!(
+            env.get("XDG_CACHE_HOME").map(String::as_str),
+            Some("/home/u/.cache/arlen/apps/dev.arlen.files"),
+            "fontconfig appends its own name, so this must already be the grant"
         );
     }
 }
