@@ -73,6 +73,14 @@ CANNOT_BE_WIRED = {
         "drives a live session bus to watch a refusal happen. Needs a running "
         "daemon on a real bus."
     ),
+    "probe-served-objects.sh": (
+        "starts a daemon on a private bus and introspects it, a few seconds per "
+        "daemon, so it is not a pre-commit or CI scanner. It answers a question "
+        "source cannot: whether an object is actually SERVED at the path its "
+        "callers dial, which is a runtime act and in one case sat two conditionals "
+        "deep. Its home is the boot-verify path, where daemons already run; that "
+        "wiring is queued and this entry moves out when it lands."
+    ),
 }
 
 # Scripts that are libraries or setup helpers rather than checks.

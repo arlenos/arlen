@@ -19,6 +19,15 @@ holding on both sides. It does today - checked by hand on 11 Aug, all sixteen,
 plus the service name, the object path and the interface name. Checking it once
 by hand is what makes it worth checking every time.
 
+**It checks the method, NOT whether the object is served at all.** A call names a
+bus name, an object path and a method; this compares the last of the three. On 11
+August the AI engine daemon was found OWNING `org.arlen.AI1` and serving nothing
+at `/org/arlen/AI1` - three separate conditions could suppress the registration
+while the name was claimed unconditionally - and every method name agreed
+perfectly the whole time. Registration is a runtime act, so no reader of source
+can answer it: `dev/scripts/probe-served-objects.sh` asks a running daemon
+instead, which is the other half of this seam.
+
 **Only OUR interfaces.** A proxy onto BlueZ, UPower, logind or NetworkManager
 names methods this tree does not define, and a rule that reported those would be
 reporting that a foreign API exists.
