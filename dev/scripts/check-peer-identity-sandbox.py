@@ -48,31 +48,35 @@ The exception list is for cases that are known and being carried, and it must
 carry the reason rather than the name alone - a bare name is how an exception
 outlives the problem it was granted for.
 
-**`ARLEN_STAMPED_IDENTITY=enforce` does NOT lift this.** An earlier version of
-this file split the units by that flag and told anyone reading that the enforced
-ones could have their sandboxes back, because they resolve callers through a
-pidfd. That was wrong and is retracted. `ConnectionAuth::extract_from` runs
-`let legacy_app_id = app_id_from_pid(peer_pid)?` unconditionally and BEFORE it
-looks at the mode (`connection_auth.rs:122`), so the `/proc/<pid>/exe` read
-happens either way and its failure propagates; the enforce arm then calls
-`pid_start_time(spid)?`, which is another `/proc` read. Hardening a unit on
-enforce would break it exactly as the unhardened comment in each unit says.
-
-The flag is the identity story getting stronger. It is not yet the /proc
-dependency going away, and those are easy to confuse - I confused them for four
-hours. What removes the dependency is the legacy resolution stopping, which is
-the keystone work, not a unit-file change.
+`ARLEN_STAMPED_IDENTITY=enforce` did not use to lift this, and the history is
+worth keeping because the mistake was subtle. An earlier version of this file
+split the units by that flag and said the enforced ones could have their
+sandboxes back, since they resolve callers through a pidfd. That was wrong:
+`ConnectionAuth::extract_from` ran `let legacy_app_id = app_id_from_pid(peer_pid)?`
+unconditionally and BEFORE it looked at the mode, so the `/proc/<pid>/exe` read
+happened either way and its failure propagated. The flag was the identity story
+getting stronger, which is not the same thing as the /proc dependency going away,
+and the two are easy to confuse - I confused them for four hours.
 
 Narrowed by measurement on 11 Aug, because "reads /proc" does not say which read:
 
     ProtectSystem=strict     /proc/<pid>/stat = OK     /proc/<pid>/exe = DENIED
 
-**Only the exe magic link is refused** - it is ptrace-gated, `stat` is not, so
-`pid_start_time` survives a sandbox and is not the obstacle. For a unit already
-on enforce the whole problem is therefore the single fatal `app_id_from_pid`
-call, whose value enforce consumes only for the divergence log. Making a
-non-authoritative observation unable to fail the connection is the first slice,
-and it wants a boot against the audit chain rather than an argument.
+Only the exe magic link is refused - it is ptrace-gated, `stat` is not, so
+`pid_start_time` survives a sandbox and was never the obstacle. That left the
+single fatal `app_id_from_pid` call as the whole problem for an enforced unit,
+and `resolve_identity` in `connection_auth.rs` now takes it: the legacy value is
+passed as a `Result`, the shadow arm unwraps it because it has nothing else to
+be, the enforce arm drops it. So on enforce the exe read can fail and the
+connection lives.
+
+**This check still flags an enforced unit that takes hardening, on purpose.** The
+code no longer forbids it; a boot has not yet shown it works. Two units run on
+enforce today (`arlen-auditd`, `arlen-consent-broker`) and both are still
+unhardened. Whoever hardens one should boot the image, drive a caller through the
+socket, and read the audit chain for the identity it recorded - and then relax
+the rule here with that evidence, rather than adding a KNOWN entry for something
+that is not a defect.
 """
 
 import re

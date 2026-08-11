@@ -117,9 +117,11 @@ impl ConnectionAuth {
             });
         }
 
-        // Legacy resolution: the racy SO_PEERCRED pid -> /proc/exe app_id. Kept
-        // authoritative in shadow mode so the rollout changes no behavior.
-        let legacy_app_id = app_id_from_pid(peer_pid)?;
+        // Legacy resolution: the racy SO_PEERCRED pid -> /proc/exe app_id. Note the
+        // missing `?`. It is authoritative in shadow mode and nothing but an
+        // observation in enforce mode, so its failure may only fail the connection
+        // on the path that actually uses it. See `resolve_identity`.
+        let legacy = app_id_from_pid(peer_pid);
 
         // Stamped-identity resolver (pidfd-pinned, race-free). In shadow mode it is
         // observed for divergence only; in enforce mode it is authoritative and
@@ -128,27 +130,10 @@ impl ConnectionAuth {
         // cross-uid AI-daemon resolver is separate and is NOT touched here.
         let mode = stamped_mode();
         let stamped = crate::stamped_identity::app_id_from_connection(stream, caller_uid);
-        observe_stamped_divergence(peer_pid, &legacy_app_id, &stamped, mode);
+        observe_stamped_divergence(peer_pid, legacy.as_deref(), &stamped, mode);
 
-        let (pid, app_id, start_time, pidfd) = match mode {
-            // No behavior change: legacy pid + app_id + start_time; no pidfd retained
-            // (verify_alive uses the /proc start_time recheck).
-            StampedMode::Shadow => {
-                (peer_pid, legacy_app_id, pid_start_time(peer_pid)?, None)
-            }
-            // Fail closed: the stronger primitive MUST have resolved. Enforce reads
-            // the app_id + pid under the pidfd pin (recycle-proof) AND retains the
-            // pidfd, so verify_alive is race-free (PeerPidfd::is_alive) for the life
-            // of the connection, not just at accept.
-            StampedMode::Enforce => {
-                let s = stamped?;
-                let app_id = s.app_id().to_string();
-                let peer = s.into_peer();
-                let spid = peer.pid();
-                let start_time = pid_start_time(spid)?;
-                (spid, app_id, start_time, Some(peer))
-            }
-        };
+        let (pid, app_id, start_time, pidfd) =
+            resolve_identity(mode, peer_pid, legacy, stamped)?;
         let profile = match load_profile(&app_id) {
             Ok(p) => p,
             Err(PermissionError::NotFound { .. }) => {
@@ -277,6 +262,41 @@ enum StampedMode {
     Enforce,
 }
 
+/// Pick the connection's identity from the two resolvers, and decide which of them
+/// is allowed to fail the connection.
+///
+/// Shadow keeps the legacy `/proc/exe` app_id, so a legacy failure is fatal there:
+/// there is nothing else to be. Enforce takes the app_id + pid from under the pidfd
+/// pin and retains the pin, so `verify_alive` is race-free for the life of the
+/// connection rather than only at accept; the legacy value is consumed by nothing
+/// but `observe_stamped_divergence`, and so it is dropped here, error and all.
+///
+/// That asymmetry is the point of this function. `app_id_from_pid` reads
+/// `/proc/<pid>/exe`, which is ptrace-gated: a daemon hardened with a mount-namespace
+/// directive (`PrivateTmp`, `ProtectHome`, `ReadWritePaths`, any of them) still
+/// publishes a readable `/proc/<pid>/stat` but denies the exe link. Measured
+/// 11 Aug 2026 against the shipped units. So on a hardened peer the legacy resolver
+/// fails while the pidfd resolver does not, and letting the observation propagate
+/// would refuse exactly the peers the stamped path exists to serve.
+fn resolve_identity(
+    mode: StampedMode,
+    peer_pid: u32,
+    legacy: Result<String, IdentityError>,
+    stamped: Result<crate::stamped_identity::StampedIdentity, AuthError>,
+) -> Result<(u32, String, u64, Option<crate::peer_pidfd::PeerPidfd>), AuthError> {
+    match mode {
+        StampedMode::Shadow => Ok((peer_pid, legacy?, pid_start_time(peer_pid)?, None)),
+        StampedMode::Enforce => {
+            let s = stamped?;
+            let app_id = s.app_id().to_string();
+            let peer = s.into_peer();
+            let spid = peer.pid();
+            let start_time = pid_start_time(spid)?;
+            Ok((spid, app_id, start_time, Some(peer)))
+        }
+    }
+}
+
 /// Pure parse of the mode env value, so the default-safe semantics are testable
 /// without touching the process environment.
 fn parse_stamped_mode(value: Option<&str>) -> StampedMode {
@@ -297,27 +317,41 @@ fn stamped_mode() -> StampedMode {
 /// daemon's journald pipeline captures it.
 fn observe_stamped_divergence(
     pid: u32,
-    legacy: &str,
+    legacy: Result<&str, &IdentityError>,
     stamped: &Result<crate::stamped_identity::StampedIdentity, AuthError>,
     mode: StampedMode,
 ) {
-    match stamped {
-        Ok(s) if s.app_id() != legacy => tracing::warn!(
+    match (legacy, stamped) {
+        (Ok(l), Ok(s)) if s.app_id() != l => tracing::warn!(
             target: "audit",
             event = "identity.divergence",
             pid,
-            legacy,
+            legacy = l,
             stamped = s.app_id(),
             source = ?s.source(),
             mode = ?mode,
             "stamped identity diverges from the legacy /proc resolution"
         ),
-        Ok(_) => {}
-        Err(e) => tracing::warn!(
+        (Ok(_), Ok(_)) => {}
+        // The two resolvers cannot be compared, but the connection survives under
+        // enforce. Logged rather than dropped because it is the shape a hardened
+        // peer produces, and reading it as noise is how the cutover would be talked
+        // out of hardening the daemons it is meant to allow.
+        (Err(le), Ok(s)) => tracing::info!(
+            target: "audit",
+            event = "identity.legacy_unavailable",
+            pid,
+            stamped = s.app_id(),
+            source = ?s.source(),
+            mode = ?mode,
+            error = %le,
+            "legacy /proc resolution unavailable; stamped identity resolved"
+        ),
+        (_, Err(e)) => tracing::warn!(
             target: "audit",
             event = "identity.stamped_unavailable",
             pid,
-            legacy,
+            legacy = legacy.ok(),
             mode = ?mode,
             error = %e,
             "stamped identity resolver could not run"
@@ -422,6 +456,56 @@ mod tests {
         assert_eq!(parse_stamped_mode(Some("Enforce")), StampedMode::Shadow);
         assert_eq!(parse_stamped_mode(Some("")), StampedMode::Shadow);
         assert_eq!(parse_stamped_mode(Some("enforce")), StampedMode::Enforce);
+    }
+
+    /// A daemon hardened with a mount-namespace directive denies `/proc/<pid>/exe`
+    /// while `/proc/<pid>/stat` stays readable, so `app_id_from_pid` fails on a peer
+    /// the pidfd resolver reads without trouble. Under enforce the legacy value is an
+    /// observation and nothing else, so that failure must not reach the caller — the
+    /// whole point of the cutover is to admit those peers.
+    #[test]
+    fn enforce_survives_a_legacy_resolution_that_failed() {
+        use std::os::unix::net::UnixStream;
+        let (a, _b) = UnixStream::pair().expect("socketpair");
+        // SAFETY: getuid never fails.
+        let uid = unsafe { libc::getuid() };
+        let stamped = crate::stamped_identity::app_id_from_connection(&a, uid);
+        assert!(stamped.is_ok(), "stamped resolver must work for self");
+        let denied = IdentityError::CannotReadExe {
+            pid: std::process::id(),
+            source: std::io::Error::from_raw_os_error(libc::EACCES),
+            why: " (stat readable)".to_string(),
+        };
+
+        let (pid, app_id, _start, pidfd) = resolve_identity(
+            StampedMode::Enforce,
+            std::process::id(),
+            Err(denied),
+            stamped,
+        )
+        .expect("enforce must not consult the legacy resolver");
+        assert_eq!(pid, std::process::id());
+        assert!(!app_id.is_empty());
+        assert!(pidfd.is_some(), "enforce retains the pin for verify_alive");
+    }
+
+    /// The mirror: shadow has nothing but the legacy value, so there the same failure
+    /// is fatal. Asserting both halves is what keeps the asymmetry deliberate.
+    #[test]
+    fn shadow_still_fails_when_the_legacy_resolution_failed() {
+        use std::os::unix::net::UnixStream;
+        let (a, _b) = UnixStream::pair().expect("socketpair");
+        // SAFETY: getuid never fails.
+        let uid = unsafe { libc::getuid() };
+        let denied = IdentityError::UnknownBinary("/nowhere/arlen-probe".into());
+
+        let r = resolve_identity(
+            StampedMode::Shadow,
+            std::process::id(),
+            Err(denied),
+            crate::stamped_identity::app_id_from_connection(&a, uid),
+        );
+        assert!(matches!(r, Err(AuthError::Identity(_))));
     }
 
     /// In shadow mode (the default) extract_from over a real socketpair still
