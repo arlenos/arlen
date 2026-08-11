@@ -25,8 +25,14 @@ shown to fail, and thirteen of these had no positive control for exactly that
 reason - untestable and untested arrived together.
 
 **Be shown to fail before you trust it.** A `test-check-*.mjs` beside it, running
-the check against a planted defect and against the correct form. `check-wired.py`
-requires one to exist for anything here.
+the check against a planted defect and against the correct form.
+
+Twenty-nine of the forty-one checks have one, and **nothing enforces it** - which
+this file said otherwise until it was checked. That gap is a decision rather than
+an oversight: writing the missing twelve as a batch is an evening on test
+scaffolding, so they are written when their subject is next touched, while the
+defect is fresh and the fixture is obvious. The count is here so the gap is a
+number somebody can watch rather than a feeling.
 
 **Compare your count to the size of what you claim to cover.** Print how much was
 scanned, not only how much was flagged. `check-opener-args.py` answered "pass" to
