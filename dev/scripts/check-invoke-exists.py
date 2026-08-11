@@ -222,21 +222,37 @@ KNOWN: dict[str, dict[str, str]] = {
             "transfer daemon is one producer of many it would need. The missing "
             "piece is a job-report contract, not a command"
         ),
+        # Re-checked 11 Aug, and the blocker this used to name is stale. It said a
+        # new streamed method on `org.arlen.AIAgent1` was needed; the AI engine is
+        # pi now, and prompts reach it over the drive socket, which is what the
+        # harness was migrated onto.
+        #
+        # The real obstacle is the SESSION model, and it is smaller. The persistent
+        # drive socket relays ONE shell connection at a time against one pi stdio
+        # (`rpc_proxy` accepts a single stream per call) and the harness owns it, so
+        # a launcher ask must not contend for it. It wants its own bounded run -
+        # which the daemon already does for the curator in `pi_run.rs`: bind a
+        # private drive socket, run pi once, kick it with the prompt, wall-clock
+        # bounded. **The mechanism exists and is not exposed.** So this is an
+        # endpoint on the daemon plus shell wiring, not a new method across the AI
+        # gate. The pane says the assistant is unreachable rather than pretending,
+        # so nothing claims otherwise while it waits.
         "waypointer_ask": (
-            "asking the assistant from the launcher. Needs a bounded streamed "
-            "single-completion on `org.arlen.AIAgent1`, which the agent does not "
-            "expose today - so it is a new method across the AI gate rather than "
-            "shell wiring. The pane already says the agent is unreachable instead "
-            "of pretending, so nothing claims otherwise while it waits"
+            "asking the assistant from the launcher (needs the daemon's existing "
+            "bounded ephemeral run exposed; NOT a new AIAgent1 method)"
         ),
         "windows_file_install": "installing a Windows file",
         "windows_file_request": "the Windows file prompt",
         "windows_file_run": "running a Windows file",
     },
     "store": {
-        "store_uninstall": "uninstalling an app",
-        "store_update": "updating one app",
-        "store_update_all_routine": "update all",
+        # The store app is arlen-ui's live surface, so these three are theirs to
+        # wire rather than unowned work sitting on a list. Saying whose they are is
+        # the difference between a queue and a census: without it they read as
+        # three items nobody has picked up.
+        "store_uninstall": "uninstalling an app (arlen-ui's lane)",
+        "store_update": "updating one app (arlen-ui's lane)",
+        "store_update_all_routine": "update all (arlen-ui's lane)",
     },
     "text-editor": {
         "ai_edit": "proposing an assistant edit",
