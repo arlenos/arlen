@@ -99,16 +99,33 @@ fi
 echo "$BUS is owned by $(basename "$BIN")"
 
 answered=()
+untested=()
 for m in "${METHODS[@]}"; do
   out=$(timeout 10 busctl --user call "$BUS" "$OBJ" "$IFACE" "$m" 2>&1 | head -1)
   case "$out" in
     *"Access denied"* | *"AccessDenied"*)
       echo "  $m: refused" ;;
+    # The call never reached the method: busctl sent no arguments and the bus
+    # rejected the message on its signature. Counting that as ANSWERED is what
+    # this probe did until 11 Aug, and it is the worst possible mistake for a
+    # gate probe to make - it reports a method as UNGATED when the gate was
+    # never given the chance to run. Reported as untested, which is a different
+    # statement from either verdict, and it fails the run so nobody reads a
+    # green as coverage.
+    *"Signature mismatch"* | *"Invalid argument"*)
+      echo "  $m: NOT TESTED (takes arguments; this probe sent none) -> $out"
+      untested+=("$m") ;;
     *)
       echo "  $m: ANSWERED -> $out"
       answered+=("$m") ;;
   esac
 done
+
+if [ "${#untested[@]}" -gt 0 ]; then
+  echo
+  echo "not tested, because they take arguments this probe does not know: ${untested[*]}"
+  echo "Pass a method that takes none, or extend the probe to send a valid signature."
+fi
 
 echo "refusals in the journal:"
 grep -i "refus" "$LOG" | sed 's/^/  /' | tail -10 || echo "  none logged"
@@ -120,6 +137,14 @@ if [ ${#answered[@]} -gt 0 ]; then
   echo
   echo "these served a caller that does not resolve to an app id: ${answered[*]}"
   echo "Either the gate is not reached on that path, or the method is not gated."
+  exit 1
+fi
+# An untested method is not a pass. Saying "every probed method refused" while
+# three of the four were never actually called is the false-green this probe
+# exists to prevent, aimed at itself.
+if [ ${#untested[@]} -gt 0 ]; then
+  echo
+  echo "nothing was proven about: ${untested[*]}"
   exit 1
 fi
 echo "every probed method refused, and said so in the journal"
