@@ -49,7 +49,13 @@ import re
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+# Takes the tree to scan as an argument so the check can be pointed at a
+# fixture and SHOWN TO FAIL. It had no positive control because it could not
+# be handed one: a hardcoded root can only ever be run against a tree that
+# passes, which is the same as never having seen it speak.
+ROOT = (
+    pathlib.Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parents[2]
+)
 
 # Both spellings: `#[zbus::interface]` and, where the crate imports it,
 # `#[interface]`. Matching only the qualified one made this check parse ZERO
@@ -231,6 +237,7 @@ def duplicate_acknowledged_keys() -> list[str]:
 
 
 def main() -> int:
+    scanning_real_tree = len(sys.argv) <= 1
     dupes = duplicate_acknowledged_keys()
     if dupes:
         print(
@@ -276,14 +283,22 @@ def main() -> int:
                     f"{f}: {name} takes no #[zbus(header)], so it cannot know its caller. "
                     "Take the header and gate it, or list it with the reason it is safe."
                 )
-        for stale in sorted(allowed - seen_blind):
+        for stale in sorted(allowed - seen_blind) if scanning_real_tree else []:
             problems.append(
                 f"{f}: {stale} is listed as needing no caller but now takes the header "
                 "(or is gone). Delete the entry: the list is meant to shrink."
             )
 
-    for f in sorted(set(ACKNOWLEDGED) - set(files)):
-        problems.append(f"{f} is listed but has no zbus interface any more; delete the entry")
+    # Only against the REAL tree: `ACKNOWLEDGED` describes this repository, so
+    # asking a fixture whether it contains those files says nothing about either.
+    # Without this, pointing the check anywhere else reported every entry as stale
+    # and the rule under test never got a word in - which is how a check written to
+    # keep a list shrinking can stop the check from being testable at all.
+    if scanning_real_tree:
+        for f in sorted(set(ACKNOWLEDGED) - set(files)):
+            problems.append(
+                f"{f} is listed but has no zbus interface any more; delete the entry"
+            )
 
     if problems:
         print("D-Bus methods that cannot see their caller:\n")
