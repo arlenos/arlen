@@ -265,6 +265,29 @@ fn broker_lookup(peer: &PeerPidfd, broker_socket: &std::path::Path, caller_uid: 
             Some(app_id)
         }
         Ok(None) => None,
+        // Not authenticated is a different animal from unreachable, and separating
+        // them is what makes the difference visible. A transport error is ordinary
+        // and often transient (no broker on a dev box), so it stays at debug. An
+        // Unauthenticated is a CONFIGURATION fault that will repeat identically for
+        // the life of the process: the expected uid is unset or wrong, so Tier 1
+        // can never resolve and every peer silently falls back to the /proc read a
+        // sandbox refuses. That state was invisible on the image, which runs
+        // RUST_LOG=info while this whole branch logged at debug, and it took a code
+        // read to find. Once per process, because it is a property of the
+        // deployment and not of the connection - a per-connection warn would be
+        // noise nobody reads.
+        Err(e @ crate::identity_wire::IdentityClientError::Unauthenticated(_)) => {
+            static SAID: std::sync::Once = std::sync::Once::new();
+            SAID.call_once(|| {
+                tracing::warn!(
+                    target: "audit",
+                    event = "identity.broker_unauthenticated",
+                    error = %e,
+                    "identity broker not authenticated; the launcher-stamped tier is inert for this process and every peer falls back to /proc. Set ARLEN_CONFIG_BROKER_IDENTITY_UID to the broker's service uid."
+                );
+            });
+            None
+        }
         Err(e) => {
             tracing::debug!(
                 target: "audit",
