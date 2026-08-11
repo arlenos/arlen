@@ -3,11 +3,14 @@
 /// harness on the same server-side session. Store-based (not $state) because of
 /// the documented IPC-callback re-render caveat in this overlay.
 ///
-/// Mock-vs-live: the real read-tier call (`waypointer_ask` -> the
-/// org.arlen.AIAgent1 bounded single-completion, streamed), `ai_capability` in
-/// the shell bridge, and the harness session entry (`open_harness_session`) are
-/// coder seams. Under vite/DEV a fixture streams a canned answer so the pane is
-/// drivable; live without the seam the pane says the agent is unreachable.
+/// Mock-vs-live: `waypointer_ask` is live - it calls `org.arlen.AI1.ask`, which
+/// runs the `ask` skill on a bounded ephemeral engine and returns one answer.
+/// **One answer per ask**: each run dies with its reply, so a follow-up does not
+/// remember the previous turn; the session id is this pane's thread, not a
+/// server-side one. `ai_capability` and the harness session entry
+/// (`open_harness_session`) are still coder seams. Under vite/DEV a fixture
+/// streams a canned answer so the pane is drivable; live without a reachable
+/// engine the pane says the agent is unreachable.
 import { get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 
