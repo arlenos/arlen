@@ -20,6 +20,12 @@ const CONSUMER_ID: &str = "desktop-shell";
 /// Process-exit cleanup + TTL fallback (FA8 in
 /// topbar-toolbar.md) lands in a Phase-6 hardening pass once
 /// pid→app_id mapping infrastructure exists.
+/// Adding a prefix here means adding it to the shell's permission profile too:
+/// `permissions/0/dev.arlen.desktop-shell.toml` carries the same nine as
+/// `.*` patterns, and under `ARLEN_EVENT_BUS_ENFORCE` the bus keeps only the
+/// requested patterns its profile admits. A prefix added on one side alone is
+/// not an error anywhere - the subscription is simply dropped, and the surface
+/// it fed goes quiet. The two lists were checked equal on 11 Aug.
 const SUBSCRIPTIONS: &str =
     "window.,config.,project.,app.toolbar.,app.shortcut.,app.badge.,app.ambient.,app.menu.,power.";
 
