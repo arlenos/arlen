@@ -193,7 +193,9 @@ pub fn spawn_and_wait(
                 Some(h)
             }
             Err(e) => {
-                eprintln!("arlen-run: identity stamp pipes unavailable, launching unstamped: {e}");
+                eprintln!(
+                    "arlen-run: warning: identity stamp pipes unavailable, launching unstamped: {e}"
+                );
                 None
             }
         }

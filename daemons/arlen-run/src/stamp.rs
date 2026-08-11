@@ -134,7 +134,9 @@ fn register_child(pid: u32, app_id: &str, broker_socket: &Path) {
     if let Err(e) =
         arlen_permissions::identity_wire::register_identity(broker_socket, pidfd.as_fd(), app_id)
     {
-        eprintln!("arlen-run: identity stamp not registered (app resolves via /proc): {e}");
+        eprintln!(
+            "arlen-run: warning: identity stamp not registered (app resolves via /proc): {e}"
+        );
     }
 }
 

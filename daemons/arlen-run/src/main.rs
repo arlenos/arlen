@@ -437,7 +437,9 @@ fn main() -> ExitCode {
     let cgroup = match cgroup::Cgroup::create(uid, &args.app_id, launch_pid) {
         Ok(cg) => Some(cg),
         Err(e) => {
-            eprintln!("arlen-run: no per-launch cgroup ({e}); reaping falls back to bwrap");
+            eprintln!(
+                "arlen-run: warning: no per-launch cgroup ({e}); reaping falls back to bwrap"
+            );
             None
         }
     };
