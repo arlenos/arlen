@@ -64,9 +64,9 @@ async fn connect_and_consume(
     // decides later what is worth keeping in Ladybug), across all UIDs ("*"). The
     // third line is mandatory: the bus blocks reading it, so omitting it leaves
     // registration incomplete and the writer never receives any event.
-    stream.write_all(b"graph-writer\n").await?;
-    stream.write_all(b"*\n").await?;
-    stream.write_all(b"*\n").await?;
+    stream
+        .write_all(crate::consumer::registration("graph-writer", "*", "*").as_bytes())
+        .await?;
 
     info!("registered as consumer, starting event loop");
 

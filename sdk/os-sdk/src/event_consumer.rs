@@ -22,7 +22,7 @@
 //!   detects the closed channel, drops the bus connection, and
 //!   exits.
 //!
-//! [bus-proto]: ../../../../event-bus/src/socket.rs
+//! [bus-proto]: ../../../../daemons/event-bus/src/socket.rs
 
 use std::future::Future;
 use std::path::PathBuf;

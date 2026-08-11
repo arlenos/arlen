@@ -1,6 +1,7 @@
 // Library interface for knowledge crate.
 // Used by benchmarks and integration tests.
 
+pub mod consumer;
 pub mod auth;
 pub mod backup;
 pub mod code_analysis;
