@@ -1608,7 +1608,18 @@ async fn handle_restore(app_id: &str, body: &[u8], audit: &Arc<dyn AuditSink>) -
 /// mutation, so enabling this socket for real first-party-only use is gated on
 /// that hardening (canonical-executable provenance as the interim step); a hard
 /// path gate is not applied now because the agent runs from a dev tree during
-/// development. Cross-uid peers are already rejected at connection.
+/// development.
+///
+/// This used to end "Cross-uid peers are already rejected at connection", which
+/// promises more than the connection does and would let a reader of this function
+/// assume every caller here shares its uid. What `cross_uid_admitted` actually
+/// does: a cross-uid peer below FirstParty is refused, and above it the answer
+/// turns on configuration - with `ARLEN_OWNER_UID`/`ARLEN_OWNER_USER` set, only
+/// that owner; with neither set, ANY local uid at first-party or system tier. The
+/// image sets `ARLEN_OWNER_USER=arlen`, so the admitted cross-uid peer there is
+/// the desktop user this daemon serves, which is the intended one - but that is a
+/// property of the deployment, not of the connection, and it is the same reasoning
+/// the block above the check spells out at length.
 async fn handle_write_request(
     body: &[u8],
     peer: Option<WritePeer>,
