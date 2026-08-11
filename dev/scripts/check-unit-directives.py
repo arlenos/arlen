@@ -44,6 +44,12 @@ ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).reso
 # hole - the image ships five system units, and a mistyped directive in one of
 # them would have been exactly as invisible as in a user unit. One tree is not a
 # narrower check, it is a check with a blind side.
+#
+# Those two are all of them, checked rather than assumed: the only other
+# `*.service` files in the image are one symlink under `etc/systemd/system`
+# (`display-manager.service` -> the distro's `greetd.service`, the standard
+# enablement alias, not a unit of ours) and two D-Bus activation files under
+# `usr/share/dbus-1/services`, which share the extension and nothing else.
 UNIT_DIRS = (
     ROOT / "dev/mkosi/mkosi.extra/usr/lib/systemd/user",
     ROOT / "dev/mkosi/mkosi.extra/usr/lib/systemd/system",
