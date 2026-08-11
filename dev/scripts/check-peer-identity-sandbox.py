@@ -85,11 +85,28 @@ So the condition for hardening a unit is not "the unit is on enforce". It is
 "every caller of that unit is launcher-stamped", which is a claim about the
 callers and about the config-broker being reachable, not about the unit file.
 
-**This check therefore still flags an enforced unit that takes hardening.** Relax
-that only with a boot behind it: harden one, drive a real caller through its
-socket, and read the audit chain for the identity it recorded. A green unit test
-is not evidence here - three times now the reasoning was clean and the
-measurement disagreed.
+Tier 1 itself was then measured, same sandbox, with a real `arlen-config-broker`
+and a peer registered through `register_identity`:
+
+    ProtectSystem=strict, enforce, stamped peer      exe = DENIED   extract = OK
+    the same, with the legacy `?` put back           exe = DENIED   extract = REFUSED
+
+Both halves matter. The first says a hardened enforced daemon CAN identify a
+stamped caller with `/proc/<pid>/exe` refused to it. The second is the A/B that
+makes removing the legacy read load-bearing rather than tidy: with that one line
+back, the identical setup fails before Tier 1 is ever consulted.
+
+**And here is why this check still flags a hardened enforced unit anyway.** Tier 1
+only knows a process that `arlen-run` stamped at spawn. No shipped unit is spawned
+that way - 0 of 17 have `arlen-run` in their `ExecStart`, and `broker_lookup`'s own
+comment says system daemons resolve via `/proc`, never the broker. So the tier that
+survives a sandbox covers APPS, and a socket whose callers are other daemons has no
+Tier 1 to fall into. `arlen-auditd` is exactly that: its ingest producers are
+daemons, so hardening it would still refuse them.
+
+Relax this rule per socket, never globally, and only for one whose callers are
+launcher-stamped in the booted image - shown by a boot, not by a unit test. Three
+times now the reasoning was clean and the measurement disagreed.
 """
 
 import re
