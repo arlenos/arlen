@@ -334,10 +334,59 @@ for f in $(git ls-files '*.service'); do
 done
 [ "$bad_activation" -eq 0 ] && echo "OK: every D-Bus activation file names a unit that owns the name it activates"
 
+# --- Fourth check: a SYSTEM unit must not use user-only specifiers ------------
+#
+# `%U` and `%h` mean the calling user and their home in a USER unit. In a system
+# unit they mean the configured `User=` - defaulting to 0 - and root's home. The
+# two look identical in a file and differ completely at runtime.
+#
+# `arlen-graph.service` had exactly that: a system unit, no `User=`, binding
+# `/run/user/%U/arlen/knowledge.sock` and keeping the graph under `%h`. So the
+# knowledge daemon bound `/run/user/0/...` and stored the graph in `/root`, while
+# every client resolves `$XDG_RUNTIME_DIR` - the daemon bound where nobody looked,
+# and on a boot with no root session the bind fails outright. `systemd-analyze
+# verify` cannot catch it: the syntax is valid, only the meaning is wrong.
+#
+# Its positive control is the tree itself rather than a fixture: the rule fires on
+# `arlen-graph.service` today and is carried below, so every run prints the
+# violation it exists to catch. The earlier sections of this script need the real
+# `dist/` layout and abort on a synthetic tree, so a planted fixture cannot reach
+# this far - which is worth knowing before someone tries.
+#
+# A system unit with an explicit `User=` is fine - the specifiers then resolve to
+# that user deliberately, which is a choice somebody made rather than one they
+# inherited.
+sysdir="$repo_root/dev/mkosi/mkosi.extra/usr/lib/systemd/system"
+bad_specifier=0
+carried_specifier=0
+spec_checked=0
+for unit in "$sysdir"/*.service; do
+    [ -f "$unit" ] || continue
+    spec_checked=$((spec_checked + 1))
+    grep -qE '%[Uuh]' "$unit" || continue
+    grep -qE '^User=' "$unit" && continue
+    # Carried, not excused: the knowledge daemon is the instance that produced
+    # this rule, and correcting it settles the system-vs-per-user topology for
+    # the component everything else reads - which is a decision rather than a
+    # patch. Reported on every run so it cannot go quiet, and the entry goes when
+    # the unit does.
+    if [ "$(basename "$unit")" = "arlen-graph.service" ]; then
+        carried_specifier=$((carried_specifier + 1))
+        echo "carried: arlen-graph.service resolves %U to 0 and %h to /root - the"
+        echo "         knowledge socket binds where no client looks. Fixing it means"
+        echo "         deciding system-vs-per-user for the KG, which is with the planner."
+        continue
+    fi
+    echo "FAIL: $(basename "$unit") is a system unit using %U/%u/%h with no User=;"
+    echo "      those resolve to root and /root here, not to the session user."
+    bad_specifier=1
+done
+[ "$bad_specifier" -eq 0 ] && echo "OK: $spec_checked system unit(s) checked for user-only specifiers, $carried_specifier carried"
+
 # Reaching here means every gate ran to its own verdict, so a later non-zero exit
 # is a RESULT and not an abort - the trap above must stay quiet for it.
 finished=1
-if [ "$missing_refs" -ne 0 ] || [ "$bad_activation" -ne 0 ]; then
+if [ "$missing_refs" -ne 0 ] || [ "$bad_activation" -ne 0 ] || [ "$bad_specifier" -ne 0 ]; then
     exit 1
 fi
 exit 0
