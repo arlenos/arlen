@@ -20,10 +20,13 @@
 //! mid-check disconnect must never authorise). Every pidfd/registry/exe error maps to
 //! an [`AuthError`] the caller MUST treat as DENY; there is no path that returns a
 //! usable identity from a failed lookup. Cross-uid is rejected inside `PeerPidfd`
-//! before any `/proc` read. No broker yet: this slice produces the Tier-2 inode
-//! registry attestation ([`IdentitySource::InodeRegistry`]) and the path-trust
-//! fallback ([`IdentitySource::LegacyProc`]); the launcher-stamped Tier-1
-//! ([`IdentitySource::Stamped`]) lands with the broker.
+//! before any `/proc` read. All three tiers are live: the launcher-stamped Tier-1
+//! ([`IdentitySource::Stamped`], resolved by the identity broker with no `/proc`
+//! read at all), the Tier-2 inode registry attestation
+//! ([`IdentitySource::InodeRegistry`]) and the path-trust fallback
+//! ([`IdentitySource::LegacyProc`]). The broker is ADDITIVE: a miss or an
+//! unreachable broker falls through to the lower tiers, because a stronger tier
+//! being absent must never deny an admission the weaker ones already resolve.
 //!
 //! **Why a stamp rather than something already in `/proc`.** Tiers 2 and 3 read
 //! `/proc/{pid}/exe`, and a reader hardened with `ProtectSystem=strict` is refused
@@ -49,8 +52,10 @@ use crate::peer_pidfd::{PeerPidfd, PidfdError};
 /// How the app_id in a [`StampedIdentity`] was resolved, strongest to weakest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdentitySource {
-    /// Launcher-stamped and broker-verified (Tier 1, unforgeable). NOT produced by
-    /// this slice (no broker yet); reserved so consumers can match on it now.
+    /// Launcher-stamped and broker-verified (Tier 1, unforgeable): `arlen-run`
+    /// resolved the app_id from the root registry before the child ran, and the
+    /// client cannot re-stamp it. Produced today, and the only tier that needs no
+    /// `/proc` read - which is why it is the one that survives a hardened reader.
     Stamped,
     /// Resolved from the pinned pid's binary AND attested by the root-owned inode
     /// registry: the resolved app is enrolled and its binary's `(ino, dev)` matches
