@@ -172,7 +172,7 @@ KNOWN: dict[str, dict[str, str]] = {
         # panel instead: add and remove are queue administration wanting lpadmin,
         # which is a privilege decision to take on its own terms, and discover is a
         # DNS-SD listener, which is a subsystem rather than a command.
-        "sentinel_fix_posture": "the security posture fix",
+        "sentinel_fix_posture": "the security posture fix (the unwritten Sentinel1 daemon, as sentinel_get_state)",
         "sentinel_get_state": (
             "the sentinel state. The blocker is a whole daemon, not a command: "
             "`daemons/sentinel-detect` holds only the pure detectors and says so "
@@ -181,9 +181,9 @@ KNOWN: dict[str, dict[str, str]] = {
             "and it needs a radio to be worth writing. All five sentinel_* entries "
             "share this one blocker"
         ),
-        "sentinel_set_alerts": "sentinel alerts",
-        "sentinel_set_detector": "a sentinel detector toggle",
-        "sentinel_set_sensitivity": "sentinel sensitivity",
+        "sentinel_set_alerts": "sentinel alerts (the unwritten Sentinel1 daemon, as sentinel_get_state)",
+        "sentinel_set_detector": "a sentinel detector toggle (the unwritten Sentinel1 daemon, as sentinel_get_state)",
+        "sentinel_set_sensitivity": "sentinel sensitivity (the unwritten Sentinel1 daemon, as sentinel_get_state)",
     },
     "desktop-shell": {
         # The shell has a print DIALOG whose three commands are missing, and the
@@ -241,9 +241,17 @@ KNOWN: dict[str, dict[str, str]] = {
             "asking the assistant from the launcher (needs the daemon's existing "
             "bounded ephemeral run exposed; NOT a new AIAgent1 method)"
         ),
-        "windows_file_install": "installing a Windows file",
-        "windows_file_request": "the Windows file prompt",
-        "windows_file_run": "running a Windows file",
+        # The shell's open-a-Windows-file dialog. These three had no reason at
+        # all, which made them read as unclaimed wiring; they are the same
+        # deferred bottle daemon the Settings entries above wait on
+        # (`wine-proton-plan.md` defers it deliberately), reached from the other
+        # side. The store says as much in its own header - the trigger, the compat
+        # lookup, the icon extraction and the run/install calls are all seams on
+        # that one daemon - so this is one blocker wearing three names, and the
+        # surface renders from a fixture meanwhile rather than pretending.
+        "windows_file_install": "installing a Windows file (deferred bottle daemon)",
+        "windows_file_request": "the Windows file prompt (deferred bottle daemon)",
+        "windows_file_run": "running a Windows file (deferred bottle daemon)",
     },
     "store": {
         # The store app is arlen-ui's live surface, so these three are theirs to
@@ -255,7 +263,14 @@ KNOWN: dict[str, dict[str, str]] = {
         "store_update_all_routine": "update all (arlen-ui's lane)",
     },
     "text-editor": {
-        "ai_edit": "proposing an assistant edit",
+        # Its blocker was never written down, and it is not a small one. The
+        # store's own header names the whole path: `ai_edit` -> ACT-layer proxy ->
+        # the gate via the gate-class registry -> execute -> compensation store ->
+        # HMAC audit, plus per-hunk apply and undo, all behind pi's executor-live.
+        # The command is the front door of that, not a wrapper over a model call -
+        # the proposal it returns carries a gate class per hunk, which only means
+        # something once the gate is deciding them.
+        "ai_edit": "proposing an assistant edit (the gated edit path, executor-live)",
     },
     "harness": {
     },
