@@ -57,8 +57,17 @@ PATH = re.compile(
     r"/[A-Za-z0-9_./-]+\.(?:rs|toml|md|py|sh|mjs|tsv|ts|svelte|service|json|proto|yaml)\b)"
 )
 
-# path -> why it names something outside this tree.
+# path -> why it names something outside this tree, or nothing at all.
 KNOWN = {
+    # These two exist only as EXAMPLES OF WHAT IS NOT A PATH, in this check's own
+    # explanation of its pattern and in its tests: `dev/i18n-baseline.ts` is the
+    # misreading of `dev/i18n-baseline.tsv` that ordered alternation produced, and
+    # `sdk/postmsg.ts` is the tail of the npm specifier `@arlen/module-sdk/…` that
+    # a `\b` left-edge matched. Prose about paths is the price of reading files
+    # that explain path rules, and naming the price is cheaper than not reading
+    # them.
+    "dev/i18n-baseline.ts": "an example of a MISREAD path, quoted in this file's own docstring",
+    "sdk/postmsg.ts": "an example of a NON-path, quoted in this file and its tests",
     "forage/recipe.toml": (
         "the recipe in a USER's project that `forage build` reads, not a file here"
     ),
@@ -71,11 +80,26 @@ KNOWN = {
 }
 
 
+
+def scanned_files(root: Path):
+    """Every file whose comments can name a repo path.
+
+    It read only `*.rs` at first, which was 27 paths. The rest of the tree writes
+    the same kind of note in the same kind of comment - a gate script explaining
+    which file it points at, a shell step naming the unit it stages, a Svelte
+    store naming its backend - and there are **four times as many** of those. A
+    stale path misleads the next reader identically whichever language it sits in,
+    so the language it sits in is not a reason to skip it.
+    """
+    for pattern in ("*.rs", "*.py", "*.mjs", "*.sh", "*.ts", "*.svelte", "*.chroot"):
+        yield from root.rglob(pattern)
+
+
 def comment_paths(text: str):
     """`(line number, path)` for every repo path named in a comment."""
     for i, line in enumerate(text.splitlines(), 1):
         stripped = line.strip()
-        if not stripped.startswith("//"):
+        if not (stripped.startswith("//") or stripped.startswith("#")):
             continue
         for m in PATH.finditer(stripped):
             yield i, m.group(1).rstrip(".,;:`)")
@@ -84,7 +108,7 @@ def comment_paths(text: str):
 def main() -> int:
     problems: list[str] = []
     checked = 0
-    for path in sorted(ROOT.rglob("*.rs")):
+    for path in sorted(scanned_files(ROOT)):
         sp = str(path)
         if "/target/" in sp or "mkosi.builddir" in sp or "/node_modules/" in sp:
             continue

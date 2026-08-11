@@ -101,6 +101,24 @@ check(
   (code) => code === 0,
 );
 
+// It read only Rust at first - 27 paths, while the same kind of note in a gate
+// script, a build step or a Svelte store went unchecked. Those are four fifths of
+// the references in the tree.
+check(
+  "a stale path in a script comment is caught too",
+  { "dev/scripts/probe.py": "# see daemons/probe/src/gone.rs for the writer\n" },
+  (code, out) => code === 1 && out.includes("gone.rs"),
+);
+
+check(
+  "and a correct one in a script comment passes",
+  {
+    "dev/scripts/probe.py": "# see daemons/probe/src/lib.rs for the writer\n",
+    "daemons/probe/src/lib.rs": "",
+  },
+  (code) => code === 0,
+);
+
 if (failures.length) {
   console.log(`\n${failures.length} case(s) failed:`);
   for (const f of failures) console.log(`  ${f.name}\n    exit ${f.code}\n${f.out}`);
