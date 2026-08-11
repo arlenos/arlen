@@ -176,7 +176,16 @@ KNOWN = {
         "the live instance of this defect, found 10 Aug: it refuses every caller "
         "on the image. Dropping the hardening is not the fix (it holds the undo "
         "log's HMAC key); the identity step has to stop depending on the /proc "
-        "read, which is the stamped-identity work. Delete this entry when it does."
+        "read, which is the stamped-identity work.\n"
+        "    That work is BUILT and still does not fix this, checked 11 Aug: the "
+        "stamped resolver has all three tiers, but only Tier 1 avoids /proc, and "
+        "Tier 1 needs a launcher stamp that nothing produces here. `arlen-run` is "
+        "not installed in the image, every desktop entry Execs its binary "
+        "directly (`Exec=arlen-files`), and `[launcher] confined` defaults false "
+        "with no shell.toml shipped to change it. So the two units that already "
+        "set ARLEN_STAMPED_IDENTITY=enforce resolve through Tiers 2 and 3 every "
+        "time, which is the same /proc read. The blocker is a producer, not more "
+        "resolver. Delete this entry when apps launch stamped."
     ),
     "arlen-notifyd": (
         "the same defect with the other failure mode, and this check is what found "
