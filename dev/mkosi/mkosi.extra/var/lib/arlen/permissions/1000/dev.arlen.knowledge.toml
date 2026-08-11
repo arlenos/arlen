@@ -1,6 +1,8 @@
-# The knowledge app's KG profile. The daemon runs as root (uid 0) and resolves a
-# caller's profile under /var/lib/arlen/permissions/<its own uid = 0>/<app_id>.toml;
-# without one the read scope is empty and every surface in this app - the timeline,
+# The knowledge app's KG profile, under the uid it APPLIES to:
+# /var/lib/arlen/permissions/1000/<app_id>.toml, not the reading daemon's uid
+# (decided 11 Aug - the root daemon acting for user 1000 and the user's own
+# launcher have to resolve the same file, and keying on the reader gave them two).
+# Without one the read scope is empty and every surface in this app - the timeline,
 # projects, search, provenance - is denied, which renders as an app that opens onto
 # nothing. The app_id comes from the install path the image uses
 # (/usr/lib/arlen/apps/dev.arlen.knowledge/), which is what resolver rule (3) reads.
