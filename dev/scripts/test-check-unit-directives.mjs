@@ -40,9 +40,9 @@ ${extra}
 WantedBy=default.target
 `;
 
-function check(name, body, expect) {
+function check(name, body, expect, tree = "user") {
   const dir = mkdtempSync(join(tmpdir(), "arlen-unitdir-"));
-  const d = join(dir, "dev/mkosi/mkosi.extra/usr/lib/systemd/user");
+  const d = join(dir, `dev/mkosi/mkosi.extra/usr/lib/systemd/${tree}`);
   mkdirSync(d, { recursive: true });
   writeFileSync(join(d, "arlen-probe.service"), body);
   const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
@@ -73,6 +73,17 @@ check(
   "a value systemd cannot parse is caught",
   UNIT("PrivateTmp=maybe"),
   (code) => code === 1,
+);
+
+// The image ships two unit trees and this check read one of them for its first
+// hours, which is the same hole the peer-identity gate turned out to have on the
+// same day. A mistyped hardening key in a system unit is exactly as silent as in a
+// user unit, and there are five of them.
+check(
+  "a mistyped directive in a SYSTEM unit is caught too",
+  UNIT("ProtectSytem=strict"),
+  (code, out) => code === 1 && out.includes("ProtectSytem"),
+  "system",
 );
 
 // The missing binary is expected wherever this runs - the units point into the
