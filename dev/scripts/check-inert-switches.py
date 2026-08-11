@@ -65,6 +65,22 @@ SWITCHES = {
         "useradd picked, so a hardcoded 1000 would refuse the real user and leave "
         "the graph unreachable - failing in the direction nobody notices.",
     ),
+    "ARLEN_STAMPED_IDENTITY": (
+        "set",
+        "peer identity taken from the pinned pidfd (app_id and pid both) rather "
+        "than a /proc/{pid}/exe read the resolver only re-checks afterwards",
+        "PARTIAL, and recorded as `set` because that is all this check can see. "
+        "It is a PER-PROCESS switch - `ConnectionAuth` reads it in whichever "
+        "process is resolving - and exactly two units carry `=enforce` today, "
+        "auditd and the consent broker. Every other reader is still on the "
+        "shadow default, which keeps the legacy app_id and only logs where the "
+        "two disagree. Worth tracking despite the coarse state, because this is "
+        "the switch the hardening strand turns on: a reader under "
+        "ProtectSystem=strict is refused /proc/{pid}/exe entirely, so for those "
+        "the stamped path is not a stronger option but the only working one. "
+        "Rolling it further means reading the divergence the shadow mode is "
+        "already logging, not flipping on faith.",
+    ),
     "ARLEN_CONFIG_BROKER_IDENTITY_UID": (
         "unset",
         "the stamped-identity Tier 1 believing the config-broker, which is the "
@@ -83,13 +99,17 @@ SWITCHES = {
         "the bus REJECTING an out-of-scope publish or subscribe instead of only "
         "logging it",
         "deliberate shadow default, the same cutover shape as stamped identity. "
-        "The precondition is not an observation, it is a declaration, and counting "
-        "it on 11 Aug gave the answer: 13 components use the bus, 4 of them have a "
-        "profile at all, and NONE declared an [event_bus] section. Enforce denies a "
-        "publish and strips every subscription when the scope is absent, so the "
-        "flip today would silence the bus system-wide. The file manager's scopes "
-        "are written; the rest, including whether the profile-less daemons get "
-        "profiles, is the work the flip waits on.",
+        "This entry said the flip would silence the bus system-wide, which is "
+        "wrong and was corrected on 11 Aug after reading how the check is reached: "
+        "`detect_tier` classifies anything under /usr/bin/arlen- or /usr/lib/arlen/ "
+        "as System, and socket.rs exempts the system tier from BOTH the publish "
+        "scope and the subscription filter. Every binary the image ships lands on "
+        "one of those two paths, so the flip changes nothing for anything shipped "
+        "today. It bites a caller that is not system tier - a third-party app, or "
+        "a binary run from a dev tree - which is the case worth having scopes for "
+        "and also the case nobody is running yet. Three of the eight profiles now "
+        "declare an [event_bus] section; for those apps it is a description of "
+        "intent, not something the flip currently consults.",
     ),
     "ARLEN_CAPSULE_REQUIRE_FENCE": (
         "unset",

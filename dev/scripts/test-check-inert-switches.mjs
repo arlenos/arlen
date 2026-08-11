@@ -46,6 +46,7 @@ fn _reads() {
     std::env::var("ARLEN_CONFIG_BROKER_IDENTITY_UID").ok();
     std::env::var("ARLEN_EVENT_BUS_ENFORCE").ok();
     std::env::var_os("ARLEN_CAPSULE_REQUIRE_FENCE");
+    std::env::var("ARLEN_STAMPED_IDENTITY").ok();
 }
 `;
 
@@ -53,6 +54,9 @@ const U = "dev/mkosi/mkosi.extra/usr/lib/systemd/system";
 const BASE = {
   "src/lib.rs": READS,
   [`${U}/arlen-graph.service`]: UNIT("Environment=ARLEN_OWNER_USER=arlen"),
+  // Recorded as `set`, and only two real units carry it - the check sees the
+  // tree, not the rollout, so one unit here is the whole of that state.
+  [`${U}/arlen-auditd.service`]: UNIT("Environment=ARLEN_STAMPED_IDENTITY=enforce"),
 };
 
 function check(name, files, expect) {
