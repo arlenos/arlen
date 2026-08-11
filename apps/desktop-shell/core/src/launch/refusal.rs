@@ -21,11 +21,37 @@
 //! misleading toast about an app the user just started, which is not worth a
 //! protocol to defend against; nothing is granted or refused on the strength of
 //! this string.
+//!
+//! **Not every line the launcher prints is a refusal, and that invariant broke.**
+//! Three of its diagnostics are things it continues past - an unregistered
+//! identity stamp, unavailable stamp pipes, a missing per-launch cgroup - and
+//! each of them says so in its own text ("app resolves via /proc", "launching
+//! unstamped", "reaping falls back to bwrap"). They carried the same `arlen-run`
+//! prefix as a refusal, and this function takes the FIRST matching line, so a
+//! launch that failed later reported one of them as the reason: a sentence
+//! stating the launch continued, offered as the explanation for why it did not.
+//!
+//! The stamp warning fires on every confined launch today, since no identity
+//! broker answers in a user session, so this was not a corner. The launcher now
+//! marks a continuing diagnostic `arlen-run: warning:` and this skips those, which
+//! keeps the discrimination where the knowledge is: only the launcher knows which
+//! of its own messages it survives.
 
 /// The prefix every `arlen-run` diagnostic carries. Matched at the start of a
 /// line, not anywhere in the output, so an application quoting the launcher's
 /// name in passing does not become a refusal.
 const MARKER: &str = "arlen-run";
+
+/// A launcher line the launcher itself continued past.
+///
+/// Matched after the marker rather than anywhere in the line, so an application
+/// whose own error mentions a warning is not mistaken for one. Kept narrow on
+/// purpose: a refusal wrongly skipped is a silent stop, which is the failure this
+/// whole module exists to remove, so only the launcher's explicit spelling counts.
+fn is_warning(line: &str) -> bool {
+    line[MARKER.len()..].trim_start().starts_with("warning:")
+        || line[MARKER.len()..].trim_start().starts_with(": warning:")
+}
 
 /// What to tell the user about a launch that ended without starting, or `None`
 /// when there is nothing to say.
@@ -40,7 +66,7 @@ pub fn refusal_message(app: &str, confined: bool, success: bool, stderr: &str) -
     let line = stderr
         .lines()
         .map(str::trim)
-        .find(|l| l.starts_with(MARKER))?;
+        .find(|l| l.starts_with(MARKER) && !is_warning(l))?;
     // Drop the launcher's own prefix up to the first colon, keeping its sentence.
     // `arlen-run --landlock-exec:` is one of the spellings, so this cuts at the
     // colon rather than at a fixed width.
@@ -67,6 +93,37 @@ mod tests {
             out.as_deref(),
             Some("Clock did not start: profile not found for dev.arlen.clock")
         );
+    }
+
+    // The case that was answered wrongly: the stamp warning is printed on every
+    // confined launch today, so it was the first marker line in every failure and
+    // therefore the reported reason - a sentence saying the app carried on.
+    #[test]
+    fn a_warning_the_launcher_continued_past_is_not_the_reason() {
+        let out = refusal_message(
+            "Files",
+            true,
+            false,
+            "arlen-run: warning: identity stamp not registered (app resolves via /proc): connect: No such file\n\
+             arlen-run: confinement setup for dev.arlen.files: bind source missing\n",
+        );
+        assert_eq!(
+            out.as_deref(),
+            Some("Files did not start: confinement setup for dev.arlen.files: bind source missing")
+        );
+    }
+
+    // And the boundary: warnings alone mean the launch did not stop for a reason
+    // this can name, so there is nothing to say rather than a warning to misreport.
+    #[test]
+    fn warnings_alone_produce_no_message() {
+        let out = refusal_message(
+            "Files",
+            true,
+            false,
+            "arlen-run: warning: no per-launch cgroup (x); reaping falls back to bwrap\n",
+        );
+        assert_eq!(out, None);
     }
 
     #[test]
