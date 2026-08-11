@@ -1,0 +1,42 @@
+# What each D-Bus method must do when a caller that resolves to NO app id calls it.
+#
+# binary <TAB> bus name <TAB> object path <TAB> interface <TAB> expect <TAB> method and its busctl args
+#
+# expect is one of:
+#   refuse         a caller with no app id must not be served. Either a D-Bus
+#                  error or a typed refusal the daemon LOGS - the probe reads the
+#                  daemon's own journal, so a refusal nobody records reads as an
+#                  answer, which is the point rather than a limitation.
+#   open:<reason>  answering is the design, and the reason is here to be argued
+#                  with. Not a way to silence the probe: an `open` method that
+#                  starts refusing is also reported, because that is a change to
+#                  a contract somebody depends on.
+#
+# The method column carries its arguments exactly as busctl wants them
+# ("GetAccessToken sss a b c"). Without them the bus rejects the message on its
+# signature and the gate never runs - which this probe used to score as ANSWERED,
+# the worst mistake available to it.
+#
+# Run: dev/scripts/probe-dbus-gate.sh --all dev/scripts/gated-methods.tsv
+#
+# Everything below was measured on 11 Aug, not assumed.
+
+arlen-connectionsd	org.arlen.Connections1	/org/arlen/Connections1	org.arlen.Connections1	refuse	FetchEgressCredential sss anthropic api.anthropic.com bearer
+arlen-connectionsd	org.arlen.Connections1	/org/arlen/Connections1	org.arlen.Connections1	refuse	MintEgressCapability s anthropic
+arlen-connectionsd	org.arlen.Connections1	/org/arlen/Connections1	org.arlen.Connections1	refuse	RequestCredential sas anthropic 1 read
+
+arlen-accountsd	org.arlen.Accounts1	/org/arlen/Accounts1	org.arlen.Accounts1	refuse	GetAccessToken sss acct scope caller
+arlen-accountsd	org.arlen.Accounts1	/org/arlen/Accounts1	org.arlen.Accounts1	refuse	Mount s acct
+arlen-accountsd	org.arlen.Accounts1	/org/arlen/Accounts1	org.arlen.Accounts1	refuse	Unmount s acct
+
+arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	InstallPackage s /tmp/nonexistent.lunpkg
+arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	Uninstall s dev.arlen.probe
+arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	ListInstalled
+arlen-installd	org.arlen.InstallDaemon1	/org/arlen/InstallDaemon1	org.arlen.InstallDaemon1	refuse	RestoreApp s dev.arlen.probe
+
+arlen-undod	org.arlen.Undo1	/org/arlen/Undo1	org.arlen.Undo1	refuse	Recent
+
+arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1	refuse	completed_actions
+arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1	refuse	undo_read
+arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1	open:the loop-state property, readable by a same-user session peer by design	status
+arlen-ai-engine-daemon	org.arlen.AIAgent1	/org/arlen/AIAgent1	org.arlen.AIAgent1	open:AIT-R1 introspection is shape-only - behaviour names and counts, never content	working_set

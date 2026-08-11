@@ -69,10 +69,6 @@ CANNOT_BE_WIRED = {
         "gate runner has neither of. `check-webview-sandbox.py` covers the source "
         "side and says so."
     ),
-    "probe-dbus-gate.sh": (
-        "drives a live session bus to watch a refusal happen. Needs a running "
-        "daemon on a real bus."
-    ),
 }
 
 # Scripts that are libraries or setup helpers rather than checks.
