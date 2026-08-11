@@ -583,6 +583,26 @@ fn launch_env(
         env.insert("HOME".to_string(), h.to_string());
     }
     env.insert("PATH".to_string(), "/usr/bin:/bin".to_string());
+    // Decline WebKit's own sandbox, because this launch is already inside a
+    // stronger one. Every Arlen app opts INTO it (`main.rs` sets
+    // `WEBKIT_FORCE_SANDBOX` unless the environment already carries a value,
+    // which `check-webview-sandbox.py` enforces app by app), and that inner
+    // sandbox needs a nested user namespace - which the app seccomp filter
+    // denies on purpose. The result was measured: the window opens, the webview
+    // paints nothing, and it looks like an app with an empty view rather than
+    // like a refusal.
+    //
+    // Setting the app's OWN switch to 0 rather than reaching for
+    // `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS` is the point: both have the same
+    // measured effect, and this one says the true thing - the app declines to opt
+    // in because it is already confined.
+    //
+    // **What it costs, since a deliberate choice is not a free one.** WebKit's
+    // sandbox bounds a compromised renderer away from the APP's own files; bwrap
+    // bounds the app away from the SYSTEM. Standing the inner one down means a
+    // compromised renderer holds the app's entire grant, and the permission
+    // profile is the only thing still bounding it.
+    env.insert("WEBKIT_FORCE_SANDBOX".to_string(), "0".to_string());
     // Point the XDG data home at the parent of the app's own granted directory.
     //
     // A Tauri app's `appDataDir()` is `$XDG_DATA_HOME/<bundle identifier>`, and
@@ -876,6 +896,20 @@ mod tests {
     /// be the parent for Tauri to land on the grant, and the cache home has to be
     /// the app's own directory because fontconfig appends its own name and the
     /// parent is not writable.
+    /// A confined launch declines WebKit's inner sandbox, and the value has to
+    /// be the app's own switch rather than the disable-variable: the apps read
+    /// this one, and it is the difference between saying "already confined" and
+    /// saying "turn off the dangerous thing".
+    #[test]
+    fn the_inner_webkit_sandbox_is_declined_through_the_apps_own_switch() {
+        let env = launch_env(std::path::Path::new("/home/u"), "dev.arlen.files", None, None);
+        assert_eq!(env.get("WEBKIT_FORCE_SANDBOX").map(String::as_str), Some("0"));
+        assert!(
+            !env.contains_key("WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"),
+            "the same effect, but this name would be read as an override rather than a handover"
+        );
+    }
+
     #[test]
     fn the_cache_home_is_writable_and_the_data_home_lands_on_the_grant() {
         let home = std::path::Path::new("/home/u");
