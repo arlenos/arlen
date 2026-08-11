@@ -466,6 +466,10 @@ async fn handle_graph_event(
 #[derive(Clone, Copy)]
 struct WritePeer {
     pid: u32,
+    /// The peer's uid, carried because it selects WHOSE permission profile the
+    /// token is minted from. The daemon is root, so its own uid names the wrong
+    /// set; the profile that applies is filed under the connecting user's.
+    uid: u32,
     start_time: Option<u64>,
 }
 
@@ -925,7 +929,7 @@ async fn handle_provenance_read(
         Ok(now) if now == captured_start => {}
         _ => return PROVENANCE_OUT_OF_SCOPE.to_string(),
     }
-    let token = match auth.lock().await.issue_token_for_pid(peer.pid) {
+    let token = match auth.lock().await.issue_token_for_pid(peer.uid, peer.pid) {
         Ok(t) => t,
         Err(_) => return PROVENANCE_OUT_OF_SCOPE.to_string(),
     };
@@ -1017,7 +1021,7 @@ async fn handle_typed_read(
         Ok(now) if now == captured_start => {}
         _ => return PROVENANCE_OUT_OF_SCOPE.to_string(),
     }
-    let token = match auth.lock().await.issue_token_for_pid(peer.pid) {
+    let token = match auth.lock().await.issue_token_for_pid(peer.uid, peer.pid) {
         Ok(t) => t,
         Err(_) => return PROVENANCE_OUT_OF_SCOPE.to_string(),
     };
@@ -1660,7 +1664,7 @@ async fn handle_write_request(
 
     // The token is issued from the pid's permission profile and fails closed if
     // it has no graph access or no matching relation scope.
-    let token = match auth.lock().await.issue_token_for_pid(peer.pid) {
+    let token = match auth.lock().await.issue_token_for_pid(peer.uid, peer.pid) {
         Ok(t) => t,
         Err(e) => return format!("ERROR: {e}"),
     };
@@ -3010,7 +3014,7 @@ async fn handle_client(
                     return Ok(());
                 }
                 let start_time = pid_start_time(pid).ok();
-                (id, Some(WritePeer { pid, start_time }))
+                (id, Some(WritePeer { pid, uid, start_time }))
             }
         }
         Err(e) => {
@@ -3030,7 +3034,7 @@ async fn handle_client(
     // so its grants never pool under one shared id.
     if app_id != "unknown" {
         if let Some(p) = &peer {
-            let minted = auth.lock().await.issue_token_for_pid(p.pid).ok();
+            let minted = auth.lock().await.issue_token_for_pid(p.uid, p.pid).ok();
             if let Some(token) = minted {
                 match crate::lcg::emit_grant_node(&graph, &token).await {
                     Ok(true) => {
@@ -3332,7 +3336,7 @@ async fn handle_client(
                 // the merge is bound to the owner's CURRENT capability (revocation-
                 // honouring), the same way the entity-write path mints it.
                 let token = if let Some(p) = &peer {
-                    auth.lock().await.issue_token_for_pid(p.pid).ok()
+                    auth.lock().await.issue_token_for_pid(p.uid, p.pid).ok()
                 } else {
                     None
                 };
@@ -4397,7 +4401,7 @@ async fn caller_readable_labels(
     match peer {
         Some(p) => match (p.start_time, pid_start_time(p.pid).ok()) {
             (Some(captured), Some(now)) if now == captured => {
-                match auth.lock().await.issue_token_for_pid(p.pid) {
+                match auth.lock().await.issue_token_for_pid(p.uid, p.pid) {
                     Ok(token) => readable_system_labels(&token.read_scopes),
                     Err(_) => Vec::new(),
                 }
@@ -6149,7 +6153,12 @@ mod tests {
         let uses = Arc::new(Mutex::new(crate::lcg::UseTally::new(
             crate::time::now().0 - crate::lcg::USE_FLUSH_INTERVAL_MICROS,
         )));
-        let peer = WritePeer { pid: std::process::id(), start_time: Some(0) };
+        let peer = WritePeer {
+            pid: std::process::id(),
+            // SAFETY: getuid never fails.
+            uid: unsafe { libc::getuid() },
+            start_time: Some(0),
+        };
 
         let resp = handle_write_request(
             VALID_REL_BODY.as_bytes(),
@@ -6187,6 +6196,8 @@ mod tests {
         // fire before any token issuance or graph write.
         let peer = WritePeer {
             pid: std::process::id(),
+            // SAFETY: getuid never fails.
+            uid: unsafe { libc::getuid() },
             start_time: Some(0),
         };
         let resp =
@@ -6215,6 +6226,8 @@ mod tests {
         // No captured start time: reuse cannot be guarded, so fail closed.
         let peer = WritePeer {
             pid: std::process::id(),
+            // SAFETY: getuid never fails.
+            uid: unsafe { libc::getuid() },
             start_time: None,
         };
         let resp =

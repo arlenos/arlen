@@ -6,7 +6,7 @@
 /// See `docs/architecture/CAPABILITY-TOKENS.md` Sections 7-8.
 
 use crate::identity::{app_id_from_pid, process_alive, IdentityError};
-use arlen_permissions::{load_profile, PermissionError, PermissionProfile};
+use arlen_permissions::{load_profile_for_user, PermissionError, PermissionProfile};
 
 use crate::permission::GraphScopeExt;
 use crate::token::{CapabilityToken, TokenSigner};
@@ -75,7 +75,19 @@ impl Authenticator {
     /// 3. Checks `[graph]` access
     /// 4. Builds and signs token from profile scopes
     /// 5. Caches token with profile mtime
-    pub fn issue_token_for_pid(&mut self, pid: u32) -> Result<CapabilityToken, AuthError> {
+    ///
+    /// `uid` is the peer's, and it selects WHOSE permissions are read. This
+    /// daemon runs as root, so resolving the profile from its own uid looked
+    /// under `/var/lib/arlen/permissions/0` while the set that applies to the
+    /// connecting user is filed under theirs (decided 11 Aug: the directory is
+    /// keyed on the user a profile applies to, never on the process reading it).
+    /// Taking it as a parameter rather than reading `getuid()` is what makes that
+    /// distinction unskippable at every call site.
+    pub fn issue_token_for_pid(
+        &mut self,
+        uid: u32,
+        pid: u32,
+    ) -> Result<CapabilityToken, AuthError> {
         // A hardened, non-dumpable peer's /proc/exe is EACCES even to root, and
         // there is no second way to identify it. There used to be: the peer's
         // cgroup unit. It was removed because the peer owns that text - a
@@ -94,17 +106,18 @@ impl Authenticator {
             // not find it. Release builds return `None` here.
             Err(e) => dev_self_caller_id().ok_or(e)?,
         };
-        self.issue_token_for_app(&app_id, pid)
+        self.issue_token_for_app(uid, &app_id, pid)
     }
 
     /// Issue a token for a known app_id and PID (skips identity resolution).
     /// Useful for testing and for cases where app_id is already known.
     pub fn issue_token_for_app(
         &mut self,
+        uid: u32,
         app_id: &str,
         pid: u32,
     ) -> Result<CapabilityToken, AuthError> {
-        let profile = load_profile(app_id)?;
+        let profile = load_profile_for_user(uid, app_id)?;
         self.issue_token_from_profile(app_id, pid, &profile)
     }
 
