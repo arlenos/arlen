@@ -44,6 +44,7 @@ mod recent_files;
 mod sni;
 mod topbar;
 mod topbar_ipc;
+mod waypointer_ask;
 mod shell_overlay_client;
 mod settings_provider;
 mod shell_runner;
@@ -485,6 +486,7 @@ pub fn run() {
             theme::commands::reset_theme,
             sni::get_sni_items,
             topbar::topbar_items,
+            waypointer_ask::waypointer_ask,
             sni::activate_sni_item,
             sni::get_sni_menu,
             sni::click_sni_menu_item,

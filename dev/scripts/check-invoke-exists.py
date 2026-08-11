@@ -222,25 +222,6 @@ KNOWN: dict[str, dict[str, str]] = {
             "transfer daemon is one producer of many it would need. The missing "
             "piece is a job-report contract, not a command"
         ),
-        # Re-checked 11 Aug, and the blocker this used to name is stale. It said a
-        # new streamed method on `org.arlen.AIAgent1` was needed; the AI engine is
-        # pi now, and prompts reach it over the drive socket, which is what the
-        # harness was migrated onto.
-        #
-        # The real obstacle is the SESSION model, and it is smaller. The persistent
-        # drive socket relays ONE shell connection at a time against one pi stdio
-        # (`rpc_proxy` accepts a single stream per call) and the harness owns it, so
-        # a launcher ask must not contend for it. It wants its own bounded run -
-        # which the daemon already does for the curator in `pi_run.rs`: bind a
-        # private drive socket, run pi once, kick it with the prompt, wall-clock
-        # bounded. **The mechanism exists and is not exposed.** So this is an
-        # endpoint on the daemon plus shell wiring, not a new method across the AI
-        # gate. The pane says the assistant is unreachable rather than pretending,
-        # so nothing claims otherwise while it waits.
-        "waypointer_ask": (
-            "asking the assistant from the launcher (needs the daemon's existing "
-            "bounded ephemeral run exposed; NOT a new AIAgent1 method)"
-        ),
         # The shell's open-a-Windows-file dialog. These three had no reason at
         # all, which made them read as unclaimed wiring; they are the same
         # deferred bottle daemon the Settings entries above wait on

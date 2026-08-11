@@ -441,9 +441,6 @@ DEAD_INVOKES: dict[str, str] = {
     # notification daemon extended into a KDE-JobViewV3 mirror) plus the producers
     # reporting progress are the coder seam; `list_jobs` is its query - coder
     "list_jobs": "job-progress-surface.md; the JobView server and its producers are not built",
-    # waypointer-ai-prompt.md: Tab flips the launcher into Ask mode. The call is a
-    # read-tier single completion over org.arlen.AIAgent1 - coder
-    "waypointer_ask": "waypointer-ai-prompt.md; the read-tier completion call is not built",
     # The capability browser lives in Settings/Privacy (decision 6), so knowledge
     # links out rather than re-hosting it. Needs a cross-app open mechanism, which
     # nothing provides yet - coder, and it is a mechanism rather than one command
