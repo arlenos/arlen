@@ -1935,6 +1935,18 @@ preferences = true
         assert!(!pattern_matches(&["window.*".into()], "window"));
         // And it does not leak into a longer name that merely starts the same.
         assert!(!pattern_matches(&["window.*".into()], "windowless.x"));
+
+        // The graph writer registers the bare `*` (knowledge `writer.rs:68`): it
+        // stores every event and lets promotion decide later. Under enforce that
+        // request is matched against the grant like any other, and a bare `*` has
+        // no `.*` suffix to strip, so it survives only through the equality arm.
+        // If it did not, the flip would leave the knowledge graph receiving
+        // nothing at all while every other subscription kept working.
+        assert!(pattern_matches(&["*".into()], "*"));
+        // A `*` grant is the literal one, not a wildcard over the grant side: it
+        // does not stand in for a named type, so nothing reads it as "everything"
+        // by accident.
+        assert!(!pattern_matches(&["*".into()], "window.focused"));
     }
 
     // ── Input permissions ──
