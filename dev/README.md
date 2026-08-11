@@ -14,7 +14,7 @@ Fedora cloud image regardless of the Debian target.
 dev/
 ├── justfile              the one task entrypoint (run from anywhere)
 ├── process-compose.yaml  declarative full daemon-stack runner
-├── scripts/              dev/install helpers (portal, modulesd, settings, ui-kit sync)
+├── scripts/              structural checks, runtime probes and install helpers (see its README)
 ├── vm/                   eBPF kernel-layer QEMU VM (off-host, by design)
 ├── integration/          cross-daemon integration test crate (arlen-integration)
 └── workspace-deps.toml   shared dependency version reference
