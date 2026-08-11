@@ -37,7 +37,7 @@ use arlen_ai_engine_daemon::reporter::ScreeningReporter;
 use arlen_ai_engine_daemon::curation::GraphProjectReader;
 use arlen_ai_engine_daemon::curator::CuratorHandler;
 use arlen_ai_engine_daemon::orchestrator;
-use arlen_ai_engine_daemon::explain_iface;
+use arlen_ai_engine_daemon::ai1_iface;
 use arlen_ai_engine_daemon::pi_run::SessionBinder;
 use arlen_ai_engine_daemon::sidecar::{PiSidecar, SidecarPaths};
 use arlen_ai_engine_daemon::supervisor::supervise;
@@ -313,7 +313,7 @@ async fn build_read_runner(connection: Option<&zbus::Connection>) -> Arc<dyn Que
 /// ai-daemon still owning it) surfaces as an error and fails the AI paths closed.
 async fn build_ai1_connection() -> zbus::Result<zbus::Connection> {
     zbus::connection::Builder::session()?
-        .name(explain_iface::EXPLAIN_BUS_NAME)?
+        .name(ai1_iface::AI1_BUS_NAME)?
         .build()
         .await
 }
@@ -650,17 +650,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // System Explanation Mode: serve org.arlen.AI1.explain_system
                 // via a fresh ephemeral pi. Held by its own task so the served
                 // connection outlives this block (which ends before the accept loop).
-                match explain_iface::load_explain_behaviour() {
+                match ai1_iface::load_builtin_behaviour("explain") {
                     Some(behaviour) => {
-                        let iface = explain_iface::ExplainInterface::new(
+                        let iface = ai1_iface::Ai1Interface::new(
                             Arc::new(behaviour),
+                            ai1_iface::load_builtin_behaviour("ask").map(Arc::new),
                             Arc::new(PiSidecar::new(paths.clone())),
                             Arc::clone(&dispatcher) as Arc<dyn SessionBinder>,
                         );
                         match &ai_connection {
                             Some(conn) => match conn
                                 .object_server()
-                                .at(explain_iface::EXPLAIN_OBJECT_PATH, iface)
+                                .at(ai1_iface::AI1_OBJECT_PATH, iface)
                                 .await
                             {
                                 Ok(true) => info!("serving org.arlen.AI1.explain_system"),

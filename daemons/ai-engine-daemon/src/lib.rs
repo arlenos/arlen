@@ -53,7 +53,7 @@ pub mod pi_run;
 pub mod pi_driver;
 
 /// The System Explanation Mode D-Bus surface (org.arlen.AI1).
-pub mod explain_iface;
+pub mod ai1_iface;
 
 /// The org.arlen.AIAgent1 pull-transparency + undo surface (re-homed from the
 /// retired ai-agent; pi-agent-adoption step 9).
