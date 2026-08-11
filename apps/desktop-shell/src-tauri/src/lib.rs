@@ -43,6 +43,7 @@ mod projects;
 mod recent_files;
 mod sni;
 mod topbar;
+mod topbar_ipc;
 mod shell_overlay_client;
 mod settings_provider;
 mod shell_runner;
@@ -283,6 +284,7 @@ pub fn run() {
             );
             clipboard_ipc::start(clipboard_for_watcher);
             search_ipc::start(app.handle().clone());
+            topbar_ipc::start(app.handle().clone());
             intent_ipc::start(app.handle().clone());
             // Permission revocation watcher: refreshes any active
             // broker connections' ConnectionAuth when the user
