@@ -92,26 +92,43 @@ def covered_labels(app: Path):
 
 
 def uncovered(root: Path):
-    """(app, sorted labels) for every app with a window no capability covers."""
+    """(app, sorted labels) for every app with a window no capability covers,
+    plus how much was examined.
+
+    The count is returned rather than kept local because the success message used
+    to be a bare sentence. A gate that says "every window is covered" after
+    finding no apps at all says exactly the same thing as one that checked
+    fourteen - and this file's own subject, a window silently refused every gated
+    command, is the same defect one layer down: a failure that looks like
+    nothing happening. Two other checks were caught under-reading their subject
+    on 11 Aug, both times because the number they printed could be compared with
+    the size of the tree. This one can now be compared too.
+    """
     findings = []
+    apps = 0
+    labels = 0
     for app in sorted(root.glob("apps/*/src-tauri")):
         if not (app / "capabilities").is_dir():
             continue
+        apps += 1
         covered = covered_labels(app)
+        wanted = declared_labels(app) | built_labels(app)
+        labels += len(wanted)
         if "*" in covered:
             continue
-        wanted = declared_labels(app) | built_labels(app)
         missing = sorted(wanted - covered)
         if missing:
             findings.append((str(app.relative_to(root)), missing))
-    return findings
+    return findings, apps, labels
 
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2])
-    findings = uncovered(root)
+    findings, apps, labels = uncovered(root)
     if not findings:
-        print("window capabilities: every window an app opens is covered by one")
+        print(
+            f"OK: {labels} window label(s) across {apps} app(s), each covered by a capability"
+        )
         return 0
     print(f"WINDOW WITH NO CAPABILITY: {len(findings)} app(s)", file=sys.stderr)
     for app, missing in findings:

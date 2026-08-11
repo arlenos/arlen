@@ -74,8 +74,18 @@ def excluded_for(rel: str):
 
 
 def offenders(root: Path):
-    """Every in-scope client resolver that never mentions the client variable."""
+    """Every in-scope client resolver that never mentions the client variable,
+    and how many resolvers were examined.
+
+    The count exists so a pass can be told apart from a no-op. This check names
+    ONE file pattern and one variable; if the pattern stops matching - a rename,
+    a move, a helper that resolves the path somewhere else - the finding set goes
+    empty and the message reads exactly as it does when everything is correct.
+    Printing what was read makes that visible in the same line, which is the
+    cheapest form of the rule this directory keeps re-learning.
+    """
     found = []
+    resolvers = 0
     for path in sorted(root.rglob("*.rs")):
         rel = str(path.relative_to(root))
         if excluded_for(rel):
@@ -90,18 +100,20 @@ def offenders(root: Path):
         asks_sdk_under_bind_name = 'socket_path("ARLEN_DAEMON_SOCKET"' in text
         if not (builds_from_xdg or asks_sdk_under_bind_name):
             continue
+        resolvers += 1
         if CLIENT_NAME in text or SDK_HELPER in text:
             continue
         found.append(rel)
-    return found
+    return found, resolvers
 
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2])
-    found = offenders(root)
+    found, resolvers = offenders(root)
     if not found:
         print(
-            "knowledge socket: every client resolver reads the name a launcher sets"
+            f"OK: {resolvers} knowledge-socket resolver(s), each reading the name "
+            "a launcher sets"
         )
         return 0
     print(
