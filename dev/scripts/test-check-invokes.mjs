@@ -187,5 +187,33 @@ check(
   (code) => code === 0,
 );
 
+// A template literal can hold a document rather than code. The text editor ships
+// two demo files that way, one of them showing example Arlen code with an
+// `invoke` in it - and the scanner read that sample as a call this binary makes,
+// so it sat on the missing-command list for weeks as work nobody could finish.
+check(
+  "an invoke inside a template literal is sample text, not a call site",
+  tree({
+    "apps/demo/package.json": "{}",
+    "apps/demo/src/lib/x.ts":
+      "const DOC = `example:\n  await invoke(\"not_a_real_command\");\n`;\nexport default DOC;\n",
+    "apps/demo/src-tauri/src/lib.rs": HOST,
+  }),
+  (code, out) => code === 0 && !out.includes("not_a_real_command"),
+);
+
+// The other direction, so the blanking cannot quietly swallow real calls: a
+// genuine invoke beside a template literal is still found.
+check(
+  "a real call next to a template literal is still seen",
+  tree({
+    "apps/demo/package.json": "{}",
+    "apps/demo/src/lib/x.ts":
+      "const DOC = `await invoke(\"decoy\")`;\nawait invoke(\"open_missing\");\n",
+    "apps/demo/src-tauri/src/lib.rs": HOST,
+  }),
+  (code, out) => code !== 0 && out.includes("open_missing") && !out.includes("decoy"),
+);
+
 console.log(failures.length ? "\nsome cases regressed" : "\nboth directions hold");
 process.exit(failures.length ? 1 : 0);

@@ -73,6 +73,48 @@ INVOKE_VAR = re.compile(r"invoke(?:<[^>]*>)?\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*[,)]
 STRINGS = re.compile(r"""["'`]([A-Za-z_][A-Za-z0-9_]*)["'`]""")
 
 
+def without_template_literals(text: str) -> str:
+    """The source with backtick-delimited spans blanked out.
+
+    A template literal can hold a DOCUMENT rather than code, and the text editor
+    ships two: its demo files are backtick-delimited constants holding example
+    Arlen code, `invoke("Authorize", …)` among it. That is sample content shown
+    to a reader, not a call this binary makes - and it was carried on the
+    missing-command list for weeks as "the AI-edit gate call", a piece of work
+    nobody could ever finish because there was nothing to wire.
+
+    Blanking the span rather than deleting it keeps every other offset intact, so
+    a real `invoke` on the same line is still found. Escapes are honoured; a
+    `${...}` interpolation is left blanked too, which loses a real call written
+    inside one - unlikely, and the safe direction is to under-report a call site
+    rather than to invent one.
+    """
+    out = []
+    i = 0
+    in_tick = False
+    while i < len(text):
+        c = text[i]
+        if in_tick:
+            if c == "\\":
+                out.append(" ")
+                if i + 1 < len(text):
+                    out.append(" ")
+                i += 2
+                continue
+            if c == "`":
+                in_tick = False
+                out.append(c)
+            else:
+                out.append("\n" if c == "\n" else " ")
+            i += 1
+            continue
+        if c == "`":
+            in_tick = True
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def indirect_calls(text: str) -> set[str]:
     """Literals assigned to a variable that is then passed to `invoke`.
 
@@ -197,7 +239,6 @@ KNOWN: dict[str, dict[str, str]] = {
         "store_update_all_routine": "update all",
     },
     "text-editor": {
-        "Authorize": "the AI-edit gate call",
         "ai_edit": "proposing an assistant edit",
     },
     "harness": {
@@ -236,7 +277,9 @@ def main() -> int:
         src = app / "src"
         if src.exists():
             for f in list(src.rglob("*.ts")) + list(src.rglob("*.svelte")):
-                text = f.read_text(encoding="utf-8", errors="replace")
+                text = without_template_literals(
+                    f.read_text(encoding="utf-8", errors="replace")
+                )
                 calls |= set(INVOKE.findall(text))
                 indirect |= indirect_calls(text)
         handlers: set[str] = set()
