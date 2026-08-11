@@ -10,7 +10,7 @@ use std::sync::Arc;
 use arlen_ai_proxy::allowlist::Allowlist;
 use arlen_ai_proxy::audit::{AuditSink, LedgerAuditSink};
 use arlen_ai_proxy::catalog::ProviderCatalog;
-use arlen_ai_proxy::forward::ReqwestForwarder;
+use arlen_ai_proxy::forward::{EchoForwarder, Forwarder, ReqwestForwarder};
 use arlen_ai_proxy::peer_auth::{self, PeerAuthError, PeerAuthMap};
 use arlen_ai_proxy::service::{
     CallerAllowlist, ForwardRequest, ProxyError, ProxyService,
@@ -38,7 +38,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    let forwarder = Arc::new(ReqwestForwarder::new()?);
+    // `ARLEN_AI_ECHO`: answer completions locally instead of dialling a model.
+    // The verification aid the AI path has never had - everything from the shell
+    // through the daemon, the gate, the confined pi and the governed proxy stays
+    // real, and only the last hop is answered in process. Off unless asked for,
+    // announced at WARN when taken, and the answer says what it is in its own
+    // text, because a control that could be mistaken for the real thing is worse
+    // than no control.
+    let forwarder: Arc<dyn Forwarder> = if std::env::var_os("ARLEN_AI_ECHO").is_some() {
+        tracing::warn!(
+            "ARLEN_AI_ECHO is set: completions are answered by the echo provider and \
+             no model is contacted"
+        );
+        Arc::new(EchoForwarder::new())
+    } else {
+        Arc::new(ReqwestForwarder::new()?)
+    };
     let audit_sink: Arc<dyn AuditSink> = Arc::new(LedgerAuditSink::at_default_socket());
     let catalog_path = catalog_config_path();
     tracing::info!(path = %catalog_path.display(), "loading the provider catalog");

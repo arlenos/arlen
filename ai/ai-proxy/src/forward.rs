@@ -416,3 +416,152 @@ mod tests {
         assert_eq!(result.body, r#"{"data":[]}"#);
     }
 }
+
+/// A forwarder that answers locally instead of dialling a model.
+///
+/// **Why this exists.** The AI path is the largest thing in this tree with no
+/// positive control: the skill loads, the object is served, and between them sits
+/// shell to daemon to skill to confined pi to answer, verified nowhere. A launcher
+/// ask that comes back empty on a real install would look exactly like a green
+/// build. Nothing in that chain needs a model that THINKS - it needs a provider
+/// that RETURNS.
+///
+/// **What stays real.** Everything but the last hop. pi spawns confined, dials the
+/// completion socket, the daemon authenticates the caller by SO_PEERCRED and
+/// forwards through the governed proxy with its allowlist, its audit entry and its
+/// credential resolution. Only the outbound HTTP request is answered here.
+///
+/// **It cannot be reached by accident.** `main` builds it only when
+/// `ARLEN_AI_ECHO` is set, logs loudly when it does, and the answer says what it
+/// is in its own text - so a screenshot of an echoed reply can never be mistaken
+/// for a model working.
+pub struct EchoForwarder {
+    /// The sentence every completion returns.
+    answer: String,
+}
+
+impl Default for EchoForwarder {
+    fn default() -> Self {
+        Self {
+            answer: "This is the echo provider. No model was asked; the chain that \
+                     carried this sentence is real."
+                .to_string(),
+        }
+    }
+}
+
+impl EchoForwarder {
+    /// A forwarder with the default answer.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The OpenAI-shaped chat completion the daemon and pi both already parse.
+    /// Kept to the fields a consumer actually reads rather than a full fake of the
+    /// upstream schema, which would be inventing a contract we do not own.
+    fn completion(&self, echoed: &str) -> String {
+        let content = if echoed.is_empty() {
+            self.answer.clone()
+        } else {
+            format!("{} It was handed: {echoed}", self.answer)
+        };
+        serde_json::json!({
+            "id": "echo",
+            "object": "chat.completion",
+            "model": "echo",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+            }],
+        })
+        .to_string()
+    }
+
+    /// The last user message in an OpenAI-shaped request, if the body carries one.
+    /// Echoing what it was handed is what makes this a control rather than a fixed
+    /// string: a run that never reached the provider cannot produce it.
+    fn echoed_from(body_json: &str) -> String {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(body_json) else {
+            return String::new();
+        };
+        v.get("messages")
+            .and_then(|m| m.as_array())
+            .and_then(|m| m.last())
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .unwrap_or_default()
+            .chars()
+            .take(200)
+            .collect()
+    }
+}
+
+#[async_trait]
+impl Forwarder for EchoForwarder {
+    async fn post(
+        &self,
+        _endpoint_url: &str,
+        body_json: &str,
+        _auth: AuthHeader<'_>,
+    ) -> Result<ForwardResult, ForwardError> {
+        Ok(ForwardResult {
+            status: 200,
+            body: self.completion(&Self::echoed_from(body_json)),
+        })
+    }
+
+    async fn get(
+        &self,
+        _endpoint_url: &str,
+        _auth: AuthHeader<'_>,
+    ) -> Result<ForwardResult, ForwardError> {
+        // The connection test asks a provider for its model list. Answering with
+        // one model named `echo` keeps `test_provider` truthful about what this
+        // provider can actually do.
+        Ok(ForwardResult {
+            status: 200,
+            body: serde_json::json!({"data": [{"id": "echo", "object": "model"}]}).to_string(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod echo_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn it_answers_without_dialling_anything() {
+        let r = EchoForwarder::new()
+            .post("http://127.0.0.1:1/never-dialled", "{}", None)
+            .await
+            .expect("the echo provider always returns");
+        assert_eq!(r.status, 200);
+        assert!(r.body.contains("echo provider"), "{}", r.body);
+    }
+
+    /// The property that makes this a control: the answer carries what the caller
+    /// sent, so a reply proves the request travelled the whole chain rather than
+    /// being produced by something short of it.
+    #[tokio::test]
+    async fn the_answer_carries_what_it_was_handed() {
+        let body = serde_json::json!({
+            "messages": [
+                {"role": "system", "content": "ignored"},
+                {"role": "user", "content": "what am I working on"},
+            ]
+        })
+        .to_string();
+        let r = EchoForwarder::new().post("http://x", &body, None).await.unwrap();
+        assert!(r.body.contains("what am I working on"), "{}", r.body);
+    }
+
+    /// A body it cannot parse still gets an answer: this must never be the thing
+    /// that fails a run, or a green sweep would depend on the shape of a request
+    /// rather than on the chain being whole.
+    #[tokio::test]
+    async fn an_unparsable_body_still_answers() {
+        let r = EchoForwarder::new().post("http://x", "not json", None).await.unwrap();
+        assert!(r.body.contains("echo provider"), "{}", r.body);
+    }
+}
