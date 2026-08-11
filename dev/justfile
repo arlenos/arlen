@@ -831,3 +831,11 @@ checks:
         just --justfile dev/justfile "$r" || status=1
     done
     exit "$status"
+
+# Ask every daemon we own which objects it actually serves. Needs the binaries
+# built; an unbuilt one is SKIPped rather than failed. Not in CI: seconds per
+# daemon, and it starts real daemons on a private bus.
+served-objects:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    dev/scripts/probe-served-objects.sh --all dev/scripts/served-objects.tsv
