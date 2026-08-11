@@ -2,9 +2,10 @@
 /// (the knowledge app's pattern): app-level commands live in the shell's
 /// top-left app menu, not as surface buttons (Tim, 31 Jul). Chat's file-ops
 /// (import) move here; the per-conversation actions (export, rename, delete)
-/// stay in each row's context menu where their target is. Registration and
-/// the action events need the cross-app relay (a coder seam), so under vite
-/// both calls fail silently and the menu simply isn't there.
+/// stay in each row's context menu where their target is. Registration and the
+/// action events go through this app's own backend (`src-tauri/src/menu.rs`),
+/// which publishes onto the Event Bus and relays clicks back; under vite, with
+/// no bus and no shell to reach, both fail and the menu is simply absent.
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { goto } from "$app/navigation";
