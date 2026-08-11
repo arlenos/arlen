@@ -74,6 +74,19 @@ check(
   (code) => code === 0,
 );
 
+// A package specifier is not a repo path. `-` counts as a word boundary, so a
+// `\b`-anchored pattern reads the tail of `@arlen/module-sdk/postmsg.ts` as a
+// claim about `sdk/postmsg.ts` - which is a file that does not exist, so the gate
+// would have reported a defect in a correct line.
+check(
+  "a package name ending in a top-level dir is not a path",
+  {
+    "daemons/probe/src/lib.rs":
+      "// mirrors `@arlen/module-sdk/postmsg.ts` and `module-sdk/package.json`\n",
+  },
+  (code) => code === 0,
+);
+
 // Code is not prose: a path in a string literal is the program's business, and
 // checking it here would fail on every runtime path the tree constructs.
 check(

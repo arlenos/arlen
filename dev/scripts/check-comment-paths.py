@@ -46,8 +46,14 @@ ROOT = (
 # the longest: with `ts` first this reads `dev/i18n-baseline.tsv` as a broken
 # reference to `dev/i18n-baseline.ts`. It reported exactly that against a path
 # I had just corrected, which is how the ordering was found.
+#
+# The left edge is a negative lookbehind rather than `\b`, because `-` counts as
+# a word boundary: `\bsdk/` happily matches the tail of `@arlen/module-sdk/…`,
+# turning an npm specifier into a claim that `sdk/postmsg.ts` is missing. Found
+# by running the same pattern over TypeScript, where package names are common;
+# the `.rs` files it shipped against simply had no such string in them.
 PATH = re.compile(
-    r"\b((?:apps|daemons|sdk|dev|contracts|ai|forage|store-backend)"
+    r"(?<![A-Za-z0-9_/-])((?:apps|daemons|sdk|dev|contracts|ai|forage|store-backend)"
     r"/[A-Za-z0-9_./-]+\.(?:rs|toml|md|py|sh|mjs|tsv|ts|svelte|service|json|proto|yaml)\b)"
 )
 
