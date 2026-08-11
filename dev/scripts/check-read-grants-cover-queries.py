@@ -57,7 +57,7 @@ from pathlib import Path
 
 REPO = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
 
-PROFILES = "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/0"
+PROFILES = "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000"
 
 # A grant line: "system.File.path".
 GRANT = re.compile(r'"system\.([A-Za-z]+)\.([a-z_]+)"')

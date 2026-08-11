@@ -1,6 +1,11 @@
-# The desktop-shell's KG read profile. The knowledge daemon (root, uid 0) loads a
-# caller's profile from /var/lib/arlen/permissions/0/<app_id>.toml; without one
-# the shell's KG features (waypointer project search, Focus Mode, the per-app
+# The desktop-shell's KG read profile. It lives under the uid of the user it
+# applies to - /var/lib/arlen/permissions/1000/<app_id>.toml - not under the uid
+# of whoever reads it. That was decided on 11 Aug and this file moved with it: a
+# profile describes an app, so one that appears or disappears depending on who
+# asks is incoherent, and keying on the reader had the root knowledge daemon
+# looking in /0/ while `arlen-run`, which runs as the user, looked in /1000/ and
+# refused every confined launch. Root-owned and world-readable is what lets both
+# readers agree on this file. Without one the shell's KG features (waypointer project search, Focus Mode, the per-app
 # project association) are denied (empty scope). The app_id `desktop-shell` is the
 # CONFIRMED canonical resolution: arlen-permissions identity.rs rule (2) maps
 # /usr/bin/arlen-desktop-shell -> "desktop-shell" (its identity test asserts this),

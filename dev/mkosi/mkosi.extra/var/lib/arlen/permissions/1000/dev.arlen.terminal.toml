@@ -1,5 +1,7 @@
 # The terminal's KG read profile. The knowledge daemon (root, uid 0) resolves a
-# caller's profile under /var/lib/arlen/permissions/0/<app_id>.toml; without one
+# caller's profile under /var/lib/arlen/permissions/<the user it applies to>/
+# <app_id>.toml - 1000 here, not the reader's uid (decided 11 Aug, so that the
+# root daemon and the user's own launcher resolve the same file); without one
 # the terminal's project-picker read is denied (empty scope). app_id is the
 # terminal's bundle identifier (dev.arlen.terminal, apps/terminal/src-tauri/
 # tauri.conf.json); confirm it matches path_to_app_id of the installed binary.
