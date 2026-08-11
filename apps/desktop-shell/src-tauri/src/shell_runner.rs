@@ -9,8 +9,22 @@ use crate::app_index::AppIndex;
 /// When `in_terminal` is false, runs detached via `sh -c`.
 /// When `in_terminal` is true, finds the best terminal emulator and
 /// launches the command inside it.
+///
+/// **A failure is told, not only logged.** Both branches used to spawn from a
+/// detached thread and drop the result - the terminal one into a `log::error!`,
+/// the `sh -c` one into a `let _ =` that discarded it outright. The user has just
+/// typed a command into the launcher and pressed Enter, so a spawn that fails
+/// shows as the overlay closing and nothing happening: the same silent stop the
+/// app-launch path next door already reports with a toast. Realistic rather than
+/// theoretical - `find_terminal` can resolve a terminal this machine does not
+/// have, and then every `>` command in the Waypointer fails this way.
+///
+/// The spawn is inline for the same reason it is in `open_harness_session`:
+/// `Command::spawn` forks and execs without waiting on the child, so the thread
+/// was never carrying work, only the error.
 #[tauri::command]
 pub fn execute_shell_command(
+    app: tauri::AppHandle,
     index: tauri::State<AppIndex>,
     command: String,
     in_terminal: bool,
@@ -18,6 +32,14 @@ pub fn execute_shell_command(
     if command.is_empty() {
         return;
     }
+    let failed = |e: std::io::Error| {
+        log::error!("shell_runner: spawn failed: {e}");
+        crate::quick_actions::emit_toast(
+            &app,
+            crate::quick_actions::ToastKind::Error,
+            format!("The command did not run: {e}"),
+        );
+    };
 
     if in_terminal {
         let (bin, args) = build_terminal_command(&index, &command);
@@ -26,31 +48,30 @@ pub fn execute_shell_command(
             "shell_runner: spawning {:?} {:?} (WAYLAND_DISPLAY={}, DISPLAY='')",
             bin, args, wayland_display,
         );
-        std::thread::spawn(move || {
-            match std::process::Command::new(&bin)
-                .args(&args)
-                .env("WAYLAND_DISPLAY", &wayland_display)
-                .env("DISPLAY", "")
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-            {
-                Ok(_) => log::info!("shell_runner: launched in terminal"),
-                Err(e) => log::error!("shell_runner: spawn failed: {e}"),
-            }
-        });
+        match std::process::Command::new(&bin)
+            .args(&args)
+            .env("WAYLAND_DISPLAY", &wayland_display)
+            .env("DISPLAY", "")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(_) => log::info!("shell_runner: launched in terminal"),
+            Err(e) => failed(e),
+        }
     } else {
         log::info!("shell_runner: sh -c {:?}", command);
-        std::thread::spawn(move || {
-            let _ = std::process::Command::new("sh")
-                .arg("-c")
-                .arg(&command)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn();
-        });
+        if let Err(e) = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&command)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            failed(e);
+        }
     }
 }
 
