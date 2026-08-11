@@ -15,6 +15,7 @@ mod app_meta;
 mod behaviours;
 mod capability;
 mod file_ref;
+mod menu;
 mod mention;
 mod notices;
 mod prep;
@@ -43,6 +44,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            menu::register_menu,
             frontend_log,
             ai_client::ai_query,
             drive::pi_prompt,
@@ -92,6 +94,17 @@ pub fn run() {
             launch::launch_session,
             url::open_url
         ])
+        // Start the menu back-channel. Registration is driven by the frontend
+        // (it owns the menu), but a click arrives on the Event Bus with no
+        // window attached, so the relay has to be running before the first one -
+        // a menu that appears and does nothing is the worse half of the bug this
+        // seam closes.
+        .setup(|app| {
+            let app_id = std::env::var("ARLEN_APP_ID")
+                .unwrap_or_else(|_| "dev.arlen.harness".to_string());
+            menu::relay_menu_actions(app.handle().clone(), app_id);
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running arlen-harness");
 }
