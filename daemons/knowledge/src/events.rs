@@ -34,9 +34,7 @@ pub async fn connect(consumer_id: &str, uid: u32) -> Result<UnixStream> {
 
     let mut stream = UnixStream::connect(&socket_path).await?;
 
-    let registration = format!(
-        "{consumer_id}\npermission.*,ai.*,schema.*\n{uid}\n"
-    );
+    let registration = crate::consumer::registration(consumer_id, "permission.*,ai.*,schema.*", &uid.to_string());
     stream.write_all(registration.as_bytes()).await?;
 
     debug!(consumer_id, uid, "registered with event bus");
