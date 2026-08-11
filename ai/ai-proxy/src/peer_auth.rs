@@ -155,8 +155,28 @@ pub enum PeerAuthError {
 /// while the real daemon is absent. Requiring both means an attacker
 /// would have to run the genuine daemon binary *and* hold its
 /// well-known name. Production deployments additionally restrict
-/// name ownership through the shipped D-Bus policy XML; binding to
-/// systemd unit / cgroup credentials is noted as future hardening.
+/// name ownership through the shipped D-Bus policy XML.
+///
+/// This used to name cgroup credentials as the next hardening step.
+/// Measured on 11 Aug, and it does not work here. `/proc/{pid}/cgroup`
+/// does survive the hardening that breaks check 1 - under
+/// `ProtectSystem=strict` a same-uid reader is refused
+/// `/proc/{pid}/exe` and still gets `cgroup`, `stat` and `cmdline` -
+/// but surviving is not the same as attesting. A process in the
+/// user tree names its own cgroup: `systemd-run --user
+/// --unit=arlen-knowledge sleep 60` puts it at
+/// `/user.slice/user-1000.slice/user@1000.service/app.slice/arlen-knowledge.service`,
+/// no privilege required. Only the system tree (`/system.slice/...`)
+/// resists that, because entering it needs root.
+///
+/// So the two sets fall the wrong way round. Where cgroup is
+/// trustworthy the peer is a root-launched system unit, and a reader
+/// facing one is not the case that broke. Where check 1 breaks - a
+/// hardened reader resolving a user-session peer - cgroup is exactly
+/// the tree that forges in one command. It cannot rescue the case it
+/// would be added for, which is why the stamped-identity strand
+/// (`arlen_permissions::stamped_identity`) is the route rather than
+/// this one.
 pub async fn resolve(
     unique_bus_name: &str,
     connection: &zbus::Connection,
