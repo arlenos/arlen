@@ -9,7 +9,15 @@
 use std::io::{Read, Write};
 
 /// The largest encoded image the worker will read from stdin: a coarse bound on
-/// the input (the decoded-raster bound is enforced separately in the frame).
+/// the input.
+///
+/// The decoded-RASTER bound is a separate limit and it is enforced HERE as well
+/// as in the frame: `decode_image` reads the declared dimensions and refuses
+/// anything over `MAX_PIXELS` BEFORE decoding, so a 69-byte PNG claiming
+/// 20000x20000 exits non-zero without allocating (measured 12 Aug, under a
+/// 700 MB address-space cap, to be sure the refusal came before the allocation
+/// rather than after a lucky one). The frame check on the viewer side is the
+/// second line, against a hostile worker rather than a hostile file.
 const MAX_INPUT_BYTES: u64 = 256 * 1024 * 1024;
 
 fn main() {
