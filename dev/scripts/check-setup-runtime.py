@@ -18,6 +18,15 @@ never reached because it panicked a line earlier. Nothing caught it: the shell's
 379 tests pass, the source checks pass, and the panic only appears if you start
 the shell and read its log.
 
+The scope below is a FILE NAME, and that is a dependency worth naming. The marker
+that actually matters is `.setup(`, and it lives in `lib.rs` in all seven apps
+that have one - Tauri's own template puts the builder there, and nothing in the
+tree deviates (measured 11 Aug: zero `.setup(` in any `main.rs` or elsewhere under
+`src-tauri/src`). So the glob is complete today and silently would not be for an
+app that built elsewhere. The sibling `check-executor-gate.py` had the same shape
+and one file already breaking it, which is why this note exists rather than a
+comfortable silence.
+
 What this checks: for every `apps/*/src-tauri/src/lib.rs`, the functions called
 from inside `.setup(...)`, and whether any of them is a NON-ASYNC function whose
 body reaches for tokio directly. The correct spelling in this tree is
