@@ -26,10 +26,33 @@ use std::process::Command;
 use arlen_confiner::{app_runtime_profile, Bind, Confinement, ConfinerError, NetworkPolicy};
 
 /// The universal plumbing a GUI app needs that is not on the security axis: the
-/// Wayland and PipeWire sockets and the session D-Bus, bound read-write (they
-/// are sockets). Only sockets that actually exist are bound, because `bwrap`
-/// fails the launch on a bind whose source is missing; the `exists` predicate
-/// is injected so the mapping is pure and testable without a real session.
+/// Wayland and PipeWire sockets, the session D-Bus, and the Arlen runtime
+/// directory, all bound read-write (they are sockets). Only paths that actually
+/// exist are bound, because `bwrap` fails the launch on a bind whose source is
+/// missing; the `exists` predicate is injected so the mapping is pure and
+/// testable without a real session.
+///
+/// **`$XDG_RUNTIME_DIR/arlen` is where every Arlen daemon socket lives** -
+/// knowledge, clipboard, intents, launch, search, terminal-read - and leaving it
+/// out was measured, on a real profile, to cut a confined app off from all of
+/// them: `ls: cannot access '/run/user/1000/arlen'`. That is not confinement, it
+/// is blinding. A profile granting nine `system.File` read scopes cannot have
+/// them checked on a socket the app cannot open, so the profile and the sandbox
+/// would contradict each other.
+///
+/// Bound because **reachability is not authority**: each of those sockets
+/// authorises its caller, so binding grants nothing and restores the ability to
+/// be told no - and a refusal is auditable where an absence is not. Decided
+/// 11 Aug, `app-enrollment-plan.md`. A socket whose mere reachability is
+/// sensitive may still be withheld individually; none of these is.
+///
+/// **Read-write rather than read-only, and that is measured too.** A read-only
+/// bind still permits `connect()` (checked under bwrap: a client connected to a
+/// socket inside a `--ro-bind` directory), which would have been the tighter
+/// choice for a pure client - but the terminal BINDS `terminal-read.sock` here
+/// for `terminal-run-mcp` to read, and creating a socket needs a writable
+/// directory. Read-only would break it. This grants nothing a same-uid process
+/// does not already have outside the sandbox.
 ///
 /// `wayland_display` is `$WAYLAND_DISPLAY`: an absolute path is taken verbatim,
 /// a bare name is resolved under `runtime_dir`.
@@ -49,6 +72,7 @@ pub fn plumbing_binds(
     }
     candidates.push(runtime_dir.join("pipewire-0"));
     candidates.push(runtime_dir.join("bus"));
+    candidates.push(runtime_dir.join("arlen"));
 
     let mut binds = Vec::new();
     for p in candidates {
@@ -472,6 +496,26 @@ mod tests {
             b,
             Bind::ReadWrite(s, _) if s.contains("pipewire")
         )));
+    }
+
+    /// The regression this exists for: without the Arlen runtime directory a
+    /// confined app has no route to knowledge, clipboard, intents, launch,
+    /// search or terminal-read, so its profile grants scopes that can never be
+    /// checked. Measured on a real launch before it was fixed - the directory
+    /// simply did not exist inside the sandbox.
+    #[test]
+    fn the_arlen_runtime_directory_is_bound() {
+        let rt = Path::new("/run/user/1000");
+        let present = [PathBuf::from("/run/user/1000/arlen")];
+        let binds = plumbing_binds(rt, None, |p| present.contains(&p.to_path_buf()));
+        assert_eq!(
+            binds,
+            vec![Bind::ReadWrite(
+                "/run/user/1000/arlen".into(),
+                "/run/user/1000/arlen".into()
+            )],
+            "the daemon sockets have to be reachable so the daemons can refuse"
+        );
     }
 
     #[test]
