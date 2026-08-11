@@ -28,6 +28,22 @@ read = [
     "system.Project.status",
     "system.App.id",
     "system.File.id",
+    # The three fields the shell's file surfaces actually read, added on
+    # 11 Aug after checking the grants against the queries rather than the
+    # other way round. `recent_files.rs:117` returns path and last_accessed
+    # and filters on last_accessed; the Waypointer file plugin
+    # (`plugins/files.rs:230`) returns path, app_id and last_accessed.
+    #
+    # Inert today and added anyway: `dev.arlen.desktop-shell` is in the
+    # first-party set, so `tier_for_app` makes it system-anchored and the
+    # read-scope gate does not apply to it at all - which is precisely why
+    # the omission never showed up as a broken Recent Files. A profile that
+    # does not describe what its app reads is a trap for whoever tightens
+    # that anchoring, and the shape of the breakage would be a list that is
+    # silently empty rather than an error.
+    "system.File.path",
+    "system.File.last_accessed",
+    "system.File.app_id",
     # `knowledge_daily_counts` reads raw event timestamps for the activity strip
     # (knowledge.rs:87). Without this the query is denied and the function falls
     # to `empty_response()`, so the strip renders a flat week - it says the user
