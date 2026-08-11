@@ -34,6 +34,23 @@ manager, on the strength of a regex that had not seen the multi-line queries at
 `lib.rs:593` and `1729`. So the scan below reads inside query text only, and when
 it cannot tell, it says nothing.
 
+**Three query shapes it cannot see, measured on 11 Aug rather than guessed.** The
+scan finds a binding as `(name:Label` and a read as `name.field`, both inside one
+string literal, so these go past it entirely:
+
+    (f:`File`)             a quoted label - the binding is not recognised, so
+                           every field read off `f` is invisible
+    MATCH (f) WHERE f:File the label arrives in a predicate, not the pattern
+    "MATCH (f:File) " + q  a query assembled from more than one literal
+
+Each one makes the gate QUIETER, never louder, which is the direction chosen
+above. None of them occurs today: 30 `MATCH` lines across the seven app trees,
+none quoted, none label-in-WHERE, none concatenated. So this is a statement about
+what a future query could hide, not a defect being carried - **and the reason it
+is written down is that a pattern is wrong in ways its own corpus cannot show.**
+The sibling comment-path gate shipped with a boundary bug that its `.rs` corpus
+had no string to expose, found only by running it over TypeScript.
+
 Apps only, and not because daemons do not query: `code-indexer`, `modulesd`,
 `knowledge-mcp` and the AI engine all write Cypher, and the knowledge daemon owns
 the graph outright. None of them has a profile at all, which is the open question
