@@ -258,6 +258,7 @@ jobs:
           node dev/scripts/test-check-comment-paths.mjs
           node dev/scripts/test-check-dbus-method-names.mjs
           node dev/scripts/test-check-spawned-binaries.mjs
+          node dev/scripts/test-check-optimistic-write.mjs
           node dev/scripts/test-pre-commit-hook.mjs
           bash dev/scripts/check-packaged-units.sh
           bash dev/scripts/check-sensing-vectors.sh

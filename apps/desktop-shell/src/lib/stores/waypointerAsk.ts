@@ -60,8 +60,9 @@ const FIXTURE_ANSWER =
 let sessionId: string | null = null;
 let fixtureTimer: ReturnType<typeof setInterval> | null = null;
 
-/// Read the capability for the line under the input. Live: `ai_capability`
-/// (a coder seam in the shell bridge); DEV falls back to the fixture.
+/// Read the capability for the line under the input. Live: `ai_capability` in
+/// this app's own backend (`src-tauri/src/capability.rs`); DEV falls back to the
+/// fixture.
 export async function loadAskCapability(): Promise<void> {
   try {
     askCapability.set(await invoke<AskCapability>("ai_capability"));

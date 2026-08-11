@@ -61,7 +61,14 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+# The tree to scan. Takes an argument so the check can be pointed at a fixture and
+# SHOWN TO FAIL - it had no companion test for exactly this reason: a hardcoded
+# root cannot be handed a planted violation, so the one rule this directory holds
+# above the others ("a checker is not trusted until it has been shown to fail")
+# was unmet here because the check could not be run against anything else.
+ROOT = (
+    Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
+)
 
 CATCH = re.compile(r"\}\s*catch\b[^{]*\{", re.S)
 STORE_WRITE = re.compile(r"\.(set|update)\(")
