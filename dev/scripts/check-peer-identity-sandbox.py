@@ -63,20 +63,33 @@ Narrowed by measurement on 11 Aug, because "reads /proc" does not say which read
     ProtectSystem=strict     /proc/<pid>/stat = OK     /proc/<pid>/exe = DENIED
 
 Only the exe magic link is refused - it is ptrace-gated, `stat` is not, so
-`pid_start_time` survives a sandbox and was never the obstacle. That left the
-single fatal `app_id_from_pid` call as the whole problem for an enforced unit,
-and `resolve_identity` in `connection_auth.rs` now takes it: the legacy value is
-passed as a `Result`, the shadow arm unwraps it because it has nothing else to
-be, the enforce arm drops it. So on enforce the exe read can fail and the
-connection lives.
+`pid_start_time` survives a sandbox and was never the obstacle. I then said the
+single fatal `app_id_from_pid` call was therefore the whole problem, and
+`resolve_identity` in `connection_auth.rs` removed it: the legacy value is passed
+as a `Result`, the shadow arm unwraps it because it has nothing else to be, the
+enforce arm drops it.
 
-**This check still flags an enforced unit that takes hardening, on purpose.** The
-code no longer forbids it; a boot has not yet shown it works. Two units run on
-enforce today (`arlen-auditd`, `arlen-consent-broker`) and both are still
-unhardened. Whoever hardens one should boot the image, drive a caller through the
-socket, and read the audit chain for the identity it recorded - and then relax
-the rule here with that evidence, rather than adding a KNOWN entry for something
-that is not a defect.
+**That was necessary and not sufficient, and this is the measurement rather than
+the argument.** A probe daemon under `systemd-run --user -p ProtectSystem=strict`
+with `ARLEN_STAMPED_IDENTITY=enforce`, given a same-uid peer:
+
+    stat = OK    exe = DENIED    extract_from = REFUSED (CannotReadExe)
+
+`stamped_identity::app_id_from_connection_at` resolves in tiers. Tier 1 asks the
+config-broker for the launcher stamp and returns with no `/proc` read at all;
+Tiers 2 and 3 fall through to `exe_path_openat(peer.pid())`, which the sandbox
+refuses exactly like the legacy call did. The probe's peer was a plain binary and
+had never been through `arlen-run`, so it fell through and was refused.
+
+So the condition for hardening a unit is not "the unit is on enforce". It is
+"every caller of that unit is launcher-stamped", which is a claim about the
+callers and about the config-broker being reachable, not about the unit file.
+
+**This check therefore still flags an enforced unit that takes hardening.** Relax
+that only with a boot behind it: harden one, drive a real caller through its
+socket, and read the audit chain for the identity it recorded. A green unit test
+is not evidence here - three times now the reasoning was clean and the
+measurement disagreed.
 """
 
 import re

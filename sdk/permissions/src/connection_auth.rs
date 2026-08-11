@@ -275,9 +275,15 @@ enum StampedMode {
 /// `/proc/<pid>/exe`, which is ptrace-gated: a daemon hardened with a mount-namespace
 /// directive (`PrivateTmp`, `ProtectHome`, `ReadWritePaths`, any of them) still
 /// publishes a readable `/proc/<pid>/stat` but denies the exe link. Measured
-/// 11 Aug 2026 against the shipped units. So on a hardened peer the legacy resolver
-/// fails while the pidfd resolver does not, and letting the observation propagate
-/// would refuse exactly the peers the stamped path exists to serve.
+/// 11 Aug 2026 under `systemd-run --user -p ProtectSystem=strict`.
+///
+/// Removing this `?` is necessary and NOT sufficient, which the same measurement
+/// showed: a hardened enforced daemon still refused an unstamped peer, because
+/// `stamped_identity` resolves in tiers and only Tier 1 (the launcher stamp from the
+/// config-broker) returns without touching `/proc`. Tiers 2 and 3 fall back to their
+/// own `exe_path_openat`, which the sandbox refuses just the same. So hardening a
+/// unit turns on its CALLERS being launcher-stamped, not on this function alone.
+/// Deleting the legacy read was the half that could be done without that.
 fn resolve_identity(
     mode: StampedMode,
     peer_pid: u32,
