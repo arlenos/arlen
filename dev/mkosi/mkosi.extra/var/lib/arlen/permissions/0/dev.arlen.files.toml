@@ -29,6 +29,14 @@ read = [
     # the whole of what the query returns, and the friendly name is derived from
     # it in Rust.
     "system.App.id",
+    # The Ask facet that offers "which app touched this" reads the app's NAME
+    # beside its id (`MATCH (f:File)-[:ACCESSED_BY]->(a:App) RETURN a.id, a.name`,
+    # lib.rs), and the project facet returns root_path and filters on expired_at
+    # to keep archived projects out. Found by the grant-versus-query gate rather
+    # than by hand: my own reading of this profile had called them covered.
+    "system.App.name",
+    "system.Project.root_path",
+    "system.Project.expired_at",
 ]
 
 # Event-bus scopes, for the shadow-to-enforce cutover the bus is parked halfway

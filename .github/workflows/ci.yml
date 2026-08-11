@@ -258,6 +258,8 @@ jobs:
           python3 dev/scripts/check-unit-directives.py
           node dev/scripts/test-check-unit-directives.mjs
           node dev/scripts/test-check-gate-drift.mjs
+          python3 dev/scripts/check-read-grants-cover-queries.py
+          node dev/scripts/test-check-read-grants-cover-queries.mjs
           python3 dev/scripts/check-inert-switches.py
           node dev/scripts/test-check-inert-switches.mjs
           python3 dev/scripts/check-wired.py
