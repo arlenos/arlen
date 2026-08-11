@@ -96,6 +96,7 @@ pub fn run() {
             commands::ai::ai_provider_set_enabled,
             commands::ai::ai_provider_test,
             commands::activity::ai_activity_recent,
+            commands::topbar::topbar_items,
             commands::activity::settings_app_audit,
             commands::sensing::settings_sensing_state,
             commands::sensing::settings_sensing_set_screen_capture,

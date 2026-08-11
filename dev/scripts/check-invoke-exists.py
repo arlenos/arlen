@@ -142,13 +142,6 @@ KNOWN: dict[str, dict[str, str]] = {
         "sentinel_set_alerts": "sentinel alerts",
         "sentinel_set_detector": "a sentinel detector toggle",
         "sentinel_set_sensitivity": "sentinel sensitivity",
-        # Not missing, MISPLACED: `topbar_items` is implemented and registered in
-        # the desktop-shell (`topbar.rs`), and a Tauri command is only reachable
-        # inside the binary that registers it. So Settings asking for it is a
-        # cross-binary call with no route, which is a different job from writing a
-        # producer - the producer exists. Whoever takes this needs an IPC path
-        # from Settings to the running shell, not a new command.
-        "topbar_items": "the top-bar item list (implemented in the shell; Settings has no route to it)",
     },
     "desktop-shell": {
         # The shell has a print DIALOG whose three commands are missing, and the

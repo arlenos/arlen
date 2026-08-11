@@ -2,10 +2,11 @@
 /// bar, in order, each shown-in-bar or in-overflow. The Settings panel reorders
 /// + toggles them; the shell reads the saved arrangement to render the bar.
 ///
-/// `topbar_items` is implemented, but in the desktop-shell (`topbar.rs`), and a
-/// Tauri command only exists inside the binary that registers it - so from here
-/// it does not resolve and `load` below leaves the panel empty with the error.
-/// What is missing is a route from Settings to the running shell, not a producer.
+/// `topbar_items` here is a CONDUIT, not the producer. The inventory is live
+/// state in the desktop-shell, and a Tauri command only exists inside the binary
+/// that registers it - so this one dials the shell's `topbar.sock` broker and
+/// relays what it answers. The route used to be missing, which left this panel
+/// empty with an error while the producer had existed all along.
 ///
 /// This comment used to say the panel drives a mocked inventory while that seam
 /// lands. It does not and never did: the mock lives in the DEV `_topbartest`
