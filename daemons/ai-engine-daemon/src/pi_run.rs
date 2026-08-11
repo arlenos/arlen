@@ -16,6 +16,22 @@ use tokio::net::{UnixListener, UnixStream};
 /// The initial turn that kicks an ephemeral explain run.
 const EXPLAIN_PROMPT: &str = "Explain what the computer is doing right now.";
 
+/// System Explanation Mode: [`run_ephemeral_answer`] with the question it always
+/// asks. Kept as its own entry point so the prompt lives beside the mode it
+/// belongs to rather than at the call site, where a second caller could drift it.
+pub async fn run_ephemeral_explain<S, B>(
+    behaviour: &Behaviour,
+    project_anchor: Option<String>,
+    engine: &S,
+    binder: &B,
+) -> Result<String, String>
+where
+    S: SpawnEngine,
+    B: SessionBinder + ?Sized,
+{
+    run_ephemeral_answer(behaviour, project_anchor, EXPLAIN_PROMPT, engine, binder).await
+}
+
 /// The minimal turn that kicks a fire-and-forget behaviour run. It carries NO
 /// trigger data (the event fields are external content, a prompt-injection
 /// surface); pi reads the triggering event from the Knowledge Graph via its
@@ -192,16 +208,28 @@ impl Drop for SocketGuard {
     }
 }
 
-/// Run `behaviour` (the explain skill) on a fresh ephemeral confined pi and RETURN
+/// Run `behaviour` on a fresh ephemeral confined pi, submit `turn`, and RETURN
 /// its assistant answer. Unlike [`run_ephemeral_pi`] (fire-and-forget curation),
-/// this is REQUEST-RESPONSE: it drives pi over a PRIVATE drive socket, submits an
+/// this is REQUEST-RESPONSE: it drives pi over a PRIVATE drive socket, submits the
 /// initial turn, and captures pi's reply via [`drive_for_answer`]. The session is
 /// bound for the run (so pi's gated reads authorise) and ended after; the run is
 /// dropped once the answer is in hand, so `kill_on_drop` reaps the confined pi.
-/// Bounded by the behaviour's wall-clock. (System Explanation Mode, §D.)
-pub async fn run_ephemeral_explain<S, B>(
+/// Bounded by the behaviour's wall-clock.
+///
+/// **The two arguments carry different trust and it matters which is which.** The
+/// BEHAVIOUR is the authority: its manifest declares the read scope, the tools and
+/// the budget, and the gate enforces those whatever is asked. The TURN is only the
+/// question. So a caller may supply the turn without widening anything - what it
+/// can reach was decided by the skill it was run under.
+///
+/// It used to take neither: the turn was a hardcoded const, which is why System
+/// Explanation Mode was the only thing this could do. A private ephemeral session
+/// that answers ONE question and dies is also the shape a launcher ask wants, and
+/// that shape was written and not reachable.
+pub async fn run_ephemeral_answer<S, B>(
     behaviour: &Behaviour,
     project_anchor: Option<String>,
+    turn: &str,
     engine: &S,
     binder: &B,
 ) -> Result<String, String>
@@ -224,9 +252,9 @@ where
         // `serve_drive` accepts it; serve_drive then relays it to pi's stdio.
         let stream = UnixStream::connect(&socket_path)
             .await
-            .map_err(|e| format!("could not reach the explain engine: {e}"))?;
+            .map_err(|e| format!("could not reach the engine: {e}"))?;
         let (read, write) = stream.into_split();
-        drive_for_answer(read, write, EXPLAIN_PROMPT).await
+        drive_for_answer(read, write, turn).await
     };
 
     // The answer arriving ends the run (dropping `run` kills the confined pi via
@@ -234,9 +262,9 @@ where
     let answer = tokio::select! {
         result = tokio::time::timeout(ephemeral_wall(behaviour), drive) => match result {
             Ok(driven) => driven,
-            Err(_) => Err("the explanation timed out".to_string()),
+            Err(_) => Err("the assistant timed out".to_string()),
         },
-        _ = run => Err("the explain engine exited before answering".to_string()),
+        _ = run => Err("the engine exited before answering".to_string()),
     };
 
     binder.end_session(&token);
