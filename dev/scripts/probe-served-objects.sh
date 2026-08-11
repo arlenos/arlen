@@ -38,7 +38,27 @@
 # between "the interface compiles" and "the object was watched being served".
 set -uo pipefail
 
-BIN="${1:?usage: probe-served-objects.sh <daemon-binary> <bus-name> <path> [path...]}"
+# `--all <file>`: every surface in a tab-separated list (binary, bus name, path),
+# one per line, `#` comments ignored. One command reruns the whole sweep, which is
+# the difference between a result somebody can reproduce and a table in a report.
+if [ "${1:-}" = "--all" ]; then
+  LIST="${2:?usage: probe-served-objects.sh --all <file>}"
+  [ -r "$LIST" ] || { echo "cannot read $LIST" >&2; exit 2; }
+  rc=0
+  while IFS=$'\t' read -r bin name path; do
+    case "${bin# }" in ''|\#*) continue ;; esac
+    [ -n "${path:-}" ] || continue
+    echo "### $bin  $name"
+    if [ -x "target/debug/$bin" ]; then
+      "$0" "target/debug/$bin" "$name" "$path" || rc=1
+    else
+      echo "  SKIP target/debug/$bin is not built"
+    fi
+  done < "$LIST"
+  exit "$rc"
+fi
+
+BIN="${1:?usage: probe-served-objects.sh <daemon-binary> <bus-name> <path> [path...] | --all <file>}"
 NAME="${2:?a bus name is required}"
 shift 2
 PATHS=("$@")
