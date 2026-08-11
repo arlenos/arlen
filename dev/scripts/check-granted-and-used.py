@@ -43,7 +43,14 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+# The tree to scan. An argument so this can be pointed at a fixture and shown
+# to fail: a check that only ever runs against a tree that already passes
+# cannot demonstrate the defect it exists for (standing rule, 11 Aug).
+ROOT = (
+    Path(sys.argv[1]).resolve()
+    if len(sys.argv) > 1
+    else Path(__file__).resolve().parents[2]
+)
 
 # Permission to the ui-kit call that exercises it. Only permissions with exactly
 # one canonical consumer belong here; anything else would need a guess.

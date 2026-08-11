@@ -34,7 +34,14 @@ import pathlib
 import re
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+# The tree to scan. An argument so this can be pointed at a fixture and shown
+# to fail: a check that only ever runs against a tree that already passes
+# cannot demonstrate the defect it exists for (standing rule, 11 Aug).
+ROOT = (
+    pathlib.Path(sys.argv[1]).resolve()
+    if len(sys.argv) > 1
+    else pathlib.Path(__file__).resolve().parents[2]
+)
 SOURCE = ROOT / "sdk/permissions/src/lib.rs"
 
 # struct -> the parent whose `reach_summary` projects it. The parent must

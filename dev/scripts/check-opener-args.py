@@ -47,7 +47,14 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+# The tree to scan. An argument so this can be pointed at a fixture and shown
+# to fail: a check that only ever runs against a tree that already passes
+# cannot demonstrate the defect it exists for (standing rule, 11 Aug).
+ROOT = (
+    Path(sys.argv[1]).resolve()
+    if len(sys.argv) > 1
+    else Path(__file__).resolve().parents[2]
+)
 
 CALL = re.compile(r'Command::new\("xdg-open"\)')
 # The `--` may sit on its own `.arg("--")` line before the value.
@@ -82,11 +89,13 @@ def main() -> int:
     findings: list[str] = []
     acknowledged: list[str] = []
     calls = 0
+    scanned = 0
 
     for path in sorted(ROOT.rglob("*.rs")):
         parts = set(path.parts)
         if {"target", "node_modules", ".git", "mkosi.builddir"} & parts:
             continue
+        scanned += 1
         text = path.read_text(encoding="utf-8", errors="replace")
         for m in CALL.finditer(text):
             calls += 1
@@ -113,8 +122,18 @@ def main() -> int:
                 f"opens"
             )
 
+    # Found the moment this check was first pointed somewhere other than the
+    # tree it was written against: it answered "pass" to a directory with
+    # nothing in it. A count of zero is only honest if there was something to
+    # count - no Rust sources at all means the layout moved and this check went
+    # quiet, which is the one failure a green result must never be able to hide.
+    if scanned == 0:
+        print("found no Rust sources to scan; the layout moved and this check went quiet")
+        return 1
+
     print(
-        f"{calls} xdg-open call(s) checked for an end-of-options marker. "
+        f"{calls} xdg-open call(s) across {scanned} file(s) checked for an "
+        f"end-of-options marker. "
         f"One tool only: the same guard breaks nmcli, which was measured before "
         f"this check was written."
     )
