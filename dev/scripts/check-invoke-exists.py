@@ -201,7 +201,6 @@ KNOWN: dict[str, dict[str, str]] = {
         "ai_edit": "proposing an assistant edit",
     },
     "harness": {
-        "register_menu": "the app menu (the plugin's name for it is menu_register)",
     },
 }
 
