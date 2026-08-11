@@ -657,9 +657,20 @@ impl AgentAdminInterface {
         // Caller-auth: only the harness / Settings may invoke this destructive
         // verb (it retracts a graph write). Any other or unresolvable caller is
         // refused before any store read, audit or write - fail-closed.
+        // The refusal leaves a line, like this interface's other two. Returning
+        // `not-permitted` serves the caller and told nobody else - and this is the
+        // destructive verb on the surface, so an attempt on it is precisely what
+        // somebody reading the journal later wants to find.
         let caller = match resolve_dbus_caller(&header, connection).await {
             Ok(c) if compensate_caller_admitted(&c) => c,
-            _ => return "not-permitted".to_string(),
+            other => {
+                let who = match &other {
+                    Ok(c) => format!("caller {c:?} is not admitted"),
+                    Err(e) => format!("caller unresolved: {e}"),
+                };
+                tracing::warn!("compensate refused: {who}");
+                return "not-permitted".to_string();
+            }
         };
         run_compensate(
             engine_config::executor_live(),
