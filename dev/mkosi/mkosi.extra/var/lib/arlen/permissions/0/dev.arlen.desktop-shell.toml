@@ -36,3 +36,41 @@ read = [
     # read.
     "system.Event.timestamp",
 ]
+
+# Event-bus scopes, for the shadow-to-enforce cutover (`ARLEN_EVENT_BUS_ENFORCE`,
+# off by default). Under enforce a caller with no declared scope keeps no
+# subscription at all, and for this app that is the whole top bar going dark:
+# window titles, workspace state, the app menu, toolbars, badges and the battery.
+#
+# The list is not a reading of the call sites, it is the SUBSCRIPTIONS constant
+# the shell registers with (`event_bus.rs:23`), translated into the profile's
+# pattern syntax. The two spell the same idea differently and the difference is
+# worth knowing: the bus registration uses a trailing-dot prefix (`window.`),
+# while a profile pattern uses a `.*` suffix (`window.*`) that pattern_matches
+# strips and compares on the dot boundary. Both admit `window.focused`; neither
+# admits `windowless.x`.
+#
+# Families rather than the 22 concrete types the file handles today. Each of
+# these is one contract with its own producer - the toolbar protocol, the
+# shortcut registry, the badge and ambient channels - and the shell handles every
+# verb in them by construction, since it IS the renderer they exist for. Naming
+# the 22 would mean a new verb in an existing contract arrives as a silent
+# denial, which is exactly the failure this whole section is meant to prevent.
+#
+# `publish` is empty on purpose and not by omission: the shell holds no
+# UnixEventEmitter anywhere in its tree (checked, not assumed - an older note
+# claimed it emitted focus.activated, and no such emitter exists). It is a pure
+# consumer, so an empty publish list is the honest statement of that.
+[event_bus]
+publish = []
+subscribe = [
+    "window.*",
+    "config.*",
+    "project.*",
+    "app.toolbar.*",
+    "app.shortcut.*",
+    "app.badge.*",
+    "app.ambient.*",
+    "app.menu.*",
+    "power.*",
+]

@@ -1918,6 +1918,25 @@ preferences = true
         assert!(!pattern_matches(&[], "anything"));
     }
 
+    /// The bus registers a subscription as a trailing-dot PREFIX (`window.`,
+    /// `event_bus.rs:23`) while a profile grants a `.*` SUFFIX (`window.*`), and
+    /// under `ARLEN_EVENT_BUS_ENFORCE` the two meet: the requested pattern is
+    /// matched against the granted one, so a shell that asks for `window.` needs
+    /// `window.*` to admit it or the top bar goes dark.
+    ///
+    /// It is one character away from a case that must NOT match - the assertion
+    /// above rejects `com.app` against `com.app.*` - so which side of the dot
+    /// boundary this lands on is worth pinning rather than reading off.
+    #[test]
+    fn a_trailing_dot_subscription_prefix_is_admitted_by_the_star_grant() {
+        assert!(pattern_matches(&["window.*".into()], "window."));
+        assert!(pattern_matches(&["window.*".into()], "window.focused"));
+        // The prefix itself, without the dot, is still refused.
+        assert!(!pattern_matches(&["window.*".into()], "window"));
+        // And it does not leak into a longer name that merely starts the same.
+        assert!(!pattern_matches(&["window.*".into()], "windowless.x"));
+    }
+
     // ── Input permissions ──
 
     #[test]
