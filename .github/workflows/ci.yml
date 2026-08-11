@@ -263,6 +263,7 @@ jobs:
           node dev/scripts/test-check-app-profiles.mjs
           node dev/scripts/test-check-webview-sandbox.mjs
           node dev/scripts/test-check-opener-args.mjs
+          node dev/scripts/test-check-bus-names-covered.mjs
           node dev/scripts/test-pre-commit-hook.mjs
           bash dev/scripts/check-packaged-units.sh
           bash dev/scripts/check-sensing-vectors.sh
@@ -271,6 +272,7 @@ jobs:
           node dev/scripts/test-check-gate-drift.mjs
           python3 dev/scripts/check-read-grants-cover-queries.py
           node dev/scripts/test-check-read-grants-cover-queries.mjs
+          python3 dev/scripts/check-bus-names-covered.py
           python3 dev/scripts/check-inert-switches.py
           node dev/scripts/test-check-inert-switches.mjs
           python3 dev/scripts/check-wired.py

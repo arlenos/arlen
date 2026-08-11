@@ -47,6 +47,12 @@ if [ "${1:-}" = "--all" ]; then
   rc=0
   while IFS=$'\t' read -r bin name path; do
     case "${bin# }" in ''|\#*) continue ;; esac
+    # `!exclude <name> <reason>`: declared in a unit, not probeable here. The
+    # reason is in the file for a person; the sweep just says so and moves on.
+    if [ "$bin" = "!exclude" ]; then
+      echo "### $name  excluded: $path"
+      continue
+    fi
     [ -n "${path:-}" ] || continue
     echo "### $bin  $name"
     if [ -x "target/debug/$bin" ]; then
