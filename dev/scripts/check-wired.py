@@ -148,6 +148,40 @@ def main() -> int:
                 f"delete the entry"
             )
 
+    # How many checks can be shown to fail, counted rather than remembered.
+    #
+    # This is informational and does NOT fail the run: writing the missing
+    # controls as a batch is an evening on scaffolding, so they land when their
+    # subject is next touched. But a gap nobody measures is a gap that grows, and
+    # a number in a README is a claim that stops being true the day after it is
+    # written - so it is printed here, from the tree, every time.
+    checks = [
+        f.name
+        for f in sorted(SCRIPTS.iterdir())
+        if f.is_file() and f.name.startswith("check-") and not NOT_A_CHECK.match(f.name)
+    ]
+    # Which check each control DRIVES, read from the file, rather than inferred
+    # from its name. `test-check-fixtures.mjs` drives `check-invoke-shape.py` and
+    # `test-check-units.mjs` drives `check-packaged-units.sh`; a name-matching
+    # version of this listed both of those checks as unproven, which is the same
+    # mistake as everything else on this page - measuring the label instead of
+    # the thing.
+    driven = set()
+    for t in SCRIPTS.glob("test-*.mjs"):
+        for m in re.finditer(r"check-[a-z0-9-]+\.(?:py|sh|mjs)", t.read_text(encoding="utf-8", errors="replace")):
+            driven.add(m.group(0))
+    proven = [c for c in checks if c in driven]
+    print(
+        f"{len(proven)} of {len(checks)} check(s) have a positive control - a "
+        f"test that plants a defect and watches them fail. The rest are not "
+        f"disproven, only unproven; they gain one when their subject is next "
+        f"touched."
+    )
+    if len(proven) < len(checks):
+        missing = [c for c in checks if c not in proven]
+        print(f"  without one: {', '.join(missing)}")
+    print()
+
     print(
         f"{wired + excused} check/probe script(s): {wired} run by something, "
         f"{excused} excused with a reason. A mention in prose does not count as a "
