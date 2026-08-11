@@ -19,7 +19,7 @@ const GATE = join(ROOT, "dev/scripts/check-read-grants-cover-queries.py");
 
 const failures = [];
 
-const P = "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/0";
+const P = "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000";
 const APP = "apps/probe/src-tauri/src";
 
 const profile = (...grants) => `[info]

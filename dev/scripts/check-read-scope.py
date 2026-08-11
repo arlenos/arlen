@@ -40,7 +40,7 @@ import re
 import sys
 
 ROOT = pathlib.Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parents[2]
-PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/0"
+PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000"
 
 # `MATCH (n:Label`, the shape every live read in the tree uses.
 MATCH = re.compile(r"MATCH\s*\(\s*\w*\s*:\s*(\w+)")

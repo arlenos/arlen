@@ -51,7 +51,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STEPS = ROOT / "dev/mkosi/mkosi.build.d"
-PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/0"
+PROFILES = ROOT / "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000"
 
 # The apps installed without a profile, and why. EMPTY as of 9 August: every app
 # the image installs has one. Each entry was a promise that an app could not be

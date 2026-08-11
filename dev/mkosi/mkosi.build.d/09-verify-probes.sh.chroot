@@ -108,8 +108,8 @@ chmod 644 "$DESTDIR/usr/lib/systemd/system/arlen-kg-probe.service"
 # into $DESTDIR; it does NOT go in `mkosi.extra/var/lib/arlen/permissions/`, where
 # the app profiles live, because everything there ships in every image and a
 # release system has no `kg-probe` to grant anything to.
-mkdir -p "$DESTDIR/var/lib/arlen/permissions/0"
-cat > "$DESTDIR/var/lib/arlen/permissions/0/kg-probe.toml" <<'PROFILE'
+mkdir -p "$DESTDIR/var/lib/arlen/permissions/1000"
+cat > "$DESTDIR/var/lib/arlen/permissions/1000/kg-probe.toml" <<'PROFILE'
 # Verify images only. The probe reads exactly what the knowledge app reads, so
 # that what it reports is what the app would have seen.
 [info]
@@ -132,7 +132,7 @@ read = [
     "system.Project.created_at",
 ]
 PROFILE
-chmod 644 "$DESTDIR/var/lib/arlen/permissions/0/kg-probe.toml"
+chmod 644 "$DESTDIR/var/lib/arlen/permissions/1000/kg-probe.toml"
 mkdir -p "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants"
 ln -sf ../arlen-kg-probe.service \
        "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants/arlen-kg-probe.service"

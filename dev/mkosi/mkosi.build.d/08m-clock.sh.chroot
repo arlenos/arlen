@@ -38,7 +38,7 @@ install -Dm755 "$CARGO_TARGET_DIR/release/arlen-clockd" \
 # The permission profile is NOT installed from here. Profiles are read from the
 # system tier, /var/lib/arlen/permissions/<uid>/, and the image ships those as
 # static extras beside its siblings - so the clock's lives at
-# mkosi.extra/var/lib/arlen/permissions/0/clockd.toml. Putting a copy under
+# mkosi.extra/var/lib/arlen/permissions/1000/clockd.toml. Putting a copy under
 # /usr/share would place it where nothing looks, which is the exact shape of
 # failure this whole packaging step exists to prevent.
 echo ">> staged arlen-clockd into the image"

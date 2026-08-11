@@ -23,7 +23,7 @@ import { spawnSync } from "node:child_process";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const GATE = join(ROOT, "dev/scripts/check-read-scope.py");
-const PROFILES = "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/0";
+const PROFILES = "dev/mkosi/mkosi.extra/var/lib/arlen/permissions/1000";
 
 const failures = [];
 
