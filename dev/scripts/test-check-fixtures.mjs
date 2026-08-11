@@ -22,9 +22,17 @@ const ROOT = new URL("../..", import.meta.url).pathname;
 
 const failures = [];
 
+// Every tree this file makes, removed at the end. One function cleaned up after
+// itself and the rest did not, which is the reliable outcome of asking each case
+// to remember: by 11 Aug there were 378 of these in /tmp, most from one night's
+// commits, because the pre-commit hook runs this file every time. Collecting them
+// here means a new case cannot forget.
+const made = [];
+
 /** Write `files` into a throwaway tree and return its path. */
 function tree(files) {
   const dir = mkdtempSync(join(tmpdir(), "arlen-fixture-"));
+  made.push(dir);
   for (const [rel, body] of Object.entries(files)) {
     const path = join(dir, rel);
     mkdirSync(dirname(path), { recursive: true });
@@ -568,6 +576,8 @@ function fixtureMarkupFixtures() {
 }
 
 fixtureMarkupFixtures();
+
+for (const d of made) rmSync(d, { recursive: true, force: true });
 
 if (failures.length) {
   console.log(`\n${failures.length} fixture(s) failed: ${failures.join(", ")}`);
