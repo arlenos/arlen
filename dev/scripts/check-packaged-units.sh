@@ -7,8 +7,11 @@
 # a broken peer-auth sandbox before. This compares the DIRECTIVE lines only
 # (stripping comments and blanks), so a comment reword never fails the gate but a
 # real directive difference does. Units with no dist/ counterpart (arlen-ai-proxy,
-# arlen-dogfood, arlen-config-broker, arlen-llama, arlen-graph, arlen-timeline)
-# are mkosi-only and skipped.
+# arlen-dogfood, arlen-llama, arlen-graph, arlen-timeline) are mkosi-only and
+# skipped. `arlen-config-broker` was in that list and has since grown a dist unit,
+# so it IS compared now and carries a printed KNOWN DRIFT below. Read that instead
+# of this line, which claimed for a while that the unit went unchecked while the
+# check was running forty lines further down.
 #
 # Exit 0 = every packaged unit's directives match its dist/ canonical (or has no
 # canonical). Exit 1 = a drift a reviewer must reconcile.
