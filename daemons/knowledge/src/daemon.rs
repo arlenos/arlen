@@ -1469,6 +1469,13 @@ async fn removal_ledger_for(target_app: &str) -> crate::revoke::RemovalLedger {
 }
 
 fn handle_revoke(app_id: &str, body: &[u8]) -> String {
+    // NB the capability-change audit for a revoke is NOT here - it is at the
+    // dispatch site, keyed on this function's `Revoked` response token, because
+    // the audit sink is async and this is not. Reading only this function makes
+    // the revoke path look unaudited beside `handle_restore`, which does submit
+    // its own record; that reading is wrong and cost a false report at 01:50 on
+    // 12 Aug. The record matters twice over: it is the provenance entry AND the
+    // durable removal set a later restore is bounded to.
     if !revoke_caller_admitted(app_id) {
         return "ERROR: revoke not permitted for this caller".to_string();
     }
