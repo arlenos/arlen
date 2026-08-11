@@ -87,6 +87,22 @@ check(
 
 // BlueZ, UPower and logind define their own methods; reporting those would be
 // reporting that a foreign API exists.
+// The impl block ends at its closing brace. Slicing to the next interface
+// instead swallowed `#[cfg(test)] mod tests` and put thirty test function names
+// into one interface's method set - which makes the gate accept anything named
+// like a test, the quiet direction to be wrong in.
+check(
+  "test functions after the impl are not interface methods",
+  {
+    "daemons/probe/src/iface.rs":
+      IFACE +
+      '\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn a_thing_that_is_not_a_method() {}\n}\n',
+    "apps/probe/src/lib.rs":
+      'const I: &str = "org.arlen.Probe1";\nproxy.call("AThingThatIsNotAMethod", &()).await;\n',
+  },
+  (code, out) => code === 1 && out.includes("AThingThatIsNotAMethod"),
+);
+
 check(
   "a call on a foreign interface is not ours to check",
   {
