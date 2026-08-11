@@ -117,11 +117,13 @@ check(
   (code, out) => code === 0 && out.includes("PAYING THE OTHER HALF"),
 );
 
-// The same unit on the stamped resolver still pays. A version of this check
-// split them and said the enforced ones could have their sandboxes back, because
-// they resolve through a pidfd - but `extract_from` reads /proc/<pid>/exe before
-// it ever looks at the mode, so the dependency is there either way. This case
-// pins the retraction: the flag must not buy an exemption it does not earn.
+// The same unit on the stamped resolver still pays, and the reason has changed
+// under it, so read the gate's docstring before touching this case. It used to be
+// that `extract_from` read /proc/<pid>/exe before it looked at the mode, so the
+// dependency was there either way. `resolve_identity` now drops the legacy value
+// on the enforce arm, so the code permits it. What is still missing is a boot
+// showing an enforced daemon identifying a caller from inside a sandbox, and this
+// case holds the line until someone produces one.
 check(
   "being on enforce does not exempt a peer-resolver",
   tree({
