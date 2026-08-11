@@ -37,6 +37,22 @@ LOG=$(mktemp /tmp/arlen-shell-smoke-XXXXXX.log)
 ANSWER=$(mktemp /tmp/arlen-shell-answer-XXXXXX.txt)
 INJECT=$(mktemp /tmp/arlen-shell-inject-XXXXXX.sh)
 
+# On EXIT rather than at the end, because the end is not where most runs leave:
+# the binary checks below bail early, and a `rm` before `exit "$rc"` covers only
+# the path that reaches it. Measured on 11 Aug - a stale-binary exit left both
+# files behind, +2 per run, which is how /tmp collected 81 of them.
+#
+# A failing run KEEPS the log and the probe answer, because those are what the
+# failure is read from, and says where they are. A passing one keeps nothing:
+# nobody opens the log of a green run. `$INJECT` is scaffolding and always goes.
+trap 'status=$?;
+      rm -f "$INJECT";
+      if [ $status -eq 0 ]; then
+        rm -f "$LOG" "$ANSWER";
+      else
+        echo "(kept for the failure: shell log $LOG, probe answer $ANSWER)" >&2;
+      fi' EXIT
+
 [ -x "$BIN" ] || { echo "no shell binary at $BIN - cargo build it first" >&2; exit 2; }
 
 # The binary is what runs, so a binary older than the startup code it is supposed
@@ -80,6 +96,5 @@ else
   rc=1
 fi
 
-echo "(shell log $LOG)"
-rm -f "$INJECT"
+
 exit "$rc"
