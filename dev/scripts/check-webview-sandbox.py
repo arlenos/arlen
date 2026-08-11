@@ -13,6 +13,21 @@ this exists rather than another round of grepping.
 What it checks: every `apps/*/src-tauri/src/main.rs` sets `WEBKIT_FORCE_SANDBOX`
 before the app starts.
 
+**A CONFINED launch declines it, and that is not a loophole in this rule - it is
+the rule doing its job in a place where the nesting cannot hold.** `arlen-run`
+passes `WEBKIT_FORCE_SANDBOX=0`, which each app respects because it sets the
+variable only when the environment carries none. It has to: WebKit's sandbox needs
+a nested user namespace, and the app seccomp filter denies one, so with the inner
+sandbox forced the window opens and the webview paints nothing.
+
+**What that costs, stated because a deliberate choice is not a free one.** The two
+sandboxes bound different things. WebKit's bounds a compromised RENDERER away from
+the app's own files; bwrap bounds the APP away from the system. Declining the inner
+one means a compromised renderer holds the app's entire grant - so under
+confinement the permission profile is not paperwork, it is the only boundary left
+around a renderer that has been taken over. Review a confined app's profile with
+that in mind.
+
 What it does NOT check, and this is the part worth reading before trusting a pass:
 
   * That the variable is set BEFORE GTK or WebKit initialises. It must be, or
