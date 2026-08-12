@@ -897,6 +897,16 @@ def main():
         # logging, so an early last-entry is not proof of truncation. The horizon
         # is what the reader needs either way - it is the line past which absence
         # means nothing.
+        #
+        # One of the two explanations has since been removed, which makes an early
+        # horizon say more than it did. Journald's default rate limit - 10000
+        # messages per 30s, with the event bus alone logging at DEBUG - was the
+        # obvious suspect for the 12 Aug run that stopped at 10.0s of ~120s while
+        # the bar appeared at 12s. Verify images now ship
+        # `journald.conf.d/10-verify-no-ratelimit.conf` (staged by
+        # 09-verify-probes.sh.chroot), so from the next build an early stop is not
+        # that. What remains is a quiet guest - which is a finding, not a blind
+        # spot. Note the horizon only moves for images built after that commit.
         try:
             with open(os.path.abspath(args.serial_out), "r", errors="replace") as fh:
                 stamps = re.findall(r"^\[\s*(\d+\.\d+)\]", fh.read(), re.M)
