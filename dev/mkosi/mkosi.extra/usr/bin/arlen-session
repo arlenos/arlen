@@ -108,9 +108,9 @@ fi
 # "Cosmic starting up!", the init_egl stage markers, "Listening on <socket>", and
 # the session launch. This makes the intermittent software-GL socket-publish hang
 # diagnosable - on a black boot the serial stops at the stage that hung, instead
-# of going silent with no marker. Scoped to cosmic-comp only (inline env), so the
+# of going silent with no marker. Scoped to the compositor only (inline env), so the
 # daemons + shell keep their own levels; bounded (init logs, not per-frame debug).
-RUST_LOG=warn,cosmic_comp=info systemd-cat -t cosmic-comp cosmic-comp &
+RUST_LOG=warn,cosmic_comp=info systemd-cat -t arlen-compositor arlen-compositor &
 compositor_pid=$!
 
 # Wait for the compositor to publish its Wayland socket and capture its name into

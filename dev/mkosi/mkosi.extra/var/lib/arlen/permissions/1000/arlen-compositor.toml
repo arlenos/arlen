@@ -1,0 +1,24 @@
+# The compositor: publishes freely, hears nothing.
+#
+# It is the origin of every window and session event on the machine - nothing
+# else produces them - and it already holds more power over the session than any
+# publish grant could confer, so bounding its publish buys nothing. Subscribing
+# is the other half and it is not earned: reading another app's activity, or the
+# graph's own traffic, is reach the compositor has no claim to. A privileged
+# producer is not automatically a privileged consumer (planner, 12 Aug).
+#
+# `subscribe = []` is a POSITIVE statement, not an omission. The bus tells the
+# two apart: a component that declares nothing keeps the machine-wide view its
+# tier gives it, and one that declares a list is held to the list whatever its
+# tier. Deleting this line would not tighten the profile, it would loosen it -
+# back to the exemption that hid this question in the first place.
+[info]
+app_id = "arlen-compositor"
+tier = "system"
+
+[event_bus]
+# Window and session lifecycle, plus the clipboard copies it is the only witness
+# to. Listed rather than left open so the enforce flip can be measured against a
+# written claim instead of against whatever the binary happens to send.
+publish = ["window.*", "clipboard.*"]
+subscribe = []
