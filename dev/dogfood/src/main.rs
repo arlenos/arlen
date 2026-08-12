@@ -141,12 +141,22 @@ async fn main() {
         Err(e) => println!("DOGFOOD EXECUTOR skipped (best-effort): {e}"),
     }
 
-    // BEST-EFFORT: the explain call once exercised the daemon -> proxy -> llama ->
-    // KG-read path, but the read surface moved to pi and `explain_system` is no
-    // longer exported on org.arlen.AI1 (a VM boot showed UnknownMethod), so this
-    // probe now reports absent every run. A failure here is NOT a dogfood failure -
-    // the executor write above is the deterministic proof. Logged for inspection
-    // only, pending a pi-side read surface to re-point it at.
+    // BEST-EFFORT, and the reason recorded here was WRONG for long enough to matter.
+    //
+    // It said `explain_system` had moved to pi and was no longer exported, citing a
+    // VM boot that answered `UnknownMethod`. Measured again on the 12 Aug boot, the
+    // answer is `AccessDenied: not permitted` - the method is exported and the call
+    // is refused by authorisation. `ai1_iface.rs` gates it on
+    // `user_surface_admitted`, and `dogfood` is not a user surface, exactly like the
+    // `completed_actions` refusal above. The UnknownMethod reading was almost
+    // certainly taken before the `#[zbus(name = "explain_system")]` pin landed,
+    // which that file documents as fixing precisely that symptom.
+    //
+    // The cost of the wrong note: it read as "nothing to do here, the surface left",
+    // so the AI leg sat downgraded to best-effort against a cause that had already
+    // been fixed - while the actual blocker, an admission decision, went unmade.
+    // A failure here is still NOT a dogfood failure; the executor write above is the
+    // deterministic proof.
     let mut answered = false;
     let mut last = String::new();
     for attempt in 1..=ASK_ATTEMPTS {
@@ -167,8 +177,10 @@ async fn main() {
         }
     }
     if !answered {
-        // Best-effort: report, do not fail the dogfood (explain_system moved to pi).
-        println!("DOGFOOD ASK skipped (best-effort, read surface on pi): {last}");
+        // Best-effort: report, do not fail the dogfood. The reason is printed
+        // verbatim rather than summarised, because the last summary here named the
+        // wrong cause for weeks.
+        println!("DOGFOOD ASK skipped (best-effort): {last}");
     }
 
     println!("DOGFOOD OK");
@@ -339,6 +351,10 @@ async fn emit_open(path: &str) -> Result<(), String> {
 
 /// Best-effort: exercise the daemon -> proxy -> llama -> KG-read inference stack
 /// via `org.arlen.AI1.explain_system` (a no-argument read-and-explain call).
+///
+/// Refused today: the method is gated to user surfaces and `dogfood` is not one.
+/// That is an admission decision, not a missing method - see the note at the call
+/// site for what the earlier explanation got wrong.
 async fn ask() -> Result<String, String> {
     let connection = Connection::session()
         .await
