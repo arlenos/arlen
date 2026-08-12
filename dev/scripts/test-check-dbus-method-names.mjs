@@ -185,6 +185,17 @@ check(
   (code) => code === 0,
 );
 
+// The shape that hid this gate's own defect for as long as it had one: a map with
+// no interfaces in it compares nothing and says every method is present. Measured
+// across every check on 12 Aug - sixteen exit 0 on an empty tree - and this one
+// had already been caught reading half its subject, so it is the wrong place to
+// leave the silent version.
+check(
+  "a tree with no interfaces is a broken scan, not a pass",
+  { "daemons/probe/src/lib.rs": "// nothing here\n" },
+  (code, out) => code === 2 && out.includes("has not passed"),
+);
+
 if (failures.length) {
   console.log(`\n${failures.length} case(s) failed:`);
   for (const f of failures) console.log(`  ${f.name}\n    exit ${f.code}\n${f.out}`);

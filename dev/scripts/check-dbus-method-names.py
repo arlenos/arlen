@@ -251,6 +251,19 @@ def main() -> int:
         print("  whichever side moved.")
         return 1
 
+    # Zero interfaces is a scan that stopped finding things. This tree defines
+    # nineteen and always has; an empty map means the layout moved or the
+    # attribute spelling changed again - which is exactly what happened on 12 Aug,
+    # when this map held 10 of 22 because it matched only one of the two ways the
+    # attribute is written. That failure was silent because a missing interface
+    # reads as "nothing to compare", and so would this one.
+    if not known:
+        print(
+            "no D-Bus interface was found at all; the layout moved or the "
+            "attribute spelling changed. A check that finds nothing has not passed."
+        )
+        return 2
+
     print(
         f"OK: {checked} call(s) against {len(known)} arlen interface(s), every method present"
     )
