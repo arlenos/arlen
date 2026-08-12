@@ -101,8 +101,12 @@ fn graph_from(caps: &ModuleCapabilities) -> GraphPermissions {
 
 fn event_bus_from(caps: &ModuleCapabilities) -> EventBusPermissions {
     match &caps.event_bus {
+        // A module that declares `[capabilities.event_bus]` HAS said what it
+        // hears, so the list is `Some` even when empty; one that omits the
+        // section has said nothing, and `default()` below leaves it `None`. The
+        // bus reads that difference as "bounded" versus "never bounded".
         Some(eb) => EventBusPermissions {
-            subscribe: eb.subscribe.clone(),
+            subscribe: Some(eb.subscribe.clone()),
             publish: eb.publish.clone(),
         },
         None => EventBusPermissions::default(),
@@ -235,7 +239,7 @@ mod tests {
             publish: vec!["module.x.".into()],
         });
         let p = profile_from_manifest(&manifest_with(caps));
-        assert_eq!(p.event_bus.subscribe, vec!["focus."]);
+        assert_eq!(p.event_bus.subscribe.as_deref(), Some(&["focus.".to_string()][..]));
         assert_eq!(p.event_bus.publish, vec!["module.x."]);
     }
 

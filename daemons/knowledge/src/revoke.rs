@@ -231,7 +231,12 @@ impl ScopeSummary {
             (dirs, paths)
         };
         let e = &profile.event_bus;
-        let event_bus_subscribe = e.subscribe.iter().cloned().collect();
+        // `None` (never declared) and `Some([])` (declares it hears nothing) both
+        // summarise as an empty set here: this is the revoke path's view of what
+        // an app currently holds, and in neither case does it hold a subscription.
+        // The bus keeps the two apart because they mean different things to the
+        // exemption; a narrowing does not care which one it started from.
+        let event_bus_subscribe = e.subscribe.clone().unwrap_or_default().into_iter().collect();
         let event_bus_publish = e.publish.iter().cloned().collect();
         let system_caps = {
             let s = &profile.system;
