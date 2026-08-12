@@ -49,6 +49,16 @@ function check(name, files, expect) {
 
 console.log("check-read-grants-cover-queries:");
 
+// A profile with no grants is skipped by design - the last case below - so zero
+// profiles checked is legitimate. No profile at all is the emptiness that has to
+// speak: it used to print "no dev/mkosi/.../1000; nothing to check" and exit 0,
+// which reads as a considered skip and describes a wrong root.
+check(
+  "a tree with no profile at all is refused rather than skipped",
+  { [`${APP}/lib.rs`]: `let q = "MATCH (f:File) RETURN f.id";\n` },
+  (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
+);
+
 check(
   "a query inside its grants passes",
   {
