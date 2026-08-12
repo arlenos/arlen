@@ -390,6 +390,41 @@ impl UserDirs {
             videos: dirs::video_dir().unwrap_or_else(|| home.join("Videos")),
         }
     }
+
+    /// Which of these resolved to a path that is not there.
+    ///
+    /// **The point is that somebody says so.** A grant naming a directory that
+    /// does not exist refuses every read under it, and refusing is the right
+    /// behaviour - but from the app's side it is indistinguishable from never
+    /// having had the grant, so a localised desktop whose `user-dirs.dirs` is
+    /// absent presents as a feature that was never built. That failure has no
+    /// witness on this project: nobody here runs that desktop.
+    ///
+    /// Reporting is left to the caller rather than done here, and that is a
+    /// decision rather than tidiness. `arlen-run` has no logger at all and speaks
+    /// in `eprintln!` to a journal, while the launch service calls this per query
+    /// and would repeat any line it emitted on every request. A library that logs
+    /// would be silent in the first and noise in the second, so it hands back the
+    /// fact and each caller says it in the idiom and at the cadence it already
+    /// has.
+    ///
+    /// The existence test is an argument so the decision can be held to a test
+    /// without a home directory to arrange. The names are the grant keywords a
+    /// profile writes, not the resolved paths, because the reader of that line
+    /// has a profile in front of them.
+    pub fn missing(&self, exists: impl Fn(&Path) -> bool) -> Vec<&'static str> {
+        [
+            ("documents", &self.documents),
+            ("downloads", &self.downloads),
+            ("pictures", &self.pictures),
+            ("music", &self.music),
+            ("videos", &self.videos),
+        ]
+        .into_iter()
+        .filter(|(_, p)| !exists(p))
+        .map(|(name, _)| name)
+        .collect()
+    }
 }
 
 /// Whole-tree roots no grant may bind.
@@ -1300,6 +1335,42 @@ fn pattern_matches(patterns: &[String], value: &str) -> bool {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    /// The localised-desktop case, which is the one with no witness.
+    ///
+    /// A German desktop keeps documents in `~/Dokumente`. With
+    /// `~/.config/user-dirs.dirs` absent or stale, `dirs` falls back to the
+    /// English name, the grant binds a directory that is not there, and every read
+    /// under it is refused - the app looks like it never had the feature. Nobody
+    /// on this project runs that desktop, so this asserts the machine says the
+    /// thing the missing user would have said.
+    #[test]
+    fn user_directories_that_are_not_there_are_named() {
+        let home = std::path::Path::new("/home/tim");
+        let dirs = UserDirs {
+            documents: home.join("Documents"),
+            downloads: home.join("Downloads"),
+            pictures: home.join("Bilder"),
+            music: home.join("Music"),
+            videos: home.join("Videos"),
+        };
+
+        // The German desktop: only the localised names exist on disk.
+        let real = |p: &std::path::Path| {
+            matches!(p.file_name().and_then(|n| n.to_str()), Some("Bilder" | "Dokumente"))
+        };
+        assert_eq!(
+            dirs.missing(real),
+            vec!["documents", "downloads", "music", "videos"],
+            "each grant keyword whose directory is absent has to be named, and \
+             `pictures` resolved to the localised name that does exist so it must \
+             not be"
+        );
+
+        // And silence when there is nothing to say, so the line means something
+        // when it appears.
+        assert!(dirs.missing(|_| true).is_empty());
+    }
 
     #[test]
     fn every_curated_starting_profile_is_valid_and_conservative() {
