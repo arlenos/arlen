@@ -32,10 +32,26 @@ here=$(cd "$(dirname "$0")" && pwd)
 # artefact it exists to protect. The flag is set immediately before mkosi runs, so
 # the removal covers exactly the window where the file can be half-written.
 #
-# Both directions are asserted by `dev/scripts/test-build-image-trap.mjs`, which
-# was shown to fail against the delete-on-any-failure version before being trusted.
+# That reasoning is right about the HOST cross-compile above the mkosi call and
+# wrong about everything after it, which is most of the build. `mkosi --force`
+# deletes the output as it starts, and only then runs the build scripts - and
+# those scripts are themselves ten-odd minutes of cargo and npm (the knowledge
+# daemon, the compositor, the shell, every Tauri app). Measured on 12 Aug: with a
+# build sitting in `04-shell.sh.chroot`, arlen.raw was already gone. So the most
+# common failure this trap was written to survive, a compile error, takes the
+# previous image with it whenever it happens inside mkosi rather than above it.
+#
+# Hence the rename: the last good image is moved aside for the duration and moved
+# back if the run fails. It costs one rename (same filesystem, free) and one
+# image's worth of peak disk, and it makes the protection cover the whole build
+# instead of the first third of it.
+#
+# All three directions are asserted by `dev/scripts/test-build-image-trap.mjs`,
+# which was shown to fail against the delete-on-any-failure version before being
+# trusted.
 writing_image=""
-trap 'status=$?; [ $status -eq 0 ] || [ -z "$writing_image" ] || { rm -f "$here/arlen.raw"; echo ">> build failed; removed the partial $here/arlen.raw" >&2; }; exit $status' EXIT
+prev_image=""
+trap 'status=$?; if [ $status -ne 0 ]; then [ -z "$writing_image" ] || { rm -f "$here/arlen.raw"; echo ">> build failed; removed the partial $here/arlen.raw" >&2; }; [ -z "$prev_image" ] || { mv "$here/arlen.raw.prev" "$here/arlen.raw"; echo ">> restored the previous image" >&2; }; fi; exit $status' EXIT
 repo=$(cd "$here/../.." && pwd)
 extra="$here/mkosi.extra"
 target="x86_64-unknown-linux-gnu.2.36"
@@ -72,6 +88,12 @@ if [ "${1:-}" = "--verify" ]; then
 fi
 
 echo ">> mkosi build --incremental --force"
+# Move the last good image aside before mkosi deletes it, so a failure anywhere
+# from here to the end of the build scripts can put it back.
+if [ -f "$here/arlen.raw" ]; then
+    mv "$here/arlen.raw" "$here/arlen.raw.prev"
+    prev_image=1
+fi
 # From here on the file on disk is this run's, so a failure may leave it partial.
 writing_image=1
 # --incremental yes caches the post-distro base image (debootstrap + the apt
@@ -82,3 +104,5 @@ writing_image=1
 # paid once, not on every build.
 ( cd "$repo" && PATH=/usr/sbin:/sbin:$PATH mkosi --directory "$here" --incremental yes --cache-directory "$here/mkosi.cache" "${verify_args[@]}" build --force )
 echo ">> image built: $here/arlen.raw"
+# The new one is on disk, so the kept copy has done its job.
+[ -z "$prev_image" ] || { rm -f "$here/arlen.raw.prev"; prev_image=""; }
