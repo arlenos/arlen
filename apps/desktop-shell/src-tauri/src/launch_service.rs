@@ -259,7 +259,10 @@ fn answer_query(query: &proto::MimeQuery, caller: &Caller) -> proto::MimeAnswer 
     };
     let profile = arlen_permissions::load_profile(app_id);
     let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
-    let dirs = user_dirs(&home);
+    // The SAME resolution the launcher confines by. Hardcoding the English
+    // names here would judge a localised home against directories that do not
+    // exist on it.
+    let dirs = arlen_permissions::UserDirs::resolve(&home);
     let readable = profile
         .map(|p| p.filesystem.readable_dirs(&home, &dirs))
         .unwrap_or_default();
@@ -286,17 +289,6 @@ fn answer_query(query: &proto::MimeQuery, caller: &Caller) -> proto::MimeAnswer 
 /// share a prefix with something granted.
 fn is_within(path: &std::path::Path, granted: &[std::path::PathBuf]) -> bool {
     granted.iter().any(|d| path.starts_with(d))
-}
-
-/// The XDG user directories, as the launcher resolves them.
-fn user_dirs(home: &std::path::Path) -> arlen_permissions::UserDirs {
-    arlen_permissions::UserDirs {
-        documents: home.join("Documents"),
-        downloads: home.join("Downloads"),
-        pictures: home.join("Pictures"),
-        music: home.join("Music"),
-        videos: home.join("Videos"),
-    }
 }
 
 /// The shared-mime-info database, read once.

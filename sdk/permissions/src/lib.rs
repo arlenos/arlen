@@ -367,6 +367,31 @@ pub struct UserDirs {
     pub videos: PathBuf,
 }
 
+impl UserDirs {
+    /// The user's actual directories, as `~/.config/user-dirs.dirs` defines them.
+    ///
+    /// **Not `home.join("Documents")`.** Those names are localised - a German
+    /// desktop puts them in `~/Dokumente` - and a user can point any of them
+    /// anywhere. Resolving them by hardcoded English name gives an answer that is
+    /// wrong on a large fraction of real machines, and wrong in the worst way:
+    /// the launcher binds what `dirs` says while a reader hardcoding the name
+    /// judges paths against something else, so an app is confined to one set and
+    /// told about another. That is the drift this crate holds the single reading
+    /// of, and it is why this constructor is here rather than at each caller.
+    ///
+    /// Falls back to the English name per directory, which is what `dirs` itself
+    /// does when the config is absent.
+    pub fn resolve(home: &Path) -> Self {
+        Self {
+            documents: dirs::document_dir().unwrap_or_else(|| home.join("Documents")),
+            downloads: dirs::download_dir().unwrap_or_else(|| home.join("Downloads")),
+            pictures: dirs::picture_dir().unwrap_or_else(|| home.join("Pictures")),
+            music: dirs::audio_dir().unwrap_or_else(|| home.join("Music")),
+            videos: dirs::video_dir().unwrap_or_else(|| home.join("Videos")),
+        }
+    }
+}
+
 /// Whole-tree roots no grant may bind.
 pub const FORBIDDEN_FS_ROOTS: &[&str] = &[
     "/", "/etc", "/usr", "/var", "/boot", "/bin", "/sbin", "/lib", "/lib64", "/proc", "/sys",
