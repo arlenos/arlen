@@ -138,27 +138,33 @@ ln -sf ../arlen-kg-probe.service \
        "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants/arlen-kg-probe.service"
 echo ">> staged the verify probes into the image"
 
-# A journal that outlives the first ten seconds.
+# Take journald's rate limit off, and be honest about what that does not fix.
 #
-# The 12 Aug boot produced 1685 serial lines and then stopped at 9.996s of a
-# ~120s run - while the shell's bar appeared at 12s and logged nothing at all. It
-# is not the kernel suppressing: only `kauditd_printk_skb` reports doing that, and
-# that is the audit backlog. What is left is journald's own rate limit, which the
-# image leaves at the default (10000 messages per 30s) while the event bus alone
-# logs at DEBUG.
+# This was written believing the limit was why a boot's serial log stops around
+# 7-10s of a ~120s run. It is NOT, and the arithmetic was available before the
+# change: that boot logged 1479 lines in seven seconds against a limit of 10000
+# per 30s. Measured after, with the limit off, the horizon did not move - 7.1s.
+# A fix aimed at a cause nobody confirmed.
 #
-# The cost of that ceiling is the whole difference between "the desktop came up"
-# and "the desktop came up and then behaved". Everything a boot could tell us
-# about steady state - a daemon retrying, a socket refused on the tenth attempt,
-# an app started by hand - lands after the window closes, and `verify.py` has to
-# say "absence past this proves nothing" because it genuinely does not.
+# What is actually true, from three boots and a read of the guest's own disk:
 #
-# So the VERIFY image turns the limit off. Not the release image: rate limiting
-# is there to stop one broken service filling a disk, which is a real protection
-# on a machine somebody uses, and this variant exists precisely to be watched
-# instead. `MaxLevelConsole` is left alone - the default already carries what we
-# need, since a daemon's stdout reaches journald at info whatever the app calls
-# its own level.
+#   the serial console   stops carrying userspace output around 7s while the guest
+#                        keeps running - the bar appears at 9s and logs nothing.
+#                        Not bandwidth either: 203K over a run with room for 1.3M.
+#   the on-disk journal  ends EARLIER, around 3s, because the run kills the guest
+#                        rather than shutting it down, so whatever journald had not
+#                        written back is simply gone.
+#
+# So the boot exists in neither place, for two different reasons, and the one that
+# can be fixed is the second: an ACPI powerdown before teardown lets journald flush,
+# and then the overlay holds the whole run. `verify.py --keep` now leaves the overlay
+# for exactly that read.
+#
+# This file stays because it becomes load-bearing at that moment and not before: a
+# full 120s journal with the shell logging zbus handshakes at INFO will pass 10000
+# messages far more easily than seven seconds of serial ever did. It is insurance on
+# the channel we are moving TO, which is a different claim from the one it shipped
+# with, and the release image keeps its limit either way.
 mkdir -p "$DESTDIR/usr/lib/systemd/journald.conf.d"
 cat > "$DESTDIR/usr/lib/systemd/journald.conf.d/10-verify-no-ratelimit.conf" <<'CONF'
 # Verify images only, staged by mkosi.build.d/09-verify-probes.sh.chroot.

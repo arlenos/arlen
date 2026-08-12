@@ -503,6 +503,13 @@ def main():
                     help="with the consent dialog up, click 'Allow once' via the "
                          "absolute pointer and confirm the dialog dismisses (the "
                          "shell -> broker Resolve leg). Implies --require-consent")
+    ap.add_argument("--keep", action="store_true",
+                    help="keep the workdir even when the run passes. The overlay "
+                         "holds the guest's persistent journal, which is the only "
+                         "place the whole boot exists: the serial console stops "
+                         "carrying userspace output around 7s while the guest keeps "
+                         "running (measured 12 Aug across three boots). A passing "
+                         "run is exactly when you want to go read that.")
     ap.add_argument("--deny-consent", action="store_true",
                     help="with the consent dialog up, press Escape (the always-"
                          "available deny) and confirm the dialog dismisses - "
@@ -898,15 +905,27 @@ def main():
         # is what the reader needs either way - it is the line past which absence
         # means nothing.
         #
-        # One of the two explanations has since been removed, which makes an early
-        # horizon say more than it did. Journald's default rate limit - 10000
-        # messages per 30s, with the event bus alone logging at DEBUG - was the
-        # obvious suspect for the 12 Aug run that stopped at 10.0s of ~120s while
-        # the bar appeared at 12s. Verify images now ship
-        # `journald.conf.d/10-verify-no-ratelimit.conf` (staged by
-        # 09-verify-probes.sh.chroot), so from the next build an early stop is not
-        # that. What remains is a quiet guest - which is a finding, not a blind
-        # spot. Note the horizon only moves for images built after that commit.
+        # Two explanations have since been RULED OUT by measurement, which narrows
+        # what an early horizon can mean but does not yet lift it.
+        #
+        #   journald's rate limit   the obvious suspect, and wrong. That boot logged
+        #                           1479 lines in seven seconds against a limit of
+        #                           10000 per 30s, so it was never reached; turning
+        #                           it off in the verify image left the horizon at
+        #                           7.1s, unchanged.
+        #   serial bandwidth        also wrong. 203K of log in a run with room for
+        #                           1.3M at 115200, and QEMU's UART does not pace to
+        #                           the configured baud anyway.
+        #
+        # What is left is that the console stops carrying userspace output while the
+        # guest keeps running: the bar appears at 9s and contributes nothing. The
+        # guest's own journal does not rescue it either - read off the overlay it
+        # ends around 3s, because a passing run kills the VM instead of shutting it
+        # down and journald never flushes the rest.
+        #
+        # That last one is the fixable one, and it is the next piece: an ACPI
+        # powerdown before teardown, then read /var/log/journal out of the overlay.
+        # `--keep` exists to make that read possible on a run that passed.
         try:
             with open(os.path.abspath(args.serial_out), "r", errors="replace") as fh:
                 stamps = re.findall(r"^\[\s*(\d+\.\d+)\]", fh.read(), re.M)
@@ -1167,7 +1186,11 @@ def main():
                            if bar_present else "the compositor rendered a frame"))
     # Clean run: nobody needs the overlay or the vars copy. Every failing path
     # above returns before this and leaves them where the message says they are.
-    shutil.rmtree(tmp, ignore_errors=True)
+    if args.keep:
+        print(f"workdir kept: {tmp}")
+        print(f"  the guest journal is in {tmp}/overlay.qcow2 under /var/log/journal")
+    else:
+        shutil.rmtree(tmp, ignore_errors=True)
     return 0
 
 
