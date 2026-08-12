@@ -234,6 +234,16 @@ def main():
         if (REPO / d).is_dir()
         for u in (REPO / d).glob("*.service")
     )
+    # Units that resolve no peer, or are exempt, are legitimately not `checked`, so
+    # that count cannot carry the guard. Finding no UNIT at all can only mean the
+    # scan ran outside the tree: both directories are committed source.
+    if not units:
+        print(
+            f"NOTHING WAS READ: no unit under {', '.join(UNIT_DIRS)} in {REPO}",
+            file=sys.stderr,
+        )
+        return 2
+
     flagged, carried, checked = [], [], 0
     root_exempt: list[str] = []
     # KNOWN entries the loop actually reached. An entry it never reaches has
