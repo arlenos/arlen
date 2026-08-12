@@ -31,6 +31,13 @@ import sys
 # The tree to scan. An argument so this can be pointed at a fixture and shown
 # to fail: a check that only ever runs against a tree that already passes
 # cannot demonstrate the defect it exists for (standing rule, 11 Aug).
+#
+# Two things a fixture has to do, both learned the first time one was actually
+# written (12 Aug - the argument had been here, unexercised, since the start).
+# The fixture must be a git repo, because discovery below is `git ls-files`. And
+# it must point COMPOSITOR_PATH somewhere empty, or the external reach further
+# down pulls the real compositor's copy into a comparison that was supposed to
+# contain only the fixture. See `test-check-proto-drift.mjs`.
 ROOT = (
     pathlib.Path(sys.argv[1]).resolve()
     if len(sys.argv) > 1
@@ -39,7 +46,16 @@ ROOT = (
 
 PACKAGE = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.M)
 MESSAGE = re.compile(r"^\s*message\s+(\w+)\s*\{", re.M)
-FIELD = re.compile(r"^\s*(?:repeated\s+|optional\s+)?[\w.]+\s+(\w+)\s*=\s*(\d+)\s*;", re.M)
+# The type can be a `map<K, V>`, which `[\w.]+` cannot spell - it has angle
+# brackets, a comma and a space in it. Three fields were invisible to this check
+# for that reason: `AppActionPayload.metadata`, `PresenceSetPayload.metadata` and
+# `TimelineRecordPayload.metadata`, twenty-seven declarations across the nine
+# copies. They agree on their numbers today, checked on 12 Aug, so nothing was
+# broken - but a field this cannot read is a field it cannot hold to anything,
+# and "the copies agree" was being said about a set that quietly excluded them.
+FIELD = re.compile(
+    r"^\s*(?:repeated\s+|optional\s+)?(?:map<[^>]*>|[\w.]+)\s+(\w+)\s*=\s*(\d+)\s*;", re.M
+)
 
 
 def messages(text: str) -> dict[str, dict[str, int]]:
