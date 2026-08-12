@@ -1,0 +1,41 @@
+// SPDX-FileCopyrightText: 2026 Tim Kicker
+//
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Let the power daemon take the lid switch off logind.
+//
+// PWR-R4 wants Arlen to decide what a closing lid means, because logind cannot:
+// it has no way to skip the suspend just because an external display is attached,
+// so a docked laptop sleeps when you shut it. The mechanism is a BLOCK inhibitor
+// on `handle-lid-switch`, which makes logind defer, and it has never once been
+// granted - the 12 Aug boot logged `could not inhibit logind lid handling`, and
+// the takeover has been dead on every image since it was written.
+//
+// The reason is not the lid and not the hardware. logind's default policy for
+// inhibit-handle-lid-switch is `allow_active=yes` and `allow_any=no`, and
+// `allow_any` is the row for a subject in no session at all. `arlen-powerd` is a
+// user unit, so it lives in user@.service, and a process there has no session:
+// `sd_pid_get_session` fails for it by design, which is what makes user services
+// survive logout. Active is therefore unreachable for it however it is started,
+// and the answer is `no` every time.
+//
+// So this grants the one action to the desktop user explicitly. It is a smaller
+// widening than it looks: the same user's session processes are already allowed
+// the identical action by `allow_active=yes`, so all this does is extend to their
+// user units what their session already has. The worst it can be abused for is a
+// laptop that does not sleep on close, which is a nuisance and not a privilege -
+// and every process it applies to is already running as the person the machine
+// belongs to.
+//
+// Scoped by name rather than uid deliberately, matching ARLEN_OWNER_USER: the
+// desktop uid is whatever useradd picked, and a hardcoded 1000 would silently
+// grant nothing on a machine that numbered its first user differently.
+//
+// Nothing reads this file unless polkitd is installed, which until 12 Aug it was
+// not. See the polkitd entry in mkosi.conf for that half.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.login1.inhibit-handle-lid-switch" &&
+        subject.user == "arlen") {
+        return polkit.Result.YES;
+    }
+});
