@@ -1651,7 +1651,6 @@ always_confirm_overrides = ["empty_trash"]
         }
     }
 
-    #[test]
     // The decision this API exists for: two readers with different uids resolve
     // the SAME file for the same user, because the uid names whose permissions
     // these are. Keying it on the reader is what left the launcher looking in
@@ -1673,6 +1672,11 @@ always_confirm_overrides = ["empty_trash"]
         assert_eq!(super::system_permissions_dir(), super::system_permissions_dir_for(me));
     }
 
+    // It lost its `#[test]` to the function above, which carried two - so this ran
+    // nowhere, and the compiler said so as a dead-code warning that read like
+    // ordinary noise. A validation test for the path an unvalidated app id would be
+    // interpolated into is not a test to lose quietly.
+    #[test]
     fn system_profile_path_validates_the_app_id() {
         let p = system_profile_path("com.example.notes").expect("a valid id resolves");
         assert!(p.ends_with("com.example.notes.toml"));
@@ -1926,7 +1930,6 @@ always_confirm_overrides = ["empty_trash"]
         assert!(!e.can_publish("system.shutdown"));
     }
 
-    #[test]
     /// The distinction the compositor's tier split rests on: a component that has
     /// never said anything about subscribing is not the same as one that has said
     /// it subscribes to nothing. The bus exempts the first and holds the second.
@@ -1948,6 +1951,7 @@ always_confirm_overrides = ["empty_trash"]
         assert_eq!(silent.reach_summary().as_deref(), Some("emits window.*"));
     }
 
+    #[test]
     fn test_event_bus_subscribe() {
         let e = EventBusPermissions {
             subscribe: Some(vec!["com.app.*".into(), "config.changed".into()]),
