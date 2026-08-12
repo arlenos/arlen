@@ -291,9 +291,20 @@ fn answer_query(query: &proto::MimeQuery, caller: &Caller) -> proto::MimeAnswer 
             reason: "not a readable path for this application".into(),
         };
     }
+    // `to_str`, not `to_string_lossy`: the wire type carries a `String`, so a name
+    // that is not valid UTF-8 cannot be represented at all. Converting lossily
+    // replaces the invalid bytes and asks about a DIFFERENT file - the harness's
+    // own `query_mime` carries that warning in its doc, and this is the same trap
+    // one crate over. Refusing says so; corrupting answers confidently about
+    // something else.
+    let Some(path_str) = path.to_str() else {
+        return proto::MimeAnswer::Refused {
+            reason: "the path is not valid UTF-8, which this protocol cannot carry".into(),
+        };
+    };
     match mime_of(&proto::Target {
         uri: String::new(),
-        path: Some(path.to_string_lossy().into_owned()),
+        path: Some(path_str.to_string()),
     }) {
         Some(mime) => proto::MimeAnswer::Type { mime },
         None => proto::MimeAnswer::Unknown,
@@ -529,6 +540,25 @@ mod mime_tests {
         // refusal rather than a vacuous pass, which is what `any` over an empty
         // list gives - pinned because the opposite is one `!` away.
         assert!(!is_within(std::path::Path::new("/home/u/a.txt"), &[]));
+    }
+
+    #[test]
+    fn a_name_that_is_not_utf8_is_refused_rather_than_replaced() {
+        // The trap the harness documents one crate over. `to_string_lossy` swaps
+        // the invalid bytes for U+FFFD, which names a DIFFERENT file - so the
+        // answer would be about something else, confidently.
+        use std::os::unix::ffi::OsStrExt;
+        let raw = std::ffi::OsStr::from_bytes(b"/tmp/\xff\xfe-not-utf8");
+        let path = std::path::Path::new(raw);
+        // `to_str` is None, so the guard fires and the request is refused.
+        assert!(path.to_str().is_none(), "the fixture has to be un-representable");
+        // And this is what would have gone over the wire instead: a name whose
+        // BYTES differ from the file's, which is a different file.
+        assert_ne!(
+            path.to_string_lossy().as_bytes(),
+            raw.as_bytes(),
+            "lossy conversion would have sent a name the filesystem does not have"
+        );
     }
 
     #[test]
