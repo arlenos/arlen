@@ -59,6 +59,10 @@ arlen-modules = { path = "../../../sdk/modules" }
 modulesd-proto = { path = "../../../contracts/modulesd-proto" }
 arlen-consent-broker = { path = "../../../daemons/consent-broker" }
 arlen-permissions = { path = "../../../sdk/permissions" }
+# Reads the XDG shared-mime-info database in process. Confirmed maintained and
+# complete (glob, magic, alias and parent tables), Apache-2.0, by a GNOME
+# platform developer - not a parser written here.
+xdg-mime = "0.4"
 arlen-launch-contract = { path = "../../../contracts/launch" }
 audit-proto = { path = "../../../contracts/audit-proto" }
 arlen-theme = { path = "../../../sdk/theme" }
