@@ -31,6 +31,11 @@ What this does NOT cover:
     webview - so it is correctly not evidence that a grant is used.
   * a call built at runtime from a variable, the same blind spot every scanner
     here has.
+  * `data-tauri-drag-region`, which needs `allow-start-dragging` without any
+    method call at all. It appears once in the tree, inside `WindowControls`, so
+    an app rendering that control is credited through the kit text anyway - but
+    the credit is accidental rather than intended, and an app that used the
+    attribute WITHOUT the control would be reported wrongly.
   * whether a grant that IS called is one the app should have. This finds
     authority with nothing behind it, not authority that is too much.
   * permissions outside `core:window:`. `core:default` and `core:event:default`
@@ -89,13 +94,20 @@ KNOWN: dict[str, tuple[int, str]] = {
 }
 
 # Twelve `core:window:allow-show` grants left this list on 12 Aug by being removed
-# from the capability files, not excused. Safe to do headlessly because the risk
-# was breaking a call nobody could see, and there is no call: `.show()` appears
-# nowhere in any app frontend, nowhere in the ui-kit, nowhere in any src-tauri, and
-# the whole webview layer holds exactly six window references - all in
-# `WindowButtons.svelte` and `WindowControls.svelte`, none of them show, none built
-# at runtime from a variable. A permission with no reachable caller cannot break
-# one when it goes.
+# from the capability files, not excused: none of those twelve apps calls `.show()`
+# in its frontend, its Rust, or any kit code it renders, and a permission with no
+# reachable caller cannot break one when it goes.
+#
+# **The first version of that reasoning was wrong and is worth keeping wrong here.**
+# It said the whole webview layer held six window references, all in the two
+# window-control files - so nothing anywhere could call show. That came from
+# `git grep ... -- 'apps/*/src'`, whose pathspec silently under-matched: the real
+# number is EIGHTEEN files, and `.show()` does exist, in
+# `apps/settings/src/routes/+layout.svelte`. Settings was not one of the twelve and
+# still grants what it calls, so the removal holds - but it held for a narrower
+# reason than the one written down, and a right answer resting on a false premise
+# is one edit away from a wrong one. Re-derived by walking the tree in Python
+# rather than trusting a glob.
 #
 # The count-drop guard reported all twelve the moment they emptied, which is what
 # it was added for two hours earlier.
