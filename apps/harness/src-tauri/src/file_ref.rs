@@ -10,10 +10,13 @@
 //! Paths are passed as single arguments (no shell), so they carry no injection
 //! risk.
 //!
-//! `fileref_open_with` (the open-with chooser) is deliberately NOT here yet: the
-//! correct powerbox form is the xdg-desktop-portal `OpenURI.OpenFile` with
-//! `ask: true`, which needs file-descriptor passing over D-Bus - a deliberate
-//! slice. The pill's open / reveal / copy actions work without it.
+//! `fileref_open_with` is the powerbox form: `OpenURI` with `ask: true`, which
+//! makes the DESKTOP show its chooser rather than the harness growing one. This
+//! header used to say it was not built because the correct shape needed
+//! file-descriptor passing over D-Bus - that is `OpenFile`, the fd variant. The
+//! URI variant takes a `file://` URI, the portal plugin already permits that
+//! scheme and already carries the `ask` option, so the blocker described here had
+//! dissolved. The menu item shipped in the meantime and threw on every click.
 
 use std::path::Path;
 use std::process::Command;
@@ -234,4 +237,28 @@ mod tests {
             .unwrap_err()
             .contains("not found"));
     }
+}
+
+/// The pill's "Open with...": the desktop's own application chooser.
+///
+/// `ask: true` is the whole request - it tells the portal to prompt rather than
+/// dispatch to the default handler, which is what makes this the powerbox form.
+/// The harness never learns which application was picked and never needs to: the
+/// user choosing IS the authorisation, and an app that had to be told the answer
+/// would be an app that could have asked for it without them.
+#[tauri::command]
+pub async fn fileref_open_with(path: String) -> Result<(), String> {
+    // Canonical first, like the other two: the path arrives from the frontend and
+    // a relative one means nothing to the portal, which has its own cwd.
+    let real = std::fs::canonicalize(&path).map_err(|e| format!("{path}: {e}"))?;
+    let uri = arlen_launch_contract::file_uri(&real.to_string_lossy());
+    tauri_plugin_arlen_portal::api::open_uri(
+        &uri,
+        tauri_plugin_arlen_portal::OpenUriOptions {
+            ask: Some(true),
+            ..Default::default()
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())
 }

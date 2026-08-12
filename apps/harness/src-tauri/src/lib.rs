@@ -81,6 +81,7 @@ pub fn run() {
             file_ref::fileref_resolve,
             file_ref::fileref_open,
             file_ref::fileref_reveal,
+            file_ref::fileref_open_with,
             save::artifact_save,
             pins::artifact_pins_load,
             pins::artifact_pins_save,
