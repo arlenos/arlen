@@ -278,6 +278,7 @@ jobs:
           node dev/scripts/test-check-bus-declarations.mjs
           node dev/scripts/test-check-log-filters.mjs
           node dev/scripts/test-check-runtime-deps.mjs
+          node dev/scripts/test-check-bus-socket-pins.mjs
           node dev/scripts/test-probe-verdict.mjs
           node dev/scripts/test-check-webview-sandbox.mjs
           node dev/scripts/test-check-opener-args.mjs
