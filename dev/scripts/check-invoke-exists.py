@@ -116,21 +116,28 @@ def without_template_literals(text: str) -> str:
     return "".join(out)
 
 
-def indirect_calls(text: str) -> set[str]:
-    """Literals assigned to a variable that is then passed to `invoke`.
+def indirect_calls(text: str) -> tuple[set[str], set[str]]:
+    """Names that reach `invoke` other than as a literal at the call.
 
-    Deliberately one-way: this feeds the uncalled list ONLY, never the
-    missing-command check. An assignment holds strings that are not command
-    names (`"builtin"` above is a discriminant), and treating those as invoked
-    would manufacture failures for commands nobody ever calls. Over-collecting
-    can only make the uncalled list shorter, which is the safe direction - the
+    Returns (assigned, wrapped), and the split is the point. Both relax the
+    uncalled list; only `wrapped` may also enter the strict missing-command
+    check, because only `wrapped` carries a proof.
+
+    `assigned` is literals held in a variable that is later passed to `invoke`.
+    That variable's initialiser holds strings which are not command names
+    (`"builtin"` above is a discriminant), so treating them as invoked would
+    manufacture failures for commands nobody ever calls. One-way, always: the
     cost of a name wrongly kept is nothing, the cost of one wrongly dropped is a
     deleted command.
+
+    `wrapped` is different in kind. A literal at a call site of a helper whose
+    body passes its own first parameter to `invoke` reaches `invoke` as its
+    first argument by construction - it is a command name or the app throws.
     """
-    out: set[str] = set()
+    assigned: set[str] = set()
     for var in set(INVOKE_VAR.findall(text)):
         for m in re.finditer(rf"\b(?:const|let|var)\s+{re.escape(var)}\s*=([^;\n]*(?:\n[^;]*)?);", text):
-            out |= set(STRINGS.findall(m.group(1)))
+            assigned |= set(STRINGS.findall(m.group(1)))
 
     # One hop through a wrapper, the same shape `check-dbus-method-names.py`
     # follows. An app that routes every command through one helper -
@@ -141,15 +148,17 @@ def indirect_calls(text: str) -> set[str]:
     # showed EVERY one of its commands as uncalled: the literal is at the
     # helper's call sites, and only the parameter is at `invoke`. The clock alone
     # put a dozen live commands on that list, which is how a list stops being
-    # read. Same one-way rule as above - this can only shorten the uncalled list.
+    # read.
+    #
     # `finditer`, not `findall`: the pattern needs a second capturing group for
     # the backreference that ties the parameter to `invoke`'s argument, so
     # `findall` would yield tuples.
+    wrapped: set[str] = set()
     for wm in WRAPPER.finditer(text):
         wrapper = wm.group(1)
         for m in re.finditer(rf"\b{re.escape(wrapper)}\s*\(\s*(\"[^\"]+\"|'[^']+')", text):
-            out.add(m.group(1)[1:-1])
-    return out
+            wrapped.add(m.group(1)[1:-1])
+    return assigned, wrapped
 # A function whose body passes its own first parameter to `invoke`: the helper
 # every command in that file goes through. Captures the helper's name.
 WRAPPER = re.compile(
@@ -280,6 +289,15 @@ KNOWN: dict[str, dict[str, str]] = {
         "ai_edit": "proposing an assistant edit (the gated edit path, executor-live)",
     },
     "harness": {
+        "fileref_open_with": (
+            "the file pill's Open-with item. `file_ref.rs` says in its own header "
+            "that this one is deliberately not built yet - the powerbox form is the "
+            "portal's OpenURI.OpenFile with ask:true, which needs a file descriptor "
+            "over D-Bus - while the menu item shipped anyway, so the entry throws on "
+            "every click. Found the day wrapper calls started being held to the same "
+            "rule as direct ones: the call is `run(\"fileref_open_with\")`, invisible "
+            "at the `invoke` site, and it had been throwing quietly the whole time."
+        ),
     },
 }
 
@@ -319,7 +337,17 @@ def main() -> int:
                     f.read_text(encoding="utf-8", errors="replace")
                 )
                 calls |= set(INVOKE.findall(text))
-                indirect |= indirect_calls(text)
+                assigned, wrapped = indirect_calls(text)
+                indirect |= assigned
+                # A wrapper call is a real call, so it is held to the real rule.
+                # This was one-way for its first day, inheriting the caution the
+                # ASSIGNED case genuinely needs, and the caution does not transfer:
+                # a literal at `send("...")` reaches `invoke` as its first argument
+                # or the app throws. Left relaxing-only, a typo inside a wrapper
+                # call - the exact shape this scanner cannot see at the call site -
+                # would throw for every user and keep the gate green, which is the
+                # failure this check exists to prevent.
+                calls |= wrapped
         handlers: set[str] = set()
         host = app / "src-tauri"
         if host.exists():
