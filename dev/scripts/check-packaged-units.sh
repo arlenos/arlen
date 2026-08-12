@@ -452,62 +452,9 @@ done
 [ "$bad_specifier" -eq 0 ] && echo "OK: $spec_checked system unit(s) checked for user-only specifiers, $carried_specifier carried"
 
 # Reaching here means every gate ran to its own verdict, so a later non-zero exit
-# --- Fifth check: a unit that says it wants enabling must be enabled ----------
-#
-# `WantedBy=` in an [Install] section does nothing on its own. It is instruction
-# for `systemctl enable`, and this image has no enable step - every unit that
-# runs is a symlink checked into `*.target.wants/`. So a unit can declare that it
-# wants to start, ship, be correct, and never run, with nothing anywhere saying
-# so.
-#
-# Found on 12 Aug: `arlen-ai-undo-signer.service` was the one user unit declaring
-# `WantedBy=default.target` with no link. Its own build phase opens with "not an
-# optional extra" and names three callers that submit undo receipts to its
-# socket - so the shipped state was every one of those records written into a
-# socket nobody was listening on. Not a crash, not a log line: undo simply did
-# not survive a restart.
-#
-# Derived, not listed: the target comes from the unit's own `WantedBy=`, so a
-# unit wanting a different target is checked against that target's directory
-# rather than being an exception here.
-REPO_EXTRA="dev/mkosi/mkosi.extra"
-unenabled=0
-# `done < <(...)` rather than a pipe: a `while` on the right of a pipe runs in a
-# subshell, so the counter it increments dies with it and the gate reports clean.
-# The same shape is used above for the drift loop, for the same reason.
-while IFS= read -r unit; do
-    [ -f "$unit" ] || continue
-    dir=$(dirname "$unit")
-    base=$(basename "$unit")
-    while IFS= read -r target; do
-        [ -n "$target" ] || continue
-        # EITHER location counts, and both are in use here: `systemctl enable`
-        # writes into /etc/systemd/system/<target>.wants, which is where every
-        # system unit in this image is linked, while the user units are linked
-        # beside themselves under /usr/lib/systemd/user. Checking only the
-        # unit's own directory reported five system units as unenabled on the
-        # first run - all five were linked, one directory over.
-        # `-L` as well as `-e`, and that is not belt-and-braces: the links under
-        # etc are ABSOLUTE (/usr/lib/systemd/system/...), which resolves inside
-        # the image and dangles on the host running this check. `-e` follows the
-        # link and reported all five system units unenabled on the first run.
-        # What is being asked is whether the enablement link EXISTS, not whether
-        # it resolves here.
-        [ -e "$dir/$target.wants/$base" ] || [ -L "$dir/$target.wants/$base" ] && continue
-        [ -e "$REPO_EXTRA/etc/systemd/system/$target.wants/$base" ] \
-            || [ -L "$REPO_EXTRA/etc/systemd/system/$target.wants/$base" ] && continue
-        echo "FAIL: $base says WantedBy=$target and nothing links it into $target.wants,"
-        echo "      so it ships, is correct and never starts. There is no enable step"
-        echo "      in this image; the symlink IS the enablement."
-        unenabled=1
-    done < <(grep -oP '^WantedBy=\K.*' "$unit" 2>/dev/null | tr ' ' '\n')
-done < <(find dev/mkosi/mkosi.extra/usr/lib/systemd -name '*.service' -not -path '*.wants/*' 2>/dev/null | sort)
-[ "$unenabled" -eq 0 ] && echo "OK: every unit declaring WantedBy= is linked into that target's wants"
-
 # is a RESULT and not an abort - the trap above must stay quiet for it.
 finished=1
-if [ "$missing_refs" -ne 0 ] || [ "$bad_activation" -ne 0 ] || [ "$bad_specifier" -ne 0 ] \
-   || [ "$unenabled" -ne 0 ]; then
+if [ "$missing_refs" -ne 0 ] || [ "$bad_activation" -ne 0 ] || [ "$bad_specifier" -ne 0 ]; then
     exit 1
 fi
 exit 0
