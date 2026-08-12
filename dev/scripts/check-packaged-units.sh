@@ -293,11 +293,16 @@ fi
 
 # `git ls-files` reads the INDEX, and this gate runs from the pre-commit hook -
 # during a commit, while git is writing that index. A read that loses the race
-# comes back empty, and every ordering reference below then "resolves to no unit
-# file": a confident, specific, FALSE finding about whichever unit happens to be
-# checked first. Seen on 12 Aug, where the same commit failed and then passed
-# unchanged, which is the shape that teaches people to retry a gate rather than
-# read it.
+# comes back empty OR SHORT, and either way the ordering references below stop
+# resolving: a confident, specific, FALSE finding about whichever unit happens to
+# be checked first. Seen twice on 12 Aug, once each way, the same commit failing
+# and then passing unchanged - the shape that teaches people to retry a gate
+# rather than read it.
+#
+# "Comes back empty" is what this comment said after the first sighting, and the
+# short read a few hours later showed that was the assumption rather than the
+# measurement. Both are handled now: the empty case here, the short case at the
+# resolution loop.
 #
 # The index is still the right source - it is the shipping set, and enumerating
 # the working tree instead pulls in `target/`, `node_modules` and the mkosi
@@ -311,10 +316,30 @@ if [ -z "$units" ]; then
     echo "      any unit - re-run, and if it persists the layout changed." >&2
     exit 1
 fi
+# The empty case above was only half of the race, and the other half arrived the
+# same day: on 12 Aug this gate failed a commit with "arlen-anomalyd.service
+# orders against arlen-event-bus.service, which no unit file provides" and passed
+# the identical tree when run a second later. The list was not EMPTY, it was
+# SHORT - one basename missing from a read taken while git rewrote the index - so
+# the emptiness guard never fired and the finding read as specific and true.
+#
+# A miss is therefore not trusted on one read. The list is taken again, once, and
+# only a reference missing from BOTH is reported. That is the gate re-reading its
+# own volatile input, not a human re-running a gate until it goes green: the
+# second read is inside the check and its result is what gets reported either way.
+refresh_units() {
+    units=$(git ls-files '*.service' '*.socket' '*.timer' | xargs -n1 basename | sort -u)
+}
+units_refreshed=0
 for f in $(git ls-files '*.service' '*.socket' '*.timer'); do
     for ref in $(grep -oP '^(After|Requires|Wants|BindsTo|PartOf|Before)=\K.*' "$f" 2>/dev/null |
         tr ' ' '\n' | grep -E '\.service$|\.socket$'); do
         if ! printf '%s\n' "$units" | grep -qx "$ref"; then
+            if [ "$units_refreshed" -eq 0 ]; then
+                units_refreshed=1
+                refresh_units
+                printf '%s\n' "$units" | grep -qx "$ref" && continue
+            fi
             echo "FAIL: $(basename "$f") orders against $ref, which no unit file provides"
             missing_refs=1
         fi
