@@ -58,12 +58,42 @@
       lastEventAt = Date.now();
       poll();
     });
+
+    // The power daemon's own reading, published on the bus as `power.state` and
+    // forwarded here. Until now nothing listened to it and this indicator forked
+    // UPower on a timer instead, which is the work the daemon exists to stop
+    // doing nine times over.
+    //
+    // `observedAtMicros` is WHEN the reading was true. The bus retains the last
+    // message of a state topic and hands it over on subscribe, so the first one
+    // after a shell restart can be minutes old. Showing it is right - last known
+    // beats blank - but it must not stop the refresh, so an old snapshot is
+    // adopted AND asked to be re-read.
+    const unlistenPower = listen<BatteryStatus & { observedAtMicros: number }>(
+      "arlen://power-changed",
+      (event) => {
+        const p = event.payload;
+        status = {
+          percentage: p.percentage,
+          charging: p.charging,
+          time_remaining_minutes: p.time_remaining_minutes,
+        };
+        visible = true;
+        const ageMs = Date.now() - p.observedAtMicros / 1000;
+        if (ageMs > POLL_STALE_MS) {
+          poll();
+        } else {
+          lastEventAt = Date.now();
+        }
+      },
+    );
     const fallback = setInterval(() => {
       if (Date.now() - lastEventAt < POLL_STALE_MS) return;
       poll();
     }, 60_000);
     return () => {
       unlisten.then((fn) => fn());
+      unlistenPower.then((fn) => fn());
       clearInterval(fallback);
     };
   });
