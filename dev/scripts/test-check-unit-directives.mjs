@@ -53,7 +53,35 @@ function check(name, body, expect, tree = "user") {
   rmSync(dir, { recursive: true, force: true });
 }
 
+// The two ways this reports on nothing. Neither was caught before 12 Aug: the
+// first printed "no shipped unit tree, nothing to check" and exited 0, which
+// reads like a considered skip but describes a wrong root, since both trees are
+// committed source. The second printed "0 shipped unit(s) ... every directive is
+// one systemd knows", which is the same sentence a clean run prints.
+function checkTree(name, files, expect) {
+  const dir = mkdtempSync(join(tmpdir(), "arlen-unitdir-"));
+  for (const rel of files) mkdirSync(join(dir, rel), { recursive: true });
+  const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
+  const got = { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  const ok = expect(got.code, got.out);
+  console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
+  if (!ok) failures.push({ name, ...got });
+  rmSync(dir, { recursive: true, force: true });
+}
+
 console.log("check-unit-directives:");
+
+checkTree(
+  "a tree with no unit directory at all is refused, not skipped",
+  [],
+  (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
+);
+
+checkTree(
+  "a unit directory holding no unit is refused too",
+  ["dev/mkosi/mkosi.extra/usr/lib/systemd/user"],
+  (code, out) => code === 2 && out.includes("no .service file"),
+);
 
 check(
   "a unit whose directives systemd knows passes",
