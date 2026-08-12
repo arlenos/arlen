@@ -57,8 +57,35 @@ ROOT = (
 )
 
 CALL = re.compile(r'Command::new\("xdg-open"\)')
-# The `--` may sit on its own `.arg("--")` line before the value.
-GUARD = re.compile(r'\.arg\("--"\)')
+
+# `.arg("--")` is NOT a guard here, and used to be the one this gate asked for.
+#
+# Measured against `/usr/bin/xdg-open` (xdg-utils 1.2.1) on 12 Aug, because the
+# remedy had never been run:
+#
+#     $ xdg-open -- /nonexistent
+#     xdg-open: unexpected option '--'
+#
+# Its operative argument loop is `case "$parm" in -*) exit_failure_syntax`, and
+# `--` matches `-*`. There IS a `--)` arm further up, but it sits in
+# `check_common_commands`, a pre-scan for `--help`, and it only breaks when
+# `XDG_UTILS_ENABLE_DOUBLE_HYPEN` is set, which nothing sets. So the end-of-options
+# convention this gate was built on is not implemented by the tool it is about, and
+# following the advice would have broken opening entirely rather than hardened it.
+#
+# Nobody was hurt only by luck: both real call sites reach `xdg-open` with an
+# argument that is absolute by construction and were carried as exemptions, so the
+# recommended fix was never actually applied to anything.
+#
+# The rule is therefore the one this file's exemption note already called better:
+# **make the argument absolute**, so it cannot be read as an option in the first
+# place. A marker is now a finding of its own.
+BREAKS = re.compile(r'\.arg\("--"\)')
+
+# What genuinely makes a call safe: the value cannot begin with a dash because it
+# was made absolute first. Matched in the builder chain, and the exemption list
+# below carries the cases where the absolute step happens in the caller.
+GUARD = re.compile(r"canonicalize|absolute|\babs\(")
 
 # A call that passes something which cannot look like an option: the file, the
 # string that must appear in THAT call's builder chain for the excuse to hold,
@@ -71,23 +98,32 @@ GUARD = re.compile(r'\.arg\("--"\)')
 # any NEW call in it inherited the excuse. A file-keyed exception is a hole that
 # grows.
 ACKNOWLEDGED: dict[str, tuple[str, str]] = {
-    "apps/files/src-tauri/src/lib.rs": (
-        "abs(",
-        "Passes `abs(&path)`, which trims leading slashes and re-adds one, so the "
-        "argument always starts with `/` and can never be read as an option. "
-        "Checked the function, not the name.",
-    ),
     "apps/harness/src-tauri/src/file_ref.rs": (
-        ".arg(",
-        "arlen-ui's in-flight work. Named rather than skipped, because the call "
-        "has the same shape as the ones that were fixed.",
+        # `.arg(arg)`, not `.arg(` - the witness has to name THIS call or it
+        # matches every call the file will ever hold, which is exactly the
+        # file-wide excuse the witness mechanism replaced. Caught by the control
+        # on 12 Aug when a second unguarded call inherited it.
+        ".arg(arg)",
+        "Both callers of `spawn_xdg_open` canonicalize first, so the argument is "
+        "absolute before the helper sees it - the same property as the files app, "
+        "one call frame further out, which is why the guard cannot see it here. "
+        "This entry previously read 'arlen-ui's in-flight work'; that was wrong "
+        "twice over. The file is under `src-tauri`, which is not their lane, and "
+        "the call was never the unsafe shape it was excused as.",
     ),
 }
+
+# `apps/files/src-tauri/src/lib.rs` used to need an entry here for `abs(&path)`.
+# It does not any more: `abs(` is now part of the guard itself, since making the
+# argument absolute IS the fix rather than a reason to be excused from one.
 
 
 def main() -> int:
     findings: list[str] = []
     acknowledged: list[str] = []
+    # Calls carrying `--`. Reported loudly, deliberately NOT failing - see the note
+    # where they are printed.
+    breaks: list[str] = []
     # Entries that actually excused a call this run. One that excused nothing has
     # stopped describing the tree - see after the loop.
     used: set[str] = set()
@@ -109,9 +145,16 @@ def main() -> int:
                 default=len(tail),
             )
             chain = tail[:end]
+            rel = str(path.relative_to(ROOT))
+            # Checked BEFORE the guard and before any excuse: a marker is a broken
+            # call whatever else the chain does, so it must not be able to hide
+            # behind either.
+            if BREAKS.search(chain):
+                line = text[: m.start()].count("\n") + 1
+                breaks.append(f"{rel}:{line}")
+                continue
             if GUARD.search(chain):
                 continue
-            rel = str(path.relative_to(ROOT))
             excuse = ACKNOWLEDGED.get(rel)
             # The excuse applies to a call that carries its witness, not to every
             # call the file will ever contain.
@@ -121,9 +164,10 @@ def main() -> int:
                 continue
             line = text[: m.start()].count("\n") + 1
             findings.append(
-                f"{rel}:{line}: passes its argument to xdg-open without a `--` "
-                f"first, so a file named `-something` is read as options and never "
-                f"opens"
+                f"{rel}:{line}: passes an argument to xdg-open that may begin with "
+                f"a dash, so a file named `-something` is read as options and never "
+                f"opens. Make it absolute before the call - `--` is NOT the fix "
+                f"here, xdg-utils rejects it"
             )
 
     # Found the moment this check was first pointed somewhere other than the
@@ -148,11 +192,28 @@ def main() -> int:
         )
 
     print(
-        f"{calls} xdg-open call(s) across {scanned} file(s) checked for an "
-        f"end-of-options marker. "
-        f"One tool only: the same guard breaks nmcli, which was measured before "
-        f"this check was written."
+        f"{calls} xdg-open call(s) across {scanned} file(s) checked for an argument "
+        f"that cannot be read as an option. "
+        f"One tool only: the same reasoning does not transfer, which was measured "
+        f"before this check was written."
     )
+    if breaks:
+        print(
+            f"\n{len(breaks)} call(s) pass `--`, which xdg-utils REJECTS "
+            f"(measured 12 Aug: `xdg-open -- /x` gives \"unexpected option '--'\"):\n"
+        )
+        for b in breaks:
+            print(f"  - {b}")
+        print(
+            "\n  Reported rather than failed, because the fix is a packaging\n"
+            "  decision this check cannot make. The `--` came from a dev machine's\n"
+            "  personal shim - `~/.local/bin/xdg-open` execs `handlr open`, whose\n"
+            "  clap parser DOES honour `--`, and the error text quoted in those call\n"
+            "  comments is clap's. Against xdg-utils it is a call that opens nothing.\n"
+            "  The image installs NEITHER, so nothing opens there today either way.\n"
+            "  Settle which opener the image ships, then this becomes a failure or\n"
+            "  the marker becomes correct - one answer, seven call sites."
+        )
     if acknowledged:
         print("\nunguarded for a reason:\n")
         for a in sorted(set(acknowledged)):

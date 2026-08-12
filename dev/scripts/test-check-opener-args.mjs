@@ -52,8 +52,7 @@ const open = (chain) =>
 // `test-check-spawned-binaries`: the coupling to a list in the file under test
 // runs the cheap way, since adding an entry without a stub turns THIS test red.
 const CARRIED = {
-  "apps/files/src-tauri/src/lib.rs": open("        .arg(abs(&path))\n"),
-  "apps/harness/src-tauri/src/file_ref.rs": open("        .arg(path)\n"),
+  "apps/harness/src-tauri/src/file_ref.rs": open("        .arg(arg)\n"),
 };
 
 console.log("check-opener-args:");
@@ -64,9 +63,23 @@ check(
   (code, out) => code === 1 && out.includes("probe"),
 );
 
+// This case used to assert the opposite, and asserting it is what kept the
+// mistake alive: `--` was the remedy this gate ASKED for, and xdg-utils rejects
+// it ("unexpected option '--'", measured 12 Aug). The advice came from a dev
+// machine's personal `xdg-open` shim, which execs `handlr` and whose clap parser
+// does honour the marker. Reported rather than failed while the packaging
+// question is open, so the assertion is on the warning and on exit 0.
 check(
-  "the same call with an end-of-options marker passes",
+  "a marker is reported as breaking rather than accepted",
   { ...CARRIED, "apps/probe/src-tauri/src/lib.rs": open('        .arg("--")\n        .arg(path)\n') },
+  (code, out) => code === 0 && out.includes("xdg-utils REJECTS"),
+);
+
+// And the fix that does work: absolute by construction, which is now the guard
+// itself rather than a reason to be excused from one.
+check(
+  "an argument made absolute first is accepted",
+  { ...CARRIED, "apps/probe/src-tauri/src/lib.rs": open("        .arg(abs(&path))\n") },
   (code) => code === 0,
 );
 
@@ -78,19 +91,19 @@ check(
   "an excused file still passes the call its reason was written for",
   {
     ...CARRIED,
-    "apps/files/src-tauri/src/lib.rs": open('        .arg(abs(&path))\n'),
+    "apps/harness/src-tauri/src/file_ref.rs": open("        .arg(arg)\n"),
   },
-  (code, out) => code === 0 && out.includes("Checked the function, not the name"),
+  (code, out) => code === 0 && out.includes("canonicalize first"),
 );
 
 check(
   "a different call in that same file does not inherit the excuse",
   {
     ...CARRIED,
-    "apps/files/src-tauri/src/lib.rs":
-      open('        .arg(abs(&path))\n') + "\n" + open("        .arg(other)\n"),
+    "apps/harness/src-tauri/src/file_ref.rs":
+      open("        .arg(arg)\n") + "\n" + open("        .arg(other_no_witness)\n"),
   },
-  (code, out) => code === 1 && out.includes("apps/files"),
+  (code, out) => code === 1 && out.includes("apps/harness"),
 );
 
 // The defect this test was written for. A count of zero is only honest when
@@ -104,9 +117,9 @@ check(
   "an entry whose call has since been fixed is caught",
   {
     ...CARRIED,
-    "apps/harness/src-tauri/src/file_ref.rs": open('        .arg("--")\n        .arg(path)\n'),
+    "apps/harness/src-tauri/src/file_ref.rs": open("        .arg(abs(&path))\n"),
   },
-  (code, out) => code === 1 && out.includes("apps/harness"),
+  (code, out) => code === 1 && out.includes("no such call is there now"),
 );
 
 check(
