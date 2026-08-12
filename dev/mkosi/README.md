@@ -26,7 +26,20 @@ apt/dpkg/debootstrap, so no Debian tooling is needed on the host.
 ```
 dev/mkosi/build-image.sh                 # build everything + assemble arlen.raw
 dev/vm/verify.py --require-bar           # boot headless, screendump, assert the full desktop
+
+# and to check the system BEHAVED rather than merely came up:
+dev/mkosi/build-image.sh --verify
+dev/vm/verify.py --require-bar --linger 95 --require-probe --journal-out /tmp/boot.log
 ```
+
+The second form is worth the extra ~90s when you want more than a rendered bar. A
+bar-polling run returns the moment the bar appears, so it is over at about eleven
+seconds and nothing that happens afterwards has anywhere to be seen: the promotion
+pass is at ~33s and the knowledge probe's second round at ~80s. `--linger` keeps the
+guest alive, the ACPI shutdown lets journald flush, and `--journal-out` reads the
+guest's own journal back out of the overlay - the only complete record a run makes.
+`--require-probe` then fails unless the probe was answered AND found rows, because
+`0 questions failed` over an empty graph is the exact false green it exists to catch.
 
 `build-image.sh` is the orchestrator: it zigbuilds the pure-Rust daemons (event-bus)
 for the Debian target, then runs `mkosi build --force` whose `mkosi.build.d/` phases
