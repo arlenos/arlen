@@ -106,31 +106,25 @@ SWITCHES = {
         "it is recorded rather than scaffolded ahead of the flip.",
     ),
     "ARLEN_EVENT_BUS_ENFORCE": (
-        "unset",
+        "set",
         "the bus REJECTING an out-of-scope publish or subscribe instead of only "
         "logging it",
-        "deliberate shadow default, the same cutover shape as stamped identity, and "
-        "the entry has now been wrong TWICE in the same direction - each time by "
-        "reasoning about the flip instead of reading what shadow mode logs. On 11 "
-        "Aug it claimed the flip would silence the bus system-wide; corrected to "
-        "`detect_tier` classifies /usr/bin/arlen- and /usr/lib/arlen/ as System, "
-        "socket.rs exempts that tier from both the publish scope and the "
-        "subscription filter, so nothing shipped is affected. That correction "
-        "carried the claim EVERY shipped binary lands on one of those two paths, "
-        "and on 12 Aug a full boot journal refuted it: "
-        "`publish would be denied (shadow mode) app_id=\"<unresolved>\" "
-        "event_type=window.focus_left remedy=\"peer identity unresolved\"`. "
-        "The publisher is the COMPOSITOR, which the image installs as "
-        "/usr/bin/cosmic-comp - the upstream fork's name, matching neither prefix. "
-        "So the flip would deny the compositor's window events, and the window and "
-        "session half of the graph goes dark with them. Only one such publish "
-        "happened in a headless run nobody touched; a real session emits "
-        "window.focused, .opened and .closed down the same unresolved path. "
-        "NOT fixed here: giving a core component an identifiable path is a tier "
-        "decision, and installing it as /usr/bin/arlen-compositor would also hand "
-        "it the system-tier exemption. Four files name the binary (the mkosi phase, "
-        "arlen-session, the greetd VT drop-in, the logind drop-in). Read this before "
-        "the flip; it is the divergence the shadow mode was left on to collect.",
+        "FLIPPED ON 12 Aug, in the release image, after the condition D3 named was "
+        "met: populate-then-flip fail-closed - flip once the declarations are "
+        "populated and a boot shows no denials. The boot showed zero. Before that "
+        "this entry was wrong TWICE in the same direction, both times by reasoning "
+        "about the flip instead of reading what shadow mode had logged; the second "
+        "time a boot journal refuted it outright, with the compositor publishing as "
+        "`app_id=\"<unresolved>\"` because it was installed under the upstream "
+        "fork's name. That is fixed (it is `/usr/bin/arlen-compositor` now and "
+        "declares its publish list) and the flip was then measured, not argued. "
+        "WHAT THE GREEN COVERS is written in full beside the switch itself, in "
+        "`arlen-event-bus.service.d/10-enforce.conf`, because \"zero denials\" is "
+        "true of what ran rather than of what ships: three declared components are "
+        "exercised by a boot, `dev.arlen.files` is covered by "
+        "`check-bus-declarations.py` reading its profile instead, everything else "
+        "declares nothing and is exempt by tier, and an undeclared non-system "
+        "caller is the case the flip exists to bite.",
     ),
     "ARLEN_CAPSULE_REQUIRE_FENCE": (
         "unset",

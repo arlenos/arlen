@@ -57,6 +57,12 @@ const BASE = {
   // Recorded as `set`, and only two real units carry it - the check sees the
   // tree, not the rollout, so one unit here is the whole of that state.
   [`${U}/arlen-auditd.service`]: UNIT("Environment=ARLEN_STAMPED_IDENTITY=enforce"),
+  // Recorded as `set` since the 12 Aug flip: the bus scopes are enforced in the
+  // release image, not shadowed. This fixture moved WITH the switch, which is the
+  // rule the gate exists for - a flip and its written justification land together.
+  [`${U}/arlen-event-bus.service.d/10-enforce.conf`]: UNIT(
+    "Environment=ARLEN_EVENT_BUS_ENFORCE=1",
+  ),
 };
 
 function check(name, files, expect) {
@@ -96,7 +102,10 @@ check(
 // old state. The gate has no opinion on the flip, only on the stale prose.
 check(
   "switching an off switch on without updating its reason is caught",
-  { ...BASE, [`${U}/arlen-event-bus.service`]: UNIT("Environment=ARLEN_EVENT_BUS_ENFORCE=1") },
+  {
+    ...BASE,
+    [`${U}/arlen-capsuled.service`]: UNIT("Environment=ARLEN_CAPSULE_REQUIRE_FENCE=1"),
+  },
   (code, out) => code === 1 && out.includes("recorded as unset"),
 );
 
@@ -111,7 +120,7 @@ check(
 // fail again.
 check(
   "an env only MENTIONED in the image tree does not count as set",
-  { ...BASE, [`${U}/README`]: "we could set ARLEN_EVENT_BUS_ENFORCE here one day\n" },
+  { ...BASE, [`${U}/README`]: "we could set ARLEN_CAPSULE_REQUIRE_FENCE here one day\n" },
   (code) => code === 0,
 );
 
