@@ -153,6 +153,37 @@ pub fn mint_grant(
     })
 }
 
+/// The grant a user gesture confers: the act of choosing IS the authorisation.
+///
+/// There is no [`PendingRequest`] here and that is the whole point. A dialog asks
+/// an app's question; a gesture is the user already having answered one they
+/// posed themselves - picking a file, dragging it onto a window, attaching it.
+/// Minting from the gesture rather than prompting afterwards is what lets an app
+/// hold no standing reach at all.
+///
+/// **Scoped to the exact path, read-only, session lifetime.** Not the containing
+/// directory: handing over a file is not handing over its neighbours, and a
+/// gesture that meant the folder is a different gesture. Not persistent: keeping
+/// it past this login is a separate explicit choice, so that it reads as
+/// something the user added rather than something that accumulated.
+///
+/// The handle is the same function the dialog path uses, so a gesture for a path
+/// the app was already granted STRENGTHENS that row instead of adding a second
+/// one saying the same thing.
+pub fn confer_from_gesture(recipient: &str, path: &str) -> ConsentGrant {
+    let scope = Some(path.to_string());
+    ConsentGrant {
+        recipient: recipient.to_string(),
+        class: ConsentClass::CapabilityGrant,
+        scope: scope.clone(),
+        // Written from the gesture rather than from anything the app said,
+        // because nothing the app said is involved.
+        summary: format!("you opened {path} with this app"),
+        revocation_handle: revocation_handle(recipient, ConsentClass::CapabilityGrant, Some(path)),
+        lifetime: GrantLifetime::Session,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -266,6 +297,45 @@ mod tests {
             GrantLifetime::Persistent,
             "the two that share an absent instant are still different promises"
         );
+    }
+
+    /// What a gesture confers, and the three things it must not.
+    #[test]
+    fn a_gesture_confers_one_path_for_one_session() {
+        let g = confer_from_gesture("dev.arlen.harness", "/home/u/Dokumente/notes.md");
+
+        assert_eq!(g.scope.as_deref(), Some("/home/u/Dokumente/notes.md"));
+        assert_eq!(
+            g.lifetime,
+            GrantLifetime::Session,
+            "a file handed over in passing does not outlive the login"
+        );
+
+        // The containing directory is a different gesture, so the scope is the
+        // file and nothing above it.
+        assert_ne!(g.scope.as_deref(), Some("/home/u/Dokumente"));
+
+        // Same path twice is the same row: attaching a file you already attached
+        // must not grow the list the user has to read.
+        let again = confer_from_gesture("dev.arlen.harness", "/home/u/Dokumente/notes.md");
+        assert_eq!(g.revocation_handle, again.revocation_handle);
+
+        // A different file is a different grant, revocable on its own.
+        let other = confer_from_gesture("dev.arlen.harness", "/home/u/Dokumente/other.md");
+        assert_ne!(g.revocation_handle, other.revocation_handle);
+    }
+
+    /// A gesture grant and a dialog grant for the same path are ONE row, which is
+    /// the property that keeps "what can this app reach" answerable in one list.
+    #[test]
+    fn a_gesture_and_a_dialog_for_one_path_share_a_handle() {
+        let from_dialog =
+            mint_grant(&pending("app", Some("/p/f.txt")), ConsentOutcome::AllowedRemembered, 0)
+                .unwrap();
+        let from_gesture = confer_from_gesture("app", "/p/f.txt");
+        assert_eq!(from_dialog.revocation_handle, from_gesture.revocation_handle);
+        // And they still say different things about how long they last.
+        assert_ne!(from_dialog.lifetime, from_gesture.lifetime);
     }
 
     #[test]

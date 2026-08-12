@@ -190,6 +190,21 @@ pub enum ControlRequest {
         /// The grant's revocation handle (from a [`ConsentGrant`]).
         handle: String,
     },
+    /// Record the reach a user gesture just handed to an app: they picked this
+    /// file, dragged it onto that window, attached it.
+    ///
+    /// **There is deliberately no way for an app to ask for this.** It arrives on
+    /// the control socket, which only a trusted surface reaches, and the surface
+    /// sends it because it WITNESSED the gesture. An op an app could call is an op
+    /// an app can call until someone clicks yes, and not being able to widen
+    /// itself is the property being bought.
+    ConferFromGesture {
+        /// The app the user handed the path to. Named by the surface that saw the
+        /// gesture, since only it knows whose window received the file.
+        recipient: String,
+        /// The exact path the gesture named - the file, never its directory.
+        path: String,
+    },
 }
 
 /// The wire reply to a [`ControlRequest`].
@@ -216,6 +231,15 @@ pub enum ControlReply {
     /// handle.
     Revoked {
         /// Whether a grant was found and revoked.
+        ok: bool,
+    },
+    /// Whether the gesture's reach was recorded.
+    ///
+    /// `false` means it was NOT conferred - the surface must treat the handover
+    /// as not having happened rather than proceeding, since the app holds
+    /// nothing.
+    Conferred {
+        /// Whether the grant was recorded and is now live.
         ok: bool,
     },
 }
@@ -247,6 +271,35 @@ fn now_micros() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_micros() as i64)
         .unwrap_or(0)
+}
+
+/// The content-free entry for reach a gesture conferred.
+///
+/// Its own builder rather than a fabricated [`ResolvedDecision`], because there
+/// was no decision: nobody was asked, the user acted. Inventing a decision record
+/// to reuse the function would put a prompt in the ledger that never happened.
+///
+/// `conferrer` rides in `node_types` the way a mediator does, so the ledger can
+/// answer which surface witnessed the gesture - the one question that separates a
+/// conferral from an app having taken the reach. Content-free otherwise: the path
+/// is the user's business and is already in the grant.
+fn gesture_conferral_entry(recipient: &str, conferrer: &str) -> IngestRequest {
+    IngestRequest {
+        kind: AuditKind::Permission,
+        structural: StructuralRecord {
+            subject: recipient.to_string(),
+            node_types: vec![conferrer.to_string()],
+            relations: Vec::new(),
+            result_count: None,
+            duration_ms: None,
+            outcome: "conferred-by-gesture".to_string(),
+            depth: None,
+            capability_change: None,
+        },
+        forensic: None,
+        call_chain_id: None,
+        project_id: None,
+    }
 }
 
 /// Build the content-free audit entry for a resolved decision: the acting
@@ -488,6 +541,49 @@ impl SharedState {
             }
             None => false,
         }
+    }
+
+    /// Record the reach a gesture conferred, and answer whether it stuck.
+    ///
+    /// The audit is FAIL-CLOSED, like a decision and unlike a revoke: a grant
+    /// nobody can show afterwards is indistinguishable from an app having taken
+    /// the reach itself, and the ledger is where "afterwards" is answered. So an
+    /// unrecordable conferral is not conferred, and the surface is told no rather
+    /// than the app quietly holding something invisible.
+    ///
+    /// Persisting the Grant node is best-effort AFTER that, matching the dialog
+    /// path: the browser degrades, the authority does not.
+    pub async fn confer_from_gesture(&self, recipient: &str, path: &str, conferrer: &str) -> bool {
+        let grant = crate::grant::confer_from_gesture(recipient, path);
+        if self
+            .audit
+            .submit(gesture_conferral_entry(&grant.recipient, conferrer))
+            .await
+            .is_err()
+        {
+            tracing::error!("gesture conferral could not be audited; conferring nothing");
+            return false;
+        }
+        self.inner
+            .lock()
+            .expect("consent state mutex poisoned")
+            .grants
+            .record(grant.clone());
+        if let Some(p) = &self.persister {
+            if let Err(e) = p
+                .persist(
+                    &grant.recipient,
+                    grant.class.as_key(),
+                    grant.scope.as_deref(),
+                    &grant.revocation_handle,
+                    grant.lifetime.expires_at_micros(),
+                )
+                .await
+            {
+                tracing::warn!(error = %e, "gesture grant not persisted to the graph");
+            }
+        }
+        true
     }
 }
 
