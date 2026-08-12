@@ -291,7 +291,26 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     exit "$gate_failed"
 fi
 
+# `git ls-files` reads the INDEX, and this gate runs from the pre-commit hook -
+# during a commit, while git is writing that index. A read that loses the race
+# comes back empty, and every ordering reference below then "resolves to no unit
+# file": a confident, specific, FALSE finding about whichever unit happens to be
+# checked first. Seen on 12 Aug, where the same commit failed and then passed
+# unchanged, which is the shape that teaches people to retry a gate rather than
+# read it.
+#
+# The index is still the right source - it is the shipping set, and enumerating
+# the working tree instead pulls in `target/`, `node_modules` and the mkosi
+# builddir, which would let a reference resolve against a vendored copy and make
+# this check MORE permissive. So the source stays and the empty case becomes loud:
+# nothing found is a read that failed, never a tree without units.
 units=$(git ls-files '*.service' '*.socket' '*.timer' | xargs -n1 basename | sort -u)
+if [ -z "$units" ]; then
+    echo "FAIL: no unit files could be listed; the index was unreadable (a" >&2
+    echo "      concurrent git write) or the layout moved. Not a finding about" >&2
+    echo "      any unit - re-run, and if it persists the layout changed." >&2
+    exit 1
+fi
 for f in $(git ls-files '*.service' '*.socket' '*.timer'); do
     for ref in $(grep -oP '^(After|Requires|Wants|BindsTo|PartOf|Before)=\K.*' "$f" 2>/dev/null |
         tr ' ' '\n' | grep -E '\.service$|\.socket$'); do
