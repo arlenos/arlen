@@ -66,6 +66,27 @@ function check(name, args, expect) {
   if (!ok) failures.push({ name, ...got });
 }
 
+// NOT covered here, and said plainly rather than left as a gap you find later:
+// the "every shipped arlen unit is enabled" section runs INSIDE the guest, so
+// proving it needs a fixture with a working shell, `find` and `basename` - the
+// fixtures below deliberately have none, which is what they test. Copying a shell
+// and its libraries into a 64M image to get there would make these cases depend
+// on the host's dynamic linker, which is worse than the gap.
+//
+// So it was shown failing the direct way instead, on 13 Aug: a qcow2 overlay over
+// the real `arlen.raw` (instant, copy-on-write, no 4.8G copy), one unit's two
+// enable symlinks deleted inside it, then the check run against the overlay. It
+// named `arlen-powerd.service` and exited 1; against the unmodified image it
+// exits 0. Reproduce with:
+//
+//   qemu-img create -f qcow2 -b "$PWD/dev/mkosi/arlen.raw" -F raw /tmp/ovl.qcow2
+//   guestfish -a /tmp/ovl.qcow2 run : mount /dev/sda2 / : \
+//     rm /etc/systemd/user/default.target.wants/arlen-powerd.service
+//   dev/scripts/check-image-contents.sh /tmp/ovl.qcow2
+//
+// That is a weaker guarantee than a committed case - it does not re-run - and it
+// is recorded here so the difference is visible rather than assumed.
+
 console.log("check-image-contents:");
 
 const img = shelllessImage("noshell.raw", "[Service]\nExecStart=/usr/bin/arlen-ghost\n");

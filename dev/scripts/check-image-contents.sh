@@ -71,6 +71,13 @@ out=$(guestfish --ro -a "$img" run : mount-ro /dev/sda2 / : sh '
   echo "=== desktop entries"
   ls /usr/share/applications/*.desktop 2>/dev/null | wc -l
 
+  echo "=== shipped arlen units not enabled"
+  for u in /usr/lib/systemd/user/arlen-*.service /usr/lib/systemd/system/arlen-*.service; do
+    [ -f "$u" ] || continue
+    n=$(basename "$u")
+    find /etc/systemd /usr/lib/systemd -name "$n" -type l 2>/dev/null | grep -q . || echo "$n"
+  done
+
   echo "=== accessibility bus"
   if [ -e /usr/libexec/at-spi-bus-launcher ] || [ -e /usr/lib/at-spi2-core/at-spi-bus-launcher ]; then
     echo present
@@ -95,7 +102,8 @@ fi
 # clean bill of health. Bound by STRUCTURE rather than by length: each section the
 # inner script prints must be present, because that is what "it ran" looks like.
 for marker in "=== units naming a missing binary" "=== arlen binaries shipped" \
-              "=== desktop entries" "=== accessibility bus"; do
+              "=== desktop entries" "=== shipped arlen units not enabled" \
+              "=== accessibility bus"; do
   case "$out" in
     *"$marker"*) ;;
     *)
@@ -187,6 +195,29 @@ else
   echo "  flip would make every launch fail to spawn. Not an error while the flag"
   echo "  defaults off; it is what has to be built before the flag means anything."
 fi
+
+# A unit that ships and is never enabled is installed-but-not-started, which the
+# image cannot tell you apart from working. This reads the ARTEFACT rather than
+# the mechanism on purpose: the enable comes from mkosi's preset pass acting on
+# each unit's `[Install]`, and the tree ALSO carries hand-kept `.wants` symlinks
+# that duplicate it. On 13 Aug those two disagreed by one entry - the undo signer
+# was absent from the committed set - so reading the tree said it never ran while
+# the image had it enabled and the boot had it running. Only the built image
+# settles that, and the same read would catch the opposite (a unit that lost its
+# `[Install]` and quietly stopped being enabled), which no source-side check can.
+unenabled=$(echo "$out" | sed -n '/=== shipped arlen units not enabled/,/^=== /p' \
+  | grep -E "^arlen-.*\.service$" || true)
+
+echo
+if [ -n "$unenabled" ]; then
+  echo "a shipped arlen unit is enabled nowhere on the image, so it never starts:"
+  echo "$unenabled" | sed 's/^/  /'
+  echo "  Every shipped unit carries an [Install] section and mkosi's preset pass"
+  echo "  enables it; a unit missing here has lost that stanza or is not being"
+  echo "  presetted, and installed is not started."
+  exit 1
+fi
+echo "every shipped arlen unit is enabled"
 
 echo
 if [ -n "$missing" ]; then
