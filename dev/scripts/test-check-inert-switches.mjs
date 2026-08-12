@@ -71,6 +71,17 @@ function check(name, files, expect) {
 
 console.log("check-inert-switches:");
 
+// The last of the sixteen. This gate exists because a protection recorded as on
+// and actually off is invisible, and it had that shape itself: pointed at a tree
+// with no image it printed "no dev/mkosi/mkosi.extra; nothing to check" and
+// exited 0. The image tree is committed, so that is a wrong root, not an image
+// nobody has built.
+check(
+  "a tree with no image is refused rather than skipped",
+  tree({ "README.md": "no image here\n" }),
+  (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
+);
+
 check("a tree matching every recorded state passes", BASE, (code) => code === 0);
 
 // Rot one: the env is renamed or dropped, and the reason keeps arguing about a

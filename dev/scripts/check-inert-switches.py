@@ -153,9 +153,13 @@ def image_state(env):
 
 
 def main():
+    # The image tree is committed source, not build output, so its absence is not
+    # "no image has been built yet" - it is a scan pointed somewhere else. This
+    # gate's whole subject is a protection that is recorded as on and is not, and
+    # exiting 0 having read no image is the same shape one level up.
     if not (REPO / IMAGE).is_dir():
-        print(f"inert switches: no {IMAGE}; nothing to check")
-        return 0
+        print(f"NOTHING WAS READ: no {IMAGE} under {REPO}", file=sys.stderr)
+        return 2
 
     problems = []
     for env, (expected, buys, why) in sorted(SWITCHES.items()):
