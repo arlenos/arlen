@@ -1261,14 +1261,46 @@ async fn announce_file_opened(path: &str) {
 }
 
 /// Open a path with the default handler.
+///
+/// Through the shell's launch socket rather than `xdg-open`, which is what lets
+/// the launch be confined and attributed: the shell resolves the handler, starts
+/// it under the app's own id, and says what happened. `xdg-open` could only ever
+/// report whether the *spawn* worked - it returned success for a file with no
+/// handler at all, so "nothing happens when I double-click" looked identical to
+/// success from in here.
 #[tauri::command]
 async fn files_open(path: String) -> Result<(), String> {
-    std::process::Command::new("xdg-open")
-        .arg(abs(&path))
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    let abs = abs(&path);
+    match arlen_launch_contract::open_path(&abs)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        arlen_launch_contract::LaunchOutcome::Started { .. } => {}
+        // Reported as-is: "you have not chosen a handler for this" is a thing the
+        // person can act on, and collapsing it into a generic failure is what
+        // makes a missing default look like a broken file manager.
+        other => return Err(describe_launch(&other)),
+    }
     announce_file_opened(&path).await;
     Ok(())
+}
+
+/// A launch outcome as something to show a person.
+///
+/// Every variant gets its own sentence, because the distinctions the contract
+/// draws are the ones worth showing: not-configured, not-installed, badly
+/// packaged and would-not-start are four different things to do next, and the
+/// only reason they used to arrive as one was that `xdg-open` reported a spawn.
+fn describe_launch(outcome: &arlen_launch_contract::LaunchOutcome) -> String {
+    use arlen_launch_contract::LaunchOutcome as O;
+    match outcome {
+        O::Started { .. } => String::new(),
+        O::NoHandler { mime } => format!("nothing is set up to open {mime} files"),
+        O::UnknownApplication { app_id } => format!("{app_id} is not installed"),
+        O::MalformedEntry { app_id, reason } => format!("{app_id} is installed wrong: {reason}"),
+        O::DidNotStart { app_id, reason } => format!("{app_id} did not start: {reason}"),
+        O::Refused => "the shell refused to open this".to_string(),
+    }
 }
 
 /// One app the Open-With picker offers (a serializable view of the core
