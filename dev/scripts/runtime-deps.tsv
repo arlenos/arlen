@@ -1,0 +1,71 @@
+# What our code CALLS, and how the image is meant to provide it.
+#
+# Three defects in one day - `user-dirs.dirs` never written, `(unset)` swallowing
+# the keyboard layout, polkitd simply absent so the power menu could not authorise
+# a suspend - and each was found by a different accident, none by a check. The
+# common cause is that our runtime dependencies are implicit: we know what we
+# Cargo.toml, and we had never written down what the shipped system must PROVIDE
+# for our own code to run.
+#
+# So this is that list. Enumerating it on 12 Aug found TWENTY-ONE of thirty-three
+# external binaries absent from the image, including every one behind networking,
+# audio, the clipboard and opening a file. None of those failures is loud: a
+# missing binary is `No such file or directory` at spawn, inside a feature nobody
+# exercised on the appliance yet.
+#
+# Columns, tab-separated:
+#   what      the binary name our code passes to Command::new
+#   package   the Debian package that must be named in mkosi.conf `Packages=`
+#             (`-` when the entry is `absent`, or when we ship the binary ourselves)
+#   who       the component that calls it
+#   status    ships   -> must be on the image; check fails if the package is unnamed
+#             own     -> we build and stage it ourselves, not a distro package
+#             base    -> guaranteed by the base system (coreutils, dpkg, systemd)
+#             absent  -> deliberately not on this image; the reason is the last column
+#   why       for `absent`, what breaks and why that is acceptable for now
+#
+# An `absent` line is a DECISION, not a shrug: it says the feature does not work on
+# this image and somebody chose that. Turning one into `ships` is how a feature
+# arrives.
+
+# ── the desktop's own binaries ───────────────────────────────────────────────
+arlen-run	-	desktop-shell	own	the confined launcher, staged by the image build
+arlen-harness	-	desktop-shell	own	first-party app, staged by the image build
+arlen-settings	-	desktop-shell	own	first-party app, staged by the image build
+
+# ── base system ──────────────────────────────────────────────────────────────
+sh	-	several	base	essential; the shell out of which everything else is spawned
+sleep	-	dev probes	base	coreutils
+uname	-	system-monitor	base	coreutils
+dpkg	-	installd	base	the package tool of the distro we are built on
+systemctl	-	shell, quick-actions	base	systemd
+systemd-inhibit	-	shell caffeine	base	systemd
+journalctl	-	knowledge journald ingest	base	systemd
+findmnt	-	files, capsuled	base	util-linux
+lsblk	-	files, system-monitor	base	util-linux
+fusermount	fuse3	knowledge timeline mount	ships	the timeline FUSE mount
+bwrap	bubblewrap	arlen-run, terminal, pi sidecar	ships	every confined child runs under it
+fc-list	fontconfig	settings font list	ships	the font picker in Settings
+
+# ── absent, and each one is a feature that does not work here ────────────────
+nmcli	network-manager	desktop-shell network.rs	absent	ALL networking UI: the WiFi list, connect, disconnect, VPN. NetworkManager is not on the appliance image, so every network popover action fails at spawn
+pactl	pulseaudio-utils	desktop-shell audio.rs	absent	ALL audio: volume, mute, output and input selection, per-app volume. No sound server is staged yet
+wpctl	wireplumber	desktop-shell audio.rs	absent	the other half of audio; same reason as pactl
+rfkill	util-linux	desktop-shell network.rs	absent	airplane mode. NB util-linux IS present but ships rfkill in a separate binary package on trixie
+powerprofilesctl	power-profiles-daemon	desktop-shell power.rs	absent	power profile switching; arlen-powerd reads UPower directly, so battery state still works
+wl-copy	wl-clipboard	desktop-shell clipboard	absent	clipboard read and write from the shell
+wl-paste	wl-clipboard	desktop-shell clipboard	absent	same package as wl-copy
+xdg-mime	xdg-utils	harness	absent	default-application queries
+gtk-launch	libgtk-3-bin	desktop-shell	absent	launching a .desktop entry by id
+update-desktop-database	desktop-file-utils	installd	absent	refreshing the mime cache after an install
+man	man-db	desktop-shell waypointer	absent	the `#` man-page plugin in the launcher
+git	git	knowledge git ingest	absent	the git-history KG ingest. Project DETECTION only stats `.git`, so that still works
+udisksctl	udisks2	files	absent	mounting removable media from the file manager
+kdialog	kde-cli-tools	settings picker	absent	first choice of the directory-picker chain
+zenity	zenity	settings picker	absent	fallback of the same chain, so the picker has no backend at all
+flatpak	flatpak	installd	absent	flatpak app installation; out of scope for the appliance image
+snapper	snapper	knowledge backup	absent	btrfs snapshot integration; the image is not btrfs
+rclone	rclone	online-accounts	absent	cloud storage sync; online-accounts is not staged either
+ffmpeg	ffmpeg	viewers	absent	video thumbnailing and transcode
+wf-recorder	wf-recorder	desktop-shell	absent	screen recording
+glib-compile-schemas	libglib2.0-bin	installd	absent	compiling GSettings schemas for an installed app
