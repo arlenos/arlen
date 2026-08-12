@@ -44,6 +44,38 @@ read = [
     "system.Project.expired_at",
 ]
 
+# The static filesystem reach, decided 12 Aug: home plus the removable-media
+# mount points, and nothing else.
+#
+# `home` is the obvious half. The mount points are the half that is easy to miss:
+# a USB stick lands at `/run/media/<user>/<label>`, OUTSIDE home, and browsing one
+# is the most common file-manager task after browsing home - so a home-only grant
+# would ship a file manager that cannot see a stick the user just plugged in.
+# `/media` and `/mnt` are the same case on other distributions and for fstab
+# mounts.
+#
+# `$USER` is substituted from the account's home directory, not from the
+# environment: a profile that hardcoded a name would be wrong on every machine
+# whose user is called something else, and reading the variable would let whoever
+# started the process point this at another account's mounts.
+#
+# Enumeration is why these are STATIC rather than minted: a directory listing
+# cannot be assembled out of one-shot picks. Everything beyond them is minted by
+# the user's own navigation - a path they choose becomes a scoped grant,
+# read-only unless they asked for more, audited and revocable. The act of
+# choosing is the authorisation.
+#
+# NOT `custom = ["/"]`. A file manager is the app whose job is the whole
+# filesystem, which is exactly why it does not get the whole filesystem handed to
+# it up front.
+[filesystem]
+home = true
+custom = [
+    "/run/media/$USER",
+    "/media",
+    "/mnt",
+]
+
 # Event-bus scopes, for the shadow-to-enforce cutover the bus is parked halfway
 # through (`ARLEN_EVENT_BUS_ENFORCE`, off by default). In shadow an out-of-scope
 # publish is only logged and every requested subscription is kept verbatim, so
