@@ -30,7 +30,23 @@ mod timeline;
 /// # Panics
 /// If the Tauri runtime cannot start.
 pub fn run() {
-    env_logger::init();
+    // This app at info, dependencies at warn, and both halves are a fix.
+    //
+    // A bare `env_logger::init()` defaults to `error`, so every `log::info!`
+    // and `log::warn!` here produced nothing: the app was mute in the journal.
+    // That is the failure that made the boot consent hang so hard to find -
+    // the component in the middle could not be heard - and it was true of four
+    // apps at once.
+    //
+    // Dependencies stay at warn rather than being swept up to info with it,
+    // because zbus logs D-Bus handshake frames WITH their message bytes, and a
+    // message body is user content: paths, queries, notification text. At info
+    // that lands in a journal no capability grant covers. `RUST_LOG=zbus=trace`
+    // still gets it, deliberately.
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("warn,arlen_knowledge_lib=info"),
+    )
+    .init();
     tauri::Builder::default()
         .plugin(tauri_plugin_arlen_shell::init())
         .invoke_handler(tauri::generate_handler![
