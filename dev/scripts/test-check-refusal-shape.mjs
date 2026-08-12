@@ -130,6 +130,17 @@ launcher(
   (code) => code === 0,
 );
 
+// Neither half present. The guard has to key on BOTH, because the launcher
+// fixtures above deliberately contain no interface and the D-Bus fixtures contain
+// no launcher - either alone is a legitimate state for a fixture, and only the
+// pair is impossible in a real tree. One of sixteen checks measured passing over
+// an empty directory on 12 Aug.
+check(
+  "a tree with neither a D-Bus method nor a launcher has not passed",
+  'fn main() {}\n',
+  (code, out) => code === 2 && out.includes("examined nothing"),
+);
+
 if (failures.length) {
   console.log(`\n${failures.length} case(s) failed:`);
   for (const f of failures) console.log(`  ${f.name}\n    exit ${f.code}\n${f.out}`);
