@@ -124,7 +124,10 @@ const GRANT_MGMT_ADMITTED: &[&str] = &["dev.arlen.settings"];
 /// refusal for outsiders before the request is read). The per-op restriction for a
 /// grant-management-only caller is enforced by [`control_op_admitted`].
 fn control_caller_admitted(app_id: &str) -> bool {
-    if CONTROL_ADMITTED.contains(&app_id) || GRANT_MGMT_ADMITTED.contains(&app_id) {
+    if CONTROL_ADMITTED.contains(&app_id)
+        || GRANT_MGMT_ADMITTED.contains(&app_id)
+        || GESTURE_ADMITTED.contains(&app_id)
+    {
         return true;
     }
     // `#[cfg]` on the statement, not `cfg!()` in the expression: the two dev lists
@@ -157,9 +160,28 @@ const CONTROL_ADMITTED_DEV: &[&str] = &["dev.arlen-desktop-shell"];
 #[cfg(debug_assertions)]
 const GRANT_MGMT_ADMITTED_DEV: &[&str] = &["dev.arlen-settings"];
 
+/// App ids permitted ONLY to confer reach from a gesture they witnessed.
+///
+/// Empty today, and that is the state rather than an oversight. The shell is
+/// already in [`CONTROL_ADMITTED`] and can confer, which covers drag-and-drop and
+/// the attach affordance it hosts. The portal's file chooser is the other real
+/// conferrer and is NOT here yet because its resolved id has not been measured -
+/// it ships no permission profile, so writing what `path_to_app_id` will make of
+/// its install path would be a guess. A guessed id in a security list does not
+/// fail loudly, it silently admits nobody, which is how the F3 anchored check
+/// ended up inert against installd. It goes in when it is read off a running
+/// system, not before.
+const GESTURE_ADMITTED: &[&str] = &[];
+
 fn control_op_admitted(app_id: &str, request: &ControlRequest) -> bool {
     if CONTROL_ADMITTED.contains(&app_id) {
         return true;
+    }
+    // A conferring surface may ONLY confer. It never renders or answers a prompt,
+    // and it never reads or revokes the grant list: witnessing a gesture is not
+    // standing over the consent surface.
+    if GESTURE_ADMITTED.contains(&app_id) {
+        return matches!(request, ControlRequest::ConferFromGesture { .. });
     }
     #[cfg(debug_assertions)]
     if CONTROL_ADMITTED_DEV.contains(&app_id) {
@@ -479,6 +501,13 @@ async fn handle_control_conn(state: Arc<SharedState>, mut stream: UnixStream, ui
         ControlRequest::RevokeGrant { handle } => ControlReply::Revoked {
             ok: state.revoke_grant(&handle).await,
         },
+        // The conferrer is the ATTESTED caller, not anything in the message: a
+        // surface cannot claim to be a different one, and the ledger's record of
+        // which surface saw the gesture is only worth having if it was resolved
+        // rather than asserted.
+        ControlRequest::ConferFromGesture { recipient, path } => ControlReply::Conferred {
+            ok: state.confer_from_gesture(&recipient, &path, &app_id).await,
+        },
     };
     let bytes = match serde_json::to_vec(&reply) {
         Ok(b) => b,
@@ -608,6 +637,61 @@ mod tests {
         assert!(bind_socket(&link).is_err(), "binding over a symlink must fail");
         assert!(link.symlink_metadata().is_ok(), "the symlink survives");
         assert_eq!(std::fs::read(&target).unwrap(), b"target", "and its target");
+    }
+
+    /// The property the whole mint rests on: **an app cannot widen itself.**
+    ///
+    /// Conferral is reachable only over the control socket, and only for callers
+    /// on a list that no app is on. If this ever passes for an ordinary app id,
+    /// an app can hand itself a path by asking - which is the trade the model
+    /// exists to refuse.
+    #[test]
+    fn no_app_can_confer_reach_to_itself() {
+        let confer = ControlRequest::ConferFromGesture {
+            recipient: "dev.arlen.harness".into(),
+            path: "/home/u/secrets.txt".into(),
+        };
+
+        // The app named as the RECIPIENT cannot ask for its own grant.
+        assert!(!control_caller_admitted("dev.arlen.harness"));
+        assert!(!control_op_admitted("dev.arlen.harness", &confer));
+        // Nor can any other app, including ones the broker knows by name.
+        assert!(!control_op_admitted("dev.arlen.files", &confer));
+        assert!(!control_op_admitted("dev.arlen.clock", &confer));
+
+        // Settings holds the grant list and can revoke, and that must not extend
+        // to creating one: reading and releasing are not conferring.
+        assert!(!control_op_admitted("dev.arlen.settings", &confer));
+
+        // The shell may, because it hosts the surfaces where a gesture happens.
+        assert!(control_op_admitted("dev.arlen.desktop-shell", &confer));
+    }
+
+    /// A conferring surface confers and does nothing else. The list is empty
+    /// today, so this holds the RULE rather than a member: a caller admitted for
+    /// gestures must not thereby be able to answer a prompt or read the grant
+    /// list, and the assertion is here for whoever adds the portal to it.
+    #[test]
+    fn a_gesture_only_caller_cannot_answer_prompts_or_read_grants() {
+        use arlen_consent_contract::ConsentOutcome;
+        for id in GESTURE_ADMITTED {
+            assert!(control_op_admitted(
+                id,
+                &ControlRequest::ConferFromGesture {
+                    recipient: "app".into(),
+                    path: "/p".into()
+                }
+            ));
+            assert!(!control_op_admitted(id, &ControlRequest::Fetch));
+            assert!(!control_op_admitted(id, &ControlRequest::ListGrants));
+            assert!(!control_op_admitted(
+                id,
+                &ControlRequest::Resolve {
+                    id: 1,
+                    outcome: ConsentOutcome::AllowedOnce
+                }
+            ));
+        }
     }
 
     #[test]
