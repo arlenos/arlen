@@ -84,6 +84,10 @@ function check(name, args, expect) {
 //     rm /etc/systemd/user/default.target.wants/arlen-powerd.service
 //   dev/scripts/check-image-contents.sh /tmp/ovl.qcow2
 //
+// The desktop-entry section was shown failing the same way: delete
+// `/usr/bin/arlen-clock` in an overlay and the check names
+// `arlen-clock <- arlen-clock.desktop` and exits 1.
+//
 // That is a weaker guarantee than a committed case - it does not re-run - and it
 // is recorded here so the difference is visible rather than assumed.
 
