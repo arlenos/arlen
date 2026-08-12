@@ -42,6 +42,15 @@ function check(name, files, expect) {
 
 console.log("check-optimistic-write:");
 
+// Zero catch blocks is a legitimate answer, so what has to be refused is finding
+// no app source at all: this reads `apps/*/src/**` only, and pointed anywhere
+// else it printed "0 catch block(s) checked" and exited 0.
+check(
+  "a tree with no app source is refused rather than reported clean",
+  { "daemons/probe/src/main.rs": "fn main() {}\n" },
+  (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
+);
+
 check(
   "an optimistic update with a swallowed failure is caught",
   {
