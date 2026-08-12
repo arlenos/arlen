@@ -75,6 +75,21 @@ while IFS= read -r pkg; do
     # leaving the whole gate red would mean new drift lands unnoticed behind an
     # old one.
     case "$base" in
+      arlen-graph.service)
+        echo "KNOWN DRIFT (not failing): $base"
+        echo "  The image adds XDG_CONFIG_HOME=/usr/share/arlen-config, which is image"
+        echo "  topology rather than a difference of opinion: the image ships the daemon's"
+        echo "  config at a fixed read-only path and \`dirs::config_dir()\` has to resolve"
+        echo "  there. The canonical unit must NOT carry it - it would name an image path"
+        echo "  in the unit a non-image deployment installs."
+        echo "  These two were never compared until 12 Aug: this daemon kept its canonical"
+        echo "  unit in \`systemd/\` while every sibling uses \`dist/\`, so the \`find\` above"
+        echo "  never matched it and the pair reported as 'mkosi-only, skipped'. Renaming"
+        echo "  the directory is what surfaced this, and a stale RUST_LOG debug target"
+        echo "  left over from a 'debug the watch-config path' session, which is now gone."
+        echo
+        continue
+        ;;
       arlen-config-broker.service)
         echo "KNOWN DRIFT (not failing): $base"
         echo "  The image packages this as User=root with the state/runtime dirs and the"
