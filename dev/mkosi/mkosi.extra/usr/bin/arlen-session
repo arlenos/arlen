@@ -43,6 +43,30 @@ if [ -z "${ARLEN_SESSION_ID:-}" ]; then
 fi
 export ARLEN_SESSION_ID
 
+# The user's folders, named in the user's language, before anything binds them.
+#
+# Nothing else in this image ran `xdg-user-dirs-update`: a normal desktop gets it
+# from `/etc/xdg/autostart`, which we do not process. So `~/.config/user-dirs.dirs`
+# never existed, `dirs` fell back to the spec's English defaults, and on a German
+# install the launcher confined `~/Documents` on a machine whose files are in
+# `~/Dokumente`. Every read under that grant was refused - correctly, and
+# invisibly: the file manager looked empty rather than confined. That was the
+# first-run state of every non-English install, not an edge case.
+#
+# Takes the language from the environment as it stands here, which is why it is
+# after the session env is settled and before the compositor starts. Measured
+# rather than assumed, 12 Aug: a second run in the same locale changes nothing,
+# and a run in a DIFFERENT locale leaves a directory that has files in it alone
+# rather than renaming it out from under them.
+#
+# Absent tool is not a session failure. It is a Recommends of the GTK stack and
+# named explicitly in `mkosi.conf`, so this only fires if that changed - and the
+# launcher already announces the directories it could not find.
+if command -v xdg-user-dirs-update >/dev/null 2>&1; then
+    xdg-user-dirs-update || echo "arlen-session: xdg-user-dirs-update failed; \
+user directories keep their previous names" | systemd-cat -t arlen-session
+fi
+
 # cosmic-comp auto-selects its backend: if DISPLAY or WAYLAND_DISPLAY is set it
 # goes NESTED (x11/winit, for running inside another session); otherwise it uses
 # the udev/KMS bare-metal backend that drives the seat's DRM device directly -
