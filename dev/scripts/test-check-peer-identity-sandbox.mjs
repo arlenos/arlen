@@ -78,6 +78,16 @@ pub fn add(a: u32, b: u32) -> u32 { a + b }
 
 console.log("check-peer-identity-sandbox:");
 
+// Units that resolve no peer are legitimately not counted, so the guard cannot
+// hang on the checked count. Finding no unit at all is the one that has to
+// speak: it used to print "OK: 0 hardened unit(s) checked, none newly unable to
+// identify callers" - a clean bill of health for a tree it never opened.
+check(
+  "a tree with no unit at all is refused rather than reported clean",
+  tree({ "daemons/probe/src/main.rs": "fn main() {}\n" }),
+  (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
+);
+
 check(
   "a sandboxed unit whose daemon resolves peers is caught",
   tree({
