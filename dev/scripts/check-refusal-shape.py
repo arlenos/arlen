@@ -165,6 +165,22 @@ def main() -> int:
                 body.append(line)
 
     exits = silent_launcher_refusals(ROOT)
+
+    # Nothing examined at all is a scan that stopped finding things, not a tree
+    # with no refusals in it. Both halves have to be empty for that to be true:
+    # zero D-Bus methods alone is a legitimate state - the launcher rule reads one
+    # file and this gate's own control exercises it with fixtures that contain no
+    # interface at all - so a guard on the method count would fail those cases
+    # correctly. The pair is what cannot both be absent in a real tree.
+    #
+    # Measured 12 Aug: sixteen of the tree's checks passed over an empty
+    # directory, each reporting "0 of 0, all fine".
+    if methods == 0 and not (ROOT / "daemons/arlen-run/src/main.rs").is_file():
+        print(
+            "no D-Bus method and no launcher source were found; the layout moved "
+            "and this check did not. A scan that examined nothing has not passed."
+        )
+        return 2
     for site in exits:
         findings.append(
             f"{site}: refuses with a bare exit code and prints nothing, so the shell "
