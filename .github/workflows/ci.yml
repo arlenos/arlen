@@ -234,6 +234,7 @@ jobs:
           python3 dev/scripts/check-app-profiles.py
           python3 dev/scripts/check-bus-declarations.py
           python3 dev/scripts/check-log-filters.py
+          python3 dev/scripts/check-runtime-deps.py
           python3 dev/scripts/check-read-scope.py
           python3 dev/scripts/check-dbus-callers.py
           python3 dev/scripts/check-refusal-shape.py
@@ -275,6 +276,7 @@ jobs:
           node dev/scripts/test-check-app-profiles.mjs
           node dev/scripts/test-check-bus-declarations.mjs
           node dev/scripts/test-check-log-filters.mjs
+          node dev/scripts/test-check-runtime-deps.mjs
           node dev/scripts/test-probe-verdict.mjs
           node dev/scripts/test-check-webview-sandbox.mjs
           node dev/scripts/test-check-opener-args.mjs
