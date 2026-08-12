@@ -137,3 +137,35 @@ mkdir -p "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants"
 ln -sf ../arlen-kg-probe.service \
        "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants/arlen-kg-probe.service"
 echo ">> staged the verify probes into the image"
+
+# A journal that outlives the first ten seconds.
+#
+# The 12 Aug boot produced 1685 serial lines and then stopped at 9.996s of a
+# ~120s run - while the shell's bar appeared at 12s and logged nothing at all. It
+# is not the kernel suppressing: only `kauditd_printk_skb` reports doing that, and
+# that is the audit backlog. What is left is journald's own rate limit, which the
+# image leaves at the default (10000 messages per 30s) while the event bus alone
+# logs at DEBUG.
+#
+# The cost of that ceiling is the whole difference between "the desktop came up"
+# and "the desktop came up and then behaved". Everything a boot could tell us
+# about steady state - a daemon retrying, a socket refused on the tenth attempt,
+# an app started by hand - lands after the window closes, and `verify.py` has to
+# say "absence past this proves nothing" because it genuinely does not.
+#
+# So the VERIFY image turns the limit off. Not the release image: rate limiting
+# is there to stop one broken service filling a disk, which is a real protection
+# on a machine somebody uses, and this variant exists precisely to be watched
+# instead. `MaxLevelConsole` is left alone - the default already carries what we
+# need, since a daemon's stdout reaches journald at info whatever the app calls
+# its own level.
+mkdir -p "$DESTDIR/usr/lib/systemd/journald.conf.d"
+cat > "$DESTDIR/usr/lib/systemd/journald.conf.d/10-verify-no-ratelimit.conf" <<'CONF'
+# Verify images only, staged by mkosi.build.d/09-verify-probes.sh.chroot.
+# A boot is evidence here, and a dropped message is evidence lost.
+[Journal]
+RateLimitIntervalSec=0
+RateLimitBurst=0
+CONF
+chmod 644 "$DESTDIR/usr/lib/systemd/journald.conf.d/10-verify-no-ratelimit.conf"
+echo ">> staged the verify journald rate-limit override"
