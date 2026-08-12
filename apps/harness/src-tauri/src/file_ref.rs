@@ -15,6 +15,7 @@
 //! `ask: true`, which needs file-descriptor passing over D-Bus - a deliberate
 //! slice. The pill's open / reveal / copy actions work without it.
 
+use std::path::Path;
 use std::process::Command;
 
 use serde::Serialize;
@@ -40,9 +41,22 @@ pub struct FileRefState {
 
 /// Query the system MIME database for `path`'s type via `xdg-mime`. `None` when
 /// `xdg-mime` is absent, fails, or answers empty.
-fn query_mime(path: &str) -> Option<String> {
+///
+/// Takes a `&Path` that the caller has already canonicalized, and passes its
+/// `OsStr` through unconverted. Both parts matter: `xdg-mime` reads a
+/// leading-dash argument as an option (`xdg-mime query filetype -x.txt` answers
+/// "unexpected option"), so a relative `-notes.txt` would come back untyped; and
+/// a lossy string conversion would ask the database about a different file
+/// whenever a name is not valid UTF-8. This took a `&str` built with
+/// `to_string_lossy` and was safe only because its one caller happened to
+/// canonicalize first.
+fn query_mime(path: &Path) -> Option<String> {
     let output = Command::new("xdg-mime")
-        .args(["query", "filetype", path])
+        .args([
+            std::ffi::OsStr::new("query"),
+            std::ffi::OsStr::new("filetype"),
+            path.as_os_str(),
+        ])
         .output()
         .ok()?;
     if !output.status.success() {
@@ -71,7 +85,7 @@ fn resolve_one(path: &str) -> FileRefState {
             let mime = if real.is_dir() {
                 None
             } else {
-                query_mime(&real.to_string_lossy())
+                query_mime(&real)
             };
             FileRefState {
                 path: path.to_string(),
