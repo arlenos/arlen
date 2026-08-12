@@ -390,6 +390,15 @@ pub async fn query_mime(path: &str) -> Result<MimeAnswer, WireError> {
     read_answer(&mut stream).await
 }
 
+/// A local path as a `file:` URI, percent-encoded.
+///
+/// Public because the launch socket is not the only thing that needs one - the
+/// portal's open-with chooser takes a URI too - and two encoders is how one of
+/// them ends up not encoding the `#` in a filename.
+pub fn file_uri(path: &str) -> String {
+    format!("file://{}", encode_path(path))
+}
+
 /// Ask the launch service to act on one request, and wait for what happened.
 ///
 /// One request per connection, which is what the service serves: connect, send,
@@ -423,7 +432,7 @@ pub async fn open_path(path: &str) -> Result<LaunchOutcome, WireError> {
 pub fn open_path_request(path: &str) -> LaunchRequest {
     LaunchRequest::Open {
         target: Target {
-            uri: format!("file://{}", encode_path(path)),
+            uri: file_uri(path),
             path: Some(path.to_string()),
         },
         mime: None,

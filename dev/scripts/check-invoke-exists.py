@@ -288,17 +288,6 @@ KNOWN: dict[str, dict[str, str]] = {
         # something once the gate is deciding them.
         "ai_edit": "proposing an assistant edit (the gated edit path, executor-live)",
     },
-    "harness": {
-        "fileref_open_with": (
-            "the file pill's Open-with item. `file_ref.rs` says in its own header "
-            "that this one is deliberately not built yet - the powerbox form is the "
-            "portal's OpenURI.OpenFile with ask:true, which needs a file descriptor "
-            "over D-Bus - while the menu item shipped anyway, so the entry throws on "
-            "every click. Found the day wrapper calls started being held to the same "
-            "rule as direct ones: the call is `run(\"fileref_open_with\")`, invisible "
-            "at the `invoke` site, and it had been throwing quietly the whole time."
-        ),
-    },
 }
 
 
