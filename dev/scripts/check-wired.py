@@ -112,9 +112,13 @@ def invoked_by(name: str) -> list[str]:
 
 
 def main() -> int:
+    # This check exists because a gate nobody runs reads exactly like a gate that
+    # passes, so it would be a poor joke for it to have the same hole. The scripts
+    # directory is committed source: its absence is a wrong root argument, not a
+    # tree that has none.
     if not SCRIPTS.is_dir():
-        print(f"{SCRIPTS} is absent, nothing to check")
-        return 0
+        print(f"NOTHING WAS READ: {SCRIPTS} is absent", file=sys.stderr)
+        return 2
 
     problems, wired, excused = [], 0, 0
     for script in sorted(SCRIPTS.iterdir()):
@@ -135,6 +139,13 @@ def main() -> int:
             f"CI, the justfile or the pre-commit sweep, or add it to "
             f"CANNOT_BE_WIRED with the reason it cannot go in one."
         )
+
+    if wired + excused + len(problems) == 0:
+        print(
+            f"NOTHING WAS READ: {SCRIPTS} holds no check, probe or smoke script",
+            file=sys.stderr,
+        )
+        return 2
 
     # An excuse outliving its reason is the same defect one level up, so both
     # ways of going stale are named: the script is gone, or it turns out to be
