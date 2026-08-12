@@ -347,6 +347,102 @@ pub struct FilesystemPermissions {
     pub read_only: Vec<PathBuf>,
 }
 
+/// The resolved XDG user directories.
+///
+/// Beside [`FilesystemPermissions`] rather than in the launcher, because the
+/// launcher is no longer the only thing that has to answer what a grant reaches.
+/// The moment a second component computes that itself, the two drift and one of
+/// them is wrong about what an app may touch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserDirs {
+    /// `~/Documents`.
+    pub documents: PathBuf,
+    /// `~/Downloads`.
+    pub downloads: PathBuf,
+    /// `~/Pictures`.
+    pub pictures: PathBuf,
+    /// `~/Music`.
+    pub music: PathBuf,
+    /// `~/Videos`.
+    pub videos: PathBuf,
+}
+
+/// Whole-tree roots no grant may bind.
+pub const FORBIDDEN_FS_ROOTS: &[&str] = &[
+    "/", "/etc", "/usr", "/var", "/boot", "/bin", "/sbin", "/lib", "/lib64", "/proc", "/sys",
+    "/dev", "/run", "/root",
+];
+
+/// Whether `path` is a host-filesystem escape a `custom` grant must not bind:
+/// one of the [`FORBIDDEN_FS_ROOTS`], or an ancestor of `home` (e.g. `/home`,
+/// which would expose every user's home, or `/`). A specific subdirectory of the
+/// home (e.g. `~/Projects`) is NOT an escape.
+pub fn is_host_escape(path: &Path, home: &Path) -> bool {
+    FORBIDDEN_FS_ROOTS.iter().any(|r| path == Path::new(r)) || home.starts_with(path)
+}
+
+/// Whether a READ-ONLY subtree grant is acceptable.
+///
+/// The same whole-tree rule - `/sys` and `/etc` are refused here too, because a
+/// read-only bind of the whole tree is still the shape the rule exists to stop -
+/// but a NAMED SUBTREE under one of them is exactly what this grant is for, and it
+/// is not an escape: the app can read the part it asked for and write nothing. A
+/// relative path is refused rather than resolved, since what it would resolve
+/// against is the caller's cwd, not the app's.
+pub fn read_only_grant_ok(path: &Path, home: &Path) -> bool {
+    path.is_absolute() && !is_host_escape(path, home) && path.components().count() > 2
+}
+
+impl FilesystemPermissions {
+    /// The directories this grant makes WRITABLE: the flag-gated user dirs and
+    /// the accepted `custom` paths.
+    ///
+    /// **Not `read_only`**, which is the whole point of that field existing - an
+    /// app that asked to read `/sys/class/power_supply` must not be handed it
+    /// read-write. `arlen-run` has a test for exactly this, and it caught the
+    /// first version of this method folding the two together on 12 Aug. Readable
+    /// and writable are different questions and now have different methods.
+    ///
+    /// **Not the app's own state dirs** either, which the launcher adds because
+    /// they are a property of running an app rather than of its grant.
+    pub fn writable_dirs(&self, home: &Path, dirs: &UserDirs) -> Vec<PathBuf> {
+        let mut out: Vec<PathBuf> = Vec::new();
+        if self.home {
+            out.push(home.to_path_buf());
+        }
+        for (on, dir) in [
+            (self.documents, &dirs.documents),
+            (self.downloads, &dirs.downloads),
+            (self.pictures, &dirs.pictures),
+            (self.music, &dirs.music),
+            (self.videos, &dirs.videos),
+        ] {
+            if on {
+                out.push(dir.clone());
+            }
+        }
+        out.extend(self.custom.iter().filter(|p| !is_host_escape(p, home)).cloned());
+        out
+    }
+
+    /// The directories this grant lets the app READ: everything writable, plus the
+    /// accepted `read_only` subtrees.
+    ///
+    /// This is the one that answers "could the caller have opened this path", so
+    /// it is the one the launch service's mime query is gated on. Writable is a
+    /// subset of readable by construction rather than by two lists agreeing.
+    pub fn readable_dirs(&self, home: &Path, dirs: &UserDirs) -> Vec<PathBuf> {
+        let mut out = self.writable_dirs(home, dirs);
+        out.extend(
+            self.read_only
+                .iter()
+                .filter(|p| read_only_grant_ok(p, home))
+                .cloned(),
+        );
+        out
+    }
+}
+
 impl FilesystemPermissions {
     /// The declared filesystem reach: the standard directories the app may access
     /// plus any custom paths. `None` when nothing is declared.
@@ -2063,5 +2159,65 @@ app_id = "com.legacy"
         let profile: PermissionProfile = toml::from_str(toml).unwrap();
         assert!(!profile.input.register_focused_bindings);
         assert!(!profile.input.register_global_bindings);
+    }
+
+    #[test]
+    fn a_read_only_subtree_is_readable_but_never_writable() {
+        // The distinction the two methods exist for. `arlen-run` binds the
+        // writable set, and a grant that asked to READ `/sys/class/power_supply`
+        // handed back read-write is the field's whole purpose defeated. The
+        // launcher has its own test for this; this one pins it at the source, so
+        // the next caller of these methods inherits the property rather than
+        // needing to know about it.
+        let fs = FilesystemPermissions {
+            read_only: vec![PathBuf::from("/sys/class/power_supply")],
+            ..Default::default()
+        };
+        let home = Path::new("/home/u");
+        let dirs = probe_dirs();
+        assert!(fs.writable_dirs(home, &dirs).is_empty());
+        assert_eq!(
+            fs.readable_dirs(home, &dirs),
+            vec![PathBuf::from("/sys/class/power_supply")]
+        );
+    }
+
+    #[test]
+    fn writable_is_a_subset_of_readable() {
+        let fs = FilesystemPermissions {
+            documents: true,
+            custom: vec![PathBuf::from("/home/u/Projects")],
+            read_only: vec![PathBuf::from("/sys/class/power_supply")],
+            ..Default::default()
+        };
+        let home = Path::new("/home/u");
+        let dirs = probe_dirs();
+        let readable = fs.readable_dirs(home, &dirs);
+        for w in fs.writable_dirs(home, &dirs) {
+            assert!(readable.contains(&w), "{w:?} is writable but not readable");
+        }
+    }
+
+    #[test]
+    fn a_whole_tree_grant_reaches_nothing() {
+        // `/` and `/etc` are refused in both directions: a read-only bind of a
+        // whole tree is still the shape the rule exists to stop.
+        let fs = FilesystemPermissions {
+            custom: vec![PathBuf::from("/"), PathBuf::from("/etc")],
+            read_only: vec![PathBuf::from("/etc"), PathBuf::from("/home")],
+            ..Default::default()
+        };
+        let home = Path::new("/home/u");
+        assert!(fs.readable_dirs(home, &probe_dirs()).is_empty());
+    }
+
+    fn probe_dirs() -> UserDirs {
+        UserDirs {
+            documents: PathBuf::from("/home/u/Documents"),
+            downloads: PathBuf::from("/home/u/Downloads"),
+            pictures: PathBuf::from("/home/u/Pictures"),
+            music: PathBuf::from("/home/u/Music"),
+            videos: PathBuf::from("/home/u/Videos"),
+        }
     }
 }
