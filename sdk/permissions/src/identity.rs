@@ -769,6 +769,59 @@ const USER_SURFACES_DEV: &[&str] = &[
     "dev.arlen-harness",
 ];
 
+/// An image may admit ADDITIONAL surfaces by shipping this file. Adding only:
+/// nothing in it can remove one of the compiled-in surfaces above.
+///
+/// **Why a file and not a cargo feature, which was the first idea.** The verify
+/// image has to exercise `explain_system`, and the probe that drives it
+/// (`dogfood`) is not a user surface - correctly, since "anything that can name
+/// itself" is precisely the admission we refuse. So the verify image admits one
+/// more surface than the release image. The question is only where that
+/// difference lives.
+///
+/// A feature would put it in the BINARY, and `dev/scripts/check-verify-image.sh`
+/// exists to forbid exactly that: the verify image must be the release image plus
+/// probes, never differing in the content of a file both ship, or every finding it
+/// produces is about an artefact nobody runs. The AI daemon is built by
+/// `05-ai.sh.chroot`, a phase that may not branch on the verify flag for the same
+/// reason. A data file the verify image ADDS and the release image omits is the one
+/// shape those rules leave, and it is also the one a person can read without a
+/// build.
+///
+/// **Trust comes from the path.** `/var/lib/arlen/permissions` is root-owned and
+/// not user-writable - the same directory the authoritative profile tier lives in,
+/// and for the same reason: a same-uid user who could write here could admit
+/// themselves. The mode is checked anyway rather than assumed, so the guarantee is
+/// readable here instead of resting on a `create_dir_all` three crates away.
+const EXTRA_USER_SURFACES: &str = "/var/lib/arlen/permissions/user-surfaces.extra";
+
+/// Surfaces the running image admits beyond the compiled-in list, or none.
+///
+/// Fail-closed at every step: no file, unreadable, not owned by root, or writable
+/// by anyone but root, and the answer is "no extras". A malformed line is skipped,
+/// not guessed at.
+fn extra_user_surfaces(path: &std::path::Path) -> Vec<String> {
+    use std::os::unix::fs::MetadataExt;
+
+    let Ok(meta) = std::fs::metadata(path) else {
+        return Vec::new();
+    };
+    // Root-owned and not group- or world-writable, or it is not policy, it is
+    // whatever the last writer wanted. Refusing is the safe direction: the release
+    // image ships no file at all, so refusing is also its normal state.
+    if meta.uid() != 0 || meta.mode() & 0o022 != 0 {
+        return Vec::new();
+    }
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    text.lines()
+        .map(|l| l.split('#').next().unwrap_or("").trim())
+        .filter(|l| !l.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
 pub fn is_user_surface(app_id: &str) -> bool {
     if USER_SURFACES.contains(&app_id) {
         return true;
@@ -777,7 +830,13 @@ pub fn is_user_surface(app_id: &str) -> bool {
     if USER_SURFACES_DEV.contains(&app_id) {
         return true;
     }
-    false
+    // Read per call rather than cached at startup, matching the per-call reload the
+    // accounts daemon settled on: a policy read once at boot answers with the state
+    // of a machine that no longer exists, and these calls are user-initiated and
+    // rare, so a stat is not a cost worth trading correctness for.
+    extra_user_surfaces(std::path::Path::new(EXTRA_USER_SURFACES))
+        .iter()
+        .any(|s| s == app_id)
 }
 
 #[cfg(test)]
@@ -807,6 +866,68 @@ mod user_surface_rule {
                 "{id} is an app: it asks the user through the shell, it does not \
                  hold the capability"
             );
+        }
+    }
+
+    /// The additive policy input, exercised through a path the test controls.
+    ///
+    /// `is_user_surface` reads a fixed absolute path, which a test cannot write, so
+    /// these drive `extra_user_surfaces` directly. That leaves the wiring itself
+    /// uncovered here - it is one `.any()` - and covers the part with decisions in
+    /// it: what counts as trustworthy, and what a malformed file does.
+    mod extra {
+        use super::super::extra_user_surfaces;
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+
+        fn write(name: &str, mode: u32, body: &str) -> std::path::PathBuf {
+            let dir = std::env::temp_dir().join(format!(
+                "arlen-extra-surfaces-{}-{}",
+                std::process::id(),
+                name
+            ));
+            std::fs::create_dir_all(&dir).expect("fixture dir");
+            let path = dir.join("user-surfaces.extra");
+            let mut f = std::fs::File::create(&path).expect("fixture file");
+            f.write_all(body.as_bytes()).expect("fixture write");
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
+                .expect("fixture mode");
+            path
+        }
+
+        #[test]
+        fn an_absent_file_admits_nothing() {
+            let missing = std::env::temp_dir().join("arlen-extra-surfaces-does-not-exist");
+            assert!(extra_user_surfaces(&missing).is_empty());
+        }
+
+        #[test]
+        fn a_world_writable_file_is_refused_however_right_its_contents_look() {
+            // The whole point of the path is that only root can write it. A file
+            // anyone may rewrite is not policy, and reading it would turn this from
+            // an admission list into a self-service one.
+            let p = write("world-writable", 0o666, "dogfood\n");
+            assert!(
+                extra_user_surfaces(&p).is_empty(),
+                "a writable admission file must admit nothing"
+            );
+        }
+
+        #[test]
+        fn a_readable_root_owned_file_admits_what_it_lists() {
+            // The fixture is owned by whoever runs the tests, so this asserts the
+            // parse and the comment handling; the ownership half is covered by the
+            // refusal above, which is the direction that matters.
+            let p = write("well-formed", 0o644, "# the verify probe\ndogfood\n\n");
+            let got = extra_user_surfaces(&p);
+            if unsafe { libc::getuid() } == 0 {
+                assert_eq!(got, vec!["dogfood".to_string()]);
+            } else {
+                assert!(
+                    got.is_empty(),
+                    "a file this test cannot own must still be refused"
+                );
+            }
         }
     }
 }
