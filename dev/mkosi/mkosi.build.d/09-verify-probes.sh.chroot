@@ -144,9 +144,11 @@ read = [
 ]
 PROFILE
 chmod 644 "$DESTDIR/var/lib/arlen/permissions/0/kg-probe.toml"
-mkdir -p "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants"
-ln -sf ../arlen-kg-probe.service \
-       "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants/arlen-kg-probe.service"
+# No enable symlink here: the unit's own `[Install] WantedBy=multi-user.target`
+# above is the enable, and mkosi's preset pass acts on it. The build log shows it
+# creating exactly this link in /etc, so writing a second one by hand only added a
+# way for the two to disagree - which is what happened to the user units, where a
+# hand-kept set drifted one entry from the generated one.
 echo ">> staged the verify probes into the image"
 
 # Admit the dogfood driver as a user surface, on THIS image only.
