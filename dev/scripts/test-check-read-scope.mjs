@@ -63,6 +63,16 @@ const PROFILE = (labels) =>
 const QUERIES = (labels) =>
   labels.map((l) => `let q = "MATCH (n:${l}) RETURN n.id";\n`).join("");
 
+// An app with a profile but no Rust of its own is skipped by design, which the
+// last case relies on, so zero apps checked is legitimate. Zero PROFILES is the
+// one that cannot be: they are committed under mkosi.extra. Before this the gate
+// printed "0 app(s) checked that every queried label is granted".
+check(
+  "a tree with no app profile is refused rather than reported clean",
+  tree({ "apps/demo/src-tauri/src/lib.rs": QUERIES(["File"]) }),
+  (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
+);
+
 check(
   "a queried label that is granted passes",
   tree({

@@ -65,7 +65,17 @@ def main() -> int:
     findings: list[str] = []
     checked = 0
 
-    for profile in sorted(PROFILES.glob("dev.arlen.*.toml")):
+    profiles = sorted(PROFILES.glob("dev.arlen.*.toml"))
+    # An app with a profile but no Rust of its own is skipped on purpose, so zero
+    # apps CHECKED is a legitimate answer and one case below is exactly that. Zero
+    # PROFILES is not: they are committed under `mkosi.extra`, and finding none
+    # means this ran against something that is not the tree - after which the line
+    # below reports a number that describes nothing.
+    if not profiles:
+        print(f"NOTHING WAS READ: no app profile under {PROFILES}", file=sys.stderr)
+        return 2
+
+    for profile in profiles:
         app = profile.stem.removeprefix("dev.arlen.")
         sources = app_sources(app)
         if not sources:
