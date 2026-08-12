@@ -15,7 +15,7 @@
 //
 // Run: node dev/scripts/test-check-optimistic-write.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -91,6 +91,39 @@ check(
   },
   (code) => code === 0,
 );
+
+// The count-drop half, added 12 Aug. The docstring had promised it since the file
+// was written ("a file whose count drops asks to have its number lowered") and
+// nothing implemented it, which went unnoticed until tightening the lookbehind
+// took four of six entries to zero in one commit.
+//
+// It audits its own tree only - a fixture lacks the real KNOWN files, so every
+// fixture case would report both of them as dropped. That is also why this case
+// cannot use the harness above or a copy in /tmp: a copy elsewhere, handed the
+// real tree, correctly declines to audit a list that is not its own. So the copy
+// goes INSIDE dev/scripts under a dotted name and runs with no argument. Same
+// shape as `test-check-peer-identity-sandbox.mjs`, for the same reason.
+{
+  const name = "a carried count with nothing left behind it is reported";
+  const copy = join(ROOT, `dev/scripts/.tmp-optimistic-${process.pid}.py`);
+  let got;
+  try {
+    writeFileSync(
+      copy,
+      readFileSync(join(ROOT, "dev/scripts/check-optimistic-write.py"), "utf8").replace(
+        "KNOWN: dict[str, tuple[int, str]] = {",
+        'KNOWN: dict[str, tuple[int, str]] = {\n    "apps/probe/src/lib/stores/none.ts": (2, "planted"),',
+      ),
+    );
+    const r = spawnSync("python3", [copy], { encoding: "utf8" });
+    got = { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  } finally {
+    rmSync(copy, { force: true });
+  }
+  const ok = got.code === 1 && got.out.includes("only 0 remain");
+  console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
+  if (!ok) failures.push({ name, ...got });
+}
 
 if (failures.length) {
   console.log(`\n${failures.length} case(s) failed:`);
