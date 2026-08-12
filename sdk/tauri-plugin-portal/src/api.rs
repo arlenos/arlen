@@ -458,21 +458,18 @@ pub async fn open_external(uri: &str) -> Result<(), PickerError> {
         Err(e) => return Err(e),
     }
 
-    // No portal frontend. Hand the URI to xdg-open as a single argument (never a
-    // shell), so it carries no injection risk.
-    std::process::Command::new("xdg-open")
-        // `--` first: a name may legally begin with a dash and xdg-open parses a
-        // leading-dash argument as its own options ("error: unexpected argument
-        // '-z' found / tip: to pass '-z' as a value, use '-- -z'"). The files app
-        // is safe by construction because `abs` guarantees a leading slash; these
-        // callers pass the string through as it arrives.
-        .arg("--")
-        .arg(uri)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| PickerError::Other { message: format!("xdg-open: {e}") })
+    // No portal frontend. Ask the shell's launch socket, which is a different
+    // service - the portal being down says nothing about the shell - so this is
+    // still a fallback and not a second name for the same failure. It also keeps
+    // the property the subprocess could not: the launch is resolved, recorded and
+    // confined, and the answer distinguishes "no handler" from "did not start".
+    match arlen_launch_contract::open_uri(uri)
+        .await
+        .map_err(|e| PickerError::Other { message: format!("launch: {e}") })?
+    {
+        arlen_launch_contract::LaunchOutcome::Started { .. } => Ok(()),
+        other => Err(PickerError::Other { message: format!("launch: {other:?}") }),
+    }
 }
 
 #[cfg(test)]
