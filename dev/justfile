@@ -744,6 +744,8 @@ check-executor:
     node "{{ROOT}}/dev/scripts/check-i18n-reactivity.mjs"
     python3 "{{ROOT}}/dev/scripts/check-invoke-shape.py"
     python3 "{{ROOT}}/dev/scripts/check-invoke-scope.py"
+    python3 "{{ROOT}}/dev/scripts/check-window-grants.py"
+    node "{{ROOT}}/dev/scripts/test-check-window-grants.mjs"
     node "{{ROOT}}/dev/scripts/test-check-invoke-scope.mjs"
     node "{{ROOT}}/dev/scripts/test-check-fixtures.mjs"
     node "{{ROOT}}/dev/scripts/test-check-units.mjs"
@@ -784,6 +786,8 @@ check-smoke:
 # declaring them to reach a green would be the wrong way round.
 check-invoke-scope:
     python3 "{{ROOT}}/dev/scripts/check-invoke-scope.py"
+    python3 "{{ROOT}}/dev/scripts/check-window-grants.py"
+    node "{{ROOT}}/dev/scripts/test-check-window-grants.mjs"
 
 # Every D-Bus method must be able to see who called it, or be listed with the
 # reason it need not. NOT in `checks`: it currently fails on installd, whose
