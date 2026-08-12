@@ -98,18 +98,28 @@ SWITCHES = {
         "unset",
         "the bus REJECTING an out-of-scope publish or subscribe instead of only "
         "logging it",
-        "deliberate shadow default, the same cutover shape as stamped identity. "
-        "This entry said the flip would silence the bus system-wide, which is "
-        "wrong and was corrected on 11 Aug after reading how the check is reached: "
-        "`detect_tier` classifies anything under /usr/bin/arlen- or /usr/lib/arlen/ "
-        "as System, and socket.rs exempts the system tier from BOTH the publish "
-        "scope and the subscription filter. Every binary the image ships lands on "
-        "one of those two paths, so the flip changes nothing for anything shipped "
-        "today. It bites a caller that is not system tier - a third-party app, or "
-        "a binary run from a dev tree - which is the case worth having scopes for "
-        "and also the case nobody is running yet. Three of the eight profiles now "
-        "declare an [event_bus] section; for those apps it is a description of "
-        "intent, not something the flip currently consults.",
+        "deliberate shadow default, the same cutover shape as stamped identity, and "
+        "the entry has now been wrong TWICE in the same direction - each time by "
+        "reasoning about the flip instead of reading what shadow mode logs. On 11 "
+        "Aug it claimed the flip would silence the bus system-wide; corrected to "
+        "`detect_tier` classifies /usr/bin/arlen- and /usr/lib/arlen/ as System, "
+        "socket.rs exempts that tier from both the publish scope and the "
+        "subscription filter, so nothing shipped is affected. That correction "
+        "carried the claim EVERY shipped binary lands on one of those two paths, "
+        "and on 12 Aug a full boot journal refuted it: "
+        "`publish would be denied (shadow mode) app_id=\"<unresolved>\" "
+        "event_type=window.focus_left remedy=\"peer identity unresolved\"`. "
+        "The publisher is the COMPOSITOR, which the image installs as "
+        "/usr/bin/cosmic-comp - the upstream fork's name, matching neither prefix. "
+        "So the flip would deny the compositor's window events, and the window and "
+        "session half of the graph goes dark with them. Only one such publish "
+        "happened in a headless run nobody touched; a real session emits "
+        "window.focused, .opened and .closed down the same unresolved path. "
+        "NOT fixed here: giving a core component an identifiable path is a tier "
+        "decision, and installing it as /usr/bin/arlen-compositor would also hand "
+        "it the system-tier exemption. Four files name the binary (the mkosi phase, "
+        "arlen-session, the greetd VT drop-in, the logind drop-in). Read this before "
+        "the flip; it is the divergence the shadow mode was left on to collect.",
     ),
     "ARLEN_CAPSULE_REQUIRE_FENCE": (
         "unset",
