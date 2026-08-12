@@ -24,7 +24,7 @@ Environment=ARLEN_DB_PATH=%h/.local/share/arlen/events.db
 Environment=XDG_CONFIG_HOME=/usr/share/arlen-config
 # Debug the watch-config resolution: logs the exact graph.toml path checked
 # (loaded vs not-found), so the serial confirms config_dir() resolves right.
-Environment=RUST_LOG=info,arlen_graph_daemon::project::watch_config=debug
+Environment=RUST_LOG=info
 
 # Security hardening
 NoNewPrivileges=true
