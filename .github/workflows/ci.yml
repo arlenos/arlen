@@ -264,6 +264,7 @@ jobs:
           node dev/scripts/test-check-grant-visibility.mjs
           node dev/scripts/test-check-crate-coverage.mjs
           node dev/scripts/test-check-smoke-coverage.mjs
+          node dev/scripts/test-check-sensing-vectors.mjs
           node dev/scripts/test-check-proto-drift.mjs
           node dev/scripts/test-check-spawned-binaries.mjs
           node dev/scripts/test-check-optimistic-write.mjs
