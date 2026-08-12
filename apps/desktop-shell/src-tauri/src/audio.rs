@@ -121,12 +121,20 @@ fn get_audio_status_impl() -> Result<AudioStatus, String> {
 /// Checks the default sink's name and properties to determine if it's
 /// Bluetooth headphones, Bluetooth speaker, HDMI, or regular speakers.
 fn detect_output_type() -> String {
-    let default_sink = std::process::Command::new("pactl")
+    let default_sink = match std::process::Command::new("pactl")
         .args(["get-default-sink"])
         .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_default();
+    {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        Err(e) => {
+            // "speakers" below is a DISPLAY default, not a measurement, and the
+            // difference is invisible from the outside: with no pactl the indicator
+            // shows a speaker icon exactly as it would for a real analog sink. Say
+            // which one this is, since the returned string cannot.
+            log::warn!("pactl unavailable ({e}); reporting the default output type as speakers without having measured it");
+            String::new()
+        }
+    };
 
     if default_sink.is_empty() {
         return "speakers".into();
