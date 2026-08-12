@@ -69,6 +69,18 @@ writes it best - a window that overshoots "does not look wrong, it looks like a
 finding, and the fix it invites is granting a field nothing reads". Anchor on the
 brace, the string literal, the function edge. If you must count, count code.
 
+**A uniform finding is a caller you cannot see, not many independent mistakes.**
+Twice in one night a scanner produced a confident wrong answer with the same
+tell. Thirteen apps "over-granting" close and minimize - the calls were in the
+ui-kit's `WindowControls`, which they all render. Four apps granting a plugin
+command they demonstrably invoke - those calls come from other kit modules. Real
+defects cluster and vary; a result that is identical across every subject usually
+means the evidence lives somewhere the scan did not look. Before reporting one,
+find the shared thing. And note that widening a scan RE-OPENS this question: the
+window family had its shared caller accounted for, and extending the same check to
+plugin permissions walked straight back into it, because the credit was written
+for one component.
+
 **Do not measure the label when you can read the thing.** `check-wired` counts
 positive controls by reading which check each test file DRIVES, after two
 hand-counts got it wrong by matching names. The same mistake surfaced twice more
