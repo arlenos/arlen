@@ -30,12 +30,17 @@ ProtectSystem=strict
 ProtectHome=no
 ReadWritePaths=%h/.local/share/arlen
 ReadWritePaths=/run/user/%U/arlen
-# REMAINING CAVEAT, narrowed by the above: ProtectSystem=strict still puts this
-# unit in a private mount namespace, so a FUSE timeline mounted here is not
-# necessarily visible to the user's session even now that the mount point is
-# writable. That half needs mount propagation (PrivateMounts=no or a shared
-# MountFlags) and has not been verified on a boot. The access half - which is
-# what made graph.toml unreadable and the mount point uncreatable - is fixed.
+# RESOLVED, and the resolution is not the one this note used to propose. It said
+# the remaining half wanted mount propagation - `PrivateMounts=no` or a shared
+# `MountFlags` - which was ruled out on 12 Aug: it buys visibility by letting a
+# hardened unit reach the host's mount namespace, trading the sandbox for a
+# presentation detail in the unit whose sandbox matters most.
+#
+# The mount left instead. `arlen-timeline` owns it (it needs the SUID
+# `fusermount3` and is unfenced by design), and this daemon serves the data over
+# its socket. Nothing here mounts anything, and no propagation directive belongs
+# in this file. The image copy carries the same paragraph, which is how the two
+# stay one decision rather than two.
 
 [Install]
 WantedBy=default.target
