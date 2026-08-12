@@ -50,6 +50,21 @@ mod tests {
 
 console.log("check-dev-prefix-admission:");
 
+// `check` always writes one Rust file, so the tree-level emptiness needs its own
+// fixture. Rust that never mentions a `dev.` id is a legitimate zero for the
+// count this prints; no Rust at all is a scan that ran outside the tree, and it
+// used to print "0 file(s) mentioning a `dev.` id checked" and exit 0.
+{
+  const dir = mkdtempSync(join(tmpdir(), "arlen-devprefix-"));
+  writeFileSync(join(dir, "README.md"), "no code here\n");
+  const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
+  const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
+  const ok = r.status === 2 && out.includes("NOTHING WAS READ");
+  console.log(`  ${ok ? "ok  " : "FAIL"} a tree with no Rust is refused rather than reported clean`);
+  if (!ok) failures.push({ name: "empty tree", code: r.status ?? 1, out });
+  rmSync(dir, { recursive: true, force: true });
+}
+
 check(
   "an admission above the test module is caught",
   `${ADMIT}\n${TESTS}`,

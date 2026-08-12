@@ -92,9 +92,11 @@ def test_scope_lines(lines: list[str]) -> set[int]:
 def main() -> int:
     findings: list[str] = []
     scanned = 0
+    opened = 0
     for path in sorted(ROOT.rglob("*.rs")):
         if SKIP & set(path.parts):
             continue
+        opened += 1
         text = path.read_text(encoding="utf-8", errors="replace")
         if "dev." not in text:
             continue
@@ -112,6 +114,14 @@ def main() -> int:
                 f"the tree, not the one component this gate is for. Name the exact "
                 f"id, or a `*_DEV` list of them."
             )
+
+    # A tree whose Rust never mentions a `dev.` id would be a legitimate zero for
+    # `scanned`, so the guard is on what was OPENED. No Rust at all means the scan
+    # ran outside the tree, and the count below would then be a fact about a
+    # directory this never walked.
+    if not opened:
+        print(f"NOTHING WAS READ: no Rust file under {ROOT}", file=sys.stderr)
+        return 2
 
     print(
         f"{scanned} file(s) mentioning a `dev.` id checked for admitting the whole "
