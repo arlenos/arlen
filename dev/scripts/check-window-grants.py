@@ -76,27 +76,29 @@ METHOD = {
 GRANT = re.compile(r"core:window:allow-(.+)")
 
 # The queue, worst first, with the count that keeps it a queue rather than a hole:
-# an app that grows a NEW unused grant fails even though it is listed. Measured
-# 12 Aug, after crediting the shared control.
+# an app that grows a NEW unused grant fails even though it is listed.
 #
-# `allow-show` is twelve of these fourteen, which is a capability template copied
-# forward rather than twelve decisions - worth fixing in one pass by somebody who
-# can watch a window, since removing a grant that turns out to be needed breaks a
-# control silently until it is clicked.
+# It started at seventeen across twelve apps and is five across two, because the
+# `allow-show` twelve were removed rather than carried (see below). What is left is
+# genuinely two apps: `screenshot`, which renders no window control and grants four
+# it never calls, and `store`'s `hide`. Both are one-app decisions rather than a
+# template, so they want somebody who can watch that window rather than a sweep.
 KNOWN: dict[str, tuple[int, str]] = {
-    "screenshot": (5, "close, hide, minimize, show, start-dragging - it renders no window control"),
-    "store": (2, "hide and show; arlen-ui's surface, the capability file is not"),
-    "clock": (1, "show"),
-    "files": (1, "show"),
-    "greeter": (1, "show"),
-    "harness": (1, "show"),
-    "knowledge": (1, "show"),
-    "meetings": (1, "show"),
-    "system-monitor": (1, "show"),
-    "terminal": (1, "show"),
-    "text-editor": (1, "show"),
-    "viewers": (1, "show"),
+    "screenshot": (4, "close, hide, minimize, start-dragging - it renders no window control"),
+    "store": (1, "hide; arlen-ui's surface, the capability file is not"),
 }
+
+# Twelve `core:window:allow-show` grants left this list on 12 Aug by being removed
+# from the capability files, not excused. Safe to do headlessly because the risk
+# was breaking a call nobody could see, and there is no call: `.show()` appears
+# nowhere in any app frontend, nowhere in the ui-kit, nowhere in any src-tauri, and
+# the whole webview layer holds exactly six window references - all in
+# `WindowButtons.svelte` and `WindowControls.svelte`, none of them show, none built
+# at runtime from a variable. A permission with no reachable caller cannot break
+# one when it goes.
+#
+# The count-drop guard reported all twelve the moment they emptied, which is what
+# it was added for two hours earlier.
 
 
 def kit_calls() -> str:
