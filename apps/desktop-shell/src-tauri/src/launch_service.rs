@@ -112,13 +112,23 @@ fn bind(path: &Path) -> std::io::Result<std::os::unix::net::UnixListener> {
 /// Serve one request off the socket.
 async fn handle(mut stream: UnixStream) -> Result<(), String> {
     let caller = attest(&stream);
-    let request = proto::read_request(&mut stream)
+    let request = proto::read_message(&mut stream)
         .await
         .map_err(|e| e.to_string())?;
-    let outcome = dispatch(&request, &caller).await;
-    proto::write_outcome(&mut stream, &outcome)
-        .await
-        .map_err(|e| e.to_string())
+    match request {
+        proto::Request::Launch(request) => {
+            let outcome = dispatch(&request, &caller).await;
+            proto::write_outcome(&mut stream, &outcome)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        proto::Request::Query(query) => {
+            let answer = answer_query(&query, &caller);
+            proto::write_answer(&mut stream, &answer)
+                .await
+                .map_err(|e| e.to_string())
+        }
+    }
 }
 
 /// The shell's own name, for a launch the shell itself asks for.
@@ -222,6 +232,71 @@ fn mime_of(target: &proto::Target) -> Option<String> {
     let path = target.path.as_ref()?;
     let path = std::fs::canonicalize(path).ok()?;
     Some(mime_db().guess_mime_type().path(&path).guess().mime_type().to_string())
+}
+
+/// Answer a mime query, or refuse it.
+///
+/// The refusal is the point. *What kind of file is this* leaks that a path exists
+/// and what it is, so it is answered only for paths this caller could have opened.
+/// An unnamed caller holds no profile and so reaches nothing - the honest answer
+/// when there is no grant to check is no.
+fn answer_query(query: &proto::MimeQuery, caller: &Caller) -> proto::MimeAnswer {
+    let Caller::Named(app_id) = caller else {
+        return proto::MimeAnswer::Refused {
+            reason: "the caller could not be identified, so no grant could be checked".into(),
+        };
+    };
+    // Canonical FIRST, then checked. `~/Documents/../.ssh/id_rsa` is inside a
+    // documents grant only until the `..` is resolved, and a check on the string
+    // as sent would have admitted it.
+    let Ok(path) = std::fs::canonicalize(&query.path) else {
+        // Absent and unreadable answer the same way. A caller that could tell
+        // "no such file" from "not yours" would have a probe for what exists
+        // outside its reach, which is the thing the gate is for.
+        return proto::MimeAnswer::Refused {
+            reason: "not a readable path for this application".into(),
+        };
+    };
+    let profile = arlen_permissions::load_profile(app_id);
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+    let dirs = user_dirs(&home);
+    let readable = profile
+        .map(|p| p.filesystem.readable_dirs(&home, &dirs))
+        .unwrap_or_default();
+    if !is_within(&path, &readable) {
+        return proto::MimeAnswer::Refused {
+            reason: "not a readable path for this application".into(),
+        };
+    }
+    match mime_of(&proto::Target {
+        uri: String::new(),
+        path: Some(path.to_string_lossy().into_owned()),
+    }) {
+        Some(mime) => proto::MimeAnswer::Type { mime },
+        None => proto::MimeAnswer::Unknown,
+    }
+}
+
+/// Whether a canonical path lies inside any granted directory.
+///
+/// `Path::starts_with` compares WHOLE COMPONENTS, which is the entire reason this
+/// is not a string prefix test: `/home/u/documents-private` starts with the text
+/// of a `/home/u/documents` grant and is a different directory. A string compare
+/// here would hand out the type of every sibling directory whose name happens to
+/// share a prefix with something granted.
+fn is_within(path: &std::path::Path, granted: &[std::path::PathBuf]) -> bool {
+    granted.iter().any(|d| path.starts_with(d))
+}
+
+/// The XDG user directories, as the launcher resolves them.
+fn user_dirs(home: &std::path::Path) -> arlen_permissions::UserDirs {
+    arlen_permissions::UserDirs {
+        documents: home.join("Documents"),
+        downloads: home.join("Downloads"),
+        pictures: home.join("Pictures"),
+        music: home.join("Music"),
+        videos: home.join("Videos"),
+    }
 }
 
 /// The shared-mime-info database, read once.
@@ -396,6 +471,26 @@ mod mime_tests {
         }
         let guess = mime_db().guess_mime_type().path(readme).guess();
         assert_eq!(guess.mime_type().to_string(), "text/markdown");
+    }
+
+    #[test]
+    fn a_sibling_directory_sharing_a_name_prefix_is_not_inside_the_grant() {
+        // The bug a string comparison would have. Both of these start with the
+        // TEXT of the grant; only one is inside it.
+        let granted = vec![std::path::PathBuf::from("/home/u/documents")];
+        assert!(is_within(std::path::Path::new("/home/u/documents/a.txt"), &granted));
+        assert!(!is_within(
+            std::path::Path::new("/home/u/documents-private/a.txt"),
+            &granted
+        ));
+    }
+
+    #[test]
+    fn nothing_is_inside_an_empty_grant() {
+        // An app with no profile reaches nothing. The empty case has to be a
+        // refusal rather than a vacuous pass, which is what `any` over an empty
+        // list gives - pinned because the opposite is one `!` away.
+        assert!(!is_within(std::path::Path::new("/home/u/a.txt"), &[]));
     }
 
     #[test]
