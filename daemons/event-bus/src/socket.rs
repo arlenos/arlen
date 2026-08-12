@@ -712,4 +712,77 @@ mod tests {
         producers.abort();
         consumers.abort();
     }
+
+    #[tokio::test]
+    async fn a_state_topic_reaches_a_consumer_that_was_not_there_when_it_was_sent() {
+        // The sibling test above has to emit in a loop until it lands, and its
+        // comment says why: the bus drops an event with no consumer at dispatch
+        // time. That is correct for an event and wrong for a state topic - it is
+        // the whole reason net and audio were readable only by whoever happened to
+        // connect first. Here the snapshot is sent with NOBODY listening, and a
+        // consumer that arrives afterwards still learns the state.
+        let dir = tempfile::tempdir().unwrap();
+        let producer_path = dir.path().join("p.sock").to_str().unwrap().to_string();
+        let consumer_path = dir.path().join("c.sock").to_str().unwrap().to_string();
+
+        let registry = ConsumerRegistry::new();
+        let (p, c) = (producer_path.clone(), consumer_path.clone());
+        let reg = Arc::clone(&registry);
+        let _producers = tokio::spawn(async move { listen_producers(&p, reg).await });
+        let _consumers = tokio::spawn(async move { listen_consumers(&c, registry).await });
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while (!Path::new(&producer_path).exists() || !Path::new(&consumer_path).exists())
+            && std::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+
+        let event = Event {
+            id: "01890000-0000-7000-8000-00000000000a".to_string(),
+            r#type: "power.state".to_string(),
+            timestamp: 1_700_000_000_000_000,
+            source: "app:test".to_string(),
+            origin: "test-session".to_string(),
+            ..Default::default()
+        };
+        let encoded = event.encode_to_vec();
+        let mut producer = UnixStream::connect(&producer_path).await.unwrap();
+        producer
+            .write_all(&u32::try_from(encoded.len()).unwrap().to_be_bytes())
+            .await
+            .unwrap();
+        producer.write_all(&encoded).await.unwrap();
+
+        // Each attempt is a whole fresh late subscriber, because the retained
+        // copy is taken when the server processes the write and connecting
+        // instantly could beat it. Retrying the connect - rather than sleeping a
+        // guessed interval - keeps the assertion on the behaviour.
+        let mut len_buf = [0u8; 4];
+        let mut delivered = None;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::time::Instant::now() < deadline {
+            let mut consumer = UnixStream::connect(&consumer_path).await.unwrap();
+            consumer.write_all(b"late\npower.\n*\n").await.unwrap();
+            if tokio::time::timeout(
+                std::time::Duration::from_millis(200),
+                consumer.read_exact(&mut len_buf),
+            )
+            .await
+            .is_ok()
+            {
+                let len = u32::from_be_bytes(len_buf) as usize;
+                let mut body = vec![0u8; len];
+                consumer.read_exact(&mut body).await.unwrap();
+                delivered = Some(Event::decode(&body[..]).unwrap());
+                break;
+            }
+        }
+
+        let got = delivered.expect("a late subscriber is handed the retained snapshot");
+        assert_eq!(got.r#type, "power.state");
+        // Its own timestamp, not the moment it was handed over. This is what lets
+        // a consumer show it as last-known instead of painting it as live.
+        assert_eq!(got.timestamp, 1_700_000_000_000_000);
+    }
 }
