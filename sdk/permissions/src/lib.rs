@@ -278,8 +278,17 @@ impl GraphPermissions {
 pub struct EventBusPermissions {
     #[serde(default)]
     pub publish: Vec<String>,
+    /// The event kinds this component hears, when it says.
+    ///
+    /// `None` (the key absent) and `Some(vec![])` (the key present and empty) are
+    /// DIFFERENT and the bus acts on the difference: absent means the component
+    /// has never been bounded and a system-tier one keeps its machine-wide view,
+    /// while an empty list is a positive statement that it hears nothing. The
+    /// compositor is why - it must publish freely and has no claim to hear, so
+    /// "declares nothing" and "declares that it wants nothing" cannot be the same
+    /// state. A plain `Vec` with a serde default cannot tell them apart.
     #[serde(default)]
-    pub subscribe: Vec<String>,
+    pub subscribe: Option<Vec<String>>,
 }
 
 impl EventBusPermissions {
@@ -290,7 +299,25 @@ impl EventBusPermissions {
 
     /// Check if the app can subscribe to a given event type.
     pub fn can_subscribe(&self, event_type: &str) -> bool {
-        pattern_matches(&self.subscribe, event_type)
+        self.subscribe
+            .as_ref()
+            .is_some_and(|s| pattern_matches(s, event_type))
+    }
+
+    /// Whether this profile SAYS anything about subscribing.
+    ///
+    /// Distinct from `can_subscribe` returning false for everything, and the bus
+    /// leans on the difference: declaring a subscribe list is how a component opts
+    /// into being bounded by it, whatever its tier. A system-tier component that
+    /// declares nothing keeps the machine-wide view it was built with (the
+    /// knowledge daemon, the shell); one that declares a list is held to the list
+    /// (the compositor, which must publish freely and has no claim to hear).
+    ///
+    /// An EMPTY declared list is therefore not the same as no declaration: it
+    /// means "subscribes to nothing", and is the right thing to write for a pure
+    /// producer.
+    pub fn declares_subscribe(&self) -> bool {
+        self.subscribe.is_some()
     }
 
     /// The declared event-bus reach: the subscribed (heard) and published (emitted)
@@ -300,8 +327,10 @@ impl EventBusPermissions {
         // Exhaustive on purpose; see [`PermissionProfile`].
         let Self { publish, subscribe } = self;
         let mut parts = Vec::new();
-        if !subscribe.is_empty() {
-            parts.push(format!("hears {}", subscribe.join(", ")));
+        match subscribe.as_deref() {
+            Some([]) => parts.push("hears nothing".to_string()),
+            Some(s) => parts.push(format!("hears {}", s.join(", "))),
+            None => {}
         }
         if !publish.is_empty() {
             parts.push(format!("emits {}", publish.join(", ")));
@@ -1898,9 +1927,30 @@ always_confirm_overrides = ["empty_trash"]
     }
 
     #[test]
+    /// The distinction the compositor's tier split rests on: a component that has
+    /// never said anything about subscribing is not the same as one that has said
+    /// it subscribes to nothing. The bus exempts the first and holds the second.
+    #[test]
+    fn an_absent_subscribe_list_is_not_an_empty_one() {
+        let silent: EventBusPermissions = toml::from_str("publish = [\"window.*\"]").unwrap();
+        assert!(!silent.declares_subscribe(), "no key means never bounded");
+
+        let bounded: EventBusPermissions =
+            toml::from_str("publish = [\"window.*\"]\nsubscribe = []").unwrap();
+        assert!(bounded.declares_subscribe(), "an empty list is a statement");
+        assert!(!bounded.can_subscribe("anything.at.all"));
+
+        // And it reads as a positive claim rather than as silence.
+        assert_eq!(
+            bounded.reach_summary().as_deref(),
+            Some("hears nothing; emits window.*")
+        );
+        assert_eq!(silent.reach_summary().as_deref(), Some("emits window.*"));
+    }
+
     fn test_event_bus_subscribe() {
         let e = EventBusPermissions {
-            subscribe: vec!["com.app.*".into(), "config.changed".into()],
+            subscribe: Some(vec!["com.app.*".into(), "config.changed".into()]),
             ..Default::default()
         };
         assert!(e.can_subscribe("com.app.note_created"));
@@ -1992,7 +2042,7 @@ always_confirm_overrides = ["empty_trash"]
         assert_eq!(EventBusPermissions::default().reach_summary(), None);
         assert_eq!(
             EventBusPermissions {
-                subscribe: vec!["file.opened".into()],
+                subscribe: Some(vec!["file.opened".into()]),
                 publish: vec![],
             }
             .reach_summary(),
