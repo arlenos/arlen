@@ -180,6 +180,31 @@ impl PeerScope {
     }
 }
 
+/// What the bus does with a producer, split into the two decisions that were
+/// previously entangled.
+struct PublishDecision<'a> {
+    /// The identity stamped as `authenticated_origin`. Never depends on the tier.
+    origin: &'a str,
+    /// Whether the declared `[event_bus].publish` list is applied. Only this
+    /// depends on the tier.
+    hold_to_scope: bool,
+}
+
+/// Decide both at once, so the tier can reach only the one it is entitled to.
+///
+/// A function rather than two lines in the handler because the bug it replaces
+/// was invisible in the handler: exempting a system producer by swapping its
+/// scope for `PeerScope::Unresolved` reads as scoping, and silently also blanked
+/// the stamped origin. Here the tier can only touch `hold_to_scope`, and
+/// `origin` is derived from the peer alone - so the entanglement cannot be
+/// reintroduced by editing this, only by deleting it.
+fn publish_decision<'a>(scope: &'a PeerScope, is_system: bool) -> PublishDecision<'a> {
+    PublishDecision {
+        origin: scope.authenticated_origin(),
+        hold_to_scope: !is_system,
+    }
+}
+
 /// Resolve the connected peer from its kernel-attested pid.
 fn peer_app_profile(stream: &UnixStream) -> PeerScope {
     let Ok(cred) = stream.peer_cred() else {
@@ -286,22 +311,33 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
     //
     // The exemption is PUBLISH-only and stays that way: a privileged producer is
     // not automatically a privileged consumer, which is why the subscribe side
-    // above hangs its exemption on the declaration instead of the tier. Passing
-    // `Unresolved` here is what expresses "no declared scope applies", so it is
-    // deliberate rather than a resolution that failed.
+    // above hangs its exemption on the declaration instead of the tier.
     //
-    // The attested name is kept for the log before that: `Unresolved` is the right
-    // input to the CHECK and the wrong thing to print, since it would report every
-    // system producer as unidentifiable when the bus had just identified it.
-    let attested = peer.scope.app_id().to_string();
-    let publish_scope = if is_system_producer {
-        PeerScope::Unresolved
-    } else {
-        peer.scope
-    };
+    // It is expressed by the `!is_system_producer` guard on the publish check
+    // below, and ONLY there. This used to also swap in `PeerScope::Unresolved`
+    // for a system producer, which the guard already made redundant - and being
+    // redundant was not the same as being harmless. `Unresolved` is how the bus
+    // says "I could not identify this peer", so reusing it to mean "identified,
+    // and exempt" made one sentinel carry two meanings, and every reader of that
+    // value got the wrong one:
+    //
+    //   - `authenticated_origin` went out EMPTY for every system producer. That
+    //     field exists so a consumer can tell an internal first-party event from
+    //     external content, and empty is the fail-closed "treat as external"
+    //     value - so the compositor's window events and the kernel layer's file
+    //     events, the most trusted producers on the machine, were the ones
+    //     stamped least trusted.
+    //   - the would-deny and drop logs named `<unresolved>` for a peer the bus
+    //     had just resolved.
+    //
+    // `PeerScope`'s own doc warns against exactly this collapse one level down
+    // ("no scope" and "no identity" are kept apart because merging them points
+    // every repair at the wrong place). Same error, one level up.
+    let publish_scope = peer.scope;
+    let decision = publish_decision(&publish_scope, is_system_producer);
     let enforce = enforce_pubsub();
     debug!(
-        app_id = %attested,
+        app_id = publish_scope.app_id(),
         uid = producer_uid,
         system = is_system_producer,
         "new producer connection"
@@ -350,13 +386,12 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
                 // origin classifier treats it as external, fail-closed. This is what
                 // the AI engine reads to distinguish an internal first-party event
                 // from external content, instead of confirming on every event.
-                event.authenticated_origin =
-                    publish_scope.authenticated_origin().to_string();
+                event.authenticated_origin = decision.origin.to_string();
 
                 // Hold a non-system producer to its declared publish scope.
                 // Shadow mode logs a would-deny and still dispatches; enforce
                 // mode drops the event. System producers skipped (exempt above).
-                if !is_system_producer
+                if decision.hold_to_scope
                     && !publish_allowed(publish_scope.event_bus(), &event.r#type)
                 {
                     let app = publish_scope.app_id();
@@ -668,6 +703,52 @@ mod tests {
             "dev.arlen-graph-daemon"
         );
         assert_eq!(PeerScope::Unresolved.authenticated_origin(), "");
+    }
+
+    #[test]
+    fn the_publish_exemption_does_not_blank_a_system_producers_identity() {
+        // A system producer is exempt from the declared-publish check and is still
+        // fully identified. Those are separate facts, and the handler used to
+        // express the first by throwing away the second: it substituted
+        // `PeerScope::Unresolved` for a system peer, so `authenticated_origin`
+        // went out empty - the fail-closed "treat as external" value - for the
+        // compositor and the kernel layer, the two most trusted producers there
+        // are.
+        //
+        // The substitution was already redundant: the check reads
+        // `!is_system_producer && !publish_allowed(...)`, so the guard alone
+        // exempts. This pins the part that was NOT redundant, because a rewrite
+        // that reintroduces the sentinel would otherwise pass every existing test.
+        use arlen_permissions::PermissionProfile;
+
+        let profile: PermissionProfile =
+            toml::from_str("[info]\napp_id = \"app\"\ntier = \"system\"\n")
+                .expect("fixture profile parses");
+        let scope = PeerScope::Profiled("arlen-compositor".to_string(), Box::new(profile));
+
+        // The same peer, decided as system and as not. The stamped origin must be
+        // identical across the pair and the scope check must differ - that pair of
+        // assertions IS the bug: the old code produced "" for the system case.
+        let as_system = publish_decision(&scope, true);
+        let as_ordinary = publish_decision(&scope, false);
+
+        assert_eq!(
+            as_system.origin, "arlen-compositor",
+            "a resolved system producer stamps its attested id, not an empty origin"
+        );
+        assert_eq!(
+            as_system.origin, as_ordinary.origin,
+            "the stamped origin is a property of the peer; the tier must not reach it"
+        );
+        assert!(!as_system.hold_to_scope, "a system producer is exempt");
+        assert!(as_ordinary.hold_to_scope, "and nothing else is");
+
+        // The exemption has to come from that flag rather than from an absent
+        // scope: on its own, no declared publish list is a deny.
+        assert!(
+            !publish_allowed(scope.event_bus(), "window.focused"),
+            "no declared publish list is a deny on its own; only the tier flag exempts"
+        );
     }
 
     #[test]
