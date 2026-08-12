@@ -95,6 +95,30 @@ check(
   (code, out) => code === 1 && out.includes("allow-show"),
 );
 
+// The attribute form: `data-tauri-drag-region` invokes start-dragging with no
+// method call, so a file carrying it is a call site. This was documented as an
+// uncovered hazard for twenty minutes on the strength of a broken pathspec that
+// said the attribute occurred once, in the kit; it occurs in nine app files.
+check(
+  "the drag-region attribute counts as calling start-dragging",
+  {
+    ...KIT,
+    "apps/probe/src-tauri/capabilities/main.json": caps(["core:window:allow-start-dragging"]),
+    "apps/probe/src/routes/+page.svelte": '<div data-tauri-drag-region>title</div>\n',
+  },
+  (code) => code === 0,
+);
+
+check(
+  "an app with neither the attribute nor the call is still caught",
+  {
+    ...KIT,
+    "apps/probe/src-tauri/capabilities/main.json": caps(["core:window:allow-start-dragging"]),
+    "apps/probe/src/routes/+page.svelte": "<div>title</div>\n",
+  },
+  (code, out) => code === 1 && out.includes("allow-start-dragging"),
+);
+
 // A permission with no name-to-call rule is out of scope, not a finding.
 check(
   "a permission outside the window family is not this check's business",

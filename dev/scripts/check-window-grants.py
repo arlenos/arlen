@@ -31,11 +31,13 @@ What this does NOT cover:
     webview - so it is correctly not evidence that a grant is used.
   * a call built at runtime from a variable, the same blind spot every scanner
     here has.
-  * `data-tauri-drag-region`, which needs `allow-start-dragging` without any
-    method call at all. It appears once in the tree, inside `WindowControls`, so
-    an app rendering that control is credited through the kit text anyway - but
-    the credit is accidental rather than intended, and an app that used the
-    attribute WITHOUT the control would be reported wrongly.
+  * `data-tauri-drag-region` is NOT a gap - it needs
+    `allow-start-dragging` with no method call at all, so it IS a call site and is
+    read as one. This line first said the attribute occurs once in the tree, inside
+    `WindowControls` - it occurs in nine app files, and the sentence came from the
+    same broken pathspec that produced the six-window-references claim above.
+    Treating it as a call is not a guess: it is the documented way to invoke that
+    permission.
   * whether a grant that IS called is one the app should have. This finds
     authority with nothing behind it, not authority that is too much.
   * permissions outside `core:window:`. `core:default` and `core:event:default`
@@ -174,6 +176,10 @@ def main() -> int:
                 continue
             checked += 1
             if f".{METHOD[m.group(1)]}(" in text:
+                continue
+            # The attribute form. `data-tauri-drag-region` invokes start-dragging
+            # with no method call, so a file carrying it IS a call site.
+            if m.group(1) == "start-dragging" and "data-tauri-drag-region" in text:
                 continue
             seen[app.name] = seen.get(app.name, 0) + 1
             if app.name in KNOWN and seen[app.name] <= KNOWN[app.name][0]:
