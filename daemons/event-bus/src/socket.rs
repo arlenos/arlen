@@ -363,11 +363,31 @@ async fn handle_consumer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
 
     let uid_filter = UidFilter::parse(&uid_line).map_err(|e| anyhow::anyhow!(e))?;
 
-    // Hold a non-system consumer to its declared `[event_bus].subscribe` scope.
-    // System-tier consumers (the knowledge daemon, the shell) observe the machine
-    // by design and are exempt, mirroring the producer exemption. Shadow mode
-    // logs each would-deny and keeps the pattern; enforce mode filters it out.
-    let subscribed_types = if peer_tier(&stream) == Some(arlen_permissions::AppTier::System) {
+    // Hold a consumer to its declared `[event_bus].subscribe` scope - and DECLARING
+    // is what decides that, not the tier.
+    //
+    // The system tier used to exempt a peer from both halves at once, and that
+    // bundles two effects of which only one is usually earned. The compositor is
+    // the case that separates them: it is the origin of every window and session
+    // event, so restricting its PUBLISH buys nothing it does not already have, but
+    // subscribing would hand it reach it has no claim to - another app's activity,
+    // the graph's own traffic. A privileged producer is not automatically a
+    // privileged consumer (planner, 12 Aug).
+    //
+    // So the exemption now hangs on the profile: a component that declares an
+    // `[event_bus].subscribe` list is held to it whatever its tier, and one that
+    // declares nothing keeps the old machine-wide view. That keeps the knowledge
+    // daemon and the shell working unchanged - they observe by design and declare
+    // nothing - while making "declared" the way any component, system or not, opts
+    // into being bounded. A check can then require a declaration from the
+    // components that should have one, which is a stronger guarantee than a tier
+    // label because it is per-component and readable.
+    let declares_subscribe = peer_app_profile(&stream)
+        .event_bus()
+        .is_some_and(|s| s.declares_subscribe());
+    let exempt = peer_tier(&stream) == Some(arlen_permissions::AppTier::System)
+        && !declares_subscribe;
+    let subscribed_types = if exempt {
         subscribed_types
     } else {
         let scope = peer_app_profile(&stream);
@@ -504,7 +524,7 @@ mod tests {
     fn ebus(publish: &[&str], subscribe: &[&str]) -> arlen_permissions::EventBusPermissions {
         arlen_permissions::EventBusPermissions {
             publish: publish.iter().copied().map(String::from).collect(),
-            subscribe: subscribe.iter().copied().map(String::from).collect(),
+            subscribe: Some(subscribe.iter().copied().map(String::from).collect()),
         }
     }
 
