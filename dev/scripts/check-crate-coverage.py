@@ -131,6 +131,20 @@ def main() -> int:
 
     in_ci = set(rust_ci)
     front_ci = set(front_ci_list)
+    # A matrix entry whose crate is not on disk is the most ordinary way these
+    # lists rot - a crate is renamed or removed and its line stays - and reading
+    # its `Cargo.toml` unconditionally turned that into a FileNotFoundError
+    # traceback rather than the sentence that says so. Found on 12 Aug by this
+    # gate's own control, whose fixture named a crate it had not written.
+    phantom = sorted(c for c in in_ci if not (ROOT / c / "Cargo.toml").is_file())
+    if phantom:
+        print("CI builds crate(s) that are not in the tree:\n")
+        for c in phantom:
+            print(f"  - {c}: named in RUST_ALL, no Cargo.toml there")
+        print("\n  A renamed or deleted crate leaves its matrix line behind; the job")
+        print("  then fails on a missing path rather than here.")
+        return 1
+
     workspaces = {c for c in in_ci if "[workspace]" in (ROOT / c / "Cargo.toml").read_text()}
 
     for f in tracked:
