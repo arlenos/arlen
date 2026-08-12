@@ -61,14 +61,36 @@ BAD = re.compile(r"Unknown key|Invalid |Failed to parse|Unknown lvalue|Unknown s
 
 
 def main() -> int:
+    # Both emptinesses are refusals rather than passes, and they are different
+    # things. The unit trees are checked-in source, not build output, so a tree
+    # without them is not a tree that has yet to build an image - it is a scan that
+    # ran somewhere else. And a tree that HAS them but holds no unit means the
+    # units moved, at which point this check has been reporting on nothing while
+    # printing the same sentence it prints when every directive is right.
     if not any(d.is_dir() for d in UNIT_DIRS):
-        print("no shipped unit tree, nothing to check")
-        return 0
+        print(
+            f"NOTHING WAS READ: no shipped unit tree under {ROOT}",
+            file=sys.stderr,
+        )
+        print(
+            "  Both trees are committed source. Their absence means a wrong root\n"
+            "  argument or a layout that moved, not an image nobody has built yet.",
+            file=sys.stderr,
+        )
+        return 2
     if not shutil.which("systemd-analyze"):
         print("NOT CHECKED: systemd-analyze is not on this host, so no unit was verified")
         return 0
 
     units = sorted(u for d in UNIT_DIRS if d.is_dir() for u in d.glob("*.service"))
+    if not units:
+        print(
+            "NOTHING WAS READ: the shipped unit tree holds no .service file",
+            file=sys.stderr,
+        )
+        for d in UNIT_DIRS:
+            print(f"  looked in {d}", file=sys.stderr)
+        return 2
     problems = []
     for unit in units:
         r = subprocess.run(
