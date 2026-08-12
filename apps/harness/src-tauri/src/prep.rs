@@ -12,10 +12,14 @@ use os_sdk::UnixGraphClient;
 /// The default number of prep items to request.
 const DEFAULT_PREP_LIMIT: i64 = 20;
 
-/// The knowledge graph client, over `ARLEN_DAEMON_SOCKET` (else the default
-/// `$XDG_RUNTIME_DIR/arlen/knowledge.sock`).
+/// The knowledge graph client, over `ARLEN_KNOWLEDGE_SOCKET` then
+/// `ARLEN_DAEMON_SOCKET` (else the default `$XDG_RUNTIME_DIR/arlen/knowledge.sock`).
+///
+/// The order matters and this had only the second name: a client reads what the
+/// session launcher exports, which is `ARLEN_KNOWLEDGE_SOCKET`; the bind variable
+/// is the daemon's. See `capsule.rs` for the same fix and the longer note.
 fn graph_client() -> UnixGraphClient {
-    let path = os_sdk::runtime::socket_path("ARLEN_DAEMON_SOCKET", "knowledge.sock");
+    let path = os_sdk::runtime::knowledge_socket_path();
     UnixGraphClient::new(path.to_string_lossy().into_owned())
 }
 
