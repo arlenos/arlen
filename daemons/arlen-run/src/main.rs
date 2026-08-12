@@ -352,6 +352,22 @@ fn main() -> ExitCode {
     // One resolution, in `arlen_permissions` beside the type: the launch service
     // has to judge paths against exactly the directories this binds.
     let user_dirs = profile::UserDirs::resolve(&home);
+    // Once per launch, to the journal. A directory that is not there still binds,
+    // and the app then meets a grant that refuses everything under it - which
+    // looks from the inside exactly like a feature nobody built. On a localised
+    // desktop with no `user-dirs.dirs` that is every one of them at once, and the
+    // person who would have complained about it is not on this project.
+    let missing = user_dirs.missing(|p| p.exists());
+    if !missing.is_empty() {
+        eprintln!(
+            "arlen-run: {app}: these user directories are not on this machine, so a \
+             grant naming one will refuse every read under it: {names}. A localised \
+             desktop keeps them under translated names, which ~/.config/user-dirs.dirs \
+             records; without that file the English name is all there is to bind.",
+            app = args.app_id,
+            names = missing.join(", "),
+        );
+    }
     let inputs = profile::confinement_inputs(
         &profile.filesystem,
         &profile.network,
