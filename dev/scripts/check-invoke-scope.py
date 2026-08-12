@@ -16,18 +16,15 @@ the name. Commands from a shared PLUGIN are different: the plugin registers them
 into every app that loads it, so they are resolved per app here rather than
 counted as the defining app's.
 
-**Not in `just checks`, deliberately**: it currently reports real, pre-existing
-calls, and declaring them to reach a green would be the wrong way round. Run it by
-hand; wire it in when the list is decided. (`check-dbus-callers` was in the same
-state and is now green and in CI, so this is the last one waiting.)
-
-The two it reports are the same shape and neither is fixed by moving code: the
-command lives in `desktop-shell` because the shell owns the thing - the global
-menu bar, the top bar's inventory - and the caller is another app that needs to
-ask the shell for it. A Tauri command cannot cross a binary, so what those two
-need is an IPC path, which is a decision about mechanism rather than a repair.
+This was held out of `just checks` on the grounds that it reported two real
+pre-existing calls, and declaring them green would be the wrong way round. Both
+have since been fixed - each app grew its own command of that name, forwarding to
+the shell - so the condition that kept it out is met and it is wired in as of
+12 Aug, with a positive control beside it. Nothing is declared to reach that
+green; the list is empty because the calls resolve.
 """
 
+from collections.abc import Callable
 import pathlib
 import re
 import sys
@@ -49,32 +46,49 @@ INVOKE = re.compile(r'invoke(?:<[^>]*>)?\(\s*"([a-z_][a-z0-9_]*)"')
 # here exactly as it was in `check-invoke-shape`, where the clock's fifteen
 # actions were being counted past. This check asks a different question of the
 # same calls (whose binary defines them), so the blind spot means a wrapped call
-# into ANOTHER app's command would not be reported at all. Named in the summary
-# rather than resolved: following a wrapper can be confidently wrong.
+# into ANOTHER app's command would not be reported at all.
+#
+# This said "named in the summary rather than resolved: following a wrapper can
+# be confidently wrong", which was true when nothing followed one. It is now
+# done in `check-invoke-exists.py` with a control on both directions - a wrapped
+# call is seen, and a typo inside one fails - so the reason has expired rather
+# than the risk having been argued away. The name is safe to resolve for the same
+# reason it was there: a literal at a call site of a helper that passes its own
+# first parameter to `invoke` arrives as `invoke`'s first argument, so it is a
+# command name. Whose binary defines it is then the ordinary question.
+WRAPPER = re.compile(
+    r"(?:async\s+)?function\s+(\w+)\s*\(\s*(\w+)[^)]*\)[^{]*\{[^}]*?\binvoke\s*\(\s*\2\b",
+    re.S,
+)
 WRAPPED = re.compile(r'\binvoke\s*(?:<[^>]*>)?\s*\(\s*[A-Za-z_$]')
+
+
+def wrapped_calls(body: str) -> set[str]:
+    """Command names passed to a local helper that forwards them to `invoke`."""
+    out: set[str] = set()
+    for wm in WRAPPER.finditer(body):
+        helper = wm.group(1)
+        for m in re.finditer(rf"\b{re.escape(helper)}\s*\(\s*(\"[^\"]+\"|'[^']+')", body):
+            out.add(m.group(1)[1:-1])
+    return out
 
 
 
 # A call into another app's command that somebody has looked at and decided to
-# leave, with the reason. Empty is the goal. The entry is keyed `app::command`,
-# and it exists so this gate can be wired into CI without either lying about the
-# two known cases or blocking on a decision it cannot make: a third one fails
-# the build, these two stay named.
-ACKNOWLEDGED: dict[str, str] = {
-    "harness::register_menu": (
-        "The harness is arlen-ui's in-flight work, so not ours to move. Named "
-        "rather than skipped, because the call is still rejected at runtime."
-    ),
-    "settings::topbar_items": (
-        "The top bar lives in the desktop shell's binary and Settings wants to "
-        "list its items. Moving the command into Settings would mean Settings "
-        "owning the top bar, and a shared plugin would put a shell-owned surface "
-        "in every app - so the answer is neither of this gate's two suggestions "
-        "but a cross-binary read, which is a mechanism nobody has chosen yet. "
-        "The same is true of the `qs_layout_*` writers and `register_menu`: they "
-        "are one decision, not three, and it is not one to invent at 04:30."
-    ),
-}
+# leave, with the reason. Empty is the goal, and it is empty.
+#
+# It held two - `harness::register_menu` and `settings::topbar_items` - each
+# saying the call was still rejected at runtime and that the fix needed a
+# cross-binary mechanism nobody had chosen. Both stopped being true without
+# either entry noticing: each app grew its OWN command of that name
+# (`apps/harness/src-tauri/src/menu.rs`, `apps/settings/src-tauri/src/commands/
+# topbar.rs`), which is a local conduit forwarding to the shell, so the calls
+# resolve in their own binary and the gate had quietly stopped reporting them.
+# The excuses outlived their subject by however long that took, and nothing said
+# so, because this list had no staleness guard - the one thing `check-wired.py`
+# does to its own exemptions and the reason it caught its author twice in an
+# evening. Cleared on 12 Aug, and the guard below is why it cannot happen again.
+ACKNOWLEDGED: dict[str, str] = {}
 
 def app_of(path: pathlib.Path) -> str | None:
     """The app a file belongs to, or `None` for anything outside `apps/`."""
@@ -82,8 +96,15 @@ def app_of(path: pathlib.Path) -> str | None:
     return parts[1] if len(parts) > 2 and parts[0] == "apps" else None
 
 
-def scan(pattern: re.Pattern[str], suffixes: tuple[str, ...]) -> dict[str, set[str]]:
-    """Every match of `pattern`, grouped by the app the file belongs to."""
+def scan(
+    extract: Callable[[str], set[str]], suffixes: tuple[str, ...]
+) -> dict[str, set[str]]:
+    """Every name `extract` finds in a file, grouped by the app it belongs to.
+
+    Takes a function rather than a pattern because one of the three things read
+    here - a name handed to a wrapper - needs two passes over the same text to
+    find, and a caller that can only be a regex would have left that one out.
+    """
     out: dict[str, set[str]] = {}
     for path in ROOT.rglob("*"):
         if path.suffix not in suffixes or SKIP_PARTS & set(path.parts):
@@ -95,9 +116,15 @@ def scan(pattern: re.Pattern[str], suffixes: tuple[str, ...]) -> dict[str, set[s
             body = path.read_text()
         except (UnicodeDecodeError, OSError):
             continue
-        for m in pattern.finditer(body):
-            out.setdefault(app, set()).add(m.group(1))
+        found = extract(body)
+        if found:
+            out.setdefault(app, set()).update(found)
     return out
+
+
+def matches(pattern: re.Pattern[str]) -> Callable[[str], set[str]]:
+    """`scan` extractor for a plain first-group pattern."""
+    return lambda body: {m.group(1) for m in pattern.finditer(body)}
 
 
 def plugin_commands() -> set[str]:
@@ -117,8 +144,11 @@ def plugin_commands() -> set[str]:
 
 
 def main() -> int:
-    defines = scan(COMMAND, (".rs",))
-    invokes = scan(INVOKE, (".ts", ".svelte", ".js"))
+    defines = scan(matches(COMMAND), (".rs",))
+    front = (".ts", ".svelte", ".js")
+    invokes = scan(
+        lambda body: matches(INVOKE)(body) | wrapped_calls(body), front
+    )
     shared = plugin_commands()
     if not defines:
         print("found no #[tauri::command] functions under apps/; the check needs updating")
@@ -154,25 +184,56 @@ def main() -> int:
                 f"runtime - move it into {app}, or into a shared plugin every app loads"
             )
 
+    # The other direction, which is the one that had rotted: an acknowledgement
+    # for a call this no longer reports. The entry claims a defect is still there
+    # and being tolerated; once the call resolves, that sentence is false, and a
+    # false excuse is worse than no excuse because it reads as remaining work
+    # somebody owes. Both entries this list started with had reached that state.
+    seen = {f"{app}::{cmd}" for app in invokes for cmd in invokes[app]}
+    for key in sorted(ACKNOWLEDGED):
+        app, _, cmd = key.partition("::")
+        if key not in seen:
+            problems.append(
+                f"`{key}` is acknowledged as a cross-app call, but {app} no longer "
+                f"invokes `{cmd}` at all. Drop the entry."
+            )
+        elif cmd in defines.get(app, set()) or cmd in shared:
+            problems.append(
+                f"`{key}` is acknowledged as a cross-app call, but {app} now defines "
+                f"`{cmd}` itself (or a shared plugin does). The reason it names has "
+                f"been overtaken; drop the entry."
+            )
+
     # SKIP_PARTS, the same filter the rest of this file uses: a first cut walked
     # the tree raw and reported build output and .svelte-kit chunks, which are
     # copies of the sources already listed. A gate that names generated files is
     # asking someone to go read a file they must not edit.
-    wrapped_files = sorted(
-        str(f.relative_to(ROOT))
-        for f in ROOT.rglob("*")
-        if f.suffix in (".ts", ".svelte", ".js")
-        and not (SKIP_PARTS & set(f.parts))
-        and app_of(f) is not None
-        and f.is_file()
-        and WRAPPED.search(f.read_text(encoding="utf-8", errors="replace"))
-    )
-    if wrapped_files:
+    #
+    # Only the files this cannot RESOLVE are worth naming. A wrapper whose call
+    # sites carry literals is followed now, so listing it would report a blind
+    # spot that has been closed - and a list that names things already handled is
+    # how a list stops being read. What is left is `invoke` reached by a name this
+    # cannot trace to a literal at all: built at runtime, or passed down through
+    # something other than the one-hop helper shape.
+    unresolved = []
+    for f in ROOT.rglob("*"):
+        if (
+            f.suffix not in (".ts", ".svelte", ".js")
+            or SKIP_PARTS & set(f.parts)
+            or app_of(f) is None
+            or not f.is_file()
+        ):
+            continue
+        body = f.read_text(encoding="utf-8", errors="replace")
+        if WRAPPED.search(body) and not wrapped_calls(body):
+            unresolved.append(str(f.relative_to(ROOT)))
+    if unresolved:
         print(
-            f"{len(wrapped_files)} file(s) route some calls through a local wrapper, "
-            "so their command names are not visible here:\n"
-            + "\n".join(f"  - {f}" for f in wrapped_files)
-            + "\n  A wrapped call into another app's command would not be reported.\n"
+            f"{len(unresolved)} file(s) reach `invoke` by a name this cannot trace "
+            "to a literal:\n"
+            + "\n".join(f"  - {f}" for f in sorted(unresolved))
+            + "\n  A call into another app's command from one of these is not "
+            "reported.\n"
         )
 
     if backendless:
