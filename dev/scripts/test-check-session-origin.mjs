@@ -78,6 +78,16 @@ export ARLEN_SESSION_ID
 
 console.log("check-session-origin:");
 
+// A compose file that starts nothing is deliberately not counted, so zero
+// launchers CHECKED is legitimate and the case below depends on it. Zero
+// launchers to READ is not: it used to print "OK: 0 launcher(s) supply the
+// session id their producers read".
+check(
+  "a tree with no launcher at all is refused rather than reported clean",
+  tree({ "README.md": "no launcher here\n" }),
+  (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
+);
+
 check(
   "a stack that starts processes without the id is caught",
   tree({
