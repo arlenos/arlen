@@ -33,7 +33,18 @@ What this does NOT cover:
     here has.
   * whether a grant that IS called is one the app should have. This finds
     authority with nothing behind it, not authority that is too much.
-  * permissions outside `core:window:`, which have no name-to-call rule.
+  * permissions outside `core:window:`. `core:default` and `core:event:default`
+    have no name-to-call rule at all. Arlen's own plugin permissions DO -
+    `arlen-menu:allow-set-title` names the command a webview invokes as
+    `plugin:arlen-menu|set_title` - and widening to them was tried on 12 Aug and
+    backed out. All 22 are backed by a call today, checked by hand, so it fixed
+    nothing; and it reported four that are not real, because those calls come from
+    ui-kit modules other than `WindowControls` and the credit above is gated on
+    that one component. The shared-caller question has to be answered again for
+    each family, and answering it for plugin commands needs per-component
+    attribution rather than one import check. Left out rather than loosened: a
+    credit wide enough to cover any kit call would pass every app for a call one
+    app makes.
 
 Run: dev/scripts/check-window-grants.py [tree]
 """
