@@ -105,9 +105,11 @@ def uncovered(root: Path):
     the size of the tree. This one can now be compared too.
     """
     findings = []
+    crates = 0
     apps = 0
     labels = 0
     for app in sorted(root.glob("apps/*/src-tauri")):
+        crates += 1
         if not (app / "capabilities").is_dir():
             continue
         apps += 1
@@ -119,12 +121,23 @@ def uncovered(root: Path):
         missing = sorted(wanted - covered)
         if missing:
             findings.append((str(app.relative_to(root)), missing))
-    return findings, apps, labels
+    return findings, crates, apps, labels
 
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2])
-    findings, apps, labels = uncovered(root)
+    findings, crates, apps, labels = uncovered(root)
+    # Printing the count made the difference visible; it does not make anyone look.
+    # An app with no `capabilities/` directory is deliberately out of scope, so zero
+    # APPS is a legitimate answer - but zero `src-tauri` CRATES means the scan never
+    # found the apps directory, and then the count it prints is a fact about
+    # nothing.
+    if not crates:
+        print(
+            f"NOTHING WAS READ: no src-tauri crate under {root / 'apps'}",
+            file=sys.stderr,
+        )
+        return 2
     if not findings:
         print(
             f"OK: {labels} window label(s) across {apps} app(s), each covered by a capability"
