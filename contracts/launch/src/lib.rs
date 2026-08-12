@@ -76,6 +76,63 @@ pub enum LaunchRequest {
     },
 }
 
+/// What a caller may put on the launch socket.
+///
+/// A sibling of [`LaunchRequest`] rather than a variant inside it. The socket is
+/// the transport; the type is the contract, and [`LaunchRequest`]'s value is what
+/// it CANNOT express - a general query bolted into it would weaken exactly the
+/// restraint that makes it worth being a type. A second socket was the other
+/// option and costs another bind, another peer check and another gate to prove,
+/// to answer one question the service already computes for itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Request {
+    /// Start something.
+    Launch(LaunchRequest),
+    /// Ask what kind of thing a file is.
+    Query(MimeQuery),
+}
+
+/// What kind of thing is this file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MimeQuery {
+    /// The local path being asked about.
+    pub path: String,
+}
+
+/// The answer to a [`MimeQuery`].
+///
+/// **This is a read, and it is gated like one.** *What kind of file is this* leaks
+/// that a path exists and what it is, so it is answered only for paths the caller
+/// could have opened - the same grant that decides what it may read. Without that
+/// it would be a probe telling a confined app about files it has no business
+/// knowing, one type away from a request we were careful with.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "answer")]
+pub enum MimeAnswer {
+    /// The type, as the shared-mime-info database gives it.
+    Type {
+        /// The MIME type.
+        mime: String,
+    },
+    /// Outside what the caller may read.
+    ///
+    /// Carries a reason, because a refusal a caller cannot distinguish from a
+    /// missing file is one they will retry forever. The reason names the rule, not
+    /// the path - "you may not read there" tells them what to fix without
+    /// confirming what is there.
+    Refused {
+        /// Why, in a sentence the caller can show.
+        reason: String,
+    },
+    /// The path is readable but the database has nothing for it.
+    ///
+    /// Distinct from a refusal on purpose: "I may not tell you" and "there is no
+    /// answer" are different facts, and collapsing them would let a caller read
+    /// the grant boundary off the shape of the reply.
+    Unknown,
+}
+
 /// What happened.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "outcome")]
@@ -292,6 +349,47 @@ fn encode_path(path: &str) -> String {
     out
 }
 
+/// Write one [`Request`] envelope.
+pub async fn write_message<S>(stream: &mut S, request: &Request) -> Result<(), WireError>
+where
+    S: tokio::io::AsyncWrite + Unpin,
+{
+    write_frame(stream, &serde_json::to_vec(request)?).await
+}
+
+/// Read one [`Request`] envelope.
+pub async fn read_message<S>(stream: &mut S) -> Result<Request, WireError>
+where
+    S: tokio::io::AsyncRead + Unpin,
+{
+    Ok(serde_json::from_slice(&read_frame(stream).await?)?)
+}
+
+/// Write one [`MimeAnswer`].
+pub async fn write_answer<S>(stream: &mut S, answer: &MimeAnswer) -> Result<(), WireError>
+where
+    S: tokio::io::AsyncWrite + Unpin,
+{
+    write_frame(stream, &serde_json::to_vec(answer)?).await
+}
+
+/// Read one [`MimeAnswer`].
+pub async fn read_answer<S>(stream: &mut S) -> Result<MimeAnswer, WireError>
+where
+    S: tokio::io::AsyncRead + Unpin,
+{
+    Ok(serde_json::from_slice(&read_frame(stream).await?)?)
+}
+
+/// Ask the service what kind of thing a file is.
+///
+/// The answer is gated by what the caller may read; see [`MimeAnswer`].
+pub async fn query_mime(path: &str) -> Result<MimeAnswer, WireError> {
+    let mut stream = tokio::net::UnixStream::connect(socket_path()).await?;
+    write_message(&mut stream, &Request::Query(MimeQuery { path: path.to_string() })).await?;
+    read_answer(&mut stream).await
+}
+
 /// Ask the launch service to act on one request, and wait for what happened.
 ///
 /// One request per connection, which is what the service serves: connect, send,
@@ -304,7 +402,7 @@ fn encode_path(path: &str) -> String {
 /// flag, no resolved app id and nothing to report back but an exit status.
 pub async fn request(req: &LaunchRequest) -> Result<LaunchOutcome, WireError> {
     let mut stream = tokio::net::UnixStream::connect(socket_path()).await?;
-    write_request(&mut stream, req).await?;
+    write_message(&mut stream, &Request::Launch(req.clone())).await?;
     read_outcome(&mut stream).await
 }
 
