@@ -177,10 +177,27 @@ async fn handle(mut stream: UnixStream) -> Result<(), String> {
 /// and a classification nobody could make is `None` - which the service reports
 /// as nothing opening it, because from the requester's side that is the same
 /// fact.
+/// The path is canonicalized first, and that is load-bearing rather than tidy.
+/// `xdg-mime` parses a leading-dash argument as its own option - measured 12 Aug:
+/// `xdg-mime query filetype -x.txt` answers "unexpected option '-x.txt'" - and
+/// this path arrives over the launch socket from another app, so it is whatever
+/// that app sent. A file called `-notes.txt` in the requester's working directory
+/// would have failed classification here and been reported as `NoHandler`: the
+/// wrong error, about a file that has a perfectly good handler. The tree's other
+/// two `xdg-mime` callers already pass an absolute path; this was the one that
+/// did not.
 fn mime_of(target: &proto::Target) -> Option<String> {
     let path = target.path.as_ref()?;
+    let path = std::fs::canonicalize(path).ok()?;
     let out = std::process::Command::new("xdg-mime")
-        .args(["query", "filetype", path])
+        .args([
+            std::ffi::OsStr::new("query"),
+            std::ffi::OsStr::new("filetype"),
+            // As an `OsStr`, so a path that is not valid UTF-8 reaches the tool
+            // intact rather than through a lossy conversion that would ask about a
+            // different file.
+            path.as_os_str(),
+        ])
         .output()
         .ok()?;
     if !out.status.success() {
