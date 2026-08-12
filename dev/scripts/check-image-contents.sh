@@ -71,6 +71,17 @@ out=$(guestfish --ro -a "$img" run : mount-ro /dev/sda2 / : sh '
   echo "=== desktop entries"
   ls /usr/share/applications/*.desktop 2>/dev/null | wc -l
 
+  echo "=== desktop entries naming a missing binary"
+  for d in /usr/share/applications/*.desktop; do
+    [ -f "$d" ] || continue
+    e=$(grep -m1 "^Exec=" "$d" 2>/dev/null | sed "s/^Exec=//; s/ .*//")
+    [ -n "$e" ] || continue
+    case "$e" in
+      /*) [ -e "$e" ] || echo "$e <- $(basename "$d")" ;;
+      *)  [ -e "/usr/bin/$e" ] || [ -e "/usr/local/bin/$e" ] || echo "$e <- $(basename "$d")" ;;
+    esac
+  done
+
   echo "=== shipped arlen units not enabled"
   for u in /usr/lib/systemd/user/arlen-*.service /usr/lib/systemd/system/arlen-*.service; do
     [ -f "$u" ] || continue
@@ -102,8 +113,8 @@ fi
 # clean bill of health. Bound by STRUCTURE rather than by length: each section the
 # inner script prints must be present, because that is what "it ran" looks like.
 for marker in "=== units naming a missing binary" "=== arlen binaries shipped" \
-              "=== desktop entries" "=== shipped arlen units not enabled" \
-              "=== accessibility bus"; do
+              "=== desktop entries" "=== desktop entries naming a missing binary" \
+              "=== shipped arlen units not enabled" "=== accessibility bus"; do
   case "$out" in
     *"$marker"*) ;;
     *)
@@ -195,6 +206,24 @@ else
   echo "  flip would make every launch fail to spawn. Not an error while the flag"
   echo "  defaults off; it is what has to be built before the flag means anything."
 fi
+
+# The user-facing twin of the unit check above. A `.desktop` entry is what the
+# launcher lists, so an Exec that is not on the image is an icon the user clicks
+# and nothing happens - no error they can read, because the failure is a spawn
+# that never happened. The section above this one counts the entries; counting
+# them says nothing about whether they work, and the count is exactly what would
+# stay reassuring while an app dropped out of the build.
+dead_entries=$(echo "$out" | sed -n '/=== desktop entries naming a missing binary/,/^=== /p' \
+  | grep -E "<- .*\.desktop$" || true)
+
+echo
+if [ -n "$dead_entries" ]; then
+  echo "a desktop entry names a binary the image does not ship:"
+  echo "$dead_entries" | sed 's/^/  /'
+  echo "  The launcher lists these, so each is an icon that does nothing when clicked."
+  exit 1
+fi
+echo "every desktop entry names a binary the image ships"
 
 # A unit that ships and is never enabled is installed-but-not-started, which the
 # image cannot tell you apart from working. This reads the ARTEFACT rather than
