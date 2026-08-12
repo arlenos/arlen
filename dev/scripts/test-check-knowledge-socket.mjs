@@ -134,5 +134,15 @@ check(
   (code, out) => code !== 0 && out.includes("apps/thing/src/sdk_call.rs"),
 );
 
+// Zero resolvers is a legitimate pass - three of the cases above are exactly that
+// - so the emptiness that has to be caught is one level down: no Rust at all,
+// which is what a wrong root argument produces. Without this the gate printed
+// "OK: 0 resolvers" for a directory it had never found the tree in.
+check(
+  "a tree with no Rust in it is refused rather than reported clean",
+  tree({ "README.md": "no code here\n" }),
+  (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
+);
+
 console.log(failures.length ? "\nsome cases regressed" : "\nevery shape holds");
 process.exit(failures.length ? 1 : 0);

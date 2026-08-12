@@ -82,19 +82,26 @@ def excluded_for(rel: str):
 
 def offenders(root: Path):
     """Every in-scope client resolver that never mentions the client variable,
-    and how many resolvers were examined.
+    how many resolvers were examined, and how much Rust was read at all.
 
-    The count exists so a pass can be told apart from a no-op. This check names
-    ONE file pattern and one variable; if the pattern stops matching - a rename,
-    a move, a helper that resolves the path somewhere else - the finding set goes
-    empty and the message reads exactly as it does when everything is correct.
-    Printing what was read makes that visible in the same line, which is the
-    cheapest form of the rule this directory keeps re-learning.
+    The resolver count exists so a pass can be told apart from a no-op. This check
+    names ONE file pattern and one variable; if the pattern stops matching - a
+    rename, a move, a helper that resolves the path somewhere else - the finding
+    set goes empty and the message reads exactly as it does when everything is
+    correct. Printing what was read makes that visible in the same line, which is
+    the cheapest form of the rule this directory keeps re-learning.
+
+    Zero resolvers is a legitimate answer and stays a pass: a tree can hold Rust
+    that never resolves this socket. Zero Rust FILES is not - it means the scan
+    was pointed somewhere the tree is not - so that one is counted separately and
+    refused by the caller.
     """
     found = []
     resolvers = 0
+    rust_files = 0
     for path in sorted(root.rglob("*.rs")):
         rel = str(path.relative_to(root))
+        rust_files += 1
         if excluded_for(rel):
             continue
         try:
@@ -111,12 +118,26 @@ def offenders(root: Path):
         if CLIENT_NAME in text or SDK_HELPER in text:
             continue
         found.append(rel)
-    return found, resolvers
+    return found, resolvers, rust_files
 
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2])
-    found, resolvers = offenders(root)
+    found, resolvers, rust_files = offenders(root)
+    if not rust_files:
+        print(
+            f"NOTHING WAS READ: no Rust file under {root}",
+            file=sys.stderr,
+        )
+        print(
+            "  This check reads every .rs file in the tree and reports on the ones\n"
+            "  that resolve the knowledge socket. Finding no Rust at all is not a\n"
+            "  clean tree, it is a scan that ran somewhere else: a wrong root\n"
+            "  argument, or a layout that moved. Refusing here rather than printing\n"
+            "  OK for zero, which is the shape a green gate over an empty tree takes.",
+            file=sys.stderr,
+        )
+        return 2
     if not found:
         print(
             f"OK: {resolvers} knowledge-socket resolver(s), each reading the name "
