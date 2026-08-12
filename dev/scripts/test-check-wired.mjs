@@ -58,6 +58,22 @@ const script = "#!/usr/bin/env python3\nprint('ok')\n";
 
 console.log("check-wired:");
 
+// A gate whose whole subject is "silence reads like success" had the shape it
+// checks for: pointed at a tree with no scripts directory it printed "nothing to
+// check" and exited 0, and pointed at an empty one it exited 0 having examined
+// nothing. Both are a wrong root, since the directory is committed source.
+check(
+  "no scripts directory at all is refused, not skipped",
+  { "README.md": "no scripts here\n" },
+  (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
+);
+
+check(
+  "a scripts directory holding nothing this gate reads is refused too",
+  { "dev/scripts/README.md": "prose, not a check\n" },
+  (code, out) => code === 2 && out.includes("no check, probe or smoke script"),
+);
+
 check(
   "a check nothing runs is caught",
   { [CHECK]: script, "dev/justfile": "lint:\n    echo nothing\n" },
