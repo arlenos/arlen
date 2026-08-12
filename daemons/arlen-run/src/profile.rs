@@ -11,21 +11,13 @@ use std::path::{Path, PathBuf};
 use arlen_confiner::NetworkPolicy;
 use arlen_permissions::{FilesystemPermissions, NetworkPermissions};
 
-/// The resolved XDG user directories (the launcher resolves them once; the mapping
-/// is pure over them so it is testable without touching the real home).
-#[derive(Debug, Clone)]
-pub struct UserDirs {
-    /// `~/Documents`.
-    pub documents: PathBuf,
-    /// `~/Downloads`.
-    pub downloads: PathBuf,
-    /// `~/Pictures`.
-    pub pictures: PathBuf,
-    /// `~/Music`.
-    pub music: PathBuf,
-    /// `~/Videos`.
-    pub videos: PathBuf,
-}
+// `UserDirs`, `is_host_escape` and `read_only_grant_ok` moved to
+// `arlen_permissions` beside `FilesystemPermissions`, and the flag-to-directory
+// mapping with them. The launcher is no longer the only component that has to
+// answer what a grant reaches - the launch service needs the same answer to gate
+// its mime query - and two readings of one grant is how an app ends up confined
+// to one set and told about another.
+pub use arlen_permissions::{is_host_escape, read_only_grant_ok, UserDirs};
 
 /// The confiner inputs derived from a profile: the read-write set and the network
 /// policy. `arlen-run` passes these to `app_runtime_profile`.
@@ -64,10 +56,6 @@ const FORBIDDEN_FS_ROOTS: &[&str] = &[
 /// Whether `path` is a host-filesystem escape a `custom` grant must not bind:
 /// one of the [`FORBIDDEN_FS_ROOTS`], or an ancestor of `home` (e.g. `/home`,
 /// which would expose every user's home, or `/`). A specific subdirectory of
-/// the home (e.g. `~/Projects`) is NOT an escape.
-pub fn is_host_escape(path: &Path, home: &Path) -> bool {
-    FORBIDDEN_FS_ROOTS.iter().any(|r| path == Path::new(r)) || home.starts_with(path)
-}
 
 /// Whether a READ-ONLY subtree grant is acceptable.
 ///
@@ -76,10 +64,6 @@ pub fn is_host_escape(path: &Path, home: &Path) -> bool {
 /// but a NAMED SUBTREE under one of them is exactly what this grant is for, and
 /// it is not an escape: the app can read the part it asked for and write nothing.
 /// A relative path is refused rather than resolved, since what it would resolve
-/// against is the launcher's cwd, not the app's.
-pub fn read_only_grant_ok(path: &Path, home: &Path) -> bool {
-    path.is_absolute() && !is_host_escape(path, home) && path.components().count() > 2
-}
 
 /// Map an app's filesystem + network permissions to the confiner inputs. The app's
 /// own state dirs (`~/.local/share|.config|.cache/arlen/apps/{app_id}`) are always
@@ -98,33 +82,12 @@ pub fn confinement_inputs(
         home.join(".config/arlen/apps").join(app_id),
         home.join(".cache/arlen/apps").join(app_id),
     ];
-    if fs.home {
-        app_dirs.push(home.to_path_buf());
-    }
-    if fs.documents {
-        app_dirs.push(dirs.documents.clone());
-    }
-    if fs.downloads {
-        app_dirs.push(dirs.downloads.clone());
-    }
-    if fs.pictures {
-        app_dirs.push(dirs.pictures.clone());
-    }
-    if fs.music {
-        app_dirs.push(dirs.music.clone());
-    }
-    if fs.videos {
-        app_dirs.push(dirs.videos.clone());
-    }
-    // `custom` paths are added verbatim, EXCEPT a host-filesystem escape (`/`,
-    // an ancestor of the home, or an OS root): Arlen does not offer the
-    // `--filesystem=host` grant, so such an entry is dropped, never bound.
-    app_dirs.extend(
-        fs.custom
-            .iter()
-            .filter(|p| !is_host_escape(p, home))
-            .cloned(),
-    );
+    // The flag-gated dirs and the accepted `custom` paths, from the one place
+    // that reads the grant. WRITABLE only: `read_only` subtrees are collected
+    // separately below, and folding them in here is what the read-only test
+    // below catches.
+    app_dirs.extend(fs.writable_dirs(home, dirs));
+
     // Read-only subtrees: the same whole-tree refusal, and a named subtree under
     // one of those roots is allowed - that is what makes `/sys/class/power_supply`
     // sayable without making `/sys` bindable.
