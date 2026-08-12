@@ -188,7 +188,7 @@ fn forward_to_frontend(
         return;
     }
     if event_type.starts_with("power.") {
-        forward_power_event(app, event_type, &event.payload);
+        forward_power_event(app, event_type, &event.payload, event.timestamp);
         return;
     }
 
@@ -514,7 +514,7 @@ fn forward_ambient_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
 /// / profile-changed) are for a notification consumer, not the indicator, so
 /// they are ignored here. The frontend keeps its own poll fallback for when the
 /// power daemon is absent, so this is purely additive.
-fn forward_power_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
+fn forward_power_event(app: &AppHandle, event_type: &str, payload: &[u8], observed_at: i64) {
     use prost::Message;
     if event_type == "power.state" {
         if let Ok(p) = proto::PowerStatePayload::decode(payload) {
@@ -526,6 +526,14 @@ fn forward_power_event(app: &AppHandle, event_type: &str, payload: &[u8]) {
                 "timeToFullSeconds": p.time_to_full_seconds,
                 "lidState": p.lid_state,
                 "profile": p.profile,
+                // WHEN this was true, not when it arrived. The bus retains the
+                // last message of a state topic and hands it to a subscriber on
+                // subscribe, so the first `power.state` after a shell restart may
+                // describe a battery reading from minutes ago. Without this the
+                // indicator has no way to tell last-known from current and paints
+                // stale state as live - which is the whole reason the retained
+                // message carries its own timestamp rather than being restamped.
+                "observedAtMicros": observed_at,
             });
             let _ = app.emit("arlen://power-changed", &json);
         }
