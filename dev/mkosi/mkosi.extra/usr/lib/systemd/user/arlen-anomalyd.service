@@ -11,6 +11,25 @@ After=arlen-auditd.service arlen-event-bus.service arlen-notifyd.service
 # Type=notify: the detector calls sd_notify(READY=1) once it is wired
 # up and polling.
 Type=notify
+# The bus sockets, pinned, because this daemon cannot find them otherwise.
+#
+# `event-bus` is a SYSTEM service and binds under /run/arlen. This is a USER
+# service, so its $XDG_RUNTIME_DIR is /run/user/1000 and the SDK's fallback dials
+# /run/user/1000/arlen/ - a path nothing ever binds. The 12 Aug boot showed the
+# cost plainly: `arlen-anomalyd` logged "event bus subscribe failed" every five
+# seconds for the whole run, and `arlen-powerd` published power.state into a
+# socket that does not exist.
+#
+# `arlen-code-indexer.service` carries these exact two lines, with a comment
+# saying it was added "where a boot log showed it was missing" - which is the
+# lesson: the fix went where the symptom was seen and not where the SHAPE was, so
+# three siblings kept the defect.
+#
+# These pins are correct while the bus is a system service. When it goes per-user
+# (planner, 12 Aug), they move with it - or come out, since the fallback would
+# then be right.
+Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
+Environment=ARLEN_CONSUMER_SOCKET=/run/arlen/event-bus-consumer.sock
 ExecStart=/usr/lib/arlen/libexec/arlen-anomalyd
 Restart=on-failure
 RestartSec=2
