@@ -123,7 +123,19 @@ async fn handle(mut stream: UnixStream) -> Result<(), String> {
                 .map_err(|e| e.to_string())
         }
         proto::Request::Query(query) => {
-            let answer = answer_query(&query, &caller);
+            // Asked once per query rather than cached: the broker owns this list,
+            // and a copy the shell kept would be a second answer to "what can this
+            // app reach" that goes stale the moment a grant is revoked. An
+            // unreachable broker yields none, so the profile alone decides - a
+            // refusal, which is the safe direction.
+            let minted = tokio::task::spawn_blocking(|| {
+                arlen_consent_broker::control_client::ControlClient::at_default_path()
+                    .and_then(|c| c.list_grants())
+                    .unwrap_or_default()
+            })
+            .await
+            .unwrap_or_default();
+            let answer = answer_query(&query, &caller, &minted);
             proto::write_answer(&mut stream, &answer)
                 .await
                 .map_err(|e| e.to_string())
@@ -240,7 +252,47 @@ fn mime_of(target: &proto::Target) -> Option<String> {
 /// and what it is, so it is answered only for paths this caller could have opened.
 /// An unnamed caller holds no profile and so reaches nothing - the honest answer
 /// when there is no grant to check is no.
-fn answer_query(query: &proto::MimeQuery, caller: &Caller) -> proto::MimeAnswer {
+/// Whether a grant the user's own gesture conferred reaches this path.
+///
+/// The second half of "the gate sees profile ∪ minted". A profile grant names a
+/// DIRECTORY and everything under it; a minted one names the file the user
+/// actually handed over, so this is an equality rather than a containment. That
+/// difference is the point of minting: an app that was given one file has been
+/// given one file, and a prefix test here would quietly turn each handover into
+/// reach over its whole folder.
+///
+/// Both sides are canonical - the caller canonicalizes before asking, and the
+/// conferring surface canonicalizes before conferring - because a grant recorded
+/// as `~/docs/../docs/f.txt` would never match the path a reader resolves, and
+/// the failure would look like the mint not working rather than like a mismatch.
+///
+/// A `Session` lifetime is live by construction: the broker holds these in
+/// memory for the login, so one that is still in the list is still in the
+/// session. `Until` is checked against the clock. Anything the reader cannot
+/// evaluate does not reach.
+fn minted_covers(
+    grants: &[arlen_consent_broker::grant::ConsentGrant],
+    app_id: &str,
+    path: &std::path::Path,
+    now_micros: i64,
+) -> bool {
+    use arlen_consent_broker::grant::GrantLifetime;
+    grants.iter().any(|g| {
+        g.recipient == app_id
+            && g.class == arlen_consent_broker::ConsentClass::CapabilityGrant
+            && g.scope.as_deref().map(std::path::Path::new) == Some(path)
+            && match g.lifetime {
+                GrantLifetime::Until { at_micros } => now_micros < at_micros,
+                GrantLifetime::Session | GrantLifetime::Persistent => true,
+            }
+    })
+}
+
+fn answer_query(
+    query: &proto::MimeQuery,
+    caller: &Caller,
+    minted: &[arlen_consent_broker::grant::ConsentGrant],
+) -> proto::MimeAnswer {
     let Caller::Named(app_id) = caller else {
         return proto::MimeAnswer::Refused {
             reason: "the caller could not be identified, so no grant could be checked".into(),
@@ -286,7 +338,11 @@ fn answer_query(query: &proto::MimeQuery, caller: &Caller) -> proto::MimeAnswer 
         .iter()
         .filter_map(|d| std::fs::canonicalize(d).ok())
         .collect();
-    if !is_within(&path, &readable) {
+    // Profile first, then what a gesture conferred. The union is checked here
+    // rather than by merging the two into one list, because they are different
+    // shapes: a profile grant is a directory to be contained by, a minted one is
+    // a file to equal.
+    if !is_within(&path, &readable) && !minted_covers(minted, app_id, &path, now_micros()) {
         return proto::MimeAnswer::Refused {
             reason: "not a readable path for this application".into(),
         };
@@ -466,6 +522,73 @@ fn spawn(launch: &Launch) -> Result<(), String> {
 
 
 #[cfg(test)]
+mod minted_tests {
+    use super::*;
+    use arlen_consent_broker::grant::{confer_from_gesture, ConsentGrant, GrantLifetime};
+    use std::path::Path;
+
+    const NOW: i64 = 1_700_000_000_000_000;
+
+    /// What the user handed over, and the three things next to it that they
+    /// did not.
+    #[test]
+    fn a_conferred_file_reaches_itself_and_nothing_beside_it() {
+        let g = confer_from_gesture("dev.arlen.harness", "/home/u/Dokumente/notes.md");
+        let grants = [g];
+        let covers = |p: &str| {
+            minted_covers(&grants, "dev.arlen.harness", Path::new(p), NOW)
+        };
+
+        assert!(covers("/home/u/Dokumente/notes.md"));
+
+        // The folder it sits in. A prefix test here would turn every handover
+        // into reach over a directory, which is the whole thing minting avoids.
+        assert!(!covers("/home/u/Dokumente"));
+        // A sibling, which is what a prefix test would also have admitted.
+        assert!(!covers("/home/u/Dokumente/taxes.pdf"));
+        // And a longer path that merely starts with the same characters.
+        assert!(!covers("/home/u/Dokumente/notes.md.bak"));
+    }
+
+    #[test]
+    fn a_grant_for_one_app_does_not_reach_from_another() {
+        let grants = [confer_from_gesture("dev.arlen.harness", "/p/f.txt")];
+        assert!(minted_covers(&grants, "dev.arlen.harness", Path::new("/p/f.txt"), NOW));
+        assert!(!minted_covers(&grants, "dev.arlen.files", Path::new("/p/f.txt"), NOW));
+    }
+
+    /// A window that has closed reaches nothing, and this is where that is
+    /// decided - a browse surface calling it expired is a report, not a gate.
+    #[test]
+    fn a_closed_window_no_longer_reaches() {
+        let mut g = confer_from_gesture("app", "/p/f.txt");
+        g.lifetime = GrantLifetime::Until { at_micros: NOW - 1 };
+        assert!(!minted_covers(&[g.clone()], "app", Path::new("/p/f.txt"), NOW));
+
+        g.lifetime = GrantLifetime::Until { at_micros: NOW + 1 };
+        assert!(minted_covers(&[g], "app", Path::new("/p/f.txt"), NOW));
+    }
+
+    /// A grant of another class for the same string is not filesystem reach.
+    /// Without the class check, consenting to anything scoped to a path would
+    /// hand over the file.
+    #[test]
+    fn only_a_capability_grant_reaches_a_path() {
+        let mut g = confer_from_gesture("app", "/p/f.txt");
+        g.class = arlen_consent_broker::ConsentClass::Destructive;
+        assert!(!minted_covers(&[g], "app", Path::new("/p/f.txt"), NOW));
+    }
+
+    /// No grants at all - which is what an unreachable broker yields - reaches
+    /// nothing rather than everything.
+    #[test]
+    fn an_empty_list_reaches_nothing() {
+        let none: [ConsentGrant; 0] = [];
+        assert!(!minted_covers(&none, "app", Path::new("/p/f.txt"), NOW));
+    }
+}
+
+#[cfg(test)]
 mod mime_tests {
     use super::*;
 
@@ -568,4 +691,14 @@ mod mime_tests {
         let target = proto::Target { uri: "https://example.invalid/x".into(), path: None };
         assert!(mime_of(&target).is_none());
     }
+}
+
+/// Now, in epoch microseconds, matching the units a grant's window is written in.
+fn now_micros() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        // A clock before the epoch makes every window look closed, which refuses
+        // rather than admits.
+        .unwrap_or(0)
 }
