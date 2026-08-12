@@ -149,6 +149,38 @@ ln -sf ../arlen-kg-probe.service \
        "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants/arlen-kg-probe.service"
 echo ">> staged the verify probes into the image"
 
+# Admit the dogfood driver as a user surface, on THIS image only.
+#
+# `explain_system` and `completed_actions` are gated to surfaces that ARE the
+# system talking to the user, and `dogfood` is not one - correctly, because
+# "anything that can name itself" is exactly the admission the list refuses. But
+# the AI path is the largest surface we have, and leaving it unexercised is where
+# this project keeps finding its defects, so the probe has to be able to call it.
+#
+# The two tempting answers were both refused (planner, 12 Aug): compiling `dogfood`
+# into the release list buys a test's convenience with a permanent widening, and an
+# honestly-declared no-op leaves the surface unverified. What differs instead is
+# the POLICY, in a file, on the image that needs it - the same shape as the
+# kg-probe profile above and for the same reason.
+#
+# Additive by construction: `arlen_permissions::identity` reads this only to ADD to
+# the compiled-in surfaces, so nothing here can remove one. It is read only when
+# root-owned and not group- or world-writable, which is what `install -m 644` as
+# root gives; a file anyone could rewrite would turn an admission list into a
+# self-service one.
+#
+# The release image ships no such file, and `check-probe-admission.py` fails the
+# tree if that stops being true - without that half this is the compiled-in answer
+# with extra steps.
+mkdir -p "$DESTDIR/var/lib/arlen/permissions"
+cat > "$DESTDIR/var/lib/arlen/permissions/user-surfaces.extra" <<'SURFACES'
+# Verify images only, staged by mkosi.build.d/09-verify-probes.sh.chroot.
+# Adds to the compiled-in user surfaces; it cannot remove one.
+dogfood
+SURFACES
+chmod 644 "$DESTDIR/var/lib/arlen/permissions/user-surfaces.extra"
+echo ">> staged the verify user-surface admission"
+
 # Take journald's rate limit off, and be honest about what that does not fix.
 #
 # This was written believing the limit was why a boot's serial log stops around
