@@ -373,6 +373,31 @@ pub const FORBIDDEN_FS_ROOTS: &[&str] = &[
     "/dev", "/run", "/root",
 ];
 
+/// Substitute `$USER` in a declared path with the account name.
+///
+/// A removable disk mounts at `/run/media/<user>/<label>`, so the grant that lets
+/// a file manager see a stick has to name the account - and a profile that
+/// hardcoded one would be wrong on every machine whose user is not called that.
+/// The profiles already say their uid "is not a law"; the same is true of the
+/// name.
+///
+/// Taken from the LAST COMPONENT OF HOME rather than from `$USER` in the
+/// environment. The environment variable is set by whoever started the process
+/// and a caller that controls it could name another account's mount point; the
+/// home directory is the one this resolution is already anchored to, so the two
+/// cannot disagree. A home with no final component leaves the path untouched,
+/// which then fails the containment check rather than matching something.
+pub fn expand_user(path: &Path, home: &Path) -> PathBuf {
+    let Some(name) = home.file_name().and_then(|n| n.to_str()) else {
+        return path.to_path_buf();
+    };
+    let text = path.to_string_lossy();
+    if !text.contains("$USER") {
+        return path.to_path_buf();
+    }
+    PathBuf::from(text.replace("$USER", name))
+}
+
 /// Whether `path` is a host-filesystem escape a `custom` grant must not bind:
 /// one of the [`FORBIDDEN_FS_ROOTS`], or an ancestor of `home` (e.g. `/home`,
 /// which would expose every user's home, or `/`). A specific subdirectory of the
@@ -406,6 +431,7 @@ impl FilesystemPermissions {
     /// **Not the app's own state dirs** either, which the launcher adds because
     /// they are a property of running an app rather than of its grant.
     pub fn writable_dirs(&self, home: &Path, dirs: &UserDirs) -> Vec<PathBuf> {
+        let expand = |p: &PathBuf| expand_user(p, home);
         let mut out: Vec<PathBuf> = Vec::new();
         if self.home {
             out.push(home.to_path_buf());
@@ -421,7 +447,12 @@ impl FilesystemPermissions {
                 out.push(dir.clone());
             }
         }
-        out.extend(self.custom.iter().filter(|p| !is_host_escape(p, home)).cloned());
+        out.extend(
+            self.custom
+                .iter()
+                .map(&expand)
+                .filter(|p| !is_host_escape(p, home)),
+        );
         out
     }
 
@@ -436,8 +467,8 @@ impl FilesystemPermissions {
         out.extend(
             self.read_only
                 .iter()
-                .filter(|p| read_only_grant_ok(p, home))
-                .cloned(),
+                .map(|p| expand_user(p, home))
+                .filter(|p| read_only_grant_ok(p, home)),
         );
         out
     }
@@ -2219,5 +2250,64 @@ app_id = "com.legacy"
             music: PathBuf::from("/home/u/Music"),
             videos: PathBuf::from("/home/u/Videos"),
         }
+    }
+
+    #[test]
+    fn a_removable_media_grant_names_the_account_from_home() {
+        // A stick mounts at `/run/media/<user>/<label>`, so the grant has to name
+        // the account. Hardcoding one would be wrong on every machine whose user
+        // is called something else.
+        let fs = FilesystemPermissions {
+            custom: vec![PathBuf::from("/run/media/$USER")],
+            ..Default::default()
+        };
+        assert_eq!(
+            fs.readable_dirs(Path::new("/home/arlen"), &probe_dirs()),
+            vec![PathBuf::from("/run/media/arlen")]
+        );
+    }
+
+    #[test]
+    fn the_account_comes_from_home_not_the_environment() {
+        // `$USER` in the environment is set by whoever started the process, so a
+        // caller that controlled it could name another account's mount point. The
+        // home directory is what this resolution is already anchored to.
+        let fs = FilesystemPermissions {
+            custom: vec![PathBuf::from("/run/media/$USER")],
+            ..Default::default()
+        };
+        let out = fs.readable_dirs(Path::new("/home/someone-else"), &probe_dirs());
+        assert_eq!(out, vec![PathBuf::from("/run/media/someone-else")]);
+    }
+
+    #[test]
+    fn a_path_that_expands_onto_a_forbidden_root_is_still_refused() {
+        // Substitution happens BEFORE the escape check, so a declared path that
+        // only becomes a whole-tree grant after expanding is refused all the
+        // same. Contrived - the account would have to be called `etc` - but the
+        // ORDER is the property, and checking first and expanding second would
+        // pass this while binding `/etc`.
+        let fs = FilesystemPermissions {
+            custom: vec![PathBuf::from("/$USER")],
+            ..Default::default()
+        };
+        assert!(fs
+            .readable_dirs(Path::new("/home/etc"), &probe_dirs())
+            .is_empty());
+    }
+
+    #[test]
+    fn a_home_with_no_final_component_leaves_the_path_alone() {
+        // There is no account name to substitute, so the literal survives and
+        // then simply fails to contain anything - rather than expanding to
+        // something that happens to match.
+        let fs = FilesystemPermissions {
+            custom: vec![PathBuf::from("/run/media/$USER")],
+            ..Default::default()
+        };
+        assert_eq!(
+            fs.readable_dirs(Path::new("/"), &probe_dirs()),
+            vec![PathBuf::from("/run/media/$USER")]
+        );
     }
 }
