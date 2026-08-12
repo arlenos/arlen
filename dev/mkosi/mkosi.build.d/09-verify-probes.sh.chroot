@@ -186,3 +186,28 @@ RateLimitBurst=0
 CONF
 chmod 644 "$DESTDIR/usr/lib/systemd/journald.conf.d/10-verify-no-ratelimit.conf"
 echo ">> staged the verify journald rate-limit override"
+
+# Turn the bus scopes on, so the flip is decided by a boot rather than argued about.
+#
+# `ARLEN_EVENT_BUS_ENFORCE` has been a shadow default for good reasons, and the
+# recorded reason for leaving it off has now been wrong twice in the same
+# direction - each time by reasoning about what the flip would do instead of
+# reading what shadow mode had already logged. The second one was found by a boot
+# journal: the compositor published as `app_id="<unresolved>"` because it was
+# installed under the upstream fork's name, so the flip would have silenced every
+# window and session event on the machine.
+#
+# That is fixed (it installs as `arlen-compositor` now and declares its publish
+# list), and the way to know is to run with the switch ON and read what happens.
+# Verify images only: this variant exists to be watched, and a release image
+# keeps the state its inventory entry describes until a measurement says
+# otherwise. The daemon logs which mode it is in at startup, so a boot where
+# nothing is denied still says whether the switch took.
+mkdir -p "$DESTDIR/usr/lib/systemd/system/arlen-event-bus.service.d"
+cat > "$DESTDIR/usr/lib/systemd/system/arlen-event-bus.service.d/10-verify-enforce.conf" <<'CONF'
+# Verify images only, staged by mkosi.build.d/09-verify-probes.sh.chroot.
+[Service]
+Environment=ARLEN_EVENT_BUS_ENFORCE=1
+CONF
+chmod 644 "$DESTDIR/usr/lib/systemd/system/arlen-event-bus.service.d/10-verify-enforce.conf"
+echo ">> staged the verify event-bus enforce override"

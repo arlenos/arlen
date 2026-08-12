@@ -180,6 +180,27 @@ fn peer_app_profile(stream: &UnixStream) -> PeerScope {
 /// can be verified against real traffic before the reject flip - the same
 /// shadow/enforce cutover the stamped-identity strand uses. Set
 /// `ARLEN_EVENT_BUS_ENFORCE=1` (or `true`) to reject.
+/// Say which mode the scope gates are in, once, at startup.
+///
+/// Shadow mode exists to make the flip decidable by measurement rather than by
+/// argument, and that only works if a reader can tell which mode produced the log
+/// in front of them. Without this line the two states are distinguishable only by
+/// a denial happening to occur - so a boot where nothing was refused looks
+/// identical whether the switch is on, off, or was never read. Twice now the
+/// recorded reason for this switch has been wrong in the same direction, both
+/// times from reasoning instead of reading (planner, 12 Aug).
+pub fn log_enforcement_mode() {
+    if enforce_pubsub() {
+        tracing::info!(
+            "event-bus: publish and subscribe scopes ENFORCED (ARLEN_EVENT_BUS_ENFORCE)"
+        );
+    } else {
+        tracing::info!(
+            "event-bus: publish and subscribe scopes in shadow mode; denials are logged, not applied"
+        );
+    }
+}
+
 fn enforce_pubsub() -> bool {
     matches!(
         std::env::var("ARLEN_EVENT_BUS_ENFORCE").ok().as_deref(),

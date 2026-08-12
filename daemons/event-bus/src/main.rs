@@ -70,6 +70,7 @@ async fn main() -> Result<()> {
     let consumer_socket = socket_path("ARLEN_CONSUMER_SOCKET", "event-bus-consumer.sock");
 
     info!("starting event bus daemon");
+    socket::log_enforcement_mode();
 
     let registry = ConsumerRegistry::new();
     socket::listen(
