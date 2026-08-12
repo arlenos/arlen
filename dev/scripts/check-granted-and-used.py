@@ -58,6 +58,18 @@ PAIRS = {
     "arlen-shell:allow-theme-get": "initArlenTheme",
     "arlen-shell:allow-locale-get": "initArlenLocale",
 }
+# The USE side of these two is arlen-ui's, which is what this skips. The GRANT
+# side is not: capability files live under `src-tauri`, so a permission either of
+# them declares is written in this lane and read in theirs, and the pairing this
+# check makes cannot be attributed to one owner. That is the honest reason, and it
+# is narrower than "arlen-ui's live work" - the phrasing that, on the socket gate,
+# handed away two backend files nobody was then watching.
+#
+# Measured 12 Aug rather than assumed: with this skip removed the check reports
+# nothing. Both apps grant only core Tauri window permissions, and the rule bites
+# only on the paired `arlen-shell:*` grants, which neither declares. So it is inert
+# today and costs nothing - but it stops being inert the moment either app's
+# capabilities gain a paired permission, and then the silence would be in my lane.
 SKIP = {"harness", "store"}
 
 # An app that grants the permission and does not read it for a reason. Empty is
