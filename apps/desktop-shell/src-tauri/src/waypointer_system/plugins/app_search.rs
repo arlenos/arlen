@@ -94,6 +94,19 @@ impl WaypointerPlugin for AppSearchPlugin {
     fn execute(&self, result: &SearchResult) -> Result<(), PluginError> {
         if let Action::Launch { ref desktop_entry } = result.action {
             std::process::Command::new("gtk-launch")
+                // `--` first, and here it is the RIGHT fix, which is not true of
+                // the openers next door. Measured 12 Aug: `gtk-launch -x.desktop`
+                // answers "Unknown option -x.desktop", while `gtk-launch --
+                // -x.desktop` reaches the lookup and answers "no such application
+                // -x.desktop". GLib's parser honours the marker; xdg-utils rejects
+                // it outright, so the same one-line change would break `xdg-open`.
+                // Per tool, measured, not generalised.
+                //
+                // The absolute-path answer used elsewhere does not apply: this
+                // argument is a desktop-entry ID, not a path, so there is nothing
+                // to canonicalize. A `-foo.desktop` in the user's applications
+                // directory would otherwise be unlaunchable from the waypointer.
+                .arg("--")
                 .arg(desktop_entry)
                 .env("DISPLAY", "")
                 .stdin(std::process::Stdio::null())

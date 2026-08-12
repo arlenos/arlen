@@ -156,6 +156,43 @@ check(
   (code) => code === 0,
 );
 
+// The opposite rule, for the tool that takes the opposite fix. Both directions,
+// because a gate that enforced one rule on both families would break whichever it
+// got wrong - and it very nearly did: the `--` this case requires was pushed out
+// of the scan window by a long comment above it, and the gate reported the call it
+// had just been taught to accept.
+check(
+  "a gtk-launch call without the marker is caught",
+  {
+    ...CARRIED,
+    "apps/probe/src-tauri/src/lib.rs":
+      "pub fn go(entry: &str) {\n" +
+      '    Command::new("gtk-launch")\n' +
+      "        .arg(entry)\n" +
+      "        .spawn()\n" +
+      "        .ok();\n" +
+      "}\n",
+  },
+  (code, out) => code === 1 && out.includes("gtk-launch"),
+);
+
+check(
+  "a gtk-launch call with the marker passes, and a long comment does not hide it",
+  {
+    ...CARRIED,
+    "apps/probe/src-tauri/src/lib.rs":
+      "pub fn go(entry: &str) {\n" +
+      '    Command::new("gtk-launch")\n' +
+      ("        // padding that used to push the argument out of the window.\n".repeat(12)) +
+      '        .arg("--")\n' +
+      "        .arg(entry)\n" +
+      "        .spawn()\n" +
+      "        .ok();\n" +
+      "}\n",
+  },
+  (code) => code === 0,
+);
+
 check(
   "an empty tree is a moved layout, not a pass",
   { "README.md": "nothing here\n" },

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Check that every `xdg-open` call ends its options before the path.
+"""Check that a path handed to a desktop tool cannot be read as an option.
 
 A file may legally be named `-report.pdf`, and `xdg-open` parses a leading-dash
 argument as its own option. Measured on this machine, whose `xdg-open` is
@@ -16,7 +16,10 @@ So the file never opens, and the caller reports a failure that names an argument
 the user did not type. `--` before the value fixes it, and the tool prescribes
 exactly that in its own error text.
 
-This is deliberately about ONE tool. The obvious generalisation is wrong: the
+Three tools now, each measured on its own, because the remedy is NOT the same for
+all of them - `xdg-open` and `xdg-mime` REJECT `--` and need an absolute argument,
+while `gtk-launch` requires `--` and has no path to make absolute. One line copied
+from either to the other breaks it. The obvious generalisation is wrong: the
 same guard applied to `nmcli` breaks it, because nmcli does not honour `--` as an
 end-of-options marker and would take it as the connection name -
 
@@ -31,10 +34,12 @@ any particular tool.
 
 What this does NOT cover:
 
-  * `gio`, `gtk-launch` and the rest. Unmeasured, so unlisted: a check that
-    guesses is worse than one that admits its scope. `xdg-mime` was on this line
-    until 12 Aug, when running it took a minute and moved it into scope - the rule
-    is to measure before widening, not to leave a tool out forever.
+  * `gio` and the rest. Unmeasured, so unlisted: a check that guesses is worse
+    than one that admits its scope. `xdg-mime` and `gtk-launch` were both on this
+    line until 12 Aug, when running them took a minute each - the rule is to
+    measure before widening, not to leave a tool out forever. `gio` stays here
+    because nothing in the tree spawns it, so measuring it would be scope for its
+    own sake.
   * A path that reaches `xdg-open` through a helper rather than a literal
     `.arg(...)` on the same call.
   * Whether an acknowledged call's witness string really makes it safe. The
@@ -104,6 +109,24 @@ LOOKBEHIND = 320
 # place. A marker is now a finding of its own.
 BREAKS = re.compile(r'\.arg\("--"\)')
 
+# The other half of the family, and the reason this file keeps insisting on
+# measurement: `gtk-launch` takes the OPPOSITE fix.
+#
+#     $ gtk-launch -x.desktop
+#     Error parsing commandline options: Unknown option -x.desktop
+#     $ gtk-launch -- -x.desktop
+#     gtk-launch: no such application -x.desktop
+#
+# With the marker the argument reaches the lookup, so GLib's parser honours what
+# xdg-utils rejects. Three tools, two opposite remedies, one of which would break
+# the other's calls - which is what "the general principle is not evidence about
+# any particular tool" means in practice.
+#
+# It is also the case where the absolute-path answer does not exist: the argument
+# is a desktop-entry ID, not a path, so there is nothing to make absolute and the
+# marker is the only fix available.
+MARKER_CALL = re.compile(r'Command::new\("gtk-launch"\)')
+
 # What genuinely makes a call safe: the value cannot begin with a dash because it
 # was made absolute first. Matched in the builder chain, and the exemption list
 # below carries the cases where the absolute step happens in the caller.
@@ -140,6 +163,25 @@ ACKNOWLEDGED: dict[str, tuple[str, str]] = {
 # argument absolute IS the fix rather than a reason to be excused from one.
 
 
+def builder_chain(text: str, end_of_call: int) -> str:
+    """The builder chain after a `Command::new(...)`, with comments removed.
+
+    Comments come out first, and that is not tidiness. The window used to be 600
+    raw characters, which a call site can exceed with prose alone: writing a
+    twelve-line note above `.arg("--")` in `app_search.rs` pushed the argument out
+    of the window and the gate reported the call it had just been taught to
+    accept. A scanner that a comment can defeat measures how much someone wrote,
+    not what the code does.
+    """
+    window = text[end_of_call : end_of_call + 2000]
+    code = "\n".join(line.split("//")[0] for line in window.splitlines())
+    end = min(
+        (i for i in (code.find(".spawn()"), code.find(".output()")) if i != -1),
+        default=len(code),
+    )
+    return code[:end]
+
+
 def main() -> int:
     findings: list[str] = []
     acknowledged: list[str] = []
@@ -158,15 +200,24 @@ def main() -> int:
             continue
         scanned += 1
         text = path.read_text(encoding="utf-8", errors="replace")
+
+        # The marker family, checked first and by the opposite rule: here `--` is
+        # required rather than forbidden.
+        for m in MARKER_CALL.finditer(text):
+            calls += 1
+            if not BREAKS.search(builder_chain(text, m.end())):
+                line = text[: m.start()].count("\n") + 1
+                rel = str(path.relative_to(ROOT))
+                findings.append(
+                    f"{rel}:{line}: passes an argument to gtk-launch without a `--` "
+                    f"first, so an entry named `-something.desktop` is read as an "
+                    f"unknown option and never launches. This tool DOES honour the "
+                    f"marker, unlike the openers above - measured, not assumed"
+                )
+
         for m in CALL.finditer(text):
             calls += 1
-            # The builder chain: from the call to the first `.spawn()`/`.output()`.
-            tail = text[m.end() : m.end() + 600]
-            end = min(
-                (i for i in (tail.find(".spawn()"), tail.find(".output()")) if i != -1),
-                default=len(tail),
-            )
-            chain = tail[:end]
+            chain = builder_chain(text, m.end())
             before = text[max(0, m.start() - LOOKBEHIND) : m.start()]
             rel = str(path.relative_to(ROOT))
             # Checked BEFORE the guard and before any excuse: a marker is a broken
