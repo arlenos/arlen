@@ -108,10 +108,12 @@ def comment_paths(text: str):
 def main() -> int:
     problems: list[str] = []
     checked = 0
+    read = 0
     for path in sorted(scanned_files(ROOT)):
         sp = str(path)
         if "/target/" in sp or "mkosi.builddir" in sp or "/node_modules/" in sp:
             continue
+        read += 1
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -131,6 +133,18 @@ def main() -> int:
         print("\n  Fix the path, or add it to KNOWN with the reason it names something")
         print("  outside this repo. A note nobody can follow is worse than no note.")
         return 1
+
+    # Zero PATHS is a fine answer - a tree can hold comments that name none, and
+    # four of this gate's own cases are exactly that. Zero FILES is not: nothing
+    # in the tree carries an extension this reads, which means the scan ran
+    # somewhere the tree is not.
+    if not read:
+        print(
+            f"NOTHING WAS READ: no source file under {ROOT} in any language this "
+            "gate reads",
+            file=sys.stderr,
+        )
+        return 2
 
     print(f"OK: {checked} repo file path(s) named in comments, all present")
     return 0

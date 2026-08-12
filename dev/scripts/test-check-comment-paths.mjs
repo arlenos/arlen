@@ -36,6 +36,16 @@ function check(name, files, expect) {
 
 console.log("check-comment-paths:");
 
+// Zero paths is a legitimate pass and four cases below rely on it, so the
+// emptiness worth catching is one level down: a tree holding no file in any
+// language this reads, which is what a wrong root produces. Before this it
+// printed "OK: 0 repo file path(s) named in comments, all present".
+check(
+  "a tree with nothing this gate reads is refused, not reported clean",
+  { "notes.md": "prose only\n" },
+  (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
+);
+
 check(
   "a comment naming a file that exists passes",
   {
