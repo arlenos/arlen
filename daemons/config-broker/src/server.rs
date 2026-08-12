@@ -178,6 +178,18 @@ pub fn bind_socket(path: &Path) -> std::io::Result<UnixListener> {
         }
     }
     let listener = UnixListener::bind(path)?;
+    // 0666, and it has to be: this broker runs as its OWN uid precisely so the
+    // user cannot edit the AI master switches directly, which means the user's
+    // session is a cross-uid client and an owner-only socket would be unreachable
+    // by the only callers it has. systemd's 0022 umask leaves `bind` owner-write,
+    // so the mode is set explicitly rather than inherited.
+    //
+    // The mode is NOT what protects this socket. Every connection is authenticated
+    // in band from the kernel-attested peer credential, and an unadmitted caller is
+    // refused there. Writing that down because the same decision is made in
+    // `knowledge` with the reason attached and in `event-bus` without it, and a
+    // world-writable socket on a secrets daemon is the last place a reader should
+    // have to guess whether it was deliberate.
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666))?;
     Ok(listener)
 }

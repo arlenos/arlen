@@ -435,6 +435,15 @@ fn bind_socket(path: &str) -> Result<UnixListener> {
         std::fs::create_dir_all(parent)?;
     }
     let listener = UnixListener::bind(path)?;
+    // 0666 because the bus is a system daemon and every producer and consumer is a
+    // different uid's session process; an owner-only socket would be reachable by
+    // nothing it exists for. systemd's 0022 umask leaves `bind` owner-write, so the
+    // mode is set rather than inherited. `knowledge` makes the same call with the
+    // same reasoning attached; this site had it undocumented.
+    //
+    // The mode does not carry the security here. Producers are peer-credentialed
+    // and a producer whose credential cannot be read is dropped, which is where the
+    // trust boundary is.
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666))?;
     Ok(listener)
 }
