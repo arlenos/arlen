@@ -84,6 +84,22 @@ def main():
     problems = []
     checked = 0
 
+    # The two launchers this knows about, and neither of them being here means the
+    # scan is not looking at the tree. `checked` cannot carry this: a compose file
+    # that starts no process is deliberately not counted, so zero is a legitimate
+    # answer for it - but zero FILES to read is a wrong root, and then the line at
+    # the end reports on launchers it never opened.
+    session = REPO / "dev/mkosi/mkosi.extra/usr/bin/arlen-session"
+    if not compose_files() and not session.exists():
+        print(f"NOTHING WAS READ: no launcher under {REPO}", file=sys.stderr)
+        print(
+            "  Looked for dev/process-compose*.yaml and\n"
+            "  dev/mkosi/mkosi.extra/usr/bin/arlen-session. Both are committed, so\n"
+            "  finding neither is a scan pointed somewhere else.",
+            file=sys.stderr,
+        )
+        return 2
+
     for path in compose_files():
         text = path.read_text(encoding="utf-8")
         if not starts_processes(text):
@@ -96,7 +112,6 @@ def main():
                 f"refuses the lot"
             )
 
-    session = REPO / "dev/mkosi/mkosi.extra/usr/bin/arlen-session"
     if session.exists():
         checked += 1
         text = session.read_text(encoding="utf-8")
