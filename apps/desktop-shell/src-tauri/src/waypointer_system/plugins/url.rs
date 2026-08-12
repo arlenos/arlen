@@ -38,17 +38,11 @@ impl WaypointerPlugin for UrlPlugin {
 
     fn execute(&self, result: &SearchResult) -> Result<(), PluginError> {
         if let Action::OpenUrl { ref url } = result.action {
-            std::process::Command::new("xdg-open")
-                // `--` first: xdg-open parses a leading-dash argument as its own
-                // options. Found by the check rather than by me - I guarded the
-                // two other openers in this directory and walked past this one.
-                .arg("--")
-                .arg(url)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .map_err(|e| PluginError::ExecuteFailed(e.to_string()))?;
+            // The shell's one opener, shared with the file plugin and the menu
+            // actions. Three copies of the same `xdg-open` line is how one of
+            // them ended up without the `--` guard the other two had.
+            crate::waypointer_system::open_with_handler(url)
+                .map_err(PluginError::ExecuteFailed)?;
         }
         Ok(())
     }

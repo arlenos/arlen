@@ -110,23 +110,46 @@ fn run_for_module(action: &arlen_desktop_shell_core::module_results::SafeAction)
     }
 }
 
-/// Hand something to the desktop's own opener, detached from the shell.
-fn open_with_handler(target: &str) -> Result<(), String> {
-    std::process::Command::new("xdg-open")
-        // `--` first: a file name may legally begin with a dash, and
-        // xdg-open parses a leading-dash argument as its own option.
-        // Measured: `xdg-open -zzz` answers "error: unexpected argument
-        // '-z' found / tip: to pass '-z' as a value, use '-- -z'", so a
-        // file called `-report.pdf` never opens. Unlike nmcli, which does
-        // not honour `--` at all, this tool documents it in its own error.
-        .arg("--")
-        .arg(target)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+/// Hand something to the desktop's own opener.
+///
+/// Through the shell's own launch path rather than `xdg-open`, so the shell's
+/// launches are recorded and confined like everyone else's. They were the ones
+/// that were not: the ledger this socket exists to fill had no line for anything
+/// the waypointer opened, because the code that writes it sat behind a socket the
+/// shell never dialled.
+///
+/// Blocking, because the callers are the synchronous plugin trait and a menu
+/// action. The wait is one connection-free in-process call plus a spawn, which is
+/// what the subprocess cost anyway.
+pub fn open_with_handler(target: &str) -> Result<(), String> {
+    use arlen_launch_contract as launch;
+    // A path and a URI are different requests: the second is not a local file and
+    // must not claim a path an application would then fail to open.
+    let request = if target.starts_with('/') {
+        launch::open_path_request(target)
+    } else {
+        launch::open_uri_request(target)
+    };
+    let outcome = tauri::async_runtime::block_on(crate::launch_service::dispatch(
+        &request,
+        &crate::launch_service::self_caller(),
+    ));
+    match outcome {
+        launch::LaunchOutcome::Started { .. } => Ok(()),
+        launch::LaunchOutcome::NoHandler { mime } => {
+            Err(format!("nothing is set up to open {mime}"))
+        }
+        launch::LaunchOutcome::UnknownApplication { app_id } => {
+            Err(format!("{app_id} is not installed"))
+        }
+        launch::LaunchOutcome::MalformedEntry { app_id, reason } => {
+            Err(format!("{app_id} is installed wrong: {reason}"))
+        }
+        launch::LaunchOutcome::DidNotStart { app_id, reason } => {
+            Err(format!("{app_id} did not start: {reason}"))
+        }
+        launch::LaunchOutcome::Refused => Err("the launch was refused".to_string()),
+    }
 }
 
 /// List all currently-registered built-in plugins with their metadata.
