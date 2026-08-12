@@ -67,6 +67,22 @@ Wants=arlen-graph.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# As the desktop user, not as root, and this is load-bearing rather than tidy.
+#
+# The daemon resolves a caller's profile by the PEER's uid
+# (`load_profile_for_user`), so a root probe is looked up under
+# /var/lib/arlen/permissions/0/ - where nothing is staged, because every profile
+# on this image lives under 1000/. An app_id with no profile gets an empty read
+# scope, and an empty scope denies every label. Measured 12 Aug: all six questions
+# came back `read denied: label outside the caller's read scope`, on every boot
+# this probe has ever run, and it was on the serial console the whole time.
+#
+# Running as arlen also makes the profile's own claim true - "the probe reads
+# exactly what the knowledge app reads" - in identity and not only in scope, and
+# it exercises the path a real app takes: a uid-1000 peer on the 0666 read socket,
+# admitted because it is the ARLEN_OWNER_USER.
+User=arlen
+Group=arlen
 # The probe now asks twice with a gap, so it outlives systemd's default 90s start
 # timeout. Nothing waits on this unit, so a generous ceiling costs nothing and a
 # killed probe would look exactly like a probe that found nothing.
