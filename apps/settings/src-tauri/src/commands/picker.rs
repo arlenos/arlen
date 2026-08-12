@@ -218,10 +218,26 @@ fn legacy_pick_gguf() -> Option<String> {
 }
 
 fn try_kdialog_file(start: &str) -> Option<String> {
-    let output = Command::new("kdialog")
+    let output = match Command::new("kdialog")
         .args(["--getopenfilename", start, "*.gguf"])
         .output()
-        .ok()?;
+    {
+        Ok(o) => o,
+        Err(e) => {
+            // Say it, because `None` cannot.
+            //
+            // This function's `None` means BOTH "the user cancelled" and "there is
+            // no picker on this machine", and the caller has no way to tell them
+            // apart - so a missing binary looks to the user like a button that does
+            // nothing. On the appliance image that is the live case: neither
+            // kdialog nor zenity is installed and the portal is not staged either,
+            // so every pick returns None forever (measured 12 Aug,
+            // `dev/scripts/runtime-deps.tsv`). Until the signature can carry the
+            // difference, the journal carries it.
+            log::warn!("kdialog unavailable ({e}); falling back to zenity");
+            return None;
+        }
+    };
     if !output.status.success() {
         return None;
     }
@@ -229,8 +245,12 @@ fn try_kdialog_file(start: &str) -> Option<String> {
     Some(path.trim().to_string()).filter(|s| !s.is_empty())
 }
 
+// NB the LAST link in the chain: if this one is missing too, nothing picked and
+// nothing said. Its `Err` arm is the one that matters, which is why it logs at
+// warn rather than debug - a chain that degrades to nothing is worse than a
+// single dependency, because the code reads as though it has a plan B.
 fn try_zenity_file(start: &str) -> Option<String> {
-    let output = Command::new("zenity")
+    let output = match Command::new("zenity")
         .args([
             "--file-selection",
             "--title=Choose a GGUF model",
@@ -238,7 +258,16 @@ fn try_zenity_file(start: &str) -> Option<String> {
             &format!("--filename={start}/"),
         ])
         .output()
-        .ok()?;
+    {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!(
+                "zenity unavailable ({e}); no file picker backend remains, so this \
+                 pick returns None and the caller cannot tell that from a cancel"
+            );
+            return None;
+        }
+    };
     if !output.status.success() {
         return None;
     }
