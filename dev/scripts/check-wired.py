@@ -227,6 +227,36 @@ def main() -> int:
                 f"\n{len(local_only)} run locally but NOT on a push: "
                 f"{', '.join(local_only)}"
             )
+        # And naming them is not enough: an honest list still has to be someone's
+        # job. `boot-verify-payload.tsv` says it is the boot-verify run's, and the
+        # two sets are held equal here so the declaration cannot rot into a note
+        # about a set that has moved on. A check that becomes push-runnable must
+        # leave the payload; one that stops being push-runnable must join it.
+        payload_file = SCRIPTS / "boot-verify-payload.tsv"
+        if not payload_file.is_file():
+            problems.append(
+                "boot-verify-payload.tsv is missing, so the checks that cannot run "
+                "on a push have no declared home and nothing would notice"
+            )
+        else:
+            declared = {
+                line.split("\t")[0].strip()
+                for line in payload_file.read_text(encoding="utf-8").splitlines()
+                if line.strip() and not line.startswith("#")
+            }
+            for name in sorted(declared - set(local_only)):
+                problems.append(
+                    f"{name} is in the boot-verify payload but is not one of the "
+                    f"checks that only run locally - it runs on a push, or it no "
+                    f"longer exists. Drop it from the payload."
+                )
+            for name in sorted(set(local_only) - declared):
+                problems.append(
+                    f"{name} runs locally but on no push, and the boot-verify "
+                    f"payload does not name it - so nothing would ever run it "
+                    f"against an image. Add it, with what it proves."
+                )
+
     if problems:
         print("\nwritten but never run:\n")
         for p in problems:

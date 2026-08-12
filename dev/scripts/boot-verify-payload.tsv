@@ -1,0 +1,25 @@
+# The boot-verify run's payload: every check that cannot run on a push.
+#
+# These seven are not unwired and not excused - they need a built image, a live
+# bus or running software, so a CI runner cannot host them. Naming them here
+# turns "somebody should run these against an image" into a definition of what
+# the boot-verify run IS, which is the difference between a plan and a list.
+# `check-wired.py` holds this file and its own computed local-only set to be the
+# same set, so neither can quietly drift from the other.
+#
+# WHERE says what the entry needs, and it is not a preference:
+#
+#   image   runs on the HOST against the built image file, before or without
+#           booting it - inspection, not execution.
+#   guest   runs INSIDE a booted system, because it needs the daemons up and the
+#           sockets bound. There is no shell into the VM, so an entry here
+#           arrives as a unit whose output goes to the console.
+#
+# script<TAB>where<TAB>what it proves
+check-image-contents.sh	image	every unit's ExecStart names a binary the image actually ships
+probe-dbus-gate.sh	guest	the bus policy refuses a caller the gate is supposed to refuse
+probe-launch-socket.py	guest	the launch socket answers, attests its peer and refuses an unnamed one
+probe-served-objects.sh	guest	each daemon serves the objects its interface claims
+smoke-daemons.sh	guest	every daemon starts and binds its socket
+smoke-apps.sh	guest	every app starts and opens a window
+smoke-shell.sh	guest	the shell comes up with its bar
