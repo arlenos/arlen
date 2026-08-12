@@ -56,6 +56,17 @@ const CONF_MAIN = JSON.stringify({ app: { windows: [{}] } });
 const CAP = (windows) =>
   JSON.stringify({ identifier: "default", windows, permissions: ["core:default"] });
 
+// An app with no `capabilities/` is out of scope, which the last case below
+// relies on, so zero apps is a legitimate zero and the guard has to sit one level
+// up: no `src-tauri` crate at all. Before this the gate printed "OK: 0 window
+// label(s) across 0 app(s), each covered by a capability" - a sentence with no
+// subject.
+check(
+  "a tree with no src-tauri crate is refused rather than reported clean",
+  tree({ "daemons/probe/src/main.rs": "fn main() {}\n" }),
+  (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
+);
+
 check(
   "a literal label in no capability fails",
   tree({
