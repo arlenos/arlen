@@ -190,10 +190,12 @@ def main() -> int:
     # recorded count bounds it rather than excusing the file forever.
     seen_per_file: dict[str, int] = {}
     files = sorted((ROOT / "apps").rglob("*.ts")) + sorted((ROOT / "apps").rglob("*.svelte"))
+    candidates = 0
     for path in files:
         s = str(path)
         if any(k in s for k in SKIP) or "/src/" not in s:
             continue
+        candidates += 1
         text = path.read_text(encoding="utf-8", errors="replace")
         if "invoke(" not in text:
             continue
@@ -245,6 +247,17 @@ def main() -> int:
                 f"count that is too high reserves room for a new one to appear "
                 f"unreported."
             )
+
+    # Zero CATCH BLOCKS is a legitimate answer: a frontend can be written without
+    # one. Zero candidate FILES is not - it means no app source was found where
+    # every app keeps it, so the scan ran against the wrong root or the layout
+    # moved, and the sentence below would describe a tree this never opened.
+    if not candidates:
+        print(
+            f"NOTHING WAS READ: no .ts or .svelte under {ROOT / 'apps'}/*/src",
+            file=sys.stderr,
+        )
+        return 2
 
     print(
         f"{checked} catch block(s) checked for a mutation that failed silently after "
