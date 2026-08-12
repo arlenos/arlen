@@ -743,6 +743,8 @@ check-executor:
     node "{{ROOT}}/dev/scripts/check-catalogs.mjs"
     node "{{ROOT}}/dev/scripts/check-i18n-reactivity.mjs"
     python3 "{{ROOT}}/dev/scripts/check-invoke-shape.py"
+    python3 "{{ROOT}}/dev/scripts/check-invoke-scope.py"
+    node "{{ROOT}}/dev/scripts/test-check-invoke-scope.mjs"
     node "{{ROOT}}/dev/scripts/test-check-fixtures.mjs"
     node "{{ROOT}}/dev/scripts/test-check-units.mjs"
     node "{{ROOT}}/dev/scripts/test-check-invokes.mjs"
