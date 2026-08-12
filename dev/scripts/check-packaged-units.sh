@@ -7,11 +7,20 @@
 # a broken peer-auth sandbox before. This compares the DIRECTIVE lines only
 # (stripping comments and blanks), so a comment reword never fails the gate but a
 # real directive difference does. Units with no dist/ counterpart (arlen-ai-proxy,
-# arlen-dogfood, arlen-llama, arlen-graph, arlen-timeline) are mkosi-only and
-# skipped. `arlen-config-broker` was in that list and has since grown a dist unit,
-# so it IS compared now and carries a printed KNOWN DRIFT below. Read that instead
-# of this line, which claimed for a while that the unit went unchecked while the
-# check was running forty lines further down.
+# arlen-dogfood, arlen-llama, arlen-timeline, plus the distro's own
+# display-manager alias) are mkosi-only and skipped.
+#
+# This list has now been wrong twice, in both directions, which is why it names
+# the members rather than a count. `arlen-config-broker` left it by growing a dist
+# unit and carries a printed KNOWN DRIFT below. `arlen-graph` left it on 12 Aug
+# for a duller reason: its canonical had been sitting in `daemons/knowledge/systemd/`
+# while the `find` above looks for `dist/`, so the pair was never compared and the
+# skip said so in the same words it uses for a deliberate exclusion. Renaming the
+# directory started the comparison and turned up a stale debug log target
+# immediately.
+#
+# So: a name in this list is a claim that no canonical EXISTS, not that none was
+# found. If you add one, look first.
 #
 # Exit 0 = every packaged unit's directives match its dist/ canonical (or has no
 # canonical). Exit 1 = a drift a reviewer must reconcile.
