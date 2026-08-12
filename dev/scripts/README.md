@@ -55,6 +55,28 @@ contains("decode")` passed with the size guard deleted, because the decode faile
 anyway. If a test can pass for a reason other than the one it is named after, it
 is measuring that other reason.
 
+**Bound a scan by structure, never by a character count.** Every windowed scan
+here has been wrong at least once. `check-opener-args` looked 600 raw characters
+down a builder chain, and a twelve-line comment above `.arg("--")` pushed the
+argument out of the window - the gate reported a call it had just been taught to
+accept, defeated by prose. `check-optimistic-write` looked 500 raw characters back
+for the store write its `try` risks, so a comment could hide a real one. Stripping
+comments fixes the obvious half and exposes the subtle half: with the padding gone
+the window reached PAST a function's closing brace and reported three calls whose
+`try` has no optimistic write at all. The count had been standing in for "within
+this function" by accident. `check-read-grants-cover-queries` learned it first and
+writes it best - a window that overshoots "does not look wrong, it looks like a
+finding, and the fix it invites is granting a field nothing reads". Anchor on the
+brace, the string literal, the function edge. If you must count, count code.
+
+**Do not measure the label when you can read the thing.** `check-wired` counts
+positive controls by reading which check each test file DRIVES, after two
+hand-counts got it wrong by matching names. The same mistake surfaced twice more
+in one night, both mine: an exemption-list survey that matched list NAMES missed
+every list somebody had named sensibly, and a cross-reference survey matched the
+inner substring of `test-check-fixtures.mjs` and reported thirteen files as
+missing. A survey is a measurement and deserves the same suspicion as a check.
+
 ## Where the lists live
 
 Some checks are held to a declaration rather than to a scan, because deriving the
@@ -67,6 +89,33 @@ list would be worse than keeping it:
   resolves to no app id calls it: `refuse`, or `open:<reason>`.
 
 An entry excused from a rule carries the reason inline, and the reason is read by
-a person. `check-wired.py` also checks its own exemption list in both directions:
-an excuse for something that is now run, or for something that no longer exists,
-is itself reported.
+a person. Three things go wrong with those lists, all of them found on 12 Aug by
+looking, and each list here now guards against the ones that apply to it.
+
+**An excuse outlives its subject.** `check-wired.py` had checked its own list in
+both directions from the start - an excuse for something now run, or for something
+that no longer exists, is itself reported - and nothing else did. Four lists have
+that guard now, and adding it to `check-invoke-scope` immediately found two
+acknowledged cross-app calls that had both been FIXED, each app having grown its
+own command of that name, with the entries still describing them as broken.
+
+**An excuse names the wrong owner**, which is worse than a stale one because
+nothing is watching the file at all: the gate stops looking and the named owner
+never learns they were named. `check-knowledge-socket` excused two files as
+arlen-ui's live work; both were under `src-tauri`, which is not their lane, and
+both were resolving the graph socket from the daemon's BIND variable - dead on a
+booted image. Check the boundary before you write the name into a list.
+
+**An excuse describes the CHECKER rather than the tree.** The clearest tell is an
+entry that explains the gate's own mechanism: `check-optimistic-write` carried one
+reading "matched by the proximity window rather than by being wrong" and another
+"the store write this check sees belongs to the streaming function above it". Both
+diagnosed a false positive precisely and filed it as work instead of fixing the
+window. Four of that list's six entries turned out to be the checker's bug. If you
+find yourself writing the gate's internals into a reason, fix the gate.
+
+A count beside each entry, where the subject can grow, is what keeps a list a
+queue rather than a hole - and the count has to be checked in BOTH directions.
+`check-optimistic-write` promised in its own docstring that "a file whose count
+drops asks to have its number lowered" and never implemented it, which is how four
+retired entries would have sat there unnoticed.
