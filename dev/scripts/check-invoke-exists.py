@@ -44,6 +44,7 @@ Shown to fail before being trusted: add `invoke("nonexistent_command")` to any a
 under `apps/*/src` and it names that app and that command.
 """
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -130,7 +131,32 @@ def indirect_calls(text: str) -> set[str]:
     for var in set(INVOKE_VAR.findall(text)):
         for m in re.finditer(rf"\b(?:const|let|var)\s+{re.escape(var)}\s*=([^;\n]*(?:\n[^;]*)?);", text):
             out |= set(STRINGS.findall(m.group(1)))
+
+    # One hop through a wrapper, the same shape `check-dbus-method-names.py`
+    # follows. An app that routes every command through one helper -
+    #
+    #     async function send(cmd: string, args?: unknown) { await invoke(cmd, args); }
+    #     await send("clock_set_alarm", { alarm });
+    #
+    # showed EVERY one of its commands as uncalled: the literal is at the
+    # helper's call sites, and only the parameter is at `invoke`. The clock alone
+    # put a dozen live commands on that list, which is how a list stops being
+    # read. Same one-way rule as above - this can only shorten the uncalled list.
+    # `finditer`, not `findall`: the pattern needs a second capturing group for
+    # the backreference that ties the parameter to `invoke`'s argument, so
+    # `findall` would yield tuples.
+    for wm in WRAPPER.finditer(text):
+        wrapper = wm.group(1)
+        for m in re.finditer(rf"\b{re.escape(wrapper)}\s*\(\s*(\"[^\"]+\"|'[^']+')", text):
+            out.add(m.group(1)[1:-1])
     return out
+# A function whose body passes its own first parameter to `invoke`: the helper
+# every command in that file goes through. Captures the helper's name.
+WRAPPER = re.compile(
+    r"(?:async\s+)?function\s+(\w+)\s*\(\s*(\w+)[^)]*\)[^{]*\{[^}]*?\binvoke\s*\(\s*\2\b",
+    re.S,
+)
+
 HANDLER = re.compile(r"generate_handler!\s*\[(.*?)\]", re.S)
 
 # The commands with no host, as of 9 August, with what each one is. Keeping the
@@ -345,6 +371,14 @@ def main() -> int:
         for f in findings:
             print(f"  - {f}")
         return 1
+    # Printed on request rather than always: 111 lines of informational output
+    # every run trains a reader to skip the whole block, including the strict
+    # findings above it. `ARLEN_LIST_UNCALLED=1` when somebody is actually
+    # pruning.
+    if uncalled and os.environ.get("ARLEN_LIST_UNCALLED"):
+        print("\nregistered, with no invoke this scanner can see:\n")
+        for u in uncalled:
+            print(f"  - {u}")
     print(
         f"\n{len(uncalled)} registered command(s) nothing under apps/*/src invokes. "
         f"Informational only: a ui-kit helper can call one this scanner cannot "
