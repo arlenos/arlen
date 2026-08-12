@@ -1021,17 +1021,30 @@ def main():
     if args.journal_out or args.require_probe:
         jdir = os.path.join(tmp, "journal")
         os.makedirs(jdir, exist_ok=True)
+        # BOTH journals, and the user one is not optional: every desktop component
+        # is a user service, so a system-only capture is missing the shell, the
+        # compositor, powerd, the undo signer - most of what a boot is. On 12 Aug
+        # I read `0 shell lines` off a system-only capture and nearly concluded a
+        # logging change had silenced the shell; the serial log had 97 of them.
+        # journalctl merges multiple --file by timestamp, so the two interleave.
         script = (
             "run\nmount-ro /dev/sda2 /\n"
             f"glob copy-out /var/log/journal/*/system.journal {jdir}/\n"
+            f"glob copy-out /var/log/journal/*/user-*.journal {jdir}/\n"
         )
         r = subprocess.run(["guestfish", "--ro", "-a", overlay],
                            input=script, capture_output=True, text=True)
-        jfile = os.path.join(jdir, "system.journal")
-        if r.returncode == 0 and os.path.exists(jfile):
+        jfiles = sorted(
+            os.path.join(jdir, f) for f in os.listdir(jdir) if f.endswith(".journal")
+        ) if os.path.isdir(jdir) else []
+        if r.returncode == 0 and jfiles:
+            # Not `args`: that is the argparse namespace, and shadowing it here
+            # made `args.journal_out` an AttributeError three lines later.
+            jargs = ["journalctl"]
+            for f in jfiles:
+                jargs += ["--file", f]
             rendered = subprocess.run(
-                ["journalctl", "--file", jfile, "-o", "short-iso", "--no-pager"],
-                capture_output=True, text=True)
+                jargs + ["-o", "short-iso", "--no-pager"], capture_output=True, text=True)
             if rendered.returncode == 0:
                 journal_text = rendered.stdout
         if journal_text is None:
