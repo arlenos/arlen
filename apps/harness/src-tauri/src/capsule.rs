@@ -75,8 +75,17 @@ pub struct MintReceipt {
 
 /// Resolve the knowledge graph socket the shared 3-tier way (env override, else
 /// `$XDG_RUNTIME_DIR/arlen/knowledge.sock`, else `/run/arlen/knowledge.sock`).
+///
+/// Through `knowledge_socket_path`, which tries `ARLEN_KNOWLEDGE_SOCKET` before
+/// `ARLEN_DAEMON_SOCKET`. This read only the second for a while, and that is the
+/// client-side half of a two-variable split: the daemon BINDS at
+/// `ARLEN_DAEMON_SOCKET`, while a session launcher exports
+/// `ARLEN_KNOWLEDGE_SOCKET` for clients. On a booted image, where only the
+/// launcher's name is set, this fell through to `$XDG_RUNTIME_DIR` and dialled a
+/// path nothing binds. Five of seven resolvers had it wrong on 9 August; these two
+/// were excused as somebody else's tree and are not.
 fn graph_client() -> UnixGraphClient {
-    let path = os_sdk::runtime::socket_path("ARLEN_DAEMON_SOCKET", "knowledge.sock");
+    let path = os_sdk::runtime::knowledge_socket_path();
     UnixGraphClient::new(path.to_string_lossy().into_owned())
 }
 

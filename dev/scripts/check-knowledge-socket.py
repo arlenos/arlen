@@ -56,7 +56,14 @@ from pathlib import Path
 EXCLUDED = {
     "daemons/knowledge": "the daemon that BINDS the socket; ARLEN_DAEMON_SOCKET is the bind variable and is correct here",
     "dev/integration": "the test harness pins both variables itself, and asserting on its own fixture proves nothing",
-    "apps/harness": "arlen-ui's live work; the shape is present and is reported in coder-reports, not fixed here",
+    # `apps/harness` was excused here as arlen-ui's live work with the broken shape
+    # present. The shape was real - `capsule.rs` and `prep.rs` both resolved the
+    # graph socket from the BIND variable - but the ownership was wrong: only the
+    # harness's conversation surface belongs to arlen-ui, and both of those are
+    # backend files under `src-tauri`. Fixed on 12 Aug rather than reported again,
+    # and the exclusion deleted with them. An excuse that hands a file to the wrong
+    # owner is worse than no excuse: it removes the file from this gate AND from
+    # whoever would have fixed it.
     "dev/mkosi/mkosi.builddir": "the build cache, a copy of the tree at some earlier commit",
     "target": "build output",
 }
