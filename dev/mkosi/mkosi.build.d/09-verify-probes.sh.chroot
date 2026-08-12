@@ -67,22 +67,15 @@ Wants=arlen-graph.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# As the desktop user, not as root, and this is load-bearing rather than tidy.
-#
-# The daemon resolves a caller's profile by the PEER's uid
-# (`load_profile_for_user`), so a root probe is looked up under
-# /var/lib/arlen/permissions/0/ - where nothing is staged, because every profile
-# on this image lives under 1000/. An app_id with no profile gets an empty read
-# scope, and an empty scope denies every label. Measured 12 Aug: all six questions
-# came back `read denied: label outside the caller's read scope`, on every boot
-# this probe has ever run, and it was on the serial console the whole time.
-#
-# Running as arlen also makes the profile's own claim true - "the probe reads
-# exactly what the knowledge app reads" - in identity and not only in scope, and
-# it exercises the path a real app takes: a uid-1000 peer on the 0666 read socket,
-# admitted because it is the ARLEN_OWNER_USER.
-User=arlen
-Group=arlen
+# No User=, so root. The reasoning is at the top of this file; what was missing
+# was the evidence, so here it is. Tried as `User=arlen` on 12 Aug because an app
+# is a user process: every question came back `Connection reset by peer` and the
+# daemon logged `rejecting untrusted cross-uid client peer_uid=1000
+# app_id=kg-probe`. The tier in `cross_uid_admitted` comes from the hardcoded
+# `QuotaConfig::arlen_default()` table, not from the `tier` field in the profile
+# below, and `kg-probe` must not be added to that table - it is release policy and
+# this binary is on no release image.
+
 # The probe now asks twice with a gap, so it outlives systemd's default 90s start
 # timeout. Nothing waits on this unit, so a generous ceiling costs nothing and a
 # killed probe would look exactly like a probe that found nothing.
@@ -124,8 +117,10 @@ chmod 644 "$DESTDIR/usr/lib/systemd/system/arlen-kg-probe.service"
 # into $DESTDIR; it does NOT go in `mkosi.extra/var/lib/arlen/permissions/`, where
 # the app profiles live, because everything there ships in every image and a
 # release system has no `kg-probe` to grant anything to.
-mkdir -p "$DESTDIR/var/lib/arlen/permissions/1000"
-cat > "$DESTDIR/var/lib/arlen/permissions/1000/kg-probe.toml" <<'PROFILE'
+# Under 0/, not 1000/: the daemon resolves a profile by the PEER uid, and the
+# peer here is root. See the User= reasoning in the unit above.
+mkdir -p "$DESTDIR/var/lib/arlen/permissions/0"
+cat > "$DESTDIR/var/lib/arlen/permissions/0/kg-probe.toml" <<'PROFILE'
 # Verify images only. The probe reads exactly what the knowledge app reads, so
 # that what it reports is what the app would have seen.
 [info]
@@ -148,7 +143,7 @@ read = [
     "system.Project.created_at",
 ]
 PROFILE
-chmod 644 "$DESTDIR/var/lib/arlen/permissions/1000/kg-probe.toml"
+chmod 644 "$DESTDIR/var/lib/arlen/permissions/0/kg-probe.toml"
 mkdir -p "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants"
 ln -sf ../arlen-kg-probe.service \
        "$DESTDIR/usr/lib/systemd/system/multi-user.target.wants/arlen-kg-probe.service"
