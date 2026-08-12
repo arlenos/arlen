@@ -139,7 +139,14 @@ fn now_timestamp() -> String {
 
 /// Run the screenshot app.
 pub fn run() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // Dependencies at warn, this app at info. A blanket `info` also turns on
+    // zbus, which logs D-Bus handshake frames WITH their message bytes - and a
+    // message body is user content: file paths, query strings, notification
+    // text. At info that lands in the journal, readable by anything with
+    // journal access and covered by no capability grant, which undoes in a log
+    // line what the graph's scoping is for. A byte trace stays available as
+    // `RUST_LOG=zbus=trace`, deliberately, rather than by default.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,arlen_screenshot_lib=info")).init();
     tauri::Builder::default()
         // The shared shell plugin: the live theme and the chosen language, the
         // same two the other Arlen apps get. Without it this window kept the

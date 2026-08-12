@@ -40,7 +40,14 @@ fn frontend_log(level: String, msg: String) {
 /// Tauri application entry point invoked from `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // Dependencies at warn, this app at info. A blanket `info` also turns on
+    // zbus, which logs D-Bus handshake frames WITH their message bytes - and a
+    // message body is user content: file paths, query strings, notification
+    // text. At info that lands in the journal, readable by anything with
+    // journal access and covered by no capability grant, which undoes in a log
+    // line what the graph's scoping is for. A byte trace stays available as
+    // `RUST_LOG=zbus=trace`, deliberately, rather than by default.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,arlen_harness_lib=info")).init();
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
