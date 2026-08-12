@@ -98,6 +98,24 @@ check("the repository as it stands passes", run(ROOT).code === 0);
   rmSync(d, { recursive: true, force: true });
 }
 
+// The second verify-only file: the drop-in that answers completions in process.
+// On a release image it would reply to every request without a model while the
+// system said otherwise, which is the same shape as admitting the probe.
+const ECHO = 'cat > "$DESTDIR/usr/lib/systemd/user/arlen-ai-proxy.service.d/10-echo.conf"\n';
+{
+  const d = tree({ phases: { "05-ai.sh.chroot": ECHO } });
+  const r = run(d);
+  check("a release phase staging the echo drop-in is caught", r.code === 1);
+  check("and the message names the phase", r.out.includes("05-ai.sh.chroot"));
+  rmSync(d, { recursive: true, force: true });
+}
+
+{
+  const d = tree({ phases: { "09-verify-probes.sh.chroot": STAGES + ECHO } });
+  check("both verify-only files staged by the verify phase pass", run(d).code === 0);
+  rmSync(d, { recursive: true, force: true });
+}
+
 // A tree whose constants cannot be found has not been checked, and saying so
 // beats a cheerful pass - the failure this project has hit twice.
 {

@@ -174,6 +174,40 @@ echo ">> staged the verify probes into the image"
 # The release image ships no such file, and `check-probe-admission.py` fails the
 # tree if that stops being true - without that half this is the compiled-in answer
 # with extra steps.
+# Answer completions from the echo provider on THIS image only.
+#
+# The AI leg of the dogfood asks a real model through llama-server, and on a
+# CPU-only VM that measures the VM: 11.5s for one round trip at ~16 tok/s against
+# the explain skill's declared 20s wall budget, so the leg times out every run
+# (13 Aug boot). Raising the budget was refused for the right reason - the verify
+# image would then exercise a budget the shipped image does not have - and a
+# permanently red leg is worse still, because it teaches people to read past a
+# failure.
+#
+# The echo provider answers the question this boot can actually ask: does
+# shell -> daemon -> skill -> run -> answer work end to end, admitted, dispatched
+# and recorded. It replies in milliseconds and deterministically, so a budget
+# breach here means a defect in OUR code rather than slow hardware - which is the
+# first time the budget check means anything.
+#
+# It does NOT measure inference speed, and nothing here should be read as saying
+# it does. Real-model latency needs hardware this VM is not.
+#
+# Safe by construction on the release side: `ai-proxy` reads this at startup, warns
+# at WARN when it takes the branch, and every answer OPENS with the echo marker, so
+# an echoed reply cannot be mistaken for a model's. The release image ships no
+# drop-in, and `check-probe-admission.py` fails the tree if one appears outside a
+# verify phase.
+mkdir -p "$DESTDIR/usr/lib/systemd/user/arlen-ai-proxy.service.d"
+cat > "$DESTDIR/usr/lib/systemd/user/arlen-ai-proxy.service.d/10-echo.conf" <<'ECHOCONF'
+# Verify images only, staged by mkosi.build.d/09-verify-probes.sh.chroot.
+# Completions are answered in process; no model is contacted.
+[Service]
+Environment=ARLEN_AI_ECHO=1
+ECHOCONF
+chmod 644 "$DESTDIR/usr/lib/systemd/user/arlen-ai-proxy.service.d/10-echo.conf"
+echo ">> staged the verify echo provider"
+
 mkdir -p "$DESTDIR/var/lib/arlen/permissions"
 cat > "$DESTDIR/var/lib/arlen/permissions/user-surfaces.extra" <<'SURFACES'
 # Verify images only, staged by mkosi.build.d/09-verify-probes.sh.chroot.
