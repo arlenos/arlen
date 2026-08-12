@@ -137,6 +137,24 @@ def main() -> int:
                 f"whatever that permission was for is not happening in this app"
             )
 
+    # A count of zero cannot be a pass. Every app in the tree grants
+    # `arlen-shell:allow-theme-get` today, so nothing to check means the scan
+    # stopped finding things - `apps/` moved, capability files went somewhere
+    # else, or the permission was renamed - and the message below would have
+    # said "0 checked" and exited 0 over a check that had stopped working.
+    # Measured 12 Aug while writing this gate's control: an empty `apps/` gave
+    # exactly that.
+    #
+    # If every app legitimately drops both permissions, this fires and the answer
+    # is to remove the dead PAIRS entries, which is the same conclusion.
+    if pairs_checked == 0:
+        print(
+            "no granted permission from the pair table was found in any app; "
+            "either the layout moved or the table is dead. Both need a look - "
+            "a check that finds nothing is not a check that passed."
+        )
+        return 2
+
     print(
         f"{pairs_checked} granted permission(s) checked for the call that uses "
         f"them, across {len(PAIRS)} permission(s) with a single canonical consumer."
