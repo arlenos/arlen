@@ -245,7 +245,7 @@ pub fn resolve_reaches(
                 }
             }
             "events" => {
-                for pattern in &profile.event_bus.subscribe {
+                for pattern in profile.event_bus.subscribe.iter().flatten() {
                     out.push(RevokedReach::EventBusSubscribe {
                         pattern: pattern.clone(),
                     });
@@ -356,7 +356,7 @@ mod tests {
         p.input.register_global_bindings = true;
         p.search.register_handler = true;
         p.intents.dispatch = true;
-        p.event_bus.subscribe = vec!["file.*".to_string()];
+        p.event_bus.subscribe = Some(vec!["file.*".to_string()]);
         p.graph.read = vec!["system.File".to_string()];
 
         for label in crate::profile::profile_labels(&p) {

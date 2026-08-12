@@ -90,7 +90,9 @@ pub fn profile_labels(profile: &PermissionProfile) -> Vec<String> {
 
     // Either direction is reach across the system's own event traffic.
     let bus = &profile.event_bus;
-    if !bus.publish.is_empty() || !bus.subscribe.is_empty() {
+    // A declared-but-empty subscribe list is not reach: it says the component
+    // hears nothing. Only a non-empty one earns the `events` facet.
+    if !bus.publish.is_empty() || bus.subscribe.as_ref().is_some_and(|s| !s.is_empty()) {
         labels.insert("events".into());
     }
 
@@ -168,7 +170,7 @@ mod tests {
             ("intents", |p| p.intents.register = true),
             ("intents", |p| p.intents.preferences = true),
             ("events", |p| p.event_bus.publish = vec!["a.*".into()]),
-            ("events", |p| p.event_bus.subscribe = vec!["a.*".into()]),
+            ("events", |p| p.event_bus.subscribe = Some(vec!["a.*".into()])),
         ];
         for (i, (label, set)) in cases.iter().enumerate() {
             let mut p = profile();
