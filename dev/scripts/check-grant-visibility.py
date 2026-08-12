@@ -116,6 +116,11 @@ def summaries(text: str) -> dict[str, str]:
 
 
 def main() -> int:
+    # A missing source is a moved layout, not an absence of grants. Said plainly
+    # rather than as a traceback, which is loud but tells nobody what to do.
+    if not SOURCE.is_file():
+        print(f"{SOURCE} is not there; the permission types moved and this needs updating")
+        return 2
     text = SOURCE.read_text()
     declared, projected = structs(text), summaries(text)
     problems: list[str] = []
@@ -165,6 +170,19 @@ def main() -> int:
         for p in problems:
             print(f"  - {p}")
         return 1
+    # Zero dimensions is a scan that stopped finding things, and it cannot be a
+    # pass: `sdk/permissions` defines these types and always has. It also made the
+    # summary below print a NEGATIVE count - "-4 reach a summary" - because the
+    # arithmetic subtracts the ledger from a total that was zero. Found on 12 Aug
+    # while writing this gate's control, by pointing it at a source file with no
+    # structs in it.
+    if not declared:
+        print(
+            f"{SOURCE} declares no *Permissions struct; the types moved or the "
+            f"pattern stopped matching. A check that finds nothing has not passed."
+        )
+        return 2
+
     total = sum(len(f) for f in declared.values())
     open_gap = len(REACH_NOT_YET_SUMMARISED)
     print(
