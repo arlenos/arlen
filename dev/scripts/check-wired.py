@@ -187,6 +187,35 @@ def main() -> int:
         f"{excused} excused with a reason. A mention in prose does not count as a "
         f"run, which is how the last four stayed quiet."
     )
+
+    # Which of them a PUSH actually runs. This gate accepts a hit in any run list,
+    # so a check named only in the justfile counts as wired while never running in
+    # CI - the same "it is there, so it must be working" shape one level up, and it
+    # hid a real one: `test-check-invoke-scope.mjs`, added to `just checks` on
+    # 12 Aug and to CI only after this line was written and printed the answer.
+    #
+    # Informational, not a failure. Some genuinely cannot run on a push: the image
+    # and smoke scripts need a built image or live daemons. Naming them every run
+    # is cheaper than a second exemption list, and it keeps the number honest
+    # rather than remembered.
+    ci = ROOT / ".github/workflows/ci.yml"
+    if ci.is_file():
+        ci_text = ci.read_text(encoding="utf-8", errors="replace")
+        local_only = sorted(
+            f.name
+            for f in SCRIPTS.iterdir()
+            if f.is_file()
+            and f.name.startswith(("check-", "test-", "probe-", "smoke-"))
+            and not NOT_A_CHECK.match(f.name)
+            and f.name not in CANNOT_BE_WIRED
+            and invoked_by(f.name)
+            and f.name not in ci_text
+        )
+        if local_only:
+            print(
+                f"\n{len(local_only)} run locally but NOT on a push: "
+                f"{', '.join(local_only)}"
+            )
     if problems:
         print("\nwritten but never run:\n")
         for p in problems:

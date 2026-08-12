@@ -254,6 +254,7 @@ jobs:
           node dev/scripts/test-check-refusal-shape.mjs
           node dev/scripts/test-check-graph-columns.mjs
           node dev/scripts/test-check-invokes.mjs
+          node dev/scripts/test-check-invoke-scope.mjs
           node dev/scripts/test-check-read-scope.mjs
           node dev/scripts/test-check-comment-paths.mjs
           node dev/scripts/test-check-dbus-method-names.mjs

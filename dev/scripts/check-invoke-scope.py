@@ -16,12 +16,18 @@ the name. Commands from a shared PLUGIN are different: the plugin registers them
 into every app that loads it, so they are resolved per app here rather than
 counted as the defining app's.
 
-This was held out of `just checks` on the grounds that it reported two real
-pre-existing calls, and declaring them green would be the wrong way round. Both
-have since been fixed - each app grew its own command of that name, forwarding to
-the shell - so the condition that kept it out is met and it is wired in as of
-12 Aug, with a positive control beside it. Nothing is declared to reach that
-green; the list is empty because the calls resolve.
+Where this runs, stated carefully because the previous version of this paragraph
+was out of date and the replacement I wrote for it inherited the gap.
+
+It was held out of the gate list on the grounds that it reported two real
+pre-existing calls, and declaring them green would be the wrong way round. That
+stopped being the whole picture at `4c0445b6c`, which put it in CI with those two
+named in `ACKNOWLEDGED` - so it has been running on every push since, while this
+docstring still said to run it by hand. Both calls have since been fixed anyway,
+each app having grown its own command of that name forwarding to the shell, so the
+list is empty because the calls resolve rather than because anything was declared.
+Added to `just checks` and given a positive control on 12 Aug, which is what
+changed that day - not whether it runs.
 """
 
 from collections.abc import Callable
