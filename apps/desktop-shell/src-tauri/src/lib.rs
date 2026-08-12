@@ -111,15 +111,30 @@ fn app_shortcut_invoke(app_id: String, window_id: String, action: String) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Default to `info`, not env_logger's `error`. On the image the shell is
-    // started by `arlen-session` with no RUST_LOG, so a bare `init()` silenced
-    // every `log::info!` and `log::warn!` in this binary - the shell was mute in
-    // the journal, and every diagnostic anyone had already placed here (the
-    // consent input-region trace among them) produced nothing. That is a large
-    // part of why the boot consent hang resisted diagnosis: the component in the
-    // middle could not be heard. RUST_LOG still overrides, so a noisy session can
-    // be turned down without a rebuild.
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // OUR crates at info, everything else at warn - and the second half is a
+    // privacy fix, not a tidy-up.
+    //
+    // The shell must be audible: started by `arlen-session` with no RUST_LOG, a
+    // bare `init()` defaults to `error` and silenced every `log::info!` here, which
+    // is a large part of why the boot consent hang resisted diagnosis - the
+    // component in the middle could not be heard.
+    //
+    // But a blanket `info` turns that on for every DEPENDENCY too, and zbus logs
+    // its handshake frames at info with the message bytes attached. A D-Bus
+    // message body is user content: file paths, query strings, notification
+    // bodies. Writing it at info puts that content in the journal, where anything
+    // with journal access can read it and no capability grant applies - which
+    // undoes, in one log line, what the graph's scoping and auditing are for. The
+    // 12 Aug boot journal is most of it by volume: single lines near 700 bytes,
+    // full byte arrays, on every connection.
+    //
+    // So dependencies sit at warn, where a real failure still speaks. A byte-level
+    // trace stays possible - `RUST_LOG=zbus=trace` - but as something a person
+    // turns on, never the resting state of a desktop.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(
+        "warn,arlen_desktop_shell_lib=info,arlen_desktop_shell_core=info",
+    ))
+    .init();
 
     // Created before Builder so they can be both managed and moved into start().
     let overlay_sender = Arc::new(shell_overlay_client::ShellOverlaySender::new());

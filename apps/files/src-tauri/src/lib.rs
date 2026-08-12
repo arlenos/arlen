@@ -2123,7 +2123,14 @@ async fn run_menu_action_listener(app: tauri::AppHandle) {
 }
 
 pub fn run() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // Dependencies at warn, this app at info. A blanket `info` also turns on
+    // zbus, which logs D-Bus handshake frames WITH their message bytes - and a
+    // message body is user content: file paths, query strings, notification
+    // text. At info that lands in the journal, readable by anything with
+    // journal access and covered by no capability grant, which undoes in a log
+    // line what the graph's scoping is for. A byte trace stays available as
+    // `RUST_LOG=zbus=trace`, deliberately, rather than by default.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,arlen_files_lib=info")).init();
 
     // Pin the GTK program name to the bundle id BEFORE GTK initialises. On
     // webkit2gtk-4.1 (GTK3 - what the Tauri apps link) the Wayland
