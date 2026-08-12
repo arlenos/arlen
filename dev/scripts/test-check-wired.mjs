@@ -58,6 +58,36 @@ const script = "#!/usr/bin/env python3\nprint('ok')\n";
 
 console.log("check-wired:");
 
+// The payload declaration. A check that cannot run on a push has one possible
+// home - the boot-verify run - and naming it there is only worth anything if the
+// naming cannot go stale. Both drift directions, since each leaves a different
+// lie behind: an entry that no longer needs the image makes the payload look
+// bigger than the work, and a missing one means nothing will ever run that check
+// against an image while the list still reads complete.
+check(
+  "a payload entry that is not a local-only check is caught",
+  {
+    [CHECK]: script,
+    "dev/justfile": "checks:\n    python3 dev/scripts/check-probe.py\n",
+    ".github/workflows/ci.yml": "jobs:\n  x:\n    steps:\n      - run: python3 dev/scripts/check-probe.py\n",
+    "dev/scripts/boot-verify-payload.tsv": "smoke-ghost.sh\tguest\tnothing\n",
+    ...EXEMPTED,
+  },
+  (code, out) => code === 1 && out.includes("is in the boot-verify payload"),
+);
+
+check(
+  "a local-only check the payload does not name is caught",
+  {
+    [CHECK]: script,
+    "dev/justfile": "checks:\n    python3 dev/scripts/check-probe.py\n",
+    ".github/workflows/ci.yml": "jobs:\n  x:\n    steps:\n      - run: true\n",
+    "dev/scripts/boot-verify-payload.tsv": "# nothing declared\n",
+    ...EXEMPTED,
+  },
+  (code, out) => code === 1 && out.includes("does not name it"),
+);
+
 // A gate whose whole subject is "silence reads like success" had the shape it
 // checks for: pointed at a tree with no scripts directory it printed "nothing to
 // check" and exited 0, and pointed at an empty one it exited 0 having examined
