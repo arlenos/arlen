@@ -29,6 +29,16 @@ RestartSec=2
 # AF_UNIX (the Wayland socket) and has no network.
 ProtectSystem=strict
 ProtectHome=read-only
+# The one path this daemon must write, and it writes it to READ rather than to
+# store anything: `watch_manifest` creates `~/.config/arlen` so it can put a
+# notify watch on `wallpaper.toml`, because the directory may not exist until
+# Settings first writes a manifest. Under `ProtectSystem=strict` with nothing
+# writable the whole hierarchy is read-only, `create_dir_all` fails EROFS, the
+# function logs "cannot watch for wallpaper changes" and returns None - so the
+# daemon runs, and simply never notices a wallpaper change again. It self-heals
+# once the directory exists, which is why it would look intermittent rather than
+# broken: a configured profile works, a fresh one silently does not.
+ReadWritePaths=%h/.config/arlen
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectKernelTunables=yes
