@@ -260,7 +260,10 @@ mod tests {
         let d = resolve_decision(&mut q, id, ConsentOutcome::AllowedForWindow, now).unwrap();
         assert_eq!(d.reply, ConsentOutcome::AllowedForWindow);
         let grant = d.grant.expect("a window is recorded, unlike allow-once");
-        assert_eq!(grant.expires_at_micros, Some(now + crate::grant::GESTURE_WINDOW_MICROS));
+        assert_eq!(
+            grant.lifetime,
+            crate::grant::GrantLifetime::Until { at_micros: now + crate::grant::GESTURE_WINDOW_MICROS }
+        );
     }
 
     #[test]

@@ -31,16 +31,62 @@ pub struct ConsentGrant {
     pub summary: String,
     /// The stable, idempotent revocation handle (recipient + class + scope).
     pub revocation_handle: String,
-    /// When this grant stops authorising, in epoch microseconds, or `None` for
-    /// one that lasts until it is revoked.
+    /// How long this grant lasts.
     ///
-    /// A window is not a weaker kind of remembering, it is a different promise:
-    /// the user allowed something for the interaction they were in, and the
-    /// grant has to stop on its own because nothing will come back to close it.
-    /// Readers must treat a passed expiry as not-live rather than relying on
-    /// anyone to revoke it.
+    /// One field rather than a second collection of session-scoped grants: a
+    /// person asking what an app can reach has to get ONE answer, and two stores
+    /// means a browser that looks complete while being partial. Revocation is the
+    /// same operation however the grant arrived, for the same reason - two revoke
+    /// paths is how one of them ends up not covering something.
+    ///
+    /// Absent means [`GrantLifetime::Session`], and so does a kind this build does
+    /// not recognise. An omission must never confer the longer-lived thing.
     #[serde(default)]
-    pub expires_at_micros: Option<i64>,
+    pub lifetime: GrantLifetime,
+}
+
+/// How long a grant authorises for.
+///
+/// The instant lives INSIDE the windowed variant rather than beside the enum, so
+/// a window without an end and an end without a window are both unrepresentable.
+/// The alternative - a kind field and a separate timestamp - is two places to
+/// read one fact, and they drift.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum GrantLifetime {
+    /// Ends when the interaction's window closes, at this instant in epoch
+    /// microseconds. The grant has to stop on its own: nothing comes back to
+    /// close it, so a reader treats a passed instant as not-live rather than
+    /// waiting for a revoke.
+    Until { at_micros: i64 },
+    /// Lasts until revoked, and is recorded beside the profile so it reads as
+    /// something the user added rather than something the app shipped with.
+    Persistent,
+    /// Ends when this login does. The default, and where anything unrecognised
+    /// lands: `#[serde(other)]` catches a kind written by a newer build, and
+    /// `#[serde(default)]` on the field catches one that is missing entirely.
+    ///
+    /// A malformed `until` - the kind present, the instant not - fails the record
+    /// rather than landing here, which drops the grant. That is stricter than
+    /// this default and deliberately not softened: a window with no end is not a
+    /// window, and conferring nothing is safer than conferring a session.
+    #[serde(other)]
+    #[default]
+    Session,
+}
+
+impl GrantLifetime {
+    /// The instant this stops authorising, for the one kind that has one.
+    ///
+    /// `None` is not "forever" - a session grant also ends - it is "no instant to
+    /// compare against", and a caller that only checks this must apply the session
+    /// boundary separately.
+    pub fn expires_at_micros(self) -> Option<i64> {
+        match self {
+            GrantLifetime::Until { at_micros } => Some(at_micros),
+            GrantLifetime::Persistent | GrantLifetime::Session => None,
+        }
+    }
 }
 
 /// How long a gesture-scoped elevation authorises for.
@@ -86,9 +132,13 @@ pub fn mint_grant(
     let class = pending.request.class;
     let scope = pending.request.scope.clone();
     let revocation_handle = revocation_handle(&recipient, class, scope.as_deref());
-    let expires_at_micros = match outcome {
-        ConsentOutcome::AllowedForWindow => Some(now_micros.saturating_add(GESTURE_WINDOW_MICROS)),
-        _ => None,
+    let lifetime = match outcome {
+        ConsentOutcome::AllowedForWindow => GrantLifetime::Until {
+            at_micros: now_micros.saturating_add(GESTURE_WINDOW_MICROS),
+        },
+        // Remembering is the choice to keep it past this login, which is the one
+        // outcome that may outlive the session.
+        _ => GrantLifetime::Persistent,
     };
     Some(ConsentGrant {
         recipient,
@@ -96,7 +146,7 @@ pub fn mint_grant(
         scope,
         summary: pending.request.summary.clone(),
         revocation_handle,
-        expires_at_micros,
+        lifetime,
     })
 }
 
@@ -157,16 +207,62 @@ mod tests {
         let now = 1_700_000_000_000_000;
         let g = mint_grant(&pending("app", Some("photos")), ConsentOutcome::AllowedForWindow, now)
             .expect("a window is real authority, so it is recorded");
-        assert_eq!(g.expires_at_micros, Some(now + GESTURE_WINDOW_MICROS));
+        assert_eq!(g.lifetime, GrantLifetime::Until { at_micros: now + GESTURE_WINDOW_MICROS });
 
         // Remembering carries no expiry, which is what makes it remembering.
         let r = mint_grant(&pending("app", Some("photos")), ConsentOutcome::AllowedRemembered, now)
             .unwrap();
-        assert_eq!(r.expires_at_micros, None);
+        assert_eq!(r.lifetime, GrantLifetime::Persistent);
 
         // And the two are the same grant: renewing a window pushes the expiry out
         // rather than leaving a second row behind.
         assert_eq!(g.revocation_handle, r.revocation_handle);
+    }
+
+    /// The hazard that comes with one shared store: a lifetime bug that persists
+    /// a session grant. So the fail-safe direction is asserted rather than
+    /// assumed, on the two shapes a stored record can be wrong in.
+    #[test]
+    fn a_lifetime_that_cannot_be_read_is_a_session_not_a_promise() {
+        // Written by an older build that had no lifetime at all.
+        let absent: ConsentGrant = serde_json::from_str(
+            r#"{"recipient":"app","class":"capability_grant","scope":"/p",
+                "summary":"s","revocation_handle":"h"}"#,
+        )
+        .expect("a record without the field still parses");
+        assert_eq!(absent.lifetime, GrantLifetime::Session);
+
+        // Written by a NEWER build with a kind this one has never heard of. The
+        // tempting failure is to treat unknown as unrestricted.
+        let unknown: ConsentGrant = serde_json::from_str(
+            r#"{"recipient":"app","class":"capability_grant","scope":"/p",
+                "summary":"s","revocation_handle":"h",
+                "lifetime":{"kind":"until_reboot"}}"#,
+        )
+        .expect("an unknown kind does not fail the record");
+        assert_eq!(unknown.lifetime, GrantLifetime::Session);
+
+        // And a window with no end is not a window: the record is refused, which
+        // confers nothing at all - stricter than the default above, on purpose.
+        assert!(serde_json::from_str::<ConsentGrant>(
+            r#"{"recipient":"app","class":"capability_grant","scope":"/p",
+                "summary":"s","revocation_handle":"h","lifetime":{"kind":"until"}}"#,
+        )
+        .is_err());
+    }
+
+    /// A session grant has no instant to compare against, and that must not read
+    /// as "no expiry, therefore forever" at a call site that only asks for one.
+    #[test]
+    fn a_session_grant_reports_no_instant_without_reporting_permanence() {
+        assert_eq!(GrantLifetime::Session.expires_at_micros(), None);
+        assert_eq!(GrantLifetime::Persistent.expires_at_micros(), None);
+        assert_eq!(GrantLifetime::Until { at_micros: 7 }.expires_at_micros(), Some(7));
+        assert_ne!(
+            GrantLifetime::Session,
+            GrantLifetime::Persistent,
+            "the two that share an absent instant are still different promises"
+        );
     }
 
     #[test]

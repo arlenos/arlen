@@ -79,7 +79,7 @@ impl GrantStore {
             g.recipient == recipient
                 && g.class == request.class
                 && g.scope == request.scope
-                && g.expires_at_micros.is_none_or(|e| now_micros < e)
+                && g.lifetime.expires_at_micros().is_none_or(|e| now_micros < e)
         })
     }
 
@@ -439,7 +439,7 @@ impl SharedState {
                         g.class.as_key(),
                         g.scope.as_deref(),
                         &g.revocation_handle,
-                        g.expires_at_micros,
+                        g.lifetime.expires_at_micros(),
                     )
                     .await
                 {
@@ -502,7 +502,9 @@ mod tests {
             scope: Some("/photos".to_string()),
             summary: "reach your photos".to_string(),
             revocation_handle: handle.to_string(),
-            expires_at_micros: expires,
+            lifetime: expires
+                .map(|at_micros| crate::grant::GrantLifetime::Until { at_micros })
+                .unwrap_or(crate::grant::GrantLifetime::Persistent),
         }
     }
 
