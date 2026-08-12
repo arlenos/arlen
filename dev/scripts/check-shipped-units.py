@@ -6,11 +6,20 @@
 
 A daemon can be finished - key custody, protocol, tests, a hardened unit in its
 own `dist/` - and still be absent from the image, because nothing connects the two
-and nothing complains. That is not hypothetical: `arlen-ai-undo-signer` is built
-and deployed nowhere while THREE producers write to its socket, so every
-reversible action they take is journalled into nothing. The code is right and the
-delivery silently is not, which is the same shape as a unit whose ReadWritePaths
-omits the directory it writes, or an activation file that skips its hardening.
+and nothing complains. That is not hypothetical: `arlen-ai-undo-signer` was built
+and deployed nowhere while THREE producers wrote to its socket, so every
+reversible action they took was journalled into nothing. The code was right and
+the delivery silently was not, which is the same shape as a unit whose
+ReadWritePaths omits the directory it writes, or an activation file that skips its
+hardening.
+
+It ships now, and the sequel is the reason to state the limit of this check
+plainly: installed is not started. The same daemon then spent time INSTALLED,
+hardened, correct and never running, because its `WantedBy=` was never turned
+into a symlink and this gate does not look at enablement (12 Aug;
+`check-packaged-units.sh` covers that half now). One question per check, and
+knowing which question this one answers is what stops its green being read as
+"the undo log works".
 
 The gate does not demand that everything ship. Plenty of components are ahead of
 the image on purpose. It demands that the answer be WRITTEN DOWN: each unit is
