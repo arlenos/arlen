@@ -518,26 +518,45 @@ fn forward_power_event(app: &AppHandle, event_type: &str, payload: &[u8], observ
     use prost::Message;
     if event_type == "power.state" {
         if let Ok(p) = proto::PowerStatePayload::decode(payload) {
-            let json = serde_json::json!({
-                "onBattery": p.on_battery,
-                "percentage": p.percentage,
-                "state": p.state,
-                "timeToEmptySeconds": p.time_to_empty_seconds,
-                "timeToFullSeconds": p.time_to_full_seconds,
-                "lidState": p.lid_state,
-                "profile": p.profile,
-                // WHEN this was true, not when it arrived. The bus retains the
-                // last message of a state topic and hands it to a subscriber on
-                // subscribe, so the first `power.state` after a shell restart may
-                // describe a battery reading from minutes ago. Without this the
-                // indicator has no way to tell last-known from current and paints
-                // stale state as live - which is the whole reason the retained
-                // message carries its own timestamp rather than being restamped.
-                "observedAtMicros": observed_at,
-            });
-            let _ = app.emit("arlen://power-changed", &json);
+            let _ = app.emit("arlen://power-changed", battery_view(&p, observed_at));
         }
     }
+}
+
+/// The daemon's power snapshot in the shape the battery indicator already reads.
+///
+/// The mapping lives here rather than in the component because it holds the one
+/// decision in this path, and this side has tests. `charging` comes from `state`,
+/// NOT from `!on_battery`: a full battery on AC is not charging, and an indicator
+/// that inferred it from the absence of battery power would show a charging bolt
+/// on a machine that has finished. The two disagree exactly when the icon would
+/// be wrong.
+///
+/// `observed_at_micros` is when the reading was true, not when it arrived. The bus
+/// retains the last message of a state topic and replays it on subscribe, so the
+/// first snapshot after a shell restart can be minutes old; a consumer with no
+/// timestamp would paint that as live.
+fn battery_view(p: &proto::PowerStatePayload, observed_at_micros: i64) -> serde_json::Value {
+    // Whichever direction the battery is going, in minutes. The proto sends 0 for
+    // "unknown" in both fields, so 0 becomes absent rather than "no time left" -
+    // an indicator reading a literal zero would announce an empty battery.
+    let seconds = if p.on_battery {
+        p.time_to_empty_seconds
+    } else {
+        p.time_to_full_seconds
+    };
+    let time_remaining_minutes = (seconds > 0).then(|| seconds / 60);
+
+    serde_json::json!({
+        "percentage": p.percentage,
+        "charging": p.state == "charging",
+        "time_remaining_minutes": time_remaining_minutes,
+        "onBattery": p.on_battery,
+        "state": p.state,
+        "lidState": p.lid_state,
+        "profile": p.profile,
+        "observedAtMicros": observed_at_micros,
+    })
 }
 
 /// One-shot producer-side emit. Used by the action-dispatch
@@ -698,4 +717,58 @@ fn session_origin() -> String {
 fn extract_payload_field(event: &proto::Event, field: &str) -> Option<String> {
     let json: serde_json::Value = serde_json::from_slice(&event.payload).ok()?;
     json.get(field)?.as_str().map(|s| s.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snapshot(state: &str, on_battery: bool, to_empty: i64, to_full: i64) -> proto::PowerStatePayload {
+        proto::PowerStatePayload {
+            on_battery,
+            percentage: 100,
+            state: state.to_string(),
+            time_to_empty_seconds: to_empty,
+            time_to_full_seconds: to_full,
+            lid_state: "open".to_string(),
+            profile: "balanced".to_string(),
+        }
+    }
+
+    #[test]
+    fn a_full_battery_on_ac_is_not_charging() {
+        // The reason `charging` reads `state` and not `!on_battery`. Inferring it
+        // from the absence of battery power puts a charging bolt on a machine that
+        // finished charging hours ago.
+        let v = battery_view(&snapshot("full", false, 0, 0), 1);
+        assert_eq!(v["charging"], serde_json::json!(false));
+        assert_eq!(v["onBattery"], serde_json::json!(false));
+    }
+
+    #[test]
+    fn a_charging_battery_is_charging() {
+        let v = battery_view(&snapshot("charging", false, 0, 1800), 1);
+        assert_eq!(v["charging"], serde_json::json!(true));
+        assert_eq!(v["time_remaining_minutes"], serde_json::json!(30));
+    }
+
+    #[test]
+    fn an_unknown_time_is_absent_rather_than_zero() {
+        // The proto sends 0 for unknown. An indicator reading it literally would
+        // say a discharging battery has no time left.
+        let v = battery_view(&snapshot("discharging", true, 0, 0), 1);
+        assert_eq!(v["time_remaining_minutes"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn a_discharging_battery_counts_down_not_up() {
+        let v = battery_view(&snapshot("discharging", true, 3600, 999), 1);
+        assert_eq!(v["time_remaining_minutes"], serde_json::json!(60));
+    }
+
+    #[test]
+    fn the_reading_carries_when_it_was_true() {
+        let v = battery_view(&snapshot("discharging", true, 60, 0), 424242);
+        assert_eq!(v["observedAtMicros"], serde_json::json!(424242i64));
+    }
 }
