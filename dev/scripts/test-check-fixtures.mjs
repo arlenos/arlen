@@ -474,6 +474,53 @@ function catalogFixtures() {
   for (const d of [good, broken, empty, dup]) rmSync(d, { recursive: true, force: true });
 }
 
+// ---------------------------------------------------------------------------
+// check-invoke-shape.py, wrapper pass
+//
+// A wrapper taking only the command name and building the payload itself. Its
+// keys live in the WRAPPER, not at the call, so a check reading only call sites
+// sees `run("probe_do")` with no arguments and compares nothing. Five real calls
+// sat outside the count that way until 12 Aug while the printed number looked
+// complete, and the exemption that covered them had outlived its reason: it said
+// the shape was one site, and by then there were two wrappers and a third call.
+// ---------------------------------------------------------------------------
+function wrapperShapeFixtures() {
+  console.log("\ncheck-invoke-shape (wrappers):");
+
+  const MENU = `function run(cmd: string): void {
+  const path = "/x";
+  invoke(cmd, { path });
+}
+run("probe_do");
+`;
+
+  const matching = tree({
+    "apps/alpha/src-tauri/src/lib.rs": '#[tauri::command]\npub fn probe_do(path: String) {}\n',
+    "apps/alpha/src/lib/Menu.svelte": MENU,
+  });
+  const w1 = run("check-invoke-shape.py", matching);
+  check(
+    "a wrapper that builds a fixed payload has its calls compared",
+    w1.code === 0 && w1.out.includes("1 invoke call"),
+    `exit ${w1.code}: ${w1.out.trim()}`,
+  );
+
+  // Following it has to mean CHECKING it: a wrapper resolved but not compared
+  // would be the same silence with a larger count.
+  const mismatched = tree({
+    "apps/alpha/src-tauri/src/lib.rs": '#[tauri::command]\npub fn probe_do(target: String) {}\n',
+    "apps/alpha/src/lib/Menu.svelte": MENU,
+  });
+  const w2 = run("check-invoke-shape.py", mismatched);
+  check(
+    "and a mismatch reached through one is reported",
+    w2.code === 1 && w2.out.includes("probe_do"),
+    `exit ${w2.code}: ${w2.out.trim()}`,
+  );
+}
+
+wrapperShapeFixtures();
+
 catalogFixtures();
 
 // ---------------------------------------------------------------------------
