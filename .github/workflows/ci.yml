@@ -261,6 +261,7 @@ jobs:
           node dev/scripts/test-check-comment-paths.mjs
           node dev/scripts/test-check-dbus-method-names.mjs
           node dev/scripts/test-check-granted-and-used.mjs
+          node dev/scripts/test-check-grant-visibility.mjs
           node dev/scripts/test-check-proto-drift.mjs
           node dev/scripts/test-check-spawned-binaries.mjs
           node dev/scripts/test-check-optimistic-write.mjs
