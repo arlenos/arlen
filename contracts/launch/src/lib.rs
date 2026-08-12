@@ -273,6 +273,81 @@ pub fn scheme_handler_mime(uri: &str) -> Option<String> {
     Some(format!("x-scheme-handler/{scheme}"))
 }
 
+/// Percent-encode a local path into the path component of a `file:` URI.
+///
+/// Unreserved characters and `/` pass through; everything else is encoded,
+/// including the space and the `#` that would otherwise start a fragment and
+/// truncate the name. Two sites in the tree build this with `format!("file://
+/// {path}")`, which is fine until a filename contains one of those.
+fn encode_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for b in path.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// Ask the launch service to act on one request, and wait for what happened.
+///
+/// One request per connection, which is what the service serves: connect, send,
+/// read the outcome, drop. There is no session to keep.
+///
+/// **This is the replacement for spawning `xdg-open`, and the reason it belongs
+/// here rather than in each caller.** Every participant was reimplementing the
+/// same three lines around the same socket, so most of them did not, and kept
+/// the subprocess instead - which is how a launch ended up with no confinement
+/// flag, no resolved app id and nothing to report back but an exit status.
+pub async fn request(req: &LaunchRequest) -> Result<LaunchOutcome, WireError> {
+    let mut stream = tokio::net::UnixStream::connect(socket_path()).await?;
+    write_request(&mut stream, req).await?;
+    read_outcome(&mut stream).await
+}
+
+/// Open a local file with whatever the user configured to open it.
+///
+/// Carries both forms: the URI for an application declaring `%u`, the path for
+/// one declaring `%f`. Which is used is the service's decision, from the
+/// application's own desktop entry - the caller cannot know it and should not
+/// have to guess.
+pub async fn open_path(path: &str) -> Result<LaunchOutcome, WireError> {
+    request(&open_path_request(path)).await
+}
+
+/// The request [`open_path`] sends, without sending it.
+///
+/// Public because the building is the part with a decision in it and the sending
+/// is not, so this is the part worth testing and worth reading.
+pub fn open_path_request(path: &str) -> LaunchRequest {
+    LaunchRequest::Open {
+        target: Target {
+            uri: format!("file://{}", encode_path(path)),
+            path: Some(path.to_string()),
+        },
+        mime: None,
+    }
+}
+
+/// Open a URI with whatever the user configured for its scheme.
+///
+/// The MIME goes along when the scheme names it, because for `https:` the caller
+/// genuinely does know and the lookup is pure cost.
+pub async fn open_uri(uri: &str) -> Result<LaunchOutcome, WireError> {
+    request(&open_uri_request(uri)).await
+}
+
+/// The request [`open_uri`] sends, without sending it.
+pub fn open_uri_request(uri: &str) -> LaunchRequest {
+    LaunchRequest::Open {
+        target: Target { uri: uri.to_string(), path: None },
+        mime: scheme_handler_mime(uri),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -459,5 +534,41 @@ mod tests {
             read_request(&mut b).await,
             Err(WireError::Body(_))
         ));
+    }
+
+    #[test]
+    fn a_path_with_a_space_or_a_hash_survives_the_uri() {
+        // Unencoded, `#` starts a fragment and everything after it is dropped -
+        // the file opens as a different, shorter name, or not at all.
+        let LaunchRequest::Open { target, .. } = open_path_request("/home/u/my notes #2.txt")
+        else {
+            panic!("open_path builds an Open request");
+        };
+        assert_eq!(target.uri, "file:///home/u/my%20notes%20%232.txt");
+        // The path stays verbatim: it is handed to an application as an argument,
+        // not parsed as a URI, so encoding it would be corruption.
+        assert_eq!(target.path.as_deref(), Some("/home/u/my notes #2.txt"));
+    }
+
+    #[test]
+    fn an_ordinary_path_is_left_alone() {
+        let LaunchRequest::Open { target, .. } = open_path_request("/home/u/a-b_c.1~/x.txt")
+        else {
+            panic!("open_path builds an Open request");
+        };
+        assert_eq!(target.uri, "file:///home/u/a-b_c.1~/x.txt");
+    }
+
+    #[test]
+    fn a_uri_carries_the_mime_its_scheme_already_names() {
+        let LaunchRequest::Open { target, mime } = open_uri_request("https://example.invalid/x")
+        else {
+            panic!("open_uri builds an Open request");
+        };
+        assert_eq!(target.uri, "https://example.invalid/x");
+        assert_eq!(mime.as_deref(), Some("x-scheme-handler/https"));
+        // No path: it is not a local file, and claiming one would offer a
+        // `%f` application something it cannot open.
+        assert!(target.path.is_none());
     }
 }
