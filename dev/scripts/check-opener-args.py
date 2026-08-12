@@ -31,8 +31,10 @@ any particular tool.
 
 What this does NOT cover:
 
-  * `xdg-mime`, `gio`, `gtk-launch` and the rest. Unmeasured, so unlisted: a
-    check that guesses is worse than one that admits its scope.
+  * `gio`, `gtk-launch` and the rest. Unmeasured, so unlisted: a check that
+    guesses is worse than one that admits its scope. `xdg-mime` was on this line
+    until 12 Aug, when running it took a minute and moved it into scope - the rule
+    is to measure before widening, not to leave a tool out forever.
   * A path that reaches `xdg-open` through a helper rather than a literal
     `.arg(...)` on the same call.
   * Whether an acknowledged call's witness string really makes it safe. The
@@ -56,7 +58,27 @@ ROOT = (
     else Path(__file__).resolve().parents[2]
 )
 
-CALL = re.compile(r'Command::new\("xdg-open"\)')
+# Both tools in the family that have been MEASURED to take a leading-dash
+# argument as an option. `xdg-mime` joined on 12 Aug:
+#
+#     $ xdg-mime query filetype -x.txt
+#     xdg-mime: unexpected option '-x.txt'
+#
+# It was in this file's not-covered list under "unmeasured, so unlisted - a check
+# that guesses is worse than one that admits its scope", which was the right rule
+# and the wrong conclusion to leave sitting: the tree asks `xdg-mime` from three
+# places, and one of them was passing a path straight off the launch socket. The
+# rule stands for `gio` and `gtk-launch`, which remain unmeasured and unlisted.
+CALL = re.compile(r'Command::new\("xdg-(?:open|mime)"\)')
+
+# How far back to look for the step that makes the argument absolute. It reads
+# before the call far more often than inside the builder chain -
+# `let path = canonicalize(path)?;` on the line above, `let abs = abs(&path);` two
+# lines above - so a chain-only search reported every one of them. Bounded rather
+# than whole-function on purpose: a wide window starts finding somebody else's
+# `canonicalize` and calling this call safe, which is the failure mode that costs
+# more than a false positive.
+LOOKBEHIND = 320
 
 # `.arg("--")` is NOT a guard here, and used to be the one this gate asked for.
 #
@@ -145,6 +167,7 @@ def main() -> int:
                 default=len(tail),
             )
             chain = tail[:end]
+            before = text[max(0, m.start() - LOOKBEHIND) : m.start()]
             rel = str(path.relative_to(ROOT))
             # Checked BEFORE the guard and before any excuse: a marker is a broken
             # call whatever else the chain does, so it must not be able to hide
@@ -153,7 +176,7 @@ def main() -> int:
                 line = text[: m.start()].count("\n") + 1
                 breaks.append(f"{rel}:{line}")
                 continue
-            if GUARD.search(chain):
+            if GUARD.search(chain) or GUARD.search(before):
                 continue
             excuse = ACKNOWLEDGED.get(rel)
             # The excuse applies to a call that carries its witness, not to every
@@ -192,10 +215,10 @@ def main() -> int:
         )
 
     print(
-        f"{calls} xdg-open call(s) across {scanned} file(s) checked for an argument "
-        f"that cannot be read as an option. "
-        f"One tool only: the same reasoning does not transfer, which was measured "
-        f"before this check was written."
+        f"{calls} xdg-open/xdg-mime call(s) across {scanned} file(s) checked for an "
+        f"argument that cannot be read as an option. "
+        f"Two tools, both measured: the reasoning does not transfer on its own, "
+        f"which nmcli demonstrated before this check was written."
     )
     if breaks:
         print(

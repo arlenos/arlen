@@ -122,6 +122,40 @@ check(
   (code, out) => code === 1 && out.includes("no such call is there now"),
 );
 
+// xdg-mime came into scope on 12 Aug, measured rather than assumed. Both halves:
+// it is checked at all, and the absolute step is found where it actually reads -
+// on the line BEFORE the call, not inside the builder chain.
+check(
+  "an xdg-mime call with a bare path is caught too",
+  {
+    ...CARRIED,
+    "apps/probe/src-tauri/src/lib.rs":
+      "pub fn kind(path: &str) -> Option<String> {\n" +
+      '    Command::new("xdg-mime")\n' +
+      '        .args(["query", "filetype", path])\n' +
+      "        .output()\n" +
+      "        .ok()?;\n" +
+      "}\n",
+  },
+  (code, out) => code === 1 && out.includes("probe"),
+);
+
+check(
+  "an absolute step on the line before the call is accepted",
+  {
+    ...CARRIED,
+    "apps/probe/src-tauri/src/lib.rs":
+      "pub fn kind(path: &str) -> Option<String> {\n" +
+      "    let real = std::fs::canonicalize(path).ok()?;\n" +
+      '    Command::new("xdg-mime")\n' +
+      '        .args(["query", "filetype", real.as_os_str()])\n' +
+      "        .output()\n" +
+      "        .ok()?;\n" +
+      "}\n",
+  },
+  (code) => code === 0,
+);
+
 check(
   "an empty tree is a moved layout, not a pass",
   { "README.md": "nothing here\n" },
