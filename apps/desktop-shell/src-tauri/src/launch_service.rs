@@ -109,13 +109,47 @@ fn bind(path: &Path) -> std::io::Result<std::os::unix::net::UnixListener> {
     Ok(listener)
 }
 
-/// Serve one request.
+/// Serve one request off the socket.
 async fn handle(mut stream: UnixStream) -> Result<(), String> {
     let caller = attest(&stream);
     let request = proto::read_request(&mut stream)
         .await
         .map_err(|e| e.to_string())?;
+    let outcome = dispatch(&request, &caller).await;
+    proto::write_outcome(&mut stream, &outcome)
+        .await
+        .map_err(|e| e.to_string())
+}
 
+/// The shell's own name, for a launch the shell itself asks for.
+///
+/// Matches what `arlen_permissions` resolves the shell's binary to, so a line in
+/// the ledger reads the same whether the request arrived over the socket from
+/// another process or came from a menu item in this one. A separate label like
+/// "internal" would make the shell's own launches the one kind nobody can grep
+/// for by application.
+const SELF_CALLER: &str = "desktop-shell";
+
+/// The shell asking on its own behalf.
+///
+/// A constructor rather than a public `Caller`, because the only honest thing an
+/// in-process caller can be is this one. Handing out the type would let any call
+/// site name any application as the cause of a launch, which is the exact claim
+/// the socket refuses to take on trust from a peer.
+pub fn self_caller() -> Caller {
+    Caller::Named(SELF_CALLER.to_string())
+}
+
+/// Decide, record and perform one launch, whatever asked for it.
+///
+/// Split out of [`handle`] so the shell's own call sites - the waypointer, the
+/// recent-files list, an intent handoff - reach the launch path without dialling
+/// a socket they are already serving. They used to spawn `xdg-open` instead,
+/// which meant the shell's own launches were the ones with no audit line, no
+/// resolved app id and no confinement: exactly the launches an attacker would
+/// most like to be invisible, missing from the ledger because the code that
+/// records them was on the other side of a socket the shell never called.
+pub async fn dispatch(request: &proto::LaunchRequest, caller: &Caller) -> proto::LaunchOutcome {
     let env = XdgEnv::from_process();
     let handlers = search::load_mimeapps(&env);
     let confined = crate::shell_config::get_shell_config()
@@ -123,8 +157,8 @@ async fn handle(mut stream: UnixStream) -> Result<(), String> {
         .unwrap_or(false);
 
     let served = service::serve(
-        &request,
-        &caller,
+        request,
+        caller,
         &handlers,
         |id| search::load_entry(&env, id),
         mime_of,
@@ -163,9 +197,7 @@ async fn handle(mut stream: UnixStream) -> Result<(), String> {
         },
         _ => served.outcome.clone(),
     };
-    proto::write_outcome(&mut stream, &outcome)
-        .await
-        .map_err(|e| e.to_string())
+    outcome
 }
 
 /// What kind of thing a document is, when the caller did not say.
