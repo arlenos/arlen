@@ -503,6 +503,14 @@ def main():
                     help="with the consent dialog up, click 'Allow once' via the "
                          "absolute pointer and confirm the dialog dismisses (the "
                          "shell -> broker Resolve leg). Implies --require-consent")
+    ap.add_argument("--linger", type=int, default=0, metavar="SECONDS",
+                    help="stay alive this long after the checks pass, before the "
+                         "shutdown. Pair with --keep to get a journal that covers "
+                         "steady state and not only startup.")
+    ap.add_argument("--shutdown-wait", type=int, default=30, metavar="SECONDS",
+                    help="how long to let the guest halt after the ACPI powerdown "
+                         "before pulling the plug. Only the journal depends on it, "
+                         "so a small number costs a short log and never a verdict.")
     ap.add_argument("--keep", action="store_true",
                     help="keep the workdir even when the run passes. The overlay "
                          "holds the guest's persistent journal, which is the only "
@@ -871,7 +879,49 @@ def main():
                 if os.path.exists(approved) and os.path.getsize(approved) > 0:
                     break
                 time.sleep(0.1)
-        qmp(f, "quit")
+        # Let the guest live a while before shutting it down, when asked.
+        #
+        # The bar-polling modes return the moment the bar appears, which is the right
+        # behaviour for a pass/fail gate and means a run is over at about 11s. With
+        # the journal now complete, that completeness buys nothing on its own: a whole
+        # record of the first nine seconds is still a record of startup. Lingering is
+        # what turns this into "and then it behaved" - a daemon retrying, a socket
+        # refused on the tenth attempt, a timer firing - all of which happen in the
+        # part no run has ever stayed alive for.
+        if args.linger:
+            print(f"lingering {args.linger}s so the journal has an after")
+            time.sleep(args.linger)
+
+        # Shut the guest DOWN rather than pulling its plug, so journald gets to
+        # write out the rest of the boot.
+        #
+        # `quit` kills QEMU where it stands, and the cost of that is only visible
+        # if you go looking in the overlay afterwards: the persistent journal ends
+        # around 3s, well before even the serial console gives up, because
+        # everything journald had not yet written back dies with the process. Every
+        # boot this harness has ever run left its own record truncated that way.
+        #
+        # An ACPI powerdown makes systemd stop its units, which flushes the journal,
+        # and then QEMU exits by itself. Bounded, because a guest that hangs on
+        # shutdown must not hang the harness: if it has not gone by the deadline we
+        # pull the plug after all and are no worse off than before. `-no-reboot`
+        # means a guest that reboots instead of halting also just exits.
+        shutdown_deadline = time.monotonic() + args.shutdown_wait
+        try:
+            qmp(f, "system_powerdown")
+            while time.monotonic() < shutdown_deadline:
+                if proc.poll() is not None:
+                    break
+                time.sleep(0.25)
+        except (EOFError, OSError, ValueError):
+            pass                            # already gone, or the socket died with it
+        if proc.poll() is None:
+            print(f"guest did not halt within {args.shutdown_wait}s; pulling the plug "
+                  "(its journal will be short)")
+            try:
+                qmp(f, "quit")
+            except (EOFError, OSError, ValueError):
+                pass
     finally:
         try:
             proc.wait(timeout=10)
