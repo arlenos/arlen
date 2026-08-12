@@ -136,12 +136,21 @@ impl ConsumerRegistry {
             sender,
         };
 
-        // The write lock is held across BOTH the replay and the push, and that is
-        // the point of taking it here rather than on the push alone. `dispatch`
-        // needs the read half, so it cannot interleave: without this, a live
-        // change arriving between the two either lands before the retained
-        // snapshot - leaving the consumer holding stale state that looks newer -
-        // or lands while the entry is not yet in the list and is missed outright.
+        // RETAINED FIRST, THEN CONSUMERS - the same order `dispatch` uses, and the
+        // reason is deadlock rather than correctness. `dispatch` takes the
+        // retained write lock, releases it, and only then takes the consumer read
+        // lock; that release is what keeps the two paths from waiting on each
+        // other. Relying on it means a later refactor holding the retained guard
+        // across the delivery loop - to avoid a clone, say - would invert the
+        // order against this function and deadlock the bus. Taking them in one
+        // order everywhere costs nothing and removes the trap.
+        //
+        // Both are held across the replay AND the push, which is the point of
+        // taking them here rather than on the push alone: without it a live change
+        // arriving between the two either lands before the retained snapshot -
+        // leaving the consumer holding stale state that looks newer - or lands
+        // while the entry is not yet in the list and is missed outright.
+        let retained = self.retained.read().await;
         let mut consumers = self.consumers.write().await;
 
         // Retained delivery is filtered by the SAME two checks `dispatch` makes,
@@ -149,7 +158,7 @@ impl ConsumerRegistry {
         // than a live delivery, because `subscribed_types` has already been through
         // the subscribe-scope gate in the socket handler by the time it arrives
         // here - a pattern the caller may not have was filtered out before this.
-        for event in self.retained.read().await.values() {
+        for event in retained.values() {
             if !entry.matches(&event.r#type) || !entry.uid_filter.accepts(event.uid) {
                 continue;
             }
@@ -163,6 +172,7 @@ impl ConsumerRegistry {
 
         consumers.push(entry);
         drop(consumers);
+        drop(retained);
         debug!(consumer_id = %id, "consumer registered");
         receiver
     }
