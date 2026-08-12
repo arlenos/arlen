@@ -130,6 +130,31 @@ pub fn open_with_handler(target: &str) -> Result<(), String> {
     } else {
         launch::open_uri_request(target)
     };
+    open_request(request)
+}
+
+/// Open an absolute path.
+///
+/// Separate from [`open_with_handler`] because the leading-slash guess is only
+/// safe where the string genuinely could be either. A relative path handed to
+/// another process means nothing - that process has its own working directory -
+/// and silently treating one as a URI produces `file://notes.txt`, which resolves
+/// to a host named `notes.txt` and opens nothing. Refusing says which it was.
+pub fn open_path_with_handler(path: &str) -> Result<(), String> {
+    if !path.starts_with('/') {
+        return Err(format!("not an absolute path: {path}"));
+    }
+    open_request(arlen_launch_contract::open_path_request(path))
+}
+
+/// Open a URI.
+pub fn open_uri_with_handler(uri: &str) -> Result<(), String> {
+    open_request(arlen_launch_contract::open_uri_request(uri))
+}
+
+/// Put one request through the shell's own launch path and read the answer.
+fn open_request(request: arlen_launch_contract::LaunchRequest) -> Result<(), String> {
+    use arlen_launch_contract as launch;
     let outcome = tauri::async_runtime::block_on(crate::launch_service::dispatch(
         &request,
         &crate::launch_service::self_caller(),

@@ -184,18 +184,12 @@ pub fn open_url(url: String) {
     }
     log::info!("shell_runner: xdg-open {:?}", url);
     std::thread::spawn(move || {
-        let _ = std::process::Command::new("xdg-open")
-            // `--` first: a name may legally begin with a dash and xdg-open parses a
-            // leading-dash argument as its own options ("error: unexpected argument
-            // '-z' found / tip: to pass '-z' as a value, use '-- -z'"). The files app
-            // is safe by construction because `abs` guarantees a leading slash; these
-            // callers pass the string through as it arrives.
-            .arg("--")
-            .arg(&url)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn();
+        // Detached, as before: nothing is waiting on the answer here. The
+        // difference is that the launch is now recorded and resolved rather than
+        // handed to a subprocess that reports only whether it started.
+        if let Err(e) = crate::waypointer_system::open_uri_with_handler(&url) {
+            log::warn!("open_url: {e}");
+        }
     });
 }
 

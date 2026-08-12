@@ -393,25 +393,15 @@ async fn dispatch_file(data: &str) -> Result<String, (proto::ErrorKind, String)>
         ));
     }
 
-    let _ = std::process::Command::new("xdg-open")
-        // `--` first: a file name may legally begin with a dash, and
-        // xdg-open parses a leading-dash argument as its own option.
-        // Measured: `xdg-open -zzz` answers "error: unexpected argument
-        // '-z' found / tip: to pass '-z' as a value, use '-- -z'", so a
-        // file called `-report.pdf` never opens. Unlike nmcli, which does
-        // not honour `--` at all, this tool documents it in its own error.
-        .arg("--")
-        .arg(canonical.as_os_str())
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| {
-            (
-                proto::ErrorKind::ErrorNoHandler,
-                format!("xdg-open spawn failed: {e}"),
-            )
-        })?;
+    // The canonical path, through the shell's launch path. It was `let _ =`
+    // before: the one thing this handler exists to do could fail silently, and
+    // the caller got a success for a file that never opened.
+    // ErrorNoHandler is kept as the kind: it is what this protocol already
+    // answered here, and the outcome now behind it actually distinguishes "no
+    // handler" from "it did not start" in the sentence it carries.
+    if let Err(e) = crate::waypointer_system::open_path_with_handler(&canonical_str) {
+        return Err((proto::ErrorKind::ErrorNoHandler, e));
+    }
     Ok(String::new())
 }
 
