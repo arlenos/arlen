@@ -47,6 +47,19 @@ impl SocketServer {
         let _ = std::fs::remove_file(&self.path);
 
         let listener = UnixListener::bind(&self.path).map_err(NotifyError::Io)?;
+        // What guards this socket, since neither line above says so and every
+        // other daemon that binds one either sets an explicit mode or checks a
+        // peer credential on accept. Here it is the enclosing directory:
+        // `/run/user/%U` is 0700, so no other user can traverse to it. Nothing
+        // narrower applies - this protocol is same-user by nature, the same
+        // boundary the D-Bus `org.freedesktop.Notifications` name already has.
+        //
+        // Worth stating plainly rather than leaving implicit, because the client
+        // protocol is not only "post a notification": `GetHistory` returns stored
+        // notification CONTENT, so any same-user process can read the history. That
+        // is Arlen's documented same-uid residual and not a deviation, but a reader
+        // comparing this bind against its eleven siblings should not have to derive
+        // it.
         tracing::info!("socket server listening on {}", self.path.display());
 
         // Shared list of client writers for broadcasting.
