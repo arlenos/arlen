@@ -175,7 +175,15 @@ impl WaypointerPlugin for FilesPlugin {
             )));
         }
 
-        crate::waypointer_system::open_with_handler(&path.to_string_lossy())
+        // Refused rather than converted lossily: a name that is not valid UTF-8
+        // cannot cross the launch socket, and replacing its bytes would ask the
+        // shell to open a different file than the one the row names.
+        let Some(path_str) = path.to_str() else {
+            return Err(PluginError::ExecuteFailed(
+                "the file name is not valid UTF-8, so it cannot be opened this way".into(),
+            ));
+        };
+        crate::waypointer_system::open_with_handler(path_str)
             .map_err(PluginError::ExecuteFailed)
     }
 }
