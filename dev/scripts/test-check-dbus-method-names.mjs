@@ -157,6 +157,34 @@ check(
   (code) => code === 0,
 );
 
+// The short attribute spelling, which zbus users normally write because the macro
+// is imported. This pattern matched only `#[zbus::interface(...)]`, so ELEVEN of
+// the tree's nineteen interfaces were absent from the map the whole check compares
+// against - a rename on any of them read as "no such interface, nothing to check"
+// and the gate stayed green. Both spellings are pinned here so the map cannot lose
+// half its subject again.
+check(
+  "an interface declared with the short attribute is still compared",
+  {
+    "daemons/probe/src/lib.rs":
+      '#[interface(name = "org.arlen.Probe1")]\nimpl P {\n    async fn real_one(&self) {}\n}\n',
+    "apps/caller/src/lib.rs":
+      'let p = "org.arlen.Probe1"; conn.call("NoSuchMethod", &()).await?;\n',
+  },
+  (code, out) => code === 1 && out.includes("NoSuchMethod"),
+);
+
+check(
+  "and its own methods still pass",
+  {
+    "daemons/probe/src/lib.rs":
+      '#[interface(name = "org.arlen.Probe1")]\nimpl P {\n    async fn real_one(&self) {}\n}\n',
+    "apps/caller/src/lib.rs":
+      'let p = "org.arlen.Probe1"; conn.call("RealOne", &()).await?;\n',
+  },
+  (code) => code === 0,
+);
+
 if (failures.length) {
   console.log(`\n${failures.length} case(s) failed:`);
   for (const f of failures) console.log(`  ${f.name}\n    exit ${f.code}\n${f.out}`);

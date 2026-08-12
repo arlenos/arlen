@@ -51,7 +51,16 @@ ROOT = (
 
 ARLEN_IFACE = re.compile(r'"(org\.arlen\.[A-Za-z0-9_]+)"')
 CALL = re.compile(r'\.call(?:::<[^>]*>)?\(\s*"([A-Za-z][A-Za-z0-9_]*)"')
-INTERFACE_ATTR = re.compile(r'#\[zbus::interface\(name\s*=\s*"([^"]+)"')
+# BOTH spellings. zbus's attribute is usually imported, so `#[interface(...)]` and
+# `#[zbus::interface(...)]` are the same thing and the tree uses both - eleven
+# short, eight qualified. This pattern matched only the qualified form, so the map
+# this whole check compares against was missing ELEVEN of nineteen interfaces,
+# including `org.arlen.Accounts1` and `org.arlen.InstallDaemon1`, two root-adjacent
+# services. A renamed method on any of them read as "no such interface, nothing to
+# compare" and the gate stayed green. Found on 12 Aug by adding the gate-list
+# cross-check below and watching it report nine missing interfaces that plainly
+# exist - the finding was the checker, not the tree.
+INTERFACE_ATTR = re.compile(r'#\[(?:zbus::)?interface\(name\s*=\s*"([^"]+)"')
 # A method on the interface impl. `#[zbus(name = "X")]` overrides the wire name;
 # `#[zbus(property)]` is read as a property, never called as a method.
 METHOD = re.compile(
@@ -159,11 +168,50 @@ def interfaces(root: Path) -> dict[str, set[str]]:
     return out
 
 
+def gated_rows(root: Path) -> list[tuple[int, str, str]]:
+    """`(line, interface, method)` from `gated-methods.tsv`, comments dropped."""
+    tsv = root / "dev/scripts/gated-methods.tsv"
+    out: list[tuple[int, str, str]] = []
+    if not tsv.is_file():
+        return out
+    for n, line in enumerate(tsv.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        cols = line.split("\t")
+        if len(cols) < 6:
+            continue
+        # binary, bus name, object path, interface, expect, method [args...]
+        out.append((n, cols[3].strip(), cols[5].split()[0]))
+    return out
+
+
 def main() -> int:
     known = interfaces(ROOT)
     problems: list[str] = []
     unchecked: list[str] = []
     checked = 0
+
+    # `gated-methods.tsv` names the methods `probe-dbus-gate.sh` holds to a refusal.
+    # That probe needs built binaries and a private bus, so it is one of the seven
+    # scripts a push does not run - which means a rename here is caught locally, by
+    # somebody who happens to run it, or not at all. The names are checkable
+    # statically against the same interface map this file already builds, so they
+    # are, and the runtime NOT TESTED becomes a backstop rather than the only guard.
+    for line, iface, method in gated_rows(ROOT):
+        if iface not in known:
+            problems.append(
+                f"gated-methods.tsv:{line}: no interface `{iface}` is declared "
+                f"anywhere; the gate list names something the tree does not serve"
+            )
+        elif method not in known[iface] and method not in STANDARD:
+            problems.append(
+                f"gated-methods.tsv:{line}: `{iface}` declares no method "
+                f"`{method}`. Renamed methods make the runtime probe report NOT "
+                f"TESTED, and that probe does not run on a push - so the refusal "
+                f"nobody is checking would look like a list that is still covered."
+            )
+        else:
+            checked += 1
 
     for path in sorted(ROOT.rglob("*.rs")):
         sp = str(path)
