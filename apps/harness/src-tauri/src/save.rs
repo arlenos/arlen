@@ -114,10 +114,16 @@ fn pick_save_path(suggested: &str, start_dir: &str) -> Option<String> {
 
 /// kdialog save dialog. Cancel is a non-zero exit, which reads as `None`.
 fn try_kdialog_save(seed: &str) -> Option<String> {
-    let output = Command::new("kdialog")
+    let output = match Command::new("kdialog")
         .args(["--getsavefilename", seed])
         .output()
-        .ok()?;
+    {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("kdialog unavailable; falling back to zenity for the save dialog ({e})");
+            return None;
+        }
+    };
     if !output.status.success() {
         return None;
     }
@@ -129,7 +135,7 @@ fn try_kdialog_save(seed: &str) -> Option<String> {
 /// zenity save dialog. `--confirm-overwrite` so an existing file prompts before
 /// it is replaced by the chosen path.
 fn try_zenity_save(seed: &str) -> Option<String> {
-    let output = Command::new("zenity")
+    let output = match Command::new("zenity")
         .args([
             "--file-selection",
             "--save",
@@ -138,7 +144,13 @@ fn try_zenity_save(seed: &str) -> Option<String> {
             &format!("--filename={seed}"),
         ])
         .output()
-        .ok()?;
+    {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("zenity unavailable; no save-dialog backend remains, so this returns None and the caller cannot tell that from a cancel ({e})");
+            return None;
+        }
+    };
     if !output.status.success() {
         return None;
     }

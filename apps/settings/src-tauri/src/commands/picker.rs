@@ -344,10 +344,16 @@ fn legacy_pick(start_path: Option<&str>) -> Option<String> {
 }
 
 fn try_kdialog(start: &str) -> Option<String> {
-    let output = Command::new("kdialog")
+    let output = match Command::new("kdialog")
         .args(["--getexistingdirectory", start])
         .output()
-        .ok()?;
+    {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("kdialog unavailable; falling back to zenity for the directory picker ({e})");
+            return None;
+        }
+    };
     if !output.status.success() {
         return None;
     }
@@ -361,7 +367,7 @@ fn try_zenity(start: &str) -> Option<String> {
     } else {
         format!("{start}/")
     };
-    let output = Command::new("zenity")
+    let output = match Command::new("zenity")
         .args([
             "--file-selection",
             "--directory",
@@ -369,7 +375,13 @@ fn try_zenity(start: &str) -> Option<String> {
             &format!("--filename={seed}"),
         ])
         .output()
-        .ok()?;
+    {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("zenity unavailable; no directory-picker backend remains, so this returns None and the caller cannot tell that from a cancel ({e})");
+            return None;
+        }
+    };
     if !output.status.success() {
         return None;
     }
