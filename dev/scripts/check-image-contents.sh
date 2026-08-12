@@ -83,6 +83,29 @@ if [ -z "$out" ]; then
   echo "guestfish produced no output - the image did not mount, this is not a pass" >&2
   exit 2
 fi
+
+# ...and non-empty is not the same as answered. The script above runs INSIDE the
+# guest, so an image whose `/bin/sh` is missing - a changed layout, the wrong
+# partition mounted at sda2, a minimal rootfs - makes every command produce
+# nothing while guestfish's own error keeps `out` non-empty. The emptiness guard
+# then passes and every conclusion below is drawn over an image that was never
+# read: "no unit names a missing arlen binary" about a filesystem nobody looked at.
+#
+# Measured 12 Aug against a fixture image with no shell in it, which reported a
+# clean bill of health. Bound by STRUCTURE rather than by length: each section the
+# inner script prints must be present, because that is what "it ran" looks like.
+for marker in "=== units naming a missing binary" "=== arlen binaries shipped" \
+              "=== desktop entries" "=== accessibility bus"; do
+  case "$out" in
+    *"$marker"*) ;;
+    *)
+      echo "the inspection did not run: no '$marker' section in the output." >&2
+      echo "guestfish reported:" >&2
+      echo "$out" >&2
+      exit 2
+      ;;
+  esac
+done
 echo "$out"
 
 # Stock Debian units ship conditional or alternative binaries: rc-local is
