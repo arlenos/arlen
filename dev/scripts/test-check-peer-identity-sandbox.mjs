@@ -12,7 +12,7 @@
 //
 // Run: node dev/scripts/test-check-peer-identity-sandbox.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -200,9 +200,43 @@ check(
   (code) => code === 0,
 );
 
+// The staleness guard, added 12 Aug: a KNOWN entry the gate never reaches has
+// stopped describing a live defect, and both of `check-invoke-scope`'s did exactly
+// that before anybody noticed.
+//
+// It only audits its own tree, because KNOWN is a set of claims about THIS repo -
+// a fixture lacks those units for reasons that have nothing to do with the entries
+// being stale, and without the scoping every clean case above turned red. That
+// scoping is also why this case cannot use the fixture harness or a copy in /tmp:
+// a copy elsewhere, handed the real tree, correctly decides the list is not its
+// own to audit. So the copy goes INSIDE dev/scripts, runs with no argument, and is
+// removed straight after. The leading dot keeps it out of `check-wired.py`, which
+// matches on the check-/test-/probe-/smoke- prefixes.
+{
+  const name = "a planted entry with no unit behind it is caught";
+  const copy = join(ROOT, `dev/scripts/.tmp-peer-gate-${process.pid}.py`);
+  let got;
+  try {
+    writeFileSync(
+      copy,
+      readFileSync(join(ROOT, "dev/scripts/check-peer-identity-sandbox.py"), "utf8").replace(
+        "KNOWN = {",
+        'KNOWN = {\n    "arlen-no-such-unit": "planted",',
+      ),
+    );
+    const r = spawnSync("python3", [copy], { encoding: "utf8" });
+    got = { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  } finally {
+    rmSync(copy, { force: true });
+  }
+  const ok = got.code === 1 && got.out.includes("arlen-no-such-unit");
+  console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
+  if (!ok) failures.push({ name, ...got });
+}
+
 if (failures.length) {
   console.log(`\n${failures.length} case(s) failed:`);
   for (const f of failures) console.log(`  ${f.name}\n    exit ${f.code}\n${f.out}`);
   process.exit(1);
 }
-console.log("all peer-identity gate cases passed");
+console.log("a hardened peer-resolver is caught, the exemptions hold, and a stale entry is caught too");

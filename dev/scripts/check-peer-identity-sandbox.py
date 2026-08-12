@@ -177,15 +177,23 @@ KNOWN = {
         "on the image. Dropping the hardening is not the fix (it holds the undo "
         "log's HMAC key); the identity step has to stop depending on the /proc "
         "read, which is the stamped-identity work.\n"
-        "    That work is BUILT and still does not fix this, checked 11 Aug: the "
-        "stamped resolver has all three tiers, but only Tier 1 avoids /proc, and "
-        "Tier 1 needs a launcher stamp that nothing produces here. `arlen-run` is "
-        "not installed in the image, every desktop entry Execs its binary "
-        "directly (`Exec=arlen-files`), and `[launcher] confined` defaults false "
-        "with no shell.toml shipped to change it. So the two units that already "
-        "set ARLEN_STAMPED_IDENTITY=enforce resolve through Tiers 2 and 3 every "
-        "time, which is the same /proc read. The blocker is a producer, not more "
-        "resolver. Delete this entry when apps launch stamped."
+        "    That work is BUILT and still does not fix this, checked 11 Aug and "
+        "re-checked 12 Aug: the stamped resolver has all three tiers, but only "
+        "Tier 1 avoids /proc, and Tier 1 needs a launcher stamp that nothing "
+        "produces here.\n"
+        "    One premise of the 11 Aug reading has since changed and the "
+        "conclusion has not. `arlen-run` IS installed now - "
+        "`08r-arlen-run.sh.chroot` puts it in libexec with a `/usr/bin` symlink - "
+        "so the blocker is no longer that the launcher is absent. What still "
+        "blocks it is that nothing LAUNCHES through it: every desktop entry Execs "
+        "its binary directly (`Exec=arlen-files`), and `[launcher] confined` "
+        "defaults false with no shell.toml shipped to change it. So the two units "
+        "that already set ARLEN_STAMPED_IDENTITY=enforce resolve through Tiers 2 "
+        "and 3 every time, which is the same /proc read.\n"
+        "    The blocker is still a producer rather than more resolver, but it is "
+        "one step further along than this entry said, and someone acting on the "
+        "old wording would add a build step that already exists. Delete this entry "
+        "when apps launch stamped."
     ),
     "arlen-notifyd": (
         "the same defect with the other failure mode, and this check is what found "
@@ -228,6 +236,9 @@ def main():
     )
     flagged, carried, checked = [], [], 0
     root_exempt: list[str] = []
+    # KNOWN entries the loop actually reached. An entry it never reaches has
+    # stopped describing a live defect - see the staleness check after the loop.
+    reached: set[str] = set()
 
     unhardened: list[str] = []
 
@@ -268,12 +279,45 @@ def main():
         name = unit.stem
         if name in KNOWN:
             carried.append(f"{name}: {KNOWN[name]}")
+            reached.add(name)
         else:
             flagged.append(
                 f"{name}: {', '.join(directives)} put it in its own mount namespace, "
                 f"and {where} identifies its peer by reading /proc/<pid>/exe, which "
                 f"that namespace refuses. It will misidentify or refuse every caller."
             )
+
+    # An entry the loop never reached. Each one opens by calling itself a live
+    # instance of this defect ("it refuses every caller on the image"), so the day
+    # its unit stops qualifying - hardening dropped, peer resolution gone, unit
+    # renamed or deleted - the entry is describing a machine that no longer exists
+    # while reading as work somebody still owes. Nothing said so until 12 Aug,
+    # which is also how `check-invoke-scope.py` came to carry two acknowledgements
+    # of calls that had both been fixed.
+    #
+    # Deliberately structural: it can tell that an entry's SUBJECT no longer
+    # qualifies, not that its PROSE has drifted. This entry's own reasoning had a
+    # premise go stale (`arlen-run` is installed now) with the conclusion intact,
+    # and no mechanical check could have caught that - only reading it again.
+    #
+    # Scoped to THIS tree, and that is not the hardcoded-root antipattern. The
+    # check proper still runs against whatever tree it is handed; it is the
+    # self-audit that cannot, because KNOWN is a set of claims about one specific
+    # repo and a fixture tree lacks those units for reasons that have nothing to do
+    # with the entries being stale. Without this, every clean fixture case turned
+    # red - the same collision `check-spawned-binaries.py` hit an hour earlier,
+    # where carrying stub subjects in the fixture WAS the right answer because a
+    # stub spawn is one line. Here a stub would need a unit with mount-namespace
+    # directives, a crate that resolves peers, and an entry in the binary-to-crate
+    # mapping, which is enough fake tree to be its own source of error.
+    audits_own_list = len(sys.argv) <= 1 or REPO == Path(__file__).resolve().parents[2]
+    for name in sorted(set(KNOWN) - reached) if audits_own_list else []:
+        flagged.append(
+            f"{name} is carried as a known instance of this defect, but it no "
+            f"longer qualifies - the unit is gone, or it dropped its "
+            f"mount-namespace hardening, or its crate stopped resolving peers. "
+            f"Re-read the entry and drop it if the defect is fixed."
+        )
 
     if flagged:
         print("peer identity: a hardened unit cannot read its callers' identity")
