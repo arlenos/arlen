@@ -104,20 +104,10 @@ SKIP = ("/harness/", "/store/", "node_modules")
 # doing when it was re-proved on 9 August. A file that grows a new one fails,
 # and a file whose count drops asks to have its number lowered.
 KNOWN: dict[str, tuple[int, str]] = {
-    "apps/settings/src/lib/stores/windows-apps.ts": (
-        2,
-        "installExe, where the file picker and a failed install are the same "
-        "exception - the same problem as installThemeFile"
-    ),
     "apps/settings/src/lib/stores/models.ts": (
-        4,
+        3,
         "setRole, startDownload, cancelDownload - arlen-ui's model picker is live "
         "work; named rather than skipped because the shape is identical"
-    ),
-    "apps/settings/src/lib/stores/appSettings.ts": (
-        1,
-        "resolveOptions, whose fixture is DEV-gated and whose catch is not empty - "
-        "matched by the proximity window rather than by being wrong"
     ),
     "apps/settings/src/lib/stores/themes.ts": (
         1,
@@ -125,18 +115,20 @@ KNOWN: dict[str, tuple[int, str]] = {
         "arrive as the same exception - telling them apart needs an error shape "
         "the command does not return yet"
     ),
-    "apps/desktop-shell/src/lib/stores/waypointerAsk.ts": (
-        1,
-        "escalate mutates nothing: the store write this check sees belongs to the "
-        "streaming function above it, inside the 500-character window. A failed "
-        "Ctrl+J opens no window and claims nothing, which is quiet but not untrue"
-    ),
-    "apps/text-editor/src/lib/stores/lens.ts": (
-        1,
-        "openRelated navigates rather than mutates - a failed open leaves the "
-        "editor where it was, which is what happened"
-    ),
 }
+
+# Four entries left this list on 12 Aug without a line of app code changing, and
+# that is worth reading rather than tidying away. `windows-apps.ts` (2),
+# `appSettings.ts`, `waypointerAsk.ts` and `lens.ts` were all matched by a store
+# write in the function ABOVE the one being checked, because the lookbehind was
+# 500 raw characters rather than "within this function". Two of them had said so
+# in their own reason text - "matched by the proximity window rather than by being
+# wrong", "belongs to the streaming function above it, inside the 500-character
+# window" - which is a gate's false positive being written down instead of fixed.
+# `models.ts` dropped 4 to 3 the same way.
+#
+# A queue that carries a checker's own bugs stops being a queue: every entry reads
+# as work somebody owes, and four of these six owed nothing.
 
 
 def catch_spans(text: str):
@@ -149,6 +141,45 @@ def catch_spans(text: str):
                 depth -= 1
             i += 1
         yield m.start(), m.end(), i - 1
+
+
+#: How much CODE to look back over for the store write that the `try` then risks.
+#: Roughly the "same visual block" distance, which is what the rule means.
+PRECEDING_CODE = 500
+
+
+def preceding_code(head: str, upto: int) -> str:
+    """The code shortly before `upto`, with comments removed.
+
+    The window is over CODE, not raw characters, and that distinction is the whole
+    reason this function exists. It was `head[upto - 500 : upto]` verbatim, so a
+    long comment between the store write and the `try` pushed the write out of the
+    window and the pair went unreported - a MISS, on a gate whose entire subject is
+    a surface that claims something untrue. The catch body a few lines below has
+    stripped comments since it was written; the lookbehind had not, and nothing
+    made the inconsistency visible.
+
+    Found on 12 Aug by the same defect one file over: a twelve-line comment above
+    `.arg("--")` pushed it out of `check-opener-args`'s 600-character chain window,
+    and that gate reported a call it had just been taught to accept. There the cost
+    was a false finding; here it would have been silence.
+
+    Then bounded by the enclosing function, which the character count had been
+    standing in for by accident. Stripping comments alone made the window reach
+    back PAST a function's closing brace into the one above it, and reported three
+    calls whose `try` has no optimistic write anywhere near it - `installThemeFile`
+    picked up `setTheme`'s write, four lines and one function boundary away. A
+    wider window found "more", and all of it was wrong. The last top-level `}` is
+    the real edge, and the raw count was only ever approximating it.
+    """
+    raw = head[max(0, upto - PRECEDING_CODE * 4) : upto]
+    code = COMMENT.sub("", "\n".join(l.split("//")[0] for l in raw.splitlines()))
+    # A closing brace in the first column ends the previous top-level item in this
+    # codebase's style, so nothing before it belongs to this call's function.
+    edge = code.rfind("\n}")
+    if edge != -1:
+        code = code[edge:]
+    return code[-PRECEDING_CODE:]
 
 
 def main() -> int:
@@ -176,7 +207,7 @@ def main() -> int:
             try_at = head.rfind("try")
             if try_at < 0 or "invoke(" not in text[try_at:start]:
                 continue
-            if not STORE_WRITE.search(head[max(0, try_at - 500) : try_at]):
+            if not STORE_WRITE.search(preceding_code(head, try_at)):
                 continue
             seen_per_file[rel] = seen_per_file.get(rel, 0) + 1
             if rel in KNOWN and seen_per_file[rel] <= KNOWN[rel][0]:
@@ -189,6 +220,30 @@ def main() -> int:
                 f"happened which did not. Keep the optimism under "
                 f"`import.meta.env.DEV`, revert in a real session, and say so where "
                 f"the claim is made."
+            )
+
+    # The half this file has claimed since it was written - "a file whose count
+    # drops asks to have its number lowered" - and never implemented. It matters
+    # the moment the gate gets more precise: tightening the lookbehind to stop at
+    # a function boundary on 12 Aug took four of these six entries to zero, and
+    # without this they would have sat there describing instances that no longer
+    # exist. Two of them had even written the gate's own bug into their reason
+    # ("matched by the proximity window rather than by being wrong"), which is a
+    # false positive being documented instead of fixed.
+    # Scoped to this tree, for the reason `check-peer-identity-sandbox.py` is:
+    # KNOWN is a set of counts about ONE repo, and a fixture lacks those files for
+    # reasons that have nothing to do with the entries being stale. Without this
+    # every fixture case reports both real entries as dropped. The check proper
+    # still runs against any tree it is handed; only this self-audit cannot.
+    audits_own_list = len(sys.argv) <= 1 or ROOT == Path(__file__).resolve().parents[2]
+    for rel, (declared, _) in sorted(KNOWN.items() if audits_own_list else []):
+        found = seen_per_file.get(rel, 0)
+        if found < declared:
+            findings.append(
+                f"{rel}: carried as {declared} known instance(s) and only {found} "
+                f"remain. Lower the number, or drop the entry if it is zero - a "
+                f"count that is too high reserves room for a new one to appear "
+                f"unreported."
             )
 
     print(
