@@ -1,0 +1,50 @@
+# The AI harness's profile, under the uid the profile APPLIES TO, like its
+# siblings here.
+#
+# **The image does not install the harness yet** - the seven install steps under
+# `mkosi.build.d` ship clock, desktop-shell, files, knowledge, meetings,
+# system-monitor and terminal - so this profile is ready rather than active, and
+# `check-app-profiles.py` (which iterates installed apps) does not yet count it.
+# Written now because the profile is the precondition: an app that arrives in the
+# image without one is refused by a confined launch, and writing it at that moment
+# is writing it under pressure.
+#
+# READ-ONLY, and narrow. Verified against `apps/harness/src-tauri` rather than
+# guessed: `capsule.rs` is the only thing that touches the graph, and it asks two
+# questions - which projects exist and how many files each holds, and how many
+# files one named project holds. So:
+#
+#   Project.id / name / description  the scope picker's rows (capsule.rs:119)
+#   Project.expired_at               the same query filters archived projects out
+#   File.id                          the FILE_PART_OF traversal it counts over
+#
+# It writes nothing, so there are no `relations` and no write scope. Nothing else
+# in the crate reaches the daemon: the pi sidecar talks over its own socket and the
+# file pills go through the launch service.
+[info]
+app_id = "dev.arlen.harness"
+tier = "first-party"
+
+[graph]
+read = [
+    "system.Project.id",
+    "system.Project.name",
+    "system.Project.description",
+    "system.Project.expired_at",
+    "system.File.id",
+]
+
+# NO `[filesystem]` SECTION, deliberately, and this is the decided shape rather
+# than an omission: the harness's file pills are minted by the user attaching a
+# file, so the authorisation arrives with the gesture instead of standing open.
+#
+# The consequence is honest and currently visible: the pills' MIME types come from
+# the launch service's gated query, which answers only for paths the caller may
+# read, so with no static grant every pill query is refused. Until the minting path
+# exists the harness still asks `xdg-mime` directly - the last such call in the
+# tree - and swapping it for a query that always refuses would trade a working
+# feature for a correct-looking empty one.
+#
+# What closes it is the mint, not a grant here. A file the user attached is a path
+# they chose, which is exactly the shape the file-manager ruling describes: the act
+# of choosing IS the authorisation, scoped to that path, read-only, revocable.
