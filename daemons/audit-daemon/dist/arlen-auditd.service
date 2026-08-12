@@ -14,6 +14,13 @@ After=arlen-event-bus.service
 Type=notify
 # Production binary path (system-wide install). Dev runs invoke the
 # debug binary directly; this file is the canonical production unit.
+# The producer socket, pinned: `event-bus` is a SYSTEM service binding under
+# /run/arlen, while this is a USER service whose $XDG_RUNTIME_DIR fallback dials
+# /run/user/<uid>/arlen/ - a path nothing binds. This daemon's own source comments
+# on that fallback and then relied on it. Found by `check-bus-socket-pins.py`,
+# which exists because the earlier fix went to the daemon whose log was read
+# rather than to every daemon with the shape.
+Environment=ARLEN_PRODUCER_SOCKET=/run/arlen/event-bus-producer.sock
 ExecStart=/usr/lib/arlen/libexec/arlen-auditd
 Restart=on-failure
 RestartSec=2
