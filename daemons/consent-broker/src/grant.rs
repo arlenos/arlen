@@ -58,7 +58,10 @@ pub enum GrantLifetime {
     /// microseconds. The grant has to stop on its own: nothing comes back to
     /// close it, so a reader treats a passed instant as not-live rather than
     /// waiting for a revoke.
-    Until { at_micros: i64 },
+    Until {
+        /// The instant it stops, in epoch microseconds.
+        at_micros: i64,
+    },
     /// Lasts until revoked, and is recorded beside the profile so it reads as
     /// something the user added rather than something the app shipped with.
     Persistent,
