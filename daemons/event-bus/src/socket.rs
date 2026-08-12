@@ -90,10 +90,6 @@ fn peer_tier(stream: &UnixStream) -> Option<arlen_permissions::AppTier> {
     Some(arlen_permissions::detect_tier(&exe))
 }
 
-fn peer_is_system_producer(stream: &UnixStream) -> bool {
-    peer_tier(stream) == Some(arlen_permissions::AppTier::System)
-}
-
 /// What the bus could learn about a connected peer.
 ///
 /// The two failure shapes are kept apart on purpose. Shadow mode exists to say
@@ -109,6 +105,39 @@ enum PeerScope {
     NoProfile(String),
     /// Not attributable to any app id.
     Unresolved,
+}
+
+/// Everything the bus decides about a peer, from ONE resolution of its pid.
+///
+/// It used to take three: `peer_tier` read `/proc/<pid>/exe`, then
+/// `peer_app_profile` read the pid again, then the scope check read it a third
+/// time. Beyond the waste, the exemption verdict was assembled from two
+/// independent reads - so a pid recycled between them would decide "is this
+/// System?" about one process and "does it declare a subscribe list?" about
+/// another, and the answer would be about no process at all. Narrow, but the
+/// kind of narrow that is only ever found afterwards.
+///
+/// Resolving once also gives the registration log the attested name. The bus knew
+/// the peer and printed the self-declared `consumer_id`, which for anything using
+/// the SDK default is `os-sdk-unknown-<uuid>` - so a boot journal could not answer
+/// "did the anomaly detector subscribe?" without matching pattern lists by hand
+/// (measured against the 12 Aug boot, which is exactly how it was answered).
+struct Peer {
+    scope: PeerScope,
+    tier: Option<arlen_permissions::AppTier>,
+}
+
+impl Peer {
+    fn resolve(stream: &UnixStream) -> Self {
+        Self {
+            scope: peer_app_profile(stream),
+            tier: peer_tier(stream),
+        }
+    }
+
+    fn is_system(&self) -> bool {
+        self.tier == Some(arlen_permissions::AppTier::System)
+    }
 }
 
 impl PeerScope {
@@ -248,19 +277,31 @@ async fn handle_producer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
     };
     // Resolved once at connect: peercred is fixed for the connection's life, so
     // the tier never changes mid-stream. Drives the EBK-2 uid-restamp exemption.
-    let is_system_producer = peer_is_system_producer(&stream);
+    let peer = Peer::resolve(&stream);
+    let is_system_producer = peer.is_system();
     // Non-system producers are held to their declared `[event_bus].publish`
-    // scope. Resolved once (peercred is fixed for the connection). System-tier
-    // producers - the eBPF kernel-layer, the compositor, first-party daemons -
-    // are exempt, mirroring the uid-restamp exemption: they emit machine-wide
-    // events by design.
+    // scope. System-tier producers - the eBPF kernel-layer, the compositor,
+    // first-party daemons - are exempt, mirroring the uid-restamp exemption: they
+    // emit machine-wide events by design.
+    //
+    // The exemption is PUBLISH-only and stays that way: a privileged producer is
+    // not automatically a privileged consumer, which is why the subscribe side
+    // above hangs its exemption on the declaration instead of the tier. Passing
+    // `Unresolved` here is what expresses "no declared scope applies", so it is
+    // deliberate rather than a resolution that failed.
+    //
+    // The attested name is kept for the log before that: `Unresolved` is the right
+    // input to the CHECK and the wrong thing to print, since it would report every
+    // system producer as unidentifiable when the bus had just identified it.
+    let attested = peer.scope.app_id().to_string();
     let publish_scope = if is_system_producer {
         PeerScope::Unresolved
     } else {
-        peer_app_profile(&stream)
+        peer.scope
     };
     let enforce = enforce_pubsub();
     debug!(
+        app_id = %attested,
         uid = producer_uid,
         system = is_system_producer,
         "new producer connection"
@@ -403,15 +444,16 @@ async fn handle_consumer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
     // into being bounded. A check can then require a declaration from the
     // components that should have one, which is a stronger guarantee than a tier
     // label because it is per-component and readable.
-    let declares_subscribe = peer_app_profile(&stream)
+    let peer = Peer::resolve(&stream);
+    let declares_subscribe = peer
+        .scope
         .event_bus()
         .is_some_and(|s| s.declares_subscribe());
-    let exempt = peer_tier(&stream) == Some(arlen_permissions::AppTier::System)
-        && !declares_subscribe;
+    let exempt = peer.is_system() && !declares_subscribe;
     let subscribed_types = if exempt {
         subscribed_types
     } else {
-        let scope = peer_app_profile(&stream);
+        let scope = &peer.scope;
         let ebus = scope.event_bus();
         let app = scope.app_id();
         let remedy = scope.remedy();
@@ -428,7 +470,12 @@ async fn handle_consumer(mut stream: UnixStream, registry: Arc<ConsumerRegistry>
         permitted_subscriptions(&subscribed_types, ebus, enforce)
     };
 
+    // `app_id` is the attested name and `consumer_id` the self-declared one; they
+    // are logged side by side because they answer different questions. The first
+    // says who connected, the second says what that peer calls itself - and when
+    // the second is `os-sdk-unknown-<uuid>`, only the first is any use.
     debug!(
+        app_id = peer.scope.app_id(),
         consumer_id = %consumer_id,
         subscribed = ?subscribed_types,
         uid_filter = ?uid_filter,
@@ -535,9 +582,14 @@ mod tests {
         // It must classify as non-system, so its events get the EBK-2 uid
         // restamp. This also exercises the /proc/<pid>/exe resolution path and
         // the fail-safe (an unresolvable peer is non-system).
+        //
+        // Goes through `Peer::resolve` because that is what the handlers call.
+        // It used to call a one-line `peer_is_system_producer` wrapper, and when
+        // the handlers stopped using that wrapper the test kept passing against
+        // code nothing ran - a green test for a dead path.
         let (sock_a, _sock_b) = tokio::net::UnixStream::pair().unwrap();
         assert!(
-            !peer_is_system_producer(&sock_a),
+            !Peer::resolve(&sock_a).is_system(),
             "a non-system-path peer must not be treated as a system producer"
         );
     }
