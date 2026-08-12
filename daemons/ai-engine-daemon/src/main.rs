@@ -312,10 +312,25 @@ async fn build_read_runner(connection: Option<&zbus::Connection>) -> Arc<dyn Que
 /// ai-proxy authorizes an LLM forward by the owned name). A name conflict (the old
 /// ai-daemon still owning it) surfaces as an error and fails the AI paths closed.
 async fn build_ai1_connection() -> zbus::Result<zbus::Connection> {
-    zbus::connection::Builder::session()?
-        .name(ai1_iface::AI1_BUS_NAME)?
-        .build()
-        .await
+    // UNNAMED here, and the name requested only once the interface is attached.
+    //
+    // Taking it at build time put `org.arlen.AI1` on the bus roughly four hundred
+    // lines before anything served it, so a caller that waited for the name and
+    // immediately called `explain_system` met a name that existed and a path that
+    // did not. That is the exact inversion `probe-served-objects.sh` was written
+    // for on 11 Aug, against this daemon: owning the name is not the pass, serving
+    // the path is. zbus says the same at startup - "Requesting name before setting
+    // up the object server. Method calls arriving before interfaces are registered
+    // may be lost" - and that line only became readable once the handshake noise
+    // was quieted.
+    //
+    // The `ProxiedProvider` forwards on this connection and the ai-proxy authorises
+    // by the owned name, which is why the name looked like it had to come first.
+    // It does not: the provider needs the name at FORWARD time, and a forward
+    // happens on a user request, which is necessarily after the interface is up.
+    //
+    // `AIAgent1` in this same file already had the right order. AI1 was the odd one.
+    zbus::connection::Builder::session()?.build().await
 }
 
 /// Build the `graph.write` runner. Live ONLY when AI is enabled AND
@@ -683,7 +698,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Arc::clone(&dispatcher) as Arc<dyn SessionBinder>,
             );
             match conn.object_server().at(ai1_iface::AI1_OBJECT_PATH, iface).await {
-                Ok(true) => info!("serving org.arlen.AI1 (explain_system + ask)"),
+                Ok(true) => {
+                    // Interface up; NOW take the name, so it never advertises an
+                    // unserved path. Failing to get it must fail the AI paths
+                    // closed rather than leaving a daemon that started, looks
+                    // healthy and owns nothing - which is the shape this project
+                    // keeps producing, and the one the served-objects probe
+                    // detects. A name conflict used to surface during
+                    // construction; requesting late moves that failure here, so
+                    // it is stated here just as loudly.
+                    match conn
+                        .request_name_with_flags(
+                            ai1_iface::AI1_BUS_NAME,
+                            zbus::fdo::RequestNameFlags::DoNotQueue.into(),
+                        )
+                        .await
+                    {
+                        Ok(_) => info!("serving org.arlen.AI1 (explain_system + ask)"),
+                        Err(e) => warn!(
+                            error = %e,
+                            "could not own org.arlen.AI1; explain and ask are \
+                             UNAVAILABLE (the interface is attached but no caller \
+                             can reach it by name)"
+                        ),
+                    }
+                }
                 Ok(false) => warn!("the AI1 object path is already served"),
                 Err(e) => warn!(error = %e, "could not serve the AI1 interface"),
             }
