@@ -178,6 +178,40 @@ check(
   (code, out) => code === 0 && !out.includes("builtin"),
 );
 
+// A wrapper call is a real call, and the two cases below are the pair that makes
+// that claim mean something. The helper's own body carries the proof the ASSIGNED
+// case above lacks: the literal reaches `invoke` as its first argument, so it is a
+// command name or the app throws.
+check(
+  "a command reached through a wrapper is not reported as uncalled",
+  tree({
+    "apps/demo/package.json": "{}",
+    "apps/demo/src/lib/x.ts":
+      "async function send(cmd: string, args?: unknown) { await invoke(cmd, args); }\n" +
+      'await send("open_thing", { id });\n',
+    "apps/demo/src-tauri/src/lib.rs": HOST,
+  }),
+  (code, out) => code === 0 && out.includes("0 registered command(s)"),
+);
+
+// The half that had to be argued for, because it breaks the one-way rule the
+// assignment case needs: a typo inside a wrapper call has to FAIL. Left relaxing-
+// only, this is a call that throws for every user while the gate reports nothing -
+// and it is exactly the shape the scanner cannot see at the `invoke` site, so
+// nothing else would catch it either. `fileref_open_with` in the harness was found
+// by turning this on, having been throwing on every click of a shipped menu item.
+check(
+  "a typo inside a wrapper call is caught like any other missing command",
+  tree({
+    "apps/demo/package.json": "{}",
+    "apps/demo/src/lib/x.ts":
+      "async function send(cmd: string, args?: unknown) { await invoke(cmd, args); }\n" +
+      'await send("open_thnig", { id });\n',
+    "apps/demo/src-tauri/src/lib.rs": HOST,
+  }),
+  (code, out) => code === 1 && out.includes("open_thnig"),
+);
+
 check(
   "an app with no host at all does not crash the gate",
   tree({
