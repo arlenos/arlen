@@ -134,13 +134,19 @@ def fields_read(app_dir):
 
 def main():
     root = REPO / PROFILES
-    if not root.is_dir():
-        print(f"no {PROFILES}; nothing to check")
-        return 0
+    # A profile carrying no grants at all is skipped deliberately, so zero
+    # profiles CHECKED is a legitimate answer. Finding no profile FILE, or not
+    # even the directory, is not: both are committed, so it means this ran
+    # somewhere that is not the tree and the closing line would then vouch for
+    # nothing.
+    profiles = sorted(root.glob("dev.arlen.*.toml")) if root.is_dir() else []
+    if not profiles:
+        print(f"NOTHING WAS READ: no app profile under {REPO / PROFILES}", file=sys.stderr)
+        return 2
 
     problems = []
     checked = 0
-    for profile in sorted(root.glob("dev.arlen.*.toml")):
+    for profile in profiles:
         app_id = profile.stem
         app_dir = REPO / "apps" / app_id.removeprefix("dev.arlen.")
         if not app_dir.is_dir():
