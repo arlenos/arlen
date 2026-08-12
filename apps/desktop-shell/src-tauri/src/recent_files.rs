@@ -142,21 +142,12 @@ pub fn open_recent_file(path: String) -> Result<(), String> {
     if path.trim().is_empty() {
         return Err("open_recent_file: empty path".into());
     }
-    std::process::Command::new("xdg-open")
-        // `--` first: a file name may legally begin with a dash, and
-        // xdg-open parses a leading-dash argument as its own option.
-        // Measured: `xdg-open -zzz` answers "error: unexpected argument
-        // '-z' found / tip: to pass '-z' as a value, use '-- -z'", so a
-        // file called `-report.pdf` never opens. Unlike nmcli, which does
-        // not honour `--` at all, this tool documents it in its own error.
-        .arg("--")
-        .arg(&path)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("xdg-open {path}: {e}"))
+    // Through the shell's launch path, so a file opened from the waypointer is
+    // recorded and confined like one opened from anywhere else. The absolute-path
+    // requirement is now checked rather than documented: this command takes its
+    // argument from the frontend as a plain string, and the row it comes from is
+    // only absolute by convention.
+    crate::waypointer_system::open_path_with_handler(&path)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────
