@@ -30,26 +30,30 @@ Environment=RUST_LOG=info,arlen_graph_daemon::project::watch_config=debug
 NoNewPrivileges=true
 ProtectSystem=strict
 # ProtectHome=no, NOT read-only: this daemon's PURPOSE is reading the user's home
-# (project detection, file.opened path promotion, the ~/.timeline FUSE mount). As a
+# (project detection, file.opened path promotion). As a
 # SYSTEM (root) service, ProtectHome=read-only left it unable to read /home/arlen at
 # all - graph.toml under /home/arlen/.config was "not found" though the --user AI
 # daemons read their ai.toml from the same dir. The capability-scoped query socket,
 # not ProtectHome, is this daemon's access boundary, so reading the user's home is
-# by-design. (This also unbreaks the documented ~/.timeline FUSE conflict below.)
+# by-design.
 ProtectHome=no
 ReadWritePaths=%h/.local/share/arlen
 ReadWritePaths=/run/user/%U/arlen
-# DEPLOYMENT CAVEAT (Phase 10, needs on-host verification): the daemon mounts a
-# FUSE timeline at ~/.timeline (DEFAULT_TIMELINE_MOUNT). That conflicts with the
-# hardening above twice over: ProtectHome=read-only makes ~/.timeline read-only
-# (the mount point cannot be created/mounted), AND ProtectSystem/ProtectHome put
-# this unit in a private mount namespace, so a FUSE mount made here is not
-# visible to the user's session. Making the timeline usable under this unit
-# likely needs ~/.timeline in ReadWritePaths plus mount propagation
-# (PrivateMounts=no / a shared MountFlags), or relaxing ProtectHome for the
-# mount point. Set ARLEN_TIMELINE_MOUNT to a ReadWritePaths-covered location
-# meanwhile. The graph/DB/socket paths above are correct; only the FUSE mount is
-# affected.
+# RESOLVED, and left here because the resolution is the interesting part: this
+# daemon used to mount the timeline itself, and under the hardening above the
+# mount was invisible to the session that wanted it (a hardened unit gets a
+# private mount namespace, so a FUSE mount made here propagates nowhere).
+#
+# The fix that suggests itself - `PrivateMounts=no`, a shared `MountFlags` - is
+# the one thing not to do, and this note used to recommend it. It buys visibility
+# by letting a hardened unit reach the host's mount namespace, which trades the
+# sandbox for a presentation detail in the unit whose sandbox matters most. The
+# timeline is a VIEW of the graph, not authority over it.
+#
+# So the mount moved out (`arlen-timeline`, which needs the SUID `fusermount3`
+# and is unfenced by design) and this daemon serves the data over its socket.
+# `main.rs` says the same in the place the mount used to be. Nothing here mounts
+# anything, and no propagation directive belongs in this file.
 
 [Install]
 WantedBy=default.target
