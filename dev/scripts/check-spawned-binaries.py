@@ -121,6 +121,27 @@ def main() -> int:
             continue
         problems.append(f"{name} (spawned by {where}) is installed by no build step")
 
+    # An entry that has come true, both ways it can. `arlen-run` left this list
+    # by gaining `08r-arlen-run.sh.chroot`, and nothing here would have said so -
+    # the loop above skips an installed binary before it ever looks at KNOWN, and
+    # it only walks spawn SITES, so an entry whose last caller is gone is never
+    # examined at all. Each entry is a sentence about the tree ("has no build step
+    # at all", "the harness has no build step either"), and a sentence that has
+    # stopped being true reads as work somebody still owes. The same rot was found
+    # in `check-invoke-scope.py` on 12 Aug, where two acknowledged calls had both
+    # been fixed months apart and the list still described them as broken.
+    for name in sorted(KNOWN):
+        if name in have:
+            problems.append(
+                f"{name} is carried as deliberately absent, but a build step now "
+                f"installs it. Drop the entry; its reason has been overtaken."
+            )
+        elif name not in sites:
+            problems.append(
+                f"{name} is carried as deliberately absent, but nothing spawns it "
+                f"any more. Drop the entry; there is no call site left to fail."
+            )
+
     if problems:
         print("programs the tree spawns that the image does not ship:\n")
         for p in problems:
