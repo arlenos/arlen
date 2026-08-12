@@ -221,23 +221,25 @@ pub async fn dispatch(request: &proto::LaunchRequest, caller: &Caller) -> proto:
 fn mime_of(target: &proto::Target) -> Option<String> {
     let path = target.path.as_ref()?;
     let path = std::fs::canonicalize(path).ok()?;
-    let out = std::process::Command::new("xdg-mime")
-        .args([
-            std::ffi::OsStr::new("query"),
-            std::ffi::OsStr::new("filetype"),
-            // As an `OsStr`, so a path that is not valid UTF-8 reaches the tool
-            // intact rather than through a lossy conversion that would ask about a
-            // different file.
-            path.as_os_str(),
-        ])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let mime = String::from_utf8(out.stdout).ok()?;
-    let mime = mime.trim();
-    (!mime.is_empty()).then(|| mime.to_string())
+    Some(mime_db().guess_mime_type().path(&path).guess().mime_type().to_string())
+}
+
+/// The shared-mime-info database, read once.
+///
+/// **In process, not `xdg-mime query filetype`.** The point of moving every opener
+/// onto this socket was that the desktop stops asking a shell script about its own
+/// files; leaving the one authoritative resolver shelling out would have left every
+/// answer depending on `xdg-utils` being installed and behaving. It also removes a
+/// fork per launch from the path a person waits on.
+///
+/// Loaded once because building it parses every `globs2`, `magic` and alias table
+/// under the data dirs - per call that is a real cost on a path that runs on every
+/// double-click. The trade is that a mime database installed after the shell
+/// started is not seen until it restarts, which is the same trade the handler cache
+/// already makes and is why this is a `OnceLock` rather than a reload-on-change.
+fn mime_db() -> &'static xdg_mime::SharedMimeInfo {
+    static DB: std::sync::OnceLock<xdg_mime::SharedMimeInfo> = std::sync::OnceLock::new();
+    DB.get_or_init(xdg_mime::SharedMimeInfo::new)
 }
 
 /// Who is on the other end, as the kernel says rather than as they claim.
@@ -362,4 +364,45 @@ fn spawn(launch: &Launch) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("spawn {program}: {e}"))?;
     Ok(())
+}
+
+
+#[cfg(test)]
+mod mime_tests {
+    use super::*;
+
+    /// Measured against `xdg-mime query filetype` on 12 Aug, five real files.
+    ///
+    /// Three of the five DISAGREE, and in all three the crate follows the
+    /// shared-mime-info algorithm and the tool does not: `README.md` is
+    /// `text/markdown` and `index.theme` is `application/x-theme` by their globs,
+    /// where the tool answered `text/plain` for both. The third is the same rule
+    /// pointing somewhere unwelcome - our own `arlen.raw` disk image globs to
+    /// `image/x-panasonic-rw`, because `.raw` belongs to camera files and the
+    /// image borrows the extension. A glob match with no contradicting magic is
+    /// the answer per spec; the tool's `application/octet-stream` there comes from
+    /// consulting content first, which is its own shortcut rather than the rule.
+    ///
+    /// Recorded because "we swapped the resolver and nothing changed" would have
+    /// been the comfortable claim and it is not true.
+    #[test]
+    fn a_known_extension_resolves_from_the_database() {
+        let readme = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../README.md");
+        if !std::path::Path::new(readme).exists() {
+            // Loud rather than silently passing: this test means nothing if its
+            // subject moved, and a green tick over a missing file is the shape
+            // this tree spent the night removing.
+            panic!("{readme} is missing; the path this test resolves has moved");
+        }
+        let guess = mime_db().guess_mime_type().path(readme).guess();
+        assert_eq!(guess.mime_type().to_string(), "text/markdown");
+    }
+
+    #[test]
+    fn a_target_without_a_local_path_has_no_type_to_read() {
+        // A remote document is not on this filesystem, so there is nothing to
+        // classify and the service asks the handler tables instead.
+        let target = proto::Target { uri: "https://example.invalid/x".into(), path: None };
+        assert!(mime_of(&target).is_none());
+    }
 }

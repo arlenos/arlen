@@ -160,6 +160,16 @@ name = "arlen-graph-schema"
 version = "0.1.0"
 
 [[package]]
+name = "arlen-launch-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "arlen-meeting-note"
 version = "0.1.0"
 dependencies = [
@@ -174,6 +184,7 @@ version = "0.1.0"
 dependencies = [
  "arlen-ai-core",
  "arlen-ai-meeting-notes",
+ "arlen-launch-contract",
  "arlen-meeting-note",
  "arlen-meetings-core",
  "arlen-transcript",
