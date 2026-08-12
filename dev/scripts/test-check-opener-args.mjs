@@ -12,7 +12,7 @@
 //
 // Run: node dev/scripts/test-check-opener-args.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -22,14 +22,31 @@ const GATE = join(ROOT, "dev/scripts/check-opener-args.py");
 
 const failures = [];
 
-function check(name, files, expect) {
+function check(name, files, expect, entry) {
   const dir = mkdtempSync(join(tmpdir(), "arlen-opener-"));
   for (const [rel, body] of Object.entries(files)) {
     const p = join(dir, rel);
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, body);
   }
-  const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
+  // `entry` drives a COPY of the gate carrying one fixture ACKNOWLEDGED entry.
+  // The real list is empty and should stay empty, but the excuse mechanism is
+  // where a file-wide hole lived once, so it stays covered - against an entry
+  // this test owns rather than against whatever the tree happens to excuse. No
+  // env override on the gate itself: a production-reachable way to inject an
+  // excuse is a worse thing to add than a copied file in a temp dir.
+  let gate = GATE;
+  if (entry) {
+    gate = join(dir, "gate.py");
+    writeFileSync(
+      gate,
+      readFileSync(GATE, "utf8").replace(
+        "ACKNOWLEDGED: dict[str, tuple[str, str]] = {}",
+        `ACKNOWLEDGED = {${JSON.stringify(entry.file)}: (${JSON.stringify(entry.witness)}, ${JSON.stringify(entry.reason)})}`,
+      ),
+    );
+  }
+  const r = spawnSync("python3", [gate, dir], { encoding: "utf8" });
   const got = { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
   const ok = expect(got.code, got.out);
   console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
@@ -45,21 +62,19 @@ const open = (chain) =>
   "        .ok();\n" +
   "}\n";
 
-// Both ACKNOWLEDGED entries are claims about THIS tree, and the staleness guard
-// added on 12 Aug reports an entry that excused nothing. A fixture has neither
-// file, so every fixture carries a stub bearing the witness its reason names, or
-// the guard correctly fires for entries that are perfectly healthy. Same trade as
-// `test-check-spawned-binaries`: the coupling to a list in the file under test
-// runs the cheap way, since adding an entry without a stub turns THIS test red.
-const CARRIED = {
-  "apps/harness/src-tauri/src/file_ref.rs": open("        .arg(arg)\n"),
-};
+// ACKNOWLEDGED is empty, so there is nothing to carry. It held one entry until
+// 12 Aug - the harness's `spawn_xdg_open` - and the fixtures each planted a stub
+// bearing that entry's witness, or the staleness guard fired for an entry that
+// was perfectly healthy. The harness asks the launch socket now, the entry went
+// with the call, and the stubs went with the entry. If a future entry is added,
+// the stub comes back with it: adding one without a stub turns THIS test red,
+// which is the cheap end of the coupling and the reason it is done this way.
 
 console.log("check-opener-args:");
 
 check(
   "a call a dash-leading name would defeat is caught",
-  { ...CARRIED, "apps/probe/src-tauri/src/lib.rs": open("        .arg(path)\n") },
+  { "apps/probe/src-tauri/src/lib.rs": open("        .arg(path)\n") },
   (code, out) => code === 1 && out.includes("probe"),
 );
 
@@ -71,7 +86,7 @@ check(
 // question is open, so the assertion is on the warning and on exit 0.
 check(
   "a marker is reported as breaking rather than accepted",
-  { ...CARRIED, "apps/probe/src-tauri/src/lib.rs": open('        .arg("--")\n        .arg(path)\n') },
+  { "apps/probe/src-tauri/src/lib.rs": open('        .arg("--")\n        .arg(path)\n') },
   (code, out) => code === 0 && out.includes("xdg-utils REJECTS"),
 );
 
@@ -79,7 +94,7 @@ check(
 // itself rather than a reason to be excused from one.
 check(
   "an argument made absolute first is accepted",
-  { ...CARRIED, "apps/probe/src-tauri/src/lib.rs": open("        .arg(abs(&path))\n") },
+  { "apps/probe/src-tauri/src/lib.rs": open("        .arg(abs(&path))\n") },
   (code) => code === 0,
 );
 
@@ -90,20 +105,28 @@ check(
 check(
   "an excused file still passes the call its reason was written for",
   {
-    ...CARRIED,
-    "apps/harness/src-tauri/src/file_ref.rs": open("        .arg(arg)\n"),
+    "apps/probe/src-tauri/src/lib.rs": open("        .arg(arg)\n"),
   },
-  (code, out) => code === 0 && out.includes("canonicalize first"),
+  (code, out) => code === 0 && out.includes("canonicalizes first"),
+  {
+    file: "apps/probe/src-tauri/src/lib.rs",
+    witness: ".arg(arg)",
+    reason: "the caller canonicalizes first, so the argument is absolute already",
+  },
 );
 
 check(
   "a different call in that same file does not inherit the excuse",
   {
-    ...CARRIED,
-    "apps/harness/src-tauri/src/file_ref.rs":
+    "apps/probe/src-tauri/src/lib.rs":
       open("        .arg(arg)\n") + "\n" + open("        .arg(other_no_witness)\n"),
   },
-  (code, out) => code === 1 && out.includes("apps/harness"),
+  (code, out) => code === 1 && out.includes("apps/probe"),
+  {
+    file: "apps/probe/src-tauri/src/lib.rs",
+    witness: ".arg(arg)",
+    reason: "the caller canonicalizes first, so the argument is absolute already",
+  },
 );
 
 // The defect this test was written for. A count of zero is only honest when
@@ -111,15 +134,19 @@ check(
 // quiet, and quiet must not read as clean.
 // The staleness half. An entry says a specific call is unguarded and why that is
 // tolerable; the day the call gains its `--`, the sentence describes a hole that
-// is closed, which reads as a known problem still open. Here the harness stub is
-// given the marker, so its entry excuses nothing.
+// is closed, which reads as a known problem still open. Here the fixture's call
+// is made absolute, so the entry that excuses it excuses nothing.
 check(
   "an entry whose call has since been fixed is caught",
   {
-    ...CARRIED,
-    "apps/harness/src-tauri/src/file_ref.rs": open("        .arg(abs(&path))\n"),
+    "apps/probe/src-tauri/src/lib.rs": open("        .arg(abs(&path))\n"),
   },
   (code, out) => code === 1 && out.includes("no such call is there now"),
+  {
+    file: "apps/probe/src-tauri/src/lib.rs",
+    witness: ".arg(arg)",
+    reason: "the caller canonicalizes first, so the argument is absolute already",
+  },
 );
 
 // xdg-mime came into scope on 12 Aug, measured rather than assumed. Both halves:
@@ -128,7 +155,6 @@ check(
 check(
   "an xdg-mime call with a bare path is caught too",
   {
-    ...CARRIED,
     "apps/probe/src-tauri/src/lib.rs":
       "pub fn kind(path: &str) -> Option<String> {\n" +
       '    Command::new("xdg-mime")\n' +
@@ -143,7 +169,6 @@ check(
 check(
   "an absolute step on the line before the call is accepted",
   {
-    ...CARRIED,
     "apps/probe/src-tauri/src/lib.rs":
       "pub fn kind(path: &str) -> Option<String> {\n" +
       "    let real = std::fs::canonicalize(path).ok()?;\n" +
@@ -164,7 +189,6 @@ check(
 check(
   "a gtk-launch call without the marker is caught",
   {
-    ...CARRIED,
     "apps/probe/src-tauri/src/lib.rs":
       "pub fn go(entry: &str) {\n" +
       '    Command::new("gtk-launch")\n' +
@@ -179,7 +203,6 @@ check(
 check(
   "a gtk-launch call with the marker passes, and a long comment does not hide it",
   {
-    ...CARRIED,
     "apps/probe/src-tauri/src/lib.rs":
       "pub fn go(entry: &str) {\n" +
       '    Command::new("gtk-launch")\n' +

@@ -108,7 +108,7 @@ fn resolve_one(path: &str) -> FileRefState {
 #[tauri::command]
 pub async fn fileref_open(path: String) -> Result<(), String> {
     let real = std::fs::canonicalize(&path).map_err(|_| format!("not found: {path}"))?;
-    spawn_xdg_open(&real.to_string_lossy())
+    open_via_launch(&real.to_string_lossy()).await
 }
 
 /// Reveal `path` in the file manager (select it in its containing folder) - the
@@ -125,19 +125,28 @@ pub async fn fileref_reveal(path: String) -> Result<(), String> {
     }
     // Fallback: open the containing folder (no selection) with the default opener.
     let parent = real.parent().unwrap_or(&real);
-    spawn_xdg_open(&parent.to_string_lossy())
+    open_via_launch(&parent.to_string_lossy()).await
 }
 
-/// Spawn `xdg-open` on a single argument, stdio nulled. The argument is passed
-/// directly (no shell), so it carries no injection risk.
-fn spawn_xdg_open(arg: &str) -> Result<(), String> {
-    Command::new("xdg-open")
-        .arg(arg)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("xdg-open: {e}"))?;
-    Ok(())
+/// Open an absolute path through the shell's launch socket.
+///
+/// Both callers canonicalize first, so the argument is absolute by the time it
+/// arrives; the check is here anyway because that is a property of the callers
+/// rather than of this function, and it is the callers that could change.
+async fn open_via_launch(arg: &str) -> Result<(), String> {
+    if !arg.starts_with('/') {
+        return Err(format!("not an absolute path: {arg}"));
+    }
+    match arlen_launch_contract::open_path(arg)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        arlen_launch_contract::LaunchOutcome::Started { .. } => Ok(()),
+        // The outcome is reported rather than flattened: "nothing opens this
+        // kind of file" is the answer a person can act on, and a spawn could
+        // never tell them that.
+        other => Err(format!("{other:?}")),
+    }
 }
 
 /// Call `org.freedesktop.FileManager1.ShowItems` on the session bus to select

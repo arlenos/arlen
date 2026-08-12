@@ -142,21 +142,12 @@ GUARD = re.compile(r"canonicalize|absolute|\babs\(")
 # check found that the check said nothing: the file was excused as a whole, so
 # any NEW call in it inherited the excuse. A file-keyed exception is a hole that
 # grows.
-ACKNOWLEDGED: dict[str, tuple[str, str]] = {
-    "apps/harness/src-tauri/src/file_ref.rs": (
-        # `.arg(arg)`, not `.arg(` - the witness has to name THIS call or it
-        # matches every call the file will ever hold, which is exactly the
-        # file-wide excuse the witness mechanism replaced. Caught by the control
-        # on 12 Aug when a second unguarded call inherited it.
-        ".arg(arg)",
-        "Both callers of `spawn_xdg_open` canonicalize first, so the argument is "
-        "absolute before the helper sees it - the same property as the files app, "
-        "one call frame further out, which is why the guard cannot see it here. "
-        "This entry previously read 'arlen-ui's in-flight work'; that was wrong "
-        "twice over. The file is under `src-tauri`, which is not their lane, and "
-        "the call was never the unsafe shape it was excused as.",
-    ),
-}
+# Empty, and it emptied the right way: the entry here excused the harness's
+# `spawn_xdg_open`, and that call is gone - the harness asks the launch socket
+# now, so there is no argument for a guard to be absent from. The staleness check
+# below is what said so, on the commit that removed it, rather than leaving a
+# fixed call described as open for however long nobody looked.
+ACKNOWLEDGED: dict[str, tuple[str, str]] = {}
 
 # `apps/files/src-tauri/src/lib.rs` used to need an entry here for `abs(&path)`.
 # It does not any more: `abs(` is now part of the guard itself, since making the

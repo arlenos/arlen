@@ -176,17 +176,18 @@ async fn meeting_update_item(
 /// failure is surfaced but not fatal to the meetings surface.
 #[tauri::command]
 async fn open_file(file: String) -> Result<(), String> {
-    std::process::Command::new("xdg-open")
-        // `--` first: a name may legally begin with a dash and xdg-open parses a
-        // leading-dash argument as its own options ("error: unexpected argument
-        // '-z' found / tip: to pass '-z' as a value, use '-- -z'"). The files app
-        // is safe by construction because `abs` guarantees a leading slash; these
-        // callers pass the string through as it arrives.
-        .arg("--")
-        .arg(&file)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("could not open {file}: {e}"))
+    // Through the shell's launch socket: the note opens under a resolved
+    // application, recorded, rather than under whatever a subprocess decides.
+    if !file.starts_with('/') {
+        return Err(format!("not an absolute path: {file}"));
+    }
+    match arlen_launch_contract::open_path(&file)
+        .await
+        .map_err(|e| format!("could not open {file}: {e}"))?
+    {
+        arlen_launch_contract::LaunchOutcome::Started { .. } => Ok(()),
+        other => Err(format!("could not open {file}: {other:?}")),
+    }
 }
 
 /// Start on-device capture. The ASR/diarization engine is provisioned separately
