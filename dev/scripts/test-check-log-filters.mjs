@@ -1,0 +1,94 @@
+// SPDX-FileCopyrightText: 2026 Tim Kicker
+//
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The positive control for check-log-filters: plant both defects it exists for -
+// the blanket that swept zbus payloads into the journal, and the bare init that
+// left four apps mute - and watch it refuse each.
+
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
+const GATE = join(ROOT, "dev/scripts/check-log-filters.py");
+
+let failures = 0;
+function check(name, ok) {
+  console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
+  if (!ok) failures++;
+}
+
+function tree(apps) {
+  const dir = mkdtempSync(join(tmpdir(), "log-filters-"));
+  for (const [app, body] of Object.entries(apps)) {
+    const src = join(dir, "apps", app, "src-tauri", "src");
+    mkdirSync(src, { recursive: true });
+    writeFileSync(join(src, "lib.rs"), body);
+  }
+  return dir;
+}
+
+function run(dir) {
+  const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
+  return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
+}
+
+const GOOD = 'fn run() { env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,arlen_x_lib=info")).init(); }\n';
+const BLANKET = 'fn run() { env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init(); }\n';
+const BARE = "fn run() { env_logger::init(); }\n";
+const NO_LOGGING = "fn run() { println!(\"hi\"); }\n";
+
+{
+  const d = tree({ good: GOOD });
+  check("a filter naming its own crate passes", run(d).code === 0);
+  rmSync(d, { recursive: true, force: true });
+}
+
+// The privacy defect: a level for every crate, which is how zbus frames got in.
+{
+  const d = tree({ blanket: BLANKET });
+  const r = run(d);
+  check("a blanket level is refused", r.code === 1);
+  check("and the message names the dependency sweep", r.out.includes("EVERY crate"));
+  rmSync(d, { recursive: true, force: true });
+}
+
+// The other direction: the app cannot be heard at all.
+{
+  const d = tree({ mute: BARE });
+  const r = run(d);
+  check("a bare env_logger::init() is refused", r.code === 1);
+  check("and the message says the app is mute", r.out.includes("mute"));
+  rmSync(d, { recursive: true, force: true });
+}
+
+// The gate's own advice is usually written above the call, quoting the bad form.
+// Reading that back as a defect is how it first failed every app I had fixed.
+{
+  const d = tree({
+    documented: "// A bare `env_logger::init()` defaults to `error`, so we do not use it.\n" + GOOD,
+  });
+  check("the bad form quoted in a comment is not a defect", run(d).code === 0);
+  rmSync(d, { recursive: true, force: true });
+}
+
+// An app that does no logging at all is not a subject.
+{
+  const d = tree({ quiet: NO_LOGGING });
+  check("an app with no logging is not a subject", run(d).code === 0);
+  rmSync(d, { recursive: true, force: true });
+}
+
+// Pointed somewhere with no apps, "nothing wrong" would describe a scan that
+// read nothing.
+{
+  const d = mkdtempSync(join(tmpdir(), "log-filters-empty-"));
+  check("a tree with no apps is an error, not a pass", run(d).code === 2);
+  rmSync(d, { recursive: true, force: true });
+}
+
+console.log(failures ? `\n${failures} failure(s)` : "\nevery shape holds");
+process.exit(failures ? 1 : 0);
