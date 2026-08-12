@@ -267,6 +267,7 @@ def catch_bodies(text: str):
 
 def main() -> int:
     findings: list[str] = []
+    scanned = 0
     files = 0
     catches = 0
     rendered = 0
@@ -275,6 +276,7 @@ def main() -> int:
         s = str(path)
         if any(k in s for k in SKIP) or "node_modules" in s or "/src/" not in s:
             continue
+        scanned += 1
         text = path.read_text(encoding="utf-8", errors="replace")
         rel_path = path.relative_to(ROOT)
         if path.suffix == ".svelte":
@@ -312,6 +314,20 @@ def main() -> int:
                 f"`import.meta.env.DEV` and give the real session an error the "
                 f"surface can show."
             )
+
+    # Zero catches, zero rendered fixtures and zero `files` are all legitimate
+    # answers - `files` counts only the ones containing a catch, and this gate's
+    # own markup cases are components with none. What cannot be legitimate is
+    # having OPENED nothing: this reads `apps/**/src` and nowhere else, so an empty
+    # scan means the frontends were not found and every count below describes a
+    # tree this never looked at. Guarding on `files` instead was tried first and
+    # the markup cases caught it immediately.
+    if not scanned:
+        print(
+            f"NOTHING WAS READ: no .ts or .svelte under {ROOT / 'apps'}/*/src",
+            file=sys.stderr,
+        )
+        return 2
 
     print(
         f"{catches} catch block(s) across {files} frontend file(s) checked for a "
