@@ -24,6 +24,15 @@ Type=simple
 # calls, and only the second one needs this line.
 Environment=ARLEN_KNOWLEDGE_SOCKET=/run/arlen/knowledge.sock
 ExecStart=/usr/lib/arlen/libexec/arlen-consent-broker
+# This binds `$XDG_RUNTIME_DIR/arlen/consent-control.sock` and nothing in the crate
+# creates that directory, so it followed the rule the signer unit writes down only
+# by luck: whichever daemon happened to start first made it. `Restart=on-failure`
+# hid the miss, which is exactly how the signer's own version of this looked like
+# nothing. `RuntimeDirectoryPreserve=yes` is mandatory alongside - the directory is
+# shared, and systemd deletes an unpreserved one on stop, taking every other
+# daemon's socket with it.
+RuntimeDirectory=arlen
+RuntimeDirectoryPreserve=yes
 Restart=on-failure
 RestartSec=2
 
