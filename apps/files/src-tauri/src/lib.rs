@@ -1340,14 +1340,26 @@ fn application_dirs() -> Vec<PathBuf> {
 /// one of the same id) and matched + sorted by the core. An unresolved MIME or
 /// an unreadable dir yields fewer entries, never an error.
 #[tauri::command]
-fn files_apps_for(path: String) -> Vec<AppInfo> {
+async fn files_apps_for(path: String) -> Vec<AppInfo> {
     let abs = abs(&path);
-    let mime = match std::process::Command::new("xdg-mime")
-        .args(["query", "filetype", &abs])
-        .output()
-    {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
-        _ => return Vec::new(),
+    // Through the shell's launch socket rather than `xdg-mime`. The answer is
+    // gated by what this app may read, so a path outside the grant comes back
+    // refused rather than typed - which is the point: *what kind of file is this*
+    // tells the asker that the path exists and what it holds.
+    let mime = match arlen_launch_contract::query_mime(&abs).await {
+        Ok(arlen_launch_contract::MimeAnswer::Type { mime }) => mime,
+        Ok(arlen_launch_contract::MimeAnswer::Refused { reason }) => {
+            // Logged rather than swallowed: an empty Open-With list is what a
+            // person sees, and "the file manager may not read there" is the kind
+            // of thing that should be findable when they ask why.
+            log::info!("open-with: {abs}: {reason}");
+            return Vec::new();
+        }
+        Ok(arlen_launch_contract::MimeAnswer::Unknown) => return Vec::new(),
+        Err(e) => {
+            log::warn!("open-with: launch socket: {e}");
+            return Vec::new();
+        }
     };
     if mime.is_empty() {
         return Vec::new();
