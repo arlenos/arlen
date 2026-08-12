@@ -560,6 +560,17 @@ function fixtureMarkupFixtures() {
     `exit ${r1.code}: ${r1.out.trim()}`,
   );
 
+  // Zero catches and zero rendered fixtures are both legitimate answers, so the
+  // emptiness worth refusing is finding no frontend at all. Before this the check
+  // printed "0 catch block(s) across 0 frontend file(s) checked" and exited 0.
+  const noApps = tree({ "daemons/probe/src/main.rs": "fn main() {}\n" });
+  const rEmpty = run("check-fixture-on-failure.py", noApps);
+  check(
+    "a tree with no frontend is refused rather than reported clean",
+    rEmpty.code === 2 && rEmpty.out.includes("NOTHING WAS READ"),
+    `exit ${rEmpty.code}: ${rEmpty.out.trim()}`,
+  );
+
   const flag = tree({
     "apps/meetings/src/routes/+page.svelte": `<script lang="ts">
   import { meetingsMocked } from "$lib/stores/meeting";
