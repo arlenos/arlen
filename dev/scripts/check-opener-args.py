@@ -88,6 +88,9 @@ ACKNOWLEDGED: dict[str, tuple[str, str]] = {
 def main() -> int:
     findings: list[str] = []
     acknowledged: list[str] = []
+    # Entries that actually excused a call this run. One that excused nothing has
+    # stopped describing the tree - see after the loop.
+    used: set[str] = set()
     calls = 0
     scanned = 0
 
@@ -114,6 +117,7 @@ def main() -> int:
             # call the file will ever contain.
             if excuse and excuse[0] in chain:
                 acknowledged.append(f"{rel}: {excuse[1]}")
+                used.add(rel)
                 continue
             line = text[: m.start()].count("\n") + 1
             findings.append(
@@ -130,6 +134,18 @@ def main() -> int:
     if scanned == 0:
         print("found no Rust sources to scan; the layout moved and this check went quiet")
         return 1
+
+    # An excuse that excused nothing. Each entry says a specific call is unguarded
+    # and why that is acceptable; once the call gains its `--`, or the file goes,
+    # the sentence is false and reads as a known hole that is still open. Fourth
+    # list to get this on 12 Aug, after `check-invoke-scope.py` turned out to be
+    # carrying two acknowledgements of calls that had both been fixed.
+    for rel in sorted(set(ACKNOWLEDGED) - used):
+        findings.append(
+            f"{rel} is acknowledged as passing an unguarded argument, but no such "
+            f"call is there now - it gained its `--`, or the file moved. Drop the "
+            f"entry rather than leave a fixed call described as open."
+        )
 
     print(
         f"{calls} xdg-open call(s) across {scanned} file(s) checked for an "

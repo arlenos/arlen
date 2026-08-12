@@ -45,17 +45,28 @@ const open = (chain) =>
   "        .ok();\n" +
   "}\n";
 
+// Both ACKNOWLEDGED entries are claims about THIS tree, and the staleness guard
+// added on 12 Aug reports an entry that excused nothing. A fixture has neither
+// file, so every fixture carries a stub bearing the witness its reason names, or
+// the guard correctly fires for entries that are perfectly healthy. Same trade as
+// `test-check-spawned-binaries`: the coupling to a list in the file under test
+// runs the cheap way, since adding an entry without a stub turns THIS test red.
+const CARRIED = {
+  "apps/files/src-tauri/src/lib.rs": open("        .arg(abs(&path))\n"),
+  "apps/harness/src-tauri/src/file_ref.rs": open("        .arg(path)\n"),
+};
+
 console.log("check-opener-args:");
 
 check(
   "a call a dash-leading name would defeat is caught",
-  { "apps/probe/src-tauri/src/lib.rs": open("        .arg(path)\n") },
+  { ...CARRIED, "apps/probe/src-tauri/src/lib.rs": open("        .arg(path)\n") },
   (code, out) => code === 1 && out.includes("probe"),
 );
 
 check(
   "the same call with an end-of-options marker passes",
-  { "apps/probe/src-tauri/src/lib.rs": open('        .arg("--")\n        .arg(path)\n') },
+  { ...CARRIED, "apps/probe/src-tauri/src/lib.rs": open('        .arg("--")\n        .arg(path)\n') },
   (code) => code === 0,
 );
 
@@ -66,6 +77,7 @@ check(
 check(
   "an excused file still passes the call its reason was written for",
   {
+    ...CARRIED,
     "apps/files/src-tauri/src/lib.rs": open('        .arg(abs(&path))\n'),
   },
   (code, out) => code === 0 && out.includes("Checked the function, not the name"),
@@ -74,6 +86,7 @@ check(
 check(
   "a different call in that same file does not inherit the excuse",
   {
+    ...CARRIED,
     "apps/files/src-tauri/src/lib.rs":
       open('        .arg(abs(&path))\n') + "\n" + open("        .arg(other)\n"),
   },
@@ -83,6 +96,19 @@ check(
 // The defect this test was written for. A count of zero is only honest when
 // there was something to count; no Rust sources at all means the check went
 // quiet, and quiet must not read as clean.
+// The staleness half. An entry says a specific call is unguarded and why that is
+// tolerable; the day the call gains its `--`, the sentence describes a hole that
+// is closed, which reads as a known problem still open. Here the harness stub is
+// given the marker, so its entry excuses nothing.
+check(
+  "an entry whose call has since been fixed is caught",
+  {
+    ...CARRIED,
+    "apps/harness/src-tauri/src/file_ref.rs": open('        .arg("--")\n        .arg(path)\n'),
+  },
+  (code, out) => code === 1 && out.includes("apps/harness"),
+);
+
 check(
   "an empty tree is a moved layout, not a pass",
   { "README.md": "nothing here\n" },
