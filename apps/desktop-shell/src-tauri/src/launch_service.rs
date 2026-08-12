@@ -257,6 +257,14 @@ fn answer_query(query: &proto::MimeQuery, caller: &Caller) -> proto::MimeAnswer 
             reason: "not a readable path for this application".into(),
         };
     };
+    // `load_profile` takes the root-owned `/var/lib` tier outright when it exists
+    // and only falls back to the user's own `~/.config` copy when it does not. So
+    // for an app the image ships - which is every app this gate answers for today
+    // - a same-uid write cannot widen what it may be told about. For an app with
+    // no system profile the user file is authoritative and writable by its own
+    // uid, which is the documented F3 residual rather than a new one: a process
+    // that can write that file can also read the files directly, so the answer
+    // here tells it nothing it did not already have.
     let profile = arlen_permissions::load_profile(app_id);
     let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
     // The SAME resolution the launcher confines by. Hardcoding the English
