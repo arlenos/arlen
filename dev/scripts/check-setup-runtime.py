@@ -121,7 +121,19 @@ def fn_bodies(app_src: Path) -> dict[str, tuple[bool, str, Path]]:
 def main() -> int:
     findings: list[str] = []
     checked = 0
-    for lib in sorted((ROOT / "apps").glob("*/src-tauri/src/lib.rs")):
+    libs = sorted((ROOT / "apps").glob("*/src-tauri/src/lib.rs"))
+    # A crate with no setup hook is a legitimate zero and several have none, so
+    # the emptiness that has to be refused is one level up: no `lib.rs` where every
+    # app keeps one. That is a wrong root or a moved layout, and the line below
+    # would otherwise report "0 setup hook bodies checked" in the same tone it uses
+    # when it has read them all.
+    if not libs:
+        print(
+            f"NOTHING WAS READ: no app lib.rs under {ROOT / 'apps'}/*/src-tauri/src",
+            file=sys.stderr,
+        )
+        return 2
+    for lib in libs:
         app = lib.relative_to(ROOT).parts[1]
         body = setup_body(lib.read_text(encoding="utf-8", errors="replace"))
         if not body:

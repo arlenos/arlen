@@ -24,6 +24,22 @@ const GATE = join(ROOT, "dev/scripts/check-setup-runtime.py");
 
 const failures = [];
 
+// The tree-level emptiness, which needs its own fixture because `check` always
+// writes a lib.rs. A crate with no setup hook is a legitimate zero; no lib.rs at
+// all is a scan that ran somewhere the apps are not, and it used to print
+// "0 setup hook body/bodies ... checked" and exit 0.
+function checkEmpty(name, expect) {
+  const dir = mkdtempSync(join(tmpdir(), "arlen-setuprt-"));
+  mkdirSync(join(dir, "daemons/probe/src"), { recursive: true });
+  writeFileSync(join(dir, "daemons/probe/src/main.rs"), "fn main() {}\n");
+  const r = spawnSync("python3", [GATE, dir], { encoding: "utf8" });
+  const got = { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  const ok = expect(got.code, got.out);
+  console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
+  if (!ok) failures.push({ name, ...got });
+  rmSync(dir, { recursive: true, force: true });
+}
+
 function check(name, lib, expect) {
   const dir = mkdtempSync(join(tmpdir(), "arlen-setuprt-"));
   const src = join(dir, "apps/probe/src-tauri/src");
@@ -61,6 +77,11 @@ fn start_watcher() {
 `;
 
 console.log("check-setup-runtime:");
+
+checkEmpty(
+  "a tree with no app lib.rs is refused rather than reported clean",
+  (code, out) => code === 2 && out.includes("NOTHING WAS READ"),
+);
 
 // The case the call-graph-only version passed.
 check(
