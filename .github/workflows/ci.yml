@@ -273,6 +273,7 @@ jobs:
           node dev/scripts/test-check-dbus-callers.mjs
           node dev/scripts/test-check-app-profiles.mjs
           node dev/scripts/test-check-bus-declarations.mjs
+          node dev/scripts/test-probe-verdict.mjs
           node dev/scripts/test-check-webview-sandbox.mjs
           node dev/scripts/test-check-opener-args.mjs
           node dev/scripts/test-check-bus-names-covered.mjs

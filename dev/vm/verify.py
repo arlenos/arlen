@@ -1047,41 +1047,21 @@ def main():
                   f"({journal_text.count(chr(10))} lines)")
 
     if args.require_probe:
-        # Two ways to fail, and the second is the one worth having.
-        #
-        # A missing tally is a fail-closed: the probe waits 75s between its two
-        # rounds, so a run that does not linger past that simply has no verdict,
-        # and "no verdict" must never read as a pass. The message says so, because
-        # the natural reading of a silent probe is that nothing went wrong.
-        #
-        # The other is the trap this whole night has been about: `0 questions
-        # failed` with every answer at 0 rows is a probe that connected, asked, was
-        # allowed, and found an EMPTY graph. That is a green tick over the exact
-        # failure the probe exists to catch, so a pass needs a row somewhere.
+        # The verdict itself lives in `probe_verdict.py` so it can be shown
+        # failing: inline, the only way to exercise it was to boot an image whose
+        # graph does not ingest, and there is no such image. Its control plants
+        # each refusal against a synthetic journal.
         if journal_text is None:
             print("VERIFY FAIL: --require-probe, but the guest journal could not be read")
             return 1
-        lines = [l for l in journal_text.splitlines() if "kg-probe:" in l]
-        tally = [l for l in lines if "question(s) failed" in l]
-        rows = [l for l in lines if re.search(r": [1-9][0-9]* row\(s\)", l)]
-        if not tally:
-            print("VERIFY FAIL: the knowledge probe never reported a tally. It asks "
-                  f"twice {75}s apart, so --linger must reach past that; a probe with "
-                  "no verdict is not a probe that passed.")
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from probe_verdict import probe_verdict
+
+        ok, message = probe_verdict(journal_text)
+        if not ok:
+            print(f"VERIFY FAIL: {message}")
             return 1
-        if "done, 0 question(s) failed" not in tally[-1]:
-            print(f"VERIFY FAIL: the knowledge probe reported failures: {tally[-1].strip()}")
-            for l in lines:
-                if "FAILED" in l:
-                    print(f"  {l.strip()}")
-            return 1
-        if not rows:
-            print("VERIFY FAIL: the knowledge probe was answered but the graph was "
-                  "empty - every question returned 0 rows. An allowed question with "
-                  "no data is what a broken ingestion path looks like from here.")
-            return 1
-        print(f"knowledge probe: {tally[-1].split('kg-probe:')[-1].strip()}, "
-              f"{len(rows)} question(s) returned rows")
+        print(f"knowledge probe: {message}")
 
     if not (os.path.exists(out) and os.path.getsize(out) > 0):
         sys.exit("no screenshot captured")
