@@ -349,13 +349,9 @@ fn main() -> ExitCode {
     // the per-command cgroup and the egress seam are applied in the spawn; the
     // seccomp filter and the real egress enforcer are the remaining layers.
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-    let user_dirs = profile::UserDirs {
-        documents: dirs::document_dir().unwrap_or_else(|| home.join("Documents")),
-        downloads: dirs::download_dir().unwrap_or_else(|| home.join("Downloads")),
-        pictures: dirs::picture_dir().unwrap_or_else(|| home.join("Pictures")),
-        music: dirs::audio_dir().unwrap_or_else(|| home.join("Music")),
-        videos: dirs::video_dir().unwrap_or_else(|| home.join("Videos")),
-    };
+    // One resolution, in `arlen_permissions` beside the type: the launch service
+    // has to judge paths against exactly the directories this binds.
+    let user_dirs = profile::UserDirs::resolve(&home);
     let inputs = profile::confinement_inputs(
         &profile.filesystem,
         &profile.network,
