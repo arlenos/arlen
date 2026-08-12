@@ -89,14 +89,35 @@ impl ConsumerEntry {
 
 /// Shared registry of all active consumers.
 /// Wrapped in `Arc<RwLock<...>>` so it can be shared across async tasks.
+/// Whether a topic keeps its last message for late subscribers.
+///
+/// `<domain>.state` - `power.state`, `network.state`, `audio.state` today. The
+/// suffix is the whole rule, so a new state topic gets late-joiner semantics by
+/// being named one, with nothing to register.
+///
+/// **Event topics keep nothing.** `file.opened` is something that happened;
+/// replaying it to a subscriber who was not there would be telling them a file
+/// is being opened now. A state topic is a snapshot of how things ARE, and the
+/// only reason a subscriber misses it is that nothing has changed since they
+/// connected - which is exactly when they most need to be told.
+pub fn is_state_topic(topic: &str) -> bool {
+    topic.ends_with(".state")
+}
+
 pub struct ConsumerRegistry {
     consumers: RwLock<Vec<ConsumerEntry>>,
+    /// The last message of each state topic, replaced not accumulated.
+    ///
+    /// One per topic. A history is the graph's job; this is here so a consumer
+    /// that connects between two changes is not told nothing at all.
+    retained: RwLock<std::collections::HashMap<String, Event>>,
 }
 
 impl ConsumerRegistry {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             consumers: RwLock::new(Vec::new()),
+            retained: RwLock::new(std::collections::HashMap::new()),
         })
     }
 
@@ -114,7 +135,34 @@ impl ConsumerRegistry {
             uid_filter,
             sender,
         };
-        self.consumers.write().await.push(entry);
+
+        // The write lock is held across BOTH the replay and the push, and that is
+        // the point of taking it here rather than on the push alone. `dispatch`
+        // needs the read half, so it cannot interleave: without this, a live
+        // change arriving between the two either lands before the retained
+        // snapshot - leaving the consumer holding stale state that looks newer -
+        // or lands while the entry is not yet in the list and is missed outright.
+        let mut consumers = self.consumers.write().await;
+
+        // Retained delivery is filtered by the SAME two checks `dispatch` makes,
+        // which is what keeps it from being a way in. It cannot be more permissive
+        // than a live delivery, because `subscribed_types` has already been through
+        // the subscribe-scope gate in the socket handler by the time it arrives
+        // here - a pattern the caller may not have was filtered out before this.
+        for event in self.retained.read().await.values() {
+            if !entry.matches(&event.r#type) || !entry.uid_filter.accepts(event.uid) {
+                continue;
+            }
+            // The event keeps its ORIGINAL timestamp. It is last-known, never
+            // current, and a consumer that reads it as current will paint stale
+            // state as live - the timestamp is how it tells the difference.
+            if entry.sender.try_send(event.clone()).is_err() {
+                warn!(consumer_id = %id, topic = %event.r#type, "retained snapshot not delivered");
+            }
+        }
+
+        consumers.push(entry);
+        drop(consumers);
         debug!(consumer_id = %id, "consumer registered");
         receiver
     }
@@ -129,6 +177,15 @@ impl ConsumerRegistry {
     /// Dispatch an event to all matching consumers.
     /// Checks both event type pattern AND UID filter.
     pub async fn dispatch(self: &Arc<Self>, event: &Event) {
+        // Retained before delivered, so a consumer registering at this instant
+        // gets this snapshot from one side or the other and never neither.
+        if is_state_topic(&event.r#type) {
+            self.retained
+                .write()
+                .await
+                .insert(event.r#type.clone(), event.clone());
+        }
+
         let consumers = self.consumers.read().await;
 
         for consumer in consumers.iter() {
@@ -379,5 +436,102 @@ mod tests {
         assert!(exact.accepts(0));     // system events always pass
         assert!(exact.accepts(1000));  // matching UID
         assert!(!exact.accepts(2000)); // different UID
+    }
+
+    /// A state snapshot on the wire, with the timestamp that makes it readable
+    /// as last-known rather than current.
+    fn snapshot(topic: &str, uid: u32, timestamp: i64) -> Event {
+        Event {
+            r#type: topic.to_string(),
+            uid,
+            timestamp,
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_late_subscriber_is_told_the_last_known_state() {
+        // The gap this closes: net and audio publish only when something changes,
+        // so anything that connects between two changes is told nothing at all and
+        // has no way to ask. Being early was the only way to know.
+        let reg = ConsumerRegistry::new();
+        reg.dispatch(&snapshot("network.state", 0, 111)).await;
+
+        let mut rx = reg
+            .register("late".into(), vec!["network.".into()], UidFilter::All)
+            .await;
+        let got = rx.try_recv().expect("the retained snapshot is delivered");
+        assert_eq!(got.r#type, "network.state");
+        // Its OWN timestamp, not the moment of delivery. A consumer that reads it
+        // as current would paint stale state as live, and this is what lets it
+        // tell the difference.
+        assert_eq!(got.timestamp, 111);
+    }
+
+    #[tokio::test]
+    async fn an_event_topic_keeps_nothing() {
+        // `file.opened` is something that happened. Replaying it to someone who
+        // was not there says a file is being opened now, which is a lie about the
+        // present rather than a fact about the past.
+        let reg = ConsumerRegistry::new();
+        reg.dispatch(&snapshot("file.opened", 0, 1)).await;
+        let mut rx = reg
+            .register("late".into(), vec!["file.".into()], UidFilter::All)
+            .await;
+        assert!(rx.try_recv().is_err(), "an event topic is not retained");
+    }
+
+    #[tokio::test]
+    async fn a_topic_keeps_one_message_and_replaces_it() {
+        // One per topic. A history is the graph's job; a bus that accumulated
+        // would hand a late subscriber a replay of everything it missed.
+        let reg = ConsumerRegistry::new();
+        reg.dispatch(&snapshot("audio.state", 0, 1)).await;
+        reg.dispatch(&snapshot("audio.state", 0, 2)).await;
+        reg.dispatch(&snapshot("audio.state", 0, 3)).await;
+
+        let mut rx = reg
+            .register("late".into(), vec!["audio.".into()], UidFilter::All)
+            .await;
+        assert_eq!(rx.try_recv().expect("one snapshot").timestamp, 3);
+        assert!(rx.try_recv().is_err(), "only the last one, not a history");
+    }
+
+    #[tokio::test]
+    async fn retained_delivery_is_filtered_exactly_like_a_live_one() {
+        // The requirement that matters: a retained message must not become a way
+        // to receive what a live delivery would have refused. Both filters are
+        // checked here, and the patterns arriving at `register` have already been
+        // through the subscribe-scope gate in the socket handler, so this cannot
+        // be more permissive than the live path.
+        let reg = ConsumerRegistry::new();
+        reg.dispatch(&snapshot("power.state", 1000, 5)).await;
+
+        let mut wrong_uid = reg
+            .register("other-user".into(), vec!["power.".into()], UidFilter::Exact(1001))
+            .await;
+        assert!(
+            wrong_uid.try_recv().is_err(),
+            "another user's snapshot is not handed over on subscribe"
+        );
+
+        let mut not_subscribed = reg
+            .register("elsewhere".into(), vec!["file.".into()], UidFilter::All)
+            .await;
+        assert!(
+            not_subscribed.try_recv().is_err(),
+            "a topic the consumer did not ask for is not delivered"
+        );
+    }
+
+    #[test]
+    fn a_state_topic_is_named_one() {
+        assert!(is_state_topic("power.state"));
+        assert!(is_state_topic("network.state"));
+        assert!(is_state_topic("audio.state"));
+        assert!(!is_state_topic("file.opened"));
+        // Not a suffix match on the word alone: this is a transition, not a
+        // snapshot, and retaining it would replay a change as a condition.
+        assert!(!is_state_topic("app.shortcut.state_changed"));
     }
 }
