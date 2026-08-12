@@ -503,6 +503,14 @@ def main():
                     help="with the consent dialog up, click 'Allow once' via the "
                          "absolute pointer and confirm the dialog dismisses (the "
                          "shell -> broker Resolve leg). Implies --require-consent")
+    ap.add_argument("--journal-out", default=None, metavar="PATH",
+                    help="write the guest's own journal here, read out of the "
+                         "overlay after it halts. Unlike the serial log this covers "
+                         "the whole run.")
+    ap.add_argument("--require-probe", action="store_true",
+                    help="fail unless the knowledge probe answered every question "
+                         "AND found something. Needs --linger past 75s, the gap "
+                         "between the probe's two rounds.")
     ap.add_argument("--linger", type=int, default=0, metavar="SECONDS",
                     help="stay alive this long after the checks pass, before the "
                          "shutdown. Pair with --keep to get a journal that covers "
@@ -641,6 +649,7 @@ def main():
         qemu += ["-smbios", "type=1," + ",".join(smbios_fields)]
     print("+ " + " ".join(qemu))
     qemu_env = {**os.environ, "DISPLAY": x_display} if x_display else None
+    run_start = time.monotonic()
     proc = subprocess.Popen(qemu, stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL, env=qemu_env)
     try:
@@ -983,11 +992,96 @@ def main():
             stamps = []
         if stamps:
             last = float(stamps[-1])
-            print(f"serial horizon: last entry at {last:.1f}s of a ~{args.wait}s run"
-                  + ("  (nothing after this was captured; absence past it proves nothing)"
-                     if last < args.wait * 0.6 else ""))
+            # Against how long the guest ACTUALLY ran, not against --wait.
+            #
+            # --wait is a ceiling the bar-polling modes never reach: they return the
+            # moment the bar appears, so a `--wait 120` run is over at about eleven
+            # seconds. Measured against 120 that looks like a log truncated at 9%,
+            # and it is not - it is a complete log of a short run. I spent two ticks
+            # on 12 Aug chasing a truncation that this line invented, first blaming
+            # journald's rate limit and then the serial bandwidth, before a long
+            # --linger run printed "103.7s of a ~60s run" and gave the game away.
+            ran = time.monotonic() - run_start
+            print(f"serial horizon: last entry at {last:.1f}s of a {ran:.0f}s run"
+                  + ("  (the guest kept running past this; absence after it proves "
+                     "nothing)" if last < ran * 0.6 else ""))
         else:
             print("serial horizon: no timestamped entries; the log says nothing about timing")
+
+    # The guest's own journal, read out of the overlay now that the guest halts
+    # cleanly enough to have flushed one.
+    #
+    # This is the only complete record a run produces. The serial console stops
+    # carrying userspace output around 7-9s while the guest keeps going, so
+    # everything a boot could say about steady state - the promotion pass, the
+    # project watcher firing, the probe's second round - lands where nothing was
+    # reading. Extracting it costs one guestfish call against a file that is about
+    # to be deleted anyway.
+    journal_text = None
+    if args.journal_out or args.require_probe:
+        jdir = os.path.join(tmp, "journal")
+        os.makedirs(jdir, exist_ok=True)
+        script = (
+            "run\nmount-ro /dev/sda2 /\n"
+            f"glob copy-out /var/log/journal/*/system.journal {jdir}/\n"
+        )
+        r = subprocess.run(["guestfish", "--ro", "-a", overlay],
+                           input=script, capture_output=True, text=True)
+        jfile = os.path.join(jdir, "system.journal")
+        if r.returncode == 0 and os.path.exists(jfile):
+            rendered = subprocess.run(
+                ["journalctl", "--file", jfile, "-o", "short-iso", "--no-pager"],
+                capture_output=True, text=True)
+            if rendered.returncode == 0:
+                journal_text = rendered.stdout
+        if journal_text is None:
+            # Say which tool was missing rather than "could not read the journal":
+            # libguestfs and systemd are separate things to install, and a check
+            # that cannot name its own dependency wastes the reader's next ten
+            # minutes.
+            print("could not read the guest journal (needs guestfish + journalctl)")
+        elif args.journal_out:
+            with open(os.path.abspath(args.journal_out), "w") as fh:
+                fh.write(journal_text)
+            print(f"journal: {os.path.abspath(args.journal_out)} "
+                  f"({journal_text.count(chr(10))} lines)")
+
+    if args.require_probe:
+        # Two ways to fail, and the second is the one worth having.
+        #
+        # A missing tally is a fail-closed: the probe waits 75s between its two
+        # rounds, so a run that does not linger past that simply has no verdict,
+        # and "no verdict" must never read as a pass. The message says so, because
+        # the natural reading of a silent probe is that nothing went wrong.
+        #
+        # The other is the trap this whole night has been about: `0 questions
+        # failed` with every answer at 0 rows is a probe that connected, asked, was
+        # allowed, and found an EMPTY graph. That is a green tick over the exact
+        # failure the probe exists to catch, so a pass needs a row somewhere.
+        if journal_text is None:
+            print("VERIFY FAIL: --require-probe, but the guest journal could not be read")
+            return 1
+        lines = [l for l in journal_text.splitlines() if "kg-probe:" in l]
+        tally = [l for l in lines if "question(s) failed" in l]
+        rows = [l for l in lines if re.search(r": [1-9][0-9]* row\(s\)", l)]
+        if not tally:
+            print("VERIFY FAIL: the knowledge probe never reported a tally. It asks "
+                  f"twice {75}s apart, so --linger must reach past that; a probe with "
+                  "no verdict is not a probe that passed.")
+            return 1
+        if "done, 0 question(s) failed" not in tally[-1]:
+            print(f"VERIFY FAIL: the knowledge probe reported failures: {tally[-1].strip()}")
+            for l in lines:
+                if "FAILED" in l:
+                    print(f"  {l.strip()}")
+            return 1
+        if not rows:
+            print("VERIFY FAIL: the knowledge probe was answered but the graph was "
+                  "empty - every question returned 0 rows. An allowed question with "
+                  "no data is what a broken ingestion path looks like from here.")
+            return 1
+        print(f"knowledge probe: {tally[-1].split('kg-probe:')[-1].strip()}, "
+              f"{len(rows)} question(s) returned rows")
 
     if not (os.path.exists(out) and os.path.getsize(out) > 0):
         sys.exit("no screenshot captured")
