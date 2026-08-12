@@ -177,6 +177,58 @@ def passthrough_wrappers(text: str) -> list[str]:
     return out
 
 
+def fixed_payload_wrappers(text: str) -> dict[str, set[str]]:
+    """Local helpers taking only a command name and building a FIXED payload.
+
+    `run(cmd)` in the harness's file-pill menu is the shape: one parameter, and a
+    body that calls `invoke(cmd, { path })` with keys written literally there. So
+    every `run("fileref_open")` IS `invoke("fileref_open", { path })` and the keys
+    are knowable without following anything a caller wrote.
+
+    Distinct from [`passthrough_wrappers`], which forwards a payload it was
+    handed. Both are safe for opposite reasons: there the keys are at the call
+    site, here they are in the wrapper, and neither is computed.
+
+    This exists because the exemption for it expired. The check used to name these
+    calls as unreadable and say resolving them was a rule fitted to a single
+    caller - true when there was one. There are two wrappers now and the harness
+    gained a third call through one of them, so the objection is gone and the gap
+    is just a gap.
+    """
+    out: dict[str, set[str]] = {}
+    for m in re.finditer(r"(?:async\s+)?function\s+(\w+)\s*\(\s*(\w+)\s*:[^)]*\)", text):
+        name, param = m.group(1), m.group(2)
+        brace = text.find("{", m.end())
+        if brace == -1:
+            continue
+        depth, i = 0, brace
+        while i < len(text):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        body = text[brace : i + 1]
+        # The payload is read by the SAME reader every other call site uses, not
+        # a second regex. The first version here matched key-ish words and picked
+        # up the VALUES too - `{ targetAppId: appId }` came back as two keys - and
+        # reported a wrapper that was correct. `payload_keys` counts braces and
+        # already survives template literals; a private copy would have to learn
+        # that again.
+        # Ends BEFORE the comma: `payload_keys` consumes the separator itself, so
+        # handing it a position past the comma leaves it looking at `{` where it
+        # expects `,` or `)` and it reads nothing.
+        call = re.search(rf"invoke\s*(?:<[^>]*>)?\s*\(\s*{re.escape(param)}\b", body)
+        if not call:
+            continue
+        keys = payload_keys(body, call.end())
+        if keys:
+            out[name] = keys
+    return out
+
+
 def invoke_calls(root: Path):
     """Yield (app, file, line, command, argument keys or None) for every call."""
     for base in (root / "apps",):
@@ -186,14 +238,20 @@ def invoke_calls(root: Path):
             if "node_modules" in path.parts or ".svelte-kit" in path.parts:
                 continue
             text = path.read_text(encoding="utf-8", errors="replace")
-            names = ["invoke", *passthrough_wrappers(text)]
+            fixed = fixed_payload_wrappers(text)
+            names = ["invoke", *passthrough_wrappers(text), *fixed]
             for name in names:
                 for m in re.finditer(
                     rf'\b{re.escape(name)}\s*(?:<[^>]*>)?\s*\(\s*"([a-z_0-9]+)"', text
                 ):
                     cmd = m.group(1)
                     line = text[: m.start()].count("\n") + 1
-                    keys = payload_keys(text, m.end())
+                    # A fixed-payload wrapper's keys live in the wrapper, not at
+                    # the call, so they come from there rather than from the text
+                    # after the command name (which is just `)`).
+                    keys = (
+                        fixed[name] if name in fixed else payload_keys(text, m.end())
+                    )
                     yield (
                         path.relative_to(root).parts[1],
                         path.relative_to(root),
@@ -235,7 +293,7 @@ def wrapped_calls(root: Path, known: set[str]) -> list[str]:
         # so naming it here too would report the same fifteen as both counted and
         # unreachable - a report contradicting itself in the direction of
         # understating what it checked.
-        followed = set(passthrough_wrappers(text))
+        followed = set(passthrough_wrappers(text)) | set(fixed_payload_wrappers(text))
         wrappers = set()
         for m in re.finditer(r"\binvoke\s*(?:<[^>]*>)?\s*\(\s*([A-Za-z_$])", text):
             if m.group(1) in ('"', "'"):
@@ -841,12 +899,9 @@ def main() -> int:
             "    Their argument shape is not compared and they are not in the count\n"
             "    below. Named rather than omitted: a silent gap in a coverage number\n"
             "    reads as coverage.\n"
-            "    Checked by hand on 11 Aug and both match: `applyReaches` passes\n"
-            "    targetAppId + reach, and revoke_reach/restore_reach each declare\n"
-            "    (target_app_id: String, reach: String). Not automated, because the\n"
-            "    shape is one site - a wrapper whose command names live in a union\n"
-            "    type - and a rule fitted to a single caller is a rule that breaks on\n"
-            "    the second one.\n"
+            "    A wrapper whose shape can be read is followed instead of\n"
+            "    listed: both known ones are, since 12 Aug. What remains here is\n"
+            "    the kind that builds a payload from something this cannot see.\n"
         )
 
     print(
