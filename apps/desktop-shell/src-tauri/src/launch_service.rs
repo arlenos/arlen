@@ -266,6 +266,18 @@ fn answer_query(query: &proto::MimeQuery, caller: &Caller) -> proto::MimeAnswer 
     let readable = profile
         .map(|p| p.filesystem.readable_dirs(&home, &dirs))
         .unwrap_or_default();
+    // The granted dirs are canonicalised too, because the path already is. A home
+    // where `~/Documents` is a symlink to another disk yields a canonical file
+    // path under the TARGET, which no longer starts with the link's own path - so
+    // an untouched comparison refuses a grant that is perfectly good, invisibly.
+    // `arlen-run` does not have that problem because bwrap follows the link when
+    // it binds, which would leave the launcher confining what the gate refuses to
+    // describe. A granted dir that does not resolve is dropped rather than kept:
+    // it names nothing, so it can contain nothing.
+    let readable: Vec<std::path::PathBuf> = readable
+        .iter()
+        .filter_map(|d| std::fs::canonicalize(d).ok())
+        .collect();
     if !is_within(&path, &readable) {
         return proto::MimeAnswer::Refused {
             reason: "not a readable path for this application".into(),
@@ -475,6 +487,32 @@ mod mime_tests {
             std::path::Path::new("/home/u/documents-private/a.txt"),
             &granted
         ));
+    }
+
+    #[test]
+    fn a_symlinked_grant_directory_still_contains_its_files() {
+        // The case the canonicalisation above exists for: people symlink a user
+        // directory onto another disk, and the file's canonical path then lies
+        // under the TARGET while the grant still names the link.
+        let tmp = std::env::temp_dir().join(format!("arlen-symgrant-{}", std::process::id()));
+        let real = tmp.join("real");
+        let link = tmp.join("link");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::write(real.join("f.txt"), b"x").unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let file = std::fs::canonicalize(link.join("f.txt")).unwrap();
+        // The grant as written names the link, uncanonicalised.
+        assert!(
+            !is_within(&file, &[link.clone()]),
+            "the uncanonicalised comparison is what refuses a good grant"
+        );
+        let resolved: Vec<std::path::PathBuf> =
+            [link].iter().filter_map(|d| std::fs::canonicalize(d).ok()).collect();
+        assert!(is_within(&file, &resolved));
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
