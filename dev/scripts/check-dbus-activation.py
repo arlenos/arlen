@@ -23,13 +23,22 @@ Two refusals, because a pointer to nothing is as quiet as no pointer:
     2. That unit exists in the tree. A typo'd or renamed unit leaves activation
        to fail with "unit not found" at the moment a user first needs the daemon,
        which is the worst time to discover a filename.
+    3. `Exec=` names the same binary as that unit's `ExecStart=`. systemd wins
+       while `SystemdService=` is present, so a divergent `Exec=` is invisible
+       until it is not: drop the pointer, or activate on a system where systemd
+       is not the one answering, and D-Bus starts the OTHER path - typically an
+       older install location that still exists. The two lines describing one
+       daemon should not be able to disagree in silence.
 
-NOT covered: whether the unit is actually installed on an image (an activation
+I first recorded (3) as needing the two path conventions reconciled before it
+could be checked. That was wrong and worth saying: all seven dist activation
+files already name exactly what their unit names. Nothing needed reconciling, so
+the check went in.
+
+NOT covered: whether the unit is actually installed on an image. An activation
 file for a daemon that does not ship yet is normal here - installd and the
-online-accounts daemon are both in that state), and whether `Exec=` and the unit's
-`ExecStart=` agree. The first is `check-shipped-units.py`; the second would be
-worth having and needs the two paths reconciled first, since the activation file
-names an install path and the unit may name a different one.
+online-accounts daemon are both in that state - and `check-shipped-units.py` is
+where that question lives.
 
 Shown to fail before being trusted: `dev/scripts/test-check-dbus-activation.mjs`
 plants a missing pointer and a dangling one.
@@ -59,9 +68,22 @@ def activation_files() -> list[pathlib.Path]:
     )
 
 
-def unit_exists(name: str) -> bool:
-    """Whether a unit of that filename is anywhere in the tree."""
-    return any(not set(SKIP) & set(p.parts) for p in ROOT.rglob(name))
+def find_unit(name: str) -> pathlib.Path | None:
+    """The first unit of that filename in the tree, generated copies aside."""
+    for p in ROOT.rglob(name):
+        if not set(SKIP) & set(p.parts):
+            return p
+    return None
+
+
+def exec_binary(text: str, key: str) -> str | None:
+    """The binary an `Exec=`/`ExecStart=` line runs, arguments and prefixes aside."""
+    m = re.search(rf"^{key}=(\S+)", text, re.M)
+    if not m:
+        return None
+    # systemd allows `+`, `!`, `-` and `@` prefixes on ExecStart; strip them so a
+    # hardened unit is compared on the binary rather than on its decoration.
+    return m.group(1).lstrip("+!-@")
 
 
 def main() -> int:
@@ -89,10 +111,24 @@ def main() -> int:
             )
             continue
         unit = m.group(1)
-        if not unit_exists(unit):
+        unit_path = find_unit(unit)
+        if unit_path is None:
             problems.append(
                 f"{rel} points at {unit}, and no such unit is in the tree. "
                 f"Activation then fails the first time a user needs the daemon."
+            )
+            continue
+
+        activation_exec = exec_binary(text, "Exec")
+        unit_exec = exec_binary(
+            unit_path.read_text(encoding="utf-8", errors="replace"), "ExecStart"
+        )
+        if activation_exec and unit_exec and activation_exec != unit_exec:
+            problems.append(
+                f"{rel} runs {activation_exec} while {unit} runs {unit_exec}. "
+                f"systemd wins while SystemdService= is there, so the difference "
+                f"is invisible until the pointer is dropped or systemd is not the "
+                f"one answering - and then activation starts the other binary."
             )
 
     for stale in sorted(UNPOINTED):
@@ -107,7 +143,8 @@ def main() -> int:
 
     print(
         f"{len(files)} arlen D-Bus activation file(s); each starts its daemon "
-        f"through a unit that exists ({len(UNPOINTED)} excused)"
+        f"through a unit that exists and runs the same binary "
+        f"({len(UNPOINTED)} excused)"
     )
     return 0
 

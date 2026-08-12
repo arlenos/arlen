@@ -24,18 +24,20 @@ function check(name, ok) {
 }
 
 // A tree with one activation file and, optionally, the unit it points at.
-function tree({ pointer = "arlen-thing.service", withUnit = true }) {
+const EXEC = "/usr/lib/arlen/libexec/arlen-thing";
+
+function tree({ pointer = "arlen-thing.service", withUnit = true, unitExec = EXEC }) {
   const dir = mkdtempSync(join(tmpdir(), "dbus-activation-"));
   const dist = join(dir, "daemons/thing/dist");
   mkdirSync(dist, { recursive: true });
   writeFileSync(
     join(dist, "org.arlen.Thing1.service"),
     "[D-BUS Service]\nName=org.arlen.Thing1\n" +
-      "Exec=/usr/lib/arlen/libexec/arlen-thing\n" +
+      `Exec=${EXEC}\n` +
       (pointer === null ? "" : `SystemdService=${pointer}\n`)
   );
   if (withUnit) {
-    writeFileSync(join(dist, "arlen-thing.service"), "[Service]\nExecStart=/usr/bin/true\n");
+    writeFileSync(join(dist, "arlen-thing.service"), `[Service]\nExecStart=${unitExec}\n`);
   }
   return dir;
 }
@@ -63,6 +65,24 @@ check("the repository as it stands passes", run(ROOT).code === 0);
   const r = run(d);
   check("a pointer at a unit that does not exist is caught", r.code === 1);
   check("and the message names the missing unit", r.out.includes("arlen-typo.service"));
+  rmSync(d, { recursive: true, force: true });
+}
+
+// Two lines describing one daemon, disagreeing. Invisible while systemd answers,
+// which is exactly why it needs a check rather than a reader.
+{
+  const d = tree({ unitExec: "/usr/bin/arlen-thing-old" });
+  const r = run(d);
+  check("an Exec that differs from the unit's ExecStart is caught", r.code === 1);
+  check("and the message gives both binaries", r.out.includes("arlen-thing-old") && r.out.includes(EXEC));
+  rmSync(d, { recursive: true, force: true });
+}
+
+// A hardened unit decorates its ExecStart with `+`, `!` or `-`; that is the same
+// binary and must not read as a disagreement.
+{
+  const d = tree({ unitExec: `+${EXEC}` });
+  check("a prefixed ExecStart is not a disagreement", run(d).code === 0);
   rmSync(d, { recursive: true, force: true });
 }
 
