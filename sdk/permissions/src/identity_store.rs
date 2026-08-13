@@ -196,6 +196,7 @@ impl IdentityStore {
 
 #[cfg(test)]
 mod tests {
+    use std::os::fd::AsFd;
     use super::*;
     use crate::peer_pidfd::pidfd_open;
     use std::process::{Command, Stdio};
@@ -208,9 +209,29 @@ mod tests {
     /// Register a process, then look it up with a SECOND, independent
     /// pidfd to the same process: same live pid on both sides matches.
     #[test]
+    fn only_what_the_session_root_registered_may_itself_register() {
+        // The derivation, at the store level. `arlen-run` registers apps all day
+        // and none of them becomes a registrar; only the root's own children do.
+        // That is what keeps this a provenance rule rather than a transitive
+        // free-for-all where any registration confers the power to register.
+        let mut store = IdentityStore::new();
+        let me = self_pidfd();
+
+        store
+            .register(self_pidfd(), "com.example.app".into(), "arlen-run".into())
+            .unwrap();
+        assert!(!store.may_register(me.as_fd()));
+
+        store
+            .register(self_pidfd(), "session-supervisor".into(), SESSION_ROOT.into())
+            .unwrap();
+        assert!(store.may_register(me.as_fd()));
+    }
+
+    #[test]
     fn a_registered_process_resolves_via_an_independent_pidfd() {
         let mut store = IdentityStore::new();
-        store.register(self_pidfd(), "com.example.app".into()).unwrap();
+        store.register(self_pidfd(), "com.example.app".into(), "arlen-run".into()).unwrap();
 
         // A distinct pidfd to the same (live) process must still resolve.
         let presented = self_pidfd();
@@ -229,7 +250,7 @@ mod tests {
     #[test]
     fn a_different_process_does_not_inherit_an_id() {
         let mut store = IdentityStore::new();
-        store.register(self_pidfd(), "com.example.self".into()).unwrap();
+        store.register(self_pidfd(), "com.example.self".into(), "arlen-run".into()).unwrap();
 
         let mut child = Command::new("sleep")
             .arg("30")
@@ -265,7 +286,7 @@ mod tests {
         // child's pid to lookup even after it dies (stands in for a
         // recycled process that happens to reuse the pid).
         let held_for_lookup = pidfd_open(child_pid).expect("pidfd_open(child)");
-        store.register(pidfd_open(child_pid).unwrap(), "com.example.child".into()).unwrap();
+        store.register(pidfd_open(child_pid).unwrap(), "com.example.child".into(), "arlen-run".into()).unwrap();
         assert_eq!(store.lookup(&held_for_lookup), Some("com.example.child"));
 
         // Kill + reap: the registered pidfd is now dead.
@@ -290,8 +311,8 @@ mod tests {
     #[test]
     fn re_registering_replaces_the_id() {
         let mut store = IdentityStore::new();
-        store.register(self_pidfd(), "com.example.old".into()).unwrap();
-        store.register(self_pidfd(), "com.example.new".into()).unwrap();
+        store.register(self_pidfd(), "com.example.old".into(), "arlen-run".into()).unwrap();
+        store.register(self_pidfd(), "com.example.new".into(), "arlen-run".into()).unwrap();
         assert_eq!(store.len(), 1);
         assert_eq!(store.lookup(&self_pidfd()), Some("com.example.new"));
     }
@@ -311,7 +332,7 @@ mod tests {
         let pidfd = pidfd_open(child.id()).expect("pidfd_open");
         child.kill().unwrap();
         child.wait().unwrap();
-        match store.register(pidfd, "com.example.dead".into()) {
+        match store.register(pidfd, "com.example.dead".into(), "arlen-run".into()) {
             Err(IdentityStoreError::DeadPidfd) => {}
             other => panic!("expected DeadPidfd, got {other:?}"),
         }
