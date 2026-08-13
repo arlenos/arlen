@@ -148,8 +148,46 @@ class Render:
                       f" {self.args.require_width}px and got {css_w}px."
                       f" No screenshot written.", 4)
             return
+        if self.args.open:
+            self.click_open()
+            return
+        self.snapshot()
+
+    def click_open(self):
+        """Click one element, then let it animate before the shot.
+
+        A dropdown's contents do not exist in the DOM until it is opened, so a
+        plain render of a page cannot photograph what a menu says - which is
+        exactly where an empty menu tells a person they have no projects. The
+        click is dispatched rather than synthesised at the pointer because the
+        target may be off-screen in a wide harness page.
+        """
+        sel = json.dumps(self.args.open)
+        self.view.evaluate_javascript(
+            f"(() => {{ const el = document.querySelector({sel});"
+            f" if (!el) return 'missing'; el.click(); return 'clicked'; }})()",
+            -1, None, None, None, self.on_opened)
+
+    def on_opened(self, view, result):
+        try:
+            verdict = view.evaluate_javascript_finish(result).to_string()
+        except Exception as e:  # noqa: BLE001
+            self.fail(f"could not click {self.args.open!r}: {e}", 6)
+            return
+        # A selector that matched nothing must refuse rather than quietly shoot
+        # the unopened page: a screenshot of the thing not happening is the most
+        # expensive kind of green.
+        if "missing" in verdict:
+            self.fail(f"refusing: --open {self.args.open!r} matched no element."
+                      f" No screenshot written.", 5)
+            return
+        print(f"clicked {self.args.open}", file=sys.stderr)
+        GLib.timeout_add(int(self.args.settle * 1000), self.snapshot)
+
+    def snapshot(self):
         self.view.get_snapshot(WebKit.SnapshotRegion.FULL_DOCUMENT,
                                WebKit.SnapshotOptions.NONE, None, self.on_snapshot)
+        return False
 
     def on_snapshot(self, view, result):
         try:
@@ -174,6 +212,9 @@ def main():
                     help="seconds after the zoom change, before measuring")
     ap.add_argument("--timeout", type=int, default=60,
                     help="give up if the page has not finished loading by then")
+    ap.add_argument("--open", default=None,
+                    help="CSS selector to click before the shot, for content that"
+                         " only exists once a menu or panel is open")
     ap.add_argument("--require-width", type=int, default=None,
                     help="refuse, before capturing, if the viewport is narrower")
     return Render(ap.parse_args()).run()
