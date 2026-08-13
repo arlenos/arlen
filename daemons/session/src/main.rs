@@ -23,7 +23,7 @@ use std::process::{Command, Stdio};
 use arlen_session::env::{import_list, session_env, MUST_BE_UNSET, WAYLAND_DISPLAY};
 use arlen_session::session_id::{session_id, SESSION_ID_VAR};
 use arlen_permissions::identity::app_id_for_program;
-use arlen_session::stamp::{grants_registrar, COMPOSITOR, SHELL};
+use arlen_session::stamp::{grants_registrar, COMPOSITOR, SHELL, SUPERVISOR};
 use arlen_session::verify_app::requested_app;
 use arlen_session::wayland::{wait_for_display, WAIT_STEPS};
 
@@ -232,6 +232,20 @@ fn main() -> std::process::ExitCode {
             "the compositor published no Wayland socket within 10s; the shell will NOT \
              start - see the compositor's journal above for an EGL, xkb or DRM failure",
         );
+    }
+
+    // The supervisor, last and unconditionally: it registers the identity of the
+    // per-user daemons systemd starts, which is a thing worth doing whether or not
+    // anything graphical came up. Last, so it inherits the fullest environment the
+    // session managed to build - including the identity broker's uid, without which
+    // its own registrations would be refused.
+    //
+    // It is a child of the session rather than a user unit ON PURPOSE: the right to
+    // register is granted by the session root to what the root started, so a
+    // supervisor systemd started could not be given it.
+    if spawn_logged("arlen-supervisor", SUPERVISOR, &env).is_err() {
+        say("the session supervisor could not be started; the per-user daemons keep \
+             whatever identity they can read for themselves");
     }
 
     // The session lives as long as the compositor does.

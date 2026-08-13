@@ -1,40 +1,52 @@
-//! The session supervisor, running its real loop against stand-ins that refuse.
+//! The session supervisor: starts the per-user Arlen daemons and keeps their
+//! identity registration current across restarts.
 //!
-//! The decision half ([`arlen_session_supervisor::supervise`]) is built and
-//! tested. The systemd client and the pidfd registration are not, so this runs
-//! the loop it will always run, over the units it will always supervise, against
-//! seams that fail closed - the same shape as `DeniedGraph`, `DeniedBroker` and
-//! `DenyUnlessEmpty` elsewhere in the tree.
+//! The decision half ([`arlen_session_supervisor::supervise`]) is pure and tested.
+//! This binary is the two seams around it - the user manager over D-Bus, and the
+//! identity broker - plus the loop that runs a round and waits.
 //!
-//! That is deliberately not a stub that exits early. A component wired to nothing
-//! should say what it would have done and why it could not, per unit, rather than
-//! print one line about itself: the first is a report a reader can act on, the
-//! second is the silent-success shape the identity work exists to remove. It still
-//! exits non-zero, because a supervisor that supervised nothing did not succeed.
+//! **Why a loop and not one pass.** A registration names a pid, and `Restart=` is
+//! on for most of these units, so a crash gives a NEW MainPID within about a
+//! second and the old registration is then a record of a process that no longer
+//! exists. One pass at login would be correct for exactly as long as nothing
+//! restarted. The round is idempotent, so repeating it costs two property reads
+//! per unit and fixes that.
+//!
+//! **Why polling and not signals.** systemd will emit `PropertiesChanged` for
+//! MainPID, and subscribing is the tidier design. It is also a second thing that
+//! can silently stop delivering, and the cost of missing an edge here is a daemon
+//! that authenticates nobody until the next event. A poll cannot miss an edge, it
+//! can only be late by the interval - which is the failure mode worth having.
+//!
+//! **A run outside a session says so and exits non-zero.** Not a stub that exits
+//! early: it reports per unit what it would have supervised and why it could not,
+//! because a component wired to nothing should leave a report a reader can act on.
+
+use std::time::Duration;
 
 use arlen_permissions::unit_identity::{app_id_for_user_unit, enrolled_user_units};
-use arlen_session_supervisor::supervise::{round, Registered, Registrar, Systemd};
+use arlen_session_supervisor::broker::BrokerRegistrar;
+use arlen_session_supervisor::supervise::{round, Action, Registered, Systemd};
+use arlen_session_supervisor::systemd::SystemdBus;
+
+/// How long to wait between rounds.
+///
+/// A restart is visible within about a second, so this is the window in which a
+/// restarted daemon is registered under its dead pid - it authenticates nobody
+/// until the next round, which is fail-closed. Short enough that a user does not
+/// notice, long enough that the traffic is nothing: two property reads per unit.
+const ROUND_INTERVAL: Duration = Duration::from_secs(5);
 
 /// The systemd seam, absent. Every call fails with what is missing rather than a
 /// generic error, so the run says which half is unbuilt.
-struct NoSystemd;
+struct NoSystemd(String);
 
 impl Systemd for NoSystemd {
     fn start(&self, _unit: &str) -> Result<(), String> {
-        Err("no systemd client: the D-Bus seam is not wired".to_string())
+        Err(self.0.clone())
     }
     fn main_pid(&self, _unit: &str) -> Result<u32, String> {
-        Err("no systemd client: the D-Bus seam is not wired".to_string())
-    }
-}
-
-/// The broker seam, absent. Fail-closed: a registrar that cannot register must
-/// never report that it did.
-struct NoRegistrar;
-
-impl Registrar for NoRegistrar {
-    fn register(&self, _pid: u32, _app_id: &str) -> Result<(), String> {
-        Err("no identity broker client: registration is not wired".to_string())
+        Err(self.0.clone())
     }
 }
 
@@ -52,18 +64,42 @@ fn main() -> std::process::ExitCode {
         .filter_map(|u| app_id_for_user_unit(u).map(|id| (u, id)))
         .collect();
 
-    let mut registered = Registered::new();
-    let outcomes = round(&units, &NoSystemd, &NoRegistrar, &mut registered);
-    for (unit, outcome) in &outcomes {
-        match outcome {
-            Ok(action) => tracing::info!(unit, ?action, "supervised"),
-            Err(e) => tracing::warn!(unit, "not supervised: {e}"),
+    let registrar = BrokerRegistrar::at_default_socket();
+    let systemd = match SystemdBus::session() {
+        Ok(bus) => bus,
+        Err(e) => {
+            // One round against a refusing seam, so the output names every unit
+            // that went unsupervised and the one reason none of them could be.
+            let mut registered = Registered::new();
+            let refusing = NoSystemd(e.clone());
+            for (unit, outcome) in round(&units, &refusing, &registrar, &mut registered) {
+                tracing::warn!(unit, "not supervised: {}", outcome.unwrap_err());
+            }
+            eprintln!(
+                "arlen-session-supervisor: {} unit(s) went unsupervised and no identity was \
+                 registered - {e}",
+                units.len()
+            );
+            return std::process::ExitCode::FAILURE;
         }
+    };
+
+    tracing::info!(units = units.len(), "supervising");
+    let mut registered = Registered::new();
+    loop {
+        for (unit, outcome) in round(&units, &systemd, &registrar, &mut registered) {
+            match outcome {
+                // Unchanged is the steady state and every round produces one per
+                // unit, so it stays at debug: a log that repeats the same line
+                // every five seconds is one nobody reads the rest of.
+                Ok(Action::Unchanged) => tracing::debug!(unit, "unchanged"),
+                Ok(Action::Register { pid, replacing }) => {
+                    tracing::info!(unit, pid, ?replacing, "identity registered")
+                }
+                Ok(Action::NotRunning) => tracing::debug!(unit, "not running"),
+                Err(e) => tracing::warn!(unit, "not supervised: {e}"),
+            }
+        }
+        std::thread::sleep(ROUND_INTERVAL);
     }
-    eprintln!(
-        "arlen-session-supervisor: {} unit(s) would be supervised and none were - \
-         the systemd and broker seams are not wired, so no identity was registered",
-        units.len()
-    );
-    std::process::ExitCode::FAILURE
 }

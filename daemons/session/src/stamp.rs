@@ -26,22 +26,25 @@
 /// failure waiting - a rename in one place leaves the chain compiling, booting and
 /// stamping nothing, which reads as a broker problem.
 pub const COMPOSITOR: &str = "arlen-compositor";
-/// The shell, and the one child granted the right to register in turn.
+/// The shell, one of the two children granted the right to register in turn.
 pub const SHELL: &str = "arlen-desktop-shell";
+/// The supervisor, which registers the per-user daemons systemd starts.
+pub const SUPERVISOR: &str = "arlen-session-supervisor";
 
 /// The children of the session that may themselves register identities.
 ///
-/// The session grants the right to ONE of the three things it starts, because one
-/// of them launches apps: the shell spawns `arlen-run` per launch, and `arlen-run`
-/// is what stamps the app. The compositor and the boot-verify app start nothing and
-/// get no such right.
+/// Two of the four things it starts, because two of them start other things. The
+/// shell spawns `arlen-run` per launch, and `arlen-run` is what stamps the app. The
+/// supervisor stamps the per-user daemons, which systemd starts and which cannot be
+/// read from their own `/proc` once they are hardened. The compositor and the
+/// boot-verify app start nothing and get no such right.
 ///
 /// This IS a list of names, and it is a different kind from the one it replaces:
 /// the session is naming its OWN children - programs it is about to spawn itself -
 /// not deciding what a stranger presenting a name is allowed to do. A caller cannot
 /// put itself on this list; only editing the session can, and the session is the
 /// root of trust already.
-pub const REGISTRAR_CHILDREN: &[&str] = &[SHELL];
+pub const REGISTRAR_CHILDREN: &[&str] = &[SHELL, SUPERVISOR];
 
 /// Whether `program`, as the session is about to spawn it, gets the right to
 /// register identities of its own.
@@ -54,11 +57,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_the_child_that_launches_apps_may_register() {
+    fn only_the_children_that_start_things_may_register() {
         // The compositor and the verify app start nothing, so neither has any
-        // reason to stamp an identity. Keeping the grant to one child is what
-        // makes the two-level bound worth having at all.
+        // reason to stamp an identity. Keeping the grant to the two that do is
+        // what makes the two-level bound worth having at all.
         assert!(grants_registrar(SHELL));
+        assert!(grants_registrar(SUPERVISOR));
         assert!(!grants_registrar(COMPOSITOR));
         assert!(!grants_registrar("arlen-boot-verify"));
     }
