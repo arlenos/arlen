@@ -1,0 +1,46 @@
+#!/bin/sh
+# Phase 8s (CHROOT): the graphical session itself (arlen-session).
+#
+# This REPLACES the shell script that has held `/usr/bin/arlen-session` since the
+# image existed, and the reason is identity rather than tidiness.
+#
+# A running script's `/proc/<pid>/exe` is the INTERPRETER - measured 13 Aug,
+# `/usr/bin/bash` for a `#!/bin/sh` script - so every script on the machine
+# presents the same identity and none of them can be told apart. `comm` carries
+# the script's name, and a process sets its own with `prctl(PR_SET_NAME)`, so it
+# attests nothing. That matters here and nowhere else on this image: the session
+# is what the registrar model wants as its root of trust, and a root that cannot
+# be identified anchors nothing. Whoever can write the script file becomes the
+# session root; a binary is a file whose inode the identity registry can attest.
+#
+# Independently of registrars, it mints the session id - which every producer joins
+# on - and decides what the session starts. Both are authority-adjacent, and a
+# shell script is the wrong artefact for either.
+#
+# `/usr/bin/arlen-session` and not libexec, because greetd's `[initial_session]`
+# names that exact path in `mkosi.extra/etc/greetd/config.toml`. The script that
+# used to live there is deleted in the same commit as this file: two artefacts at
+# one path is how the wrong one ends up running.
+set -eu
+
+cache="${BUILDDIR:-/var/tmp/arlen-build}"
+export RUSTUP_HOME="$cache/rustup"
+export CARGO_HOME="$cache/cargo-home"
+export CARGO_TARGET_DIR="$cache/target-session"
+mkdir -p "$RUSTUP_HOME" "$CARGO_HOME" "$CARGO_TARGET_DIR"
+
+if [ ! -x "$CARGO_HOME/bin/cargo" ]; then
+    echo ">> bootstrapping rustup stable into the build cache"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable
+fi
+export PATH="$CARGO_HOME/bin:$PATH"
+
+cd "$SRCDIR/arlen"   # the repo root, mounted via BuildSources=../../:arlen
+echo ">> cargo build the graphical session (arlen-session) - Debian-native ($(cargo --version))"
+cargo build --release --manifest-path daemons/session/Cargo.toml
+
+install -Dm755 "$CARGO_TARGET_DIR/release/arlen-session" \
+    "$DESTDIR/usr/bin/arlen-session"
+
+echo ">> staged arlen-session into the image (replacing the shell script)"
