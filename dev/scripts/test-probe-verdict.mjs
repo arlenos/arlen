@@ -34,18 +34,34 @@ function verdict(journal) {
   return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
 }
 
-const ROUND = (n, rows) =>
+// One round. `rows` answers the broad questions, `own` the one that names this
+// run's own file - separately, because the gap between them is the whole point:
+// a graph can hold plenty and still not have ingested what just happened.
+const ROUND = (n, rows, own = rows) =>
   `kg-probe: round ${n} of 2\n` +
   ["timeline: file accesses", "projects: any", "files: any"]
     .map((q) => `kg-probe: ${q}: ${rows} row(s)`)
+    .concat(`kg-probe: ingestion: this run's file: ${own} row(s)`)
     .join("\n");
 
-// A good boot: asked twice, answered, and the graph held something.
+// A good boot: asked twice, answered, and the graph held this run's own file.
 {
   const j = `${ROUND(1, 0)}\n${ROUND(2, 1)}\nkg-probe: done, 0 question(s) failed\n`;
   const r = verdict(j);
   check("a boot whose graph ingested passes", r.code === 0);
   check("and it says how many questions found rows", r.out.includes("returned rows"));
+  check("and it says the run's own file was among them", r.out.includes("own file"));
+}
+
+// The defect the older refusals cannot see: the graph is FULL, every question
+// answered with rows, and none of them is the file this boot emitted. That is a
+// desktop that came up with a populated disk and did not ingest anything - and
+// until this refusal existed it read as the healthiest possible run.
+{
+  const j = `${ROUND(1, 3, 0)}\n${ROUND(2, 3, 0)}\nkg-probe: done, 0 question(s) failed\n`;
+  const r = verdict(j);
+  check("a full graph missing this run's own file is refused", r.code === 1);
+  check("and the message names the ingestion question", r.out.includes("this run's file"));
 }
 
 // The defect the directive named: nothing ingests, so every question is answered

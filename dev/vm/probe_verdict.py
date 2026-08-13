@@ -11,7 +11,7 @@ not ingest - and since no such image exists, it had never once been seen to
 refuse anything. A gate in that state is indistinguishable from `return True`,
 which is the whole reason the standing rule asks for a planted defect.
 
-Three refusals, and the third is the one this exists for:
+Four refusals, and the last two are the ones this exists for:
 
     no tally       the probe asks twice, 75s apart, and a run that ends before
                    the second round has no verdict at all. "No verdict" must
@@ -22,6 +22,10 @@ Three refusals, and the third is the one this exists for:
                    is the false green: authorised, asked, and the graph held
                    nothing - exactly what a broken ingestion path looks like from
                    outside, and it would otherwise pass with `0 failed`.
+    not this run   rows came back, but none for the file this boot emitted. "The
+                   graph holds files" and "the graph ingested what just happened"
+                   are different sentences, and a boot is only evidence for the
+                   second.
 
 Run directly against a rendered journal to see the verdict for a captured boot:
 
@@ -34,6 +38,10 @@ import sys
 # The probe's own gap between rounds, quoted in the failure message so a run that
 # lingered too little says what to change rather than only that it failed.
 ROUND_GAP_SECONDS = 75
+
+# The probe question that names an artefact of THIS run, so its answer cannot be
+# satisfied by a row from anywhere else. Kept in step with `dev/kg-probe`.
+INGESTION_QUESTION = "ingestion: this run's file"
 
 
 def probe_verdict(journal_text: str) -> tuple[bool, str]:
@@ -58,9 +66,27 @@ def probe_verdict(journal_text: str) -> tuple[bool, str]:
             "question returned 0 rows. An allowed question with no data is what a "
             "broken ingestion path looks like from here."
         )
+    # The refusal the other three cannot make: rows EXIST but none of them is the
+    # thing this run produced. "The graph holds files" passes on any row from any
+    # source; only a row for the path the run emitted says the ingestion path
+    # carried something end to end during this boot. Without it the verdict is a
+    # count, and a count is what let a working-looking probe report health about a
+    # graph nobody had watched fill.
+    ingested = [
+        l for l in lines
+        if INGESTION_QUESTION in l and re.search(r": [1-9][0-9]* row\(s\)", l)
+    ]
+    if not ingested:
+        return False, (
+            f"the graph answered with rows, but nothing this run produced reached "
+            f"it: the '{INGESTION_QUESTION}' question came back empty. The boot "
+            f"emitted a file.opened for that path, so an empty answer means the "
+            f"writer or the promotion pass did not carry it - the desktop came up "
+            f"and did not do its job."
+        )
     return True, (
         f"{tally[-1].split('kg-probe:')[-1].strip()}, "
-        f"{len(rows)} question(s) returned rows"
+        f"{len(rows)} question(s) returned rows, including this run's own file"
     )
 
 
