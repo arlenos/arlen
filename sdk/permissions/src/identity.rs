@@ -867,15 +867,26 @@ pub fn is_user_surface(app_id: &str) -> bool {
 /// more direct and races - a wrapper like `systemd-cat` execs into the program, so
 /// a read that wins the race sees the wrapper and stamps the wrong thing.
 pub fn resolve_program(program: &str, path_var: &str) -> Option<std::path::PathBuf> {
-    if program.contains('/') {
+    let found = if program.contains('/') {
         let p = std::path::PathBuf::from(program);
-        return p.is_file().then_some(p);
-    }
-    path_var
-        .split(':')
-        .filter(|d| !d.is_empty())
-        .map(|d| std::path::Path::new(d).join(program))
-        .find(|p| p.is_file())
+        p.is_file().then_some(p)
+    } else {
+        path_var
+            .split(':')
+            .filter(|d| !d.is_empty())
+            .map(|d| std::path::Path::new(d).join(program))
+            .find(|p| p.is_file())
+    }?;
+    // CANONICALISE, because the other route does. `/proc/<pid>/exe` names the file
+    // the kernel opened, and on this image `/usr/bin/arlen-desktop-shell` is a
+    // symlink into `/usr/lib/arlen/apps/dev.arlen.desktop-shell/bin/`. Naming the
+    // LINK gives `desktop-shell` by rule (2) while the exe route gives
+    // `dev.arlen.desktop-shell` by rule (3) - one process, two ids, and the shipped
+    // profile is filed under the second. Measured on the boot of 13 Aug: the consent
+    // broker logged `identity.divergence` with exactly that pair, which is the
+    // silent-profile-miss this module warns about, produced by the stamp meant to
+    // prevent it.
+    found.canonicalize().ok()
 }
 
 /// The app id to stamp for `program`, or `None` when it resolves to nothing that
@@ -2019,6 +2030,24 @@ mod exe_diagnosis_tests {
         // An empty PATH element is skipped rather than turned into a relative
         // lookup against the current directory.
         assert_eq!(resolve_program("sh", ""), None);
+    }
+
+    #[test]
+    fn a_symlinked_program_is_named_by_the_file_it_points_at() {
+        // The invariant that keeps a stamp and an exe read in agreement: both name
+        // the file that actually runs, never the path used to reach it.
+        let tmp = tempfile::tempdir().unwrap();
+        let real = tmp.path().join("real-binary");
+        std::fs::write(&real, "x").unwrap();
+        let bin = tmp.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::os::unix::fs::symlink(&real, bin.join("prog")).unwrap();
+
+        assert_eq!(
+            resolve_program("prog", &bin.display().to_string()),
+            Some(real.canonicalize().unwrap()),
+            "the link resolves to its target, the way /proc/<pid>/exe would"
+        );
     }
 
     #[test]
