@@ -1945,6 +1945,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_provenance_reports_an_absent_daemon_as_an_error_not_as_none() {
+        // The other half of the no-oracle contract, and a caller now depends on
+        // it: the file manager's provenance halo marks a chain INCOMPLETE when
+        // this read fails, and stays quiet when it answers `None`. If a missing
+        // daemon collapsed into `None` the halo would show a short chain and
+        // call it whole - and `None` would stop meaning "you may not see this".
+        let path = std::env::temp_dir().join("arlen-os-sdk-provenance-absent-test.sock");
+        let _ = std::fs::remove_file(&path);
+
+        let client = UnixGraphClient::new(path.to_string_lossy().to_string());
+        let result = client.read_provenance("/anything").await;
+
+        assert!(
+            matches!(result, Err(QueryError::ConnectionFailed(_))),
+            "a socket nobody is listening on must be an error, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn access_grants_sends_the_prefix_and_parses_the_views() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio::net::UnixListener;
