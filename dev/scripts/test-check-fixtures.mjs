@@ -630,7 +630,51 @@ function fixtureMarkupFixtures() {
     `exit ${r4.code}: ${r4.out.trim()}`,
   );
 
-  for (const d of [caught, flag, styleComment, stale]) rmSync(d, { recursive: true, force: true });
+  // The reason the key is the fixture's NAME and not its line: an acknowledged
+  // fallback that has merely MOVED must stay acknowledged. This is the case that
+  // refused a commit twice - once on 9 August, once on 14 August - for a change
+  // that had nothing to do with fixtures, which is how a gate teaches people to
+  // re-key without reading.
+  const moved = tree({
+    "apps/text-editor/src/lib/stores/lens.ts": `// a comment
+// another
+// and another, pushing everything below down
+const FIXTURE = { a: 1 };
+export function load() {
+  try { return 1; } catch { return FIXTURE; }
+}
+`,
+  });
+  const r5 = run("check-fixture-on-failure.py", moved);
+  check(
+    "an acknowledged fixture that only moved is still acknowledged",
+    r5.code === 0,
+    `exit ${r5.code}: ${r5.out.trim()}`,
+  );
+
+  // And the half that keeps the name key honest: a SECOND, differently-named
+  // fixture in a file that already has an acknowledged one is still caught. This
+  // is the hole that a file-only key would have opened.
+  const second = tree({
+    "apps/text-editor/src/lib/stores/lens.ts": `const FIXTURE = { a: 1 };
+const OTHER_FIXTURE = { b: 2 };
+export function load() {
+  try { return 1; } catch { return FIXTURE; }
+}
+export function loadOther() {
+  try { return 1; } catch { return OTHER_FIXTURE; }
+}
+`,
+  });
+  const r6 = run("check-fixture-on-failure.py", second);
+  check(
+    "a differently-named fixture in an acknowledged file is still caught",
+    r6.code === 1 && r6.out.includes("OTHER_FIXTURE"),
+    `exit ${r6.code}: ${r6.out.trim()}`,
+  );
+
+  for (const d of [caught, flag, styleComment, stale, moved, second])
+    rmSync(d, { recursive: true, force: true });
 }
 
 fixtureMarkupFixtures();
