@@ -26,6 +26,7 @@
 //! only by booting. The process work (spawning, waiting, importing the
 //! environment) lands on top of them.
 
+pub mod env;
 pub mod session_id;
 pub mod verify_app;
 pub mod wayland;

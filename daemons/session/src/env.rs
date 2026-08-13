@@ -1,0 +1,160 @@
+//! The environment a session settles before anything graphical starts.
+//!
+//! Two groups, and they are unrelated despite sitting together in the script this
+//! is ported from.
+//!
+//! **Where the session's clients find the daemons.** The system daemons are
+//! systemd SYSTEM services, so they bind under `/run/arlen`; a user-session client
+//! DOES have `XDG_RUNTIME_DIR`, so `os_sdk`'s resolver would send it to
+//! `/run/user/<uid>/arlen` and it would find nothing. These overrides are what
+//! point it back, and they are read ahead of that default by design.
+//!
+//! **What the graphics stack may do.** The VM's virtio-gpu has no hardware GL, so
+//! Mesa runs on llvmpipe and WebKitGTK has to avoid the GPU paths or the Tauri
+//! apps paint black. Harmless on real hardware, and the image is the
+//! system-under-test.
+
+use std::collections::BTreeMap;
+
+/// The SMBIOS product family that asks for WebKit's accelerated compositing to be
+/// left ON (`-smbios type=1,family=webkit-compositing`).
+pub const COMPOSITING_FAMILY: &str = "webkit-compositing";
+
+/// Whether WebKit's accelerated compositing stays enabled for this boot.
+///
+/// Two flags are involved and they are NOT the same lever, which is the thing to
+/// keep straight: `WEBKIT_DISABLE_DMABUF_RENDERER` turns off the GPU/dmabuf path
+/// (the one that paints Tauri apps black under software GL) and is always set,
+/// while `WEBKIT_DISABLE_COMPOSITING_MODE` turns off accelerated compositing
+/// altogether - the path where a removed layer's pixels are left behind. Being
+/// able to boot the other way is what says whether a residue is a webview defect
+/// or something we asked for, so this is a switch rather than a constant.
+///
+/// Absent or anything else - every normal boot and all real hardware - compositing
+/// is disabled exactly as before.
+pub fn compositing_enabled(product_family: &str) -> bool {
+    let family: String = product_family
+        .chars()
+        .filter(|c| c.is_ascii_lowercase() || *c == '-')
+        .collect();
+    family == COMPOSITING_FAMILY
+}
+
+/// The variables a session exports before starting the compositor.
+///
+/// Returned rather than applied so the set is one testable value: the script this
+/// replaces spread them over forty lines of `export`, where a missing one is
+/// invisible until something downstream reads the wrong socket.
+pub fn session_env(session_id: &str, product_family: &str) -> BTreeMap<String, String> {
+    let mut env = BTreeMap::new();
+    // The SYSTEM daemons' sockets, ahead of the XDG_RUNTIME_DIR default.
+    env.insert("ARLEN_PRODUCER_SOCKET".into(), "/run/arlen/event-bus-producer.sock".into());
+    env.insert("ARLEN_CONSUMER_SOCKET".into(), "/run/arlen/event-bus-consumer.sock".into());
+    env.insert("ARLEN_KNOWLEDGE_SOCKET".into(), "/run/arlen/knowledge.sock".into());
+    env.insert(crate::session_id::SESSION_ID_VAR.into(), session_id.into());
+    env.insert("XDG_CURRENT_DESKTOP".into(), "arlen".into());
+    // Software GL, and the WebKit paths that cannot use it.
+    env.insert("LIBGL_ALWAYS_SOFTWARE".into(), "1".into());
+    env.insert("GALLIUM_DRIVER".into(), "llvmpipe".into());
+    env.insert("GDK_BACKEND".into(), "wayland".into());
+    env.insert("WEBKIT_DISABLE_DMABUF_RENDERER".into(), "1".into());
+    if !compositing_enabled(product_family) {
+        env.insert("WEBKIT_DISABLE_COMPOSITING_MODE".into(), "1".into());
+    }
+    env
+}
+
+/// The compositor's own display, learned only after it publishes its socket - so
+/// it is not in [`session_env`] and has to join the import list separately.
+pub const WAYLAND_DISPLAY: &str = "WAYLAND_DISPLAY";
+
+/// The variables to hand to the `systemd --user` manager, so the shell and the
+/// app user services inherit them.
+///
+/// DERIVED from what the session exported, plus the display it learned. The script
+/// this replaces keeps two hand-written lists - the exports and the
+/// `import-environment` arguments - which agree today and have no reason to keep
+/// agreeing: adding an export and forgetting the import gives every user service a
+/// session missing one variable, and the symptom is a daemon quietly reading the
+/// wrong socket rather than an error. One list cannot drift from itself.
+pub fn import_list(env: &BTreeMap<String, String>) -> Vec<String> {
+    let mut names: Vec<String> = env.keys().cloned().collect();
+    names.push(WAYLAND_DISPLAY.to_string());
+    names.sort();
+    names
+}
+
+/// The variables that must be UNSET before the compositor starts.
+///
+/// cosmic-comp picks its backend from the environment: with `DISPLAY` or
+/// `WAYLAND_DISPLAY` set it goes nested (x11/winit, for running inside another
+/// session), and otherwise it drives the seat's DRM device directly - which is
+/// what a login wants. A set-but-EMPTY `DISPLAY=` is enough to send it down the
+/// X11 path, where it fails, so these are unset rather than blanked.
+pub const MUST_BE_UNSET: &[&str] = &["DISPLAY", "WAYLAND_DISPLAY"];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_daemon_sockets_point_at_the_system_paths() {
+        // A user-session client has XDG_RUNTIME_DIR, so without these it looks
+        // under /run/user/<uid>/arlen and finds nothing.
+        let env = session_env("s-1", "");
+        assert_eq!(env["ARLEN_KNOWLEDGE_SOCKET"], "/run/arlen/knowledge.sock");
+        assert_eq!(env["ARLEN_PRODUCER_SOCKET"], "/run/arlen/event-bus-producer.sock");
+        assert_eq!(env["ARLEN_CONSUMER_SOCKET"], "/run/arlen/event-bus-consumer.sock");
+        assert_eq!(env["ARLEN_SESSION_ID"], "s-1");
+    }
+
+    #[test]
+    fn compositing_is_off_on_every_ordinary_boot() {
+        for family in ["", "QEMU", "Standard PC", "\n", "webkit"] {
+            assert!(!compositing_enabled(family), "{family:?}");
+            assert_eq!(session_env("s", family)["WEBKIT_DISABLE_COMPOSITING_MODE"], "1");
+        }
+    }
+
+    #[test]
+    fn the_family_switch_leaves_compositing_on_and_only_that_flag() {
+        assert!(compositing_enabled("webkit-compositing"));
+        // Trailing newline from the sysfs read, which is how it actually arrives.
+        assert!(compositing_enabled("webkit-compositing\n"));
+        let env = session_env("s", "webkit-compositing");
+        assert!(!env.contains_key("WEBKIT_DISABLE_COMPOSITING_MODE"));
+        // The OTHER flag is not the same lever and stays set: without it the
+        // Tauri apps paint black under software GL, switch or no switch.
+        assert_eq!(env["WEBKIT_DISABLE_DMABUF_RENDERER"], "1");
+    }
+
+    #[test]
+    fn everything_exported_is_also_handed_to_the_user_manager() {
+        // The drift this replaces: two hand-kept lists, agreeing today for no
+        // reason that survives the next variable. A forgotten import is a user
+        // service reading the wrong socket, not an error.
+        let env = session_env("s", "");
+        let imported = import_list(&env);
+        for name in env.keys() {
+            assert!(imported.contains(name), "{name} is exported but never imported");
+        }
+        assert!(
+            imported.contains(&WAYLAND_DISPLAY.to_string()),
+            "the shell cannot connect without the display"
+        );
+        // And the conditional one follows the condition rather than a second list.
+        let on = session_env("s", "webkit-compositing");
+        assert!(!import_list(&on).contains(&"WEBKIT_DISABLE_COMPOSITING_MODE".to_string()));
+    }
+
+    #[test]
+    fn the_display_variables_are_unset_rather_than_blanked() {
+        // A set-but-empty DISPLAY sends cosmic-comp down the X11 path, where it
+        // fails - so they cannot simply be assigned "".
+        assert_eq!(MUST_BE_UNSET, ["DISPLAY", "WAYLAND_DISPLAY"]);
+        let env = session_env("s", "");
+        for var in MUST_BE_UNSET {
+            assert!(!env.contains_key(*var), "{var} must not be exported at all");
+        }
+    }
+}
