@@ -128,6 +128,13 @@ NO_UNIT: dict[str, str] = {
         "putting it on a shipped image is a scope decision rather than a packaging "
         "oversight. NOTE this is why a booted image records no file.opened at all"
     ),
+    "session-supervisor": (
+        "the decision half is built and tested; the systemd and broker seams are "
+        "not wired, so its binary exits rather than pretending to supervise. A "
+        "unit now would start something that immediately fails, which is the "
+        "silent-success shape this work exists to remove. The unit lands with the "
+        "seams, and `arlen-session` launches it the way it launches the shell"
+    ),
     "bridge-ingest": "runs from the dogfood path today, unreviewed as a standalone service",
     "integration-packages": "a library and CLI for package assembly, not a running service",
     "lock-auth": "the lock screen's auth backend, consumed in-process, not a service",

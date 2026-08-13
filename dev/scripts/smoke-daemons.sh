@@ -74,6 +74,7 @@ SKIPPED=(
     "arlen-install-helper|system-bus service, runs as root"
     "arlen-permission-helper|system-bus service, runs as root"
     "arlen-connectionsd|needs the session bus"
+    "arlen-session-supervisor|its systemd and broker seams are not wired yet, so it exits by design rather than supervising nothing quietly"
     "arlen-config-broker|runs as its own uid by design"
     "kernel-layer|needs the bpf toolchain and a privileged host"
     "kernel-layer-ebpf|an eBPF object, not a host binary"
