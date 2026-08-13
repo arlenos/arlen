@@ -38,7 +38,21 @@
 //! `.../user@1000.service/app.slice/arlen-knowledge.service` with no privilege at
 //! all. Only `/system.slice/...` resists that, since entering the system tree needs
 //! root - and a peer there is a root-launched daemon, which is not the case that
-//! broke. The route is unattested exactly where it would be needed, which is why
+//! broke.
+//!
+//! Re-measured 13 Aug, and that account is right about the conclusion and wrong
+//! about the route, which matters because the route it names looks closeable.
+//! `systemd-run --user` REFUSES a name that already has a fragment file ("Unit ...
+//! was already loaded or has a fragment file"), even for an inactive unit - so
+//! transient units cannot squat a shipped name, and someone reading only the
+//! sentence above might conclude the hole was narrower than it is. The real route
+//! needs no `systemd-run` at all: a hand-written
+//! `~/.config/systemd/user/<anything>.service` runs any binary under any unit name,
+//! and `systemd-analyze --user unit-paths` puts that directory ABOVE
+//! `/usr/lib/systemd/user`. The user owns the directory that wins, so the forgery
+//! is total and not a race. [`crate::unit_identity`] resolves the system slice on
+//! that basis and refuses the user slice outright. The route is unattested where it
+//! would be needed, which is why
 //! identity has to be stamped at launch by something that already knows what it is
 //! starting. `daemons/xdg-portal` reached for the same idea twice and reverted it
 //! both times for an unrelated reason (the sender pid is `xdg-dbus-proxy`, whose
