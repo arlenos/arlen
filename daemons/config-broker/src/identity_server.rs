@@ -109,7 +109,7 @@ pub async fn serve_identity_connection(
     // fragility onto the open lookup path.
     let response = if matches!(request, IdentityRequest::Register { .. }) {
         match app_id_from_pid(peer.pid()) {
-            Ok(caller) => handle_identity(&store, &caller, request, fd),
+            Ok(caller) => handle_identity(&store, &caller, request, fd, Some(peer.pidfd())),
             Err(e) => {
                 tracing::warn!("identity: registrar app-id unresolved, refusing register: {e}");
                 IdentityResponse::Refused("registrar identity unresolved".into())
@@ -117,7 +117,7 @@ pub async fn serve_identity_connection(
         }
     } else {
         // Lookup ignores the caller identity; the empty id is inert here.
-        handle_identity(&store, "", request, fd)
+        handle_identity(&store, "", request, fd, None)
     };
     let _ = reply(stream, response).await;
 }
@@ -218,7 +218,7 @@ mod tests {
         store
             .lock()
             .unwrap()
-            .register(self_pidfd(), "com.example.self".into())
+            .register(self_pidfd(), "com.example.self".into(), "arlen-run".into())
             .unwrap();
 
         let (client, server) = UnixStream::pair().unwrap();
