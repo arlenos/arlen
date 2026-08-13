@@ -11,16 +11,18 @@
 //! [`arlen_session::wayland`]) so they are testable without a seat. What is left
 //! here is process work: spawning, waiting, and reporting what happened.
 //!
-//! **The shipped login path is still the `/usr/bin/arlen-session` script.** This
-//! binary is complete but has not been booted, and swapping the thing that starts
-//! every login is not a change to make on an argument. That swap is its own step,
-//! with a boot behind it.
+//! **This IS the login path**: `/usr/bin/arlen-session` is this binary, and greetd
+//! names that exact path. The swap was gated on a boot rather than an argument, and
+//! the boot of 13 Aug 11:12 is what authorised it - compositor rendering, shell
+//! drawing, the graph ingesting that run's own file, and the AI leg answering.
 
 use std::collections::BTreeMap;
+use std::os::fd::AsFd;
 use std::process::{Command, Stdio};
 
 use arlen_session::env::{import_list, session_env, MUST_BE_UNSET, WAYLAND_DISPLAY};
 use arlen_session::session_id::{session_id, SESSION_ID_VAR};
+use arlen_session::stamp::app_id_for_program;
 use arlen_session::verify_app::requested_app;
 use arlen_session::wayland::{wait_for_display, WAIT_STEPS};
 
@@ -61,7 +63,41 @@ fn spawn_logged(tag: &str, program: &str, env: &BTreeMap<String, String>) -> std
             cmd.env_remove(var);
         }
     }
-    cmd.stdin(Stdio::null()).spawn()
+    let child = cmd.stdin(Stdio::null()).spawn()?;
+    stamp_child(&child, program);
+    Ok(child)
+}
+
+/// Tell the identity broker what the session just started.
+///
+/// This is what makes the session the root of trust in practice rather than in
+/// principle: a registrar is admitted because the SESSION ROOT registered it, so
+/// the set of things that may stamp identities is exactly what this function has
+/// stamped. Nothing here consults a list of names.
+///
+/// Best-effort, like the launcher's. A broker that is not up must never stop a
+/// login: the child then resolves the way it did before, which is the state this
+/// improves on rather than replaces. `systemd-cat` EXECS the program, so the pid
+/// held here is the program's own once the exec completes.
+fn stamp_child(child: &std::process::Child, program: &str) {
+    let path_var = std::env::var("PATH").unwrap_or_default();
+    let Some(app_id) = app_id_for_program(program, &path_var) else {
+        say(&format!(
+            "'{program}' resolves to no app id, so it was started unstamped and \
+             falls back to the older resolvers"
+        ));
+        return;
+    };
+    let Some(pidfd) = arlen_permissions::peer_pidfd::pidfd_open(child.id()) else {
+        return;
+    };
+    if let Err(e) = arlen_permissions::identity_wire::register_identity(
+        &arlen_permissions::identity_wire::identity_broker_connect_path(),
+        pidfd.as_fd(),
+        &app_id,
+    ) {
+        say(&format!("'{app_id}' was not stamped ({e}); it resolves via /proc"));
+    }
 }
 
 /// Say something on the session's own channel. On this headless appliance the
