@@ -23,7 +23,7 @@ use std::process::{Command, Stdio};
 use arlen_session::env::{import_list, session_env, MUST_BE_UNSET, WAYLAND_DISPLAY};
 use arlen_session::session_id::{session_id, SESSION_ID_VAR};
 use arlen_permissions::identity::app_id_for_program;
-use arlen_session::stamp::grants_registrar;
+use arlen_session::stamp::{grants_registrar, COMPOSITOR, SHELL};
 use arlen_session::verify_app::requested_app;
 use arlen_session::wayland::{wait_for_display, WAIT_STEPS};
 
@@ -129,7 +129,7 @@ fn main() -> std::process::ExitCode {
         say("xdg-user-dirs-update did not run; user directories keep their previous names");
     }
 
-    let Ok(mut compositor) = spawn_logged("arlen-compositor", "arlen-compositor", &env) else {
+    let Ok(mut compositor) = spawn_logged("arlen-compositor", COMPOSITOR, &env) else {
         say("the compositor could not be started; there is no session to have");
         return std::process::ExitCode::FAILURE;
     };
@@ -176,7 +176,7 @@ fn main() -> std::process::ExitCode {
             .arg("graphical-session.target")
             .status();
 
-        let _ = spawn_logged("arlen-shell", "arlen-desktop-shell", &env);
+        let _ = spawn_logged("arlen-shell", SHELL, &env);
 
         // The boot-verify hook: one app, named in the SMBIOS SKU, sanitised to the
         // app-name charset and required to resolve to an installed binary - so it
