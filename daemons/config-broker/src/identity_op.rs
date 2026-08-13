@@ -28,29 +28,25 @@ pub use arlen_permissions::identity_wire::{IdentityRequest, IdentityResponse};
 /// stamp an arbitrary app_id onto a pidfd it controls, which is exactly
 /// the spoof this design closes.
 ///
-/// The resolved id `arlen-run` requires the identity resolver to map the
-/// launcher's canonical binary to it; that resolver entry lands with the
-/// socket-wiring slice (this allowlist is the auth structure it plugs
-/// into). Until then this is exercised by the pure dispatch tests.
-/// The one registrar still admitted by NAME, and the reason it has not moved to
-/// provenance yet.
+/// The dev-build escape hatch, and the only place a NAME still admits a registrar.
 ///
-/// `arlen-run` is spawned by the shell per app launch, not by the session root, so
-/// nothing registers it and the derived rule below would refuse it - taking every
-/// confined app launch with it. The delegation the store now carries is what makes
-/// removing this possible: the session grants the shell the right to pass the right
-/// on, so the shell can stamp the launcher it spawns. That call site is the last
-/// step; until it exists, deleting this entry would be a correct-looking change
-/// that breaks launching.
-const IDENTITY_REGISTRARS: &[&str] = &["arlen-run"];
+/// Under `cargo run` there is no session: nothing started the shell, so nothing
+/// granted it the right to pass on, so `arlen-run` never gets stamped and a
+/// confined launch in the dev stack would lose its identity. In a release build
+/// this is empty and provenance is the only way in - the resolver yields
+/// `dev.<bin>` only for an unpackaged binary, so a shipped image cannot present
+/// one of these ids at all.
+///
+/// The release list this replaced held `arlen-run` and was load-bearing: the
+/// launcher is spawned by the shell, not by the session root, so the one-level
+/// provenance rule refused it and every confined launch went with it. The two-level
+/// grant is what removed the need - session grants the shell, shell grants the
+/// launcher it spawns, launcher stamps the app and can grant nothing.
+const DEV_REGISTRARS: &[&str] = &["dev.arlen-run", "dev.arlen-desktop-shell"];
 
-/// True iff `app_id` may register an identity. In a debug build the
-/// `dev.arlen-run` cargo-run id also passes (the resolver yields
-/// `dev.<bin>` for an unpackaged binary), matching the master-switch
-/// writer-admit convention; in release only the canonical id.
+/// True iff `app_id` may register an identity BY NAME - debug builds only.
 pub fn is_admitted_registrar(app_id: &str) -> bool {
-    IDENTITY_REGISTRARS.contains(&app_id)
-        || (cfg!(debug_assertions) && app_id == "dev.arlen-run")
+    cfg!(debug_assertions) && DEV_REGISTRARS.contains(&app_id)
 }
 
 /// Whether this caller may register an identity, by PROVENANCE first.
@@ -64,8 +60,8 @@ pub fn is_admitted_registrar(app_id: &str) -> bool {
 ///   2. the session root registered the caller, which is the derivation: the
 ///      registrar set is exactly what the root started, and it changes when the
 ///      root does rather than when someone edits a constant;
-///   3. the caller is in [`IDENTITY_REGISTRARS`], which today is `arlen-run`
-///      alone and is transitional - see that constant for why it cannot go yet.
+///   3. the caller is in [`DEV_REGISTRARS`], which is empty in a release build and
+///      exists so the dev stack - where no session ever ran - can still launch.
 ///
 /// A binary claiming to be a registrar with none of those is refused. The pidfd is
 /// the caller's own peer handle, so (2) cannot be answered by a name a caller
@@ -236,11 +232,24 @@ mod tests {
         Mutex::new(IdentityStore::new())
     }
 
+    /// A store in which THIS process is a delegated launcher: registered by the
+    /// shell, holding the right to register and not to pass it on. What the real
+    /// chain produces by the time an app is launched, and what a test needs since
+    /// the name `arlen-run` no longer admits anything on its own.
+    fn store_with_launcher() -> Mutex<IdentityStore> {
+        let s = store();
+        s.lock()
+            .unwrap()
+            .register(self_pidfd(), "arlen-run".into(), "arlen-desktop-shell".into(), true)
+            .unwrap();
+        s
+    }
+
     /// The launcher registers, then any caller resolves the same process
     /// via an independent pidfd.
     #[test]
     fn register_then_lookup_resolves_the_stamped_id() {
-        let s = store();
+        let s = store_with_launcher();
         let reg = handle_identity(
             &s,
             "arlen-run",
@@ -334,7 +343,7 @@ mod tests {
     /// Both ops require a pidfd; the no-fd path errors, never fabricates.
     #[test]
     fn a_missing_pidfd_is_an_error() {
-        let s = store();
+        let s = store_with_launcher();
         assert!(matches!(
             handle_identity(
                 &s,
@@ -383,6 +392,18 @@ mod tests {
             )
             .unwrap();
         assert!(caller_may_register(&s, "some-daemon", me.as_fd()));
+    }
+
+    #[test]
+    fn no_shipped_name_admits_a_registrar_any_more() {
+        // Build-independent, and the point of the whole chain: `arlen-run` is the
+        // name that WAS admitted, and it now buys nothing. Only a dev id can pass
+        // by name, and only in a debug build - a shipped binary never resolves to
+        // one, so on an image provenance is the only way in.
+        assert!(!is_admitted_registrar("arlen-run"));
+        assert!(!is_admitted_registrar("arlen-desktop-shell"));
+        assert!(!is_admitted_registrar("session"));
+        assert_eq!(is_admitted_registrar("dev.arlen-run"), cfg!(debug_assertions));
     }
 
     #[test]

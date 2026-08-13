@@ -22,7 +22,8 @@ use std::process::{Command, Stdio};
 
 use arlen_session::env::{import_list, session_env, MUST_BE_UNSET, WAYLAND_DISPLAY};
 use arlen_session::session_id::{session_id, SESSION_ID_VAR};
-use arlen_session::stamp::{app_id_for_program, grants_registrar};
+use arlen_permissions::identity::app_id_for_program;
+use arlen_session::stamp::grants_registrar;
 use arlen_session::verify_app::requested_app;
 use arlen_session::wayland::{wait_for_display, WAIT_STEPS};
 
