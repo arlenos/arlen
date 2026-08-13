@@ -316,6 +316,11 @@ pi-e2e:
     # so asking for ignored tests filtered out all four and this step ran nothing.
     cargo test --manifest-path "{{ROOT}}/daemons/ai-engine-daemon/Cargo.toml" \
         --test e2e_gate
+    # The completion SHAPE control: a real pi turn against a stand-in socket, both
+    # shapes. The Rust unit tests prove the frames are what the endpoint meant;
+    # only pi can say it accepts them, and answering an object to its `stream:
+    # true` cost two verify boots that looked like a dead model.
+    node "{{ROOT}}/dev/scripts/test-pi-completion-shape.mjs"
 
 # Dogfood Phase-1 data-path check (first-dogfoodable-session-plan.md): with the
 # `just dev` backend ALREADY up, emit a file.opened on the LIVE bus, confirm it
