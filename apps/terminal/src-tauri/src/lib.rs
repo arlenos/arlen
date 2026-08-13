@@ -18,6 +18,7 @@ use arlen_terminal_core::{
     Block, BlockBodyKind, GridSnapshot, HistoryFilters, Project, Session, SessionStatus,
 };
 use arlen_terminal_engine::PtyEngine;
+use os_sdk::graph::ReadOutcome;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 mod capability;
@@ -576,19 +577,22 @@ fn projects_from_rows(rows: &[std::collections::HashMap<String, serde_json::Valu
 }
 
 /// The live KG projects to scope to (the same `FILE_PART_OF` projects the file
-/// manager surfaces). Best-effort: an absent daemon or an out-of-scope read
-/// yields no entries. Only live projects (`expired_at IS NULL`); the query is
+/// manager surfaces). Only live projects (`expired_at IS NULL`); the query is
 /// static (no interpolation), so no escaping.
+///
+/// Returns the outcome rather than a list. An empty chip row is a claim - "there
+/// is nothing to scope to" - and a machine with no graph is not entitled to make
+/// it. Same three states the file manager uses; the palette writes its own
+/// sentence about scopes.
 #[tauri::command]
-async fn terminal_projects() -> Vec<Project> {
+async fn terminal_projects() -> ReadOutcome<Project> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = "MATCH (p:Project) WHERE p.expired_at IS NULL \
                   RETURN p.id AS id, p.name AS name, p.root_path AS path LIMIT 64";
-    match client.query_rows(cypher).await {
-        Ok(rows) => projects_from_rows(&rows),
-        Err(_) => Vec::new(),
-    }
+    ReadOutcome::from_result("terminal_projects", client.query_rows(cypher).await, |rows| {
+        projects_from_rows(&rows)
+    })
 }
 
 /// The terminal's persisted config (`~/.config/arlen/terminal.toml`). Today the

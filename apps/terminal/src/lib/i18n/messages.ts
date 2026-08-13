@@ -36,6 +36,10 @@ const messages: Catalogs = {
     "term.hist.failures": "Failures",
     "term.hist.agent": "Agent",
     "term.hist.in": "in",
+    // Said about SCOPES, which is what the row offers, and using the same three
+    // terms every Arlen surface uses for a read that did not answer.
+    "term.hist.scopesUnavailable": "Project scopes are not available on this system",
+    "term.hist.scopesDenied": "Terminal is not allowed to read project scopes",
     "term.hist.onlyInProject": "Only commands in {$name}",
     "term.hist.empty.filtered": "No matching commands.",
     "term.hist.empty.default": "Commands you run land here.",
@@ -109,6 +113,8 @@ const messages: Catalogs = {
     "term.hist.failures": "Fehler",
     "term.hist.agent": "Agent",
     "term.hist.in": "in",
+    "term.hist.scopesUnavailable": "Projekt-Bereiche sind auf diesem System nicht verfügbar",
+    "term.hist.scopesDenied": "Terminal darf Projekt-Bereiche nicht lesen",
     "term.hist.onlyInProject": "Nur Befehle in {$name}",
     "term.hist.empty.filtered": "Keine passenden Befehle.",
     "term.hist.empty.default": "Befehle, die du ausführst, landen hier.",

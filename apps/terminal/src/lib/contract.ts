@@ -223,8 +223,16 @@ export async function terminalHistorySearch(
   return invoke<Block[]>("terminal_history_search", { query, filters });
 }
 
-export async function terminalProjects(): Promise<Project[]> {
-  return invoke<Project[]>("terminal_projects");
+/// The three states a graph read comes back in, matching `os_sdk::graph::ReadOutcome`
+/// on the Rust side. Same shape the file manager uses, because a person should not
+/// learn one vocabulary per window.
+export type ReadOutcome<T> =
+  | { state: "unavailable"; reason: string }
+  | { state: "denied"; reason: string }
+  | { state: "rows"; rows: T[] };
+
+export async function terminalProjects(): Promise<ReadOutcome<Project>> {
+  return invoke<ReadOutcome<Project>>("terminal_projects");
 }
 
 /// The persisted terminal config (terminal-ui-plan.md §5b). `font_size` is the

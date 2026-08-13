@@ -5,8 +5,12 @@
   /// GridRegion with a representative neofetch-like fixture (coloured SGR cells,
   /// a full ANSI palette row, aligned columns) so colour + fixed-width alignment
   /// are directly visible. Not shipped in any nav; a dev/test route only.
+  import { onMount } from "svelte";
   import { GridRegion } from "@arlen/ui-kit/components/console";
   import StreamBlock from "$lib/components/StreamBlock.svelte";
+  import HistoryPalette from "$lib/components/HistoryPalette.svelte";
+  import { historyPaletteOpen } from "$lib/stores/history";
+  import { tauriAvailable } from "$lib/tauri";
   import type { Block } from "$lib/contract";
 
   type CellColor =
@@ -124,6 +128,27 @@
     body: { cells, rows: cells.length },
     prompt_cells: promptCells,
   };
+  // The history palette, opened, with its project-scope read ANSWERING NOTHING.
+  // The chip row used to just end after Agent for all three cases, so an absent
+  // graph read as "there is nothing to scope to". Reached with
+  // `?state=scopes-unavailable`; without it the palette stays closed and this
+  // route renders exactly as before.
+  let paletteReady = $state(false);
+  onMount(async () => {
+    const state = new URLSearchParams(window.location.search).get("state");
+    if (state !== "scopes-unavailable") return;
+    if (!tauriAvailable) {
+      const { mockIPC } = await import("@tauri-apps/api/mocks");
+      mockIPC((cmd) => {
+        if (cmd === "terminal_projects")
+          return { state: "unavailable", reason: "graph unreachable" };
+        if (cmd === "terminal_history_search") return [];
+        return null;
+      });
+    }
+    paletteReady = true;
+    historyPaletteOpen.set(true);
+  });
 </script>
 
 <div style="background:#0a0a0a;padding:8px;min-height:100vh;">
@@ -131,4 +156,7 @@
   <div style="margin-top:16px;max-width:760px;">
     <StreamBlock {block} />
   </div>
+  {#if paletteReady}
+    <HistoryPalette />
+  {/if}
 </div>
