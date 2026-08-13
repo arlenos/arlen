@@ -835,6 +835,66 @@ mod tests {
         assert!(!both.contains("user namespace"));
     }
 
+    /// The path branch, driven end to end: a socket in a directory this process
+    /// CANNOT write is trusted without a uid check.
+    ///
+    /// The proof is the uid it is handed - the same wrong one that
+    /// `authenticated_lookup_rejects_a_mismatched_broker_uid` proves is refused in
+    /// a writable directory. Succeeding here can only mean the uid was never
+    /// consulted, which is the whole change: inside a mount namespace a root-owned
+    /// broker has no number, and `/run/arlen` is not user-writable, so the
+    /// filesystem has already answered who could be listening.
+    #[test]
+    fn a_socket_in_a_closed_directory_is_trusted_without_a_uid() {
+        use crate::identity_wire::write_response;
+        use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::net::UnixListener;
+
+        // SAFETY: getuid never fails.
+        if unsafe { libc::getuid() } == 0 {
+            // `access(W_OK)` succeeds for root whatever the mode, so root cannot
+            // exercise this branch at all. Saying so beats a test that quietly
+            // proves nothing on one machine and everything on another.
+            eprintln!("skipped: running as root, where no directory is closed to us");
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("id.sock");
+        let listener = UnixListener::bind(&sock).unwrap();
+        // Bind first, THEN close the directory: the point is a node we could not
+        // have created, and we need to create it to have one.
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let srv = thread::spawn(move || {
+            let (mut conn, _) = listener.accept().unwrap();
+            let (_bytes, fd) = recv_fd_msg(&conn, MAX_IDENTITY_FRAME).unwrap();
+            assert!(fd.is_some(), "the path branch must still send the pidfd");
+            write_response(
+                &mut conn,
+                &IdentityResponse::Resolved {
+                    app_id: "com.example.app".into(),
+                },
+            )
+            .unwrap();
+        });
+
+        // SAFETY: getuid never fails.
+        let wrong = unsafe { libc::getuid() }.wrapping_add(1);
+        let p = self_pidfd();
+        let got = lookup_identity_authenticated(&sock, p.as_fd(), Some(wrong)).unwrap();
+        srv.join().unwrap();
+
+        // Reopen before the temp dir is dropped, or its cleanup cannot unlink.
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert_eq!(
+            got,
+            Some("com.example.app".to_string()),
+            "a closed directory authenticates the socket, so the uid is not consulted"
+        );
+    }
+
     #[test]
     fn a_directory_we_can_write_cannot_vouch_for_who_bound_it() {
         // The whole distinction, and the half that is easy to get backwards: the
