@@ -23,6 +23,13 @@ use arlen_file_browser_core::remote::{remote_places_from_listings, RemotePlace};
 pub enum NetworkPlaces {
     /// The subsystem did not answer: no accounts daemon on this system, or no bus.
     /// Render the section as unavailable, or not at all - never as an empty list.
+    /// The bus answered and refused this app: the accounts exist, we may not see
+    /// them. Distinct from `Unavailable` because the fix is a permission, not an
+    /// installation.
+    Denied {
+        /// What the bus said, verbatim; for the log, not the screen.
+        reason: String,
+    },
     Unavailable {
         /// Why, for the log and for a tooltip. Not a user-facing sentence.
         reason: String,
@@ -51,6 +58,17 @@ fn classify(
         Ok(listings) => NetworkPlaces::Configured {
             places: remote_places_from_listings(&listings),
         },
+        // A refusal is not an absence, and D-Bus says which is which. `AccessDenied`
+        // is the bus policy or the daemon turning this app away - the accounts are
+        // there. Everything else (no owner, no bus, a transport fault) is the
+        // subsystem not being reachable at all.
+        Err(zbus::Error::MethodError(name, detail, _))
+            if name.as_str().ends_with(".AccessDenied") =>
+        {
+            let reason = detail.unwrap_or_else(|| name.as_str().to_owned());
+            log::debug!("network_places: online-accounts refused this app: {reason}");
+            NetworkPlaces::Denied { reason }
+        }
         Err(e) => {
             log::warn!("network_places: online-accounts unavailable: {e}");
             NetworkPlaces::Unavailable {
@@ -89,6 +107,28 @@ mod tests {
         assert!(matches!(absent, NetworkPlaces::Unavailable { .. }));
         assert_eq!(none_configured, NetworkPlaces::Configured { places: Vec::new() });
         assert_ne!(absent, none_configured);
+    }
+
+    #[test]
+    fn a_refusal_is_not_an_absence_either() {
+        // The third state, and the one that only appears once the daemon exists:
+        // with nobody owning the name every error is ServiceUnknown, so today this
+        // arm is reached only here. It is in the contract because the contract is
+        // what the sidebar will read when accountsd does arrive - telling a person
+        // "not available on this system" about accounts they can see in Settings
+        // sends them to install something that is already installed.
+        let denied = classify(Err(zbus::Error::MethodError(
+            "org.freedesktop.DBus.Error.AccessDenied"
+                .try_into()
+                .unwrap(),
+            Some("not granted to this app".into()),
+            zbus::message::Message::method_call("/", "Whatever")
+                .unwrap()
+                .build(&())
+                .unwrap(),
+        )));
+        assert!(matches!(denied, NetworkPlaces::Denied { .. }), "{denied:?}");
+        assert_ne!(denied, classify(Err(zbus::Error::InvalidReply)));
     }
 
     #[test]
