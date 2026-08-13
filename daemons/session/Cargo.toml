@@ -1,0 +1,21 @@
+[package]
+license = "AGPL-3.0-only"
+name = "arlen-session"
+version = "0.1.0"
+edition = "2021"
+description = "The Arlen graphical session: mints the session id, starts the compositor and the shell, and is the root of trust for what the session spawns"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "arlen-session"
+path = "src/main.rs"
+
+[dependencies]
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]

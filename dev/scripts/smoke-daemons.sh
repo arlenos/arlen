@@ -74,6 +74,7 @@ SKIPPED=(
     "arlen-install-helper|system-bus service, runs as root"
     "arlen-permission-helper|system-bus service, runs as root"
     "arlen-connectionsd|needs the session bus"
+    "arlen-session|greetd starts it as the login session, not as a daemon; and the compiled one is incomplete, so it refuses to run"
     "arlen-session-supervisor|its systemd and broker seams are not wired yet, so it exits by design rather than supervising nothing quietly"
     "arlen-config-broker|runs as its own uid by design"
     "kernel-layer|needs the bpf toolchain and a privileged host"

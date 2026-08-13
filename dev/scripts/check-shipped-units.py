@@ -128,6 +128,12 @@ NO_UNIT: dict[str, str] = {
         "putting it on a shipped image is a scope decision rather than a packaging "
         "oversight. NOTE this is why a booted image records no file.opened at all"
     ),
+    "session": (
+        "no unit by design, like arlen-run: greetd starts the session from "
+        "`[initial_session]`, it is not a service that runs. The crate holds the "
+        "compiled session's decisions while the shipped login path is still the "
+        "shell script at /usr/bin/arlen-session"
+    ),
     "session-supervisor": (
         "the decision half is built and tested; the systemd and broker seams are "
         "not wired, so its binary exits rather than pretending to supervise. A "
