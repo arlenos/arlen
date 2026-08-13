@@ -15,6 +15,12 @@ import { derived, get, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 
 import { t } from "$lib/i18n/messages";
+import {
+  reasonState,
+  rows,
+  type EmptyReason,
+  type ReadOutcome,
+} from "$lib/read-outcome";
 
 /// The facet groups, in the deterministic order they serialize and render.
 export type FacetGroup = "project" | "type" | "time" | "touched";
@@ -39,7 +45,12 @@ export interface SmartFolder {
 
 /// The groups in render/serialize order. Time is single-select (a cutoff, not a
 /// union); the rest union their values (OR within a group, AND across groups).
-export const FACET_GROUPS: FacetGroup[] = ["project", "type", "time", "touched"];
+export const FACET_GROUPS: FacetGroup[] = [
+  "project",
+  "type",
+  "time",
+  "touched",
+];
 
 /// The human label for each group, shown on the dropdown trigger and the chip.
 export const GROUP_LABEL: Record<FacetGroup, string> = {
@@ -62,22 +73,30 @@ export const SINGLE_SELECT: Record<FacetGroup, boolean> = {
 /// A derived store, like the graph-loaded sets below, so every facet group has the
 /// same shape at the call site and these labels follow a locale switch. A plain
 /// array would freeze them at import.
-export const typeValues = derived(t, ($t) => [
-  { value: "document", label: $t("f.facet.type.document") },
-  { value: "image", label: $t("f.facet.type.image") },
-  { value: "audio", label: $t("f.facet.type.audio") },
-  { value: "video", label: $t("f.facet.type.video") },
-  { value: "archive", label: $t("f.facet.type.archive") },
-  { value: "code", label: $t("f.facet.type.code") },
-] satisfies FacetValue[]);
+export const typeValues = derived(
+  t,
+  ($t) =>
+    [
+      { value: "document", label: $t("f.facet.type.document") },
+      { value: "image", label: $t("f.facet.type.image") },
+      { value: "audio", label: $t("f.facet.type.audio") },
+      { value: "video", label: $t("f.facet.type.video") },
+      { value: "archive", label: $t("f.facet.type.archive") },
+      { value: "code", label: $t("f.facet.type.code") },
+    ] satisfies FacetValue[],
+);
 
 /// The intrinsic time facet: a single recency cutoff.
-export const timeValues = derived(t, ($t) => [
-  { value: "day", label: $t("f.facet.time.day") },
-  { value: "week", label: $t("f.facet.time.week") },
-  { value: "month", label: $t("f.facet.time.month") },
-  { value: "older", label: $t("f.facet.time.older") },
-] satisfies FacetValue[]);
+export const timeValues = derived(
+  t,
+  ($t) =>
+    [
+      { value: "day", label: $t("f.facet.time.day") },
+      { value: "week", label: $t("f.facet.time.week") },
+      { value: "month", label: $t("f.facet.time.month") },
+      { value: "older", label: $t("f.facet.time.older") },
+    ] satisfies FacetValue[],
+);
 
 /// Graph-loaded option sets (empty until `loadFacetOptions` runs, or when the
 /// graph has none — the dropdown then reads as having nothing to offer).
@@ -103,11 +122,17 @@ savedFolders.subscribe((list) => {
 });
 
 function emptySelection(): Record<FacetGroup, Set<string>> {
-  return { project: new Set(), type: new Set(), time: new Set(), touched: new Set() };
+  return {
+    project: new Set(),
+    type: new Set(),
+    time: new Set(),
+    touched: new Set(),
+  };
 }
 
 /// The selected value keys per group.
-export const selectedFacets = writable<Record<FacetGroup, Set<string>>>(emptySelection());
+export const selectedFacets =
+  writable<Record<FacetGroup, Set<string>>>(emptySelection());
 
 /// Build the `facet:` location key for a selection, or "" when nothing is set.
 export function serializeFacets(sel: Record<FacetGroup, Set<string>>): string {
@@ -197,22 +222,62 @@ export async function loadSmartFolders(): Promise<void> {
   persistReady = true;
 }
 
+/// Why the project facet has no options, or null when its read answered.
+export const projectFacetReason = writable<Exclude<
+  EmptyReason,
+  "empty"
+> | null>(null);
+
+/// The same for the touched-app facet.
+export const touchedFacetReason = writable<Exclude<
+  EmptyReason,
+  "empty"
+> | null>(null);
+
 /// Load the graph-backed facet options. Projects reuse `files_projects`; the
-/// touched-app list needs a dedicated read (flagged). Failures leave the set
-/// empty rather than fake.
+/// touched-app list needs a dedicated read.
+///
+/// A read that did not answer leaves its options empty AND records which of the
+/// three it was, so the filter bar can say "not available on this system" rather
+/// than offer an empty menu that reads as "nothing to filter by". Rendering that
+/// notice is the bar's job; this is the fact it needs.
 export async function loadFacetOptions(): Promise<void> {
   try {
-    const projects = await invoke<{ id: string; name: string }[]>("files_projects");
-    projectValues.set(projects.map((p) => ({ value: p.id, label: p.name })));
+    const outcome =
+      await invoke<ReadOutcome<{ id: string; name: string }>>("files_projects");
+    projectValues.set(
+      rows(outcome).map((p) => ({ value: p.id, label: p.name })),
+    );
+    projectFacetReason.set(unanswered(outcome));
   } catch {
     projectValues.set([]);
+    projectFacetReason.set("unavailable");
   }
   try {
-    const apps = await invoke<{ id: string; label: string; count?: number }[]>(
-      "files_touched_apps",
+    const outcome =
+      await invoke<ReadOutcome<{ id: string; label: string; count?: number }>>(
+        "files_touched_apps",
+      );
+    touchedValues.set(
+      rows(outcome).map((a) => ({
+        value: a.id,
+        label: a.label,
+        count: a.count,
+      })),
     );
-    touchedValues.set(apps.map((a) => ({ value: a.id, label: a.label, count: a.count })));
+    touchedFacetReason.set(unanswered(outcome));
   } catch {
     touchedValues.set([]);
+    touchedFacetReason.set("unavailable");
   }
+}
+
+/// The reason a facet has no options, or null when its read answered. `empty` is
+/// not a reason here: a facet with nothing to offer because there genuinely is
+/// nothing is a correct empty menu.
+function unanswered<T>(
+  o: ReadOutcome<T>,
+): Exclude<EmptyReason, "empty"> | null {
+  const state = reasonState(o);
+  return state === "unavailable" || state === "denied" ? state : null;
 }

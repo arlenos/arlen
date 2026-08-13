@@ -7,6 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Place, PlaceGroup } from "@arlen/ui-kit/components/browser";
 
 import { t } from "$lib/i18n/messages";
+import { rows, type ReadOutcome } from "$lib/read-outcome";
 
 interface Project {
   id: string;
@@ -58,7 +59,9 @@ export const placeGroups = derived([placeGroupsRaw, t], ([$groups, $t]) =>
     // The standard places carry a key too, since the backend cannot know the
     // reader's language. A volume or a bookmarked folder arrives without one and
     // keeps the name it came with - that is data, not chrome.
-    places: g.places.map((p) => (p.labelKey ? { ...p, label: $t(p.labelKey) } : p)),
+    places: g.places.map((p) =>
+      p.labelKey ? { ...p, label: $t(p.labelKey) } : p,
+    ),
   })),
 );
 
@@ -141,7 +144,9 @@ export async function loadPlaces(): Promise<void> {
   // rather than leaving it to contradict the places listed under it.
   placesUnavailable.set(false);
   try {
-    const places = await invoke<{ orte: Place[]; geraete: Place[] }>("files_places");
+    const places = await invoke<{ orte: Place[]; geraete: Place[] }>(
+      "files_places",
+    );
     const home = places.orte.find((p) => p.icon === "home");
     if (home) homePath.set(home.path);
     groups.push({ label: "f.places.places", places: places.orte });
@@ -203,18 +208,26 @@ export async function loadPlaces(): Promise<void> {
     // No bookmark store: the group does not render.
   }
   try {
-    const projects = await invoke<Project[]>("files_projects");
-    groups.push({
-      label: "f.places.projects",
-      // The rail would show two identical glyphs; the group only
-      // makes sense expanded.
-      railHidden: true,
-      places: projects.map((p) => ({
-        label: p.name,
-        icon: "project",
-        path: p.path,
-      })),
-    });
+    // The group renders only for a read that ANSWERED. This `catch` never used to
+    // fire - the command swallowed its own failure into an empty list - so a
+    // machine with no graph got a Projects group listing nothing, which reads as
+    // "you have no projects". Absent and refused now skip the group entirely,
+    // which is the accountsd doctrine: no section beats an empty one.
+    const outcome = await invoke<ReadOutcome<Project>>("files_projects");
+    const projects = rows(outcome);
+    if (outcome.state === "rows") {
+      groups.push({
+        label: "f.places.projects",
+        // The rail would show two identical glyphs; the group only
+        // makes sense expanded.
+        railHidden: true,
+        places: projects.map((p) => ({
+          label: p.name,
+          icon: "project",
+          path: p.path,
+        })),
+      });
+    }
   } catch {
     // No graph yet: the group simply does not render.
   }

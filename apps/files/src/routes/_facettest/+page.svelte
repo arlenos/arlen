@@ -6,8 +6,11 @@
   /// populated selection (so the active chips and dropdown checks show) over a
   /// stand-in result listing, so the whole composition reads. The empty state,
   /// an open dropdown and the save dialog are reached by driving the controls.
-  /// The live KG query is the coder's `files_list_location` for `facet:` keys;
-  /// this proves the controls, not the data. Not shipped in any nav; a dev route.
+  /// `?state=unavailable` makes both option reads answer "no graph here", which is
+  /// what a menu must NOT render as "Nothing to filter by" - a person reading that
+  /// concludes they have no projects. The live KG query is the coder's
+  /// `files_list_location` for `facet:` keys; this proves the controls, not the
+  /// data. Not shipped in any nav; a dev route.
   import { onMount } from "svelte";
   import { tauriAvailable } from "$lib/tauri";
   import FmFacetBar from "$lib/components/FmFacetBar.svelte";
@@ -25,19 +28,29 @@
   onMount(async () => {
     if (!tauriAvailable) {
       const { mockIPC } = await import("@tauri-apps/api/mocks");
+      const unavailable =
+        new URLSearchParams(window.location.search).get("state") === "unavailable";
       mockIPC((cmd) => {
+        if (unavailable && (cmd === "files_projects" || cmd === "files_touched_apps"))
+          return { state: "unavailable", reason: "graph unreachable" };
         if (cmd === "files_projects")
-          return [
-            { id: "p-thesis", name: "Thesis writeup", path: "/home/tim/thesis" },
-            { id: "p-reading", name: "Reading list", path: "/home/tim/reading" },
-            { id: "p-os", name: "Arlen OS", path: "/home/tim/arlen" },
-          ];
+          return {
+            state: "rows",
+            rows: [
+              { id: "p-thesis", name: "Thesis writeup", path: "/home/tim/thesis" },
+              { id: "p-reading", name: "Reading list", path: "/home/tim/reading" },
+              { id: "p-os", name: "Arlen OS", path: "/home/tim/arlen" },
+            ],
+          };
         if (cmd === "files_touched_apps")
-          return [
-            { id: "files", label: "Files", count: 42 },
-            { id: "viewer", label: "Image viewer", count: 11 },
-            { id: "terminal", label: "Terminal", count: 7 },
-          ];
+          return {
+            state: "rows",
+            rows: [
+              { id: "files", label: "Files", count: 42 },
+              { id: "viewer", label: "Image viewer", count: 11 },
+              { id: "terminal", label: "Terminal", count: 7 },
+            ],
+          };
         return [];
       });
     }

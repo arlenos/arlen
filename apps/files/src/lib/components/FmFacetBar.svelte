@@ -19,6 +19,8 @@
     timeValues,
     projectValues,
     touchedValues,
+    projectFacetReason,
+    touchedFacetReason,
     selectedFacets,
     serializeFacets,
     toggleValue,
@@ -47,6 +49,24 @@
     if (group === "time") return $timeValues;
     if (group === "project") return $projectValues;
     return $touchedValues;
+  };
+
+  /// Why a group's menu is empty, when the reason is not "there is nothing".
+  ///
+  /// Type and time are static lists that cannot fail. The two graph-backed ones
+  /// can, and an empty menu that says "Nothing to filter by" about a read that
+  /// never happened is the defect this whole pass is about - the person concludes
+  /// they have no projects.
+  const reasonFor = (group: FacetGroup): string => {
+    const state =
+      group === "project"
+        ? $projectFacetReason
+        : group === "touched"
+          ? $touchedFacetReason
+          : null;
+    if (state === "unavailable") return $t("f.facet.unavailable");
+    if (state === "denied") return $t("f.facet.denied");
+    return $t("f.facet.empty");
   };
 
   // Resolve a selected value key back to its label for the chip text.
@@ -121,7 +141,7 @@
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="start" sideOffset={4} class="fm-menu facet-menu">
           {#if values.length === 0}
-            <div class="facet-empty">{$t("f.facet.empty")}</div>
+            <div class="facet-empty">{reasonFor(group)}</div>
           {:else}
             {#each values as v (v.value)}
               <DropdownMenu.CheckboxItem
