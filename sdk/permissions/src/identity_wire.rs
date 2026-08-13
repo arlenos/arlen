@@ -354,6 +354,40 @@ const NOBODY_UID: u32 = 65534;
 /// Measured on the same boot: the consent broker, with one such option, resolves
 /// stamps fine; the undo signer, with six, cannot - which is the wrong way round,
 /// since a hardened unit is exactly the one whose `/proc` fallback is also refused.
+///
+/// # What the namespace costs, measured per option
+///
+/// Run against a real user manager (`systemd-run --user --property=...` reading
+/// `/proc/self/uid_map`), so this is the behaviour and not a reading of the docs:
+///
+/// ```text
+///   ProtectSystem=strict        1000 1000 1     <- a namespace, only us mapped
+///   ProtectHome=read-only       1000 1000 1
+///   PrivateTmp=yes              1000 1000 1
+///   PrivateDevices=yes          1000 1000 1
+///   ProtectKernelTunables=yes   1000 1000 1
+///   ProtectKernelModules=yes    1000 1000 1
+///   ProtectControlGroups=yes    1000 1000 1
+///   RestrictNamespaces=yes      0 0 4294967295  <- no namespace
+///   NoNewPrivileges=yes         0 0 4294967295
+/// ```
+///
+/// So it is not a property of one over-hardened unit: EVERY mount-based sandbox
+/// option puts a user service in a namespace that maps only its own uid, and there
+/// is no uid in there for a root-owned broker to have. A daemon cannot both harden
+/// its filesystem view and authenticate a peer by uid.
+///
+/// # Why "unmapped means the broker" is not the way out
+///
+/// It reads as a safe inference and is not: unprivileged `CLONE_NEWUSER` is
+/// available, so any local process can arrange to look unmapped too. Unmapped says
+/// the peer is in a DIFFERENT namespace, never which one. Nor does the socket
+/// living in a root-only directory narrow it - that constrains who may BIND, not
+/// who may connect. Measured on the image rather than assumed: it ships
+/// `/usr/lib/sysctl.d/50-bubblewrap.conf` with `kernel.unprivileged_userns_clone=1`,
+/// deliberately, because that is what lets `arlen-run` confine an app with bwrap
+/// and no setuid helper. The setting the launcher needs is the one that makes this
+/// inference unsound.
 fn unmappable_peer_hint(broker_uid: u32, expected: u32, socket: &Path) -> String {
     if broker_uid == NOBODY_UID && expected != NOBODY_UID {
         return format!(

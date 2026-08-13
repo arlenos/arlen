@@ -510,6 +510,15 @@ fn main() -> ExitCode {
         }
     };
 
+    // NB the unprivileged user namespace bwrap uses below is enabled ON PURPOSE by
+    // the image (`/usr/lib/sysctl.d/50-bubblewrap.conf`,
+    // `kernel.unprivileged_userns_clone=1`, shipped by the bubblewrap package), and
+    // that has a cost somewhere else worth knowing about here. Because ANY local
+    // process can make a user namespace, a peer that reads back as an unmapped uid
+    // (nobody) proves only that it is in a different namespace, never which one -
+    // so `identity_wire`'s broker check cannot treat "unmapped" as "the broker".
+    // Measured on the image rather than assumed; if this sysctl is ever turned off,
+    // confinement here breaks first and that inference becomes available second.
     // Run the app under the in-sandbox Landlock fence on BOTH paths: bwrap execs
     // `arlen-run --landlock-exec <app writable dirs> -- <app>`, which fences the app
     // to its own dirs (plus the standard writable devices) after bwrap's mount +
