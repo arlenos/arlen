@@ -1,0 +1,34 @@
+#!/bin/sh
+# Name the identity broker's uid for every user service, before any of them start.
+#
+# A daemon refuses to trust an identity broker it cannot pin to a uid, and it is
+# right to: the per-user socket path lives in the user's own runtime directory, so
+# trusting whoever answers there would be the fail-open the check exists to stop.
+# Without the uid the whole launcher-stamped tier is inert and every peer falls
+# back to reading /proc/<pid>/exe - which a hardened unit refuses.
+#
+# The session exports this too, for the compositor, the shell and the apps it
+# starts. That is not enough on its own: the session exports it when it hands the
+# environment to the user manager, and user services that started BEFORE that miss
+# it. Measured on the boot of 13 Aug - the consent broker starts at 4.8s while the
+# session imports at ~9s, so it came up with the tier inert while everything after
+# it was fine. A generator runs before any user unit, so start order stops
+# mattering for them.
+#
+# From the SYSTEM socket's owner, not from a user name. The name would be the
+# tidier rule and it is the wrong one here: the dist unit says User=arlen-config
+# while the image packages the broker as User=root (the KNOWN DRIFT in
+# check-packaged-units.sh), so a lookup of that name finds nothing and the tier
+# stays inert - or worse, finds an unrelated user and pins a uid the real broker
+# will never have. The owner of the socket is what is TRUE either way, and it is
+# trustworthy for the same reason the per-user path is not: /run/arlen is not
+# writable by an ordinary user, so a node inside it was placed by root or by the
+# broker.
+#
+# If the socket is not there yet, print nothing: that unit falls back to /proc,
+# which is exactly where it was before this file existed.
+sock=/run/arlen/config-broker-identity.sock
+[ -S "$sock" ] || exit 0
+uid=$(stat -c %u "$sock" 2>/dev/null) || exit 0
+[ -n "$uid" ] && echo "ARLEN_CONFIG_BROKER_IDENTITY_UID=$uid"
+exit 0
