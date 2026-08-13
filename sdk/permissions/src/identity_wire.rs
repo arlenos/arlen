@@ -175,6 +175,32 @@ pub fn broker_expected_uid(caller_uid: u32) -> Option<u32> {
     expected_broker_uid_from(env, caller_uid, !cfg!(debug_assertions))
 }
 
+/// The uid that owns the SYSTEM identity-broker socket, if it is there and is a
+/// socket - the deployment's answer to "which uid is the real broker".
+///
+/// Only this path, deliberately. `/run/arlen` is a directory owned by the broker's
+/// service user that no ordinary user may write, so a node inside it was placed by
+/// root or by the broker and its owner is a fact rather than a claim. The PER-USER
+/// path is the opposite: it lives in the user's own runtime dir, so a same-uid
+/// squatter can create a socket there and would be declaring itself trusted. That
+/// is exactly the fail-open this whole uid check exists to prevent, so the per-user
+/// path is never a trust source - only a connect target once the uid is known.
+///
+/// This is what a session hands to everything it starts, so a deployment does not
+/// have to pin a number that `sysusers` allocated dynamically.
+pub fn broker_uid_from_system_socket() -> Option<u32> {
+    broker_uid_of(Path::new("/run/arlen").join(IDENTITY_SOCKET_NAME))
+}
+
+/// The owning uid of `path` when it exists and is a socket. Split out so the
+/// type check is testable without a real broker.
+pub fn broker_uid_of(path: impl AsRef<Path>) -> Option<u32> {
+    use std::os::unix::fs::FileTypeExt;
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::metadata(path.as_ref()).ok()?;
+    meta.file_type().is_socket().then(|| meta.uid())
+}
+
 /// Pure resolution of the trusted broker uid, so both build-profile branches are
 /// testable: the configured `env` uid wins; absent it a dev build (`!is_release`)
 /// trusts `caller_uid`, and a release build returns `None` (refuse an unconfigured
@@ -657,5 +683,22 @@ mod tests {
             Err(IdentityClientError::Unauthenticated(_)) => {}
             other => panic!("expected Unauthenticated (no trusted uid), got {other:?}"),
         }
+    }
+
+    #[test]
+    fn only_a_real_socket_names_a_broker_uid() {
+        // A regular file where the socket should be is not a broker, and must not
+        // be read as one: the type check is what stops a leftover file - or a
+        // planted one, in a directory only root and the broker can write - from
+        // naming a uid that would then be trusted for every stamp.
+        let tmp = tempfile::tempdir().unwrap();
+        let plain = tmp.path().join("not-a-socket");
+        std::fs::write(&plain, "x").unwrap();
+        assert_eq!(broker_uid_of(&plain), None);
+        assert_eq!(broker_uid_of(tmp.path().join("absent")), None);
+
+        let sock = tmp.path().join("real.sock");
+        let _l = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        assert_eq!(broker_uid_of(&sock), Some(unsafe { libc::getuid() }));
     }
 }

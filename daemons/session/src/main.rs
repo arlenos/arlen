@@ -119,6 +119,34 @@ fn main() -> std::process::ExitCode {
     let id = session_id(std::env::var(SESSION_ID_VAR).ok());
     let mut env = session_env(&id, &dmi(PRODUCT_FAMILY));
 
+    // Name the identity broker's uid for everything this session will start.
+    //
+    // Without it the launcher-stamped identity tier is INERT: a daemon refuses to
+    // trust any broker it cannot pin to a uid (correctly - the per-user socket path
+    // is user-writable, so trusting whoever answers there would be the fail-open
+    // this check exists to prevent), falls back to reading the peer's
+    // `/proc/<pid>/exe`, and under a hardened unit that read is refused. Measured on
+    // the boot of 13 Aug: every peer resolved to nothing and the undo signer
+    // rejected each connection with `readlinkat(exe): Permission denied`.
+    //
+    // The uid is not a number anyone can write down - `sysusers` allocates it - so
+    // it is read from the owner of the SYSTEM socket, in a directory only root and
+    // the broker may write. Setting it here rather than in sixteen units is what
+    // makes it reach the apps too: the import below hands it to the user manager,
+    // and every user service and launched app inherits it from there.
+    match arlen_permissions::identity_wire::broker_uid_from_system_socket() {
+        Some(uid) => {
+            env.insert(
+                arlen_permissions::identity_wire::IDENTITY_BROKER_UID_ENV.to_string(),
+                uid.to_string(),
+            );
+        }
+        None => say(
+            "the identity broker's socket is not there yet, so stamped identity stays \
+             off for this session and peers resolve via /proc",
+        ),
+    }
+
     // The user's folders, named in the user's language, BEFORE anything binds
     // them. Nothing else in the image runs this: a normal desktop gets it from
     // /etc/xdg/autostart, which we do not process. Without it a German install
