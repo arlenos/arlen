@@ -468,6 +468,15 @@ jobs:
       # Derived rather than hardcoded, so a pin that moves does not leave this
       # stale. Reading the active toolchain per directory is the only thing that
       # knows what cargo will actually pick.
+      #
+      # Two things about that read, probed rather than assumed, because on a fresh
+      # runner none of the pinned toolchains exist yet:
+      #   * `rustup show active-toolchain` INSTALLS an uninstalled pin as a side
+      #     effect, so the name it prints is always usable.
+      #   * its progress goes to stderr, so `head -1` on the pipe still gets the
+      #     toolchain name and not "info: syncing channel updates".
+      # Both matter: if either were the other way round, `tc` would be a log line
+      # and the add below would fail on a green tree.
       - name: components for every pinned toolchain this job uses
         run: |
           for c in sdk ai daemons/event-bus contracts/audit-proto; do
