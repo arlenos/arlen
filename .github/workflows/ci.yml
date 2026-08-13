@@ -458,6 +458,23 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+      # `components:` above installs clippy and rustfmt for STABLE. Half the dirs
+      # this job lints carry a `rust-toolchain.toml` (sdk and event-bus pin 1.90),
+      # and a pinned directory silently switches toolchains under cargo - one that
+      # rustup then auto-installs WITHOUT the components. So `cargo clippy` there
+      # fails with "clippy is not installed", and the `|| true` below swallows it:
+      # the step runs, reports nothing, and lints nothing.
+      #
+      # Derived rather than hardcoded, so a pin that moves does not leave this
+      # stale. Reading the active toolchain per directory is the only thing that
+      # knows what cargo will actually pick.
+      - name: components for every pinned toolchain this job uses
+        run: |
+          for c in sdk ai daemons/event-bus contracts/audit-proto; do
+            tc=$(cd "$c" && rustup show active-toolchain | head -1 | cut -d' ' -f1)
+            echo "$c -> $tc"
+            rustup component add clippy rustfmt --toolchain "$tc"
+          done
       # Format + lint the SDK and AI layer as representative; widen later.
       - name: rustfmt check
         run: |
