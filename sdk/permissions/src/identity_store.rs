@@ -70,6 +70,9 @@ struct Record {
     /// permission, which drifts. Recording the registrar makes "may this process
     /// register?" a question about provenance that the store can answer.
     registered_by: String,
+    /// Whether this process may itself register others - the delegated half of
+    /// the right, granted at registration by a caller that holds it.
+    is_registrar: bool,
 }
 
 impl Record {
@@ -121,6 +124,7 @@ impl IdentityStore {
         pidfd: OwnedFd,
         app_id: String,
         registered_by: String,
+        is_registrar: bool,
     ) -> Result<(), IdentityStoreError> {
         let pid = pidfd_pid(pidfd.as_raw_fd()).ok_or(IdentityStoreError::DeadPidfd)?;
         // Keep only live records for a DIFFERENT pid: this drops every
@@ -133,6 +137,7 @@ impl IdentityStore {
             pid,
             app_id,
             registered_by,
+            is_registrar,
         });
         Ok(())
     }
@@ -167,12 +172,34 @@ impl IdentityStore {
     /// caller checks for it separately. That is the bootstrap, named rather than
     /// hidden inside a list where it would look like just another entry.
     pub fn may_register(&self, presented: std::os::fd::BorrowedFd<'_>) -> bool {
-        let Some(want) = pidfd_pid(presented.as_raw_fd()) else {
+        self.holds(presented, |r| r.is_registrar)
+    }
+
+    /// Whether the process `presented` pins may pass the registrar right ON.
+    ///
+    /// The second of the two levels, and what stops the chain being unbounded.
+    /// Only what the SESSION ROOT started directly may mint a registrar; a
+    /// registrar minted that way (`arlen-run`) can register apps and nothing
+    /// else. So the set that may ever stamp an identity is the root's own
+    /// children plus what they explicitly delegate to - two hops, fixed - rather
+    /// than every descendant of the first one.
+    ///
+    /// Without this, a launcher could stamp an app AS a registrar and the app's
+    /// own children would inherit the right; every process in the session would
+    /// end up able to claim any identity, which is the hole the whole broker
+    /// exists to close.
+    pub fn may_grant_registrar(&self, presented: std::os::fd::BorrowedFd<'_>) -> bool {
+        self.holds(presented, |r| r.registered_by == SESSION_ROOT)
+    }
+
+    /// Whether a live record for the process `presented` pins satisfies `want`.
+    fn holds(&self, presented: std::os::fd::BorrowedFd<'_>, want: impl Fn(&Record) -> bool) -> bool {
+        let Some(pid) = pidfd_pid(presented.as_raw_fd()) else {
             return false;
         };
         self.records
             .iter()
-            .any(|r| r.pid == want && r.is_live() && r.registered_by == SESSION_ROOT)
+            .any(|r| r.pid == pid && r.is_live() && want(r))
     }
 
     /// Drop every record whose pinned process has exited. Housekeeping
@@ -209,29 +236,54 @@ mod tests {
     /// Register a process, then look it up with a SECOND, independent
     /// pidfd to the same process: same live pid on both sides matches.
     #[test]
-    fn only_what_the_session_root_registered_may_itself_register() {
+    fn the_right_to_register_is_granted_never_inherited() {
         // The derivation, at the store level. `arlen-run` registers apps all day
-        // and none of them becomes a registrar; only the root's own children do.
-        // That is what keeps this a provenance rule rather than a transitive
-        // free-for-all where any registration confers the power to register.
+        // and none of them becomes a registrar; the right is a bit a holder sets,
+        // never something a registration confers by itself. That is what keeps
+        // this a provenance rule rather than a transitive free-for-all.
         let mut store = IdentityStore::new();
         let me = self_pidfd();
 
         store
-            .register(self_pidfd(), "com.example.app".into(), "arlen-run".into())
+            .register(self_pidfd(), "com.example.app".into(), "arlen-run".into(), false)
             .unwrap();
         assert!(!store.may_register(me.as_fd()));
 
         store
-            .register(self_pidfd(), "session-supervisor".into(), SESSION_ROOT.into())
+            .register(self_pidfd(), "arlen-run".into(), "arlen-desktop-shell".into(), true)
             .unwrap();
         assert!(store.may_register(me.as_fd()));
     }
 
     #[test]
+    fn a_delegated_registrar_cannot_mint_another_one() {
+        // The bound on the chain, and the reason there are two levels rather than
+        // one. `arlen-run` holds the right to register because the shell granted
+        // it; it must not be able to hand that right to an app, or every process
+        // downstream of a launch ends up able to claim any identity.
+        let mut store = IdentityStore::new();
+        let me = self_pidfd();
+
+        store
+            .register(self_pidfd(), "arlen-run".into(), "arlen-desktop-shell".into(), true)
+            .unwrap();
+        assert!(store.may_register(me.as_fd()), "it may register");
+        assert!(
+            !store.may_grant_registrar(me.as_fd()),
+            "but it may not pass the right on: only the root's own children may"
+        );
+
+        // The shell itself - started BY the root - is what may.
+        store
+            .register(self_pidfd(), "arlen-desktop-shell".into(), SESSION_ROOT.into(), true)
+            .unwrap();
+        assert!(store.may_grant_registrar(me.as_fd()));
+    }
+
+    #[test]
     fn a_registered_process_resolves_via_an_independent_pidfd() {
         let mut store = IdentityStore::new();
-        store.register(self_pidfd(), "com.example.app".into(), "arlen-run".into()).unwrap();
+        store.register(self_pidfd(), "com.example.app".into(), "arlen-run".into(), false).unwrap();
 
         // A distinct pidfd to the same (live) process must still resolve.
         let presented = self_pidfd();
@@ -250,7 +302,7 @@ mod tests {
     #[test]
     fn a_different_process_does_not_inherit_an_id() {
         let mut store = IdentityStore::new();
-        store.register(self_pidfd(), "com.example.self".into(), "arlen-run".into()).unwrap();
+        store.register(self_pidfd(), "com.example.self".into(), "arlen-run".into(), false).unwrap();
 
         let mut child = Command::new("sleep")
             .arg("30")
@@ -286,7 +338,7 @@ mod tests {
         // child's pid to lookup even after it dies (stands in for a
         // recycled process that happens to reuse the pid).
         let held_for_lookup = pidfd_open(child_pid).expect("pidfd_open(child)");
-        store.register(pidfd_open(child_pid).unwrap(), "com.example.child".into(), "arlen-run".into()).unwrap();
+        store.register(pidfd_open(child_pid).unwrap(), "com.example.child".into(), "arlen-run".into(), false).unwrap();
         assert_eq!(store.lookup(&held_for_lookup), Some("com.example.child"));
 
         // Kill + reap: the registered pidfd is now dead.
@@ -311,8 +363,8 @@ mod tests {
     #[test]
     fn re_registering_replaces_the_id() {
         let mut store = IdentityStore::new();
-        store.register(self_pidfd(), "com.example.old".into(), "arlen-run".into()).unwrap();
-        store.register(self_pidfd(), "com.example.new".into(), "arlen-run".into()).unwrap();
+        store.register(self_pidfd(), "com.example.old".into(), "arlen-run".into(), false).unwrap();
+        store.register(self_pidfd(), "com.example.new".into(), "arlen-run".into(), false).unwrap();
         assert_eq!(store.len(), 1);
         assert_eq!(store.lookup(&self_pidfd()), Some("com.example.new"));
     }
@@ -332,7 +384,7 @@ mod tests {
         let pidfd = pidfd_open(child.id()).expect("pidfd_open");
         child.kill().unwrap();
         child.wait().unwrap();
-        match store.register(pidfd, "com.example.dead".into(), "arlen-run".into()) {
+        match store.register(pidfd, "com.example.dead".into(), "arlen-run".into(), false) {
             Err(IdentityStoreError::DeadPidfd) => {}
             other => panic!("expected DeadPidfd, got {other:?}"),
         }
