@@ -19,6 +19,16 @@
 //! that cannot be resolved must never stop the session from starting. The child
 //! then resolves the old way, which is exactly the state this improves on.
 
+/// The programs the session starts, named once.
+///
+/// Once, because the name is load-bearing twice: it is what gets spawned AND what
+/// decides who may register. Two copies of a string with that job is a silent
+/// failure waiting - a rename in one place leaves the chain compiling, booting and
+/// stamping nothing, which reads as a broker problem.
+pub const COMPOSITOR: &str = "arlen-compositor";
+/// The shell, and the one child granted the right to register in turn.
+pub const SHELL: &str = "arlen-desktop-shell";
+
 /// The children of the session that may themselves register identities.
 ///
 /// The session grants the right to ONE of the three things it starts, because one
@@ -31,7 +41,7 @@
 /// not deciding what a stranger presenting a name is allowed to do. A caller cannot
 /// put itself on this list; only editing the session can, and the session is the
 /// root of trust already.
-pub const REGISTRAR_CHILDREN: &[&str] = &["arlen-desktop-shell"];
+pub const REGISTRAR_CHILDREN: &[&str] = &[SHELL];
 
 /// Whether `program`, as the session is about to spawn it, gets the right to
 /// register identities of its own.
@@ -48,8 +58,8 @@ mod tests {
         // The compositor and the verify app start nothing, so neither has any
         // reason to stamp an identity. Keeping the grant to one child is what
         // makes the two-level bound worth having at all.
-        assert!(grants_registrar("arlen-desktop-shell"));
-        assert!(!grants_registrar("arlen-compositor"));
+        assert!(grants_registrar(SHELL));
+        assert!(!grants_registrar(COMPOSITOR));
         assert!(!grants_registrar("arlen-boot-verify"));
     }
 }
