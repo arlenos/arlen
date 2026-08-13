@@ -13,6 +13,7 @@
     selected,
     resultsCount = null,
     errored = false,
+    readReason = null,
   }: {
     entries: FileEntry[];
     selected: FileEntry[];
@@ -21,10 +22,18 @@
     /// The listing failed: the bar stays silent (it cannot know a
     /// count it never saw).
     errored?: boolean;
+    /// The message key for why this location listed nothing, when the reason is
+    /// something other than "it is empty". A prop rather than a store read so the
+    /// render harness can photograph all of its states side by side.
+    readReason?: string | null;
   } = $props();
 
   const itemsLine = $derived.by(() => {
     if (errored) return null;
+    // Same principle as `errored`, one step further in: the listing SUCCEEDED as a
+    // call and answered "I could not ask". Printing "0 items" there states a count
+    // nobody measured, and reads to a person as an empty project.
+    if (readReason) return $t(readReason);
     if (resultsCount !== null) {
       return $t("f.status.results", { count: resultsCount });
     }
@@ -41,14 +50,20 @@
 
 <div class="status-bar">
   {#if itemsLine}
-    <span>{itemsLine}</span>
+    <!-- An absent or refusing subsystem is amber here for the same reason it is in
+         the info panel: it is a fact about the machine, not about the folder. -->
+    <span class:reason={!errored && readReason}>{itemsLine}</span>
   {/if}
-  {#if selectionLine && !errored && resultsCount === null}
+  {#if selectionLine && !errored && !readReason && resultsCount === null}
     <span>{selectionLine}</span>
   {/if}
 </div>
 
 <style>
+  .reason {
+    color: var(--color-warning, #d4b483);
+  }
+
   .status-bar {
     display: flex;
     align-items: center;
