@@ -92,7 +92,8 @@ pub const MAX_IDENTITY_FRAME: usize = 4096;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IdentityRequest {
     /// Stamp `app_id` onto the process the accompanying pidfd pins.
-    /// Launcher-only (the daemon's registrar allowlist).
+    /// Registrars only, and a registrar is one by PROVENANCE: the session root, or
+    /// something the root started and granted the right to.
     Register {
         /// The launcher-attested app id for the child.
         app_id: String,
@@ -217,8 +218,10 @@ fn read_response<R: Read>(reader: &mut R) -> Result<IdentityResponse, IdentityCl
 }
 
 /// Register `app_id` for the process `child_pidfd` pins, over a connected
-/// stream. Launcher-only at the broker; a non-launcher caller gets
-/// [`IdentityClientError::Refused`].
+/// stream. The broker admits a caller by provenance - the session root, or what it
+/// registered as a registrar - so a caller with none gets
+/// [`IdentityClientError::Refused`]. `registrar` asks for the right to register in
+/// turn, and only what the root started directly may ask for it.
 pub fn register_over<S: AsRawFd + Read>(
     stream: &mut S,
     child_pidfd: BorrowedFd<'_>,
