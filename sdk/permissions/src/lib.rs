@@ -17,6 +17,7 @@ pub mod identity_store;
 pub mod identity_wire;
 pub mod peer_pidfd;
 pub mod stamped_identity;
+pub mod unit_identity;
 pub mod profile_watcher;
 pub mod revoke;
 

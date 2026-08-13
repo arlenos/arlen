@@ -293,6 +293,8 @@ jobs:
           bash dev/scripts/check-sensing-vectors.sh
           python3 dev/scripts/check-unit-directives.py
           node dev/scripts/test-check-unit-directives.mjs
+          python3 dev/scripts/check-unit-identity.py
+          node dev/scripts/test-check-unit-identity.mjs
           node dev/scripts/test-check-gate-drift.mjs
           python3 dev/scripts/check-read-grants-cover-queries.py
           node dev/scripts/test-check-read-grants-cover-queries.mjs
