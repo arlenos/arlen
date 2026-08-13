@@ -5,6 +5,7 @@
   /// details), each rendered only when it has something to show. Permissions are
   /// edited as plain per-role access, applied immediately; the octal is gone.
   import { writable } from "svelte/store";
+  import { type ReadOutcome, reasonKey, rows } from "$lib/read-outcome";
   import { invoke } from "@tauri-apps/api/core";
   import { X, ChevronRight, ChevronDown } from "lucide-svelte";
   import {
@@ -47,11 +48,21 @@
       created_unix?: number | null;
     };
     woher: { label: string; detail: string }[];
-    verwandt: { label: string; target: string; target_id: string }[];
+    // Three states, not a list: an absent graph daemon, a refusal and a genuinely
+    // empty result are different facts, and a section that hides on "length 0"
+    // tells a person the file belongs to no project when the truth may be that
+    // nothing answered. Same shape and same words as the remote-places sidebar.
+    verwandt: ReadOutcome<{ label: string; target: string; target_id: string }>;
     zugriff: { readable_by: string[]; manage_link: string };
   }
 
   const info = writable<Info | null>(null);
+
+  /** The one-line reason a read produced nothing, or null when it produced rows. */
+  function reasonOf(r: ReadOutcome<unknown> | null | undefined): string | null {
+    const key = reasonKey(r);
+    return key ? $t(key) : null;
+  }
 
   $effect(() => {
     const p = path;
@@ -89,7 +100,7 @@
   // project membership is bitemporal, so this is the meaningful slice.
   let asOfChoice = $state("now");
   let asOfMicros = $state<number | null>(null);
-  const asOfVerwandt = writable<Info["verwandt"]>([]);
+  const asOfVerwandt = writable<Info["verwandt"] | null>(null);
 
   // Reset transient view state when the inspected file changes.
   let advancedOpen = $state(false);
@@ -111,12 +122,15 @@
     const p = path;
     const t = asOfMicros;
     if (t === null) {
-      asOfVerwandt.set([]);
+      asOfVerwandt.set(null);
       return;
     }
     invoke<Info["verwandt"]>("files_verwandt_as_of", { path: p, asOfMicros: t })
       .then((r) => asOfVerwandt.set(r))
-      .catch(() => asOfVerwandt.set([]));
+      // A failed INVOKE is the app not reaching its own backend, which is a
+      // different thing again from the backend reaching no graph - say that
+      // rather than borrowing one of the backend's three answers.
+      .catch((e) => asOfVerwandt.set({ state: "unavailable", reason: String(e) }));
   });
 
   const asOfLabel = $derived(
@@ -283,8 +297,10 @@
       <ProvenanceHalo fileRef={path} />
     </section>
 
-    {#if $info.verwandt.length > 0}
-      {@const rels = asOfMicros === null ? $info.verwandt : $asOfVerwandt}
+    {#if $info.verwandt}
+      {@const read = asOfMicros === null ? $info.verwandt : ($asOfVerwandt ?? $info.verwandt)}
+      {@const rels = rows(read)}
+      {@const reason = reasonOf(read)}
       <section class="sec">
         <div class="sec-head">
           <span class="sec-title">{$t("f.info.related")}</span>
@@ -301,6 +317,13 @@
         </div>
         {#if asOfMicros !== null}
           <span class="note">{$t("f.info.pastView", { label: asOfLabel.toLowerCase() })}</span>
+        {/if}
+        {#if reason}
+          <!-- An absent or refusing subsystem is amber: something is wrong and a
+               person may want to act. A genuinely empty result is muted, because
+               nothing is wrong - it is simply empty. Same words everywhere, but
+               not the same weight. -->
+          <span class={reasonKey(read) === "f.read.empty" ? "empty" : "note"}>{reason}</span>
         {/if}
         {#each rels as line (line.label + line.target_id)}
           <button

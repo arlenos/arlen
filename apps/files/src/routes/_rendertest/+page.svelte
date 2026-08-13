@@ -45,14 +45,28 @@
       { label: "Accessed by", detail: "Files" },
       { label: "Also accessed by", detail: "another app" },
     ],
-    verwandt: [] as typeof liveRel,
+    // A read that produced nothing, and says so as an outcome rather than an
+    // empty list. Each fixture below overrides it with a different state, so one
+    // screenshot shows all three: rows, refused, absent.
+    verwandt: { state: "rows", rows: [] as typeof liveRel },
     zugriff: { readable_by: [] as string[], manage_link: "settings:ai" },
   });
 
-  const fileInfo = { ...base({}), verwandt: liveRel };
+  const fileInfo = { ...base({}), verwandt: { state: "rows", rows: liveRel } };
   const imageInfo = base({ kind: "file", size: 2_517_000 });
-  const folderInfo = { ...base({ kind: "directory", size: 0, mode: 0o755 }), woher: [] };
-  const symlinkInfo = { ...base({ kind: "symlink", mode: 0o777 }), woher: [] };
+  // The two states an empty list used to swallow. A folder whose graph read was
+  // refused must not read as "belongs to nothing", and a symlink on a machine with
+  // no graph daemon must not either - so the fixtures differ deliberately.
+  const folderInfo = {
+    ...base({ kind: "directory", size: 0, mode: 0o755 }),
+    woher: [],
+    verwandt: { state: "denied", reason: "read scope" },
+  };
+  const symlinkInfo = {
+    ...base({ kind: "symlink", mode: 0o777 }),
+    woher: [],
+    verwandt: { state: "unavailable", reason: "graph unreachable" },
+  };
 
   let ready = $state(false);
   onMount(async () => {
@@ -82,7 +96,10 @@
             horizon: "deeper_gated",
             mocked: false,
           };
-        if (cmd === "files_verwandt_as_of") return a.path === FILE ? pastRel : [];
+        if (cmd === "files_verwandt_as_of")
+          return a.path === FILE
+            ? { state: "rows", rows: pastRel }
+            : { state: "rows", rows: [] };
         if (cmd === "files_get_exif_tags")
           return { description: "Sunset over the Inn", artist: "Tim", copyright: null };
         if (cmd === "files_set_permissions" || cmd === "files_set_exif_tags") return null;
