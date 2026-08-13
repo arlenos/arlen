@@ -159,6 +159,112 @@ fn http_response(status: u16, reason: &str, body: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Whether the request body asked for a streamed completion (`"stream": true`).
+///
+/// pi's openai-completions provider hardcodes `stream: true` - there is no compat
+/// flag that turns it off - so in practice this is always true for pi, and the
+/// check exists so a non-streaming caller is still answered in ITS shape rather
+/// than handed frames it cannot read. An unparsable body reads as non-streaming:
+/// the passthrough is what this endpoint did before, so a body we cannot
+/// interpret keeps the old behaviour instead of being reshaped on a guess.
+fn wants_stream(body: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| v.get("stream").and_then(|s| s.as_bool()))
+        .unwrap_or(false)
+}
+
+/// Whether `body` is ALREADY a Server-Sent Events stream (the upstream answered
+/// the `stream: true` it was forwarded verbatim). Then it is passed through
+/// untouched - reshaping a stream we did not build would drop tool-call deltas,
+/// usage and every field this daemon has no business knowing about.
+fn is_sse(body: &str) -> bool {
+    let t = body.trim_start();
+    t.starts_with("data:") || t.starts_with("event:")
+}
+
+/// Re-emit a single non-streaming OpenAI chat completion as the SSE stream the
+/// request asked for: one content delta, one `finish_reason` chunk, then `[DONE]`.
+///
+/// This is the fix for a turn that ended without the model ever being asked. pi
+/// sends `stream: true`; the echo provider (and any upstream answering a plain
+/// completion object) returns one JSON object; pi's SSE parser then finds no
+/// frames, throws `Stream ended without finish_reason`, and ends the turn with
+/// `stopReason: "error"` and EMPTY content - after three silent auto-retries, and
+/// with nothing on stderr. Every symptom of a dead model, with the model never
+/// dialled. Reproduced outside the VM against a stand-in socket, both directions:
+/// plain JSON -> that error every time, this shape -> `stopReason: "stop"` and the
+/// text delivered, no retries.
+///
+/// Answering in the shape the caller asked for is the endpoint's job; it is the
+/// one place that sees both the request and the response. Doing it in the echo
+/// provider instead would make that provider lie about being an OpenAI completion
+/// to the daemon's own non-pi consumers, which parse it as an object.
+///
+/// `None` when the body is not a completion object we can read, so the caller
+/// falls back to passing it through: a malformed upstream body should reach the
+/// client as itself, not as a well-formed frame around nothing.
+fn completion_to_sse(body: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    let choice = v.get("choices")?.as_array()?.first()?;
+    let message = choice.get("message")?;
+    let content = message.get("content").and_then(|c| c.as_str()).unwrap_or("");
+    // Carried through so a client that reports why a turn stopped keeps saying
+    // what the upstream said; `stop` only when the upstream named nothing.
+    let finish = choice.get("finish_reason").and_then(|f| f.as_str()).unwrap_or("stop");
+    let id = v.get("id").and_then(|i| i.as_str()).unwrap_or("chatcmpl-arlen");
+    let model = v.get("model").and_then(|m| m.as_str()).unwrap_or("");
+    let base = serde_json::json!({
+        "id": id,
+        "object": "chat.completion.chunk",
+        "created": 0,
+        "model": model,
+    });
+    let frame = |choices: serde_json::Value| {
+        let mut chunk = base.clone();
+        chunk["choices"] = choices;
+        format!("data: {chunk}\n\n")
+    };
+    let delta = frame(serde_json::json!([{
+        "index": 0,
+        "delta": {"role": "assistant", "content": content},
+        "finish_reason": serde_json::Value::Null,
+    }]));
+    let end = frame(serde_json::json!([{
+        "index": 0,
+        "delta": {},
+        "finish_reason": finish,
+    }]));
+    Some(format!("{delta}{end}data: [DONE]\n\n"))
+}
+
+/// An HTTP/1.1 response carrying an SSE body. Same minimal framing as
+/// [`http_response`], with the content type the frames need.
+fn sse_response(status: u16, body: &str) -> Vec<u8> {
+    let mut out = format!(
+        "HTTP/1.1 {status} OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    )
+    .into_bytes();
+    out.extend_from_slice(body.as_bytes());
+    out
+}
+
+/// The bytes to write back for an upstream answer, given what the request asked
+/// for. Pure, so the reshaping is unit-tested without a socket.
+fn completion_response(wants_stream: bool, status: u16, upstream_body: &str) -> Vec<u8> {
+    if !wants_stream || is_sse(upstream_body) {
+        // Non-streaming caller, or an upstream stream to pass through verbatim.
+        // The content type still says JSON for the passthrough case, which is what
+        // it said before this and what pi's SSE parser reads regardless.
+        return http_response(status, "OK", upstream_body.as_bytes());
+    }
+    match completion_to_sse(upstream_body) {
+        Some(sse) => sse_response(status, &sse),
+        None => http_response(status, "OK", upstream_body.as_bytes()),
+    }
+}
+
 /// Serve one completion request on an authenticated connection: read + parse,
 /// verify the session token against the attested pid, forward the raw body
 /// through ai-proxy, and write the upstream status + body back. Any auth or
@@ -207,10 +313,11 @@ async fn handle_connection(
     // Forward the raw OpenAI body through the governed proxy (allowlist + audit +
     // SSRF-pinned dial live in ai-proxy). The daemon is the trusted egress caller.
     let body_str = String::from_utf8_lossy(&body);
+    let streamed = wants_stream(&body_str);
     match proxy.forward(PROVIDER_NAME, &body_str, audit_token).await {
         Ok(resp) => {
             let _ = stream
-                .write_all(&http_response(resp.upstream_status, "OK", resp.body.as_bytes()))
+                .write_all(&completion_response(streamed, resp.upstream_status, &resp.body))
                 .await;
         }
         Err(e) => {
@@ -318,5 +425,88 @@ mod tests {
         assert!(s.starts_with("HTTP/1.1 200 OK\r\n"));
         assert!(s.contains("Content-Length: 2\r\n"));
         assert!(s.ends_with("\r\n\r\n{}"));
+    }
+
+    /// One non-streaming completion, the shape the echo provider answers with.
+    fn a_completion(content: &str) -> String {
+        serde_json::json!({
+            "id": "echo",
+            "object": "chat.completion",
+            "model": "echo",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+            }],
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn a_stream_request_is_answered_with_frames_that_carry_a_finish_reason() {
+        // The defect this endpoint had: pi asks `stream: true`, the echo provider
+        // answers one plain object, and pi's SSE parser throws "Stream ended
+        // without finish_reason" - three silent retries, an empty assistant
+        // message, nothing on stderr. Reproduced against a stand-in socket before
+        // this was written, which is how the frames below are known to be enough.
+        let out = completion_response(true, 200, &a_completion("an answer"));
+        let s = String::from_utf8(out).unwrap();
+        assert!(s.contains("Content-Type: text/event-stream"), "{s}");
+        assert!(s.contains("\"content\":\"an answer\""), "{s}");
+        assert!(s.contains("\"finish_reason\":\"stop\""), "{s}");
+        assert!(s.ends_with("data: [DONE]\n\n"), "{s}");
+    }
+
+    #[test]
+    fn an_upstream_that_already_streams_is_passed_through_untouched() {
+        // Reshaping a stream we did not build would drop tool-call deltas and
+        // usage. The real Ollama path answers this way (the body is forwarded
+        // verbatim, `stream: true` and all).
+        let sse = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n";
+        let s = String::from_utf8(completion_response(true, 200, sse)).unwrap();
+        assert!(s.ends_with(sse), "{s}");
+    }
+
+    #[test]
+    fn a_non_streaming_caller_still_gets_the_object() {
+        let body = a_completion("an answer");
+        let s = String::from_utf8(completion_response(false, 200, &body)).unwrap();
+        assert!(s.contains("Content-Type: application/json"), "{s}");
+        assert!(s.ends_with(&body), "{s}");
+    }
+
+    #[test]
+    fn an_unreadable_upstream_body_reaches_the_client_as_itself() {
+        // Not framed as a well-formed stream around nothing: a client that can see
+        // the upstream's own error can say what went wrong.
+        let s = String::from_utf8(completion_response(true, 502, "upstream exploded")).unwrap();
+        assert!(s.ends_with("upstream exploded"), "{s}");
+    }
+
+    #[test]
+    fn wants_stream_reads_the_body_and_defaults_to_passthrough() {
+        assert!(wants_stream("{\"stream\":true}"));
+        assert!(!wants_stream("{\"stream\":false}"));
+        assert!(!wants_stream("{}"));
+        assert!(!wants_stream("not json"));
+    }
+}
+
+#[cfg(test)]
+mod repro_dump {
+    /// Dump the exact frames the endpoint would send, so the reproduction can be
+    /// served to a real pi rather than a hand-written lookalike. Not a test of
+    /// behaviour; run with `--ignored --nocapture` when re-doing the repro.
+    #[test]
+    #[ignore]
+    fn dump_sse_for_the_local_pi_reproduction() {
+        let body = serde_json::json!({
+            "id": "echo", "object": "chat.completion", "model": "echo",
+            "choices": [{"index": 0, "message": {"role": "assistant", "content":
+                "[echo provider - no model was asked] the chain is real"},
+                "finish_reason": "stop"}],
+        })
+        .to_string();
+        print!("{}", super::completion_to_sse(&body).unwrap());
     }
 }
