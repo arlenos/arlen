@@ -387,6 +387,29 @@ def frame_change(a, b):
     return changed / (ia.width * ia.height)
 
 
+# The identity events that mean the chain is inconsistent with ITSELF, as opposed
+# to unavailable. Keyed on the audit event names the SDK emits, so a rename in the
+# resolver shows up here as a check that stops matching rather than as silence.
+IDENTITY_FAULTS = (
+    ("identity.divergence", "two resolvers named one process differently"),
+    (
+        "identity.broker_returned_reserved_or_invalid",
+        "a reader threw away a stamp the registrar was allowed to make",
+    ),
+)
+
+
+def identity_faults(journal_text):
+    """The identity faults present in `journal_text`, as printable lines."""
+    out = []
+    for event, meaning in IDENTITY_FAULTS:
+        hits = [ln for ln in journal_text.splitlines() if event in ln]
+        if hits:
+            out.append(f"{event} x{len(hits)}: {meaning}")
+            out.append(f"    {hits[0].strip()[:200]}")
+    return out
+
+
 def probe_shipped_so_far(serial_path):
     """Whether the knowledge probe has started, judged from the serial so far.
 
@@ -1383,6 +1406,41 @@ def main():
                       "guess either way is a wrong verdict on a real build.")
                 print(f"  frame: {approved}")
                 return 1
+    # An identity disagreement is a FAILING boot, not a line in a log.
+    #
+    # On 13 Aug the stamped identity tier went live and two of its own invariants
+    # broke in the same evening: a session-stamped id that disagreed with the
+    # `/proc` route (so the shipped profile was filed under a name nothing resolved
+    # to), and a legitimate stamp thrown away by the reader. Both were visible in
+    # the journal, both passed the boot, and both were found by reading it on a
+    # hunch. A check that only pays out when someone goes looking is not a check.
+    #
+    # Deliberately NOT including `identity.broker_unauthenticated`: that one is the
+    # undo signer's user namespace, a known open decision rather than a regression,
+    # and a gate that is red for a reason nobody may act on teaches people to ignore
+    # it.
+    # Read from the SERIAL, not the guest journal: the journal is only pulled when
+    # something asked for it, and a check that runs on some boots is one that will
+    # be absent on the boot that needed it. These lines reach the console too -
+    # verified against the same run, one hit in each.
+    try:
+        with open(serial, "r", errors="replace") as fh:
+            identity_text = fh.read()
+    except OSError:
+        identity_text = ""
+    if identity_text:
+        broken = identity_faults(identity_text)
+        if broken:
+            print("VERIFY FAIL: the identity chain disagreed with itself")
+            for line in broken:
+                print(f"  {line}")
+            print("  A divergence means two resolvers name one process differently, "
+                  "and the profile is filed under only one of them; a refused stamp "
+                  "means the registrar and the reader disagree about what is "
+                  "legitimate. Neither is cosmetic.")
+            return 1
+        print("identity: no divergence and no refused stamp on the console")
+
     print("VERIFY OK: " + ("the full desktop rendered (compositor + shell bar)"
                            if bar_present else "the compositor rendered a frame"))
     # Clean run: nobody needs the overlay or the vars copy. Every failing path
