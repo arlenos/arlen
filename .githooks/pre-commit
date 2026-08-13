@@ -70,4 +70,33 @@ if ! bash "$runner"; then
     exit 1
 fi
 
+# The one CI check that is a crate TEST rather than a gate script, and therefore
+# the one this sweep did not see.
+#
+# `no_new_daemon_module_is_unreachable` refuses a daemon module nothing calls. It
+# fires on exactly the change this hook is least able to notice - adding a crate or
+# a module - because the gates above read the tree's shape and this reads the
+# tree's references. On 13 Aug it went red twice in two hours, both times on a
+# commit that passed everything above it, and both times the author had measured
+# CI green BEFORE adding the code that broke it.
+#
+# Hand-named, against this hook's own read-the-list-from-CI principle, and worth
+# it: one entry earned by two reds is a better trade than a rule kept pure. It
+# costs about three seconds warm. A missing toolchain or an unbuildable tree lets
+# the commit through with a line, like the runner above - the net does not block
+# work when its own plumbing is absent.
+reach="cargo test --manifest-path $root/dev/integration/Cargo.toml \
+       --lib no_new_daemon_module_is_unreachable"
+if ! out=$($reach 2>&1); then
+    if printf '%s' "$out" | grep -q "daemon modules that compile and test but nothing reaches"; then
+        echo >&2
+        printf '%s\n' "$out" | grep -A20 "daemon modules that" >&2
+        echo "pre-commit: a daemon module nothing reaches would land." >&2
+        echo "Wire it up, or name it in KNOWN_UNREACHED with the reason it waits." >&2
+        warn_divergence
+        exit 1
+    fi
+    echo "pre-commit: could not run the reachability test (toolchain or build); not run" >&2
+fi
+
 warn_divergence
