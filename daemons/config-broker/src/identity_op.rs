@@ -37,9 +37,11 @@ pub use arlen_permissions::identity_wire::{IdentityRequest, IdentityResponse};
 ///
 /// `arlen-run` is spawned by the shell per app launch, not by the session root, so
 /// nothing registers it and the derived rule below would refuse it - taking every
-/// confined app launch with it. Removing this entry is the LAST step of the chain,
-/// after the session registers whatever spawns the launcher; doing it now would be
-/// a correct-looking change that breaks launching.
+/// confined app launch with it. The delegation the store now carries is what makes
+/// removing this possible: the session grants the shell the right to pass the right
+/// on, so the shell can stamp the launcher it spawns. That call site is the last
+/// step; until it exists, deleting this entry would be a correct-looking change
+/// that breaks launching.
 const IDENTITY_REGISTRARS: &[&str] = &["arlen-run"];
 
 /// True iff `app_id` may register an identity. In a debug build the
@@ -86,6 +88,28 @@ pub fn caller_may_register(
     admitted_by_provenance || is_admitted_registrar(caller_app_id)
 }
 
+/// Whether this caller may grant the registrar right to what it registers.
+///
+/// The session root by construction, and what the root started directly - the
+/// second level of [`caller_may_register`], and the one that bounds the chain. A
+/// registrar that was itself delegated (`arlen-run`) is deliberately NOT here.
+pub fn caller_may_grant_registrar(
+    store: &std::sync::Mutex<arlen_permissions::identity_store::IdentityStore>,
+    caller_app_id: &str,
+    caller_pidfd: std::os::fd::BorrowedFd<'_>,
+) -> bool {
+    if caller_app_id == arlen_permissions::identity_store::SESSION_ROOT {
+        return true;
+    }
+    if cfg!(debug_assertions) && caller_app_id == "dev.arlen-session" {
+        return true;
+    }
+    store
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .may_grant_registrar(caller_pidfd)
+}
+
 /// Dispatch one identity request against the shared store for an
 /// authenticated caller. `received` is the pidfd the caller passed over
 /// `SCM_RIGHTS`: for `Register` it is the CHILD's (moved into the store
@@ -100,7 +124,7 @@ pub fn handle_identity(
     caller_pidfd: Option<std::os::fd::BorrowedFd<'_>>,
 ) -> IdentityResponse {
     match request {
-        IdentityRequest::Register { app_id } => {
+        IdentityRequest::Register { app_id, registrar } => {
             // Provenance first: the session root, or something the session root
             // registered. A caller whose own pidfd we do not have cannot be
             // answered by provenance at all, so it is refused rather than falling
@@ -138,6 +162,18 @@ pub fn handle_identity(
                     "'{app_id}' is not a valid app id and may not be stamped"
                 ));
             }
+            // The right to register may only be PASSED ON by what the session
+            // root started itself. Two levels, deliberately: the root grants it to
+            // the shell, the shell grants it to the launcher it spawns per app,
+            // and the launcher stamps apps with the bit clear. Without this stop a
+            // launcher could stamp an app AS a launcher, and every process
+            // downstream of one launch could then claim any identity - which is
+            // the hole the broker exists to close.
+            if registrar && !caller_may_grant_registrar(store, caller_app_id, caller_pidfd) {
+                return IdentityResponse::Refused(format!(
+                    "caller '{caller_app_id}' may register but may not pass that right on"
+                ));
+            }
             let Some(fd) = received else {
                 return IdentityResponse::Error("register requires a pidfd".into());
             };
@@ -146,7 +182,7 @@ pub fn handle_identity(
             // consistent, and refusing every future op would be a worse
             // failure mode than continuing.
             let mut store = store.lock().unwrap_or_else(|e| e.into_inner());
-            match store.register(fd, app_id, caller_app_id.to_string()) {
+            match store.register(fd, app_id, caller_app_id.to_string(), registrar) {
                 Ok(()) => IdentityResponse::Registered,
                 Err(IdentityStoreError::DeadPidfd) => {
                     IdentityResponse::Error("pidfd does not refer to a live process".into())
@@ -210,6 +246,7 @@ mod tests {
             "arlen-run",
             IdentityRequest::Register {
                 app_id: "com.example.app".into(),
+                registrar: false,
             },
             Some(self_pidfd()),
             Some(caller_handle().as_fd()),
@@ -234,6 +271,7 @@ mod tests {
             "dev.arlen.settings",
             IdentityRequest::Register {
                 app_id: "com.evil.squat".into(),
+                registrar: false,
             },
             Some(self_pidfd()),
             Some(caller_handle().as_fd()),
@@ -256,6 +294,7 @@ mod tests {
                 "arlen-run",
                 IdentityRequest::Register {
                     app_id: reserved.into(),
+                    registrar: false,
                 },
                 Some(self_pidfd()),
                 Some(caller_handle().as_fd()),
@@ -279,7 +318,7 @@ mod tests {
             let reg = handle_identity(
                 &s,
                 "arlen-run",
-                IdentityRequest::Register { app_id: bad.into() },
+                IdentityRequest::Register { app_id: bad.into(), registrar: false },
                 Some(self_pidfd()),
                 Some(caller_handle().as_fd()),
             );
@@ -301,7 +340,8 @@ mod tests {
                 &s,
                 "arlen-run",
                 IdentityRequest::Register {
-                    app_id: "x".into()
+                    app_id: "x".into(),
+                    registrar: false,
                 },
                 None,
                 Some(caller_handle().as_fd()),
@@ -339,9 +379,56 @@ mod tests {
                 self_pidfd(),
                 "session-supervisor".into(),
                 arlen_permissions::identity_store::SESSION_ROOT.into(),
+                true,
             )
             .unwrap();
         assert!(caller_may_register(&s, "some-daemon", me.as_fd()));
+    }
+
+    #[test]
+    fn a_delegated_registrar_may_not_stamp_another_registrar() {
+        // The bound on the chain, at the dispatch level. The shell may pass the
+        // right to the launcher it spawns; the launcher may not pass it to an app.
+        // Refused rather than silently downgraded: a caller that asked for the
+        // right and got a record without it would believe it holds one.
+        let s = store();
+        let me = caller_handle();
+        s.lock()
+            .unwrap()
+            .register(self_pidfd(), "arlen-run".into(), "arlen-desktop-shell".into(), true)
+            .unwrap();
+
+        assert!(caller_may_register(&s, "arlen-run", me.as_fd()));
+        assert!(!caller_may_grant_registrar(&s, "arlen-run", me.as_fd()));
+        assert!(matches!(
+            handle_identity(
+                &s,
+                "arlen-run",
+                IdentityRequest::Register {
+                    app_id: "com.example.app".into(),
+                    registrar: true,
+                },
+                Some(self_pidfd()),
+                Some(me.as_fd()),
+            ),
+            IdentityResponse::Refused(_)
+        ));
+
+        // The same call WITHOUT the request for the right goes through: an app
+        // launch is exactly this, and it must not be collateral damage.
+        assert!(matches!(
+            handle_identity(
+                &s,
+                "arlen-run",
+                IdentityRequest::Register {
+                    app_id: "com.example.app".into(),
+                    registrar: false,
+                },
+                Some(self_pidfd()),
+                Some(me.as_fd()),
+            ),
+            IdentityResponse::Registered
+        ));
     }
 
     #[test]
@@ -352,7 +439,7 @@ mod tests {
         let s = store();
         s.lock()
             .unwrap()
-            .register(self_pidfd(), "com.example.app".into(), "arlen-run".into())
+            .register(self_pidfd(), "com.example.app".into(), "arlen-run".into(), false)
             .unwrap();
         assert!(!caller_may_register(&s, "com.example.app", caller_handle().as_fd()));
     }
@@ -371,6 +458,7 @@ mod tests {
     fn requests_and_responses_round_trip_json() {
         let req = IdentityRequest::Register {
             app_id: "com.example.app".into(),
+            registrar: false,
         };
         let bytes = serde_json::to_vec(&req).unwrap();
         assert_eq!(serde_json::from_slice::<IdentityRequest>(&bytes).unwrap(), req);

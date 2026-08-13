@@ -22,7 +22,7 @@ use std::process::{Command, Stdio};
 
 use arlen_session::env::{import_list, session_env, MUST_BE_UNSET, WAYLAND_DISPLAY};
 use arlen_session::session_id::{session_id, SESSION_ID_VAR};
-use arlen_session::stamp::app_id_for_program;
+use arlen_session::stamp::{app_id_for_program, grants_registrar};
 use arlen_session::verify_app::requested_app;
 use arlen_session::wayland::{wait_for_display, WAIT_STEPS};
 
@@ -95,6 +95,7 @@ fn stamp_child(child: &std::process::Child, program: &str) {
         &arlen_permissions::identity_wire::identity_broker_connect_path(),
         pidfd.as_fd(),
         &app_id,
+        grants_registrar(program),
     ) {
         say(&format!("'{app_id}' was not stamped ({e}); it resolves via /proc"));
     }

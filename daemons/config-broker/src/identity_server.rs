@@ -218,7 +218,7 @@ mod tests {
         store
             .lock()
             .unwrap()
-            .register(self_pidfd(), "com.example.self".into(), "arlen-run".into())
+            .register(self_pidfd(), "com.example.self".into(), "arlen-run".into(), false)
             .unwrap();
 
         let (client, server) = UnixStream::pair().unwrap();

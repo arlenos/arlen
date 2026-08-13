@@ -127,12 +127,18 @@ fn read_child_pid(status: &mut impl Read) -> Option<u32> {
 /// broker. BEST-EFFORT: a vanished child, an unreachable/unauthenticated broker,
 /// or a refusal all just leave the app to resolve via /proc - never fatal, never a
 /// panic, so a broken broker cannot break app launching.
+///
+/// The `false` is the delegation bit, and it is the whole point of the two-level
+/// rule: an app gets an identity and no power to hand identities out. The broker
+/// would refuse a `true` from here anyway - the launcher was itself delegated, so
+/// it may register and may not pass that on - but asking for it would be a lie
+/// about what a launch is.
 fn register_child(pid: u32, app_id: &str, broker_socket: &Path) {
     let Some(pidfd) = arlen_permissions::peer_pidfd::pidfd_open(pid) else {
         return;
     };
     if let Err(e) =
-        arlen_permissions::identity_wire::register_identity(broker_socket, pidfd.as_fd(), app_id)
+        arlen_permissions::identity_wire::register_identity(broker_socket, pidfd.as_fd(), app_id, false)
     {
         eprintln!(
             "arlen-run: warning: identity stamp not registered (app resolves via /proc): {e}"

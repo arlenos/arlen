@@ -48,6 +48,26 @@ pub fn resolve_program(program: &str, path_var: &str) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// The children of the session that may themselves register identities.
+///
+/// The session grants the right to ONE of the three things it starts, because one
+/// of them launches apps: the shell spawns `arlen-run` per launch, and `arlen-run`
+/// is what stamps the app. The compositor and the boot-verify app start nothing and
+/// get no such right.
+///
+/// This IS a list of names, and it is a different kind from the one it replaces:
+/// the session is naming its OWN children - programs it is about to spawn itself -
+/// not deciding what a stranger presenting a name is allowed to do. A caller cannot
+/// put itself on this list; only editing the session can, and the session is the
+/// root of trust already.
+pub const REGISTRAR_CHILDREN: &[&str] = &["arlen-desktop-shell"];
+
+/// Whether `program`, as the session is about to spawn it, gets the right to
+/// register identities of its own.
+pub fn grants_registrar(program: &str) -> bool {
+    REGISTRAR_CHILDREN.contains(&program)
+}
+
 /// The app id to stamp for `program`, or `None` when it resolves to nothing we can
 /// name - in which case the child is left to the older resolvers rather than given
 /// an id this module invented.
@@ -59,6 +79,16 @@ pub fn app_id_for_program(program: &str, path_var: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_child_that_launches_apps_may_register() {
+        // The compositor and the verify app start nothing, so neither has any
+        // reason to stamp an identity. Keeping the grant to one child is what
+        // makes the two-level bound worth having at all.
+        assert!(grants_registrar("arlen-desktop-shell"));
+        assert!(!grants_registrar("arlen-compositor"));
+        assert!(!grants_registrar("arlen-boot-verify"));
+    }
 
     #[test]
     fn a_bare_name_is_resolved_against_the_path_in_order() {
