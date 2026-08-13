@@ -43,8 +43,23 @@ fn spawn_logged(tag: &str, program: &str, env: &BTreeMap<String, String>) -> std
     for (k, v) in env {
         cmd.env(k, v);
     }
+    // Strip the display variables ONLY where the caller has not set them.
+    //
+    // The two children want opposite things from the same list. The compositor
+    // must see neither, or it picks its nested x11/winit backend instead of
+    // driving the seat's DRM device - which is what `MUST_BE_UNSET` is for. The
+    // shell must see `WAYLAND_DISPLAY`, because that is how it finds the
+    // compositor at all.
+    //
+    // Removing them unconditionally does both jobs wrong in one line, and the boot
+    // of 13 Aug is what said so: the compositor came up, the session found its
+    // socket, started the shell without the display it had just learned, and the
+    // shell panicked in `gtk::rt::init` - "Failed to initialize GTK" - which reads
+    // as a graphics-stack problem and is an environment one.
     for var in MUST_BE_UNSET {
-        cmd.env_remove(var);
+        if !env.contains_key(*var) {
+            cmd.env_remove(var);
+        }
     }
     cmd.stdin(Stdio::null()).spawn()
 }
