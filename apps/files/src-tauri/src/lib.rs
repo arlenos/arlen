@@ -522,6 +522,64 @@ fn verwandt_from_rows(rows: &[std::collections::HashMap<String, serde_json::Valu
 /// Read a file's KG relationships (its `FILE_PART_OF` project membership) via
 /// the structured read op. Best-effort: an out-of-scope object, an absent
 /// daemon or any error yields no lines, so the info panel still shows the
+/// What a graph read produced, with the three outcomes kept apart.
+///
+/// The sidebar's `NetworkPlaces` is the template and this is the same pattern with
+/// the case that surface does not have: a graph read can be REFUSED. Collapsing all
+/// three into an empty list is what let "there is no graph daemon" and "this app may
+/// not read that" both render as "this file belongs to no project".
+///
+/// The refusal is safe to surface, and worth being precise about, because the
+/// no-oracle property lives in the DAEMON, not here: it decides what a caller may
+/// learn and answers uniformly where that matters. This type only stops the app from
+/// throwing that answer away. A person owning the machine being told "this app was
+/// refused" is the capability system doing its job out loud.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "state", rename_all = "kebab-case")]
+pub enum GraphRead<T> {
+    /// No graph daemon answered: the subsystem is absent, not the data.
+    Unavailable {
+        /// For the log and a tooltip; not a user-facing sentence.
+        reason: String,
+    },
+    /// The daemon answered and refused this caller.
+    Denied {
+        /// What it said, verbatim.
+        reason: String,
+    },
+    /// The daemon answered. `rows` MAY be empty, and that means empty.
+    Rows {
+        /// The result, already mapped.
+        rows: Vec<T>,
+    },
+}
+
+impl<T> GraphRead<T> {
+    /// Classify a query result, mapping the rows with `map`.
+    fn from_result<R>(
+        what: &str,
+        result: Result<R, os_sdk::graph::QueryError>,
+        map: impl FnOnce(R) -> Vec<T>,
+    ) -> Self {
+        match result {
+            Ok(rows) => GraphRead::Rows { rows: map(rows) },
+            Err(os_sdk::graph::QueryError::ConnectionFailed(msg)) => {
+                log::warn!(
+                    "{what}: no graph daemon ({msg}); showing nothing, which is not \
+                     the same as there being nothing"
+                );
+                GraphRead::Unavailable { reason: msg }
+            }
+            Err(other) => {
+                log::debug!("{what}: {other}");
+                GraphRead::Denied {
+                    reason: other.to_string(),
+                }
+            }
+        }
+    }
+}
+
 /// Say which kind of nothing a graph read produced, and return the empty set.
 ///
 /// The four reads below all answered `Err(_) => Vec::new()`, which collapses two
@@ -2564,5 +2622,46 @@ mod tests {
         assert_eq!(abs("."), "/");
         assert_eq!(abs(""), "/");
         assert_eq!(abs("/"), "/");
+    }
+}
+
+#[cfg(test)]
+mod graph_read_tests {
+    use super::*;
+    use os_sdk::graph::QueryError;
+
+    fn rows(r: Result<Vec<u8>, QueryError>) -> GraphRead<u8> {
+        GraphRead::from_result("t", r, |v| v)
+    }
+
+    #[test]
+    fn the_three_outcomes_are_three_values() {
+        // The property: no two of these are equal. An absent daemon, a refusal and
+        // an empty answer used to be one value, and a screen cannot un-collapse it.
+        let absent = rows(Err(QueryError::ConnectionFailed("no socket".into())));
+        let denied = rows(Err(QueryError::PermissionDenied));
+        let empty = rows(Ok(Vec::new()));
+        assert!(matches!(absent, GraphRead::Unavailable { .. }));
+        assert!(matches!(denied, GraphRead::Denied { .. }));
+        assert_eq!(empty, GraphRead::Rows { rows: Vec::new() });
+        assert_ne!(absent, denied);
+        assert_ne!(denied, empty);
+        assert_ne!(absent, empty);
+    }
+
+    #[test]
+    fn a_rejected_query_is_an_answer_not_an_absence() {
+        // InvalidQuery comes from the daemon, so the subsystem is plainly there -
+        // reporting it as unavailable would send a reader after the wrong thing.
+        let bad = rows(Err(QueryError::InvalidQuery("write mode not permitted".into())));
+        assert!(matches!(bad, GraphRead::Denied { .. }), "{bad:?}");
+    }
+
+    #[test]
+    fn the_wire_shape_names_the_state() {
+        let json = serde_json::to_string(&rows(Ok(vec![1u8]))).unwrap();
+        assert!(json.contains("\"state\":\"rows\""), "{json}");
+        let json = serde_json::to_string(&rows(Err(QueryError::PermissionDenied))).unwrap();
+        assert!(json.contains("\"state\":\"denied\""), "{json}");
     }
 }
