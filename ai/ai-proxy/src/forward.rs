@@ -417,6 +417,11 @@ mod tests {
     }
 }
 
+/// The opening every echoed answer carries. Deliberately a plain sentence rather
+/// than a code or a tag: it has to mean something to a person who meets it in a
+/// launcher pane with no idea what a forwarder is.
+pub const ECHO_MARKER: &str = "[echo provider - no model was asked]";
+
 /// A forwarder that answers locally instead of dialling a model.
 ///
 /// **Why this exists.** The AI path is the largest thing in this tree with no
@@ -444,11 +449,6 @@ mod tests {
 /// reliable notion of "test configuration" and a wrong one either blocks the
 /// offline demo case or fails open on the install it was meant to protect. An
 /// origin that travels with the text needs no such judgement.
-/// The opening every echoed answer carries. Deliberately a plain sentence rather
-/// than a code or a tag: it has to mean something to a person who meets it in a
-/// launcher pane with no idea what a forwarder is.
-pub const ECHO_MARKER: &str = "[echo provider - no model was asked]";
-
 pub struct EchoForwarder {
     /// The sentence every completion returns after the marker.
     answer: String,

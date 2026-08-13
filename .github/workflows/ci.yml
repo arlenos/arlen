@@ -466,8 +466,15 @@ jobs:
           done
       - name: clippy (sdk, ai)
         run: |
+          # The sdk workspace carries 39 warnings today - 20 of them one mechanical
+          # class - so it stays advisory until someone sweeps it. `|| true` is
+          # honest here only because the number is written down; a check nobody
+          # can fail and nobody has counted is not advisory, it is decoration.
           cargo clippy --manifest-path sdk/Cargo.toml --workspace || true
-          cargo clippy --manifest-path ai/Cargo.toml --workspace || true
+          # The ai workspace is clean, so this one FAILS. It went advisory when it
+          # had warnings and stayed that way after they were fixed, which meant the
+          # whole AI layer could grow new ones with nothing to say so.
+          cargo clippy --manifest-path ai/Cargo.toml --workspace -- -D warnings
 
   frontend:
     name: frontend check + vitest
