@@ -522,6 +522,31 @@ fn verwandt_from_rows(rows: &[std::collections::HashMap<String, serde_json::Valu
 /// Read a file's KG relationships (its `FILE_PART_OF` project membership) via
 /// the structured read op. Best-effort: an out-of-scope object, an absent
 /// daemon or any error yields no lines, so the info panel still shows the
+/// Say which kind of nothing a graph read produced, and return the empty set.
+///
+/// The four reads below all answered `Err(_) => Vec::new()`, which collapses two
+/// different facts into one screen: "this file belongs to no project" and "there is
+/// no graph daemon on this machine". The second is a missing subsystem wearing the
+/// costume of an answer - the same defect as the remote-places sidebar, one layer
+/// down and without a user-visible surface to fix yet.
+///
+/// Distinguishing them in the RESULT needs a state-carrying return type and a
+/// consumer that matches on it, which is a UI change. Distinguishing them in the LOG
+/// costs nothing and is the half that pays immediately: a `ConnectionFailed` is an
+/// absent daemon and says so at warn, while a denial or a rejected query is an
+/// ANSWER - deliberately indistinguishable from empty, because the read-scope design
+/// makes out-of-scope look like absent on purpose - and stays at debug.
+fn empty_because<T>(what: &str, e: &os_sdk::graph::QueryError) -> Vec<T> {
+    match e {
+        os_sdk::graph::QueryError::ConnectionFailed(msg) => log::warn!(
+            "{what}: no graph daemon ({msg}); showing nothing, which is not the same \
+             as there being nothing"
+        ),
+        other => log::debug!("{what}: {other}"),
+    }
+    Vec::new()
+}
+
 /// conventional metadata and the provenance section.
 async fn read_verwandt(path: &str) -> Vec<Relation> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
@@ -536,7 +561,7 @@ async fn read_verwandt(path: &str) -> Vec<Relation> {
     );
     match client.query_rows(&cypher).await {
         Ok(rows) => verwandt_from_rows(&rows),
-        Err(_) => Vec::new(),
+        Err(e) => empty_because("read_verwandt", &e),
     }
 }
 
@@ -574,7 +599,7 @@ async fn read_verwandt_as_of(path: &str, as_of_micros: Option<i64>) -> Vec<Relat
     );
     match client.query_rows(&cypher).await {
         Ok(rows) => verwandt_from_rows(&rows),
-        Err(_) => Vec::new(),
+        Err(e) => empty_because("read_verwandt_as_of", &e),
     }
 }
 
@@ -596,7 +621,7 @@ async fn project_members_as_of(id: &str, as_of_micros: Option<i64>) -> Vec<FileE
     );
     match client.query_rows(&cypher).await {
         Ok(rows) => members_from_rows(&rows),
-        Err(_) => Vec::new(),
+        Err(e) => empty_because("project_members_as_of", &e),
     }
 }
 
@@ -618,7 +643,7 @@ async fn facet_members(location: &str) -> Vec<FileEntry> {
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     match client.query_rows(&cypher).await {
         Ok(rows) => members_from_rows(&rows),
-        Err(_) => Vec::new(),
+        Err(e) => empty_because("facet_members", &e),
     }
 }
 
@@ -1898,7 +1923,7 @@ async fn project_members(id: &str) -> Vec<FileEntry> {
     );
     match client.query_rows(&cypher).await {
         Ok(rows) => members_from_rows(&rows),
-        Err(_) => Vec::new(),
+        Err(e) => empty_because("project_members", &e),
     }
 }
 
@@ -1920,7 +1945,7 @@ async fn search_location(query: &str) -> Vec<FileEntry> {
     );
     match client.query_rows(&cypher).await {
         Ok(rows) => members_from_rows(&rows),
-        Err(_) => Vec::new(),
+        Err(e) => empty_because("search_location", &e),
     }
 }
 
