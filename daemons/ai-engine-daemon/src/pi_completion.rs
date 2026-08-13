@@ -225,9 +225,27 @@ fn completion_to_sse(body: &str) -> Option<String> {
         chunk["choices"] = choices;
         format!("data: {chunk}\n\n")
     };
+    // Tool calls ride along, indexed the way a streamed delta carries them (pi
+    // reads `delta.tool_calls[].index`, openai-completions.ts:385). A converter
+    // that carried only `content` would drop them in silence, and a dropped tool
+    // call looks exactly like a model that chose not to act - the same class of
+    // failure as the one this whole function exists to fix.
+    let mut delta_obj = serde_json::json!({"role": "assistant", "content": content});
+    if let Some(calls) = message.get("tool_calls").and_then(|c| c.as_array()) {
+        let indexed: Vec<serde_json::Value> = calls
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let mut c = c.clone();
+                c["index"] = serde_json::json!(i);
+                c
+            })
+            .collect();
+        delta_obj["tool_calls"] = serde_json::Value::Array(indexed);
+    }
     let delta = frame(serde_json::json!([{
         "index": 0,
-        "delta": {"role": "assistant", "content": content},
+        "delta": delta_obj,
         "finish_reason": serde_json::Value::Null,
     }]));
     let end = frame(serde_json::json!([{
@@ -465,6 +483,36 @@ mod tests {
         let sse = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n";
         let s = String::from_utf8(completion_response(true, 200, sse)).unwrap();
         assert!(s.ends_with(sse), "{s}");
+    }
+
+    #[test]
+    fn tool_calls_survive_the_conversion_with_the_index_a_delta_needs() {
+        // A dropped tool call reads as a model that chose not to act, which is the
+        // same silent-wrong-shape failure this function was written to fix.
+        let body = serde_json::json!({
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": serde_json::Value::Null,
+                    "tool_calls": [
+                        {"id": "call_1", "type": "function",
+                         "function": {"name": "graph_write", "arguments": "{}"}},
+                        {"id": "call_2", "type": "function",
+                         "function": {"name": "graph_read", "arguments": "{}"}},
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }],
+        })
+        .to_string();
+        let sse = completion_to_sse(&body).unwrap();
+        assert!(sse.contains("\"id\":\"call_1\""), "{sse}");
+        assert!(sse.contains("\"id\":\"call_2\""), "{sse}");
+        assert!(sse.contains("\"index\":0"), "{sse}");
+        assert!(sse.contains("\"index\":1"), "{sse}");
+        // The upstream's own stop reason is carried, not replaced by "stop".
+        assert!(sse.contains("\"finish_reason\":\"tool_calls\""), "{sse}");
     }
 
     #[test]
