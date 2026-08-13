@@ -297,8 +297,16 @@ fn broker_lookup(peer: &PeerPidfd, broker_socket: &std::path::Path, caller_uid: 
             // principal that appears in no table. That is a smaller cap than before
             // and a real one; the register side is where the "who may stamp this"
             // question is actually answered, and the client cannot re-derive it.
+            // Legitimate reserved ids come from two root-controlled facts, and
+            // nothing else: a unit table names a shipped daemon by it, or the
+            // system has an app installed under it. `dev.arlen.` is a reserved
+            // PREFIX - every first-party app is in it so a user directory cannot
+            // mint one - so the shell's own id is reserved, and a reader that took
+            // only the daemon tables still threw its stamp away. That was the last
+            // refusal on the boot of 13 Aug.
             let reserved_but_unknown = crate::identity::is_reserved_app_id(&app_id)
-                && !crate::unit_identity::is_enrolled_daemon_id(&app_id);
+                && !crate::unit_identity::is_enrolled_daemon_id(&app_id)
+                && !crate::identity::is_system_installed_app_id(&app_id);
             if reserved_but_unknown || !crate::is_valid_app_id(&app_id) {
                 tracing::warn!(
                     target: "audit",
