@@ -41,11 +41,6 @@ RESOLVER = ROOT / "sdk/permissions/src/unit_identity.rs"
 # one we cannot grant to, and leaving it out of both lists would make the gap look
 # like coverage.
 UNNAMEABLE = {
-    "arlen-ai-undo-signer.service": (
-        "/usr/lib/arlen/libexec/arlen-ai-undo-signer matches no identity rule, so "
-        "path_to_app_id returns UnknownBinary. This is the component whose whole "
-        "job is proving what happened, and it has no name of its own"
-    ),
     "arlen-store-backend.service": (
         "/usr/lib/arlen/libexec/arlen-store-backend matches no identity rule "
         "either; same shape as the signer above"

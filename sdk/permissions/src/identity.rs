@@ -479,6 +479,23 @@ pub fn path_to_app_id(path: &Path) -> Result<String, IdentityError> {
         "/usr/lib/arlen/libexec/arlen-undod" => {
             return Ok("undod".to_string());
         }
+        // The undo signer. It has been unnameable since it shipped, which is a
+        // sharper gap than it looks: its whole job is holding the signed record of
+        // what happened, and a component we cannot name is one we cannot grant to.
+        // Nothing authenticates it TODAY (it only accepts connections and its one
+        // outbound `connect` is a liveness probe of its own socket), so this closes
+        // a latent gap rather than a live refusal - but it is the component where
+        // "we could not say who that was" is least acceptable.
+        "/usr/lib/arlen/libexec/arlen-ai-undo-signer" => {
+            return Ok("ai-undo-signer".to_string());
+        }
+        // The session supervisor: the party that asks systemd for the per-user
+        // daemons and renews their identity registration when systemd replaces
+        // them. It has to be resolvable BEFORE it may stamp anything - a registrar
+        // that cannot be named is a registrar trusted by assertion.
+        "/usr/lib/arlen/libexec/arlen-session-supervisor" => {
+            return Ok("session-supervisor".to_string());
+        }
         // The cross-profile transfer daemon (profile-system, PR-R4). It audits
         // every transfer to BOTH profiles' ledgers fail-closed BEFORE any byte
         // crosses a boundary, so without this entry it resolves to UnknownBinary,
