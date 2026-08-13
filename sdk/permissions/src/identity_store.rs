@@ -33,6 +33,21 @@ use std::os::fd::{AsRawFd, OwnedFd};
 
 use crate::peer_pidfd::pidfd_pid;
 
+/// The one identity trusted by CONSTRUCTION rather than by a registration.
+///
+/// `arlen-session` is what the login path starts, exactly once per login, and it
+/// is what mints the session id. Nothing registers it, because it is what does the
+/// registering - so the chain has to start somewhere and this is that place, said
+/// out loud.
+///
+/// It is a binary for this reason. A shell script's running process is the
+/// interpreter (`/proc/<pid>/exe` reads `/bin/sh`), so every script on the machine
+/// presents one identity and none can be told apart; and whoever could write the
+/// script file would become the root of trust for the whole session. Measured
+/// 13 Aug, which is what moved `/usr/bin/arlen-session` from a script to an ELF
+/// binary whose inode the identity registry can attest.
+pub const SESSION_ROOT: &str = "session";
+
 /// A single launcher-stamped identity: the held pidfd (kept open to pin
 /// the process and observe its death) plus the app_id the launcher
 /// attested and the pid captured at registration.
@@ -47,6 +62,14 @@ struct Record {
     pid: u32,
     /// The launcher-attested app id keyed to this process.
     app_id: String,
+    /// The app id of the caller that made this registration.
+    ///
+    /// What turns the registrar set from a list into a derivation. A registrar is
+    /// trusted because the SESSION ROOT started it from a shipped path, never
+    /// because its name appears somewhere - and a hand-kept list of names is a
+    /// permission, which drifts. Recording the registrar makes "may this process
+    /// register?" a question about provenance that the store can answer.
+    registered_by: String,
 }
 
 impl Record {
@@ -97,6 +120,7 @@ impl IdentityStore {
         &mut self,
         pidfd: OwnedFd,
         app_id: String,
+        registered_by: String,
     ) -> Result<(), IdentityStoreError> {
         let pid = pidfd_pid(pidfd.as_raw_fd()).ok_or(IdentityStoreError::DeadPidfd)?;
         // Keep only live records for a DIFFERENT pid: this drops every
@@ -104,7 +128,12 @@ impl IdentityStore {
         // A live same-pid record can only be the same process (two live
         // processes cannot share a pid), so replacing it is correct.
         self.records.retain(|r| r.is_live() && r.pid != pid);
-        self.records.push(Record { pidfd, pid, app_id });
+        self.records.push(Record {
+            pidfd,
+            pid,
+            app_id,
+            registered_by,
+        });
         Ok(())
     }
 
@@ -123,6 +152,27 @@ impl IdentityStore {
             .iter()
             .find(|r| r.pid == want && r.is_live())
             .map(|r| r.app_id.as_str())
+    }
+
+    /// Whether the process `presented` pins may itself register identities.
+    ///
+    /// Derived, never listed. A process may register iff the SESSION ROOT
+    /// registered it - so the set of registrars is exactly what the root started,
+    /// and it changes when the root's behaviour changes rather than when someone
+    /// remembers to edit a constant. A hand-kept list of names IS a permission, and
+    /// hand-kept permissions drift; this one cannot, because nothing writes it.
+    ///
+    /// The root itself is not in the store - nothing registered it - so
+    /// [`SESSION_ROOT`] is the one identity trusted by construction, and the
+    /// caller checks for it separately. That is the bootstrap, named rather than
+    /// hidden inside a list where it would look like just another entry.
+    pub fn may_register(&self, presented: std::os::fd::BorrowedFd<'_>) -> bool {
+        let Some(want) = pidfd_pid(presented.as_raw_fd()) else {
+            return false;
+        };
+        self.records
+            .iter()
+            .any(|r| r.pid == want && r.is_live() && r.registered_by == SESSION_ROOT)
     }
 
     /// Drop every record whose pinned process has exited. Housekeeping
