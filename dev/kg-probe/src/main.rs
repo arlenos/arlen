@@ -46,6 +46,26 @@ const QUESTIONS: &[(&str, &str)] = &[
     ("projects: any", "MATCH (p:Project) RETURN p.name LIMIT 500"),
     ("files: any", "MATCH (f:File) RETURN f.id LIMIT 500"),
     ("events: any", "MATCH (e:Event) RETURN e.id LIMIT 500"),
+    // The one question about something THIS RUN produced.
+    //
+    // Every question above is satisfied by any row from anywhere, which is a
+    // weaker claim than it reads as: "the graph holds files" and "the graph
+    // ingested what just happened" are different sentences, and only the second
+    // is what a boot is for. The image starts with an empty graph, so a row here
+    // can only have arrived through the path under test - the dogfood emits a
+    // `file.opened` for this exact path, the writer stores it, promotion turns it
+    // into a File node.
+    //
+    // The path is the dogfood's, hardcoded on both sides, and that coupling is
+    // the point rather than a shortcut: the assertion has to name the thing the
+    // run made, or it is back to counting rows. If the dogfood's fixture path
+    // ever moves, this question stops returning rows and the verdict says the
+    // ingestion path is dead - a false alarm, but a LOUD one, which is the right
+    // direction for a coupling to fail in.
+    (
+        "ingestion: this run's file",
+        "MATCH (f:File) WHERE f.id = '/var/lib/arlen-work/notes.md' RETURN f.id LIMIT 1",
+    ),
 ];
 
 /// How many times to ask, and how long to wait between rounds.
