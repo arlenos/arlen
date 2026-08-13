@@ -23,6 +23,11 @@ import sys
 import tempfile
 import time
 
+# How long after boot the knowledge probe's second round answers. The probe asks
+# twice so it can tell "nothing yet" from "nothing ever"; only the second round is
+# a verdict, so a run that ends before it has no probe result to read.
+PROBE_ROUND_GAP = 90
+
 OVMF_CODE = "/usr/share/edk2/x64/OVMF_CODE.4m.fd"
 OVMF_VARS = "/usr/share/edk2/x64/OVMF_VARS.4m.fd"
 
@@ -380,6 +385,23 @@ def frame_change(a, b):
     diff = ImageChops.difference(ia, ib).convert("L").point(lambda p: 255 if p > 16 else 0)
     changed = sum(c for c, v in (diff.getcolors() or []) if v)
     return changed / (ia.width * ia.height)
+
+
+def probe_shipped_so_far(serial_path):
+    """Whether the knowledge probe has started, judged from the serial so far.
+
+    Same question `probe_is_shipped` answers after the run, asked DURING it so the
+    run can stay alive long enough to have an answer to read. Deliberately the same
+    predicate on the same text rather than a second rule about unit names: two
+    rules for one fact drift, and the drift here is silent - the verdict arms, the
+    wait does not, and every run fails for a harness reason.
+    """
+    from probe_verdict import probe_is_shipped
+
+    if not serial_path or not os.path.exists(serial_path):
+        return False
+    with open(serial_path, "r", errors="replace") as fh:
+        return probe_is_shipped(fh.read())
 
 
 def card_left_the_dom(serial_path):
@@ -900,9 +922,23 @@ def main():
         # what turns this into "and then it behaved" - a daemon retrying, a socket
         # refused on the tenth attempt, a timer firing - all of which happen in the
         # part no run has ever stayed alive for.
-        if args.linger:
-            print(f"lingering {args.linger}s so the journal has an after")
-            time.sleep(args.linger)
+        # The probe's answer arrives on its SECOND round, 75s after the first, and
+        # the verdict below self-arms the moment an image ships the probe unit. So
+        # the wait has to self-arm too, or every default run on a probe-carrying
+        # image fails for a reason that is about the harness rather than the image -
+        # and a failure that is always there is one an operator learns to ignore,
+        # which is worse than not checking at all. Walked into exactly that on the
+        # 13 Aug run: VERIFY FAIL, nothing wrong with the image.
+        linger = args.linger
+        if probe_shipped_so_far(serial) and linger < PROBE_ROUND_GAP:
+            print(
+                f"the image ships the knowledge probe, which answers at ~{PROBE_ROUND_GAP}s; "
+                f"lingering that long so there is a verdict to read"
+            )
+            linger = PROBE_ROUND_GAP
+        if linger:
+            print(f"lingering {linger}s so the journal has an after")
+            time.sleep(linger)
 
         # Shut the guest DOWN rather than pulling its plug, so journald gets to
         # write out the rest of the boot.
