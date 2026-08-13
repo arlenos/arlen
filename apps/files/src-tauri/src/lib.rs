@@ -309,8 +309,14 @@ struct ProvenanceChain {
     /// Always false here: this is real, graph-backed lineage. The frontend's
     /// fixture path sets it true; the live backend must never claim a sample.
     mocked: bool,
-    /// A read this chain is built from did not answer, so there may be steps
-    /// missing that nobody can see are missing.
+    /// One of the graph reads this chain is built from did not answer, so there
+    /// may be steps missing that nobody can see are missing.
+    ///
+    /// Set for a read that FAILED, never for one that answered with nothing. The
+    /// provenance op returns `Ok(None)` for an object the caller may not see, on
+    /// purpose - out-of-scope and absent are indistinguishable there so the op is
+    /// not an oracle - and reporting that as a fault would put a warning on every
+    /// file outside the caller's scope.
     ///
     /// The chain is where the empty-on-error defect gets WORSE by being one hop
     /// further on: a shorter chain does not look like an error, it looks like a
@@ -365,7 +371,7 @@ fn stitch_file_provenance(
     view: Option<&os_sdk::graph::ProvenanceView>,
     last_accessed_micros: i64,
     now_micros: i64,
-    memberships_complete: bool,
+    reads_complete: bool,
 ) -> ProvenanceChain {
     let mut steps = Vec::new();
     for p in projects {
@@ -407,7 +413,7 @@ fn stitch_file_provenance(
     ProvenanceChain {
         // A chain built from a read that did not answer may be missing steps, and
         // a short chain is indistinguishable from a short history unless it says so.
-        incomplete: !memberships_complete,
+        incomplete: !reads_complete,
         subject: subject.to_string(),
         steps,
         // Never `Complete`: the origin/external branches are gated, so deeper
@@ -482,12 +488,18 @@ async fn provenance_of(r#ref: String) -> ProvenanceChain {
     // Collapsed here rather than carried into the chain: the chain does not need
     // three states, it needs to know whether it can claim to be whole.
     let memberships = read_project_memberships(&client, &r#ref).await;
-    let memberships_complete = matches!(memberships, ReadOutcome::Rows { .. });
     let projects = match &memberships {
         ReadOutcome::Rows { rows } => rows.as_slice(),
         _ => &[],
     };
-    let view = client.read_provenance(&abs(&r#ref)).await.ok().flatten();
+    // BOTH graph reads feed steps, so both can shorten the chain. `Ok(None)` is
+    // NOT one of them: the daemon deliberately makes out-of-scope and absent
+    // indistinguishable, and that is an answer - it is only `Err` that means we
+    // could not ask. Flagging the no-oracle case would turn a designed silence
+    // into a reported fault on every file the caller may not see.
+    let provenance = client.read_provenance(&abs(&r#ref)).await;
+    let complete = matches!(memberships, ReadOutcome::Rows { .. }) && provenance.is_ok();
+    let view = provenance.ok().flatten();
     let last_accessed = read_last_accessed(&client, &r#ref).await;
     let now_micros = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -504,7 +516,7 @@ async fn provenance_of(r#ref: String) -> ProvenanceChain {
         view.as_ref(),
         last_accessed,
         now_micros,
-        memberships_complete,
+        complete,
     )
 }
 
