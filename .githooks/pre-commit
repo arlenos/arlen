@@ -70,6 +70,28 @@ if ! bash "$runner"; then
     exit 1
 fi
 
+# What a change to a SHARED crate breaks somewhere else.
+#
+# The sibling gap to the one below, and found the same way - by walking into it. A
+# commit that changes a public signature in `sdk/permissions` passes every check
+# above while leaving other crates unable to compile, because nothing here looks at
+# whether the tree still builds. Narrowed by effect rather than by building
+# everything: only `sdk/` and `contracts/` changes can break a crate the commit does
+# not touch, so only those pay, and only the crates that path-depend on them are
+# checked. Four seconds warm across thirty crates; nothing at all for a commit that
+# touches one daemon.
+if [ -x "$root/dev/scripts/check-shared-signature.sh" ]; then
+    if ! shared_out=$(bash "$root"/dev/scripts/check-shared-signature.sh \
+                      $(git diff --cached --name-only) 2>&1); then
+        echo >&2
+        printf '%s\n' "$shared_out" | tail -20 >&2
+        warn_divergence
+        exit 1
+    fi
+    # Only say something when it did work; silence on the fast path.
+    printf '%s' "$shared_out" | grep -q "affected crate" && printf '%s\n' "$shared_out" | tail -1
+fi
+
 # The one CI check that is a crate TEST rather than a gate script, and therefore
 # the one this sweep did not see.
 #
