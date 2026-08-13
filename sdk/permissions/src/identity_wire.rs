@@ -102,6 +102,12 @@ pub enum IdentityRequest {
         /// so a launcher cannot stamp an app AS a launcher.
         #[serde(default)]
         registrar: bool,
+        /// Whether the child may stamp RESERVED app ids. Only the session root may
+        /// ask for this, and it gives it to the supervisor alone: a launcher that
+        /// could mint `settings` or `ai-agent` would defeat the reserved-id
+        /// refusal that exists to contain a compromised one.
+        #[serde(default)]
+        stamp_reserved: bool,
     },
     /// Resolve the app_id of the process the accompanying pidfd pins.
     Lookup,
@@ -252,11 +258,12 @@ pub fn register_over<S: AsRawFd + Read>(
     stream: &mut S,
     child_pidfd: BorrowedFd<'_>,
     app_id: &str,
-    registrar: bool,
+    grants: crate::identity_store::Grants,
 ) -> Result<(), IdentityClientError> {
     let request = IdentityRequest::Register {
         app_id: app_id.to_string(),
-        registrar,
+        registrar: grants.register,
+        stamp_reserved: grants.stamp_reserved,
     };
     match exchange(stream, &request, child_pidfd)? {
         IdentityResponse::Registered => Ok(()),
@@ -288,10 +295,10 @@ pub fn register_identity(
     socket: &Path,
     child_pidfd: BorrowedFd<'_>,
     app_id: &str,
-    registrar: bool,
+    grants: crate::identity_store::Grants,
 ) -> Result<(), IdentityClientError> {
     let mut stream = connect(socket)?;
-    register_over(&mut stream, child_pidfd, app_id, registrar)
+    register_over(&mut stream, child_pidfd, app_id, grants)
 }
 
 /// Connect to the broker at `socket` and look up the process `peer_pidfd`
@@ -605,7 +612,7 @@ mod tests {
             write_response(&mut server, &IdentityResponse::Refused("nope".into())).unwrap();
         });
         let p = self_pidfd();
-        let err = register_over(&mut client, p.as_fd(), "com.x", false).unwrap_err();
+        let err = register_over(&mut client, p.as_fd(), "com.x", crate::identity_store::Grants::default()).unwrap_err();
         assert!(matches!(err, IdentityClientError::Refused(_)));
         srv.join().unwrap();
     }

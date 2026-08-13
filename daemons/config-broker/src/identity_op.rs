@@ -106,6 +106,28 @@ pub fn caller_may_grant_registrar(
         .may_grant_registrar(caller_pidfd)
 }
 
+/// Whether this caller may stamp a RESERVED app id.
+///
+/// The session root by construction - it is what starts the supervisor - and
+/// whatever the root granted it to. Nothing infers this from a name or from the id
+/// being stamped: a registrar either holds it or the stamp is refused.
+pub fn caller_may_stamp_reserved(
+    store: &std::sync::Mutex<arlen_permissions::identity_store::IdentityStore>,
+    caller_app_id: &str,
+    caller_pidfd: std::os::fd::BorrowedFd<'_>,
+) -> bool {
+    if caller_app_id == arlen_permissions::identity_store::SESSION_ROOT {
+        return true;
+    }
+    if cfg!(debug_assertions) && caller_app_id == "dev.arlen-session" {
+        return true;
+    }
+    store
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .may_stamp_reserved(caller_pidfd)
+}
+
 /// Dispatch one identity request against the shared store for an
 /// authenticated caller. `received` is the pidfd the caller passed over
 /// `SCM_RIGHTS`: for `Register` it is the CHILD's (moved into the store
@@ -120,7 +142,7 @@ pub fn handle_identity(
     caller_pidfd: Option<std::os::fd::BorrowedFd<'_>>,
 ) -> IdentityResponse {
     match request {
-        IdentityRequest::Register { app_id, registrar } => {
+        IdentityRequest::Register { app_id, registrar, stamp_reserved } => {
             // Provenance first: the session root, or something the session root
             // registered. A caller whose own pidfd we do not have cannot be
             // answered by provenance at all, so it is refused rather than falling
@@ -143,9 +165,20 @@ pub fn handle_identity(
             // (reverse-DNS), so a reserved id from here is a bypass attempt. This
             // keeps the stamped Tier-1 path no weaker than the rule-4 user path,
             // which already refuses these via the same guard.
-            if arlen_permissions::identity::is_reserved_app_id(&app_id) {
+            // Unless the caller was GRANTED that right, which the session root
+            // gives to the supervisor and to nothing else. The supervisor's whole
+            // job is stamping shipped daemons, and `arlen-ai-engine-daemon.service`
+            // legitimately IS `ai-agent` - measured on the first supervised boot,
+            // where that one unit was the only refusal.
+            //
+            // A grant rather than a name: the launcher stays unable to mint
+            // `settings` or `ai-agent` even if it is compromised, which is the
+            // whole point of the refusal.
+            if arlen_permissions::identity::is_reserved_app_id(&app_id)
+                && !caller_may_stamp_reserved(store, caller_app_id, caller_pidfd)
+            {
                 return IdentityResponse::Refused(format!(
-                    "'{app_id}' is a reserved app id and may not be stamped"
+                    "'{app_id}' is a reserved app id and this caller may not stamp one"
                 ));
             }
             // Validate the id's charset here too, symmetric with the resolver's
@@ -165,9 +198,11 @@ pub fn handle_identity(
             // launcher could stamp an app AS a launcher, and every process
             // downstream of one launch could then claim any identity - which is
             // the hole the broker exists to close.
-            if registrar && !caller_may_grant_registrar(store, caller_app_id, caller_pidfd) {
+            if (registrar || stamp_reserved)
+                && !caller_may_grant_registrar(store, caller_app_id, caller_pidfd)
+            {
                 return IdentityResponse::Refused(format!(
-                    "caller '{caller_app_id}' may register but may not pass that right on"
+                    "caller '{caller_app_id}' may register but may not pass a right on"
                 ));
             }
             let Some(fd) = received else {
@@ -178,7 +213,15 @@ pub fn handle_identity(
             // consistent, and refusing every future op would be a worse
             // failure mode than continuing.
             let mut store = store.lock().unwrap_or_else(|e| e.into_inner());
-            match store.register(fd, app_id, caller_app_id.to_string(), registrar) {
+            match store.register(
+                fd,
+                app_id,
+                caller_app_id.to_string(),
+                arlen_permissions::identity_store::Grants {
+                    register: registrar,
+                    stamp_reserved,
+                },
+            ) {
                 Ok(()) => IdentityResponse::Registered,
                 Err(IdentityStoreError::DeadPidfd) => {
                     IdentityResponse::Error("pidfd does not refer to a live process".into())
@@ -203,6 +246,7 @@ pub fn handle_identity(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arlen_permissions::identity_store::Grants;
     use std::os::fd::AsFd;
     use std::os::fd::FromRawFd;
 
@@ -240,7 +284,7 @@ mod tests {
         let s = store();
         s.lock()
             .unwrap()
-            .register(self_pidfd(), "arlen-run".into(), "arlen-desktop-shell".into(), true)
+            .register(self_pidfd(), "arlen-run".into(), "arlen-desktop-shell".into(), Grants { register: true, ..Grants::default() })
             .unwrap();
         s
     }
@@ -256,6 +300,7 @@ mod tests {
             IdentityRequest::Register {
                 app_id: "com.example.app".into(),
                 registrar: false,
+                stamp_reserved: false,
             },
             Some(self_pidfd()),
             Some(caller_handle().as_fd()),
@@ -281,6 +326,7 @@ mod tests {
             IdentityRequest::Register {
                 app_id: "com.evil.squat".into(),
                 registrar: false,
+                stamp_reserved: false,
             },
             Some(self_pidfd()),
             Some(caller_handle().as_fd()),
@@ -304,6 +350,7 @@ mod tests {
                 IdentityRequest::Register {
                     app_id: reserved.into(),
                     registrar: false,
+                    stamp_reserved: false,
                 },
                 Some(self_pidfd()),
                 Some(caller_handle().as_fd()),
@@ -327,7 +374,7 @@ mod tests {
             let reg = handle_identity(
                 &s,
                 "arlen-run",
-                IdentityRequest::Register { app_id: bad.into(), registrar: false },
+                IdentityRequest::Register { app_id: bad.into(), registrar: false, stamp_reserved: false },
                 Some(self_pidfd()),
                 Some(caller_handle().as_fd()),
             );
@@ -351,6 +398,7 @@ mod tests {
                 IdentityRequest::Register {
                     app_id: "x".into(),
                     registrar: false,
+                    stamp_reserved: false,
                 },
                 None,
                 Some(caller_handle().as_fd()),
@@ -388,7 +436,7 @@ mod tests {
                 self_pidfd(),
                 "session-supervisor".into(),
                 arlen_permissions::identity_store::SESSION_ROOT.into(),
-                true,
+                Grants { register: true, ..Grants::default() },
             )
             .unwrap();
         assert!(caller_may_register(&s, "some-daemon", me.as_fd()));
@@ -407,6 +455,64 @@ mod tests {
     }
 
     #[test]
+    fn a_launcher_cannot_mint_a_reserved_id_but_a_granted_supervisor_can() {
+        // The containment this whole refusal exists for: a compromised launcher
+        // must not be able to claim `settings` or `ai-agent` for something it
+        // started. It holds `register` and not `stamp_reserved`, so it cannot.
+        let s = store();
+        let me = caller_handle();
+        s.lock()
+            .unwrap()
+            .register(
+                self_pidfd(),
+                "arlen-run".into(),
+                "arlen-desktop-shell".into(),
+                Grants { register: true, ..Grants::default() },
+            )
+            .unwrap();
+        assert!(matches!(
+            handle_identity(
+                &s,
+                "arlen-run",
+                IdentityRequest::Register {
+                    app_id: "ai-agent".into(),
+                    registrar: false,
+                    stamp_reserved: false,
+                },
+                Some(self_pidfd()),
+                Some(me.as_fd()),
+            ),
+            IdentityResponse::Refused(_)
+        ));
+
+        // The supervisor holds the grant, so the same stamp goes through - which
+        // is the whole reason the right exists rather than a name exemption.
+        s.lock()
+            .unwrap()
+            .register(
+                self_pidfd(),
+                "session-supervisor".into(),
+                arlen_permissions::identity_store::SESSION_ROOT.into(),
+                Grants { register: true, stamp_reserved: true },
+            )
+            .unwrap();
+        assert!(matches!(
+            handle_identity(
+                &s,
+                "session-supervisor",
+                IdentityRequest::Register {
+                    app_id: "ai-agent".into(),
+                    registrar: false,
+                    stamp_reserved: false,
+                },
+                Some(self_pidfd()),
+                Some(me.as_fd()),
+            ),
+            IdentityResponse::Registered
+        ));
+    }
+
+    #[test]
     fn a_delegated_registrar_may_not_stamp_another_registrar() {
         // The bound on the chain, at the dispatch level. The shell may pass the
         // right to the launcher it spawns; the launcher may not pass it to an app.
@@ -416,7 +522,7 @@ mod tests {
         let me = caller_handle();
         s.lock()
             .unwrap()
-            .register(self_pidfd(), "arlen-run".into(), "arlen-desktop-shell".into(), true)
+            .register(self_pidfd(), "arlen-run".into(), "arlen-desktop-shell".into(), Grants { register: true, ..Grants::default() })
             .unwrap();
 
         assert!(caller_may_register(&s, "arlen-run", me.as_fd()));
@@ -428,6 +534,7 @@ mod tests {
                 IdentityRequest::Register {
                     app_id: "com.example.app".into(),
                     registrar: true,
+                    stamp_reserved: false,
                 },
                 Some(self_pidfd()),
                 Some(me.as_fd()),
@@ -444,6 +551,7 @@ mod tests {
                 IdentityRequest::Register {
                     app_id: "com.example.app".into(),
                     registrar: false,
+                    stamp_reserved: false,
                 },
                 Some(self_pidfd()),
                 Some(me.as_fd()),
@@ -460,7 +568,7 @@ mod tests {
         let s = store();
         s.lock()
             .unwrap()
-            .register(self_pidfd(), "com.example.app".into(), "arlen-run".into(), false)
+            .register(self_pidfd(), "com.example.app".into(), "arlen-run".into(), Grants::default())
             .unwrap();
         assert!(!caller_may_register(&s, "com.example.app", caller_handle().as_fd()));
     }
@@ -480,6 +588,7 @@ mod tests {
         let req = IdentityRequest::Register {
             app_id: "com.example.app".into(),
             registrar: false,
+            stamp_reserved: false,
         };
         let bytes = serde_json::to_vec(&req).unwrap();
         assert_eq!(serde_json::from_slice::<IdentityRequest>(&bytes).unwrap(), req);

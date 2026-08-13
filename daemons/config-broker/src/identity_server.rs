@@ -218,7 +218,7 @@ mod tests {
         store
             .lock()
             .unwrap()
-            .register(self_pidfd(), "com.example.self".into(), "arlen-run".into(), false)
+            .register(self_pidfd(), "com.example.self".into(), "arlen-run".into(), arlen_permissions::identity_store::Grants::default())
             .unwrap();
 
         let (client, server) = UnixStream::pair().unwrap();

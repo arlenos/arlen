@@ -42,7 +42,9 @@ impl Registrar for BrokerRegistrar {
             &self.socket,
             pidfd.as_fd(),
             app_id,
-            false,
+            // Nothing onward: a supervised daemon gets an identity and no
+            // authority. The rights this supervisor holds were granted to IT.
+            arlen_permissions::identity_store::Grants::default(),
         )
         .map_err(|e| format!("registering {app_id} (pid {pid}): {e}"))
     }
