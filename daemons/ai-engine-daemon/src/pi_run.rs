@@ -268,6 +268,30 @@ where
     };
 
     binder.end_session(&token);
+
+    // Say how the run ENDED, not only that it started.
+    //
+    // The sidecar already logs the spawn, and nothing logged the outcome - so
+    // working out why the 13 Aug verify boot produced no explanation meant
+    // correlating four sources (the spawn line, pi's empty stderr, the proxy's
+    // zero forwards, and the probe's own message) to conclude that pi ended its
+    // turn without asking the model. One line makes the next boot say it.
+    //
+    // The answer itself is never logged, only its LENGTH: it is a full-scope
+    // summary of the user's activity, and the journal is not where that belongs -
+    // the same reason the D-Bus payloads came out of these logs.
+    match &answer {
+        Ok(text) => tracing::info!(
+            behaviour = %behaviour.manifest.name,
+            answer_chars = text.chars().count(),
+            "ephemeral run answered"
+        ),
+        Err(reason) => tracing::warn!(
+            behaviour = %behaviour.manifest.name,
+            reason = %reason,
+            "ephemeral run produced no answer"
+        ),
+    }
     answer
 }
 
