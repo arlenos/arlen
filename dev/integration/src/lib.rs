@@ -1407,6 +1407,19 @@ mod module_reachability {
         "daemons/code-indexer/resolve",
         "daemons/integration-packages/manifest",
         "daemons/sentinel-detect/tracker",
+        // The compiled session's decisions, ported ahead of the process half that
+        // will call them. `arlen-session` has to become a binary because a script
+        // cannot be identified - its running process is the interpreter - and the
+        // registrar model needs a session root it can name. The port lands in
+        // pieces so each is testable without a seat; these are the pieces whose
+        // caller is the piece still to come, and the binary refuses to run in the
+        // meantime so the login path stays with the shipped script.
+        //
+        // Short-lived by construction: the process half calls all three, and this
+        // test fails until they are deleted from here once it does.
+        "daemons/session/env",
+        "daemons/session/verify_app",
+        "daemons/session/wayland",
         // Diagnosed rather than assumed: the transfer daemon's live per-uid
         // listeners are deliberately deferred to PR-R1's per-uid sockets, which
         // `main.rs` states while holding a fail-closed `DeniedBroker` in the
