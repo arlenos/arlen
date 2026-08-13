@@ -31,14 +31,19 @@ fn is_get_text_response(event: &serde_json::Value) -> bool {
 }
 
 /// The assistant text carried by a `get_last_assistant_text` response
-/// (`data.text`); a null or absent text is the empty string.
-fn assistant_text_of(event: &serde_json::Value) -> String {
-    event
-        .get("data")
-        .and_then(|d| d.get("text"))
-        .and_then(|t| t.as_str())
-        .unwrap_or("")
-        .to_string()
+/// (`data.text`), or `None` when pi says there is no assistant message.
+///
+/// pi documents `{"text": null}` as "no assistant messages exist" (its
+/// `docs/rpc.md`), which is a different fact from an assistant that replied with
+/// nothing - and flattening both to `""` is the second way this path produced a
+/// successful-shaped empty answer. The caller turns `None` into an error, so
+/// "the model never spoke" reaches whoever asked instead of an empty explanation
+/// they cannot interpret.
+fn assistant_text_of(event: &serde_json::Value) -> Option<String> {
+    match event.get("data").and_then(|d| d.get("text")) {
+        Some(serde_json::Value::String(s)) => Some(s.clone()),
+        _ => None,
+    }
 }
 
 /// Write one JSON command as a line.
@@ -110,7 +115,8 @@ where
             continue;
         };
         if is_get_text_response(&event) {
-            return Ok(assistant_text_of(&event));
+            return assistant_text_of(&event)
+                .ok_or_else(|| "the engine reported no assistant message".to_string());
         }
     }
 }
@@ -158,8 +164,9 @@ mod tests {
             "id": GET_TEXT_ID, "data": { "text": "an explanation" }
         });
         assert!(is_get_text_response(&ok));
-        assert_eq!(assistant_text_of(&ok), "an explanation");
-        assert_eq!(assistant_text_of(&serde_json::json!({ "data": { "text": null } })), "");
+        assert_eq!(assistant_text_of(&ok).as_deref(), Some("an explanation"));
+        // pi says "no assistant messages exist" this way; it is not an empty answer.
+        assert!(assistant_text_of(&serde_json::json!({ "data": { "text": null } })).is_none());
         assert!(!is_get_text_response(&serde_json::json!({ "type": "agent_end" })));
     }
 
@@ -203,6 +210,20 @@ mod tests {
             r.is_err(),
             "a closed stream is a failure to fetch, not an empty answer: {r:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_turn_that_produced_no_assistant_message_errors() {
+        // pi's documented way of saying no assistant message exists. The whole
+        // point of the call is to fetch one, so this is a failure to fetch and not
+        // an answer that happens to be blank - the same reading as the closed
+        // stream above, arrived at from the other direction.
+        let pi_out = concat!(
+            "{\"type\":\"agent_end\"}\n",
+            "{\"type\":\"response\",\"command\":\"get_last_assistant_text\",\"id\":\"arlen-engine-get-last-text\",\"data\":{\"text\":null}}\n",
+        );
+        let r = drive_for_answer(pi_out.as_bytes(), &mut Vec::new(), "x").await;
+        assert!(r.is_err(), "no assistant message is not an empty answer: {r:?}");
     }
 
     #[tokio::test]
