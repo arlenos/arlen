@@ -20,6 +20,7 @@ import { spawnSync } from "node:child_process";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const CHECK = join(ROOT, "dev/scripts/check-unit-identity.py");
 const UNITS = "dev/mkosi/mkosi.extra/usr/lib/systemd/system";
+const USER_UNITS = "dev/mkosi/mkosi.extra/usr/lib/systemd/user";
 const RESOLVER = "sdk/permissions/src/unit_identity.rs";
 
 let failures = 0;
@@ -33,9 +34,11 @@ function check(name, ok) {
 function withTree(mutate) {
   const dir = mkdtempSync(join(tmpdir(), "unit-identity-"));
   mkdirSync(join(dir, UNITS), { recursive: true });
+  mkdirSync(join(dir, USER_UNITS), { recursive: true });
   mkdirSync(join(dir, dirname(RESOLVER)), { recursive: true });
   mkdirSync(join(dir, "dev/scripts"), { recursive: true });
   cpSync(join(ROOT, UNITS), join(dir, UNITS), { recursive: true });
+  cpSync(join(ROOT, USER_UNITS), join(dir, USER_UNITS), { recursive: true });
   cpSync(join(ROOT, RESOLVER), join(dir, RESOLVER));
   cpSync(CHECK, join(dir, "dev/scripts/check-unit-identity.py"));
   mutate(dir);
@@ -97,6 +100,62 @@ function withTree(mutate) {
   });
   check("a unit both excused and mapped is refused", r.code === 1);
   check("and the message says the excuse outlived its reason", r.out.includes("outlived"));
+}
+
+// The per-user table, whose extra property is that it must AGREE with the binary
+// route. A table that disagrees names one daemon two ways, and the lookup under
+// the wrong one answers "no grants" - which reads as security working.
+{
+  const r = withTree((dir) => {
+    const p = join(dir, RESOLVER);
+    writeFileSync(
+      p,
+      readFileSync(p, "utf8").replace('("arlen-notifyd.service", "notifyd")', '("arlen-notifyd.service", "notify-daemon")'),
+    );
+  });
+  check("a per-user id that disagrees with its binary is refused", r.code === 1);
+  check("and the message says how the miss would present", r.out.includes("silently misses"));
+}
+
+// The one deviation is recorded WITH its reason, so reverting it to the derived
+// name is what fails - not the deviation itself.
+{
+  const r = withTree((dir) => {
+    const p = join(dir, RESOLVER);
+    writeFileSync(
+      p,
+      readFileSync(p, "utf8").replace('("arlen-ai-engine-daemon.service", "ai-agent")', '("arlen-ai-engine-daemon.service", "ai-engine-daemon")'),
+    );
+  });
+  check("deriving the engine daemon's id from its unit name is refused", r.code === 1);
+  check("and the recorded reason is quoted back", r.out.includes("nothing else in the system uses that id"));
+}
+
+// A new per-user daemon nobody named: the launcher would register nothing and its
+// peers would be refused with no way to tell that from a policy decision.
+{
+  const r = withTree((dir) => {
+    writeFileSync(
+      join(dir, USER_UNITS, "arlen-newd.service"),
+      "[Service]\nExecStart=/usr/lib/arlen/libexec/arlen-newd\n",
+    );
+  });
+  check("a shipped per-user unit with no entry is refused", r.code === 1);
+  check("and the message says its peers would be refused", r.out.includes("peers would"));
+}
+
+// The signer's gap is NAMED, so closing it half-way - a table entry left beside
+// the unnameable listing - is caught rather than silently preferred.
+{
+  const r = withTree((dir) => {
+    const p = join(dir, RESOLVER);
+    writeFileSync(
+      p,
+      readFileSync(p, "utf8").replace('("arlen-undod.service", "undod")', '("arlen-undod.service", "undod"),\n    ("arlen-ai-undo-signer.service", "undo-signer")'),
+    );
+  });
+  check("naming a unit listed as unnameable is refused", r.code === 1);
+  check("and the message says the entry was left behind", r.out.includes("left behind"));
 }
 
 console.log(failures ? `\n${failures} failure(s)` : "\nevery drift is caught");

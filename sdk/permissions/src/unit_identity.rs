@@ -122,6 +122,50 @@ const UNIT_APP_IDS: &[(&str, &str)] = &[
     ("arlen-timeline.service", "timeline"),
 ];
 
+/// The per-user units and the app_id each one's peers authenticate as.
+///
+/// Separate from [`UNIT_APP_IDS`] because the ATTESTATION is separate: a system
+/// unit is named by the kernel, a user unit by whoever asked systemd to start it
+/// (see the module doc). This table says what the launcher registers, and is not
+/// on its own evidence of anything - a user unit nobody asked for is absent from
+/// the registry and resolves to nothing regardless of what stands here.
+///
+/// Every id is the one the BINARY route already produces for that unit's
+/// `ExecStart`, so the two resolvers cannot disagree about one daemon. Checked by
+/// `dev/scripts/check-unit-identity.py`, which is also where the one deviation is
+/// forced to be visible: `arlen-ai-engine-daemon.service` is `ai-agent`, not
+/// `ai-engine-daemon`, and a name-derived guess would have produced an id no
+/// profile is filed under - a lookup that answers "no grants" and reads as
+/// correctly-locked-down.
+const USER_UNIT_APP_IDS: &[(&str, &str)] = &[
+    ("arlen-ai-engine-daemon.service", "ai-agent"),
+    ("arlen-ai-proxy.service", "ai-proxy"),
+    ("arlen-anomalyd.service", "anomalyd"),
+    ("arlen-auditd.service", "auditd"),
+    ("arlen-capsuled.service", "capsuled"),
+    ("arlen-clockd.service", "clockd"),
+    ("arlen-code-indexer.service", "code-indexer"),
+    ("arlen-consent-broker.service", "consent-broker"),
+    ("arlen-dogfood.service", "dogfood"),
+    ("arlen-journald-parser.service", "journald-parser"),
+    ("arlen-notifyd.service", "notifyd"),
+    ("arlen-powerd.service", "powerd"),
+    ("arlen-terminal-run-mcp.service", "terminal-run-mcp"),
+    ("arlen-undod.service", "undod"),
+    ("arlen-wallpaperd.service", "wallpaperd"),
+];
+
+/// The app_id a per-user unit's peers authenticate as, or `None` for a unit that
+/// has no name yet. See [`USER_UNIT_APP_IDS`]; `None` is a refusal, not a guess.
+pub fn app_id_for_user_unit(unit: &str) -> Option<&'static str> {
+    USER_UNIT_APP_IDS.iter().find(|(u, _)| *u == unit).map(|(_, a)| *a)
+}
+
+/// Every per-user unit this resolver knows.
+pub fn enrolled_user_units() -> impl Iterator<Item = &'static str> {
+    USER_UNIT_APP_IDS.iter().map(|(u, _)| *u)
+}
+
 /// The app_id for an attested system unit, or `None` for a unit we do not ship.
 ///
 /// `None` is a refusal, not a fallback: a system unit nobody enrolled has no
@@ -225,9 +269,33 @@ mod tests {
 
     #[test]
     fn every_enrolled_unit_maps_to_a_valid_app_id() {
-        for unit in enrolled_units() {
-            let id = app_id_for_unit(unit).expect("enrolled unit maps");
+        for unit in enrolled_units().chain(enrolled_user_units()) {
+            let id = app_id_for_unit(unit)
+                .or_else(|| app_id_for_user_unit(unit))
+                .expect("enrolled unit maps");
             assert!(crate::is_valid_app_id(id), "{unit} -> {id}");
         }
+    }
+
+    #[test]
+    fn the_two_tables_never_name_the_same_unit() {
+        // One unit is attested one way or the other, never both: a unit in the
+        // system slice is named by the kernel, one in the user session by the
+        // party that started it. A name in both tables would mean the answer
+        // depends on which resolver ran, which is the thing neither may allow.
+        for unit in enrolled_user_units() {
+            assert!(
+                app_id_for_unit(unit).is_none(),
+                "{unit} is in both the system and the user table"
+            );
+        }
+    }
+
+    #[test]
+    fn the_engine_daemon_is_ai_agent_and_not_its_unit_name() {
+        // The measurement that killed the derive-from-the-name shortcut. Keep it
+        // as a test so the next person who has that idea is stopped by a red
+        // suite rather than by a boot where a daemon quietly has no grants.
+        assert_eq!(app_id_for_user_unit("arlen-ai-engine-daemon.service"), Some("ai-agent"));
     }
 }
