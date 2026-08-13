@@ -328,11 +328,46 @@ pub fn lookup_identity_authenticated(
     let broker_uid = crate::peer_pidfd::peer_uid(stream.as_raw_fd())
         .map_err(|e| IdentityClientError::Unauthenticated(format!("peer uid unreadable: {e}")))?;
     if broker_uid != expected {
-        return Err(IdentityClientError::Unauthenticated(format!(
-            "broker uid {broker_uid} != expected {expected}"
+        return Err(IdentityClientError::Unauthenticated(unmappable_peer_hint(
+            broker_uid, expected, socket,
         )));
     }
     lookup_over(&mut stream, peer_pidfd)
+}
+
+/// The uid the kernel reports for a peer whose real uid has no mapping in the
+/// reader's user namespace.
+const NOBODY_UID: u32 = 65534;
+
+/// Why the broker's uid did not match, said in a way that does not send the reader
+/// after the wrong thing.
+///
+/// A bare "uid 65534 != expected 0" reads as a misconfigured broker, and on
+/// 13 Aug it cost a boot's worth of looking at the broker, which was fine. The
+/// cause is on the READER's side: `SO_PEERCRED` is translated into the reader's
+/// user namespace, and systemd gives an unprivileged (user) unit a user namespace
+/// in order to implement `ProtectSystem`, `PrivateDevices` and friends. Only the
+/// user's own uid is mapped there, so a root-owned broker comes back as nobody -
+/// and no value of this env can ever match, because the number does not exist
+/// inside that namespace.
+///
+/// Measured on the same boot: the consent broker, with one such option, resolves
+/// stamps fine; the undo signer, with six, cannot - which is the wrong way round,
+/// since a hardened unit is exactly the one whose `/proc` fallback is also refused.
+fn unmappable_peer_hint(broker_uid: u32, expected: u32, socket: &Path) -> String {
+    if broker_uid == NOBODY_UID && expected != NOBODY_UID {
+        return format!(
+            "broker at {} reads as uid {broker_uid} (nobody), expected {expected}: the \
+             peer's real uid has no mapping in this process's user namespace, which \
+             is what a hardened user unit gets. No value of the expected-uid env can \
+             match while that is true",
+            socket.display()
+        );
+    }
+    format!(
+        "broker at {} has uid {broker_uid}, expected {expected}",
+        socket.display()
+    )
 }
 
 /// Bound on a single identity round trip. A register/lookup is one short local
@@ -700,5 +735,19 @@ mod tests {
         let sock = tmp.path().join("real.sock");
         let _l = std::os::unix::net::UnixListener::bind(&sock).unwrap();
         assert_eq!(broker_uid_of(&sock), Some(unsafe { libc::getuid() }));
+    }
+
+    #[test]
+    fn an_unmappable_peer_says_so_instead_of_blaming_the_broker() {
+        let hint = unmappable_peer_hint(NOBODY_UID, 0, Path::new("/run/arlen/x.sock"));
+        assert!(hint.contains("no mapping in this process's user namespace"));
+        assert!(hint.contains("/run/arlen/x.sock"), "name the socket that answered");
+        // A real mismatch keeps the plain reading: this is not a blanket excuse.
+        let plain = unmappable_peer_hint(1000, 0, Path::new("/run/arlen/x.sock"));
+        assert!(!plain.contains("user namespace"));
+        assert!(plain.contains("uid 1000"));
+        // And nobody-expecting-nobody is a genuine mismatch, not the namespace case.
+        let both = unmappable_peer_hint(NOBODY_UID, NOBODY_UID, Path::new("/x"));
+        assert!(!both.contains("user namespace"));
     }
 }
