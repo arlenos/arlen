@@ -136,15 +136,59 @@ where
     Ok(())
 }
 
-/// A lock shared by every connection the broker serves.
-/// Resolve the connecting peer to its attested app id, same-uid only.
-fn attested_caller(stream: &tokio::net::UnixStream) -> Option<String> {
-    let cred = stream.peer_cred().ok()?;
-    if cred.uid() != unsafe { libc::getuid() } {
-        return None;
+/// Why a connecting peer has no attested app id.
+///
+/// The causes are kept apart because two of them are RESULTS and two are FAULTS,
+/// and they used to arrive as one empty string. A cross-uid peer is refused on
+/// purpose; a peer whose `/proc/<pid>/exe` cannot be read is a peer we failed to
+/// identify, and under the shipped hardening that is not hypothetical - it is the
+/// exact `readlinkat(exe): Permission denied` the undo signer hits on a booted
+/// image. Both end in the same refusal, and only one of them is anybody's fault,
+/// so only one deserves a line. An unidentifiable caller writing no settings looks
+/// identical to a caller correctly denied, which is the failure mode this whole
+/// rule exists for.
+enum CallerUnknown {
+    /// The kernel would not hand over the peer credential.
+    NoPeerCred,
+    /// A different user. A deliberate refusal, not a fault.
+    CrossUid(u32),
+    /// The peer's binary could not be read - most often `/proc/<pid>/exe` denied
+    /// to a hardened reader.
+    UnreadableExe(String),
+    /// The binary resolved to no app id we know.
+    UnknownBinary(String),
+}
+
+impl std::fmt::Display for CallerUnknown {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoPeerCred => write!(f, "the kernel gave no peer credential"),
+            Self::CrossUid(uid) => write!(f, "the peer belongs to uid {uid}, not to this session"),
+            Self::UnreadableExe(e) => write!(f, "the peer's binary could not be read: {e}"),
+            Self::UnknownBinary(p) => write!(f, "the peer's binary {p} maps to no app id"),
+        }
     }
-    let exe = std::fs::read_link(format!("/proc/{}/exe", cred.pid()?)).ok()?;
-    arlen_permissions::identity::path_to_app_id(&exe).ok()
+}
+
+impl CallerUnknown {
+    /// Whether this is a refusal we intend rather than a failure to identify.
+    /// Only the second kind is worth saying out loud.
+    fn is_deliberate(&self) -> bool {
+        matches!(self, Self::CrossUid(_))
+    }
+}
+
+/// Resolve the connecting peer to its attested app id, same-uid only.
+fn attested_caller(stream: &tokio::net::UnixStream) -> Result<String, CallerUnknown> {
+    let cred = stream.peer_cred().map_err(|_| CallerUnknown::NoPeerCred)?;
+    if cred.uid() != unsafe { libc::getuid() } {
+        return Err(CallerUnknown::CrossUid(cred.uid()));
+    }
+    let pid = cred.pid().ok_or(CallerUnknown::NoPeerCred)?;
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe"))
+        .map_err(|e| CallerUnknown::UnreadableExe(e.to_string()))?;
+    arlen_permissions::identity::path_to_app_id(&exe)
+        .map_err(|_| CallerUnknown::UnknownBinary(exe.display().to_string()))
 }
 
 /// Whether `caller` may write settings belonging to `target`.
@@ -173,6 +217,7 @@ pub fn may_write_for(caller: &str, target: &str) -> bool {
         || (cfg!(debug_assertions) && caller == "dev.arlen-settings")
 }
 
+/// A lock shared by every connection the broker serves.
 pub fn shared_write_lock() -> Arc<Mutex<()>> {
     Arc::new(Mutex::new(()))
 }
@@ -211,7 +256,23 @@ pub async fn run(
         // Who is connecting, from the kernel-attested credential. A peer we
         // cannot resolve gets the empty id, which `may_write_for` admits for
         // nothing - so an unidentifiable caller can write no app's settings.
-        let caller = attested_caller(&stream).unwrap_or_default();
+        //
+        // The verdict is the same whichever way resolution failed; what differs is
+        // whether anyone can tell. A cross-uid peer is refused on purpose and needs
+        // no line. Failing to READ a peer we meant to identify is a fault, and it
+        // presents identically - the app writes nothing and looks correctly denied.
+        let caller = match attested_caller(&stream) {
+            Ok(id) => id,
+            Err(why) => {
+                if !why.is_deliberate() {
+                    eprintln!(
+                        "settings-broker: a peer could not be identified, so it may write \
+                         nothing: {why}. This is NOT the same as a peer that was denied"
+                    );
+                }
+                String::new()
+            }
+        };
         let registry = registry.clone();
         let write_lock = write_lock.clone();
         // One slow or wedged caller must not stall the others, so each
@@ -229,6 +290,28 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_a_cross_uid_peer_is_a_deliberate_refusal() {
+        // The rule: unknown is an error with a line, empty is a result. A peer
+        // from another user is refused on purpose. Every other cause is a peer we
+        // MEANT to identify and could not - and it presents identically, as an app
+        // that writes nothing and looks correctly denied.
+        assert!(CallerUnknown::CrossUid(1001).is_deliberate());
+        for fault in [
+            CallerUnknown::NoPeerCred,
+            CallerUnknown::UnreadableExe("Permission denied (os error 13)".into()),
+            CallerUnknown::UnknownBinary("/usr/lib/arlen/libexec/arlen-ai-undo-signer".into()),
+        ] {
+            assert!(
+                !fault.is_deliberate(),
+                "{fault} must be reported, not read as a peer we turned away"
+            );
+        }
+        // And each says which case it was, so the line is worth printing.
+        assert!(CallerUnknown::UnreadableExe("denied".into()).to_string().contains("denied"));
+        assert!(CallerUnknown::CrossUid(1001).to_string().contains("1001"));
+    }
+
     use super::*;
     use crate::protocol::KeyWrite;
     use crate::serve::AppSettings;
