@@ -161,6 +161,26 @@ async fn main() {
     let mut last = String::new();
     for attempt in 1..=ASK_ATTEMPTS {
         match ask().await {
+            // An empty answer is NOT an answer, and accepting one was how this leg
+            // reported `ASK ok answer=` on the 13 Aug echo boot: the call returned
+            // in under a second, the proxy logged that it had taken the echo
+            // branch, and the string that came back was empty. A verifier that
+            // reads a successful-shaped nothing as success produces the confident
+            // positive that mirrors the confident negative this file already warns
+            // about two functions down.
+            //
+            // The echo marker is deliberately NOT required here. On the verify
+            // image every answer carries it, but this same binary runs where a real
+            // model answers and would not - so requiring it would make the probe
+            // pass only on the image it was tuned for. Non-empty is the property
+            // that holds on both.
+            Ok(answer) if answer.trim().is_empty() => {
+                last = "the call succeeded and returned an empty answer".to_string();
+                println!("DOGFOOD ASK retry {attempt}/{ASK_ATTEMPTS}: {last}");
+                if attempt < ASK_ATTEMPTS {
+                    sleep(ASK_RETRY_DELAY).await;
+                }
+            }
             Ok(answer) => {
                 let snippet: String = answer.chars().take(200).collect();
                 println!("DOGFOOD ASK ok answer={snippet}");
