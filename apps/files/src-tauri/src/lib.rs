@@ -23,6 +23,7 @@ use arlen_file_browser_core::{
     EntryKind, FileEntry, SortKey,
 };
 use cap_std::ambient_authority;
+use os_sdk::graph::ReadOutcome;
 use cap_std::fs::Dir;
 use serde::Serialize;
 use tauri::Emitter;
@@ -522,81 +523,6 @@ fn verwandt_from_rows(rows: &[std::collections::HashMap<String, serde_json::Valu
 /// Read a file's KG relationships (its `FILE_PART_OF` project membership) via
 /// the structured read op. Best-effort: an out-of-scope object, an absent
 /// daemon or any error yields no lines, so the info panel still shows the
-/// What a read produced, with the three outcomes kept apart.
-///
-/// Named for the SHAPE and not for the graph, because it is meant to be the one
-/// pattern: the same three words on every surface that can fail to reach a
-/// subsystem. A directory listing is a `Rows` too - the point is that no caller has
-/// to invent its own way of saying "nothing, but for which reason".
-///
-/// The sidebar's `NetworkPlaces` is the template and this is the same pattern with
-/// the case that surface does not have: a graph read can be REFUSED. Collapsing all
-/// three into an empty list is what let "there is no graph daemon" and "this app may
-/// not read that" both render as "this file belongs to no project".
-///
-/// The refusal is safe to surface, and worth being precise about, because the
-/// no-oracle property lives in the DAEMON, not here: it decides what a caller may
-/// learn and answers uniformly where that matters. This type only stops the app from
-/// throwing that answer away. A person owning the machine being told "this app was
-/// refused" is the capability system doing its job out loud.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(tag = "state", rename_all = "kebab-case")]
-pub enum ReadOutcome<T> {
-    /// No graph daemon answered: the subsystem is absent, not the data.
-    Unavailable {
-        /// For the log and a tooltip; not a user-facing sentence.
-        reason: String,
-    },
-    /// The daemon answered and refused this caller.
-    Denied {
-        /// What it said, verbatim.
-        reason: String,
-    },
-    /// The daemon answered. `rows` MAY be empty, and that means empty.
-    Rows {
-        /// The result, already mapped.
-        rows: Vec<T>,
-    },
-}
-
-impl<T> ReadOutcome<T> {
-    /// Classify a query result, mapping the rows with `map`.
-    fn from_result<R>(
-        what: &str,
-        result: Result<R, os_sdk::graph::QueryError>,
-        map: impl FnOnce(R) -> Vec<T>,
-    ) -> Self {
-        match result {
-            Ok(rows) => ReadOutcome::Rows { rows: map(rows) },
-            Err(os_sdk::graph::QueryError::ConnectionFailed(msg)) => {
-                log::warn!(
-                    "{what}: no graph daemon ({msg}); showing nothing, which is not \
-                     the same as there being nothing"
-                );
-                ReadOutcome::Unavailable { reason: msg }
-            }
-            Err(other) => {
-                log::debug!("{what}: {other}");
-                ReadOutcome::Denied {
-                    reason: other.to_string(),
-                }
-            }
-        }
-    }
-
-    /// One line for the log, saying WHICH nothing when there is nothing.
-    ///
-    /// The navigation diagnostic used to print `0 entries`, which is the sentence
-    /// this whole type exists to stop: it reads as an empty folder whether the
-    /// daemon was absent, refusing, or genuinely empty.
-    fn describe(&self) -> String {
-        match self {
-            ReadOutcome::Unavailable { reason } => format!("unavailable ({reason})"),
-            ReadOutcome::Denied { reason } => format!("denied ({reason})"),
-            ReadOutcome::Rows { rows } => format!("{} entries", rows.len()),
-        }
-    }
-}
 
 /// What a file is related to in the graph - its project memberships and the like -
 /// for the info panel's `Related` section, which sits beside the conventional
@@ -1860,20 +1786,23 @@ fn recent_from_rows(rows: &[std::collections::HashMap<String, serde_json::Value>
 }
 
 /// The recently-accessed files for the sidebar's Recent section, newest first.
-/// Best-effort: an absent daemon, an out-of-scope read, or a caller without
-/// `system.File` read scope yields no entries (the rest of the sidebar still
-/// renders). The query is static (no interpolation), so no escaping.
+/// This is a GRAPH read, not a filesystem one - `last_accessed` lives on the File
+/// node. Worth saying because it does not look like one from the outside, and a
+/// comment one caller over said the opposite and was wrong. The query is static
+/// (no interpolation), so no escaping.
+///
+/// Returns the outcome: an empty Recent section on a machine with no graph reads
+/// as "you have not opened anything", which is a claim about the person's week.
 #[tauri::command]
-async fn files_recent() -> Vec<RecentFile> {
+async fn files_recent() -> ReadOutcome<RecentFile> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = "MATCH (f:File) WHERE f.last_accessed IS NOT NULL \
                   RETURN f.path AS path, f.last_accessed AS accessed \
                   ORDER BY f.last_accessed DESC LIMIT 32";
-    match client.query_rows(cypher).await {
-        Ok(rows) => recent_from_rows(&rows),
-        Err(_) => Vec::new(),
-    }
+    ReadOutcome::from_result("files_recent", client.query_rows(cypher).await, |rows| {
+        recent_from_rows(&rows)
+    })
 }
 
 /// Map a recent-file row into a [`FileEntry`] for the Recent navigation LOCATION
@@ -2047,12 +1976,12 @@ async fn files_list_location(location: String) -> Result<ReadOutcome<FileEntry>,
     // fires on a Trash click the invoke arrives and the break is downstream
     // (result/view); if it never fires the break is the frontend navigate/adapter.
     log::info!("files_list_location: location={location:?}");
-    // Recent and trash read the filesystem, not the graph, so they always answer:
-    // `Rows` is the honest state for them even when the list is empty.
+    // Trash reads the filesystem and always answers. Recent does NOT - it reads
+    // `last_accessed` off the File node - so it carries its own outcome through.
+    // An earlier version of this comment said both were filesystem reads, which
+    // made an unreachable graph render as "0 items" in the status bar.
     let out = match location.as_str() {
-        "recent" => Ok(ReadOutcome::Rows {
-            rows: files_recent().await.iter().map(recent_to_entry).collect(),
-        }),
+        "recent" => Ok(files_recent().await.map(|r| recent_to_entry(&r))),
         "trash" => files_trash_list().map(|items| ReadOutcome::Rows {
             rows: items.iter().map(trash_to_entry).collect(),
         }),
@@ -2091,9 +2020,7 @@ async fn files_list_location_as_of(
         return Ok(project_members_as_of(id, as_of_micros).await);
     }
     match location.as_str() {
-        "recent" => Ok(ReadOutcome::Rows {
-            rows: files_recent().await.iter().map(recent_to_entry).collect(),
-        }),
+        "recent" => Ok(files_recent().await.map(|r| recent_to_entry(&r))),
         "trash" => files_trash_list().map(|items| ReadOutcome::Rows {
             rows: items.iter().map(trash_to_entry).collect(),
         }),
@@ -2661,34 +2588,6 @@ mod tests {
 #[cfg(test)]
 mod read_outcome_tests {
     use super::*;
-    use os_sdk::graph::QueryError;
-
-    fn rows(r: Result<Vec<u8>, QueryError>) -> ReadOutcome<u8> {
-        ReadOutcome::from_result("t", r, |v| v)
-    }
-
-    #[test]
-    fn the_three_outcomes_are_three_values() {
-        // The property: no two of these are equal. An absent daemon, a refusal and
-        // an empty answer used to be one value, and a screen cannot un-collapse it.
-        let absent = rows(Err(QueryError::ConnectionFailed("no socket".into())));
-        let denied = rows(Err(QueryError::PermissionDenied));
-        let empty = rows(Ok(Vec::new()));
-        assert!(matches!(absent, ReadOutcome::Unavailable { .. }));
-        assert!(matches!(denied, ReadOutcome::Denied { .. }));
-        assert_eq!(empty, ReadOutcome::Rows { rows: Vec::new() });
-        assert_ne!(absent, denied);
-        assert_ne!(denied, empty);
-        assert_ne!(absent, empty);
-    }
-
-    #[test]
-    fn a_rejected_query_is_an_answer_not_an_absence() {
-        // InvalidQuery comes from the daemon, so the subsystem is plainly there -
-        // reporting it as unavailable would send a reader after the wrong thing.
-        let bad = rows(Err(QueryError::InvalidQuery("write mode not permitted".into())));
-        assert!(matches!(bad, ReadOutcome::Denied { .. }), "{bad:?}");
-    }
 
     #[tokio::test]
     async fn a_question_nobody_asked_is_not_an_empty_answer() {
@@ -2711,20 +2610,4 @@ mod read_outcome_tests {
         ));
     }
 
-    #[test]
-    fn the_log_line_says_which_nothing() {
-        // The navigation diagnostic printed "0 entries" for all three states, which
-        // is what sent an hour into the wrong half of the chain.
-        let absent: ReadOutcome<u8> = rows(Err(QueryError::ConnectionFailed("no socket".into())));
-        assert!(absent.describe().starts_with("unavailable"), "{}", absent.describe());
-        assert_eq!(rows(Ok(vec![1u8, 2])).describe(), "2 entries");
-    }
-
-    #[test]
-    fn the_wire_shape_names_the_state() {
-        let json = serde_json::to_string(&rows(Ok(vec![1u8]))).unwrap();
-        assert!(json.contains("\"state\":\"rows\""), "{json}");
-        let json = serde_json::to_string(&rows(Err(QueryError::PermissionDenied))).unwrap();
-        assert!(json.contains("\"state\":\"denied\""), "{json}");
-    }
 }

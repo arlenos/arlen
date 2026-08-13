@@ -17,6 +17,106 @@ pub enum QueryError {
     PermissionDenied,
 }
 
+// The shape a graph read comes back in, so no app has to invent its own way of
+// saying "nothing, but for which reason".
+//
+// It lives beside `QueryError` because that is what it classifies, and because
+// the answer must be the same in every app: the file manager and the terminal
+// both list projects, and a person should not learn one vocabulary per window.
+// Both had written `Err(_) => Vec::new()` independently.
+
+/// What a read produced, with the three outcomes kept apart.
+///
+/// Named for the SHAPE and not for the graph, because it is meant to be the one
+/// pattern: the same three words on every surface that can fail to reach a
+/// subsystem. A directory listing is a `Rows` too - the point is that no caller has
+/// to invent its own way of saying "nothing, but for which reason".
+///
+/// The sidebar's `NetworkPlaces` is the template and this is the same pattern with
+/// the case that surface does not have: a graph read can be REFUSED. Collapsing all
+/// three into an empty list is what let "there is no graph daemon" and "this app may
+/// not read that" both render as "this file belongs to no project".
+///
+/// The refusal is safe to surface, and worth being precise about, because the
+/// no-oracle property lives in the DAEMON, not here: it decides what a caller may
+/// learn and answers uniformly where that matters. This type only stops the app from
+/// throwing that answer away. A person owning the machine being told "this app was
+/// refused" is the capability system doing its job out loud.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "state", rename_all = "kebab-case")]
+pub enum ReadOutcome<T> {
+    /// No graph daemon answered: the subsystem is absent, not the data.
+    Unavailable {
+        /// For the log and a tooltip; not a user-facing sentence.
+        reason: String,
+    },
+    /// The daemon answered and refused this caller.
+    Denied {
+        /// What it said, verbatim.
+        reason: String,
+    },
+    /// The daemon answered. `rows` MAY be empty, and that means empty.
+    Rows {
+        /// The result, already mapped.
+        rows: Vec<T>,
+    },
+}
+
+impl<T> ReadOutcome<T> {
+    /// Classify a query result, mapping the rows with `map`.
+    pub fn from_result<R>(
+        what: &str,
+        result: Result<R, QueryError>,
+        map: impl FnOnce(R) -> Vec<T>,
+    ) -> Self {
+        match result {
+            Ok(rows) => ReadOutcome::Rows { rows: map(rows) },
+            Err(QueryError::ConnectionFailed(msg)) => {
+                tracing::warn!(
+                    "{what}: no graph daemon ({msg}); showing nothing, which is not \
+                     the same as there being nothing"
+                );
+                ReadOutcome::Unavailable { reason: msg }
+            }
+            Err(other) => {
+                tracing::debug!("{what}: {other}");
+                ReadOutcome::Denied {
+                    reason: other.to_string(),
+                }
+            }
+        }
+    }
+
+    /// Reshape the rows, keeping the reason.
+    ///
+    /// The point is that there is no way to do this by unwrapping: a caller that
+    /// wants `FileEntry` from `RecentFile` would otherwise reach for the rows and
+    /// drop the state on the floor, which is the exact move this type exists to
+    /// prevent.
+    pub fn map<U>(self, f: impl FnMut(&T) -> U) -> ReadOutcome<U> {
+        match self {
+            ReadOutcome::Rows { rows } => ReadOutcome::Rows {
+                rows: rows.iter().map(f).collect(),
+            },
+            ReadOutcome::Unavailable { reason } => ReadOutcome::Unavailable { reason },
+            ReadOutcome::Denied { reason } => ReadOutcome::Denied { reason },
+        }
+    }
+
+    /// One line for the log, saying WHICH nothing when there is nothing.
+    ///
+    /// The navigation diagnostic used to print `0 entries`, which is the sentence
+    /// this whole type exists to stop: it reads as an empty folder whether the
+    /// daemon was absent, refusing, or genuinely empty.
+    pub fn describe(&self) -> String {
+        match self {
+            ReadOutcome::Unavailable { reason } => format!("unavailable ({reason})"),
+            ReadOutcome::Denied { reason } => format!("denied ({reason})"),
+            ReadOutcome::Rows { rows } => format!("{} entries", rows.len()),
+        }
+    }
+}
+
 impl std::fmt::Display for QueryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -2469,5 +2569,77 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         assert!(result.is_err(), "a daemon ERROR must surface as Err");
+    }
+}
+
+#[cfg(test)]
+mod read_outcome_tests {
+    use super::*;
+
+    fn rows(r: Result<Vec<u8>, QueryError>) -> ReadOutcome<u8> {
+        ReadOutcome::from_result("t", r, |v| v)
+    }
+
+    #[test]
+    fn the_three_outcomes_are_three_values() {
+        // The property: no two of these are equal. An absent daemon, a refusal and
+        // an empty answer used to be one value, and a screen cannot un-collapse it.
+        let absent = rows(Err(QueryError::ConnectionFailed("no socket".into())));
+        let denied = rows(Err(QueryError::PermissionDenied));
+        let empty = rows(Ok(Vec::new()));
+        assert!(matches!(absent, ReadOutcome::Unavailable { .. }));
+        assert!(matches!(denied, ReadOutcome::Denied { .. }));
+        assert_eq!(empty, ReadOutcome::Rows { rows: Vec::new() });
+        assert_ne!(absent, denied);
+        assert_ne!(denied, empty);
+        assert_ne!(absent, empty);
+    }
+
+    #[test]
+    fn a_rejected_query_is_an_answer_not_an_absence() {
+        // InvalidQuery comes from the daemon, so the subsystem is plainly there -
+        // reporting it as unavailable would send a reader after the wrong thing.
+        let bad = rows(Err(QueryError::InvalidQuery(
+            "write mode not permitted".into(),
+        )));
+        assert!(matches!(bad, ReadOutcome::Denied { .. }), "{bad:?}");
+    }
+
+    #[test]
+    fn the_log_line_says_which_nothing() {
+        // The navigation diagnostic printed "0 entries" for all three states, which
+        // is what sent an hour into the wrong half of the chain.
+        let absent: ReadOutcome<u8> = rows(Err(QueryError::ConnectionFailed("no socket".into())));
+        assert!(
+            absent.describe().starts_with("unavailable"),
+            "{}",
+            absent.describe()
+        );
+        assert_eq!(rows(Ok(vec![1u8, 2])).describe(), "2 entries");
+    }
+
+    #[test]
+    fn mapping_keeps_the_reason() {
+        // The move the type exists to prevent: reshaping rows must not quietly
+        // turn an absent subsystem into an empty list.
+        let absent: ReadOutcome<u8> = rows(Err(QueryError::ConnectionFailed("no socket".into())));
+        assert!(matches!(
+            absent.map(|n| *n as u32),
+            ReadOutcome::Unavailable { .. }
+        ));
+        assert_eq!(
+            rows(Ok(vec![1u8, 2])).map(|n| *n as u32),
+            ReadOutcome::Rows {
+                rows: vec![1u32, 2]
+            }
+        );
+    }
+
+    #[test]
+    fn the_wire_shape_names_the_state() {
+        let json = serde_json::to_string(&rows(Ok(vec![1u8]))).unwrap();
+        assert!(json.contains("\"state\":\"rows\""), "{json}");
+        let json = serde_json::to_string(&rows(Err(QueryError::PermissionDenied))).unwrap();
+        assert!(json.contains("\"state\":\"denied\""), "{json}");
     }
 }
