@@ -5,7 +5,7 @@
   /// details), each rendered only when it has something to show. Permissions are
   /// edited as plain per-role access, applied immediately; the octal is gone.
   import { writable } from "svelte/store";
-  import { type ReadOutcome, reasonKey, rows } from "$lib/read-outcome";
+  import { type ReadOutcome, reasonState, rows } from "$lib/read-outcome";
   import { invoke } from "@tauri-apps/api/core";
   import { X, ChevronRight, ChevronDown } from "lucide-svelte";
   import {
@@ -58,10 +58,20 @@
 
   const info = writable<Info | null>(null);
 
-  /** The one-line reason a read produced nothing, or null when it produced rows. */
+  /// The one-line reason the Related section is empty, or null when it has rows.
+  ///
+  /// Says it about RELATED ITEMS, which is what the person is looking at, rather
+  /// than about a daemon they have never heard of. The three states are shared
+  /// with every other surface; the sentence is this section's own.
+  const RELATED_REASON = {
+    unavailable: "f.info.relatedUnavailable",
+    denied: "f.info.relatedDenied",
+    empty: "f.info.relatedNone",
+  } as const;
+
   function reasonOf(r: ReadOutcome<unknown> | null | undefined): string | null {
-    const key = reasonKey(r);
-    return key ? $t(key) : null;
+    const state = reasonState(r);
+    return state ? $t(RELATED_REASON[state]) : null;
   }
 
   $effect(() => {
@@ -323,7 +333,7 @@
                person may want to act. A genuinely empty result is muted, because
                nothing is wrong - it is simply empty. Same words everywhere, but
                not the same weight. -->
-          <span class={reasonKey(read) === "f.read.empty" ? "empty" : "note"}>{reason}</span>
+          <span class={reasonState(read) === "empty" ? "empty" : "note"}>{reason}</span>
         {/if}
         {#each rels as line (line.label + line.target_id)}
           <button

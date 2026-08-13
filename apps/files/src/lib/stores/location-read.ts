@@ -13,19 +13,28 @@
 // printers and the alarm nobody set.
 
 import { writable } from "svelte/store";
-import { reasonKey, type ReadOutcome } from "$lib/read-outcome";
+import {
+  reasonState,
+  type EmptyReason,
+  type ReadOutcome,
+} from "$lib/read-outcome";
 
-/// The message key for the last virtual listing, or null when it produced rows.
-export const locationReadReason = writable<string | null>(null);
+/// Why the last virtual listing showed nothing, or null when it produced rows.
+/// The status bar turns this into a sentence about the LOCATION, which is what
+/// the person clicked; the state is what it shares with the rest of the app.
+export const locationReadReason = writable<Exclude<
+  EmptyReason,
+  "empty"
+> | null>(null);
 
 /// Record a listing's outcome and hand back its rows for the adapter to sort.
 ///
-/// `f.read.empty` is deliberately NOT carried: an empty location already reads
-/// correctly as "0 items" in the status bar, and saying "Nothing here" underneath a
-/// count of zero is the same fact twice.
+/// `empty` is deliberately NOT carried: an empty location already reads correctly
+/// as "0 items" in the status bar, and saying "Nothing here" underneath a count of
+/// zero is the same fact twice.
 export function recordListing<T>(outcome: ReadOutcome<T>): T[] {
-  const key = reasonKey(outcome);
-  locationReadReason.set(key === "f.read.empty" ? null : key);
+  const state = reasonState(outcome);
+  locationReadReason.set(state === "empty" || state === null ? null : state);
   return outcome.state === "rows" ? outcome.rows : [];
 }
 

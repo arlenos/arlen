@@ -7,6 +7,7 @@
     type FileEntry,
   } from "@arlen/ui-kit/components/browser";
   import { t } from "$lib/i18n/messages";
+  import type { EmptyReason } from "$lib/read-outcome";
 
   let {
     entries,
@@ -22,18 +23,26 @@
     /// The listing failed: the bar stays silent (it cannot know a
     /// count it never saw).
     errored?: boolean;
-    /// The message key for why this location listed nothing, when the reason is
-    /// something other than "it is empty". A prop rather than a store read so the
-    /// render harness can photograph all of its states side by side.
-    readReason?: string | null;
+    /// Why this location listed nothing. `empty` is excluded by the TYPE rather
+    /// than by a comment: an empty location already reads as "0 items", and a
+    /// second sentence saying the same thing is not an improvement. A prop rather
+    /// than a store read so the harness can photograph both states side by side.
+    readReason?: Exclude<EmptyReason, "empty"> | null;
   } = $props();
+
+  /// The same states every surface uses, said about a LOCATION - which is what the
+  /// person clicked, rather than about a daemon they have never heard of.
+  const LOCATION_REASON = {
+    unavailable: "f.status.locationUnavailable",
+    denied: "f.status.locationDenied",
+  } as const;
 
   const itemsLine = $derived.by(() => {
     if (errored) return null;
     // Same principle as `errored`, one step further in: the listing SUCCEEDED as a
     // call and answered "I could not ask". Printing "0 items" there states a count
     // nobody measured, and reads to a person as an empty project.
-    if (readReason) return $t(readReason);
+    if (readReason) return $t(LOCATION_REASON[readReason]);
     if (resultsCount !== null) {
       return $t("f.status.results", { count: resultsCount });
     }

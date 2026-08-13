@@ -164,8 +164,8 @@
   <section class="bars">
     <h2>Status bar: an empty location vs one that could not be read</h2>
     <FmStatusBar entries={[]} selected={[]} />
-    <FmStatusBar entries={[]} selected={[]} readReason="f.read.denied" />
-    <FmStatusBar entries={[]} selected={[]} readReason="f.read.unavailable" />
+    <FmStatusBar entries={[]} selected={[]} readReason="denied" />
+    <FmStatusBar entries={[]} selected={[]} readReason="unavailable" />
   </section>
 </div>
 

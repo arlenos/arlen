@@ -193,9 +193,15 @@ const messages: Catalogs = {
     // The three ways a read can come back with nothing. Same words on every
     // surface: an absent subsystem, a refusal, and a genuinely empty result are
     // different facts and a person can only act on the difference if we say it.
-    "f.read.unavailable": "Not available on this system",
-    "f.read.denied": "This app may not read that",
-    "f.read.empty": "None",
+    // The same three states everywhere - absent, refused, empty - each said about
+    // the thing the person is looking at. A single shared sentence would have to be
+    // vague enough to fit both a sidebar and a status bar, and vague is how a
+    // missing feature starts reading as an empty folder.
+    "f.info.relatedUnavailable": "Related items are not available on this system",
+    "f.info.relatedDenied": "Files is not allowed to read related items",
+    "f.info.relatedNone": "None",
+    "f.status.locationUnavailable": "This location is not available on this system",
+    "f.status.locationDenied": "Files is not allowed to list this location",
     "f.info.asOf": "As of",
     "f.info.asOfAria": "View related projects as of a past time",
     "f.info.pastView": "Past view, as of {$label}",
@@ -469,9 +475,11 @@ const messages: Catalogs = {
     "f.info.created": "Erstellt",
     "f.info.whereFrom": "Woher",
     "f.info.related": "Verwandt",
-    "f.read.unavailable": "Auf diesem System nicht verfügbar",
-    "f.read.denied": "Diese App darf das nicht lesen",
-    "f.read.empty": "Keine",
+    "f.info.relatedUnavailable": "Verwandte Einträge sind auf diesem System nicht verfügbar",
+    "f.info.relatedDenied": "Files darf verwandte Einträge nicht lesen",
+    "f.info.relatedNone": "Keine",
+    "f.status.locationUnavailable": "Dieser Ort ist auf diesem System nicht verfügbar",
+    "f.status.locationDenied": "Files darf diesen Ort nicht auflisten",
     "f.info.asOf": "Stand",
     "f.info.asOfAria": "Verwandte Projekte zu einem früheren Zeitpunkt ansehen",
     "f.info.pastView": "Vergangene Ansicht, Stand {$label}",

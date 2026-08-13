@@ -26,20 +26,27 @@ export function rows<T>(r: ReadOutcome<T> | null | undefined): T[] {
   return r && r.state === "rows" ? r.rows : [];
 }
 
+/** Why a read showed nothing: absent, refused, or genuinely empty. */
+export type EmptyReason = "unavailable" | "denied" | "empty";
+
 /**
- * Which message key describes this outcome, or null when there is nothing to
- * explain because the read produced rows.
+ * Which of the three this outcome is, or null when it produced rows.
  *
- * The keys are shared (`f.read.*`) on purpose: one pattern applied everywhere
- * beats six honest answers phrased six ways, and a person who learns what
- * "Not available on this system" means in one panel should not have to learn it
- * again in the next.
+ * The STATE is shared and the sentence is not. Three fixed terms - absent,
+ * refused, empty - are what keeps the app coherent, because they are three
+ * different next steps for a person: the feature is not on this machine, they
+ * were not allowed, or there is nothing there. One shared SENTENCE would have to
+ * be vague enough to fit every surface, and vague is how "your places could not
+ * be read" turns into "not available on this system" about places that are.
+ *
+ * So each surface names the thing the person was looking at, in its own words,
+ * and this decides which of the three it is saying.
  */
-export function reasonKey<T>(
+export function reasonState<T>(
   r: ReadOutcome<T> | null | undefined,
-): string | null {
+): EmptyReason | null {
   if (!r) return null;
-  if (r.state === "unavailable") return "f.read.unavailable";
-  if (r.state === "denied") return "f.read.denied";
-  return r.rows.length === 0 ? "f.read.empty" : null;
+  if (r.state === "unavailable") return "unavailable";
+  if (r.state === "denied") return "denied";
+  return r.rows.length === 0 ? "empty" : null;
 }
