@@ -9,7 +9,7 @@
 //
 // Run: node dev/scripts/test-check-bus-names-covered.mjs
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -20,6 +20,28 @@ const LIST = "dev/scripts/served-objects.tsv";
 const UNIT = "daemons/probe/dist/arlen-probed.service";
 
 const failures = [];
+
+/** Run a MODIFIED copy of the gate against the real tree.
+ *
+ * The cases below judge the caller half, which reads the actual shipped set and
+ * the actual crates - a fixture tree cannot express that without becoming a second
+ * copy of the repo. So the script is mutated instead and pointed at the real root,
+ * which the gate already accepts as an argument.
+ */
+function runMutated(mutate) {
+  const dir = mkdtempSync(join(tmpdir(), "bus-gate-"));
+  const path = join(dir, "check.py");
+  writeFileSync(path, mutate(readFileSync(GATE, "utf8")));
+  const r = spawnSync("python3", [path, ROOT], { encoding: "utf8", cwd: ROOT });
+  rmSync(dir, { recursive: true, force: true });
+  return { code: r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+}
+
+/** Assert a plain condition, for the cases that run the gate rather than a tree. */
+function assertCase(name, ok) {
+  console.log(`  ${ok ? "ok  " : "FAIL"} ${name}`);
+  if (!ok) failures.push(name);
+}
 
 function check(name, files, expect) {
   const dir = mkdtempSync(join(tmpdir(), "arlen-busnames-"));
@@ -97,4 +119,23 @@ if (failures.length) {
   for (const f of failures) console.log(`  ${f.name}\n    exit ${f.code}\n${f.out}`);
   process.exit(1);
 }
+// The caller's half, added 13 Aug: a shipped component dialling a name whose owner
+// is not installed. The controls are the two ways that can go wrong - a real
+// dangling caller must fail, and a carried one whose owner started shipping must
+// fail too, because a carried gap that closed reads as coverage.
+{
+  const r = runMutated((s) =>
+    s.replace('    "org.arlen.Connections1": (', '    "org.arlen.__none__": (')
+  );
+  assertCase("a dangling caller fails once it is no longer carried",
+        r.code === 1 && r.out.includes("org.arlen.Connections1"));
+}
+{
+  const r = runMutated((s) =>
+    s.replace('    "org.arlen.Accounts1": (', '    "org.arlen.Clock1": (')
+  );
+  assertCase("a carried name whose owner ships is caught",
+        r.code === 1 && r.out.includes("Clock1"));
+}
+
 console.log("a declared name must be paired or excused, and the distro's own units are not ours");
