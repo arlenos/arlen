@@ -54,8 +54,12 @@
     mockIPC((cmd) => {
       if (cmd === "files_ai_enabled") return !off;
       if (cmd === "files_projects")
-        return [{ id: "p-arlen", name: "Arlen OS", path: "/home/tim/projects/arlen" }];
-      if (cmd === "files_touched_apps") return [{ id: "files", label: "Files", count: 12 }];
+        return {
+          state: "rows",
+          rows: [{ id: "p-arlen", name: "Arlen OS", path: "/home/tim/projects/arlen" }],
+        };
+      if (cmd === "files_touched_apps")
+        return { state: "rows", rows: [{ id: "files", label: "Files", count: 12 }] };
       if (cmd === "files_ask")
         return {
           facets: { type: ["code"], time: ["week"], project: ["p-arlen"] },

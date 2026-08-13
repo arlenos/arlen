@@ -1737,20 +1737,23 @@ fn projects_from_rows(rows: &[std::collections::HashMap<String, serde_json::Valu
         .collect()
 }
 
-/// The live projects for the sidebar's Projects section. Best-effort: an absent
-/// daemon or an out-of-scope read yields no entries (the rest of the sidebar
-/// still renders). Only live projects are shown (`expired_at IS NULL`); archived
+/// The live projects for the sidebar's Projects section and the filter bar's
+/// project facet. Only live projects are shown (`expired_at IS NULL`); archived
 /// ones are omitted. The query is static (no interpolation), so no escaping.
+///
+/// Returns the outcome. It used to answer `Err(_) => Vec::new()`, which is the
+/// defect in its plainest form: the sidebar rendered a Projects group with
+/// nothing in it, so a machine with no graph told a person they have no projects.
+/// It did not even log which failure it was.
 #[tauri::command]
-async fn files_projects() -> Vec<Project> {
+async fn files_projects() -> ReadOutcome<Project> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = "MATCH (p:Project) WHERE p.expired_at IS NULL \
                   RETURN p.id AS id, p.name AS name, p.root_path AS path LIMIT 64";
-    match client.query_rows(cypher).await {
-        Ok(rows) => projects_from_rows(&rows),
-        Err(_) => Vec::new(),
-    }
+    ReadOutcome::from_result("files_projects", client.query_rows(cypher).await, |rows| {
+        projects_from_rows(&rows)
+    })
 }
 
 /// One option in the filter bar's Touched facet: an app that has accessed files,
@@ -1788,20 +1791,24 @@ fn touched_apps_from_rows(rows: &[std::collections::HashMap<String, serde_json::
 }
 
 /// The apps that have accessed files, for the filter bar's Touched facet, each
-/// with its file count, most-active first. Best-effort: an absent daemon or an
-/// out-of-scope read yields no options (the facet then reads as having nothing
-/// to offer). The query is static (no interpolation), so no escaping.
+/// with its file count, most-active first. The query is static (no
+/// interpolation), so no escaping.
+///
+/// Returns the outcome for the same reason as `files_projects`: a facet with no
+/// options reads as "nothing has touched anything", which is a claim, and an
+/// absent daemon is not entitled to make it.
 #[tauri::command]
-async fn files_touched_apps() -> Vec<TouchedApp> {
+async fn files_touched_apps() -> ReadOutcome<TouchedApp> {
     let socket = os_sdk::runtime::socket_path("ARLEN_KNOWLEDGE_SOCKET", "knowledge.sock");
     let client = os_sdk::graph::UnixGraphClient::new(socket.to_string_lossy().into_owned());
     let cypher = "MATCH (f:File)-[:ACCESSED_BY]->(a:App) \
                   RETURN a.id AS id, a.name AS label, count(f) AS count \
                   ORDER BY count DESC LIMIT 64";
-    match client.query_rows(cypher).await {
-        Ok(rows) => touched_apps_from_rows(&rows),
-        Err(_) => Vec::new(),
-    }
+    ReadOutcome::from_result(
+        "files_touched_apps",
+        client.query_rows(cypher).await,
+        |rows| touched_apps_from_rows(&rows),
+    )
 }
 
 /// The Suchen sidebar section (KG; empty until structured reads land).
