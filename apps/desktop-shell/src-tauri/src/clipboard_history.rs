@@ -26,7 +26,6 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use arlen_desktop_shell_core::retry::Backoff;
 use serde::{Deserialize, Serialize};
@@ -496,11 +495,11 @@ pub fn start(app: AppHandle, history: ClipboardHistoryState, window_list: Window
             // needs to notice it is looking for one line, not for the sixtieth.
             let mut backoff = Backoff::new();
             loop {
-                match run_watcher(&app, &history, &window_list) {
-                    Ok(()) => {
-                        backoff.succeeded();
-                        std::thread::sleep(Duration::from_secs(1));
-                    }
+                // No `Ok` arm: `run_watcher` has no successful return, and a match
+                // arm that cannot be reached is a claim about behaviour that is
+                // not true. The reset happens inside, where the watcher is known
+                // to be running.
+                match run_watcher(&app, &history, &window_list, &mut backoff) {
                     Err(e) => {
                         let next = backoff.failed();
                         if next.speak {
@@ -532,7 +531,8 @@ fn run_watcher(
     app: &AppHandle,
     history: &ClipboardHistoryState,
     window_list: &WindowList,
-) -> Result<(), String> {
+    backoff: &mut Backoff,
+) -> Result<std::convert::Infallible, String> {
     // `wl-paste --watch <cmd>` runs <cmd> on every clipboard change.
     // The sh one-liner prints current text content (if any) followed
     // by a NUL, so Rust can framing-split stdout without worrying
@@ -552,6 +552,17 @@ fn run_watcher(
         .stdout
         .take()
         .ok_or_else(|| "wl-paste stdout pipe missing".to_string())?;
+
+    // The watcher is up. Reset HERE and not on the function's return, because it
+    // has no successful return: the loop below only ends by erroring, and
+    // `wl-paste` exiting after an hour of working ends it the same way as one that
+    // could never start. Without this, a normal restart counted as a failure, the
+    // interval walked out to a minute and stayed there, and the log said nothing
+    // after the first line - a machine where everything was fine, quietly not
+    // recording the clipboard.
+    if backoff.succeeded() {
+        log::info!("clipboard_history: the watcher is running again");
+    }
 
     let mut reader = BufReader::new(stdout);
     let mut buf: Vec<u8> = Vec::with_capacity(4096);
