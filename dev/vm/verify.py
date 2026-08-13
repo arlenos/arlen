@@ -510,7 +510,10 @@ def main():
     ap.add_argument("--require-probe", action="store_true",
                     help="fail unless the knowledge probe answered every question "
                          "AND found something. Needs --linger past 75s, the gap "
-                         "between the probe's two rounds.")
+                         "between the probe's two rounds. Implied whenever the "
+                         "serial shows the probe unit starting, so an image that "
+                         "ships the probe is held to it without being asked; pass "
+                         "this to demand it from an image that may not.")
     ap.add_argument("--linger", type=int, default=0, metavar="SECONDS",
                     help="stay alive this long after the checks pass, before the "
                          "shutdown. Pair with --keep to get a journal that covers "
@@ -1017,8 +1020,32 @@ def main():
     # project watcher firing, the probe's second round - lands where nothing was
     # reading. Extracting it costs one guestfish call against a file that is about
     # to be deleted anyway.
+    # An image that SHIPS the probe gets its probe asserted, asked or not.
+    #
+    # `--require-probe` was opt-in and nothing passed it - not CI, not the boot
+    # recipe, only the README. So the refusal existed, had a control, and was armed
+    # on no run: three boots reported OK past a probe nobody read. An assertion
+    # nobody arms is the same defect as an assertion that cannot fail, one level up.
+    #
+    # The trigger is systemd's own console line for the unit, which lands around
+    # 4.5s - well before the serial stops carrying userspace output - so it is
+    # readable for free and does not depend on the probe having said anything. A
+    # release image has no such unit and is not held to a probe it does not ship;
+    # a verify image whose probe unit started and then went quiet now FAILS, which
+    # is the case the flag would silently have passed.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from probe_verdict import probe_is_shipped
+
+    probe_shipped = False
+    try:
+        with open(serial, "r", errors="replace") as fh:
+            probe_shipped = probe_is_shipped(fh.read())
+    except OSError:
+        probe_shipped = False
+    require_probe = args.require_probe or probe_shipped
+
     journal_text = None
-    if args.journal_out or args.require_probe:
+    if args.journal_out or require_probe:
         jdir = os.path.join(tmp, "journal")
         os.makedirs(jdir, exist_ok=True)
         # BOTH journals, and the user one is not optional: every desktop component
@@ -1059,13 +1086,14 @@ def main():
             print(f"journal: {os.path.abspath(args.journal_out)} "
                   f"({journal_text.count(chr(10))} lines)")
 
-    if args.require_probe:
+    if require_probe:
         # The verdict itself lives in `probe_verdict.py` so it can be shown
         # failing: inline, the only way to exercise it was to boot an image whose
         # graph does not ingest, and there is no such image. Its control plants
         # each refusal against a synthetic journal.
         if journal_text is None:
-            print("VERIFY FAIL: --require-probe, but the guest journal could not be read")
+            why = "--require-probe" if args.require_probe else "this image ships the probe"
+            print(f"VERIFY FAIL: {why}, but the guest journal could not be read")
             return 1
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from probe_verdict import probe_verdict

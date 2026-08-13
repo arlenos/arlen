@@ -99,5 +99,33 @@ const ROUND = (n, rows, own = rows) =>
   check("a journal with no probe lines is refused", verdict("some other boot\n").code === 1);
 }
 
+// When the verdict APPLIES at all. It used to apply only behind `--require-probe`,
+// which nothing passed, so it was armed on no run - a refusal that cannot fire is
+// worth the same as one that cannot exist. It is now decided from the artefact.
+{
+  const armed = (serial) =>
+    spawnSync(
+      "python3",
+      ["-c",
+       `import sys; sys.path.insert(0, ${JSON.stringify(join(ROOT, "dev/vm"))});\n` +
+       "from probe_verdict import probe_is_shipped;\n" +
+       "print(probe_is_shipped(sys.stdin.read()))"],
+      { input: serial, encoding: "utf8" },
+    ).stdout.trim() === "True";
+
+  check(
+    "an image whose probe unit starts is held to the probe",
+    armed("[    4.5] systemd[1]: Starting arlen-kg-probe.service - Ask the graph...\n"),
+  );
+  check(
+    "a probe that started and then said NOTHING still arms the refusal",
+    armed("[    4.5] systemd[1]: Starting arlen-kg-probe.service\n[   9.0] other stuff\n"),
+  );
+  check(
+    "a release image without the unit is not held to a probe it does not ship",
+    !armed("[    4.5] systemd[1]: Starting arlen-graph.service\n"),
+  );
+}
+
 console.log(failures ? `\n${failures} failure(s)` : "\nevery shape holds");
 process.exit(failures ? 1 : 0);
