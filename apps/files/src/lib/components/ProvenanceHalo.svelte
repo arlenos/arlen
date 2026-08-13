@@ -10,6 +10,7 @@
     loadProvenance,
     stepLine,
     horizonLine,
+    incompleteLine,
     type ProvenanceChain,
   } from "$lib/stores/provenance";
   import { t } from "$lib/i18n/messages";
@@ -44,6 +45,11 @@
           <p class="ph-step" class:attested={s.attested}>{stepLine($t, s)}</p>
         {/each}
       </div>
+      {#if incompleteLine($t, $chain)}
+        <!-- Below the steps, like the horizon line: it qualifies what was shown
+             rather than the whole chain, which is what `mocked` does above. -->
+        <p class="ph-incomplete">{incompleteLine($t, $chain)}</p>
+      {/if}
       {#if horizonLine($t, $chain)}
         <p class="ph-horizon">{horizonLine($t, $chain)}</p>
       {/if}
@@ -107,6 +113,13 @@
     color: color-mix(in srgb, var(--foreground) 55%, transparent);
     padding-bottom: 0.15rem;
     border-bottom: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+  }
+  .ph-incomplete {
+    /* Amber, like every other absent-or-refused read in Arlen: this is a fact
+       about the machine, not about the file's history. */
+    margin: 6px 0 0;
+    font-size: var(--text-2xs);
+    color: var(--color-warning, #d4b483);
   }
   .ph-horizon {
     margin: 0;

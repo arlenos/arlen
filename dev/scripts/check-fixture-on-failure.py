@@ -211,7 +211,7 @@ ACKNOWLEDGED: dict[str, str] = {
     'apps/text-editor/src/lib/stores/lens.ts:82': (
         "Caveat at the claim, and nothing here turns invented data into an argument. That is the line tonight's fixes drew: a labelled sample on screen is a design choice someone made, but a fixture that supplies an id, an index or a pid to a real call is a defect whatever the label says. The lens shows provenance, backlinks and project context for the open file, labelled 'Example context - not this file's real graph neighbourhood'. `openRelated` navigates rather than mutates."
     ),
-    "apps/files/src/lib/stores/provenance.ts:99": (
+    "apps/files/src/lib/stores/provenance.ts:149": (
         "The caveat is rendered at the claim, not on a banner elsewhere: the halo "
         "popover puts 'Sample history - not this file's real origin' directly above "
         "the chain, and the store sets `mocked` on the chain object so it travels "
