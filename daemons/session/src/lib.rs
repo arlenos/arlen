@@ -22,11 +22,12 @@
 //! jobs, and a shell script is the wrong artefact for them.
 //!
 //! This crate holds the DECISIONS - the parts that can be tested without a
-//! compositor, a seat or a login - so the port is verifiable in pieces rather than
-//! only by booting. The process work (spawning, waiting, importing the
-//! environment) lands on top of them.
+//! compositor, a seat or a login - so the port was verifiable in pieces rather than
+//! only by booting. The process work (spawning, waiting, importing the environment,
+//! stamping what it starts) sits in the binary on top of them.
 
 pub mod env;
 pub mod session_id;
+pub mod stamp;
 pub mod verify_app;
 pub mod wayland;

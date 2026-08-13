@@ -13,6 +13,7 @@ name = "arlen-session"
 path = "src/main.rs"
 
 [dependencies]
+arlen-permissions = { path = "../../sdk/permissions" }
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
