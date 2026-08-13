@@ -311,19 +311,62 @@ pub fn lookup_identity(
     lookup_over(&mut stream, peer_pidfd)
 }
 
-/// Like [`lookup_identity`], but AUTHENTICATE the broker first: after connecting,
-/// read the listener's `SO_PEERCRED` uid and require it to equal
-/// `expected_broker_uid` (see [`broker_expected_uid`]). A mismatch is an
-/// [`IdentityClientError::Unauthenticated`] and NO request is sent (the peer
-/// pidfd is never handed to an untrusted listener), so a same-uid squatter at the
-/// session-owned socket path cannot mint a stamp - the resolver treats the error
-/// as fall-through. This is the client-side half of the trust boundary the broker
-/// already enforces the other way (it authenticates its callers).
+/// Whether the directory holding `socket` is closed to this user.
+///
+/// `access(W_OK)` asks the kernel the question we actually mean - "could I create
+/// or replace a node here" - against the REAL uid, and it answers correctly inside
+/// a user namespace, where reading an owner uid does not. A false is not proof of
+/// an attacker; it only means the path cannot vouch for who bound it.
+fn socket_dir_is_closed_to_us(socket: &Path) -> bool {
+    let Some(dir) = socket.parent() else {
+        return false;
+    };
+    // The directory has to EXIST before its permissions mean anything. Without
+    // this, `access` on an absent path fails with ENOENT and the `!= 0` below
+    // reads that as "closed to us" - a fail-open that would skip the uid check for
+    // any relative or missing socket path. Caught by its own test on the first run.
+    if !dir.is_dir() {
+        return false;
+    }
+    let Ok(c) = std::ffi::CString::new(dir.as_os_str().as_encoded_bytes()) else {
+        return false;
+    };
+    // SAFETY: a NUL-terminated path and a constant mode; access() only reads.
+    unsafe { libc::access(c.as_ptr(), libc::W_OK) != 0 }
+}
+
+/// Like [`lookup_identity`], but authenticate the broker before handing it a pidfd.
+///
+/// TWO ways to be sure, and which one applies is a property of the socket's
+/// directory rather than a configuration choice.
+///
+/// **By path.** `/run/arlen` is created by `arlen-event-bus.service` as
+/// `RuntimeDirectory=arlen`, root-owned, mode 0755, and no ordinary user may create
+/// anything in it. So whatever is bound at a path inside it was bound by root, and
+/// the connect is authenticated by the filesystem before any uid is consulted. The
+/// peer-uid check adds nothing there that the path has not already given us - and
+/// inside a mount-namespaced unit it cannot work at all, because a root-owned
+/// broker has no number in a namespace that maps only the user's own uid. That is
+/// not "unmapped means the broker", the inference this file rejects below: nothing
+/// is being read off the peer here. The peer is simply not identified, because the
+/// path already bounds who could be answering.
+///
+/// **By uid.** A socket in a directory the user CAN write - the per-user dev path -
+/// gets no such bound: a same-uid squatter can create a node there and declare
+/// itself trusted. There the `SO_PEERCRED` check is the whole defence, and it works,
+/// because a dev broker is same-uid and no namespace is in the way.
+///
+/// Either way NO request is sent until the check passes, so an untrusted listener
+/// never sees a peer pidfd; the resolver treats the error as fall-through.
 pub fn lookup_identity_authenticated(
     socket: &Path,
     peer_pidfd: BorrowedFd<'_>,
     expected_broker_uid: Option<u32>,
 ) -> Result<Option<String>, IdentityClientError> {
+    if socket_dir_is_closed_to_us(socket) {
+        let mut stream = connect(socket)?;
+        return lookup_over(&mut stream, peer_pidfd);
+    }
     // No trusted broker uid known (release build, env unset): refuse WITHOUT
     // connecting, so no unauthenticated listener is ever consulted for a stamp.
     let Some(expected) = expected_broker_uid else {
@@ -790,5 +833,25 @@ mod tests {
         // And nobody-expecting-nobody is a genuine mismatch, not the namespace case.
         let both = unmappable_peer_hint(NOBODY_UID, NOBODY_UID, Path::new("/x"));
         assert!(!both.contains("user namespace"));
+    }
+
+    #[test]
+    fn a_directory_we_can_write_cannot_vouch_for_who_bound_it() {
+        // The whole distinction, and the half that is easy to get backwards: the
+        // path is only a credential where we could NOT have put the node there
+        // ourselves. A temp dir is ours, so it vouches for nothing and the uid
+        // check has to stand; `/` is not, so it does.
+        let mine = tempfile::tempdir().expect("temp dir");
+        assert!(
+            !socket_dir_is_closed_to_us(&mine.path().join("x.sock")),
+            "a directory this process can write must not authenticate its socket"
+        );
+        assert!(
+            socket_dir_is_closed_to_us(Path::new("/x.sock")),
+            "the root directory is not user-writable, so a node in it was placed by root"
+        );
+        // A socket whose parent does not exist cannot vouch either - refusing is
+        // the fail-closed reading, and `connect` would fail next anyway.
+        assert!(!socket_dir_is_closed_to_us(Path::new("relative.sock")));
     }
 }
